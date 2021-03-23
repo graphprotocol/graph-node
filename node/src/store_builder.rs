@@ -43,7 +43,7 @@ impl StoreBuilder {
         ));
 
         let (store, pools) =
-            Self::make_sharded_store_and_primary_pool(logger, node, config, registry.cheap_clone());
+            Self::make_subgraph_store_and_pools(logger, node, config, registry.cheap_clone());
 
         // Perform setup for all the pools
         let details = pools
@@ -80,7 +80,7 @@ impl StoreBuilder {
     /// Make a `ShardedStore` across all configured shards, and also return
     /// the main connection pools for each shard, but not any pools for
     /// replicas
-    fn make_sharded_store_and_primary_pool(
+    fn make_subgraph_store_and_pools(
         logger: &Logger,
         node: &NodeId,
         config: &Config,
@@ -118,15 +118,15 @@ impl StoreBuilder {
     }
 
     // Somehow, rustc gets this wrong; the function is used in
-    // `manager::make_store`
+    // `manager::Context.subgraph_store`
     #[allow(dead_code)]
-    pub fn make_sharded_store(
+    pub fn make_subgraph_store(
         logger: &Logger,
         node: &NodeId,
         config: &Config,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Arc<SubgraphStore> {
-        Self::make_sharded_store_and_primary_pool(logger, node, config, registry).0
+        Self::make_subgraph_store_and_pools(logger, node, config, registry).0
     }
 
     /// Create a connection pool for the main database of hte primary shard

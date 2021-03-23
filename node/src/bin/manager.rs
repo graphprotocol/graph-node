@@ -200,35 +200,53 @@ impl From<Opt> for config::Opt {
     }
 }
 
-fn make_registry(logger: &Logger) -> Arc<MetricsRegistry> {
-    let prometheus_registry = Arc::new(Registry::new());
-    Arc::new(MetricsRegistry::new(
-        logger.clone(),
-        prometheus_registry.clone(),
-    ))
+/// Utilities to interact mostly with the store and build the parts of the
+/// store we need for specific commands
+struct Context {
+    logger: Logger,
+    node_id: NodeId,
+    config: Cfg,
+    registry: Arc<MetricsRegistry>,
 }
 
-fn make_main_pool(logger: &Logger, node_id: &NodeId, config: &Cfg) -> ConnectionPool {
-    let primary = config.primary_store();
-    StoreBuilder::main_pool(
-        &logger,
-        node_id,
-        PRIMARY_SHARD.as_str(),
-        primary,
-        make_registry(logger),
-    )
-}
+impl Context {
+    fn new(logger: Logger, node_id: NodeId, config: Cfg) -> Self {
+        let prometheus_registry = Arc::new(Registry::new());
+        let registry = Arc::new(MetricsRegistry::new(
+            logger.clone(),
+            prometheus_registry.clone(),
+        ));
 
-fn make_store(logger: &Logger, node_id: &NodeId, config: &Cfg) -> Arc<SubgraphStore> {
-    StoreBuilder::make_sharded_store(logger, node_id, config, make_registry(logger))
-}
+        Self {
+            logger,
+            node_id,
+            config,
+            registry,
+        }
+    }
 
-fn make_subscription_manager(logger: &Logger, config: &Cfg) -> Arc<SubscriptionManager> {
-    let primary = config.primary_store();
-    Arc::new(SubscriptionManager::new(
-        logger.clone(),
-        primary.connection.to_owned(),
-    ))
+    fn primary_pool(self) -> ConnectionPool {
+        let primary = self.config.primary_store();
+        StoreBuilder::main_pool(
+            &self.logger,
+            &self.node_id,
+            PRIMARY_SHARD.as_str(),
+            primary,
+            self.registry,
+        )
+    }
+
+    fn subgraph_store(self) -> Arc<SubgraphStore> {
+        StoreBuilder::make_subgraph_store(&self.logger, &self.node_id, &self.config, self.registry)
+    }
+
+    fn subscription_manager(self) -> Arc<SubscriptionManager> {
+        let primary = self.config.primary_store();
+        Arc::new(SubscriptionManager::new(
+            self.logger.clone(),
+            primary.connection.to_owned(),
+        ))
+    }
 }
 
 #[tokio::main]
@@ -272,26 +290,19 @@ async fn main() {
         }
         Ok(node) => node,
     };
-    let make_main_pool = || make_main_pool(&logger, &node, &config);
-    let make_store = || make_store(&logger, &node, &config);
+    let ctx = Context::new(logger, node, config);
 
     use Command::*;
     let result = match opt.cmd {
-        TxnSpeed { delay } => {
-            let pool = make_main_pool();
-            commands::txn_speed::run(pool, delay)
-        }
+        TxnSpeed { delay } => commands::txn_speed::run(ctx.primary_pool(), delay),
         Info {
             name,
             current,
             pending,
             used,
-        } => {
-            let pool = make_main_pool();
-            commands::info::run(pool, name, current, pending, used)
-        }
+        } => commands::info::run(ctx.primary_pool(), name, current, pending, used),
         Unused(cmd) => {
-            let store = make_store();
+            let store = ctx.subgraph_store();
             use UnusedCommand::*;
 
             match cmd {
@@ -308,45 +319,30 @@ async fn main() {
 
             match cmd {
                 Place { name, network } => {
-                    commands::config::place(&config.deployment, &name, &network)
+                    commands::config::place(&ctx.config.deployment, &name, &network)
                 }
-                Check { print } => commands::config::check(&config, print),
-                Pools { nodes, shard } => commands::config::pools(&config, nodes, shard),
+                Check { print } => commands::config::check(&ctx.config, print),
+                Pools { nodes, shard } => commands::config::pools(&ctx.config, nodes, shard),
             }
         }
-        Remove { name } => {
-            let store = make_store();
-            commands::remove::run(store, name)
-        }
-        Unassign { id } => {
-            let store = make_store();
-            commands::assign::unassign(store, id)
-        }
-        Reassign { id, node } => {
-            let store = make_store();
-            commands::assign::reassign(store, id, node)
-        }
+        Remove { name } => commands::remove::run(ctx.subgraph_store(), name),
+        Unassign { id } => commands::assign::unassign(ctx.subgraph_store(), id),
+        Reassign { id, node } => commands::assign::reassign(ctx.subgraph_store(), id, node),
         Rewind {
             id,
             block_hash,
             block_number,
-        } => {
-            let store = make_store();
-            commands::rewind::run(store, id, block_hash, block_number)
-        }
+        } => commands::rewind::run(ctx.subgraph_store(), id, block_hash, block_number),
         Listen(cmd) => {
             use ListenCommand::*;
             match cmd {
-                Assignments => {
-                    let subscription_manager = make_subscription_manager(&logger, &config);
-                    commands::listen::assignments(subscription_manager).await
-                }
+                Assignments => commands::listen::assignments(ctx.subscription_manager()).await,
                 Entities {
                     deployment,
                     entity_types,
                 } => {
-                    let subscription_manager = make_subscription_manager(&logger, &config);
-                    commands::listen::entities(subscription_manager, deployment, entity_types).await
+                    commands::listen::entities(ctx.subscription_manager(), deployment, entity_types)
+                        .await
                 }
             }
         }
