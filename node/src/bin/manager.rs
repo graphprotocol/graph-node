@@ -12,7 +12,9 @@ use graph::{
 };
 use graph_node::config;
 use graph_node::store_builder::StoreBuilder;
-use graph_store_postgres::{connection_pool::ConnectionPool, SubgraphStore, PRIMARY_SHARD};
+use graph_store_postgres::{
+    connection_pool::ConnectionPool, SubgraphStore, SubscriptionManager, PRIMARY_SHARD,
+};
 
 use crate::config::Config as Cfg;
 use graph_node::manager::commands;
@@ -106,6 +108,8 @@ pub enum Command {
     /// Print information about a configuration file without
     /// actually connecting to databases or network clients
     Config(ConfigCommand),
+    /// Listen for store events and print them
+    Listen(ListenCommand),
 }
 
 #[derive(Clone, Debug, StructOpt)]
@@ -157,6 +161,15 @@ pub enum ConfigCommand {
     },
 }
 
+#[derive(Clone, Debug, StructOpt)]
+pub enum ListenCommand {
+    Assignments,
+    Entities {
+        deployment: String,
+        entity_types: Vec<String>,
+    },
+}
+
 impl From<Opt> for config::Opt {
     fn from(opt: Opt) -> Self {
         let mut config_opt = config::Opt::default();
@@ -187,6 +200,14 @@ fn make_main_pool(logger: &Logger, node_id: &NodeId, config: &Cfg) -> Connection
 
 fn make_store(logger: &Logger, node_id: &NodeId, config: &Cfg) -> Arc<SubgraphStore> {
     StoreBuilder::make_sharded_store(logger, node_id, config, make_registry(logger))
+}
+
+fn make_subscription_manager(logger: &Logger, config: &Cfg) -> Arc<SubscriptionManager> {
+    let primary = config.primary_store();
+    Arc::new(SubscriptionManager::new(
+        logger.clone(),
+        primary.connection.to_owned(),
+    ))
 }
 
 #[tokio::main]
@@ -273,6 +294,22 @@ async fn main() {
         Reassign { id, node } => {
             let store = make_store();
             commands::assign::reassign(store, id, node)
+        }
+        Listen(cmd) => {
+            use ListenCommand::*;
+            match cmd {
+                Assignments => {
+                    let subscription_manager = make_subscription_manager(&logger, &config);
+                    commands::listen::assignments(subscription_manager).await
+                }
+                Entities {
+                    deployment,
+                    entity_types,
+                } => {
+                    let subscription_manager = make_subscription_manager(&logger, &config);
+                    commands::listen::entities(subscription_manager, deployment, entity_types).await
+                }
+            }
         }
     };
     if let Err(e) = result {
