@@ -158,7 +158,7 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let conn = self.get_conn()?;
         conn.transaction(|| -> Result<_, StoreError> {
-            let exists = deployment::exists(&conn, &site.deployment)?;
+            let exists = deployment::exists(&conn, &site)?;
 
             // Create (or update) the metadata. Update only happens in tests
             if replace || !exists {

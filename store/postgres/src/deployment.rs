@@ -362,12 +362,12 @@ pub fn set_synced(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), 
     Ok(())
 }
 
-/// Returns `true` if the deployment `id` exists
-pub fn exists(conn: &PgConnection, id: &str) -> Result<bool, StoreError> {
+/// Returns `true` if the deployment (as identified by `site.id`)
+pub fn exists(conn: &PgConnection, site: &Site) -> Result<bool, StoreError> {
     use subgraph_deployment as d;
 
     let exists = d::table
-        .filter(d::deployment.eq(id))
+        .filter(d::id.eq(site.id))
         .count()
         .get_result::<i64>(conn)?
         > 0;
