@@ -139,6 +139,11 @@ impl NotificationListener {
                     // we need to query the database again; avoiding this
                     // load would require that we use a second database
                     // connection to look up large notifications
+                    //
+                    // We batch notifications such that we do not wait for
+                    // longer than 500ms for new notifications to arrive,
+                    // but limit the size of each batch to 64 to guarantee
+                    // progress on a busy system
                     let notifications: Vec<_> = conn
                         .notifications()
                         .timeout_iter(Duration::from_millis(500))
@@ -157,6 +162,7 @@ impl NotificationListener {
                             }
                         })
                         .filter(|notification| notification.channel() == channel_name.0)
+                        .take(64)
                         .collect();
 
                     // Read notifications until there hasn't been one for 500ms
