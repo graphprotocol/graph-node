@@ -172,7 +172,9 @@ impl HostExports {
         entity_type: String,
         entity_id: String,
         mut data: HashMap<String, Value>,
+        stopwatch: &StopwatchMetrics,
     ) -> Result<(), anyhow::Error> {
+        let poi_section = stopwatch.start_section("host_export_store_set__proof_of_indexing");
         if let Some(proof_of_indexing) = proof_of_indexing {
             let mut proof_of_indexing = proof_of_indexing.deref().borrow_mut();
             proof_of_indexing.write(
@@ -185,7 +187,9 @@ impl HostExports {
                 },
             );
         }
+        poi_section.end();
 
+        let id_insert_section = stopwatch.start_section("host_export_store_set__insert_id");
         // Automatically add an "id" value
         match data.insert("id".to_string(), Value::String(entity_id.clone())) {
             Some(ref v) if v != &Value::String(entity_id.clone()) => {
@@ -200,6 +204,8 @@ impl HostExports {
             _ => (),
         }
 
+        id_insert_section.end();
+        let validation_section = stopwatch.start_section("host_export_store_set__validation");
         let key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
             entity_type: EntityType::new(entity_type),
@@ -210,9 +216,11 @@ impl HostExports {
         let is_valid = validate_entity(&schema.document, &key, &entity).is_ok();
         state.entity_cache.set(key.clone(), entity);
 
+        validation_section.end();
         // Validate the changes against the subgraph schema.
         // If the set of fields we have is already valid, avoid hitting the DB.
         if !is_valid {
+            stopwatch.start_section("host_export_store_set__post_validation");
             let entity = state
                 .entity_cache
                 .get(&key)

@@ -780,9 +780,13 @@ impl WasmInstanceContext {
         id_ptr: AscPtr<AscString>,
         data_ptr: AscPtr<AscEntity>,
     ) -> Result<(), HostExportError> {
+        let stopwatch = &self.host_metrics.stopwatch;
+        stopwatch.start_section("host_export_store_set__wasm_instance_context_store_set");
+
         let entity = self.asc_get(entity_ptr)?;
         let id = self.asc_get(id_ptr)?;
         let data = self.try_asc_get(data_ptr)?;
+
         self.ctx.host_exports.store_set(
             &self.ctx.logger,
             &mut self.ctx.state,
@@ -790,6 +794,7 @@ impl WasmInstanceContext {
             entity,
             id,
             data,
+            stopwatch,
         )?;
         Ok(())
     }
