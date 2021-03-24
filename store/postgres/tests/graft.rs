@@ -3,7 +3,9 @@ use lazy_static::lazy_static;
 use std::str::FromStr;
 use test_store::*;
 
-use graph::components::store::{EntityKey, EntityOrder, EntityQuery, EntityType};
+use graph::components::store::{
+    DeploymentLocator, EntityKey, EntityOrder, EntityQuery, EntityType,
+};
 use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
@@ -84,7 +86,7 @@ lazy_static! {
 /// Test harness for running database integration tests.
 fn run_test<R, F>(test: F)
 where
-    F: FnOnce(Arc<DieselSubgraphStore>) -> R + Send + 'static,
+    F: FnOnce(Arc<DieselSubgraphStore>, DeploymentLocator) -> R + Send + 'static,
     R: IntoFuture<Item = ()> + Send + 'static,
     R::Error: Send + Debug,
     R::Future: Send,
@@ -103,10 +105,10 @@ where
             remove_test_data(store.clone());
 
             // Seed database with test data
-            insert_test_data(store.clone());
+            let deployment = insert_test_data(store.clone());
 
             // Run test
-            test(store).into_future().compat().await
+            test(store, deployment).into_future().compat().await
         })
         .unwrap_or_else(|e| panic!("Failed to run Store test: {:?}", e));
 }
@@ -115,7 +117,7 @@ where
 ///
 /// Inserts data in test blocks 1, 2, and 3, leaving test blocks 3A, 4, and 4A for the tests to
 /// use.
-fn insert_test_data(store: Arc<DieselSubgraphStore>) {
+fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator {
     let manifest = SubgraphManifest {
         id: TEST_SUBGRAPH_ID.clone(),
         spec_version: "1".to_owned(),
@@ -201,6 +203,8 @@ fn insert_test_data(store: Arc<DieselSubgraphStore>) {
         vec![test_entity_3_2],
     )
     .unwrap();
+
+    deployment
 }
 
 /// Creates a test entity.
@@ -252,13 +256,77 @@ fn remove_test_data(store: Arc<DieselSubgraphStore>) {
         .expect("deleting test entities succeeds");
 }
 
+fn create_grafted_subgraph(
+    subgraph_id: &SubgraphDeploymentId,
+    schema: &str,
+    base_id: &str,
+    base_block: EthereumBlockPointer,
+) -> Result<DeploymentLocator, StoreError> {
+    let base = Some((SubgraphDeploymentId::new(base_id).unwrap(), base_block));
+    test_store::create_subgraph(subgraph_id, schema, base)
+}
+
+fn check_graft(
+    store: Arc<DieselSubgraphStore>,
+    deployment: DeploymentLocator,
+) -> Result<(), StoreError> {
+    let query = EntityQuery::new(
+        deployment.hash.clone(),
+        BLOCK_NUMBER_MAX,
+        EntityCollection::All(vec![EntityType::from(USER)]),
+    )
+    .order(EntityOrder::Descending(
+        "name".to_string(),
+        ValueType::String,
+    ));
+
+    let entities = store
+        .find(query)
+        .expect("store.find failed to execute query");
+
+    let ids = entities
+        .iter()
+        .map(|entity| entity.id().unwrap())
+        .collect::<Vec<_>>();
+
+    assert_eq!(vec!["3", "1", "2"], ids);
+
+    // Make sure we caught Shqueena at block 1, before the change in
+    // email address
+    let mut shaq = entities.first().unwrap().to_owned();
+    assert_eq!(Some(&Value::from("queensha@email.com")), shaq.get("email"));
+
+    // Make our own entries for block 2
+    shaq.set("email", "shaq@gmail.com");
+    let op = EntityOperation::Set {
+        key: EntityKey::data(deployment.hash.clone(), USER.to_owned(), "3".to_owned()),
+        data: shaq,
+    };
+    transact_entity_operations(&store, &deployment, BLOCKS[2].clone(), vec![op]).unwrap();
+
+    store
+        .writable(&deployment)?
+        .revert_block_operations(BLOCKS[1].clone())
+        .expect("We can revert a block we just created");
+
+    let err = store
+        .writable(&deployment)?
+        .revert_block_operations(BLOCKS[0].clone())
+        .expect_err("Reverting past graft point is not allowed");
+
+    assert!(err.to_string().contains("Can not revert subgraph"));
+
+    Ok(())
+}
+
 #[test]
 fn graft() {
-    run_test(move |store| -> Result<(), StoreError> {
+    run_test(move |store, _| -> Result<(), StoreError> {
         const SUBGRAPH: &str = "grafted";
 
         let subgraph_id = SubgraphDeploymentId::new(SUBGRAPH).unwrap();
-        let deployment = test_store::create_grafted_subgraph(
+
+        let deployment = create_grafted_subgraph(
             &subgraph_id,
             GRAFT_GQL,
             TEST_SUBGRAPH_ID.as_str(),
@@ -266,52 +334,38 @@ fn graft() {
         )
         .expect("can create grafted subgraph");
 
-        let query = EntityQuery::new(
-            subgraph_id.clone(),
-            BLOCK_NUMBER_MAX,
-            EntityCollection::All(vec![EntityType::from(USER)]),
-        )
-        .order(EntityOrder::Descending(
-            "name".to_string(),
-            ValueType::String,
-        ));
+        check_graft(store, deployment)
+    })
+}
 
-        let entities = store
-            .find(query)
-            .expect("store.find failed to execute query");
+// This test will only do something if the test configuration uses at least
+// two shards
+#[test]
+fn copy() {
+    run_test(move |store, src| -> Result<(), StoreError> {
+        let src_shard = store.shard(&src)?;
 
-        let ids = entities
-            .iter()
-            .map(|entity| entity.id().unwrap())
-            .collect::<Vec<_>>();
-
-        assert_eq!(vec!["3", "1", "2"], ids);
-
-        // Make sure we caught Shqueena at block 1, before the change in
-        // email address
-        let mut shaq = entities.first().unwrap().to_owned();
-        assert_eq!(Some(&Value::from("queensha@email.com")), shaq.get("email"));
-
-        // Make our own entries for block 2
-        shaq.set("email", "shaq@gmail.com");
-        let op = EntityOperation::Set {
-            key: EntityKey::data(subgraph_id.clone(), USER.to_owned(), "3".to_owned()),
-            data: shaq,
+        let dst_shard = match all_shards()
+            .into_iter()
+            .find(|shard| shard.as_str() != src_shard.as_str())
+        {
+            None => {
+                // The tests are configured with just one shard, copying is not possible
+                println!("skipping copy test since there is no shard to copy to");
+                return Ok(());
+            }
+            Some(shard) => shard,
         };
-        transact_entity_operations(&store, &deployment, BLOCKS[2].clone(), vec![op]).unwrap();
+
+        let deployment =
+            store.copy_deployment(&src, dst_shard, NODE_ID.clone(), BLOCKS[1].clone())?;
 
         store
             .writable(&deployment)?
-            .revert_block_operations(BLOCKS[1].clone())
-            .expect("We can revert a block we just created");
+            .start_subgraph_deployment(&*LOGGER)?;
 
-        let err = store
-            .writable(&deployment)?
-            .revert_block_operations(BLOCKS[0].clone())
-            .expect_err("Reverting past graft point is not allowed");
+        store.activate(&deployment)?;
 
-        assert!(err.to_string().contains("Can not revert subgraph"));
-
-        Ok(())
+        check_graft(store, deployment)
     })
 }

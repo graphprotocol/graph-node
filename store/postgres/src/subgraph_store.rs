@@ -294,6 +294,13 @@ impl SubgraphStoreInner {
         self.sites.clear();
     }
 
+    // Only needed for tests
+    #[cfg(debug_assertions)]
+    pub fn shard(&self, deployment: &DeploymentLocator) -> Result<Shard, StoreError> {
+        self.find_site(deployment.id.into())
+            .map(|site| site.shard.clone())
+    }
+
     fn cache_active(&self, site: &Arc<Site>) {
         if site.active {
             self.sites.set(site.deployment.clone(), site.clone());
