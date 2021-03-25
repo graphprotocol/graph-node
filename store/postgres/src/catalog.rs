@@ -1,4 +1,4 @@
-use diesel::{connection::SimpleConnection, prelude::RunQueryDsl};
+use diesel::{connection::SimpleConnection, prelude::RunQueryDsl, select};
 use diesel::{pg::PgConnection, sql_query};
 use diesel::{sql_types::Text, ExpressionMethods, QueryDsl};
 use std::collections::{HashMap, HashSet};
@@ -128,11 +128,10 @@ pub fn current_servers(conn: &PgConnection) -> Result<Vec<String>, StoreError> {
 pub fn has_namespace(conn: &PgConnection, namespace: &Namespace) -> Result<bool, StoreError> {
     use pg_namespace as nsp;
 
-    Ok(nsp::table
-        .filter(nsp::nspname.eq(namespace.as_str()))
-        .count()
-        .get_result::<i64>(conn)?
-        > 0)
+    Ok(select(diesel::dsl::exists(
+        nsp::table.filter(nsp::nspname.eq(namespace.as_str())),
+    ))
+    .get_result::<bool>(conn)?)
 }
 
 /// Drop the schema for `src` if it is a foreign schema imported from
@@ -142,11 +141,10 @@ pub fn has_namespace(conn: &PgConnection, namespace: &Namespace) -> Result<bool,
 pub fn drop_foreign_schema(conn: &PgConnection, src: &Site) -> Result<(), StoreError> {
     use foreign_tables as ft;
 
-    let is_foreign = ft::table
-        .filter(ft::foreign_table_schema.eq(src.namespace.as_str()))
-        .count()
-        .get_result::<i64>(conn)?
-        > 0;
+    let is_foreign = select(diesel::dsl::exists(
+        ft::table.filter(ft::foreign_table_schema.eq(src.namespace.as_str())),
+    ))
+    .get_result::<bool>(conn)?;
 
     if is_foreign {
         let query = format!("drop schema if exists {} cascade", src.namespace);

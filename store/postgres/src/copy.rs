@@ -18,7 +18,7 @@ use std::{
 };
 
 use diesel::{
-    dsl::sql, insert_into, sql_query, sql_types::Integer, update, Connection as _,
+    dsl::sql, insert_into, select, sql_query, sql_types::Integer, update, Connection as _,
     ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl,
 };
 use graph::{
@@ -209,12 +209,13 @@ impl CopyState {
         // If we imported the schema for `src`, and no other in-progress
         // copy is using it, get rid of it again
         if self.crosses_shards() {
-            let active_copies = cs::table
-                .filter(cs::src.eq(self.src.site.id))
-                .filter(cs::finished_at.is_null())
-                .count()
-                .get_result::<i64>(conn)?;
-            if active_copies == 0 {
+            let has_active_copies = select(diesel::dsl::exists(
+                cs::table
+                    .filter(cs::src.eq(self.src.site.id))
+                    .filter(cs::finished_at.is_null()),
+            ))
+            .get_result::<bool>(conn)?;
+            if !has_active_copies {
                 // This is a foreign schema that nobody is using anymore,
                 // get rid of it. As a safety check (on top of the one that
                 // drop_foreign_schema does), see that we do not have
