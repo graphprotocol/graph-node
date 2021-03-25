@@ -74,6 +74,22 @@ impl<K, V> TimedCache<K, V> {
         };
         self.entries.write().unwrap().insert(key, entry);
     }
+
+    pub fn clear(&self) {
+        self.entries.write().unwrap().clear();
+    }
+
+    pub fn find<F>(&self, pred: F) -> Option<Arc<V>>
+    where
+        F: Fn(&V) -> bool,
+    {
+        self.entries
+            .read()
+            .unwrap()
+            .values()
+            .find(move |entry| pred(entry.value.as_ref()))
+            .map(|entry| entry.value.clone())
+    }
 }
 
 #[test]

@@ -4,10 +4,9 @@ use diesel::{
     sql_types::Text,
     types::{FromSql, ToSql},
 };
-use std::iter::FromIterator;
-use std::sync::RwLock;
 use std::{collections::BTreeMap, collections::HashMap, sync::Arc};
 use std::{fmt, io::Write};
+use std::{iter::FromIterator, time::Duration};
 
 use graph::{
     components::{
@@ -26,6 +25,7 @@ use graph::{
         NodeId, QueryExecutionError, Schema, StopwatchMetrics, StoreError, SubgraphDeploymentId,
         SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
+    util::timed_cache::TimedCache,
 };
 use store::StoredDynamicDataSource;
 
@@ -49,6 +49,9 @@ lazy_static! {
     /// The name of the primary shard that contains all instance-wide data
     pub static ref PRIMARY_SHARD: Shard = Shard("primary".to_string());
 }
+
+/// How long to cache information about a deployment site
+const SITES_CACHE_TTL: Duration = Duration::from_secs(120);
 
 impl Shard {
     pub fn new(name: String) -> Result<Self, StoreError> {
@@ -222,9 +225,12 @@ pub struct SubgraphStoreInner {
     primary: ConnectionPool,
     stores: HashMap<Shard, Arc<DeploymentStore>>,
     /// Cache for the mapping from deployment id to shard/namespace/id. Only
-    /// active sites are cached here to ensure we have a unique mapping
-    /// from `SubgraphDeploymentId` to `Site`
-    sites: RwLock<HashMap<SubgraphDeploymentId, Arc<Site>>>,
+    /// active sites are cached here to ensure we have a unique mapping from
+    /// `SubgraphDeploymentId` to `Site`. The cache keeps entry only for
+    /// `SITES_CACHE_TTL` so that changes, in particular, activation of a
+    /// different deployment for the same hash propagate across different
+    /// graph-node processes over time.
+    sites: TimedCache<SubgraphDeploymentId, Site>,
     placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
 }
 
@@ -268,7 +274,7 @@ impl SubgraphStoreInner {
                 )
             },
         ));
-        let sites = RwLock::new(HashMap::new());
+        let sites = TimedCache::new(SITES_CACHE_TTL);
         let logger = logger.new(o!("shard" => PRIMARY_SHARD.to_string()));
         SubgraphStoreInner {
             logger,
@@ -285,22 +291,19 @@ impl SubgraphStoreInner {
         for store in self.stores.values() {
             store.layout_cache.lock().unwrap().clear();
         }
-        self.sites.write().unwrap().clear();
+        self.sites.clear();
     }
 
     fn cache_active(&self, site: &Arc<Site>) {
         if site.active {
-            self.sites
-                .write()
-                .unwrap()
-                .insert(site.deployment.clone(), site.clone());
+            self.sites.set(site.deployment.clone(), site.clone());
         }
     }
 
     /// Return the active `Site` for this deployment hash
     fn site(&self, id: &SubgraphDeploymentId) -> Result<Arc<Site>, StoreError> {
-        if let Some(site) = self.sites.read().unwrap().get(id) {
-            return Ok(site.clone());
+        if let Some(site) = self.sites.get(id) {
+            return Ok(site);
         }
 
         let conn = self.primary_conn()?;
@@ -314,14 +317,8 @@ impl SubgraphStoreInner {
     }
 
     fn find_site(&self, id: DeploymentId) -> Result<Arc<Site>, StoreError> {
-        if let Some(site) = self
-            .sites
-            .read()
-            .unwrap()
-            .values()
-            .find(|site| site.id == id)
-        {
-            return Ok(site.clone());
+        if let Some(site) = self.sites.find(|site| site.id == id) {
+            return Ok(site);
         }
 
         let conn = self.primary_conn()?;
