@@ -7,7 +7,7 @@ use graph::{
         ChainStore, EthereumBlockPointer, NodeId, QueryStoreManager,
     },
 };
-use graph_store_postgres::{Shard, Store};
+use graph_store_postgres::{Shard, Store, SubgraphStore};
 
 use crate::manager::deployment;
 
@@ -57,5 +57,21 @@ pub async fn create(
     let dst = subgraph_store.copy_deployment(&src, shard, node, base_ptr)?;
 
     println!("created deployment {} as copy of {}", dst, src);
+    Ok(())
+}
+
+pub fn activate(store: Arc<SubgraphStore>, deployment: String, shard: String) -> Result<(), Error> {
+    let shard = Shard::new(shard)?;
+    let deployment = store
+        .locate_in_shard(deployment.clone(), shard.clone())?
+        .ok_or_else(|| {
+            anyhow!(
+                "could not find a copy for {} in shard {}",
+                deployment,
+                shard
+            )
+        })?;
+    store.activate(&deployment)?;
+    println!("activated copy {}", deployment);
     Ok(())
 }

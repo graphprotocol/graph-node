@@ -213,6 +213,17 @@ pub enum CopyCommand {
         /// The name of the node that should index the copy
         node: String,
     },
+    /// Activate the copy of a deployment.
+    ///
+    /// This will route queries to that specific copy (with some delay); the
+    /// previously active copy will become inactive. Only copies that have
+    /// progressed at least as far as the original should be activated.
+    Activate {
+        /// The IPFS hash of the deployment to activate
+        deployment: String,
+        /// The name of the database shard that holds the copy
+        shard: String,
+    },
 }
 
 impl From<Opt> for config::Opt {
@@ -396,6 +407,9 @@ async fn main() {
                     node,
                     offset,
                 } => commands::copy::create(ctx.store(), src, shard, node, offset).await,
+                Activate { deployment, shard } => {
+                    commands::copy::activate(ctx.subgraph_store(), deployment, shard)
+                }
             }
         }
     };

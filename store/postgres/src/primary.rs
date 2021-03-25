@@ -833,6 +833,22 @@ impl<'a> Connection<'a> {
         })
     }
 
+    pub fn activate(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
+        use deployment_schemas as ds;
+
+        // We need to tread lightly so we do not violate the unique constraint on
+        // `subgraph where active`
+        update(ds::table.filter(ds::subgraph.eq(deployment.hash.as_str())))
+            .set(ds::active.eq(false))
+            .execute(self.0.as_ref())?;
+
+        update(ds::table.filter(ds::id.eq(DeploymentId::from(deployment.id))))
+            .set(ds::active.eq(true))
+            .execute(self.0.as_ref())
+            .map_err(|e| e.into())
+            .map(|_| ())
+    }
+
     /// Remove all subgraph versions and the entry in `deployment_schemas` for
     /// subgraph `id` in a transaction
     pub fn drop_site(&self, site: &Site) -> Result<(), StoreError> {

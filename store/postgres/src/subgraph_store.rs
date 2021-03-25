@@ -519,6 +519,17 @@ impl SubgraphStoreInner {
         Ok(dst.as_ref().into())
     }
 
+    /// Mark `deployment` as the only active deployment amongst all sites
+    /// with the same deployment hash. Activating this specific deployment
+    /// will make queries use that instead of whatever was active before
+    pub fn activate(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
+        self.primary_conn()?.activate(deployment)?;
+        // As a side-effect, this will update the `self.sites` cache with
+        // the new active site
+        self.find_site(deployment.id.into())?;
+        Ok(())
+    }
+
     // Only for tests to simplify their handling of test fixtures, so that
     // tests can reset the block pointer of a subgraph by recreating it
     #[cfg(debug_assertions)]
@@ -808,6 +819,19 @@ impl SubgraphStoreInner {
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         let (store, site) = self.store(&query.subgraph_id)?;
         store.find(site, query)
+    }
+
+    pub fn locate_in_shard(
+        &self,
+        hash: String,
+        shard: Shard,
+    ) -> Result<Option<DeploymentLocator>, StoreError> {
+        Ok(self
+            .primary_conn()?
+            .find_sites(vec![hash])?
+            .iter()
+            .find(|site| site.shard == shard)
+            .map(|site| site.into()))
     }
 }
 
