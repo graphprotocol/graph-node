@@ -1,13 +1,16 @@
 use std::{
+    borrow::Borrow,
+    cmp::Eq,
     collections::HashMap,
+    hash::Hash,
     sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
 
 /// Caching of values for a specified amount of time
 #[derive(Debug)]
-struct CacheEntry<T> {
-    value: Arc<T>,
+struct CacheEntry<V> {
+    value: Arc<V>,
     expires: Instant,
 }
 
@@ -16,12 +19,12 @@ struct CacheEntry<T> {
 /// and that expired entries are replaced by an updated entry whenever expiry
 /// is detected. In other words, the cache does not ever remove entries.
 #[derive(Debug)]
-pub struct TimedCache<T> {
+pub struct TimedCache<K, V> {
     ttl: Duration,
-    entries: RwLock<HashMap<String, CacheEntry<T>>>,
+    entries: RwLock<HashMap<K, CacheEntry<V>>>,
 }
 
-impl<T> TimedCache<T> {
+impl<K, V> TimedCache<K, V> {
     pub fn new(ttl: Duration) -> Self {
         Self {
             ttl,
@@ -33,24 +36,38 @@ impl<T> TimedCache<T> {
     /// return `None` otherwise. Note that expired entries stay in the cache
     /// as it is assumed that, after returning `None`, the caller will
     /// immediately overwrite that entry with a call to `set`
-    pub fn get(&self, key: &str) -> Option<Arc<T>> {
+    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<Arc<V>>
+    where
+        K: Borrow<Q> + Eq + Hash,
+        Q: Hash + Eq,
+    {
         self.get_at(key, Instant::now())
     }
 
-    fn get_at(&self, key: &str, now: Instant) -> Option<Arc<T>> {
+    fn get_at<Q: ?Sized>(&self, key: &Q, now: Instant) -> Option<Arc<V>>
+    where
+        K: Borrow<Q> + Eq + Hash,
+        Q: Hash + Eq,
+    {
         match self.entries.read().unwrap().get(key) {
-            Some(CacheEntry { value, expires }) if *expires >= now => Some(value.clone()),
+            Some(CacheEntry { value, expires }) if expires >= &now => Some(value.clone()),
             _ => None,
         }
     }
 
     /// Associate `key` with `value` in the cache. The `value` will be
     /// valid for `self.ttl` duration
-    pub fn set(&self, key: String, value: Arc<T>) {
+    pub fn set(&self, key: K, value: Arc<V>)
+    where
+        K: Eq + Hash,
+    {
         self.set_at(key, value, Instant::now())
     }
 
-    fn set_at(&self, key: String, value: Arc<T>, now: Instant) {
+    fn set_at(&self, key: K, value: Arc<V>, now: Instant)
+    where
+        K: Eq + Hash,
+    {
         let entry = CacheEntry {
             value,
             expires: now + self.ttl,
@@ -62,7 +79,7 @@ impl<T> TimedCache<T> {
 #[test]
 fn cache() {
     const KEY: &str = "one";
-    let cache = TimedCache::<String>::new(Duration::from_millis(10));
+    let cache = TimedCache::<String, String>::new(Duration::from_millis(10));
     let now = Instant::now();
     cache.set_at(KEY.to_string(), Arc::new("value".to_string()), now);
     assert!(cache.get_at(KEY, now + Duration::from_millis(5)).is_some());

@@ -75,9 +75,9 @@ lazy_static! {
 #[derive(Debug)]
 pub struct Explorer<S> {
     store: Arc<S>,
-    versions: TimedCache<q::Value>,
-    version_infos: TimedCache<VersionInfo>,
-    entity_counts: TimedCache<q::Value>,
+    versions: TimedCache<String, q::Value>,
+    version_infos: TimedCache<String, VersionInfo>,
+    entity_counts: TimedCache<String, q::Value>,
 }
 
 impl<S> Explorer<S>
