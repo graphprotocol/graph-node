@@ -2755,7 +2755,7 @@ impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for DeleteByPrefixQuery<'a>
 impl<'a, Conn> RunQueryDsl<Conn> for DeleteByPrefixQuery<'a> {}
 
 /// Copy the data of one table to another table. All rows whose `vid` is in
-/// the range `[first_vid, last_vid)` will be copied
+/// the range `[first_vid, last_vid]` will be copied
 #[derive(Debug, Clone)]
 pub struct CopyEntityBatchQuery<'a> {
     src: &'a Table,
@@ -2834,7 +2834,7 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
         out.push_sql(self.src.qualified_name.as_str());
         out.push_sql(" where vid >= ");
         out.push_bind_param::<BigInt, _>(&self.first_vid)?;
-        out.push_sql(" and vid < ");
+        out.push_sql(" and vid <= ");
         out.push_bind_param::<BigInt, _>(&self.last_vid)?;
         Ok(())
     }

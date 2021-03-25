@@ -263,14 +263,14 @@ impl TableState {
         }
 
         let target_vid = sql_query(&format!(
-            "select coalesce(max(vid), 0) as max_vid from {} where lower(block_range) <= $1",
+            "select coalesce(max(vid), -1) as max_vid from {} where lower(block_range) <= $1",
             src.qualified_name.as_str()
         ))
         .bind::<Integer, _>(&target_block.number)
         .load::<MaxVid>(conn)?
         .first()
         .map(|v| v.max_vid)
-        .unwrap_or(0);
+        .unwrap_or(-1);
 
         Ok(Self {
             dst_site,
@@ -284,7 +284,7 @@ impl TableState {
     }
 
     fn finished(&self) -> bool {
-        self.next_vid >= self.target_vid
+        self.next_vid > self.target_vid
     }
 
     fn load(
@@ -396,18 +396,16 @@ impl TableState {
     fn copy_batch(&mut self, conn: &PgConnection) -> Result<(), StoreError> {
         let start = Instant::now();
 
-        rq::CopyEntityBatchQuery::new(
-            self.dst.as_ref(),
-            &self.src,
-            self.next_vid,
-            self.next_vid + self.batch_size,
-        )?
-        .execute(conn)?;
+        // Copy all versions with next_vid <= vid <= next_vid + batch_size - 1,
+        // but do not go over target_vid
+        let last_vid = (self.next_vid + self.batch_size - 1).min(self.target_vid);
+        rq::CopyEntityBatchQuery::new(self.dst.as_ref(), &self.src, self.next_vid, last_vid)?
+            .execute(conn)?;
 
         let duration = start.elapsed();
 
         // remember how far we got
-        self.next_vid += self.batch_size;
+        self.next_vid = last_vid + 1;
 
         // adjust batch size by trying to extrapolate in such a way that we
         // get close to TARGET_DURATION for the time it takes to copy one
@@ -517,8 +515,9 @@ impl Connection {
 
     /// Copy the data for the subgraph `src` to the subgraph `dst`. The
     /// schema for both subgraphs must have already been set up. The
-    /// `target_block` must by far enough behind the chain head so that the
-    /// block is guaranteed to not be subject to chain reorgs.
+    /// `target_block` must be far enough behind the chain head so that the
+    /// block is guaranteed to not be subject to chain reorgs. All data up
+    /// to and including `target_block` will be copied.
     ///
     /// The copy logic makes heavy use of the fact that the `vid` and
     /// `block_range` of entity versions are related since for two entity
