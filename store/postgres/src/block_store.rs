@@ -176,7 +176,7 @@ impl BlockStore {
     pub fn new(
         logger: Logger,
         // (network, ident, shard)
-        chains: Vec<(String, EthereumNetworkIdentifier, Shard)>,
+        chains: Vec<(String, Option<EthereumNetworkIdentifier>, Shard)>,
         // shard -> pool
         pools: HashMap<Shard, ConnectionPool>,
         chain_head_update_listener: Arc<ChainHeadUpdateListener>,
@@ -197,11 +197,13 @@ impl BlockStore {
 
         // For each configured chain, add a chain store
         for (chain_name, ident, shard) in chains {
-            let chain = match existing_chains
-                .iter()
-                .find(|chain| chain.name == chain_name)
-            {
-                Some(chain) => {
+            let chain = match (
+                existing_chains
+                    .iter()
+                    .find(|chain| chain.name == chain_name),
+                ident,
+            ) {
+                (Some(chain), _) => {
                     if chain.shard != shard {
                         return Err(StoreError::Unknown(anyhow!(
                             "the chain {} is stored in shard {} but is configured for shard {}",
@@ -212,7 +214,15 @@ impl BlockStore {
                     }
                     chain.clone()
                 }
-                None => primary::add_chain(&block_store.primary, &chain_name, &ident, &shard)?,
+                (None, Some(ident)) => {
+                    primary::add_chain(&block_store.primary, &chain_name, &ident, &shard)?
+                }
+                (None, None) => {
+                    return Err(StoreError::Unknown(anyhow!(
+                        " the chain {} is new but we could not get a network identifier for it",
+                        chain_name
+                    )));
+                }
             };
 
             block_store.add_chain_store(&chain)?;

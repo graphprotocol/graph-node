@@ -454,8 +454,8 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
 
             (
                 builder.network_store(vec![
-                    (NETWORK_NAME.to_string(), ident.clone()),
-                    (FAKE_NETWORK_SHARED.to_string(), ident),
+                    (NETWORK_NAME.to_string(), Some(ident.clone())),
+                    (FAKE_NETWORK_SHARED.to_string(), Some(ident)),
                 ]),
                 primary_pool,
                 config,

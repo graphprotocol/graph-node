@@ -58,6 +58,11 @@ lazy_static! {
         .unwrap_or(50);
 }
 
+/// How long we will hold up node startup to get the net version and genesis
+/// hash from the client. If we can't get it within that time, we'll try and
+/// continue regardless.
+const ETH_NET_VERSION_WAIT_TIME: Duration = Duration::from_secs(30);
+
 git_testament!(TESTAMENT);
 
 fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
@@ -220,12 +225,20 @@ async fn main() {
                             "network" => &network_name,
                             "capabilities" => &capabilities
                         );
-                        match eth_adapter.net_identifiers().await {
-                            Err(e) => {
+                        match tokio::time::timeout(
+                            ETH_NET_VERSION_WAIT_TIME,
+                            eth_adapter.net_identifiers(),
+                        )
+                        .await
+                        {
+                            // the client didn't respond fast enough. Try to
+                            // continue without knowing the net version
+                            Err(_) => (network_name, None),
+                            Ok(Err(e)) => {
                                 error!(logger, "Was a valid Ethereum node provided?");
                                 panic!("Failed to connect to Ethereum node: {}", e);
                             }
-                            Ok(network_identifier) => {
+                            Ok(Ok(network_identifier)) => {
                                 info!(
                                     logger,
                                     "Connected to Ethereum";
@@ -233,7 +246,7 @@ async fn main() {
                                     "network_version" => &network_identifier.net_version,
                                     "capabilities" => &capabilities
                                 );
-                                (network_name, network_identifier)
+                                (network_name, Some(network_identifier))
                             }
                         }
                     },
