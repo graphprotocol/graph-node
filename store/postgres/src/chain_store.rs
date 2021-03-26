@@ -1068,7 +1068,7 @@ impl ChainStore {
     pub(crate) fn new(
         chain: String,
         storage: data::Storage,
-        net_identifier: EthereumNetworkIdentifier,
+        net_identifier: &EthereumNetworkIdentifier,
         chain_head_update_listener: Arc<ChainHeadUpdateListener>,
         chain_head_update_sender: ChainHeadUpdateSender,
         pool: ConnectionPool,
@@ -1082,9 +1082,6 @@ impl ChainStore {
             chain_head_update_sender,
         };
 
-        // Add network to store and check network identifiers
-        store.add_network_if_missing(net_identifier).unwrap();
-
         store
     }
 
@@ -1092,63 +1089,25 @@ impl ChainStore {
         self.conn.get().map_err(Error::from)
     }
 
-    fn add_network_if_missing(
-        &self,
-        new_net_identifiers: EthereumNetworkIdentifier,
-    ) -> Result<(), Error> {
+    pub(crate) fn create(&self, ident: &EthereumNetworkIdentifier) -> Result<(), Error> {
         use public::ethereum_networks::dsl::*;
 
-        let new_genesis_block_hash = new_net_identifiers.genesis_block_hash;
-        let new_net_version = new_net_identifiers.net_version;
-
-        let network_identifiers_opt = ethereum_networks
-            .select((net_version, genesis_block_hash))
-            .filter(name.eq(&self.chain))
-            .first::<(String, String)>(&*self.get_conn()?)
-            .optional()?;
-
         let conn = self.get_conn()?;
-        match network_identifiers_opt {
-            // Network is missing in database
-            None => {
-                conn.transaction(|| {
-                    insert_into(ethereum_networks)
-                        .values((
-                            name.eq(&self.chain),
-                            namespace.eq(&self.storage),
-                            head_block_hash.eq::<Option<String>>(None),
-                            head_block_number.eq::<Option<i64>>(None),
-                            net_version.eq(new_net_version),
-                            genesis_block_hash.eq(format!("{:x}", new_genesis_block_hash)),
-                        ))
-                        .on_conflict(name)
-                        .do_nothing()
-                        .execute(&conn)?;
-                    self.storage.create(&conn)
-                })?;
-            }
-
-            // Network is in database and has identifiers
-            Some((last_net_version, last_genesis_block_hash)) => {
-                if last_net_version != new_net_version {
-                    panic!(
-                        "Ethereum node provided net_version {}, \
-                         but we expected {}. Did you change networks \
-                         without changing the network name?",
-                        new_net_version, last_net_version
-                    );
-                }
-
-                if last_genesis_block_hash.parse().ok() != Some(new_genesis_block_hash) {
-                    panic!(
-                        "Ethereum node provided genesis block hash {}, \
-                         but we expected {}. Did you change networks \
-                         without changing the network name?",
-                        new_genesis_block_hash, last_genesis_block_hash
-                    );
-                }
-            }
-        }
+        conn.transaction(|| {
+            insert_into(ethereum_networks)
+                .values((
+                    name.eq(&self.chain),
+                    namespace.eq(&self.storage),
+                    head_block_hash.eq::<Option<String>>(None),
+                    head_block_number.eq::<Option<i64>>(None),
+                    net_version.eq(&ident.net_version),
+                    genesis_block_hash.eq(format!("{:x}", ident.genesis_block_hash)),
+                ))
+                .on_conflict(name)
+                .do_nothing()
+                .execute(&conn)?;
+            self.storage.create(&conn)
+        })?;
 
         Ok(())
     }

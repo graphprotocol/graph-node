@@ -217,13 +217,13 @@ impl BlockStore {
         // For each configured chain, add a chain store
         for (chain_name, idents, shard) in chains {
             let ident = reduce_idents(&chain_name, idents)?;
-            let chain = match (
+            let (chain, create) = match (
                 existing_chains
                     .iter()
                     .find(|chain| chain.name == chain_name),
                 ident,
             ) {
-                (Some(chain), _ident) => {
+                (Some(chain), ident) => {
                     if chain.shard != shard {
                         return Err(StoreError::Unknown(anyhow!(
                             "the chain {} is stored in shard {} but is configured for shard {}",
@@ -232,11 +232,30 @@ impl BlockStore {
                             shard
                         )));
                     }
-                    chain.clone()
+                    if let Some(ident) = ident {
+                        if chain.net_version != ident.net_version {
+                            return Err(StoreError::Unknown(anyhow!(
+                                "the net version for chain {} has changed from {} to {} since the last time we ran",
+                                chain.name,
+                                chain.net_version,
+                                ident.net_version
+                            )));
+                        }
+                        if &chain.genesis_block != &format!("{:x}", ident.genesis_block_hash) {
+                            return Err(StoreError::Unknown(anyhow!(
+                                "the genesis block hash for chain {} has changed from {} to {:x} since the last time we ran",
+                                chain.name,
+                                chain.genesis_block,
+                                ident.genesis_block_hash
+                            )));
+                        }
+                    }
+                    (chain.clone(), false)
                 }
-                (None, Some(ident)) => {
-                    primary::add_chain(&block_store.primary, &chain_name, &ident, &shard)?
-                }
+                (None, Some(ident)) => (
+                    primary::add_chain(&block_store.primary, &chain_name, &ident, &shard)?,
+                    true,
+                ),
                 (None, None) => {
                     return Err(StoreError::Unknown(anyhow!(
                         " the chain {} is new but we could not get a network identifier for it",
@@ -245,7 +264,7 @@ impl BlockStore {
                 }
             };
 
-            block_store.add_chain_store(&chain)?;
+            block_store.add_chain_store(&chain, create)?;
         }
 
         // There might be chains we have in the database that are not yet/
@@ -261,26 +280,34 @@ impl BlockStore {
             .iter()
             .filter(|chain| !configured_chains.contains(&chain.name))
         {
-            block_store.add_chain_store(&chain)?;
+            block_store.add_chain_store(&chain, false)?;
         }
         Ok(block_store)
     }
 
-    fn add_chain_store(&self, chain: &primary::Chain) -> Result<Arc<ChainStore>, StoreError> {
+    fn add_chain_store(
+        &self,
+        chain: &primary::Chain,
+        create: bool,
+    ) -> Result<Arc<ChainStore>, StoreError> {
         let pool = self
             .pools
             .get(&chain.shard)
             .ok_or_else(|| constraint_violation!("there is no pool for shard {}", chain.shard))?
             .clone();
         let sender = ChainHeadUpdateSender::new(self.primary.clone(), chain.name.clone());
+        let ident = chain.network_identifier()?;
         let store = ChainStore::new(
             chain.name.clone(),
             chain.storage.clone(),
-            chain.network_identifier()?,
+            &ident,
             self.chain_head_update_listener.clone(),
             sender,
             pool,
         );
+        if create {
+            store.create(&ident)?;
+        }
         let store = Arc::new(store);
         self.stores
             .write()
@@ -316,7 +343,7 @@ impl BlockStore {
         // of the configured chains
         let conn = self.primary.get()?;
         primary::find_chain(&conn, chain)?
-            .map(|chain| self.add_chain_store(&chain))
+            .map(|chain| self.add_chain_store(&chain, false))
             .transpose()
     }
 
