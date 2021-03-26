@@ -1085,7 +1085,7 @@ impl DeploymentStore {
                 dst.catalog.namespace
             );
 
-            // 1. Copy subgraph data
+            // Copy subgraph data
             // We allow both not copying tables at all from the source, as well
             // as adding new tables in `self`; we only need to check that tables
             // that actually need to be copied from the source are compatible
@@ -1095,20 +1095,21 @@ impl DeploymentStore {
 
             let conn = self.get_conn()?;
             conn.transaction(|| -> Result<(), StoreError> {
-                // 2. Copy dynamic data sources and adjust their ID
-                let count = dynds::copy(&conn, &src.site, &dst.site)?;
+                // Copy dynamic data sources and adjust their ID
+                let count = dynds::copy(&conn, &src.site, &dst.site, &block)?;
                 info!(logger, "Copied {} dynamic data sources", count;
                       "time_ms" => start.elapsed().as_millis());
 
-                // 3. Rewind the subgraph. `revert_block` gets rid of everything
-                // including the block passed to it. We want to preserve `block`
-                // and therefore revert `block+1`
+                // Rewind the subgraph so that entity versions that are
+                // clamped in the future (beyond `block`) become valid for
+                // all blocks after `block`. `revert_block` gets rid of
+                // everything including the block passed to it. We want to
+                // preserve `block` and therefore revert `block+1`
                 let start = Instant::now();
                 let block_to_revert: BlockNumber = (block.number + 1)
                     .try_into()
                     .expect("block numbers fit into an i32");
                 dst.revert_block(&conn, &dst.site.deployment, block_to_revert)?;
-                Layout::revert_metadata(&conn, &dst.site.deployment, block_to_revert)?;
                 info!(logger, "Rewound subgraph to block {}", block.number;
                       "time_ms" => start.elapsed().as_millis());
 

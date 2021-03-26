@@ -5,7 +5,7 @@ use diesel::{
     dsl::sql,
     prelude::{ExpressionMethods, QueryDsl, RunQueryDsl},
     sql_query,
-    sql_types::Text,
+    sql_types::{Integer, Text},
 };
 use diesel::{insert_into, pg::PgConnection};
 
@@ -160,7 +160,14 @@ pub(crate) fn insert(
         .map_err(|e| e.into())
 }
 
-pub(crate) fn copy(conn: &PgConnection, src: &Site, dst: &Site) -> Result<usize, StoreError> {
+/// Copy the dynamic data sources for `src` to `dst`. All data sources that
+/// were created up to and including `target_block` will be copied.
+pub(crate) fn copy(
+    conn: &PgConnection,
+    src: &Site,
+    dst: &Site,
+    target_block: &EthereumBlockPointer,
+) -> Result<usize, StoreError> {
     let src_nsp = if src.shard == dst.shard {
         "subgraphs".to_string()
     } else {
@@ -176,13 +183,15 @@ pub(crate) fn copy(conn: &PgConnection, src: &Site, dst: &Site) -> Result<usize,
              e.ethereum_block_hash, e.ethereum_block_number, $2 as deployment,
              e.context
         from {src_nsp}.dynamic_ethereum_contract_data_source e
-       where e.deployment = $1",
+       where e.deployment = $1
+         and e.ethereum_block_number <= $3",
         src_nsp = src_nsp
     );
 
     Ok(sql_query(&query)
         .bind::<Text, _>(src.deployment.as_str())
         .bind::<Text, _>(dst.deployment.as_str())
+        .bind::<Integer, _>(target_block.number)
         .execute(conn)?)
 }
 
