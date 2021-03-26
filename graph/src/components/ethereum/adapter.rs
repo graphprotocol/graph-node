@@ -600,7 +600,6 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     /// connected to.
     fn net_identifiers(
         &self,
-        logger: &Logger,
     ) -> Box<dyn Future<Item = EthereumNetworkIdentifier, Error = Error> + Send>;
 
     /// Get the latest block, including full transactions.

@@ -189,7 +189,7 @@ async fn main() {
     let eth_networks = if query_only {
         EthereumNetworks::new()
     } else {
-        create_ethereum_networks(logger.clone(), metrics_registry.clone(), &config)
+        create_ethereum_networks(logger.clone(), metrics_registry.clone(), config.clone())
             .await
             .expect("Failed to parse Ethereum networks")
     };
@@ -215,7 +215,7 @@ async fn main() {
                     "capabilities" => &capabilities
                 );
                 eth_adapter
-                    .net_identifiers(&logger)
+                    .net_identifiers()
                     .map(move |network_identifier| (network_name, capabilities, network_identifier))
                     .compat()
             },
@@ -271,7 +271,7 @@ async fn main() {
 
             // Spawn Ethereum network indexers for all networks that are to be indexed
             opt.network_subgraphs
-                .into_iter()
+                .iter()
                 .filter(|network_subgraph| network_subgraph.starts_with("ethereum/"))
                 .for_each(|network_subgraph| {
                     let network_name = network_subgraph.replace("ethereum/", "");
@@ -493,18 +493,18 @@ async fn main() {
 async fn create_ethereum_networks(
     logger: Logger,
     registry: Arc<MetricsRegistry>,
-    config: &Config,
+    config: Config,
 ) -> Result<EthereumNetworks, anyhow::Error> {
     let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));
     let mut parsed_networks = EthereumNetworks::new();
-    for (name, chain) in &config.chains.chains {
-        for provider in &chain.providers {
+    for (name, chain) in config.chains.chains {
+        for provider in chain.providers {
             let capabilities = provider.node_capabilities();
 
+            let logger = logger.new(o!("provider" => provider.label));
             info!(
                 logger,
                 "Creating transport";
-                "network" => &name,
                 "url" => &provider.url,
                 "capabilities" => capabilities
             );
@@ -526,6 +526,7 @@ async fn create_ethereum_networks(
                 capabilities,
                 Arc::new(
                     graph_chain_ethereum::EthereumAdapter::new(
+                        logger,
                         &provider.url,
                         transport,
                         eth_rpc_metrics.clone(),
@@ -688,7 +689,7 @@ mod test {
             prometheus_registry.clone(),
         ));
 
-        let ethereum_networks = create_ethereum_networks(logger, metrics_registry, &config)
+        let ethereum_networks = create_ethereum_networks(logger, metrics_registry, config.clone())
             .await
             .expect("Correctly parse Ethereum network args");
         let mut network_names = ethereum_networks.networks.keys().collect::<Vec<&String>>();

@@ -32,6 +32,7 @@ use web3::types::Filter;
 
 #[derive(Clone)]
 pub struct EthereumAdapter<T: web3::Transport> {
+    logger: Logger,
     url_hostname: Arc<String>,
     web3: Arc<Web3<T>>,
     metrics: Arc<ProviderEthRpcMetrics>,
@@ -85,6 +86,7 @@ lazy_static! {
 impl<T: web3::Transport> CheapClone for EthereumAdapter<T> {
     fn cheap_clone(&self) -> Self {
         Self {
+            logger: self.logger.clone(),
             url_hostname: self.url_hostname.cheap_clone(),
             web3: self.web3.cheap_clone(),
             metrics: self.metrics.cheap_clone(),
@@ -100,6 +102,7 @@ where
     T::Out: Send,
 {
     pub async fn new(
+        logger: Logger,
         url: &str,
         transport: T,
         provider_metrics: Arc<ProviderEthRpcMetrics>,
@@ -124,6 +127,7 @@ where
             .unwrap_or(false);
 
         EthereumAdapter {
+            logger,
             url_hostname: Arc::new(hostname),
             web3,
             metrics: provider_metrics,
@@ -627,9 +631,8 @@ where
 
     fn net_identifiers(
         &self,
-        logger: &Logger,
     ) -> Box<dyn Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
-        let logger = logger.clone();
+        let logger = self.logger.clone();
 
         let web3 = self.web3.clone();
         let net_version_future = retry("net_version RPC call", &logger)
