@@ -202,7 +202,7 @@ impl StoreBuilder {
     /// and a `BlockStore` for all chain related data
     pub fn network_store(
         self,
-        networks: Vec<(String, Option<EthereumNetworkIdentifier>)>,
+        networks: Vec<(String, Vec<EthereumNetworkIdentifier>)>,
     ) -> Arc<DieselStore> {
         let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
             &self.logger,

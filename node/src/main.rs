@@ -3,11 +3,11 @@ use git_testament::{git_testament, render_testament};
 use graph::prometheus::Registry;
 use ipfs_api::IpfsClient;
 use lazy_static::lazy_static;
-use std::env;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
+use std::{collections::HashMap, env};
 use structopt::StructOpt;
 use tokio::sync::mpsc;
 
@@ -211,6 +211,8 @@ async fn main() {
         StoreBuilder::new(&logger, &node_id, &config, metrics_registry.cheap_clone()).await;
 
     let launch_services = |logger: Logger| async move {
+        // This has one entry for each provider, and therefore multiple entries
+        // for each network
         let networks = join_all(
             stores_eth_networks
                 .flatten()
@@ -253,6 +255,18 @@ async fn main() {
                 ),
         )
         .await;
+
+        // Group identifiers by network name
+        let networks: HashMap<String, Vec<EthereumNetworkIdentifier>> =
+            networks
+                .into_iter()
+                .fold(HashMap::new(), |mut networks, (name, ident)| {
+                    if let Some(ident) = ident {
+                        networks.entry(name).or_default().push(ident)
+                    }
+                    networks
+                });
+        let networks: Vec<_> = networks.into_iter().collect();
 
         let subscription_manager = store_builder.subscription_manager();
         let network_store = store_builder.network_store(networks);

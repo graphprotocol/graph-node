@@ -1,5 +1,6 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
+    iter::FromIterator,
     sync::{Arc, RwLock},
 };
 
@@ -176,7 +177,7 @@ impl BlockStore {
     pub fn new(
         logger: Logger,
         // (network, ident, shard)
-        chains: Vec<(String, Option<EthereumNetworkIdentifier>, Shard)>,
+        chains: Vec<(String, Vec<EthereumNetworkIdentifier>, Shard)>,
         // shard -> pool
         pools: HashMap<Shard, ConnectionPool>,
         chain_head_update_listener: Arc<ChainHeadUpdateListener>,
@@ -195,15 +196,34 @@ impl BlockStore {
             chain_head_update_listener,
         };
 
+        fn reduce_idents(
+            chain_name: &str,
+            idents: Vec<EthereumNetworkIdentifier>,
+        ) -> Result<Option<EthereumNetworkIdentifier>, StoreError> {
+            let mut idents: HashSet<EthereumNetworkIdentifier> =
+                HashSet::from_iter(idents.into_iter());
+            match idents.len() {
+                0 => Ok(None),
+                1 => Ok(idents.drain().next()),
+                _ => Err(anyhow!(
+                    "conflicting network identifiers for chain {}: {:?}",
+                    chain_name,
+                    idents
+                )
+                .into()),
+            }
+        }
+
         // For each configured chain, add a chain store
-        for (chain_name, ident, shard) in chains {
+        for (chain_name, idents, shard) in chains {
+            let ident = reduce_idents(&chain_name, idents)?;
             let chain = match (
                 existing_chains
                     .iter()
                     .find(|chain| chain.name == chain_name),
                 ident,
             ) {
-                (Some(chain), _) => {
+                (Some(chain), _ident) => {
                     if chain.shard != shard {
                         return Err(StoreError::Unknown(anyhow!(
                             "the chain {} is stored in shard {} but is configured for shard {}",
