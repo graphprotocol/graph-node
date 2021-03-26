@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use ethabi::ParamType;
 use graph::prelude::{
-    anyhow, debug, error, ethabi,
+    anyhow, async_trait, debug, error, ethabi,
     futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
     hex, retry, stream, tiny_keccak, trace, warn,
     web3::{
@@ -623,6 +623,7 @@ where
     }
 }
 
+#[async_trait]
 impl<T> EthereumAdapterTrait for EthereumAdapter<T>
 where
     T: web3::BatchTransport + Send + Sync + 'static,
@@ -637,9 +638,7 @@ where
         &self.provider
     }
 
-    fn net_identifiers(
-        &self,
-    ) -> Box<dyn Future<Item = EthereumNetworkIdentifier, Error = Error> + Send> {
+    async fn net_identifiers(&self) -> Result<EthereumNetworkIdentifier, Error> {
         let logger = self.logger.clone();
 
         let web3 = self.web3.clone();
@@ -667,21 +666,21 @@ where
                     })
             });
 
-        Box::new(
-            net_version_future
-                .join(gen_block_hash_future)
-                .map(
-                    |(net_version, genesis_block_hash)| EthereumNetworkIdentifier {
-                        net_version,
-                        genesis_block_hash,
-                    },
-                )
-                .map_err(|e| {
-                    e.into_inner().unwrap_or_else(|| {
-                        anyhow!("Ethereum node took too long to read network identifiers")
-                    })
-                }),
-        )
+        net_version_future
+            .join(gen_block_hash_future)
+            .compat()
+            .await
+            .map(
+                |(net_version, genesis_block_hash)| EthereumNetworkIdentifier {
+                    net_version,
+                    genesis_block_hash,
+                },
+            )
+            .map_err(|e| {
+                e.into_inner().unwrap_or_else(|| {
+                    anyhow!("Ethereum node took too long to read network identifiers")
+                })
+            })
     }
 
     fn latest_block_header(

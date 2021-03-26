@@ -593,6 +593,7 @@ impl BlockStreamMetrics {
 /// Implementations may be implemented against an in-process Ethereum node
 /// or a remote node over RPC.
 #[automock]
+#[async_trait]
 pub trait EthereumAdapter: Send + Sync + 'static {
     fn url_hostname(&self) -> &str;
 
@@ -601,9 +602,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
 
     /// Ask the Ethereum node for some identifying information about the Ethereum network it is
     /// connected to.
-    fn net_identifiers(
-        &self,
-    ) -> Box<dyn Future<Item = EthereumNetworkIdentifier, Error = Error> + Send>;
+    async fn net_identifiers(&self) -> Result<EthereumNetworkIdentifier, Error>;
 
     /// Get the latest block, including full transactions.
     fn latest_block(
