@@ -34,6 +34,7 @@ use web3::types::Filter;
 pub struct EthereumAdapter<T: web3::Transport> {
     logger: Logger,
     url_hostname: Arc<String>,
+    provider: String,
     web3: Arc<Web3<T>>,
     metrics: Arc<ProviderEthRpcMetrics>,
     is_ganache: bool,
@@ -87,6 +88,7 @@ impl<T: web3::Transport> CheapClone for EthereumAdapter<T> {
     fn cheap_clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
+            provider: self.provider.clone(),
             url_hostname: self.url_hostname.cheap_clone(),
             web3: self.web3.cheap_clone(),
             metrics: self.metrics.cheap_clone(),
@@ -103,6 +105,7 @@ where
 {
     pub async fn new(
         logger: Logger,
+        provider: String,
         url: &str,
         transport: T,
         provider_metrics: Arc<ProviderEthRpcMetrics>,
@@ -128,6 +131,7 @@ where
 
         EthereumAdapter {
             logger,
+            provider,
             url_hostname: Arc::new(hostname),
             web3,
             metrics: provider_metrics,
@@ -627,6 +631,10 @@ where
 {
     fn url_hostname(&self) -> &str {
         &self.url_hostname
+    }
+
+    fn provider(&self) -> &str {
+        &self.provider
     }
 
     fn net_identifiers(

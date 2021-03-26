@@ -501,7 +501,7 @@ async fn create_ethereum_networks(
         for provider in chain.providers {
             let capabilities = provider.node_capabilities();
 
-            let logger = logger.new(o!("provider" => provider.label));
+            let logger = logger.new(o!("provider" => provider.label.clone()));
             info!(
                 logger,
                 "Creating transport";
@@ -527,6 +527,7 @@ async fn create_ethereum_networks(
                 Arc::new(
                     graph_chain_ethereum::EthereumAdapter::new(
                         logger,
+                        provider.label,
                         &provider.url,
                         transport,
                         eth_rpc_metrics.clone(),

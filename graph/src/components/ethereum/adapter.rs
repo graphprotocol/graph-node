@@ -596,6 +596,9 @@ impl BlockStreamMetrics {
 pub trait EthereumAdapter: Send + Sync + 'static {
     fn url_hostname(&self) -> &str;
 
+    /// The `provider.label` from the adapter's configuration
+    fn provider(&self) -> &str;
+
     /// Ask the Ethereum node for some identifying information about the Ethereum network it is
     /// connected to.
     fn net_identifiers(

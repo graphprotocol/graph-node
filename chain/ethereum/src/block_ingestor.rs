@@ -77,7 +77,7 @@ where
             }),
         );
 
-        let logger = logger.new(o!("network_name" => network_name.clone()));
+        let logger = logger.new(o!("provider" => eth_adapter.provider().to_string()));
 
         Ok(BlockIngestor {
             chain_store,
