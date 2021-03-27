@@ -66,6 +66,21 @@ table! {
     }
 }
 
+// This is the same as primary::active_copies, but mapped into each shard
+table! {
+    primary_public.active_copies(dst) {
+        src -> Integer,
+        dst -> Integer,
+        cancelled_at -> Nullable<Date>,
+    }
+}
+
+#[derive(Copy, Clone, PartialEq)]
+pub enum Status {
+    Finished,
+    Cancelled,
+}
+
 #[allow(dead_code)]
 struct CopyState {
     src: Arc<Layout>,
@@ -394,8 +409,22 @@ impl TableState {
         Ok(())
     }
 
-    fn copy_batch(&mut self, conn: &PgConnection) -> Result<(), StoreError> {
+    fn copy_batch(&mut self, conn: &PgConnection) -> Result<Status, StoreError> {
+        fn is_cancelled(dst: &Site, conn: &PgConnection) -> Result<bool, StoreError> {
+            use active_copies as ac;
+
+            ac::table
+                .filter(ac::dst.eq(dst.id))
+                .select(ac::cancelled_at.is_not_null())
+                .get_result::<bool>(conn)
+                .map_err(|e| e.into())
+        }
+
         let start = Instant::now();
+
+        if is_cancelled(self.dst_site.as_ref(), conn)? {
+            return Ok(Status::Cancelled);
+        }
 
         // Copy all versions with next_vid <= vid <= next_vid + batch_size - 1,
         // but do not go over target_vid
@@ -421,7 +450,11 @@ impl TableState {
             self.record_finished(conn)?;
         }
 
-        Ok(())
+        if is_cancelled(self.dst_site.as_ref(), conn)? {
+            return Ok(Status::Cancelled);
+        }
+
+        Ok(Status::Finished)
     }
 }
 
@@ -534,7 +567,7 @@ impl Connection {
         src: Arc<Layout>,
         dst: Arc<Layout>,
         target_block: EthereumBlockPointer,
-    ) -> Result<(), StoreError> {
+    ) -> Result<Status, StoreError> {
         let mut state =
             self.transaction(|conn| CopyState::new(conn, src, dst.clone(), target_block))?;
 
@@ -543,7 +576,10 @@ impl Connection {
 
         for table in state.tables.iter_mut().filter(|table| !table.finished()) {
             while !table.finished() {
-                self.transaction(|conn| table.copy_batch(conn))?;
+                let status = self.transaction(|conn| table.copy_batch(conn))?;
+                if status == Status::Cancelled {
+                    return Ok(status);
+                }
                 progress.update(table);
             }
             progress.table_finished(table);
@@ -552,6 +588,6 @@ impl Connection {
         self.transaction(|conn| state.finished(conn))?;
         progress.finished();
 
-        Ok(())
+        Ok(Status::Finished)
     }
 }

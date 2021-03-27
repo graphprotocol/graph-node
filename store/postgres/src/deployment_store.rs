@@ -1081,7 +1081,10 @@ impl DeploymentStore {
             // that actually need to be copied from the source are compatible
             // with the corresponding tables in `self`
             let copy_conn = crate::copy::Connection::new(self.conn.clone());
-            copy_conn.copy_data(logger, src.clone(), dst.clone(), block.clone())?;
+            let status = copy_conn.copy_data(logger, src.clone(), dst.clone(), block.clone())?;
+            if status == crate::copy::Status::Cancelled {
+                return Ok(());
+            }
 
             let conn = self.get_conn()?;
             conn.transaction(|| -> Result<(), StoreError> {

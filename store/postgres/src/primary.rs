@@ -410,6 +410,18 @@ impl<'a> Connection<'a> {
         }
     }
 
+    /// Signal any copy process that might be copying into one of these
+    /// deployments that it should stop. Copying is cancelled whenever we
+    /// remove the assignment for a deployment
+    fn cancel_copies(&self, ids: Vec<DeploymentId>) -> Result<(), StoreError> {
+        use active_copies as ac;
+
+        update(ac::table.filter(ac::dst.eq_any(ids)))
+            .set(ac::cancelled_at.eq(sql("now()")))
+            .execute(self.0.as_ref())?;
+        Ok(())
+    }
+
     /// Delete all assignments for deployments that are neither the current nor the
     /// pending version of a subgraph and return the deployment id's
     fn remove_unused_assignments(&self) -> Result<Vec<EntityChange>, StoreError> {
@@ -433,10 +445,18 @@ impl<'a> Connection<'a> {
             .returning(a::id)
             .load::<i32>(self.0.as_ref())?;
 
-        let removed = ds::table
+        let removed: Vec<_> = ds::table
             .filter(ds::id.eq_any(removed))
             .select((ds::id, ds::subgraph))
             .load::<(DeploymentId, String)>(self.0.as_ref())?
+            .into_iter()
+            .collect();
+
+        // Stop ongoing copies
+        let removed_ids: Vec<_> = removed.iter().map(|(id, _)| id.clone()).collect();
+        self.cancel_copies(removed_ids)?;
+
+        let events = removed
             .into_iter()
             .map(|(id, hash)| {
                 SubgraphDeploymentId::new(hash)
@@ -454,7 +474,7 @@ impl<'a> Connection<'a> {
                     })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(removed)
+        Ok(events)
     }
 
     /// Promote the deployment `id` to the current version everywhere where it was
@@ -729,6 +749,8 @@ impl<'a> Connection<'a> {
 
         let conn = self.0.as_ref();
         let delete_count = delete(a::table.filter(a::id.eq(site.id))).execute(conn)?;
+
+        self.cancel_copies(vec![site.id])?;
 
         match delete_count {
             0 => Ok(vec![]),

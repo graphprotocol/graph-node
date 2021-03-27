@@ -147,7 +147,9 @@ impl ForeignServer {
                 "create view {nsp}.deployment_schemas as
                         select * from public.deployment_schemas;
                  create view {nsp}.chains as
-                        select * from public.chains",
+                        select * from public.chains;
+                 create view {nsp}.active_copies as
+                        select * from public.active_copies;",
                 nsp = Self::PRIMARY_PUBLIC
             )
         } else {
