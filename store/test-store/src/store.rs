@@ -385,6 +385,7 @@ fn execute_subgraph_query_internal(
         max_complexity,
         100
     ));
+    dbg!(&query);
     let mut result = QueryResults::empty();
     let deployment = query.schema.id().clone();
     let store = rt

@@ -595,6 +595,7 @@ impl Layout {
         range: EntityRange,
         block: BlockNumber,
         query_id: Option<String>,
+        sql_column_names__temporary: Vec<String>,
     ) -> Result<Vec<T>, QueryExecutionError> {
         fn log_query_timing(
             logger: &Logger,
@@ -634,6 +635,7 @@ impl Layout {
             range,
             block,
             query_id,
+            sql_column_names__temporary,
         )?;
         let query_clone = query.clone();
 

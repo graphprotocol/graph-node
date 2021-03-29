@@ -37,7 +37,7 @@ fn insert_and_query(
 
     let document = graphql_parser::parse_query(query).unwrap().into_static();
     let target = QueryTarget::Deployment(subgraph_id);
-    let query = Query::new(document, None);
+    let query = dbg!(Query::new(document, None));
     Ok(execute_subgraph_query(query, target)
         .first()
         .unwrap()
@@ -576,6 +576,7 @@ fn invalid_fragment() {
 
 #[test]
 fn alias() {
+    dbg!("ALIAS TEST: begin ");
     let subgraph_id = "Alias";
     let schema = "interface Legged { id: ID!, legs: Int! }
                   type Animal implements Legged @entity {
@@ -612,9 +613,12 @@ fn alias() {
         ]),
         "Animal",
     );
-
+    dbg!("ALIAS TEST: before insert_and_query ");
     let res = insert_and_query(subgraph_id, schema, vec![parent, child], query).unwrap();
+    dbg!("ALIAS TEST: after insert_and_query");
+    dbg!("ALIAS TEST: before extract_data! macro");
     let data = extract_data!(res).unwrap();
+    dbg!("ALIAS TEST: after estract_data!macro ");
     assert_eq!(
         data,
         object! {
@@ -626,7 +630,8 @@ fn alias() {
                 }
             }
         }
-    )
+    );
+    dbg!("ALIAS TEST: end ");
 }
 
 #[test]

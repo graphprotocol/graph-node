@@ -215,7 +215,7 @@ impl DeploymentStore {
         query: EntityQuery,
     ) -> Result<Vec<T>, QueryExecutionError> {
         let layout = self.layout(conn, site)?;
-
+        dbg!(&query);
         let logger = query.logger.unwrap_or(self.logger.clone());
         layout.query(
             &logger,
@@ -226,6 +226,7 @@ impl DeploymentStore {
             query.range,
             query.block,
             query.query_id,
+            query.sql_column_names__temporary,
         )
     }
 
@@ -697,6 +698,7 @@ impl DeploymentStore {
                             site4.deployment.clone(),
                             block.number.try_into().unwrap(),
                             EntityCollection::All(vec![POI_OBJECT.cheap_clone()]),
+                            vec![], // TODO
                         );
                         let entities = store
                             .execute_query::<Entity>(conn, &site4, query)

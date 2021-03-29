@@ -59,6 +59,8 @@ where
             QueryExecutionError::NotSupported("Only queries are supported".to_string()).into(),
         );
     }
+    dbg!(&query);
+    dbg!("THIS IS WHERE QUERY TURNS INTO A RESULT");
     let selection_set = selection_set
         .map(Arc::new)
         .unwrap_or_else(|| query.selection_set.cheap_clone());
@@ -66,13 +68,16 @@ where
     // Execute top-level `query { ... }` and `{ ... }` expressions.
     let query_type = ctx.query.schema.query_type.cheap_clone();
     let start = Instant::now();
-    let result = execute_root_selection_set(
-        ctx.cheap_clone(),
-        selection_set.cheap_clone(),
-        query_type,
-        block_ptr.clone(),
-    )
-    .await;
+
+    let result = dbg!(
+        execute_root_selection_set(
+            ctx.cheap_clone(),
+            selection_set.cheap_clone(),
+            query_type,
+            block_ptr.clone(),
+        )
+        .await
+    );
     let elapsed = start.elapsed();
     let cache_status = ctx.cache_status.load();
     options

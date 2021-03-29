@@ -502,9 +502,26 @@ fn execute_selection_set<'a>(
             // Group fields with the same response key, so we can execute them together
             let grouped_field_set =
                 collect_fields(ctx, child_type, fields.iter().map(|f| &f.selection_set));
+            let sql_column_names__temporary = extract_field_names(&grouped_field_set);
+            dbg!(
+                "at fn execute_selection_set",
+                &sql_column_names__temporary,
+                &grouped_field_set,
+                &parents,
+                &join,
+                &fields,
+                &fields.len(),
+            );
 
             match execute_field(
-                resolver, &ctx, type_cond, &parents, &join, &fields[0], field,
+                resolver,
+                &ctx,
+                type_cond,
+                &parents,
+                &join,
+                &fields[0],
+                field,
+                sql_column_names__temporary,
             ) {
                 Ok(children) => {
                     match execute_selection_set(resolver, ctx, children, grouped_field_set) {
@@ -533,7 +550,7 @@ fn execute_selection_set<'a>(
 /// interface type and `iface_fields` the selected fields on the interface. `obj_types` are the
 /// fields selected on objects by fragments. In `collect_fields`, the `iface_fields` will then be
 /// merged into each entry in `obj_types`. See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct CollectedResponseKey<'a> {
     iface_cond: Option<&'a s::InterfaceType>,
     iface_fields: Vec<&'a q::Field>,
@@ -634,8 +651,7 @@ fn collect_fields_inner<'a>(
     ) -> bool {
         object_type
             .field(&field.name)
-            .map(|field_def| sast::get_type_definition_from_field(schema, field_def))
-            .unwrap_or(None)
+            .and_then(|field_def| sast::get_type_definition_from_field(schema, field_def))
             .map(|type_def| match type_def {
                 s::TypeDefinition::Interface(_) | s::TypeDefinition::Object(_) => true,
                 _ => false,
@@ -705,7 +721,7 @@ fn collect_fields_inner<'a>(
         .filter(|selection| qast::include_selection(selection, &ctx.query.variables));
 
     for selection in selections {
-        match selection {
+        match dbg!(selection) {
             q::Selection::Field(ref field) => {
                 // Only consider fields that point to objects or interfaces, and
                 // ignore nonexistent fields
@@ -758,6 +774,7 @@ fn execute_field(
     join: &Join<'_>,
     field: &q::Field,
     field_definition: &s::Field,
+    sql_column_names__temporary: Vec<String>,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     let argument_values = crate::execution::coerce_argument_values(&ctx.query, object_type, field)?;
 
@@ -778,6 +795,7 @@ fn execute_field(
         ctx.max_first,
         ctx.max_skip,
         ctx.query.query_id.clone(),
+        sql_column_names__temporary,
     )
     .map_err(|e| vec![e])
 }
@@ -797,6 +815,7 @@ fn fetch(
     max_first: u32,
     max_skip: u32,
     query_id: String,
+    sql_column_names__temporary: Vec<String>,
 ) -> Result<Vec<Node>, QueryExecutionError> {
     let mut query = build_query(
         join.child_type,
@@ -805,6 +824,7 @@ fn fetch(
         types_for_interface,
         max_first,
         max_skip,
+        sql_column_names__temporary,
     )?;
     query.query_id = Some(query_id);
 
@@ -835,4 +855,60 @@ fn fetch(
     store
         .find_query_values(query)
         .map(|entities| entities.into_iter().map(|entity| entity.into()).collect())
+}
+
+fn extract_field_names(indexmap: &IndexMap<&String, CollectedResponseKey>) -> Vec<String> {
+    use std::collections::VecDeque;
+
+    /// Fields have selections and Selections can have Fields or other Selections, so we use a
+    /// wrapper type here.
+    enum Either<'a> {
+        Field(&'a q::Field),
+        Selection(&'a q::Selection),
+    }
+
+    let mut collected_field_names = Vec::new();
+    let mut processing_queue: VecDeque<Either> = VecDeque::new();
+
+    // those always contains Fields
+    for response_keys in indexmap.values() {
+        for fields in response_keys.obj_types.values() {
+            processing_queue.extend(fields.iter().map(|field| Either::Field(field)));
+        }
+    }
+
+    // Consume the processing queue
+    while let Some(either) = processing_queue.pop_front() {
+        match either {
+            // Fields can contain Selections
+            Either::Field(field) => {
+                collected_field_names.push(field.name.clone());
+                processing_queue.extend(
+                    field
+                        .selection_set
+                        .items
+                        .iter()
+                        .map(|sel| Either::Selection(sel)),
+                );
+            }
+            // Selections can contain Fields or other Selections
+            Either::Selection(selection) => match selection {
+                q::Selection::Field(field) => processing_queue.push_back(Either::Field(field)),
+                q::Selection::FragmentSpread(_) => {
+                    todo!()
+                }
+                q::Selection::InlineFragment(inline_fragment) => {
+                    processing_queue.extend(
+                        inline_fragment
+                            .selection_set
+                            .items
+                            .iter()
+                            .map(|sel| Either::Selection(sel)),
+                    );
+                }
+            },
+        }
+    }
+
+    collected_field_names
 }

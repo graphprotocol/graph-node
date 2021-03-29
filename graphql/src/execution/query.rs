@@ -30,7 +30,7 @@ pub enum ComplexityError {
     Invalid,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 enum Kind {
     Query,
     Subscription,
@@ -74,6 +74,7 @@ impl<'a> std::fmt::Display for SelectedFields<'a> {
 /// A GraphQL query that has been preprocessed and checked and is ready
 /// for execution. Checking includes validating all query fields and, if
 /// desired, checking the query's complexity
+#[derive(Debug)]
 pub struct Query {
     /// The schema against which to execute the query
     pub schema: Arc<ApiSchema>,

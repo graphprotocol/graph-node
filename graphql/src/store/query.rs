@@ -22,6 +22,7 @@ pub fn build_query<'a>(
     types_for_interface: &BTreeMap<EntityType, Vec<s::ObjectType>>,
     max_first: u32,
     max_skip: u32,
+    sql_column_names__temporary: Vec<String>,
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
     let entity_types = EntityCollection::All(match &entity {
@@ -32,8 +33,13 @@ pub fn build_query<'a>(
             .map(|o| o.into())
             .collect(),
     });
-    let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types)
-        .range(build_range(arguments, max_first, max_skip)?);
+    let mut query = EntityQuery::new(
+        parse_subgraph_id(entity)?,
+        block,
+        entity_types,
+        sql_column_names__temporary,
+    )
+    .range(build_range(arguments, max_first, max_skip)?);
     if let Some(filter) = build_filter(entity, arguments)? {
         query = query.filter(filter);
     }

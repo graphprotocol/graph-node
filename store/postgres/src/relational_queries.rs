@@ -2191,6 +2191,7 @@ pub struct FilterQuery<'a> {
     range: FilterRange,
     block: BlockNumber,
     query_id: Option<String>,
+    sql_column_names__temporary: Vec<String>,
 }
 
 impl<'a> FilterQuery<'a> {
@@ -2201,6 +2202,7 @@ impl<'a> FilterQuery<'a> {
         range: EntityRange,
         block: BlockNumber,
         query_id: Option<String>,
+        sql_column_names__temporary: Vec<String>,
     ) -> Result<Self, QueryExecutionError> {
         // Get the name of the column we order by; if there is more than one
         // table, we are querying an interface, and the order is on an attribute
@@ -2217,6 +2219,7 @@ impl<'a> FilterQuery<'a> {
             range: FilterRange(range),
             block,
             query_id,
+            sql_column_names__temporary,
         })
     }
 
@@ -2268,7 +2271,9 @@ impl<'a> FilterQuery<'a> {
         table: &Table,
         filter: &Option<QueryFilter>,
         mut out: AstPass<Pg>,
+        sql_column_names__temporary: &Vec<String>,
     ) -> QueryResult<()> {
+        dbg!("@query_no_window_one_entity", sql_column_names__temporary);
         Self::select_entity_and_data(table, &mut out);
         out.push_sql(" from (select * ");
         self.filtered_rows(table, filter, out.reborrow())?;
@@ -2290,7 +2295,9 @@ impl<'a> FilterQuery<'a> {
         &self,
         window: &FilterWindow,
         mut out: AstPass<Pg>,
+        sql_column_names__temporary: &Vec<String>,
     ) -> QueryResult<()> {
+        dbg!("@query_window_one_entity", sql_column_names__temporary);
         Self::select_entity_and_data(&window.table, &mut out);
         out.push_sql(" from (\n");
         out.push_sql("select c.*, p.id::text as g$parent_id");
@@ -2310,6 +2317,7 @@ impl<'a> FilterQuery<'a> {
         entities: &Vec<(&Table, Option<QueryFilter>)>,
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
+        dbg!("@query_no_window");
         // We have multiple tables which might have different schemas since
         // the entity_types come from implementing the same interface. We
         // need to do the query in two steps: first we build a CTE with the
@@ -2382,6 +2390,7 @@ impl<'a> FilterQuery<'a> {
         parent_ids: &Vec<String>,
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
+        dbg!("@query_window");
         // Note that a CTE is an optimization fence, and since we use
         // `matches` multiple times, we actually want to materialize it first
         // before we fill in JSON data in the main query. As a consequence, we
@@ -2458,6 +2467,8 @@ impl<'a> FilterQuery<'a> {
 
 impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        dbg!(self, &self.sql_column_names__temporary, &self.query_id);
+
         out.unsafe_to_cache_prepared();
         if self.collection.is_empty() {
             return Ok(());
@@ -2482,12 +2493,21 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
                     let (table, filter) = entities
                         .first()
                         .expect("a query always uses at least one table");
-                    self.query_no_window_one_entity(table, filter, out)
+                    // first
+                    self.query_no_window_one_entity(
+                        table,
+                        filter,
+                        out,
+                        &self.sql_column_names__temporary,
+                    )
                 } else {
                     self.query_no_window(entities, out)
                 }
             }
-            FilterCollection::SingleWindow(window) => self.query_window_one_entity(window, out),
+            FilterCollection::SingleWindow(window) => {
+                // second
+                self.query_window_one_entity(window, out, &self.sql_column_names__temporary)
+            }
             FilterCollection::MultiWindow(windows, parent_ids) => {
                 self.query_window(windows, parent_ids, out)
             }

@@ -368,6 +368,8 @@ pub struct EntityQuery {
 
     pub query_id: Option<String>,
 
+    pub sql_column_names__temporary: Vec<String>,
+
     _force_use_of_new: (),
 }
 
@@ -376,6 +378,7 @@ impl EntityQuery {
         subgraph_id: SubgraphDeploymentId,
         block: BlockNumber,
         collection: EntityCollection,
+        sql_column_names__temporary: Vec<String>,
     ) -> Self {
         EntityQuery {
             subgraph_id,
@@ -386,6 +389,7 @@ impl EntityQuery {
             range: EntityRange::first(100),
             logger: None,
             query_id: None,
+            sql_column_names__temporary,
             _force_use_of_new: (),
         }
     }
