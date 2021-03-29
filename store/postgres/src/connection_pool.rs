@@ -480,6 +480,7 @@ impl ConnectionPool {
     }
 
     fn configure_fdw(&self, servers: Arc<Vec<ForeignServer>>) -> Result<(), StoreError> {
+        info!(&self.logger, "Setting up fdw");
         let conn = self.get()?;
         conn.transaction(|| {
             let current_servers: Vec<String> = crate::catalog::current_servers(&conn)?;
@@ -500,6 +501,7 @@ impl ConnectionPool {
     /// We recreate this mapping on every server start so that migrations that
     /// change one of the mapped tables actually show up in the imported tables
     fn map_primary(&self) -> Result<(), StoreError> {
+        info!(&self.logger, "Mapping primary");
         let conn = self.get()?;
         conn.transaction(|| ForeignServer::map_primary(&conn, &self.shard))
     }
@@ -516,19 +518,18 @@ fn migrate_schema(logger: &Logger, conn: &PgConnection) -> Result<(), StoreError
     // Collect migration logging output
     let mut output = vec![];
 
-    info!(
-        logger,
-        "Waiting for other graph-node instances to finish migrating"
-    );
+    info!(logger, "Running migrations");
     let result = embedded_migrations::run_with_output(conn, &mut output);
     info!(logger, "Migrations finished");
 
     // If there was any migration output, log it now
-    let has_output = !output.is_empty();
+    let msg = String::from_utf8(output).unwrap_or_else(|_| String::from("<unreadable>"));
+    let msg = msg.trim();
+    let has_output = !msg.is_empty();
     if has_output {
-        let msg = String::from_utf8(output).unwrap_or_else(|_| String::from("<unreadable>"));
+        let msg = msg.replace('\n', " ");
         if let Err(e) = result {
-            error!(logger, "Postgres migration output"; "output" => msg);
+            error!(logger, "Postgres migration error"; "output" => msg);
             return Err(StoreError::Unknown(e.into()));
         } else {
             debug!(logger, "Postgres migration output"; "output" => msg);
