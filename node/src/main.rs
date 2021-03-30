@@ -1,6 +1,6 @@
 use futures::future::join_all;
 use git_testament::{git_testament, render_testament};
-use graph::prometheus::Registry;
+use graph::{prelude::LinkResolver as _, prometheus::Registry};
 use ipfs_api::IpfsClient;
 use lazy_static::lazy_static;
 use std::io::{BufRead, BufReader};
@@ -178,8 +178,9 @@ async fn main() {
     // Try to create IPFS clients for each URL specified in `--ipfs`
     let ipfs_clients: Vec<_> = create_ipfs_clients(&logger, &opt.ipfs);
 
-    // Convert the client into a link resolver
-    let link_resolver = Arc::new(LinkResolver::from(ipfs_clients));
+    // Convert the clients into a link resolver. Since we want to get past
+    // possible temporary DNS failures, make the resolver retry
+    let link_resolver = Arc::new(LinkResolver::from(ipfs_clients).with_retries());
 
     // Set up Prometheus registry
     let prometheus_registry = Arc::new(Registry::new());
