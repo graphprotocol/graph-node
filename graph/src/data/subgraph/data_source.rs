@@ -148,7 +148,11 @@ impl super::DataSource {
             && context == &other.context
     }
 
-    /// Returns the contract event with the given signature, if it exists.
+    /// Returns the contract event with the given signature, if it exists. A an event from the ABI
+    /// will be matched if:
+    /// 1. An event signature is equal to `signature`.
+    /// 2. There are no equal matches, but there is exactly one event that equals `signature` if all
+    ///    `indexed` modifiers are removed from the parameters.
     fn contract_event_with_signature(&self, signature: &str) -> Option<&Event> {
         // Returns an `Event(uint256,address)` signature for an event, without `indexed` hints.
         fn ambiguous_event_signature(event: &Event) -> String {
