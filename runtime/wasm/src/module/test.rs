@@ -219,14 +219,14 @@ fn mock_context(
 
 impl WasmInstance {
     fn invoke_export<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R> {
-        let func = self.get_func(f).get1().unwrap();
-        let ptr: u32 = func(arg.wasm_ptr()).unwrap();
+        let func = self.get_func(f).typed().unwrap().clone();
+        let ptr: u32 = func.call(arg.wasm_ptr()).unwrap();
         ptr.into()
     }
 
     fn invoke_export2<C, D, R>(&self, f: &str, arg0: AscPtr<C>, arg1: AscPtr<D>) -> AscPtr<R> {
-        let func = self.get_func(f).get2().unwrap();
-        let ptr: u32 = func(arg0.wasm_ptr(), arg1.wasm_ptr()).unwrap();
+        let func = self.get_func(f).typed().unwrap().clone();
+        let ptr: u32 = func.call((arg0.wasm_ptr(), arg1.wasm_ptr())).unwrap();
         ptr.into()
     }
 
@@ -236,18 +236,18 @@ impl WasmInstance {
         arg0: AscPtr<C>,
         arg1: AscPtr<D>,
     ) -> Result<(), wasmtime::Trap> {
-        let func = self.get_func(f).get2().unwrap();
-        func(arg0.wasm_ptr(), arg1.wasm_ptr())
+        let func = self.get_func(f).typed().unwrap().clone();
+        func.call((arg0.wasm_ptr(), arg1.wasm_ptr()))
     }
 
     fn takes_ptr_returns_val<P, V: wasmtime::WasmTy>(&mut self, fn_name: &str, v: AscPtr<P>) -> V {
-        let func = self.get_func(fn_name).get1().unwrap();
-        func(v.wasm_ptr()).unwrap()
+        let func = self.get_func(fn_name).typed().unwrap().clone();
+        func.call(v.wasm_ptr()).unwrap()
     }
 
     fn takes_val_returns_ptr<P>(&mut self, fn_name: &str, val: impl wasmtime::WasmTy) -> AscPtr<P> {
-        let func = self.get_func(fn_name).get1().unwrap();
-        let ptr: u32 = func(val).unwrap();
+        let func = self.get_func(fn_name).typed().unwrap().clone();
+        let ptr: u32 = func.call(val).unwrap();
         ptr.into()
     }
 }
@@ -383,8 +383,8 @@ async fn ipfs_map() {
                 let user_data = module.asc_new(USER_DATA).unwrap();
 
                 // Invoke the callback
-                let func = module.get_func("ipfsMap").get2().unwrap();
-                let _: () = func(value.wasm_ptr(), user_data.wasm_ptr())?;
+                let func = module.get_func("ipfsMap").typed().unwrap().clone();
+                let _: () = func.call((value.wasm_ptr(), user_data.wasm_ptr()))?;
                 let mut mods = module
                     .take_ctx()
                     .ctx
@@ -592,8 +592,7 @@ async fn big_int_arithmetic() {
 #[tokio::test]
 async fn abort() {
     let module = test_module("abort", mock_data_source("wasm_test/abort.wasm"));
-    let func = module.get_func("abort").get0().unwrap();
-    let res: Result<(), _> = func();
+    let res: Result<(), _> = module.get_func("abort").typed().unwrap().call(());
     assert!(res
         .unwrap_err()
         .to_string()
