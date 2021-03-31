@@ -206,6 +206,8 @@ pub struct Shard {
     pub weight: usize,
     #[serde(default)]
     pub pool_size: PoolSize,
+    #[serde(default = "PoolSize::five")]
+    pub fdw_pool_size: PoolSize,
     #[serde(default)]
     pub replicas: BTreeMap<String, Replica>,
 }
@@ -248,6 +250,7 @@ impl Shard {
             connection: postgres_url.clone(),
             weight: opt.postgres_host_weights.get(0).cloned().unwrap_or(1),
             pool_size,
+            fdw_pool_size: PoolSize::five(),
             replicas,
         })
     }
@@ -268,6 +271,10 @@ impl Default for PoolSize {
 }
 
 impl PoolSize {
+    fn five() -> Self {
+        Self::Fixed(5)
+    }
+
     fn validate(&self, connection: &str) -> Result<()> {
         use PoolSize::*;
 

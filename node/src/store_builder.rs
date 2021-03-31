@@ -168,6 +168,10 @@ impl StoreBuilder {
             "we can determine the pool size for store {}",
             name
         ));
+        let fdw_pool_size = shard.fdw_pool_size.size_for(node, name).expect(&format!(
+            "we can determine the fdw pool size for store {}",
+            name
+        ));
         info!(
             logger,
             "Connecting to Postgres";
@@ -180,6 +184,7 @@ impl StoreBuilder {
             "main",
             shard.connection.to_owned(),
             pool_size,
+            Some(fdw_pool_size),
             &logger,
             registry.cheap_clone(),
         )
@@ -218,6 +223,7 @@ impl StoreBuilder {
                         pool,
                         replica.connection.clone(),
                         pool_size,
+                        None,
                         &logger,
                         registry.cheap_clone(),
                     )
