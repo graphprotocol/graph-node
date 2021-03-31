@@ -612,25 +612,18 @@ impl AscHeap for WasmInstanceContext {
             // Allocate a new arena. Any free space left in the previous arena is left unused. This
             // causes at most half of memory to be wasted, which is acceptable.
             let arena_size = size.max(MIN_ARENA_SIZE);
+
+            // Unwrap: This may panic if more memory needs to be requested from the OS and that
+            // fails. This error is not deterministic since it depends on the operating conditions
+            // of the node.
             self.arena_start_ptr = self.memory_allocate.call(arena_size).unwrap();
             self.arena_free_size = arena_size;
         };
 
         let ptr = self.arena_start_ptr as usize;
 
-        // Safety:
-        // First `wasmtime::Memory` is `!Sync`, so two threads cannot simultaneously hold a
-        // reference into it. Given that, accessing the memory is only unsound if a reference into
-        // the memory is exists at this point [1]. Since we are in safe code up to this point, that
-        // reference can only exist if it originated in a previously executed unsafe block.
-        // Therefore:
-        // - If no unsafe block exposes references into memory to safe code and each individual
-        //   unsafe block does not cause unsoundness by itself, then the entire program is sound.
-        // [1] - https://docs.rs/wasmtime/0.17.0/wasmtime/struct.Memory.html
-        //
-        // This unsafe block has been checked to not cause unsoundness by itself.
-        // See also 2155cdca-dfaa-4fba-86e4-289e7683c1bf
-        unsafe { self.memory.data_unchecked_mut()[ptr..(ptr + bytes.len())].copy_from_slice(bytes) }
+        // Unwrap: We have just allocated enough space for `bytes`.
+        self.memory.write(ptr, bytes).unwrap();
         self.arena_start_ptr += size;
         self.arena_free_size -= size;
 
@@ -641,31 +634,17 @@ impl AscHeap for WasmInstanceContext {
         let offset = offset as usize;
         let size = size as usize;
 
-        let end = offset.checked_add(size).ok_or_else(|| {
-            DeterministicHostError(anyhow!(
-                "Overflow when accessing heap slice. Offset: {} Size: {}",
-                offset,
-                size
-            ))
-        })?;
+        let mut data = vec![0; size];
 
-        // Safety:
-        // This unsafe block has been checked to not cause unsoundness by itself.
-        // See 2155cdca-dfaa-4fba-86e4-289e7683c1bf for why this is sufficient.
-        let data = unsafe {
-            self.memory
-                .data_unchecked()
-                .get(offset..end)
-                .map(|s| s.to_vec())
-        };
-
-        data.ok_or_else(|| {
+        self.memory.read(offset, &mut data).map_err(|_| {
             DeterministicHostError(anyhow!(
                 "Heap access out of bounds. Offset: {} Size: {}",
                 offset,
                 size
             ))
-        })
+        })?;
+
+        Ok(data)
     }
 }
 
