@@ -168,13 +168,15 @@ impl ValidModule {
         config.interruptable(true); // For timeouts.
         config.cranelift_nan_canonicalization(true); // For NaN determinism.
         config.cranelift_opt_level(wasmtime::OptLevel::None);
-        let engine = &wasmtime::Engine::new(&config);
+        let engine = &wasmtime::Engine::new(&config)?;
         let module = wasmtime::Module::from_binary(&engine, raw_module)?;
 
         let mut import_name_to_modules: BTreeMap<String, Vec<String>> = BTreeMap::new();
+
+        // Unwrap: Module linking is disabled.
         for (name, module) in module
             .imports()
-            .map(|import| (import.name(), import.module()))
+            .map(|import| (import.name().unwrap(), import.module()))
         {
             import_name_to_modules
                 .entry(name.to_string())
