@@ -6,19 +6,19 @@ use stable_hash::prelude::*;
 use stable_hash::utils::AsBytes;
 use std::{cmp::Ordering, convert::TryFrom};
 use std::{fmt, str::FromStr};
-use std::{
-    fmt::{Display, Write},
-    sync::Arc,
-};
+use std::{fmt::Write, sync::Arc};
 use strum_macros::AsStaticStr;
 use web3::types::{
     Action, Address, Block, Bytes, Log, Res, Trace, Transaction, TransactionReceipt, H160, H256,
     U128, U256, U64,
 };
 
-use crate::prelude::{
-    BlockNumber, CheapClone, EntityKey, MappingBlockHandler, MappingCallHandler,
-    MappingEventHandler, SubgraphDeploymentId, ToEntityKey,
+use crate::{
+    blockchain::BlockHash,
+    prelude::{
+        BlockNumber, CheapClone, EntityKey, MappingBlockHandler, MappingCallHandler,
+        MappingEventHandler, SubgraphDeploymentId, ToEntityKey,
+    },
 };
 
 pub type LightEthereumBlock = Block<Transaction>;
@@ -461,19 +461,9 @@ impl Clone for EthereumCallData {
     }
 }
 
-/// A simple marker for byte arrays that are really block hashes
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct BlockHash(pub Box<[u8]>);
-
 impl From<H256> for BlockHash {
     fn from(hash: H256) -> Self {
         BlockHash(hash.as_bytes().into())
-    }
-}
-
-impl Display for BlockHash {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "0x{}", hex::encode(&self.0))
     }
 }
 
