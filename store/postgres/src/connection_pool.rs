@@ -9,7 +9,7 @@ use graph::{
         anyhow::{self, anyhow, bail},
         debug, error, info, o,
         tokio::sync::Semaphore,
-        CancelGuard, CancelHandle, CancelToken as _, CancelableError, Counter, Gauge, Logger,
+        warn, CancelGuard, CancelHandle, CancelToken as _, CancelableError, Counter, Gauge, Logger,
         MetricsRegistry, MovingStats, PoolWaitStats, StoreError,
     },
     util::security::SafeDisplay,
@@ -480,6 +480,32 @@ impl ConnectionPool {
                 Ok(conn) => return Ok(conn),
                 Err(e) => error!(logger, "Error checking out connection, retrying";
                    "error" => e.to_string(),
+                ),
+            }
+        }
+    }
+
+    /// Get a connection from the pool for foreign data wrapper access;
+    /// since that pool can be very contended, periodically log that we are
+    /// still waiting for a connection
+    pub fn get_fdw(
+        &self,
+        logger: &Logger,
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, graph::prelude::Error> {
+        let pool = match &self.fdw_pool {
+            Some(pool) => pool,
+            None => {
+                const MSG: &str =
+                    "internal error: trying to get fdw connection on a pool that doesn't have any";
+                error!(logger, "{}", MSG);
+                bail!(MSG)
+            }
+        };
+        loop {
+            match pool.get() {
+                Ok(conn) => return Ok(conn),
+                Err(e) => warn!(logger, "still trying to get fdw connection";
+                   "detail" => e.to_string(),
                 ),
             }
         }

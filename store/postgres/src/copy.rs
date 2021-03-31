@@ -539,11 +539,11 @@ impl Connection {
         Self { pool }
     }
 
-    fn transaction<T, F>(&self, f: F) -> Result<T, StoreError>
+    fn transaction<T, F>(&self, logger: &Logger, f: F) -> Result<T, StoreError>
     where
         F: FnOnce(&PgConnection) -> Result<T, StoreError>,
     {
-        let conn = self.pool.get()?;
+        let conn = self.pool.get_fdw(logger)?;
         conn.transaction(|| f(&conn)).map_err(|e| e.into())
     }
 
@@ -568,15 +568,16 @@ impl Connection {
         dst: Arc<Layout>,
         target_block: EthereumBlockPointer,
     ) -> Result<Status, StoreError> {
-        let mut state =
-            self.transaction(|conn| CopyState::new(conn, src, dst.clone(), target_block))?;
+        let mut state = self.transaction(logger, |conn| {
+            CopyState::new(conn, src, dst.clone(), target_block)
+        })?;
 
         let mut progress = CopyProgress::new(logger, &state);
         progress.start();
 
         for table in state.tables.iter_mut().filter(|table| !table.finished()) {
             while !table.finished() {
-                let status = self.transaction(|conn| table.copy_batch(conn))?;
+                let status = self.transaction(logger, |conn| table.copy_batch(conn))?;
                 if status == Status::Cancelled {
                     return Ok(status);
                 }
@@ -585,7 +586,7 @@ impl Connection {
             progress.table_finished(table);
         }
 
-        self.transaction(|conn| state.finished(conn))?;
+        self.transaction(logger, |conn| state.finished(conn))?;
         progress.finished();
 
         Ok(Status::Finished)
