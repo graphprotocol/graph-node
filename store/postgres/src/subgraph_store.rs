@@ -474,15 +474,32 @@ impl SubgraphStoreInner {
         let src = self.find_site(src.id.into())?;
         let src_store = self.for_site(src.as_ref())?;
         let src_info = src_store.subgraph_info(src.as_ref())?;
+        let src_loc = DeploymentLocator::from(src.as_ref());
 
         let dst = Arc::new(self.primary_conn()?.copy_site(&src, shard.clone())?);
+        let dst_loc = DeploymentLocator::from(dst.as_ref());
 
+        if src.id == dst.id {
+            return Err(StoreError::Unknown(anyhow!(
+                "can not copy deployment {} onto itself",
+                src_loc
+            )));
+        }
+        // The very last thing we do when we set up a copy here is assign it
+        // to a node. Therefore, if `dst` is already assigned, this function
+        // should not have been called.
+        if let Some(node) = self.primary_conn()?.assigned_node(dst.as_ref())? {
+            return Err(StoreError::Unknown(anyhow!(
+                "can not copy into deployment {} since it is already assigned to node `{}`",
+                dst_loc,
+                node
+            )));
+        }
         let mut deployment = src_store.load_deployment(src.as_ref())?;
         if deployment.failed {
             return Err(StoreError::Unknown(anyhow!(
-                "can not copy deployment {}[{}] because it has failed",
-                src.deployment,
-                src.id
+                "can not copy deployment {} because it has failed",
+                src_loc
             )));
         }
 
@@ -517,7 +534,9 @@ impl SubgraphStoreInner {
 
         let pconn = self.primary_conn()?;
         pconn.transaction(|| -> Result<_, StoreError> {
-            // Create subgraph, subgraph version, and assignment
+            // Create subgraph, subgraph version, and assignment. We use the
+            // existence of an assignment as a signal that we already set up
+            // the copy
             let changes = pconn.assign_subgraph(dst.as_ref(), &node)?;
             let event = StoreEvent::new(changes);
             pconn.send_store_event(&event)?;
