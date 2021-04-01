@@ -1,7 +1,6 @@
 use futures::future::join_all;
 use git_testament::{git_testament, render_testament};
-use graph::{prelude::LinkResolver as _, prometheus::Registry};
-use ipfs_api::IpfsClient;
+use graph::{ipfs_client::IpfsClient, prelude::LinkResolver as _, prometheus::Registry};
 use lazy_static::lazy_static;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -97,7 +96,7 @@ fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
 // Saturating the blocking threads can cause all sorts of issues, so set a large maximum.
 // Ideally we'd use semaphores to not use more blocking threads than DB connections,
 // but for now this is necessary.
-#[tokio::main(max_threads = 2000)]
+#[tokio::main(worker_threads = 2000)]
 async fn main() {
     env_logger::init();
 
@@ -488,10 +487,13 @@ async fn main() {
     // Periodically check for contention in the tokio threadpool. First spawn a
     // task that simply responds to "ping" requests. Then spawn a separate
     // thread to periodically ping it and check responsiveness.
-    let (ping_send, ping_receive) = mpsc::channel::<crossbeam_channel::Sender<()>>(1);
-    graph::spawn(ping_receive.for_each(move |pong_send| async move {
-        let _ = pong_send.clone().send(());
-    }));
+    let (ping_send, mut ping_receive) = mpsc::channel::<crossbeam_channel::Sender<()>>(1);
+    graph::spawn(async move {
+        while let Some(pong_send) = ping_receive.recv().await {
+            let _ = pong_send.clone().send(());
+        }
+        panic!("ping sender dropped");
+    });
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(1));
         let (pong_send, pong_receive) = crossbeam_channel::bounded(1);
@@ -595,7 +597,7 @@ fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<Ipf
                 SafeDisplay(&ipfs_address)
             );
 
-            let ipfs_client = match IpfsClient::new_from_uri(&ipfs_address) {
+            let ipfs_client = match IpfsClient::new(&ipfs_address) {
                 Ok(ipfs_client) => ipfs_client,
                 Err(e) => {
                     error!(
@@ -609,14 +611,14 @@ fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<Ipf
             };
 
             // Test the IPFS client by getting the version from the IPFS daemon
-            let ipfs_test = ipfs_client.clone();
+            let ipfs_test = ipfs_client.cheap_clone();
             let ipfs_ok_logger = logger.clone();
             let ipfs_err_logger = logger.clone();
             let ipfs_address_for_ok = ipfs_address.clone();
             let ipfs_address_for_err = ipfs_address.clone();
             graph::spawn(async move {
                 ipfs_test
-                    .version()
+                    .test()
                     .map_err(move |e| {
                         error!(
                             ipfs_err_logger,

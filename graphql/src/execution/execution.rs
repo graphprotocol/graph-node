@@ -410,6 +410,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
             Arc::new(tokio::sync::Semaphore::new(1))
                 .acquire_owned()
                 .await
+                .unwrap()
         };
 
         let logger = execute_ctx.logger.clone();

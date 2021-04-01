@@ -1,5 +1,7 @@
 use crate::ext::futures::FutureExtension;
 use futures::prelude::*;
+use futures03::compat::Future01CompatExt;
+use futures03::{FutureExt, TryFutureExt};
 use slog::{debug, trace, warn, Logger};
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -150,17 +152,15 @@ pub struct RetryConfigWithTimeout<I, E> {
 
 impl<I, E> RetryConfigWithTimeout<I, E>
 where
-    I: Debug + Send,
+    I: Debug + Send + 'static,
     E: Debug + Send + Send + Sync + 'static,
 {
     /// Rerun the provided function as many times as needed.
     pub fn run<F, R>(self, mut try_it: F) -> impl Future<Item = I, Error = TimeoutError<E>>
     where
-        F: FnMut() -> R + Send,
-        R: Future<Item = I, Error = E> + Send,
+        F: FnMut() -> R + Send + 'static,
+        R: Future<Item = I, Error = E> + Send + 'static,
     {
-        use futures03::future::TryFutureExt;
-
         let operation_name = self.inner.operation_name;
         let logger = self.inner.logger.clone();
         let condition = self.inner.condition;
@@ -183,6 +183,7 @@ where
                     .timeout(timeout)
                     .map_err(|_| TimeoutError::Elapsed)
                     .and_then(|res| futures03::future::ready(res.map_err(TimeoutError::Inner)))
+                    .boxed()
                     .compat()
             },
         )
@@ -197,9 +198,9 @@ impl<I, E> RetryConfigNoTimeout<I, E> {
     /// Rerun the provided function as many times as needed.
     pub fn run<F, R>(self, try_it: F) -> impl Future<Item = I, Error = E>
     where
-        I: Debug + Send,
+        I: Debug + Send + 'static,
         E: Debug + Send + Sync + 'static,
-        F: Fn() -> R + Send,
+        F: Fn() -> R + Send + 'static,
         R: Future<Item = I, Error = E> + Send,
     {
         let operation_name = self.inner.operation_name;
@@ -262,9 +263,9 @@ fn run_retry<I, E, F, R>(
     mut try_it_with_timeout: F,
 ) -> impl Future<Item = I, Error = TimeoutError<E>> + Send
 where
-    I: Debug + Send,
+    I: Debug + Send + 'static,
     E: Debug + Send + Sync + 'static,
-    F: FnMut() -> R + Send,
+    F: FnMut() -> R + Send + 'static,
     R: Future<Item = I, Error = TimeoutError<E>> + Send,
 {
     let condition = Arc::new(condition);
@@ -277,64 +278,68 @@ where
 
         attempt_count += 1;
 
-        try_it_with_timeout().then(move |result_with_timeout| {
-            let is_elapsed = result_with_timeout
-                .as_ref()
-                .err()
-                .map(|e| e.is_elapsed())
-                .unwrap_or(false);
+        try_it_with_timeout()
+            .then(move |result_with_timeout| {
+                let is_elapsed = result_with_timeout
+                    .as_ref()
+                    .err()
+                    .map(|e| e.is_elapsed())
+                    .unwrap_or(false);
 
-            if is_elapsed {
-                if attempt_count >= log_after {
-                    debug!(
-                        logger,
-                        "Trying again after {} timed out (attempt #{})",
-                        &operation_name,
-                        attempt_count,
-                    );
-                }
-
-                // Wrap in Err to force retry
-                Err(result_with_timeout)
-            } else {
-                // Any error must now be an inner error.
-                // Unwrap the inner error so that the predicate doesn't need to think
-                // about timeout::Error.
-                let result = result_with_timeout.map_err(|e| e.into_inner().unwrap());
-
-                // If needs retry
-                if condition.check(&result) {
-                    if attempt_count >= warn_after {
-                        // This looks like it would be nice to de-duplicate, but if we try
-                        // to use log! slog complains about requiring a const for the log level
-                        // See also b05e1594-e408-4047-aefb-71fc60d70e8f
-                        warn!(
-                            logger,
-                            "Trying again after {} failed (attempt #{}) with result {:?}",
-                            &operation_name,
-                            attempt_count,
-                            result
-                        );
-                    } else if attempt_count >= log_after {
-                        // See also b05e1594-e408-4047-aefb-71fc60d70e8f
+                if is_elapsed {
+                    if attempt_count >= log_after {
                         debug!(
                             logger,
-                            "Trying again after {} failed (attempt #{}) with result {:?}",
+                            "Trying again after {} timed out (attempt #{})",
                             &operation_name,
                             attempt_count,
-                            result
                         );
                     }
 
                     // Wrap in Err to force retry
-                    Err(result.map_err(TimeoutError::Inner))
+                    Err(result_with_timeout)
                 } else {
-                    // Wrap in Ok to prevent retry
-                    Ok(result.map_err(TimeoutError::Inner))
+                    // Any error must now be an inner error.
+                    // Unwrap the inner error so that the predicate doesn't need to think
+                    // about timeout::Error.
+                    let result = result_with_timeout.map_err(|e| e.into_inner().unwrap());
+
+                    // If needs retry
+                    if condition.check(&result) {
+                        if attempt_count >= warn_after {
+                            // This looks like it would be nice to de-duplicate, but if we try
+                            // to use log! slog complains about requiring a const for the log level
+                            // See also b05e1594-e408-4047-aefb-71fc60d70e8f
+                            warn!(
+                                logger,
+                                "Trying again after {} failed (attempt #{}) with result {:?}",
+                                &operation_name,
+                                attempt_count,
+                                result
+                            );
+                        } else if attempt_count >= log_after {
+                            // See also b05e1594-e408-4047-aefb-71fc60d70e8f
+                            debug!(
+                                logger,
+                                "Trying again after {} failed (attempt #{}) with result {:?}",
+                                &operation_name,
+                                attempt_count,
+                                result
+                            );
+                        }
+
+                        // Wrap in Err to force retry
+                        Err(result.map_err(TimeoutError::Inner))
+                    } else {
+                        // Wrap in Ok to prevent retry
+                        Ok(result.map_err(TimeoutError::Inner))
+                    }
                 }
-            }
-        })
+            })
+            .compat()
     })
+    .boxed()
+    .compat()
     .then(|retry_result| {
         // Unwrap the inner result.
         // The outer Ok/Err is only used for retry control flow.
@@ -433,7 +438,10 @@ mod tests {
     #[test]
     fn test() {
         let logger = Logger::root(::slog::Discard, o!());
-        let mut runtime = tokio::runtime::Builder::new().enable_all().build().unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
 
         let result = runtime.block_on(
             future::lazy(move || {
@@ -461,7 +469,10 @@ mod tests {
     #[test]
     fn limit_reached() {
         let logger = Logger::root(::slog::Discard, o!());
-        let mut runtime = tokio::runtime::Builder::new().enable_all().build().unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
 
         let result = runtime.block_on(
             future::lazy(move || {
@@ -489,7 +500,10 @@ mod tests {
     #[test]
     fn limit_not_reached() {
         let logger = Logger::root(::slog::Discard, o!());
-        let mut runtime = tokio::runtime::Builder::new().enable_all().build().unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
 
         let result = runtime.block_on(
             future::lazy(move || {

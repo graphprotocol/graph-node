@@ -1,6 +1,6 @@
 use super::*;
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn unbounded_loop() {
     // Set handler timeout to 3 seconds.
     let module = test_valid_module_and_store_with_timeout(

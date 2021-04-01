@@ -277,7 +277,8 @@ struct MockQueryLoadManager(Arc<tokio::sync::Semaphore>);
 #[async_trait]
 impl QueryLoadManager for MockQueryLoadManager {
     async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
-        self.0.clone().acquire_owned().await
+        // Unwrap: The semaphore is never closed.
+        self.0.clone().acquire_owned().await.unwrap()
     }
 
     fn record_work(&self, _shape_hash: u64, _duration: Duration, _cache_status: CacheStatus) {}

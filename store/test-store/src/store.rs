@@ -37,13 +37,8 @@ lazy_static! {
         Some(_) => log::logger(false),
         None => Logger::root(slog::Discard, o!()),
     };
-    pub static ref STORE_RUNTIME: Mutex<Runtime> = Mutex::new(
-        Builder::new()
-            .basic_scheduler()
-            .enable_all()
-            .build()
-            .unwrap()
-    );
+    pub static ref STORE_RUNTIME: Mutex<Runtime> =
+        Mutex::new(Builder::new_current_thread().enable_all().build().unwrap());
     pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(LoadManager::new(
         &*LOGGER,
         Vec::new(),
@@ -105,7 +100,7 @@ where
     let store = STORE.clone();
 
     // Lock regardless of poisoning. This also forces sequential test execution.
-    let mut runtime = match STORE_RUNTIME.lock() {
+    let runtime = match STORE_RUNTIME.lock() {
         Ok(guard) => guard,
         Err(err) => err.into_inner(),
     };
@@ -364,8 +359,7 @@ fn execute_subgraph_query_internal(
     max_complexity: Option<u64>,
     deadline: Option<Instant>,
 ) -> QueryResults {
-    let mut rt = tokio::runtime::Builder::new()
-        .basic_scheduler()
+    let rt = tokio::runtime::Builder::new_current_thread()
         .enable_io()
         .enable_time()
         .build()
