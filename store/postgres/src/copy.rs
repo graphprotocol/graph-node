@@ -374,13 +374,30 @@ impl TableState {
             .collect()
     }
 
-    fn record_progress(&self, conn: &PgConnection, elapsed: Duration) -> Result<(), StoreError> {
+    fn record_progress(
+        &self,
+        conn: &PgConnection,
+        elapsed: Duration,
+        first_batch: bool,
+    ) -> Result<(), StoreError> {
         use copy_table_state as cts;
 
         // This conversion will become a problem if a copy takes longer than
         // 300B years
         let elapsed = i64::try_from(elapsed.as_millis()).unwrap_or(0);
         let duration_ms = self.duration_ms + elapsed;
+
+        if first_batch {
+            // Reset started_at so that finished_at - started_at is an
+            // accurate indication of how long we worked on a table.
+            update(
+                cts::table
+                    .filter(cts::dst.eq(self.dst_site.id))
+                    .filter(cts::entity_type.eq(self.dst.object.as_str())),
+            )
+            .set(cts::started_at.eq(sql("now()")))
+            .execute(conn)?;
+        }
         let values = (
             cts::next_vid.eq(self.next_vid),
             cts::batch_size.eq(self.batch_size),
@@ -428,6 +445,7 @@ impl TableState {
 
         // Copy all versions with next_vid <= vid <= next_vid + batch_size - 1,
         // but do not go over target_vid
+        let first_batch = self.next_vid == 0;
         let last_vid = (self.next_vid + self.batch_size - 1).min(self.target_vid);
         rq::CopyEntityBatchQuery::new(self.dst.as_ref(), &self.src, self.next_vid, last_vid)?
             .execute(conn)?;
@@ -444,7 +462,7 @@ impl TableState {
             / duration.as_millis() as f64;
         self.batch_size = (2 * self.batch_size).min(new_batch_size.round() as i64);
 
-        self.record_progress(conn, duration)?;
+        self.record_progress(conn, duration, first_batch)?;
 
         if self.finished() {
             self.record_finished(conn)?;
