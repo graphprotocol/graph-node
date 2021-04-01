@@ -43,9 +43,9 @@ table! {
         dst -> Integer,
         target_block_hash -> Binary,
         target_block_number -> Integer,
-        started_at -> Date,
-        finished_at -> Nullable<Date>,
-        cancelled_at -> Nullable<Date>,
+        started_at -> Timestamptz,
+        finished_at -> Nullable<Timestamptz>,
+        cancelled_at -> Nullable<Timestamptz>,
     }
 }
 
@@ -58,8 +58,8 @@ table! {
         next_vid -> BigInt,
         target_vid -> BigInt,
         batch_size -> BigInt,
-        started_at -> Date,
-        finished_at -> Nullable<Date>,
+        started_at -> Timestamptz,
+        finished_at -> Nullable<Timestamptz>,
         // Measures just the time we spent working, not any wait time for
         // connections or the like
         duration_ms -> BigInt,

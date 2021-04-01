@@ -93,8 +93,8 @@ table! {
     active_copies(dst) {
         src -> Integer,
         dst -> Integer,
-        queued_at -> Date,
-        cancelled_at -> Nullable<Date>,
+        queued_at -> Timestamptz,
+        cancelled_at -> Nullable<Timestamptz>,
     }
 }
 
