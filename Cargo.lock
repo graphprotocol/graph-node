@@ -1309,6 +1309,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "firestorm"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31586bda1b136406162e381a3185a506cdfc1631708dd40cba2f6628d8634499"
+
+[[package]]
 name = "fixed-hash"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2283,6 +2289,17 @@ dependencies = [
  "hyper 0.14.4",
  "pin-project 1.0.5",
  "tokio 1.2.0",
+]
+
+[[package]]
+name = "ibig"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "630511c4d1de89410f25fc6e2a5e1a503fde62d2ff623597b8fe33d0f9dd24d8"
+dependencies = [
+ "num-traits",
+ "rand 0.8.3",
+ "static_assertions",
 ]
 
 [[package]]
@@ -4350,12 +4367,13 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 [[package]]
 name = "stable-hash"
 version = "0.3.0"
-source = "git+https://github.com/graphprotocol/stable-hash#eee60fa80997b10882d41067b11c265664d45add"
+source = "git+https://github.com/graphprotocol/stable-hash#22b4472424e29ff3516576d9aaf914162054b588"
 dependencies = [
  "blake3",
+ "firestorm",
+ "ibig",
  "lazy_static",
  "leb128",
- "num-bigint",
  "num-traits",
 ]
 
