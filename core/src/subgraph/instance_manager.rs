@@ -539,7 +539,11 @@ where
                     {
                         debug!(
                             &logger,
-                            "Block stream produced a non-fatal error";
+                            "Could not revert block. \
+                            The likely cause is the block not being found due to a deep reorg. \
+                            Retrying";
+                            "block_number" => format!("{}", subgraph_ptr.number),
+                            "block_hash" => format!("{}", subgraph_ptr.hash),
                             "error" => e.to_string(),
                         );
                         continue;
