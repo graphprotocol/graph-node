@@ -932,6 +932,7 @@ dependencies = [
  "bigdecimal",
  "bitflags 1.2.1",
  "byteorder",
+ "chrono",
  "diesel_derives",
  "num-bigint",
  "num-integer",
