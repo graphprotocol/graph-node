@@ -442,6 +442,8 @@ fn execute_root_selection_set(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
+    dbg!("entered (prefetch) fn execute_root_selection_set");
+
     // Obtain the root Query type and fail if there isn't one
     let query_type = ctx.query.schema.query_type.as_ref().into();
 
@@ -457,6 +459,12 @@ fn execute_selection_set<'a>(
     mut parents: Vec<Node>,
     grouped_field_set: IndexMap<&'a String, CollectedResponseKey<'a>>,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
+    let sql_column_names__temporary = extract_field_names(&grouped_field_set);
+    dbg!(
+        "at execute_selection_set start",
+        &grouped_field_set,
+        &sql_column_names__temporary
+    );
     let schema = &ctx.query.schema;
     let mut errors: Vec<QueryExecutionError> = Vec::new();
 
@@ -502,10 +510,8 @@ fn execute_selection_set<'a>(
             // Group fields with the same response key, so we can execute them together
             let grouped_field_set =
                 collect_fields(ctx, child_type, fields.iter().map(|f| &f.selection_set));
-            let sql_column_names__temporary = extract_field_names(&grouped_field_set);
             dbg!(
                 "at fn execute_selection_set",
-                &sql_column_names__temporary,
                 &grouped_field_set,
                 &parents,
                 &join,
@@ -521,7 +527,7 @@ fn execute_selection_set<'a>(
                 &join,
                 &fields[0],
                 field,
-                sql_column_names__temporary,
+                sql_column_names__temporary.clone(),
             ) {
                 Ok(children) => {
                     match execute_selection_set(resolver, ctx, children, grouped_field_set) {
@@ -860,53 +866,38 @@ fn fetch(
 fn extract_field_names(indexmap: &IndexMap<&String, CollectedResponseKey>) -> Vec<String> {
     use std::collections::VecDeque;
 
-    /// Fields have selections and Selections can have Fields or other Selections, so we use a
-    /// wrapper type here.
-    enum Either<'a> {
-        Field(&'a q::Field),
-        Selection(&'a q::Selection),
-    }
-
+    // Fields have selections and Selections can have Fields or other Selections, so we use a
+    // wrapper type here.
+    let mut processing_queue: VecDeque<&q::Selection> = VecDeque::new();
     let mut collected_field_names = Vec::new();
-    let mut processing_queue: VecDeque<Either> = VecDeque::new();
 
-    // those always contains Fields
-    for response_keys in indexmap.values() {
-        for fields in response_keys.obj_types.values() {
-            processing_queue.extend(fields.iter().map(|field| Either::Field(field)));
-        }
-    }
+    indexmap
+        .values()
+        .flat_map(|response_keys| response_keys.obj_types.values())
+        .flatten()
+        .flat_map(|field| &field.selection_set.items)
+        .for_each(|x| processing_queue.push_back(&x));
 
     // Consume the processing queue
-    while let Some(either) = processing_queue.pop_front() {
-        match either {
-            // Fields can contain Selections
-            Either::Field(field) => {
-                collected_field_names.push(field.name.clone());
-                processing_queue.extend(
-                    field
-                        .selection_set
-                        .items
-                        .iter()
-                        .map(|sel| Either::Selection(sel)),
-                );
-            }
+    while let Some(selection) = processing_queue.pop_front() {
+        match selection {
             // Selections can contain Fields or other Selections
-            Either::Selection(selection) => match selection {
-                q::Selection::Field(field) => processing_queue.push_back(Either::Field(field)),
-                q::Selection::FragmentSpread(_) => {
-                    todo!()
+            q::Selection::Field(field) => {
+                if field.name.starts_with("__") {
+                    continue;
                 }
-                q::Selection::InlineFragment(inline_fragment) => {
-                    processing_queue.extend(
-                        inline_fragment
-                            .selection_set
-                            .items
-                            .iter()
-                            .map(|sel| Either::Selection(sel)),
-                    );
-                }
-            },
+                collected_field_names.push(field.name.clone())
+            }
+            q::Selection::FragmentSpread(_) => {
+                todo!()
+            }
+            q::Selection::InlineFragment(inline_fragment) => {
+                inline_fragment
+                    .selection_set
+                    .items
+                    .iter()
+                    .for_each(|sel| processing_queue.push_back(sel));
+            }
         }
     }
 

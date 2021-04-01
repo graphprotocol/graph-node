@@ -37,7 +37,7 @@ fn insert_and_query(
 
     let document = graphql_parser::parse_query(query).unwrap().into_static();
     let target = QueryTarget::Deployment(subgraph_id);
-    let query = dbg!(Query::new(document, None));
+    let query = Query::new(document, None);
     Ok(execute_subgraph_query(query, target)
         .first()
         .unwrap()
@@ -575,8 +575,103 @@ fn invalid_fragment() {
 }
 
 #[test]
+fn alias__simple_01() {
+    let subgraph_id = "Alias";
+    let schema = "interface Legged { id: ID!, legs: Int! }
+                  type Animal implements Legged @entity {
+                    id: ID!
+                    legs: Int!
+                    parent: Legged
+                  }";
+
+    let query = r#"query {
+                       legged(id: "child") {
+                           id
+                           legs
+                       }
+                   }"#;
+
+    let parent = (
+        Entity::from(vec![
+            ("id", Value::from("parent")),
+            ("legs", Value::from(4)),
+            ("parent", Value::Null),
+        ]),
+        "Animal",
+    );
+    let child = (
+        Entity::from(vec![
+            ("id", Value::from("child")),
+            ("legs", Value::from(3)),
+            ("parent", Value::String("parent".into())),
+        ]),
+        "Animal",
+    );
+    let res = insert_and_query(subgraph_id, schema, vec![parent, child], query).unwrap();
+    let data = extract_data!(res).unwrap();
+    assert_eq!(
+        data,
+        object! {
+            legged: object! {
+        id: "child",
+        legs: 3
+            }
+        }
+    );
+}
+
+#[test]
+fn alias__simple_02() {
+    let subgraph_id = "Alias";
+    let schema = "interface Legged { id: ID!, legs: Int! }
+                  type Animal implements Legged @entity {
+                    id: ID!
+                    legs: Int!
+                    parent: Legged
+                  }";
+
+    let query = r#"query {
+                       l: legged(id: "child") {
+                           i: id
+                           l: legs
+                           t: __typename
+                           __typename
+                       }
+                   }"#;
+
+    let parent = (
+        Entity::from(vec![
+            ("id", Value::from("parent")),
+            ("legs", Value::from(4)),
+            ("parent", Value::Null),
+        ]),
+        "Animal",
+    );
+    let child = (
+        Entity::from(vec![
+            ("id", Value::from("child")),
+            ("legs", Value::from(3)),
+            ("parent", Value::String("parent".into())),
+        ]),
+        "Animal",
+    );
+    let res = insert_and_query(subgraph_id, schema, vec![parent, child], query).unwrap();
+    let data = extract_data!(res).unwrap();
+    assert_eq!(
+        data,
+        object! {
+            l: object! {
+		i: "child",
+		l: 3,
+		t: "Animal",
+		__typename: "Animal",
+            }
+        }
+    );
+}
+
+#[test]
 fn alias() {
-    dbg!("ALIAS TEST: begin ");
     let subgraph_id = "Alias";
     let schema = "interface Legged { id: ID!, legs: Int! }
                   type Animal implements Legged @entity {
@@ -613,12 +708,8 @@ fn alias() {
         ]),
         "Animal",
     );
-    dbg!("ALIAS TEST: before insert_and_query ");
     let res = insert_and_query(subgraph_id, schema, vec![parent, child], query).unwrap();
-    dbg!("ALIAS TEST: after insert_and_query");
-    dbg!("ALIAS TEST: before extract_data! macro");
     let data = extract_data!(res).unwrap();
-    dbg!("ALIAS TEST: after estract_data!macro ");
     assert_eq!(
         data,
         object! {
@@ -631,7 +722,6 @@ fn alias() {
             }
         }
     );
-    dbg!("ALIAS TEST: end ");
 }
 
 #[test]

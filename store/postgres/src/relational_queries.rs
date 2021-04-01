@@ -2275,7 +2275,17 @@ impl<'a> FilterQuery<'a> {
     ) -> QueryResult<()> {
         dbg!("@query_no_window_one_entity", sql_column_names__temporary);
         Self::select_entity_and_data(table, &mut out);
-        out.push_sql(" from (select * ");
+        out.push_sql(" from (select ");
+
+        // insert column names
+        let mut column_iter = sql_column_names__temporary.iter().peekable();
+        while let Some(column_name) = column_iter.next() {
+            out.push_sql(column_name);
+            if column_iter.peek().is_some() {
+                out.push_sql(", ")
+            }
+        }
+
         self.filtered_rows(table, filter, out.reborrow())?;
         out.push_sql("\n ");
         self.sort_key.order_by(&mut out)?;
