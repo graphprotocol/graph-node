@@ -2,7 +2,7 @@
 
 use diesel::{
     delete,
-    dsl::sql,
+    dsl::{count, sql},
     prelude::{ExpressionMethods, QueryDsl, RunQueryDsl},
     sql_query,
     sql_types::{Integer, Text},
@@ -168,11 +168,23 @@ pub(crate) fn copy(
     dst: &Site,
     target_block: &EthereumBlockPointer,
 ) -> Result<usize, StoreError> {
+    use dynamic_ethereum_contract_data_source as decds;
+
     let src_nsp = if src.shard == dst.shard {
         "subgraphs".to_string()
     } else {
         ForeignServer::metadata_schema(&src.shard)
     };
+
+    // Check whether there are any dynamic data sources for dst which
+    // indicates we already did copy
+    let count = decds::table
+        .filter(decds::deployment.eq(dst.deployment.as_str()))
+        .select(count(decds::vid))
+        .get_result::<i64>(conn)?;
+    if count > 0 {
+        return Ok(count as usize);
+    }
 
     let query = format!(
         "\

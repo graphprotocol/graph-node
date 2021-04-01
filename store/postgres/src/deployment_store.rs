@@ -1056,6 +1056,16 @@ impl DeploymentStore {
         deployment::graft_pending(&conn, id)
     }
 
+    /// Bring the subgraph into a state where we can start or resume
+    /// indexing.
+    ///
+    /// If `graft_src` is `Some(..)`, copy data from that subgraph. It
+    /// should only be `Some(..)` if we know we still need to copy data. The
+    /// code is idempotent so that a copy process that has been interrupted
+    /// can be resumed seamlessly, but the code sets the block pointer back
+    /// to the graph point, so that calling this needlessly with `Some(..)`
+    /// will remove any progress that might have been made since the last
+    /// time the deployment was started.
     pub(crate) fn start_subgraph(
         &self,
         logger: &Logger,
