@@ -56,18 +56,6 @@ lazy_static! {
         .map(|s| BlockNumber::from_str(&s)
              .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_ANCESTOR_COUNT")))
         .unwrap_or(50);
-
-    // Comma separated network names that do not support EIP-1898 (calls by block hash). The only
-    // network known to not support it is fuse, once all known networks support eip 1898 this env
-    // var can be removed.
-    static ref NO_EIP_1898_SUPPORT: Vec<String> = {
-        std::env::var("GRAPH_NO_EIP_1898_SUPPORT").map(|s| {
-            s.split(',')
-             .map(|s| s.to_owned())
-             .collect()
-        })
-        .unwrap_or_default()
-    };
 }
 
 /// How long we will hold up node startup to get the net version and genesis
@@ -563,7 +551,7 @@ async fn create_ethereum_networks(
             // For now it's fine to just leak it.
             std::mem::forget(transport_event_loop);
 
-            let supports_eip_1898 = !NO_EIP_1898_SUPPORT.contains(&name);
+            let supports_eip_1898 = !provider.features.contains("no_eip1898");
 
             parsed_networks.insert(
                 name.to_string(),
