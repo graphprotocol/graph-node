@@ -37,7 +37,7 @@ pub struct EthereumAdapter<T: web3::Transport> {
     provider: String,
     web3: Arc<Web3<T>>,
     metrics: Arc<ProviderEthRpcMetrics>,
-    is_ganache: bool,
+    supports_eip_1898: bool,
 }
 
 lazy_static! {
@@ -79,9 +79,6 @@ lazy_static! {
 
     /// Log eth_call data and target address at trace level. Turn on for debugging.
     static ref ETH_CALL_FULL_LOG: bool = std::env::var("GRAPH_ETH_CALL_FULL_LOG").is_ok();
-
-    /// This is not deterministic and will be removed after the testnet.
-    static ref ETH_CALL_BY_NUMBER: bool = std::env::var("GRAPH_ETH_CALL_BY_NUMBER").is_ok();
 }
 
 impl<T: web3::Transport> CheapClone for EthereumAdapter<T> {
@@ -92,7 +89,7 @@ impl<T: web3::Transport> CheapClone for EthereumAdapter<T> {
             url_hostname: self.url_hostname.cheap_clone(),
             web3: self.web3.cheap_clone(),
             metrics: self.metrics.cheap_clone(),
-            is_ganache: self.is_ganache,
+            supports_eip_1898: self.supports_eip_1898,
         }
     }
 }
@@ -109,6 +106,7 @@ where
         url: &str,
         transport: T,
         provider_metrics: Arc<ProviderEthRpcMetrics>,
+        supports_eip_1898: bool,
     ) -> Self {
         // Unwrap: The transport was constructed with this url, so it is valid and has a host.
         let hostname = graph::url::Url::parse(url)
@@ -135,7 +133,7 @@ where
             url_hostname: Arc::new(hostname),
             web3,
             metrics: provider_metrics,
-            is_ganache,
+            supports_eip_1898: supports_eip_1898 && !is_ganache,
         }
     }
 
@@ -428,7 +426,7 @@ where
 
         // Ganache does not support calls by block hash.
         // See https://github.com/trufflesuite/ganache-cli/issues/745
-        let block_id = if self.is_ganache || *ETH_CALL_BY_NUMBER {
+        let block_id = if !self.supports_eip_1898 {
             BlockId::Number(block_ptr.number.into())
         } else {
             BlockId::Hash(block_ptr.hash_as_h256())

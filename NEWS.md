@@ -2,6 +2,9 @@
 
 ## next - unreleased
 
+- The `GRAPH_ETH_CALL_BY_NUMBER` environment variable has been removed. Graph Node requires an
+  Ethereum client that support EIP-1898, which all major clients support.
+
 ## 0.22.0
 
 ### Feature: Block store sharding
