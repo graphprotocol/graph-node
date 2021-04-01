@@ -1716,6 +1716,8 @@ dependencies = [
  "hex",
  "lazy_static",
  "never",
+ "parity-wasm",
+ "pwasm-utils",
  "semver 1.0.4",
  "strum",
  "strum_macros",
@@ -2880,6 +2882,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "parity-wasm"
+version = "0.42.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d17797de36b94bc5f73edad736fd0a77ce5ab64dd622f809c1eead8c91fa6564"
+
+[[package]]
 name = "parking_lot"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3335,6 +3343,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14ce37fa8c0428a37307d163292add09b3aedc003472e6b3622486878404191d"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "pwasm-utils"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51992bc74c0f34f759ff97fb303602e60343afc83693769c91aa17724442809e"
+dependencies = [
+ "byteorder",
+ "log",
+ "parity-wasm",
 ]
 
 [[package]]

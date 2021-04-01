@@ -1,3 +1,4 @@
+use crate::gas::GasRules;
 use crate::module::{ExperimentalFeatures, WasmInstance};
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
@@ -141,6 +142,15 @@ pub struct ValidModule {
 impl ValidModule {
     /// Pre-process and validate the module.
     pub fn new(raw_module: &[u8]) -> Result<Self, anyhow::Error> {
+        // Add the gas calls here.
+        // Module name "gas" must match. See also e3f03e62-40e4-4f8c-b4a1-d0375cca0b76
+        // We do this by round-tripping the module through parity - injecting gas then
+        // serializing again.
+        let parity_module = parity_wasm::elements::Module::from_bytes(raw_module)?;
+        let parity_module = pwasm_utils::inject_gas_counter(parity_module, &GasRules, "gas")
+            .map_err(|_| anyhow!("Failed to inject gas counter"))?;
+        let raw_module = parity_module.to_bytes()?;
+
         // We currently use Cranelift as a compilation engine. Cranelift is an optimizing compiler,
         // but that should not cause determinism issues since it adheres to the Wasm spec. Still we
         // turn off optional optimizations to be conservative.
@@ -152,7 +162,7 @@ impl ValidModule {
         config.max_wasm_stack(*MAX_STACK_SIZE).unwrap(); // Safe because this only panics if size passed is 0.
 
         let engine = &wasmtime::Engine::new(&config)?;
-        let module = wasmtime::Module::from_binary(&engine, raw_module)?;
+        let module = wasmtime::Module::from_binary(&engine, &raw_module)?;
 
         let mut import_name_to_modules: BTreeMap<String, Vec<String>> = BTreeMap::new();
 

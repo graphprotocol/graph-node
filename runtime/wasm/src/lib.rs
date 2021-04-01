@@ -16,6 +16,8 @@ pub mod host_exports;
 
 pub mod error;
 
+mod gas;
+
 pub use host::RuntimeHostBuilder;
 pub use host_exports::HostExports;
 pub use mapping::{MappingContext, ValidModule};
