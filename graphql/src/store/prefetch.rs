@@ -459,7 +459,7 @@ fn execute_selection_set<'a>(
     mut parents: Vec<Node>,
     grouped_field_set: IndexMap<&'a String, CollectedResponseKey<'a>>,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
-    let sql_column_names__temporary = extract_field_names(&grouped_field_set);
+    let sql_column_names__temporary = extract_field_names(&grouped_field_set, &ctx.query.fragments);
     dbg!(
         "at execute_selection_set start",
         &grouped_field_set,
@@ -863,7 +863,10 @@ fn fetch(
         .map(|entities| entities.into_iter().map(|entity| entity.into()).collect())
 }
 
-fn extract_field_names(indexmap: &IndexMap<&String, CollectedResponseKey>) -> Vec<String> {
+fn extract_field_names(
+    indexmap: &IndexMap<&String, CollectedResponseKey>,
+    fragments: &HashMap<String, q::FragmentDefinition>,
+) -> Vec<String> {
     use std::collections::VecDeque;
 
     // Fields have selections and Selections can have Fields or other Selections, so we use a
@@ -888,15 +891,21 @@ fn extract_field_names(indexmap: &IndexMap<&String, CollectedResponseKey>) -> Ve
                 }
                 collected_field_names.push(field.name.clone())
             }
-            q::Selection::FragmentSpread(_) => {
-                todo!()
+            q::Selection::FragmentSpread(fragment_spread) => {
+                fragments
+                    .get(&fragment_spread.fragment_name)
+                    .expect("failed to obtain fragment spread by name")
+                    .selection_set
+                    .items
+                    .iter()
+                    .for_each(|selection| processing_queue.push_back(selection));
             }
             q::Selection::InlineFragment(inline_fragment) => {
                 inline_fragment
                     .selection_set
                     .items
                     .iter()
-                    .for_each(|sel| processing_queue.push_back(sel));
+                    .for_each(|selection| processing_queue.push_back(selection));
             }
         }
     }

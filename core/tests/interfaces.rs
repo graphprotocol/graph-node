@@ -574,52 +574,11 @@ fn invalid_fragment() {
     }
 }
 
-#[test]
-fn alias__simple_01() {
-    let subgraph_id = "Alias";
-    let schema = "interface Legged { id: ID!, legs: Int! }
-                  type Animal implements Legged @entity {
-                    id: ID!
-                    legs: Int!
-                    parent: Legged
-                  }";
-
-    let query = r#"query {
-                       legged(id: "child") {
-                           id
-                           legs
-                       }
-                   }"#;
-
-    let parent = (
-        Entity::from(vec![
-            ("id", Value::from("parent")),
-            ("legs", Value::from(4)),
-            ("parent", Value::Null),
-        ]),
-        "Animal",
-    );
-    let child = (
-        Entity::from(vec![
-            ("id", Value::from("child")),
-            ("legs", Value::from(3)),
-            ("parent", Value::String("parent".into())),
-        ]),
-        "Animal",
-    );
-    let res = insert_and_query(subgraph_id, schema, vec![parent, child], query).unwrap();
-    let data = extract_data!(res).unwrap();
-    assert_eq!(
-        data,
-        object! {
-            legged: object! {
-        id: "child",
-        legs: 3
-            }
-        }
-    );
-}
-
+/* This one tests:
+- [X] Inline spreads
+- [X] fragment spreads
+- [ ] nested fields
+*/
 #[test]
 fn alias__simple_02() {
     let subgraph_id = "Alias";
@@ -630,14 +589,25 @@ fn alias__simple_02() {
                     parent: Legged
                   }";
 
-    let query = r#"query {
-                       l: legged(id: "child") {
-                           i: id
-                           l: legs
-                           t: __typename
-                           __typename
-                       }
-                   }"#;
+    let query = r#"
+query {
+  l: legged(id: "child") {
+    ... on Animal {
+      i: id,
+      l: legs,
+      t: __typename,
+      __typename
+    }
+    ...someFrag
+  }
+}
+
+fragment someFrag on Animal {
+  i2: id
+  legs
+  t: __typename
+  __typename
+}"#;
 
     let parent = (
         Entity::from(vec![
@@ -661,10 +631,12 @@ fn alias__simple_02() {
         data,
         object! {
             l: object! {
-		i: "child",
-		l: 3,
-		t: "Animal",
-		__typename: "Animal",
+        i: "child",
+        i2: "child",
+        legs: 3,
+        l: 3,
+        t: "Animal",
+        __typename: "Animal",
             }
         }
     );
