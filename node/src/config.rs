@@ -10,7 +10,7 @@ use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::read_to_string;
 use url::Url;
 
@@ -465,10 +465,10 @@ pub struct Provider {
     #[serde(default)]
     pub transport: Transport,
     pub url: String,
-    pub features: Vec<String>,
+    pub features: BTreeSet<String>,
 }
 
-const PROVIDER_FEATURES: [&str; 2] = ["traces", "archive"];
+const PROVIDER_FEATURES: [&str; 3] = ["traces", "archive", "no_eip1898"];
 
 impl Provider {
     fn validate(&self) -> Result<()> {
@@ -498,8 +498,8 @@ impl Provider {
 
     pub fn node_capabilities(&self) -> NodeCapabilities {
         NodeCapabilities {
-            archive: self.features.iter().any(|f| f == "archive"),
-            traces: self.features.iter().any(|f| f == "traces"),
+            archive: self.features.contains("archive"),
+            traces: self.features.contains("traces"),
         }
     }
 }
