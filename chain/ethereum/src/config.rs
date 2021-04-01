@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use config::{Config, File};
-use hyper::header::{HeaderMap, HeaderName, HeaderValue};
+use http::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Deserializer};
 
 use graph::prelude::*;

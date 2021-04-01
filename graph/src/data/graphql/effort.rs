@@ -560,7 +560,14 @@ impl LoadManager {
 impl QueryLoadManager for LoadManager {
     async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
         let start = Instant::now();
-        let permit = self.query_semaphore.cheap_clone().acquire_owned().await;
+
+        // Unwrap: The semaphore is never closed.
+        let permit = self
+            .query_semaphore
+            .cheap_clone()
+            .acquire_owned()
+            .await
+            .unwrap();
         self.add_wait_time(start.elapsed());
         permit
     }

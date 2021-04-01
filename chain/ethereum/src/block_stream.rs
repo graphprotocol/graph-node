@@ -654,8 +654,9 @@ impl<S: SubgraphStore, C: ChainStore> Stream for BlockStream<S, C> {
                             // Pause before trying again
                             let secs = (5 * self.consecutive_err_count).max(120) as u64;
                             state = BlockStreamState::RetryAfterDelay(Box::new(
-                                tokio::time::delay_for(Duration::from_secs(secs))
+                                tokio::time::sleep(Duration::from_secs(secs))
                                     .map(Ok)
+                                    .boxed()
                                     .compat(),
                             ));
                             break Err(e);

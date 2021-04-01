@@ -144,13 +144,13 @@ impl SubscriptionManager {
     }
 
     fn periodically_clean_up_stale_subscriptions(&self) {
-        use futures03::stream::StreamExt;
-
         let subscriptions = self.subscriptions.clone();
 
         // Clean up stale subscriptions every 5s
-        graph::spawn(
-            tokio::time::interval(Duration::from_secs(5)).for_each(move |_| {
+        graph::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(5));
+            loop {
+                interval.tick().await;
                 let mut subscriptions = subscriptions.write().unwrap();
 
                 // Obtain IDs of subscriptions whose receiving end has gone
@@ -166,10 +166,8 @@ impl SubscriptionManager {
                 for id in stale_ids {
                     subscriptions.remove(&id);
                 }
-
-                futures03::future::ready(())
-            }),
-        );
+            }
+        });
     }
 }
 

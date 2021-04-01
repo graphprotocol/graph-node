@@ -9,6 +9,7 @@ use crate::{
 };
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{ChainHeadUpdateListener as ChainHeadUpdateListenerTrait, *};
+use graph::tokio_stream::wrappers::WatchStream;
 use graph_chain_ethereum::BlockIngestorMetrics;
 
 lazy_static! {
@@ -93,7 +94,7 @@ impl ChainHeadUpdateListener {
                     futures03::future::ok(Some(update))
                 })
                 .try_for_each(move |update| {
-                    futures03::future::ready(update_sender.broadcast(update).map_err(|_| ()))
+                    futures03::future::ready(update_sender.send(update).map_err(|_| ()))
                 }),
         );
 
@@ -112,8 +113,7 @@ impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
             }
         };
         Box::new(
-            self.update_receiver
-                .clone()
+            WatchStream::new(self.update_receiver.clone())
                 .filter_map(f)
                 .map(Result::<_, ()>::Ok)
                 .boxed()

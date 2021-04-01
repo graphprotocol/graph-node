@@ -16,6 +16,8 @@ pub mod log;
 /// `CheapClone` trait.
 pub mod cheap_clone;
 
+pub mod ipfs_client;
+
 /// Module with mocks for different parts of the system.
 pub mod mock {
     pub use crate::components::ethereum::MockEthereumAdapter;
@@ -32,6 +34,7 @@ pub use bytes;
 pub use prometheus;
 pub use semver;
 pub use stable_hash;
+pub use tokio_stream;
 pub use url;
 
 /// A prelude that makes all system component traits and data types available.

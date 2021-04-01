@@ -183,111 +183,110 @@ impl ElasticDrain {
     }
 
     fn periodically_flush_logs(&self) {
-        use futures03::stream::StreamExt;
-
         let flush_logger = self.error_logger.clone();
         let logs = self.logs.clone();
         let config = self.config.clone();
+        let mut interval = tokio::time::interval(self.config.flush_interval);
 
-        crate::task_spawn::spawn(tokio::time::interval(self.config.flush_interval).for_each(
-            move |_| {
+        crate::task_spawn::spawn(async move {
+            loop {
+                interval.tick().await;
+
                 let logs = logs.clone();
                 let config = config.clone();
                 let flush_logger = flush_logger.clone();
-                async move {
-                    let logs_to_send = {
-                        let mut logs = logs.lock().unwrap();
-                        let logs_to_send = (*logs).clone();
-                        // Clear the logs, so the next batch can be recorded
-                        logs.clear();
-                        logs_to_send
-                    };
+                let logs_to_send = {
+                    let mut logs = logs.lock().unwrap();
+                    let logs_to_send = (*logs).clone();
+                    // Clear the logs, so the next batch can be recorded
+                    logs.clear();
+                    logs_to_send
+                };
 
-                    // Do nothing if there are no logs to flush
-                    if logs_to_send.is_empty() {
-                        return;
-                    }
-
-                    debug!(
-                        flush_logger,
-                        "Flushing {} logs to Elasticsearch",
-                        logs_to_send.len()
-                    );
-
-                    // The Elasticsearch batch API takes requests with the following format:
-                    // ```ignore
-                    // action_and_meta_data\n
-                    // optional_source\n
-                    // action_and_meta_data\n
-                    // optional_source\n
-                    // ```
-                    // For more details, see:
-                    // https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-bulk.html
-                    //
-                    // We're assembly the request body in the same way below:
-                    let batch_body = logs_to_send.iter().fold(String::from(""), |mut out, log| {
-                        // Try to serialize the log itself to a JSON string
-                        match serde_json::to_string(log) {
-                            Ok(log_line) => {
-                                // Serialize the action line to a string
-                                let action_line = json!({
-                                    "index": {
-                                        "_index": config.index,
-                                        "_type": config.document_type,
-                                        "_id": log.id,
-                                    }
-                                })
-                                .to_string();
-
-                                // Combine the two lines with newlines, make sure there is
-                                // a newline at the end as well
-                                out.push_str(format!("{}\n{}\n", action_line, log_line).as_str());
-                            }
-                            Err(e) => {
-                                error!(
-                                    flush_logger,
-                                    "Failed to serialize Elasticsearch log to JSON: {}", e
-                                );
-                            }
-                        };
-
-                        out
-                    });
-
-                    // Build the batch API URL
-                    let mut batch_url = reqwest::Url::parse(config.general.endpoint.as_str())
-                        .expect("invalid Elasticsearch URL");
-                    batch_url.set_path("_bulk");
-
-                    // Send batch of logs to Elasticsearch
-                    let client = Client::new();
-                    let logger_for_err = flush_logger.clone();
-
-                    let header = match config.general.username {
-                        Some(username) => client
-                            .post(batch_url)
-                            .header(CONTENT_TYPE, "application/json")
-                            .basic_auth(username, config.general.password.clone()),
-                        None => client
-                            .post(batch_url)
-                            .header(CONTENT_TYPE, "application/json"),
-                    };
-                    header
-                        .body(batch_body)
-                        .send()
-                        .and_then(|response| async { response.error_for_status() })
-                        .map_ok(|_| ())
-                        .unwrap_or_else(move |e| {
-                            // Log if there was a problem sending the logs
-                            error!(
-                                logger_for_err,
-                                "Failed to send logs to Elasticsearch: {}", e
-                            );
-                        })
-                        .await;
+                // Do nothing if there are no logs to flush
+                if logs_to_send.is_empty() {
+                    return;
                 }
-            },
-        ));
+
+                debug!(
+                    flush_logger,
+                    "Flushing {} logs to Elasticsearch",
+                    logs_to_send.len()
+                );
+
+                // The Elasticsearch batch API takes requests with the following format:
+                // ```ignore
+                // action_and_meta_data\n
+                // optional_source\n
+                // action_and_meta_data\n
+                // optional_source\n
+                // ```
+                // For more details, see:
+                // https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-bulk.html
+                //
+                // We're assembly the request body in the same way below:
+                let batch_body = logs_to_send.iter().fold(String::from(""), |mut out, log| {
+                    // Try to serialize the log itself to a JSON string
+                    match serde_json::to_string(log) {
+                        Ok(log_line) => {
+                            // Serialize the action line to a string
+                            let action_line = json!({
+                                "index": {
+                                    "_index": config.index,
+                                    "_type": config.document_type,
+                                    "_id": log.id,
+                                }
+                            })
+                            .to_string();
+
+                            // Combine the two lines with newlines, make sure there is
+                            // a newline at the end as well
+                            out.push_str(format!("{}\n{}\n", action_line, log_line).as_str());
+                        }
+                        Err(e) => {
+                            error!(
+                                flush_logger,
+                                "Failed to serialize Elasticsearch log to JSON: {}", e
+                            );
+                        }
+                    };
+
+                    out
+                });
+
+                // Build the batch API URL
+                let mut batch_url = reqwest::Url::parse(config.general.endpoint.as_str())
+                    .expect("invalid Elasticsearch URL");
+                batch_url.set_path("_bulk");
+
+                // Send batch of logs to Elasticsearch
+                let client = Client::new();
+                let logger_for_err = flush_logger.clone();
+
+                let header = match config.general.username {
+                    Some(username) => client
+                        .post(batch_url)
+                        .header(CONTENT_TYPE, "application/json")
+                        .basic_auth(username, config.general.password.clone()),
+                    None => client
+                        .post(batch_url)
+                        .header(CONTENT_TYPE, "application/json"),
+                };
+                header
+                    .body(batch_body)
+                    .send()
+                    .and_then(|response| async { response.error_for_status() })
+                    .map_ok(|_| ())
+                    .unwrap_or_else(move |e| {
+                        // Log if there was a problem sending the logs
+                        error!(
+                            logger_for_err,
+                            "Failed to send logs to Elasticsearch: {}", e
+                        );
+                    })
+                    .await;
+            }
+        });
     }
 }
 
