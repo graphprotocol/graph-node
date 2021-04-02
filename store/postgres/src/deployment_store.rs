@@ -1090,8 +1090,14 @@ impl DeploymentStore {
             // as adding new tables in `self`; we only need to check that tables
             // that actually need to be copied from the source are compatible
             // with the corresponding tables in `self`
-            let copy_conn = crate::copy::Connection::new(self.conn.clone());
-            let status = copy_conn.copy_data(logger, src.clone(), dst.clone(), block.clone())?;
+            let copy_conn = crate::copy::Connection::new(
+                logger,
+                self.conn.clone(),
+                src.clone(),
+                dst.clone(),
+                block.clone(),
+            )?;
+            let status = copy_conn.copy_data()?;
             if status == crate::copy::Status::Cancelled {
                 return Ok(());
             }

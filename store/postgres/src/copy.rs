@@ -18,13 +18,18 @@ use std::{
 };
 
 use diesel::{
-    dsl::sql, insert_into, select, sql_query, sql_types::Integer, update, Connection as _,
-    ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl,
+    dsl::sql,
+    insert_into,
+    r2d2::{ConnectionManager, PooledConnection},
+    select, sql_query,
+    sql_types::Integer,
+    update, Connection as _, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
+    RunQueryDsl,
 };
 use graph::{
     components::store::EntityType,
     constraint_violation,
-    prelude::{info, BlockNumber, EthereumBlockPointer, Logger, StoreError},
+    prelude::{info, o, BlockNumber, EthereumBlockPointer, Logger, StoreError},
 };
 
 use crate::primary::{DeploymentId, Site};
@@ -549,20 +554,43 @@ impl<'a> CopyProgress<'a> {
 pub struct Connection {
     /// The connection pool for the shard that will contain the destination
     /// of the copy
-    pool: ConnectionPool,
+    logger: Logger,
+    conn: PooledConnection<ConnectionManager<PgConnection>>,
+    src: Arc<Layout>,
+    dst: Arc<Layout>,
+    target_block: EthereumBlockPointer,
 }
 
 impl Connection {
-    pub fn new(pool: ConnectionPool) -> Self {
-        Self { pool }
+    /// Create a new copy connection. It takes a connection from the
+    /// dedicated fdw pool in `pool`, and releases it only after the entire
+    /// copy has finished, which might take hours or even days. This method
+    /// will block until it was able to get a fdw connection. The overall
+    /// effect is that new copy requests will not start until a connection
+    /// is available.
+    pub fn new(
+        logger: &Logger,
+        pool: ConnectionPool,
+        src: Arc<Layout>,
+        dst: Arc<Layout>,
+        target_block: EthereumBlockPointer,
+    ) -> Result<Self, StoreError> {
+        let logger = logger.new(o!("dst" => dst.site.namespace.to_string()));
+        let conn = pool.get_fdw(&logger)?;
+        Ok(Self {
+            logger,
+            conn,
+            src,
+            dst,
+            target_block,
+        })
     }
 
-    fn transaction<T, F>(&self, logger: &Logger, f: F) -> Result<T, StoreError>
+    fn transaction<T, F>(&self, f: F) -> Result<T, StoreError>
     where
         F: FnOnce(&PgConnection) -> Result<T, StoreError>,
     {
-        let conn = self.pool.get_fdw(logger)?;
-        conn.transaction(|| f(&conn)).map_err(|e| e.into())
+        self.conn.transaction(|| f(&self.conn))
     }
 
     /// Copy the data for the subgraph `src` to the subgraph `dst`. The
@@ -579,23 +607,22 @@ impl Connection {
     /// lower(v1.block_range) => v2.vid > v1.vid` and we can therefore stop
     /// the copying of each table as soon as we hit `max_vid = max { v.vid |
     /// lower(v.block_range) <= target_block.number }`.
-    pub fn copy_data(
-        &self,
-        logger: &Logger,
-        src: Arc<Layout>,
-        dst: Arc<Layout>,
-        target_block: EthereumBlockPointer,
-    ) -> Result<Status, StoreError> {
-        let mut state = self.transaction(logger, |conn| {
-            CopyState::new(conn, src, dst.clone(), target_block)
+    pub fn copy_data(&self) -> Result<Status, StoreError> {
+        let mut state = self.transaction(|conn| {
+            CopyState::new(
+                conn,
+                self.src.clone(),
+                self.dst.clone(),
+                self.target_block.clone(),
+            )
         })?;
 
-        let mut progress = CopyProgress::new(logger, &state);
+        let mut progress = CopyProgress::new(&self.logger, &state);
         progress.start();
 
         for table in state.tables.iter_mut().filter(|table| !table.finished()) {
             while !table.finished() {
-                let status = self.transaction(logger, |conn| table.copy_batch(conn))?;
+                let status = self.transaction(|conn| table.copy_batch(conn))?;
                 if status == Status::Cancelled {
                     return Ok(status);
                 }
@@ -604,7 +631,7 @@ impl Connection {
             progress.table_finished(table);
         }
 
-        self.transaction(logger, |conn| state.finished(conn))?;
+        self.transaction(|conn| state.finished(conn))?;
         progress.finished();
 
         Ok(Status::Finished)
