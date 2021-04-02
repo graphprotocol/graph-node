@@ -9,7 +9,7 @@ use graph::{
         anyhow::{self, anyhow, bail},
         debug, error, info, o,
         tokio::sync::Semaphore,
-        warn, CancelGuard, CancelHandle, CancelToken as _, CancelableError, Counter, Gauge, Logger,
+        CancelGuard, CancelHandle, CancelToken as _, CancelableError, Counter, Gauge, Logger,
         MetricsRegistry, MovingStats, PoolWaitStats, StoreError,
     },
     util::security::SafeDisplay,
@@ -489,10 +489,18 @@ impl ConnectionPool {
     /// Get a connection from the pool for foreign data wrapper access;
     /// since that pool can be very contended, periodically log that we are
     /// still waiting for a connection
-    pub fn get_fdw(
+    ///
+    /// The `timeout` is called every time we time out waiting for a
+    /// connection. If `timeout` returns `true`, `get_fdw` returns with that
+    /// error, otherwise we try again to get a connection.
+    pub fn get_fdw<F>(
         &self,
         logger: &Logger,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, graph::prelude::Error> {
+        mut timeout: F,
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, graph::prelude::Error>
+    where
+        F: FnMut() -> bool,
+    {
         let pool = match &self.fdw_pool {
             Some(pool) => pool,
             None => {
@@ -505,9 +513,11 @@ impl ConnectionPool {
         loop {
             match pool.get() {
                 Ok(conn) => return Ok(conn),
-                Err(e) => warn!(logger, "still trying to get fdw connection";
-                   "detail" => e.to_string(),
-                ),
+                Err(e) => {
+                    if timeout() {
+                        return Err(e.into());
+                    }
+                }
             }
         }
     }

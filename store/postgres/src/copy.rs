@@ -41,7 +41,7 @@ use crate::{relational::Table, relational_queries as rq};
 
 const INITIAL_BATCH_SIZE: i64 = 10_000;
 const TARGET_DURATION: Duration = Duration::from_secs(5 * 60);
-const LOG_INTERVAL: Duration = Duration::from_secs(5 * 60);
+const LOG_INTERVAL: Duration = Duration::from_secs(3 * 60);
 
 table! {
     subgraphs.copy_state(dst) {
@@ -578,7 +578,14 @@ impl Connection {
         target_block: EthereumBlockPointer,
     ) -> Result<Self, StoreError> {
         let logger = logger.new(o!("dst" => dst.site.namespace.to_string()));
-        let conn = pool.get_fdw(&logger)?;
+        let mut last_log = Instant::now();
+        let conn = pool.get_fdw(&logger, || {
+            if last_log.elapsed() > LOG_INTERVAL {
+                info!(&logger, "waiting for other copy operations to finish");
+                last_log = Instant::now();
+            }
+            false
+        })?;
         Ok(Self {
             logger,
             conn,
