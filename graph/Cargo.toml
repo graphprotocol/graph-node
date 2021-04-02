@@ -8,13 +8,13 @@ anyhow = "1.0"
 async-trait = "0.1.48"
 atomic_refcell = "0.1.6"
 bigdecimal = { version = "0.1.0", features = ["serde"] }
-bytes = "1.0"
+bytes = "1.0.1"
 diesel = { version = "1.4.6", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 diesel_derives = "1.4"
-chrono = "0.4"
+chrono = "0.4.19"
 Inflector = "0.11.3"
-isatty = "0.1"
-reqwest = { version = "0.11", features = ["json", "stream", "multipart"] }
+isatty = "0.1.9"
+reqwest = { version = "0.11.2", features = ["json", "stream", "multipart"] }
 
 # master contains changes such as
 # https://github.com/paritytech/ethabi/pull/140, which upstream does not want
@@ -23,18 +23,18 @@ reqwest = { version = "0.11", features = ["json", "stream", "multipart"] }
 # ethabi, but long term we want to find a way to drop our fork.
 ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master" }
 hex = "0.4.3"
-http = "0.2"
+http = "0.2.3"
 futures = "0.1.21"
-graphql-parser = "0.3"
+graphql-parser = "0.3.0"
 lazy_static = "1.4.0"
-mockall = "0.8"
+mockall = "0.8.3"
 num-bigint = { version = "^0.2.6", features = ["serde"] }
 num_cpus = "1.13.0"
-num-traits = "0.2"
+num-traits = "0.2.14"
 rand = "0.6.1"
 semver = "0.10.0"
-serde = { version = "1.0", features = ["rc"] }
-serde_derive = "1.0"
+serde = { version = "1.0.125", features = ["rc"] }
+serde_derive = "1.0.125"
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 serde_yaml = "0.8"
 slog = { version = "2.5.2", features = ["release_max_level_trace", "max_level_trace"] }
@@ -48,14 +48,13 @@ petgraph = "0.5.1"
 tiny-keccak = "1.5.0"
 tokio = { version = "1.4.0", features = ["time", "sync", "macros", "test-util", "rt-multi-thread"] }
 tokio-stream = { version = "0.1.5", features = ["sync"] }
-tokio-retry = "0.3"
+tokio-retry = "0.3.0"
 url = "2.2.1"
 prometheus = "0.12.0"
 priority-queue = "0.7.0"
 futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
-uuid = { version = "0.8.1", features = ["v4"] }
-wasmparser = "0.63.1"
-thiserror = "1.0"
+wasmparser = "0.76.0"
+thiserror = "1.0.24"
 parking_lot = "0.11.1"
 
 # Our fork contains a small but hacky patch.
