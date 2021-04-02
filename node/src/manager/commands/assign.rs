@@ -5,8 +5,12 @@ use graph_store_postgres::SubgraphStore;
 
 use crate::manager::deployment::locate;
 
-pub fn unassign(store: Arc<SubgraphStore>, hash: String) -> Result<(), Error> {
-    let deployment = locate(store.as_ref(), hash)?;
+pub fn unassign(
+    store: Arc<SubgraphStore>,
+    hash: String,
+    shard: Option<String>,
+) -> Result<(), Error> {
+    let deployment = locate(store.as_ref(), hash, shard)?;
 
     println!("unassigning {}", deployment);
     store.writable(&deployment)?.unassign_subgraph()?;
@@ -14,9 +18,14 @@ pub fn unassign(store: Arc<SubgraphStore>, hash: String) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn reassign(store: Arc<SubgraphStore>, hash: String, node: String) -> Result<(), Error> {
+pub fn reassign(
+    store: Arc<SubgraphStore>,
+    hash: String,
+    node: String,
+    shard: Option<String>,
+) -> Result<(), Error> {
     let node = NodeId::new(node.clone()).map_err(|()| anyhow!("illegal node id `{}`", node))?;
-    let deployment = locate(store.as_ref(), hash)?;
+    let deployment = locate(store.as_ref(), hash, shard)?;
 
     println!("reassigning {} to {}", deployment, node.as_str());
     store.reassign_subgraph(&deployment, &node)?;

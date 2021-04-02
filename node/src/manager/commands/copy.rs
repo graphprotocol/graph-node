@@ -49,13 +49,14 @@ struct CopyTableState {
 pub async fn create(
     store: Arc<Store>,
     src: String,
+    src_shard: Option<String>,
     shard: String,
     node: String,
     block_offset: u32,
 ) -> Result<(), Error> {
     let block_offset = block_offset as i32;
     let subgraph_store = store.subgraph_store();
-    let src = deployment::locate(subgraph_store.as_ref(), src)?;
+    let src = deployment::locate(subgraph_store.as_ref(), src, src_shard)?;
     let query_store = store.query_store(src.hash.clone().into(), true).await?;
     let network = query_store.network_name();
 

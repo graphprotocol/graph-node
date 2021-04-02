@@ -4,11 +4,11 @@ use diesel::{sql_types::Text, PgConnection};
 use graph::{
     components::store::DeploymentLocator,
     prelude::{
-        anyhow::{self, bail},
+        anyhow::{self, anyhow, bail},
         Error, SubgraphStore as _,
     },
 };
-use graph_store_postgres::{command_support::catalog as store_catalog, SubgraphStore};
+use graph_store_postgres::{command_support::catalog as store_catalog, Shard, SubgraphStore};
 
 use crate::manager::display::List;
 
@@ -88,20 +88,33 @@ impl Deployment {
     }
 }
 
-pub fn locate(store: &SubgraphStore, hash: String) -> Result<DeploymentLocator, Error> {
-    let locators = store.locators(&hash)?;
+pub fn locate(
+    store: &SubgraphStore,
+    hash: String,
+    shard: Option<String>,
+) -> Result<DeploymentLocator, Error> {
+    fn locate_unique(store: &SubgraphStore, hash: String) -> Result<DeploymentLocator, Error> {
+        let locators = store.locators(&hash)?;
 
-    match locators.len() {
-        0 => {
-            bail!("no matching assignment");
+        match locators.len() {
+            0 => {
+                bail!("no matching assignment");
+            }
+            1 => Ok(locators[0].clone()),
+            _ => {
+                bail!(
+                    "deployment hash `{}` is ambiguous: {} locations found",
+                    hash,
+                    locators.len()
+                );
+            }
         }
-        1 => Ok(locators[0].clone()),
-        _ => {
-            bail!(
-                "deployment hash `{}` is ambiguous: {} locations found",
-                hash,
-                locators.len()
-            );
-        }
+    }
+
+    match shard {
+        Some(shard) => store
+            .locate_in_shard(hash.clone(), Shard::new(shard.clone())?)?
+            .ok_or_else(|| anyhow!("no deployment with hash `{}` in shard {}", hash, shard)),
+        None => locate_unique(store, hash),
     }
 }
