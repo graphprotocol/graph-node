@@ -406,7 +406,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
         let _permit = if !nested_resolver {
             execute_ctx.load_manager.query_permit().await
         } else {
-            // Acquire a dummy semaphore.
+            // Acquire a dummy semaphore. Unwrap: a semaphore that was just created can be acquired.
             Arc::new(tokio::sync::Semaphore::new(1))
                 .acquire_owned()
                 .await

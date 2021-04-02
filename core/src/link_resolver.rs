@@ -186,7 +186,7 @@ impl LinkResolverTrait for LinkResolver {
 
         let (stat, client) = select_fastest_client_with_stat(
             self.clients.cheap_clone(),
-            logger.clone(),
+            logger.cheap_clone(),
             path.clone(),
             self.timeout,
             self.retry,
@@ -243,7 +243,7 @@ impl LinkResolverTrait for LinkResolver {
 
         let (stat, client) = select_fastest_client_with_stat(
             self.clients.cheap_clone(),
-            logger.clone(),
+            logger.cheap_clone(),
             path.to_string(),
             self.timeout,
             self.retry,
