@@ -383,7 +383,7 @@ impl TableState {
     }
 
     fn record_progress(
-        &self,
+        &mut self,
         conn: &PgConnection,
         elapsed: Duration,
         first_batch: bool,
@@ -392,8 +392,7 @@ impl TableState {
 
         // This conversion will become a problem if a copy takes longer than
         // 300B years
-        let elapsed = i64::try_from(elapsed.as_millis()).unwrap_or(0);
-        let duration_ms = self.duration_ms + elapsed;
+        self.duration_ms += i64::try_from(elapsed.as_millis()).unwrap_or(0);
 
         if first_batch {
             // Reset started_at so that finished_at - started_at is an
@@ -409,7 +408,7 @@ impl TableState {
         let values = (
             cts::next_vid.eq(self.next_vid),
             cts::batch_size.eq(self.batch_size),
-            cts::duration_ms.eq(duration_ms),
+            cts::duration_ms.eq(self.duration_ms),
         );
         update(
             cts::table
