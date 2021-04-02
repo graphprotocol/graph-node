@@ -32,7 +32,10 @@ use graph::{
     prelude::{info, o, BlockNumber, EthereumBlockPointer, Logger, StoreError},
 };
 
-use crate::primary::{DeploymentId, Site};
+use crate::{
+    advisory_lock,
+    primary::{DeploymentId, Site},
+};
 use crate::{connection_pool::ConnectionPool, relational::Layout};
 use crate::{relational::Table, relational_queries as rq};
 
@@ -593,21 +596,7 @@ impl Connection {
         self.conn.transaction(|| f(&self.conn))
     }
 
-    /// Copy the data for the subgraph `src` to the subgraph `dst`. The
-    /// schema for both subgraphs must have already been set up. The
-    /// `target_block` must be far enough behind the chain head so that the
-    /// block is guaranteed to not be subject to chain reorgs. All data up
-    /// to and including `target_block` will be copied.
-    ///
-    /// The copy logic makes heavy use of the fact that the `vid` and
-    /// `block_range` of entity versions are related since for two entity
-    /// versions `v1` and `v2` such that `v1.vid <= v2.vid`, we know that
-    /// `lower(v1.block_range) <= lower(v2.block_range)`. Conversely,
-    /// therefore, we have that `lower(v2.block_range) >
-    /// lower(v1.block_range) => v2.vid > v1.vid` and we can therefore stop
-    /// the copying of each table as soon as we hit `max_vid = max { v.vid |
-    /// lower(v.block_range) <= target_block.number }`.
-    pub fn copy_data(&self) -> Result<Status, StoreError> {
+    pub fn copy_data_internal(&self) -> Result<Status, StoreError> {
         let mut state = self.transaction(|conn| {
             CopyState::new(
                 conn,
@@ -635,5 +624,38 @@ impl Connection {
         progress.finished();
 
         Ok(Status::Finished)
+    }
+
+    /// Copy the data for the subgraph `src` to the subgraph `dst`. The
+    /// schema for both subgraphs must have already been set up. The
+    /// `target_block` must be far enough behind the chain head so that the
+    /// block is guaranteed to not be subject to chain reorgs. All data up
+    /// to and including `target_block` will be copied.
+    ///
+    /// The copy logic makes heavy use of the fact that the `vid` and
+    /// `block_range` of entity versions are related since for two entity
+    /// versions `v1` and `v2` such that `v1.vid <= v2.vid`, we know that
+    /// `lower(v1.block_range) <= lower(v2.block_range)`. Conversely,
+    /// therefore, we have that `lower(v2.block_range) >
+    /// lower(v1.block_range) => v2.vid > v1.vid` and we can therefore stop
+    /// the copying of each table as soon as we hit `max_vid = max { v.vid |
+    /// lower(v.block_range) <= target_block.number }`.
+    pub fn copy_data(&self) -> Result<Status, StoreError> {
+        // We require sole access to the destination site, and that we get a
+        // consistent view of what has been copied so far. In general, that
+        // is always true. It can happen though that this function runs when
+        // a query for copying from a previous run of graph-node is still in
+        // progress. Since each transaction during copying takes a very long
+        // time, it might take several minutes for Postgres to notice that
+        // the old process has been terminated. The locking strategy here
+        // ensures that we wait until that has happened.
+        info!(
+            &self.logger,
+            "Obtaining copy lock (this might take a long time if another process is still copying)"
+        );
+        advisory_lock::lock_copying(&self.conn, self.dst.site.as_ref())?;
+        let res = self.copy_data_internal();
+        advisory_lock::unlock_copying(&self.conn, self.dst.site.as_ref())?;
+        res
     }
 }
