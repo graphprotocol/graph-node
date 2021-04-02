@@ -1,4 +1,4 @@
-use diesel::{connection::SimpleConnection, pg::PgConnection, sql_query, RunQueryDsl};
+use diesel::{connection::SimpleConnection, pg::PgConnection};
 use diesel::{
     r2d2::{self, event as e, ConnectionManager, HandleEvent, Pool, PooledConnection},
     Connection,
@@ -22,6 +22,7 @@ use std::{collections::HashMap, sync::RwLock};
 
 use postgres::config::{Config, Host};
 
+use crate::advisory_lock;
 use crate::{Shard, PRIMARY_SHARD};
 
 pub struct ForeignServer {
@@ -523,12 +524,6 @@ impl ConnectionPool {
     ///
     /// If any errors happen during the migration, the process panics
     pub async fn setup(&self, servers: Arc<Vec<ForeignServer>>) {
-        #[derive(QueryableByName)]
-        struct LockResult {
-            #[sql_type = "diesel::sql_types::Bool"]
-            migrate: bool,
-        }
-
         let pool = self.clone();
         self.with_conn(move |conn, _| {
             // Get an advisory session-level lock. The graph-node process
@@ -539,10 +534,8 @@ impl ConnectionPool {
             // lucky ones that should run the migration, and one that blocks
             // every process that is not running migrations until the
             // migration is finished
-            let lock = sql_query("select pg_try_advisory_lock(1) as migrate, pg_advisory_lock(2)")
-                .get_result::<LockResult>(conn)
-                .expect("we can try to get advisory locks 1 and 2");
-            let result = if lock.migrate {
+            let migrate = advisory_lock::lock_migration(conn);
+            let result = if migrate {
                 pool.configure_fdw(servers.as_ref())
                     .and_then(|_| migrate_schema(&pool.logger, conn))
                     .and_then(|_| pool.map_primary())
@@ -550,9 +543,7 @@ impl ConnectionPool {
             } else {
                 Ok(())
             };
-            sql_query("select pg_advisory_unlock(1), pg_advisory_unlock(2)")
-                .execute(conn)
-                .expect("we can unlock the advisory locks");
+            advisory_lock::unlock_migration(conn);
             result.expect("migration succeeds");
             Ok(())
         })

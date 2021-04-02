@@ -23,6 +23,7 @@ extern crate postgres;
 extern crate serde;
 extern crate uuid;
 
+mod advisory_lock;
 mod block_range;
 mod block_store;
 mod catalog;
