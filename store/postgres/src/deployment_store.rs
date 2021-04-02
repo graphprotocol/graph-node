@@ -1099,7 +1099,7 @@ impl DeploymentStore {
             )?;
             let status = copy_conn.copy_data()?;
             if status == crate::copy::Status::Cancelled {
-                return Ok(());
+                return Err(StoreError::Canceled);
             }
 
             let conn = self.get_conn()?;

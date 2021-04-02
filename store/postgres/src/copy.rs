@@ -29,7 +29,7 @@ use diesel::{
 use graph::{
     components::store::EntityType,
     constraint_violation,
-    prelude::{info, o, BlockNumber, EthereumBlockPointer, Logger, StoreError},
+    prelude::{info, o, warn, BlockNumber, EthereumBlockPointer, Logger, StoreError},
 };
 
 use crate::{
@@ -437,11 +437,18 @@ impl TableState {
         fn is_cancelled(dst: &Site, conn: &PgConnection) -> Result<bool, StoreError> {
             use active_copies as ac;
 
-            ac::table
+            let canceled = ac::table
                 .filter(ac::dst.eq(dst.id))
                 .select(ac::cancelled_at.is_not_null())
-                .get_result::<bool>(conn)
-                .map_err(|e| e.into())
+                .get_result::<bool>(conn)?;
+            if canceled {
+                use copy_state as cs;
+
+                update(cs::table.filter(cs::dst.eq(dst.id)))
+                    .set(cs::cancelled_at.eq(sql("now()")))
+                    .execute(conn)?;
+            }
+            Ok(canceled)
         }
 
         let start = Instant::now();
@@ -662,6 +669,9 @@ impl Connection {
         advisory_lock::lock_copying(&self.conn, self.dst.site.as_ref())?;
         let res = self.copy_data_internal();
         advisory_lock::unlock_copying(&self.conn, self.dst.site.as_ref())?;
+        if matches!(res, Ok(Status::Cancelled)) {
+            warn!(&self.logger, "Copying was cancelled and is incomplete");
+        }
         res
     }
 }
