@@ -5,7 +5,7 @@ edition = "2018"
 
 [dependencies]
 async-trait = "0.1.48"
-atomic_refcell = "0.1.6"
+atomic_refcell = "0.1.7"
 ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master" }
 futures = "0.1.21"
 hex = "0.4.3"

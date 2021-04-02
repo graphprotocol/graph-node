@@ -5,7 +5,7 @@ edition = "2018"
 
 [dependencies]
 async-trait = "0.1.48"
-atomic_refcell = "0.1.6"
+atomic_refcell = "0.1.7"
 bytes = "0.5"
 futures01 = { package="futures", version="0.1.29" }
 futures = { version="0.3.4", features=["compat"] }
