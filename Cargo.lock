@@ -266,7 +266,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "hex",
- "http 0.2.1",
+ "http 0.2.3",
  "hyper 0.14.4",
  "hyper-unix-connector",
  "log 0.4.11",
@@ -596,7 +596,7 @@ dependencies = [
  "serde",
  "smallvec 1.6.1",
  "thiserror",
- "wasmparser 0.76.0",
+ "wasmparser",
 ]
 
 [[package]]
@@ -1528,7 +1528,7 @@ dependencies = [
  "futures 0.3.13",
  "graphql-parser",
  "hex",
- "http 0.2.1",
+ "http 0.2.3",
  "isatty",
  "lazy_static",
  "maplit",
@@ -1562,8 +1562,7 @@ dependencies = [
  "tokio-retry",
  "tokio-stream",
  "url 2.2.1",
- "uuid 0.8.1",
- "wasmparser 0.63.1",
+ "wasmparser",
  "web3",
 ]
 
@@ -1611,7 +1610,6 @@ dependencies = [
  "futures 0.1.30",
  "futures 0.3.13",
  "graph",
- "graph-graphql",
  "graph-mock",
  "graphql-parser",
  "hex",
@@ -1644,7 +1642,6 @@ dependencies = [
  "pretty_assertions",
  "stable-hash",
  "test-store",
- "uuid 0.8.1",
 ]
 
 [[package]]
@@ -1741,7 +1738,7 @@ dependencies = [
  "graph-graphql",
  "graph-mock",
  "graphql-parser",
- "http 0.2.1",
+ "http 0.2.3",
  "hyper 0.14.4",
  "serde",
 ]
@@ -1754,7 +1751,7 @@ dependencies = [
  "graph",
  "graph-graphql",
  "graphql-parser",
- "http 0.2.1",
+ "http 0.2.3",
  "hyper 0.14.4",
  "serde",
 ]
@@ -1775,7 +1772,7 @@ version = "0.22.0"
 dependencies = [
  "futures 0.1.30",
  "graph",
- "http 0.2.1",
+ "http 0.2.3",
  "hyper 0.14.4",
  "lazy_static",
  "serde",
@@ -1789,7 +1786,7 @@ dependencies = [
  "futures 0.1.30",
  "graph",
  "graphql-parser",
- "http 0.2.1",
+ "http 0.2.3",
  "lazy_static",
  "serde",
  "serde_derive",
@@ -1881,7 +1878,7 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "futures-util",
- "http 0.2.1",
+ "http 0.2.3",
  "indexmap",
  "slab 0.4.2",
  "tokio 1.4.0",
@@ -1948,11 +1945,11 @@ dependencies = [
 
 [[package]]
 name = "http"
-version = "0.2.1"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28d569972648b2c512421b5f2a405ad6ac9666547189d0c5477a3f200f3e02f9"
+checksum = "7245cd7449cc792608c3c8a9eaf69bd4eabbabf802713748fd739c98b82f0747"
 dependencies = [
- "bytes 0.5.6",
+ "bytes 1.0.1",
  "fnv",
  "itoa",
 ]
@@ -1976,7 +1973,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2861bd27ee074e5ee891e8b539837a9430012e249d7f0ca2d795650f579c1994"
 dependencies = [
  "bytes 1.0.1",
- "http 0.2.1",
+ "http 0.2.3",
 ]
 
 [[package]]
@@ -2066,7 +2063,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "h2 0.3.1",
- "http 0.2.1",
+ "http 0.2.3",
  "http-body 0.4.0",
  "httparse",
  "httpdate",
@@ -3566,7 +3563,7 @@ dependencies = [
  "encoding_rs",
  "futures-core",
  "futures-util",
- "http 0.2.1",
+ "http 0.2.3",
  "http-body 0.4.0",
  "hyper 0.14.4",
  "hyper-tls 0.5.0",
@@ -3801,18 +3798,18 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 
 [[package]]
 name = "serde"
-version = "1.0.117"
+version = "1.0.125"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b88fa983de7720629c9387e9f517353ed404164b1e482c970a90c1a4aaf7dc1a"
+checksum = "558dc50e1a5a5fa7112ca2ce4effcb321b0300c0d4ccf0776a9f60cd89031171"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.117"
+version = "1.0.125"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbd1ae72adb44aab48f325a02444a5fc079349a8d804c1fc922aed3f7454c74e"
+checksum = "b093b7a2bb58203b5da3056c05b4ec1fed827dcfdb37347a8841695263b3d06d"
 dependencies = [
  "proc-macro2 1.0.24",
  "quote 1.0.7",
@@ -4771,7 +4768,7 @@ dependencies = [
  "base64 0.13.0",
  "byteorder",
  "bytes 1.0.1",
- "http 0.2.1",
+ "http 0.2.3",
  "httparse",
  "input_buffer",
  "log 0.4.11",
@@ -5072,12 +5069,6 @@ checksum = "1d649a3145108d7d3fbcde896a468d1bd636791823c9921135218ad89be08307"
 
 [[package]]
 name = "wasmparser"
-version = "0.63.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89e4bce139034f66d49ad6071f6eda10f7188b0ad3cbfe080d673535ee30c23e"
-
-[[package]]
-name = "wasmparser"
 version = "0.76.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "755a9a4afe3f6cccbbe6d7e965eef44cf260b001f93e547eba84255c1d0187d8"
@@ -5102,7 +5093,7 @@ dependencies = [
  "serde",
  "smallvec 1.6.1",
  "target-lexicon",
- "wasmparser 0.76.0",
+ "wasmparser",
  "wasmtime-cache",
  "wasmtime-environ",
  "wasmtime-fiber",
@@ -5144,7 +5135,7 @@ dependencies = [
  "cranelift-entity",
  "cranelift-frontend",
  "cranelift-wasm",
- "wasmparser 0.76.0",
+ "wasmparser",
  "wasmtime-environ",
 ]
 
@@ -5160,7 +5151,7 @@ dependencies = [
  "object 0.23.0",
  "target-lexicon",
  "thiserror",
- "wasmparser 0.76.0",
+ "wasmparser",
  "wasmtime-environ",
 ]
 
@@ -5182,7 +5173,7 @@ dependencies = [
  "region",
  "serde",
  "thiserror",
- "wasmparser 0.76.0",
+ "wasmparser",
 ]
 
 [[package]]
@@ -5219,7 +5210,7 @@ dependencies = [
  "serde",
  "target-lexicon",
  "thiserror",
- "wasmparser 0.76.0",
+ "wasmparser",
  "wasmtime-cranelift",
  "wasmtime-debug",
  "wasmtime-environ",
