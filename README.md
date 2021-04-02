@@ -17,7 +17,7 @@ To build and run this project you need to have the following installed on your s
 
 - Rust (latest stable) – [How to install Rust](https://www.rust-lang.org/en-US/install.html)
 - PostgreSQL – [PostgreSQL Downloads](https://www.postgresql.org/download/)
-- IPFS – [Installing IPFS](https://docs.ipfs.io/install/) (currently only [v0.4.x](https://github.com/ipfs/go-ipfs/releases/tag/v0.4.23) is supported)
+- IPFS – [Installing IPFS](https://docs.ipfs.io/install/)
 
 For Ethereum network data, you can either run your own Ethereum node or use an Ethereum node provider of your choice.
 

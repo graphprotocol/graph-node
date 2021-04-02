@@ -4,6 +4,7 @@
 
 - The `GRAPH_ETH_CALL_BY_NUMBER` environment variable has been removed. Graph Node requires an
   Ethereum client that support EIP-1898, which all major clients support.
+- Added support for IPFS versions larger than 0.4.
 
 ## 0.22.0
 
