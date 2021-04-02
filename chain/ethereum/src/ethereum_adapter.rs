@@ -79,6 +79,17 @@ lazy_static! {
 
     /// Log eth_call data and target address at trace level. Turn on for debugging.
     static ref ETH_CALL_FULL_LOG: bool = std::env::var("GRAPH_ETH_CALL_FULL_LOG").is_ok();
+
+    /// Gas limit for `eth_call`. The value of 25_000_000 is a protocol-wide parameter so this
+    /// should be changed only for debugging purposes and never on an indexer in the network. The
+    /// value of 25_000_000 was chosen because it is the Geth default
+    /// https://github.com/ethereum/go-ethereum/blob/54c0d573d75ab9baa239db3f071d6cb4d1ec6aad/eth/ethconfig/config.go#L86.
+    /// It is not safe to set something higher because Geth will silently override the gas limit
+    /// with the default. This means that we do not support indexing against a Geth node with
+    /// `RPCGasCap` set below 25 million.
+    static ref ETH_CALL_GAS: u32 = std::env::var("GRAPH_ETH_CALL_GAS")
+                                    .map(|s| s.parse::<u32>().expect("invalid GRAPH_ETH_CALL_GAS env var"))
+                                    .unwrap_or(25_000_000);
 }
 
 impl<T: web3::Transport> CheapClone for EthereumAdapter<T> {
@@ -439,7 +450,7 @@ where
                 let req = CallRequest {
                     from: None,
                     to: contract_address,
-                    gas: None,
+                    gas: Some(web3::types::U256::from(*ETH_CALL_GAS)),
                     gas_price: None,
                     value: None,
                     data: Some(call_data.clone()),
