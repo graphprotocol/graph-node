@@ -1,11 +1,11 @@
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
+use diesel::{ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, RunQueryDsl};
 use std::{collections::HashMap, sync::Arc, time::SystemTime};
 
 use graph::{
     components::store::BlockStore as _,
     prelude::{
         anyhow::{anyhow, bail, Error},
-        chrono::{DateTime, Duration, Utc},
+        chrono::{DateTime, Duration, SecondsFormat, Utc},
         ChainStore, EthereumBlockPointer, NodeId, QueryStoreManager,
     },
 };
@@ -44,6 +44,34 @@ struct CopyTableState {
     started_at: UtcDateTime,
     finished_at: Option<UtcDateTime>,
     duration_ms: i64,
+}
+
+impl CopyState {
+    fn find(
+        pools: &HashMap<Shard, ConnectionPool>,
+        shard: &Shard,
+        dst: i32,
+    ) -> Result<Option<(CopyState, Vec<CopyTableState>)>, Error> {
+        use copy_state as cs;
+        use copy_table_state as cts;
+
+        let dpool = pools
+            .get(shard)
+            .ok_or_else(|| anyhow!("can not find pool for shard {}", shard))?;
+
+        let dconn = dpool.get()?;
+
+        let tables = cts::table
+            .filter(cts::dst.eq(dst))
+            .order_by(cts::entity_type)
+            .load::<CopyTableState>(&dconn)?;
+
+        Ok(cs::table
+            .filter(cs::dst.eq(dst))
+            .get_result::<CopyState>(&dconn)
+            .optional()?
+            .map(|state| (state, tables)))
+    }
 }
 
 pub async fn create(
@@ -112,22 +140,59 @@ pub fn activate(store: Arc<SubgraphStore>, deployment: String, shard: String) ->
     Ok(())
 }
 
-pub fn list(pool: ConnectionPool) -> Result<(), Error> {
+pub fn list(pools: HashMap<Shard, ConnectionPool>) -> Result<(), Error> {
     use catalog::active_copies as ac;
+    use catalog::deployment_schemas as ds;
 
-    let conn = pool.get()?;
+    let primary = pools.get(&*PRIMARY_SHARD).expect("there is a primary pool");
+    let conn = primary.get()?;
 
     let copies = ac::table
-        .select((ac::src, ac::dst, ac::cancelled_at))
-        .load::<(i32, i32, Option<UtcDateTime>)>(&conn)?;
+        .inner_join(ds::table.on(ds::id.eq(ac::dst)))
+        .select((
+            ac::src,
+            ac::dst,
+            ac::cancelled_at,
+            ac::queued_at,
+            ds::subgraph,
+            ds::shard,
+        ))
+        .load::<(i32, i32, Option<UtcDateTime>, UtcDateTime, String, Shard)>(&conn)?;
     if copies.is_empty() {
         println!("no active copies");
     } else {
-        for (src, dst, cancelled_at) in copies {
-            let cancelled_at = cancelled_at
-                .map(|d| d.format("%c").to_string())
-                .unwrap_or("active".to_string());
-            println!("{:4} {:4} {}", src, dst, cancelled_at);
+        fn status(name: &str, at: UtcDateTime) {
+            println!(
+                "{:20} | {}",
+                name,
+                at.to_rfc3339_opts(SecondsFormat::Secs, false)
+            );
+        }
+
+        for (src, dst, cancelled_at, queued_at, deployment_hash, shard) in copies {
+            println!("{:-<78}", "");
+
+            println!("{:20} | {}", "deployment", deployment_hash);
+            println!("{:20} | sgd{} -> sgd{} ({})", "action", src, dst, shard);
+            match CopyState::find(&pools, &shard, dst)? {
+                Some((state, tables)) => match cancelled_at {
+                    Some(cancel_requested) => match state.cancelled_at {
+                        Some(cancelled_at) => status("cancelled", cancelled_at),
+                        None => status("cancel requested", cancel_requested),
+                    },
+                    None => match state.finished_at {
+                        Some(finished_at) => status("finished", finished_at),
+                        None => {
+                            let target: i64 = tables.iter().map(|table| table.target_vid).sum();
+                            let next: i64 = tables.iter().map(|table| table.next_vid).sum();
+                            let done = next as f64 / target as f64 * 100.0;
+                            status("started", state.started_at);
+                            println!("{:20} | {:.2}% done, {}/{}", "progress", done, next, target)
+                        }
+                    },
+                },
+                None => status("queued", queued_at),
+            };
         }
     }
     Ok(())
@@ -135,8 +200,6 @@ pub fn list(pool: ConnectionPool) -> Result<(), Error> {
 
 pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: i32) -> Result<(), Error> {
     use catalog::active_copies as ac;
-    use catalog::copy_state as cs;
-    use catalog::copy_table_state as cts;
     use catalog::deployment_schemas as ds;
 
     fn done(ts: &Option<UtcDateTime>) -> String {
@@ -168,14 +231,10 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: i32) -> Result<(), Err
         .ok_or_else(|| anyhow!("can not find deployment with id {}", dst))?;
     let pconn = primary.get()?;
 
-    let shard = ds::table
+    let (shard, deployment) = ds::table
         .filter(ds::id.eq(dst as i32))
-        .select(ds::shard)
-        .get_result::<Shard>(&pconn)?;
-    let dpool = pools
-        .get(&shard)
-        .ok_or_else(|| anyhow!("can not find pool for shard {}", shard))?;
-    let dconn = dpool.get()?;
+        .select((ds::shard, ds::subgraph))
+        .get_result::<(Shard, String)>(&pconn)?;
 
     let (active, cancelled_at) = ac::table
         .filter(ac::dst.eq(dst))
@@ -185,13 +244,8 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: i32) -> Result<(), Err
         .map(|(_, cancelled_at)| (true, cancelled_at))
         .unwrap_or((false, None));
 
-    let state = cs::table
-        .filter(cs::dst.eq(dst))
-        .get_result::<CopyState>(&dconn)
-        .optional()?;
-
-    let state = match state {
-        Some(state) => state,
+    let (state, tables) = match CopyState::find(&pools, &shard, dst)? {
+        Some((state, tables)) => (state, tables),
         None => {
             if active {
                 println!("copying is queued but has not started");
@@ -202,13 +256,16 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: i32) -> Result<(), Err
         }
     };
 
-    let tables = cts::table
-        .filter(cts::dst.eq(dst))
-        .order_by(cts::entity_type)
-        .load::<CopyTableState>(&dconn)?;
-
-    let mut lst = vec!["src", "dst", "target block", "duration", "status"];
+    let mut lst = vec![
+        "deployment",
+        "src",
+        "dst",
+        "target block",
+        "duration",
+        "status",
+    ];
     let mut vals = vec![
+        deployment,
         state.src.to_string(),
         state.dst.to_string(),
         state.target_block_number.to_string(),

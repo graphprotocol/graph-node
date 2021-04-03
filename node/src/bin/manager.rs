@@ -436,7 +436,7 @@ async fn main() {
                 Activate { deployment, shard } => {
                     commands::copy::activate(ctx.subgraph_store(), deployment, shard)
                 }
-                List => commands::copy::list(ctx.primary_pool()),
+                List => commands::copy::list(ctx.pools()),
                 Status { dst } => commands::copy::status(ctx.pools(), dst),
             }
         }
