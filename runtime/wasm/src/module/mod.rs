@@ -427,73 +427,53 @@ impl WasmInstance {
 
         for module in modules {
             let func_shared_ctx = Rc::downgrade(&shared_ctx);
-            let valid_module = valid_module.cheap_clone();
-            let host_metrics = host_metrics.cheap_clone();
-            let timeout_stopwatch = timeout_stopwatch.cheap_clone();
-            let ctx = ctx.cheap_clone();
-            linker.func(
-                module,
-                "ethereum.call",
-                move |caller: wasmtime::Caller, call_ptr: u32| {
-                    let start = Instant::now();
-                    let instance = func_shared_ctx.upgrade().unwrap();
-                    let mut instance = instance.borrow_mut();
+            linker.func(module, "ethereum.call", move |call_ptr: u32| {
+                let start = Instant::now();
+                let instance = func_shared_ctx.upgrade().unwrap();
+                let mut instance = instance.borrow_mut();
+
+                let instance = match &mut *instance {
+                    Some(instance) => instance,
 
                     // Happens when calling a host fn in Wasm start.
-                    if instance.is_none() {
-                        error!(
-                            ctx.borrow().as_ref().unwrap().logger,
-                            "contract calls in globals are deprecated"
-                        );
-
-                        *instance = Some(
-                            WasmInstanceContext::from_caller(
-                                caller,
-                                ctx.borrow_mut().take().unwrap(),
-                                valid_module.cheap_clone(),
-                                host_metrics.cheap_clone(),
-                                timeout,
-                                timeout_stopwatch.cheap_clone(),
-                                experimental_features.clone(),
-                            )
-                            .unwrap(),
+                    None => {
+                        return Err(
+                            anyhow!("ethereum.call is not allowed in global variables").into()
                         )
                     }
+                };
 
-                    let instance = instance.as_mut().unwrap();
-                    let stopwatch = &instance.host_metrics.stopwatch;
-                    let _section = stopwatch.start_section("host_export_ethereum_call");
+                let stopwatch = &instance.host_metrics.stopwatch;
+                let _section = stopwatch.start_section("host_export_ethereum_call");
 
-                    // For apiVersion >= 0.0.4 the call passed from the mapping includes the
-                    // function signature; subgraphs using an apiVersion < 0.0.4 don't pass
-                    // the the signature along with the call.
-                    let arg = if instance.ctx.host_exports.api_version >= Version::new(0, 0, 4) {
-                        instance.asc_get::<_, AscUnresolvedContractCall_0_0_4>(call_ptr.into())
-                    } else {
-                        instance.asc_get::<_, AscUnresolvedContractCall>(call_ptr.into())
-                    }
-                    .map_err(|e| {
-                        instance.deterministic_host_trap = true;
-                        e.0
-                    })?;
+                // For apiVersion >= 0.0.4 the call passed from the mapping includes the
+                // function signature; subgraphs using an apiVersion < 0.0.4 don't pass
+                // the the signature along with the call.
+                let arg = if instance.ctx.host_exports.api_version >= Version::new(0, 0, 4) {
+                    instance.asc_get::<_, AscUnresolvedContractCall_0_0_4>(call_ptr.into())
+                } else {
+                    instance.asc_get::<_, AscUnresolvedContractCall>(call_ptr.into())
+                }
+                .map_err(|e| {
+                    instance.deterministic_host_trap = true;
+                    e.0
+                })?;
 
-                    let ret = instance
-                        .ethereum_call(arg)
-                        .map_err(|e| match e {
-                            HostExportError::Deterministic(e) => {
-                                instance.deterministic_host_trap = true;
-                                e
-                            }
-                            HostExportError::Unknown(e) => e,
-                        })?
-                        .wasm_ptr();
-                    instance.host_metrics.observe_host_fn_execution_time(
-                        start.elapsed().as_secs_f64(),
-                        "ethereum_call",
-                    );
-                    Ok(ret)
-                },
-            )?;
+                let ret = instance
+                    .ethereum_call(arg)
+                    .map_err(|e| match e {
+                        HostExportError::Deterministic(e) => {
+                            instance.deterministic_host_trap = true;
+                            e
+                        }
+                        HostExportError::Unknown(e) => e,
+                    })?
+                    .wasm_ptr();
+                instance
+                    .host_metrics
+                    .observe_host_fn_execution_time(start.elapsed().as_secs_f64(), "ethereum_call");
+                Ok(ret)
+            })?;
         }
 
         link!("abort", abort, message_ptr, file_name_ptr, line, column);
