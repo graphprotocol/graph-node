@@ -419,7 +419,7 @@ impl ChainSection {
 
                 let (features, url_str) = rest.split_at(colon);
                 let (url, features) = if vec!["http", "https", "ws", "wss"].contains(&features) {
-                    (rest, PROVIDER_FEATURES.to_vec())
+                    (rest, DEFAULT_PROVIDER_FEATURES.to_vec())
                 } else {
                     (&url_str[1..], features.split(',').collect())
                 };
@@ -469,6 +469,7 @@ pub struct Provider {
 }
 
 const PROVIDER_FEATURES: [&str; 3] = ["traces", "archive", "no_eip1898"];
+const DEFAULT_PROVIDER_FEATURES: [&str; 2] = ["traces", "archive"];
 
 impl Provider {
     fn validate(&self) -> Result<()> {
