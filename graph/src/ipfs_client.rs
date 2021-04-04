@@ -2,6 +2,7 @@ use crate::prelude::CheapClone;
 use anyhow::Error;
 use bytes::Bytes;
 use futures03::Stream;
+use http::header::CONTENT_LENGTH;
 use http::Uri;
 use reqwest::multipart;
 use serde::Deserialize;
@@ -105,6 +106,9 @@ impl IpfsClient {
         let mut req = self.client.post(&url);
         if let Some(form) = form {
             req = req.multipart(form);
+        } else {
+            // Some servers require `content-length` even for an empty body.
+            req = req.header(CONTENT_LENGTH, 0);
         }
         req.send()
             .await
