@@ -598,7 +598,7 @@ impl<S: SubgraphStore, C: ChainStore> Stream for BlockStream<S, C> {
                                 // Reduce the max range size by 10%, but to no less than 10.
                                 self.ctx.max_block_range_size =
                                     (self.ctx.max_block_range_size * 9 / 10).max(10);
-                                info!(
+                                debug!(
                                     self.ctx.logger,
                                     "Maximum range size reduced to {}",
                                     self.ctx.max_block_range_size
