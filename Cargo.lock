@@ -990,15 +990,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dirs"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "142995ed02755914747cc6ca76fc7e4583cd18578746716d0508ea6ed558b9ff"
-dependencies = [
- "dirs-sys",
-]
-
-[[package]]
 name = "dirs-next"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1588,7 +1579,7 @@ dependencies = [
  "chrono",
  "config",
  "diesel",
- "dirs 3.0.1",
+ "dirs-next",
  "fail",
  "futures 0.1.30",
  "graph",
@@ -3929,11 +3920,11 @@ dependencies = [
 
 [[package]]
 name = "shellexpand"
-version = "2.0.0"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a2b22262a9aaf9464d356f656fea420634f78c881c5eebd5ef5e66d8b9bc603"
+checksum = "83bdb7831b2d85ddf4a7b148aa19d0587eddbe8671a436b7bd1182eaad0f2829"
 dependencies = [
- "dirs 2.0.2",
+ "dirs-next",
 ]
 
 [[package]]
@@ -4255,7 +4246,7 @@ version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c0863a3345e70f61d613eab32ee046ccd1bcc5f9105fe402c61fcd0c13eeb8b5"
 dependencies = [
- "dirs 2.0.2",
+ "dirs",
  "winapi 0.3.9",
 ]
 
