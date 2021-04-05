@@ -6,6 +6,8 @@ use serde::{Deserialize, Deserializer};
 
 use graph::prelude::*;
 
+use dirs_next as dirs;
+
 fn deserialize_http_headers<'de, D>(deserializer: D) -> Result<HeaderMap, D::Error>
 where
     D: Deserializer<'de>,
