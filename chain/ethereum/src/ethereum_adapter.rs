@@ -449,20 +449,12 @@ where
                     data: Some(call_data.clone()),
                 };
                 web3.eth().call(req, Some(block_id)).then(|result| {
-                    // Try to check if the call was reverted. The JSON-RPC response for
-                    // reverts is not standardized, the current situation for the tested
-                    // clients is:
-                    //
-                    // - Parity returns a reliable RPC error response for reverts.
-                    // - Ganache also returns a reliable RPC error.
-                    // - Geth now also returns an RPC error. It used to return `0x` on a
-                    //   revert with no reason string, or a Solidity encoded `Error(string)`
-                    //   call from `revert` and `require` calls with a reason string. We
-                    //   still have support for those but that can be removed on the next
-                    //   hard fork (Berlin).
+                    // Try to check if the call was reverted. The JSON-RPC response for reverts is
+                    // not standardized, so we have ad-hoc checks for each of Geth, Parity and
+                    // Ganache.
 
-                    // 0xfe is the "designated bad instruction" of the EVM, and Solidity
-                    // uses it for asserts.
+                    // 0xfe is the "designated bad instruction" of the EVM, and Solidity uses it for
+                    // asserts.
                     const PARITY_BAD_INSTRUCTION_FE: &str = "Bad instruction fe";
 
                     // 0xfd is REVERT, but on some contracts, and only on older blocks,
@@ -470,6 +462,8 @@ where
                     const PARITY_BAD_INSTRUCTION_FD: &str = "Bad instruction fd";
 
                     const PARITY_BAD_JUMP_PREFIX: &str = "Bad jump";
+                    const PARITY_STACK_LIMIT_PREFIX: &str = "Out of stack";
+
                     const GANACHE_VM_EXECUTION_ERROR: i64 = -32000;
                     const GANACHE_REVERT_MESSAGE: &str =
                         "VM Exception while processing transaction: revert";
@@ -483,6 +477,8 @@ where
                         "execution reverted",
                         "invalid jump destination",
                         "invalid opcode",
+                        // Ethereum says 1024 is the stack sizes limit, so this is deterministic.
+                        "stack limit reached 1024",
                     ];
 
                     let as_solidity_revert_with_reason = |bytes: &[u8]| {
@@ -498,11 +494,8 @@ where
                     };
 
                     match result {
-                        // Check for old Geth revert with reason.
-                        Ok(bytes) => match as_solidity_revert_with_reason(&bytes.0) {
-                            None => Ok(bytes),
-                            Some(reason) => Err(EthereumContractCallError::Revert(reason)),
-                        },
+                        // A successful response.
+                        Ok(bytes) => Ok(bytes),
 
                         // Check for Geth revert.
                         Err(web3::Error::Rpc(rpc_error))
@@ -521,6 +514,7 @@ where
                                 Some(data)
                                     if data.starts_with(PARITY_REVERT_PREFIX)
                                         || data.starts_with(PARITY_BAD_JUMP_PREFIX)
+                                        || data.starts_with(PARITY_STACK_LIMIT_PREFIX)
                                         || data == PARITY_BAD_INSTRUCTION_FE
                                         || data == PARITY_BAD_INSTRUCTION_FD =>
                                 {
