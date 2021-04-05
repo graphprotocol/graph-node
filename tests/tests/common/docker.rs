@@ -115,14 +115,7 @@ impl TestContainerService {
 
         container::Config {
             image: Some(GANACHE_IMAGE),
-            cmd: Some(vec![
-                "-d",
-                "-l",
-                "100000000000",
-                "-g",
-                "1",
-                "--noVMErrorsOnRPCResponse",
-            ]),
+            cmd: Some(vec!["-d", "-l", "100000000000", "-g", "1"]),
             host_config: Some(host_config),
             ..Default::default()
         }
