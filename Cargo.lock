@@ -460,6 +460,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c478836e029dcef17fb47c89023448c64f781a046e0300e257ad8225ae59afab"
 
 [[package]]
+name = "const_fn_assert"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "27d614f23f34f7b5165a77dc1591f497e2518f9cec4b4f4b92bfc4dc6cf7a190"
+
+[[package]]
 name = "constant_time_eq"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2117,10 +2123,11 @@ dependencies = [
 
 [[package]]
 name = "ibig"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "630511c4d1de89410f25fc6e2a5e1a503fde62d2ff623597b8fe33d0f9dd24d8"
+checksum = "a42ebaad57c538d4ae7331331511bb4abaadcb7286d8ebf13cb4371fdea90e3b"
 dependencies = [
+ "const_fn_assert",
  "num-traits",
  "rand 0.8.3",
  "static_assertions",
@@ -4054,8 +4061,8 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "stable-hash"
-version = "0.3.0"
-source = "git+https://github.com/graphprotocol/stable-hash#22b4472424e29ff3516576d9aaf914162054b588"
+version = "0.3.1"
+source = "git+https://github.com/graphprotocol/stable-hash#752463958b369506845e89da8b831430146c61d1"
 dependencies = [
  "blake3",
  "firestorm",
