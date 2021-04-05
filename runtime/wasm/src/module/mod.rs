@@ -476,6 +476,8 @@ impl WasmInstance {
             })?;
         }
 
+        link!("ethereum.encode", ethereum_encode, params_ptr);
+
         link!("abort", abort, message_ptr, file_name_ptr, line, column);
 
         link!("store.get", store_get, "host_export_store_get", entity, id);
@@ -1367,6 +1369,17 @@ impl WasmInstanceContext {
         let level = LogLevel::from(level).into();
         let msg: String = self.asc_get(msg)?;
         self.ctx.host_exports.log_log(&self.ctx.logger, level, msg)
+    }
+
+    /// function encode(token: ethereum.Value): Bytes | null
+    fn ethereum_encode(
+        &mut self,
+        token_ptr: AscPtr<AscEnum<EthereumValueKind>>,
+    ) -> Result<AscPtr<Uint8Array>, DeterministicHostError> {
+        let data = host_exports::ethereum_encode(self.asc_get(token_ptr)?);
+        // return `null` if it fails
+        data.map(|bytes| self.asc_new(&*bytes))
+            .unwrap_or(Ok(AscPtr::null()))
     }
 
     /// function arweave.transactionData(txId: string): Bytes | null
