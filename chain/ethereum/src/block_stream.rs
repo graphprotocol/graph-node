@@ -235,17 +235,29 @@ where
         let max_block_range_size = self.max_block_range_size;
 
         // Get pointers from database for comparison
-        let head_ptr_opt = ctx.chain_store.chain_head_ptr().unwrap();
-        let subgraph_ptr = ctx.subgraph_store.block_ptr(&ctx.subgraph_id).unwrap();
+        let head_ptr_opt = match ctx.chain_store.chain_head_ptr() {
+            Ok(head) => head,
+            Err(e) => {
+                return Box::new(future::err(e)) as Box<dyn Future<Item = _, Error = _> + Send>
+            }
+        };
+        let subgraph_ptr = match ctx.subgraph_store.block_ptr(&ctx.subgraph_id) {
+            Ok(ptr) => ptr,
+            Err(e) => {
+                return Box::new(future::err(e)) as Box<dyn Future<Item = _, Error = _> + Send>
+            }
+        };
 
         // If chain head ptr is not set yet
-        if head_ptr_opt.is_none() {
-            // Don't do any reconciliation until the chain store has more blocks
-            return Box::new(future::ok(ReconciliationStep::Done))
-                as Box<dyn Future<Item = _, Error = _> + Send>;
-        }
+        let head_ptr = match head_ptr_opt {
+            Some(head_ptr) => head_ptr,
 
-        let head_ptr = head_ptr_opt.unwrap();
+            // Don't do any reconciliation until the chain store has more blocks
+            None => {
+                return Box::new(future::ok(ReconciliationStep::Done))
+                    as Box<dyn Future<Item = _, Error = _> + Send>
+            }
+        };
 
         trace!(
             ctx.logger, "Chain head pointer";
