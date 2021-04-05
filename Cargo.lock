@@ -267,7 +267,7 @@ dependencies = [
  "futures-util",
  "hex",
  "http 0.2.3",
- "hyper 0.14.4",
+ "hyper 0.14.5",
  "hyper-unix-connector",
  "log 0.4.11",
  "pin-project",
@@ -1745,7 +1745,7 @@ dependencies = [
  "graph-mock",
  "graphql-parser",
  "http 0.2.3",
- "hyper 0.14.4",
+ "hyper 0.14.5",
  "serde",
 ]
 
@@ -1758,7 +1758,7 @@ dependencies = [
  "graph-graphql",
  "graphql-parser",
  "http 0.2.3",
- "hyper 0.14.4",
+ "hyper 0.14.5",
  "serde",
 ]
 
@@ -1779,7 +1779,7 @@ dependencies = [
  "futures 0.1.30",
  "graph",
  "http 0.2.3",
- "hyper 0.14.4",
+ "hyper 0.14.5",
  "lazy_static",
  "serde",
 ]
@@ -2060,9 +2060,9 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "0.14.4"
+version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8e946c2b1349055e0b72ae281b238baf1a3ea7307c7e9f9d64673bdd9c26ac7"
+checksum = "8bf09f61b52cfcf4c00de50df88ae423d6c02354e385a86341133b5338630ad1"
 dependencies = [
  "bytes 1.0.1",
  "futures-channel",
@@ -2075,7 +2075,7 @@ dependencies = [
  "httpdate",
  "itoa",
  "pin-project",
- "socket2 0.3.16",
+ "socket2 0.4.0",
  "tokio 1.4.0",
  "tower-service",
  "tracing",
@@ -2102,7 +2102,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6183ddfa99b85da61a140bea0efc93fdf56ceaa041b37d553518030827f9905"
 dependencies = [
  "bytes 1.0.1",
- "hyper 0.14.4",
+ "hyper 0.14.5",
  "native-tls",
  "tokio 1.4.0",
  "tokio-native-tls",
@@ -2116,7 +2116,7 @@ checksum = "24ef1fd95d34b4ff007d3f0590727b5cf33572cace09b42032fc817dc8b16557"
 dependencies = [
  "anyhow",
  "hex",
- "hyper 0.14.4",
+ "hyper 0.14.5",
  "pin-project",
  "tokio 1.4.0",
 ]
@@ -3577,7 +3577,7 @@ dependencies = [
  "futures-util",
  "http 0.2.3",
  "http-body 0.4.0",
- "hyper 0.14.4",
+ "hyper 0.14.5",
  "hyper-tls 0.5.0",
  "ipnet",
  "js-sys",
