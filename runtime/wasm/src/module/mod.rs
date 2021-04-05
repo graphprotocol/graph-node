@@ -477,6 +477,7 @@ impl WasmInstance {
         }
 
         link!("ethereum.encode", ethereum_encode, params_ptr);
+        link!("ethereum.decode", ethereum_decode, params_ptr, data_ptr);
 
         link!("abort", abort, message_ptr, file_name_ptr, line, column);
 
@@ -1379,6 +1380,20 @@ impl WasmInstanceContext {
         let data = host_exports::ethereum_encode(self.asc_get(token_ptr)?);
         // return `null` if it fails
         data.map(|bytes| self.asc_new(&*bytes))
+            .unwrap_or(Ok(AscPtr::null()))
+    }
+
+    /// function decode(types: String, data: Bytes): ethereum.Value | null
+    fn ethereum_decode(
+        &mut self,
+        types_ptr: AscPtr<AscString>,
+        data_ptr: AscPtr<Uint8Array>,
+    ) -> Result<AscPtr<AscEnum<EthereumValueKind>>, DeterministicHostError> {
+        let result =
+            host_exports::ethereum_decode(self.asc_get(types_ptr)?, self.asc_get(data_ptr)?);
+        // return `null` if it fails
+        result
+            .map(|param| self.asc_new(&param))
             .unwrap_or(Ok(AscPtr::null()))
     }
 
