@@ -661,7 +661,17 @@ fn start_block_ingestor(
     eth_networks
         .networks
         .iter()
-        .for_each(|(network_name, eth_adapters)| {
+        .filter_map(|(network_name, eth_adapters)| {
+            let chain_store = block_store
+                .chain_store(network_name)
+                .expect("network with name");
+            if chain_store.is_ingestible() {
+                Some((network_name, eth_adapters, chain_store))
+            } else {
+                None
+            }
+        })
+        .for_each(|(network_name, eth_adapters, chain_store)| {
             info!(
                 logger,
                 "Starting block ingestor for network";
@@ -669,9 +679,7 @@ fn start_block_ingestor(
             );
             let eth_adapter = eth_adapters.cheapest().unwrap(); //Safe to unwrap since it cannot be empty
             let block_ingestor = BlockIngestor::new(
-                block_store
-                    .chain_store(network_name)
-                    .expect("network with name"),
+                chain_store,
                 eth_adapter.clone(),
                 *ANCESTOR_COUNT,
                 network_name.to_string(),

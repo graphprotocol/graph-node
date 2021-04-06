@@ -21,6 +21,7 @@ use graph::prelude::{
 };
 
 use crate::{
+    block_store::ChainStatus,
     chain_head_listener::{ChainHeadUpdateListener, ChainHeadUpdateSender},
     connection_pool::ConnectionPool,
 };
@@ -1060,6 +1061,7 @@ pub struct ChainStore {
     pub chain: String,
     storage: data::Storage,
     genesis_block_ptr: EthereumBlockPointer,
+    status: ChainStatus,
     chain_head_update_listener: Arc<ChainHeadUpdateListener>,
     chain_head_update_sender: ChainHeadUpdateSender,
 }
@@ -1069,6 +1071,7 @@ impl ChainStore {
         chain: String,
         storage: data::Storage,
         net_identifier: &EthereumNetworkIdentifier,
+        status: ChainStatus,
         chain_head_update_listener: Arc<ChainHeadUpdateListener>,
         chain_head_update_sender: ChainHeadUpdateSender,
         pool: ConnectionPool,
@@ -1078,11 +1081,16 @@ impl ChainStore {
             chain,
             storage,
             genesis_block_ptr: (net_identifier.genesis_block_hash, 0 as u64).into(),
+            status,
             chain_head_update_listener,
             chain_head_update_sender,
         };
 
         store
+    }
+
+    pub fn is_ingestible(&self) -> bool {
+        matches!(self.status, ChainStatus::Ingestible)
     }
 
     fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
