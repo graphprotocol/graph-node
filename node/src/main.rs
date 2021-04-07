@@ -93,10 +93,7 @@ fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
     Ok(queries)
 }
 
-// Saturating the blocking threads can cause all sorts of issues, so set a large maximum.
-// Ideally we'd use semaphores to not use more blocking threads than DB connections,
-// but for now this is necessary.
-#[tokio::main(worker_threads = 2000)]
+#[tokio::main]
 async fn main() {
     env_logger::init();
 

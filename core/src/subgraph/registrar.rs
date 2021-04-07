@@ -242,8 +242,7 @@ where
                     let sender = sender.clone();
                     let logger = logger.clone();
 
-                    // Blocking due to store interactions. Won't be blocking after #905.
-                    graph::spawn_blocking(
+                    graph::spawn(
                         start_subgraph(id, provider.clone(), logger).map(move |()| drop(sender)),
                     );
                 }
