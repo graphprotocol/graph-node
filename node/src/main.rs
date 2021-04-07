@@ -1,6 +1,6 @@
 use futures::future::join_all;
 use git_testament::{git_testament, render_testament};
-use graph::{ipfs_client::IpfsClient, prelude::LinkResolver as _, prometheus::Registry};
+use graph::{ipfs_client::IpfsClient, prometheus::Registry};
 use lazy_static::lazy_static;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -179,7 +179,7 @@ async fn main() {
 
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry
-    let link_resolver = Arc::new(LinkResolver::from(ipfs_clients).with_retries());
+    let link_resolver = Arc::new(LinkResolver::from(ipfs_clients));
 
     // Set up Prometheus registry
     let prometheus_registry = Arc::new(Registry::new());
@@ -385,7 +385,7 @@ async fn main() {
         // Create IPFS-based subgraph provider
         let subgraph_provider = IpfsSubgraphAssignmentProvider::new(
             &logger_factory,
-            link_resolver.clone(),
+            link_resolver.cheap_clone(),
             subgraph_instance_manager,
         );
 
@@ -400,7 +400,7 @@ async fn main() {
         // Create named subgraph provider for resolving subgraph name->ID mappings
         let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
             &logger_factory,
-            link_resolver,
+            link_resolver.cheap_clone(),
             Arc::new(subgraph_provider),
             network_store.subgraph_store(),
             subscription_manager,
