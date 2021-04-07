@@ -926,11 +926,14 @@ impl<'a> Connection<'a> {
     /// Find sites by their subgraph deployment ids. If `ids` is empty,
     /// return all sites
     pub fn find_sites(&self, ids: Vec<String>) -> Result<Vec<Site>, StoreError> {
+        use deployment_schemas as ds;
+
+        let active = ds::table.filter(ds::active);
         let schemas = if ids.is_empty() {
-            deployment_schemas::table.load::<Schema>(self.0.as_ref())?
+            active.load::<Schema>(self.0.as_ref())?
         } else {
-            deployment_schemas::table
-                .filter(deployment_schemas::subgraph.eq_any(ids))
+            active
+                .filter(ds::subgraph.eq_any(ids))
                 .load::<Schema>(self.0.as_ref())?
         };
         schemas
@@ -1062,6 +1065,7 @@ impl<'a> Connection<'a> {
             .inner_join(v::table.on(ds::subgraph.eq(v::deployment)))
             .inner_join(s::table.on(v::subgraph.eq(s::id)))
             .filter(s::name.eq(&name))
+            .filter(ds::active)
             .order_by(v::created_at.asc())
             .select(ds::all_columns)
             .load::<Schema>(self.0.as_ref())?
@@ -1085,6 +1089,7 @@ impl<'a> Connection<'a> {
                 .inner_join(v::table.on(ds::subgraph.eq(v::deployment)))
                 .inner_join(s::table.on(s::current_version.eq(v::id.nullable())))
                 .filter(s::name.eq(&name))
+                .filter(ds::active)
                 .first::<Schema>(self.0.as_ref())
         } else {
             ds::table
@@ -1092,6 +1097,7 @@ impl<'a> Connection<'a> {
                 .inner_join(v::table.on(ds::subgraph.eq(v::deployment)))
                 .inner_join(s::table.on(s::pending_version.eq(v::id.nullable())))
                 .filter(s::name.eq(&name))
+                .filter(ds::active)
                 .first::<Schema>(self.0.as_ref())
         };
         deployment
