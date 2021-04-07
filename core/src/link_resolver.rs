@@ -142,6 +142,17 @@ pub struct LinkResolver {
     retry: bool,
 }
 
+impl CheapClone for LinkResolver {
+    fn cheap_clone(&self) -> Self {
+        LinkResolver {
+            clients: self.clients.cheap_clone(),
+            cache: self.cache.cheap_clone(),
+            timeout: self.timeout,
+            retry: self.retry,
+        }
+    }
+}
+
 impl From<IpfsClient> for LinkResolver {
     fn from(client: IpfsClient) -> Self {
         vec![client].into()

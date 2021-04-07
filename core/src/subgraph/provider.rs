@@ -14,7 +14,7 @@ pub struct SubgraphAssignmentProvider<L, I> {
 
 impl<L, I> SubgraphAssignmentProvider<L, I>
 where
-    L: LinkResolver,
+    L: LinkResolver + CheapClone,
     I: SubgraphInstanceManager,
 {
     pub fn new(logger_factory: &LoggerFactory, link_resolver: Arc<L>, instance_manager: I) -> Self {
@@ -25,7 +25,7 @@ where
         SubgraphAssignmentProvider {
             logger_factory,
             subgraphs_running: Arc::new(Mutex::new(HashSet::new())),
-            link_resolver,
+            link_resolver: Arc::new(link_resolver.as_ref().cheap_clone().with_retries()),
             instance_manager: Arc::new(instance_manager),
         }
     }
