@@ -212,29 +212,31 @@ where
     ) {
         let logger = self.logger_factory.subgraph_logger(&loc.hash);
 
-        match Self::start_subgraph_inner(
-            logger.clone(),
-            self.instances.clone(),
-            self.host_builder.clone(),
-            self.block_stream_builder.clone(),
-            self.subgraph_store.clone(),
-            self.block_store.cheap_clone(),
-            self.eth_networks.clone(),
-            loc,
-            manifest,
-            self.metrics_registry.cheap_clone(),
-            self.link_resolver.cheap_clone(),
-        )
-        .await
-        {
-            Ok(()) => self.manager_metrics.subgraph_count.inc(),
-            Err(err) => error!(
-                logger,
-                "Failed to start subgraph";
-                "error" => format!("{}", err),
-                "code" => LogCode::SubgraphStartFailure
-            ),
-        }
+        graph::spawn(async move {
+            match Self::start_subgraph_inner(
+                logger.clone(),
+                self.instances.clone(),
+                self.host_builder.clone(),
+                self.block_stream_builder.clone(),
+                self.subgraph_store.clone(),
+                self.block_store.cheap_clone(),
+                self.eth_networks.clone(),
+                loc,
+                manifest,
+                self.metrics_registry.cheap_clone(),
+                self.link_resolver.cheap_clone(),
+            )
+            .await
+            {
+                Ok(()) => self.manager_metrics.subgraph_count.inc(),
+                Err(err) => error!(
+                    logger,
+                    "Failed to start subgraph";
+                    "error" => format!("{}", err),
+                    "code" => LogCode::SubgraphStartFailure
+                ),
+            }
+        });
     }
 
     fn stop_subgraph(&self, loc: DeploymentLocator) {
@@ -308,6 +310,25 @@ where
     ) -> Result<(), Error> {
         let store = store.writable(&deployment)?;
 
+        // Start the subgraph deployment before reading dynamic data
+        // sources; if the subgraph is a copy, starting it will do the
+        // copying and dynamic data sources won't show up until after
+        // copying is done
+        {
+            let store = store.clone();
+            let logger = logger.clone();
+
+            // `start_subgraph_deployment` is blocking.
+            task::spawn_blocking(move || {
+                store
+                    .start_subgraph_deployment(&logger)
+                    .map_err(Error::from)
+            })
+            .await
+            .map_err(Error::from)
+            .and_then(|x| x)?;
+        }
+
         let manifest = {
             info!(logger, "Resolve subgraph files using IPFS");
 
@@ -359,21 +380,6 @@ where
                 "expected eth adapter that matches subgraph network {} with required capabilities: {}: {}",
                 &network,
                 &required_capabilities, e))?.clone();
-
-        {
-            let store = store.clone();
-            let logger = logger.clone();
-
-            // `start_subgraph_deployment` is blocking.
-            task::spawn_blocking(move || {
-                store
-                    .start_subgraph_deployment(&logger)
-                    .map_err(Error::from)
-            })
-            .await
-            .map_err(Error::from)
-            .and_then(|x| x)?;
-        }
 
         let network_name = manifest.network_name();
 
