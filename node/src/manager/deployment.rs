@@ -3,6 +3,7 @@ use diesel::{sql_types::Text, PgConnection};
 
 use graph::{
     components::store::DeploymentLocator,
+    data::subgraph::status,
     prelude::{
         anyhow::{self, anyhow, bail},
         Error, SubgraphDeploymentId, SubgraphStore as _,
@@ -62,8 +63,8 @@ impl Deployment {
         Ok(deployments)
     }
 
-    pub fn print_table(deployments: Vec<Self>) {
-        let mut list = List::new(vec![
+    pub fn print_table(deployments: Vec<Self>, statuses: Vec<status::Info>) {
+        let mut rows = vec![
             "name",
             "status",
             "id",
@@ -71,10 +72,19 @@ impl Deployment {
             "shard",
             "chain",
             "node_id",
-        ]);
+        ];
+        if !statuses.is_empty() {
+            rows.extend(vec!["synced", "health", "latest block", "chain head block"]);
+        }
+
+        let mut list = List::new(rows);
 
         for deployment in deployments {
-            list.append(vec![
+            let status = statuses
+                .iter()
+                .find(|status| &status.subgraph == &deployment.deployment);
+
+            let mut rows = vec![
                 deployment.name,
                 deployment.status,
                 deployment.deployment,
@@ -82,7 +92,25 @@ impl Deployment {
                 deployment.shard,
                 deployment.chain,
                 deployment.node_id.unwrap_or("---".to_string()),
-            ]);
+            ];
+            if let Some(status) = status {
+                let chain = &status.chains[0];
+                rows.extend(vec![
+                    status.synced.to_string(),
+                    status.health.as_str().to_string(),
+                    chain
+                        .latest_block
+                        .as_ref()
+                        .map(|b| b.number().to_string())
+                        .unwrap_or("-".to_string()),
+                    chain
+                        .chain_head_block
+                        .as_ref()
+                        .map(|b| b.number().to_string())
+                        .unwrap_or("-".to_string()),
+                ])
+            }
+            list.append(rows);
         }
 
         list.render();

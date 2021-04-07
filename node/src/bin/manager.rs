@@ -85,6 +85,9 @@ pub enum Command {
         /// List only pending versions
         #[structopt(long, short)]
         pending: bool,
+        /// Include status information
+        #[structopt(long, short)]
+        status: bool,
         /// List only used (current and pending) versions
         #[structopt(long, short)]
         used: bool,
@@ -385,8 +388,18 @@ async fn main() {
             name,
             current,
             pending,
+            status,
             used,
-        } => commands::info::run(ctx.primary_pool(), name, current, pending, used),
+        } => {
+            let (pool, store) = if status {
+                let (store, pools) = ctx.store_and_pools();
+                let primary = pools.get(&*PRIMARY_SHARD).expect("there is a primary pool");
+                (primary.clone(), Some(store))
+            } else {
+                (ctx.primary_pool(), None)
+            };
+            commands::info::run(pool, store, name, current, pending, used)
+        }
         Unused(cmd) => {
             let store = ctx.subgraph_store();
             use UnusedCommand::*;

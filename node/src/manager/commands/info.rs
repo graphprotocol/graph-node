@@ -1,15 +1,17 @@
-use graph::prelude::anyhow;
-use graph_store_postgres::connection_pool::ConnectionPool;
+use std::sync::Arc;
+
+use graph::{components::store::StatusStore, data::subgraph::status, prelude::anyhow};
+use graph_store_postgres::{connection_pool::ConnectionPool, Store};
 
 use crate::manager::deployment::Deployment;
 
-pub fn run(
+fn find(
     pool: ConnectionPool,
     name: String,
     current: bool,
     pending: bool,
     used: bool,
-) -> Result<(), anyhow::Error> {
+) -> Result<Vec<Deployment>, anyhow::Error> {
     let conn = pool.get()?;
     let current = current || used;
     let pending = pending || used;
@@ -26,11 +28,28 @@ pub fn run(
             (false, false) => true,
         })
         .collect();
+    Ok(deployments)
+}
+
+pub fn run(
+    pool: ConnectionPool,
+    store: Option<Arc<Store>>,
+    name: String,
+    current: bool,
+    pending: bool,
+    used: bool,
+) -> Result<(), anyhow::Error> {
+    let deployments = find(pool, name, current, pending, used)?;
+    let hashes: Vec<_> = deployments.iter().map(|d| d.deployment.clone()).collect();
+    let statuses = match store {
+        Some(store) => store.status(status::Filter::Deployments(hashes))?,
+        None => vec![],
+    };
 
     if deployments.is_empty() {
         println!("No matches");
     } else {
-        Deployment::print_table(deployments);
+        Deployment::print_table(deployments, statuses);
     }
     Ok(())
 }
