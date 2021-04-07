@@ -206,8 +206,7 @@ where
     ) {
         let logger = self.logger_factory.subgraph_logger(&id);
 
-        // Blocking due to store interactions. Won't be blocking after #905.
-        match graph::spawn_blocking(Self::start_subgraph_inner(
+        match Self::start_subgraph_inner(
             logger.clone(),
             self.instances.clone(),
             self.host_builder.clone(),
@@ -219,10 +218,8 @@ where
             manifest,
             self.metrics_registry.cheap_clone(),
             self.link_resolver.cheap_clone(),
-        ))
+        )
         .await
-        .map_err(Error::from)
-        .and_then(|e| e)
         {
             Ok(()) => self.manager_metrics.subgraph_count.inc(),
             Err(err) => error!(
@@ -355,7 +352,21 @@ where
                 &network,
                 &required_capabilities, e))?.clone();
 
-        store.start_subgraph_deployment(&logger, &manifest.id)?;
+        {
+            let store = store.clone();
+            let logger = logger.clone();
+            let id = manifest.id.clone();
+
+            // `start_subgraph_deployment` is blocking.
+            tokio::task::spawn_blocking(move || {
+                store
+                    .start_subgraph_deployment(&logger, &id)
+                    .map_err(Error::from)
+            })
+            .await
+            .map_err(Error::from)
+            .and_then(|x| x)?;
+        }
 
         // Clone the deployment ID for later
         let deployment_id = manifest.id.clone();
@@ -414,7 +425,7 @@ where
                 templates,
             },
             state: IndexingState {
-                logger,
+                logger: logger.cheap_clone(),
                 instance,
                 instances,
                 log_filter,
@@ -435,17 +446,22 @@ where
         // forward; this is easier than updating the existing block stream.
         //
         // This task has many calls to the store, so mark it as `blocking`.
-        graph::spawn_blocking(async move {
-            let res = run_subgraph(ctx).await;
+        graph::spawn_thread(deployment_id.to_string(), move || {
+            if let Err(e) = graph::block_on(run_subgraph(ctx)) {
+                error!(
+                    &logger,
+                    "Subgraph instance failed to run: {}",
+                    format!("{:#}", e)
+                );
+            }
             subgraph_metrics_unregister.unregister(registry);
-            res
         });
 
         Ok(())
     }
 }
 
-async fn run_subgraph<B, T, S, C>(mut ctx: IndexingContext<B, T, S, C>) -> Result<(), ()>
+async fn run_subgraph<B, T, S, C>(mut ctx: IndexingContext<B, T, S, C>) -> Result<(), Error>
 where
     B: BlockStreamBuilder,
     T: RuntimeHostBuilder,
@@ -609,10 +625,7 @@ where
                     if first_run {
                         first_run = false;
 
-                        ctx.inputs
-                            .store
-                            .unfail(&ctx.inputs.deployment_id)
-                            .map_err(|_| ())?;
+                        ctx.inputs.store.unfail(&ctx.inputs.deployment_id)?;
                     }
 
                     if needs_restart {
@@ -633,18 +646,13 @@ where
                         "Subgraph block stream shut down cleanly";
                         "id" => id_for_err.to_string(),
                     );
-                    return Err(());
+                    return Ok(());
                 }
 
                 // Handle unexpected stream errors by marking the subgraph as failed.
                 Err(e) => {
                     let message = format!("{:#}", e).replace("\n", "\t");
-                    error!(
-                        &logger,
-                        "Subgraph instance failed to run: {}", message;
-                        "id" => id_for_err.to_string(),
-                        "code" => LogCode::SubgraphSyncingFailure
-                    );
+                    let err = anyhow!("{}, code: {}", message, LogCode::SubgraphSyncingFailure);
 
                     let error = SubgraphError {
                         subgraph_id: id_for_err.clone(),
@@ -654,15 +662,12 @@ where
                         deterministic: e.is_deterministic(),
                     };
 
-                    if let Err(e) = store_for_err.fail_subgraph(id_for_err.clone(), error).await {
-                        error!(
-                            &logger,
-                            "Failed to set subgraph status to Failed: {}", e;
-                            "id" => id_for_err.to_string(),
-                            "code" => LogCode::SubgraphSyncingFailureNotRecorded
-                        );
-                    }
-                    return Err(());
+                    store_for_err
+                        .fail_subgraph(id_for_err.clone(), error)
+                        .await
+                        .context("Failed to set subgraph status to `failed`")?;
+
+                    return Err(err);
                 }
             }
         }
@@ -774,7 +779,7 @@ where
         Err(MappingError::PossibleReorg(e)) => {
             info!(ctx.state.logger,
                     "Possible reorg detected, retrying";
-                    "error" => format!("{:?}", e.to_string()),
+                    "error" => format!("{:#}", e),
                     "id" => ctx.inputs.deployment_id.to_string(),
             );
 
