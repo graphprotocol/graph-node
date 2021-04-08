@@ -446,10 +446,8 @@ where
         // forward; this is easier than updating the existing block stream.
         //
         // This task has many calls to the store, so mark it as `blocking`.
-        // This call is the reason why the size of the blocking thread pool
-        // size must always be well above the number of deployed subgraphs.
-        graph::spawn_blocking(async move {
-            if let Err(e) = run_subgraph(ctx).await {
+        graph::spawn_thread(deployment_id.to_string(), move || {
+            if let Err(e) = graph::block_on(run_subgraph(ctx)) {
                 error!(
                     &logger,
                     "Subgraph instance failed to run: {}",
