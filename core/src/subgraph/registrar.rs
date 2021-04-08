@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 
-use graph::components::store::{DeploymentLocator, SubscriptionManager};
+use graph::components::store::{DeploymentId, DeploymentLocator, SubscriptionManager};
 use graph::components::{ethereum::EthereumNetworks, store::BlockStore};
 use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::{
@@ -280,7 +280,12 @@ where
         hash: SubgraphDeploymentId,
         node_id: NodeId,
     ) -> Result<(), SubgraphRegistrarError> {
-        let logger = self.logger_factory.subgraph_logger(&hash);
+        // We don't have a location for the subgraph yet; that will be
+        // assigned when we deploy for real. For logging purposes, make up a
+        // fake locator
+        let logger = self
+            .logger_factory
+            .subgraph_logger(&DeploymentLocator::new(DeploymentId(0), hash.clone()));
 
         let unvalidated =
             UnvalidatedSubgraphManifest::resolve(hash, self.resolver.clone(), &logger)
@@ -393,11 +398,10 @@ async fn start_subgraph(
     provider: Arc<impl SubgraphAssignmentProviderTrait>,
     logger: Logger,
 ) {
-    trace!(
-        logger,
-        "Start subgraph";
-        "subgraph_id" => &deployment.hash
-    );
+    let logger = logger
+        .new(o!("subgraph_id" => deployment.hash.to_string(), "sgd" => deployment.id.to_string()));
+
+    trace!(logger, "Start subgraph");
 
     let start_time = Instant::now();
     let result = provider.start(deployment.clone()).await;
@@ -405,7 +409,6 @@ async fn start_subgraph(
     debug!(
         logger,
         "Subgraph started";
-        "subgraph_id" => &deployment.hash,
         "start_ms" => start_time.elapsed().as_millis()
     );
 
@@ -417,8 +420,7 @@ async fn start_subgraph(
             error!(
                 logger,
                 "Subgraph instance failed to start";
-                "error" => e.to_string(),
-                "subgraph_id" => &deployment.hash
+                "error" => e.to_string()
             );
         }
     }

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::data::subgraph::SubgraphDeploymentId;
+use crate::components::store::DeploymentLocator;
 use crate::log::elastic::*;
 use crate::log::split::*;
 use slog::*;
@@ -76,10 +76,10 @@ impl LoggerFactory {
     }
 
     /// Creates a subgraph logger with Elasticsearch support.
-    pub fn subgraph_logger(&self, subgraph_id: &SubgraphDeploymentId) -> Logger {
+    pub fn subgraph_logger(&self, loc: &DeploymentLocator) -> Logger {
         let term_logger = self
             .parent
-            .new(o!("subgraph_id" => subgraph_id.to_string()));
+            .new(o!("subgraph_id" => loc.hash.to_string(), "sgd" => loc.id.to_string()));
 
         self.elastic_config
             .clone()
@@ -92,7 +92,7 @@ impl LoggerFactory {
                             index: String::from("subgraph-logs"),
                             document_type: String::from("log"),
                             custom_id_key: String::from("subgraphId"),
-                            custom_id_value: subgraph_id.to_string(),
+                            custom_id_value: loc.hash.to_string(),
                             flush_interval: Duration::from_secs(5),
                         },
                         term_logger.clone(),

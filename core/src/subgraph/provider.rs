@@ -41,7 +41,7 @@ where
     I: SubgraphInstanceManager,
 {
     async fn start(&self, loc: DeploymentLocator) -> Result<(), SubgraphAssignmentProviderError> {
-        let logger = self.logger_factory.subgraph_logger(&loc.hash);
+        let logger = self.logger_factory.subgraph_logger(&loc);
 
         // If subgraph ID already in set
         if !self.subgraphs_running.lock().unwrap().insert(loc.id) {
