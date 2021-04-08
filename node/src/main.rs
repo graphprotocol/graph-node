@@ -659,14 +659,14 @@ fn start_block_ingestor(
         .networks
         .iter()
         .filter_map(|(network_name, eth_adapters)| {
-            let chain_store = block_store
+            block_store
                 .chain_store(network_name)
-                .expect("network with name");
-            if chain_store.is_ingestible() {
-                Some((network_name, eth_adapters, chain_store))
-            } else {
-                None
-            }
+                .filter(|chain_store| chain_store.is_ingestible())
+                .map(|chain_store| (network_name, eth_adapters, chain_store))
+                .or_else(|| {
+                    error!(logger, "Not starting block ingestor (chain is defective)"; "network_name" => &network_name);
+                    None
+                })
         })
         .for_each(|(network_name, eth_adapters, chain_store)| {
             info!(
