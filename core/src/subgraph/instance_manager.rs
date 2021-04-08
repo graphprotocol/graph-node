@@ -4,6 +4,7 @@ use lazy_static::lazy_static;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
+use tokio::task;
 
 use graph::components::ethereum::{triggers_in_block, EthereumNetworks};
 use graph::components::store::{BlockStore, ModificationsAndCache};
@@ -358,7 +359,7 @@ where
             let id = manifest.id.clone();
 
             // `start_subgraph_deployment` is blocking.
-            tokio::task::spawn_blocking(move || {
+            task::spawn_blocking(move || {
                 store
                     .start_subgraph_deployment(&logger, &id)
                     .map_err(Error::from)
@@ -445,9 +446,15 @@ where
         // block stream and include events for the new data sources going
         // forward; this is easier than updating the existing block stream.
         //
-        // This task has many calls to the store, so mark it as `blocking`.
+        // This is a long-running and unfortunately a blocking future (see #905), so it is run in
+        // its own thread. It is also run with `task::unconstrained` because we have seen deadlocks
+        // occur without it, possibly caused by our use of legacy futures and tokio versions in the
+        // codebase and dependencies, which may not play well with the tokio 1.0 cooperative
+        // scheduling. It is also logical in terms of performance to run this with `unconstrained`,
+        // it has a dedicated OS thread so the OS will handle the preemption. See
+        // https://github.com/tokio-rs/tokio/issues/3493.
         graph::spawn_thread(deployment_id.to_string(), move || {
-            if let Err(e) = graph::block_on(run_subgraph(ctx)) {
+            if let Err(e) = graph::block_on(task::unconstrained(run_subgraph(ctx))) {
                 error!(
                     &logger,
                     "Subgraph instance failed to run: {}",
