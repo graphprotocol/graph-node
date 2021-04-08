@@ -154,8 +154,3 @@ those.
   given the other load management configuration settings, but never
   actually decline to run a query, instead log about load management
   decisions. Set to `true` to turn simulation on, defaults to `false`
-- `GRAPH_MAX_BLOCKING_THREADS`:  Maximum number of blocking threads in the tokio blocking thread
-  pool. In an index node this should always be well above the number of subgraphs deployed to it,
-  because each subgraph permanently takes up one thread. Graphql queries are currently also run on
-  the blocking thread pool, but the DB connection pool size is usually the limiting factor for
-  queries. Defaults to 2000.

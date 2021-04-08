@@ -55,15 +55,6 @@ lazy_static! {
         .map(|s| BlockNumber::from_str(&s)
              .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_ANCESTOR_COUNT")))
         .unwrap_or(50);
-
-    // Maximum number of blocking threads in the tokio blocking thread pool. This should always be
-    // well above the number of subgraphs deployed to an index node, because each subgraph takes up
-    // one thread. Defaults to 2000.
-    static ref MAX_BLOCKING_THREADS: usize = env::var("GRAPH_MAX_BLOCKING_THREADS")
-        .ok()
-        .map(|s| usize::from_str(&s)
-             .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_ANCESTOR_COUNT")))
-        .unwrap_or(2000);
 }
 
 /// How long we will hold up node startup to get the net version and genesis
@@ -102,16 +93,8 @@ fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
     Ok(queries)
 }
 
-fn main() {
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .max_blocking_threads(*MAX_BLOCKING_THREADS)
-        .build()
-        .unwrap()
-        .block_on(async { async_main().await })
-}
-
-async fn async_main() {
+#[tokio::main]
+async fn main() {
     env_logger::init();
 
     // Allow configuring fail points on debug builds. Used for integration tests.
