@@ -6,7 +6,7 @@ use std::{
 
 use graph::{
     components::store::BlockStore as BlockStoreTrait,
-    prelude::{error, BlockNumber, EthereumBlockPointer, EthereumNetworkIdentifier, Logger},
+    prelude::{error, warn, BlockNumber, EthereumBlockPointer, EthereumNetworkIdentifier, Logger},
 };
 use graph::{components::store::CallCache as CallCacheTrait, prelude::StoreError};
 use graph::{
@@ -240,27 +240,33 @@ impl BlockStore {
                 );
                 return false;
             }
-            if let Some(ident) = ident {
-                if chain.net_version != ident.net_version {
-                    error!(logger,
+            match ident {
+                Some(ident) => {
+                    if chain.net_version != ident.net_version {
+                        error!(logger,
                         "the net version for chain {} has changed from {} to {} since the last time we ran",
                         chain.name,
                         chain.net_version,
                         ident.net_version
                     );
-                    return false;
-                }
-                if &chain.genesis_block != &format!("{:x}", ident.genesis_block_hash) {
-                    error!(logger,
+                        return false;
+                    }
+                    if &chain.genesis_block != &format!("{:x}", ident.genesis_block_hash) {
+                        error!(logger,
                         "the genesis block hash for chain {} has changed from {} to {:x} since the last time we ran",
                         chain.name,
                         chain.genesis_block,
                         ident.genesis_block_hash
                     );
-                    return false;
+                        return false;
+                    }
+                    return true;
+                }
+                None => {
+                    warn!(logger, "Failed to get net version and genesis hash from provider. Assuming it has not changed");
+                    return true;
                 }
             }
-            return true;
         }
 
         // For each configured chain, add a chain store
