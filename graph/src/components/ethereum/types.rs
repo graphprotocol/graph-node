@@ -380,7 +380,7 @@ impl From<&'_ Transaction> for EthereumTransactionData {
         EthereumTransactionData {
             hash: tx.hash,
             index: tx.transaction_index.unwrap().as_u64().into(),
-            from: tx.from,
+            from: tx.from.unwrap(),
             to: tx.to,
             value: tx.value,
             gas_used: tx.gas,
