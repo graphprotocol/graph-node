@@ -2,9 +2,11 @@ use std::sync::Arc;
 
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr},
-    prelude::EthereumCall,
+    prelude::{
+        web3::types::{Address, Bytes, Log, H160, H256, U64},
+        EthereumCall,
+    },
 };
-use web3::types::*;
 
 use crate::{
     chain::BlockFinality,

@@ -7,12 +7,14 @@ use crate::{
 };
 use anyhow::{Context, Error};
 use blockchain::HostFn;
-use ethabi::{Address, Token};
 use graph::runtime::{AscIndexId, IndexForAscTypeId};
 use graph::{
     blockchain::{self, BlockPtr, HostFnCtx},
     cheap_clone::CheapClone,
-    prelude::{EthereumCallCache, Future01CompatExt},
+    prelude::{
+        ethabi::{self, Address, Token},
+        EthereumCallCache, Future01CompatExt,
+    },
     runtime::{asc_get, asc_new, AscPtr, HostExportError},
     semver::Version,
     slog::{info, trace, Logger},

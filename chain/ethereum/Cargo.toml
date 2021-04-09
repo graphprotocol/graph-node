@@ -6,8 +6,8 @@ edition = "2018"
 [dependencies]
 chrono = "0.4"
 futures = "0.1.21"
-http = "0.1.21" # must be compatible with the version rust-web3 uses
-jsonrpc-core = "14.2.0"
+http = "0.2.4"
+jsonrpc-core = "17.0.0"
 graph = { path = "../../graph" }
 lazy_static = "1.2.0"
 mockall = "0.9.1"
@@ -21,15 +21,6 @@ tiny-keccak = "1.5.0"
 hex = "0.4.3"
 semver = "1.0.3"
 
-# master contains changes such as
-# https://github.com/paritytech/ethabi/pull/140, which upstream does not want
-# and we should try to implement on top of ethabi instead of inside it, and
-# tuple support which isn't upstreamed yet. For now, we shall deviate from
-# ethabi, but long term we want to find a way to drop our fork.
-ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master" }
-
-# We have a couple custom patches to web3.
-web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "master" }
 itertools = "0.10.0"
 
 graph-runtime-wasm = { path = "../../runtime/wasm" }

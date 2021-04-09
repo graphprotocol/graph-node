@@ -2,11 +2,12 @@
 mod pbcodec;
 
 use graph::prelude::{
-    web3::types::TransactionReceipt as w3TransactionReceipt, EthereumBlock, EthereumBlockWithCalls,
-    EthereumCall, LightEthereumBlock,
+    web3,
+    web3::types::TransactionReceipt as w3TransactionReceipt,
+    web3::types::{Bytes, H160, H2048, H256, H64, U256, U64},
+    EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock,
 };
 use std::sync::Arc;
-use web3::types::{Bytes, H160, H2048, H256, H64, U256, U64};
 
 use crate::chain::BlockFinality;
 
@@ -156,7 +157,7 @@ impl<'a> Into<web3::types::Transaction> for TransactionTraceAt<'a> {
             block_hash: Some(H256::from_slice(&self.block.hash)),
             block_number: Some(U64::from(self.block.number)),
             transaction_index: Some(U64::from(self.trace.index as u64)),
-            from: H160::from_slice(&self.trace.from),
+            from: Some(H160::from_slice(&self.trace.from)),
             to: Some(H160::from_slice(&self.trace.to)),
             value: self
                 .trace
@@ -170,6 +171,10 @@ impl<'a> Into<web3::types::Transaction> for TransactionTraceAt<'a> {
                 .map_or_else(|| U256::from(0), |x| x.into()),
             gas: U256::from(self.trace.gas_used),
             input: Bytes::from(self.trace.input.clone()),
+            v: None,
+            r: None,
+            s: None,
+            raw: None,
         }
     }
 }

@@ -15,13 +15,7 @@ chrono = "0.4.19"
 Inflector = "0.11.3"
 isatty = "0.1.9"
 reqwest = { version = "0.11.2", features = ["json", "stream", "multipart"] }
-
-# master contains changes such as
-# https://github.com/paritytech/ethabi/pull/140, which upstream does not want
-# and we should try to implement on top of ethabi instead of inside it, and
-# tuple support which isn't upstreamed yet. For now, we shall deviate from
-# ethabi, but long term we want to find a way to drop our fork.
-ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master" }
+ethabi = "14.0"
 hex = "0.4.3"
 http = "0.2.3"
 fail = { version = "0.5", features = ["failpoints"] }
@@ -62,8 +56,9 @@ thiserror = "1.0.25"
 parking_lot = "0.11.2"
 itertools = "0.10.1"
 
-# Our fork contains a small but hacky patch.
-web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "master" }
+# Our fork contains patches for custom http headers and to make some block fields optional.
+# Without the "arbitrary_precision" feature, we get the error `data did not match any variant of untagged enum Response`.
+web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "lutter/graph-0.15.0", features = ["arbitrary_precision"] }
 serde_plain = "1.0.0"
 
 [dev-dependencies]

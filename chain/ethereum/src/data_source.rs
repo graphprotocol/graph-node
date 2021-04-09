@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
-use ethabi::{Address, Contract, Event, Function, LogParam, ParamType, RawLog};
 use graph::blockchain::TriggerWithHandler;
 use graph::components::store::StoredDynamicDataSource;
+use graph::prelude::ethabi::StateMutability;
 use graph::prelude::futures03::future::try_join;
 use graph::prelude::futures03::stream::FuturesOrdered;
 use graph::prelude::{Entity, Link, SubgraphManifestValidationError};
@@ -11,14 +11,16 @@ use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::{convert::TryFrom, sync::Arc};
 use tiny_keccak::{keccak256, Keccak};
-use web3::types::{Log, Transaction, H256};
 
 use graph::{
     blockchain::{self, Blockchain},
     prelude::{
-        async_trait, info, serde_json, BlockNumber, CheapClone, DataSourceTemplateInfo,
-        Deserialize, EthereumCall, LightEthereumBlock, LightEthereumBlockExt, LinkResolver, Logger,
-        TryStreamExt,
+        async_trait,
+        ethabi::{Address, Contract, Event, Function, LogParam, ParamType, RawLog},
+        info, serde_json,
+        web3::types::{Log, Transaction, H256},
+        BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, EthereumCall,
+        LightEthereumBlock, LightEthereumBlockExt, LinkResolver, Logger, TryStreamExt,
     },
 };
 
@@ -399,8 +401,8 @@ impl DataSource {
             .contract
             .functions()
             .filter(|function| match function.state_mutability {
-                ethabi::StateMutability::Payable | ethabi::StateMutability::NonPayable => true,
-                ethabi::StateMutability::Pure | ethabi::StateMutability::View => false,
+                StateMutability::Payable | StateMutability::NonPayable => true,
+                StateMutability::Pure | StateMutability::View => false,
             })
             .find(|function| {
                 // Construct the argument function signature:
