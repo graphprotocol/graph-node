@@ -207,10 +207,10 @@ async fn main() {
         StoreBuilder::new(&logger, &node_id, &config, metrics_registry.cheap_clone()).await;
 
     let launch_services = |logger: Logger| async move {
-        let (eth_networks, networks) = connect_networks(&logger, eth_networks).await;
+        let (eth_networks, idents) = connect_networks(&logger, eth_networks).await;
 
         let subscription_manager = store_builder.subscription_manager();
-        let network_store = store_builder.network_store(networks);
+        let network_store = store_builder.network_store(idents);
         let load_manager = Arc::new(LoadManager::new(
             &logger,
             expensive_queries,
@@ -516,16 +516,38 @@ async fn create_ethereum_networks(
     Ok(parsed_networks)
 }
 
+/// Try to connect to all the providers in `eth_networks` and get their net
+/// version and genesis block. Return the same `eth_networks` and the
+/// retrieved net identifiers grouped by network name. Remove all providers
+/// for which trying to connect resulted in an error from the returned
+/// `EthereumNetworks`, since it's likely pointless to try and connect to
+/// them. If the connection attempt to a provider times out after
+/// `ETH_NET_VERSION_WAIT_TIME`, keep the provider, but don't report a
+/// version for it.
 async fn connect_networks(
     logger: &Logger,
-    eth_networks: EthereumNetworks,
+    mut eth_networks: EthereumNetworks,
 ) -> (
     EthereumNetworks,
     Vec<(String, Vec<EthereumNetworkIdentifier>)>,
 ) {
+    // The status of a provider that we learned from connecting to it
+    #[derive(PartialEq)]
+    enum Status {
+        Broken {
+            network: String,
+            provider: String,
+        },
+        NoVersion,
+        Version {
+            network: String,
+            ident: EthereumNetworkIdentifier,
+        },
+    }
+
     // This has one entry for each provider, and therefore multiple entries
     // for each network
-    let networks = join_all(
+    let statuses = join_all(
             eth_networks
                 .flatten()
                 .into_iter()
@@ -533,7 +555,7 @@ async fn connect_networks(
                     (network_name, capabilities, eth_adapter, logger.clone())
                 })
                 .map(
-                    |(network_name, capabilities, eth_adapter, logger)| async move {
+                    |(network, capabilities, eth_adapter, logger)| async move {
                         let logger = logger.new(
                             o!("provider" => eth_adapter.provider().to_string()),
                         );
@@ -551,23 +573,23 @@ async fn connect_networks(
                             // continue without knowing the net version
                             Err(_) => {
                                 warn!(logger, "Provider did not respond fast enough. Continuing without checking for change in net version");
-                                (network_name, None)
+                                Status::NoVersion
                             },
                             // we got some other error (maybe a typo on the URL)
                             // still continue with startup
                             Ok(Err(e)) => {
-                                error!(logger, "Connection to provider failed";
+                                error!(logger, "Connection to provider failed. Not using this provider";
                                        "error" =>  e.to_string());
-                                panic!("Connection to provider {} failed: {}", eth_adapter.provider(), e);
+                                Status::Broken { network, provider: eth_adapter.provider().to_string() }
                             }
-                            Ok(Ok(network_identifier)) => {
+                            Ok(Ok(ident)) => {
                                 info!(
                                     logger,
                                     "Connected to Ethereum";
-                                    "network_version" => &network_identifier.net_version,
+                                    "network_version" => &ident.net_version,
                                     "capabilities" => &capabilities
                                 );
-                                (network_name, Some(network_identifier))
+                                Status::Version { network, ident }
                             }
                         }
                     },
@@ -576,17 +598,23 @@ async fn connect_networks(
         .await;
 
     // Group identifiers by network name
-    let networks: HashMap<String, Vec<EthereumNetworkIdentifier>> =
-        networks
+    let idents: HashMap<String, Vec<EthereumNetworkIdentifier>> =
+        statuses
             .into_iter()
-            .fold(HashMap::new(), |mut networks, (name, ident)| {
-                if let Some(ident) = ident {
-                    networks.entry(name).or_default().push(ident)
+            .fold(HashMap::new(), |mut networks, status| {
+                match status {
+                    Status::Broken { network, provider } => {
+                        eth_networks.remove(&network, &provider)
+                    }
+                    Status::Version { network, ident } => {
+                        networks.entry(network.to_string()).or_default().push(ident)
+                    }
+                    Status::NoVersion => { /* ignore */ }
                 }
                 networks
             });
-    let networks: Vec<_> = networks.into_iter().collect();
-    (eth_networks, networks)
+    let idents: Vec<_> = idents.into_iter().collect();
+    (eth_networks, idents)
 }
 
 fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<IpfsClient> {

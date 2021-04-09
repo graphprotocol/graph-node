@@ -115,6 +115,11 @@ impl EthereumNetworkAdapters {
             .next()
             .map(|ethereum_network_adapter| &ethereum_network_adapter.adapter)
     }
+
+    pub fn remove(&mut self, provider: &str) {
+        self.adapters
+            .retain(|adapter| adapter.adapter.provider() != provider);
+    }
 }
 
 #[derive(Clone)]
@@ -143,6 +148,12 @@ impl EthereumNetworks {
             capabilities,
             adapter: adapter.clone(),
         });
+    }
+
+    pub fn remove(&mut self, name: &str, provider: &str) {
+        if let Some(adapters) = self.networks.get_mut(name) {
+            adapters.remove(provider);
+        }
     }
 
     pub fn extend(&mut self, other_networks: EthereumNetworks) {
