@@ -517,15 +517,11 @@ async fn create_ethereum_networks(
 
                 use crate::config::Transport::*;
 
-                let (transport_event_loop, transport) = match web3.transport {
+                let transport = match web3.transport {
                     Rpc => Transport::new_rpc(&web3.url, web3.headers),
-                    Ipc => Transport::new_ipc(&web3.url),
-                    Ws => Transport::new_ws(&web3.url),
+                    Ipc => Transport::new_ipc(&web3.url).await,
+                    Ws => Transport::new_ws(&web3.url).await,
                 };
-
-                // If we drop the event loop the transport will stop working.
-                // For now it's fine to just leak it.
-                std::mem::forget(transport_event_loop);
 
                 let supports_eip_1898 = !web3.features.contains("no_eip1898");
 

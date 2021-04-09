@@ -12,8 +12,6 @@ those.
 
 - `ETHEREUM_POLLING_INTERVAL`: how often to poll Ethereum for new blocks (in ms,
   defaults to 500ms)
-- `ETHEREUM_RPC_MAX_PARALLEL_REQUESTS`: Maximum number of concurrent HTTP
-  requests to an Ethereum RPC endpoint (defaults to 64).
 - `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`: The ideal amount of triggers
   to be processed in a batch. If this is too small it may cause too many requests
   to the ethereum node, if it is too large it may cause unreasonably expensive

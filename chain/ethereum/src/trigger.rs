@@ -1,6 +1,16 @@
-use ethabi::LogParam;
 use graph::blockchain;
 use graph::blockchain::TriggerData;
+use graph::prelude::ethabi::ethereum_types::H160;
+use graph::prelude::ethabi::ethereum_types::H256;
+use graph::prelude::ethabi::ethereum_types::U128;
+use graph::prelude::ethabi::ethereum_types::U256;
+use graph::prelude::ethabi::ethereum_types::U64;
+use graph::prelude::ethabi::Address;
+use graph::prelude::ethabi::Bytes;
+use graph::prelude::ethabi::LogParam;
+use graph::prelude::web3::types::Block;
+use graph::prelude::web3::types::Log;
+use graph::prelude::web3::types::Transaction;
 use graph::prelude::BlockNumber;
 use graph::prelude::BlockPtr;
 use graph::prelude::{CheapClone, EthereumCall};
@@ -12,12 +22,6 @@ use graph::semver::Version;
 use std::convert::TryFrom;
 use std::ops::Deref;
 use std::{cmp::Ordering, sync::Arc};
-use web3::types::Bytes;
-use web3::types::H160;
-use web3::types::U128;
-use web3::types::U256;
-use web3::types::U64;
-use web3::types::{Address, Block, Log, Transaction, H256};
 
 use crate::runtime::abi::AscEthereumBlock;
 use crate::runtime::abi::AscEthereumBlock_0_0_6;
@@ -359,15 +363,19 @@ pub struct EthereumTransactionData {
 
 impl From<&'_ Transaction> for EthereumTransactionData {
     fn from(tx: &Transaction) -> EthereumTransactionData {
+        // Old versions of web3 (before commit 11277e07) always had a value
+        // for `from`; newer versions make this an option, but it's not
+        // clear what the value should be if this is ever `None`
+        let from = tx.from.expect("tx.from must have a value");
         EthereumTransactionData {
             hash: tx.hash,
             index: tx.transaction_index.unwrap().as_u64().into(),
-            from: tx.from,
+            from,
             to: tx.to,
             value: tx.value,
             gas_limit: tx.gas,
             gas_price: tx.gas_price,
-            input: tx.input.clone(),
+            input: tx.input.0.clone(),
             nonce: tx.nonce.clone(),
         }
     }

@@ -684,8 +684,8 @@ mod tests {
     use super::EthereumCallFilter;
 
     use graph::prelude::web3::types::Address;
+    use graph::prelude::web3::types::Bytes;
     use graph::prelude::EthereumCall;
-    use web3::types::Bytes;
 
     use std::collections::{HashMap, HashSet};
     use std::iter::FromIterator;

@@ -1,11 +1,13 @@
-use ethabi::ParamType;
-use ethabi::Token;
+use anyhow::Context;
 use futures::future;
 use futures::prelude::*;
 use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
 use graph::components::transaction_receipt::LightTransactionReceipt;
 use graph::data::subgraph::UnifiedMappingApiVersion;
+use graph::prelude::ethabi::ParamType;
+use graph::prelude::ethabi::Token;
+use graph::prelude::tokio::try_join;
 use graph::prelude::StopwatchMetrics;
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
@@ -27,6 +29,8 @@ use graph::{
 };
 use graph::{
     components::ethereum::*,
+    prelude::web3::api::Web3,
+    prelude::web3::transports::batch::Batch,
     prelude::web3::types::{Trace, TraceFilter, TraceFilterBuilder, H160},
 };
 use itertools::Itertools;
@@ -36,8 +40,6 @@ use std::convert::TryFrom;
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::Instant;
-use web3::api::Web3;
-use web3::transports::batch::Batch;
 
 use crate::chain::BlockFinality;
 use crate::{
@@ -117,24 +119,6 @@ lazy_static! {
 // See also f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
 const ETH_CALL_GAS: u32 = 50_000_000;
 
-// Deterministic Geth eth_call execution errors. We might need to expand this as
-// subgraphs come across other errors. See
-// https://github.com/ethereum/go-ethereum/blob/dfeb2f7e8001aef1005a8d5e1605bae1de0b4f12/core/vm/errors.go#L25-L38
-const GETH_ETH_CALL_ERRORS: &[&str] = &[
-    // Hardhat format.
-    "error: transaction reverted",
-    // Ganache and Moonbeam format.
-    "vm exception while processing transaction: revert",
-    // Geth errors
-    "execution reverted",
-    "invalid jump destination",
-    "invalid opcode",
-    // Ethereum says 1024 is the stack sizes limit, so this is deterministic.
-    "stack limit reached 1024",
-    // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61 for why the gas limit is considered deterministic.
-    "out of gas",
-];
-
 impl CheapClone for EthereumAdapter {
     fn cheap_clone(&self) -> Self {
         Self {
@@ -171,7 +155,6 @@ impl EthereumAdapter {
         let is_ganache = web3
             .web3()
             .client_version()
-            .compat()
             .await
             .map(|s| s.contains("TestRPC"))
             .unwrap_or(false);
@@ -219,9 +202,8 @@ impl EthereumAdapter {
                 let subgraph_metrics = subgraph_metrics.clone();
                 let provider_metrics = eth.metrics.clone();
                 let provider = self.provider.clone();
-                eth.web3
-                    .trace()
-                    .filter(trace_filter)
+                Box::pin(eth.web3.trace().filter(trace_filter))
+                    .compat()
                     .map(move |traces| {
                         if traces.len() > 0 {
                             if to == from {
@@ -297,35 +279,34 @@ impl EthereumAdapter {
             .limit(*REQUEST_RETRIES)
             .timeout_secs(*JSON_RPC_TIMEOUT)
             .run(move || {
-                let start = Instant::now();
+                let eth_adapter = eth_adapter.cheap_clone();
                 let subgraph_metrics = subgraph_metrics.clone();
                 let provider_metrics = eth_adapter.metrics.clone();
-
-                // Create a log filter
-                let log_filter: Filter = FilterBuilder::default()
-                    .from_block(from.into())
-                    .to_block(to.into())
-                    .address(filter.contracts.clone())
-                    .topics(Some(filter.event_signatures.clone()), None, None, None)
-                    .build();
-
-                // Request logs from client
+                let filter = filter.clone();
                 let provider = eth_adapter.provider.clone();
-                eth_adapter
-                    .web3
-                    .eth()
-                    .logs(log_filter)
-                    .then(move |result| {
-                        let elapsed = start.elapsed().as_secs_f64();
-                        provider_metrics.observe_request(elapsed, "eth_getLogs", &provider);
-                        subgraph_metrics.observe_request(elapsed, "eth_getLogs", &provider);
-                        if result.is_err() {
-                            provider_metrics.add_error("eth_getLogs", &provider);
-                            subgraph_metrics.add_error("eth_getLogs", &provider);
-                        }
-                        result
-                    })
-                    .compat()
+
+                async move {
+                    let start = Instant::now();
+
+                    // Create a log filter
+                    let log_filter: Filter = FilterBuilder::default()
+                        .from_block(from.into())
+                        .to_block(to.into())
+                        .address(filter.contracts.clone())
+                        .topics(Some(filter.event_signatures.clone()), None, None, None)
+                        .build();
+
+                    // Request logs from client
+                    let result = eth_adapter.web3.eth().logs(log_filter).boxed().await;
+                    let elapsed = start.elapsed().as_secs_f64();
+                    provider_metrics.observe_request(elapsed, "eth_getLogs", &provider);
+                    subgraph_metrics.observe_request(elapsed, "eth_getLogs", &provider);
+                    if result.is_err() {
+                        provider_metrics.add_error("eth_getLogs", &provider);
+                        subgraph_metrics.add_error("eth_getLogs", &provider);
+                    }
+                    result
+                }
             })
             .await
     }
@@ -497,109 +478,115 @@ impl EthereumAdapter {
             .limit(10)
             .timeout_secs(*JSON_RPC_TIMEOUT)
             .run(move || {
-                let req = CallRequest {
-                    from: None,
-                    to: contract_address,
-                    gas: Some(web3::types::U256::from(ETH_CALL_GAS)),
-                    gas_price: None,
-                    value: None,
-                    data: Some(call_data.clone()),
-                };
-                web3.eth()
-                    .call(req, Some(block_id))
-                    .then(|result| {
-                        // Try to check if the call was reverted. The JSON-RPC response for reverts is
-                        // not standardized, so we have ad-hoc checks for each Ethereum client.
+                let call_data = call_data.clone();
+                let web3 = web3.cheap_clone();
 
-                        // 0xfe is the "designated bad instruction" of the EVM, and Solidity uses it for
-                        // asserts.
-                        const PARITY_BAD_INSTRUCTION_FE: &str = "Bad instruction fe";
+                async move {
+                    let req = CallRequest {
+                        from: None,
+                        to: Some(contract_address),
+                        gas: Some(web3::types::U256::from(ETH_CALL_GAS)),
+                        gas_price: None,
+                        value: None,
+                        data: Some(call_data.clone()),
+                    };
+                    let result = web3.eth().call(req, Some(block_id)).boxed().await;
 
-                        // 0xfd is REVERT, but on some contracts, and only on older blocks,
-                        // this happens. Makes sense to consider it a revert as well.
-                        const PARITY_BAD_INSTRUCTION_FD: &str = "Bad instruction fd";
+                    // Try to check if the call was reverted. The JSON-RPC response for reverts is
+                    // not standardized, so we have ad-hoc checks for each Ethereum client                    // Ganache.
 
-                        const PARITY_BAD_JUMP_PREFIX: &str = "Bad jump";
-                        const PARITY_STACK_LIMIT_PREFIX: &str = "Out of stack";
+                    // 0xfe is the "designated bad instruction" of the EVM, and Solidity uses it for
+                    // asserts.
+                    const PARITY_BAD_INSTRUCTION_FE: &str = "Bad instruction fe";
 
-                        // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
-                        const PARITY_OUT_OF_GAS: &str = "Out of gas";
+                    // 0xfd is REVERT, but on some contracts, and only on older blocks,
+                    // this happens. Makes sense to consider it a revert as well.
+                    const PARITY_BAD_INSTRUCTION_FD: &str = "Bad instruction fd";
 
-                        const PARITY_VM_EXECUTION_ERROR: i64 = -32015;
-                        const PARITY_REVERT_PREFIX: &str = "Reverted 0x";
+                    const PARITY_BAD_JUMP_PREFIX: &str = "Bad jump";
+                    const PARITY_STACK_LIMIT_PREFIX: &str = "Out of stack";
 
-                        let mut geth_execution_errors = GETH_ETH_CALL_ERRORS
-                            .iter()
-                            .map(|s| *s)
-                            .chain(GETH_ETH_CALL_ERRORS_ENV.iter().map(|s| s.as_str()));
+                    const PARITY_VM_EXECUTION_ERROR: i64 = -32015;
+                    const PARITY_REVERT_PREFIX: &str = "Reverted 0x";
 
-                        let as_solidity_revert_with_reason = |bytes: &[u8]| {
-                            let solidity_revert_function_selector =
-                                &tiny_keccak::keccak256(b"Error(string)")[..4];
+                    // Deterministic Geth execution errors. We might need to expand this as
+                    // subgraphs come across other errors. See
+                    // https://github.com/ethereum/go-ethereum/blob/cd57d5cd38ef692de8fbedaa56598b4e9fbfbabc/core/vm/errors.go
+                    const GETH_EXECUTION_ERRORS: &[&str] = &[
+                        // Hardhat format.
+                        "error: transaction reverted",
+                        // Ganache and Moonbeam format.
+                        "vm exception while processing transaction: revert",
+                        // Geth errors
+                        "execution reverted",
+                        "invalid jump destination",
+                        "invalid opcode",
+                        // Ethereum says 1024 is the stack sizes limit, so this is deterministic.
+                        "stack limit reached 1024",
+                    ];
 
-                            match bytes.len() >= 4
-                                && &bytes[..4] == solidity_revert_function_selector
-                            {
-                                false => None,
-                                true => ethabi::decode(&[ParamType::String], &bytes[4..])
-                                    .ok()
-                                    .and_then(|tokens| tokens[0].clone().to_string()),
-                            }
-                        };
+                    let as_solidity_revert_with_reason = |bytes: &[u8]| {
+                        let solidity_revert_function_selector =
+                            &tiny_keccak::keccak256(b"Error(string)")[..4];
 
-                        match result {
-                            // A successful response.
-                            Ok(bytes) => Ok(bytes),
-
-                            // Check for Geth revert, converting to lowercase because some clients
-                            // return the same error message as Geth but with capitalization.
-                            Err(web3::Error::Rpc(rpc_error))
-                                if geth_execution_errors
-                                    .any(|e| rpc_error.message.to_lowercase().contains(e)) =>
-                            {
-                                Err(EthereumContractCallError::Revert(rpc_error.message))
-                            }
-
-                            // Check for Parity revert.
-                            Err(web3::Error::Rpc(ref rpc_error))
-                                if rpc_error.code.code() == PARITY_VM_EXECUTION_ERROR =>
-                            {
-                                match rpc_error.data.as_ref().and_then(|d| d.as_str()) {
-                                    Some(data)
-                                        if data.starts_with(PARITY_REVERT_PREFIX)
-                                            || data.starts_with(PARITY_BAD_JUMP_PREFIX)
-                                            || data.starts_with(PARITY_STACK_LIMIT_PREFIX)
-                                            || data == PARITY_BAD_INSTRUCTION_FE
-                                            || data == PARITY_BAD_INSTRUCTION_FD
-                                            || data == PARITY_OUT_OF_GAS =>
-                                    {
-                                        let reason = if data == PARITY_BAD_INSTRUCTION_FE {
-                                            PARITY_BAD_INSTRUCTION_FE.to_owned()
-                                        } else {
-                                            let payload =
-                                                data.trim_start_matches(PARITY_REVERT_PREFIX);
-                                            hex::decode(payload)
-                                                .ok()
-                                                .and_then(|payload| {
-                                                    as_solidity_revert_with_reason(&payload)
-                                                })
-                                                .unwrap_or("no reason".to_owned())
-                                        };
-                                        Err(EthereumContractCallError::Revert(reason))
-                                    }
-
-                                    // The VM execution error was not identified as a revert.
-                                    _ => Err(EthereumContractCallError::Web3Error(
-                                        web3::Error::Rpc(rpc_error.clone()),
-                                    )),
-                                }
-                            }
-
-                            // The error was not identified as a revert.
-                            Err(err) => Err(EthereumContractCallError::Web3Error(err)),
+                        match bytes.len() >= 4 && &bytes[..4] == solidity_revert_function_selector {
+                            false => None,
+                            true => ethabi::decode(&[ParamType::String], &bytes[4..])
+                                .ok()
+                                .and_then(|tokens| tokens[0].clone().into_string()),
                         }
-                    })
-                    .compat()
+                    };
+
+                    match result {
+                        // A successful response.
+                        Ok(bytes) => Ok(bytes),
+
+                        // Check for Geth revert.
+                        Err(web3::Error::Rpc(rpc_error))
+                            if GETH_EXECUTION_ERRORS
+                                .iter()
+                                .any(|e| rpc_error.message.contains(e)) =>
+                        {
+                            Err(EthereumContractCallError::Revert(rpc_error.message))
+                        }
+
+                        // Check for Parity revert.
+                        Err(web3::Error::Rpc(ref rpc_error))
+                            if rpc_error.code.code() == PARITY_VM_EXECUTION_ERROR =>
+                        {
+                            match rpc_error.data.as_ref().and_then(|d| d.as_str()) {
+                                Some(data)
+                                    if data.starts_with(PARITY_REVERT_PREFIX)
+                                        || data.starts_with(PARITY_BAD_JUMP_PREFIX)
+                                        || data.starts_with(PARITY_STACK_LIMIT_PREFIX)
+                                        || data == PARITY_BAD_INSTRUCTION_FE
+                                        || data == PARITY_BAD_INSTRUCTION_FD =>
+                                {
+                                    let reason = if data == PARITY_BAD_INSTRUCTION_FE {
+                                        PARITY_BAD_INSTRUCTION_FE.to_owned()
+                                    } else {
+                                        let payload = data.trim_start_matches(PARITY_REVERT_PREFIX);
+                                        hex::decode(payload)
+                                            .ok()
+                                            .and_then(|payload| {
+                                                as_solidity_revert_with_reason(&payload)
+                                            })
+                                            .unwrap_or("no reason".to_owned())
+                                    };
+                                    Err(EthereumContractCallError::Revert(reason))
+                                }
+
+                                // The VM execution error was not identified as a revert.
+                                _ => Err(EthereumContractCallError::Web3Error(web3::Error::Rpc(
+                                    rpc_error.clone(),
+                                ))),
+                            }
+                        }
+
+                        // The error was not identified as a revert.
+                        Err(err) => Err(EthereumContractCallError::Web3Error(err)),
+                    }
+                }
             })
             .map_err(|e| e.into_inner().unwrap_or(EthereumContractCallError::Timeout))
             .boxed()
@@ -620,8 +607,8 @@ impl EthereumAdapter {
                 .limit(*REQUEST_RETRIES)
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
-                    web3.eth()
-                        .block_with_txs(BlockId::Hash(hash))
+                    Box::pin(web3.eth().block_with_txs(BlockId::Hash(hash)))
+                        .compat()
                         .from_err::<Error>()
                         .and_then(move |block| {
                             block.map(|block| Arc::new(block)).ok_or_else(|| {
@@ -653,15 +640,18 @@ impl EthereumAdapter {
                 .no_limit()
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
-                    web3.eth()
-                        .block(BlockId::Number(Web3BlockNumber::Number(block_num.into())))
-                        .from_err::<Error>()
-                        .and_then(move |block| {
-                            block.ok_or_else(|| {
-                                anyhow!("Ethereum node did not find block {:?}", block_num)
-                            })
+                    let web3 = web3.clone();
+                    async move {
+                        let block = web3
+                            .eth()
+                            .block(BlockId::Number(Web3BlockNumber::Number(block_num.into())))
+                            .boxed()
+                            .await?;
+
+                        block.ok_or_else(|| {
+                            anyhow!("Ethereum node did not find block {:?}", block_num)
                         })
-                        .compat()
+                    }
                 })
                 .boxed()
                 .compat()
@@ -833,7 +823,14 @@ impl EthereumAdapter {
             retry("chain_id RPC call", &logger)
                 .no_limit()
                 .timeout_secs(*JSON_RPC_TIMEOUT)
-                .run(move || web3.eth().chain_id().from_err::<Error>().compat())
+                .run(move || {
+                    let web3 = web3.cheap_clone();
+                    async move {
+                        {
+                            web3.eth().chain_id().await
+                        }
+                    }
+                })
                 .await?,
         )
         .map_err(Error::msg)
@@ -857,45 +854,42 @@ impl EthereumAdapterTrait for EthereumAdapter {
         let net_version_future = retry("net_version RPC call", &logger)
             .no_limit()
             .timeout_secs(20)
-            .run(move || web3.net().version().from_err().compat())
-            .boxed()
-            .compat();
+            .run(move || {
+                let web3 = web3.cheap_clone();
+                async move { web3.net().version().await.with_context(|| "boom") }
+            })
+            .boxed();
 
         let web3 = self.web3.clone();
         let gen_block_hash_future = retry("eth_getBlockByNumber(0, false) RPC call", &logger)
             .no_limit()
             .timeout_secs(30)
             .run(move || {
-                web3.eth()
-                    .block(BlockId::Number(Web3BlockNumber::Number(0.into())))
-                    .from_err()
-                    .and_then(|gen_block_opt| {
-                        future::result(
-                            gen_block_opt
-                                .and_then(|gen_block| gen_block.hash.map(BlockHash::from))
-                                .ok_or_else(|| {
-                                    anyhow!("Ethereum node could not find genesis block")
-                                }),
-                        )
-                    })
-                    .compat()
-            })
-            .boxed()
-            .compat();
+                let web3 = web3.cheap_clone();
+                async move {
+                    web3.eth()
+                        .block(BlockId::Number(Web3BlockNumber::Number(0.into())))
+                        .await?
+                        .map(|gen_block| gen_block.hash.map(BlockHash::from))
+                        .flatten()
+                        .ok_or_else(|| anyhow!("Ethereum node could not find genesis block"))
+                }
+            });
 
-        net_version_future
-            .join(gen_block_hash_future)
-            .compat()
-            .await
-            .map(|(net_version, genesis_block_hash)| ChainIdentifier {
-                net_version,
-                genesis_block_hash,
-            })
-            .map_err(|e| {
-                e.into_inner().unwrap_or_else(|| {
-                    anyhow!("Ethereum node took too long to read network identifiers")
-                })
-            })
+        let (net_version, genesis_block_hash) =
+            try_join!(net_version_future, gen_block_hash_future).map_err(|e| {
+                anyhow!(
+                    "Ethereum node took too long to read network identifiers: {}",
+                    e
+                )
+            })?;
+
+        let ident = ChainIdentifier {
+            net_version,
+            genesis_block_hash,
+        };
+
+        Ok(ident)
     }
 
     fn latest_block_header(
@@ -903,22 +897,24 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
     ) -> Box<dyn Future<Item = web3::types::Block<H256>, Error = IngestorError> + Send> {
         let web3 = self.web3.clone();
-
         Box::new(
             retry("eth_getBlockByNumber(latest) no txs RPC call", logger)
                 .no_limit()
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
-                    web3.eth()
-                        .block(Web3BlockNumber::Latest.into())
-                        .map_err(|e| anyhow!("could not get latest block from Ethereum: {}", e))
-                        .from_err()
-                        .and_then(|block_opt| {
-                            block_opt.ok_or_else(|| {
-                                anyhow!("no latest block returned from Ethereum").into()
-                            })
-                        })
-                        .compat()
+                    let web3 = web3.cheap_clone();
+                    async move {
+                        let block_opt = web3
+                            .eth()
+                            .block(Web3BlockNumber::Latest.into())
+                            .await
+                            .map_err(|e| {
+                                anyhow!("could not get latest block from Ethereum: {}", e)
+                            })?;
+
+                        block_opt
+                            .ok_or_else(|| anyhow!("no latest block returned from Ethereum").into())
+                    }
                 })
                 .map_err(move |e| {
                     e.into_inner().unwrap_or_else(move || {
@@ -935,22 +931,23 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
     ) -> Box<dyn Future<Item = LightEthereumBlock, Error = IngestorError> + Send + Unpin> {
         let web3 = self.web3.clone();
-
         Box::new(
             retry("eth_getBlockByNumber(latest) with txs RPC call", logger)
                 .no_limit()
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
-                    web3.eth()
-                        .block_with_txs(Web3BlockNumber::Latest.into())
-                        .map_err(|e| anyhow!("could not get latest block from Ethereum: {}", e))
-                        .from_err()
-                        .and_then(|block_opt| {
-                            block_opt.ok_or_else(|| {
-                                anyhow!("no latest block returned from Ethereum").into()
-                            })
-                        })
-                        .compat()
+                    let web3 = web3.cheap_clone();
+                    async move {
+                        let block_opt = web3
+                            .eth()
+                            .block_with_txs(Web3BlockNumber::Latest.into())
+                            .await
+                            .map_err(|e| {
+                                anyhow!("could not get latest block from Ethereum: {}", e)
+                            })?;
+                        block_opt
+                            .ok_or_else(|| anyhow!("no latest block returned from Ethereum").into())
+                    }
                 })
                 .map_err(move |e| {
                     e.into_inner().unwrap_or_else(move || {
@@ -993,8 +990,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 .limit(*REQUEST_RETRIES)
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
-                    web3.eth()
-                        .block_with_txs(BlockId::Hash(block_hash))
+                    Box::pin(web3.eth().block_with_txs(BlockId::Hash(block_hash)))
+                        .compat()
                         .from_err()
                         .compat()
                 })
@@ -1021,10 +1018,13 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 .no_limit()
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
-                    web3.eth()
-                        .block_with_txs(BlockId::Number(block_number.into()))
-                        .from_err()
-                        .compat()
+                    let web3 = web3.cheap_clone();
+                    async move {
+                        web3.eth()
+                            .block_with_txs(BlockId::Number(block_number.into()))
+                            .await
+                            .map_err(Error::from)
+                    }
                 })
                 .map_err(move |e| {
                     e.into_inner().unwrap_or_else(move || {
@@ -1077,9 +1077,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
                             let logger = logger.clone();
                             let tx_hash = tx.hash;
 
-                            batching_web3
-                                .eth()
-                                .transaction_receipt(tx_hash)
+                            Box::pin(batching_web3.eth().transaction_receipt(tx_hash))
+                                .compat()
                                 .from_err()
                                 .map_err(IngestorError::Unknown)
                                 .and_then(move |receipt_opt| {
@@ -1127,9 +1126,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
                         })
                         .collect::<Vec<_>>();
 
-                    batching_web3
-                        .transport()
-                        .submit_batch()
+                    Box::pin(batching_web3.transport().submit_batch())
+                        .compat()
                         .from_err()
                         .map_err(IngestorError::Unknown)
                         .and_then(move |_| {
@@ -1188,11 +1186,14 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 .no_limit()
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
-                    web3.eth()
-                        .block(BlockId::Number(block_number.into()))
-                        .from_err()
-                        .map(|block_opt| block_opt.map(|block| block.hash).flatten())
-                        .compat()
+                    let web3 = web3.cheap_clone();
+                    async move {
+                        web3.eth()
+                            .block(BlockId::Number(block_number.into()))
+                            .await
+                            .map(|block_opt| block_opt.map(|block| block.hash).flatten())
+                            .map_err(Error::from)
+                    }
                 })
                 .boxed()
                 .compat()
@@ -1234,8 +1235,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     .no_limit()
                     .timeout_secs(60)
                     .run(move || {
-                        web3.eth()
-                            .uncle(block_hash.into(), index.into())
+                        Box::pin(web3.eth().uncle(block_hash.clone().into(), index.into()))
+                            .compat()
                             .map_err(move |e| {
                                 anyhow!(
                                     "could not get uncle {} for block {:?} ({} uncles): {}",
@@ -1694,13 +1695,7 @@ async fn fetch_receipt_from_ethereum_client(
     eth: &EthereumAdapter,
     transaction_hash: &H256,
 ) -> anyhow::Result<TransactionReceipt> {
-    match eth
-        .web3
-        .eth()
-        .transaction_receipt(*transaction_hash)
-        .compat()
-        .await
-    {
+    match eth.web3.eth().transaction_receipt(*transaction_hash).await {
         Ok(Some(receipt)) => Ok(receipt),
         Ok(None) => bail!("Could not find transaction receipt"),
         Err(error) => bail!("Failed to fetch transaction receipt: {}", error),
