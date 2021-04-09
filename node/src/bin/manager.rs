@@ -1,5 +1,6 @@
 use std::{env, sync::Arc};
 
+use config::PoolSize;
 use git_testament::{git_testament, render_testament};
 use graph::prometheus::Registry;
 use graph_core::MetricsRegistry;
@@ -45,7 +46,7 @@ pub struct Opt {
         long,
         short,
         env = "GRAPH_NODE_CONFIG",
-        help = "the name of the configuration file"
+        help = "the name of the configuration file\n"
     )]
     pub config: String,
     #[structopt(
@@ -53,9 +54,15 @@ pub struct Opt {
         default_value = "default",
         value_name = "NODE_ID",
         env = "GRAPH_NODE_ID",
-        help = "a unique identifier for this node"
+        help = "a unique identifier for this node\n"
     )]
     pub node_id: String,
+    #[structopt(
+        long,
+        default_value = "3",
+        help = "the size for connection pools. Set to 0\n to use pool size from configuration file\n corresponding to NODE_ID"
+    )]
+    pub pool_size: u32,
     #[structopt(subcommand)]
     pub cmd: Command,
 }
@@ -110,6 +117,15 @@ pub enum Command {
     Config(ConfigCommand),
     /// Listen for store events and print them
     Listen(ListenCommand),
+}
+
+impl Command {
+    /// Return `true` if the command should not override connection pool
+    /// sizes, in general only when we will not actually connect to any
+    /// databases
+    fn use_configured_pool_size(&self) -> bool {
+        matches!(self, Command::Config(_))
+    }
 }
 
 #[derive(Clone, Debug, StructOpt)]
@@ -227,13 +243,23 @@ async fn main() {
         render_testament!(TESTAMENT)
     );
 
-    let config = match Cfg::load(&logger, &opt.clone().into()) {
+    let mut config = match Cfg::load(&logger, &opt.clone().into()) {
         Err(e) => {
             eprintln!("configuration error: {}", e);
             std::process::exit(1);
         }
         Ok(config) => config,
     };
+    if opt.pool_size > 0 && !opt.cmd.use_configured_pool_size() {
+        // Override pool size from configuration
+        for shard in config.stores.values_mut() {
+            shard.pool_size = PoolSize::Fixed(opt.pool_size);
+            for replica in shard.replicas.values_mut() {
+                replica.pool_size = PoolSize::Fixed(opt.pool_size);
+            }
+        }
+    }
+
     let node = match NodeId::new(&opt.node_id) {
         Err(()) => {
             eprintln!("invalid node id: {}", opt.node_id);
