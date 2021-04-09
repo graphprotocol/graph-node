@@ -199,7 +199,6 @@ async fn main() {
 
     let graphql_metrics_registry = metrics_registry.clone();
 
-    let stores_eth_networks = eth_networks.clone();
     let contention_logger = logger.clone();
 
     let expensive_queries = read_expensive_queries().unwrap();
@@ -211,7 +210,7 @@ async fn main() {
         // This has one entry for each provider, and therefore multiple entries
         // for each network
         let networks = join_all(
-            stores_eth_networks
+            eth_networks
                 .flatten()
                 .into_iter()
                 .map(|(network_name, capabilities, eth_adapter)| {
@@ -219,9 +218,11 @@ async fn main() {
                 })
                 .map(
                     |(network_name, capabilities, eth_adapter, logger)| async move {
+                        let logger = logger.new(
+                            o!("provider" => eth_adapter.provider().to_string()),
+                        );
                         info!(
-                            logger, "Connecting to Ethereum...";
-                            "network" => &network_name,
+                            logger, "Connecting to Ethereum to get network identifier";
                             "capabilities" => &capabilities
                         );
                         match tokio::time::timeout(
@@ -232,16 +233,21 @@ async fn main() {
                         {
                             // the client didn't respond fast enough. Try to
                             // continue without knowing the net version
-                            Err(_) => (network_name, None),
+                            Err(_) => {
+                                warn!(logger, "Provider did not respond fast enough. Continuing without checking for change in net version");
+                                (network_name, None)
+                            },
+                            // we got some other error (maybe a typo on the URL)
+                            // still continue with startup
                             Ok(Err(e)) => {
-                                error!(logger, "Was a valid Ethereum node provided?");
-                                panic!("Failed to connect to Ethereum node: {}", e);
+                                error!(logger, "Connection to provider failed";
+                                       "error" =>  e.to_string());
+                                panic!("Connection to provider {} failed: {}", eth_adapter.provider(), e);
                             }
                             Ok(Ok(network_identifier)) => {
                                 info!(
                                     logger,
                                     "Connected to Ethereum";
-                                    "network" => &network_name,
                                     "network_version" => &network_identifier.net_version,
                                     "capabilities" => &capabilities
                                 );
