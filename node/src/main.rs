@@ -207,69 +207,7 @@ async fn main() {
         StoreBuilder::new(&logger, &node_id, &config, metrics_registry.cheap_clone()).await;
 
     let launch_services = |logger: Logger| async move {
-        // This has one entry for each provider, and therefore multiple entries
-        // for each network
-        let networks = join_all(
-            eth_networks
-                .flatten()
-                .into_iter()
-                .map(|(network_name, capabilities, eth_adapter)| {
-                    (network_name, capabilities, eth_adapter, logger.clone())
-                })
-                .map(
-                    |(network_name, capabilities, eth_adapter, logger)| async move {
-                        let logger = logger.new(
-                            o!("provider" => eth_adapter.provider().to_string()),
-                        );
-                        info!(
-                            logger, "Connecting to Ethereum to get network identifier";
-                            "capabilities" => &capabilities
-                        );
-                        match tokio::time::timeout(
-                            ETH_NET_VERSION_WAIT_TIME,
-                            eth_adapter.net_identifiers(),
-                        )
-                        .await
-                        {
-                            // the client didn't respond fast enough. Try to
-                            // continue without knowing the net version
-                            Err(_) => {
-                                warn!(logger, "Provider did not respond fast enough. Continuing without checking for change in net version");
-                                (network_name, None)
-                            },
-                            // we got some other error (maybe a typo on the URL)
-                            // still continue with startup
-                            Ok(Err(e)) => {
-                                error!(logger, "Connection to provider failed";
-                                       "error" =>  e.to_string());
-                                panic!("Connection to provider {} failed: {}", eth_adapter.provider(), e);
-                            }
-                            Ok(Ok(network_identifier)) => {
-                                info!(
-                                    logger,
-                                    "Connected to Ethereum";
-                                    "network_version" => &network_identifier.net_version,
-                                    "capabilities" => &capabilities
-                                );
-                                (network_name, Some(network_identifier))
-                            }
-                        }
-                    },
-                ),
-        )
-        .await;
-
-        // Group identifiers by network name
-        let networks: HashMap<String, Vec<EthereumNetworkIdentifier>> =
-            networks
-                .into_iter()
-                .fold(HashMap::new(), |mut networks, (name, ident)| {
-                    if let Some(ident) = ident {
-                        networks.entry(name).or_default().push(ident)
-                    }
-                    networks
-                });
-        let networks: Vec<_> = networks.into_iter().collect();
+        let (eth_networks, networks) = connect_networks(&logger, eth_networks).await;
 
         let subscription_manager = store_builder.subscription_manager();
         let network_store = store_builder.network_store(networks);
@@ -576,6 +514,79 @@ async fn create_ethereum_networks(
         }
     }
     Ok(parsed_networks)
+}
+
+async fn connect_networks(
+    logger: &Logger,
+    eth_networks: EthereumNetworks,
+) -> (
+    EthereumNetworks,
+    Vec<(String, Vec<EthereumNetworkIdentifier>)>,
+) {
+    // This has one entry for each provider, and therefore multiple entries
+    // for each network
+    let networks = join_all(
+            eth_networks
+                .flatten()
+                .into_iter()
+                .map(|(network_name, capabilities, eth_adapter)| {
+                    (network_name, capabilities, eth_adapter, logger.clone())
+                })
+                .map(
+                    |(network_name, capabilities, eth_adapter, logger)| async move {
+                        let logger = logger.new(
+                            o!("provider" => eth_adapter.provider().to_string()),
+                        );
+                        info!(
+                            logger, "Connecting to Ethereum to get network identifier";
+                            "capabilities" => &capabilities
+                        );
+                        match tokio::time::timeout(
+                            ETH_NET_VERSION_WAIT_TIME,
+                            eth_adapter.net_identifiers(),
+                        )
+                        .await
+                        {
+                            // the client didn't respond fast enough. Try to
+                            // continue without knowing the net version
+                            Err(_) => {
+                                warn!(logger, "Provider did not respond fast enough. Continuing without checking for change in net version");
+                                (network_name, None)
+                            },
+                            // we got some other error (maybe a typo on the URL)
+                            // still continue with startup
+                            Ok(Err(e)) => {
+                                error!(logger, "Connection to provider failed";
+                                       "error" =>  e.to_string());
+                                panic!("Connection to provider {} failed: {}", eth_adapter.provider(), e);
+                            }
+                            Ok(Ok(network_identifier)) => {
+                                info!(
+                                    logger,
+                                    "Connected to Ethereum";
+                                    "network_version" => &network_identifier.net_version,
+                                    "capabilities" => &capabilities
+                                );
+                                (network_name, Some(network_identifier))
+                            }
+                        }
+                    },
+                ),
+        )
+        .await;
+
+    // Group identifiers by network name
+    let networks: HashMap<String, Vec<EthereumNetworkIdentifier>> =
+        networks
+            .into_iter()
+            .fold(HashMap::new(), |mut networks, (name, ident)| {
+                if let Some(ident) = ident {
+                    networks.entry(name).or_default().push(ident)
+                }
+                networks
+            });
+    let networks: Vec<_> = networks.into_iter().collect();
+    (eth_networks, networks)
 }
 
 fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<IpfsClient> {
