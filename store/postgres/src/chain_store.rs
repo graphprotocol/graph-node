@@ -10,14 +10,14 @@ use diesel::sql_types::Text;
 use diesel::{insert_into, update};
 
 use graph::ensure;
+use graph::prelude::async_trait;
 use std::sync::Arc;
 use std::{collections::HashMap, convert::TryFrom};
 use std::{convert::TryInto, iter::FromIterator};
 
 use graph::prelude::{
-    web3::types::H256, BlockNumber, ChainHeadUpdateListener as _, ChainHeadUpdateStream, Error,
-    EthereumBlock, EthereumBlockPointer, EthereumNetworkIdentifier, Future, LightEthereumBlock,
-    Stream,
+    web3::types::H256, BlockNumber, ChainHeadUpdateStream, Error, EthereumBlock,
+    EthereumBlockPointer, EthereumNetworkIdentifier, Future, LightEthereumBlock, Stream,
 };
 
 use crate::{
@@ -1161,6 +1161,7 @@ impl ChainStore {
     }
 }
 
+#[async_trait]
 impl ChainStoreTrait for ChainStore {
     fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error> {
         Ok(self.genesis_block_ptr.clone())
@@ -1234,9 +1235,10 @@ impl ChainStoreTrait for ChainStore {
         Ok(missing)
     }
 
-    fn chain_head_updates(&self) -> ChainHeadUpdateStream {
+    async fn chain_head_updates(&self) -> ChainHeadUpdateStream {
         self.chain_head_update_listener
             .subscribe(self.chain.to_owned())
+            .await
     }
 
     fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {

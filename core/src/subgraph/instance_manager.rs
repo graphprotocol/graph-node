@@ -501,6 +501,7 @@ where
                 ctx.inputs.include_calls_in_blocks,
                 ctx.block_stream_metrics.clone(),
             )
+            .await
             .map_err(CancelableError::Error)
             .cancelable(&block_stream_canceler, || CancelableError::Cancel)
             .compat();

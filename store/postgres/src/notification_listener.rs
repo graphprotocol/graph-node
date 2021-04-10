@@ -10,8 +10,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
+use tokio::sync::mpsc::{channel, Receiver};
 
-use futures::sync::mpsc::{channel, Receiver};
 use graph::prelude::serde_json;
 use graph::prelude::*;
 
@@ -52,7 +52,6 @@ impl SafeChannelName {
 }
 
 pub struct NotificationListener {
-    output: Option<Receiver<JsonNotification>>,
     worker_handle: Option<thread::JoinHandle<()>>,
     terminate_worker: Arc<AtomicBool>,
     worker_barrier: Arc<Barrier>,
@@ -63,19 +62,25 @@ impl NotificationListener {
     /// Connect to the specified database and listen for Postgres notifications on the specified
     /// channel.
     ///
-    /// Must call `.start()` to begin receiving notifications.
-    pub fn new(logger: &Logger, postgres_url: String, channel_name: SafeChannelName) -> Self {
+    /// Must call `.start()` to begin receiving notifications on the returned receiver.
+    pub fn new(
+        logger: &Logger,
+        postgres_url: String,
+        channel_name: SafeChannelName,
+    ) -> (Self, Receiver<JsonNotification>) {
         // Listen to Postgres notifications in a worker thread
         let (receiver, worker_handle, terminate_worker, worker_barrier) =
             Self::listen(logger, postgres_url, channel_name);
 
-        NotificationListener {
-            output: Some(receiver),
-            worker_handle: Some(worker_handle),
-            terminate_worker,
-            worker_barrier,
-            started: false,
-        }
+        (
+            NotificationListener {
+                worker_handle: Some(worker_handle),
+                terminate_worker,
+                worker_barrier,
+                started: false,
+            },
+            receiver,
+        )
     }
 
     /// Start accepting notifications.
@@ -177,7 +182,7 @@ impl NotificationListener {
                                 // We'll assume here that if sending fails, this means that the
                                 // listener has already been dropped, the receiving
                                 // end is gone and we should terminate the listener loop
-                                if sender.clone().send(json_notification).wait().is_err() {
+                                if sender.clone().blocking_send(json_notification).is_err() {
                                     break;
                                 }
                             }
@@ -211,16 +216,6 @@ impl Drop for NotificationListener {
             .unwrap()
             .join()
             .expect("failed to terminate NotificationListener thread");
-    }
-}
-
-impl EventProducer<JsonNotification> for NotificationListener {
-    fn take_event_stream(
-        &mut self,
-    ) -> Option<Box<dyn Stream<Item = JsonNotification, Error = ()> + Send>> {
-        self.output
-            .take()
-            .map(|s| Box::new(s) as Box<dyn Stream<Item = JsonNotification, Error = ()> + Send>)
     }
 }
 

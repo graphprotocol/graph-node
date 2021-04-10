@@ -1238,6 +1238,7 @@ pub trait CallCache: Send + Sync + 'static {
 
 /// Common trait for blockchain store implementations.
 #[automock]
+#[async_trait]
 pub trait ChainStore: Send + Sync + 'static {
     /// Get a pointer to this blockchain's genesis block.
     fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error>;
@@ -1276,7 +1277,7 @@ pub trait ChainStore: Send + Sync + 'static {
     fn attempt_chain_head_update(&self, ancestor_count: BlockNumber) -> Result<Vec<H256>, Error>;
 
     /// Subscribe to chain head updates.
-    fn chain_head_updates(&self) -> ChainHeadUpdateStream;
+    async fn chain_head_updates(&self) -> ChainHeadUpdateStream;
 
     /// Get the current head block pointer for this chain.
     /// Any changes to the head block pointer will be to a block with a larger block number, never
