@@ -11,7 +11,7 @@ pub use self::adapter::{
     EthereumContractStateRequest, EthereumLogFilter, EthereumNetworkIdentifier,
     MockEthereumAdapter, ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
 };
-pub use self::listener::{ChainHeadUpdate, ChainHeadUpdateListener, ChainHeadUpdateStream};
+pub use self::listener::{ChainHeadUpdate, ChainHeadUpdateStream};
 pub use self::network::{EthereumNetworkAdapters, EthereumNetworks, NodeCapabilities};
 pub use self::stream::{BlockStream, BlockStreamBuilder, BlockStreamEvent};
 pub use self::types::{

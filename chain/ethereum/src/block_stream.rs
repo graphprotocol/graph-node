@@ -148,7 +148,7 @@ where
     S: SubgraphStore,
     C: ChainStore,
 {
-    pub fn new(
+    pub async fn new(
         subgraph_store: Arc<S>,
         chain_store: Arc<C>,
         eth_adapter: Arc<dyn EthereumAdapter>,
@@ -166,7 +166,7 @@ where
         BlockStream {
             state: BlockStreamState::BeginReconciliation,
             consecutive_err_count: 0,
-            chain_head_update_stream: chain_store.chain_head_updates(),
+            chain_head_update_stream: chain_store.chain_head_updates().await,
             ctx: BlockStreamContext {
                 subgraph_store,
                 chain_store,
@@ -788,6 +788,7 @@ where
     }
 }
 
+#[async_trait]
 impl<S, B, M> BlockStreamBuilderTrait for BlockStreamBuilder<S, B, M>
 where
     S: SubgraphStore,
@@ -796,7 +797,7 @@ where
 {
     type Stream = BlockStream<S, B::ChainStore>;
 
-    fn build(
+    async fn build(
         &self,
         logger: Logger,
         deployment_id: SubgraphDeploymentId,
@@ -850,6 +851,7 @@ where
             logger,
             metrics,
         )
+        .await
     }
 }
 

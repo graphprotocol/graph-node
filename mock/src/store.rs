@@ -19,6 +19,7 @@ mock! {
         fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Option<String>, StoreError>;
     }
 
+    #[async_trait]
     trait ChainStore: Send + Sync + 'static {
         fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error>;
 
@@ -32,7 +33,7 @@ mock! {
 
         fn attempt_chain_head_update(&self, ancestor_count: BlockNumber) -> Result<Vec<H256>, Error>;
 
-        fn chain_head_updates(&self) -> ChainHeadUpdateStream;
+        async fn chain_head_updates(&self) -> ChainHeadUpdateStream;
 
         fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error>;
 

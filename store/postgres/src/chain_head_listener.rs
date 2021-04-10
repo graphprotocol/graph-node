@@ -1,14 +1,15 @@
+use std::collections::BTreeMap;
+
 use diesel::RunQueryDsl;
 use lazy_static::lazy_static;
-use tokio::sync::watch;
-use web3::types::H256;
+use tokio::sync::{mpsc::Receiver, watch, RwLock};
 
 use crate::{
     connection_pool::ConnectionPool,
-    notification_listener::{NotificationListener, SafeChannelName},
+    notification_listener::{JsonNotification, NotificationListener, SafeChannelName},
 };
 use graph::prelude::serde_json::{self, json};
-use graph::prelude::{ChainHeadUpdateListener as ChainHeadUpdateListenerTrait, *};
+use graph::prelude::*;
 use graph::tokio_stream::wrappers::WatchStream;
 use graph_chain_ethereum::BlockIngestorMetrics;
 
@@ -17,17 +18,26 @@ lazy_static! {
         SafeChannelName::i_promise_this_is_safe("chain_head_updates");
 }
 
+struct Watcher {
+    sender: watch::Sender<()>,
+    receiver: watch::Receiver<()>,
+}
+
+impl Watcher {
+    fn new() -> Self {
+        let (sender, receiver) = watch::channel(());
+        Watcher { sender, receiver }
+    }
+
+    fn send(&self) {
+        // Unwrap: `self` holds a receiver.
+        self.sender.send(()).unwrap()
+    }
+}
+
 pub struct ChainHeadUpdateListener {
-    /// A receiver that gets all chain head updates for all networks. We
-    /// filter notifications to the desired network in `subscribe`. Using
-    /// a `watch::Receiver` here has the downside that the notification for
-    /// one network can make the notification for another network disappear
-    /// if events aren't processed fast enough. If that happens, the update
-    /// for the preempted network will happen on the next block. Since even
-    /// the fastest network generates new blocks a few seconds apart, the
-    /// risk for collisions, and in particular sustained collisions is
-    /// very low
-    update_receiver: watch::Receiver<ChainHeadUpdate>,
+    /// Update watchers keyed by network.
+    watchers: Arc<RwLock<BTreeMap<String, Watcher>>>,
     _listener: NotificationListener,
 }
 
@@ -44,18 +54,20 @@ impl ChainHeadUpdateListener {
         let ingestor_metrics = Arc::new(BlockIngestorMetrics::new(registry.clone()));
 
         // Create a Postgres notification listener for chain head updates
-        let mut listener = NotificationListener::new(&logger, postgres_url, CHANNEL_NAME.clone());
+        let (mut listener, receiver) =
+            NotificationListener::new(&logger, postgres_url, CHANNEL_NAME.clone());
+        let watchers = Arc::new(RwLock::new(BTreeMap::new()));
 
-        let none_update = ChainHeadUpdate {
-            network_name: "none".to_owned(),
-            head_block_hash: H256::zero(),
-            head_block_number: 0,
-        };
-        let (update_sender, update_receiver) = watch::channel(none_update);
-        Self::listen(ingestor_metrics, &mut listener, update_sender);
+        Self::listen(
+            logger,
+            ingestor_metrics,
+            &mut listener,
+            receiver,
+            watchers.cheap_clone(),
+        );
 
         ChainHeadUpdateListener {
-            update_receiver,
+            watchers,
 
             // We keep the listener around to tie its stream's lifetime to
             // that of the chain head update listener and prevent it from
@@ -65,56 +77,65 @@ impl ChainHeadUpdateListener {
     }
 
     fn listen(
+        logger: Logger,
         metrics: Arc<BlockIngestorMetrics>,
         listener: &mut NotificationListener,
-        update_sender: watch::Sender<ChainHeadUpdate>,
+        mut receiver: Receiver<JsonNotification>,
+        watchers: Arc<RwLock<BTreeMap<String, Watcher>>>,
     ) {
         // Process chain head updates in a dedicated task
-        graph::spawn(
-            listener
-                .take_event_stream()
-                .unwrap()
-                .compat()
-                .try_filter_map(move |notification| {
-                    // Create ChainHeadUpdate from JSON
-                    let update: ChainHeadUpdate =
-                        serde_json::from_value(notification.payload.clone()).unwrap_or_else(|_| {
-                            panic!(
-                                "invalid chain head update received from database: {:?}",
-                                notification.payload
-                            )
-                        });
+        graph::spawn(async move {
+            while let Some(notification) = receiver.recv().await {
+                // Create ChainHeadUpdate from JSON
+                let update: ChainHeadUpdate =
+                    match serde_json::from_value(notification.payload.clone()) {
+                        Ok(update) => update,
+                        Err(e) => {
+                            crit!(
+                                logger,
+                                "invalid chain head update received from database";
+                                "payload" => format!("{:?}", notification.payload),
+                                "error" => e.to_string()
+                            );
+                            continue;
+                        }
+                    };
 
-                    // Observe the latest chain_head_number for each network in order to monitor
-                    // block ingestion
-                    metrics.set_chain_head_number(
-                        &update.network_name,
-                        *&update.head_block_number as i64,
-                    );
-                    futures03::future::ok(Some(update))
-                })
-                .try_for_each(move |update| {
-                    futures03::future::ready(update_sender.send(update).map_err(|_| ()))
-                }),
-        );
+                // Observe the latest chain head for each network to monitor block ingestion
+                metrics
+                    .set_chain_head_number(&update.network_name, *&update.head_block_number as i64);
+
+                // If there are subscriptions for this network, notify them.
+                if let Some(watcher) = watchers.read().await.get(&update.network_name) {
+                    watcher.send()
+                }
+            }
+        });
 
         // We're ready, start listening to chain head updates
         listener.start();
     }
-}
 
-impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
-    fn subscribe(&self, network_name: String) -> ChainHeadUpdateStream {
-        let f = move |update: ChainHeadUpdate| {
-            if update.network_name == network_name {
-                futures03::future::ready(Some(()))
+    pub async fn subscribe(&self, network_name: String) -> ChainHeadUpdateStream {
+        let update_receiver = {
+            let existing = {
+                let watchers = self.watchers.read().await;
+                watchers.get(&network_name).map(|w| w.receiver.clone())
+            };
+
+            if let Some(watcher) = existing {
+                watcher
             } else {
-                futures03::future::ready(None)
+                // This is the first subscription for this network, a write lock is required.
+                let watcher = Watcher::new();
+                let receiver = watcher.receiver.clone();
+                self.watchers.write().await.insert(network_name, watcher);
+                receiver
             }
         };
+
         Box::new(
-            WatchStream::new(self.update_receiver.clone())
-                .filter_map(f)
+            WatchStream::new(update_receiver)
                 .map(Result::<_, ()>::Ok)
                 .boxed()
                 .compat(),

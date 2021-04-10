@@ -1,5 +1,7 @@
 use futures::sync::mpsc::{channel, Sender};
-use std::sync::{atomic::Ordering, Arc, Mutex, RwLock};
+use futures03::TryStreamExt;
+use graph::tokio_stream::wrappers::ReceiverStream;
+use std::sync::{atomic::Ordering, Arc, RwLock};
 use std::{collections::HashMap, sync::atomic::AtomicUsize};
 use uuid::Uuid;
 
@@ -9,35 +11,25 @@ use graph::prelude::serde_json;
 use graph::prelude::*;
 
 pub struct StoreEventListener {
-    logger: Logger,
     notification_listener: NotificationListener,
 }
 
 impl StoreEventListener {
-    pub fn new(logger: &Logger, postgres_url: String) -> Self {
-        StoreEventListener {
-            logger: logger.clone(),
-            notification_listener: NotificationListener::new(
-                logger,
-                postgres_url,
-                SafeChannelName::i_promise_this_is_safe("store_events"),
-            ),
-        }
-    }
+    pub fn new(
+        logger: Logger,
+        postgres_url: String,
+    ) -> (Self, Box<dyn Stream<Item = StoreEvent, Error = ()> + Send>) {
+        let (notification_listener, receiver) = NotificationListener::new(
+            &logger,
+            postgres_url,
+            SafeChannelName::i_promise_this_is_safe("store_events"),
+        );
 
-    pub fn start(&mut self) {
-        self.notification_listener.start()
-    }
-}
-
-impl EventProducer<StoreEvent> for StoreEventListener {
-    fn take_event_stream(
-        &mut self,
-    ) -> Option<Box<dyn Stream<Item = StoreEvent, Error = ()> + Send>> {
-        self.notification_listener.take_event_stream().map(
-            |stream| -> Box<dyn Stream<Item = _, Error = _> + Send> {
-                let logger = self.logger.clone();
-                Box::new(stream.filter_map(move |notification| {
+        let event_stream = Box::new(
+            ReceiverStream::new(receiver)
+                .map(Result::<_, ()>::Ok)
+                .compat()
+                .filter_map(move |notification| {
                     // When graph-node is starting up, it is possible that
                     // Postgres still has old messages queued up that we
                     // can't decode anymore. It is safe to skip them; once
@@ -66,9 +58,19 @@ impl EventProducer<StoreEvent> for StoreEventListener {
                             Some(change)
                         },
                     )
-                }))
+                }),
+        );
+
+        (
+            StoreEventListener {
+                notification_listener,
             },
+            event_stream,
         )
+    }
+
+    pub fn start(&mut self) {
+        self.notification_listener.start()
     }
 }
 
@@ -77,29 +79,24 @@ impl EventProducer<StoreEvent> for StoreEventListener {
 pub struct SubscriptionManager {
     subscriptions: Arc<RwLock<HashMap<String, Sender<Arc<StoreEvent>>>>>,
 
-    /// listen to StoreEvents generated when applying entity operations
-    listener: Mutex<StoreEventListener>,
+    /// Keep the notification listener alive
+    listener: StoreEventListener,
 }
 
 impl SubscriptionManager {
     pub fn new(logger: Logger, postgres_url: String) -> Self {
-        let mut listener = StoreEventListener::new(&logger, postgres_url);
-        let store_events = listener
-            .take_event_stream()
-            .expect("Failed to listen to entity change events in Postgres");
+        let (listener, store_events) = StoreEventListener::new(logger, postgres_url);
 
-        let manager = SubscriptionManager {
+        let mut manager = SubscriptionManager {
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
-            listener: Mutex::new(listener),
+            listener,
         };
 
         // Deal with store subscriptions
         manager.handle_store_events(store_events);
         manager.periodically_clean_up_stale_subscriptions();
 
-        let mut listener = manager.listener.lock().unwrap();
-        listener.start();
-        drop(listener);
+        manager.listener.start();
 
         manager
     }
