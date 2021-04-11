@@ -33,7 +33,7 @@ mock! {
 
         fn attempt_chain_head_update(&self, ancestor_count: BlockNumber) -> Result<Vec<H256>, Error>;
 
-        async fn chain_head_updates(&self) -> ChainHeadUpdateStream;
+        fn chain_head_updates(&self) -> ChainHeadUpdateStream;
 
         fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error>;
 

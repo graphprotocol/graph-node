@@ -31,6 +31,7 @@ pub use task_spawn::{
 };
 
 pub use bytes;
+pub use parking_lot;
 pub use prometheus;
 pub use semver;
 pub use stable_hash;

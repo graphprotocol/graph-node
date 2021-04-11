@@ -44,11 +44,10 @@ impl MockBlockStreamBuilder {
     }
 }
 
-#[async_trait]
 impl BlockStreamBuilder for MockBlockStreamBuilder {
     type Stream = MockBlockStream;
 
-    async fn build(
+    fn build(
         &self,
         _logger: Logger,
         _deployment_id: SubgraphDeploymentId,

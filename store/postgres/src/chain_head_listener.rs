@@ -1,8 +1,9 @@
+use graph::parking_lot::Mutex;
 use std::collections::BTreeMap;
 
 use diesel::RunQueryDsl;
 use lazy_static::lazy_static;
-use tokio::sync::{mpsc::Receiver, watch, RwLock};
+use tokio::sync::{mpsc::Receiver, watch};
 
 use crate::{
     connection_pool::ConnectionPool,
@@ -37,7 +38,7 @@ impl Watcher {
 
 pub struct ChainHeadUpdateListener {
     /// Update watchers keyed by network.
-    watchers: Arc<RwLock<BTreeMap<String, Watcher>>>,
+    watchers: Arc<Mutex<BTreeMap<String, Watcher>>>,
     _listener: NotificationListener,
 }
 
@@ -56,7 +57,7 @@ impl ChainHeadUpdateListener {
         // Create a Postgres notification listener for chain head updates
         let (mut listener, receiver) =
             NotificationListener::new(&logger, postgres_url, CHANNEL_NAME.clone());
-        let watchers = Arc::new(RwLock::new(BTreeMap::new()));
+        let watchers = Arc::new(Mutex::new(BTreeMap::new()));
 
         Self::listen(
             logger,
@@ -81,7 +82,7 @@ impl ChainHeadUpdateListener {
         metrics: Arc<BlockIngestorMetrics>,
         listener: &mut NotificationListener,
         mut receiver: Receiver<JsonNotification>,
-        watchers: Arc<RwLock<BTreeMap<String, Watcher>>>,
+        watchers: Arc<Mutex<BTreeMap<String, Watcher>>>,
     ) {
         // Process chain head updates in a dedicated task
         graph::spawn(async move {
@@ -106,7 +107,7 @@ impl ChainHeadUpdateListener {
                     .set_chain_head_number(&update.network_name, *&update.head_block_number as i64);
 
                 // If there are subscriptions for this network, notify them.
-                if let Some(watcher) = watchers.read().await.get(&update.network_name) {
+                if let Some(watcher) = watchers.lock().get(&update.network_name) {
                     watcher.send()
                 }
             }
@@ -116,23 +117,14 @@ impl ChainHeadUpdateListener {
         listener.start();
     }
 
-    pub async fn subscribe(&self, network_name: String) -> ChainHeadUpdateStream {
-        let update_receiver = {
-            let existing = {
-                let watchers = self.watchers.read().await;
-                watchers.get(&network_name).map(|w| w.receiver.clone())
-            };
-
-            if let Some(watcher) = existing {
-                watcher
-            } else {
-                // This is the first subscription for this network, a write lock is required.
-                let watcher = Watcher::new();
-                let receiver = watcher.receiver.clone();
-                self.watchers.write().await.insert(network_name, watcher);
-                receiver
-            }
-        };
+    pub fn subscribe(&self, network_name: String) -> ChainHeadUpdateStream {
+        let update_receiver = self
+            .watchers
+            .lock()
+            .entry(network_name)
+            .or_insert_with(|| Watcher::new())
+            .receiver
+            .clone();
 
         Box::new(
             WatchStream::new(update_receiver)
