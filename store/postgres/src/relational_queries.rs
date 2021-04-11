@@ -1235,7 +1235,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 #[derive(Debug)]
 pub struct InsertQuery<'a> {
     table: &'a Table,
-    entities: &'a Vec<(EntityKey, Entity)>,
+    entities: &'a [(EntityKey, Entity)],
     unique_columns: Vec<&'a Column>,
     block: BlockNumber,
 }
@@ -1243,7 +1243,7 @@ pub struct InsertQuery<'a> {
 impl<'a> InsertQuery<'a> {
     pub fn new(
         table: &'a Table,
-        entities: &'a mut Vec<(EntityKey, Entity)>,
+        entities: &'a mut [(EntityKey, Entity)],
         block: BlockNumber,
     ) -> Result<InsertQuery<'a>, StoreError> {
         for (entity_key, entity) in entities.iter_mut() {
@@ -1285,7 +1285,7 @@ impl<'a> InsertQuery<'a> {
     }
 
     /// Build the column name list using the subset of all keys among present entities.
-    fn unique_columns(table: &'a Table, entities: &'a Vec<(EntityKey, Entity)>) -> Vec<&'a Column> {
+    fn unique_columns(table: &'a Table, entities: &'a [(EntityKey, Entity)]) -> Vec<&'a Column> {
         let mut hashmap = HashMap::new();
         for (_key, entity) in entities.iter() {
             for column in &table.columns {
