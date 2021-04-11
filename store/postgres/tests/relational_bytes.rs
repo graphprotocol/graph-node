@@ -288,9 +288,9 @@ fn update() {
 
         let entity_id = entity.id().unwrap().clone();
         let entity_type = key.entity_type.clone();
-        let entities = vec![(key, entity)];
+        let mut entities = vec![(key, entity)];
         layout
-            .update(&conn, entity_type, entities.clone(), 1, &MOCK_STOPWATCH)
+            .update(&conn, &entity_type, &mut entities, 1, &MOCK_STOPWATCH)
             .expect("Failed to update");
 
         let actual = layout

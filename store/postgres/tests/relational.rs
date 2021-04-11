@@ -209,7 +209,7 @@ fn insert_entity(
             );
             (key, entity)
         })
-        .collect();
+        .collect::<Vec<(EntityKey, Entity)>>();
     let entity_type = EntityType::from(entity_type);
     let errmsg = format!(
         "Failed to insert entities {}[{:?}]",
@@ -233,7 +233,7 @@ fn update_entity(
     entity_type: &str,
     mut entities: Vec<Entity>,
 ) {
-    let entities_with_keys: Vec<(EntityKey, Entity)> = entities
+    let mut entities_with_keys: Vec<(EntityKey, Entity)> = entities
         .drain(..)
         .map(|entity| {
             let key = EntityKey::data(
@@ -254,8 +254,8 @@ fn update_entity(
     let updated = layout
         .update(
             &conn,
-            entity_type,
-            entities_with_keys.clone(),
+            &entity_type,
+            &mut entities_with_keys,
             0,
             &MOCK_STOPWATCH,
         )
@@ -538,7 +538,7 @@ fn update() {
         let entity_type = EntityType::from("Scalar");
         let mut entities = vec![(key, entity)];
         layout
-            .update(&conn, entity_type, entities.clone(), 0, &MOCK_STOPWATCH)
+            .update(&conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
             .expect("Failed to update");
 
         // The missing 'strings' will show up as Value::Null in the
@@ -596,13 +596,13 @@ fn update_many() {
             })
             .collect();
 
-        let entities = keys
+        let mut entities: Vec<(EntityKey, Entity)> = keys
             .into_iter()
             .zip(vec![one, two, three].into_iter())
             .collect();
 
         layout
-            .update(&conn, entity_type, entities, 0, &MOCK_STOPWATCH)
+            .update(&conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
             .expect("Failed to update");
 
         // check updates took effect
@@ -668,9 +668,9 @@ fn serialize_bigdecimal() {
                 entity.id().unwrap().clone(),
             );
             let entity_type = EntityType::from("Scalar");
-            let entities = vec![(key, entity.clone())];
+            let mut entities = vec![(key, entity.clone())];
             layout
-                .update(&conn, entity_type, entities, 0, &MOCK_STOPWATCH)
+                .update(&conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
                 .expect("Failed to update");
 
             let actual = layout

@@ -565,7 +565,7 @@ impl Layout {
         &self,
         conn: &PgConnection,
         entity_type: &EntityType,
-        entities: &mut Vec<(EntityKey, Entity)>,
+        entities: &mut [(EntityKey, Entity)],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
@@ -670,8 +670,8 @@ impl Layout {
     pub fn update(
         &self,
         conn: &PgConnection,
-        entity_type: EntityType,
-        mut entities: Vec<(EntityKey, Entity)>,
+        entity_type: &EntityType,
+        entities: &mut [(EntityKey, Entity)],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
@@ -684,14 +684,14 @@ impl Layout {
         ClampRangeQuery::new(table, &entity_type, &entity_keys, block).execute(conn)?;
         section.end();
         let _section = stopwatch.start_section("update_modification_insert_query");
-        Ok(InsertQuery::new(table, &mut entities, block)?.execute(conn)?)
+        Ok(InsertQuery::new(table, entities, block)?.execute(conn)?)
     }
 
     pub fn delete(
         &self,
         conn: &PgConnection,
         entity_type: &EntityType,
-        entity_ids: &Vec<String>,
+        entity_ids: &[String],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {

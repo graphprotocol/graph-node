@@ -38,6 +38,8 @@ use crate::relational_queries::FromEntityData;
 use crate::{connection_pool::ConnectionPool, detail};
 use crate::{dynds, primary::Site};
 
+const POSTGRES_MAX_BINDINGS_PER_STATEMENT: usize = u16::MAX as usize; // 65535
+
 /// When connected to read replicas, this allows choosing which DB server to use for an operation.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ReplicaId {
@@ -311,19 +313,42 @@ impl DeploymentStore {
             }
         }
 
-        // apply modification groups
-        for (entity_type, entities) in inserts.iter_mut() {
-            count +=
-                self.insert_entities(entity_type, entities, conn, layout, ptr, &stopwatch)? as i32
+        // Apply modification groups:
+        // Each operation must respect the maximum number of bindings allowed in PostgreSQL queries,
+        // so we need to act in chunks whose size is defined by the number of entities times the
+        // number of attributes each entity type has.
+
+        // Inserts:
+        for (entity_type, mut entities) in inserts.into_iter() {
+            let chunk_size = {
+                let num_fields = (*entities[0].1).len();
+                POSTGRES_MAX_BINDINGS_PER_STATEMENT / num_fields
+            };
+            for chunk in entities.chunks_mut(chunk_size) {
+                count +=
+                    self.insert_entities(&entity_type, chunk, conn, layout, ptr, &stopwatch)? as i32
+            }
         }
-        for (entity_type, entities) in overwrites.drain() {
-            // not updating count since the number of entities remains the same
-            self.overwrite_entities(entity_type, entities, conn, layout, ptr, &stopwatch)?;
+
+        // Overwrites:
+        for (entity_type, mut entities) in overwrites.into_iter() {
+            let chunk_size = {
+                let num_fields = (*entities[0].1).len();
+                POSTGRES_MAX_BINDINGS_PER_STATEMENT / num_fields
+            };
+            for chunk in entities.chunks_mut(chunk_size) {
+                // we do not update the count since the number of entities remains the same
+                self.overwrite_entities(&entity_type, chunk, conn, layout, ptr, &stopwatch)?;
+            }
         }
-        for (entity_type, entity_keys) in removals.iter() {
-            count -=
-                self.remove_entities(entity_type, entity_keys, conn, layout, ptr, &stopwatch)?
+
+        // Removals
+        for (entity_type, entity_keys) in removals.into_iter() {
+            let chunk_size = POSTGRES_MAX_BINDINGS_PER_STATEMENT / entity_keys.len(); // only ID is bound
+            for chunk in entity_keys.chunks(chunk_size) {
+                count -= self.remove_entities(&entity_type, chunk, conn, layout, ptr, &stopwatch)?
                     as i32;
+            }
         }
         Ok(count)
     }
@@ -331,7 +356,7 @@ impl DeploymentStore {
     fn insert_entities(
         &self,
         entity_type: &EntityType,
-        data: &mut Vec<(EntityKey, Entity)>,
+        data: &mut [(EntityKey, Entity)],
         conn: &PgConnection,
         layout: &Layout,
         ptr: &EthereumBlockPointer,
@@ -350,8 +375,8 @@ impl DeploymentStore {
 
     fn overwrite_entities(
         &self,
-        entity_type: EntityType,
-        data: Vec<(EntityKey, Entity)>,
+        entity_type: &EntityType,
+        data: &mut [(EntityKey, Entity)],
         conn: &PgConnection,
         layout: &Layout,
         ptr: &EthereumBlockPointer,
@@ -365,13 +390,13 @@ impl DeploymentStore {
         section.end();
 
         let _section = stopwatch.start_section("apply_entity_modifications_update");
-        layout.update(conn, entity_type, data, block_number(ptr), stopwatch)
+        layout.update(conn, &entity_type, data, block_number(ptr), stopwatch)
     }
 
     fn remove_entities(
         &self,
         entity_type: &EntityType,
-        entity_keys: &Vec<String>,
+        entity_keys: &[String],
         conn: &PgConnection,
         layout: &Layout,
         ptr: &EthereumBlockPointer,
@@ -379,7 +404,13 @@ impl DeploymentStore {
     ) -> Result<usize, StoreError> {
         let _section = stopwatch.start_section("apply_entity_modifications_delete");
         layout
-            .delete(conn, entity_type, entity_keys, block_number(ptr), stopwatch)
+            .delete(
+                conn,
+                entity_type,
+                &entity_keys,
+                block_number(ptr),
+                stopwatch,
+            )
             .map_err(|_error| anyhow!("Failed to remove entities: {:?}", entity_keys).into())
     }
 
