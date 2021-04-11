@@ -10,12 +10,10 @@ pub enum BlockStreamEvent {
 
 pub trait BlockStream: Stream<Item = BlockStreamEvent, Error = Error> {}
 
-#[async_trait]
-
 pub trait BlockStreamBuilder: Clone + Send + Sync + 'static {
     type Stream: BlockStream + Send + 'static;
 
-    async fn build(
+    fn build(
         &self,
         logger: Logger,
         deployment_id: SubgraphDeploymentId,

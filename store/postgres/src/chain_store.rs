@@ -1235,10 +1235,9 @@ impl ChainStoreTrait for ChainStore {
         Ok(missing)
     }
 
-    async fn chain_head_updates(&self) -> ChainHeadUpdateStream {
+    fn chain_head_updates(&self) -> ChainHeadUpdateStream {
         self.chain_head_update_listener
             .subscribe(self.chain.to_owned())
-            .await
     }
 
     fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
