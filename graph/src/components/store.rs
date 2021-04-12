@@ -653,7 +653,10 @@ where
         let mut pending_event: Option<StoreEvent> = None;
         let mut source = self.source.fuse();
         let mut had_err = false;
-        let mut delay = tokio::time::sleep(interval).unit_error().boxed().compat();
+        let mut delay = tokio::time::delay_for(interval)
+            .unit_error()
+            .boxed()
+            .compat();
         let logger = logger.clone();
 
         let source = Box::new(poll_fn(move || -> Poll<Option<Arc<StoreEvent>>, ()> {
@@ -680,7 +683,10 @@ where
                 // Timer errors are harmless. Treat them as if the timer had
                 // become ready.
                 Ok(Async::Ready(())) | Err(_) => {
-                    delay = tokio::time::sleep(interval).unit_error().boxed().compat();
+                    delay = tokio::time::delay_for(interval)
+                        .unit_error()
+                        .boxed()
+                        .compat();
                     true
                 }
             };

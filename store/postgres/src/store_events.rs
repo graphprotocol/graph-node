@@ -1,6 +1,5 @@
 use futures::sync::mpsc::{channel, Sender};
 use futures03::TryStreamExt;
-use graph::tokio_stream::wrappers::ReceiverStream;
 use std::sync::{atomic::Ordering, Arc, RwLock};
 use std::{collections::HashMap, sync::atomic::AtomicUsize};
 use uuid::Uuid;
@@ -25,41 +24,38 @@ impl StoreEventListener {
             SafeChannelName::i_promise_this_is_safe("store_events"),
         );
 
-        let event_stream = Box::new(
-            ReceiverStream::new(receiver)
-                .map(Result::<_, ()>::Ok)
-                .compat()
-                .filter_map(move |notification| {
-                    // When graph-node is starting up, it is possible that
-                    // Postgres still has old messages queued up that we
-                    // can't decode anymore. It is safe to skip them; once
-                    // We've seen 10 valid messages, we can assume that
-                    // whatever old messages Postgres had queued have been
-                    // cleared. Seeing an invalid message after that
-                    // definitely indicates trouble.
-                    let num_valid = AtomicUsize::new(0);
-                    serde_json::from_value(notification.payload.clone()).map_or_else(
-                        |_err| {
-                            error!(
-                                &logger,
+        let event_stream = Box::new(receiver.map(Result::<_, ()>::Ok).compat().filter_map(
+            move |notification| {
+                // When graph-node is starting up, it is possible that
+                // Postgres still has old messages queued up that we
+                // can't decode anymore. It is safe to skip them; once
+                // We've seen 10 valid messages, we can assume that
+                // whatever old messages Postgres had queued have been
+                // cleared. Seeing an invalid message after that
+                // definitely indicates trouble.
+                let num_valid = AtomicUsize::new(0);
+                serde_json::from_value(notification.payload.clone()).map_or_else(
+                    |_err| {
+                        error!(
+                            &logger,
+                            "invalid store event received from database: {:?}",
+                            notification.payload
+                        );
+                        if num_valid.load(Ordering::SeqCst) > 10 {
+                            panic!(
                                 "invalid store event received from database: {:?}",
                                 notification.payload
                             );
-                            if num_valid.load(Ordering::SeqCst) > 10 {
-                                panic!(
-                                    "invalid store event received from database: {:?}",
-                                    notification.payload
-                                );
-                            }
-                            None
-                        },
-                        |change| {
-                            num_valid.fetch_add(1, Ordering::SeqCst);
-                            Some(change)
-                        },
-                    )
-                }),
-        );
+                        }
+                        None
+                    },
+                    |change| {
+                        num_valid.fetch_add(1, Ordering::SeqCst);
+                        Some(change)
+                    },
+                )
+            },
+        ));
 
         (
             StoreEventListener {

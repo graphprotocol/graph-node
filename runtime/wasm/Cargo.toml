@@ -18,7 +18,6 @@ lazy_static = "1.4"
 uuid = { version = "0.8.1", features = ["v4"] }
 strum = "0.20.0"
 strum_macros = "0.20.1"
-bytes = "1.0"
 anyhow = "1.0"
 wasmtime = "0.26.0"
 defer = "0.1"

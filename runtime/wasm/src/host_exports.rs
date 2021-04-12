@@ -3,7 +3,7 @@ use crate::{
     module::IntoTrap,
     UnresolvedContractCall,
 };
-use bytes::Bytes;
+use graph::bytes::Bytes;
 use ethabi::{Address, Token};
 use graph::components::ethereum::*;
 use graph::components::store::EntityKey;
