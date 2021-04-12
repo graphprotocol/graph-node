@@ -1,11 +1,12 @@
 use jsonrpc_core::types::Call;
-use jsonrpc_core::Value;
+use serde_json::Value;
+use std::env;
 
+pub use web3::transports::EventLoopHandle;
 use web3::transports::{http, ipc, ws};
 use web3::RequestId;
 
 use graph::prelude::*;
-use std::future::Future;
 
 use super::config::ETHEREUM_CONFIG;
 
@@ -19,18 +20,16 @@ pub enum Transport {
 
 impl Transport {
     /// Creates an IPC transport.
-    pub async fn new_ipc(ipc: &str) -> Self {
+    pub fn new_ipc(ipc: &str) -> (EventLoopHandle, Self) {
         ipc::Ipc::new(ipc)
-            .await
-            .map(|transport| Transport::IPC(transport))
+            .map(|(event_loop, transport)| (event_loop, Transport::IPC(transport)))
             .expect("Failed to connect to Ethereum IPC")
     }
 
     /// Creates a WebSocket transport.
-    pub async fn new_ws(ws: &str) -> Self {
+    pub fn new_ws(ws: &str) -> (EventLoopHandle, Self) {
         ws::WebSocket::new(ws)
-            .await
-            .map(|transport| Transport::WS(transport))
+            .map(|(event_loop, transport)| (event_loop, Transport::WS(transport)))
             .expect("Failed to connect to Ethereum WS")
     }
 
@@ -38,18 +37,22 @@ impl Transport {
     ///
     /// Note: JSON-RPC over HTTP doesn't always support subscribing to new
     /// blocks (one such example is Infura's HTTP endpoint).
-    pub fn new_rpc(rpc: &str) -> Self {
+    pub fn new_rpc(rpc: &str) -> (EventLoopHandle, Self) {
+        let max_parallel_http: usize = env::var_os("ETHEREUM_RPC_MAX_PARALLEL_REQUESTS")
+            .map(|s| s.to_str().unwrap().parse().unwrap())
+            .unwrap_or(64);
+
         let cfg = ETHEREUM_CONFIG.rpc.get(rpc);
         let headers = cfg.map(|cfg| cfg.http_headers.clone()).unwrap_or_default();
 
-        http::Http::with_headers(rpc, headers)
-            .map(|transport| Transport::RPC(transport))
+        http::Http::with_max_parallel_and_headers(rpc, max_parallel_http, headers)
+            .map(|(event_loop, transport)| (event_loop, Transport::RPC(transport)))
             .expect("Failed to connect to Ethereum RPC")
     }
 }
 
 impl web3::Transport for Transport {
-    type Out = Box<dyn Future<Output = Result<Value, web3::error::Error>> + Send + Unpin>;
+    type Out = Box<dyn Future<Item = Value, Error = web3::error::Error> + Send>;
 
     fn prepare(&self, method: &str, params: Vec<Value>) -> (RequestId, Call) {
         match self {
@@ -70,9 +73,8 @@ impl web3::Transport for Transport {
 
 impl web3::BatchTransport for Transport {
     type Batch = Box<
-        dyn Future<Output = Result<Vec<Result<Value, web3::error::Error>>, web3::error::Error>>
-            + Send
-            + Unpin,
+        dyn Future<Item = Vec<Result<Value, web3::error::Error>>, Error = web3::error::Error>
+            + Send,
     >;
 
     fn send_batch<T>(&self, requests: T) -> Self::Batch
