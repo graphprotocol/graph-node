@@ -655,6 +655,16 @@ impl SubgraphStore {
     pub(crate) async fn vacuum(&self) -> Vec<Result<(), StoreError>> {
         join_all(self.stores.values().map(|store| store.vacuum())).await
     }
+
+    pub fn rewind(
+        &self,
+        id: SubgraphDeploymentId,
+        block_ptr_to: EthereumBlockPointer,
+    ) -> Result<(), StoreError> {
+        let (store, site) = self.store(&id)?;
+        let event = store.rewind(site, block_ptr_to)?;
+        self.send_store_event(&event)
+    }
 }
 
 #[async_trait::async_trait]
