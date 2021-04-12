@@ -309,7 +309,7 @@ async fn json_parsing() {
     assert_eq!(output, "OK: foo");
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test(threaded_scheduler)]
 async fn ipfs_cat() {
     let ipfs = IpfsClient::localhost();
     let hash = ipfs.add("42".into()).await.unwrap().hash;
@@ -318,12 +318,13 @@ async fn ipfs_cat() {
     // so we replicate what we do `spawn_module`.
     let runtime = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
-        let _runtime_guard = runtime.enter();
-        let mut module = test_module("ipfsCat", mock_data_source("wasm_test/ipfs_cat.wasm"));
-        let arg = module.asc_new(&hash).unwrap();
-        let converted: AscPtr<AscString> = module.invoke_export("ipfsCatString", arg);
-        let data: String = module.instance_ctx().asc_get(converted).unwrap();
-        assert_eq!(data, "42");
+        runtime.enter(|| {
+            let mut module = test_module("ipfsCat", mock_data_source("wasm_test/ipfs_cat.wasm"));
+            let arg = module.asc_new(&hash).unwrap();
+            let converted: AscPtr<AscString> = module.invoke_export("ipfsCatString", arg);
+            let data: String = module.instance_ctx().asc_get(converted).unwrap();
+            assert_eq!(data, "42");
+        })
     })
     .join()
     .unwrap();
@@ -348,7 +349,7 @@ fn make_thing(subgraph_id: &str, id: &str, value: &str) -> (String, EntityModifi
     )
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test(threaded_scheduler)]
 async fn ipfs_map() {
     const BAD_IPFS_HASH: &str = "bad-ipfs-hash";
 
@@ -370,34 +371,34 @@ async fn ipfs_map() {
         // so we replicate what we do `spawn_module`.
         let runtime = tokio::runtime::Handle::current();
         std::thread::spawn(move || {
-            let _runtime_guard = runtime.enter();
+            runtime.enter(|| {
+                let (mut module, store) = test_valid_module_and_store(
+                    subgraph_id,
+                    mock_data_source("wasm_test/ipfs_map.wasm"),
+                );
+                let value = module.asc_new(&hash).unwrap();
+                let user_data = module.asc_new(USER_DATA).unwrap();
 
-            let (mut module, store) = test_valid_module_and_store(
-                subgraph_id,
-                mock_data_source("wasm_test/ipfs_map.wasm"),
-            );
-            let value = module.asc_new(&hash).unwrap();
-            let user_data = module.asc_new(USER_DATA).unwrap();
+                // Invoke the callback
+                let func = module.get_func("ipfsMap").typed().unwrap().clone();
+                let _: () = func.call((value.wasm_ptr(), user_data.wasm_ptr()))?;
+                let mut mods = module
+                    .take_ctx()
+                    .ctx
+                    .state
+                    .entity_cache
+                    .as_modifications(store.as_ref())?
+                    .modifications;
 
-            // Invoke the callback
-            let func = module.get_func("ipfsMap").typed().unwrap().clone();
-            let _: () = func.call((value.wasm_ptr(), user_data.wasm_ptr()))?;
-            let mut mods = module
-                .take_ctx()
-                .ctx
-                .state
-                .entity_cache
-                .as_modifications(store.as_ref())?
-                .modifications;
-
-            // Bring the modifications into a predictable order (by entity_id)
-            mods.sort_by(|a, b| {
-                a.entity_key()
-                    .entity_id
-                    .partial_cmp(&b.entity_key().entity_id)
-                    .unwrap()
-            });
-            Ok(mods)
+                // Bring the modifications into a predictable order (by entity_id)
+                mods.sort_by(|a, b| {
+                    a.entity_key()
+                        .entity_id
+                        .partial_cmp(&b.entity_key().entity_id)
+                        .unwrap()
+                });
+                Ok(mods)
+            })
         })
         .join()
         .unwrap()
@@ -457,21 +458,21 @@ async fn ipfs_map() {
     assert!(errmsg.contains("Status(500)"));
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test(threaded_scheduler)]
 async fn ipfs_fail() {
     let runtime = tokio::runtime::Handle::current();
 
     // Ipfs host functions use `block_on` which must be called from a sync context,
     // so we replicate what we do `spawn_module`.
     std::thread::spawn(move || {
-        let _runtime_guard = runtime.enter();
+        runtime.enter(|| {
+            let mut module = test_module("ipfsFail", mock_data_source("wasm_test/ipfs_cat.wasm"));
 
-        let mut module = test_module("ipfsFail", mock_data_source("wasm_test/ipfs_cat.wasm"));
-
-        let hash = module.asc_new("invalid hash").unwrap();
-        assert!(module
-            .invoke_export::<_, AscString>("ipfsCat", hash,)
-            .is_null());
+            let hash = module.asc_new("invalid hash").unwrap();
+            assert!(module
+                .invoke_export::<_, AscString>("ipfsCat", hash,)
+                .is_null());
+        })
     })
     .join()
     .unwrap();

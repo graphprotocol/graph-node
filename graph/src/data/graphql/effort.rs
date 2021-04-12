@@ -562,12 +562,7 @@ impl QueryLoadManager for LoadManager {
         let start = Instant::now();
 
         // Unwrap: The semaphore is never closed.
-        let permit = self
-            .query_semaphore
-            .cheap_clone()
-            .acquire_owned()
-            .await
-            .unwrap();
+        let permit = self.query_semaphore.cheap_clone().acquire_owned().await;
         self.add_wait_time(start.elapsed());
         permit
     }

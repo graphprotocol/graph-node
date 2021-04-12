@@ -59,9 +59,5 @@ pub fn block_on<T>(f: impl Future03<Output = T>) -> T {
 pub fn spawn_thread(name: String, f: impl 'static + FnOnce() + Send) {
     let conf = std::thread::Builder::new().name(name);
     let runtime = tokio::runtime::Handle::current();
-    conf.spawn(move || {
-        let _runtime_guard = runtime.enter();
-        f()
-    })
-    .unwrap();
+    conf.spawn(move || runtime.enter(f)).unwrap();
 }
