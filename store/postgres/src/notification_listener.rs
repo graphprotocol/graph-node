@@ -137,8 +137,19 @@ impl NotificationListener {
                 // Wait until the listener has been started
                 barrier.wait();
 
+                let mut max_queue_size_seen = 0;
+
                 // Read notifications until the thread is to be terminated
                 while !terminate.load(Ordering::SeqCst) {
+                    let queue_size = conn.notifications().len();
+                    if queue_size > 1000 && queue_size > max_queue_size_seen {
+                        debug!(logger, "Large notification queue to process";
+                                    "queue_size" => queue_size,
+                                    "channel" => &channel_name.0,
+                        );
+                    }
+                    max_queue_size_seen = queue_size.max(max_queue_size_seen);
+
                     // Obtain pending notifications from Postgres. We load
                     // them all into memory, since for large notifications
                     // we need to query the database again; avoiding this
