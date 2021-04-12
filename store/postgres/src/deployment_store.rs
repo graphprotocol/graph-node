@@ -901,22 +901,13 @@ impl DeploymentStore {
         Ok(event)
     }
 
-    pub(crate) fn revert_block_operations(
+    pub(crate) fn rewind_with_conn(
         &self,
+        conn: &PgConnection,
         site: Arc<Site>,
         block_ptr_to: EthereumBlockPointer,
     ) -> Result<StoreEvent, StoreError> {
-        let conn = self.get_conn()?;
-
         let event = conn.transaction(|| -> Result<_, StoreError> {
-            // Unwrap: If we are reverting then the block ptr is not `None`.
-            let block_ptr_from = Self::block_ptr_with_conn(&site.deployment, &conn)?.unwrap();
-
-            // Sanity check on block numbers
-            if block_ptr_from.number != block_ptr_to.number + 1 {
-                panic!("revert_block_operations must revert a single block only");
-            }
-
             // Don't revert past a graft point
             let info = self.subgraph_info_with_conn(&conn, &site.deployment)?;
             if let Some(graft_block) = info.graft_block {
@@ -933,17 +924,19 @@ impl DeploymentStore {
                 }
             }
 
-            deployment::revert_block_ptr(&conn, &site.deployment, block_ptr_to)?;
+            deployment::revert_block_ptr(&conn, &site.deployment, block_ptr_to.clone())?;
 
             // Revert the data
             let layout = self.layout(&conn, site.clone())?;
 
             // At 1 block per 15 seconds, the maximum i32
             // value affords just over 1020 years of blocks.
-            let block = block_ptr_from
+            let block: BlockNumber = block_ptr_to
                 .number
                 .try_into()
                 .expect("block numbers fit into an i32");
+            // The revert functions want the number of the first block that we need to get rid of
+            let block = block + 1;
 
             let (event, count) = layout.revert_block(&conn, &site.deployment, block)?;
 
@@ -964,6 +957,23 @@ impl DeploymentStore {
         })?;
 
         Ok(event)
+    }
+
+    pub(crate) fn revert_block_operations(
+        &self,
+        site: Arc<Site>,
+        block_ptr_to: EthereumBlockPointer,
+    ) -> Result<StoreEvent, StoreError> {
+        let conn = self.get_conn()?;
+        // Unwrap: If we are reverting then the block ptr is not `None`.
+        let block_ptr_from = Self::block_ptr_with_conn(&site.deployment, &conn)?.unwrap();
+
+        // Sanity check on block numbers
+        if block_ptr_from.number != block_ptr_to.number + 1 {
+            panic!("revert_block_operations must revert a single block only");
+        }
+
+        self.rewind_with_conn(&conn, site, block_ptr_to)
     }
 
     pub(crate) async fn deployment_state_from_id(
