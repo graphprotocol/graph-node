@@ -11,7 +11,6 @@ use crate::{
 };
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::*;
-use graph::tokio_stream::wrappers::WatchStream;
 use graph_chain_ethereum::BlockIngestorMetrics;
 
 lazy_static! {
@@ -32,7 +31,7 @@ impl Watcher {
 
     fn send(&self) {
         // Unwrap: `self` holds a receiver.
-        self.sender.send(()).unwrap()
+        self.sender.broadcast(()).unwrap()
     }
 }
 
@@ -126,12 +125,7 @@ impl ChainHeadUpdateListener {
             .receiver
             .clone();
 
-        Box::new(
-            WatchStream::new(update_receiver)
-                .map(Result::<_, ()>::Ok)
-                .boxed()
-                .compat(),
-        )
+        Box::new(update_receiver.map(Result::<_, ()>::Ok).boxed().compat())
     }
 }
 

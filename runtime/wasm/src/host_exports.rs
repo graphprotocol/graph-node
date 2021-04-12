@@ -3,8 +3,8 @@ use crate::{
     module::IntoTrap,
     UnresolvedContractCall,
 };
-use bytes::Bytes;
 use ethabi::{Address, Token};
+use graph::bytes::Bytes;
 use graph::components::ethereum::*;
 use graph::components::store::EntityKey;
 use graph::components::subgraph::{ProofOfIndexingEvent, SharedProofOfIndexing};

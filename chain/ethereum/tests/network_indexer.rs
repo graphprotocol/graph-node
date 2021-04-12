@@ -98,7 +98,7 @@ where
     let store = STORE.clone();
 
     // Lock regardless of poisoning. This also forces sequential test execution.
-    let runtime = match STORE_RUNTIME.lock() {
+    let mut runtime = match STORE_RUNTIME.lock() {
         Ok(guard) => guard,
         Err(err) => err.into_inner(),
     };

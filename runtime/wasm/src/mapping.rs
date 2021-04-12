@@ -37,76 +37,76 @@ pub fn spawn_module(
     let conf =
         thread::Builder::new().name(format!("mapping-{}-{}", &subgraph_id, uuid::Uuid::new_v4()));
     conf.spawn(move || {
-        let _runtime_guard = runtime.enter();
+        runtime.enter(|| {
+            // Pass incoming triggers to the WASM module and return entity changes;
+            // Stop when canceled because all RuntimeHosts and their senders were dropped.
+            match mapping_request_receiver
+                .map_err(|()| unreachable!())
+                .for_each(move |request| {
+                    let MappingRequest {
+                        ctx,
+                        trigger,
+                        result_sender,
+                    } = request;
+                    let logger = ctx.logger.cheap_clone();
 
-        // Pass incoming triggers to the WASM module and return entity changes;
-        // Stop when canceled because all RuntimeHosts and their senders were dropped.
-        match mapping_request_receiver
-            .map_err(|()| unreachable!())
-            .for_each(move |request| {
-                let MappingRequest {
-                    ctx,
-                    trigger,
-                    result_sender,
-                } = request;
-                let logger = ctx.logger.cheap_clone();
+                    // Start the WASM module runtime.
+                    let section = host_metrics.stopwatch.start_section("module_init");
+                    let module = WasmInstance::from_valid_module_with_ctx(
+                        valid_module.cheap_clone(),
+                        ctx,
+                        host_metrics.cheap_clone(),
+                        timeout,
+                        experimental_features.clone(),
+                    )?;
+                    section.end();
 
-                // Start the WASM module runtime.
-                let section = host_metrics.stopwatch.start_section("module_init");
-                let module = WasmInstance::from_valid_module_with_ctx(
-                    valid_module.cheap_clone(),
-                    ctx,
-                    host_metrics.cheap_clone(),
-                    timeout,
-                    experimental_features.clone(),
-                )?;
-                section.end();
-
-                let section = host_metrics.stopwatch.start_section("run_handler");
-                if *LOG_TRIGGER_DATA {
-                    debug!(logger, "trigger data: {:?}", trigger);
-                }
-                let result = match trigger {
-                    MappingTrigger::Log {
-                        transaction,
-                        log,
-                        params,
-                        handler,
-                    } => module.handle_ethereum_log(
-                        handler.handler.as_str(),
-                        transaction,
-                        log,
-                        params,
-                    ),
-                    MappingTrigger::Call {
-                        transaction,
-                        call,
-                        inputs,
-                        outputs,
-                        handler,
-                    } => module.handle_ethereum_call(
-                        handler.handler.as_str(),
-                        transaction,
-                        call,
-                        inputs,
-                        outputs,
-                    ),
-                    MappingTrigger::Block { handler } => {
-                        module.handle_ethereum_block(handler.handler.as_str())
+                    let section = host_metrics.stopwatch.start_section("run_handler");
+                    if *LOG_TRIGGER_DATA {
+                        debug!(logger, "trigger data: {:?}", trigger);
                     }
-                };
-                section.end();
+                    let result = match trigger {
+                        MappingTrigger::Log {
+                            transaction,
+                            log,
+                            params,
+                            handler,
+                        } => module.handle_ethereum_log(
+                            handler.handler.as_str(),
+                            transaction,
+                            log,
+                            params,
+                        ),
+                        MappingTrigger::Call {
+                            transaction,
+                            call,
+                            inputs,
+                            outputs,
+                            handler,
+                        } => module.handle_ethereum_call(
+                            handler.handler.as_str(),
+                            transaction,
+                            call,
+                            inputs,
+                            outputs,
+                        ),
+                        MappingTrigger::Block { handler } => {
+                            module.handle_ethereum_block(handler.handler.as_str())
+                        }
+                    };
+                    section.end();
 
-                result_sender
-                    .send(result)
-                    .map_err(|_| anyhow::anyhow!("WASM module result receiver dropped."))
-            })
-            .wait()
-        {
-            Ok(()) => debug!(logger, "Subgraph stopped, WASM runtime thread terminated"),
-            Err(e) => debug!(logger, "WASM runtime thread terminated abnormally";
+                    result_sender
+                        .send(result)
+                        .map_err(|_| anyhow::anyhow!("WASM module result receiver dropped."))
+                })
+                .wait()
+            {
+                Ok(()) => debug!(logger, "Subgraph stopped, WASM runtime thread terminated"),
+                Err(e) => debug!(logger, "WASM runtime thread terminated abnormally";
                                     "error" => e.to_string()),
-        }
+            }
+        })
     })
     .map(|_| ())
     .context("Spawning WASM runtime thread failed")?;
