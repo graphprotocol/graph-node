@@ -1,10 +1,15 @@
 import { Trigger } from "../generated/Contract/Contract";
-import { BigDecimal, BigInt } from "@graphprotocol/graph-ts";
+import { Address, BigDecimal, BigInt, ethereum } from "@graphprotocol/graph-ts";
 
 // Test that host exports work in globals.
 let one = BigDecimal.fromString("1");
 
 export function handleTrigger(event: Trigger): void {
+  testBigDecimal();
+  testEthereumAbi();
+}
+
+function testBigDecimal(): void {
   // There are 35 digits after the dot.
   // big_decimal exponent will be: -35 - 6109 = -6144.
   // Minimum exponent is: -6143.
@@ -62,4 +67,37 @@ export function handleTrigger(event: Trigger): void {
 
   // Test big int right shift
   assert(bigInt >> 6 == BigInt.fromString("138888888888888"));
+}
+
+function testEthereumAbi(): void {
+  let address = ethereum.Value.fromAddress(Address.fromString("0x0000000000000000000000000000000000000420"));
+  let bigInt1 = ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(62));
+  let bigInt2 = ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(63));
+  let bool = ethereum.Value.fromBoolean(true);
+
+  let fixedSizedArray = ethereum.Value.fromFixedSizedArray([
+    bigInt1,
+    bigInt2
+  ]);
+
+  let tupleArray: Array<ethereum.Value> = [
+    fixedSizedArray,
+    bool
+  ];
+
+  let tuple = ethereum.Value.fromTuple(tupleArray as ethereum.Tuple);
+
+  let params: Array<ethereum.Value> = [
+    address,
+    tuple
+  ];
+
+  let encoded = ethereum.encode(params)!;
+
+  let decoded = ethereum.decode("(address,(uint256[2],bool))", encoded).toTuple();
+
+  assert(address.toAddress() == decoded[0].toAddress(), "address ethereum encoded does not equal the decoded value");
+  assert(bigInt1.toBigInt() == decoded[1].toTuple()[0].toArray()[0].toBigInt(), "uint256[0] ethereum encoded does not equal the decoded value");
+  assert(bigInt2.toBigInt() == decoded[1].toTuple()[0].toArray()[1].toBigInt(), "uint256[1] ethereum encoded does not equal the decoded value");
+  assert(bool.toBoolean() == decoded[1].toTuple()[1].toBoolean(), "boolean ethereum encoded does not equal the decoded value");
 }
