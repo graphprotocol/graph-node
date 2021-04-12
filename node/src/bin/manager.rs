@@ -110,6 +110,11 @@ pub enum Command {
         /// The id of the deployment to unassign
         id: String,
     },
+    Rewind {
+        id: String,
+        block_hash: String,
+        block_number: i32,
+    },
     /// Check and interrogate the configuration
     ///
     /// Print information about a configuration file without
@@ -320,6 +325,14 @@ async fn main() {
         Reassign { id, node } => {
             let store = make_store();
             commands::assign::reassign(store, id, node)
+        }
+        Rewind {
+            id,
+            block_hash,
+            block_number,
+        } => {
+            let store = make_store();
+            commands::rewind::run(store, id, block_hash, block_number)
         }
         Listen(cmd) => {
             use ListenCommand::*;
