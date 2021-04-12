@@ -1,12 +1,12 @@
 {
-  "name": "big-decimal",
+  "name": "host-exports",
   "version": "0.1.0",
   "scripts": {
     "build-contracts": "../common/build-contracts.sh",
     "codegen": "graph codegen",
     "test": "yarn build-contracts && truffle test --compile-none --network test",
-    "create:test": "graph create test/big-decimal --node $GRAPH_NODE_ADMIN_URI",
-    "deploy:test": "graph deploy test/big-decimal --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
+    "create:test": "graph create test/host-exports --node $GRAPH_NODE_ADMIN_URI",
+    "deploy:test": "graph deploy test/host-exports --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
   "devDependencies": {
     "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#master",
