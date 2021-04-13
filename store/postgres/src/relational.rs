@@ -42,8 +42,6 @@ pub use crate::catalog::Catalog;
 use crate::dynds;
 
 const POSTGRES_MAX_PARAMETERS: usize = u16::MAX as usize; // 65535
-/// ClampRangeQuery uses 2 binds per query: One for block_range and another for the ids array.
-const CLAMP_RANGE_QUERY_CHUNK_SIZE: usize = POSTGRES_MAX_PARAMETERS / 2;
 
 /// The size of string prefixes that we index. This is chosen so that we
 /// will index strings that people will do string comparisons like
@@ -692,17 +690,15 @@ impl Layout {
             .collect();
 
         let section = stopwatch.start_section("update_modification_clamp_range_query");
-        for clamp_chunk in entity_keys.chunks(CLAMP_RANGE_QUERY_CHUNK_SIZE) {
-            ClampRangeQuery::new(table, &entity_type, clamp_chunk, block).execute(conn)?;
-        }
+        ClampRangeQuery::new(table, &entity_type, &entity_keys, block).execute(conn)?;
         section.end();
 
         let _section = stopwatch.start_section("update_modification_insert_query");
         let mut count = 0;
         // we add 1 to account for `block_range` bind parameter
-        let insert_chunk_size = (POSTGRES_MAX_PARAMETERS / table.columns.len()) + 1;
-        for insert_chunk in entities.chunks_mut(insert_chunk_size) {
-            count += InsertQuery::new(table, insert_chunk, block)?.execute(conn)?;
+        let chunk_size = (POSTGRES_MAX_PARAMETERS / table.columns.len()) + 1;
+        for chunk in entities.chunks_mut(chunk_size) {
+            count += InsertQuery::new(table, chunk, block)?.execute(conn)?;
         }
         Ok(count)
     }
@@ -717,11 +713,7 @@ impl Layout {
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&entity_type)?;
         let _section = stopwatch.start_section("delete_modification_clamp_range_query");
-        let mut count = 0;
-        for chunk in entity_ids.chunks(CLAMP_RANGE_QUERY_CHUNK_SIZE) {
-            count += ClampRangeQuery::new(table, &entity_type, chunk, block).execute(conn)?;
-        }
-        Ok(count)
+        Ok(ClampRangeQuery::new(table, &entity_type, entity_ids, block).execute(conn)?)
     }
 
     pub fn revert_block(
