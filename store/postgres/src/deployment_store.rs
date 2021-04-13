@@ -38,7 +38,7 @@ use crate::relational_queries::FromEntityData;
 use crate::{connection_pool::ConnectionPool, detail};
 use crate::{dynds, primary::Site};
 
-const POSTGRES_MAX_BINDINGS_PER_STATEMENT: usize = u16::MAX as usize; // 65535
+const POSTGRES_MAX_PARAMETERS: usize = u16::MAX as usize; // 65535
 
 /// When connected to read replicas, this allows choosing which DB server to use for an operation.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -322,7 +322,7 @@ impl DeploymentStore {
         for (entity_type, mut entities) in inserts.into_iter() {
             let chunk_size = {
                 let num_fields = (*entities[0].1).len();
-                POSTGRES_MAX_BINDINGS_PER_STATEMENT / num_fields
+                POSTGRES_MAX_PARAMETERS / num_fields
             };
             for chunk in entities.chunks_mut(chunk_size) {
                 count +=
@@ -334,7 +334,7 @@ impl DeploymentStore {
         for (entity_type, mut entities) in overwrites.into_iter() {
             let chunk_size = {
                 let num_fields = (*entities[0].1).len();
-                POSTGRES_MAX_BINDINGS_PER_STATEMENT / num_fields
+                POSTGRES_MAX_PARAMETERS / num_fields
             };
             for chunk in entities.chunks_mut(chunk_size) {
                 // we do not update the count since the number of entities remains the same
@@ -344,7 +344,7 @@ impl DeploymentStore {
 
         // Removals
         for (entity_type, entity_keys) in removals.into_iter() {
-            let chunk_size = POSTGRES_MAX_BINDINGS_PER_STATEMENT / entity_keys.len(); // only ID is bound
+            let chunk_size = POSTGRES_MAX_PARAMETERS / entity_keys.len(); // only ID is bound
             for chunk in entity_keys.chunks(chunk_size) {
                 count -= self.remove_entities(&entity_type, chunk, conn, layout, ptr, &stopwatch)?
                     as i32;
