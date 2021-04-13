@@ -205,7 +205,7 @@ impl ElasticDrain {
 
                 // Do nothing if there are no logs to flush
                 if logs_to_send.is_empty() {
-                    return;
+                    continue;
                 }
 
                 debug!(
