@@ -540,11 +540,15 @@ async fn create_ethereum_networks(
 
             use crate::config::Transport::*;
 
-            let transport = match provider.transport {
+            let (transport_event_loop, transport) = match provider.transport {
                 Rpc => Transport::new_rpc(&provider.url),
-                Ipc => Transport::new_ipc(&provider.url).await,
-                Ws => Transport::new_ws(&provider.url).await,
+                Ipc => Transport::new_ipc(&provider.url),
+                Ws => Transport::new_ws(&provider.url),
             };
+
+            // If we drop the event loop the transport will stop working.
+            // For now it's fine to just leak it.
+            std::mem::forget(transport_event_loop);
 
             let supports_eip_1898 = !provider.features.contains("no_eip1898");
 
