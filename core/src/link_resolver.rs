@@ -218,11 +218,13 @@ impl LinkResolverTrait for LinkResolver {
         .timeout(self.timeout);
 
         let this = self.clone();
+        let logger = logger.clone();
         let data = retry_fut
             .run(move || {
                 let path = path.clone();
                 let client = client.clone();
                 let this = this.clone();
+                let logger = logger.clone();
                 async move {
                     let data = client
                         .cat_all(path.clone())
@@ -236,6 +238,11 @@ impl LinkResolverTrait for LinkResolver {
                         if !cache.contains_key(&path) {
                             cache.insert(path.to_owned(), data.clone());
                         }
+                    } else {
+                        debug!(logger, "File too large for cache";
+                                    "path" => path,
+                                    "size" => data.len()
+                        );
                     }
                     Result::<Vec<u8>, Error>::Ok(data)
                 }
