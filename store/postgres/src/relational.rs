@@ -40,6 +40,7 @@ use graph::prelude::{
 use crate::block_range::BLOCK_RANGE_COLUMN;
 pub use crate::catalog::Catalog;
 use crate::dynds;
+const POSTGRES_MAX_PARAMETERS: usize = u16::MAX as usize; // 65535
 
 /// The size of string prefixes that we index. This is chosen so that we
 /// will index strings that people will do string comparisons like
@@ -571,9 +572,15 @@ impl Layout {
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(entity_type)?;
         let _section = stopwatch.start_section("insert_modification_insert_query");
-        Ok(InsertQuery::new(table, entities, block)?
-            .get_results(conn)
-            .map(|ids| ids.len())?)
+        let mut count = 0;
+        // we add 2 to account for `block_id` and `vid` fields
+        let chunk_size = (POSTGRES_MAX_PARAMETERS / table.columns.len()) + 2;
+        for chunk in entities.chunks_mut(chunk_size) {
+            count += InsertQuery::new(table, chunk, block)?
+                .get_results(conn)
+                .map(|ids| ids.len())?
+        }
+        Ok(count)
     }
 
     pub fn conflicting_entity(
@@ -680,11 +687,22 @@ impl Layout {
             .iter()
             .map(|(key, _)| key.entity_id.as_str())
             .collect();
+
+        let clamp_chunk_size = POSTGRES_MAX_PARAMETERS / entity_keys.len();
         let section = stopwatch.start_section("update_modification_clamp_range_query");
-        ClampRangeQuery::new(table, &entity_type, &entity_keys, block).execute(conn)?;
+        for clamp_chunk in entity_keys.chunks(clamp_chunk_size) {
+            ClampRangeQuery::new(table, &entity_type, clamp_chunk, block).execute(conn)?;
+        }
         section.end();
+
+        // we add 2 to account for `block_id` and `vid` fields
         let _section = stopwatch.start_section("update_modification_insert_query");
-        Ok(InsertQuery::new(table, entities, block)?.execute(conn)?)
+        let mut count = 0;
+        let insert_chunk_size = (POSTGRES_MAX_PARAMETERS / table.columns.len()) + 2;
+        for insert_chunk in entities.chunks_mut(insert_chunk_size) {
+            count += InsertQuery::new(table, insert_chunk, block)?.execute(conn)?;
+        }
+        Ok(count)
     }
 
     pub fn delete(
@@ -697,7 +715,12 @@ impl Layout {
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&entity_type)?;
         let _section = stopwatch.start_section("delete_modification_clamp_range_query");
-        Ok(ClampRangeQuery::new(table, &entity_type, entity_ids, block).execute(conn)?)
+        let mut count = 0;
+        let chunk_size = POSTGRES_MAX_PARAMETERS / entity_ids.len();
+        for chunk in entity_ids.chunks(chunk_size) {
+            count += ClampRangeQuery::new(table, &entity_type, chunk, block).execute(conn)?;
+        }
+        Ok(count)
     }
 
     pub fn revert_block(
