@@ -40,7 +40,10 @@ use graph::prelude::{
 use crate::block_range::BLOCK_RANGE_COLUMN;
 pub use crate::catalog::Catalog;
 use crate::dynds;
+
 const POSTGRES_MAX_PARAMETERS: usize = u16::MAX as usize; // 65535
+/// ClampRangeQuery uses 2 binds per query: One for block_range and another for the ids array.
+const CLAMP_RANGE_QUERY_CHUNK_SIZE: usize = POSTGRES_MAX_PARAMETERS / 2;
 
 /// The size of string prefixes that we index. This is chosen so that we
 /// will index strings that people will do string comparisons like
@@ -688,9 +691,8 @@ impl Layout {
             .map(|(key, _)| key.entity_id.as_str())
             .collect();
 
-        let clamp_chunk_size = POSTGRES_MAX_PARAMETERS / entity_keys.len();
         let section = stopwatch.start_section("update_modification_clamp_range_query");
-        for clamp_chunk in entity_keys.chunks(clamp_chunk_size) {
+        for clamp_chunk in entity_keys.chunks(CLAMP_RANGE_QUERY_CHUNK_SIZE) {
             ClampRangeQuery::new(table, &entity_type, clamp_chunk, block).execute(conn)?;
         }
         section.end();
@@ -716,8 +718,7 @@ impl Layout {
         let table = self.table_for_entity(&entity_type)?;
         let _section = stopwatch.start_section("delete_modification_clamp_range_query");
         let mut count = 0;
-        let chunk_size = POSTGRES_MAX_PARAMETERS / entity_ids.len();
-        for chunk in entity_ids.chunks(chunk_size) {
+        for chunk in entity_ids.chunks(CLAMP_RANGE_QUERY_CHUNK_SIZE) {
             count += ClampRangeQuery::new(table, &entity_type, chunk, block).execute(conn)?;
         }
         Ok(count)
