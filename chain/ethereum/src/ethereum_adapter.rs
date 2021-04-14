@@ -42,7 +42,7 @@ pub struct EthereumAdapter<T: web3::Transport> {
 
 lazy_static! {
     static ref TRACE_STREAM_STEP_SIZE: BlockNumber = std::env::var("ETHEREUM_TRACE_STREAM_STEP_SIZE")
-        .unwrap_or("200".into())
+        .unwrap_or("50".into())
         .parse::<BlockNumber>()
         .expect("invalid trace stream step size");
 
@@ -286,12 +286,7 @@ where
             );
         }
 
-        // Filters with no address can be more expensive, so use a reduced step size.
-        let step_size = match addresses.is_empty() {
-            false => *TRACE_STREAM_STEP_SIZE,
-            true => *TRACE_STREAM_STEP_SIZE / 4,
-        }
-        .max(1);
+        let step_size = *TRACE_STREAM_STEP_SIZE;
 
         let eth = self.clone();
         let logger = logger.to_owned();
@@ -306,17 +301,18 @@ where
             } else {
                 debug!(logger, "Requesting traces for blocks [{}, {}]", start, end);
             }
-            Some(
+            Some(futures::future::ok((
                 eth.traces(
                     &logger,
                     subgraph_metrics.clone(),
                     start,
                     end,
                     addresses.clone(),
-                )
-                .map(move |traces| (traces, new_start)),
-            )
+                ),
+                new_start,
+            )))
         })
+        .buffered(*BLOCK_BATCH_SIZE)
         .map(stream::iter_ok)
         .flatten()
     }
