@@ -1,4 +1,3 @@
-use futures::Stream;
 use serde::de::{Deserializer, Error as DeserializerError};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -21,7 +20,3 @@ pub struct ChainHeadUpdate {
     pub head_block_hash: H256,
     pub head_block_number: u64,
 }
-
-/// The updates have no payload, receivers should call `Store::chain_head_ptr`
-/// to check what the latest block is.
-pub type ChainHeadUpdateStream = Box<dyn Stream<Item = (), Error = ()> + Send>;

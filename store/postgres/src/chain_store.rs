@@ -16,8 +16,8 @@ use std::{collections::HashMap, convert::TryFrom};
 use std::{convert::TryInto, iter::FromIterator};
 
 use graph::prelude::{
-    web3::types::H256, BlockNumber, ChainHeadUpdateStream, Error, EthereumBlock,
-    EthereumBlockPointer, EthereumNetworkIdentifier, Future, LightEthereumBlock, Stream,
+    web3::types::H256, BlockNumber, Error, EthereumBlock, EthereumBlockPointer,
+    EthereumNetworkIdentifier, Future, LightEthereumBlock, Stream,
 };
 
 use crate::{
@@ -1235,7 +1235,7 @@ impl ChainStoreTrait for ChainStore {
         Ok(missing)
     }
 
-    fn chain_head_updates(&self) -> ChainHeadUpdateStream {
+    fn chain_head_updates(&self) -> graph::tokio::sync::watch::Receiver<()> {
         self.chain_head_update_listener
             .subscribe(self.chain.to_owned())
     }

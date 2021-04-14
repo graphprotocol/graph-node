@@ -11,7 +11,6 @@ use crate::{
 };
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::*;
-use graph::tokio_stream::wrappers::WatchStream;
 use graph_chain_ethereum::BlockIngestorMetrics;
 
 lazy_static! {
@@ -111,13 +110,14 @@ impl ChainHeadUpdateListener {
                     watcher.send()
                 }
             }
+            panic!("chain head update sender dropped")
         });
 
         // We're ready, start listening to chain head updates
         listener.start();
     }
 
-    pub fn subscribe(&self, network_name: String) -> ChainHeadUpdateStream {
+    pub fn subscribe(&self, network_name: String) -> tokio::sync::watch::Receiver<()> {
         let update_receiver = self
             .watchers
             .lock()
@@ -126,12 +126,7 @@ impl ChainHeadUpdateListener {
             .receiver
             .clone();
 
-        Box::new(
-            WatchStream::new(update_receiver)
-                .map(Result::<_, ()>::Ok)
-                .boxed()
-                .compat(),
-        )
+        update_receiver
     }
 }
 

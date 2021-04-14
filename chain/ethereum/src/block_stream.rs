@@ -1,3 +1,4 @@
+use futures03::FutureExt;
 use std::cmp;
 use std::collections::VecDeque;
 use std::mem;
@@ -55,7 +56,7 @@ enum BlockStreamState {
     /// No more work is needed until a chain head update.
     ///
     /// Valid next states: BeginReconciliation
-    Idle,
+    Idle(Box<dyn Future<Item = (), Error = ()> + Send>),
 
     /// Not a real state, only used when going from one state to another.
     Transition,
@@ -129,7 +130,7 @@ impl<S, C> Clone for BlockStreamContext<S, C> {
 pub struct BlockStream<S, C> {
     state: BlockStreamState,
     consecutive_err_count: u32,
-    chain_head_update_stream: ChainHeadUpdateStream,
+    chain_head_update_stream: tokio::sync::watch::Receiver<()>,
     ctx: BlockStreamContext<S, C>,
 }
 
@@ -631,11 +632,36 @@ impl<S: SubgraphStore, C: ChainStore> Stream for BlockStream<S, C> {
 
                         // Reconciliation completed. We're caught up to chain head.
                         Ok(Async::Ready(NextBlocks::Done)) => {
+                            const UPDATE_TIMEOUT: Duration = Duration::from_secs(20);
+
                             // Reset error count
                             self.consecutive_err_count = 0;
 
-                            // Switch to idle
-                            state = BlockStreamState::Idle;
+                            // Switch to idle. When idle, wait for a chain head update notification,
+                            // or as a fallback poll for an update after a timeout.
+                            let logger = self.ctx.logger.clone();
+                            let chain_head_update_timeout = tokio::time::sleep(UPDATE_TIMEOUT)
+                                .map(move |_| {
+                                    warn!(
+                                        logger,
+                                        "no chain head update for {} seconds, polling for update",
+                                        UPDATE_TIMEOUT.as_secs()
+                                    )
+                                })
+                                .boxed()
+                                .map(Result::<_, ()>::Ok);
+                            let mut chain_head_update = self.chain_head_update_stream.clone();
+                            state = BlockStreamState::Idle(Box::new(
+                                futures03::future::select(
+                                    async move {
+                                        chain_head_update.changed().map_err(|_| ()).boxed().await
+                                    }
+                                    .boxed(),
+                                    chain_head_update_timeout,
+                                )
+                                .map(|x| x.factor_first().0)
+                                .compat(),
+                            ));
 
                             // Poll for chain head update
                             continue;
@@ -700,31 +726,23 @@ impl<S: SubgraphStore, C: ChainStore> Stream for BlockStream<S, C> {
                 },
 
                 // Waiting for a chain head update
-                BlockStreamState::Idle => {
-                    match self.chain_head_update_stream.poll() {
+                BlockStreamState::Idle(ref mut update) => {
+                    match update.poll() {
                         // Chain head was updated
-                        Ok(Async::Ready(Some(()))) => {
+                        Ok(Async::Ready(())) => {
                             state = BlockStreamState::BeginReconciliation;
-                        }
-
-                        // Chain head update stream ended
-                        Ok(Async::Ready(None)) => {
-                            // Should not happen
-                            return Err(anyhow::anyhow!(
-                                "chain head update stream ended unexpectedly"
-                            ));
                         }
 
                         Ok(Async::NotReady) => {
                             // Stay idle
-                            state = BlockStreamState::Idle;
                             break Ok(Async::NotReady);
                         }
 
-                        // mpsc channel failed
                         Err(()) => {
-                            // Should not happen
-                            return Err(anyhow::anyhow!("chain head update Receiver failed"));
+                            // Chain head update stream ended, should not happen
+                            return Err(anyhow::anyhow!(
+                                "chain head update stream ended unexpectedly"
+                            ));
                         }
                     }
                 }
