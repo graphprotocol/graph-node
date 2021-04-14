@@ -783,7 +783,7 @@
 
 "@graphprotocol/graph-ts@https://github.com/graphprotocol/graph-ts#master":
   version "0.20.0"
-  resolved "https://github.com/graphprotocol/graph-ts#c18868afe9666a2283cbaa54692ea78608e8a50d"
+  resolved "https://github.com/graphprotocol/graph-ts#56adb62d9e4233c6fc6c38bc0519a8a566afdd9e"
   dependencies:
     assemblyscript "https://github.com/AssemblyScript/assemblyscript#36040d5b5312f19a025782b5e36663823494c2f3"
 
