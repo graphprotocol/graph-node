@@ -215,7 +215,7 @@ impl RuntimeHost {
         let handler = trigger.handler_name().to_string();
 
         let extras = trigger.logging_extras();
-        debug!(
+        trace!(
             logger, "Start processing Ethereum trigger";
             &extras,
             "trigger_type" => trigger_type,
@@ -257,6 +257,7 @@ impl RuntimeHost {
             "trigger_type" => trigger_type,
             "total_ms" => elapsed.as_millis(),
             "handler" => handler,
+            "data_source" => &self.data_source.name,
         );
 
         result

@@ -377,7 +377,7 @@ impl HostExports {
             ))),
         };
 
-        debug!(logger, "Contract call finished";
+        trace!(logger, "Contract call finished";
               "address" => &unresolved_call.contract_address.to_string(),
               "contract" => &unresolved_call.contract_name,
               "function" => &unresolved_call.function_name,
