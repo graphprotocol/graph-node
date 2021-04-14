@@ -93,8 +93,16 @@ fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
     Ok(queries)
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .max_blocking_threads(2000)
+        .build()
+        .unwrap()
+        .block_on(async_main())
+}
+
+async fn async_main() {
     env_logger::init();
 
     // Allow configuring fail points on debug builds. Used for integration tests.
