@@ -3,7 +3,8 @@ use crate::{
     module::IntoTrap,
     UnresolvedContractCall,
 };
-use ethabi::{Address, Token};
+use ethabi::param_type::Reader;
+use ethabi::{decode, encode, Address, Token};
 use graph::bytes::Bytes;
 use graph::components::ethereum::*;
 use graph::components::store::EntityKey;
@@ -810,6 +811,22 @@ pub(crate) fn bytes_to_string(logger: &Logger, bytes: Vec<u8>) -> String {
     // The string may have been encoded in a fixed length buffer and padded with null
     // characters, so trim trailing nulls.
     s.trim_end_matches('\u{0000}').to_string()
+}
+
+pub(crate) fn ethereum_encode(token: Token) -> Result<Vec<u8>, anyhow::Error> {
+    Ok(encode(&[token]))
+}
+
+pub(crate) fn ethereum_decode(types: String, data: Vec<u8>) -> Result<Token, anyhow::Error> {
+    let param_types =
+        Reader::read(&types).or_else(|e| Err(anyhow::anyhow!("Failed to read types: {}", e)))?;
+
+    decode(&[param_types], &data)
+        // The `.pop().unwrap()` here is ok because we're always only passing one
+        // `param_types` to `decode`, so the returned `Vec` has always size of one.
+        // We can't do `tokens[0]` because the value can't be moved out of the `Vec`.
+        .map(|mut tokens| tokens.pop().unwrap())
+        .context("Failed to decode")
 }
 
 #[test]
