@@ -47,7 +47,26 @@ cargo run -p graph-node --release -- \
   --ipfs 127.0.0.1:5001
 ```
 
-Try your OS username as `USERNAME` and `PASSWORD`. The password might be optional. It depends on your setup.
+Try your OS username as `USERNAME` and `PASSWORD`. For details on setting
+the connection string, check the [Postgres
+documentation](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING).
+`graph-node` uses a few Postgres extensions. If the Postgres user with which
+you run `graph-node` is a superuser, `graph-node` will enable these
+extensions when it initalizes the database. If the Postgres user is not a
+superuser, you will need to create the extensions manually since only
+superusers are allowed to do that. To create them you need to connect as a
+superuser, which in many installations is the `postgres` user:
+
+```bash
+    psql -q -X -U <SUPERUSER> graph-node <<EOF
+create extension pg_trgm;
+create extension pg_stat_statements;
+create extension btree_gist;
+create extension postgres_fdw;
+grant usage on foreign data wrapper postgres_fdw to <USERNAME>;
+EOF
+
+```
 
 This will also spin up a GraphiQL interface at `http://127.0.0.1:8000/`.
 
