@@ -564,6 +564,7 @@ impl ConnectionPool {
     fn configure_fdw(&self, servers: &Vec<ForeignServer>) -> Result<(), StoreError> {
         info!(&self.logger, "Setting up fdw");
         let conn = self.get()?;
+        conn.batch_execute("create extension if not exists postgres_fdw")?;
         conn.transaction(|| {
             let current_servers: Vec<String> = crate::catalog::current_servers(&conn)?;
             for server in servers.iter().filter(|server| server.shard != self.shard) {
