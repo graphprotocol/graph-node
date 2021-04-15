@@ -7,7 +7,7 @@ use diesel::{
 use graph::{
     prelude::{
         anyhow::{self, anyhow, bail},
-        debug, error, info, o,
+        crit, debug, error, info, o,
         tokio::sync::Semaphore,
         CancelGuard, CancelHandle, CancelToken as _, CancelableError, Counter, Gauge, Logger,
         MetricsRegistry, MovingStats, PoolWaitStats, StoreError,
@@ -534,31 +534,32 @@ impl ConnectionPool {
     ///
     /// If any errors happen during the migration, the process panics
     pub async fn setup(&self, servers: Arc<Vec<ForeignServer>>) {
+        fn die(logger: &Logger, msg: &'static str, err: &dyn std::fmt::Display) -> ! {
+            crit!(logger, "{}", msg; "error" => err.to_string());
+            panic!("{}: {}", msg, err);
+        }
+
         let pool = self.clone();
-        self.with_conn(move |conn, _| {
-            // Get an advisory session-level lock. The graph-node process
-            // that acquires the lock will run the migration. Everybody else
-            // will skip running migrations.
-            //
-            // We use two locks: one so we can tell whether we were the
-            // lucky ones that should run the migration, and one that blocks
-            // every process that is not running migrations until the
-            // migration is finished
-            let migrate = advisory_lock::lock_migration(conn);
-            let result = if migrate {
-                pool.configure_fdw(servers.as_ref())
-                    .and_then(|_| migrate_schema(&pool.logger, conn))
-                    .and_then(|_| pool.map_primary())
-                    .and_then(|_| pool.map_metadata(servers.as_ref()))
-            } else {
+        let res = self
+            .with_conn(move |conn, _| {
+                let migrate = advisory_lock::lock_migration(conn)
+                    .unwrap_or_else(|err| die(&pool.logger, "failed to get migration locks", &err));
+                let result = if migrate {
+                    pool.configure_fdw(servers.as_ref())
+                        .and_then(|()| migrate_schema(&pool.logger, conn))
+                        .and_then(|()| pool.map_primary())
+                        .and_then(|()| pool.map_metadata(servers.as_ref()))
+                } else {
+                    Ok(())
+                };
+                advisory_lock::unlock_migration(conn).unwrap_or_else(|err| {
+                    die(&pool.logger, "failed to release migration locks", &err);
+                });
+                result.unwrap_or_else(|err| die(&pool.logger, "migrations failed", &err));
                 Ok(())
-            };
-            advisory_lock::unlock_migration(conn);
-            result.expect("migration succeeds");
-            Ok(())
-        })
-        .await
-        .expect("migrations are never canceled");
+            })
+            .await;
+        res.unwrap_or_else(|err| die(&self.logger, "migrations were canceled", &err))
     }
 
     fn configure_fdw(&self, servers: &Vec<ForeignServer>) -> Result<(), StoreError> {

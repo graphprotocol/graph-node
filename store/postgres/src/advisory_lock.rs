@@ -24,7 +24,7 @@ use crate::command_support::catalog::Site;
 /// # Panics
 ///
 /// If the query to get the lock causes an error
-pub(crate) fn lock_migration(conn: &PgConnection) -> bool {
+pub(crate) fn lock_migration(conn: &PgConnection) -> Result<bool, StoreError> {
     #[derive(QueryableByName)]
     struct LockResult {
         #[sql_type = "diesel::sql_types::Bool"]
@@ -32,10 +32,9 @@ pub(crate) fn lock_migration(conn: &PgConnection) -> bool {
     }
 
     let lock = sql_query("select pg_try_advisory_lock(1) as migrate, pg_advisory_lock(2)")
-        .get_result::<LockResult>(conn)
-        .expect("we can try to get advisory locks 1 and 2");
+        .get_result::<LockResult>(conn)?;
 
-    lock.migrate
+    Ok(lock.migrate)
 }
 
 /// Release the migration lock.
@@ -43,10 +42,9 @@ pub(crate) fn lock_migration(conn: &PgConnection) -> bool {
 /// # Panics
 ///
 /// If the query to release the lock causes an error
-pub(crate) fn unlock_migration(conn: &PgConnection) {
-    sql_query("select pg_advisory_unlock(1), pg_advisory_unlock(2)")
-        .execute(conn)
-        .expect("we can unlock the advisory locks");
+pub(crate) fn unlock_migration(conn: &PgConnection) -> Result<(), StoreError> {
+    sql_query("select pg_advisory_unlock(1), pg_advisory_unlock(2)").execute(conn)?;
+    Ok(())
 }
 
 pub(crate) fn lock_copying(conn: &PgConnection, dst: &Site) -> Result<(), StoreError> {
