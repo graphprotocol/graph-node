@@ -14,7 +14,7 @@ use tiny_keccak::keccak256;
 use web3::types::{Address, Block, Log, H2048, H256};
 
 use super::types::*;
-use crate::components::metrics::{CounterVec, GaugeVec, HistogramVec};
+use crate::components::metrics::{labels, CounterVec, GaugeVec, HistogramVec};
 use crate::prelude::*;
 
 pub type EventSignature = H256;
@@ -553,7 +553,7 @@ impl SubgraphEthRpcMetrics {
 #[derive(Clone)]
 pub struct BlockStreamMetrics {
     pub ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
-    pub blocks_behind: Box<Gauge>,
+    pub deployment_head: Box<Gauge>,
     pub reverted_blocks: Box<Gauge>,
     pub stopwatch: StopwatchMetrics,
 }
@@ -563,15 +563,9 @@ impl BlockStreamMetrics {
         registry: Arc<impl MetricsRegistry>,
         ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
         deployment_id: &SubgraphDeploymentId,
+        network: String,
         stopwatch: StopwatchMetrics,
     ) -> Self {
-        let blocks_behind = registry
-            .new_deployment_gauge(
-                "deployment_blocks_behind",
-                "Track the number of blocks a subgraph deployment is behind the HEAD block",
-                deployment_id.as_str(),
-            )
-            .expect("failed to create `deployment_blocks_behind` gauge");
         let reverted_blocks = registry
             .new_deployment_gauge(
                 "deployment_reverted_blocks",
@@ -579,9 +573,17 @@ impl BlockStreamMetrics {
                 deployment_id.as_str(),
             )
             .expect("Failed to create `deployment_reverted_blocks` gauge");
+        let labels = labels! { String::from("deployment") => deployment_id.to_string(), String::from("network") => network };
+        let deployment_head = registry
+            .new_gauge(
+                "deployment_head",
+                "Track the head block number for a deployment",
+                labels,
+            )
+            .expect("failed to create `deployment_head` gauge");
         Self {
             ethrpc_metrics,
-            blocks_behind,
+            deployment_head,
             reverted_blocks,
             stopwatch,
         }

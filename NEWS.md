@@ -6,6 +6,10 @@
   Ethereum client that support EIP-1898, which all major clients support.
 - Added support for IPFS versions larger than 0.4.
 - Added Ethereum ABI encoding and decoding functionality #2348.
+- The `deployment_blocks_behind` metric has been removed, and a
+  `deployment_head` metric has been added. To see how far a deployment is
+  behind, use the difference between `ethereum_chain_head_number` and
+  `deployment_head`
 
 ## 0.22.0
 

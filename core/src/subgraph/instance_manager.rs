@@ -405,6 +405,7 @@ where
             registry.clone(),
             ethrpc_metrics.clone(),
             &deployment_id,
+            manifest.network_name(),
             stopwatch_metrics,
         ));
         let features = manifest.features.clone();

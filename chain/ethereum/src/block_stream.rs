@@ -281,9 +281,7 @@ where
                     as Box<dyn Future<Item = _, Error = _> + Send>;
             }
 
-            self.metrics
-                .blocks_behind
-                .set((head_ptr.number - ptr.number) as f64);
+            self.metrics.deployment_head.set(ptr.number as f64);
         }
 
         // Subgraph ptr is behind head ptr.
