@@ -311,11 +311,7 @@ impl DeploymentStore {
             }
         }
 
-        // Apply modification groups:
-        // Each operation must respect the maximum number of bindings allowed in PostgreSQL queries,
-        // so we need to act in chunks whose size is defined by the number of entities times the
-        // number of attributes each entity type has.
-
+        // Apply modification groups.
         // Inserts:
         for (entity_type, mut entities) in inserts.into_iter() {
             count +=

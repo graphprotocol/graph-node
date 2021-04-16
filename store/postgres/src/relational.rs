@@ -574,7 +574,10 @@ impl Layout {
         let table = self.table_for_entity(entity_type)?;
         let _section = stopwatch.start_section("insert_modification_insert_query");
         let mut count = 0;
-        // we add 1 to account for the `block_range` bind parameter
+        // Each operation must respect the maximum number of bindings allowed in PostgreSQL queries,
+        // so we need to act in chunks whose size is defined by the number of entities times the
+        // number of attributes each entity type has.
+        // We add 1 to account for the `block_range` bind parameter
         let chunk_size = POSTGRES_MAX_PARAMETERS / (table.columns.len() + 1);
         for chunk in entities.chunks_mut(chunk_size) {
             count += InsertQuery::new(table, chunk, block)?
@@ -695,7 +698,11 @@ impl Layout {
 
         let _section = stopwatch.start_section("update_modification_insert_query");
         let mut count = 0;
-        // we add 1 to account for the `block_range` bind parameter
+
+        // Each operation must respect the maximum number of bindings allowed in PostgreSQL queries,
+        // so we need to act in chunks whose size is defined by the number of entities times the
+        // number of attributes each entity type has.
+        // We add 1 to account for the `block_range` bind parameter
         let chunk_size = POSTGRES_MAX_PARAMETERS / (table.columns.len() + 1);
         for chunk in entities.chunks_mut(chunk_size) {
             count += InsertQuery::new(table, chunk, block)?.execute(conn)?;
