@@ -212,6 +212,11 @@ where
     ) {
         let logger = self.logger_factory.subgraph_logger(&loc);
 
+        // Perform the actual work of starting the subgraph in a separate
+        // task. If the subgraph is a graft or a copy, starting it will
+        // perform the actual work of grafting/copying, which can take
+        // hours. Running it in the background makes sure the instance
+        // manager does not hang because of that work.
         graph::spawn(async move {
             match Self::start_subgraph_inner(
                 logger.clone(),
@@ -311,9 +316,9 @@ where
         let store = store.writable(&deployment)?;
 
         // Start the subgraph deployment before reading dynamic data
-        // sources; if the subgraph is a copy, starting it will do the
-        // copying and dynamic data sources won't show up until after
-        // copying is done
+        // sources; if the subgraph is a graft or a copy, starting it will
+        // do the copying and dynamic data sources won't show up until after
+        // that is done
         {
             let store = store.clone();
             let logger = logger.clone();

@@ -872,6 +872,8 @@ pub struct DeploymentLocator {
     pub hash: SubgraphDeploymentId,
 }
 
+impl CheapClone for DeploymentLocator {}
+
 impl slog::Value for DeploymentLocator {
     fn serialize(
         &self,

@@ -94,6 +94,9 @@ table! {
         src -> Integer,
         dst -> Integer,
         queued_at -> Timestamptz,
+        // Setting this column to a value signals to a running copy process
+        // that a cancel has been requested. The copy process checks this
+        // periodically and stops as soon as this is not null anymore
         cancelled_at -> Nullable<Timestamptz>,
     }
 }
@@ -430,7 +433,7 @@ impl<'a> Connection<'a> {
         use subgraph_deployment_assignment as a;
         use subgraph_version as v;
 
-        let active = v::table
+        let named = v::table
             .inner_join(
                 s::table.on(v::id
                     .nullable()
@@ -441,7 +444,7 @@ impl<'a> Connection<'a> {
             .filter(a::id.eq(ds::id))
             .select(ds::id);
 
-        let removed = delete(a::table.filter(not(exists(active))))
+        let removed = delete(a::table.filter(not(exists(named))))
             .returning(a::id)
             .load::<i32>(self.0.as_ref())?;
 

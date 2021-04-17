@@ -167,7 +167,8 @@ where
                     .map(|change| match change {
                         EntityChange::Data { .. } => unreachable!(),
                         EntityChange::Assignment {
-                            deployment ,                      operation,
+                            deployment,
+                            operation,
                         } => (deployment.clone(), operation.clone()),
                     })
                     .collect::<Vec<_>>();
@@ -358,9 +359,18 @@ where
     ) -> Result<(), SubgraphRegistrarError> {
         let locations = self.store.locators(hash)?;
         let deployment = match locations.len() {
-            0 => return Err(SubgraphRegistrarError::StoreError(anyhow!("boo").into())),
+            0 => return Err(SubgraphRegistrarError::DeploymentNotFound(hash.to_string())),
             1 => locations[0].clone(),
-            _ => return Err(SubgraphRegistrarError::StoreError(anyhow!("boo").into())),
+            _ => {
+                return Err(SubgraphRegistrarError::StoreError(
+                    anyhow!(
+                        "there are {} different deployments with id {}",
+                        locations.len(),
+                        hash.as_str()
+                    )
+                    .into(),
+                ))
+            }
         };
         self.store.reassign_subgraph(&deployment, node_id)?;
 
