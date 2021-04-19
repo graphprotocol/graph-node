@@ -1109,6 +1109,11 @@ impl DeploymentStore {
                 info!(logger, "Copied {} dynamic data sources", count;
                       "time_ms" => start.elapsed().as_millis());
 
+                // Copy errors across
+                let count = deployment::copy_errors(&conn, &src.site, &dst.site, &block)?;
+                info!(logger, "Copied {} existing errors", count;
+                      "time_ms" => start.elapsed().as_millis());
+
                 // Rewind the subgraph so that entity versions that are
                 // clamped in the future (beyond `block`) become valid for
                 // all blocks after `block`. `revert_block` gets rid of

@@ -3,13 +3,14 @@
 //! deployment data and metadata
 use diesel::{
     connection::SimpleConnection,
-    dsl::{delete, insert_into, select, sql, update},
+    dsl::{count, delete, insert_into, select, sql, update},
     sql_types::Integer,
 };
 use diesel::{expression::SqlLiteral, pg::PgConnection, sql_types::Numeric};
 use diesel::{
     prelude::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl},
-    sql_types::Nullable,
+    sql_query,
+    sql_types::{Nullable, Text},
 };
 use graph::data::subgraph::{schema::SubgraphManifestEntity, SubgraphFeature};
 use graph::prelude::{
@@ -21,6 +22,7 @@ use stable_hash::crypto::SetHasher;
 use std::str::FromStr;
 use std::{collections::BTreeSet, convert::TryFrom, ops::Bound};
 
+use crate::connection_pool::ForeignServer;
 use crate::{block_range::BLOCK_RANGE_COLUMN, primary::Site};
 use graph::constraint_violation;
 
@@ -574,6 +576,51 @@ pub(crate) fn revert_subgraph_errors(
     // `reverted_block` were just deleted, but semantically we care about `reverted_block - 1` which
     // is the block being reverted to.
     check_health(conn, id, reverted_block - 1)
+}
+
+/// Copy the dynamic data sources for `src` to `dst`. All data sources that
+/// were created up to and including `target_block` will be copied.
+pub(crate) fn copy_errors(
+    conn: &PgConnection,
+    src: &Site,
+    dst: &Site,
+    target_block: &EthereumBlockPointer,
+) -> Result<usize, StoreError> {
+    use subgraph_error as e;
+
+    let src_nsp = if src.shard == dst.shard {
+        "subgraphs".to_string()
+    } else {
+        ForeignServer::metadata_schema(&src.shard)
+    };
+
+    // Check whether there are any errors for dst which indicates we already
+    // did copy
+    let count = e::table
+        .filter(e::subgraph_id.eq(dst.deployment.as_str()))
+        .select(count(e::vid))
+        .get_result::<i64>(conn)?;
+    if count > 0 {
+        return Ok(count as usize);
+    }
+
+    let query = format!(
+        "\
+      insert into subgraphs.subgraph_error(id,
+             subgraph_id, message, block_hash, handler, deterministic, block_range)
+      select e.id, $2 as subgraph_id, e.message, e.block_hash,
+             e.handler, e.deterministic, e.block_range
+        from {src_nsp}.subgraph_error e
+       where e.subgraph_id = $1
+         and lower(e.block_range) <= $3",
+        src_nsp = src_nsp
+    );
+
+    Ok(sql_query(&query)
+        .bind::<Text, _>(src.deployment.as_str())
+        .bind::<Text, _>(dst.deployment.as_str())
+        .bind::<Integer, _>(target_block.number)
+        .execute(conn)?)
 }
 
 /// Drop the schema `namespace`. This deletes all data for the subgraph,
