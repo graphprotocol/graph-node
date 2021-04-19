@@ -604,11 +604,20 @@ pub(crate) fn copy_errors(
         return Ok(count as usize);
     }
 
+    // We calculate a new id since the subgraph_error table has an exclusion
+    // constraint on (id, block_range) and we need to make sure that newly
+    // inserted errors do not collide with existing ones. For new subgraph
+    // errors, we use a stable hash; for copied ones we just use an MD5.
+    //
+    // Longer term, we should get rid of the id column, since it is only
+    // needed to deduplicate error messages, which would be better achieved
+    // with a unique index
     let query = format!(
         "\
       insert into subgraphs.subgraph_error(id,
              subgraph_id, message, block_hash, handler, deterministic, block_range)
-      select e.id, $2 as subgraph_id, e.message, e.block_hash,
+      select md5($2 || e.message || coalesce(e.block_hash, 'nohash') || coalesce(e.handler, 'nohandler') || e.deterministic) as id,
+             $2 as subgraph_id, e.message, e.block_hash,
              e.handler, e.deterministic, e.block_range
         from {src_nsp}.subgraph_error e
        where e.subgraph_id = $1
