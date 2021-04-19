@@ -7,6 +7,6 @@ edition = "2018"
 futures = "0.1.21"
 graph = { path = "../../graph" }
 http = "0.2"
-hyper = "0.13"
+hyper = "0.14"
 lazy_static = "1.2.0"
 serde = "1.0"
