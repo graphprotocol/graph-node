@@ -755,6 +755,12 @@ impl Graft {
             vec![SubgraphManifestValidationError::GraftBaseInvalid(msg)]
         }
 
+        // We are being defensive here: we don't know which specific
+        // instance of a subgraph we will use as the base for the graft,
+        // since the notion of which of these instances is active can change
+        // between this check and when the graft actually happens when the
+        // subgraph is started. We therefore check that any instance of the
+        // base subgraph is suitable.
         match store.least_block_ptr(&self.base) {
             Err(e) => gbi(e.to_string()),
             Ok(None) => gbi(format!(

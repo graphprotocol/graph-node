@@ -495,7 +495,7 @@ impl SubgraphStoreInner {
                 node
             )));
         }
-        let mut deployment = src_store.load_deployment(src.as_ref())?;
+        let deployment = src_store.load_deployment(src.as_ref())?;
         if deployment.failed {
             return Err(StoreError::Unknown(anyhow!(
                 "can not copy deployment {} because it has failed",
@@ -504,14 +504,21 @@ impl SubgraphStoreInner {
         }
 
         // Transmogrify the deployment into a new one
-        deployment.fatal_error = None;
-        deployment.non_fatal_errors = vec![];
-        deployment.reorg_count = 0;
-        deployment.max_reorg_depth = 0;
-        deployment.current_reorg_depth = 0;
-        deployment.latest_block = deployment.earliest_block.clone();
-        deployment.graft_base = Some(src.deployment.clone());
-        deployment.graft_block = Some(block);
+        let deployment = SubgraphDeploymentEntity {
+            manifest: deployment.manifest,
+            failed: false,
+            health: deployment.health,
+            synced: false,
+            fatal_error: None,
+            non_fatal_errors: vec![],
+            earliest_block: deployment.earliest_block.clone(),
+            latest_block: deployment.earliest_block,
+            graft_base: Some(src.deployment.clone()),
+            graft_block: Some(block),
+            reorg_count: 0,
+            current_reorg_depth: 0,
+            max_reorg_depth: 0,
+        };
 
         let graft_base = self.layout(&src.deployment)?;
 

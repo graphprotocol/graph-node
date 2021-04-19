@@ -246,26 +246,6 @@ impl StoreBuilder {
             self.chains,
             networks,
         )
-        /*
-        let networks = networks
-            .into_iter()
-            .map(|(name, ident)| {
-                let shard = self.chains.get(&name).unwrap_or(&*PRIMARY_SHARD).clone();
-                (name, ident, shard)
-            })
-            .collect();
-
-        let logger = self.logger.new(o!("component" => "BlockStore"));
-
-        let block_store = Arc::new(
-            DieselBlockStore::new(logger, networks, self.pools.clone())
-                .expect("Creating the BlockStore works"),
-        );
-
-        Arc::new(DieselStore::new(
-            self.subgraph_store.cheap_clone(),
-            block_store,
-        ))*/
     }
 
     pub fn subscription_manager(&self) -> Arc<SubscriptionManager> {

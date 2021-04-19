@@ -839,7 +839,7 @@ impl<'a> Connection<'a> {
         self.create_site(shard, src.deployment.clone(), src.network.clone(), false)
     }
 
-    pub fn activate(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
+    pub(crate) fn activate(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
         use deployment_schemas as ds;
 
         // We need to tread lightly so we do not violate the unique constraint on
