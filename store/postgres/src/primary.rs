@@ -770,43 +770,43 @@ impl<'a> Connection<'a> {
         }
     }
 
-    pub fn allocate_site(
+    /// Create a new site and possibly set it to the active site. This
+    /// function only performs the basic operations for creation, and the
+    /// caller must check that other conditions (like whether there already
+    /// is an active site for the deployment) are met
+    fn create_site(
         &self,
         shard: Shard,
-        subgraph: &SubgraphDeploymentId,
+        deployment: SubgraphDeploymentId,
         network: String,
+        active: bool,
     ) -> Result<Site, StoreError> {
         use deployment_schemas as ds;
         use DeploymentSchemaVersion as v;
 
         let conn = self.0.as_ref();
 
-        if let Some(schema) = self.find_active_site(subgraph)? {
-            return Ok(schema);
-        }
-
-        // Create a schema for the deployment.
         let schemas: Vec<(DeploymentId, String)> = diesel::insert_into(ds::table)
             .values((
-                ds::subgraph.eq(subgraph.as_str()),
+                ds::subgraph.eq(deployment.as_str()),
                 ds::shard.eq(shard.as_str()),
                 ds::version.eq(v::Relational),
                 ds::network.eq(network.as_str()),
-                ds::active.eq(true),
+                ds::active.eq(active),
             ))
             .returning((ds::id, ds::name))
             .get_results(conn)?;
         let (id, namespace) = schemas
             .first()
             .cloned()
-            .ok_or_else(|| anyhow!("failed to read schema name for {} back", subgraph))?;
+            .ok_or_else(|| anyhow!("failed to read schema name for {} back", deployment))?;
         let namespace = Namespace::new(namespace).map_err(|name| {
             constraint_violation!("Generated database schema name {} is invalid", name)
         })?;
 
         Ok(Site {
             id,
-            deployment: subgraph.clone(),
+            deployment,
             shard,
             namespace,
             network,
@@ -815,47 +815,28 @@ impl<'a> Connection<'a> {
         })
     }
 
+    pub fn allocate_site(
+        &self,
+        shard: Shard,
+        subgraph: &SubgraphDeploymentId,
+        network: String,
+    ) -> Result<Site, StoreError> {
+        if let Some(site) = self.find_active_site(subgraph)? {
+            return Ok(site);
+        }
+
+        self.create_site(shard, subgraph.clone(), network, true)
+    }
+
     /// Create a copy of the site `src` in the shard `shard`, but mark it as
     /// not active. If there already is a site in `shard`, return that
     /// instead.
     pub fn copy_site(&self, src: &Site, shard: Shard) -> Result<Site, StoreError> {
-        use deployment_schemas as ds;
-        use DeploymentSchemaVersion as v;
-
-        let conn = self.0.as_ref();
-
-        if let Some(schema) = self.find_site_in_shard(&src.deployment, &shard)? {
-            return Ok(schema);
+        if let Some(site) = self.find_site_in_shard(&src.deployment, &shard)? {
+            return Ok(site);
         }
 
-        // Create a schema for the deployment.
-        let schemas: Vec<(DeploymentId, String)> = diesel::insert_into(ds::table)
-            .values((
-                ds::subgraph.eq(src.deployment.as_str()),
-                ds::shard.eq(shard.as_str()),
-                ds::version.eq(v::Relational),
-                ds::network.eq(src.network.as_str()),
-                ds::active.eq(false),
-            ))
-            .returning((ds::id, ds::name))
-            .get_results(conn)?;
-        let (id, namespace) = schemas
-            .first()
-            .cloned()
-            .ok_or_else(|| anyhow!("failed to read schema name for {} back", src.deployment))?;
-        let namespace = Namespace::new(namespace).map_err(|name| {
-            constraint_violation!("Generated database schema name {} is invalid", name)
-        })?;
-
-        Ok(Site {
-            id,
-            deployment: src.deployment.clone(),
-            shard,
-            namespace,
-            network: src.network.clone(),
-            active: false,
-            _creation_disallowed: (),
-        })
+        self.create_site(shard, src.deployment.clone(), src.network.clone(), false)
     }
 
     pub fn activate(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
