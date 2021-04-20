@@ -481,7 +481,15 @@ where
             // Precondition: subgraph_ptr.number < head_ptr.number
             // Walk back to one block short of subgraph_ptr.number
             let offset = head_ptr.number - subgraph_ptr.number - 1;
-            let head_ancestor_opt = ctx.chain_store.ancestor_block(head_ptr, offset).unwrap();
+
+            // In principle this block should be in the store, but we have seen this error for deep
+            // reorgs in ropsten.
+            let head_ancestor_opt = match ctx.chain_store.ancestor_block(head_ptr, offset) {
+                Ok(ancestor) => ancestor,
+                Err(e) => {
+                    return Box::new(future::err(e)) as Box<dyn Future<Item = _, Error = _> + Send>
+                }
+            };
             let logger = self.logger.clone();
             match head_ancestor_opt {
                 None => {
