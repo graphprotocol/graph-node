@@ -1,10 +1,11 @@
-use super::{AscHeap, AscPtr, AscType, AscValue};
-use crate::error::DeterministicHostError;
 use anyhow::anyhow;
 use ethabi;
-use graph::data::store;
-use graph::prelude::serde_json;
-use graph::prelude::slog;
+use graph::{
+    data::store,
+    runtime::{AscHeap, AscType, AscValue},
+};
+use graph::{prelude::serde_json, runtime::DeterministicHostError};
+use graph::{prelude::slog, runtime::AscPtr};
 use graph_runtime_derive::AscType;
 use std::convert::TryInto as _;
 use std::marker::PhantomData;
@@ -342,6 +343,18 @@ impl From<bool> for EnumPayload {
 impl From<i64> for EnumPayload {
     fn from(x: i64) -> EnumPayload {
         EnumPayload(x as u64)
+    }
+}
+
+impl<C> From<EnumPayload> for AscPtr<C> {
+    fn from(payload: EnumPayload) -> Self {
+        AscPtr::new(payload.0 as u32)
+    }
+}
+
+impl<C> From<AscPtr<C>> for EnumPayload {
+    fn from(x: AscPtr<C>) -> EnumPayload {
+        EnumPayload(x.wasm_ptr() as u64)
     }
 }
 

@@ -9,21 +9,19 @@ use never::Never;
 use semver::Version;
 use wasmtime::{Memory, Trap};
 
-use crate::error::{DeterminismLevel, DeterministicHostError};
+use crate::error::DeterminismLevel;
 use crate::host_exports;
 use crate::mapping::MappingContext;
 use anyhow::Error;
 use ethabi::LogParam;
-use graph::components::subgraph::MappingError;
-use graph::data::store;
-use graph::data::subgraph::schema::SubgraphError;
 use graph::prelude::*;
+use graph::{components::subgraph::MappingError, runtime::AscPtr};
+use graph::{data::store, runtime::AscHeap};
+use graph::{data::subgraph::schema::SubgraphError, runtime::DeterministicHostError};
 use host_exports::HostExportError;
 use web3::types::{Log, Transaction, U256};
 
-use crate::asc_abi::asc_ptr::*;
 use crate::asc_abi::class::*;
-use crate::asc_abi::*;
 use crate::host_exports::{EthereumCallError, HostExports};
 use crate::mapping::ValidModule;
 use crate::UnresolvedContractCall;

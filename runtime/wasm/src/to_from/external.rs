@@ -1,16 +1,21 @@
 use ethabi;
 use std::collections::HashMap;
 
-use graph::components::ethereum::{
-    EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
+use graph::{
+    components::ethereum::{
+        EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
+    },
+    runtime::{AscPtr, AscType, ToAscObj},
 };
-use graph::data::store;
-use graph::prelude::serde_json;
-use graph::prelude::web3::types as web3;
-use graph::prelude::{BigDecimal, BigInt};
+use graph::{data::store, runtime::DeterministicHostError};
+use graph::{prelude::serde_json, runtime::FromAscObj};
+use graph::{prelude::web3::types as web3, runtime::AscHeap};
+use graph::{
+    prelude::{BigDecimal, BigInt},
+    runtime::TryFromAscObj,
+};
 
-use crate::asc_abi::{AscHeap, AscPtr, AscType, FromAscObj, ToAscObj, TryFromAscObj};
-use crate::{asc_abi::class::*, error::DeterministicHostError};
+use crate::asc_abi::class::*;
 
 use crate::UnresolvedContractCall;
 
@@ -494,12 +499,6 @@ impl From<u32> for LogLevel {
             4 => LogLevel::Debug,
             _ => LogLevel::Debug,
         }
-    }
-}
-
-impl ToAscObj<bool> for bool {
-    fn to_asc_obj<H: AscHeap>(&self, _heap: &mut H) -> Result<bool, DeterministicHostError> {
-        Ok(*self)
     }
 }
 

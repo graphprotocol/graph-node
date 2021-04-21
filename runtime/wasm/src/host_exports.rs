@@ -1,8 +1,4 @@
-use crate::{
-    error::{DeterminismLevel, DeterministicHostError},
-    module::IntoTrap,
-    UnresolvedContractCall,
-};
+use crate::{error::DeterminismLevel, module::IntoTrap, UnresolvedContractCall};
 use ethabi::param_type::Reader;
 use ethabi::{decode, encode, Address, Token};
 use graph::bytes::Bytes;
@@ -14,6 +10,7 @@ use graph::components::{arweave::ArweaveAdapter, store::EntityType};
 use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
+use graph::runtime::DeterministicHostError;
 use never::Never;
 use semver::Version;
 use std::collections::HashMap;

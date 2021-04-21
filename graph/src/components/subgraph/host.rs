@@ -7,9 +7,9 @@ use anyhow::Error;
 use async_trait::async_trait;
 use futures::sync::mpsc;
 
-use crate::components::metrics::HistogramVec;
 use crate::components::subgraph::SharedProofOfIndexing;
 use crate::prelude::*;
+use crate::{components::metrics::HistogramVec, runtime::DeterministicHostError};
 
 #[derive(Debug)]
 pub enum MappingError {
@@ -21,6 +21,12 @@ pub enum MappingError {
 impl From<anyhow::Error> for MappingError {
     fn from(e: anyhow::Error) -> Self {
         MappingError::Unknown(e)
+    }
+}
+
+impl From<DeterministicHostError> for MappingError {
+    fn from(value: DeterministicHostError) -> MappingError {
+        MappingError::Unknown(value.0)
     }
 }
 

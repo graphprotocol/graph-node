@@ -1,11 +1,6 @@
 use crate::{host_exports::HostExportError, module::IntoTrap};
-use anyhow::Error;
-use graph::components::subgraph::MappingError;
-use std::{error, fmt};
+use graph::runtime::DeterministicHostError;
 use wasmtime::Trap;
-
-#[derive(Debug)]
-pub struct DeterministicHostError(pub Error);
 
 pub enum DeterminismLevel {
     /// This error is known to be deterministic. For example, divide by zero.
@@ -20,23 +15,9 @@ pub enum DeterminismLevel {
     Unimplemented,
 }
 
-impl fmt::Display for DeterministicHostError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl error::Error for DeterministicHostError {}
-
 impl From<DeterministicHostError> for HostExportError {
     fn from(value: DeterministicHostError) -> Self {
         HostExportError::Deterministic(value.0)
-    }
-}
-
-impl From<DeterministicHostError> for MappingError {
-    fn from(value: DeterministicHostError) -> MappingError {
-        MappingError::Unknown(value.0)
     }
 }
 
