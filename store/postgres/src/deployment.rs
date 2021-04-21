@@ -605,10 +605,13 @@ pub fn drop_metadata(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(
 
     // We don't need to delete from subgraph_error since that cascades from
     // deleting the subgraph_deployment
-    let manifest: String = delete(d::table.filter(d::deployment.eq(id.as_str())))
+    let manifest: Option<String> = delete(d::table.filter(d::deployment.eq(id.as_str())))
         .returning(d::manifest)
-        .get_result(conn)?;
-    delete(m::table.filter(m::id.eq(manifest))).execute(conn)?;
+        .get_result(conn)
+        .optional()?;
+    if let Some(manifest) = manifest {
+        delete(m::table.filter(m::id.eq(manifest))).execute(conn)?;
+    }
     Ok(())
 }
 
