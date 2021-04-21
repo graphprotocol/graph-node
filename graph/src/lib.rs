@@ -18,6 +18,8 @@ pub mod cheap_clone;
 
 pub mod ipfs_client;
 
+pub mod blockchain;
+
 pub mod runtime;
 
 /// Module with mocks for different parts of the system.

@@ -19,7 +19,7 @@ use std::str::FromStr;
 
 pub use num_bigint::Sign as BigIntSign;
 
-use crate::components::ethereum::BlockHash;
+use crate::blockchain::BlockHash;
 
 /// All operations on `BigDecimal` return a normalized value.
 // Caveat: The exponent is currently an i64 and may overflow. See
