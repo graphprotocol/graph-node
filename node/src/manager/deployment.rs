@@ -10,6 +10,7 @@ use graph::{
 };
 use graph_store_postgres::{command_support::catalog as store_catalog, Shard, SubgraphStore};
 
+use crate::manager::deployment;
 use crate::manager::display::List;
 
 #[derive(Queryable, PartialEq, Eq, Hash)]
@@ -93,6 +94,8 @@ pub fn locate(
     hash: String,
     shard: Option<String>,
 ) -> Result<DeploymentLocator, Error> {
+    let hash = deployment::as_hash(hash)?;
+
     fn locate_unique(store: &SubgraphStore, hash: String) -> Result<DeploymentLocator, Error> {
         let locators = store.locators(&hash)?;
 
@@ -113,9 +116,9 @@ pub fn locate(
 
     match shard {
         Some(shard) => store
-            .locate_in_shard(hash.clone(), Shard::new(shard.clone())?)?
+            .locate_in_shard(&hash, Shard::new(shard.clone())?)?
             .ok_or_else(|| anyhow!("no deployment with hash `{}` in shard {}", hash, shard)),
-        None => locate_unique(store, hash),
+        None => locate_unique(store, hash.to_string()),
     }
 }
 

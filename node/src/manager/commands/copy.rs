@@ -125,8 +125,9 @@ pub async fn create(
 
 pub fn activate(store: Arc<SubgraphStore>, deployment: String, shard: String) -> Result<(), Error> {
     let shard = Shard::new(shard)?;
+    let deployment = deployment::as_hash(deployment)?;
     let deployment = store
-        .locate_in_shard(deployment.clone(), shard.clone())?
+        .locate_in_shard(&deployment, shard.clone())?
         .ok_or_else(|| {
             anyhow!(
                 "could not find a copy for {} in shard {}",

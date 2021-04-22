@@ -856,14 +856,13 @@ impl SubgraphStoreInner {
 
     pub fn locate_in_shard(
         &self,
-        hash: String,
+        hash: &SubgraphDeploymentId,
         shard: Shard,
     ) -> Result<Option<DeploymentLocator>, StoreError> {
         Ok(self
             .primary_conn()?
-            .find_sites(vec![hash])?
-            .iter()
-            .find(|site| site.shard == shard)
+            .find_site_in_shard(hash, &shard)?
+            .as_ref()
             .map(|site| site.into()))
     }
 }
