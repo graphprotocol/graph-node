@@ -1076,8 +1076,6 @@ impl DeploymentStore {
 
         // Do any cleanup to bring the subgraph into a known good state
         if let Some((src, block)) = graft_src {
-            let start = Instant::now();
-
             info!(
                 logger,
                 "Initializing graft by copying data from {} to {}",
@@ -1105,11 +1103,13 @@ impl DeploymentStore {
             let conn = self.get_conn()?;
             conn.transaction(|| -> Result<(), StoreError> {
                 // Copy dynamic data sources and adjust their ID
+                let start = Instant::now();
                 let count = dynds::copy(&conn, &src.site, &dst.site, &block)?;
                 info!(logger, "Copied {} dynamic data sources", count;
                       "time_ms" => start.elapsed().as_millis());
 
                 // Copy errors across
+                let start = Instant::now();
                 let count = deployment::copy_errors(&conn, &src.site, &dst.site, &block)?;
                 info!(logger, "Copied {} existing errors", count;
                       "time_ms" => start.elapsed().as_millis());
@@ -1125,6 +1125,11 @@ impl DeploymentStore {
                     .expect("block numbers fit into an i32");
                 dst.revert_block(&conn, &dst.site.deployment, block_to_revert)?;
                 info!(logger, "Rewound subgraph to block {}", block.number;
+                      "time_ms" => start.elapsed().as_millis());
+
+                let start = Instant::now();
+                deployment::set_entity_count(&conn, &dst.site, &dst.count_query)?;
+                info!(logger, "Counted the entities";
                       "time_ms" => start.elapsed().as_millis());
 
                 // Set the block ptr to the graft point to signal that we successfully
