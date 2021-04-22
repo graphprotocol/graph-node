@@ -1181,7 +1181,7 @@ impl<'a> Connection<'a> {
         let used_by = s::table
             .inner_join(v::table.on(s::id.eq(v::subgraph)))
             .filter(v::deployment.eq(ds::subgraph))
-            .select(sql::<Array<Text>>("array_agg(name)"))
+            .select(sql::<Array<Text>>("array_agg(distinct name)"))
             .single_value();
 
         let unused = ds::table
