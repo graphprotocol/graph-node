@@ -749,7 +749,7 @@ impl SubgraphStoreInner {
                 }
             }
             status::Filter::Deployments(deployments) => {
-                self.primary_conn()?.find_sites(deployments)?
+                self.primary_conn()?.find_sites(deployments, true)?
             }
         };
 
@@ -986,7 +986,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError> {
         Ok(self
             .primary_conn()?
-            .find_sites(vec![hash.to_string()])?
+            .find_sites(vec![hash.to_string()], false)?
             .iter()
             .map(|site| site.into())
             .collect())

@@ -909,16 +909,28 @@ impl<'a> Connection<'a> {
 
     /// Find sites by their subgraph deployment ids. If `ids` is empty,
     /// return all sites
-    pub fn find_sites(&self, ids: Vec<String>) -> Result<Vec<Site>, StoreError> {
+    pub fn find_sites(&self, ids: Vec<String>, only_active: bool) -> Result<Vec<Site>, StoreError> {
         use deployment_schemas as ds;
 
-        let active = ds::table.filter(ds::active);
         let schemas = if ids.is_empty() {
-            active.load::<Schema>(self.0.as_ref())?
+            if only_active {
+                ds::table
+                    .filter(ds::active)
+                    .load::<Schema>(self.0.as_ref())?
+            } else {
+                ds::table.load::<Schema>(self.0.as_ref())?
+            }
         } else {
-            active
-                .filter(ds::subgraph.eq_any(ids))
-                .load::<Schema>(self.0.as_ref())?
+            if only_active {
+                ds::table
+                    .filter(ds::active)
+                    .filter(ds::subgraph.eq_any(ids))
+                    .load::<Schema>(self.0.as_ref())?
+            } else {
+                ds::table
+                    .filter(ds::subgraph.eq_any(ids))
+                    .load::<Schema>(self.0.as_ref())?
+            }
         };
         schemas
             .into_iter()
