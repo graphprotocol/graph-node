@@ -322,8 +322,8 @@ impl Layout {
             .iter()
             .map(|table| {
                 format!(
-                    "select count(*) from \"{}\".\"{}\" where upper_inf(block_range)",
-                    &catalog.namespace, table.name
+                    "select count(*) from \"{}\".\"{}\" where block_range @> {}",
+                    &catalog.namespace, table.name, BLOCK_NUMBER_MAX
                 )
             })
             .collect::<Vec<_>>()
