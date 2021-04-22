@@ -115,9 +115,13 @@ pub enum Command {
         /// The shard of the deployment if `id` itself is ambiguous
         shard: Option<String>,
     },
+    /// Rewind a subgraph to a specific block
     Rewind {
+        /// The hash of the deployment to rewind
         id: String,
+        /// The block hash of the target block
         block_hash: String,
+        /// The block number of the target block
         block_number: i32,
     },
     /// Check and interrogate the configuration
@@ -191,9 +195,13 @@ pub enum ConfigCommand {
 
 #[derive(Clone, Debug, StructOpt)]
 pub enum ListenCommand {
+    /// Listen only to assignment events
     Assignments,
+    /// Listen to events for entities in a specific deployment
     Entities {
+        /// The deployment hash
         deployment: String,
+        /// The entity types for which to print change notifications
         entity_types: Vec<String>,
     },
 }
@@ -231,8 +239,11 @@ pub enum CopyCommand {
         /// The name of the database shard that holds the copy
         shard: String,
     },
+    /// List all currently running copy and graft operations
     List,
+    /// Print the progress of a copy operation
     Status {
+        /// The internal id of the destination of the copy operation (number)
         dst: i32,
     },
 }
