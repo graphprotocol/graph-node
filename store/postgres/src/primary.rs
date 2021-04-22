@@ -3,7 +3,7 @@
 //! for the primary shard.
 use diesel::{
     data_types::PgTimestamp,
-    dsl::{any, exists, not},
+    dsl::{any, exists, not, select},
     pg::Pg,
     serialize::Output,
     sql_types::{Array, Integer, Text},
@@ -863,10 +863,21 @@ impl<'a> Connection<'a> {
         use unused_deployments as u;
 
         self.transaction(|| {
-            delete(v::table.filter(v::deployment.eq(site.deployment.as_str())))
-                .execute(self.0.as_ref())?;
-            delete(ds::table.filter(ds::subgraph.eq(site.deployment.as_str())))
-                .execute(self.0.as_ref())?;
+            let conn = self.0.as_ref();
+
+            delete(ds::table.filter(ds::id.eq(site.id))).execute(conn)?;
+
+            // If there is no site for this deployment any more, we can get
+            // rid of versions pointing to it
+            let exists = select(exists(
+                ds::table.filter(ds::subgraph.eq(site.deployment.as_str())),
+            ))
+            .get_result::<bool>(conn)?;
+            if !exists {
+                delete(v::table.filter(v::deployment.eq(site.deployment.as_str())))
+                    .execute(conn)?;
+            }
+
             update(u::table.filter(u::id.eq(site.id)))
                 .set(u::removed_at.eq(sql("now()")))
                 .execute(self.0.as_ref())?;
