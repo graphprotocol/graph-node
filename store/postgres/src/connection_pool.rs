@@ -542,18 +542,15 @@ impl ConnectionPool {
         let pool = self.clone();
         let res = self
             .with_conn(move |conn, _| {
-                let migrate = advisory_lock::lock_migration(conn)
-                    .unwrap_or_else(|err| die(&pool.logger, "failed to get migration locks", &err));
-                let result = if migrate {
-                    pool.configure_fdw(servers.as_ref())
-                        .and_then(|()| migrate_schema(&pool.logger, conn))
-                        .and_then(|()| pool.map_primary())
-                        .and_then(|()| pool.map_metadata(servers.as_ref()))
-                } else {
-                    Ok(())
-                };
+                advisory_lock::lock_migration(conn)
+                    .unwrap_or_else(|err| die(&pool.logger, "failed to get migration lock", &err));
+                let result = pool
+                    .configure_fdw(servers.as_ref())
+                    .and_then(|()| migrate_schema(&pool.logger, conn))
+                    .and_then(|()| pool.map_primary())
+                    .and_then(|()| pool.map_metadata(servers.as_ref()));
                 advisory_lock::unlock_migration(conn).unwrap_or_else(|err| {
-                    die(&pool.logger, "failed to release migration locks", &err);
+                    die(&pool.logger, "failed to release migration lock", &err);
                 });
                 result.unwrap_or_else(|err| die(&pool.logger, "migrations failed", &err));
                 Ok(())
