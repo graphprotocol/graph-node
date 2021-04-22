@@ -83,6 +83,8 @@ impl WasmInstance {
         let value = self.asc_new(value)?;
         let user_data = self.asc_new(user_data)?;
 
+        self.instance_ctx_mut().ctx.state.enter_handler();
+
         // Invoke the callback
         self.instance
             .get_func(handler_name)
@@ -90,6 +92,8 @@ impl WasmInstance {
             .typed()?
             .call((value.wasm_ptr(), user_data.wasm_ptr()))
             .with_context(|| format!("Failed to handle callback '{}'", handler_name))?;
+
+        self.instance_ctx_mut().ctx.state.exit_handler();
 
         Ok(self.take_ctx().ctx.state)
     }
