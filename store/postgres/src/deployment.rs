@@ -749,6 +749,8 @@ pub fn update_entity_count(
     full_count_query: &str,
     count: i32,
 ) -> Result<(), StoreError> {
+    use subgraph_deployment as d;
+
     if count == 0 {
         return Ok(());
     }
@@ -767,19 +769,14 @@ pub fn update_entity_count(
     // is `NULL` or `-1`, forcing `coalesce` to evaluate its second
     // argument, the query to count entities. In all other cases,
     // `coalesce` does not evaluate its second argument
-    let query = format!(
-        "
-        update subgraphs.subgraph_deployment
-           set entity_count =
-                 coalesce((nullif(entity_count, -1)) + $1,
-                          ({full_count_query}))
-         where id = $2
-        ",
-        full_count_query = full_count_query
+    let count_update = format!(
+        "coalesce((nullif(entity_count, -1)) + ({count}),
+                  ({full_count_query}))",
+        full_count_query = full_count_query,
+        count = count
     );
-    Ok(diesel::sql_query(query)
-        .bind::<Integer, _>(count)
-        .bind::<Integer, _>(site.id)
-        .execute(conn)
-        .map(|_| ())?)
+    update(d::table.filter(d::id.eq(site.id)))
+        .set(d::entity_count.eq(sql(&count_update)))
+        .execute(conn)?;
+    Ok(())
 }
