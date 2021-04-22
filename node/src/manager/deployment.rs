@@ -5,7 +5,7 @@ use graph::{
     components::store::DeploymentLocator,
     prelude::{
         anyhow::{self, anyhow, bail},
-        Error, SubgraphStore as _,
+        Error, SubgraphDeploymentId, SubgraphStore as _,
     },
 };
 use graph_store_postgres::{command_support::catalog as store_catalog, Shard, SubgraphStore};
@@ -117,4 +117,8 @@ pub fn locate(
             .ok_or_else(|| anyhow!("no deployment with hash `{}` in shard {}", hash, shard)),
         None => locate_unique(store, hash),
     }
+}
+
+pub fn as_hash(hash: String) -> Result<SubgraphDeploymentId, Error> {
+    SubgraphDeploymentId::new(hash).map_err(|s| anyhow!("illegal deployment hash `{}`", s))
 }

@@ -5,9 +5,11 @@ use futures::compat::Future01CompatExt;
 //use futures::future;
 use graph::{
     components::store::{EntityType, SubscriptionManager as _},
-    prelude::{anyhow, serde_json, Error, Stream, SubgraphDeploymentId, SubscriptionFilter},
+    prelude::{serde_json, Error, Stream, SubscriptionFilter},
 };
 use graph_store_postgres::SubscriptionManager;
+
+use crate::manager::deployment;
 
 async fn listen(
     mgr: Arc<SubscriptionManager>,
@@ -49,8 +51,7 @@ pub async fn entities(
     deployment: String,
     entity_types: Vec<String>,
 ) -> Result<(), Error> {
-    let deployment = SubgraphDeploymentId::new(deployment)
-        .map_err(|s| anyhow!("illegal deployment hash `{}`", s))?;
+    let deployment = deployment::as_hash(deployment)?;
     let filter: Vec<_> = entity_types
         .into_iter()
         .map(|et| SubscriptionFilter::Entities(deployment.clone(), EntityType::new(et)))
