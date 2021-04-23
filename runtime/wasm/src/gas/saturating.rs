@@ -35,3 +35,17 @@ impl SaturatingFrom<usize> for u64 {
         value.try_into().unwrap_or(u64::MAX)
     }
 }
+
+impl SaturatingFrom<f64> for Gas {
+    #[inline]
+    fn saturating_from(value: f64) -> Self {
+        Gas(value as u64)
+    }
+}
+
+impl SaturatingFrom<u32> for Gas {
+    #[inline]
+    fn saturating_from(value: u32) -> Self {
+        Gas(value as u64)
+    }
+}

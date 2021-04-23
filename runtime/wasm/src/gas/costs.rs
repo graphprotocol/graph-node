@@ -3,104 +3,65 @@
 
 use super::*;
 
-/// Using 10 gas = ~1ns for WASM instructions
-/// So the maximum time spent doing pure math
-/// would be in the 1 hour range. The intent here
-/// is to have the determinism cutoff be very high,
-/// while still allowing more reasonable timer based cutoffs.
-/// Having a unit like 10 gas for ~1ns allows us to be granular
-/// in instructions which are aggregated into metered blocks
-/// via https://docs.rs/pwasm-utils/0.16.0/pwasm_utils/fn.inject_gas_counter.html
-/// But we can still charge very high numbers for other things.
-pub const MAX_GAS: u64 = 36_000_000_000_000;
+/// Using 10 gas = ~1ns for WASM instructions.
+const GAS_PER_SECOND: u64 = 10_000_000_000;
 
-/// Base gas cost for calling any host export
-// Security: This must be non-zero.
+/// Set max gas to 1 hour worth of gas per handler. The intent here is to have the determinism
+/// cutoff be very high, while still allowing more reasonable timer based cutoffs. Having a unit
+/// like 10 gas for ~1ns allows us to be granular in instructions which are aggregated into metered
+/// blocks via https://docs.rs/pwasm-utils/0.16.0/pwasm_utils/fn.inject_gas_counter.html But we can
+/// still charge very high numbers for other things.
+pub const MAX_GAS_PER_HANDLER: u64 = 3600 * GAS_PER_SECOND;
+
+/// Base gas cost for calling any host export.
+/// Security: This must be non-zero.
+const HOST_EXPORT: u64 = 100_000;
+
 /// Gas for instructions are aggregated into blocks, so hopefully gas calls each have relatively large gas.
 /// But in the case they don't, we don't want the overhead of calling out into a host export to be
 /// the dominant cost that causes unexpectedly high execution times.
-pub const HOST_EXPORT: Gas = Gas(100_000);
+pub const HOST_EXPORT_GAS: Gas = Gas(HOST_EXPORT);
+
+/// As a heuristic for the cost of host fns it makes sense to reason in terms of bandwidth and
+/// calculate the cost from there. Because we don't have benchmarks for each host fn, we go with
+/// pessimistic assumption of performance of 10 MB/s, which nonetheless allows for 36 GB to be
+/// processed through host exports by a single handler at a 1 hour budget.
+const DEFAULT_BYTE_PER_SECOND: u64 = 10_000_000;
+
+/// With the current parameters DEFAULT_GAS_PER_BYTE = 1_000.
+const DEFAULT_GAS_PER_BYTE: u64 = GAS_PER_SECOND / DEFAULT_BYTE_PER_SECOND;
+
+pub(crate) const DEFAULT_BASE_COST: u64 = 100_000;
+
+pub(crate) const DEFAULT_GAS_OP: GasOp = GasOp {
+    base_cost: DEFAULT_BASE_COST,
+    size_mult: DEFAULT_GAS_PER_BYTE,
+};
 
 // Allow up to 25,000 ethereum calls
-pub const ETHEREUM_CALL: Gas = Gas(MAX_GAS / 25000);
+pub const ETHEREUM_CALL: Gas = Gas(MAX_GAS_PER_HANDLER / 25_000);
 
-// The cost of allocating an AscHeap object
-pub const ALLOC_NEW: GasOp = GasOp {
-    base_cost: 200_000,
-    size_mult: 400,
-};
+// Allow up to 100,000 data sources to be created
+pub const CREATE_DATA_SOURCE: Gas = Gas(MAX_GAS_PER_HANDLER / 100_000);
 
-// Cost of reading from the AscHeap
-pub const HEAP_READ: GasOp = GasOp {
-    base_cost: 10_000,
-    size_mult: 100,
-};
-
-pub const BIG_INT_TO_HEX: GasOp = GasOp {
-    base_cost: 150_000,
-    size_mult: 500,
-};
-
-// TODO: Heap write?
+// Allow up to 100,000 logs
+pub const LOG: Gas = Gas(MAX_GAS_PER_HANDLER / 100_000);
 
 // Saving to the store is one of the most expensive operations.
 pub const STORE_SET: GasOp = GasOp {
     // Allow up to 250k entities saved.
-    base_cost: MAX_GAS / 250_000,
+    base_cost: MAX_GAS_PER_HANDLER / 250_000,
     // If the size roughly corresponds to bytes, allow 1GB to be saved.
-    size_mult: MAX_GAS / 1_000_000_000,
+    size_mult: MAX_GAS_PER_HANDLER / 1_000_000_000,
 };
 
 // Reading from the store is much cheaper than writing.
 pub const STORE_GET: GasOp = GasOp {
-    base_cost: MAX_GAS / 10_000_000,
-    size_mult: MAX_GAS / 10_000_000_000,
+    base_cost: MAX_GAS_PER_HANDLER / 10_000_000,
+    size_mult: MAX_GAS_PER_HANDLER / 10_000_000_000,
 };
 
 pub const STORE_REMOVE: GasOp = STORE_SET;
-
-pub const JSON_TO_I64: GasOp = GasOp {
-    base_cost: 150_000,
-    size_mult: 1_400,
-};
-pub const JSON_TO_U64: GasOp = JSON_TO_I64;
-
-pub const JSON_TO_F64: GasOp = GasOp {
-    base_cost: 150_000,
-    size_mult: 1_800,
-};
-
-pub const JSON_TO_BIGINT: GasOp = GasOp {
-    base_cost: 250_000,
-    size_mult: 10_000,
-};
-
-pub const KECCAK256: GasOp = GasOp {
-    base_cost: 250_000,
-    size_mult: 4_000,
-};
-
-pub const BIG_INT_PLUS: GasOp = GasOp {
-    base_cost: 100_000,
-    size_mult: 800,
-};
-
-pub const BIG_INT_MINUS: GasOp = GasOp {
-    base_cost: 100_000,
-    size_mult: 850,
-};
-
-pub const BIG_INT_MUL: GasOp = GasOp {
-    base_cost: 100_000,
-    size_mult: 3_200,
-};
-
-pub const BIG_INT_DIV: GasOp = GasOp {
-    base_cost: 100_000,
-    size_mult: 6_400,
-};
-
-pub const BIG_INT_MOD: GasOp = BIG_INT_DIV;
 
 pub struct GasRules;
 
@@ -243,6 +204,7 @@ impl Rules for GasRules {
         };
         Some(weight)
     }
+
     fn memory_grow_cost(&self) -> Option<MemoryGrowCost> {
         // Each page is 64KiB which is 65536 bytes.
         const PAGE: u64 = 64 * 1024;
@@ -253,7 +215,7 @@ impl Rules for GasRules {
         // free pages because this is 32bit WASM.
         const MAX_PAGES: u64 = 12 * GIB / PAGE;
         // This ends up at 439,453,125 per page.
-        const GAS_PER_PAGE: u64 = MAX_GAS / MAX_PAGES;
+        const GAS_PER_PAGE: u64 = MAX_GAS_PER_HANDLER / MAX_PAGES;
         let gas_per_page = NonZeroU32::new(GAS_PER_PAGE.try_into().unwrap()).unwrap();
 
         Some(MemoryGrowCost::Linear(gas_per_page))

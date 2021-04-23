@@ -7,9 +7,14 @@ pub mod complexity {
     // Args have additive linear complexity
     // Eg: O(N₁+N₂)
     pub struct Linear;
-    // Args have additive exponential complexity
+    // Args have multiplicative complexity
     // Eg: O(N₁*N₂)
+    pub struct Mul;
+
+    // Exponential complexity.
+    // Eg: O(N₁^N₂)
     pub struct Exponential;
+
     // There is only one arg and it scales linearly with it's size
     pub struct Size;
     // Complexity is captured by the lesser complexity of the two args
@@ -26,7 +31,7 @@ pub mod complexity {
         }
     }
 
-    impl GasCombinator for Exponential {
+    impl GasCombinator for Mul {
         #[inline(always)]
         fn combine(lhs: Gas, rhs: Gas) -> Gas {
             Gas(lhs.0.saturating_mul(rhs.0))
@@ -109,6 +114,21 @@ where
                 }
             }
         }
+        None
+    }
+}
+
+impl<T0> GasSizeOf for Combine<(T0, u8), complexity::Exponential>
+where
+    T0: GasSizeOf,
+{
+    fn gas_size_of(&self) -> Gas {
+        let (a, b) = &self.0;
+        Gas(a.gas_size_of().0.saturating_pow(*b as u32))
+    }
+
+    #[inline]
+    fn const_gas_size_of() -> Option<Gas> {
         None
     }
 }

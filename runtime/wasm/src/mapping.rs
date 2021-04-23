@@ -142,10 +142,9 @@ pub struct ValidModule {
 impl ValidModule {
     /// Pre-process and validate the module.
     pub fn new(raw_module: &[u8]) -> Result<Self, anyhow::Error> {
-        // Add the gas calls here.
-        // Module name "gas" must match. See also e3f03e62-40e4-4f8c-b4a1-d0375cca0b76
-        // We do this by round-tripping the module through parity - injecting gas then
-        // serializing again.
+        // Add the gas calls here. Module name "gas" must match. See also
+        // e3f03e62-40e4-4f8c-b4a1-d0375cca0b76. We do this by round-tripping the module through
+        // parity - injecting gas then serializing again.
         let parity_module = parity_wasm::elements::Module::from_bytes(raw_module)?;
         let parity_module = pwasm_utils::inject_gas_counter(parity_module, &GasRules, "gas")
             .map_err(|_| anyhow!("Failed to inject gas counter"))?;

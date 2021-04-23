@@ -869,7 +869,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
     )
     .await
     {
-        // Triggers processed with no errors or with only determinstic errors.
+        // Triggers processed with no errors or with only deterministic errors.
         Ok(block_state) => block_state,
 
         // Some form of unknown or non-deterministic error ocurred.

@@ -53,8 +53,7 @@ where
 
 impl GasSizeOf for BigInt {
     fn gas_size_of(&self) -> Gas {
-        // This does not do % 8 to count bytes but that's ok since this type is inherantly expensive.
-        let gas: Gas = self.bits().saturating_into();
+        let gas: Gas = (self.bits() / 8).saturating_into();
         gas + Gas(100)
     }
 }
@@ -68,9 +67,9 @@ impl GasSizeOf for Entity {
 impl GasSizeOf for BigDecimal {
     fn gas_size_of(&self) -> Gas {
         // This can be overly pessimistic
-        let (int, _) = self.as_bigint_and_exponent();
-        // This does not do % 8 to count bytes but that's ok since this type is inherantly expensive.
-        let gas: Gas = int.bits().saturating_into();
+        let gas: Gas = ((self.digits() as f64 * std::f64::consts::LOG2_10) / 8.0)
+            .ceil()
+            .saturating_into();
         gas + Gas(1000)
     }
 }
@@ -101,7 +100,10 @@ where
                 self.keys().map(|k| k.gas_size_of()).sum::<Gas>() + v_gas * self.len()
             }
             (Some(k_gas), Some(v_gas)) => (k_gas + v_gas) * self.len(),
-            (None, None) => self.iter().map(|e| e.gas_size_of()).sum(),
+            (None, None) => self
+                .iter()
+                .map(|(k, v)| k.gas_size_of() + v.gas_size_of())
+                .sum(),
         };
         members + Gas(32) + (Gas(8) * self.len())
     }
@@ -176,20 +178,8 @@ impl GasSizeOf for EntityKey {
     }
 }
 
-impl GasSizeOf for EntityType {}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn const_tuples_propagate() {
-        assert_eq!(Some(Gas(16)), <(u64, u64)>::const_gas_size_of());
-        assert_eq!(None, <(&str, u64)>::const_gas_size_of());
-    }
-
-    #[test]
-    fn dyn_tuples_propagate() {
-        assert_eq!(Gas(99), ("abc", 0u64).gas_size_of())
+impl GasSizeOf for EntityType {
+    fn gas_size_of(&self) -> Gas {
+        self.as_str().gas_size_of()
     }
 }

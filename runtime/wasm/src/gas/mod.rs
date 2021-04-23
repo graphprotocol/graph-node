@@ -5,15 +5,15 @@ mod saturating;
 mod size_of;
 pub use combinators::*;
 pub use costs::*;
+use graph::prelude::CheapClone;
+use graph::runtime::DeterministicHostError;
 pub use saturating::*;
 
 use parity_wasm::elements::Instruction;
 use pwasm_utils::rules::{MemoryGrowCost, Rules};
-use std::convert::TryInto;
 use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
-
-use crate::error::DeterministicHostError;
+use std::{convert::TryInto, rc::Rc};
 
 pub struct GasOp {
     base_cost: u64,
@@ -65,20 +65,31 @@ impl Gas {
     pub const ZERO: Gas = Gas(0);
 }
 
-pub struct GasCounter(AtomicU64);
+impl From<u64> for Gas {
+    fn from(x: u64) -> Self {
+        Gas(x)
+    }
+}
+
+#[derive(Clone)]
+pub struct GasCounter(Rc<AtomicU64>);
+
+impl CheapClone for GasCounter {}
 
 impl GasCounter {
     pub fn new() -> Self {
-        Self(AtomicU64::new(0))
+        Self(Rc::new(AtomicU64::new(0)))
     }
 
-    pub fn consume(&self, amount: Gas) -> Result<(), DeterministicHostError> {
+    /// This should be called once per host export
+    pub fn consume_host_fn(&self, mut amount: Gas) -> Result<(), DeterministicHostError> {
+        amount += costs::HOST_EXPORT_GAS;
         let new = self
             .0
             .fetch_update(SeqCst, SeqCst, |v| Some(v.saturating_add(amount.0)))
             .unwrap();
 
-        if new >= MAX_GAS {
+        if new >= MAX_GAS_PER_HANDLER {
             Err(DeterministicHostError(anyhow::anyhow!(
                 "Gas limit exceeded. Used: {}",
                 new
