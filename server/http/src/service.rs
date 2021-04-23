@@ -184,7 +184,7 @@ where
         id: String,
         request: Request<Body>,
     ) -> GraphQLServiceResponse {
-        let res = SubgraphDeploymentId::new(id)
+        let res = DeploymentHash::new(id)
             .map_err(|id| GraphQLServerError::ClientError(format!("Invalid subgraph id `{}`", id)));
         match res {
             Err(_) => self.handle_not_found(),
@@ -408,7 +408,7 @@ mod tests {
     pub struct TestGraphQlRunner;
 
     lazy_static! {
-        static ref USERS: SubgraphDeploymentId = SubgraphDeploymentId::new("users").unwrap();
+        static ref USERS: DeploymentHash = DeploymentHash::new("users").unwrap();
     }
 
     #[async_trait]

@@ -15,7 +15,7 @@ use diesel::{
 use graph::data::subgraph::{schema::SubgraphManifestEntity, SubgraphFeature};
 use graph::prelude::{
     anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr,
-    DeploymentState, Schema, StoreError, SubgraphDeploymentId,
+    DeploymentHash, DeploymentState, Schema, StoreError,
 };
 use graph::{data::subgraph::schema::SubgraphError, prelude::SubgraphDeploymentEntity};
 use stable_hash::crypto::SetHasher;
@@ -103,9 +103,9 @@ allow_tables_to_appear_in_same_query!(subgraph_deployment, subgraph_error);
 /// been copied for the graft
 fn graft(
     conn: &PgConnection,
-    id: &SubgraphDeploymentId,
+    id: &DeploymentHash,
     pending_only: bool,
-) -> Result<Option<(SubgraphDeploymentId, BlockPtr)>, StoreError> {
+) -> Result<Option<(DeploymentHash, BlockPtr)>, StoreError> {
     use subgraph_deployment as sd;
 
     let graft_query = sd::table
@@ -129,7 +129,7 @@ fn graft(
         (Some(subgraph), Some(hash), Some(block)) => {
             let hash = H256::from_slice(hash.as_slice());
             let block = block.to_u64().expect("block numbers fit into a u64");
-            let subgraph = SubgraphDeploymentId::new(subgraph.clone()).map_err(|_| {
+            let subgraph = DeploymentHash::new(subgraph.clone()).map_err(|_| {
                 StoreError::Unknown(anyhow!(
                     "the base subgraph for a graft must be a valid subgraph id but is `{}`",
                     subgraph
@@ -149,8 +149,8 @@ fn graft(
 /// indicating that the data copying for grafting has been performed
 pub fn graft_pending(
     conn: &PgConnection,
-    id: &SubgraphDeploymentId,
-) -> Result<Option<(SubgraphDeploymentId, BlockPtr)>, StoreError> {
+    id: &DeploymentHash,
+) -> Result<Option<(DeploymentHash, BlockPtr)>, StoreError> {
     graft(conn, id, true)
 }
 
@@ -159,8 +159,8 @@ pub fn graft_pending(
 /// a graft
 pub fn graft_point(
     conn: &PgConnection,
-    id: &SubgraphDeploymentId,
-) -> Result<Option<(SubgraphDeploymentId, BlockPtr)>, StoreError> {
+    id: &DeploymentHash,
+) -> Result<Option<(DeploymentHash, BlockPtr)>, StoreError> {
     graft(conn, id, false)
 }
 
@@ -203,7 +203,7 @@ pub fn features(conn: &PgConnection, site: &Site) -> Result<BTreeSet<SubgraphFea
 
 pub fn forward_block_ptr(
     conn: &PgConnection,
-    id: &SubgraphDeploymentId,
+    id: &DeploymentHash,
     ptr: BlockPtr,
 ) -> Result<(), StoreError> {
     use subgraph_deployment as d;
@@ -224,7 +224,7 @@ pub fn forward_block_ptr(
 
 pub fn revert_block_ptr(
     conn: &PgConnection,
-    id: &SubgraphDeploymentId,
+    id: &DeploymentHash,
     ptr: BlockPtr,
 ) -> Result<(), StoreError> {
     use subgraph_deployment as d;
@@ -245,10 +245,7 @@ pub fn revert_block_ptr(
         .map_err(|e| e.into())
 }
 
-pub fn block_ptr(
-    conn: &PgConnection,
-    id: &SubgraphDeploymentId,
-) -> Result<Option<BlockPtr>, StoreError> {
+pub fn block_ptr(conn: &PgConnection, id: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError> {
     use subgraph_deployment as d;
 
     let (number, hash) = d::table
@@ -303,7 +300,7 @@ fn latest_as_block_number(
     }
 }
 
-pub fn state(conn: &PgConnection, id: SubgraphDeploymentId) -> Result<DeploymentState, StoreError> {
+pub fn state(conn: &PgConnection, id: DeploymentHash) -> Result<DeploymentState, StoreError> {
     use subgraph_deployment as d;
 
     match d::table
@@ -339,7 +336,7 @@ pub fn state(conn: &PgConnection, id: SubgraphDeploymentId) -> Result<Deployment
 }
 
 /// Mark the deployment `id` as synced
-pub fn set_synced(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
+pub fn set_synced(conn: &PgConnection, id: &DeploymentHash) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
     update(
@@ -416,7 +413,7 @@ fn insert_subgraph_error(conn: &PgConnection, error: SubgraphError) -> anyhow::R
 
 pub fn fail(
     conn: &PgConnection,
-    id: &SubgraphDeploymentId,
+    id: &DeploymentHash,
     error: SubgraphError,
 ) -> Result<(), StoreError> {
     use subgraph_deployment as d;
@@ -435,7 +432,7 @@ pub fn fail(
 /// If `block` is `None`, assumes the latest block.
 pub(crate) fn has_non_fatal_errors(
     conn: &PgConnection,
-    id: &SubgraphDeploymentId,
+    id: &DeploymentHash,
     block: Option<BlockNumber>,
 ) -> Result<bool, StoreError> {
     use subgraph_deployment as d;
@@ -465,7 +462,7 @@ pub(crate) fn has_non_fatal_errors(
 
 /// Clear the `SubgraphHealth::Failed` status of a subgraph and mark it as
 /// healthy or unhealthy depending on whether it also had non-fatal errors
-pub fn unfail(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
+pub fn unfail(conn: &PgConnection, id: &DeploymentHash) -> Result<(), StoreError> {
     use subgraph_deployment as d;
     use subgraph_error as e;
     use SubgraphHealth::*;
@@ -505,7 +502,7 @@ pub fn unfail(conn: &PgConnection, id: &SubgraphDeploymentId) -> Result<(), Stor
 /// Insert the errors and check if the subgraph needs to be set as unhealthy.
 pub(crate) fn insert_subgraph_errors(
     conn: &PgConnection,
-    id: &SubgraphDeploymentId,
+    id: &DeploymentHash,
     deterministic_errors: Vec<SubgraphError>,
     block: BlockNumber,
 ) -> Result<(), StoreError> {
@@ -517,10 +514,7 @@ pub(crate) fn insert_subgraph_errors(
 }
 
 #[cfg(debug_assertions)]
-pub(crate) fn error_count(
-    conn: &PgConnection,
-    id: &SubgraphDeploymentId,
-) -> Result<usize, StoreError> {
+pub(crate) fn error_count(conn: &PgConnection, id: &DeploymentHash) -> Result<usize, StoreError> {
     use subgraph_error as e;
 
     Ok(e::table
@@ -533,7 +527,7 @@ pub(crate) fn error_count(
 /// block if `None`, based on the presence of non-fatal errors. Has no effect on failed subgraphs.
 fn check_health(
     conn: &PgConnection,
-    id: &SubgraphDeploymentId,
+    id: &DeploymentHash,
     block: BlockNumber,
 ) -> Result<(), StoreError> {
     use subgraph_deployment as d;
@@ -559,7 +553,7 @@ fn check_health(
 /// Reverts the errors and updates the subgraph health if necessary.
 pub(crate) fn revert_subgraph_errors(
     conn: &PgConnection,
-    id: &SubgraphDeploymentId,
+    id: &DeploymentHash,
     reverted_block: BlockNumber,
 ) -> Result<(), StoreError> {
     use subgraph_error as e;

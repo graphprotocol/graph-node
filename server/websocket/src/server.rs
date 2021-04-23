@@ -43,7 +43,7 @@ where
         }
 
         fn target_from_id(id: &str) -> Option<QueryTarget> {
-            SubgraphDeploymentId::new(id)
+            DeploymentHash::new(id)
                 .ok()
                 .map(|id| QueryTarget::Deployment(id))
         }

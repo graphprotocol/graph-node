@@ -21,9 +21,9 @@ use graph::{
     prelude::SubgraphDeploymentEntity,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        BlockPtr, DynTryFuture, Entity, EntityKey, EntityModification, Error, Logger, NodeId,
-        QueryExecutionError, Schema, StopwatchMetrics, StoreError, SubgraphDeploymentId,
-        SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
+        BlockPtr, DeploymentHash, DynTryFuture, Entity, EntityKey, EntityModification, Error,
+        Logger, NodeId, QueryExecutionError, Schema, StopwatchMetrics, StoreError, SubgraphName,
+        SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
     util::timed_cache::TimedCache,
 };
@@ -204,7 +204,7 @@ impl SubgraphStore {
 
     pub(crate) fn get_proof_of_indexing<'a>(
         &self,
-        id: &'a SubgraphDeploymentId,
+        id: &'a DeploymentHash,
         indexer: &'a Option<Address>,
         block: BlockPtr,
     ) -> DynTryFuture<'a, Option<[u8; 32]>> {
@@ -230,7 +230,7 @@ pub struct SubgraphStoreInner {
     /// `SITES_CACHE_TTL` so that changes, in particular, activation of a
     /// different deployment for the same hash propagate across different
     /// graph-node processes over time.
-    sites: TimedCache<SubgraphDeploymentId, Site>,
+    sites: TimedCache<DeploymentHash, Site>,
     placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
 }
 
@@ -308,7 +308,7 @@ impl SubgraphStoreInner {
     }
 
     /// Return the active `Site` for this deployment hash
-    fn site(&self, id: &SubgraphDeploymentId) -> Result<Arc<Site>, StoreError> {
+    fn site(&self, id: &DeploymentHash) -> Result<Arc<Site>, StoreError> {
         if let Some(site) = self.sites.get(id) {
             return Ok(site);
         }
@@ -340,10 +340,7 @@ impl SubgraphStoreInner {
 
     /// Return the store and site for the active deployment of this
     /// deployment hash
-    fn store(
-        &self,
-        id: &SubgraphDeploymentId,
-    ) -> Result<(&Arc<DeploymentStore>, Arc<Site>), StoreError> {
+    fn store(&self, id: &DeploymentHash) -> Result<(&Arc<DeploymentStore>, Arc<Site>), StoreError> {
         let site = self.site(id)?;
         let store = self
             .stores
@@ -358,7 +355,7 @@ impl SubgraphStoreInner {
             .ok_or(StoreError::UnknownShard(site.shard.as_str().to_string()))
     }
 
-    fn layout(&self, id: &SubgraphDeploymentId) -> Result<Arc<Layout>, StoreError> {
+    fn layout(&self, id: &DeploymentHash) -> Result<Arc<Layout>, StoreError> {
         let (store, site) = self.store(id)?;
         store.find_layout(site)
     }
@@ -445,7 +442,7 @@ impl SubgraphStoreInner {
             replace,
         )?;
 
-        let exists_and_synced = |id: &SubgraphDeploymentId| {
+        let exists_and_synced = |id: &DeploymentHash| {
             let (store, _) = self.store(id)?;
             store.deployment_exists_and_synced(id)
         };
@@ -770,7 +767,7 @@ impl SubgraphStoreInner {
 
     pub(crate) fn version_info(&self, version: &str) -> Result<VersionInfo, StoreError> {
         if let Some((deployment_id, created_at)) = self.primary_conn()?.version_info(version)? {
-            let id = SubgraphDeploymentId::new(deployment_id.clone())
+            let id = DeploymentHash::new(deployment_id.clone())
                 .map_err(|id| constraint_violation!("illegal deployment id {}", id))?;
             let (store, site) = self.store(&id)?;
             let statuses = store.deployment_statuses(&vec![site.clone()])?;
@@ -814,7 +811,7 @@ impl SubgraphStoreInner {
     }
 
     #[cfg(debug_assertions)]
-    pub fn error_count(&self, id: &SubgraphDeploymentId) -> Result<usize, StoreError> {
+    pub fn error_count(&self, id: &DeploymentHash) -> Result<usize, StoreError> {
         let (store, _) = self.store(id)?;
         store.error_count(id)
     }
@@ -824,11 +821,7 @@ impl SubgraphStoreInner {
         join_all(self.stores.values().map(|store| store.vacuum())).await
     }
 
-    pub fn rewind(
-        &self,
-        id: SubgraphDeploymentId,
-        block_ptr_to: BlockPtr,
-    ) -> Result<(), StoreError> {
+    pub fn rewind(&self, id: DeploymentHash, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
         let (store, site) = self.store(&id)?;
         let event = store.rewind(site, block_ptr_to)?;
         self.send_store_event(&event)
@@ -836,7 +829,7 @@ impl SubgraphStoreInner {
 
     pub(crate) fn get_proof_of_indexing<'a>(
         self: Arc<Self>,
-        id: &'a SubgraphDeploymentId,
+        id: &'a DeploymentHash,
         indexer: &'a Option<Address>,
         block: BlockPtr,
     ) -> DynTryFuture<'a, Option<[u8; 32]>> {
@@ -856,7 +849,7 @@ impl SubgraphStoreInner {
 
     pub fn locate_in_shard(
         &self,
-        hash: &SubgraphDeploymentId,
+        hash: &DeploymentHash,
         shard: Shard,
     ) -> Result<Option<DeploymentLocator>, StoreError> {
         Ok(self
@@ -938,13 +931,13 @@ impl SubgraphStoreTrait for SubgraphStore {
         primary.subgraph_exists(name)
     }
 
-    fn input_schema(&self, id: &SubgraphDeploymentId) -> Result<Arc<Schema>, StoreError> {
+    fn input_schema(&self, id: &DeploymentHash) -> Result<Arc<Schema>, StoreError> {
         let (store, site) = self.store(&id)?;
         let info = store.subgraph_info(site.as_ref())?;
         Ok(info.input)
     }
 
-    fn api_schema(&self, id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError> {
+    fn api_schema(&self, id: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError> {
         let (store, site) = self.store(&id)?;
         let info = store.subgraph_info(&site)?;
         Ok(info.api)
@@ -960,13 +953,13 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     fn writable_for_network_indexer(
         &self,
-        id: &SubgraphDeploymentId,
+        id: &DeploymentHash,
     ) -> Result<Arc<dyn WritableStoreTrait>, StoreError> {
         let site = self.site(id)?;
         Ok(Arc::new(WritableStore::new(self.clone(), site)?))
     }
 
-    fn is_deployed(&self, id: &SubgraphDeploymentId) -> Result<bool, Error> {
+    fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, Error> {
         match self.site(id) {
             Ok(_) => Ok(true),
             Err(StoreError::DeploymentNotFound(_)) => Ok(false),
@@ -974,7 +967,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         }
     }
 
-    fn least_block_ptr(&self, id: &SubgraphDeploymentId) -> Result<Option<BlockPtr>, Error> {
+    fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, Error> {
         let (store, site) = self.store(id)?;
         store.block_ptr(site.as_ref())
     }
@@ -1006,7 +999,7 @@ impl WritableSubgraphStore {
         self.0.send_store_event(event)
     }
 
-    fn layout(&self, id: &SubgraphDeploymentId) -> Result<Arc<Layout>, StoreError> {
+    fn layout(&self, id: &DeploymentHash) -> Result<Arc<Layout>, StoreError> {
         self.0.layout(id)
     }
 }
@@ -1142,6 +1135,6 @@ impl WritableStoreTrait for WritableStore {
     }
 }
 
-fn same_subgraph(mods: &Vec<EntityModification>, id: &SubgraphDeploymentId) -> bool {
+fn same_subgraph(mods: &Vec<EntityModification>, id: &DeploymentHash) -> bool {
     mods.iter().all(|md| &md.entity_key().subgraph_id == id)
 }

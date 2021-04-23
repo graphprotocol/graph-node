@@ -16,7 +16,7 @@ struct BlockWriterMetrics {
 impl BlockWriterMetrics {
     /// Creates new block writer metrics for a given subgraph.
     pub fn new(
-        subgraph_id: &SubgraphDeploymentId,
+        subgraph_id: &DeploymentHash,
         stopwatch: StopwatchMetrics,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
@@ -37,7 +37,7 @@ impl BlockWriterMetrics {
 /// Component that writes Ethereum blocks to the network subgraph store.
 pub struct BlockWriter {
     /// The network subgraph ID (e.g. `ethereum_mainnet_v0`).
-    subgraph_id: SubgraphDeploymentId,
+    subgraph_id: DeploymentHash,
 
     /// Logger.
     logger: Logger,
@@ -52,7 +52,7 @@ pub struct BlockWriter {
 impl BlockWriter {
     /// Creates a new block writer for the given subgraph ID.
     pub fn new(
-        subgraph_id: SubgraphDeploymentId,
+        subgraph_id: DeploymentHash,
         logger: &Logger,
         store: Arc<dyn WritableStore>,
         stopwatch: StopwatchMetrics,
@@ -93,7 +93,7 @@ impl BlockWriter {
 /// Internal context for writing a block.
 struct WriteContext {
     logger: Logger,
-    subgraph_id: SubgraphDeploymentId,
+    subgraph_id: DeploymentHash,
     store: Arc<dyn WritableStore>,
     cache: EntityCache,
     metrics: Arc<BlockWriterMetrics>,

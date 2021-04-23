@@ -2,9 +2,9 @@
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
 use graph::prelude::{
-    o, slog, web3::types::H256, Entity, EntityCollection, EntityFilter, EntityKey, EntityOrder,
-    EntityQuery, EntityRange, Logger, Schema, StopwatchMetrics, SubgraphDeploymentId, Value,
-    ValueType, BLOCK_NUMBER_MAX,
+    o, slog, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter, EntityKey,
+    EntityOrder, EntityQuery, EntityRange, Logger, Schema, StopwatchMetrics, Value, ValueType,
+    BLOCK_NUMBER_MAX,
 };
 use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
@@ -117,8 +117,7 @@ const THINGS_GQL: &str = r#"
 "#;
 
 lazy_static! {
-    static ref THINGS_SUBGRAPH_ID: SubgraphDeploymentId =
-        SubgraphDeploymentId::new("things").unwrap();
+    static ref THINGS_SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("things").unwrap();
     static ref NAMESPACE: Namespace = Namespace::new("sgd0815".to_string()).unwrap();
     static ref LARGE_INT: BigInt = BigInt::from(std::i64::MAX).pow(17);
     static ref LARGE_DECIMAL: BigDecimal =

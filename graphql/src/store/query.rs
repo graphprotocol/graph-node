@@ -261,7 +261,7 @@ fn build_order_direction(
 /// Parses the subgraph ID from the ObjectType directives.
 pub fn parse_subgraph_id<'a>(
     entity: impl Into<ObjectOrInterface<'a>>,
-) -> Result<SubgraphDeploymentId, QueryExecutionError> {
+) -> Result<DeploymentHash, QueryExecutionError> {
     let entity = entity.into();
     let entity_name = entity.name().clone();
     entity
@@ -279,7 +279,7 @@ pub fn parse_subgraph_id<'a>(
             _ => None,
         })
         .ok_or(())
-        .and_then(|id| SubgraphDeploymentId::new(id).map_err(|_| ()))
+        .and_then(|id| DeploymentHash::new(id).map_err(|_| ()))
         .map_err(|_| QueryExecutionError::SubgraphDeploymentIdError(entity_name.to_owned()))
 }
 

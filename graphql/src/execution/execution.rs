@@ -134,7 +134,7 @@ impl Default for WeightedResult {
 }
 
 struct HashableQuery<'a> {
-    query_schema_id: &'a SubgraphDeploymentId,
+    query_schema_id: &'a DeploymentHash,
     query_variables: &'a HashMap<String, q::Value>,
     query_fragments: &'a HashMap<String, q::FragmentDefinition>,
     selection_set: &'a q::SelectionSet,

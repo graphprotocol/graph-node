@@ -76,22 +76,24 @@ where
 
 // Note: This has a StableHash impl. Do not modify fields without a backward
 // compatible change to the StableHash impl (below)
+/// The IPFS hash used to identifiy a deployment externally, i.e., the
+/// `Qm..` string that `graph-cli` prints when deploying to a subgraph
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct SubgraphDeploymentId(String);
+pub struct DeploymentHash(String);
 
-impl StableHash for SubgraphDeploymentId {
+impl StableHash for DeploymentHash {
     #[inline]
     fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
         self.0.stable_hash(sequence_number.next_child(), state);
     }
 }
 
-impl_slog_value!(SubgraphDeploymentId);
+impl_slog_value!(DeploymentHash);
 
-/// `SubgraphDeploymentId` is fixed-length so cheap to clone.
-impl CheapClone for SubgraphDeploymentId {}
+/// `DeploymentHash` is fixed-length so cheap to clone.
+impl CheapClone for DeploymentHash {}
 
-impl SubgraphDeploymentId {
+impl DeploymentHash {
     /// Check that `s` is a valid `SubgraphDeploymentId` and create a new one.
     /// If `s` is longer than 46 characters, or contains characters other than
     /// alphanumeric characters or `_`, return s (as a `String`) as the error
@@ -114,7 +116,7 @@ impl SubgraphDeploymentId {
             return Err(s);
         }
 
-        Ok(SubgraphDeploymentId(s))
+        Ok(DeploymentHash(s))
     }
 
     pub fn to_ipfs_link(&self) -> Link {
@@ -124,7 +126,7 @@ impl SubgraphDeploymentId {
     }
 }
 
-impl Deref for SubgraphDeploymentId {
+impl Deref for DeploymentHash {
     type Target = String;
 
     fn deref(&self) -> &Self::Target {
@@ -132,13 +134,13 @@ impl Deref for SubgraphDeploymentId {
     }
 }
 
-impl fmt::Display for SubgraphDeploymentId {
+impl fmt::Display for DeploymentHash {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.fmt(f)
     }
 }
 
-impl ser::Serialize for SubgraphDeploymentId {
+impl ser::Serialize for DeploymentHash {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: ser::Serializer,
@@ -147,18 +149,18 @@ impl ser::Serialize for SubgraphDeploymentId {
     }
 }
 
-impl<'de> de::Deserialize<'de> for SubgraphDeploymentId {
+impl<'de> de::Deserialize<'de> for DeploymentHash {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: de::Deserializer<'de>,
     {
         let s: String = de::Deserialize::deserialize(deserializer)?;
-        SubgraphDeploymentId::new(s)
+        DeploymentHash::new(s)
             .map_err(|s| de::Error::invalid_value(de::Unexpected::Str(&s), &"valid subgraph name"))
     }
 }
 
-impl TryFromValue for SubgraphDeploymentId {
+impl TryFromValue for DeploymentHash {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         Self::new(String::try_from_value(value)?)
             .map_err(|s| anyhow!("Invalid subgraph ID `{}`", s))
@@ -343,7 +345,7 @@ pub enum SubgraphAssignmentProviderError {
     ResolveError(Error),
     /// Occurs when attempting to remove a subgraph that's not hosted.
     #[error("Subgraph with ID {0} already running")]
-    AlreadyRunning(SubgraphDeploymentId),
+    AlreadyRunning(DeploymentHash),
     #[error("Subgraph with ID {0} is not running")]
     NotRunning(DeploymentLocator),
     #[error("Subgraph provider error: {0}")]
@@ -432,7 +434,7 @@ pub struct UnresolvedSchema {
 impl UnresolvedSchema {
     pub async fn resolve(
         self,
-        id: SubgraphDeploymentId,
+        id: DeploymentHash,
         resolver: &impl LinkResolver,
         logger: &Logger,
     ) -> Result<Schema, anyhow::Error> {
@@ -745,7 +747,7 @@ impl UnresolvedDataSourceTemplate {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Graft {
-    pub base: SubgraphDeploymentId,
+    pub base: DeploymentHash,
     pub block: BlockNumber,
 }
 
@@ -784,7 +786,7 @@ impl Graft {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BaseSubgraphManifest<S, D, T> {
-    pub id: SubgraphDeploymentId,
+    pub id: DeploymentHash,
     pub spec_version: String,
     #[serde(default)]
     pub features: BTreeSet<SubgraphFeature>,
@@ -812,7 +814,7 @@ impl UnvalidatedSubgraphManifest {
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
     pub async fn resolve(
-        id: SubgraphDeploymentId,
+        id: DeploymentHash,
         resolver: Arc<impl LinkResolver>,
         logger: &Logger,
     ) -> Result<Self, SubgraphManifestResolveError> {
@@ -926,7 +928,7 @@ impl SubgraphManifest {
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
     pub async fn resolve(
-        id: SubgraphDeploymentId,
+        id: DeploymentHash,
         resolver: &impl LinkResolver,
         logger: &Logger,
     ) -> Result<Self, SubgraphManifestResolveError> {
@@ -953,7 +955,7 @@ impl SubgraphManifest {
     }
 
     pub async fn resolve_from_raw(
-        id: SubgraphDeploymentId,
+        id: DeploymentHash,
         mut raw: serde_yaml::Mapping,
         resolver: &impl LinkResolver,
         logger: &Logger,
@@ -1099,7 +1101,7 @@ impl UnresolvedSubgraphManifest {
 /// new entities into the store or reverting blocks.
 #[derive(Debug, Clone)]
 pub struct DeploymentState {
-    pub id: SubgraphDeploymentId,
+    pub id: DeploymentHash,
     /// The number of blocks that were ever reverted in this subgraph. This
     /// number increases monotonically every time a block is reverted
     pub reorg_count: u32,

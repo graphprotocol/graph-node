@@ -155,7 +155,7 @@ pub trait RuntimeHostBuilder: Clone + Send + Sync + 'static {
     fn build(
         &self,
         network_name: String,
-        subgraph_id: SubgraphDeploymentId,
+        subgraph_id: DeploymentHash,
         data_source: DataSource,
         top_level_templates: Arc<Vec<DataSourceTemplate>>,
         mapping_request_sender: mpsc::Sender<Self::Req>,
@@ -167,7 +167,7 @@ pub trait RuntimeHostBuilder: Clone + Send + Sync + 'static {
     fn spawn_mapping(
         raw_module: Vec<u8>,
         logger: Logger,
-        subgraph_id: SubgraphDeploymentId,
+        subgraph_id: DeploymentHash,
         metrics: Arc<HostMetrics>,
     ) -> Result<mpsc::Sender<Self::Req>, anyhow::Error>;
 }

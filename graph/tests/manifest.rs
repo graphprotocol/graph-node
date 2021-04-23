@@ -9,7 +9,7 @@ use graph::components::{
     store::EntityType,
 };
 use graph::prelude::{
-    anyhow, Entity, Link, SubgraphDeploymentId, SubgraphManifest, SubgraphManifestValidationError,
+    anyhow, DeploymentHash, Entity, Link, SubgraphManifest, SubgraphManifestValidationError,
     UnvalidatedSubgraphManifest,
 };
 
@@ -60,7 +60,7 @@ const MAPPING: &str = "export function handleGet(call: getCall): void {}";
 
 async fn resolve_manifest(text: &str) -> SubgraphManifest {
     let mut resolver = TextResolver::default();
-    let id = SubgraphDeploymentId::new("Qmmanifest").unwrap();
+    let id = DeploymentHash::new("Qmmanifest").unwrap();
 
     resolver.add(id.as_str(), text);
     resolver.add("/ipfs/Qmschema", GQL_SCHEMA);
@@ -74,7 +74,7 @@ async fn resolve_manifest(text: &str) -> SubgraphManifest {
 
 async fn resolve_unvalidated(text: &str) -> UnvalidatedSubgraphManifest {
     let mut resolver = TextResolver::default();
-    let id = SubgraphDeploymentId::new("Qmmanifest").unwrap();
+    let id = DeploymentHash::new("Qmmanifest").unwrap();
 
     resolver.add(id.as_str(), text);
     resolver.add("/ipfs/Qmschema", GQL_SCHEMA);
@@ -138,7 +138,7 @@ specVersion: 0.0.2
 
     test_store::STORE_RUNTIME.lock().unwrap().block_on(async {
         let unvalidated = resolve_unvalidated(YAML).await;
-        let subgraph = SubgraphDeploymentId::new("Qmbase").unwrap();
+        let subgraph = DeploymentHash::new("Qmbase").unwrap();
 
         //
         // Validation against subgraph that hasn't synced anything fails

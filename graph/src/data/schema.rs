@@ -1,7 +1,7 @@
 use crate::components::store::{EntityType, SubgraphStore};
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
 use crate::data::store::ValueType;
-use crate::data::subgraph::{SubgraphDeploymentId, SubgraphName};
+use crate::data::subgraph::{DeploymentHash, SubgraphName};
 use crate::prelude::{
     q::Value,
     s::{self, Definition, InterfaceType, ObjectType, TypeDefinition, *},
@@ -311,7 +311,7 @@ impl ImportedType {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SchemaReference {
-    subgraph: SubgraphDeploymentId,
+    subgraph: DeploymentHash,
 }
 
 impl fmt::Display for SchemaReference {
@@ -321,7 +321,7 @@ impl fmt::Display for SchemaReference {
 }
 
 impl SchemaReference {
-    fn new(subgraph: SubgraphDeploymentId) -> Self {
+    fn new(subgraph: DeploymentHash) -> Self {
         SchemaReference { subgraph }
     }
 
@@ -337,7 +337,7 @@ impl SchemaReference {
     fn parse(value: &Value) -> Option<Self> {
         match value {
             Value::Object(map) => match map.get("id") {
-                Some(Value::String(id)) => match SubgraphDeploymentId::new(id) {
+                Some(Value::String(id)) => match DeploymentHash::new(id) {
                     Ok(id) => Some(SchemaReference::new(id)),
                     _ => None,
                 },
@@ -382,7 +382,7 @@ impl ApiSchema {
         &self.schema.document
     }
 
-    pub fn id(&self) -> &SubgraphDeploymentId {
+    pub fn id(&self) -> &DeploymentHash {
         &self.schema.id
     }
 
@@ -403,7 +403,7 @@ impl ApiSchema {
 /// A validated and preprocessed GraphQL schema for a subgraph.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Schema {
-    pub id: SubgraphDeploymentId,
+    pub id: DeploymentHash,
     pub document: s::Document,
 
     // Maps type name to implemented interfaces.
@@ -417,7 +417,7 @@ impl Schema {
     /// Create a new schema. The document must already have been
     /// validated. This function is only useful for creating an introspection
     /// schema, and should not be used otherwise
-    pub fn new(id: SubgraphDeploymentId, document: s::Document) -> Self {
+    pub fn new(id: DeploymentHash, document: s::Document) -> Self {
         Schema {
             id,
             document,
@@ -443,7 +443,7 @@ impl Schema {
         &self,
         store: Arc<S>,
         schemas: &mut HashMap<SchemaReference, Arc<Schema>>,
-        visit_log: &mut HashSet<SubgraphDeploymentId>,
+        visit_log: &mut HashSet<DeploymentHash>,
     ) -> Vec<SchemaImportError> {
         // Use the visit log to detect cycles in the import graph
         self.imported_schemas()
@@ -523,7 +523,7 @@ impl Schema {
         Ok((interfaces_for_type, types_for_interface))
     }
 
-    pub fn parse(raw: &str, id: SubgraphDeploymentId) -> Result<Self, Error> {
+    pub fn parse(raw: &str, id: DeploymentHash) -> Result<Self, Error> {
         let document = graphql_parser::parse_schema(&raw)?.into_static();
 
         let (interfaces_for_type, types_for_interface) = Self::collect_interfaces(&document)?;
@@ -600,7 +600,7 @@ impl Schema {
     }
 
     // Adds a @subgraphId(id: ...) directive to object/interface/enum types in the schema.
-    pub fn add_subgraph_id_directives(&mut self, id: SubgraphDeploymentId) {
+    pub fn add_subgraph_id_directives(&mut self, id: DeploymentHash) {
         for definition in self.document.definitions.iter_mut() {
             let subgraph_id_argument = (String::from("id"), s::Value::String(id.to_string()));
 
@@ -760,7 +760,7 @@ impl Schema {
         directive.argument("from").and_then(|from| match from {
             Value::Object(from) => {
                 let id_parse_error = match from.get("id") {
-                    Some(Value::String(id)) => match SubgraphDeploymentId::new(id) {
+                    Some(Value::String(id)) => match DeploymentHash::new(id) {
                         Err(_) => {
                             Some(SchemaValidationError::ImportedSubgraphIdInvalid(id.clone()))
                         }
@@ -1297,7 +1297,7 @@ impl Schema {
 #[test]
 fn non_existing_interface() {
     let schema = "type Foo implements Bar @entity { foo: Int }";
-    let res = Schema::parse(schema, SubgraphDeploymentId::new("dummy").unwrap());
+    let res = Schema::parse(schema, DeploymentHash::new("dummy").unwrap());
     let error = res
         .unwrap_err()
         .downcast::<SchemaValidationError>()
@@ -1320,7 +1320,7 @@ fn invalid_interface_implementation() {
             x: Boolean
         }
     ";
-    let res = Schema::parse(schema, SubgraphDeploymentId::new("dummy").unwrap());
+    let res = Schema::parse(schema, DeploymentHash::new("dummy").unwrap());
     assert_eq!(
         res.unwrap_err().to_string(),
         "Entity type `Bar` does not satisfy interface `Foo` because it is missing \
@@ -1350,7 +1350,7 @@ type Account implements Address @entity { id: ID!, txn: Transaction! @derivedFro
         let document = graphql_parser::parse_schema(&raw)
             .expect("Failed to parse raw schema")
             .into_static();
-        let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
+        let schema = Schema::new(DeploymentHash::new("id").unwrap(), document);
         match schema.validate_derived_from() {
             Err(ref e) => match e {
                 SchemaValidationError::InvalidDerivedFrom(_, _, msg) => assert_eq!(errmsg, msg),
@@ -1402,7 +1402,7 @@ fn test_reserved_type_with_fields() {
 type _Schema_ { id: ID! }";
 
     let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
-    let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
+    let schema = Schema::new(DeploymentHash::new("id").unwrap(), document);
     assert_eq!(
         schema
             .validate_schema_type_has_no_fields()
@@ -1417,7 +1417,7 @@ fn test_reserved_type_directives() {
 type _Schema_ @illegal";
 
     let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
-    let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
+    let schema = Schema::new(DeploymentHash::new("id").unwrap(), document);
     assert_eq!(
         schema.validate_directives_on_schema_type().expect_err(
             "Expected validation to fail due to extra imports defined on the reserved type"
@@ -1432,7 +1432,7 @@ fn test_imports_directive_from_argument() {
 type _Schema_ @import(types: ["T", "A", "C"])"#;
 
     let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
-    let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
+    let schema = Schema::new(DeploymentHash::new("id").unwrap(), document);
     match schema
         .validate_import_directives()
         .into_iter()
@@ -1459,7 +1459,7 @@ type A @entity {
 }"#;
 
     let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
-    let schema = Schema::new(SubgraphDeploymentId::new("id").unwrap(), document);
+    let schema = Schema::new(DeploymentHash::new("id").unwrap(), document);
     assert_eq!(schema.validate_fields().len(), 0);
 }
 
@@ -1480,9 +1480,9 @@ type T @entity { id: ID! }
     let child_2_document =
         graphql_parser::parse_schema(CHILD_2_SCHEMA).expect("Failed to parse child 2 schema");
 
-    let c1id = SubgraphDeploymentId::new("c1id").unwrap();
-    let c2id = SubgraphDeploymentId::new("c2id").unwrap();
-    let root_schema = Schema::new(SubgraphDeploymentId::new("rid").unwrap(), root_document);
+    let c1id = DeploymentHash::new("c1id").unwrap();
+    let c2id = DeploymentHash::new("c2id").unwrap();
+    let root_schema = Schema::new(DeploymentHash::new("rid").unwrap(), root_document);
     let child_1_schema = Schema::new(c1id.clone(), child_1_document);
     let child_2_schema = Schema::new(c2id.clone(), child_2_document);
 
@@ -1515,9 +1515,9 @@ type T @entity { id: ID! }
     let child_2_document =
         graphql_parser::parse_schema(CHILD_2_SCHEMA).expect("Failed to parse child 2 schema");
 
-    let c1id = SubgraphDeploymentId::new("c1id").unwrap();
-    let c2id = SubgraphDeploymentId::new("c2id").unwrap();
-    let root_schema = Schema::new(SubgraphDeploymentId::new("rid").unwrap(), root_document);
+    let c1id = DeploymentHash::new("c1id").unwrap();
+    let c2id = DeploymentHash::new("c2id").unwrap();
+    let root_schema = Schema::new(DeploymentHash::new("rid").unwrap(), root_document);
     let child_1_schema = Schema::new(c1id.clone(), child_1_document);
     let child_2_schema = Schema::new(c2id.clone(), child_2_document);
 
@@ -1561,7 +1561,7 @@ type Gravatar @entity {
 }"#;
 
     let document = graphql_parser::parse_schema(SCHEMA).expect("Failed to parse schema");
-    let schema = Schema::new(SubgraphDeploymentId::new("id1").unwrap(), document);
+    let schema = Schema::new(DeploymentHash::new("id1").unwrap(), document);
 
     assert_eq!(schema.validate_fulltext_directives(), vec![]);
 }

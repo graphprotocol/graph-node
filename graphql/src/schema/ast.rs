@@ -556,12 +556,12 @@ fn entity_validation() {
           # to store a thing with a null Cruft
           cruft: Cruft! @derivedFrom(field: \"thing\")
       }";
-        let subgraph = SubgraphDeploymentId::new("doesntmatter").unwrap();
+        let subgraph = DeploymentHash::new("doesntmatter").unwrap();
         let schema =
             graph::prelude::Schema::parse(DOCUMENT, subgraph).expect("Failed to parse test schema");
         let id = thing.id().unwrap_or("none".to_owned());
         let key = EntityKey::data(
-            SubgraphDeploymentId::new("doesntmatter").unwrap(),
+            DeploymentHash::new("doesntmatter").unwrap(),
             "Thing".to_owned(),
             id.to_owned(),
         );

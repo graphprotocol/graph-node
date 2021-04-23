@@ -9,7 +9,7 @@ lazy_static! {
 
         Arc::new(
             ApiSchema::from_api_schema(Schema {
-                id: SubgraphDeploymentId::new("indexnode").unwrap(),
+                id: DeploymentHash::new("indexnode").unwrap(),
                 document,
                 interfaces_for_type,
                 types_for_interface,

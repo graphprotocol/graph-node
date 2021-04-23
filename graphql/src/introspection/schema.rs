@@ -3,7 +3,7 @@ use graphql_parser;
 use graph::data::graphql::ext::DocumentExt;
 use graph::data::graphql::ext::ObjectTypeExt;
 use graph::data::schema::{ApiSchema, Schema};
-use graph::data::subgraph::SubgraphDeploymentId;
+use graph::data::subgraph::DeploymentHash;
 use graph::prelude::s::{Document, ObjectType};
 
 use lazy_static::lazy_static;
@@ -121,7 +121,7 @@ lazy_static! {
         INTROSPECTION_DOCUMENT.get_root_query_type().unwrap();
 }
 
-pub fn introspection_schema(id: SubgraphDeploymentId) -> ApiSchema {
+pub fn introspection_schema(id: DeploymentHash) -> ApiSchema {
     ApiSchema::from_api_schema(Schema::new(id, INTROSPECTION_DOCUMENT.clone())).unwrap()
 }
 

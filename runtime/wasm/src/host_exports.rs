@@ -67,7 +67,7 @@ impl IntoTrap for HostExportError {
 }
 
 pub(crate) struct HostExports {
-    pub(crate) subgraph_id: SubgraphDeploymentId,
+    pub(crate) subgraph_id: DeploymentHash,
     pub(crate) api_version: Version,
     data_source_name: String,
     data_source_address: Option<Address>,
@@ -97,7 +97,7 @@ impl std::fmt::Debug for HostExports {
 
 impl HostExports {
     pub(crate) fn new(
-        subgraph_id: SubgraphDeploymentId,
+        subgraph_id: DeploymentHash,
         data_source: &DataSource,
         data_source_network: String,
         templates: Arc<Vec<DataSourceTemplate>>,

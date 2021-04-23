@@ -57,8 +57,8 @@ const USER: &str = "User";
 
 lazy_static! {
     static ref TEST_SUBGRAPH_ID_STRING: String = String::from("testsubgraph");
-    static ref TEST_SUBGRAPH_ID: SubgraphDeploymentId =
-        SubgraphDeploymentId::new(TEST_SUBGRAPH_ID_STRING.as_str()).unwrap();
+    static ref TEST_SUBGRAPH_ID: DeploymentHash =
+        DeploymentHash::new(TEST_SUBGRAPH_ID_STRING.as_str()).unwrap();
     static ref TEST_SUBGRAPH_SCHEMA: Schema =
         Schema::parse(USER_GQL, TEST_SUBGRAPH_ID.clone()).expect("Failed to parse user schema");
     static ref TEST_BLOCK_0_PTR: BlockPtr = (
@@ -293,7 +293,7 @@ fn remove_test_data(store: Arc<DieselSubgraphStore>) {
         .expect("deleting test entities succeeds");
 }
 
-fn get_entity_count(store: Arc<DieselStore>, subgraph_id: &SubgraphDeploymentId) -> u64 {
+fn get_entity_count(store: Arc<DieselStore>, subgraph_id: &DeploymentHash) -> u64 {
     let info = store
         .status(status::Filter::Deployments(vec![subgraph_id.to_string()]))
         .unwrap();
@@ -967,7 +967,7 @@ async fn check_events(
 
 // Subscribe to store events
 fn subscribe(
-    subgraph: &SubgraphDeploymentId,
+    subgraph: &DeploymentHash,
     entity_type: &str,
 ) -> StoreEventStream<impl Stream<Item = Arc<StoreEvent>, Error = ()> + Send> {
     let subscription = SUBSCRIPTION_MANAGER.subscribe(vec![SubscriptionFilter::Entities(
@@ -1257,7 +1257,7 @@ fn revert_block_with_dynamic_data_source_operations() {
             tag: 3,
             changes: HashSet::from_iter(
                 vec![EntityChange::Data {
-                    subgraph_id: SubgraphDeploymentId::new("testsubgraph").unwrap(),
+                    subgraph_id: DeploymentHash::new("testsubgraph").unwrap(),
                     entity_type: EntityType::new(USER.into()),
                 }]
                 .into_iter(),
@@ -1270,7 +1270,7 @@ fn revert_block_with_dynamic_data_source_operations() {
 #[test]
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
     run_test(|store, _, _| async move {
-        let subgraph_id = SubgraphDeploymentId::new("EntityChangeTestSubgraph").unwrap();
+        let subgraph_id = DeploymentHash::new("EntityChangeTestSubgraph").unwrap();
         let schema =
             Schema::parse(USER_GQL, subgraph_id.clone()).expect("Failed to parse user schema");
         let manifest = SubgraphManifest {

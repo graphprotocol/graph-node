@@ -1014,7 +1014,7 @@ where
 async fn update_proof_of_indexing(
     proof_of_indexing: ProofOfIndexing,
     stopwatch: &StopwatchMetrics,
-    deployment_id: &SubgraphDeploymentId,
+    deployment_id: &DeploymentHash,
     entity_cache: &mut EntityCache,
 ) -> Result<(), Error> {
     let _section_guard = stopwatch.start_section("update_proof_of_indexing");

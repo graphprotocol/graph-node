@@ -7,7 +7,7 @@ use graph::prelude::*;
 
 pub async fn load_dynamic_data_sources(
     store: Arc<dyn WritableStore>,
-    deployment_id: &SubgraphDeploymentId,
+    deployment_id: &DeploymentHash,
     logger: Logger,
     templates: Vec<DataSourceTemplate>,
 ) -> Result<Vec<DataSource>, Error> {

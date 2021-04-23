@@ -18,11 +18,11 @@ use graph::{
     },
     prelude::{
         async_trait, futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt,
-        o, q, serde_json, slog, tokio, BlockPtr, Entity, EntityKey, EntityOperation,
-        FutureExtension, GraphQlRunner as _, Logger, NodeId, Query, QueryError,
+        o, q, serde_json, slog, tokio, BlockPtr, DeploymentHash, Entity, EntityKey,
+        EntityOperation, FutureExtension, GraphQlRunner as _, Logger, NodeId, Query, QueryError,
         QueryExecutionError, QueryLoadManager, QueryResult, QueryStoreManager, QueryVariables,
-        Schema, SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphManifest, SubgraphName,
-        SubgraphStore, SubgraphVersionSwitchingMode, Subscription, SubscriptionError, Value,
+        Schema, SubgraphDeploymentEntity, SubgraphManifest, SubgraphName, SubgraphStore,
+        SubgraphVersionSwitchingMode, Subscription, SubscriptionError, Value,
     },
 };
 use graph_graphql::{prelude::*, subscription::execute_subscription};
@@ -41,7 +41,7 @@ fn setup() -> DeploymentLocator {
 fn setup_with_features(id: &str, features: BTreeSet<SubgraphFeature>) -> DeploymentLocator {
     use test_store::block_store::{self, BLOCK_ONE, BLOCK_TWO, GENESIS_BLOCK};
 
-    let id = SubgraphDeploymentId::new(id).unwrap();
+    let id = DeploymentHash::new(id).unwrap();
 
     let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
     block_store::set_chain(chain, NETWORK_NAME);
@@ -63,7 +63,7 @@ fn setup_with_features(id: &str, features: BTreeSet<SubgraphFeature>) -> Deploym
     insert_test_entities(STORE.subgraph_store().as_ref(), manifest)
 }
 
-fn test_schema(id: SubgraphDeploymentId) -> Schema {
+fn test_schema(id: DeploymentHash) -> Schema {
     Schema::parse(
         "
             type Musician @entity {
@@ -237,12 +237,12 @@ fn insert_test_entities(
     deployment
 }
 
-async fn execute_query_document(id: &SubgraphDeploymentId, query: q::Document) -> QueryResult {
+async fn execute_query_document(id: &DeploymentHash, query: q::Document) -> QueryResult {
     execute_query_document_with_variables(id, query, None).await
 }
 
 async fn execute_query_document_with_variables(
-    id: &SubgraphDeploymentId,
+    id: &DeploymentHash,
     query: q::Document,
     variables: Option<QueryVariables>,
 ) -> QueryResult {
@@ -1395,7 +1395,7 @@ fn can_use_nested_filter() {
 }
 
 async fn check_musicians_at(
-    id: &SubgraphDeploymentId,
+    id: &DeploymentHash,
     query: &str,
     block_var: Option<(&str, q::Value)>,
     expected: Result<Vec<&str>, &str>,

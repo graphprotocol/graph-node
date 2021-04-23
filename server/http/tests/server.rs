@@ -86,7 +86,7 @@ mod test {
     use graph_mock::MockMetricsRegistry;
 
     lazy_static! {
-        static ref USERS: SubgraphDeploymentId = SubgraphDeploymentId::new("users").unwrap();
+        static ref USERS: DeploymentHash = DeploymentHash::new("users").unwrap();
     }
 
     #[test]

@@ -42,7 +42,7 @@ pub struct StopwatchMetrics {
 impl StopwatchMetrics {
     pub fn new(
         logger: Logger,
-        subgraph_id: SubgraphDeploymentId,
+        subgraph_id: DeploymentHash,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         let mut inner = StopwatchInner {

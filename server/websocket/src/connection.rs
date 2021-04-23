@@ -171,7 +171,7 @@ pub struct GraphQlConnection<Q, S> {
     logger: Logger,
     graphql_runner: Arc<Q>,
     stream: WebSocketStream<S>,
-    deployment: SubgraphDeploymentId,
+    deployment: DeploymentHash,
 }
 
 impl<Q, S> GraphQlConnection<Q, S>
@@ -182,7 +182,7 @@ where
     /// Creates a new GraphQL subscription service.
     pub(crate) fn new(
         logger: &Logger,
-        deployment: SubgraphDeploymentId,
+        deployment: DeploymentHash,
         stream: WebSocketStream<S>,
         graphql_runner: Arc<Q>,
     ) -> Self {
@@ -200,7 +200,7 @@ where
         mut msg_sink: mpsc::UnboundedSender<WsMessage>,
         logger: Logger,
         connection_id: String,
-        deployment: SubgraphDeploymentId,
+        deployment: DeploymentHash,
         graphql_runner: Arc<Q>,
     ) -> Result<(), WsError> {
         let mut operations = Operations::new(msg_sink.clone());

@@ -84,7 +84,7 @@ where
         argument_values: &HashMap<&String, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         let deployment_id = argument_values
-            .get_required::<SubgraphDeploymentId>("subgraph")
+            .get_required::<DeploymentHash>("subgraph")
             .expect("Valid subgraphId required");
 
         let block_number: u64 = argument_values

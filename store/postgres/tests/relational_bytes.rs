@@ -7,9 +7,9 @@ use lazy_static::lazy_static;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::prelude::{
-    o, slog, web3::types::H256, ChildMultiplicity, Entity, EntityCollection, EntityKey, EntityLink,
-    EntityOrder, EntityRange, EntityWindow, Logger, ParentLink, Schema, StopwatchMetrics,
-    SubgraphDeploymentId, Value, WindowAttribute, BLOCK_NUMBER_MAX,
+    o, slog, web3::types::H256, ChildMultiplicity, DeploymentHash, Entity, EntityCollection,
+    EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, Logger, ParentLink, Schema,
+    StopwatchMetrics, Value, WindowAttribute, BLOCK_NUMBER_MAX,
 };
 use graph::{
     components::store::EntityType,
@@ -48,8 +48,7 @@ macro_rules! entity {
 }
 
 lazy_static! {
-    static ref THINGS_SUBGRAPH_ID: SubgraphDeploymentId =
-        SubgraphDeploymentId::new("things").unwrap();
+    static ref THINGS_SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("things").unwrap();
     static ref LARGE_INT: BigInt = BigInt::from(std::i64::MAX).pow(17);
     static ref LARGE_DECIMAL: BigDecimal =
         BigDecimal::from(1) / BigDecimal::new(LARGE_INT.clone(), 1);

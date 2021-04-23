@@ -17,8 +17,8 @@ use web3::types::{
 };
 
 use crate::prelude::{
-    BlockNumber, CheapClone, EntityKey, MappingBlockHandler, MappingCallHandler,
-    MappingEventHandler, SubgraphDeploymentId, ToEntityKey,
+    BlockNumber, CheapClone, DeploymentHash, EntityKey, MappingBlockHandler, MappingCallHandler,
+    MappingEventHandler, ToEntityKey,
 };
 
 pub type LightEthereumBlock = Block<Transaction>;
@@ -653,7 +653,7 @@ impl From<BlockPtr> for BlockNumber {
 }
 
 impl ToEntityKey for BlockPtr {
-    fn to_entity_key(&self, subgraph: SubgraphDeploymentId) -> EntityKey {
+    fn to_entity_key(&self, subgraph: DeploymentHash) -> EntityKey {
         EntityKey::data(subgraph, "Block".into(), self.hash_hex())
     }
 }

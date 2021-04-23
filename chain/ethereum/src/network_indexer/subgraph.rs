@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 fn check_subgraph_exists(
     store: Arc<dyn SubgraphStore>,
-    subgraph_id: SubgraphDeploymentId,
+    subgraph_id: DeploymentHash,
 ) -> impl Future<Item = bool, Error = Error> {
     future::result(store.is_deployed(&subgraph_id))
 }
@@ -12,7 +12,7 @@ fn check_subgraph_exists(
 fn create_subgraph(
     store: Arc<dyn SubgraphStore>,
     subgraph_name: SubgraphName,
-    subgraph_id: SubgraphDeploymentId,
+    subgraph_id: DeploymentHash,
     start_block: Option<BlockPtr>,
     network_name: String,
 ) -> FutureResult<(), Error> {
@@ -48,7 +48,7 @@ fn create_subgraph(
 
 pub fn ensure_subgraph_exists(
     subgraph_name: SubgraphName,
-    subgraph_id: SubgraphDeploymentId,
+    subgraph_id: DeploymentHash,
     logger: Logger,
     store: Arc<dyn SubgraphStore>,
     start_block: Option<BlockPtr>,

@@ -38,7 +38,7 @@ fn test_valid_module_and_store_with_timeout(
         .ethereum_call_cache(NETWORK_NAME)
         .expect("call cache for test network");
     let metrics_registry = Arc::new(MockMetricsRegistry::new());
-    let deployment_id = SubgraphDeploymentId::new(subgraph_id).unwrap();
+    let deployment_id = DeploymentHash::new(subgraph_id).unwrap();
     let deployment = test_store::create_test_subgraph(
         &deployment_id,
         "type User @entity {
@@ -144,7 +144,7 @@ fn mock_abi() -> MappingABI {
 }
 
 fn mock_host_exports(
-    subgraph_id: SubgraphDeploymentId,
+    subgraph_id: DeploymentHash,
     data_source: DataSource,
     store: Arc<impl SubgraphStore>,
     call_cache: Arc<impl EthereumCallCache>,
@@ -339,7 +339,7 @@ fn make_thing(subgraph_id: &str, id: &str, value: &str) -> (String, EntityModifi
     data.set("value", value);
     data.set("extra", USER_DATA);
     let key = EntityKey::data(
-        SubgraphDeploymentId::new(subgraph_id).unwrap(),
+        DeploymentHash::new(subgraph_id).unwrap(),
         "Thing".to_string(),
         id.to_string(),
     );

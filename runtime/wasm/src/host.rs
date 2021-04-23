@@ -94,7 +94,7 @@ where
     fn spawn_mapping(
         raw_module: Vec<u8>,
         logger: Logger,
-        subgraph_id: SubgraphDeploymentId,
+        subgraph_id: DeploymentHash,
         metrics: Arc<HostMetrics>,
     ) -> Result<Sender<Self::Req>, Error> {
         let experimental_features = ExperimentalFeatures {
@@ -116,7 +116,7 @@ where
     fn build(
         &self,
         network_name: String,
-        subgraph_id: SubgraphDeploymentId,
+        subgraph_id: DeploymentHash,
         data_source: DataSource,
         templates: Arc<Vec<DataSourceTemplate>>,
         mapping_request_sender: Sender<MappingRequest>,
@@ -170,7 +170,7 @@ impl RuntimeHost {
         store: Arc<dyn crate::RuntimeStore>,
         call_cache: Arc<dyn EthereumCallCache>,
         network_name: String,
-        subgraph_id: SubgraphDeploymentId,
+        subgraph_id: DeploymentHash,
         data_source: DataSource,
         templates: Arc<Vec<DataSourceTemplate>>,
         mapping_request_sender: Sender<MappingRequest>,

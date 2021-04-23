@@ -43,7 +43,7 @@ pub enum QueryExecutionError {
     MissingArgumentError(Pos, String),
     InvalidVariableTypeError(Pos, String),
     MissingVariableError(Pos, String),
-    ResolveEntityError(SubgraphDeploymentId, String, String, String),
+    ResolveEntityError(DeploymentHash, String, String, String),
     ResolveEntitiesError(String),
     OrderByNotSupportedError(String, String),
     OrderByNotSupportedForType(String),

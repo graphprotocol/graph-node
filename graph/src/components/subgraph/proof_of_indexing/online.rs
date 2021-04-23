@@ -3,7 +3,7 @@
 //! to the reference implementation, but this is updated incrementally
 
 use super::ProofOfIndexingEvent;
-use crate::prelude::{debug, BlockNumber, BlockPtr, Logger, SubgraphDeploymentId};
+use crate::prelude::{debug, BlockNumber, BlockPtr, DeploymentHash, Logger};
 use lazy_static::lazy_static;
 use stable_hash::crypto::{Blake3SeqNo, SetHasher};
 use stable_hash::prelude::*;
@@ -160,11 +160,7 @@ pub struct ProofOfIndexingFinisher {
 }
 
 impl ProofOfIndexingFinisher {
-    pub fn new(
-        block: &BlockPtr,
-        subgraph_id: &SubgraphDeploymentId,
-        indexer: &Option<Address>,
-    ) -> Self {
+    pub fn new(block: &BlockPtr, subgraph_id: &DeploymentHash, indexer: &Option<Address>) -> Self {
         let mut state = SetHasher::new();
 
         // Add the subgraph id

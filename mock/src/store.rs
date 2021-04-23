@@ -8,11 +8,11 @@ mock! {
     pub Store {
         fn get_mock(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
 
-        fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, StoreError>;
+        fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<Schema>, StoreError>;
 
-        fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError>;
+        fn api_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError>;
 
-        fn network_name(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Option<String>, StoreError>;
+        fn network_name(&self, subgraph_id: &DeploymentHash) -> Result<Option<String>, StoreError>;
     }
 
     #[async_trait]
@@ -91,11 +91,11 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
-    fn input_schema(&self, _: &SubgraphDeploymentId) -> Result<Arc<Schema>, StoreError> {
+    fn input_schema(&self, _: &DeploymentHash) -> Result<Arc<Schema>, StoreError> {
         unimplemented!()
     }
 
-    fn api_schema(&self, _: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError> {
+    fn api_schema(&self, _: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError> {
         unimplemented!()
     }
 
@@ -106,17 +106,17 @@ impl SubgraphStore for MockStore {
         todo!()
     }
 
-    fn is_deployed(&self, _: &SubgraphDeploymentId) -> Result<bool, Error> {
+    fn is_deployed(&self, _: &DeploymentHash) -> Result<bool, Error> {
         todo!()
     }
 
-    fn least_block_ptr(&self, _: &SubgraphDeploymentId) -> Result<Option<BlockPtr>, Error> {
+    fn least_block_ptr(&self, _: &DeploymentHash) -> Result<Option<BlockPtr>, Error> {
         unimplemented!()
     }
 
     fn writable_for_network_indexer(
         &self,
-        _: &SubgraphDeploymentId,
+        _: &DeploymentHash,
     ) -> Result<Arc<dyn graph::components::store::WritableStore>, StoreError> {
         unimplemented!()
     }

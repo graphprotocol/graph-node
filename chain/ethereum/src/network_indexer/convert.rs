@@ -11,7 +11,7 @@ impl ToEntityId for Ommer {
 }
 
 impl ToEntityKey for Ommer {
-    fn to_entity_key(&self, subgraph_id: SubgraphDeploymentId) -> EntityKey {
+    fn to_entity_key(&self, subgraph_id: DeploymentHash) -> EntityKey {
         EntityKey::data(
             subgraph_id,
             BLOCK.to_string(),
@@ -27,7 +27,7 @@ impl ToEntityId for BlockWithOmmers {
 }
 
 impl ToEntityKey for &BlockWithOmmers {
-    fn to_entity_key(&self, subgraph_id: SubgraphDeploymentId) -> EntityKey {
+    fn to_entity_key(&self, subgraph_id: DeploymentHash) -> EntityKey {
         EntityKey::data(
             subgraph_id,
             BLOCK.to_string(),

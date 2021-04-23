@@ -17,7 +17,7 @@ lazy_static! {
 pub fn spawn_module(
     raw_module: Vec<u8>,
     logger: Logger,
-    subgraph_id: SubgraphDeploymentId,
+    subgraph_id: DeploymentHash,
     host_metrics: Arc<HostMetrics>,
     runtime: tokio::runtime::Handle,
     timeout: Option<Duration>,

@@ -83,7 +83,7 @@ fn ensure_subgraph(
     logger: Logger,
     store: Arc<dyn SubgraphStore>,
     subgraph_name: SubgraphName,
-    subgraph_id: SubgraphDeploymentId,
+    subgraph_id: DeploymentHash,
     start_block: Option<BlockPtr>,
     network_name: String,
 ) -> EnsureSubgraphFuture {
@@ -450,7 +450,7 @@ pub struct Context {
     block_writer: Arc<BlockWriter>,
     event_sink: Sender<NetworkIndexerEvent>,
     subgraph_name: SubgraphName,
-    subgraph_id: SubgraphDeploymentId,
+    subgraph_id: DeploymentHash,
     start_block: Option<BlockPtr>,
     network_name: String,
 }
@@ -1136,7 +1136,7 @@ impl NetworkIndexer {
             subgraph_name.replace("/", "_"),
             NETWORK_INDEXER_VERSION
         );
-        let subgraph_id = SubgraphDeploymentId::new(id_str).expect("valid network subgraph ID");
+        let subgraph_id = DeploymentHash::new(id_str).expect("valid network subgraph ID");
         let subgraph_name = SubgraphName::new(subgraph_name).expect("valid network subgraph name");
 
         let logger = logger.new(o!(

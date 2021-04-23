@@ -146,9 +146,9 @@ pub fn place(name: &str) -> Result<Option<(Shard, Vec<NodeId>)>, String> {
 }
 
 pub fn create_subgraph(
-    subgraph_id: &SubgraphDeploymentId,
+    subgraph_id: &DeploymentHash,
     schema: &str,
-    base: Option<(SubgraphDeploymentId, BlockPtr)>,
+    base: Option<(DeploymentHash, BlockPtr)>,
 ) -> Result<DeploymentLocator, StoreError> {
     let schema = Schema::parse(schema, subgraph_id.clone()).unwrap();
 
@@ -184,11 +184,11 @@ pub fn create_subgraph(
     Ok(deployment)
 }
 
-pub fn create_test_subgraph(subgraph_id: &SubgraphDeploymentId, schema: &str) -> DeploymentLocator {
+pub fn create_test_subgraph(subgraph_id: &DeploymentHash, schema: &str) -> DeploymentLocator {
     create_subgraph(subgraph_id, schema, None).unwrap()
 }
 
-pub fn remove_subgraph(id: &SubgraphDeploymentId) {
+pub fn remove_subgraph(id: &DeploymentHash) {
     let name = {
         let mut name = id.to_string();
         name.truncate(32);
@@ -430,10 +430,7 @@ fn execute_subgraph_query_internal(
     result
 }
 
-pub async fn deployment_state(
-    store: &Store,
-    subgraph_id: &SubgraphDeploymentId,
-) -> DeploymentState {
+pub async fn deployment_state(store: &Store, subgraph_id: &DeploymentHash) -> DeploymentState {
     store
         .query_store(QueryTarget::Deployment(subgraph_id.to_owned()), false)
         .await

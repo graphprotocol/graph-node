@@ -9,8 +9,7 @@ use graph::{
     constraint_violation,
     data::subgraph::status,
     prelude::{
-        web3::types::Address, BlockPtr, CheapClone, QueryExecutionError, StoreError,
-        SubgraphDeploymentId,
+        web3::types::Address, BlockPtr, CheapClone, DeploymentHash, QueryExecutionError, StoreError,
     },
 };
 
@@ -109,7 +108,7 @@ impl StatusStore for Store {
 
     fn get_proof_of_indexing<'a>(
         self: Arc<Self>,
-        subgraph_id: &'a SubgraphDeploymentId,
+        subgraph_id: &'a DeploymentHash,
         indexer: &'a Option<Address>,
         block: BlockPtr,
     ) -> graph::prelude::DynTryFuture<'a, Option<[u8; 32]>> {

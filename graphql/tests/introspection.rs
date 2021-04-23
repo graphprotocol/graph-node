@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use graph::data::graphql::{object, object_value, ObjectOrInterface};
 use graph::prelude::{
-    o, q, s, slog, tokio, ApiSchema, Logger, Query, QueryExecutionError, QueryResult, Schema,
-    SubgraphDeploymentId,
+    o, q, s, slog, tokio, ApiSchema, DeploymentHash, Logger, Query, QueryExecutionError,
+    QueryResult, Schema,
 };
 use graph_graphql::prelude::{
     api_schema, execute_query, ExecutionContext, Query as PreparedQuery, QueryExecutionOptions,
@@ -98,7 +98,7 @@ fn mock_schema() -> Schema {
                User: User
              }
              ",
-        SubgraphDeploymentId::new("mockschema").unwrap(),
+        DeploymentHash::new("mockschema").unwrap(),
     )
     .unwrap()
 }
@@ -1127,7 +1127,7 @@ type Parameter @entity {
 async fn successfully_runs_introspection_query_against_complex_schema() {
     let mut schema = Schema::parse(
         COMPLEX_SCHEMA,
-        SubgraphDeploymentId::new("complexschema").unwrap(),
+        DeploymentHash::new("complexschema").unwrap(),
     )
     .unwrap();
     schema.document = api_schema(&schema.document, &BTreeSet::new()).unwrap();
@@ -1237,7 +1237,7 @@ async fn successfully_runs_introspection_query_against_complex_schema() {
 async fn introspection_possible_types() {
     let mut schema = Schema::parse(
         COMPLEX_SCHEMA,
-        SubgraphDeploymentId::new("complexschema").unwrap(),
+        DeploymentHash::new("complexschema").unwrap(),
     )
     .unwrap();
     schema.document = api_schema(&schema.document, &BTreeSet::new()).unwrap();

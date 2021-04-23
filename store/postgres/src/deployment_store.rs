@@ -23,9 +23,9 @@ use graph::components::subgraph::ProofOfIndexingFinisher;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
     anyhow, debug, futures03, info, o, web3, ApiSchema, BlockNumber, BlockPtr, CheapClone,
-    DeploymentState, DynTryFuture, Entity, EntityKey, EntityModification, EntityQuery, Error,
-    Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent,
-    SubgraphDeploymentId, Value, BLOCK_NUMBER_MAX,
+    DeploymentHash, DeploymentState, DynTryFuture, Entity, EntityKey, EntityModification,
+    EntityQuery, Error, Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError,
+    StoreEvent, Value, BLOCK_NUMBER_MAX,
 };
 
 use graph_graphql::prelude::api_schema;
@@ -79,12 +79,12 @@ pub struct StoreInner {
     conn_round_robin_counter: AtomicUsize,
 
     /// A cache of commonly needed data about a subgraph.
-    subgraph_cache: Mutex<LruCache<SubgraphDeploymentId, SubgraphInfo>>,
+    subgraph_cache: Mutex<LruCache<DeploymentHash, SubgraphInfo>>,
 
     /// A cache for the layout metadata for subgraphs. The Store just
     /// hosts this because it lives long enough, but it is managed from
     /// the entities module
-    pub(crate) layout_cache: Mutex<HashMap<SubgraphDeploymentId, Arc<Layout>>>,
+    pub(crate) layout_cache: Mutex<HashMap<DeploymentHash, Arc<Layout>>>,
 }
 
 /// Storage of the data for individual deployments. Each `DeploymentStore`
@@ -581,7 +581,7 @@ impl DeploymentStore {
     }
 
     fn block_ptr_with_conn(
-        subgraph_id: &SubgraphDeploymentId,
+        subgraph_id: &DeploymentHash,
         conn: &PgConnection,
     ) -> Result<Option<BlockPtr>, Error> {
         Ok(deployment::block_ptr(&conn, subgraph_id)?)
@@ -607,13 +607,13 @@ impl DeploymentStore {
 
     pub(crate) fn deployment_exists_and_synced(
         &self,
-        id: &SubgraphDeploymentId,
+        id: &DeploymentHash,
     ) -> Result<bool, StoreError> {
         let conn = self.get_conn()?;
         deployment::exists_and_synced(&conn, id.as_str())
     }
 
-    pub(crate) fn deployment_synced(&self, id: &SubgraphDeploymentId) -> Result<(), StoreError> {
+    pub(crate) fn deployment_synced(&self, id: &DeploymentHash) -> Result<(), StoreError> {
         let conn = self.get_conn()?;
         conn.transaction(|| deployment::set_synced(&conn, id))
     }
@@ -991,7 +991,7 @@ impl DeploymentStore {
 
     pub(crate) async fn deployment_state_from_id(
         &self,
-        id: SubgraphDeploymentId,
+        id: DeploymentHash,
     ) -> Result<DeploymentState, StoreError> {
         self.with_conn(|conn, _| deployment::state(&conn, id).map_err(|e| e.into()))
             .await
@@ -999,7 +999,7 @@ impl DeploymentStore {
 
     pub(crate) async fn fail_subgraph(
         &self,
-        id: SubgraphDeploymentId,
+        id: DeploymentHash,
         error: SubgraphError,
     ) -> Result<(), StoreError> {
         self.with_conn(move |conn, _| {
@@ -1034,7 +1034,7 @@ impl DeploymentStore {
 
     pub(crate) async fn load_dynamic_data_sources(
         &self,
-        id: SubgraphDeploymentId,
+        id: DeploymentHash,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         self.with_conn(move |conn, _| {
             conn.transaction(|| crate::dynds::load(&conn, id.as_str()))
@@ -1043,15 +1043,15 @@ impl DeploymentStore {
         .await
     }
 
-    pub(crate) fn exists_and_synced(&self, id: &SubgraphDeploymentId) -> Result<bool, StoreError> {
+    pub(crate) fn exists_and_synced(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
         let conn = self.get_conn()?;
         conn.transaction(|| deployment::exists_and_synced(&conn, id))
     }
 
     pub(crate) fn graft_pending(
         &self,
-        id: &SubgraphDeploymentId,
-    ) -> Result<Option<(SubgraphDeploymentId, BlockPtr)>, StoreError> {
+        id: &DeploymentHash,
+    ) -> Result<Option<(DeploymentHash, BlockPtr)>, StoreError> {
         let conn = self.get_conn()?;
         deployment::graft_pending(&conn, id)
     }
@@ -1149,7 +1149,7 @@ impl DeploymentStore {
     }
 
     #[cfg(debug_assertions)]
-    pub fn error_count(&self, id: &SubgraphDeploymentId) -> Result<usize, StoreError> {
+    pub fn error_count(&self, id: &DeploymentHash) -> Result<usize, StoreError> {
         let conn = self.get_conn()?;
         deployment::error_count(&conn, id)
     }

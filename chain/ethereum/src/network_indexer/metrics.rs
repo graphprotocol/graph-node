@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use graph::prelude::{
-    Aggregate, Counter, Gauge, MetricsRegistry, StopwatchMetrics, SubgraphDeploymentId,
+    Aggregate, Counter, DeploymentHash, Gauge, MetricsRegistry, StopwatchMetrics,
 };
 
 pub struct NetworkIndexerMetrics {
@@ -48,7 +48,7 @@ pub struct NetworkIndexerMetrics {
 
 impl NetworkIndexerMetrics {
     pub fn new(
-        subgraph_id: &SubgraphDeploymentId,
+        subgraph_id: &DeploymentHash,
         stopwatch: StopwatchMetrics,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Self {

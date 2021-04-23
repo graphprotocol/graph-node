@@ -16,7 +16,7 @@ lazy_static! {
 }
 
 pub struct SubgraphInstance<T: RuntimeHostBuilder> {
-    subgraph_id: SubgraphDeploymentId,
+    subgraph_id: DeploymentHash,
     network: String,
     host_builder: T,
 

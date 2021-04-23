@@ -95,7 +95,7 @@ impl CheapClone for EntityType {}
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityKey {
     /// ID of the subgraph.
-    pub subgraph_id: SubgraphDeploymentId,
+    pub subgraph_id: DeploymentHash,
 
     /// Name of the entity type.
     pub entity_type: EntityType,
@@ -117,7 +117,7 @@ impl StableHash for EntityKey {
 }
 
 impl EntityKey {
-    pub fn data(subgraph_id: SubgraphDeploymentId, entity_type: String, entity_id: String) -> Self {
+    pub fn data(subgraph_id: DeploymentHash, entity_type: String, entity_id: String) -> Self {
         Self {
             subgraph_id,
             entity_type: EntityType::new(entity_type),
@@ -137,7 +137,7 @@ fn key_stable_hash() {
         assert_eq!(exp, hash.as_str());
     }
 
-    let id = SubgraphDeploymentId::new("QmP9MRvVzwHxr3sGvujihbvJzcTz2LYLMfi5DyihBg6VUd").unwrap();
+    let id = DeploymentHash::new("QmP9MRvVzwHxr3sGvujihbvJzcTz2LYLMfi5DyihBg6VUd").unwrap();
     let key = EntityKey::data(id.clone(), "Account".to_string(), "0xdeadbeef".to_string());
     hashes_to(
         &key,
@@ -344,7 +344,7 @@ pub const BLOCK_NUMBER_MAX: BlockNumber = std::i32::MAX;
 #[derive(Clone, Debug)]
 pub struct EntityQuery {
     /// ID of the subgraph.
-    pub subgraph_id: SubgraphDeploymentId,
+    pub subgraph_id: DeploymentHash,
 
     /// The block height at which to execute the query. Set this to
     /// `BLOCK_NUMBER_MAX` to run the query at the latest available block.
@@ -376,7 +376,7 @@ pub struct EntityQuery {
 
 impl EntityQuery {
     pub fn new(
-        subgraph_id: SubgraphDeploymentId,
+        subgraph_id: DeploymentHash,
         block: BlockNumber,
         collection: EntityCollection,
     ) -> Self {
@@ -460,7 +460,7 @@ pub enum EntityChangeOperation {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum EntityChange {
     Data {
-        subgraph_id: SubgraphDeploymentId,
+        subgraph_id: DeploymentHash,
         /// Entity type name of the changed entity.
         entity_type: EntityType,
     },
@@ -757,7 +757,7 @@ pub enum StoreError {
         "subgraph `{0}` has already processed block `{1}`; \
          there are most likely two (or more) nodes indexing this subgraph"
     )]
-    DuplicateBlockProcessing(SubgraphDeploymentId, BlockNumber),
+    DuplicateBlockProcessing(DeploymentHash, BlockNumber),
     /// An internal error where we expected the application logic to enforce
     /// some constraint, e.g., that subgraph names are unique, but found that
     /// constraint to not hold
@@ -869,7 +869,7 @@ impl DeploymentId {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct DeploymentLocator {
     pub id: DeploymentId,
-    pub hash: SubgraphDeploymentId,
+    pub hash: DeploymentHash,
 }
 
 impl CheapClone for DeploymentLocator {}
@@ -886,7 +886,7 @@ impl slog::Value for DeploymentLocator {
 }
 
 impl DeploymentLocator {
-    pub fn new(id: DeploymentId, hash: SubgraphDeploymentId) -> Self {
+    pub fn new(id: DeploymentId, hash: DeploymentHash) -> Self {
         Self { id, hash }
     }
 }
@@ -907,7 +907,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// Check if the store is accepting queries for the specified subgraph.
     /// May return true even if the specified subgraph is not currently assigned to an indexing
     /// node, as the store will still accept queries.
-    fn is_deployed(&self, id: &SubgraphDeploymentId) -> Result<bool, Error>;
+    fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, Error>;
 
     /// Create a new deployment for the subgraph `name`. If the deployment
     /// already exists (as identified by the `schema.id`), reuse that, otherwise
@@ -950,11 +950,11 @@ pub trait SubgraphStore: Send + Sync + 'static {
     fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError>;
 
     /// Return the GraphQL schema supplied by the user
-    fn input_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<Schema>, StoreError>;
+    fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<Schema>, StoreError>;
 
     /// Return the GraphQL schema that was derived from the user's schema by
     /// adding a root query type etc. to it
-    fn api_schema(&self, subgraph_id: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError>;
+    fn api_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError>;
 
     /// Return a `WritableStore` that is used for indexing subgraphs. Only
     /// code that is part of indexing a subgraph should ever use this.
@@ -969,14 +969,14 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// `writable` should be used instead
     fn writable_for_network_indexer(
         &self,
-        id: &SubgraphDeploymentId,
+        id: &DeploymentHash,
     ) -> Result<Arc<dyn WritableStore>, StoreError>;
 
     /// Return the minimum block pointer of all deployments with this `id`
     /// that we would use to query or copy from; in particular, this will
     /// ignore any instances of this deployment that are in the process of
     /// being set up
-    fn least_block_ptr(&self, id: &SubgraphDeploymentId) -> Result<Option<BlockPtr>, Error>;
+    fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, Error>;
 
     /// Find the deployment locators for the subgraph with the given hash
     fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError>;
@@ -1116,11 +1116,11 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
-    fn input_schema(&self, _: &SubgraphDeploymentId) -> Result<Arc<Schema>, StoreError> {
+    fn input_schema(&self, _: &DeploymentHash) -> Result<Arc<Schema>, StoreError> {
         unimplemented!()
     }
 
-    fn api_schema(&self, _: &SubgraphDeploymentId) -> Result<Arc<ApiSchema>, StoreError> {
+    fn api_schema(&self, _: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError> {
         unimplemented!()
     }
 
@@ -1128,17 +1128,17 @@ impl SubgraphStore for MockStore {
         Ok(Arc::new(MockStore::new()))
     }
 
-    fn is_deployed(&self, _: &SubgraphDeploymentId) -> Result<bool, Error> {
+    fn is_deployed(&self, _: &DeploymentHash) -> Result<bool, Error> {
         unimplemented!()
     }
 
-    fn least_block_ptr(&self, _: &SubgraphDeploymentId) -> Result<Option<BlockPtr>, Error> {
+    fn least_block_ptr(&self, _: &DeploymentHash) -> Result<Option<BlockPtr>, Error> {
         unimplemented!()
     }
 
     fn writable_for_network_indexer(
         &self,
-        _: &SubgraphDeploymentId,
+        _: &DeploymentHash,
     ) -> Result<Arc<dyn WritableStore>, StoreError> {
         unimplemented!()
     }
@@ -1379,7 +1379,7 @@ pub trait StatusStore: Send + Sync + 'static {
     /// can be removed.
     fn get_proof_of_indexing<'a>(
         self: Arc<Self>,
-        subgraph_id: &'a SubgraphDeploymentId,
+        subgraph_id: &'a DeploymentHash,
         indexer: &'a Option<Address>,
         block: BlockPtr,
     ) -> DynTryFuture<'a, Option<[u8; 32]>>;

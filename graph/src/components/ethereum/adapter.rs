@@ -562,7 +562,7 @@ impl BlockStreamMetrics {
     pub fn new(
         registry: Arc<impl MetricsRegistry>,
         ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
-        deployment_id: &SubgraphDeploymentId,
+        deployment_id: &DeploymentHash,
         network: String,
         stopwatch: StopwatchMetrics,
     ) -> Self {

@@ -22,7 +22,7 @@ pub struct StoreResolver {
     pub(crate) store: Arc<dyn QueryStore>,
     subscription_manager: Arc<dyn SubscriptionManager>,
     pub(crate) block_ptr: Option<BlockPtr>,
-    deployment: SubgraphDeploymentId,
+    deployment: DeploymentHash,
     has_non_fatal_errors: bool,
     error_policy: ErrorPolicy,
 }
@@ -36,7 +36,7 @@ impl StoreResolver {
     /// blocks
     pub fn for_subscription(
         logger: &Logger,
-        deployment: SubgraphDeploymentId,
+        deployment: DeploymentHash,
         store: Arc<dyn QueryStore>,
         subscription_manager: Arc<dyn SubscriptionManager>,
     ) -> Self {
@@ -64,7 +64,7 @@ impl StoreResolver {
         subscription_manager: Arc<dyn SubscriptionManager>,
         bc: BlockConstraint,
         error_policy: ErrorPolicy,
-        deployment: SubgraphDeploymentId,
+        deployment: DeploymentHash,
     ) -> Result<Self, QueryExecutionError> {
         let store_clone = store.cheap_clone();
         let deployment2 = deployment.clone();
@@ -101,7 +101,7 @@ impl StoreResolver {
     fn locate_block(
         store: &dyn QueryStore,
         bc: BlockConstraint,
-        subgraph: SubgraphDeploymentId,
+        subgraph: DeploymentHash,
     ) -> Result<BlockPtr, QueryExecutionError> {
         match bc {
             BlockConstraint::Number(number) => store

@@ -1,5 +1,5 @@
 use super::ProofOfIndexingEvent;
-use crate::prelude::SubgraphDeploymentId;
+use crate::prelude::DeploymentHash;
 use stable_hash::prelude::*;
 use stable_hash::utils::AsBytes;
 use std::collections::HashMap;
@@ -12,7 +12,7 @@ use web3::types::{Address, H256};
 /// documentation as a side-benefit.
 pub struct PoI<'a> {
     pub causality_regions: HashMap<String, CausalityRegion<'a>>,
-    pub subgraph_id: SubgraphDeploymentId,
+    pub subgraph_id: DeploymentHash,
     pub block_hash: H256,
     pub indexer: Option<Address>,
 }

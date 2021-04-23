@@ -278,7 +278,7 @@ where
     async fn create_subgraph_version(
         &self,
         name: SubgraphName,
-        hash: SubgraphDeploymentId,
+        hash: DeploymentHash,
         node_id: NodeId,
     ) -> Result<(), SubgraphRegistrarError> {
         // We don't have a location for the subgraph yet; that will be
@@ -354,7 +354,7 @@ where
     /// subgraph syncing process.
     async fn reassign_subgraph(
         &self,
-        hash: &SubgraphDeploymentId,
+        hash: &DeploymentHash,
         node_id: &NodeId,
     ) -> Result<(), SubgraphRegistrarError> {
         let locations = self.store.locators(hash)?;
@@ -444,7 +444,7 @@ fn resolve_subgraph_chain_blocks(
     logger: &Logger,
 ) -> Box<
     dyn Future<
-            Item = (Option<BlockPtr>, Option<(SubgraphDeploymentId, BlockPtr)>),
+            Item = (Option<BlockPtr>, Option<(DeploymentHash, BlockPtr)>),
             Error = SubgraphRegistrarError,
         > + Send,
 > {

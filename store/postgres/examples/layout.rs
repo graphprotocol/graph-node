@@ -5,7 +5,7 @@ use clap::App;
 use std::process::exit;
 use std::{fs, sync::Arc};
 
-use graph::prelude::{Schema, SubgraphDeploymentId};
+use graph::prelude::{DeploymentHash, Schema};
 use graph_store_postgres::{
     command_support::{Catalog, Column, ColumnType, Layout, Namespace},
     layout_for_tests::make_dummy_site,
@@ -135,7 +135,7 @@ pub fn main() {
     let namespace = args.value_of("db_schema").unwrap_or("subgraphs");
     let kind = args.value_of("generate").unwrap_or("ddl");
 
-    let subgraph = SubgraphDeploymentId::new("Qmasubgraph").unwrap();
+    let subgraph = DeploymentHash::new("Qmasubgraph").unwrap();
     let schema = ensure(fs::read_to_string(schema), "Can not read schema file");
     let schema = ensure(
         Schema::parse(&schema, subgraph.clone()),

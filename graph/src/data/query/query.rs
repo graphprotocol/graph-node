@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::{
     data::graphql::shape_hash::shape_hash,
-    prelude::{q, SubgraphDeploymentId, SubgraphName},
+    prelude::{q, DeploymentHash, SubgraphName},
 };
 
 fn deserialize_number<'de, D>(deserializer: D) -> Result<q::Number, D::Error>
@@ -108,11 +108,11 @@ impl serde::ser::Serialize for QueryVariables {
 #[derive(Clone, Debug)]
 pub enum QueryTarget {
     Name(SubgraphName),
-    Deployment(SubgraphDeploymentId),
+    Deployment(DeploymentHash),
 }
 
-impl From<SubgraphDeploymentId> for QueryTarget {
-    fn from(id: SubgraphDeploymentId) -> Self {
+impl From<DeploymentHash> for QueryTarget {
+    fn from(id: DeploymentHash) -> Self {
         Self::Deployment(id)
     }
 }

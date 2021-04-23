@@ -88,7 +88,7 @@ struct BlockStreamContext<C> {
     chain_store: Arc<C>,
     eth_adapter: Arc<dyn EthereumAdapter>,
     node_id: NodeId,
-    subgraph_id: SubgraphDeploymentId,
+    subgraph_id: DeploymentHash,
     // This is not really a block number, but the (unsigned) difference
     // between two block numbers
     reorg_threshold: BlockNumber,
@@ -156,7 +156,7 @@ where
         chain_head_update_stream: ChainHeadUpdateStream,
         eth_adapter: Arc<dyn EthereumAdapter>,
         node_id: NodeId,
-        subgraph_id: SubgraphDeploymentId,
+        subgraph_id: DeploymentHash,
         log_filter: EthereumLogFilter,
         call_filter: EthereumCallFilter,
         block_filter: EthereumBlockFilter,

@@ -382,7 +382,7 @@ async fn main() {
             let name = SubgraphName::new(name)
                 .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
             let subgraph_id =
-                SubgraphDeploymentId::new(hash).expect("Subgraph hash must be a valid IPFS hash");
+                DeploymentHash::new(hash).expect("Subgraph hash must be a valid IPFS hash");
 
             graph::spawn(
                 async move {

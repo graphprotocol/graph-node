@@ -38,7 +38,7 @@ struct SubgraphCreateParams {
 #[derive(Debug, Deserialize)]
 struct SubgraphDeployParams {
     name: SubgraphName,
-    ipfs_hash: SubgraphDeploymentId,
+    ipfs_hash: DeploymentHash,
     node_id: Option<NodeId>,
 }
 
@@ -49,7 +49,7 @@ struct SubgraphRemoveParams {
 
 #[derive(Debug, Deserialize)]
 struct SubgraphReassignParams {
-    ipfs_hash: SubgraphDeploymentId,
+    ipfs_hash: DeploymentHash,
     node_id: NodeId,
 }
 

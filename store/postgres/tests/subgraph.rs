@@ -11,7 +11,7 @@ use graph::{
     prelude::SubgraphManifest,
     prelude::SubgraphName,
     prelude::SubgraphVersionSwitchingMode,
-    prelude::{CheapClone, NodeId, SubgraphDeploymentId, SubgraphStore as _},
+    prelude::{CheapClone, DeploymentHash, NodeId, SubgraphStore as _},
 };
 use graph_store_postgres::layout_for_tests::Connection as Primary;
 use graph_store_postgres::SubgraphStore;
@@ -43,7 +43,7 @@ fn unassigned(deployment: &DeploymentLocator) -> EntityChange {
 #[test]
 fn reassign_subgraph() {
     fn setup() -> DeploymentLocator {
-        let id = SubgraphDeploymentId::new("reassignSubgraph").unwrap();
+        let id = DeploymentHash::new("reassignSubgraph").unwrap();
         remove_subgraphs();
         create_test_subgraph(&id, SUBGRAPH_GQL)
     }
@@ -109,7 +109,7 @@ fn create_subgraph() {
         mode: SubgraphVersionSwitchingMode,
     ) -> (DeploymentLocator, HashSet<EntityChange>) {
         let name = SubgraphName::new(SUBGRAPH_NAME.to_string()).unwrap();
-        let id = SubgraphDeploymentId::new(id.to_string()).unwrap();
+        let id = DeploymentHash::new(id.to_string()).unwrap();
         let schema = Schema::parse(SUBGRAPH_GQL, id.clone()).unwrap();
 
         let manifest = SubgraphManifest {
@@ -297,10 +297,10 @@ fn status() {
     const OTHER: &str = "otherInfoSubgraph";
 
     fn setup() -> DeploymentLocator {
-        let id = SubgraphDeploymentId::new(NAME).unwrap();
+        let id = DeploymentHash::new(NAME).unwrap();
         remove_subgraphs();
         let deployment = create_test_subgraph(&id, SUBGRAPH_GQL);
-        create_test_subgraph(&SubgraphDeploymentId::new(OTHER).unwrap(), SUBGRAPH_GQL);
+        create_test_subgraph(&DeploymentHash::new(OTHER).unwrap(), SUBGRAPH_GQL);
         deployment
     }
 
@@ -404,7 +404,7 @@ fn version_info() {
     const NAME: &str = "versionInfoSubgraph";
 
     fn setup() -> DeploymentLocator {
-        let id = SubgraphDeploymentId::new(NAME).unwrap();
+        let id = DeploymentHash::new(NAME).unwrap();
         remove_subgraphs();
         block_store::set_chain(vec![], NETWORK_NAME);
         create_test_subgraph(&id, SUBGRAPH_GQL)
@@ -448,7 +448,7 @@ fn subgraph_error() {
     test_store::run_test_sequentially(
         || (),
         |store, _| async move {
-            let subgraph_id = SubgraphDeploymentId::new("testSubgraph").unwrap();
+            let subgraph_id = DeploymentHash::new("testSubgraph").unwrap();
             let deployment = test_store::create_test_subgraph(&subgraph_id, "type Foo { id: ID! }");
 
             let count = || -> usize {
@@ -500,7 +500,7 @@ fn subgraph_error() {
 #[test]
 fn fatal_vs_non_fatal() {
     fn setup() -> DeploymentLocator {
-        let id = SubgraphDeploymentId::new("failUnfail").unwrap();
+        let id = DeploymentHash::new("failUnfail").unwrap();
         remove_subgraphs();
         create_test_subgraph(&id, SUBGRAPH_GQL)
     }
@@ -538,7 +538,7 @@ fn fatal_vs_non_fatal() {
 #[test]
 fn fail_unfail() {
     fn setup() -> DeploymentLocator {
-        let id = SubgraphDeploymentId::new("failUnfail").unwrap();
+        let id = DeploymentHash::new("failUnfail").unwrap();
         remove_subgraphs();
         create_test_subgraph(&id, SUBGRAPH_GQL)
     }

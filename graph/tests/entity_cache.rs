@@ -6,14 +6,12 @@ use graph::{components::store::EntityType, mock::MockStore};
 use graph::{
     components::store::{DeploymentId, DeploymentLocator},
     prelude::{
-        Entity, EntityCache, EntityKey, EntityModification, SubgraphDeploymentId, SubgraphStore,
-        Value,
+        DeploymentHash, Entity, EntityCache, EntityKey, EntityModification, SubgraphStore, Value,
     },
 };
 
 lazy_static! {
-    static ref SUBGRAPH_ID: SubgraphDeploymentId =
-        SubgraphDeploymentId::new("entity_cache").unwrap();
+    static ref SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("entity_cache").unwrap();
     static ref DEPLOYMENT: DeploymentLocator =
         DeploymentLocator::new(DeploymentId::new(-12), SUBGRAPH_ID.clone());
 }

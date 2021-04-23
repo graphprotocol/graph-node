@@ -32,9 +32,9 @@ use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYP
 use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{
-    anyhow, info, BlockNumber, Entity, EntityChange, EntityCollection, EntityFilter, EntityKey,
-    EntityOrder, EntityRange, Logger, QueryExecutionError, StoreError, StoreEvent,
-    SubgraphDeploymentId, ValueType, BLOCK_NUMBER_MAX,
+    anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityCollection,
+    EntityFilter, EntityKey, EntityOrder, EntityRange, Logger, QueryExecutionError, StoreError,
+    StoreEvent, ValueType, BLOCK_NUMBER_MAX,
 };
 
 use crate::block_range::BLOCK_RANGE_COLUMN;
@@ -721,7 +721,7 @@ impl Layout {
     pub fn revert_block(
         &self,
         conn: &PgConnection,
-        subgraph_id: &SubgraphDeploymentId,
+        subgraph_id: &DeploymentHash,
         block: BlockNumber,
     ) -> Result<(StoreEvent, i32), StoreError> {
         let mut changes: Vec<EntityChange> = Vec::new();
@@ -777,7 +777,7 @@ impl Layout {
     /// is subject to reversion is only ever created but never updated
     pub fn revert_metadata(
         conn: &PgConnection,
-        subgraph: &SubgraphDeploymentId,
+        subgraph: &DeploymentHash,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
         crate::dynds::revert(conn, &subgraph, block)?;
@@ -1340,7 +1340,7 @@ mod tests {
     const ID_TYPE: ColumnType = ColumnType::String;
 
     fn test_layout(gql: &str) -> Layout {
-        let subgraph = SubgraphDeploymentId::new("subgraph").unwrap();
+        let subgraph = DeploymentHash::new("subgraph").unwrap();
         let schema = Schema::parse(gql, subgraph.clone()).expect("Test schema invalid");
         let namespace = Namespace::new("sgd0815".to_owned()).unwrap();
         let catalog = Catalog::make_empty(namespace.clone()).expect("Can not create catalog");

@@ -9,7 +9,7 @@ use stable_hash::{SequenceNumber, StableHash, StableHasher};
 use std::str::FromStr;
 use std::{fmt, fmt::Display};
 
-use super::SubgraphDeploymentId;
+use super::DeploymentHash;
 use crate::components::{ethereum::BlockPtr, store::EntityType};
 use crate::data::graphql::TryFromValue;
 use crate::data::store::Value;
@@ -104,7 +104,7 @@ pub struct SubgraphDeploymentEntity {
     pub non_fatal_errors: Vec<SubgraphError>,
     pub earliest_block: Option<BlockPtr>,
     pub latest_block: Option<BlockPtr>,
-    pub graft_base: Option<SubgraphDeploymentId>,
+    pub graft_base: Option<DeploymentHash>,
     pub graft_block: Option<BlockPtr>,
     pub reorg_count: i32,
     pub current_reorg_depth: i32,
@@ -134,7 +134,7 @@ impl SubgraphDeploymentEntity {
         }
     }
 
-    pub fn graft(mut self, base: Option<(SubgraphDeploymentId, BlockPtr)>) -> Self {
+    pub fn graft(mut self, base: Option<(DeploymentHash, BlockPtr)>) -> Self {
         if let Some((subgraph, ptr)) = base {
             self.graft_base = Some(subgraph);
             self.graft_block = Some(ptr);
@@ -169,7 +169,7 @@ impl<'a> From<&'a super::SubgraphManifest> for SubgraphManifestEntity {
 
 #[derive(Debug)]
 pub struct SubgraphError {
-    pub subgraph_id: SubgraphDeploymentId,
+    pub subgraph_id: DeploymentHash,
     pub message: String,
     pub block_ptr: Option<BlockPtr>,
     pub handler: Option<String>,
