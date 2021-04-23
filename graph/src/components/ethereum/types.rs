@@ -462,7 +462,7 @@ impl Clone for EthereumCallData {
 }
 
 /// A simple marker for byte arrays that are really block hashes
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Default, PartialEq, Eq, Hash)]
 pub struct BlockHash(pub Box<[u8]>);
 
 impl From<H256> for BlockHash {
@@ -472,6 +472,12 @@ impl From<H256> for BlockHash {
 }
 
 impl Display for BlockHash {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "0x{}", hex::encode(&self.0))
+    }
+}
+
+impl fmt::Debug for BlockHash {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "0x{}", hex::encode(&self.0))
     }
