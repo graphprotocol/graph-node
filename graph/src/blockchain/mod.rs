@@ -74,7 +74,8 @@ pub trait Blockchain: Sized + Send + Sync + 'static {
 
     type NodeCapabilities;
 
-    // type IngestorAdapter: IngestorAdapter<Self>;
+    type IngestorAdapter: IngestorAdapter<Self>;
+
     // type RuntimeAdapter: RuntimeAdapter;
     // ...WIP
 
@@ -90,6 +91,15 @@ pub trait Blockchain: Sized + Send + Sync + 'static {
         current_head: BlockPtr,
         filter: Self::TriggerFilter,
     ) -> Result<Self::BlockStream, Error>;
+}
+
+pub trait IngestorAdapter<C: Blockchain> {
+    /// Get the latest block from the chain
+    fn head_block(&self) -> C::Block;
+
+    /// Retrieve all necessary data for `block` from the chain and store it
+    /// in the `ChainStore`
+    fn ingest_block(&self, block: &C::Block) -> Result<(), Error>;
 }
 
 pub trait TriggerFilter<C: Blockchain>: Default {
