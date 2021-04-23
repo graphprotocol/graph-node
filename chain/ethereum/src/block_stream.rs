@@ -70,7 +70,7 @@ enum ReconciliationStep {
     /// Revert the current block pointed at by the subgraph pointer. The pointer is to the current
     /// subgraph head, and a single block will be reverted so the new head will be the parent of the
     /// current one.
-    Revert(EthereumBlockPointer),
+    Revert(BlockPtr),
 
     /// Move forwards, processing one or more blocks. Second element is the block range size.
     ProcessDescendantBlocks(Vec<EthereumBlockWithTriggers>, BlockNumber),
@@ -142,7 +142,7 @@ enum NextBlocks {
     Blocks(VecDeque<EthereumBlockWithTriggers>, BlockNumber),
 
     /// Revert the current block pointed at by the subgraph pointer.
-    Revert(EthereumBlockPointer),
+    Revert(BlockPtr),
     Done,
 }
 
@@ -875,7 +875,7 @@ where
 // "test_reorg" fail point with the number of the block that should be reorged.
 #[cfg(debug_assertions)]
 #[allow(unused_variables)]
-fn test_reorg(ptr: EthereumBlockPointer) -> bool {
+fn test_reorg(ptr: BlockPtr) -> bool {
     fail_point!("test_reorg", |reorg_at| {
         use std::str::FromStr;
 

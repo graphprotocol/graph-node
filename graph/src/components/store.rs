@@ -976,10 +976,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// that we would use to query or copy from; in particular, this will
     /// ignore any instances of this deployment that are in the process of
     /// being set up
-    fn least_block_ptr(
-        &self,
-        id: &SubgraphDeploymentId,
-    ) -> Result<Option<EthereumBlockPointer>, Error>;
+    fn least_block_ptr(&self, id: &SubgraphDeploymentId) -> Result<Option<BlockPtr>, Error>;
 
     /// Find the deployment locators for the subgraph with the given hash
     fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError>;
@@ -988,7 +985,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
 #[async_trait]
 pub trait WritableStore: Send + Sync + 'static {
     /// Get a pointer to the most recently processed block in the subgraph.
-    fn block_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error>;
+    fn block_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 
     /// Start an existing subgraph deployment.
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError>;
@@ -997,8 +994,7 @@ pub trait WritableStore: Send + Sync + 'static {
     /// subgraph block pointer to `block_ptr_to`.
     ///
     /// `block_ptr_to` must point to the parent block of the subgraph block pointer.
-    fn revert_block_operations(&self, block_ptr_to: EthereumBlockPointer)
-        -> Result<(), StoreError>;
+    fn revert_block_operations(&self, block_ptr_to: BlockPtr) -> Result<(), StoreError>;
 
     /// Remove the fatal error from a subgraph and check if it is healthy or unhealthy.
     fn unfail(&self) -> Result<(), StoreError>;
@@ -1017,7 +1013,7 @@ pub trait WritableStore: Send + Sync + 'static {
     /// `block_ptr_to` must point to a child block of the current subgraph block pointer.
     fn transact_block_operations(
         &self,
-        block_ptr_to: EthereumBlockPointer,
+        block_ptr_to: BlockPtr,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
@@ -1136,10 +1132,7 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
-    fn least_block_ptr(
-        &self,
-        _: &SubgraphDeploymentId,
-    ) -> Result<Option<EthereumBlockPointer>, Error> {
+    fn least_block_ptr(&self, _: &SubgraphDeploymentId) -> Result<Option<BlockPtr>, Error> {
         unimplemented!()
     }
 
@@ -1158,7 +1151,7 @@ impl SubgraphStore for MockStore {
 // The store trait must be implemented manually because mockall does not support async_trait, nor borrowing from arguments.
 #[async_trait]
 impl WritableStore for MockStore {
-    fn block_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
+    fn block_ptr(&self) -> Result<Option<BlockPtr>, Error> {
         unimplemented!()
     }
 
@@ -1166,7 +1159,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn revert_block_operations(&self, _: EthereumBlockPointer) -> Result<(), StoreError> {
+    fn revert_block_operations(&self, _: BlockPtr) -> Result<(), StoreError> {
         unimplemented!()
     }
 
@@ -1188,7 +1181,7 @@ impl WritableStore for MockStore {
 
     fn transact_block_operations(
         &self,
-        _: EthereumBlockPointer,
+        _: BlockPtr,
         _: Vec<EntityModification>,
         _: StopwatchMetrics,
         _: Vec<StoredDynamicDataSource>,
@@ -1238,7 +1231,7 @@ pub trait CallCache: Send + Sync + 'static {
 #[async_trait]
 pub trait ChainStore: Send + Sync + 'static {
     /// Get a pointer to this blockchain's genesis block.
-    fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error>;
+    fn genesis_block_ptr(&self) -> Result<BlockPtr, Error>;
 
     /// Insert blocks into the store (or update if they are already present).
     fn upsert_blocks<B, E>(
@@ -1278,7 +1271,7 @@ pub trait ChainStore: Send + Sync + 'static {
     /// to a block with a smaller or equal block number.
     ///
     /// The head block pointer will be None on initial set up.
-    fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error>;
+    fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 
     /// Returns the blocks present in the store.
     fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<LightEthereumBlock>, Error>;
@@ -1290,7 +1283,7 @@ pub trait ChainStore: Send + Sync + 'static {
     /// Returns an error if the offset would reach past the genesis block.
     fn ancestor_block(
         &self,
-        block_ptr: EthereumBlockPointer,
+        block_ptr: BlockPtr,
         offset: BlockNumber,
     ) -> Result<Option<EthereumBlock>, Error>;
 
@@ -1321,7 +1314,7 @@ pub trait EthereumCallCache: Send + Sync + 'static {
         &self,
         contract_address: ethabi::Address,
         encoded_call: &[u8],
-        block: EthereumBlockPointer,
+        block: BlockPtr,
     ) -> Result<Option<Vec<u8>>, Error>;
 
     // Add entry to the cache.
@@ -1329,7 +1322,7 @@ pub trait EthereumCallCache: Send + Sync + 'static {
         &self,
         contract_address: ethabi::Address,
         encoded_call: &[u8],
-        block: EthereumBlockPointer,
+        block: BlockPtr,
         return_value: &[u8],
     ) -> Result<(), Error>;
 }
@@ -1344,7 +1337,7 @@ pub trait QueryStore: Send + Sync {
 
     fn is_deployment_synced(&self) -> Result<bool, Error>;
 
-    fn block_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error>;
+    fn block_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 
     fn block_number(&self, block_hash: H256) -> Result<Option<BlockNumber>, StoreError>;
 
@@ -1388,7 +1381,7 @@ pub trait StatusStore: Send + Sync + 'static {
         self: Arc<Self>,
         subgraph_id: &'a SubgraphDeploymentId,
         indexer: &'a Option<Address>,
-        block: EthereumBlockPointer,
+        block: BlockPtr,
     ) -> DynTryFuture<'a, Option<[u8; 32]>>;
 }
 

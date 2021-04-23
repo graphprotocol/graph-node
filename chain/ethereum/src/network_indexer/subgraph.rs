@@ -13,7 +13,7 @@ fn create_subgraph(
     store: Arc<dyn SubgraphStore>,
     subgraph_name: SubgraphName,
     subgraph_id: SubgraphDeploymentId,
-    start_block: Option<EthereumBlockPointer>,
+    start_block: Option<BlockPtr>,
     network_name: String,
 ) -> FutureResult<(), Error> {
     // Create a fake manifest
@@ -51,7 +51,7 @@ pub fn ensure_subgraph_exists(
     subgraph_id: SubgraphDeploymentId,
     logger: Logger,
     store: Arc<dyn SubgraphStore>,
-    start_block: Option<EthereumBlockPointer>,
+    start_block: Option<BlockPtr>,
     network_name: String,
 ) -> impl Future<Item = (), Error = Error> {
     debug!(logger, "Ensure that the network subgraph exists");

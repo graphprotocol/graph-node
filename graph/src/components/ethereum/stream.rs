@@ -5,7 +5,7 @@ use crate::{components::store::DeploymentLocator, prelude::*};
 
 pub enum BlockStreamEvent {
     Block(EthereumBlockWithTriggers),
-    Revert(EthereumBlockPointer),
+    Revert(BlockPtr),
 }
 
 pub trait BlockStream: Stream<Item = BlockStreamEvent, Error = Error> {}

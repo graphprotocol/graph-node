@@ -21,8 +21,8 @@ use graph::{
     prelude::SubgraphDeploymentEntity,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        DynTryFuture, Entity, EntityKey, EntityModification, Error, EthereumBlockPointer, Logger,
-        NodeId, QueryExecutionError, Schema, StopwatchMetrics, StoreError, SubgraphDeploymentId,
+        BlockPtr, DynTryFuture, Entity, EntityKey, EntityModification, Error, Logger, NodeId,
+        QueryExecutionError, Schema, StopwatchMetrics, StoreError, SubgraphDeploymentId,
         SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
     util::timed_cache::TimedCache,
@@ -206,7 +206,7 @@ impl SubgraphStore {
         &self,
         id: &'a SubgraphDeploymentId,
         indexer: &'a Option<Address>,
-        block: EthereumBlockPointer,
+        block: BlockPtr,
     ) -> DynTryFuture<'a, Option<[u8; 32]>> {
         self.inner.clone().get_proof_of_indexing(id, indexer, block)
     }
@@ -469,7 +469,7 @@ impl SubgraphStoreInner {
         src: &DeploymentLocator,
         shard: Shard,
         node: NodeId,
-        block: EthereumBlockPointer,
+        block: BlockPtr,
     ) -> Result<DeploymentLocator, StoreError> {
         let src = self.find_site(src.id.into())?;
         let src_store = self.for_site(src.as_ref())?;
@@ -827,7 +827,7 @@ impl SubgraphStoreInner {
     pub fn rewind(
         &self,
         id: SubgraphDeploymentId,
-        block_ptr_to: EthereumBlockPointer,
+        block_ptr_to: BlockPtr,
     ) -> Result<(), StoreError> {
         let (store, site) = self.store(&id)?;
         let event = store.rewind(site, block_ptr_to)?;
@@ -838,7 +838,7 @@ impl SubgraphStoreInner {
         self: Arc<Self>,
         id: &'a SubgraphDeploymentId,
         indexer: &'a Option<Address>,
-        block: EthereumBlockPointer,
+        block: BlockPtr,
     ) -> DynTryFuture<'a, Option<[u8; 32]>> {
         let (store, site) = self.store(&id).unwrap();
         store.clone().get_proof_of_indexing(site, indexer, block)
@@ -974,10 +974,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         }
     }
 
-    fn least_block_ptr(
-        &self,
-        id: &SubgraphDeploymentId,
-    ) -> Result<Option<EthereumBlockPointer>, Error> {
+    fn least_block_ptr(&self, id: &SubgraphDeploymentId) -> Result<Option<BlockPtr>, Error> {
         let (store, site) = self.store(id)?;
         store.block_ptr(site.as_ref())
     }
@@ -1034,7 +1031,7 @@ impl WritableStore {
 
 #[async_trait::async_trait]
 impl WritableStoreTrait for WritableStore {
-    fn block_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
+    fn block_ptr(&self) -> Result<Option<BlockPtr>, Error> {
         self.writable.block_ptr(self.site.as_ref())
     }
 
@@ -1052,10 +1049,7 @@ impl WritableStoreTrait for WritableStore {
         self.store.primary_conn()?.copy_finished(self.site.as_ref())
     }
 
-    fn revert_block_operations(
-        &self,
-        block_ptr_to: EthereumBlockPointer,
-    ) -> Result<(), StoreError> {
+    fn revert_block_operations(&self, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
         let event = self
             .writable
             .revert_block_operations(self.site.clone(), block_ptr_to)?;
@@ -1084,7 +1078,7 @@ impl WritableStoreTrait for WritableStore {
 
     fn transact_block_operations(
         &self,
-        block_ptr_to: EthereumBlockPointer,
+        block_ptr_to: BlockPtr,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,

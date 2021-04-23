@@ -73,10 +73,7 @@ impl BlockWriter {
     }
 
     /// Writes a block to the store and updates the network subgraph block pointer.
-    pub fn write(
-        &self,
-        block: BlockWithOmmers,
-    ) -> impl Future<Item = EthereumBlockPointer, Error = Error> {
+    pub fn write(&self, block: BlockWithOmmers) -> impl Future<Item = BlockPtr, Error = Error> {
         let logger = self.logger.new(o!(
             "block" => format!("{}", block),
         ));
@@ -120,10 +117,7 @@ impl WriteContext {
     }
 
     /// Writes a block to the store.
-    fn write(
-        self,
-        block: BlockWithOmmers,
-    ) -> impl Future<Item = EthereumBlockPointer, Error = Error> {
+    fn write(self, block: BlockWithOmmers) -> impl Future<Item = BlockPtr, Error = Error> {
         debug!(self.logger, "Write block");
 
         let block = Arc::new(block);
@@ -153,7 +147,7 @@ impl WriteContext {
                     }
                     .modifications;
 
-                    let block_ptr = EthereumBlockPointer::from(&block_for_store.block);
+                    let block_ptr = BlockPtr::from(&block_for_store.block);
 
                     // Transact entity modifications into the store
                     let started = Instant::now();

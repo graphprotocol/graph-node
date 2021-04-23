@@ -18,7 +18,7 @@ use graph::{
     },
     prelude::{
         async_trait, futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt,
-        o, q, serde_json, slog, tokio, Entity, EntityKey, EntityOperation, EthereumBlockPointer,
+        o, q, serde_json, slog, tokio, BlockPtr, Entity, EntityKey, EntityOperation,
         FutureExtension, GraphQlRunner as _, Logger, NodeId, Query, QueryError,
         QueryExecutionError, QueryLoadManager, QueryResult, QueryStoreManager, QueryVariables,
         Schema, SubgraphDeploymentEntity, SubgraphDeploymentId, SubgraphManifest, SubgraphName,
@@ -213,11 +213,7 @@ fn insert_test_entities(
         ]),
     ];
 
-    fn insert_at(
-        entities: Vec<Entity>,
-        deployment: &DeploymentLocator,
-        block_ptr: EthereumBlockPointer,
-    ) {
+    fn insert_at(entities: Vec<Entity>, deployment: &DeploymentLocator, block_ptr: BlockPtr) {
         let insert_ops = entities.into_iter().map(|data| EntityOperation::Set {
             key: EntityKey::data(
                 deployment.hash.clone(),

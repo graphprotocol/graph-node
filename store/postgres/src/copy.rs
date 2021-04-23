@@ -29,7 +29,7 @@ use diesel::{
 use graph::{
     components::store::EntityType,
     constraint_violation,
-    prelude::{info, o, warn, BlockNumber, EthereumBlockPointer, Logger, StoreError},
+    prelude::{info, o, warn, BlockNumber, BlockPtr, Logger, StoreError},
 };
 
 use crate::{
@@ -93,7 +93,7 @@ pub enum Status {
 struct CopyState {
     src: Arc<Layout>,
     dst: Arc<Layout>,
-    target_block: EthereumBlockPointer,
+    target_block: BlockPtr,
     tables: Vec<TableState>,
 }
 
@@ -102,7 +102,7 @@ impl CopyState {
         conn: &PgConnection,
         src: Arc<Layout>,
         dst: Arc<Layout>,
-        target_block: EthereumBlockPointer,
+        target_block: BlockPtr,
     ) -> Result<CopyState, StoreError> {
         use copy_state as cs;
 
@@ -118,7 +118,7 @@ impl CopyState {
             .optional()?
         {
             Some((src_id, hash, number)) => {
-                let stored_target_block = EthereumBlockPointer::from((hash, number));
+                let stored_target_block = BlockPtr::from((hash, number));
                 if stored_target_block != target_block {
                     return Err(constraint_violation!(
                         "CopyState {} for copying {} to {} has incompatible block pointer {} instead of {}",
@@ -150,7 +150,7 @@ impl CopyState {
         conn: &PgConnection,
         src: Arc<Layout>,
         dst: Arc<Layout>,
-        target_block: EthereumBlockPointer,
+        target_block: BlockPtr,
     ) -> Result<CopyState, StoreError> {
         let tables = TableState::load(conn, src.as_ref(), dst.as_ref())?;
         Ok(CopyState {
@@ -165,7 +165,7 @@ impl CopyState {
         conn: &PgConnection,
         src: Arc<Layout>,
         dst: Arc<Layout>,
-        target_block: EthereumBlockPointer,
+        target_block: BlockPtr,
     ) -> Result<CopyState, StoreError> {
         use copy_state as cs;
         use copy_table_state as cts;
@@ -278,7 +278,7 @@ impl TableState {
         dst_site: Arc<Site>,
         src: Arc<Table>,
         dst: Arc<Table>,
-        target_block: &EthereumBlockPointer,
+        target_block: &BlockPtr,
     ) -> Result<Self, StoreError> {
         #[derive(QueryableByName)]
         struct MaxVid {
@@ -567,7 +567,7 @@ pub struct Connection {
     conn: PooledConnection<ConnectionManager<PgConnection>>,
     src: Arc<Layout>,
     dst: Arc<Layout>,
-    target_block: EthereumBlockPointer,
+    target_block: BlockPtr,
 }
 
 impl Connection {
@@ -582,7 +582,7 @@ impl Connection {
         pool: ConnectionPool,
         src: Arc<Layout>,
         dst: Arc<Layout>,
-        target_block: EthereumBlockPointer,
+        target_block: BlockPtr,
     ) -> Result<Self, StoreError> {
         let logger = logger.new(o!("dst" => dst.site.namespace.to_string()));
         let mut last_log = Instant::now();

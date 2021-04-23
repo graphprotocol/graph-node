@@ -48,14 +48,14 @@ use super::*;
  */
 
 type EnsureSubgraphFuture = Box<dyn Future<Item = (), Error = Error> + Send>;
-type LocalHeadFuture = Box<dyn Future<Item = Option<EthereumBlockPointer>, Error = Error> + Send>;
+type LocalHeadFuture = Box<dyn Future<Item = Option<BlockPtr>, Error = Error> + Send>;
 type ChainHeadFuture = Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send>;
 type OmmersFuture = Box<dyn Future<Item = Vec<Ommer>, Error = Error> + Send>;
-type BlockPointerFuture = Box<dyn Future<Item = EthereumBlockPointer, Error = Error> + Send>;
+type BlockPointerFuture = Box<dyn Future<Item = BlockPtr, Error = Error> + Send>;
 type BlockFuture = Box<dyn Future<Item = Option<BlockWithOmmers>, Error = Error> + Send>;
 type BlockStream = Box<dyn Stream<Item = BlockWithOmmers, Error = Error> + Send>;
-type RevertLocalHeadFuture = Box<dyn Future<Item = EthereumBlockPointer, Error = Error> + Send>;
-type AddBlockFuture = Box<dyn Future<Item = EthereumBlockPointer, Error = Error> + Send>;
+type RevertLocalHeadFuture = Box<dyn Future<Item = BlockPtr, Error = Error> + Send>;
+type AddBlockFuture = Box<dyn Future<Item = BlockPtr, Error = Error> + Send>;
 type SendEventFuture = Box<dyn Future<Item = (), Error = Error> + Send>;
 
 /**
@@ -84,7 +84,7 @@ fn ensure_subgraph(
     store: Arc<dyn SubgraphStore>,
     subgraph_name: SubgraphName,
     subgraph_id: SubgraphDeploymentId,
-    start_block: Option<EthereumBlockPointer>,
+    start_block: Option<BlockPtr>,
     network_name: String,
 ) -> EnsureSubgraphFuture {
     Box::new(subgraph::ensure_subgraph_exists(
@@ -136,7 +136,7 @@ fn fetch_ommers(
     metrics: Arc<NetworkIndexerMetrics>,
     block: &EthereumBlock,
 ) -> OmmersFuture {
-    let block_ptr: EthereumBlockPointer = block.into();
+    let block_ptr: BlockPtr = block.into();
     let ommer_hashes = block.block.uncles.clone();
 
     Box::new(track_future!(
@@ -239,7 +239,7 @@ fn fetch_block_and_ommers_by_number(
                                     logger_for_ommers,
                                     "Failed to fetch ommers for block";
                                     "error" => format!("{}", e),
-                                    "block" => format!("{}", EthereumBlockPointer::from(block)),
+                                    "block" => format!("{}", BlockPtr::from(block)),
                                 );
 
                                 None
@@ -283,10 +283,7 @@ fn write_block(block_writer: Arc<BlockWriter>, block: BlockWithOmmers) -> AddBlo
     Box::new(block_writer.write(block))
 }
 
-fn load_parent_block_from_store(
-    context: &Context,
-    block_ptr: EthereumBlockPointer,
-) -> BlockPointerFuture {
+fn load_parent_block_from_store(context: &Context, block_ptr: BlockPtr) -> BlockPointerFuture {
     let block_ptr_for_missing_parent = block_ptr.clone();
     let block_ptr_for_invalid_parent = block_ptr.clone();
 
@@ -327,12 +324,12 @@ fn load_parent_block_from_store(
         })
         .map(move |parent_hash: H256| {
             // Create a block pointer for the parent
-            EthereumBlockPointer::from((parent_hash, block_ptr.number - 1))
+            BlockPtr::from((parent_hash, block_ptr.number - 1))
         }),
     )
 }
 
-fn revert_local_head(context: &Context, local_head: EthereumBlockPointer) -> RevertLocalHeadFuture {
+fn revert_local_head(context: &Context, local_head: BlockPtr) -> RevertLocalHeadFuture {
     debug!(
         context.logger,
         "Revert local head block";
@@ -427,7 +424,7 @@ fn send_event(
 fn update_chain_and_local_head_metrics(
     context: &Context,
     chain_head: &LightEthereumBlock,
-    local_head: Option<EthereumBlockPointer>,
+    local_head: Option<BlockPtr>,
 ) {
     context
         .metrics
@@ -454,18 +451,15 @@ pub struct Context {
     event_sink: Sender<NetworkIndexerEvent>,
     subgraph_name: SubgraphName,
     subgraph_id: SubgraphDeploymentId,
-    start_block: Option<EthereumBlockPointer>,
+    start_block: Option<BlockPtr>,
     network_name: String,
 }
 
 /// Events emitted by the network tracer.
 #[derive(Debug, PartialEq, Clone)]
 pub enum NetworkIndexerEvent {
-    Revert {
-        from: EthereumBlockPointer,
-        to: EthereumBlockPointer,
-    },
-    AddBlock(EthereumBlockPointer),
+    Revert { from: BlockPtr, to: BlockPtr },
+    AddBlock(BlockPtr),
 }
 
 impl fmt::Display for NetworkIndexerEvent {
@@ -513,8 +507,8 @@ enum StateMachine {
     ///    frequently.
     #[state_machine_future(transitions(ProcessBlocks, PollChainHead, Failed))]
     PollChainHead {
-        local_head: Option<EthereumBlockPointer>,
-        prev_chain_head: Option<EthereumBlockPointer>,
+        local_head: Option<BlockPtr>,
+        prev_chain_head: Option<BlockPtr>,
         chain_head: ChainHeadFuture,
     },
 
@@ -525,7 +519,7 @@ enum StateMachine {
     /// validation and reorg checking.
     #[state_machine_future(transitions(VetBlock, PollChainHead, Failed))]
     ProcessBlocks {
-        local_head: Option<EthereumBlockPointer>,
+        local_head: Option<BlockPtr>,
         chain_head: LightEthereumBlock,
         next_blocks: BlockStream,
     },
@@ -578,7 +572,7 @@ enum StateMachine {
     ///   ancestor, and at that point we can move forward again.
     #[state_machine_future(transitions(RevertLocalHead, AddBlock, PollChainHead, Failed))]
     VetBlock {
-        local_head: Option<EthereumBlockPointer>,
+        local_head: Option<BlockPtr>,
         chain_head: LightEthereumBlock,
         next_blocks: BlockStream,
         block: BlockWithOmmers,
@@ -603,7 +597,7 @@ enum StateMachine {
     #[state_machine_future(transitions(PollChainHead, Failed))]
     RevertLocalHead {
         chain_head: LightEthereumBlock,
-        local_head: Option<EthereumBlockPointer>,
+        local_head: Option<BlockPtr>,
         new_local_head: RevertLocalHeadFuture,
     },
 
@@ -1130,7 +1124,7 @@ impl NetworkIndexer {
         store: Arc<S>,
         metrics_registry: Arc<dyn MetricsRegistry>,
         subgraph_name: String,
-        start_block: Option<EthereumBlockPointer>,
+        start_block: Option<BlockPtr>,
         network_name: String,
     ) -> Self
     where

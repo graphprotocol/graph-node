@@ -444,10 +444,7 @@ fn resolve_subgraph_chain_blocks(
     logger: &Logger,
 ) -> Box<
     dyn Future<
-            Item = (
-                Option<EthereumBlockPointer>,
-                Option<(SubgraphDeploymentId, EthereumBlockPointer)>,
-            ),
+            Item = (Option<BlockPtr>, Option<(SubgraphDeploymentId, BlockPtr)>),
             Error = SubgraphRegistrarError,
         > + Send,
 > {

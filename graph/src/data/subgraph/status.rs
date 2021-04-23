@@ -2,7 +2,7 @@
 
 use super::schema::{SubgraphError, SubgraphHealth};
 use crate::data::graphql::{object, IntoValue};
-use crate::prelude::{q, web3::types::H256, EthereumBlockPointer, Value};
+use crate::prelude::{q, web3::types::H256, BlockPtr, Value};
 
 pub enum Filter {
     /// Get all versions for the named subgraph
@@ -16,14 +16,14 @@ pub enum Filter {
 
 /// Light wrapper around `EthereumBlockPointer` that is compatible with GraphQL values.
 #[derive(Debug)]
-pub struct EthereumBlock(EthereumBlockPointer);
+pub struct EthereumBlock(BlockPtr);
 
 impl EthereumBlock {
     pub fn new(hash: H256, number: u64) -> Self {
-        EthereumBlock(EthereumBlockPointer::from((hash, number)))
+        EthereumBlock(BlockPtr::from((hash, number)))
     }
 
-    pub fn to_ptr(self) -> EthereumBlockPointer {
+    pub fn to_ptr(self) -> BlockPtr {
         self.0
     }
 
@@ -42,8 +42,8 @@ impl IntoValue for EthereumBlock {
     }
 }
 
-impl From<EthereumBlockPointer> for EthereumBlock {
-    fn from(ptr: EthereumBlockPointer) -> Self {
+impl From<BlockPtr> for EthereumBlock {
+    fn from(ptr: BlockPtr) -> Self {
         Self(ptr)
     }
 }

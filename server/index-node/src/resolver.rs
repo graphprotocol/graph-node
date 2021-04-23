@@ -99,7 +99,7 @@ where
             .try_into()
             .unwrap();
 
-        let block = EthereumBlockPointer::from((block_hash, block_number));
+        let block = BlockPtr::from((block_hash, block_number));
 
         let indexer = argument_values
             .get_optional::<Address>("indexer")

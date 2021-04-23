@@ -43,7 +43,7 @@ fn remove_test_data(store: Arc<DieselStore>) {
 // Helper to run network indexer against test chains.
 fn run_network_indexer(
     store: Arc<DieselStore>,
-    start_block: Option<EthereumBlockPointer>,
+    start_block: Option<BlockPtr>,
     chains: Vec<Vec<BlockWithOmmers>>,
     timeout: Duration,
 ) -> impl Future<

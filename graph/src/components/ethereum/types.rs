@@ -27,9 +27,9 @@ pub trait LightEthereumBlockExt {
     fn number(&self) -> BlockNumber;
     fn transaction_for_log(&self, log: &Log) -> Option<Transaction>;
     fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction>;
-    fn parent_ptr(&self) -> Option<EthereumBlockPointer>;
+    fn parent_ptr(&self) -> Option<BlockPtr>;
     fn format(&self) -> String;
-    fn block_ptr(&self) -> EthereumBlockPointer;
+    fn block_ptr(&self) -> BlockPtr;
 }
 
 impl LightEthereumBlockExt for LightEthereumBlock {
@@ -49,10 +49,10 @@ impl LightEthereumBlockExt for LightEthereumBlock {
             .cloned()
     }
 
-    fn parent_ptr(&self) -> Option<EthereumBlockPointer> {
+    fn parent_ptr(&self) -> Option<BlockPtr> {
         match self.number() {
             0 => None,
-            n => Some(EthereumBlockPointer::from((self.parent_hash, n - 1))),
+            n => Some(BlockPtr::from((self.parent_hash, n - 1))),
         }
     }
 
@@ -66,8 +66,8 @@ impl LightEthereumBlockExt for LightEthereumBlock {
         )
     }
 
-    fn block_ptr(&self) -> EthereumBlockPointer {
-        EthereumBlockPointer::from((self.hash.unwrap(), self.number.unwrap().as_u64()))
+    fn block_ptr(&self) -> BlockPtr {
+        BlockPtr::from((self.hash.unwrap(), self.number.unwrap().as_u64()))
     }
 }
 
@@ -183,7 +183,7 @@ impl EthereumCall {
 
 #[derive(Clone, Debug)]
 pub enum EthereumTrigger {
-    Block(EthereumBlockPointer, EthereumBlockTriggerType),
+    Block(BlockPtr, EthereumBlockTriggerType),
     Call(Arc<EthereumCall>),
     Log(Arc<Log>),
 }
@@ -493,21 +493,21 @@ impl From<Vec<u8>> for BlockHash {
 ///
 /// Block numbers are signed 32 bit integers
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct EthereumBlockPointer {
+pub struct BlockPtr {
     pub hash: BlockHash,
     pub number: BlockNumber,
 }
 
-impl CheapClone for EthereumBlockPointer {}
+impl CheapClone for BlockPtr {}
 
-impl StableHash for EthereumBlockPointer {
+impl StableHash for BlockPtr {
     fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
         AsBytes(self.hash.0.as_ref()).stable_hash(sequence_number.next_child(), state);
         self.number.stable_hash(sequence_number.next_child(), state);
     }
 }
 
-impl EthereumBlockPointer {
+impl BlockPtr {
     /// Encodes the block hash into a hexadecimal string **without** a "0x" prefix.
     /// Hashes are stored in the database in this format.
     pub fn hash_hex(&self) -> String {
@@ -532,73 +532,73 @@ impl EthereumBlockPointer {
     }
 }
 
-impl fmt::Display for EthereumBlockPointer {
+impl fmt::Display for BlockPtr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "#{} ({})", self.number, self.hash_hex())
     }
 }
 
-impl<T> From<Block<T>> for EthereumBlockPointer {
-    fn from(b: Block<T>) -> EthereumBlockPointer {
-        EthereumBlockPointer::from((b.hash.unwrap(), b.number.unwrap().as_u64()))
+impl<T> From<Block<T>> for BlockPtr {
+    fn from(b: Block<T>) -> BlockPtr {
+        BlockPtr::from((b.hash.unwrap(), b.number.unwrap().as_u64()))
     }
 }
 
-impl<'a, T> From<&'a Block<T>> for EthereumBlockPointer {
-    fn from(b: &'a Block<T>) -> EthereumBlockPointer {
-        EthereumBlockPointer::from((b.hash.unwrap(), b.number.unwrap().as_u64()))
+impl<'a, T> From<&'a Block<T>> for BlockPtr {
+    fn from(b: &'a Block<T>) -> BlockPtr {
+        BlockPtr::from((b.hash.unwrap(), b.number.unwrap().as_u64()))
     }
 }
 
-impl From<EthereumBlock> for EthereumBlockPointer {
-    fn from(b: EthereumBlock) -> EthereumBlockPointer {
-        EthereumBlockPointer::from((b.block.hash.unwrap(), b.block.number.unwrap().as_u64()))
+impl From<EthereumBlock> for BlockPtr {
+    fn from(b: EthereumBlock) -> BlockPtr {
+        BlockPtr::from((b.block.hash.unwrap(), b.block.number.unwrap().as_u64()))
     }
 }
 
-impl<'a> From<&'a EthereumBlock> for EthereumBlockPointer {
-    fn from(b: &'a EthereumBlock) -> EthereumBlockPointer {
-        EthereumBlockPointer::from((b.block.hash.unwrap(), b.block.number.unwrap().as_u64()))
+impl<'a> From<&'a EthereumBlock> for BlockPtr {
+    fn from(b: &'a EthereumBlock) -> BlockPtr {
+        BlockPtr::from((b.block.hash.unwrap(), b.block.number.unwrap().as_u64()))
     }
 }
 
-impl From<(Vec<u8>, i32)> for EthereumBlockPointer {
+impl From<(Vec<u8>, i32)> for BlockPtr {
     fn from((bytes, number): (Vec<u8>, i32)) -> Self {
-        EthereumBlockPointer {
+        BlockPtr {
             hash: BlockHash::from(bytes),
             number,
         }
     }
 }
 
-impl From<(H256, i32)> for EthereumBlockPointer {
-    fn from((hash, number): (H256, i32)) -> EthereumBlockPointer {
-        EthereumBlockPointer {
+impl From<(H256, i32)> for BlockPtr {
+    fn from((hash, number): (H256, i32)) -> BlockPtr {
+        BlockPtr {
             hash: hash.into(),
             number,
         }
     }
 }
 
-impl From<(H256, u64)> for EthereumBlockPointer {
-    fn from((hash, number): (H256, u64)) -> EthereumBlockPointer {
+impl From<(H256, u64)> for BlockPtr {
+    fn from((hash, number): (H256, u64)) -> BlockPtr {
         let number = i32::try_from(number).unwrap();
 
-        EthereumBlockPointer::from((hash, number))
+        BlockPtr::from((hash, number))
     }
 }
 
-impl From<(H256, i64)> for EthereumBlockPointer {
-    fn from((hash, number): (H256, i64)) -> EthereumBlockPointer {
+impl From<(H256, i64)> for BlockPtr {
+    fn from((hash, number): (H256, i64)) -> BlockPtr {
         if number < 0 {
             panic!("block number out of range: {}", number);
         }
 
-        EthereumBlockPointer::from((hash, number as u64))
+        BlockPtr::from((hash, number as u64))
     }
 }
 
-impl TryFrom<(&str, i64)> for EthereumBlockPointer {
+impl TryFrom<(&str, i64)> for BlockPtr {
     type Error = anyhow::Error;
 
     fn try_from((hash, number): (&str, i64)) -> Result<Self, Self::Error> {
@@ -606,11 +606,11 @@ impl TryFrom<(&str, i64)> for EthereumBlockPointer {
         let hash = H256::from_str(hash)
             .map_err(|e| anyhow!("Cannot parse H256 value from string `{}`: {}", hash, e))?;
 
-        Ok(EthereumBlockPointer::from((hash, number)))
+        Ok(BlockPtr::from((hash, number)))
     }
 }
 
-impl TryFrom<(&[u8], i64)> for EthereumBlockPointer {
+impl TryFrom<(&[u8], i64)> for BlockPtr {
     type Error = anyhow::Error;
 
     fn try_from((bytes, number): (&[u8], i64)) -> Result<Self, Self::Error> {
@@ -621,38 +621,38 @@ impl TryFrom<(&[u8], i64)> for EthereumBlockPointer {
                 "invalid H256 value `{}` has {} bytes instead of {}"
             ));
         };
-        Ok(EthereumBlockPointer::from((hash, number)))
+        Ok(BlockPtr::from((hash, number)))
     }
 }
 
-impl<'a> From<&'a EthereumCall> for EthereumBlockPointer {
-    fn from(call: &'a EthereumCall) -> EthereumBlockPointer {
-        EthereumBlockPointer::from((call.block_hash, call.block_number))
+impl<'a> From<&'a EthereumCall> for BlockPtr {
+    fn from(call: &'a EthereumCall) -> BlockPtr {
+        BlockPtr::from((call.block_hash, call.block_number))
     }
 }
 
-impl<'a> From<&'a BlockFinality> for EthereumBlockPointer {
-    fn from(block: &'a BlockFinality) -> EthereumBlockPointer {
+impl<'a> From<&'a BlockFinality> for BlockPtr {
+    fn from(block: &'a BlockFinality) -> BlockPtr {
         match block {
             BlockFinality::Final(b) => b.into(),
-            BlockFinality::NonFinal(b) => EthereumBlockPointer::from(&b.ethereum_block),
+            BlockFinality::NonFinal(b) => BlockPtr::from(&b.ethereum_block),
         }
     }
 }
 
-impl From<EthereumBlockPointer> for H256 {
-    fn from(ptr: EthereumBlockPointer) -> Self {
+impl From<BlockPtr> for H256 {
+    fn from(ptr: BlockPtr) -> Self {
         ptr.hash_as_h256()
     }
 }
 
-impl From<EthereumBlockPointer> for BlockNumber {
-    fn from(ptr: EthereumBlockPointer) -> Self {
+impl From<BlockPtr> for BlockNumber {
+    fn from(ptr: BlockPtr) -> Self {
         ptr.number
     }
 }
 
-impl ToEntityKey for EthereumBlockPointer {
+impl ToEntityKey for BlockPtr {
     fn to_entity_key(&self, subgraph: SubgraphDeploymentId) -> EntityKey {
         EntityKey::data(subgraph, "Block".into(), self.hash_hex())
     }
@@ -662,18 +662,18 @@ impl ToEntityKey for EthereumBlockPointer {
 mod test {
     use std::sync::Arc;
 
-    use super::{EthereumBlockPointer, EthereumBlockTriggerType, EthereumCall, EthereumTrigger};
+    use super::{BlockPtr, EthereumBlockTriggerType, EthereumCall, EthereumTrigger};
     use web3::types::*;
 
     #[test]
     fn test_trigger_ordering() {
         let block1 = EthereumTrigger::Block(
-            EthereumBlockPointer::from((H256::random(), 1u64)),
+            BlockPtr::from((H256::random(), 1u64)),
             EthereumBlockTriggerType::Every,
         );
 
         let block2 = EthereumTrigger::Block(
-            EthereumBlockPointer::from((H256::random(), 0u64)),
+            BlockPtr::from((H256::random(), 0u64)),
             EthereumBlockTriggerType::WithCallTo(Address::random()),
         );
 

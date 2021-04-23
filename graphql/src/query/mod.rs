@@ -1,4 +1,4 @@
-use graph::prelude::{q, CheapClone, EthereumBlockPointer, QueryExecutionError, QueryResult};
+use graph::prelude::{q, BlockPtr, CheapClone, QueryExecutionError, QueryResult};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -34,7 +34,7 @@ pub struct QueryExecutionOptions<R> {
 pub async fn execute_query<R>(
     query: Arc<Query>,
     selection_set: Option<q::SelectionSet>,
-    block_ptr: Option<EthereumBlockPointer>,
+    block_ptr: Option<BlockPtr>,
     options: QueryExecutionOptions<R>,
     nested_resolver: bool,
 ) -> Arc<QueryResult>

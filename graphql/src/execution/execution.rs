@@ -138,7 +138,7 @@ struct HashableQuery<'a> {
     query_variables: &'a HashMap<String, q::Value>,
     query_fragments: &'a HashMap<String, q::FragmentDefinition>,
     selection_set: &'a q::SelectionSet,
-    block_ptr: &'a EthereumBlockPointer,
+    block_ptr: &'a BlockPtr,
 }
 
 /// Note that the use of StableHash here is a little bit loose. In particular,
@@ -190,7 +190,7 @@ impl StableHash for HashableQuery<'_> {
 fn cache_key(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
-    block_ptr: &EthereumBlockPointer,
+    block_ptr: &BlockPtr,
 ) -> QueryHash {
     // It is very important that all data used for the query is included.
     // Otherwise, incorrect results may be returned.
@@ -354,7 +354,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
     ctx: Arc<ExecutionContext<R>>,
     selection_set: Arc<q::SelectionSet>,
     root_type: Arc<s::ObjectType>,
-    block_ptr: Option<EthereumBlockPointer>,
+    block_ptr: Option<BlockPtr>,
 ) -> Arc<QueryResult> {
     // Cache the cache key to not have to calculate it twice - once for lookup
     // and once for insert.

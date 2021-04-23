@@ -51,7 +51,7 @@ impl QueryStoreTrait for QueryStore {
         Ok(self.store.exists_and_synced(&self.site.deployment)?)
     }
 
-    fn block_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
+    fn block_ptr(&self) -> Result<Option<BlockPtr>, Error> {
         self.store.block_ptr(&self.site)
     }
 

@@ -17,7 +17,7 @@ mock! {
 
     #[async_trait]
     trait ChainStore: Send + Sync + 'static {
-        fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error>;
+        fn genesis_block_ptr(&self) -> Result<BlockPtr, Error>;
 
         fn upsert_blocks<B, E>(&self, blocks: B) -> Box<dyn Future<Item = (), Error = E> + Send + 'static>
         where
@@ -29,13 +29,13 @@ mock! {
 
         fn attempt_chain_head_update(&self, ancestor_count: BlockNumber) -> Result<Vec<H256>, Error>;
 
-        fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error>;
+        fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 
         fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<LightEthereumBlock>, Error>;
 
         fn ancestor_block(
             &self,
-            block_ptr: EthereumBlockPointer,
+            block_ptr: BlockPtr,
             offset: BlockNumber,
         ) -> Result<Option<EthereumBlock>, Error>;
 
@@ -110,10 +110,7 @@ impl SubgraphStore for MockStore {
         todo!()
     }
 
-    fn least_block_ptr(
-        &self,
-        _: &SubgraphDeploymentId,
-    ) -> Result<Option<EthereumBlockPointer>, Error> {
+    fn least_block_ptr(&self, _: &SubgraphDeploymentId) -> Result<Option<BlockPtr>, Error> {
         unimplemented!()
     }
 

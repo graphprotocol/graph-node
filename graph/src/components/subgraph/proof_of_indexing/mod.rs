@@ -28,7 +28,7 @@ pub type SharedProofOfIndexing = Option<Arc<AtomicRefCell<ProofOfIndexing>>>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::prelude::{EthereumBlockPointer, SubgraphDeploymentId, Value};
+    use crate::prelude::{BlockPtr, SubgraphDeploymentId, Value};
     use maplit::hashmap;
     use online::ProofOfIndexingFinisher;
     use reference::*;
@@ -75,7 +75,7 @@ mod tests {
         }
 
         let block_number = (block_count - 1) as u64;
-        let block_ptr = EthereumBlockPointer::from((reference.block_hash, block_number));
+        let block_ptr = BlockPtr::from((reference.block_hash, block_number));
 
         // This region emulates the request
         let mut finisher =

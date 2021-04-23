@@ -1,7 +1,7 @@
 use futures03::future::FutureExt;
 use futures03::future::Shared;
 use graph::{
-    prelude::{debug, futures03, CheapClone, EthereumBlockPointer, Logger, QueryResult},
+    prelude::{debug, futures03, BlockPtr, CheapClone, Logger, QueryResult},
     util::timed_rw_lock::TimedMutex,
 };
 use stable_hash::crypto::SetHasher;
@@ -84,7 +84,7 @@ impl<R: CheapClone> QueryCache<R> {
 
 #[derive(Debug)]
 struct CacheByBlock {
-    block: EthereumBlockPointer,
+    block: BlockPtr,
     max_weight: usize,
     weight: usize,
 
@@ -94,7 +94,7 @@ struct CacheByBlock {
 }
 
 impl CacheByBlock {
-    fn new(block: EthereumBlockPointer, max_weight: usize) -> Self {
+    fn new(block: BlockPtr, max_weight: usize) -> Self {
         CacheByBlock {
             block,
             max_weight,
@@ -148,7 +148,7 @@ impl QueryBlockCache {
     pub fn insert(
         &mut self,
         network: &str,
-        block_ptr: EthereumBlockPointer,
+        block_ptr: BlockPtr,
         key: QueryHash,
         result: Arc<QueryResult>,
         weight: usize,
@@ -230,7 +230,7 @@ impl QueryBlockCache {
     pub fn get(
         &self,
         network: &str,
-        block_ptr: &EthereumBlockPointer,
+        block_ptr: &BlockPtr,
         key: &QueryHash,
     ) -> Option<Arc<QueryResult>> {
         if let Some(cache) = self

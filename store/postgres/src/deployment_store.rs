@@ -22,8 +22,8 @@ use graph::components::store::EntityCollection;
 use graph::components::subgraph::ProofOfIndexingFinisher;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
-    anyhow, debug, futures03, info, o, web3, ApiSchema, BlockNumber, CheapClone, DeploymentState,
-    DynTryFuture, Entity, EntityKey, EntityModification, EntityQuery, Error, EthereumBlockPointer,
+    anyhow, debug, futures03, info, o, web3, ApiSchema, BlockNumber, BlockPtr, CheapClone,
+    DeploymentState, DynTryFuture, Entity, EntityKey, EntityModification, EntityQuery, Error,
     Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent,
     SubgraphDeploymentId, Value, BLOCK_NUMBER_MAX,
 };
@@ -286,7 +286,7 @@ impl DeploymentStore {
         conn: &PgConnection,
         layout: &Layout,
         mods: Vec<EntityModification>,
-        ptr: &EthereumBlockPointer,
+        ptr: &BlockPtr,
         stopwatch: StopwatchMetrics,
     ) -> Result<i32, StoreError> {
         use EntityModification::*;
@@ -348,7 +348,7 @@ impl DeploymentStore {
         data: &mut [(EntityKey, Entity)],
         conn: &PgConnection,
         layout: &Layout,
-        ptr: &EthereumBlockPointer,
+        ptr: &BlockPtr,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let section = stopwatch.start_section("check_interface_entity_uniqueness");
@@ -368,7 +368,7 @@ impl DeploymentStore {
         data: &mut [(EntityKey, Entity)],
         conn: &PgConnection,
         layout: &Layout,
-        ptr: &EthereumBlockPointer,
+        ptr: &BlockPtr,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let section = stopwatch.start_section("check_interface_entity_uniqueness");
@@ -388,7 +388,7 @@ impl DeploymentStore {
         entity_keys: &[String],
         conn: &PgConnection,
         layout: &Layout,
-        ptr: &EthereumBlockPointer,
+        ptr: &BlockPtr,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let _section = stopwatch.start_section("apply_entity_modifications_delete");
@@ -583,7 +583,7 @@ impl DeploymentStore {
     fn block_ptr_with_conn(
         subgraph_id: &SubgraphDeploymentId,
         conn: &PgConnection,
-    ) -> Result<Option<EthereumBlockPointer>, Error> {
+    ) -> Result<Option<BlockPtr>, Error> {
         Ok(deployment::block_ptr(&conn, subgraph_id)?)
     }
 
@@ -664,7 +664,7 @@ impl DeploymentStore {
 /// Methods that back the trait `graph::components::Store`, but have small
 /// variations in their signatures
 impl DeploymentStore {
-    pub(crate) fn block_ptr(&self, site: &Site) -> Result<Option<EthereumBlockPointer>, Error> {
+    pub(crate) fn block_ptr(&self, site: &Site) -> Result<Option<BlockPtr>, Error> {
         let conn = self.get_conn()?;
         Self::block_ptr_with_conn(&site.deployment, &conn)
     }
@@ -690,7 +690,7 @@ impl DeploymentStore {
         self: Arc<Self>,
         site: Arc<Site>,
         indexer: &'a Option<Address>,
-        block: EthereumBlockPointer,
+        block: BlockPtr,
     ) -> DynTryFuture<'a, Option<[u8; 32]>> {
         let indexer = indexer.clone();
         let site3 = site.clone();
@@ -831,7 +831,7 @@ impl DeploymentStore {
     pub(crate) fn transact_block_operations(
         &self,
         site: Arc<Site>,
-        block_ptr_to: EthereumBlockPointer,
+        block_ptr_to: BlockPtr,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
@@ -908,7 +908,7 @@ impl DeploymentStore {
         &self,
         conn: &PgConnection,
         site: Arc<Site>,
-        block_ptr_to: EthereumBlockPointer,
+        block_ptr_to: BlockPtr,
     ) -> Result<StoreEvent, StoreError> {
         let event = conn.transaction(|| -> Result<_, StoreError> {
             // Don't revert past a graft point
@@ -965,7 +965,7 @@ impl DeploymentStore {
     pub(crate) fn rewind(
         &self,
         site: Arc<Site>,
-        block_ptr_to: EthereumBlockPointer,
+        block_ptr_to: BlockPtr,
     ) -> Result<StoreEvent, StoreError> {
         let conn = self.get_conn()?;
 
@@ -975,7 +975,7 @@ impl DeploymentStore {
     pub(crate) fn revert_block_operations(
         &self,
         site: Arc<Site>,
-        block_ptr_to: EthereumBlockPointer,
+        block_ptr_to: BlockPtr,
     ) -> Result<StoreEvent, StoreError> {
         let conn = self.get_conn()?;
         // Unwrap: If we are reverting then the block ptr is not `None`.
@@ -1051,7 +1051,7 @@ impl DeploymentStore {
     pub(crate) fn graft_pending(
         &self,
         id: &SubgraphDeploymentId,
-    ) -> Result<Option<(SubgraphDeploymentId, EthereumBlockPointer)>, StoreError> {
+    ) -> Result<Option<(SubgraphDeploymentId, BlockPtr)>, StoreError> {
         let conn = self.get_conn()?;
         deployment::graft_pending(&conn, id)
     }
@@ -1070,7 +1070,7 @@ impl DeploymentStore {
         &self,
         logger: &Logger,
         site: Arc<Site>,
-        graft_src: Option<(Arc<Layout>, EthereumBlockPointer)>,
+        graft_src: Option<(Arc<Layout>, BlockPtr)>,
     ) -> Result<(), StoreError> {
         let dst = self.find_layout(site)?;
 

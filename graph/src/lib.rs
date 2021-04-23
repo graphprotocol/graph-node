@@ -84,9 +84,9 @@ pub mod prelude {
         Pin<Box<dyn futures03::Future<Output = Result<Ok, Err>> + Send + 'a>>;
 
     pub use crate::components::ethereum::{
-        BlockFinality, BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockStreamMetrics,
-        ChainHeadUpdate, ChainHeadUpdateStream, EthereumAdapter, EthereumAdapterError,
-        EthereumBlock, EthereumBlockData, EthereumBlockFilter, EthereumBlockPointer,
+        BlockFinality, BlockPtr, BlockStream, BlockStreamBuilder, BlockStreamEvent,
+        BlockStreamMetrics, ChainHeadUpdate, ChainHeadUpdateStream, EthereumAdapter,
+        EthereumAdapterError, EthereumBlock, EthereumBlockData, EthereumBlockFilter,
         EthereumBlockTriggerType, EthereumBlockWithCalls, EthereumBlockWithTriggers, EthereumCall,
         EthereumCallData, EthereumCallFilter, EthereumContractCall, EthereumContractCallError,
         EthereumEventData, EthereumLogFilter, EthereumNetworkIdentifier, EthereumTransactionData,

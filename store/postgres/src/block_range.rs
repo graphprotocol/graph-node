@@ -7,7 +7,7 @@ use diesel::sql_types::{Integer, Range};
 use std::io::Write;
 use std::ops::{Bound, RangeBounds, RangeFrom};
 
-use graph::prelude::{BlockNumber, EthereumBlockPointer, BLOCK_NUMBER_MAX};
+use graph::prelude::{BlockNumber, BlockPtr, BLOCK_NUMBER_MAX};
 
 use crate::relational::Table;
 
@@ -67,7 +67,7 @@ pub(crate) fn first_block_in_range(
 /// `None` panic because that indicates that we want to perform an
 /// operation that does not record history, which should not happen
 /// with how we currently use relational schemas
-pub(crate) fn block_number(block_ptr: &EthereumBlockPointer) -> BlockNumber {
+pub(crate) fn block_number(block_ptr: &BlockPtr) -> BlockNumber {
     block_ptr.number
 }
 

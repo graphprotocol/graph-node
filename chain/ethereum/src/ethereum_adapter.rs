@@ -427,7 +427,7 @@ where
         logger: Logger,
         contract_address: Address,
         call_data: Bytes,
-        block_ptr: EthereumBlockPointer,
+        block_ptr: BlockPtr,
     ) -> impl Future<Item = Bytes, Error = EthereumContractCallError> + Send {
         let web3 = self.web3.clone();
 
@@ -597,7 +597,7 @@ where
         &self,
         logger: Logger,
         block_nums: Vec<BlockNumber>,
-    ) -> impl Stream<Item = EthereumBlockPointer, Error = Error> + Send {
+    ) -> impl Stream<Item = BlockPtr, Error = Error> + Send {
         let web3 = self.web3.clone();
 
         stream::iter_ok::<_, Error>(block_nums.into_iter().map(move |block_num| {
@@ -937,7 +937,7 @@ where
         logger: &Logger,
         chain_store: Arc<dyn ChainStore>,
         block_number: BlockNumber,
-    ) -> Box<dyn Future<Item = EthereumBlockPointer, Error = EthereumAdapterError> + Send> {
+    ) -> Box<dyn Future<Item = BlockPtr, Error = EthereumAdapterError> + Send> {
         Box::new(
             // When this method is called (from the subgraph registrar), we don't
             // know yet whether the block with the given number is final, it is
@@ -952,7 +952,7 @@ where
                     })
                 })
                 .from_err()
-                .map(move |block_hash| EthereumBlockPointer::from((block_hash, block_number))),
+                .map(move |block_hash| BlockPtr::from((block_hash, block_number))),
         )
     }
 
@@ -1080,7 +1080,7 @@ where
         logger: &Logger,
         _: Arc<SubgraphEthRpcMetrics>,
         chain_store: Arc<dyn ChainStore>,
-        block_ptr: EthereumBlockPointer,
+        block_ptr: BlockPtr,
     ) -> Box<dyn Future<Item = bool, Error = Error> + Send> {
         Box::new(
             self.block_hash_by_block_number(&logger, chain_store, block_ptr.number, true)
@@ -1337,7 +1337,7 @@ where
         logger: Logger,
         from: BlockNumber,
         to: BlockNumber,
-    ) -> Box<dyn Future<Item = Vec<EthereumBlockPointer>, Error = Error> + Send> {
+    ) -> Box<dyn Future<Item = Vec<BlockPtr>, Error = Error> + Send> {
         // Currently we can't go to the DB for this because there might be duplicate entries for
         // the same block number.
         debug!(&logger, "Requesting hashes for blocks [{}, {}]", from, to);

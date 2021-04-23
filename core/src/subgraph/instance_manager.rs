@@ -613,7 +613,7 @@ where
                 None => unreachable!("The block stream stopped producing blocks"),
             };
 
-            let block_ptr = EthereumBlockPointer::from(&block.ethereum_block);
+            let block_ptr = BlockPtr::from(&block.ethereum_block);
 
             if block.triggers.len() > 0 {
                 subgraph_metrics
@@ -737,7 +737,7 @@ where
     let triggers = block.triggers;
     let block = block.ethereum_block;
 
-    let block_ptr = EthereumBlockPointer::from(&block);
+    let block_ptr = BlockPtr::from(&block);
     let logger = logger.new(o!(
         "block_number" => format!("{:?}", block_ptr.number),
         "block_hash" => format!("{}", block_ptr.hash)
@@ -755,7 +755,7 @@ where
 
     // Obtain current and new block pointer (after this block is processed)
     let light_block = Arc::new(block.light_block());
-    let block_ptr_after = EthereumBlockPointer::from(&block);
+    let block_ptr_after = BlockPtr::from(&block);
 
     let metrics = ctx.subgraph_metrics.clone();
 
@@ -1066,7 +1066,7 @@ async fn process_triggers(
     triggers: Vec<EthereumTrigger>,
 ) -> Result<BlockState, MappingError> {
     for trigger in triggers.into_iter() {
-        let block_ptr = EthereumBlockPointer::from(block.as_ref());
+        let block_ptr = BlockPtr::from(block.as_ref());
         let trigger_type = match trigger {
             EthereumTrigger::Log(_) => TriggerType::Event,
             EthereumTrigger::Call(_) => TriggerType::Call,

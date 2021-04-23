@@ -58,7 +58,7 @@ const USER: &str = "User";
 
 macro_rules! block_pointer {
     ($hash:expr, $number:expr) => {{
-        EthereumBlockPointer::from((H256::from(hex!($hash)), $number as u64))
+        BlockPtr::from((H256::from(hex!($hash)), $number as u64))
     }};
 }
 
@@ -67,7 +67,7 @@ lazy_static! {
         SubgraphDeploymentId::new("testsubgraph").unwrap();
     static ref TEST_SUBGRAPH_SCHEMA: Schema =
         Schema::parse(USER_GQL, TEST_SUBGRAPH_ID.clone()).expect("Failed to parse user schema");
-    static ref BLOCKS: Vec<EthereumBlockPointer> = vec![
+    static ref BLOCKS: Vec<BlockPtr> = vec![
         block_pointer!(
             "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
             0
@@ -260,7 +260,7 @@ fn create_grafted_subgraph(
     subgraph_id: &SubgraphDeploymentId,
     schema: &str,
     base_id: &str,
-    base_block: EthereumBlockPointer,
+    base_block: BlockPtr,
 ) -> Result<DeploymentLocator, StoreError> {
     let base = Some((SubgraphDeploymentId::new(base_id).unwrap(), base_block));
     test_store::create_subgraph(subgraph_id, schema, base)

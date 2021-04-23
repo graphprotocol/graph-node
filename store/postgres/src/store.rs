@@ -9,7 +9,7 @@ use graph::{
     constraint_violation,
     data::subgraph::status,
     prelude::{
-        web3::types::Address, CheapClone, EthereumBlockPointer, QueryExecutionError, StoreError,
+        web3::types::Address, BlockPtr, CheapClone, QueryExecutionError, StoreError,
         SubgraphDeploymentId,
     },
 };
@@ -111,7 +111,7 @@ impl StatusStore for Store {
         self: Arc<Self>,
         subgraph_id: &'a SubgraphDeploymentId,
         indexer: &'a Option<Address>,
-        block: EthereumBlockPointer,
+        block: BlockPtr,
     ) -> graph::prelude::DynTryFuture<'a, Option<[u8; 32]>> {
         self.subgraph_store
             .get_proof_of_indexing(subgraph_id, indexer, block)

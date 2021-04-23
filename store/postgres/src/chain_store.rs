@@ -14,8 +14,8 @@ use std::{collections::HashMap, convert::TryFrom};
 use std::{convert::TryInto, iter::FromIterator};
 
 use graph::prelude::{
-    web3::types::H256, BlockNumber, Error, EthereumBlock, EthereumBlockPointer,
-    EthereumNetworkIdentifier, Future, LightEthereumBlock, Stream,
+    web3::types::H256, BlockNumber, BlockPtr, Error, EthereumBlock, EthereumNetworkIdentifier,
+    Future, LightEthereumBlock, Stream,
 };
 
 use crate::{
@@ -63,7 +63,7 @@ mod data {
     use std::{convert::TryFrom, io::Write};
 
     use graph::prelude::{
-        serde_json, web3::types::H256, BlockNumber, Error, EthereumBlock, EthereumBlockPointer,
+        serde_json, web3::types::H256, BlockNumber, BlockPtr, Error, EthereumBlock,
         LightEthereumBlock,
     };
 
@@ -709,7 +709,7 @@ mod data {
             &self,
             conn: &PgConnection,
             chain: &str,
-        ) -> Result<Option<EthereumBlockPointer>, Error> {
+        ) -> Result<Option<BlockPtr>, Error> {
             use public::ethereum_networks as n;
 
             let head = n::table
@@ -728,9 +728,7 @@ mod data {
                         .select((b::hash, b::number))
                         .first::<(String, i64)>(conn)
                         .optional()?
-                        .map(|(hash, number)| {
-                            EthereumBlockPointer::try_from((hash.as_str(), number))
-                        })
+                        .map(|(hash, number)| BlockPtr::try_from((hash.as_str(), number)))
                         .transpose()
                 }
                 Storage::Private(Schema { blocks, .. }) => blocks
@@ -740,7 +738,7 @@ mod data {
                     .select((blocks.hash(), blocks.number()))
                     .first::<(Vec<u8>, i64)>(conn)
                     .optional()?
-                    .map(|(hash, number)| EthereumBlockPointer::try_from((hash.as_slice(), number)))
+                    .map(|(hash, number)| BlockPtr::try_from((hash.as_slice(), number)))
                     .transpose(),
             }
         }
@@ -748,7 +746,7 @@ mod data {
         pub(super) fn ancestor_block(
             &self,
             conn: &PgConnection,
-            block_ptr: EthereumBlockPointer,
+            block_ptr: BlockPtr,
             offset: BlockNumber,
         ) -> Result<Option<EthereumBlock>, Error> {
             let data = match self {
@@ -1057,7 +1055,7 @@ pub struct ChainStore {
     conn: ConnectionPool,
     pub chain: String,
     storage: data::Storage,
-    genesis_block_ptr: EthereumBlockPointer,
+    genesis_block_ptr: BlockPtr,
     status: ChainStatus,
     chain_head_update_sender: ChainHeadUpdateSender,
 }
@@ -1114,10 +1112,10 @@ impl ChainStore {
         Ok(())
     }
 
-    pub fn chain_head_pointers(&self) -> Result<HashMap<String, EthereumBlockPointer>, StoreError> {
+    pub fn chain_head_pointers(&self) -> Result<HashMap<String, BlockPtr>, StoreError> {
         use public::ethereum_networks as n;
 
-        let pointers: Vec<(String, EthereumBlockPointer)> = n::table
+        let pointers: Vec<(String, BlockPtr)> = n::table
             .select((n::name, n::head_block_hash, n::head_block_number))
             .load::<(String, Option<String>, Option<i64>)>(&self.get_conn()?)?
             .into_iter()
@@ -1126,7 +1124,7 @@ impl ChainStore {
                 _ => None,
             })
             .map(|(name, hash, number)| {
-                EthereumBlockPointer::try_from((hash.as_str(), number)).map(|ptr| (name, ptr))
+                BlockPtr::try_from((hash.as_str(), number)).map(|ptr| (name, ptr))
             })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(HashMap::from_iter(pointers))
@@ -1157,7 +1155,7 @@ impl ChainStore {
 
 #[async_trait]
 impl ChainStoreTrait for ChainStore {
-    fn genesis_block_ptr(&self) -> Result<EthereumBlockPointer, Error> {
+    fn genesis_block_ptr(&self) -> Result<BlockPtr, Error> {
         Ok(self.genesis_block_ptr.clone())
     }
 
@@ -1229,7 +1227,7 @@ impl ChainStoreTrait for ChainStore {
         Ok(missing)
     }
 
-    fn chain_head_ptr(&self) -> Result<Option<EthereumBlockPointer>, Error> {
+    fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
         use public::ethereum_networks::dsl::*;
 
         ethereum_networks
@@ -1255,7 +1253,7 @@ impl ChainStoreTrait for ChainStore {
 
     fn ancestor_block(
         &self,
-        block_ptr: EthereumBlockPointer,
+        block_ptr: BlockPtr,
         offset: BlockNumber,
     ) -> Result<Option<EthereumBlock>, Error> {
         ensure!(
@@ -1363,7 +1361,7 @@ impl EthereumCallCache for ChainStore {
         &self,
         contract_address: ethabi::Address,
         encoded_call: &[u8],
-        block: EthereumBlockPointer,
+        block: BlockPtr,
     ) -> Result<Option<Vec<u8>>, Error> {
         let id = contract_call_id(&contract_address, encoded_call, &block);
         let conn = &*self.get_conn()?;
@@ -1390,7 +1388,7 @@ impl EthereumCallCache for ChainStore {
         &self,
         contract_address: ethabi::Address,
         encoded_call: &[u8],
-        block: EthereumBlockPointer,
+        block: BlockPtr,
         return_value: &[u8],
     ) -> Result<(), Error> {
         let id = contract_call_id(&contract_address, encoded_call, &block);
@@ -1413,7 +1411,7 @@ impl EthereumCallCache for ChainStore {
 fn contract_call_id(
     contract_address: &ethabi::Address,
     encoded_call: &[u8],
-    block: &EthereumBlockPointer,
+    block: &BlockPtr,
 ) -> [u8; 32] {
     let mut hash = blake3::Hasher::new();
     hash.update(encoded_call);
@@ -1427,7 +1425,7 @@ fn contract_call_id(
 pub mod test_support {
     use std::str::FromStr;
 
-    use graph::prelude::{web3::types::H256, BlockNumber, EthereumBlock, EthereumBlockPointer};
+    use graph::prelude::{web3::types::H256, BlockNumber, BlockPtr, EthereumBlock};
 
     // Hash indicating 'no parent'
     pub const NO_PARENT: &str = "0000000000000000000000000000000000000000000000000000000000000000";
@@ -1461,8 +1459,8 @@ pub mod test_support {
             H256::from_str(self.hash.as_str()).expect("invalid block hash")
         }
 
-        pub fn block_ptr(&self) -> EthereumBlockPointer {
-            EthereumBlockPointer::from((self.block_hash(), self.number))
+        pub fn block_ptr(&self) -> BlockPtr {
+            BlockPtr::from((self.block_hash(), self.number))
         }
 
         pub fn as_ethereum_block(&self) -> EthereumBlock {

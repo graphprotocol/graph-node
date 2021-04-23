@@ -21,7 +21,7 @@ pub struct StoreResolver {
     logger: Logger,
     pub(crate) store: Arc<dyn QueryStore>,
     subscription_manager: Arc<dyn SubscriptionManager>,
-    pub(crate) block_ptr: Option<EthereumBlockPointer>,
+    pub(crate) block_ptr: Option<BlockPtr>,
     deployment: SubgraphDeploymentId,
     has_non_fatal_errors: bool,
     error_policy: ErrorPolicy,
@@ -102,7 +102,7 @@ impl StoreResolver {
         store: &dyn QueryStore,
         bc: BlockConstraint,
         subgraph: SubgraphDeploymentId,
-    ) -> Result<EthereumBlockPointer, QueryExecutionError> {
+    ) -> Result<BlockPtr, QueryExecutionError> {
         match bc {
             BlockConstraint::Number(number) => store
                 .block_ptr()
@@ -125,10 +125,7 @@ impl StoreResolver {
                         // always return an all zeroes hash when users specify
                         // a block number
                         // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
-                        Ok(EthereumBlockPointer::from((
-                            web3::types::H256::zero(),
-                            number as u64,
-                        )))
+                        Ok(BlockPtr::from((web3::types::H256::zero(), number as u64)))
                     }
                 }),
             BlockConstraint::Hash(hash) => {
@@ -143,7 +140,7 @@ impl StoreResolver {
                                     "no block with that hash found".to_owned(),
                                 )
                             })
-                            .map(|number| EthereumBlockPointer::from((hash, number as u64)))
+                            .map(|number| BlockPtr::from((hash, number as u64)))
                     })
             }
             BlockConstraint::Latest => store

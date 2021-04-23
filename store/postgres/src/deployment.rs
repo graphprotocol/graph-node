@@ -14,8 +14,8 @@ use diesel::{
 };
 use graph::data::subgraph::{schema::SubgraphManifestEntity, SubgraphFeature};
 use graph::prelude::{
-    anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber,
-    DeploymentState, EthereumBlockPointer, Schema, StoreError, SubgraphDeploymentId,
+    anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr,
+    DeploymentState, Schema, StoreError, SubgraphDeploymentId,
 };
 use graph::{data::subgraph::schema::SubgraphError, prelude::SubgraphDeploymentEntity};
 use stable_hash::crypto::SetHasher;
@@ -105,7 +105,7 @@ fn graft(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
     pending_only: bool,
-) -> Result<Option<(SubgraphDeploymentId, EthereumBlockPointer)>, StoreError> {
+) -> Result<Option<(SubgraphDeploymentId, BlockPtr)>, StoreError> {
     use subgraph_deployment as sd;
 
     let graft_query = sd::table
@@ -135,7 +135,7 @@ fn graft(
                     subgraph
                 ))
             })?;
-            Ok(Some((subgraph, EthereumBlockPointer::from((hash, block)))))
+            Ok(Some((subgraph, BlockPtr::from((hash, block)))))
         }
         _ => unreachable!(
             "graftBlockHash and graftBlockNumber are either both set or neither is set"
@@ -150,7 +150,7 @@ fn graft(
 pub fn graft_pending(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
-) -> Result<Option<(SubgraphDeploymentId, EthereumBlockPointer)>, StoreError> {
+) -> Result<Option<(SubgraphDeploymentId, BlockPtr)>, StoreError> {
     graft(conn, id, true)
 }
 
@@ -160,7 +160,7 @@ pub fn graft_pending(
 pub fn graft_point(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
-) -> Result<Option<(SubgraphDeploymentId, EthereumBlockPointer)>, StoreError> {
+) -> Result<Option<(SubgraphDeploymentId, BlockPtr)>, StoreError> {
     graft(conn, id, false)
 }
 
@@ -204,7 +204,7 @@ pub fn features(conn: &PgConnection, site: &Site) -> Result<BTreeSet<SubgraphFea
 pub fn forward_block_ptr(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
-    ptr: EthereumBlockPointer,
+    ptr: BlockPtr,
 ) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
@@ -225,7 +225,7 @@ pub fn forward_block_ptr(
 pub fn revert_block_ptr(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
-    ptr: EthereumBlockPointer,
+    ptr: BlockPtr,
 ) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
@@ -248,7 +248,7 @@ pub fn revert_block_ptr(
 pub fn block_ptr(
     conn: &PgConnection,
     id: &SubgraphDeploymentId,
-) -> Result<Option<EthereumBlockPointer>, StoreError> {
+) -> Result<Option<BlockPtr>, StoreError> {
     use subgraph_deployment as d;
 
     let (number, hash) = d::table
@@ -584,7 +584,7 @@ pub(crate) fn copy_errors(
     conn: &PgConnection,
     src: &Site,
     dst: &Site,
-    target_block: &EthereumBlockPointer,
+    target_block: &BlockPtr,
 ) -> Result<usize, StoreError> {
     use subgraph_error as e;
 
@@ -662,11 +662,11 @@ pub fn create_deployment(
     use subgraph_deployment as d;
     use subgraph_manifest as m;
 
-    fn b(ptr: &Option<EthereumBlockPointer>) -> Option<&[u8]> {
+    fn b(ptr: &Option<BlockPtr>) -> Option<&[u8]> {
         ptr.as_ref().map(|ptr| ptr.hash_slice())
     }
 
-    fn n(ptr: &Option<EthereumBlockPointer>) -> SqlLiteral<Nullable<Numeric>> {
+    fn n(ptr: &Option<BlockPtr>) -> SqlLiteral<Nullable<Numeric>> {
         match ptr {
             None => sql("null"),
             Some(ptr) => sql(&format!("{}::numeric", ptr.number)),
