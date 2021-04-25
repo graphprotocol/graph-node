@@ -211,7 +211,7 @@ where
         &self,
         block: EthereumBlock,
     ) -> Result<Option<H256>, EthereumAdapterError> {
-        self.chain_store.upsert_block(block)?;
+        self.chain_store.upsert_block(block).await?;
 
         self.chain_store
             .attempt_chain_head_update(self.ancestor_count)

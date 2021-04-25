@@ -19,7 +19,7 @@ mock! {
     trait ChainStore: Send + Sync + 'static {
         fn genesis_block_ptr(&self) -> Result<BlockPtr, Error>;
 
-        fn upsert_block(&self, block: EthereumBlock) -> Result<(), Error>;
+        async fn upsert_block(&self, block: EthereumBlock) -> Result<(), Error>;
 
         fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error>;
 

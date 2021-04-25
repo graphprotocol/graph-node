@@ -1,6 +1,9 @@
 use graph::{
     constraint_violation,
-    prelude::{async_trait, ethabi, ChainStore as ChainStoreTrait, EthereumCallCache, StoreError},
+    prelude::{
+        async_trait, ethabi, CancelableError, ChainStore as ChainStoreTrait, EthereumCallCache,
+        StoreError,
+    },
 };
 
 use diesel::pg::PgConnection;
@@ -360,11 +363,11 @@ mod data {
             conn: &PgConnection,
             chain: &str,
             block: EthereumBlock,
-        ) -> Result<(), Error> {
+        ) -> Result<(), StoreError> {
             let number = block.block.number.unwrap().as_u64() as i64;
             let data = serde_json::to_value(&block).expect("Failed to serialize block");
 
-            let result = match self {
+            match self {
                 Storage::Shared => {
                     use public::ethereum_blocks as b;
 
@@ -383,7 +386,7 @@ mod data {
                         .on_conflict(b::hash)
                         .do_update()
                         .set(values)
-                        .execute(conn)
+                        .execute(conn)?;
                 }
                 Storage::Private(Schema { blocks, .. }) => {
                     let query = format!(
@@ -400,10 +403,10 @@ mod data {
                         .bind::<BigInt, _>(number)
                         .bind::<Bytea, _>(parent_hash.as_bytes())
                         .bind::<Jsonb, _>(data)
-                        .execute(conn)
+                        .execute(conn)?;
                 }
             };
-            result.map(|_| ()).map_err(Error::from)
+            Ok(())
         }
 
         /// Insert a light block. On conflict do nothing, since we
@@ -1165,12 +1168,19 @@ impl ChainStoreTrait for ChainStore {
         Ok(self.genesis_block_ptr.clone())
     }
 
-    fn upsert_block(&self, block: EthereumBlock) -> Result<(), Error> {
-        let conn = self.conn.clone();
+    async fn upsert_block(&self, block: EthereumBlock) -> Result<(), Error> {
+        let pool = self.conn.clone();
         let network = self.chain.clone();
         let storage = self.storage.clone();
-        let conn = conn.get().map_err(Error::from)?;
-        storage.upsert_block(&conn, &network, block)
+        pool.with_conn(move |conn, _| {
+            conn.transaction(|| {
+                storage
+                    .upsert_block(&conn, &network, block)
+                    .map_err(CancelableError::from)
+            })
+        })
+        .await
+        .map_err(Error::from)
     }
 
     fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error> {

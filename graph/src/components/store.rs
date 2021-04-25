@@ -1234,7 +1234,7 @@ pub trait ChainStore: Send + Sync + 'static {
     fn genesis_block_ptr(&self) -> Result<BlockPtr, Error>;
 
     /// Insert a block into the store (or update if they are already present).
-    fn upsert_block(&self, block: EthereumBlock) -> Result<(), Error>;
+    async fn upsert_block(&self, block: EthereumBlock) -> Result<(), Error>;
 
     fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error>;
 
