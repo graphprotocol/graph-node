@@ -15,7 +15,7 @@ use std::{convert::TryInto, iter::FromIterator};
 
 use graph::prelude::{
     web3::types::H256, BlockNumber, BlockPtr, Error, EthereumBlock, EthereumNetworkIdentifier,
-    Future, LightEthereumBlock, Stream,
+    LightEthereumBlock,
 };
 
 use crate::{
@@ -607,7 +607,7 @@ mod data {
             first_block: i64,
             hash: H256,
             genesis: H256,
-        ) -> Result<Vec<H256>, Error> {
+        ) -> Result<Option<H256>, Error> {
             match self {
                 Storage::Shared => {
                     // We recursively build a temp table 'chain' containing the hash and
@@ -650,11 +650,14 @@ mod data {
                         .bind::<BigInt, _>(first_block)
                         .load::<BlockHashText>(conn)?;
 
-                    missing
-                        .into_iter()
-                        .map(|parent| parent.hash.parse())
-                        .collect::<Result<_, _>>()
-                        .map_err(Error::from)
+                    let missing = match missing.len() {
+                        0 => None,
+                        1 => Some(missing[0].hash.parse()?),
+                        _ => {
+                            unreachable!("the query can only return no or one row");
+                        }
+                    };
+                    Ok(missing)
                 }
                 Storage::Private(Schema { blocks, .. }) => {
                     // This is the same as `MISSING_PARENT_SQL` above except that
@@ -692,11 +695,14 @@ mod data {
                         .bind::<BigInt, _>(first_block)
                         .load::<BlockHashBytea>(conn)?;
 
-                    missing
-                        .into_iter()
-                        .map(|parent| h256_from_bytes(&parent.hash))
-                        .collect::<Result<_, _>>()
-                        .map_err(Error::from)
+                    let missing = match missing.len() {
+                        0 => None,
+                        1 => Some(h256_from_bytes(&missing[0].hash)?),
+                        _ => {
+                            unreachable!("the query can only return no or one row")
+                        }
+                    };
+                    Ok(missing)
                 }
             }
         }
@@ -1159,23 +1165,12 @@ impl ChainStoreTrait for ChainStore {
         Ok(self.genesis_block_ptr.clone())
     }
 
-    fn upsert_blocks<B, E>(
-        &self,
-        blocks: B,
-    ) -> Box<dyn Future<Item = (), Error = E> + Send + 'static>
-    where
-        B: Stream<Item = EthereumBlock, Error = E> + Send + 'static,
-        E: From<Error> + Send + 'static,
-    {
+    fn upsert_block(&self, block: EthereumBlock) -> Result<(), Error> {
         let conn = self.conn.clone();
         let network = self.chain.clone();
         let storage = self.storage.clone();
-        Box::new(blocks.for_each(move |block| {
-            let conn = conn.get().map_err(Error::from)?;
-            storage
-                .upsert_block(&conn, &network, block)
-                .map_err(E::from)
-        }))
+        let conn = conn.get().map_err(Error::from)?;
+        storage.upsert_block(&conn, &network, block)
     }
 
     fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error> {
@@ -1186,27 +1181,32 @@ impl ChainStoreTrait for ChainStore {
         Ok(())
     }
 
-    fn attempt_chain_head_update(&self, ancestor_count: BlockNumber) -> Result<Vec<H256>, Error> {
+    fn attempt_chain_head_update(
+        &self,
+        ancestor_count: BlockNumber,
+    ) -> Result<Option<H256>, Error> {
         use public::ethereum_networks as n;
 
         let (missing, ptr) = {
             let conn = self.get_conn()?;
-            conn.transaction(|| -> Result<(Vec<H256>, Option<(String, i64)>), Error> {
+            conn.transaction(|| -> Result<(Option<H256>, Option<(String, i64)>), Error> {
                 let candidate = self.storage.chain_head_candidate(&conn, &self.chain)?;
                 let (ptr, first_block) = match &candidate {
-                    None => return Ok((vec![], None)),
+                    None => return Ok((None, None)),
                     Some(ptr) => (ptr, 0.max(ptr.number.saturating_sub(ancestor_count))),
                 };
 
-                let missing = self.storage.missing_parents(
+                match self.storage.missing_parents(
                     &conn,
                     &self.chain,
                     first_block as i64,
                     ptr.hash_as_h256(),
                     self.genesis_block_ptr.hash_as_h256(),
-                )?;
-                if !missing.is_empty() {
-                    return Ok((missing, None));
+                )? {
+                    Some(missing) => {
+                        return Ok((Some(missing), None));
+                    }
+                    None => { /* we have a complete chain, no missing parents */ }
                 }
 
                 let hash = ptr.hash_hex();
@@ -1217,7 +1217,7 @@ impl ChainStoreTrait for ChainStore {
                         n::head_block_number.eq(number),
                     ))
                     .execute(&conn)?;
-                Ok((missing, Some((hash, number))))
+                Ok((None, Some((hash, number))))
             })
         }?;
         if let Some((hash, number)) = ptr {

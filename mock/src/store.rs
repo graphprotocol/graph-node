@@ -19,15 +19,11 @@ mock! {
     trait ChainStore: Send + Sync + 'static {
         fn genesis_block_ptr(&self) -> Result<BlockPtr, Error>;
 
-        fn upsert_blocks<B, E>(&self, blocks: B) -> Box<dyn Future<Item = (), Error = E> + Send + 'static>
-        where
-            B: Stream<Item = EthereumBlock, Error = E> + Send + 'static,
-            E: From<Error> + Send + 'static,
-            Self: Sized;
+        fn upsert_block(&self, block: EthereumBlock) -> Result<(), Error>;
 
         fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error>;
 
-        fn attempt_chain_head_update(&self, ancestor_count: BlockNumber) -> Result<Vec<H256>, Error>;
+        fn attempt_chain_head_update(&self, ancestor_count: BlockNumber) -> Result<Option<H256>, Error>;
 
         fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 

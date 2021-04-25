@@ -2,10 +2,9 @@ use lazy_static;
 use std::{sync::Arc, time::Duration};
 
 use graph::prelude::{
-    error, info, o, stream, tokio, trace, warn, web3::types::H256, BlockNumber, ChainStore,
+    error, info, o, tokio, trace, warn, web3::types::H256, BlockNumber, ChainStore,
     ComponentLoggerConfig, ElasticComponentLoggerConfig, Error, EthereumAdapter,
-    EthereumAdapterError, EthereumBlock, Future, Future01CompatExt, LogCode, Logger, LoggerFactory,
-    Stream,
+    EthereumAdapterError, EthereumBlock, Future01CompatExt, LogCode, Logger, LoggerFactory,
 };
 
 lazy_static! {
@@ -177,7 +176,7 @@ where
         // Might be a no-op if latest block is one that we have seen.
         // ingest_blocks will return a (potentially incomplete) list of blocks that are
         // missing.
-        let mut missing_block_hashes = self.ingest_blocks(stream::once(Ok(latest_block))).await?;
+        let mut missing_block_hash = self.ingest_block(latest_block).await?;
 
         // Repeatedly fetch missing parent blocks, and ingest them.
         // ingest_blocks will continue to tell us about more missing parent
@@ -197,10 +196,10 @@ where
         //   most block number N, then the missing parents in the next
         //   iteration will have at most block number N-1.
         // - Therefore, the loop will iterate at most ancestor_count times.
-        while !missing_block_hashes.is_empty() {
+        while missing_block_hash.is_some() {
             // Some blocks are missing: load them, ingest them, and repeat.
-            let missing_blocks = self.get_blocks(&missing_block_hashes);
-            missing_block_hashes = self.ingest_blocks(missing_blocks).await?;
+            let missing_block = self.get_block(missing_block_hash.unwrap()).await?;
+            missing_block_hash = self.ingest_block(missing_block).await?;
         }
         Ok(())
     }
@@ -208,13 +207,11 @@ where
     /// Put some blocks into the block store (if they are not there already), and try to update the
     /// head block pointer. If missing blocks prevent such an update, return a Vec with at least
     /// one of the missing blocks' hashes.
-    async fn ingest_blocks<
-        B: Stream<Item = EthereumBlock, Error = EthereumAdapterError> + Send + 'static,
-    >(
+    async fn ingest_block(
         &self,
-        blocks: B,
-    ) -> Result<Vec<H256>, EthereumAdapterError> {
-        self.chain_store.upsert_blocks(blocks).compat().await?;
+        block: EthereumBlock,
+    ) -> Result<Option<H256>, EthereumAdapterError> {
+        self.chain_store.upsert_block(block)?;
 
         self.chain_store
             .attempt_chain_head_update(self.ancestor_count)
@@ -226,26 +223,18 @@ where
 
     /// Requests the specified blocks via web3, returning them in a stream (potentially out of
     /// order).
-    fn get_blocks(
-        &self,
-        block_hashes: &[H256],
-    ) -> Box<dyn Stream<Item = EthereumBlock, Error = EthereumAdapterError> + Send + 'static> {
+    async fn get_block(&self, block_hash: H256) -> Result<EthereumBlock, EthereumAdapterError> {
         let logger = self.logger.clone();
         let eth_adapter = self.eth_adapter.clone();
 
-        let block_futures = block_hashes.iter().map(move |&block_hash| {
-            let logger = logger.clone();
-            let eth_adapter = eth_adapter.clone();
+        let logger = logger.clone();
+        let eth_adapter = eth_adapter.clone();
 
-            eth_adapter
-                .block_by_hash(&logger, block_hash)
-                .from_err()
-                .and_then(move |block_opt| {
-                    block_opt.ok_or_else(|| EthereumAdapterError::BlockUnavailable(block_hash))
-                })
-                .and_then(move |block| eth_adapter.load_full_block(&logger, block))
-        });
-
-        Box::new(stream::futures_unordered(block_futures))
+        let block = eth_adapter
+            .block_by_hash(&logger, block_hash)
+            .compat()
+            .await?
+            .ok_or_else(|| EthereumAdapterError::BlockUnavailable(block_hash))?;
+        eth_adapter.load_full_block(&logger, block).compat().await
     }
 }

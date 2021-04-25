@@ -1,5 +1,5 @@
 use futures::stream::poll_fn;
-use futures::{Async, Future, Poll, Stream};
+use futures::{Async, Poll, Stream};
 use graphql_parser::schema as s;
 use lazy_static::lazy_static;
 use mockall::predicate::*;
@@ -1233,18 +1233,8 @@ pub trait ChainStore: Send + Sync + 'static {
     /// Get a pointer to this blockchain's genesis block.
     fn genesis_block_ptr(&self) -> Result<BlockPtr, Error>;
 
-    /// Insert blocks into the store (or update if they are already present).
-    fn upsert_blocks<B, E>(
-        &self,
-        _blocks: B,
-    ) -> Box<dyn Future<Item = (), Error = E> + Send + 'static>
-    where
-        B: Stream<Item = EthereumBlock, Error = E> + Send + 'static,
-        E: From<Error> + Send + 'static,
-        Self: Sized,
-    {
-        unimplemented!()
-    }
+    /// Insert a block into the store (or update if they are already present).
+    fn upsert_block(&self, block: EthereumBlock) -> Result<(), Error>;
 
     fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error>;
 
@@ -1264,7 +1254,8 @@ pub trait ChainStore: Send + Sync + 'static {
     ///
     /// If the candidate new head block had one or more missing ancestors, returns
     /// `Ok(missing_blocks)`, where `missing_blocks` is a nonexhaustive list of missing blocks.
-    fn attempt_chain_head_update(&self, ancestor_count: BlockNumber) -> Result<Vec<H256>, Error>;
+    fn attempt_chain_head_update(&self, ancestor_count: BlockNumber)
+        -> Result<Option<H256>, Error>;
 
     /// Get the current head block pointer for this chain.
     /// Any changes to the head block pointer will be to a block with a larger block number, never
