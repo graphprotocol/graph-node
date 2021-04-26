@@ -4,7 +4,7 @@ use std::{sync::Arc, time::Duration};
 use graph::{
     blockchain::{Blockchain, IngestorAdapter},
     prelude::{
-        info, o, tokio, trace, warn, BlockNumber, ChainStore, ComponentLoggerConfig,
+        info, o, tokio, trace, warn, BlockNumber, ComponentLoggerConfig,
         ElasticComponentLoggerConfig, Error, EthereumAdapterError, LogCode, Logger, LoggerFactory,
     },
 };
@@ -18,12 +18,10 @@ lazy_static! {
         .unwrap_or(false);
 }
 
-pub struct BlockIngestor<S, C>
+pub struct BlockIngestor<C>
 where
-    S: ChainStore,
     C: Blockchain,
 {
-    chain_store: Arc<S>,
     adapter: Arc<C::IngestorAdapter>,
     ancestor_count: BlockNumber,
     _network_name: String,
@@ -31,20 +29,18 @@ where
     polling_interval: Duration,
 }
 
-impl<S, C> BlockIngestor<S, C>
+impl<C> BlockIngestor<C>
 where
-    S: ChainStore,
     C: Blockchain,
 {
     pub fn new(
         chain: &C,
-        chain_store: Arc<S>,
         provider: String,
         ancestor_count: BlockNumber,
         network_name: String,
         logger_factory: &LoggerFactory,
         polling_interval: Duration,
-    ) -> Result<BlockIngestor<S, C>, Error> {
+    ) -> Result<BlockIngestor<C>, Error> {
         let logger = logger_factory.component_logger(
             "BlockIngestor",
             Some(ComponentLoggerConfig {
@@ -59,7 +55,6 @@ where
         let adapter = chain.ingestor_adapter();
 
         Ok(BlockIngestor {
-            chain_store,
             adapter,
             ancestor_count,
             _network_name: network_name,
@@ -97,8 +92,8 @@ where
     }
 
     fn cleanup_cached_blocks(&self) {
-        match self.chain_store.cleanup_cached_blocks(self.ancestor_count) {
-            Ok((min_block, count)) => {
+        match self.adapter.cleanup_cached_blocks() {
+            Ok(Some((min_block, count))) => {
                 if count > 0 {
                     info!(
                         self.logger,
@@ -109,6 +104,7 @@ where
                     );
                 }
             }
+            Ok(None) => { /* nothing was cleaned, ignore */ }
             Err(e) => warn!(
                 self.logger,
                 "Failed to clean blocks from block cache: {}", e
@@ -120,7 +116,7 @@ where
         trace!(self.logger, "BlockIngestor::do_poll");
 
         // Get chain head ptr from store
-        let head_block_ptr_opt = self.chain_store.chain_head_ptr()?;
+        let head_block_ptr_opt = self.adapter.chain_head_ptr()?;
 
         // To check if there is a new block or not, fetch only the block header since that's cheaper
         // than the full block. This is worthwhile because most of the time there won't be a new

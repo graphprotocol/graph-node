@@ -1295,7 +1295,7 @@ impl ChainStoreTrait for ChainStore {
     fn cleanup_cached_blocks(
         &self,
         ancestor_count: BlockNumber,
-    ) -> Result<(BlockNumber, usize), Error> {
+    ) -> Result<Option<(BlockNumber, usize)>, Error> {
         use diesel::sql_types::Integer;
 
         #[derive(QueryableByName)]
@@ -1351,12 +1351,12 @@ impl ChainStoreTrait for ChainStore {
                 if *block > 0 {
                     self.storage
                         .delete_blocks_before(&conn, &self.chain, *block as i64)
-                        .map(|rows| (*block, rows))
+                        .map(|rows| Some((*block, rows)))
                 } else {
-                    Ok((0, 0))
+                    Ok(None)
                 }
             })
-            .unwrap_or(Ok((0, 0)))
+            .unwrap_or(Ok(None))
             .map_err(|e| e.into())
     }
 

@@ -1861,7 +1861,7 @@ fn cleanup_cached_blocks() {
         let cleaned = chain_store
             .cleanup_cached_blocks(10)
             .expect("cleanup succeeds");
-        assert_eq!((2, 1), cleaned);
+        assert_eq!(Some((2, 1)), cleaned);
     })
 }
 

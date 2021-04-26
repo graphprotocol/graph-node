@@ -109,12 +109,25 @@ pub trait IngestorAdapter<C: Blockchain> {
     /// Get the latest block from the chain
     async fn latest_block(&self) -> Result<BlockPtr, EthereumAdapterError>;
 
-    /// Retrieve all necessary data for `block` from the chain and store it
-    /// in the `ChainStore`
+    /// Retrieve all necessary data for the block  `hash` from the chain and
+    /// store it in the database
     async fn ingest_block(
         &self,
         hash: &BlockHash,
     ) -> Result<Option<BlockHash>, EthereumAdapterError>;
+
+    /// Return the chain head that is stored locally, and therefore visible
+    /// to the block streams of subgraphs
+    fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
+
+    /// Remove old blocks from the database cache and return a pair
+    /// containing the number of the oldest block retained and the number of
+    /// blocks deleted if anything was removed. This is generally only used
+    /// in small test installations, and can remain a noop without
+    /// influencing correctness.
+    fn cleanup_cached_blocks(&self) -> Result<Option<(i32, usize)>, Error> {
+        Ok(None)
+    }
 }
 
 pub trait TriggerFilter<C: Blockchain>: Default {

@@ -35,7 +35,7 @@ mock! {
             offset: BlockNumber,
         ) -> Result<Option<EthereumBlock>, Error>;
 
-        fn cleanup_cached_blocks(&self, ancestor_count: BlockNumber) -> Result<(BlockNumber, usize), Error>;
+        fn cleanup_cached_blocks(&self, ancestor_count: BlockNumber) -> Result<Option<(BlockNumber, usize)>, Error>;
 
         fn block_hashes_by_block_number(&self, number: BlockNumber) -> Result<Vec<H256>, Error>;
 

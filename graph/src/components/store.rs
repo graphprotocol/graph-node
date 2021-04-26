@@ -1288,7 +1288,7 @@ pub trait ChainStore: Send + Sync + 'static {
     fn cleanup_cached_blocks(
         &self,
         ancestor_count: BlockNumber,
-    ) -> Result<(BlockNumber, usize), Error>;
+    ) -> Result<Option<(BlockNumber, usize)>, Error>;
 
     /// Return the hashes of all blocks with the given number
     fn block_hashes_by_block_number(&self, number: BlockNumber) -> Result<Vec<H256>, Error>;

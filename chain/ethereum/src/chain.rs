@@ -253,4 +253,12 @@ impl IngestorAdapterTrait<Chain> for IngestorAdapter {
                 EthereumAdapterError::Unknown(e)
             })
     }
+
+    fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        self.chain_store.chain_head_ptr()
+    }
+
+    fn cleanup_cached_blocks(&self) -> Result<Option<(i32, usize)>, Error> {
+        self.chain_store.cleanup_cached_blocks(self.ancestor_count)
+    }
 }

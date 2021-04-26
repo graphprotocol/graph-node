@@ -730,11 +730,10 @@ fn start_block_ingestor(
                 }),
             );
 
-            let chain = ethereum::Chain::new(chain_logger, chain_store.clone(), eth_adapter.clone(), *ANCESTOR_COUNT);
+            let chain = ethereum::Chain::new(chain_logger, chain_store, eth_adapter.clone(), *ANCESTOR_COUNT);
 
             let block_ingestor = BlockIngestor::new(
                 &chain,
-                chain_store,
                 eth_adapter.provider().to_string(),
                 *ANCESTOR_COUNT,
                 network_name.to_string(),
