@@ -10,6 +10,7 @@ use std::{collections::HashMap, env};
 use structopt::StructOpt;
 use tokio::sync::mpsc;
 
+use graph::blockchain::block_ingestor::BlockIngestor;
 use graph::components::{
     ethereum::{EthereumNetworks, NodeCapabilities},
     store::BlockStore,
@@ -19,9 +20,7 @@ use graph::log::logger;
 use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
 use graph::util::security::SafeDisplay;
 use graph_chain_arweave::adapter::ArweaveAdapter;
-use graph_chain_ethereum::{
-    self as ethereum, network_indexer, BlockIngestor, BlockStreamBuilder, Transport,
-};
+use graph_chain_ethereum::{self as ethereum, network_indexer, BlockStreamBuilder, Transport};
 use graph_core::{
     three_box::ThreeBoxAdapter, LinkResolver, MetricsRegistry,
     SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,

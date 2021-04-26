@@ -2,6 +2,7 @@
 //! blockchain into Graph Node. A blockchain is represented by an implementation of the `Blockchain`
 //! trait which is the centerpiece of this module.
 
+pub mod block_ingestor;
 pub mod block_stream;
 
 // Try to reexport most of the necessary types

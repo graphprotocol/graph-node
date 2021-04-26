@@ -1,11 +1,11 @@
 use graph::{
+    blockchain::block_ingestor::CLEANUP_BLOCKS,
     components::ethereum::NodeCapabilities,
     prelude::{
         anyhow::{anyhow, bail, Context, Result},
         info, serde_json, Logger, NodeId,
     },
 };
-use graph_chain_ethereum::CLEANUP_BLOCKS;
 use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
 use regex::Regex;

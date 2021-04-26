@@ -1,10 +1,9 @@
-use lazy_static;
 use std::{sync::Arc, time::Duration};
 
-use graph::{
+use crate::{
     blockchain::{Blockchain, IngestorAdapter, IngestorError},
     prelude::{
-        info, o, tokio, trace, warn, BlockNumber, ComponentLoggerConfig,
+        info, lazy_static, o, tokio, trace, warn, BlockNumber, ComponentLoggerConfig,
         ElasticComponentLoggerConfig, Error, LogCode, Logger, LoggerFactory,
     },
 };
