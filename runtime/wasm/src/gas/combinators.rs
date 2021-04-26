@@ -17,9 +17,11 @@ pub mod complexity {
 
     // There is only one arg and it scales linearly with it's size
     pub struct Size;
+
     // Complexity is captured by the lesser complexity of the two args
     // Eg: O(min(N₁, N₂))
     pub struct Min;
+
     // Complexity is captured by the greater complexity of the two args
     // Eg: O(max(N₁, N₂))
     pub struct Max;

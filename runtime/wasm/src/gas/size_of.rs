@@ -53,8 +53,10 @@ where
 
 impl GasSizeOf for BigInt {
     fn gas_size_of(&self) -> Gas {
-        let gas: Gas = (self.bits() / 8).saturating_into();
-        gas + Gas(100)
+        // Add one to always have an upper bound on the number of bytes required to represent the
+        // number, and so that `0` has a size of 1.
+        let n_bytes = self.bits() / 8 + 1;
+        n_bytes.saturating_into()
     }
 }
 
@@ -66,11 +68,8 @@ impl GasSizeOf for Entity {
 
 impl GasSizeOf for BigDecimal {
     fn gas_size_of(&self) -> Gas {
-        // This can be overly pessimistic
-        let gas: Gas = ((self.digits() as f64 * std::f64::consts::LOG2_10) / 8.0)
-            .ceil()
-            .saturating_into();
-        gas + Gas(1000)
+        let (int, _) = self.as_bigint_and_exponent();
+        BigInt::from(int).gas_size_of()
     }
 }
 

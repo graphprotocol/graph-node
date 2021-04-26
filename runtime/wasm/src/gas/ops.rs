@@ -39,7 +39,7 @@ impl MulAssign<u64> for Gas {
 impl AddAssign for Gas {
     #[inline]
     fn add_assign(&mut self, rhs: Gas) {
-        self.0 = self.0.saturating_mul(rhs.0);
+        self.0 = self.0.saturating_add(rhs.0);
     }
 }
 
