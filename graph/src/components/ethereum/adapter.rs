@@ -14,8 +14,11 @@ use tiny_keccak::keccak256;
 use web3::types::{Address, Block, Log, H2048, H256};
 
 use super::types::*;
-use crate::components::metrics::{labels, CounterVec, GaugeVec, HistogramVec};
 use crate::prelude::*;
+use crate::{
+    blockchain::EthereumAdapterError,
+    components::metrics::{labels, CounterVec, GaugeVec, HistogramVec},
+};
 
 pub type EventSignature = H256;
 
@@ -72,24 +75,6 @@ pub enum EthereumContractCallError {
 impl From<ABIError> for EthereumContractCallError {
     fn from(e: ABIError) -> Self {
         EthereumContractCallError::ABIError(e)
-    }
-}
-
-#[derive(Error, Debug)]
-pub enum EthereumAdapterError {
-    /// The Ethereum node does not know about this block for some reason, probably because it
-    /// disappeared in a chain reorg.
-    #[error("Block data unavailable, block was likely uncled (block hash = {0:?})")]
-    BlockUnavailable(H256),
-
-    /// An unexpected error occurred.
-    #[error("Ethereum adapter error: {0}")]
-    Unknown(Error),
-}
-
-impl From<Error> for EthereumAdapterError {
-    fn from(e: Error) -> Self {
-        EthereumAdapterError::Unknown(e)
     }
 }
 

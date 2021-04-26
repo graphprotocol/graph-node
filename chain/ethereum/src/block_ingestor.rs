@@ -2,10 +2,10 @@ use lazy_static;
 use std::{sync::Arc, time::Duration};
 
 use graph::{
-    blockchain::{Blockchain, IngestorAdapter},
+    blockchain::{Blockchain, EthereumAdapterError, IngestorAdapter},
     prelude::{
         info, o, tokio, trace, warn, BlockNumber, ComponentLoggerConfig,
-        ElasticComponentLoggerConfig, Error, EthereumAdapterError, LogCode, Logger, LoggerFactory,
+        ElasticComponentLoggerConfig, Error, LogCode, Logger, LoggerFactory,
     },
 };
 

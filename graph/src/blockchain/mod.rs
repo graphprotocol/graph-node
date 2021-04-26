@@ -5,11 +5,8 @@
 pub mod block_stream;
 
 // Try to reexport most of the necessary types
+use crate::prelude::{thiserror::Error, BlockPtr, CheapClone, DeploymentHash, LinkResolver};
 use crate::runtime::AscType;
-use crate::{
-    components::ethereum::EthereumAdapterError,
-    prelude::{BlockPtr, CheapClone, DeploymentHash, LinkResolver},
-};
 use anyhow::Error;
 use async_trait::async_trait;
 use slog;
@@ -102,6 +99,24 @@ pub trait Blockchain: Sized + Send + Sync + 'static {
     ) -> Result<Self::BlockStream, Error>;
 
     fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter>;
+}
+
+#[derive(Error, Debug)]
+pub enum EthereumAdapterError {
+    /// The Ethereum node does not know about this block for some reason, probably because it
+    /// disappeared in a chain reorg.
+    #[error("Block data unavailable, block was likely uncled (block hash = {0:?})")]
+    BlockUnavailable(H256),
+
+    /// An unexpected error occurred.
+    #[error("Ethereum adapter error: {0}")]
+    Unknown(Error),
+}
+
+impl From<Error> for EthereumAdapterError {
+    fn from(e: Error) -> Self {
+        EthereumAdapterError::Unknown(e)
+    }
 }
 
 #[async_trait]

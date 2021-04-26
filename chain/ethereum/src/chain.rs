@@ -6,13 +6,12 @@ use graph::{
         block_stream::{
             BlockStream, BlockStreamEvent, BlockWithTriggers, ScanTriggersError, TriggersAdapter,
         },
-        Block, BlockHash, Blockchain, DataSource, IngestorAdapter as IngestorAdapterTrait,
-        Manifest, TriggerFilter,
+        Block, BlockHash, Blockchain, DataSource, EthereumAdapterError,
+        IngestorAdapter as IngestorAdapterTrait, Manifest, TriggerFilter,
     },
     prelude::{
         async_trait, error, serde_yaml, web3::types::H256, BlockNumber, BlockPtr, ChainStore,
-        DeploymentHash, EthereumAdapter, EthereumAdapterError, Future01CompatExt, LinkResolver,
-        Logger,
+        DeploymentHash, EthereumAdapter, Future01CompatExt, LinkResolver, Logger,
     },
     runtime::{AscType, DeterministicHostError},
     tokio_stream::Stream,

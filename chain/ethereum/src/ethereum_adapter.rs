@@ -8,19 +8,22 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use ethabi::ParamType;
-use graph::prelude::{
-    anyhow, async_trait, debug, error, ethabi,
-    futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
-    hex, retry, stream, tiny_keccak, trace, warn,
-    web3::{
-        self,
-        types::{
-            Address, Block, BlockId, BlockNumber as Web3BlockNumber, Bytes, CallRequest,
-            FilterBuilder, Log, H256,
+use graph::{
+    blockchain::EthereumAdapterError,
+    prelude::{
+        anyhow, async_trait, debug, error, ethabi,
+        futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
+        hex, retry, stream, tiny_keccak, trace, warn,
+        web3::{
+            self,
+            types::{
+                Address, Block, BlockId, BlockNumber as Web3BlockNumber, Bytes, CallRequest,
+                FilterBuilder, Log, H256,
+            },
         },
+        BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger,
+        TimeoutError,
     },
-    BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger,
-    TimeoutError,
 };
 use graph::{
     components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *},
