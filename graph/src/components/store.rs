@@ -1254,8 +1254,10 @@ pub trait ChainStore: Send + Sync + 'static {
     ///
     /// If the candidate new head block had one or more missing ancestors, returns
     /// `Ok(missing_blocks)`, where `missing_blocks` is a nonexhaustive list of missing blocks.
-    fn attempt_chain_head_update(&self, ancestor_count: BlockNumber)
-        -> Result<Option<H256>, Error>;
+    async fn attempt_chain_head_update(
+        self: Arc<Self>,
+        ancestor_count: BlockNumber,
+    ) -> Result<Option<H256>, Error>;
 
     /// Get the current head block pointer for this chain.
     /// Any changes to the head block pointer will be to a block with a larger block number, never

@@ -23,7 +23,7 @@ mock! {
 
         fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error>;
 
-        fn attempt_chain_head_update(&self, ancestor_count: BlockNumber) -> Result<Option<H256>, Error>;
+        async fn attempt_chain_head_update(self: Arc<Self>, ancestor_count: BlockNumber) -> Result<Option<H256>, Error>;
 
         fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 

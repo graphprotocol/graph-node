@@ -214,7 +214,9 @@ where
         self.chain_store.upsert_block(block).await?;
 
         self.chain_store
+            .clone()
             .attempt_chain_head_update(self.ancestor_count)
+            .await
             .map_err(|e| {
                 error!(self.logger, "failed to update chain head");
                 EthereumAdapterError::Unknown(e)

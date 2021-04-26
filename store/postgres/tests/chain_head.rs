@@ -73,9 +73,11 @@ fn check_chain_head_update(
     head_exp: Option<&'static FakeBlock>,
     missing: Option<&'static str>,
 ) {
-    run_test(chain, move |store, _| {
+    run_test_async(chain, move |store, _| async move {
         let missing_act: Vec<_> = store
+            .clone()
             .attempt_chain_head_update(ANCESTOR_COUNT)
+            .await
             .expect("attempt_chain_head_update failed")
             .iter()
             .map(|h| format!("{:x}", h))
@@ -89,7 +91,6 @@ fn check_chain_head_update(
             .expect("chain_head_ptr failed")
             .map(|ebp| ebp.hash_hex());
         assert_eq!(head_hash_exp, head_hash_act);
-        Ok(())
     })
 }
 

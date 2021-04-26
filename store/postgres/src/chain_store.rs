@@ -13,7 +13,7 @@ use diesel::sql_types::Text;
 use diesel::{insert_into, update};
 
 use graph::ensure;
-use std::{collections::HashMap, convert::TryFrom};
+use std::{collections::HashMap, convert::TryFrom, sync::Arc};
 use std::{convert::TryInto, iter::FromIterator};
 
 use graph::prelude::{
@@ -1191,45 +1191,60 @@ impl ChainStoreTrait for ChainStore {
         Ok(())
     }
 
-    fn attempt_chain_head_update(
-        &self,
+    async fn attempt_chain_head_update(
+        self: Arc<Self>,
         ancestor_count: BlockNumber,
     ) -> Result<Option<H256>, Error> {
         use public::ethereum_networks as n;
 
         let (missing, ptr) = {
-            let conn = self.get_conn()?;
-            conn.transaction(|| -> Result<(Option<H256>, Option<(String, i64)>), Error> {
-                let candidate = self.storage.chain_head_candidate(&conn, &self.chain)?;
-                let (ptr, first_block) = match &candidate {
-                    None => return Ok((None, None)),
-                    Some(ptr) => (ptr, 0.max(ptr.number.saturating_sub(ancestor_count))),
-                };
+            let chain_store = self.clone();
+            self.conn
+                .with_conn(move |conn, _| {
+                    let candidate = chain_store
+                        .storage
+                        .chain_head_candidate(&conn, &chain_store.chain)
+                        .map_err(CancelableError::from)?;
+                    let (ptr, first_block) = match &candidate {
+                        None => return Ok((None, None)),
+                        Some(ptr) => (ptr, 0.max(ptr.number.saturating_sub(ancestor_count))),
+                    };
 
-                match self.storage.missing_parents(
-                    &conn,
-                    &self.chain,
-                    first_block as i64,
-                    ptr.hash_as_h256(),
-                    self.genesis_block_ptr.hash_as_h256(),
-                )? {
-                    Some(missing) => {
-                        return Ok((Some(missing), None));
+                    match chain_store
+                        .storage
+                        .missing_parents(
+                            &conn,
+                            &chain_store.chain,
+                            first_block as i64,
+                            ptr.hash_as_h256(),
+                            chain_store.genesis_block_ptr.hash_as_h256(),
+                        )
+                        .map_err(CancelableError::from)?
+                    {
+                        Some(missing) => {
+                            return Ok((Some(missing), None));
+                        }
+                        None => { /* we have a complete chain, no missing parents */ }
                     }
-                    None => { /* we have a complete chain, no missing parents */ }
-                }
 
-                let hash = ptr.hash_hex();
-                let number = ptr.number as i64;
-                update(n::table.filter(n::name.eq(&self.chain)))
-                    .set((
-                        n::head_block_hash.eq(&hash),
-                        n::head_block_number.eq(number),
-                    ))
-                    .execute(&conn)?;
-                Ok((None, Some((hash, number))))
-            })
-        }?;
+                    let hash = ptr.hash_hex();
+                    let number = ptr.number as i64;
+
+                    conn.transaction(
+                        || -> Result<(Option<H256>, Option<(String, i64)>), StoreError> {
+                            update(n::table.filter(n::name.eq(&chain_store.chain)))
+                                .set((
+                                    n::head_block_hash.eq(&hash),
+                                    n::head_block_number.eq(number),
+                                ))
+                                .execute(conn)?;
+                            Ok((None, Some((hash, number))))
+                        },
+                    )
+                    .map_err(CancelableError::from)
+                })
+                .await?
+        };
         if let Some((hash, number)) = ptr {
             self.chain_head_update_sender.send(&hash, number)?;
         }
