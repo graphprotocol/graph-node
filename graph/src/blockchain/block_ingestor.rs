@@ -23,7 +23,6 @@ where
 {
     adapter: Arc<C::IngestorAdapter>,
     ancestor_count: BlockNumber,
-    _network_name: String,
     logger: Logger,
     polling_interval: Duration,
 }
@@ -36,7 +35,6 @@ where
         adapter: Arc<C::IngestorAdapter>,
         provider: String,
         ancestor_count: BlockNumber,
-        network_name: String,
         logger_factory: &LoggerFactory,
         polling_interval: Duration,
     ) -> Result<BlockIngestor<C>, Error> {
@@ -54,7 +52,6 @@ where
         Ok(BlockIngestor {
             adapter,
             ancestor_count,
-            _network_name: network_name,
             logger,
             polling_interval,
         })

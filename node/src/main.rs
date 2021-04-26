@@ -736,7 +736,6 @@ fn start_block_ingestor(
                 chain.ingestor_adapter(),
                 eth_adapter.provider().to_string(),
                 *ANCESTOR_COUNT,
-                network_name.to_string(),
                 logger_factory,
                 block_polling_interval,
             )
