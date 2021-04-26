@@ -102,34 +102,31 @@ pub trait Blockchain: Sized + Send + Sync + 'static {
 }
 
 #[derive(Error, Debug)]
-pub enum EthereumAdapterError {
+pub enum IngestorError {
     /// The Ethereum node does not know about this block for some reason, probably because it
     /// disappeared in a chain reorg.
     #[error("Block data unavailable, block was likely uncled (block hash = {0:?})")]
     BlockUnavailable(H256),
 
     /// An unexpected error occurred.
-    #[error("Ethereum adapter error: {0}")]
+    #[error("Ingestor error: {0}")]
     Unknown(Error),
 }
 
-impl From<Error> for EthereumAdapterError {
+impl From<Error> for IngestorError {
     fn from(e: Error) -> Self {
-        EthereumAdapterError::Unknown(e)
+        IngestorError::Unknown(e)
     }
 }
 
 #[async_trait]
 pub trait IngestorAdapter<C: Blockchain> {
     /// Get the latest block from the chain
-    async fn latest_block(&self) -> Result<BlockPtr, EthereumAdapterError>;
+    async fn latest_block(&self) -> Result<BlockPtr, IngestorError>;
 
     /// Retrieve all necessary data for the block  `hash` from the chain and
     /// store it in the database
-    async fn ingest_block(
-        &self,
-        hash: &BlockHash,
-    ) -> Result<Option<BlockHash>, EthereumAdapterError>;
+    async fn ingest_block(&self, hash: &BlockHash) -> Result<Option<BlockHash>, IngestorError>;
 
     /// Return the chain head that is stored locally, and therefore visible
     /// to the block streams of subgraphs

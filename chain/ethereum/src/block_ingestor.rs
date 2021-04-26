@@ -2,7 +2,7 @@ use lazy_static;
 use std::{sync::Arc, time::Duration};
 
 use graph::{
-    blockchain::{Blockchain, EthereumAdapterError, IngestorAdapter},
+    blockchain::{Blockchain, IngestorAdapter, IngestorError},
     prelude::{
         info, o, tokio, trace, warn, BlockNumber, ComponentLoggerConfig,
         ElasticComponentLoggerConfig, Error, LogCode, Logger, LoggerFactory,
@@ -67,14 +67,14 @@ where
         loop {
             match self.do_poll().await {
                 // Some polls will fail due to transient issues
-                Err(err @ EthereumAdapterError::BlockUnavailable(_)) => {
+                Err(err @ IngestorError::BlockUnavailable(_)) => {
                     trace!(
                         self.logger,
                         "Trying again after block polling failed: {}",
                         err
                     );
                 }
-                Err(EthereumAdapterError::Unknown(inner_err)) => {
+                Err(IngestorError::Unknown(inner_err)) => {
                     warn!(
                         self.logger,
                         "Trying again after block polling failed: {}", inner_err
@@ -112,7 +112,7 @@ where
         }
     }
 
-    async fn do_poll(&self) -> Result<(), EthereumAdapterError> {
+    async fn do_poll(&self) -> Result<(), IngestorError> {
         trace!(self.logger, "BlockIngestor::do_poll");
 
         // Get chain head ptr from store

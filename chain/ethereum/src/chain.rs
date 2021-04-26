@@ -6,8 +6,8 @@ use graph::{
         block_stream::{
             BlockStream, BlockStreamEvent, BlockWithTriggers, ScanTriggersError, TriggersAdapter,
         },
-        Block, BlockHash, Blockchain, DataSource, EthereumAdapterError,
-        IngestorAdapter as IngestorAdapterTrait, Manifest, TriggerFilter,
+        Block, BlockHash, Blockchain, DataSource, IngestorAdapter as IngestorAdapterTrait,
+        IngestorError, Manifest, TriggerFilter,
     },
     prelude::{
         async_trait, error, serde_yaml, web3::types::H256, BlockNumber, BlockPtr, ChainStore,
@@ -211,7 +211,7 @@ pub struct IngestorAdapter {
 
 #[async_trait]
 impl IngestorAdapterTrait<Chain> for IngestorAdapter {
-    async fn latest_block(&self) -> Result<BlockPtr, EthereumAdapterError> {
+    async fn latest_block(&self) -> Result<BlockPtr, IngestorError> {
         self.eth_adapter
             .latest_block_header(&self.logger)
             .compat()
@@ -222,7 +222,7 @@ impl IngestorAdapterTrait<Chain> for IngestorAdapter {
     async fn ingest_block(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<BlockHash>, EthereumAdapterError> {
+    ) -> Result<Option<BlockHash>, IngestorError> {
         // TODO: H256::from_slice can panic
         let block_hash = H256::from_slice(block_hash.as_slice());
 
@@ -232,7 +232,7 @@ impl IngestorAdapterTrait<Chain> for IngestorAdapter {
             .block_by_hash(&self.logger, block_hash)
             .compat()
             .await?
-            .ok_or_else(|| EthereumAdapterError::BlockUnavailable(block_hash))?;
+            .ok_or_else(|| IngestorError::BlockUnavailable(block_hash))?;
         let block = self
             .eth_adapter
             .load_full_block(&self.logger, block)
@@ -249,7 +249,7 @@ impl IngestorAdapterTrait<Chain> for IngestorAdapter {
             .map(|missing| missing.map(|h256| h256.into()))
             .map_err(|e| {
                 error!(self.logger, "failed to update chain head");
-                EthereumAdapterError::Unknown(e)
+                IngestorError::Unknown(e)
             })
     }
 

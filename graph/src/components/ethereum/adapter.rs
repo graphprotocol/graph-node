@@ -16,7 +16,7 @@ use web3::types::{Address, Block, Log, H2048, H256};
 use super::types::*;
 use crate::prelude::*;
 use crate::{
-    blockchain::EthereumAdapterError,
+    blockchain::IngestorError,
     components::metrics::{labels, CounterVec, GaugeVec, HistogramVec},
 };
 
@@ -595,13 +595,13 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn latest_block(
         &self,
         logger: &Logger,
-    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = EthereumAdapterError> + Send + Unpin>;
+    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = IngestorError> + Send + Unpin>;
 
     /// Get the latest block, with only the header and transaction hashes.
     fn latest_block_header(
         &self,
         logger: &Logger,
-    ) -> Box<dyn Future<Item = web3::types::Block<H256>, Error = EthereumAdapterError> + Send>;
+    ) -> Box<dyn Future<Item = web3::types::Block<H256>, Error = IngestorError> + Send>;
 
     fn load_block(
         &self,
@@ -644,7 +644,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         logger: &Logger,
         block: LightEthereumBlock,
-    ) -> Box<dyn Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send>;
+    ) -> Box<dyn Future<Item = EthereumBlock, Error = IngestorError> + Send>;
 
     /// Load block pointer for the specified `block number`.
     fn block_pointer_from_number(
@@ -652,7 +652,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
         chain_store: Arc<dyn ChainStore>,
         block_number: BlockNumber,
-    ) -> Box<dyn Future<Item = BlockPtr, Error = EthereumAdapterError> + Send>;
+    ) -> Box<dyn Future<Item = BlockPtr, Error = IngestorError> + Send>;
 
     /// Find a block by its number. The `block_is_final` flag indicates whether
     /// it is ok to remove blocks in the block cache with that number but with

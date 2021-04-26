@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use ethabi::ParamType;
 use graph::{
-    blockchain::EthereumAdapterError,
+    blockchain::IngestorError,
     prelude::{
         anyhow, async_trait, debug, error, ethabi,
         futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
@@ -688,7 +688,7 @@ where
     fn latest_block_header(
         &self,
         logger: &Logger,
-    ) -> Box<dyn Future<Item = web3::types::Block<H256>, Error = EthereumAdapterError> + Send> {
+    ) -> Box<dyn Future<Item = web3::types::Block<H256>, Error = IngestorError> + Send> {
         let web3 = self.web3.clone();
 
         Box::new(
@@ -717,8 +717,7 @@ where
     fn latest_block(
         &self,
         logger: &Logger,
-    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = EthereumAdapterError> + Send + Unpin>
-    {
+    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = IngestorError> + Send + Unpin> {
         let web3 = self.web3.clone();
 
         Box::new(
@@ -819,7 +818,7 @@ where
         &self,
         logger: &Logger,
         block: LightEthereumBlock,
-    ) -> Box<dyn Future<Item = EthereumBlock, Error = EthereumAdapterError> + Send> {
+    ) -> Box<dyn Future<Item = EthereumBlock, Error = IngestorError> + Send> {
         let logger = logger.clone();
         let block_hash = block.hash.expect("block is missing block hash");
 
@@ -857,7 +856,7 @@ where
                                 .eth()
                                 .transaction_receipt(tx_hash)
                                 .from_err()
-                                .map_err(EthereumAdapterError::Unknown)
+                                .map_err(IngestorError::Unknown)
                                 .and_then(move |receipt_opt| {
                                     receipt_opt.ok_or_else(move || {
                                         // No receipt was returned.
@@ -871,7 +870,7 @@ where
                                         // This could also be because the receipt is simply not
                                         // available yet.  For that case, we should retry until
                                         // it becomes available.
-                                        EthereumAdapterError::BlockUnavailable(block_hash)
+                                        IngestorError::BlockUnavailable(block_hash)
                                     })
                                 })
                                 .and_then(move |receipt| {
@@ -881,7 +880,7 @@ where
                                     // entirely.
                                     let receipt_block_hash =
                                         receipt.block_hash.ok_or_else(|| {
-                                            EthereumAdapterError::BlockUnavailable(block_hash)
+                                            IngestorError::BlockUnavailable(block_hash)
                                         })?;
 
                                     // Check if receipt is for the right block
@@ -901,7 +900,7 @@ where
                                         // except give up trying to ingest this block.
                                         // There is no way to get the transaction receipt from
                                         // this block.
-                                        Err(EthereumAdapterError::BlockUnavailable(block_hash))
+                                        Err(IngestorError::BlockUnavailable(block_hash))
                                     } else {
                                         Ok(receipt)
                                     }
@@ -913,7 +912,7 @@ where
                         .transport()
                         .submit_batch()
                         .from_err()
-                        .map_err(EthereumAdapterError::Unknown)
+                        .map_err(IngestorError::Unknown)
                         .and_then(move |_| {
                             stream::futures_ordered(receipt_futures).collect().map(
                                 move |transaction_receipts| EthereumBlock {
@@ -940,7 +939,7 @@ where
         logger: &Logger,
         chain_store: Arc<dyn ChainStore>,
         block_number: BlockNumber,
-    ) -> Box<dyn Future<Item = BlockPtr, Error = EthereumAdapterError> + Send> {
+    ) -> Box<dyn Future<Item = BlockPtr, Error = IngestorError> + Send> {
         Box::new(
             // When this method is called (from the subgraph registrar), we don't
             // know yet whether the block with the given number is final, it is
