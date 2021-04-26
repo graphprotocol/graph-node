@@ -2,10 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use crate::{
     blockchain::{Blockchain, IngestorAdapter, IngestorError},
-    prelude::{
-        info, lazy_static, o, tokio, trace, warn, BlockNumber, ComponentLoggerConfig,
-        ElasticComponentLoggerConfig, Error, LogCode, Logger, LoggerFactory,
-    },
+    prelude::{info, lazy_static, tokio, trace, warn, BlockNumber, Error, LogCode, Logger},
 };
 
 lazy_static! {
@@ -32,23 +29,11 @@ where
     C: Blockchain,
 {
     pub fn new(
+        logger: Logger,
         adapter: Arc<C::IngestorAdapter>,
-        provider: String,
         ancestor_count: BlockNumber,
-        logger_factory: &LoggerFactory,
         polling_interval: Duration,
     ) -> Result<BlockIngestor<C>, Error> {
-        let logger = logger_factory.component_logger(
-            "BlockIngestor",
-            Some(ComponentLoggerConfig {
-                elastic: Some(ElasticComponentLoggerConfig {
-                    index: String::from("block-ingestor-logs"),
-                }),
-            }),
-        );
-
-        let logger = logger.new(o!("provider" => provider));
-
         Ok(BlockIngestor {
             adapter,
             ancestor_count,

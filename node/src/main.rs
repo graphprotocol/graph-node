@@ -728,15 +728,15 @@ fn start_block_ingestor(
                         index: String::from("block-ingestor-logs"),
                     }),
                 }),
-            );
+            )
+            .new(o!("provider" => eth_adapter.provider().to_string()));
 
-            let chain = ethereum::Chain::new(chain_logger, chain_store, eth_adapter.clone(), *ANCESTOR_COUNT);
+            let chain = ethereum::Chain::new(chain_logger.clone(), chain_store, eth_adapter.clone(), *ANCESTOR_COUNT);
 
             let block_ingestor = BlockIngestor::<ethereum::Chain>::new(
+                chain_logger,
                 chain.ingestor_adapter(),
-                eth_adapter.provider().to_string(),
                 *ANCESTOR_COUNT,
-                logger_factory,
                 block_polling_interval,
             )
             .expect("failed to create Ethereum block ingestor");
