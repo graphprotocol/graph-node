@@ -1061,7 +1061,7 @@ mod data {
 }
 
 pub struct ChainStore {
-    conn: ConnectionPool,
+    pool: ConnectionPool,
     pub chain: String,
     storage: data::Storage,
     genesis_block_ptr: BlockPtr,
@@ -1079,7 +1079,7 @@ impl ChainStore {
         pool: ConnectionPool,
     ) -> Self {
         let store = ChainStore {
-            conn: pool,
+            pool,
             chain,
             storage,
             genesis_block_ptr: (net_identifier.genesis_block_hash, 0 as u64).into(),
@@ -1095,7 +1095,7 @@ impl ChainStore {
     }
 
     fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
-        self.conn.get().map_err(Error::from)
+        self.pool.get().map_err(Error::from)
     }
 
     pub(crate) fn create(&self, ident: &EthereumNetworkIdentifier) -> Result<(), Error> {
@@ -1169,7 +1169,7 @@ impl ChainStoreTrait for ChainStore {
     }
 
     async fn upsert_block(&self, block: EthereumBlock) -> Result<(), Error> {
-        let pool = self.conn.clone();
+        let pool = self.pool.clone();
         let network = self.chain.clone();
         let storage = self.storage.clone();
         pool.with_conn(move |conn, _| {
@@ -1184,7 +1184,7 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error> {
-        let conn = self.conn.get()?;
+        let conn = self.pool.get()?;
         for block in blocks {
             self.storage.upsert_light_block(&conn, &self.chain, block)?;
         }
@@ -1199,7 +1199,7 @@ impl ChainStoreTrait for ChainStore {
 
         let (missing, ptr) = {
             let chain_store = self.clone();
-            self.conn
+            self.pool
                 .with_conn(move |conn, _| {
                     let candidate = chain_store
                         .storage
@@ -1514,7 +1514,7 @@ pub mod test_support {
 #[cfg(debug_assertions)]
 impl test_support::SettableChainStore for ChainStore {
     fn set_chain(&self, genesis_hash: &str, chain: test_support::Chain) {
-        let conn = self.conn.get().expect("can get a database connection");
+        let conn = self.pool.get().expect("can get a database connection");
 
         self.storage
             .set_chain(&conn, &self.chain, genesis_hash, chain);
