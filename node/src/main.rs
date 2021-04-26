@@ -11,6 +11,7 @@ use structopt::StructOpt;
 use tokio::sync::mpsc;
 
 use graph::blockchain::block_ingestor::BlockIngestor;
+use graph::blockchain::Blockchain as _;
 use graph::components::{
     ethereum::{EthereumNetworks, NodeCapabilities},
     store::BlockStore,
@@ -731,8 +732,8 @@ fn start_block_ingestor(
 
             let chain = ethereum::Chain::new(chain_logger, chain_store, eth_adapter.clone(), *ANCESTOR_COUNT);
 
-            let block_ingestor = BlockIngestor::new(
-                &chain,
+            let block_ingestor = BlockIngestor::<ethereum::Chain>::new(
+                chain.ingestor_adapter(),
                 eth_adapter.provider().to_string(),
                 *ANCESTOR_COUNT,
                 network_name.to_string(),

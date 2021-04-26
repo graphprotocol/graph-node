@@ -33,7 +33,7 @@ where
     C: Blockchain,
 {
     pub fn new(
-        chain: &C,
+        adapter: Arc<C::IngestorAdapter>,
         provider: String,
         ancestor_count: BlockNumber,
         network_name: String,
@@ -50,8 +50,6 @@ where
         );
 
         let logger = logger.new(o!("provider" => provider));
-
-        let adapter = chain.ingestor_adapter();
 
         Ok(BlockIngestor {
             adapter,
