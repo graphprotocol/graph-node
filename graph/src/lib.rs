@@ -70,6 +70,7 @@ pub mod prelude {
     pub use reqwest;
     pub use serde_derive::{Deserialize, Serialize};
     pub use serde_json;
+    pub use serde_yaml;
     pub use slog::{self, crit, debug, error, info, o, trace, warn, Logger};
     pub use std::convert::TryFrom;
     pub use std::fmt::Debug;
