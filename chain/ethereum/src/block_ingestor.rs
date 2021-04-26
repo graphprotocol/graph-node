@@ -1,10 +1,12 @@
 use lazy_static;
 use std::{sync::Arc, time::Duration};
 
-use graph::prelude::{
-    error, info, o, tokio, trace, warn, web3::types::H256, BlockNumber, ChainStore,
-    ComponentLoggerConfig, ElasticComponentLoggerConfig, Error, EthereumAdapter,
-    EthereumAdapterError, EthereumBlock, Future01CompatExt, LogCode, Logger, LoggerFactory,
+use graph::{
+    blockchain::{Blockchain, IngestorAdapter},
+    prelude::{
+        info, o, tokio, trace, warn, BlockNumber, ChainStore, ComponentLoggerConfig,
+        ElasticComponentLoggerConfig, Error, EthereumAdapterError, LogCode, Logger, LoggerFactory,
+    },
 };
 
 lazy_static! {
@@ -16,30 +18,33 @@ lazy_static! {
         .unwrap_or(false);
 }
 
-pub struct BlockIngestor<S>
+pub struct BlockIngestor<S, C>
 where
     S: ChainStore,
+    C: Blockchain,
 {
     chain_store: Arc<S>,
-    eth_adapter: Arc<dyn EthereumAdapter>,
+    adapter: Arc<C::IngestorAdapter>,
     ancestor_count: BlockNumber,
     _network_name: String,
     logger: Logger,
     polling_interval: Duration,
 }
 
-impl<S> BlockIngestor<S>
+impl<S, C> BlockIngestor<S, C>
 where
     S: ChainStore,
+    C: Blockchain,
 {
     pub fn new(
+        chain: &C,
         chain_store: Arc<S>,
-        eth_adapter: Arc<dyn EthereumAdapter>,
+        provider: String,
         ancestor_count: BlockNumber,
         network_name: String,
         logger_factory: &LoggerFactory,
         polling_interval: Duration,
-    ) -> Result<BlockIngestor<S>, Error> {
+    ) -> Result<BlockIngestor<S, C>, Error> {
         let logger = logger_factory.component_logger(
             "BlockIngestor",
             Some(ComponentLoggerConfig {
@@ -49,11 +54,13 @@ where
             }),
         );
 
-        let logger = logger.new(o!("provider" => eth_adapter.provider().to_string()));
+        let logger = logger.new(o!("provider" => provider));
+
+        let adapter = chain.ingestor_adapter();
 
         Ok(BlockIngestor {
             chain_store,
-            eth_adapter,
+            adapter,
             ancestor_count,
             _network_name: network_name,
             logger,
@@ -118,19 +125,12 @@ where
         // To check if there is a new block or not, fetch only the block header since that's cheaper
         // than the full block. This is worthwhile because most of the time there won't be a new
         // block, as we expect the poll interval to be much shorter than the block time.
-        let latest_block = self
-            .eth_adapter
-            .latest_block_header(&self.logger)
-            .compat()
-            .await?;
+        let latest_block = self.adapter.latest_block().await?;
 
         // If latest block matches head block in store, nothing needs to be done
-        if Some(latest_block.into()) == head_block_ptr_opt {
+        if Some(&latest_block) == head_block_ptr_opt.as_ref() {
             return Ok(());
         }
-
-        // Ask for latest block again, but now with full transactions
-        let latest_block = self.eth_adapter.latest_block(&self.logger).compat().await?;
 
         // Compare latest block with head ptr, alert user if far behind
         match head_block_ptr_opt {
@@ -142,10 +142,10 @@ where
                 );
             }
             Some(head_block_ptr) => {
-                let latest_number = latest_block.number.unwrap().as_u64() as i64;
-                let head_number = head_block_ptr.number as i64;
+                let latest_number = latest_block.number;
+                let head_number = head_block_ptr.number;
                 let distance = latest_number - head_number;
-                let blocks_needed = (distance).min(self.ancestor_count as i64);
+                let blocks_needed = (distance).min(self.ancestor_count);
                 let code = if distance >= 15 {
                     LogCode::BlockIngestionLagging
                 } else {
@@ -166,17 +166,11 @@ where
             }
         }
 
-        let latest_block = self
-            .eth_adapter
-            .load_full_block(&self.logger, latest_block)
-            .compat()
-            .await?;
-
         // Store latest block in block store.
         // Might be a no-op if latest block is one that we have seen.
         // ingest_blocks will return a (potentially incomplete) list of blocks that are
         // missing.
-        let mut missing_block_hash = self.ingest_block(latest_block).await?;
+        let mut missing_block_hash = self.adapter.ingest_block(&latest_block.hash).await?;
 
         // Repeatedly fetch missing parent blocks, and ingest them.
         // ingest_blocks will continue to tell us about more missing parent
@@ -196,47 +190,9 @@ where
         //   most block number N, then the missing parents in the next
         //   iteration will have at most block number N-1.
         // - Therefore, the loop will iterate at most ancestor_count times.
-        while missing_block_hash.is_some() {
-            // Some blocks are missing: load them, ingest them, and repeat.
-            let missing_block = self.get_block(missing_block_hash.unwrap()).await?;
-            missing_block_hash = self.ingest_block(missing_block).await?;
+        while let Some(hash) = missing_block_hash {
+            missing_block_hash = self.adapter.ingest_block(&hash).await?;
         }
         Ok(())
-    }
-
-    /// Put some blocks into the block store (if they are not there already), and try to update the
-    /// head block pointer. If missing blocks prevent such an update, return a Vec with at least
-    /// one of the missing blocks' hashes.
-    async fn ingest_block(
-        &self,
-        block: EthereumBlock,
-    ) -> Result<Option<H256>, EthereumAdapterError> {
-        self.chain_store.upsert_block(block).await?;
-
-        self.chain_store
-            .clone()
-            .attempt_chain_head_update(self.ancestor_count)
-            .await
-            .map_err(|e| {
-                error!(self.logger, "failed to update chain head");
-                EthereumAdapterError::Unknown(e)
-            })
-    }
-
-    /// Requests the specified blocks via web3, returning them in a stream (potentially out of
-    /// order).
-    async fn get_block(&self, block_hash: H256) -> Result<EthereumBlock, EthereumAdapterError> {
-        let logger = self.logger.clone();
-        let eth_adapter = self.eth_adapter.clone();
-
-        let logger = logger.clone();
-        let eth_adapter = eth_adapter.clone();
-
-        let block = eth_adapter
-            .block_by_hash(&logger, block_hash)
-            .compat()
-            .await?
-            .ok_or_else(|| EthereumAdapterError::BlockUnavailable(block_hash))?;
-        eth_adapter.load_full_block(&logger, block).compat().await
     }
 }

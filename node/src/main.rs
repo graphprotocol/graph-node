@@ -19,7 +19,9 @@ use graph::log::logger;
 use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
 use graph::util::security::SafeDisplay;
 use graph_chain_arweave::adapter::ArweaveAdapter;
-use graph_chain_ethereum::{network_indexer, BlockIngestor, BlockStreamBuilder, Transport};
+use graph_chain_ethereum::{
+    self as ethereum, network_indexer, BlockIngestor, BlockStreamBuilder, Transport,
+};
 use graph_core::{
     three_box::ThreeBoxAdapter, LinkResolver, MetricsRegistry,
     SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
@@ -719,9 +721,21 @@ fn start_block_ingestor(
                 "network_name" => &network_name
             );
             let eth_adapter = eth_adapters.cheapest().unwrap(); //Safe to unwrap since it cannot be empty
+            let chain_logger = logger_factory.component_logger(
+                "BlockIngestor",
+                Some(ComponentLoggerConfig {
+                    elastic: Some(ElasticComponentLoggerConfig {
+                        index: String::from("block-ingestor-logs"),
+                    }),
+                }),
+            );
+
+            let chain = ethereum::Chain::new(chain_logger, chain_store.clone(), eth_adapter.clone(), *ANCESTOR_COUNT);
+
             let block_ingestor = BlockIngestor::new(
+                &chain,
                 chain_store,
-                eth_adapter.clone(),
+                eth_adapter.provider().to_string(),
                 *ANCESTOR_COUNT,
                 network_name.to_string(),
                 logger_factory,

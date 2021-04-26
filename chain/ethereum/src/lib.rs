@@ -14,3 +14,5 @@ pub use self::ethereum_adapter::EthereumAdapter;
 pub use self::transport::{EventLoopHandle, Transport};
 
 mod chain;
+
+pub use chain::Chain;

@@ -6,14 +6,38 @@ use graph::{
         block_stream::{
             BlockStream, BlockStreamEvent, BlockWithTriggers, ScanTriggersError, TriggersAdapter,
         },
-        Block, Blockchain, DataSource, IngestorAdapter, Manifest, TriggerFilter,
+        Block, BlockHash, Blockchain, DataSource, IngestorAdapter as IngestorAdapterTrait,
+        Manifest, TriggerFilter,
     },
-    prelude::{async_trait, serde_yaml, BlockPtr, DeploymentHash, LinkResolver, Logger},
+    prelude::{
+        async_trait, error, serde_yaml, web3::types::H256, BlockNumber, BlockPtr, ChainStore,
+        DeploymentHash, EthereumAdapter, EthereumAdapterError, Future01CompatExt, LinkResolver,
+        Logger,
+    },
     runtime::{AscType, DeterministicHostError},
     tokio_stream::Stream,
 };
 
-struct Chain;
+pub struct Chain {
+    adapter: Arc<IngestorAdapter>,
+}
+
+impl Chain {
+    pub fn new(
+        logger: Logger,
+        chain_store: Arc<dyn ChainStore>,
+        eth_adapter: Arc<dyn EthereumAdapter>,
+        ancestor_count: BlockNumber,
+    ) -> Self {
+        let adapter = Arc::new(IngestorAdapter {
+            eth_adapter,
+            logger,
+            ancestor_count,
+            chain_store,
+        });
+        Chain { adapter }
+    }
+}
 
 impl Blockchain for Chain {
     type Block = DummyBlock;
@@ -36,7 +60,7 @@ impl Blockchain for Chain {
 
     type NodeCapabilities = DummyNodeCapabilities;
 
-    type IngestorAdapter = DummyIngestorAdapter;
+    type IngestorAdapter = IngestorAdapter;
 
     fn reorg_threshold() -> u32 {
         todo!()
@@ -57,9 +81,13 @@ impl Blockchain for Chain {
     ) -> Result<Self::BlockStream, Error> {
         todo!()
     }
+
+    fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter> {
+        self.adapter.clone()
+    }
 }
 
-struct DummyBlock;
+pub struct DummyBlock;
 
 impl Block for DummyBlock {
     fn ptr(&self) -> BlockPtr {
@@ -71,7 +99,7 @@ impl Block for DummyBlock {
     }
 }
 
-struct DummyDataSource;
+pub struct DummyDataSource;
 
 impl DataSource<Chain> for DummyDataSource {
     fn match_and_decode(
@@ -84,9 +112,9 @@ impl DataSource<Chain> for DummyDataSource {
     }
 }
 
-struct DummyDataSourceTemplate;
+pub struct DummyDataSourceTemplate;
 
-struct DummyManifest;
+pub struct DummyManifest;
 
 #[async_trait]
 impl Manifest<Chain> for DummyManifest {
@@ -108,7 +136,7 @@ impl Manifest<Chain> for DummyManifest {
     }
 }
 
-struct DummyTriggerAdapter;
+pub struct DummyTriggerAdapter;
 
 #[async_trait]
 impl TriggersAdapter<Chain> for DummyTriggerAdapter {
@@ -130,7 +158,7 @@ impl TriggersAdapter<Chain> for DummyTriggerAdapter {
     }
 }
 
-struct DummyBlockStream;
+pub struct DummyBlockStream;
 
 impl Stream for DummyBlockStream {
     type Item = Result<BlockStreamEvent<Chain>, Error>;
@@ -145,9 +173,9 @@ impl Stream for DummyBlockStream {
 
 impl BlockStream<Chain> for DummyBlockStream {}
 
-struct DummyTriggerData;
+pub struct DummyTriggerData;
 
-struct DummyMappingTrigger;
+pub struct DummyMappingTrigger;
 
 impl AscType for DummyMappingTrigger {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
@@ -159,7 +187,7 @@ impl AscType for DummyMappingTrigger {
     }
 }
 
-struct DummyTriggerFilter;
+pub struct DummyTriggerFilter;
 
 impl Default for DummyTriggerFilter {
     fn default() -> Self {
@@ -173,16 +201,56 @@ impl TriggerFilter<Chain> for DummyTriggerFilter {
     }
 }
 
-struct DummyNodeCapabilities;
+pub struct DummyNodeCapabilities;
 
-struct DummyIngestorAdapter;
+pub struct IngestorAdapter {
+    logger: Logger,
+    ancestor_count: i32,
+    eth_adapter: Arc<dyn EthereumAdapter>,
+    chain_store: Arc<dyn ChainStore>,
+}
 
-impl IngestorAdapter<Chain> for DummyIngestorAdapter {
-    fn head_block(&self) -> DummyBlock {
-        todo!()
+#[async_trait]
+impl IngestorAdapterTrait<Chain> for IngestorAdapter {
+    async fn latest_block(&self) -> Result<BlockPtr, EthereumAdapterError> {
+        self.eth_adapter
+            .latest_block_header(&self.logger)
+            .compat()
+            .await
+            .map(|block| block.into())
     }
 
-    fn ingest_block(&self, _block: &DummyBlock) -> Result<(), Error> {
-        todo!()
+    async fn ingest_block(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BlockHash>, EthereumAdapterError> {
+        // TODO: H256::from_slice can panic
+        let block_hash = H256::from_slice(block_hash.as_slice());
+
+        // Get the fully populated block
+        let block = self
+            .eth_adapter
+            .block_by_hash(&self.logger, block_hash)
+            .compat()
+            .await?
+            .ok_or_else(|| EthereumAdapterError::BlockUnavailable(block_hash))?;
+        let block = self
+            .eth_adapter
+            .load_full_block(&self.logger, block)
+            .compat()
+            .await?;
+
+        // Store it in the database and try to advance the chain head pointer
+        self.chain_store.upsert_block(block).await?;
+
+        self.chain_store
+            .clone()
+            .attempt_chain_head_update(self.ancestor_count)
+            .await
+            .map(|missing| missing.map(|h256| h256.into()))
+            .map_err(|e| {
+                error!(self.logger, "failed to update chain head");
+                EthereumAdapterError::Unknown(e)
+            })
     }
 }

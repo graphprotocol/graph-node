@@ -5,8 +5,11 @@
 pub mod block_stream;
 
 // Try to reexport most of the necessary types
-use crate::prelude::{BlockPtr, CheapClone, DeploymentHash, LinkResolver};
 use crate::runtime::AscType;
+use crate::{
+    components::ethereum::EthereumAdapterError,
+    prelude::{BlockPtr, CheapClone, DeploymentHash, LinkResolver},
+};
 use anyhow::Error;
 use async_trait::async_trait;
 use slog;
@@ -20,6 +23,12 @@ use block_stream::{BlockStream, TriggersAdapter};
 /// A simple marker for byte arrays that are really block hashes
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct BlockHash(pub Box<[u8]>);
+
+impl BlockHash {
+    pub fn as_slice(&self) -> &[u8] {
+        &self.0
+    }
+}
 
 impl fmt::Display for BlockHash {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
@@ -91,15 +100,21 @@ pub trait Blockchain: Sized + Send + Sync + 'static {
         current_head: BlockPtr,
         filter: Self::TriggerFilter,
     ) -> Result<Self::BlockStream, Error>;
+
+    fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter>;
 }
 
+#[async_trait]
 pub trait IngestorAdapter<C: Blockchain> {
     /// Get the latest block from the chain
-    fn head_block(&self) -> C::Block;
+    async fn latest_block(&self) -> Result<BlockPtr, EthereumAdapterError>;
 
     /// Retrieve all necessary data for `block` from the chain and store it
     /// in the `ChainStore`
-    fn ingest_block(&self, block: &C::Block) -> Result<(), Error>;
+    async fn ingest_block(
+        &self,
+        hash: &BlockHash,
+    ) -> Result<Option<BlockHash>, EthereumAdapterError>;
 }
 
 pub trait TriggerFilter<C: Blockchain>: Default {
