@@ -13,14 +13,10 @@ const GAS_PER_SECOND: u64 = 10_000_000_000;
 /// still charge very high numbers for other things.
 pub const MAX_GAS_PER_HANDLER: u64 = 3600 * GAS_PER_SECOND;
 
-/// Base gas cost for calling any host export.
-/// Security: This must be non-zero.
-const HOST_EXPORT: u64 = 100_000;
-
 /// Gas for instructions are aggregated into blocks, so hopefully gas calls each have relatively large gas.
 /// But in the case they don't, we don't want the overhead of calling out into a host export to be
 /// the dominant cost that causes unexpectedly high execution times.
-pub const HOST_EXPORT_GAS: Gas = Gas(HOST_EXPORT);
+pub const HOST_EXPORT_GAS: Gas = Gas(10_000);
 
 /// As a heuristic for the cost of host fns it makes sense to reason in terms of bandwidth and
 /// calculate the cost from there. Because we don't have benchmarks for each host fn, we go with
@@ -31,11 +27,23 @@ const DEFAULT_BYTE_PER_SECOND: u64 = 10_000_000;
 /// With the current parameters DEFAULT_GAS_PER_BYTE = 1_000.
 const DEFAULT_GAS_PER_BYTE: u64 = GAS_PER_SECOND / DEFAULT_BYTE_PER_SECOND;
 
+/// Base gas cost for calling any host export.
+/// Security: This must be non-zero.
 pub(crate) const DEFAULT_BASE_COST: u64 = 100_000;
 
 pub(crate) const DEFAULT_GAS_OP: GasOp = GasOp {
     base_cost: DEFAULT_BASE_COST,
     size_mult: DEFAULT_GAS_PER_BYTE,
+};
+
+/// Because big math has a multiplicative complexity, that can result in high sizes, so assume a
+/// bandwidth of 100 MB/s, faster than the default.
+const BIG_MATH_BYTE_PER_SECOND: u64 = 100_000_000;
+const BIG_MATH_GAS_PER_BYTE: u64 = GAS_PER_SECOND / BIG_MATH_BYTE_PER_SECOND;
+
+pub(crate) const BIG_MATH_GAS_OP: GasOp = GasOp {
+    base_cost: DEFAULT_BASE_COST,
+    size_mult: BIG_MATH_GAS_PER_BYTE,
 };
 
 // Allow up to 25,000 ethereum calls
@@ -71,6 +79,7 @@ impl Rules for GasRules {
         let weight = match instruction {
             // These are taken from this post: https://github.com/paritytech/substrate/pull/7361#issue-506217103
             // from the table under the "Schedule" dropdown. Each decimal is multiplied by 10.
+            // Note that those were calculated for wasi, not wasmtime, so they are likely very conservative.
             I64Const(_) => 16,
             I64Load(_, _) => 1573,
             I64Store(_, _) => 2263,
@@ -78,7 +87,7 @@ impl Rules for GasRules {
             Instruction::If(_) => 79,
             Br(_) => 30,
             BrIf(_) => 63,
-            BrTable(data) => 146 + (1030000 * (1 + data.table.len() as u32)),
+            BrTable(data) => 146 + data.table.len() as u32,
             Call(_) => 951,
             // TODO: To figure out the param cost we need to look up the function
             CallIndirect(_, _) => 1995,
@@ -190,15 +199,15 @@ impl Rules for GasRules {
             | F32Max | F32Min | F32Mul | F32Sub | F32Add | F32Nearest | F32Trunc | F32Floor
             | F32Ceil | F32Neg | F32Abs | F32Eq | F32Ne | F32Lt | F32Gt | F32Le | F32Ge | F64Eq
             | F64Ne | F64Lt | F64Gt | F64Le | F64Ge | I32ReinterpretF32 | I64ReinterpretF64 => 100,
-            F64Div | F64Sqrt | F32Div | F32Sqrt => 1000,
+            F64Div | F64Sqrt | F32Div | F32Sqrt => 100,
 
             // More invented weights
-            Block(_) => 1000,
-            Loop(_) => 1000,
-            Else => 1000,
-            End => 1000,
-            Return => 1000,
-            Drop => 1000,
+            Block(_) => 100,
+            Loop(_) => 100,
+            Else => 100,
+            End => 100,
+            Return => 100,
+            Drop => 100,
             Nop => 1,
             Unreachable => 1,
         };

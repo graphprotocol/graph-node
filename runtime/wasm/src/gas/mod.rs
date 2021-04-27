@@ -11,9 +11,9 @@ pub use saturating::*;
 
 use parity_wasm::elements::Instruction;
 use pwasm_utils::rules::{MemoryGrowCost, Rules};
-use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
 use std::{convert::TryInto, rc::Rc};
+use std::{fmt, fmt::Display, num::NonZeroU32};
 
 pub struct GasOp {
     base_cost: u64,
@@ -57,7 +57,7 @@ pub trait ConstGasSizeOf {
     fn gas_size_of() -> Gas;
 }
 
-/// This struct mostly exists to avoid typing out saturating_mul
+/// This wrapper ensures saturating arithmetic is used
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
 pub struct Gas(u64);
 
@@ -68,6 +68,12 @@ impl Gas {
 impl From<u64> for Gas {
     fn from(x: u64) -> Self {
         Gas(x)
+    }
+}
+
+impl Display for Gas {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        self.0.fmt(f)
     }
 }
 
@@ -84,11 +90,11 @@ impl GasCounter {
     /// This should be called once per host export
     pub fn consume_host_fn(&self, mut amount: Gas) -> Result<(), DeterministicHostError> {
         amount += costs::HOST_EXPORT_GAS;
-        let new = self
+        let old = self
             .0
             .fetch_update(SeqCst, SeqCst, |v| Some(v.saturating_add(amount.0)))
             .unwrap();
-
+        let new = old.saturating_add(amount.0);
         if new >= MAX_GAS_PER_HANDLER {
             Err(DeterministicHostError(anyhow::anyhow!(
                 "Gas limit exceeded. Used: {}",
@@ -97,5 +103,9 @@ impl GasCounter {
         } else {
             Ok(())
         }
+    }
+
+    pub fn get(&self) -> Gas {
+        Gas(self.0.load(SeqCst))
     }
 }

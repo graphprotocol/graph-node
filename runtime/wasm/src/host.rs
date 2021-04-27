@@ -14,6 +14,7 @@ use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
 
+use crate::gas::Gas;
 use crate::mapping::{MappingContext, MappingRequest};
 use crate::{host_exports::HostExports, module::ExperimentalFeatures};
 
@@ -197,15 +198,19 @@ where
         let elapsed = start_time.elapsed();
         metrics.observe_handler_execution_time(elapsed.as_secs_f64(), &handler);
 
+        // If there is an error, "gas_used" is incorrectly reported as 0.
+        let gas_used = result.as_ref().map(|(_, gas)| gas).unwrap_or(&Gas::ZERO);
         info!(
             logger, "Done processing trigger";
             &extras,
             "total_ms" => elapsed.as_millis(),
             "handler" => handler,
             "data_source" => &self.data_source.name(),
+            "gas_used" => gas_used.to_string(),
         );
 
-        result
+        // Discard the gas value
+        result.map(|(block_state, _)| block_state)
     }
 }
 
