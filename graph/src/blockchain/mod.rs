@@ -15,8 +15,8 @@ use anyhow::Error;
 use async_trait::async_trait;
 use slog;
 use slog::Logger;
-use std::fmt;
 use std::sync::Arc;
+use std::{collections::HashMap, fmt};
 use web3::types::H256;
 
 use block_stream::{BlockStream, TriggersAdapter};
@@ -82,7 +82,7 @@ pub trait Blockchain: Sized + Send + Sync + 'static {
     /// Trigger filter used as input to the triggers adapter.
     type TriggerFilter: TriggerFilter<Self>;
 
-    type NodeCapabilities;
+    type NodeCapabilities: std::fmt::Display;
 
     type IngestorAdapter: IngestorAdapter<Self>;
 
@@ -90,11 +90,14 @@ pub trait Blockchain: Sized + Send + Sync + 'static {
     // ...WIP
 
     fn reorg_threshold() -> u32;
+
+    // ETHDEP: This assumes that capabilities are exactly the eth capabilities
+    fn node_capabilities(&self, archive: bool, traces: bool) -> Self::NodeCapabilities;
+
     fn triggers_adapter(
         &self,
-        network: &str,
-        capabilities: Self::NodeCapabilities,
-    ) -> Arc<Self::TriggersAdapter>;
+        capabilities: &Self::NodeCapabilities,
+    ) -> Result<Arc<Self::TriggersAdapter>, Error>;
 
     fn new_block_stream(
         &self,
@@ -104,6 +107,8 @@ pub trait Blockchain: Sized + Send + Sync + 'static {
 
     fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter>;
 }
+
+pub type BlockchainMap<C> = HashMap<String, Arc<C>>;
 
 #[derive(Error, Debug)]
 pub enum IngestorError {

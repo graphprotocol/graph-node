@@ -4,13 +4,14 @@ use anyhow::Error;
 use graph::{
     blockchain::{
         block_stream::{
-            BlockStream, BlockStreamEvent, BlockWithTriggers, ScanTriggersError, TriggersAdapter,
+            BlockStream, BlockStreamEvent, BlockWithTriggers, ScanTriggersError,
+            TriggersAdapter as TriggersAdapterTrait,
         },
         Block, BlockHash, Blockchain, DataSource, IngestorAdapter as IngestorAdapterTrait,
         IngestorError, Manifest, TriggerFilter,
     },
     cheap_clone::CheapClone,
-    components::ethereum::EthereumNetworkAdapters,
+    components::ethereum::{EthereumNetworkAdapters, NodeCapabilities},
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
         async_trait, error, o, serde_yaml, web3::types::H256, BlockNumber, BlockPtr, ChainStore,
@@ -64,7 +65,7 @@ impl Blockchain for Chain {
 
     type Manifest = DummyManifest;
 
-    type TriggersAdapter = DummyTriggerAdapter;
+    type TriggersAdapter = TriggersAdapter;
 
     type BlockStream = DummyBlockStream;
 
@@ -74,7 +75,7 @@ impl Blockchain for Chain {
 
     type TriggerFilter = DummyTriggerFilter;
 
-    type NodeCapabilities = DummyNodeCapabilities;
+    type NodeCapabilities = NodeCapabilities;
 
     type IngestorAdapter = IngestorAdapter;
 
@@ -84,10 +85,12 @@ impl Blockchain for Chain {
 
     fn triggers_adapter(
         &self,
-        _network: &str,
-        _capabilities: Self::NodeCapabilities,
-    ) -> Arc<Self::TriggersAdapter> {
-        todo!()
+        capabilities: &Self::NodeCapabilities,
+    ) -> Result<Arc<Self::TriggersAdapter>, Error> {
+        let eth_adapter = self.eth_adapters.cheapest_with(capabilities)?.clone();
+
+        let adapter = TriggersAdapter { eth_adapter };
+        Ok(Arc::new(adapter))
     }
 
     fn new_block_stream(
@@ -111,6 +114,10 @@ impl Blockchain for Chain {
             chain_store: self.chain_store.clone(),
         };
         Arc::new(adapter)
+    }
+
+    fn node_capabilities(&self, archive: bool, traces: bool) -> Self::NodeCapabilities {
+        NodeCapabilities { archive, traces }
     }
 }
 
@@ -163,10 +170,12 @@ impl Manifest<Chain> for DummyManifest {
     }
 }
 
-pub struct DummyTriggerAdapter;
+pub struct TriggersAdapter {
+    eth_adapter: Arc<dyn EthereumAdapter>,
+}
 
 #[async_trait]
-impl TriggersAdapter<Chain> for DummyTriggerAdapter {
+impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     async fn scan_triggers(
         &self,
         _chain_base: BlockPtr,
@@ -227,8 +236,6 @@ impl TriggerFilter<Chain> for DummyTriggerFilter {
         todo!()
     }
 }
-
-pub struct DummyNodeCapabilities;
 
 pub struct IngestorAdapter {
     logger: Logger,

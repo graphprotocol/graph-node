@@ -3,15 +3,19 @@ use std::collections::VecDeque;
 use std::mem;
 use std::time::Duration;
 
-use graph::components::{
-    ethereum::{
-        blocks_with_triggers, triggers_in_block, ChainHeadUpdateListener, EthereumNetworks,
-        NodeCapabilities, TriggerFilter,
+use graph::{
+    blockchain::Blockchain,
+    components::{
+        ethereum::{
+            blocks_with_triggers, triggers_in_block, ChainHeadUpdateListener, EthereumNetworks,
+            NodeCapabilities, TriggerFilter,
+        },
+        store::{BlockStore, DeploymentLocator, WritableStore},
     },
-    store::{BlockStore, DeploymentLocator, WritableStore},
 };
-use graph::prelude::{
-    BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *,
+use graph::{
+    blockchain::BlockchainMap,
+    prelude::{BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *},
 };
 
 #[cfg(debug_assertions)]
@@ -83,10 +87,14 @@ enum ReconciliationStep {
     Done,
 }
 
-struct BlockStreamContext<S> {
+struct BlockStreamContext<S, C>
+where
+    C: Blockchain,
+{
     subgraph_store: Arc<dyn WritableStore>,
     chain_store: Arc<S>,
     eth_adapter: Arc<dyn EthereumAdapter>,
+    adapter: Arc<C::TriggersAdapter>,
     node_id: NodeId,
     subgraph_id: DeploymentHash,
     // This is not really a block number, but the (unsigned) difference
@@ -104,12 +112,13 @@ struct BlockStreamContext<S> {
     max_block_range_size: BlockNumber,
 }
 
-impl<S> Clone for BlockStreamContext<S> {
+impl<S, C: Blockchain> Clone for BlockStreamContext<S, C> {
     fn clone(&self) -> Self {
         Self {
             subgraph_store: self.subgraph_store.cheap_clone(),
             chain_store: self.chain_store.cheap_clone(),
             eth_adapter: self.eth_adapter.cheap_clone(),
+            adapter: self.adapter.clone(),
             node_id: self.node_id.clone(),
             subgraph_id: self.subgraph_id.clone(),
             reorg_threshold: self.reorg_threshold,
@@ -125,11 +134,11 @@ impl<S> Clone for BlockStreamContext<S> {
     }
 }
 
-pub struct BlockStream<S> {
+pub struct BlockStream<S, C: Blockchain> {
     state: BlockStreamState,
     consecutive_err_count: u32,
     chain_head_update_stream: ChainHeadUpdateStream,
-    ctx: BlockStreamContext<S>,
+    ctx: BlockStreamContext<S, C>,
 }
 
 // This is the same as `ReconciliationStep` but without retries.
@@ -142,15 +151,17 @@ enum NextBlocks {
     Done,
 }
 
-impl<S> BlockStream<S>
+impl<S, C> BlockStream<S, C>
 where
     S: ChainStore,
+    C: Blockchain,
 {
     pub fn new(
         subgraph_store: Arc<dyn WritableStore>,
         chain_store: Arc<S>,
         chain_head_update_stream: ChainHeadUpdateStream,
         eth_adapter: Arc<dyn EthereumAdapter>,
+        adapter: Arc<C::TriggersAdapter>,
         node_id: NodeId,
         subgraph_id: DeploymentHash,
         filter: TriggerFilter,
@@ -168,6 +179,7 @@ where
                 subgraph_store,
                 chain_store,
                 eth_adapter,
+                adapter,
                 node_id,
                 subgraph_id,
                 reorg_threshold,
@@ -186,9 +198,10 @@ where
     }
 }
 
-impl<S> BlockStreamContext<S>
+impl<S, C> BlockStreamContext<S, C>
 where
     S: ChainStore,
+    C: Blockchain,
 {
     /// Perform reconciliation steps until there are blocks to yield or we are up-to-date.
     async fn next_blocks(&self) -> Result<NextBlocks, Error> {
@@ -534,9 +547,9 @@ where
     }
 }
 
-impl<S: ChainStore> BlockStreamTrait for BlockStream<S> {}
+impl<S: ChainStore, C: Blockchain> BlockStreamTrait for BlockStream<S, C> {}
 
-impl<S: ChainStore> Stream for BlockStream<S> {
+impl<S: ChainStore, C: Blockchain> Stream for BlockStream<S, C> {
     type Item = BlockStreamEvent;
     type Error = Error;
 
@@ -696,8 +709,9 @@ impl<S: ChainStore> Stream for BlockStream<S> {
     }
 }
 
-pub struct BlockStreamBuilder<B, M> {
+pub struct BlockStreamBuilder<B, M, C> {
     subgraph_store: Arc<dyn SubgraphStore>,
+    chains: Arc<BlockchainMap<C>>,
     block_store: Arc<B>,
     chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
     eth_networks: EthereumNetworks,
@@ -706,10 +720,11 @@ pub struct BlockStreamBuilder<B, M> {
     metrics_registry: Arc<M>,
 }
 
-impl<B, M> Clone for BlockStreamBuilder<B, M> {
+impl<B, M, C> Clone for BlockStreamBuilder<B, M, C> {
     fn clone(&self) -> Self {
         BlockStreamBuilder {
             subgraph_store: self.subgraph_store.clone(),
+            chains: self.chains.clone(),
             block_store: self.block_store.clone(),
             chain_head_update_listener: self.chain_head_update_listener.clone(),
             eth_networks: self.eth_networks.clone(),
@@ -720,13 +735,15 @@ impl<B, M> Clone for BlockStreamBuilder<B, M> {
     }
 }
 
-impl<B, M> BlockStreamBuilder<B, M>
+impl<B, M, C> BlockStreamBuilder<B, M, C>
 where
     B: BlockStore,
     M: MetricsRegistry,
+    C: Blockchain,
 {
     pub fn new(
         subgraph_store: Arc<dyn SubgraphStore>,
+        chains: Arc<BlockchainMap<C>>,
         block_store: Arc<B>,
         chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
         eth_networks: EthereumNetworks,
@@ -736,6 +753,7 @@ where
     ) -> Self {
         BlockStreamBuilder {
             subgraph_store,
+            chains,
             block_store,
             chain_head_update_listener,
             eth_networks,
@@ -747,12 +765,13 @@ where
 }
 
 #[async_trait]
-impl<B, M> BlockStreamBuilderTrait for BlockStreamBuilder<B, M>
+impl<B, M, C> BlockStreamBuilderTrait for BlockStreamBuilder<B, M, C>
 where
     B: BlockStore,
     M: MetricsRegistry,
+    C: Blockchain,
 {
-    type Stream = BlockStream<B::ChainStore>;
+    type Stream = BlockStream<B::ChainStore, C>;
 
     fn build(
         &self,
@@ -781,19 +800,29 @@ where
             .chain_head_update_listener
             .subscribe(network_name.clone());
 
-        let requirements = NodeCapabilities {
+        let chain = self
+            .chains
+            .get(&network_name)
+            .expect(&format!("no chain configured for network {}", network_name));
+
+        let requirements = chain.node_capabilities(false, include_calls_in_blocks);
+        let eth_requirements = NodeCapabilities {
             archive: false,
             traces: include_calls_in_blocks,
         };
 
         let eth_adapter = self
             .eth_networks
-            .adapter_with_capabilities(network_name.clone(), &requirements)
+            .adapter_with_capabilities(network_name.clone(), &eth_requirements)
             .expect(&format!(
                 "no eth adapter that supports network: {} with {}",
                 &network_name, &requirements
             ));
 
+        let triggers_adapter = chain.triggers_adapter(&requirements).expect(&format!(
+            "no adapter for network {} with capabilities {}",
+            network_name, requirements
+        ));
         // Create the actual subgraph-specific block stream
         BlockStream::new(
             self.subgraph_store
@@ -802,6 +831,7 @@ where
             chain_store,
             chain_head_update_stream,
             eth_adapter.clone(),
+            triggers_adapter,
             self.node_id.clone(),
             deployment.hash,
             filter,

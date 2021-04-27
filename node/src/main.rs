@@ -215,12 +215,12 @@ async fn main() {
         let chain_head_update_listener = store_builder.chain_head_update_listener();
         let network_store = store_builder.network_store(idents);
 
-        let chains = networks_as_chains(
+        let chains = Arc::new(networks_as_chains(
             &logger,
             &eth_networks,
             network_store.block_store().as_ref(),
             &logger_factory,
-        );
+        ));
 
         let load_manager = Arc::new(LoadManager::new(
             &logger,
@@ -299,6 +299,7 @@ async fn main() {
 
         let block_stream_builder = BlockStreamBuilder::new(
             network_store.subgraph_store(),
+            chains.clone(),
             network_store.block_store(),
             chain_head_update_listener.clone(),
             eth_networks.clone(),

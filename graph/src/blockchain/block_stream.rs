@@ -15,7 +15,7 @@ pub enum ScanTriggersError {
 }
 
 #[async_trait]
-pub trait TriggersAdapter<C: Blockchain> {
+pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
     // Returns a sequence of blocks in increasing order of block number.
     // Each block will include all of its triggers that match the given `filter`.
     // The sequence may omit blocks that contain no triggers,
