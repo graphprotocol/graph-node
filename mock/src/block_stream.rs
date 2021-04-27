@@ -1,6 +1,9 @@
 use futures::sync::mpsc::{channel, Receiver, Sender};
 
-use graph::{components::store::DeploymentLocator, prelude::*};
+use graph::{
+    components::{ethereum::TriggerFilter, store::DeploymentLocator},
+    prelude::*,
+};
 
 pub struct MockBlockStream {
     chain_head_update_sink: Sender<ChainHeadUpdate>,
@@ -53,9 +56,7 @@ impl BlockStreamBuilder for MockBlockStreamBuilder {
         _deployment: DeploymentLocator,
         _network_name: String,
         _start_blocks: Vec<BlockNumber>,
-        _: EthereumLogFilter,
-        _: EthereumCallFilter,
-        _: EthereumBlockFilter,
+        _: TriggerFilter,
         _: bool,
         _: Arc<BlockStreamMetrics>,
     ) -> Self::Stream {

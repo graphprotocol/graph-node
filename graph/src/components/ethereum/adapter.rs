@@ -114,6 +114,13 @@ impl fmt::Display for EthGetLogsFilter {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct TriggerFilter {
+    pub log: EthereumLogFilter,
+    pub call: EthereumCallFilter,
+    pub block: EthereumBlockFilter,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct EthereumLogFilter {
     /// Log filters can be represented as a bipartite graph between contracts and events. An edge
     /// exists between a contract and an event if a data source for the contract has a trigger for
@@ -259,7 +266,7 @@ impl EthereumLogFilter {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct EthereumCallFilter {
     // Each call filter has a map of filters keyed by address, each containing a tuple with
     // start_block and the set of function signatures
@@ -799,9 +806,7 @@ pub async fn triggers_in_block(
     logger: Logger,
     chain_store: Arc<dyn ChainStore>,
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-    log_filter: EthereumLogFilter,
-    call_filter: EthereumCallFilter,
-    block_filter: EthereumBlockFilter,
+    filter: TriggerFilter,
     ethereum_block: BlockFinality,
 ) -> Result<EthereumBlockWithTriggers, Error> {
     match &ethereum_block {
@@ -814,9 +819,7 @@ pub async fn triggers_in_block(
                 subgraph_metrics,
                 block_number,
                 block_number,
-                log_filter,
-                call_filter,
-                block_filter,
+                filter,
             )
             .await?;
             assert!(blocks.len() <= 1);
@@ -828,11 +831,11 @@ pub async fn triggers_in_block(
         BlockFinality::NonFinal(full_block) => {
             let mut triggers = Vec::new();
             triggers.append(&mut parse_log_triggers(
-                log_filter,
+                filter.log,
                 &full_block.ethereum_block,
             ));
-            triggers.append(&mut parse_call_triggers(call_filter, &full_block));
-            triggers.append(&mut parse_block_triggers(block_filter, &full_block));
+            triggers.append(&mut parse_call_triggers(filter.call, &full_block));
+            triggers.append(&mut parse_block_triggers(filter.block, &full_block));
             Ok(EthereumBlockWithTriggers::new(triggers, ethereum_block))
         }
     }
@@ -858,9 +861,7 @@ pub async fn blocks_with_triggers(
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
     from: BlockNumber,
     to: BlockNumber,
-    log_filter: EthereumLogFilter,
-    call_filter: EthereumCallFilter,
-    block_filter: EthereumBlockFilter,
+    filter: TriggerFilter,
 ) -> Result<Vec<EthereumBlockWithTriggers>, Error> {
     // Each trigger filter needs to be queried for the same block range
     // and the blocks yielded need to be deduped. If any error occurs
@@ -871,9 +872,9 @@ pub async fn blocks_with_triggers(
     > = futures::stream::FuturesUnordered::new();
 
     // Scan the block range from triggers to find relevant blocks
-    if !log_filter.is_empty() {
+    if !filter.log.is_empty() {
         trigger_futs.push(Box::new(
-            eth.logs_in_block_range(&logger, subgraph_metrics.clone(), from, to, log_filter)
+            eth.logs_in_block_range(&logger, subgraph_metrics.clone(), from, to, filter.log)
                 .map_ok(|logs: Vec<Log>| {
                     logs.into_iter()
                         .map(Arc::new)
@@ -884,16 +885,16 @@ pub async fn blocks_with_triggers(
         ))
     }
 
-    if !call_filter.is_empty() {
+    if !filter.call.is_empty() {
         trigger_futs.push(Box::new(
-            eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, call_filter)
+            eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, filter.call)
                 .map(Arc::new)
                 .map(EthereumTrigger::Call)
                 .collect(),
         ));
     }
 
-    if block_filter.trigger_every_block {
+    if filter.block.trigger_every_block {
         trigger_futs.push(Box::new(
             adapter
                 .block_range_to_ptrs(logger.clone(), from, to)
@@ -903,11 +904,11 @@ pub async fn blocks_with_triggers(
                         .collect()
                 }),
         ))
-    } else if !block_filter.contract_addresses.is_empty() {
+    } else if !filter.block.contract_addresses.is_empty() {
         // To determine which blocks include a call to addresses
         // in the block filter, transform the `block_filter` into
         // a `call_filter` and run `blocks_with_calls`
-        let call_filter = EthereumCallFilter::from(block_filter);
+        let call_filter = EthereumCallFilter::from(filter.block);
         trigger_futs.push(Box::new(
             eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, call_filter)
                 .map(|call| {

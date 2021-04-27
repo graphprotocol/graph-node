@@ -6,10 +6,11 @@ use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::task;
 
-use graph::components::store::{
-    BlockStore, DeploymentId, DeploymentLocator, ModificationsAndCache,
-};
 use graph::components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing};
+use graph::components::{
+    ethereum::TriggerFilter,
+    store::{BlockStore, DeploymentId, DeploymentLocator, ModificationsAndCache},
+};
 use graph::components::{
     ethereum::{triggers_in_block, EthereumNetworks},
     store::WritableStore,
@@ -58,9 +59,7 @@ struct IndexingState<T: RuntimeHostBuilder> {
     logger: Logger,
     instance: SubgraphInstance<T>,
     instances: SharedInstanceKeepAliveMap,
-    log_filter: EthereumLogFilter,
-    call_filter: EthereumCallFilter,
-    block_filter: EthereumBlockFilter,
+    filter: TriggerFilter,
     entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
 }
 
@@ -392,6 +391,11 @@ where
         let log_filter = EthereumLogFilter::from_data_sources(&manifest.data_sources);
         let call_filter = EthereumCallFilter::from_data_sources(&manifest.data_sources);
         let block_filter = EthereumBlockFilter::from_data_sources(&manifest.data_sources);
+        let filter = TriggerFilter {
+            log: log_filter,
+            call: call_filter,
+            block: block_filter,
+        };
         let start_blocks = manifest.start_blocks();
 
         // Identify whether there are mappings with call handlers or
@@ -457,9 +461,7 @@ where
                 logger: logger.cheap_clone(),
                 instance,
                 instances,
-                log_filter,
-                call_filter,
-                block_filter,
+                filter,
                 entity_lfu_cache: LfuCache::new(),
             },
             subgraph_metrics,
@@ -519,9 +521,7 @@ where
                 ctx.inputs.deployment.clone(),
                 ctx.inputs.network_name.clone(),
                 ctx.inputs.start_blocks.clone(),
-                ctx.state.log_filter.clone(),
-                ctx.state.call_filter.clone(),
-                ctx.state.block_filter.clone(),
+                ctx.state.filter.clone(),
                 ctx.inputs.include_calls_in_blocks,
                 ctx.block_stream_metrics.clone(),
             )
@@ -840,15 +840,18 @@ where
             block_state.drain_created_data_sources(),
         )?;
 
+        let filter = TriggerFilter {
+            log: EthereumLogFilter::from_data_sources(data_sources.iter()),
+            call: EthereumCallFilter::from_data_sources(data_sources.iter()),
+            block: EthereumBlockFilter::from_data_sources(data_sources.iter()),
+        };
         // Reprocess the triggers from this block that match the new data sources
         let block_with_triggers = triggers_in_block(
             eth_adapter.clone(),
             logger.cheap_clone(),
             ctx.inputs.chain_store.clone(),
             ctx.ethrpc_metrics.clone(),
-            EthereumLogFilter::from_data_sources(data_sources.iter()),
-            EthereumCallFilter::from_data_sources(data_sources.iter()),
-            EthereumBlockFilter::from_data_sources(data_sources.iter()),
+            filter,
             block.clone(),
         )
         .await?;
@@ -1188,16 +1191,19 @@ fn persist_dynamic_data_sources<B, T: RuntimeHostBuilder, C>(
 
     // Merge log filters from data sources into the block stream builder
     ctx.state
-        .log_filter
+        .filter
+        .log
         .extend(EthereumLogFilter::from_data_sources(&data_sources));
 
     // Merge call filters from data sources into the block stream builder
     ctx.state
-        .call_filter
+        .filter
+        .call
         .extend(EthereumCallFilter::from_data_sources(&data_sources));
 
     // Merge block filters from data sources into the block stream builder
     ctx.state
-        .block_filter
+        .filter
+        .block
         .extend(EthereumBlockFilter::from_data_sources(&data_sources));
 }

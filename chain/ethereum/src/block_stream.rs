@@ -6,7 +6,7 @@ use std::time::Duration;
 use graph::components::{
     ethereum::{
         blocks_with_triggers, triggers_in_block, ChainHeadUpdateListener, EthereumNetworks,
-        NodeCapabilities,
+        NodeCapabilities, TriggerFilter,
     },
     store::{BlockStore, DeploymentLocator, WritableStore},
 };
@@ -92,9 +92,7 @@ struct BlockStreamContext<C> {
     // This is not really a block number, but the (unsigned) difference
     // between two block numbers
     reorg_threshold: BlockNumber,
-    log_filter: EthereumLogFilter,
-    call_filter: EthereumCallFilter,
-    block_filter: EthereumBlockFilter,
+    filter: TriggerFilter,
     start_blocks: Vec<BlockNumber>,
     include_calls_in_blocks: bool,
     logger: Logger,
@@ -115,9 +113,7 @@ impl<C> Clone for BlockStreamContext<C> {
             node_id: self.node_id.clone(),
             subgraph_id: self.subgraph_id.clone(),
             reorg_threshold: self.reorg_threshold,
-            log_filter: self.log_filter.clone(),
-            call_filter: self.call_filter.clone(),
-            block_filter: self.block_filter.clone(),
+            filter: self.filter.clone(),
             start_blocks: self.start_blocks.clone(),
             include_calls_in_blocks: self.include_calls_in_blocks,
             logger: self.logger.clone(),
@@ -157,9 +153,7 @@ where
         eth_adapter: Arc<dyn EthereumAdapter>,
         node_id: NodeId,
         subgraph_id: DeploymentHash,
-        log_filter: EthereumLogFilter,
-        call_filter: EthereumCallFilter,
-        block_filter: EthereumBlockFilter,
+        filter: TriggerFilter,
         start_blocks: Vec<BlockNumber>,
         include_calls_in_blocks: bool,
         reorg_threshold: BlockNumber,
@@ -178,9 +172,7 @@ where
                 subgraph_id,
                 reorg_threshold,
                 logger,
-                log_filter,
-                call_filter,
-                block_filter,
+                filter,
                 start_blocks,
                 include_calls_in_blocks,
                 metrics,
@@ -230,9 +222,7 @@ where
     /// Determine the next reconciliation step. Does not modify Store or ChainStore.
     fn get_next_step(&self) -> impl Future<Item = ReconciliationStep, Error = Error> + Send {
         let ctx = self.clone();
-        let log_filter = self.log_filter.clone();
-        let call_filter = self.call_filter.clone();
-        let block_filter = self.block_filter.clone();
+        let filter = self.filter.clone();
         let start_blocks = self.start_blocks.clone();
         let max_block_range_size = self.max_block_range_size;
 
@@ -433,9 +423,7 @@ where
                                     ctx.metrics.ethrpc_metrics.clone(),
                                     from,
                                     to,
-                                    log_filter.clone(),
-                                    call_filter.clone(),
-                                    block_filter.clone(),
+                                    filter.clone(),
                                 )
                                 .map_ok(move |blocks| {
                                     section.end();
@@ -546,9 +534,7 @@ where
                                         logger,
                                         ctx.chain_store.clone(),
                                         ctx.metrics.ethrpc_metrics.clone(),
-                                        log_filter.clone(),
-                                        call_filter.clone(),
-                                        block_filter.clone(),
+                                        filter.clone(),
                                         BlockFinality::NonFinal(block),
                                     )
                                     .boxed()
@@ -813,9 +799,7 @@ where
         deployment: DeploymentLocator,
         network_name: String,
         start_blocks: Vec<BlockNumber>,
-        log_filter: EthereumLogFilter,
-        call_filter: EthereumCallFilter,
-        block_filter: EthereumBlockFilter,
+        filter: TriggerFilter,
         include_calls_in_blocks: bool,
         metrics: Arc<BlockStreamMetrics>,
     ) -> Self::Stream {
@@ -859,9 +843,7 @@ where
             eth_adapter.clone(),
             self.node_id.clone(),
             deployment.hash,
-            log_filter,
-            call_filter,
-            block_filter,
+            filter,
             start_blocks,
             include_calls_in_blocks,
             self.reorg_threshold,

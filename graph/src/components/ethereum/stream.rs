@@ -3,6 +3,8 @@ use futures::Stream;
 
 use crate::{components::store::DeploymentLocator, prelude::*};
 
+use super::TriggerFilter;
+
 pub enum BlockStreamEvent {
     Block(EthereumBlockWithTriggers),
     Revert(BlockPtr),
@@ -19,9 +21,7 @@ pub trait BlockStreamBuilder: Clone + Send + Sync + 'static {
         deployment: DeploymentLocator,
         network_name: String,
         start_blocks: Vec<BlockNumber>,
-        log_filter: EthereumLogFilter,
-        call_filter: EthereumCallFilter,
-        block_filter: EthereumBlockFilter,
+        filter: TriggerFilter,
         include_calls_in_blocks: bool,
         ethrpc_metrics: Arc<BlockStreamMetrics>,
     ) -> Self::Stream;
