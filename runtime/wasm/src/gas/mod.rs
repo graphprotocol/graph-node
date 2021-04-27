@@ -71,6 +71,12 @@ impl From<u64> for Gas {
     }
 }
 
+impl From<Gas> for u64 {
+    fn from(x: Gas) -> Self {
+        x.0
+    }
+}
+
 impl Display for Gas {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.0.fmt(f)

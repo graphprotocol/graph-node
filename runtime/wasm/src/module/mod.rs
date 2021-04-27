@@ -138,6 +138,11 @@ impl<C: Blockchain> WasmInstance<C> {
         self.instance.get_func(func_name).unwrap()
     }
 
+    #[cfg(test)]
+    pub(crate) fn gas_used(&self) -> u64 {
+        self.gas.get().into()
+    }
+
     fn invoke_handler<T>(
         &mut self,
         handler: &str,

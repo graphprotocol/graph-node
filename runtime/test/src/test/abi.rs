@@ -81,6 +81,7 @@ fn test_abi_array(api_version: Version) {
         module.invoke_export1("test_array", vec_obj);
     let new_vec: Vec<String> = asc_get(&module, new_vec_obj).unwrap();
 
+    assert_eq!(module.gas_used(), 200657);
     assert_eq!(
         new_vec,
         vec![
