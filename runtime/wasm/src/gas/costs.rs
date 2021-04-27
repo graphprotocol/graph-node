@@ -13,9 +13,13 @@ const GAS_PER_SECOND: u64 = 10_000_000_000;
 /// still charge very high numbers for other things.
 pub const MAX_GAS_PER_HANDLER: u64 = 3600 * GAS_PER_SECOND;
 
-/// Gas for instructions are aggregated into blocks, so hopefully gas calls each have relatively large gas.
-/// But in the case they don't, we don't want the overhead of calling out into a host export to be
-/// the dominant cost that causes unexpectedly high execution times.
+/// Gas for instructions are aggregated into blocks, so hopefully gas calls each have relatively
+/// large gas. But in the case they don't, we don't want the overhead of calling out into a host
+/// export to be the dominant cost that causes unexpectedly high execution times.
+///
+/// This value is based on the benchmark of an empty infinite loop, which does basically nothing
+/// other than call the gas function. The benchmark result was closer to 5000 gas but use 10_000 to
+/// be conservative.
 pub const HOST_EXPORT_GAS: Gas = Gas(10_000);
 
 /// As a heuristic for the cost of host fns it makes sense to reason in terms of bandwidth and
