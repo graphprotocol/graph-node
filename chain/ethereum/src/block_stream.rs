@@ -486,12 +486,11 @@ where
                                     .unwrap(),
                                     head_ancestor.block.hash.unwrap(),
                                 )
+                                .await
                                 .map(move |calls| EthereumBlockWithCalls {
                                     ethereum_block: head_ancestor,
                                     calls,
                                 })
-                                .compat()
-                                .await
                         }?;
 
                         let block = triggers_in_block(

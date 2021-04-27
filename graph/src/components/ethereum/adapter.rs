@@ -727,13 +727,13 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block_ptr: BlockPtr,
     ) -> Result<bool, Error>;
 
-    fn calls_in_block(
+    async fn calls_in_block(
         &self,
         logger: &Logger,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         block_number: BlockNumber,
         block_hash: H256,
-    ) -> Box<dyn Future<Item = Vec<EthereumCall>, Error = Error> + Send>;
+    ) -> Result<Vec<EthereumCall>, Error>;
 
     fn logs_in_block_range(
         &self,

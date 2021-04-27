@@ -1093,16 +1093,16 @@ where
             .map(|block_hash| block_hash == block_ptr.hash_as_h256())
     }
 
-    fn calls_in_block(
+    async fn calls_in_block(
         &self,
         logger: &Logger,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         block_number: BlockNumber,
         block_hash: H256,
-    ) -> Box<dyn Future<Item = Vec<EthereumCall>, Error = Error> + Send> {
+    ) -> Result<Vec<EthereumCall>, Error> {
         let eth = self.clone();
         let addresses = Vec::new();
-        let calls = eth
+        let traces = eth
             .trace_stream(
                 &logger,
                 subgraph_metrics.clone(),
@@ -1111,38 +1111,37 @@ where
                 addresses,
             )
             .collect()
-            .and_then(move |traces| {
-                // `trace_stream` returns all of the traces for the block, and this
-                // includes a trace for the block reward which every block should have.
-                // If there are no traces something has gone wrong.
-                if traces.is_empty() {
-                    return future::err(anyhow!(
-                        "Trace stream returned no traces for block: number = `{}`, hash = `{}`",
-                        block_number,
-                        block_hash,
-                    ));
-                }
-                // Since we can only pull traces by block number and we have
-                // all the traces for the block, we need to ensure that the
-                // block hash for the traces is equal to the desired block hash.
-                // Assume all traces are for the same block.
-                if traces.iter().nth(0).unwrap().block_hash != block_hash {
-                    return future::err(anyhow!(
-                        "Trace stream returned traces for an unexpected block: \
+            .compat()
+            .await?;
+
+        // `trace_stream` returns all of the traces for the block, and this
+        // includes a trace for the block reward which every block should have.
+        // If there are no traces something has gone wrong.
+        if traces.is_empty() {
+            return Err(anyhow!(
+                "Trace stream returned no traces for block: number = `{}`, hash = `{}`",
+                block_number,
+                block_hash,
+            ));
+        }
+
+        // Since we can only pull traces by block number and we have
+        // all the traces for the block, we need to ensure that the
+        // block hash for the traces is equal to the desired block hash.
+        // Assume all traces are for the same block.
+        if traces.iter().nth(0).unwrap().block_hash != block_hash {
+            return Err(anyhow!(
+                "Trace stream returned traces for an unexpected block: \
                          number = `{}`, hash = `{}`",
-                        block_number,
-                        block_hash,
-                    ));
-                }
-                future::ok(traces)
-            })
-            .map(move |traces| {
-                traces
-                    .iter()
-                    .filter_map(EthereumCall::try_from_trace)
-                    .collect()
-            });
-        Box::new(calls)
+                block_number,
+                block_hash,
+            ));
+        }
+
+        Ok(traces
+            .iter()
+            .filter_map(EthereumCall::try_from_trace)
+            .collect())
     }
 
     fn logs_in_block_range(
