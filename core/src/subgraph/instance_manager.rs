@@ -388,14 +388,7 @@ where
         let network_name = manifest.network_name();
 
         // Obtain filters from the manifest
-        let log_filter = EthereumLogFilter::from_data_sources(&manifest.data_sources);
-        let call_filter = EthereumCallFilter::from_data_sources(&manifest.data_sources);
-        let block_filter = EthereumBlockFilter::from_data_sources(&manifest.data_sources);
-        let filter = TriggerFilter {
-            log: log_filter,
-            call: call_filter,
-            block: block_filter,
-        };
+        let filter = TriggerFilter::from_data_sources(manifest.data_sources.iter());
         let start_blocks = manifest.start_blocks();
 
         // Identify whether there are mappings with call handlers or
@@ -840,11 +833,8 @@ where
             block_state.drain_created_data_sources(),
         )?;
 
-        let filter = TriggerFilter {
-            log: EthereumLogFilter::from_data_sources(data_sources.iter()),
-            call: EthereumCallFilter::from_data_sources(data_sources.iter()),
-            block: EthereumBlockFilter::from_data_sources(data_sources.iter()),
-        };
+        let filter = TriggerFilter::from_data_sources(data_sources.iter());
+
         // Reprocess the triggers from this block that match the new data sources
         let block_with_triggers = triggers_in_block(
             eth_adapter.clone(),
@@ -1189,21 +1179,6 @@ fn persist_dynamic_data_sources<B, T: RuntimeHostBuilder, C>(
         entity_cache.add_data_source(data_source);
     }
 
-    // Merge log filters from data sources into the block stream builder
-    ctx.state
-        .filter
-        .log
-        .extend(EthereumLogFilter::from_data_sources(&data_sources));
-
-    // Merge call filters from data sources into the block stream builder
-    ctx.state
-        .filter
-        .call
-        .extend(EthereumCallFilter::from_data_sources(&data_sources));
-
-    // Merge block filters from data sources into the block stream builder
-    ctx.state
-        .filter
-        .block
-        .extend(EthereumBlockFilter::from_data_sources(&data_sources));
+    // Merge filters from data sources into the block stream builder
+    ctx.state.filter.extend(data_sources.iter());
 }

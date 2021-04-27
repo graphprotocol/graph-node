@@ -115,9 +115,28 @@ impl fmt::Display for EthGetLogsFilter {
 
 #[derive(Clone, Debug, Default)]
 pub struct TriggerFilter {
-    pub log: EthereumLogFilter,
-    pub call: EthereumCallFilter,
-    pub block: EthereumBlockFilter,
+    log: EthereumLogFilter,
+    call: EthereumCallFilter,
+    block: EthereumBlockFilter,
+}
+
+impl TriggerFilter {
+    pub fn from_data_sources<'a>(
+        data_sources: impl Iterator<Item = &'a DataSource> + Clone,
+    ) -> Self {
+        let mut this = Self::default();
+        this.extend(data_sources);
+        this
+    }
+
+    pub fn extend<'a>(&mut self, data_sources: impl Iterator<Item = &'a DataSource> + Clone) {
+        self.log
+            .extend(EthereumLogFilter::from_data_sources(data_sources.clone()));
+        self.call
+            .extend(EthereumCallFilter::from_data_sources(data_sources.clone()));
+        self.block
+            .extend(EthereumBlockFilter::from_data_sources(data_sources));
+    }
 }
 
 #[derive(Clone, Debug, Default)]
