@@ -5,8 +5,7 @@ use graph::{
     data::query::QueryTarget,
     prelude::{
         anyhow::{self, anyhow},
-        q, serde_json, GraphQlRunner as _, Query, QueryVariables, SubgraphDeploymentId,
-        SubgraphName,
+        q, serde_json, DeploymentHash, GraphQlRunner as _, Query, QueryVariables, SubgraphName,
     },
 };
 use graph_graphql::prelude::GraphQlRunner;
@@ -21,8 +20,8 @@ pub async fn run(
     vars: Vec<String>,
 ) -> Result<(), anyhow::Error> {
     let target = if target.starts_with("Qm") {
-        let id = SubgraphDeploymentId::new(target)
-            .map_err(|id| anyhow!("illegal deployment id `{}`", id))?;
+        let id =
+            DeploymentHash::new(target).map_err(|id| anyhow!("illegal deployment id `{}`", id))?;
         QueryTarget::Deployment(id)
     } else {
         let name = SubgraphName::new(target.clone())
