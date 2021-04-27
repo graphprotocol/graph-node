@@ -1077,23 +1077,20 @@ where
         )
     }
 
-    fn is_on_main_chain(
+    async fn is_on_main_chain(
         &self,
         logger: &Logger,
         _: Arc<SubgraphEthRpcMetrics>,
         chain_store: Arc<dyn ChainStore>,
         block_ptr: BlockPtr,
-    ) -> Box<dyn Future<Item = bool, Error = Error> + Send> {
-        Box::new(
-            self.block_hash_by_block_number(&logger, chain_store, block_ptr.number, true)
-                .and_then(move |block_hash_opt| {
-                    block_hash_opt
-                        .ok_or_else(|| {
-                            anyhow!("Ethereum node is missing block #{}", block_ptr.number)
-                        })
-                        .map(|block_hash| block_hash == block_ptr.hash_as_h256())
-                }),
-        )
+    ) -> Result<bool, Error> {
+        let block_hash = self
+            .block_hash_by_block_number(&logger, chain_store, block_ptr.number, true)
+            .compat()
+            .await?;
+        block_hash
+            .ok_or_else(|| anyhow!("Ethereum node is missing block #{}", block_ptr.number))
+            .map(|block_hash| block_hash == block_ptr.hash_as_h256())
     }
 
     fn calls_in_block(

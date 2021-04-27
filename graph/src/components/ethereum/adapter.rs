@@ -719,13 +719,13 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     /// those confirmations.
     /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
     /// reorgs.
-    fn is_on_main_chain(
+    async fn is_on_main_chain(
         &self,
         logger: &Logger,
         metrics: Arc<SubgraphEthRpcMetrics>,
         chain_store: Arc<dyn ChainStore>,
         block_ptr: BlockPtr,
-    ) -> Box<dyn Future<Item = bool, Error = Error> + Send>;
+    ) -> Result<bool, Error>;
 
     fn calls_in_block(
         &self,
