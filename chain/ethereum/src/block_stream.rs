@@ -83,9 +83,9 @@ enum ReconciliationStep {
     Done,
 }
 
-struct BlockStreamContext<C> {
+struct BlockStreamContext<S> {
     subgraph_store: Arc<dyn WritableStore>,
-    chain_store: Arc<C>,
+    chain_store: Arc<S>,
     eth_adapter: Arc<dyn EthereumAdapter>,
     node_id: NodeId,
     subgraph_id: DeploymentHash,
@@ -104,7 +104,7 @@ struct BlockStreamContext<C> {
     max_block_range_size: BlockNumber,
 }
 
-impl<C> Clone for BlockStreamContext<C> {
+impl<S> Clone for BlockStreamContext<S> {
     fn clone(&self) -> Self {
         Self {
             subgraph_store: self.subgraph_store.cheap_clone(),
@@ -125,11 +125,11 @@ impl<C> Clone for BlockStreamContext<C> {
     }
 }
 
-pub struct BlockStream<C> {
+pub struct BlockStream<S> {
     state: BlockStreamState,
     consecutive_err_count: u32,
     chain_head_update_stream: ChainHeadUpdateStream,
-    ctx: BlockStreamContext<C>,
+    ctx: BlockStreamContext<S>,
 }
 
 // This is the same as `ReconciliationStep` but without retries.
@@ -142,13 +142,13 @@ enum NextBlocks {
     Done,
 }
 
-impl<C> BlockStream<C>
+impl<S> BlockStream<S>
 where
-    C: ChainStore,
+    S: ChainStore,
 {
     pub fn new(
         subgraph_store: Arc<dyn WritableStore>,
-        chain_store: Arc<C>,
+        chain_store: Arc<S>,
         chain_head_update_stream: ChainHeadUpdateStream,
         eth_adapter: Arc<dyn EthereumAdapter>,
         node_id: NodeId,
@@ -186,9 +186,9 @@ where
     }
 }
 
-impl<C> BlockStreamContext<C>
+impl<S> BlockStreamContext<S>
 where
-    C: ChainStore,
+    S: ChainStore,
 {
     /// Perform reconciliation steps until there are blocks to yield or we are up-to-date.
     async fn next_blocks(&self) -> Result<NextBlocks, Error> {
@@ -534,9 +534,9 @@ where
     }
 }
 
-impl<C: ChainStore> BlockStreamTrait for BlockStream<C> {}
+impl<S: ChainStore> BlockStreamTrait for BlockStream<S> {}
 
-impl<C: ChainStore> Stream for BlockStream<C> {
+impl<S: ChainStore> Stream for BlockStream<S> {
     type Item = BlockStreamEvent;
     type Error = Error;
 
