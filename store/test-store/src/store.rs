@@ -300,7 +300,7 @@ pub fn insert_entities(
             key: EntityKey {
                 subgraph_id: deployment.hash.clone(),
                 entity_type: entity_type.to_owned(),
-                entity_id: data["id"].clone().as_string().unwrap(),
+                entity_id: data.get("id").unwrap().clone().as_string().unwrap(),
             },
             data,
         });

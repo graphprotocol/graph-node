@@ -1,5 +1,4 @@
 use ethabi;
-use std::collections::HashMap;
 
 use graph::{
     components::ethereum::{
@@ -295,18 +294,11 @@ impl ToAscObj<AscJson> for serde_json::Map<String, serde_json::Value> {
     }
 }
 
-impl ToAscObj<AscEntity> for HashMap<String, store::Value> {
+// Used for serializing entities.
+impl ToAscObj<AscEntity> for Vec<(String, store::Value)> {
     fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> Result<AscEntity, DeterministicHostError> {
         Ok(AscTypedMap {
-            entries: heap.asc_new(&*self.iter().collect::<Vec<_>>())?,
-        })
-    }
-}
-
-impl ToAscObj<AscEntity> for store::Entity {
-    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> Result<AscEntity, DeterministicHostError> {
-        Ok(AscTypedMap {
-            entries: heap.asc_new(&*self.iter().collect::<Vec<_>>())?,
+            entries: heap.asc_new(self.as_slice())?,
         })
     }
 }

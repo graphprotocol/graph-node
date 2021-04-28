@@ -23,7 +23,7 @@ fn insert_and_query(
             key: EntityKey {
                 subgraph_id: subgraph_id.clone(),
                 entity_type: EntityType::new(entity_type.to_owned()),
-                entity_id: data["id"].clone().as_string().unwrap(),
+                entity_id: data.get("id").unwrap().clone().as_string().unwrap(),
             },
             data,
         });

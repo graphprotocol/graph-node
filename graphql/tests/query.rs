@@ -217,8 +217,8 @@ fn insert_test_entities(
         let insert_ops = entities.into_iter().map(|data| EntityOperation::Set {
             key: EntityKey::data(
                 deployment.hash.clone(),
-                data["__typename"].clone().as_string().unwrap(),
-                data["id"].clone().as_string().unwrap(),
+                data.get("__typename").unwrap().clone().as_string().unwrap(),
+                data.get("id").unwrap().clone().as_string().unwrap(),
             ),
             data,
         });

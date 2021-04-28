@@ -807,7 +807,7 @@ impl WasmInstanceContext {
                     .host_metrics
                     .stopwatch
                     .start_section("store_get_asc_new");
-                self.asc_new(&entity)?
+                self.asc_new(&entity.sorted())?
             }
             None => AscPtr::null(),
         };
@@ -1350,7 +1350,7 @@ impl WasmInstanceContext {
 
     /// function dataSource.context(): DataSourceContext
     fn data_source_context(&mut self) -> Result<AscPtr<AscEntity>, DeterministicHostError> {
-        self.asc_new(&self.ctx.host_exports.data_source_context())
+        self.asc_new(&self.ctx.host_exports.data_source_context().sorted())
     }
 
     fn ens_name_by_hash(

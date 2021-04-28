@@ -137,14 +137,14 @@ macro_rules! assert_entity_eq {
         let (left, right) = (&($left), &($right));
         let mut pass = true;
 
-        for (key, left_value) in left.iter() {
-            match right.get(key) {
+        for (key, left_value) in left.clone().sorted() {
+            match right.get(&key) {
                 None => {
                     pass = false;
                     println!("key '{}' missing from right", key);
                 }
                 Some(right_value) => {
-                    if left_value != right_value {
+                    if left_value != *right_value {
                         pass = false;
                         println!(
                             "values for '{}' differ:\n     left: {:?}\n    right: {:?}",
@@ -154,8 +154,8 @@ macro_rules! assert_entity_eq {
                 }
             }
         }
-        for key in right.keys() {
-            if left.get(key).is_none() {
+        for (key, _) in right.clone().sorted() {
+            if left.get(&key).is_none() {
                 pass = false;
                 println!("key '{}' missing from left", key);
             }
