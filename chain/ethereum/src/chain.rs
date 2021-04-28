@@ -10,32 +10,48 @@ use graph::{
         IngestorError, Manifest, TriggerFilter,
     },
     cheap_clone::CheapClone,
+    components::ethereum::EthereumNetworkAdapters,
+    log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
-        async_trait, error, serde_yaml, web3::types::H256, BlockNumber, BlockPtr, ChainStore,
-        DeploymentHash, EthereumAdapter, Future01CompatExt, LinkResolver, Logger,
+        async_trait, error, o, serde_yaml, web3::types::H256, BlockNumber, BlockPtr, ChainStore,
+        DeploymentHash, EthereumAdapter, Future01CompatExt, LinkResolver, Logger, LoggerFactory,
     },
     runtime::{AscType, DeterministicHostError},
     tokio_stream::Stream,
 };
 
 pub struct Chain {
-    adapter: Arc<IngestorAdapter>,
+    ingestor_logger: Logger,
+    eth_adapters: EthereumNetworkAdapters,
+    ancestor_count: BlockNumber,
+    chain_store: Arc<dyn ChainStore>,
+    pub is_ingestible: bool,
 }
 
 impl Chain {
     pub fn new(
-        logger: Logger,
+        logger_factory: &LoggerFactory,
         chain_store: Arc<dyn ChainStore>,
-        eth_adapter: Arc<dyn EthereumAdapter>,
+        eth_adapters: EthereumNetworkAdapters,
         ancestor_count: BlockNumber,
+        is_ingestible: bool,
     ) -> Self {
-        let adapter = Arc::new(IngestorAdapter {
-            eth_adapter,
-            logger,
+        let ingestor_logger = logger_factory.component_logger(
+            "BlockIngestor",
+            Some(ComponentLoggerConfig {
+                elastic: Some(ElasticComponentLoggerConfig {
+                    index: String::from("block-ingestor-logs"),
+                }),
+            }),
+        );
+
+        Chain {
+            ingestor_logger,
+            eth_adapters,
             ancestor_count,
             chain_store,
-        });
-        Chain { adapter }
+            is_ingestible,
+        }
     }
 }
 
@@ -83,7 +99,18 @@ impl Blockchain for Chain {
     }
 
     fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter> {
-        self.adapter.clone()
+        let eth_adapter = self.eth_adapters.cheapest().unwrap().clone();
+        let logger = self
+            .ingestor_logger
+            .new(o!("provider" => eth_adapter.provider().to_string()));
+
+        let adapter = IngestorAdapter {
+            eth_adapter,
+            logger,
+            ancestor_count: self.ancestor_count,
+            chain_store: self.chain_store.clone(),
+        };
+        Arc::new(adapter)
     }
 }
 
@@ -212,6 +239,10 @@ pub struct IngestorAdapter {
 
 #[async_trait]
 impl IngestorAdapterTrait<Chain> for IngestorAdapter {
+    fn logger(&self) -> &Logger {
+        &self.logger
+    }
+
     async fn latest_block(&self) -> Result<BlockPtr, IngestorError> {
         self.eth_adapter
             .latest_block_header(&self.logger)

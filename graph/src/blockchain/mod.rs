@@ -122,6 +122,8 @@ impl From<Error> for IngestorError {
 
 #[async_trait]
 pub trait IngestorAdapter<C: Blockchain> {
+    fn logger(&self) -> &Logger;
+
     /// Get the latest block from the chain
     async fn latest_block(&self) -> Result<BlockPtr, IngestorError>;
 

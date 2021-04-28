@@ -214,6 +214,14 @@ async fn main() {
         let subscription_manager = store_builder.subscription_manager();
         let chain_head_update_listener = store_builder.chain_head_update_listener();
         let network_store = store_builder.network_store(idents);
+
+        let chains = networks_as_chains(
+            &logger,
+            &eth_networks,
+            network_store.block_store().as_ref(),
+            &logger_factory,
+        );
+
         let load_manager = Arc::new(LoadManager::new(
             &logger,
             expensive_queries,
@@ -281,13 +289,7 @@ async fn main() {
         if !opt.disable_block_ingestor {
             let block_polling_interval = Duration::from_millis(opt.ethereum_polling_interval);
 
-            start_block_ingestor(
-                &logger,
-                block_polling_interval,
-                &eth_networks,
-                network_store.block_store(),
-                &logger_factory,
-            );
+            start_block_ingestor(&logger, block_polling_interval, &chains);
 
             // Start a task runner
             let mut job_runner = graph::util::jobs::Runner::new(&logger);
@@ -685,12 +687,47 @@ fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<Ipf
         .collect()
 }
 
+fn networks_as_chains(
+    logger: &Logger,
+    eth_networks: &EthereumNetworks,
+    block_store: &DieselBlockStore,
+    logger_factory: &LoggerFactory,
+) -> HashMap<String, Arc<ethereum::Chain>> {
+    let chains = eth_networks
+        .networks
+        .iter()
+        .filter_map(|(network_name, eth_adapters)| {
+            block_store
+                .chain_store(network_name)
+                .map(|chain_store| {
+                    let is_ingestible = chain_store.is_ingestible();
+                    (network_name, eth_adapters, chain_store, is_ingestible)
+                })
+                .or_else(|| {
+                    error!(
+                        logger,
+                        "No store configured for chain {}; ignoring this chain", network_name
+                    );
+                    None
+                })
+        })
+        .map(|(network_name, eth_adapters, chain_store, is_ingestible)| {
+            let chain = ethereum::Chain::new(
+                logger_factory,
+                chain_store,
+                eth_adapters.clone(),
+                *ANCESTOR_COUNT,
+                is_ingestible,
+            );
+            (network_name.clone(), Arc::new(chain))
+        });
+    HashMap::from_iter(chains)
+}
+
 fn start_block_ingestor(
     logger: &Logger,
     block_polling_interval: Duration,
-    eth_networks: &EthereumNetworks,
-    block_store: Arc<DieselBlockStore>,
-    logger_factory: &LoggerFactory,
+    chains: &HashMap<String, Arc<ethereum::Chain>>,
 ) {
     // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
     // otherwise BlockStream will not work properly.
@@ -701,40 +738,22 @@ fn start_block_ingestor(
     info!(logger, "Starting block ingestors");
 
     // Create Ethereum block ingestors and spawn a thread to run each
-    eth_networks
-        .networks
+    chains
         .iter()
-        .filter_map(|(network_name, eth_adapters)| {
-            block_store
-                .chain_store(network_name)
-                .filter(|chain_store| chain_store.is_ingestible())
-                .map(|chain_store| (network_name, eth_adapters, chain_store))
-                .or_else(|| {
-                    error!(logger, "Not starting block ingestor (chain is defective)"; "network_name" => &network_name);
-                    None
-                })
+        .filter(|(network_name, chain)| {
+            if !chain.is_ingestible {
+                error!(logger, "Not starting block ingestor (chain is defective)"; "network_name" => &network_name);
+            }
+            chain.is_ingestible
         })
-        .for_each(|(network_name, eth_adapters, chain_store)| {
+        .for_each(|(network_name, chain)| {
             info!(
                 logger,
                 "Starting block ingestor for network";
                 "network_name" => &network_name
             );
-            let eth_adapter = eth_adapters.cheapest().unwrap(); //Safe to unwrap since it cannot be empty
-            let chain_logger = logger_factory.component_logger(
-                "BlockIngestor",
-                Some(ComponentLoggerConfig {
-                    elastic: Some(ElasticComponentLoggerConfig {
-                        index: String::from("block-ingestor-logs"),
-                    }),
-                }),
-            )
-            .new(o!("provider" => eth_adapter.provider().to_string()));
-
-            let chain = ethereum::Chain::new(chain_logger.clone(), chain_store, eth_adapter.clone(), *ANCESTOR_COUNT);
 
             let block_ingestor = BlockIngestor::<ethereum::Chain>::new(
-                chain_logger,
                 chain.ingestor_adapter(),
                 *ANCESTOR_COUNT,
                 block_polling_interval,

@@ -29,11 +29,11 @@ where
     C: Blockchain,
 {
     pub fn new(
-        logger: Logger,
         adapter: Arc<C::IngestorAdapter>,
         ancestor_count: BlockNumber,
         polling_interval: Duration,
     ) -> Result<BlockIngestor<C>, Error> {
+        let logger = adapter.logger().clone();
         Ok(BlockIngestor {
             adapter,
             ancestor_count,
