@@ -3,9 +3,8 @@
 use crate::{
     components::store::EntityType,
     data::store::{scalar::Bytes, Value},
-    prelude::{BigDecimal, BigInt, Entity, EntityKey},
+    prelude::{BigDecimal, BigInt, EntityKey},
 };
-use std::ops::Deref as _;
 
 use super::{Gas, GasSizeOf, SaturatingInto as _};
 
@@ -57,12 +56,6 @@ impl GasSizeOf for BigInt {
         // number, and so that `0` has a size of 1.
         let n_bytes = self.bits() / 8 + 1;
         n_bytes.saturating_into()
-    }
-}
-
-impl GasSizeOf for Entity {
-    fn gas_size_of(&self) -> Gas {
-        self.deref().gas_size_of()
     }
 }
 
