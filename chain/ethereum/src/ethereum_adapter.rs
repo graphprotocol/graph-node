@@ -33,12 +33,14 @@ use web3::api::Web3;
 use web3::transports::batch::Batch;
 use web3::types::Filter;
 
+use crate::transport::Transport;
+
 #[derive(Clone)]
-pub struct EthereumAdapter<T: web3::Transport> {
+pub struct EthereumAdapter {
     logger: Logger,
     url_hostname: Arc<String>,
     provider: String,
-    web3: Arc<Web3<T>>,
+    web3: Arc<Web3<Transport>>,
     metrics: Arc<ProviderEthRpcMetrics>,
     supports_eip_1898: bool,
 }
@@ -95,7 +97,7 @@ lazy_static! {
                                     .unwrap_or(25_000_000);
 }
 
-impl<T: web3::Transport> CheapClone for EthereumAdapter<T> {
+impl CheapClone for EthereumAdapter {
     fn cheap_clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
@@ -108,17 +110,12 @@ impl<T: web3::Transport> CheapClone for EthereumAdapter<T> {
     }
 }
 
-impl<T> EthereumAdapter<T>
-where
-    T: web3::BatchTransport + Send + Sync + 'static,
-    T::Batch: Send,
-    T::Out: Send,
-{
+impl EthereumAdapter {
     pub async fn new(
         logger: Logger,
         provider: String,
         url: &str,
-        transport: T,
+        transport: Transport,
         provider_metrics: Arc<ProviderEthRpcMetrics>,
         supports_eip_1898: bool,
     ) -> Self {
@@ -626,12 +623,7 @@ where
 }
 
 #[async_trait]
-impl<T> EthereumAdapterTrait for EthereumAdapter<T>
-where
-    T: web3::BatchTransport + Send + Sync + 'static,
-    T::Batch: Send,
-    T::Out: Send,
-{
+impl EthereumAdapterTrait for EthereumAdapter {
     fn url_hostname(&self) -> &str {
         &self.url_hostname
     }
