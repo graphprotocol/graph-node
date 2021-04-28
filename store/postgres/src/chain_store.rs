@@ -600,10 +600,8 @@ mod data {
 
         /// Find the first block that is missing from the database needed to
         /// complete the chain from block `hash` to the block with number
-        /// `first_block`. We return the hash of the missing block as an
-        /// array because the remaining code expects that, but the array will only
-        /// ever have at most one element.
-        pub(super) fn missing_parents(
+        /// `first_block`.
+        pub(super) fn missing_parent(
             &self,
             conn: &PgConnection,
             chain: &str,
@@ -1212,7 +1210,7 @@ impl ChainStoreTrait for ChainStore {
 
                     match chain_store
                         .storage
-                        .missing_parents(
+                        .missing_parent(
                             &conn,
                             &chain_store.chain,
                             first_block as i64,
