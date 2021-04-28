@@ -166,16 +166,16 @@ impl<K: AscType, V: AscType, T: TryFromAscObj<K>, U: TryFromAscObj<V>>
     }
 }
 
-impl<'a, 'b, K: AscType, V: AscType, T: ToAscObj<K>, U: ToAscObj<V>>
-    ToAscObj<AscTypedMapEntry<K, V>> for (&'a T, &'b U)
+impl<K: AscType, V: AscType, T: ToAscObj<K>, U: ToAscObj<V>> ToAscObj<AscTypedMapEntry<K, V>>
+    for (T, U)
 {
     fn to_asc_obj<H: AscHeap>(
         &self,
         heap: &mut H,
     ) -> Result<AscTypedMapEntry<K, V>, DeterministicHostError> {
         Ok(AscTypedMapEntry {
-            key: heap.asc_new(self.0)?,
-            value: heap.asc_new(self.1)?,
+            key: heap.asc_new(&self.0)?,
+            value: heap.asc_new(&self.1)?,
         })
     }
 }

@@ -55,6 +55,12 @@ impl ToAscObj<bool> for bool {
     }
 }
 
+impl<C: AscType, T: ToAscObj<C>> ToAscObj<C> for &T {
+    fn to_asc_obj<H: AscHeap>(&self, heap: &mut H) -> Result<C, DeterministicHostError> {
+        (*self).to_asc_obj(heap)
+    }
+}
+
 /// Type that can be converted from an Asc object of class `C`.
 pub trait FromAscObj<C: AscType> {
     fn from_asc_obj<H: AscHeap>(obj: C, heap: &H) -> Result<Self, DeterministicHostError>
