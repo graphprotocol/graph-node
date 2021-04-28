@@ -6,14 +6,16 @@ use graph::{
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use graph::components::ethereum::EthereumAdapter;
+use graph::components::ethereum::EthereumAdapter as EthereumAdapterTrait;
 pub use graph::impl_slog_value;
 use graph::prelude::Error;
+
+use crate::EthereumAdapter;
 
 #[derive(Clone)]
 pub struct EthereumNetworkAdapter {
     pub capabilities: NodeCapabilities,
-    adapter: Arc<dyn EthereumAdapter>,
+    adapter: Arc<EthereumAdapter>,
 }
 
 #[derive(Clone)]
@@ -25,7 +27,7 @@ impl EthereumNetworkAdapters {
     pub fn cheapest_with(
         &self,
         required_capabilities: &NodeCapabilities,
-    ) -> Result<&Arc<dyn EthereumAdapter>, Error> {
+    ) -> Result<&Arc<EthereumAdapter>, Error> {
         let sufficient_adapters: Vec<&EthereumNetworkAdapter> = self
             .adapters
             .iter()
@@ -43,13 +45,13 @@ impl EthereumNetworkAdapters {
         Ok(&sufficient_adapters.iter().choose(&mut rng).unwrap().adapter)
     }
 
-    pub fn cheapest(&self) -> Option<&Arc<dyn EthereumAdapter>> {
+    pub fn cheapest(&self) -> Option<Arc<EthereumAdapter>> {
         // EthereumAdapters are sorted by their NodeCapabilities when the EthereumNetworks
         // struct is instantiated so they do not need to be sorted here
         self.adapters
             .iter()
             .next()
-            .map(|ethereum_network_adapter| &ethereum_network_adapter.adapter)
+            .map(|ethereum_network_adapter| ethereum_network_adapter.adapter.clone())
     }
 
     pub fn remove(&mut self, provider: &str) {
@@ -74,7 +76,7 @@ impl EthereumNetworks {
         &mut self,
         name: String,
         capabilities: NodeCapabilities,
-        adapter: Arc<dyn EthereumAdapter>,
+        adapter: Arc<EthereumAdapter>,
     ) {
         let network_adapters = self
             .networks
@@ -96,7 +98,7 @@ impl EthereumNetworks {
         self.networks.extend(other_networks.networks);
     }
 
-    pub fn flatten(&self) -> Vec<(String, NodeCapabilities, Arc<dyn EthereumAdapter>)> {
+    pub fn flatten(&self) -> Vec<(String, NodeCapabilities, Arc<EthereumAdapter>)> {
         self.networks
             .iter()
             .flat_map(|(network_name, network_adapters)| {
@@ -126,7 +128,7 @@ impl EthereumNetworks {
         &self,
         network_name: String,
         requirements: &NodeCapabilities,
-    ) -> Result<&Arc<dyn EthereumAdapter>, Error> {
+    ) -> Result<&Arc<EthereumAdapter>, Error> {
         self.networks
             .get(&network_name)
             .ok_or(anyhow!("network not supported: {}", &network_name))

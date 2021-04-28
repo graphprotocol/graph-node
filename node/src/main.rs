@@ -512,7 +512,7 @@ async fn create_ethereum_networks(
                         supports_eip_1898,
                     )
                     .await,
-                ) as Arc<dyn EthereumAdapter>,
+                ),
             );
         }
     }
