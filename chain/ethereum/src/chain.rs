@@ -22,7 +22,7 @@ use graph::{
 };
 
 pub struct Chain {
-    ingestor_logger: Logger,
+    logger_factory: LoggerFactory,
     eth_adapters: EthereumNetworkAdapters,
     ancestor_count: BlockNumber,
     chain_store: Arc<dyn ChainStore>,
@@ -31,23 +31,14 @@ pub struct Chain {
 
 impl Chain {
     pub fn new(
-        logger_factory: &LoggerFactory,
+        logger_factory: LoggerFactory,
         chain_store: Arc<dyn ChainStore>,
         eth_adapters: EthereumNetworkAdapters,
         ancestor_count: BlockNumber,
         is_ingestible: bool,
     ) -> Self {
-        let ingestor_logger = logger_factory.component_logger(
-            "BlockIngestor",
-            Some(ComponentLoggerConfig {
-                elastic: Some(ElasticComponentLoggerConfig {
-                    index: String::from("block-ingestor-logs"),
-                }),
-            }),
-        );
-
         Chain {
-            ingestor_logger,
+            logger_factory,
             eth_adapters,
             ancestor_count,
             chain_store,
@@ -104,7 +95,15 @@ impl Blockchain for Chain {
     fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter> {
         let eth_adapter = self.eth_adapters.cheapest().unwrap().clone();
         let logger = self
-            .ingestor_logger
+            .logger_factory
+            .component_logger(
+                "BlockIngestor",
+                Some(ComponentLoggerConfig {
+                    elastic: Some(ElasticComponentLoggerConfig {
+                        index: String::from("block-ingestor-logs"),
+                    }),
+                }),
+            )
             .new(o!("provider" => eth_adapter.provider().to_string()));
 
         let adapter = IngestorAdapter {
