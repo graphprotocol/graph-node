@@ -9,6 +9,7 @@ use graph::{
         Block, BlockHash, Blockchain, DataSource, IngestorAdapter as IngestorAdapterTrait,
         IngestorError, Manifest, TriggerFilter,
     },
+    cheap_clone::CheapClone,
     prelude::{
         async_trait, error, serde_yaml, web3::types::H256, BlockNumber, BlockPtr, ChainStore,
         DeploymentHash, EthereumAdapter, Future01CompatExt, LinkResolver, Logger,
@@ -243,7 +244,7 @@ impl IngestorAdapterTrait<Chain> for IngestorAdapter {
         self.chain_store.upsert_block(block).await?;
 
         self.chain_store
-            .clone()
+            .cheap_clone()
             .attempt_chain_head_update(self.ancestor_count)
             .await
             .map(|missing| missing.map(|h256| h256.into()))
