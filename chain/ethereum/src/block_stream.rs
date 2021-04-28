@@ -7,8 +7,8 @@ use graph::{
     blockchain::Blockchain,
     components::{
         ethereum::{
-            blocks_with_triggers, triggers_in_block, ChainHeadUpdateListener, EthereumNetworks,
-            NodeCapabilities, TriggerFilter,
+            blocks_with_triggers, triggers_in_block, ChainHeadUpdateListener, NodeCapabilities,
+            TriggerFilter,
         },
         store::{BlockStore, DeploymentLocator, WritableStore},
     },
@@ -20,6 +20,8 @@ use graph::{
 
 #[cfg(debug_assertions)]
 use fail::fail_point;
+
+use crate::network::EthereumNetworks;
 
 lazy_static! {
     /// Maximum number of blocks to request in each chunk.

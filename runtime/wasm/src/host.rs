@@ -16,6 +16,7 @@ use graph::components::three_box::ThreeBoxAdapter;
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
+use graph_chain_ethereum::EthereumNetworks;
 
 use crate::mapping::{MappingContext, MappingRequest};
 use crate::{host_exports::HostExports, module::ExperimentalFeatures};

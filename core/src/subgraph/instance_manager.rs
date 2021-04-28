@@ -7,19 +7,17 @@ use std::time::Instant;
 use tokio::task;
 
 use graph::components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing};
+use graph::components::{ethereum::triggers_in_block, store::WritableStore};
 use graph::components::{
     ethereum::TriggerFilter,
     store::{BlockStore, DeploymentId, DeploymentLocator, ModificationsAndCache},
-};
-use graph::components::{
-    ethereum::{triggers_in_block, EthereumNetworks},
-    store::WritableStore,
 };
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::data::subgraph::SubgraphFeature;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::util::lfu_cache::LfuCache;
+use graph_chain_ethereum::EthereumNetworks;
 
 use super::loader::load_dynamic_data_sources;
 use super::SubgraphInstance;

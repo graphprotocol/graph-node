@@ -5,13 +5,14 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 
+use graph::components::store::BlockStore;
 use graph::components::store::{DeploymentId, DeploymentLocator, SubscriptionManager};
-use graph::components::{ethereum::EthereumNetworks, store::BlockStore};
 use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
+use graph_chain_ethereum::EthereumNetworks;
 
 lazy_static! {
     // The timeout for IPFS requests in seconds

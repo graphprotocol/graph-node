@@ -12,7 +12,7 @@ pub use self::adapter::{
     SubgraphEthRpcMetrics, TriggerFilter,
 };
 pub use self::listener::{ChainHeadUpdate, ChainHeadUpdateListener, ChainHeadUpdateStream};
-pub use self::network::{EthereumNetworkAdapters, EthereumNetworks, NodeCapabilities};
+pub use self::network::NodeCapabilities;
 pub use self::stream::{BlockStream, BlockStreamBuilder, BlockStreamEvent};
 pub use self::types::{
     BlockFinality, BlockPtr, EthereumBlock, EthereumBlockData, EthereumBlockTriggerType,

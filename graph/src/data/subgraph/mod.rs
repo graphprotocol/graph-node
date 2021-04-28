@@ -20,6 +20,7 @@ use wasmparser;
 use web3::types::{Address, H256};
 
 use crate::components::{
+    ethereum::NodeCapabilities,
     link_resolver::LinkResolver,
     store::{DeploymentLocator, StoreError, SubgraphStore},
 };
@@ -32,7 +33,6 @@ use crate::prelude::CheapClone;
 use crate::prelude::{impl_slog_value, q, BlockNumber, Deserialize, Serialize};
 use crate::util::ethereum::string_to_h256;
 
-use crate::components::ethereum::NodeCapabilities;
 use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;

@@ -9,5 +9,9 @@ pub use self::ethereum_adapter::EthereumAdapter;
 pub use self::transport::{EventLoopHandle, Transport};
 
 mod chain;
+mod network;
 
-pub use chain::Chain;
+pub use crate::chain::Chain;
+pub use crate::network::EthereumNetworks;
+
+pub struct Foo;

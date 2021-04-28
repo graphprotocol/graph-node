@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, pin::Pin, sync::Arc, task::Context};
+use std::{pin::Pin, sync::Arc, task::Context};
 
 use anyhow::Error;
 use graph::{
@@ -11,10 +11,7 @@ use graph::{
         IngestorError, Manifest, TriggerFilter,
     },
     cheap_clone::CheapClone,
-    components::{
-        ethereum::{EthereumNetworkAdapters, NodeCapabilities},
-        store::DeploymentLocator,
-    },
+    components::{ethereum::NodeCapabilities, store::DeploymentLocator},
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
         async_trait, error, o, serde_yaml, web3::types::H256, BlockNumber, BlockPtr, ChainStore,
@@ -25,6 +22,8 @@ use graph::{
     runtime::{AscType, DeterministicHostError},
     tokio_stream::Stream,
 };
+
+use crate::network::EthereumNetworkAdapters;
 
 pub struct Chain {
     logger_factory: LoggerFactory,

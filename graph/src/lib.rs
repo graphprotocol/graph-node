@@ -67,6 +67,7 @@ pub mod prelude {
     pub use futures03::stream::{StreamExt as _, TryStreamExt};
     pub use hex;
     pub use lazy_static::lazy_static;
+    pub use rand;
     pub use reqwest;
     pub use serde_derive::{Deserialize, Serialize};
     pub use serde_json;
