@@ -53,10 +53,6 @@ pub trait GasSizeOf {
     }
 }
 
-pub trait ConstGasSizeOf {
-    fn gas_size_of() -> Gas;
-}
-
 /// This wrapper ensures saturating arithmetic is used
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
 pub struct Gas(u64);
