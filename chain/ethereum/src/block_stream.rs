@@ -4,7 +4,11 @@ use std::mem;
 use std::time::Duration;
 
 use graph::{
-    blockchain::Blockchain,
+    blockchain::BlockchainMap,
+    prelude::{BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *},
+};
+use graph::{
+    blockchain::{Blockchain, TriggersAdapter as _},
     components::{
         ethereum::{
             blocks_with_triggers, triggers_in_block, ChainHeadUpdateListener, NodeCapabilities,
@@ -12,10 +16,6 @@ use graph::{
         },
         store::{BlockStore, DeploymentLocator, WritableStore},
     },
-};
-use graph::{
-    blockchain::BlockchainMap,
-    prelude::{BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *},
 };
 
 #[cfg(debug_assertions)]
@@ -319,16 +319,7 @@ where
             // permanently accepted into the main chain, or does it point to a block that was
             // uncled?
             let is_on_main_chain = match &subgraph_ptr {
-                Some(ptr) => {
-                    ctx.eth_adapter
-                        .is_on_main_chain(
-                            &ctx.logger,
-                            ctx.metrics.ethrpc_metrics.clone(),
-                            ctx.chain_store.clone(),
-                            ptr.clone(),
-                        )
-                        .await?
-                }
+                Some(ptr) => ctx.adapter.is_on_main_chain(ptr.clone()).await?,
                 None => true,
             };
             if !is_on_main_chain {

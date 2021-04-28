@@ -19,7 +19,7 @@ use std::sync::Arc;
 use std::{collections::HashMap, fmt};
 use web3::types::H256;
 
-use block_stream::{BlockStream, TriggersAdapter};
+pub use block_stream::{BlockStream, TriggersAdapter};
 
 /// A simple marker for byte arrays that are really block hashes
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
