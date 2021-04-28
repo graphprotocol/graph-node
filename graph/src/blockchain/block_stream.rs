@@ -35,6 +35,10 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
         block: C::Block,
         filter: C::TriggerFilter,
     ) -> Result<BlockWithTriggers<C>, Error>;
+
+    /// Return `true` if the block with the given hash and number is on the
+    /// main chain, i.e., the chain going back from the current chain head.
+    async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error>;
 }
 
 pub enum BlockStreamEvent<C: Blockchain> {

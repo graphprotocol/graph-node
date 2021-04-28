@@ -15,15 +15,15 @@ use graph::{
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
         async_trait, error, o, serde_yaml, web3::types::H256, BlockNumber, BlockPtr, ChainStore,
-        DeploymentHash, EthereumAdapter, Future01CompatExt, LinkResolver, Logger, LoggerFactory,
-        MetricsRegistry,
+        DeploymentHash, EthereumAdapter as _, Future01CompatExt, LinkResolver, Logger,
+        LoggerFactory, MetricsRegistry,
     },
     prometheus::{CounterVec, GaugeVec},
     runtime::{AscType, DeterministicHostError},
     tokio_stream::Stream,
 };
 
-use crate::network::EthereumNetworkAdapters;
+use crate::{network::EthereumNetworkAdapters, EthereumAdapter};
 
 pub struct Chain {
     logger_factory: LoggerFactory,
@@ -95,7 +95,7 @@ impl Blockchain for Chain {
 
         let adapter = TriggersAdapter {
             logger,
-            ethrpc_metrics,
+            _ethrpc_metrics: ethrpc_metrics,
             eth_adapter,
             chain_store: self.chain_store.cheap_clone(),
         };
@@ -230,9 +230,9 @@ impl SubgraphEthRpcMetrics {
 
 pub struct TriggersAdapter {
     logger: Logger,
-    ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
+    _ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
     chain_store: Arc<dyn ChainStore>,
-    eth_adapter: Arc<dyn EthereumAdapter>,
+    eth_adapter: Arc<EthereumAdapter>,
 }
 
 #[async_trait]
@@ -252,6 +252,12 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         _filter: DummyTriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         todo!()
+    }
+
+    async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error> {
+        self.eth_adapter
+            .is_on_main_chain_no_trait(&self.logger, self.chain_store.clone(), ptr.clone())
+            .await
     }
 }
 
@@ -301,7 +307,7 @@ impl TriggerFilter<Chain> for DummyTriggerFilter {
 pub struct IngestorAdapter {
     logger: Logger,
     ancestor_count: i32,
-    eth_adapter: Arc<dyn EthereumAdapter>,
+    eth_adapter: Arc<EthereumAdapter>,
     chain_store: Arc<dyn ChainStore>,
 }
 

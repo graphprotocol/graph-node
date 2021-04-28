@@ -620,6 +620,21 @@ impl EthereumAdapter {
         .buffered(*BLOCK_BATCH_SIZE)
         .map(|b| b.into())
     }
+
+    pub async fn is_on_main_chain_no_trait(
+        &self,
+        logger: &Logger,
+        chain_store: Arc<dyn ChainStore>,
+        block_ptr: BlockPtr,
+    ) -> Result<bool, Error> {
+        let block_hash = self
+            .block_hash_by_block_number(&logger, chain_store, block_ptr.number, true)
+            .compat()
+            .await?;
+        block_hash
+            .ok_or_else(|| anyhow!("Ethereum node is missing block #{}", block_ptr.number))
+            .map(|block_hash| block_hash == block_ptr.hash_as_h256())
+    }
 }
 
 #[async_trait]
