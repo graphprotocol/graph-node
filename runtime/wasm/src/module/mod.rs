@@ -19,6 +19,7 @@ use anyhow::Error;
 use graph::data::store;
 use graph::prelude::*;
 use graph::runtime::{AscHeap, IndexForAscTypeId};
+use graph::runtime::gas::{self, Gas, GasCounter, SaturatingInto};
 use graph::{components::subgraph::MappingError, runtime::AscPtr};
 use graph::{
     data::subgraph::schema::SubgraphError,

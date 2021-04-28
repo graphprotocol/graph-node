@@ -3,17 +3,16 @@ mod costs;
 mod ops;
 mod saturating;
 mod size_of;
+use crate::prelude::CheapClone;
+use crate::runtime::DeterministicHostError;
 pub use combinators::*;
+pub use costs::DEFAULT_BASE_COST;
 pub use costs::*;
-use graph::prelude::CheapClone;
-use graph::runtime::DeterministicHostError;
 pub use saturating::*;
 
-use parity_wasm::elements::Instruction;
-use pwasm_utils::rules::{MemoryGrowCost, Rules};
+use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
-use std::{convert::TryInto, rc::Rc};
-use std::{fmt, fmt::Display, num::NonZeroU32};
+use std::{fmt, fmt::Display};
 
 pub struct GasOp {
     base_cost: u64,

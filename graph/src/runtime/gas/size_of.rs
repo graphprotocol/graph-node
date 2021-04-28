@@ -1,6 +1,6 @@
 //! Various implementations of GasSizeOf;
 
-use graph::{
+use crate::{
     components::store::EntityType,
     data::store::{scalar::Bytes, Value},
     prelude::{BigDecimal, BigInt, Entity, EntityKey},

@@ -1,4 +1,3 @@
-use crate::gas::{self, complexity, Gas, GasCounter};
 use crate::{error::DeterminismLevel, module::IntoTrap};
 use ethabi::param_type::Reader;
 use ethabi::{decode, encode, Token};
@@ -11,7 +10,8 @@ use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
 pub use graph::runtime::{DeterministicHostError, HostExportError};
-use never::Never;
+use graph::runtime::gas::{self, complexity, Gas, GasCounter};
+use graph::{blockchain::DataSource, bytes::Bytes};
 use semver::Version;
 use std::collections::HashMap;
 use std::ops::Deref;
