@@ -755,7 +755,6 @@ fn start_block_ingestor(
 
             let block_ingestor = BlockIngestor::<ethereum::Chain>::new(
                 chain.ingestor_adapter(),
-                *ANCESTOR_COUNT,
                 block_polling_interval,
             )
             .expect("failed to create Ethereum block ingestor");

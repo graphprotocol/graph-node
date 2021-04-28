@@ -243,6 +243,10 @@ impl IngestorAdapterTrait<Chain> for IngestorAdapter {
         &self.logger
     }
 
+    fn ancestor_count(&self) -> BlockNumber {
+        self.ancestor_count
+    }
+
     async fn latest_block(&self) -> Result<BlockPtr, IngestorError> {
         self.eth_adapter
             .latest_block_header(&self.logger)

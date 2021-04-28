@@ -6,8 +6,11 @@ pub mod block_ingestor;
 pub mod block_stream;
 
 // Try to reexport most of the necessary types
-use crate::prelude::{thiserror::Error, BlockPtr, CheapClone, DeploymentHash, LinkResolver};
 use crate::runtime::AscType;
+use crate::{
+    components::store::BlockNumber,
+    prelude::{thiserror::Error, BlockPtr, CheapClone, DeploymentHash, LinkResolver},
+};
 use anyhow::Error;
 use async_trait::async_trait;
 use slog;
@@ -123,6 +126,10 @@ impl From<Error> for IngestorError {
 #[async_trait]
 pub trait IngestorAdapter<C: Blockchain> {
     fn logger(&self) -> &Logger;
+
+    /// How long a chain from the current chain head back to blocks that are
+    /// considered final should be
+    fn ancestor_count(&self) -> BlockNumber;
 
     /// Get the latest block from the chain
     async fn latest_block(&self) -> Result<BlockPtr, IngestorError>;

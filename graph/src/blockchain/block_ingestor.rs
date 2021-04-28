@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use crate::{
     blockchain::{Blockchain, IngestorAdapter, IngestorError},
-    prelude::{info, lazy_static, tokio, trace, warn, BlockNumber, Error, LogCode, Logger},
+    prelude::{info, lazy_static, tokio, trace, warn, Error, LogCode, Logger},
 };
 
 lazy_static! {
@@ -19,7 +19,6 @@ where
     C: Blockchain,
 {
     adapter: Arc<C::IngestorAdapter>,
-    ancestor_count: BlockNumber,
     logger: Logger,
     polling_interval: Duration,
 }
@@ -30,13 +29,11 @@ where
 {
     pub fn new(
         adapter: Arc<C::IngestorAdapter>,
-        ancestor_count: BlockNumber,
         polling_interval: Duration,
     ) -> Result<BlockIngestor<C>, Error> {
         let logger = adapter.logger().clone();
         Ok(BlockIngestor {
             adapter,
-            ancestor_count,
             logger,
             polling_interval,
         })
@@ -120,7 +117,7 @@ where
                 let latest_number = latest_block.number;
                 let head_number = head_block_ptr.number;
                 let distance = latest_number - head_number;
-                let blocks_needed = (distance).min(self.ancestor_count);
+                let blocks_needed = (distance).min(self.adapter.ancestor_count());
                 let code = if distance >= 15 {
                     LogCode::BlockIngestionLagging
                 } else {
