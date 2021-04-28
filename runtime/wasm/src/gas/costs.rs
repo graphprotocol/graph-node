@@ -50,8 +50,14 @@ pub(crate) const BIG_MATH_GAS_OP: GasOp = GasOp {
     size_mult: BIG_MATH_GAS_PER_BYTE,
 };
 
-// Allow up to 25,000 ethereum calls
-pub const ETHEREUM_CALL: Gas = Gas(MAX_GAS_PER_HANDLER / 25_000);
+// Allow up to 1,000 ethereum calls. The justification is that we don't know how much Ethereum gas a
+// call takes, but we limit the maximum to 25 million. One unit of Ethereum gas is at least 100ns
+// according to these benchmarks [1], so 1000 of our gas. Assuming the worst case, an Ethereum call
+// should therefore consume 25 billion gas. This allows for 1440 calls per handler with the current
+// limits.
+//
+// [1] - https://www.sciencedirect.com/science/article/abs/pii/S0166531620300900
+pub const ETHEREUM_CALL: Gas = Gas(25_000_000_000);
 
 // Allow up to 100,000 data sources to be created
 pub const CREATE_DATA_SOURCE: Gas = Gas(MAX_GAS_PER_HANDLER / 100_000);
