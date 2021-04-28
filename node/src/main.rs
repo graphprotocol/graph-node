@@ -217,6 +217,7 @@ async fn main() {
 
         let chains = Arc::new(networks_as_chains(
             &logger,
+            metrics_registry.clone(),
             &eth_networks,
             network_store.block_store().as_ref(),
             &logger_factory,
@@ -690,6 +691,7 @@ fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<Ipf
 
 fn networks_as_chains(
     logger: &Logger,
+    registry: Arc<MetricsRegistry>,
     eth_networks: &EthereumNetworks,
     block_store: &DieselBlockStore,
     logger_factory: &LoggerFactory,
@@ -715,6 +717,7 @@ fn networks_as_chains(
         .map(|(network_name, eth_adapters, chain_store, is_ingestible)| {
             let chain = ethereum::Chain::new(
                 logger_factory.clone(),
+                registry.clone(),
                 chain_store,
                 eth_adapters.clone(),
                 *ANCESTOR_COUNT,

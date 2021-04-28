@@ -819,10 +819,12 @@ where
                 &network_name, &requirements
             ));
 
-        let triggers_adapter = chain.triggers_adapter(&requirements).expect(&format!(
-            "no adapter for network {} with capabilities {}",
-            network_name, requirements
-        ));
+        let triggers_adapter = chain
+            .triggers_adapter(&deployment, &requirements)
+            .expect(&format!(
+                "no adapter for network {} with capabilities {}",
+                network_name, requirements
+            ));
         // Create the actual subgraph-specific block stream
         BlockStream::new(
             self.subgraph_store

@@ -6,11 +6,11 @@ pub mod block_ingestor;
 pub mod block_stream;
 
 // Try to reexport most of the necessary types
-use crate::runtime::AscType;
 use crate::{
     components::store::BlockNumber,
     prelude::{thiserror::Error, BlockPtr, CheapClone, DeploymentHash, LinkResolver},
 };
+use crate::{components::store::DeploymentLocator, runtime::AscType};
 use anyhow::Error;
 use async_trait::async_trait;
 use slog;
@@ -96,6 +96,7 @@ pub trait Blockchain: Sized + Send + Sync + 'static {
 
     fn triggers_adapter(
         &self,
+        loc: &DeploymentLocator,
         capabilities: &Self::NodeCapabilities,
     ) -> Result<Arc<Self::TriggersAdapter>, Error>;
 

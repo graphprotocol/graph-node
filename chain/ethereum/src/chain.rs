@@ -1,4 +1,4 @@
-use std::{pin::Pin, sync::Arc, task::Context};
+use std::{marker::PhantomData, pin::Pin, sync::Arc, task::Context};
 
 use anyhow::Error;
 use graph::{
@@ -11,18 +11,24 @@ use graph::{
         IngestorError, Manifest, TriggerFilter,
     },
     cheap_clone::CheapClone,
-    components::ethereum::{EthereumNetworkAdapters, NodeCapabilities},
+    components::{
+        ethereum::{EthereumNetworkAdapters, NodeCapabilities},
+        store::DeploymentLocator,
+    },
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
         async_trait, error, o, serde_yaml, web3::types::H256, BlockNumber, BlockPtr, ChainStore,
         DeploymentHash, EthereumAdapter, Future01CompatExt, LinkResolver, Logger, LoggerFactory,
+        MetricsRegistry,
     },
+    prometheus::{CounterVec, GaugeVec},
     runtime::{AscType, DeterministicHostError},
     tokio_stream::Stream,
 };
 
 pub struct Chain {
     logger_factory: LoggerFactory,
+    registry: Arc<dyn MetricsRegistry>,
     eth_adapters: EthereumNetworkAdapters,
     ancestor_count: BlockNumber,
     chain_store: Arc<dyn ChainStore>,
@@ -32,6 +38,7 @@ pub struct Chain {
 impl Chain {
     pub fn new(
         logger_factory: LoggerFactory,
+        registry: Arc<dyn MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
         eth_adapters: EthereumNetworkAdapters,
         ancestor_count: BlockNumber,
@@ -39,6 +46,7 @@ impl Chain {
     ) -> Self {
         Chain {
             logger_factory,
+            registry,
             eth_adapters,
             ancestor_count,
             chain_store,
@@ -76,11 +84,22 @@ impl Blockchain for Chain {
 
     fn triggers_adapter(
         &self,
+        loc: &DeploymentLocator,
         capabilities: &Self::NodeCapabilities,
     ) -> Result<Arc<Self::TriggersAdapter>, Error> {
         let eth_adapter = self.eth_adapters.cheapest_with(capabilities)?.clone();
+        let logger = self
+            .logger_factory
+            .subgraph_logger(&loc)
+            .new(o!("component" => "BlockStream"));
+        let ethrpc_metrics = Arc::new(SubgraphEthRpcMetrics::new(self.registry.clone(), &loc.hash));
 
-        let adapter = TriggersAdapter { eth_adapter };
+        let adapter = TriggersAdapter {
+            logger,
+            ethrpc_metrics,
+            eth_adapter,
+            chain_store: self.chain_store.cheap_clone(),
+        };
         Ok(Arc::new(adapter))
     }
 
@@ -169,7 +188,51 @@ impl Manifest<Chain> for DummyManifest {
     }
 }
 
+#[derive(Clone)]
+pub struct SubgraphEthRpcMetrics {
+    request_duration: Box<GaugeVec>,
+    errors: Box<CounterVec>,
+}
+
+impl SubgraphEthRpcMetrics {
+    pub fn new(registry: Arc<dyn MetricsRegistry>, subgraph_hash: &str) -> Self {
+        let request_duration = registry
+            .new_deployment_gauge_vec(
+                "deployment_eth_rpc_request_duration",
+                "Measures eth rpc request duration for a subgraph deployment",
+                &subgraph_hash,
+                vec![String::from("method")],
+            )
+            .unwrap();
+        let errors = registry
+            .new_deployment_counter_vec(
+                "deployment_eth_rpc_errors",
+                "Counts eth rpc request errors for a subgraph deployment",
+                &subgraph_hash,
+                vec![String::from("method")],
+            )
+            .unwrap();
+        Self {
+            request_duration,
+            errors,
+        }
+    }
+
+    pub fn observe_request(&self, duration: f64, method: &str) {
+        self.request_duration
+            .with_label_values(vec![method].as_slice())
+            .set(duration);
+    }
+
+    pub fn add_error(&self, method: &str) {
+        self.errors.with_label_values(vec![method].as_slice()).inc();
+    }
+}
+
 pub struct TriggersAdapter {
+    logger: Logger,
+    ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
+    chain_store: Arc<dyn ChainStore>,
     eth_adapter: Arc<dyn EthereumAdapter>,
 }
 
