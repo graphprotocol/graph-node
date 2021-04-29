@@ -2,6 +2,8 @@
 //! Determinism: Once deployed, none of these values can be changed without a version upgrade.
 
 use super::*;
+use lazy_static::lazy_static;
+use std::str::FromStr;
 
 /// Using 10 gas = ~1ns for WASM instructions.
 const GAS_PER_SECOND: u64 = 10_000_000_000;
@@ -11,7 +13,20 @@ const GAS_PER_SECOND: u64 = 10_000_000_000;
 /// like 10 gas for ~1ns allows us to be granular in instructions which are aggregated into metered
 /// blocks via https://docs.rs/pwasm-utils/0.16.0/pwasm_utils/fn.inject_gas_counter.html But we can
 /// still charge very high numbers for other things.
-pub const MAX_GAS_PER_HANDLER: u64 = 3600 * GAS_PER_SECOND;
+const CONST_MAX_GAS_PER_HANDLER: u64 = 3600 * GAS_PER_SECOND;
+
+lazy_static! {
+    /// This is configurable only for debugging purposes. This value is set by the protocol,
+    /// so indexers running in the network should never set this config.
+    pub static ref MAX_GAS_PER_HANDLER: u64 = std::env::var("GRAPH_MAX_GAS_PER_HANDLER")
+        .ok()
+        .map(|s| {
+            u64::from_str(&s).unwrap_or_else(|_| {
+                panic!("GRAPH_LOAD_WINDOW_SIZE must be a number, but is `{}`", s)
+            })
+        })
+        .unwrap_or(CONST_MAX_GAS_PER_HANDLER);
+}
 
 /// Gas for instructions are aggregated into blocks, so hopefully gas calls each have relatively
 /// large gas. But in the case they don't, we don't want the overhead of calling out into a host
@@ -60,23 +75,23 @@ pub const BIG_MATH_GAS_OP: GasOp = GasOp {
 pub const ETHEREUM_CALL: Gas = Gas(25_000_000_000);
 
 // Allow up to 100,000 data sources to be created
-pub const CREATE_DATA_SOURCE: Gas = Gas(MAX_GAS_PER_HANDLER / 100_000);
+pub const CREATE_DATA_SOURCE: Gas = Gas(CONST_MAX_GAS_PER_HANDLER / 100_000);
 
 // Allow up to 100,000 logs
-pub const LOG: Gas = Gas(MAX_GAS_PER_HANDLER / 100_000);
+pub const LOG: Gas = Gas(CONST_MAX_GAS_PER_HANDLER / 100_000);
 
 // Saving to the store is one of the most expensive operations.
 pub const STORE_SET: GasOp = GasOp {
     // Allow up to 250k entities saved.
-    base_cost: MAX_GAS_PER_HANDLER / 250_000,
+    base_cost: CONST_MAX_GAS_PER_HANDLER / 250_000,
     // If the size roughly corresponds to bytes, allow 1GB to be saved.
-    size_mult: MAX_GAS_PER_HANDLER / 1_000_000_000,
+    size_mult: CONST_MAX_GAS_PER_HANDLER / 1_000_000_000,
 };
 
 // Reading from the store is much cheaper than writing.
 pub const STORE_GET: GasOp = GasOp {
-    base_cost: MAX_GAS_PER_HANDLER / 10_000_000,
-    size_mult: MAX_GAS_PER_HANDLER / 10_000_000_000,
+    base_cost: CONST_MAX_GAS_PER_HANDLER / 10_000_000,
+    size_mult: CONST_MAX_GAS_PER_HANDLER / 10_000_000_000,
 };
 
 pub const STORE_REMOVE: GasOp = STORE_SET;

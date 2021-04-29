@@ -157,8 +157,8 @@ impl Rules for GasRules {
         // free pages because this is 32bit WASM.
         const MAX_PAGES: u64 = 12 * GIB / PAGE;
         // This ends up at 439,453,125 per page.
-        const GAS_PER_PAGE: u64 = MAX_GAS_PER_HANDLER / MAX_PAGES;
-        let gas_per_page = NonZeroU32::new(GAS_PER_PAGE.try_into().unwrap()).unwrap();
+        let gas_per_page =
+            NonZeroU32::new((*MAX_GAS_PER_HANDLER / MAX_PAGES).try_into().unwrap()).unwrap();
 
         Some(MemoryGrowCost::Linear(gas_per_page))
     }
