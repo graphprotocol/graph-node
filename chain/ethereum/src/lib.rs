@@ -14,7 +14,4 @@ mod stream;
 
 pub use crate::chain::Chain;
 pub use crate::network::EthereumNetworks;
-pub use crate::stream::{
-    BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait,
-    BlockStreamEvent,
-};
+pub use crate::stream::{BlockStream as BlockStreamTrait, BlockStreamEvent};

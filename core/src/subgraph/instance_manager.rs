@@ -6,7 +6,6 @@ use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::task;
 
-use graph::components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing};
 use graph::components::{ethereum::triggers_in_block, store::WritableStore};
 use graph::components::{
     ethereum::TriggerFilter,
@@ -17,7 +16,11 @@ use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::data::subgraph::SubgraphFeature;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::util::lfu_cache::LfuCache;
-use graph_chain_ethereum::{BlockStreamBuilderTrait, BlockStreamEvent, EthereumNetworks};
+use graph::{
+    blockchain::Blockchain,
+    components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing},
+};
+use graph_chain_ethereum::{BlockStreamBuilder, BlockStreamEvent, EthereumNetworks};
 
 use super::loader::load_dynamic_data_sources;
 use super::SubgraphInstance;
@@ -40,15 +43,15 @@ lazy_static! {
 
 type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<DeploymentId, CancelGuard>>>;
 
-struct IndexingInputs<B, C> {
+struct IndexingInputs<C> {
     deployment: DeploymentLocator,
     features: BTreeSet<SubgraphFeature>,
     network_name: String,
     start_blocks: Vec<BlockNumber>,
     store: Arc<dyn WritableStore>,
-    chain_store: Arc<C>,
+    chain_store: Arc<dyn ChainStore>,
     eth_adapter: Arc<dyn EthereumAdapter>,
-    stream_builder: B,
+    stream_builder: BlockStreamBuilder<C>,
     include_calls_in_blocks: bool,
     templates: Arc<Vec<DataSourceTemplate>>,
 }
@@ -61,9 +64,9 @@ struct IndexingState<T: RuntimeHostBuilder> {
     entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
 }
 
-struct IndexingContext<B, T: RuntimeHostBuilder, C> {
+struct IndexingContext<T: RuntimeHostBuilder, C> {
     /// Read only inputs that are needed while indexing a subgraph.
-    pub inputs: IndexingInputs<B, C>,
+    pub inputs: IndexingInputs<C>,
 
     /// Mutable state that may be modified while indexing a subgraph.
     pub state: IndexingState<T>,
@@ -80,13 +83,13 @@ struct IndexingContext<B, T: RuntimeHostBuilder, C> {
     pub block_stream_metrics: Arc<BlockStreamMetrics>,
 }
 
-pub struct SubgraphInstanceManager<B, S, BS, M, H, L> {
+pub struct SubgraphInstanceManager<C, S, BS, M, H, L> {
     logger_factory: LoggerFactory,
     subgraph_store: Arc<S>,
     block_store: Arc<BS>,
     eth_networks: EthereumNetworks,
     host_builder: H,
-    block_stream_builder: B,
+    block_stream_builder: BlockStreamBuilder<C>,
     metrics_registry: Arc<M>,
     manager_metrics: SubgraphInstanceManagerMetrics,
     instances: SharedInstanceKeepAliveMap,
@@ -193,11 +196,11 @@ impl SubgraphInstanceMetrics {
 }
 
 #[async_trait]
-impl<B, S, BS, M, H, L> SubgraphInstanceManagerTrait for SubgraphInstanceManager<B, S, BS, M, H, L>
+impl<C, S, BS, M, H, L> SubgraphInstanceManagerTrait for SubgraphInstanceManager<C, S, BS, M, H, L>
 where
     S: SubgraphStore,
     BS: BlockStore,
-    B: BlockStreamBuilderTrait,
+    C: Blockchain,
     M: MetricsRegistry,
     H: RuntimeHostBuilder,
     L: LinkResolver + Clone,
@@ -253,11 +256,11 @@ where
     }
 }
 
-impl<B, S, BS, M, H, L> SubgraphInstanceManager<B, S, BS, M, H, L>
+impl<C, S, BS, M, H, L> SubgraphInstanceManager<C, S, BS, M, H, L>
 where
     S: SubgraphStore,
     BS: BlockStore,
-    B: BlockStreamBuilderTrait,
+    C: Blockchain,
     M: MetricsRegistry,
     H: RuntimeHostBuilder,
     L: LinkResolver + Clone,
@@ -268,7 +271,7 @@ where
         block_store: Arc<BS>,
         eth_networks: EthereumNetworks,
         host_builder: H,
-        block_stream_builder: B,
+        block_stream_builder: BlockStreamBuilder<C>,
         metrics_registry: Arc<M>,
         link_resolver: Arc<L>,
     ) -> Self {
@@ -301,7 +304,7 @@ where
         logger: Logger,
         instances: SharedInstanceKeepAliveMap,
         host_builder: impl RuntimeHostBuilder,
-        stream_builder: B,
+        stream_builder: BlockStreamBuilder<C>,
         store: Arc<dyn SubgraphStore>,
         block_store: Arc<BS>,
         eth_networks: EthereumNetworks,
@@ -486,11 +489,10 @@ where
     }
 }
 
-async fn run_subgraph<B, T, C>(mut ctx: IndexingContext<B, T, C>) -> Result<(), Error>
+async fn run_subgraph<T, C>(mut ctx: IndexingContext<T, C>) -> Result<(), Error>
 where
-    B: BlockStreamBuilderTrait,
     T: RuntimeHostBuilder,
-    C: ChainStore,
+    C: Blockchain,
 {
     // Clone a few things for different parts of the async processing
     let subgraph_metrics = ctx.subgraph_metrics.cheap_clone();
@@ -721,15 +723,15 @@ impl From<Error> for BlockProcessingError {
 
 /// Processes a block and returns the updated context and a boolean flag indicating
 /// whether new dynamic data sources have been added to the subgraph.
-async fn process_block<B: BlockStreamBuilderTrait, T: RuntimeHostBuilder, C>(
+async fn process_block<T: RuntimeHostBuilder, C>(
     logger: &Logger,
     eth_adapter: Arc<dyn EthereumAdapter>,
-    mut ctx: IndexingContext<B, T, C>,
+    mut ctx: IndexingContext<T, C>,
     block_stream_cancel_handle: CancelHandle,
     block: EthereumBlockWithTriggers,
-) -> Result<(IndexingContext<B, T, C>, bool), BlockProcessingError>
+) -> Result<(IndexingContext<T, C>, bool), BlockProcessingError>
 where
-    C: ChainStore,
+    C: Blockchain,
 {
     let triggers = block.triggers;
     let block = block.ethereum_block;
@@ -1099,15 +1101,14 @@ async fn process_triggers(
     Ok(block_state)
 }
 
-fn create_dynamic_data_sources<B, T: RuntimeHostBuilder, C>(
+fn create_dynamic_data_sources<T: RuntimeHostBuilder, C>(
     logger: Logger,
-    ctx: &mut IndexingContext<B, T, C>,
+    ctx: &mut IndexingContext<T, C>,
     host_metrics: Arc<HostMetrics>,
     created_data_sources: Vec<DataSourceTemplateInfo>,
 ) -> Result<(Vec<DataSource>, Vec<Arc<T::Host>>), Error>
 where
-    B: BlockStreamBuilderTrait,
-    C: ChainStore,
+    C: Blockchain,
 {
     let mut data_sources = vec![];
     let mut runtime_hosts = vec![];
@@ -1148,14 +1149,13 @@ where
     Ok((data_sources, runtime_hosts))
 }
 
-fn persist_dynamic_data_sources<B, T: RuntimeHostBuilder, C>(
+fn persist_dynamic_data_sources<T: RuntimeHostBuilder, C>(
     logger: Logger,
-    ctx: &mut IndexingContext<B, T, C>,
+    ctx: &mut IndexingContext<T, C>,
     entity_cache: &mut EntityCache,
     data_sources: Vec<DataSource>,
 ) where
-    B: BlockStreamBuilderTrait,
-    C: ChainStore,
+    C: Blockchain,
 {
     if !data_sources.is_empty() {
         debug!(

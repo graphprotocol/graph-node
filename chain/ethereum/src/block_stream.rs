@@ -19,10 +19,7 @@ use graph::{
 use fail::fail_point;
 
 use crate::network::EthereumNetworks;
-use crate::stream::{
-    BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait,
-    BlockStreamEvent,
-};
+use crate::stream::{BlockStream as BlockStreamTrait, BlockStreamEvent};
 
 lazy_static! {
     /// Maximum number of blocks to request in each chunk.
@@ -748,16 +745,8 @@ where
             metrics_registry,
         }
     }
-}
 
-#[async_trait]
-impl<C> BlockStreamBuilderTrait for BlockStreamBuilder<C>
-where
-    C: Blockchain,
-{
-    type Stream = BlockStream<C>;
-
-    fn build(
+    pub fn build(
         &self,
         logger: Logger,
         deployment: DeploymentLocator,
@@ -766,7 +755,7 @@ where
         filter: TriggerFilter,
         include_calls_in_blocks: bool,
         metrics: Arc<BlockStreamMetrics>,
-    ) -> Self::Stream {
+    ) -> BlockStream<C> {
         let logger = logger.new(o!(
             "component" => "BlockStream",
         ));
