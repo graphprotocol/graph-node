@@ -19,7 +19,7 @@ use graph::{
 use fail::fail_point;
 
 use crate::network::EthereumNetworks;
-use crate::stream::BlockStreamEvent;
+use crate::BlockStreamEvent;
 
 lazy_static! {
     /// Maximum number of blocks to request in each chunk.
