@@ -6,11 +6,11 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
-use graph::mock::*;
 use graph::prelude::*;
 use graph_chain_ethereum::network_indexer::{
     self as network_indexer, BlockWithOmmers, NetworkIndexerEvent,
 };
+use graph_chain_ethereum::MockEthereumAdapter;
 use graph_core::MetricsRegistry;
 use graph_store_postgres::Store as DieselStore;
 use web3::types::{H2048, H256, H64, U256};

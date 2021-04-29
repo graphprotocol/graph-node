@@ -6,10 +6,10 @@ use graph::{
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use graph::components::ethereum::EthereumAdapter as EthereumAdapterTrait;
 pub use graph::impl_slog_value;
 use graph::prelude::Error;
 
+use crate::adapter::EthereumAdapter as _;
 use crate::EthereumAdapter;
 
 #[derive(Clone)]

@@ -1,3 +1,4 @@
+mod adapter;
 mod block_stream;
 mod config;
 mod ethereum_adapter;
@@ -13,8 +14,14 @@ pub use self::transport::{EventLoopHandle, Transport};
 mod chain;
 mod network;
 
+pub use crate::adapter::{
+    triggers_in_block, BlockStreamMetrics, EthereumAdapter as EthereumAdapterTrait,
+    EthereumContractCall, EthereumContractCallError, MockEthereumAdapter, ProviderEthRpcMetrics,
+    SubgraphEthRpcMetrics, TriggerFilter,
+};
 pub use crate::chain::Chain;
 pub use crate::network::EthereumNetworks;
+
 pub enum BlockStreamEvent {
     Block(EthereumBlockWithTriggers),
     Revert(BlockPtr),

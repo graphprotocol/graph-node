@@ -11,6 +11,7 @@ use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
 use graph::runtime::DeterministicHostError;
+use graph_chain_ethereum::{EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError};
 use never::Never;
 use semver::Version;
 use std::collections::HashMap;
@@ -80,7 +81,7 @@ pub(crate) struct HostExports {
     causality_region: String,
     templates: Arc<Vec<DataSourceTemplate>>,
     abis: Vec<Arc<MappingABI>>,
-    ethereum_adapter: Arc<dyn EthereumAdapter>,
+    ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
     pub(crate) link_resolver: Arc<dyn LinkResolver>,
     call_cache: Arc<dyn EthereumCallCache>,
     store: Arc<dyn crate::RuntimeStore>,
@@ -101,7 +102,7 @@ impl HostExports {
         data_source: &DataSource,
         data_source_network: String,
         templates: Arc<Vec<DataSourceTemplate>>,
-        ethereum_adapter: Arc<dyn EthereumAdapter>,
+        ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
         link_resolver: Arc<dyn LinkResolver>,
         store: Arc<dyn crate::RuntimeStore>,
         call_cache: Arc<dyn EthereumCallCache>,

@@ -12,7 +12,7 @@ use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
-use graph_chain_ethereum::EthereumNetworks;
+use graph_chain_ethereum::{EthereumAdapterTrait, EthereumNetworks};
 
 lazy_static! {
     // The timeout for IPFS requests in seconds
@@ -441,7 +441,7 @@ async fn start_subgraph(
 fn resolve_subgraph_chain_blocks(
     manifest: &SubgraphManifest,
     chain_store: Arc<impl ChainStore>,
-    ethereum_adapter: Arc<dyn EthereumAdapter>,
+    ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
     logger: &Logger,
 ) -> Box<
     dyn Future<
@@ -506,7 +506,7 @@ fn create_subgraph_version(
     logger: &Logger,
     store: Arc<impl SubgraphStore>,
     chain_store: Arc<impl ChainStore>,
-    ethereum_adapter: Arc<dyn EthereumAdapter>,
+    ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
     name: SubgraphName,
     manifest: SubgraphManifest,
     node_id: NodeId,

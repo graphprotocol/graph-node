@@ -16,7 +16,7 @@ use graph::components::three_box::ThreeBoxAdapter;
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
-use graph_chain_ethereum::EthereumNetworks;
+use graph_chain_ethereum::{EthereumAdapterTrait, EthereumNetworks};
 
 use crate::mapping::{MappingContext, MappingRequest};
 use crate::{host_exports::HostExports, module::ExperimentalFeatures};
@@ -166,7 +166,7 @@ pub struct RuntimeHost {
 
 impl RuntimeHost {
     fn new(
-        ethereum_adapter: Arc<dyn EthereumAdapter>,
+        ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
         link_resolver: Arc<dyn LinkResolver>,
         store: Arc<dyn crate::RuntimeStore>,
         call_cache: Arc<dyn EthereumCallCache>,

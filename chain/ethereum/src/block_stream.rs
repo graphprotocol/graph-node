@@ -7,10 +7,7 @@ use graph::{blockchain::BlockchainMap, prelude::*};
 use graph::{
     blockchain::{Blockchain, TriggersAdapter as _},
     components::{
-        ethereum::{
-            blocks_with_triggers, triggers_in_block, ChainHeadUpdateListener, NodeCapabilities,
-            TriggerFilter,
-        },
+        ethereum::{ChainHeadUpdateListener, NodeCapabilities},
         store::{DeploymentLocator, WritableStore},
     },
 };
@@ -18,6 +15,9 @@ use graph::{
 #[cfg(debug_assertions)]
 use fail::fail_point;
 
+use crate::adapter::{
+    blocks_with_triggers, triggers_in_block, BlockStreamMetrics, EthereumAdapter, TriggerFilter,
+};
 use crate::network::EthereumNetworks;
 use crate::BlockStreamEvent;
 

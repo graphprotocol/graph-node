@@ -26,14 +26,21 @@ use graph::{
     },
 };
 use graph::{
-    components::ethereum::{EthereumAdapter as EthereumAdapterTrait, *},
+    components::ethereum::*,
     prelude::web3::types::{Trace, TraceFilter, TraceFilterBuilder, H160},
 };
 use web3::api::Web3;
 use web3::transports::batch::Batch;
 use web3::types::Filter;
 
-use crate::transport::Transport;
+use crate::{
+    adapter::{
+        EthGetLogsFilter, EthereumAdapter as EthereumAdapterTrait, EthereumCallFilter,
+        EthereumContractCall, EthereumContractCallError, EthereumLogFilter, ProviderEthRpcMetrics,
+        SubgraphEthRpcMetrics,
+    },
+    transport::Transport,
+};
 
 #[derive(Clone)]
 pub struct EthereumAdapter {

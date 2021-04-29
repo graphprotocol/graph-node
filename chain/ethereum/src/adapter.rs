@@ -2,9 +2,8 @@ use anyhow::{anyhow, Error};
 use ethabi::{Bytes, Error as ABIError, Function, ParamType, Token};
 use futures::Future;
 use futures03::future::TryFutureExt;
+use mockall::automock;
 use mockall::predicate::*;
-use mockall::*;
-use petgraph::graphmap::GraphMap;
 use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -13,21 +12,14 @@ use thiserror::Error;
 use tiny_keccak::keccak256;
 use web3::types::{Address, Block, Log, H2048, H256};
 
-use super::types::*;
-use crate::prelude::*;
-use crate::{
+use graph::{
     blockchain::IngestorError,
     components::metrics::{labels, CounterVec, GaugeVec, HistogramVec},
+    petgraph::{self, graphmap::GraphMap},
 };
+use graph::{components::ethereum::EthereumNetworkIdentifier, prelude::*};
 
 pub type EventSignature = H256;
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-/// A collection of attributes that (kind of) uniquely identify an Ethereum blockchain.
-pub struct EthereumNetworkIdentifier {
-    pub net_version: String,
-    pub genesis_block_hash: H256,
-}
 
 /// A request for the state of a contract at a specific block hash and address.
 pub struct EthereumContractStateRequest {
@@ -1023,7 +1015,7 @@ pub async fn blocks_with_triggers(
 mod tests {
     use super::EthereumCallFilter;
 
-    use web3::types::Address;
+    use graph::prelude::web3::types::Address;
 
     use std::collections::{HashMap, HashSet};
     use std::iter::FromIterator;

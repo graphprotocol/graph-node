@@ -1,15 +1,9 @@
-mod adapter;
 mod listener;
 mod network;
 mod types;
 
-pub use self::adapter::{
-    blocks_with_triggers, triggers_in_block, BlockStreamMetrics, EthGetLogsFilter, EthereumAdapter,
-    EthereumBlockFilter, EthereumCallFilter, EthereumContractCall, EthereumContractCallError,
-    EthereumContractState, EthereumContractStateError, EthereumContractStateRequest,
-    EthereumLogFilter, EthereumNetworkIdentifier, MockEthereumAdapter, ProviderEthRpcMetrics,
-    SubgraphEthRpcMetrics, TriggerFilter,
-};
+use web3::types::H256;
+
 pub use self::listener::{ChainHeadUpdate, ChainHeadUpdateListener, ChainHeadUpdateStream};
 pub use self::network::NodeCapabilities;
 pub use self::types::{
@@ -18,3 +12,10 @@ pub use self::types::{
     EthereumEventData, EthereumTransactionData, EthereumTrigger, LightEthereumBlock,
     LightEthereumBlockExt, MappingTrigger,
 };
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+/// A collection of attributes that (kind of) uniquely identify an Ethereum blockchain.
+pub struct EthereumNetworkIdentifier {
+    pub net_version: String,
+    pub genesis_block_hash: H256,
+}

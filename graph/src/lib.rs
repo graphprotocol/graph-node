@@ -24,7 +24,6 @@ pub mod runtime;
 
 /// Module with mocks for different parts of the system.
 pub mod mock {
-    pub use crate::components::ethereum::MockEthereumAdapter;
     pub use crate::components::store::MockStore;
 }
 
@@ -35,7 +34,9 @@ pub use task_spawn::{
 };
 
 pub use bytes;
+pub use mockall;
 pub use parking_lot;
+pub use petgraph;
 pub use prometheus;
 pub use semver;
 pub use stable_hash;
@@ -88,13 +89,11 @@ pub mod prelude {
         Pin<Box<dyn futures03::Future<Output = Result<Ok, Err>> + Send + 'a>>;
 
     pub use crate::components::ethereum::{
-        BlockFinality, BlockPtr, BlockStreamMetrics, ChainHeadUpdate, ChainHeadUpdateStream,
-        EthereumAdapter, EthereumBlock, EthereumBlockData, EthereumBlockFilter,
-        EthereumBlockTriggerType, EthereumBlockWithCalls, EthereumBlockWithTriggers, EthereumCall,
-        EthereumCallData, EthereumCallFilter, EthereumContractCall, EthereumContractCallError,
-        EthereumEventData, EthereumLogFilter, EthereumNetworkIdentifier, EthereumTransactionData,
-        EthereumTrigger, LightEthereumBlock, LightEthereumBlockExt, MappingTrigger,
-        ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
+        BlockFinality, BlockPtr, ChainHeadUpdate, ChainHeadUpdateStream, EthereumBlock,
+        EthereumBlockData, EthereumBlockTriggerType, EthereumBlockWithCalls,
+        EthereumBlockWithTriggers, EthereumCall, EthereumCallData, EthereumEventData,
+        EthereumNetworkIdentifier, EthereumTransactionData, EthereumTrigger, LightEthereumBlock,
+        LightEthereumBlockExt, MappingTrigger,
     };
     pub use crate::components::graphql::{
         GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,

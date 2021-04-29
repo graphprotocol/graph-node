@@ -15,14 +15,14 @@ use graph::{
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
         async_trait, error, o, serde_yaml, web3::types::H256, BlockNumber, BlockPtr, ChainStore,
-        DeploymentHash, EthereumAdapter as _, Future01CompatExt, LinkResolver, Logger,
-        LoggerFactory, MetricsRegistry,
+        DeploymentHash, Future01CompatExt, LinkResolver, Logger, LoggerFactory, MetricsRegistry,
     },
     prometheus::{CounterVec, GaugeVec},
     runtime::{AscType, DeterministicHostError},
     tokio_stream::Stream,
 };
 
+use crate::adapter::EthereumAdapter as _;
 use crate::{network::EthereumNetworkAdapters, EthereumAdapter};
 
 pub struct Chain {

@@ -6,10 +6,9 @@ use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::task;
 
-use graph::components::{ethereum::triggers_in_block, store::WritableStore};
-use graph::components::{
-    ethereum::TriggerFilter,
-    store::{BlockStore, DeploymentId, DeploymentLocator, ModificationsAndCache},
+use graph::components::store::WritableStore;
+use graph::components::store::{
+    BlockStore, DeploymentId, DeploymentLocator, ModificationsAndCache,
 };
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
@@ -20,7 +19,10 @@ use graph::{
     blockchain::Blockchain,
     components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing},
 };
-use graph_chain_ethereum::{BlockStreamBuilder, BlockStreamEvent, EthereumNetworks};
+use graph_chain_ethereum::{
+    triggers_in_block, BlockStreamBuilder, BlockStreamEvent, BlockStreamMetrics,
+    EthereumAdapterTrait, EthereumNetworks, SubgraphEthRpcMetrics, TriggerFilter,
+};
 
 use super::loader::load_dynamic_data_sources;
 use super::SubgraphInstance;
@@ -50,7 +52,7 @@ struct IndexingInputs<C> {
     start_blocks: Vec<BlockNumber>,
     store: Arc<dyn WritableStore>,
     chain_store: Arc<dyn ChainStore>,
-    eth_adapter: Arc<dyn EthereumAdapter>,
+    eth_adapter: Arc<dyn EthereumAdapterTrait>,
     stream_builder: BlockStreamBuilder<C>,
     include_calls_in_blocks: bool,
     templates: Arc<Vec<DataSourceTemplate>>,
@@ -725,7 +727,7 @@ impl From<Error> for BlockProcessingError {
 /// whether new dynamic data sources have been added to the subgraph.
 async fn process_block<T: RuntimeHostBuilder, C>(
     logger: &Logger,
-    eth_adapter: Arc<dyn EthereumAdapter>,
+    eth_adapter: Arc<dyn EthereumAdapterTrait>,
     mut ctx: IndexingContext<T, C>,
     block_stream_cancel_handle: CancelHandle,
     block: EthereumBlockWithTriggers,

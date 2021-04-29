@@ -1,4 +1,4 @@
-use ethereum::EthereumNetworks;
+use ethereum::{EthereumNetworks, ProviderEthRpcMetrics};
 use futures::future::join_all;
 use git_testament::{git_testament, render_testament};
 use graph::{ipfs_client::IpfsClient, prometheus::Registry};
@@ -19,7 +19,9 @@ use graph::log::logger;
 use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
 use graph::util::security::SafeDisplay;
 use graph_chain_arweave::adapter::ArweaveAdapter;
-use graph_chain_ethereum::{self as ethereum, network_indexer, BlockStreamBuilder, Transport};
+use graph_chain_ethereum::{
+    self as ethereum, network_indexer, BlockStreamBuilder, EthereumAdapterTrait, Transport,
+};
 use graph_core::{
     three_box::ThreeBoxAdapter, LinkResolver, MetricsRegistry,
     SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,

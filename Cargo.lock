@@ -1588,7 +1588,7 @@ dependencies = [
  "isatty",
  "lazy_static",
  "maplit",
- "mockall",
+ "mockall 0.8.3",
  "num-bigint",
  "num-traits",
  "num_cpus",
@@ -1647,7 +1647,7 @@ dependencies = [
  "http 0.1.21",
  "jsonrpc-core",
  "lazy_static",
- "mockall",
+ "mockall 0.9.1",
  "pretty_assertions",
  "serde",
  "state_machine_future",
@@ -1709,7 +1709,7 @@ dependencies = [
  "graph",
  "graph-graphql",
  "graphql-parser",
- "mockall",
+ "mockall 0.8.3",
  "rand 0.6.5",
 ]
 
@@ -2720,7 +2720,22 @@ dependencies = [
  "downcast",
  "fragile",
  "lazy_static",
- "mockall_derive",
+ "mockall_derive 0.8.3",
+ "predicates",
+ "predicates-tree",
+]
+
+[[package]]
+name = "mockall"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18d614ad23f9bb59119b8b5670a85c7ba92c5e9adf4385c81ea00c51c8be33d5"
+dependencies = [
+ "cfg-if 1.0.0",
+ "downcast",
+ "fragile",
+ "lazy_static",
+ "mockall_derive 0.9.1",
  "predicates",
  "predicates-tree",
 ]
@@ -2732,6 +2747,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c461918bf7f59eefb1459252756bf2351a995d6bd510d0b2061bd86bcdabfa6"
 dependencies = [
  "cfg-if 0.1.10",
+ "proc-macro2 1.0.24",
+ "quote 1.0.7",
+ "syn 1.0.62",
+]
+
+[[package]]
+name = "mockall_derive"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5dd4234635bca06fc96c7368d038061e0aae1b00a764dc817e900dc974e3deea"
+dependencies = [
+ "cfg-if 1.0.0",
  "proc-macro2 1.0.24",
  "quote 1.0.7",
  "syn 1.0.62",

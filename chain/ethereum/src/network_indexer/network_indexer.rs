@@ -11,6 +11,8 @@ use std::time::Instant;
 
 use graph::{components::store::WritableStore, prelude::*};
 
+use crate::adapter::EthereumAdapter;
+
 use super::block_writer::BlockWriter;
 use super::metrics::NetworkIndexerMetrics;
 use super::subgraph;
