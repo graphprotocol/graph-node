@@ -1,9 +1,9 @@
 use anyhow::Error;
 use futures::Stream;
 
-use crate::{components::store::DeploymentLocator, prelude::*};
+use graph::{components::store::DeploymentLocator, prelude::*};
 
-use super::TriggerFilter;
+use graph::components::ethereum::TriggerFilter;
 
 pub enum BlockStreamEvent {
     Block(EthereumBlockWithTriggers),

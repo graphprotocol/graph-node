@@ -17,7 +17,7 @@ use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::data::subgraph::SubgraphFeature;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::util::lfu_cache::LfuCache;
-use graph_chain_ethereum::EthereumNetworks;
+use graph_chain_ethereum::{BlockStreamBuilderTrait, BlockStreamEvent, EthereumNetworks};
 
 use super::loader::load_dynamic_data_sources;
 use super::SubgraphInstance;
@@ -197,7 +197,7 @@ impl<B, S, BS, M, H, L> SubgraphInstanceManagerTrait for SubgraphInstanceManager
 where
     S: SubgraphStore,
     BS: BlockStore,
-    B: BlockStreamBuilder,
+    B: BlockStreamBuilderTrait,
     M: MetricsRegistry,
     H: RuntimeHostBuilder,
     L: LinkResolver + Clone,
@@ -257,7 +257,7 @@ impl<B, S, BS, M, H, L> SubgraphInstanceManager<B, S, BS, M, H, L>
 where
     S: SubgraphStore,
     BS: BlockStore,
-    B: BlockStreamBuilder,
+    B: BlockStreamBuilderTrait,
     M: MetricsRegistry,
     H: RuntimeHostBuilder,
     L: LinkResolver + Clone,
@@ -488,7 +488,7 @@ where
 
 async fn run_subgraph<B, T, C>(mut ctx: IndexingContext<B, T, C>) -> Result<(), Error>
 where
-    B: BlockStreamBuilder,
+    B: BlockStreamBuilderTrait,
     T: RuntimeHostBuilder,
     C: ChainStore,
 {
@@ -721,7 +721,7 @@ impl From<Error> for BlockProcessingError {
 
 /// Processes a block and returns the updated context and a boolean flag indicating
 /// whether new dynamic data sources have been added to the subgraph.
-async fn process_block<B: BlockStreamBuilder, T: RuntimeHostBuilder, C>(
+async fn process_block<B: BlockStreamBuilderTrait, T: RuntimeHostBuilder, C>(
     logger: &Logger,
     eth_adapter: Arc<dyn EthereumAdapter>,
     mut ctx: IndexingContext<B, T, C>,
@@ -1106,7 +1106,7 @@ fn create_dynamic_data_sources<B, T: RuntimeHostBuilder, C>(
     created_data_sources: Vec<DataSourceTemplateInfo>,
 ) -> Result<(Vec<DataSource>, Vec<Arc<T::Host>>), Error>
 where
-    B: BlockStreamBuilder,
+    B: BlockStreamBuilderTrait,
     C: ChainStore,
 {
     let mut data_sources = vec![];
@@ -1154,7 +1154,7 @@ fn persist_dynamic_data_sources<B, T: RuntimeHostBuilder, C>(
     entity_cache: &mut EntityCache,
     data_sources: Vec<DataSource>,
 ) where
-    B: BlockStreamBuilder,
+    B: BlockStreamBuilderTrait,
     C: ChainStore,
 {
     if !data_sources.is_empty() {

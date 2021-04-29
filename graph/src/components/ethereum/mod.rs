@@ -1,7 +1,6 @@
 mod adapter;
 mod listener;
 mod network;
-mod stream;
 mod types;
 
 pub use self::adapter::{
@@ -13,7 +12,6 @@ pub use self::adapter::{
 };
 pub use self::listener::{ChainHeadUpdate, ChainHeadUpdateListener, ChainHeadUpdateStream};
 pub use self::network::NodeCapabilities;
-pub use self::stream::{BlockStream, BlockStreamBuilder, BlockStreamEvent};
 pub use self::types::{
     BlockFinality, BlockPtr, EthereumBlock, EthereumBlockData, EthereumBlockTriggerType,
     EthereumBlockWithCalls, EthereumBlockWithTriggers, EthereumCall, EthereumCallData,

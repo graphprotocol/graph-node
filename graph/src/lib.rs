@@ -88,13 +88,13 @@ pub mod prelude {
         Pin<Box<dyn futures03::Future<Output = Result<Ok, Err>> + Send + 'a>>;
 
     pub use crate::components::ethereum::{
-        BlockFinality, BlockPtr, BlockStream, BlockStreamBuilder, BlockStreamEvent,
-        BlockStreamMetrics, ChainHeadUpdate, ChainHeadUpdateStream, EthereumAdapter, EthereumBlock,
-        EthereumBlockData, EthereumBlockFilter, EthereumBlockTriggerType, EthereumBlockWithCalls,
-        EthereumBlockWithTriggers, EthereumCall, EthereumCallData, EthereumCallFilter,
-        EthereumContractCall, EthereumContractCallError, EthereumEventData, EthereumLogFilter,
-        EthereumNetworkIdentifier, EthereumTransactionData, EthereumTrigger, LightEthereumBlock,
-        LightEthereumBlockExt, MappingTrigger, ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
+        BlockFinality, BlockPtr, BlockStreamMetrics, ChainHeadUpdate, ChainHeadUpdateStream,
+        EthereumAdapter, EthereumBlock, EthereumBlockData, EthereumBlockFilter,
+        EthereumBlockTriggerType, EthereumBlockWithCalls, EthereumBlockWithTriggers, EthereumCall,
+        EthereumCallData, EthereumCallFilter, EthereumContractCall, EthereumContractCallError,
+        EthereumEventData, EthereumLogFilter, EthereumNetworkIdentifier, EthereumTransactionData,
+        EthereumTrigger, LightEthereumBlock, LightEthereumBlockExt, MappingTrigger,
+        ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
     };
     pub use crate::components::graphql::{
         GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,

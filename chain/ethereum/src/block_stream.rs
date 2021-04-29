@@ -3,10 +3,7 @@ use std::collections::VecDeque;
 use std::mem;
 use std::time::Duration;
 
-use graph::{
-    blockchain::BlockchainMap,
-    prelude::{BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait, *},
-};
+use graph::{blockchain::BlockchainMap, prelude::*};
 use graph::{
     blockchain::{Blockchain, TriggersAdapter as _},
     components::{
@@ -22,6 +19,10 @@ use graph::{
 use fail::fail_point;
 
 use crate::network::EthereumNetworks;
+use crate::stream::{
+    BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait,
+    BlockStreamEvent,
+};
 
 lazy_static! {
     /// Maximum number of blocks to request in each chunk.

@@ -10,8 +10,11 @@ pub use self::transport::{EventLoopHandle, Transport};
 
 mod chain;
 mod network;
+mod stream;
 
 pub use crate::chain::Chain;
 pub use crate::network::EthereumNetworks;
-
-pub struct Foo;
+pub use crate::stream::{
+    BlockStream as BlockStreamTrait, BlockStreamBuilder as BlockStreamBuilderTrait,
+    BlockStreamEvent,
+};
