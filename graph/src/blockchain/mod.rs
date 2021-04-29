@@ -6,11 +6,11 @@ pub mod block_ingestor;
 pub mod block_stream;
 
 // Try to reexport most of the necessary types
+use crate::{components::store::DeploymentLocator, runtime::AscType};
 use crate::{
-    components::store::BlockNumber,
+    components::store::{BlockNumber, ChainStore},
     prelude::{thiserror::Error, BlockPtr, CheapClone, DeploymentHash, LinkResolver},
 };
-use crate::{components::store::DeploymentLocator, runtime::AscType};
 use anyhow::Error;
 use async_trait::async_trait;
 use slog;
@@ -107,6 +107,8 @@ pub trait Blockchain: Sized + Send + Sync + 'static {
     ) -> Result<Self::BlockStream, Error>;
 
     fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter>;
+
+    fn chain_store(&self) -> Arc<dyn ChainStore>;
 }
 
 pub type BlockchainMap<C> = HashMap<String, Arc<C>>;

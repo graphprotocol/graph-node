@@ -136,6 +136,10 @@ impl Blockchain for Chain {
     fn node_capabilities(&self, archive: bool, traces: bool) -> Self::NodeCapabilities {
         NodeCapabilities { archive, traces }
     }
+
+    fn chain_store(&self) -> Arc<dyn ChainStore> {
+        self.chain_store.clone()
+    }
 }
 
 pub struct DummyBlock;

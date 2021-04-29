@@ -11,7 +11,7 @@ use graph::{
             blocks_with_triggers, triggers_in_block, ChainHeadUpdateListener, NodeCapabilities,
             TriggerFilter,
         },
-        store::{BlockStore, DeploymentLocator, WritableStore},
+        store::{DeploymentLocator, WritableStore},
     },
 };
 
@@ -90,12 +90,12 @@ enum ReconciliationStep {
     Done,
 }
 
-struct BlockStreamContext<S, C>
+struct BlockStreamContext<C>
 where
     C: Blockchain,
 {
     subgraph_store: Arc<dyn WritableStore>,
-    chain_store: Arc<S>,
+    chain_store: Arc<dyn ChainStore>,
     eth_adapter: Arc<dyn EthereumAdapter>,
     adapter: Arc<C::TriggersAdapter>,
     node_id: NodeId,
@@ -115,7 +115,7 @@ where
     max_block_range_size: BlockNumber,
 }
 
-impl<S, C: Blockchain> Clone for BlockStreamContext<S, C> {
+impl<C: Blockchain> Clone for BlockStreamContext<C> {
     fn clone(&self) -> Self {
         Self {
             subgraph_store: self.subgraph_store.cheap_clone(),
@@ -137,11 +137,11 @@ impl<S, C: Blockchain> Clone for BlockStreamContext<S, C> {
     }
 }
 
-pub struct BlockStream<S, C: Blockchain> {
+pub struct BlockStream<C: Blockchain> {
     state: BlockStreamState,
     consecutive_err_count: u32,
     chain_head_update_stream: ChainHeadUpdateStream,
-    ctx: BlockStreamContext<S, C>,
+    ctx: BlockStreamContext<C>,
 }
 
 // This is the same as `ReconciliationStep` but without retries.
@@ -154,14 +154,13 @@ enum NextBlocks {
     Done,
 }
 
-impl<S, C> BlockStream<S, C>
+impl<C> BlockStream<C>
 where
-    S: ChainStore,
     C: Blockchain,
 {
     pub fn new(
         subgraph_store: Arc<dyn WritableStore>,
-        chain_store: Arc<S>,
+        chain_store: Arc<dyn ChainStore>,
         chain_head_update_stream: ChainHeadUpdateStream,
         eth_adapter: Arc<dyn EthereumAdapter>,
         adapter: Arc<C::TriggersAdapter>,
@@ -201,9 +200,8 @@ where
     }
 }
 
-impl<S, C> BlockStreamContext<S, C>
+impl<C> BlockStreamContext<C>
 where
-    S: ChainStore,
     C: Blockchain,
 {
     /// Perform reconciliation steps until there are blocks to yield or we are up-to-date.
@@ -541,9 +539,9 @@ where
     }
 }
 
-impl<S: ChainStore, C: Blockchain> BlockStreamTrait for BlockStream<S, C> {}
+impl<C: Blockchain> BlockStreamTrait for BlockStream<C> {}
 
-impl<S: ChainStore, C: Blockchain> Stream for BlockStream<S, C> {
+impl<C: Blockchain> Stream for BlockStream<C> {
     type Item = BlockStreamEvent;
     type Error = Error;
 
@@ -703,10 +701,9 @@ impl<S: ChainStore, C: Blockchain> Stream for BlockStream<S, C> {
     }
 }
 
-pub struct BlockStreamBuilder<B, C> {
+pub struct BlockStreamBuilder<C> {
     subgraph_store: Arc<dyn SubgraphStore>,
     chains: Arc<BlockchainMap<C>>,
-    block_store: Arc<B>,
     chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
     eth_networks: EthereumNetworks,
     node_id: NodeId,
@@ -714,12 +711,11 @@ pub struct BlockStreamBuilder<B, C> {
     metrics_registry: Arc<dyn MetricsRegistry>,
 }
 
-impl<B, C> Clone for BlockStreamBuilder<B, C> {
+impl<C> Clone for BlockStreamBuilder<C> {
     fn clone(&self) -> Self {
         BlockStreamBuilder {
             subgraph_store: self.subgraph_store.clone(),
             chains: self.chains.clone(),
-            block_store: self.block_store.clone(),
             chain_head_update_listener: self.chain_head_update_listener.clone(),
             eth_networks: self.eth_networks.clone(),
             node_id: self.node_id.clone(),
@@ -729,15 +725,13 @@ impl<B, C> Clone for BlockStreamBuilder<B, C> {
     }
 }
 
-impl<B, C> BlockStreamBuilder<B, C>
+impl<C> BlockStreamBuilder<C>
 where
-    B: BlockStore,
     C: Blockchain,
 {
     pub fn new(
         subgraph_store: Arc<dyn SubgraphStore>,
         chains: Arc<BlockchainMap<C>>,
-        block_store: Arc<B>,
         chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
         eth_networks: EthereumNetworks,
         node_id: NodeId,
@@ -747,7 +741,6 @@ where
         BlockStreamBuilder {
             subgraph_store,
             chains,
-            block_store,
             chain_head_update_listener,
             eth_networks,
             node_id,
@@ -758,12 +751,11 @@ where
 }
 
 #[async_trait]
-impl<B, C> BlockStreamBuilderTrait for BlockStreamBuilder<B, C>
+impl<C> BlockStreamBuilderTrait for BlockStreamBuilder<C>
 where
-    B: BlockStore,
     C: Blockchain,
 {
-    type Stream = BlockStream<B::ChainStore, C>;
+    type Stream = BlockStream<C>;
 
     fn build(
         &self,
@@ -779,23 +771,16 @@ where
             "component" => "BlockStream",
         ));
 
-        let chain_store = self
-            .block_store
-            .chain_store(&network_name)
-            .expect(&format!(
-                "no store that supports network: {}",
-                &network_name
-            ))
-            .clone();
-
-        let chain_head_update_stream = self
-            .chain_head_update_listener
-            .subscribe(network_name.clone());
-
         let chain = self
             .chains
             .get(&network_name)
             .expect(&format!("no chain configured for network {}", network_name));
+
+        let chain_store = chain.chain_store();
+
+        let chain_head_update_stream = self
+            .chain_head_update_listener
+            .subscribe(network_name.clone());
 
         let requirements = chain.node_capabilities(false, include_calls_in_blocks);
         let eth_requirements = NodeCapabilities {

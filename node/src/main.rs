@@ -299,7 +299,6 @@ async fn main() {
         let block_stream_builder = BlockStreamBuilder::new(
             network_store.subgraph_store(),
             chains.clone(),
-            network_store.block_store(),
             chain_head_update_listener.clone(),
             eth_networks.clone(),
             node_id.clone(),
