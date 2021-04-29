@@ -703,7 +703,7 @@ impl<S: ChainStore, C: Blockchain> Stream for BlockStream<S, C> {
     }
 }
 
-pub struct BlockStreamBuilder<B, M, C> {
+pub struct BlockStreamBuilder<B, C> {
     subgraph_store: Arc<dyn SubgraphStore>,
     chains: Arc<BlockchainMap<C>>,
     block_store: Arc<B>,
@@ -711,10 +711,10 @@ pub struct BlockStreamBuilder<B, M, C> {
     eth_networks: EthereumNetworks,
     node_id: NodeId,
     reorg_threshold: BlockNumber,
-    metrics_registry: Arc<M>,
+    metrics_registry: Arc<dyn MetricsRegistry>,
 }
 
-impl<B, M, C> Clone for BlockStreamBuilder<B, M, C> {
+impl<B, C> Clone for BlockStreamBuilder<B, C> {
     fn clone(&self) -> Self {
         BlockStreamBuilder {
             subgraph_store: self.subgraph_store.clone(),
@@ -729,10 +729,9 @@ impl<B, M, C> Clone for BlockStreamBuilder<B, M, C> {
     }
 }
 
-impl<B, M, C> BlockStreamBuilder<B, M, C>
+impl<B, C> BlockStreamBuilder<B, C>
 where
     B: BlockStore,
-    M: MetricsRegistry,
     C: Blockchain,
 {
     pub fn new(
@@ -743,7 +742,7 @@ where
         eth_networks: EthereumNetworks,
         node_id: NodeId,
         reorg_threshold: BlockNumber,
-        metrics_registry: Arc<M>,
+        metrics_registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         BlockStreamBuilder {
             subgraph_store,
@@ -759,10 +758,9 @@ where
 }
 
 #[async_trait]
-impl<B, M, C> BlockStreamBuilderTrait for BlockStreamBuilder<B, M, C>
+impl<B, C> BlockStreamBuilderTrait for BlockStreamBuilder<B, C>
 where
     B: BlockStore,
-    M: MetricsRegistry,
     C: Blockchain,
 {
     type Stream = BlockStream<B::ChainStore, C>;
