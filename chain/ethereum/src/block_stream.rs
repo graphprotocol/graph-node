@@ -19,7 +19,7 @@ use graph::{
 use fail::fail_point;
 
 use crate::network::EthereumNetworks;
-use crate::stream::{BlockStream as BlockStreamTrait, BlockStreamEvent};
+use crate::stream::BlockStreamEvent;
 
 lazy_static! {
     /// Maximum number of blocks to request in each chunk.
@@ -535,8 +535,6 @@ where
         }
     }
 }
-
-impl<C: Blockchain> BlockStreamTrait for BlockStream<C> {}
 
 impl<C: Blockchain> Stream for BlockStream<C> {
     type Item = BlockStreamEvent;
