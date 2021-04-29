@@ -21,24 +21,6 @@ use graph::{components::ethereum::EthereumNetworkIdentifier, prelude::*};
 
 pub type EventSignature = H256;
 
-/// A request for the state of a contract at a specific block hash and address.
-pub struct EthereumContractStateRequest {
-    pub address: Address,
-    pub block_hash: H256,
-}
-
-/// An error that can occur when trying to obtain the state of a contract.
-pub enum EthereumContractStateError {
-    Failed,
-}
-
-/// Representation of an Ethereum contract state.
-pub struct EthereumContractState {
-    pub address: Address,
-    pub block_hash: H256,
-    pub data: Bytes,
-}
-
 #[derive(Clone, Debug)]
 pub struct EthereumContractCall {
     pub address: Address,
