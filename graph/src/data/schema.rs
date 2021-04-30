@@ -914,7 +914,7 @@ impl Schema {
 
         // Validate that each entity in fulltext.include exists
         let includes = match fulltext.argument("include") {
-            Some(Value::List(includes)) if includes.len() > 0 => includes,
+            Some(Value::List(includes)) if !includes.is_empty() => includes,
             _ => return vec![SchemaValidationError::FulltextIncludeUndefined],
         };
 
@@ -1275,7 +1275,7 @@ impl Schema {
             .get_fulltext_directives()?
             .into_iter()
             .filter(|directive| match directive.argument("include") {
-                Some(Value::List(includes)) if includes.len() > 0 => includes
+                Some(Value::List(includes)) if !includes.is_empty() => includes
                     .iter()
                     .find(|include| match include {
                         Value::Object(include) => match include.get("entity") {

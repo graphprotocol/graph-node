@@ -147,7 +147,7 @@ where
             }
 
             // Then log the component hierarchy
-            if components.len() > 0 {
+            if !components.is_empty() {
                 decorator.start_comma()?;
                 write!(decorator, ", ")?;
                 decorator.start_key()?;
