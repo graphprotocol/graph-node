@@ -1076,9 +1076,7 @@ impl Schema {
             .document
             .get_object_type_definitions()
             .iter()
-            .filter(|t| {
-                t.find_directive(String::from("entity")).is_none() && !t.name.eq(SCHEMA_TYPE_NAME)
-            })
+            .filter(|t| t.find_directive("entity").is_none() && !t.name.eq(SCHEMA_TYPE_NAME))
             .map(|t| t.name.to_owned())
             .collect::<Vec<_>>();
         if types_without_entity_directive.is_empty() {
@@ -1120,32 +1118,30 @@ impl Schema {
                     .map(move |field| (object_type, field))
             })
             .filter_map(|(object_type, field)| {
-                field
-                    .find_directive(String::from("derivedFrom"))
-                    .map(|directive| {
-                        (
-                            object_type,
-                            object_type
-                                .implements_interfaces
-                                .iter()
-                                .filter(|iface| {
-                                    // Any interface that has `field` can be used
-                                    // as the type of the field
-                                    self.document
-                                        .find_interface(iface)
-                                        .map(|iface| {
-                                            iface
-                                                .fields
-                                                .iter()
-                                                .any(|ifield| ifield.name.eq(&field.name))
-                                        })
-                                        .unwrap_or(false)
-                                })
-                                .collect::<Vec<_>>(),
-                            field,
-                            directive.argument("field"),
-                        )
-                    })
+                field.find_directive("derivedFrom").map(|directive| {
+                    (
+                        object_type,
+                        object_type
+                            .implements_interfaces
+                            .iter()
+                            .filter(|iface| {
+                                // Any interface that has `field` can be used
+                                // as the type of the field
+                                self.document
+                                    .find_interface(iface)
+                                    .map(|iface| {
+                                        iface
+                                            .fields
+                                            .iter()
+                                            .any(|ifield| ifield.name.eq(&field.name))
+                                    })
+                                    .unwrap_or(false)
+                            })
+                            .collect::<Vec<_>>(),
+                        field,
+                        directive.argument("field"),
+                    )
+                })
             })
         {
             // Turn `target_field` into the string name of the field
