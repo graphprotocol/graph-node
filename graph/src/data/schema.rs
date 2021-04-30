@@ -733,14 +733,9 @@ impl Schema {
 
         fn from_is_valid(from: Option<&Value>) -> bool {
             if let Some(Value::Object(from)) = from {
-                let has_id = match from.get("id") {
-                    Some(Value::String(_)) => true,
-                    _ => false,
-                };
-                let has_name = match from.get("name") {
-                    Some(Value::String(_)) => true,
-                    _ => false,
-                };
+                let has_id = matches!(from.get("id"), Some(Value::String(_)));
+
+                let has_name = matches!(from.get("name"), Some(Value::String(_)));
                 has_id ^ has_name
             } else {
                 false
@@ -954,11 +949,8 @@ impl Schema {
                             .fields
                             .iter()
                             .find(|field| {
-                                match ValueType::from_str(field.field_type.get_base_type().as_ref())
-                                {
-                                    Ok(ValueType::String) if field.name.eq(field_name) => true,
-                                    _ => false,
-                                }
+                                let base_type: &str = field.field_type.get_base_type().as_ref();
+                                matches!(ValueType::from_str(base_type), Ok(ValueType::String) if field.name.eq(field_name))
                             })
                             .is_some()
                         {
