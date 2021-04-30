@@ -400,7 +400,7 @@ impl super::DataSource {
                     transaction,
                     log: log.cheap_clone(),
                     params,
-                    handler: event_handler.clone(),
+                    handler: event_handler,
                 }))
             }
             EthereumTrigger::Call(call) => {

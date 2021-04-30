@@ -1020,7 +1020,7 @@ impl Schema {
                         if !is_local && !is_imported {
                             Some(SchemaValidationError::ImportedTypeUndefined(
                                 name.to_string(),
-                                schema_handle.to_string(),
+                                schema_handle,
                             ))
                         } else {
                             None

@@ -438,7 +438,7 @@ impl TryFrom<Value> for Option<scalar::BigInt> {
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
-            Value::BigInt(n) => Ok(Some(n.clone())),
+            Value::BigInt(n) => Ok(Some(n)),
             Value::Null => Ok(None),
             _ => Err(anyhow!("Value is not an BigInt")),
         }
