@@ -260,7 +260,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
 
     async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error> {
         self.eth_adapter
-            .is_on_main_chain_no_trait(&self.logger, self.chain_store.clone(), ptr.clone())
+            .is_on_main_chain(&self.logger, self.chain_store.clone(), ptr.clone())
             .await
     }
 }

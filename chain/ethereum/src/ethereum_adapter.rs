@@ -629,7 +629,17 @@ impl EthereumAdapter {
         .map(|b| b.into())
     }
 
-    pub async fn is_on_main_chain_no_trait(
+    /// Check if `block_ptr` refers to a block that is on the main chain, according to the Ethereum
+    /// node.
+    ///
+    /// Careful: don't use this function without considering race conditions.
+    /// Chain reorgs could happen at any time, and could affect the answer received.
+    /// Generally, it is only safe to use this function with blocks that have received enough
+    /// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
+    /// those confirmations.
+    /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
+    /// reorgs.
+    pub(crate) async fn is_on_main_chain(
         &self,
         logger: &Logger,
         chain_store: Arc<dyn ChainStore>,
@@ -668,6 +678,111 @@ impl EthereumAdapter {
         .buffered(1000)
         .try_concat()
         .boxed()
+    }
+
+    pub(crate) fn calls_in_block_range(
+        &self,
+        logger: &Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
+        from: BlockNumber,
+        to: BlockNumber,
+        call_filter: EthereumCallFilter,
+    ) -> Box<dyn Stream<Item = EthereumCall, Error = Error> + Send> {
+        let eth = self.clone();
+
+        let addresses: Vec<H160> = call_filter
+            .contract_addresses_function_signatures
+            .iter()
+            .filter(|(_addr, (start_block, _fsigs))| start_block <= &to)
+            .map(|(addr, (_start_block, _fsigs))| *addr)
+            .collect::<HashSet<H160>>()
+            .into_iter()
+            .collect::<Vec<H160>>();
+
+        if addresses.is_empty() {
+            // The filter has no started data sources in the requested range, nothing to do.
+            // This prevents an expensive call to `trace_filter` with empty `addresses`.
+            return Box::new(stream::empty());
+        }
+
+        Box::new(
+            eth.trace_stream(&logger, subgraph_metrics, from, to, addresses)
+                .filter_map(|trace| EthereumCall::try_from_trace(&trace))
+                .filter(move |call| {
+                    // `trace_filter` can only filter by calls `to` an address and
+                    // a block range. Since subgraphs are subscribing to calls
+                    // for a specific contract function an additional filter needs
+                    // to be applied
+                    call_filter.matches(&call)
+                }),
+        )
+    }
+
+    pub(crate) async fn calls_in_block(
+        &self,
+        logger: &Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
+        block_number: BlockNumber,
+        block_hash: H256,
+    ) -> Result<Vec<EthereumCall>, Error> {
+        let eth = self.clone();
+        let addresses = Vec::new();
+        let traces = eth
+            .trace_stream(
+                &logger,
+                subgraph_metrics.clone(),
+                block_number,
+                block_number,
+                addresses,
+            )
+            .collect()
+            .compat()
+            .await?;
+
+        // `trace_stream` returns all of the traces for the block, and this
+        // includes a trace for the block reward which every block should have.
+        // If there are no traces something has gone wrong.
+        if traces.is_empty() {
+            return Err(anyhow!(
+                "Trace stream returned no traces for block: number = `{}`, hash = `{}`",
+                block_number,
+                block_hash,
+            ));
+        }
+
+        // Since we can only pull traces by block number and we have
+        // all the traces for the block, we need to ensure that the
+        // block hash for the traces is equal to the desired block hash.
+        // Assume all traces are for the same block.
+        if traces.iter().nth(0).unwrap().block_hash != block_hash {
+            return Err(anyhow!(
+                "Trace stream returned traces for an unexpected block: \
+                         number = `{}`, hash = `{}`",
+                block_number,
+                block_hash,
+            ));
+        }
+
+        Ok(traces
+            .iter()
+            .filter_map(EthereumCall::try_from_trace)
+            .collect())
+    }
+
+    /// Reorg safety: `to` must be a final block.
+    pub(crate) fn block_range_to_ptrs(
+        &self,
+        logger: Logger,
+        from: BlockNumber,
+        to: BlockNumber,
+    ) -> Box<dyn Future<Item = Vec<BlockPtr>, Error = Error> + Send> {
+        // Currently we can't go to the DB for this because there might be duplicate entries for
+        // the same block number.
+        debug!(&logger, "Requesting hashes for blocks [{}, {}]", from, to);
+        Box::new(
+            self.load_block_ptrs_rpc(logger, (from..=to).collect())
+                .collect(),
+        )
     }
 }
 
@@ -1118,111 +1233,6 @@ impl EthereumAdapterTrait for EthereumAdapter {
         )
     }
 
-    async fn is_on_main_chain(
-        &self,
-        logger: &Logger,
-        _: Arc<SubgraphEthRpcMetrics>,
-        chain_store: Arc<dyn ChainStore>,
-        block_ptr: BlockPtr,
-    ) -> Result<bool, Error> {
-        let block_hash = self
-            .block_hash_by_block_number(&logger, chain_store, block_ptr.number, true)
-            .compat()
-            .await?;
-        block_hash
-            .ok_or_else(|| anyhow!("Ethereum node is missing block #{}", block_ptr.number))
-            .map(|block_hash| block_hash == block_ptr.hash_as_h256())
-    }
-
-    async fn calls_in_block(
-        &self,
-        logger: &Logger,
-        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-        block_number: BlockNumber,
-        block_hash: H256,
-    ) -> Result<Vec<EthereumCall>, Error> {
-        let eth = self.clone();
-        let addresses = Vec::new();
-        let traces = eth
-            .trace_stream(
-                &logger,
-                subgraph_metrics.clone(),
-                block_number,
-                block_number,
-                addresses,
-            )
-            .collect()
-            .compat()
-            .await?;
-
-        // `trace_stream` returns all of the traces for the block, and this
-        // includes a trace for the block reward which every block should have.
-        // If there are no traces something has gone wrong.
-        if traces.is_empty() {
-            return Err(anyhow!(
-                "Trace stream returned no traces for block: number = `{}`, hash = `{}`",
-                block_number,
-                block_hash,
-            ));
-        }
-
-        // Since we can only pull traces by block number and we have
-        // all the traces for the block, we need to ensure that the
-        // block hash for the traces is equal to the desired block hash.
-        // Assume all traces are for the same block.
-        if traces.iter().nth(0).unwrap().block_hash != block_hash {
-            return Err(anyhow!(
-                "Trace stream returned traces for an unexpected block: \
-                         number = `{}`, hash = `{}`",
-                block_number,
-                block_hash,
-            ));
-        }
-
-        Ok(traces
-            .iter()
-            .filter_map(EthereumCall::try_from_trace)
-            .collect())
-    }
-
-    fn calls_in_block_range(
-        &self,
-        logger: &Logger,
-        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-        from: BlockNumber,
-        to: BlockNumber,
-        call_filter: EthereumCallFilter,
-    ) -> Box<dyn Stream<Item = EthereumCall, Error = Error> + Send> {
-        let eth = self.clone();
-
-        let addresses: Vec<H160> = call_filter
-            .contract_addresses_function_signatures
-            .iter()
-            .filter(|(_addr, (start_block, _fsigs))| start_block <= &to)
-            .map(|(addr, (_start_block, _fsigs))| *addr)
-            .collect::<HashSet<H160>>()
-            .into_iter()
-            .collect::<Vec<H160>>();
-
-        if addresses.is_empty() {
-            // The filter has no started data sources in the requested range, nothing to do.
-            // This prevents an expensive call to `trace_filter` with empty `addresses`.
-            return Box::new(stream::empty());
-        }
-
-        Box::new(
-            eth.trace_stream(&logger, subgraph_metrics, from, to, addresses)
-                .filter_map(|trace| EthereumCall::try_from_trace(&trace))
-                .filter(move |call| {
-                    // `trace_filter` can only filter by calls `to` an address and
-                    // a block range. Since subgraphs are subscribing to calls
-                    // for a specific contract function an additional filter needs
-                    // to be applied
-                    call_filter.matches(&call)
-                }),
-        )
-    }
-
     fn contract_call(
         &self,
         logger: &Logger,
@@ -1345,22 +1355,6 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     stream::iter_ok(blocks)
                 })
                 .flatten_stream(),
-        )
-    }
-
-    /// Reorg safety: `to` must be a final block.
-    fn block_range_to_ptrs(
-        &self,
-        logger: Logger,
-        from: BlockNumber,
-        to: BlockNumber,
-    ) -> Box<dyn Future<Item = Vec<BlockPtr>, Error = Error> + Send> {
-        // Currently we can't go to the DB for this because there might be duplicate entries for
-        // the same block number.
-        debug!(&logger, "Requesting hashes for blocks [{}, {}]", from, to);
-        Box::new(
-            self.load_block_ptrs_rpc(logger, (from..=to).collect())
-                .collect(),
         )
     }
 }

@@ -609,14 +609,6 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block_hashes: HashSet<H256>,
     ) -> Box<dyn Stream<Item = LightEthereumBlock, Error = Error> + Send>;
 
-    /// Reorg safety: `to` must be a final block.
-    fn block_range_to_ptrs(
-        &self,
-        logger: Logger,
-        from: BlockNumber,
-        to: BlockNumber,
-    ) -> Box<dyn Future<Item = Vec<BlockPtr>, Error = Error> + Send>;
-
     /// Find a block by its hash.
     fn block_by_hash(
         &self,
@@ -673,41 +665,6 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
         block: &LightEthereumBlock,
     ) -> Box<dyn Future<Item = Vec<Option<Block<H256>>>, Error = Error> + Send>;
-
-    /// Check if `block_ptr` refers to a block that is on the main chain, according to the Ethereum
-    /// node.
-    ///
-    /// Careful: don't use this function without considering race conditions.
-    /// Chain reorgs could happen at any time, and could affect the answer received.
-    /// Generally, it is only safe to use this function with blocks that have received enough
-    /// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
-    /// those confirmations.
-    /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
-    /// reorgs.
-    async fn is_on_main_chain(
-        &self,
-        logger: &Logger,
-        metrics: Arc<SubgraphEthRpcMetrics>,
-        chain_store: Arc<dyn ChainStore>,
-        block_ptr: BlockPtr,
-    ) -> Result<bool, Error>;
-
-    async fn calls_in_block(
-        &self,
-        logger: &Logger,
-        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-        block_number: BlockNumber,
-        block_hash: H256,
-    ) -> Result<Vec<EthereumCall>, Error>;
-
-    fn calls_in_block_range(
-        &self,
-        logger: &Logger,
-        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-        from: BlockNumber,
-        to: BlockNumber,
-        call_filter: EthereumCallFilter,
-    ) -> Box<dyn Stream<Item = EthereumCall, Error = Error> + Send>;
 
     /// Call the function of a smart contract.
     fn contract_call(
