@@ -1521,7 +1521,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         // This is unrelated to IPFS, but piggyback on the config to disallow it on the network.
         if !self.experimental_features.allow_non_deterministic_ipfs {
             return Err(HostExportError::Deterministic(anyhow!(
-                "`ipfs.map` is deprecated. Improved support for IPFS will be added in the future"
+                "`ens_name_by_hash` is deprecated"
             )));
         }
 
