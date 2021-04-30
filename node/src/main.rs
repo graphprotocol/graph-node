@@ -531,7 +531,6 @@ async fn connect_networks(
             network: String,
             provider: String,
         },
-        NoVersion,
         Version {
             network: String,
             ident: EthereumNetworkIdentifier,
@@ -541,54 +540,45 @@ async fn connect_networks(
     // This has one entry for each provider, and therefore multiple entries
     // for each network
     let statuses = join_all(
-            eth_networks
-                .flatten()
-                .into_iter()
-                .map(|(network_name, capabilities, eth_adapter)| {
-                    (network_name, capabilities, eth_adapter, logger.clone())
-                })
-                .map(
-                    |(network, capabilities, eth_adapter, logger)| async move {
-                        let logger = logger.new(
-                            o!("provider" => eth_adapter.provider().to_string()),
-                        );
+        eth_networks
+            .flatten()
+            .into_iter()
+            .map(|(network_name, capabilities, eth_adapter)| {
+                (network_name, capabilities, eth_adapter, logger.clone())
+            })
+            .map(|(network, capabilities, eth_adapter, logger)| async move {
+                let logger = logger.new(o!("provider" => eth_adapter.provider().to_string()));
+                info!(
+                    logger, "Connecting to Ethereum to get network identifier";
+                    "capabilities" => &capabilities
+                );
+                match tokio::time::timeout(ETH_NET_VERSION_WAIT_TIME, eth_adapter.net_identifiers())
+                    .await
+                    .map_err(Error::from)
+                {
+                    // An `Err` means a timeout, an `Ok(Err)` means some other error (maybe a typo
+                    // on the URL)
+                    Ok(Err(e)) | Err(e) => {
+                        error!(logger, "Connection to provider failed. Not using this provider";
+                                       "error" =>  e.to_string());
+                        Status::Broken {
+                            network,
+                            provider: eth_adapter.provider().to_string(),
+                        }
+                    }
+                    Ok(Ok(ident)) => {
                         info!(
-                            logger, "Connecting to Ethereum to get network identifier";
+                            logger,
+                            "Connected to Ethereum";
+                            "network_version" => &ident.net_version,
                             "capabilities" => &capabilities
                         );
-                        match tokio::time::timeout(
-                            ETH_NET_VERSION_WAIT_TIME,
-                            eth_adapter.net_identifiers(),
-                        )
-                        .await
-                        {
-                            // the client didn't respond fast enough. Try to
-                            // continue without knowing the net version
-                            Err(_) => {
-                                warn!(logger, "Provider did not respond fast enough. Continuing without checking for change in net version");
-                                Status::NoVersion
-                            },
-                            // we got some other error (maybe a typo on the URL)
-                            // still continue with startup
-                            Ok(Err(e)) => {
-                                error!(logger, "Connection to provider failed. Not using this provider";
-                                       "error" =>  e.to_string());
-                                Status::Broken { network, provider: eth_adapter.provider().to_string() }
-                            }
-                            Ok(Ok(ident)) => {
-                                info!(
-                                    logger,
-                                    "Connected to Ethereum";
-                                    "network_version" => &ident.net_version,
-                                    "capabilities" => &capabilities
-                                );
-                                Status::Version { network, ident }
-                            }
-                        }
-                    },
-                ),
-        )
-        .await;
+                        Status::Version { network, ident }
+                    }
+                }
+            }),
+    )
+    .await;
 
     // Group identifiers by network name
     let idents: HashMap<String, Vec<EthereumNetworkIdentifier>> =
@@ -602,7 +592,6 @@ async fn connect_networks(
                     Status::Version { network, ident } => {
                         networks.entry(network.to_string()).or_default().push(ident)
                     }
-                    Status::NoVersion => { /* ignore */ }
                 }
                 networks
             });
