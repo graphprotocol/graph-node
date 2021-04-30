@@ -247,11 +247,11 @@ impl ValueExt for Value {
 }
 
 pub trait DirectiveFinder {
-    fn find_directive(&self, name: String) -> Option<&Directive>;
+    fn find_directive(&self, name: &str) -> Option<&Directive>;
 }
 
 impl DirectiveFinder for ObjectType {
-    fn find_directive(&self, name: String) -> Option<&Directive> {
+    fn find_directive(&self, name: &str) -> Option<&Directive> {
         self.directives
             .iter()
             .find(|directive| directive.name.eq(&name))
@@ -259,15 +259,15 @@ impl DirectiveFinder for ObjectType {
 }
 
 impl DirectiveFinder for Field {
-    fn find_directive(&self, name: String) -> Option<&Directive> {
+    fn find_directive(&self, name: &str) -> Option<&Directive> {
         self.directives
             .iter()
-            .find(|directive| directive.name.eq(&name))
+            .find(|directive| directive.name.eq(name))
     }
 }
 
 impl DirectiveFinder for Vec<Directive> {
-    fn find_directive(&self, name: String) -> Option<&Directive> {
+    fn find_directive(&self, name: &str) -> Option<&Directive> {
         self.iter().find(|directive| directive.name.eq(&name))
     }
 }
