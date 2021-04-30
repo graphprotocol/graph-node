@@ -261,10 +261,7 @@ impl Value {
     }
 
     pub fn is_string(&self) -> bool {
-        match self {
-            Value::String(_) => true,
-            _ => false,
-        }
+        matches!(self, Value::String(_))
     }
 
     pub fn as_int(self) -> Option<i32> {

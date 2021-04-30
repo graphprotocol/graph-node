@@ -591,10 +591,7 @@ impl Mapping {
     fn has_block_handler_with_call_filter(&self) -> bool {
         self.block_handlers
             .iter()
-            .any(|handler| match handler.filter {
-                Some(BlockHandlerFilter::Call) => true,
-                _ => false,
-            })
+            .any(|handler| matches!(handler.filter, Some(BlockHandlerFilter::Call)))
     }
 
     pub fn required_capabilities(&self) -> NodeCapabilities {
