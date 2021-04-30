@@ -12,11 +12,13 @@ use tiny_keccak::keccak256;
 use web3::types::{Address, Block, Log, H256};
 
 use graph::{
-    blockchain::IngestorError,
+    blockchain as bc,
     components::metrics::{labels, CounterVec, GaugeVec, HistogramVec},
     petgraph::{self, graphmap::GraphMap},
 };
 use graph::{components::ethereum::EthereumNetworkIdentifier, prelude::*};
+
+use crate::Chain;
 
 pub type EventSignature = H256;
 
@@ -93,16 +95,14 @@ pub struct TriggerFilter {
     pub(crate) block: EthereumBlockFilter,
 }
 
-impl TriggerFilter {
-    pub fn from_data_sources<'a>(
-        data_sources: impl Iterator<Item = &'a DataSource> + Clone,
-    ) -> Self {
+impl bc::TriggerFilter<Chain> for TriggerFilter {
+    fn from_data_sources<'a>(data_sources: impl Iterator<Item = &'a DataSource> + Clone) -> Self {
         let mut this = Self::default();
         this.extend(data_sources);
         this
     }
 
-    pub fn extend<'a>(&mut self, data_sources: impl Iterator<Item = &'a DataSource> + Clone) {
+    fn extend<'a>(&mut self, data_sources: impl Iterator<Item = &'a DataSource> + Clone) {
         self.log
             .extend(EthereumLogFilter::from_data_sources(data_sources.clone()));
         self.call
@@ -586,13 +586,13 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn latest_block(
         &self,
         logger: &Logger,
-    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = IngestorError> + Send + Unpin>;
+    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = bc::IngestorError> + Send + Unpin>;
 
     /// Get the latest block, with only the header and transaction hashes.
     fn latest_block_header(
         &self,
         logger: &Logger,
-    ) -> Box<dyn Future<Item = web3::types::Block<H256>, Error = IngestorError> + Send>;
+    ) -> Box<dyn Future<Item = web3::types::Block<H256>, Error = bc::IngestorError> + Send>;
 
     fn load_block(
         &self,
@@ -627,7 +627,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         logger: &Logger,
         block: LightEthereumBlock,
-    ) -> Box<dyn Future<Item = EthereumBlock, Error = IngestorError> + Send>;
+    ) -> Box<dyn Future<Item = EthereumBlock, Error = bc::IngestorError> + Send>;
 
     /// Load block pointer for the specified `block number`.
     fn block_pointer_from_number(
@@ -635,7 +635,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
         chain_store: Arc<dyn ChainStore>,
         block_number: BlockNumber,
-    ) -> Box<dyn Future<Item = BlockPtr, Error = IngestorError> + Send>;
+    ) -> Box<dyn Future<Item = BlockPtr, Error = bc::IngestorError> + Send>;
 
     /// Find a block by its number. The `block_is_final` flag indicates whether
     /// it is ok to remove blocks in the block cache with that number but with

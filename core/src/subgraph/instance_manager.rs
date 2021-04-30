@@ -16,7 +16,7 @@ use graph::data::subgraph::SubgraphFeature;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::util::lfu_cache::LfuCache;
 use graph::{
-    blockchain::Blockchain,
+    blockchain::{Blockchain, TriggerFilter as _},
     components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing},
 };
 use graph_chain_ethereum::{

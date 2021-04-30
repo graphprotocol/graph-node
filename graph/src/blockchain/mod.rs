@@ -161,13 +161,15 @@ pub trait IngestorAdapter<C: Blockchain> {
 }
 
 pub trait TriggerFilter<C: Blockchain>: Default {
-    fn from_data_sources<'a>(data_sources: impl Iterator<Item = &'a C::DataSource>) -> Self {
+    fn from_data_sources<'a>(
+        data_sources: impl Iterator<Item = &'a C::DataSource> + Clone,
+    ) -> Self {
         let mut this = Self::default();
         this.extend(data_sources);
         this
     }
 
-    fn extend<'a>(&mut self, data_sources: impl Iterator<Item = &'a C::DataSource>);
+    fn extend<'a>(&mut self, data_sources: impl Iterator<Item = &'a C::DataSource> + Clone);
 }
 
 pub trait DataSource<C: Blockchain>: 'static {

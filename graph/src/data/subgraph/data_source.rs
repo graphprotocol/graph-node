@@ -7,9 +7,12 @@ use std::{convert::TryFrom, sync::Arc};
 use tiny_keccak::keccak256;
 use web3::types::Log;
 
-use crate::prelude::{
-    BlockNumber, CheapClone, DataSourceTemplateInfo, EthereumBlockTriggerType, EthereumCall,
-    EthereumTrigger, LightEthereumBlock, LightEthereumBlockExt, MappingTrigger,
+use crate::{
+    blockchain::Blockchain,
+    prelude::{
+        BlockNumber, CheapClone, DataSourceTemplateInfo, EthereumBlockTriggerType, EthereumCall,
+        EthereumTrigger, LightEthereumBlock, LightEthereumBlockExt, MappingTrigger,
+    },
 };
 
 use super::{
@@ -30,6 +33,21 @@ pub struct DataSource {
     pub context: Arc<Option<DataSourceContext>>,
     pub creation_block: Option<BlockNumber>,
     pub contract_abi: Arc<MappingABI>,
+}
+
+// ETHDEP: The whole DataSource struct needs to move to chain::ethereum
+impl<C> crate::blockchain::DataSource<C> for DataSource
+where
+    C: Blockchain,
+{
+    fn match_and_decode(
+        &self,
+        _trigger: &C::TriggerData,
+        _block: &C::Block,
+        _logger: &Logger,
+    ) -> Result<Option<C::MappingTrigger>, Error> {
+        todo!()
+    }
 }
 
 impl super::DataSource {

@@ -18,7 +18,6 @@ use fail::fail_point;
 use crate::{
     adapter::{BlockStreamMetrics, TriggerFilter},
     ethereum_adapter::blocks_with_triggers,
-    EthereumAdapterTrait as _,
 };
 use crate::{ethereum_adapter::triggers_in_block, network::EthereumNetworks};
 use crate::{BlockStreamEvent, EthereumAdapter};

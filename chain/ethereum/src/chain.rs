@@ -3,26 +3,28 @@ use std::{pin::Pin, sync::Arc, task::Context};
 use anyhow::Error;
 use graph::{
     blockchain::{
+        self as bc,
         block_stream::{
             BlockStream, BlockStreamEvent, BlockWithTriggers, ScanTriggersError,
             TriggersAdapter as TriggersAdapterTrait,
         },
-        Block, BlockHash, Blockchain, DataSource, IngestorAdapter as IngestorAdapterTrait,
-        IngestorError, Manifest, TriggerFilter,
+        Block, BlockHash, Blockchain, IngestorAdapter as IngestorAdapterTrait, IngestorError,
+        Manifest,
     },
     cheap_clone::CheapClone,
     components::{ethereum::NodeCapabilities, store::DeploymentLocator},
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
         async_trait, error, o, serde_yaml, web3::types::H256, BlockNumber, BlockPtr, ChainStore,
-        DeploymentHash, Future01CompatExt, LinkResolver, Logger, LoggerFactory, MetricsRegistry,
+        DataSource, DeploymentHash, Future01CompatExt, LinkResolver, Logger, LoggerFactory,
+        MetricsRegistry,
     },
     prometheus::{CounterVec, GaugeVec},
     runtime::{AscType, DeterministicHostError},
     tokio_stream::Stream,
 };
 
-use crate::adapter::EthereumAdapter as _;
+use crate::{adapter::EthereumAdapter as _, TriggerFilter};
 use crate::{network::EthereumNetworkAdapters, EthereumAdapter};
 
 pub struct Chain {
@@ -57,7 +59,7 @@ impl Chain {
 impl Blockchain for Chain {
     type Block = DummyBlock;
 
-    type DataSource = DummyDataSource;
+    type DataSource = graph::data::subgraph::DataSource;
 
     type DataSourceTemplate = DummyDataSourceTemplate;
 
@@ -71,7 +73,7 @@ impl Blockchain for Chain {
 
     type MappingTrigger = DummyMappingTrigger;
 
-    type TriggerFilter = DummyTriggerFilter;
+    type TriggerFilter = crate::adapter::TriggerFilter;
 
     type NodeCapabilities = NodeCapabilities;
 
@@ -154,9 +156,9 @@ impl Block for DummyBlock {
     }
 }
 
-pub struct DummyDataSource;
+pub struct WrappedDataSource(DataSource);
 
-impl DataSource<Chain> for DummyDataSource {
+impl bc::DataSource<Chain> for WrappedDataSource {
     fn match_and_decode(
         &self,
         _trigger: &DummyTriggerData,
@@ -164,6 +166,20 @@ impl DataSource<Chain> for DummyDataSource {
         _logger: &Logger,
     ) -> Result<Option<DummyMappingTrigger>, Error> {
         todo!()
+    }
+}
+
+impl std::ops::Deref for WrappedDataSource {
+    type Target = graph::prelude::DataSource;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<DataSource> for WrappedDataSource {
+    fn from(ds: DataSource) -> Self {
+        WrappedDataSource(ds)
     }
 }
 
@@ -182,7 +198,7 @@ impl Manifest<Chain> for DummyManifest {
         todo!()
     }
 
-    fn data_sources(&self) -> &[DummyDataSource] {
+    fn data_sources(&self) -> &[DataSource] {
         todo!()
     }
 
@@ -245,7 +261,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         _chain_base: BlockPtr,
         _step_size: u32,
-        _filter: DummyTriggerFilter,
+        _filter: TriggerFilter,
     ) -> Result<Vec<BlockWithTriggers<Chain>>, ScanTriggersError> {
         todo!()
     }
@@ -253,7 +269,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     async fn triggers_in_block(
         &self,
         _block: DummyBlock,
-        _filter: DummyTriggerFilter,
+        _filter: TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         todo!()
     }
@@ -290,20 +306,6 @@ impl AscType for DummyMappingTrigger {
     }
 
     fn from_asc_bytes(_asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
-        todo!()
-    }
-}
-
-pub struct DummyTriggerFilter;
-
-impl Default for DummyTriggerFilter {
-    fn default() -> Self {
-        todo!()
-    }
-}
-
-impl TriggerFilter<Chain> for DummyTriggerFilter {
-    fn extend<'a>(&mut self, _data_sources: impl Iterator<Item = &'a DummyDataSource>) {
         todo!()
     }
 }
