@@ -15,11 +15,13 @@ use graph::{
 #[cfg(debug_assertions)]
 use fail::fail_point;
 
-use crate::adapter::{
-    blocks_with_triggers, triggers_in_block, BlockStreamMetrics, EthereumAdapter, TriggerFilter,
+use crate::{
+    adapter::{BlockStreamMetrics, TriggerFilter},
+    ethereum_adapter::blocks_with_triggers,
+    EthereumAdapterTrait as _,
 };
-use crate::network::EthereumNetworks;
-use crate::BlockStreamEvent;
+use crate::{ethereum_adapter::triggers_in_block, network::EthereumNetworks};
+use crate::{BlockStreamEvent, EthereumAdapter};
 
 lazy_static! {
     /// Maximum number of blocks to request in each chunk.
@@ -93,7 +95,7 @@ where
 {
     subgraph_store: Arc<dyn WritableStore>,
     chain_store: Arc<dyn ChainStore>,
-    eth_adapter: Arc<dyn EthereumAdapter>,
+    eth_adapter: Arc<EthereumAdapter>,
     adapter: Arc<C::TriggersAdapter>,
     node_id: NodeId,
     subgraph_id: DeploymentHash,
@@ -159,7 +161,7 @@ where
         subgraph_store: Arc<dyn WritableStore>,
         chain_store: Arc<dyn ChainStore>,
         chain_head_update_stream: ChainHeadUpdateStream,
-        eth_adapter: Arc<dyn EthereumAdapter>,
+        eth_adapter: Arc<EthereumAdapter>,
         adapter: Arc<C::TriggersAdapter>,
         node_id: NodeId,
         subgraph_id: DeploymentHash,

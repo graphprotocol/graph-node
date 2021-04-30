@@ -20,7 +20,7 @@ use graph::{
     components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing},
 };
 use graph_chain_ethereum::{
-    triggers_in_block, BlockStreamBuilder, BlockStreamEvent, BlockStreamMetrics,
+    triggers_in_block, BlockStreamBuilder, BlockStreamEvent, BlockStreamMetrics, EthereumAdapter,
     EthereumAdapterTrait, EthereumNetworks, SubgraphEthRpcMetrics, TriggerFilter,
 };
 
@@ -52,7 +52,7 @@ struct IndexingInputs<C> {
     start_blocks: Vec<BlockNumber>,
     store: Arc<dyn WritableStore>,
     chain_store: Arc<dyn ChainStore>,
-    eth_adapter: Arc<dyn EthereumAdapterTrait>,
+    eth_adapter: Arc<EthereumAdapter>,
     stream_builder: BlockStreamBuilder<C>,
     include_calls_in_blocks: bool,
     templates: Arc<Vec<DataSourceTemplate>>,
@@ -727,7 +727,7 @@ impl From<Error> for BlockProcessingError {
 /// whether new dynamic data sources have been added to the subgraph.
 async fn process_block<T: RuntimeHostBuilder, C>(
     logger: &Logger,
-    eth_adapter: Arc<dyn EthereumAdapterTrait>,
+    eth_adapter: Arc<EthereumAdapter>,
     mut ctx: IndexingContext<T, C>,
     block_stream_cancel_handle: CancelHandle,
     block: EthereumBlockWithTriggers,
