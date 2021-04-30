@@ -113,7 +113,7 @@ impl TriggerFilter {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct EthereumLogFilter {
+pub(crate) struct EthereumLogFilter {
     /// Log filters can be represented as a bipartite graph between contracts and events. An edge
     /// exists between a contract and an event if a data source for the contract has a trigger for
     /// the event.
@@ -251,7 +251,7 @@ impl EthereumLogFilter {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct EthereumCallFilter {
+pub(crate) struct EthereumCallFilter {
     // Each call filter has a map of filters keyed by address, each containing a tuple with
     // start_block and the set of function signatures
     pub contract_addresses_function_signatures: HashMap<Address, (BlockNumber, HashSet<[u8; 4]>)>,
@@ -377,7 +377,7 @@ impl From<EthereumBlockFilter> for EthereumCallFilter {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct EthereumBlockFilter {
+pub(crate) struct EthereumBlockFilter {
     pub contract_addresses: HashSet<(BlockNumber, Address)>,
     pub trigger_every_block: bool,
 }
