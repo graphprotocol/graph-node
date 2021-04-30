@@ -120,7 +120,9 @@ impl EthereumBlockWithTriggers {
 #[derive(Clone, Debug)]
 pub struct EthereumBlockWithCalls {
     pub ethereum_block: EthereumBlock,
-    pub calls: Vec<EthereumCall>,
+    /// The calls in this block; `None` means we haven't checked yet,
+    /// `Some(vec![])` means that we checked and there were none
+    pub calls: Option<Vec<EthereumCall>>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]

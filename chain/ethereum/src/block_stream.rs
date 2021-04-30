@@ -476,7 +476,7 @@ where
                         {
                             Ok(EthereumBlockWithCalls {
                                 ethereum_block: head_ancestor,
-                                calls: vec![],
+                                calls: Some(vec![]),
                             })
                         } else {
                             ctx.eth_adapter
@@ -492,7 +492,7 @@ where
                                 .await
                                 .map(move |calls| EthereumBlockWithCalls {
                                     ethereum_block: head_ancestor,
-                                    calls,
+                                    calls: Some(calls),
                                 })
                         }?;
 
