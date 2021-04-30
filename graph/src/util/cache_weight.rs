@@ -48,7 +48,7 @@ impl<T: CacheWeight, U: CacheWeight> CacheWeight for std::collections::BTreeMap<
         // key/value entries in its root node, except for the empty tree, which
         // takes no space. If there is more than a root node, at worst,
         // each page is half full
-        let kv_slots = if self.len() == 0 {
+        let kv_slots = if self.is_empty() {
             0
         } else if self.len() < NODE_CAPACITY {
             NODE_CAPACITY
