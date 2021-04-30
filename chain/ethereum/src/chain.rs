@@ -19,12 +19,11 @@ use graph::{
         DataSource, DeploymentHash, Future01CompatExt, LinkResolver, Logger, LoggerFactory,
         MetricsRegistry,
     },
-    prometheus::{CounterVec, GaugeVec},
     runtime::{AscType, DeterministicHostError},
     tokio_stream::Stream,
 };
 
-use crate::{adapter::EthereumAdapter as _, TriggerFilter};
+use crate::{adapter::EthereumAdapter as _, SubgraphEthRpcMetrics, TriggerFilter};
 use crate::{network::EthereumNetworkAdapters, EthereumAdapter};
 
 pub struct Chain {
@@ -204,47 +203,6 @@ impl Manifest<Chain> for DummyManifest {
 
     fn templates(&self) -> &[DummyDataSourceTemplate] {
         todo!()
-    }
-}
-
-#[derive(Clone)]
-pub struct SubgraphEthRpcMetrics {
-    request_duration: Box<GaugeVec>,
-    errors: Box<CounterVec>,
-}
-
-impl SubgraphEthRpcMetrics {
-    pub fn new(registry: Arc<dyn MetricsRegistry>, subgraph_hash: &str) -> Self {
-        let request_duration = registry
-            .new_deployment_gauge_vec(
-                "deployment_eth_rpc_request_duration",
-                "Measures eth rpc request duration for a subgraph deployment",
-                &subgraph_hash,
-                vec![String::from("method")],
-            )
-            .unwrap();
-        let errors = registry
-            .new_deployment_counter_vec(
-                "deployment_eth_rpc_errors",
-                "Counts eth rpc request errors for a subgraph deployment",
-                &subgraph_hash,
-                vec![String::from("method")],
-            )
-            .unwrap();
-        Self {
-            request_duration,
-            errors,
-        }
-    }
-
-    pub fn observe_request(&self, duration: f64, method: &str) {
-        self.request_duration
-            .with_label_values(vec![method].as_slice())
-            .set(duration);
-    }
-
-    pub fn add_error(&self, method: &str) {
-        self.errors.with_label_values(vec![method].as_slice()).inc();
     }
 }
 

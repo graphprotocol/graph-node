@@ -492,7 +492,7 @@ pub struct SubgraphEthRpcMetrics {
 }
 
 impl SubgraphEthRpcMetrics {
-    pub fn new(registry: Arc<impl MetricsRegistry>, subgraph_hash: &str) -> Self {
+    pub fn new(registry: Arc<dyn MetricsRegistry>, subgraph_hash: &str) -> Self {
         let request_duration = registry
             .new_deployment_gauge_vec(
                 "deployment_eth_rpc_request_duration",
