@@ -709,10 +709,7 @@ enum BlockProcessingError {
 
 impl BlockProcessingError {
     fn is_deterministic(&self) -> bool {
-        match self {
-            BlockProcessingError::Deterministic(_) => true,
-            _ => false,
-        }
+        matches!(self, BlockProcessingError::Deterministic(_))
     }
 }
 
