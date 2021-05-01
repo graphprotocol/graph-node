@@ -471,30 +471,10 @@ where
                         // Note that head_ancestor is a child of subgraph_ptr.
                         let eth_adapter = self.eth_adapter.clone();
 
-                        let block_with_calls = if !self.include_calls_in_blocks
-                            || head_ancestor.transaction_receipts.is_empty()
-                        {
-                            Ok(EthereumBlockWithCalls {
-                                ethereum_block: head_ancestor,
-                                calls: Some(vec![]),
-                            })
-                        } else {
-                            ctx.eth_adapter
-                                .calls_in_block(
-                                    &logger,
-                                    ctx.metrics.ethrpc_metrics.clone(),
-                                    BlockNumber::try_from(
-                                        head_ancestor.block.number.unwrap().as_u64(),
-                                    )
-                                    .unwrap(),
-                                    head_ancestor.block.hash.unwrap(),
-                                )
-                                .await
-                                .map(move |calls| EthereumBlockWithCalls {
-                                    ethereum_block: head_ancestor,
-                                    calls: Some(calls),
-                                })
-                        }?;
+                        let block_with_calls = EthereumBlockWithCalls {
+                            ethereum_block: head_ancestor,
+                            calls: None,
+                        };
 
                         let block = triggers_in_block(
                             eth_adapter,

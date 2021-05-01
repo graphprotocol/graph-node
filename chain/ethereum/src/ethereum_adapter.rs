@@ -3,6 +3,7 @@ use futures::future;
 use futures::prelude::*;
 use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::Instant;
@@ -1526,6 +1527,15 @@ pub async fn triggers_in_block(
     filter: TriggerFilter,
     ethereum_block: BlockFinality,
 ) -> Result<EthereumBlockWithTriggers, Error> {
+    let ethereum_block = get_calls(
+        adapter.as_ref(),
+        logger.clone(),
+        subgraph_metrics.clone(),
+        filter.clone(),
+        ethereum_block,
+    )
+    .await?;
+
     match &ethereum_block {
         BlockFinality::Final(block) => {
             let block_number = block.number() as BlockNumber;
@@ -1554,6 +1564,48 @@ pub async fn triggers_in_block(
             triggers.append(&mut parse_call_triggers(filter.call, &full_block));
             triggers.append(&mut parse_block_triggers(filter.block, &full_block));
             Ok(EthereumBlockWithTriggers::new(triggers, ethereum_block))
+        }
+    }
+}
+
+async fn get_calls(
+    adapter: &EthereumAdapter,
+    logger: Logger,
+    subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
+    filter: TriggerFilter,
+    block: BlockFinality,
+) -> Result<BlockFinality, Error> {
+    // For final blocks, or nonfinal blocks where we already checked
+    // (`calls.is_some()`), do nothing; if we haven't checked for calls, do
+    // that now
+    match block {
+        BlockFinality::Final(_)
+        | BlockFinality::NonFinal(EthereumBlockWithCalls {
+            ethereum_block: _,
+            calls: Some(_),
+        }) => Ok(block),
+        BlockFinality::NonFinal(EthereumBlockWithCalls {
+            ethereum_block,
+            calls: None,
+        }) => {
+            let calls =
+                if !filter.requires_traces() || ethereum_block.transaction_receipts.is_empty() {
+                    vec![]
+                } else {
+                    adapter
+                        .calls_in_block(
+                            &logger,
+                            subgraph_metrics.clone(),
+                            BlockNumber::try_from(ethereum_block.block.number.unwrap().as_u64())
+                                .unwrap(),
+                            ethereum_block.block.hash.unwrap(),
+                        )
+                        .await?
+                };
+            Ok(BlockFinality::NonFinal(EthereumBlockWithCalls {
+                ethereum_block,
+                calls: Some(calls),
+            }))
         }
     }
 }

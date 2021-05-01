@@ -95,6 +95,12 @@ pub struct TriggerFilter {
     pub(crate) block: EthereumBlockFilter,
 }
 
+impl TriggerFilter {
+    pub(crate) fn requires_traces(&self) -> bool {
+        !self.call.is_empty() || self.block.requires_traces()
+    }
+}
+
 impl bc::TriggerFilter<Chain> for TriggerFilter {
     fn from_data_sources<'a>(data_sources: impl Iterator<Item = &'a DataSource> + Clone) -> Self {
         let mut this = Self::default();
@@ -442,6 +448,10 @@ impl EthereumBlockFilter {
                 addresses
             },
         );
+    }
+
+    fn requires_traces(&self) -> bool {
+        !self.contract_addresses.is_empty()
     }
 }
 
