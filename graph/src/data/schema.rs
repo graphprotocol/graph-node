@@ -1289,7 +1289,7 @@ impl Schema {
                     .is_some(),
                 _ => false,
             })
-            .map(|directive| FulltextDefinition::from(directive))
+            .map(FulltextDefinition::from)
             .collect())
     }
 }

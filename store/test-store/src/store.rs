@@ -256,7 +256,7 @@ pub fn transact_entities_and_dynamic_data_sources(
     );
     let data_sources = data_sources
         .into_iter()
-        .map(|ds| StoredDynamicDataSource::from(ds))
+        .map(StoredDynamicDataSource::from)
         .collect();
     store.transact_block_operations(
         block_ptr_to,

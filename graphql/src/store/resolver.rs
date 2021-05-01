@@ -131,7 +131,7 @@ impl StoreResolver {
             BlockConstraint::Hash(hash) => {
                 store
                     .block_number(hash)
-                    .map_err(|e| e.into())
+                    .map_err(Into::into)
                     .and_then(|number| {
                         number
                             .ok_or_else(|| {
