@@ -54,7 +54,6 @@ struct IndexingInputs<C> {
     chain_store: Arc<dyn ChainStore>,
     eth_adapter: Arc<EthereumAdapter>,
     stream_builder: BlockStreamBuilder<C>,
-    include_calls_in_blocks: bool,
     templates: Arc<Vec<DataSourceTemplate>>,
 }
 
@@ -394,11 +393,6 @@ where
         let filter = TriggerFilter::from_data_sources(manifest.data_sources.iter());
         let start_blocks = manifest.start_blocks();
 
-        // Identify whether there are mappings with call handlers or
-        // block handlers with call filters; in this case, we need to
-        // include calls in all blocks
-        let include_calls_in_blocks = manifest.requires_traces();
-
         let templates = Arc::new(manifest.templates.clone());
 
         // Create a subgraph instance from the manifest; this moves
@@ -450,7 +444,6 @@ where
                 store,
                 eth_adapter,
                 stream_builder,
-                include_calls_in_blocks,
                 templates,
             },
             state: IndexingState {
@@ -517,7 +510,6 @@ where
                 ctx.inputs.network_name.clone(),
                 ctx.inputs.start_blocks.clone(),
                 ctx.state.filter.clone(),
-                ctx.inputs.include_calls_in_blocks,
                 ctx.block_stream_metrics.clone(),
             )
             .map_err(CancelableError::Error)

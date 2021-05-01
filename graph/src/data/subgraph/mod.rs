@@ -1003,6 +1003,8 @@ impl SubgraphManifest {
             .collect()
     }
 
+    // Only used in tests
+    #[cfg(debug_assertions)]
     pub fn requires_traces(&self) -> bool {
         self.mappings().iter().any(|mapping| {
             mapping.has_call_handler() || mapping.has_block_handler_with_call_filter()

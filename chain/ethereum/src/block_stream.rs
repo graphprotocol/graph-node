@@ -103,7 +103,6 @@ where
     reorg_threshold: BlockNumber,
     filter: TriggerFilter,
     start_blocks: Vec<BlockNumber>,
-    include_calls_in_blocks: bool,
     logger: Logger,
     metrics: Arc<BlockStreamMetrics>,
     previous_triggers_per_block: f64,
@@ -125,7 +124,6 @@ impl<C: Blockchain> Clone for BlockStreamContext<C> {
             reorg_threshold: self.reorg_threshold,
             filter: self.filter.clone(),
             start_blocks: self.start_blocks.clone(),
-            include_calls_in_blocks: self.include_calls_in_blocks,
             logger: self.logger.clone(),
             metrics: self.metrics.clone(),
             previous_triggers_per_block: self.previous_triggers_per_block,
@@ -166,7 +164,6 @@ where
         subgraph_id: DeploymentHash,
         filter: TriggerFilter,
         start_blocks: Vec<BlockNumber>,
-        include_calls_in_blocks: bool,
         reorg_threshold: BlockNumber,
         logger: Logger,
         metrics: Arc<BlockStreamMetrics>,
@@ -186,7 +183,6 @@ where
                 logger,
                 filter,
                 start_blocks,
-                include_calls_in_blocks,
                 metrics,
 
                 // A high number here forces a slow start, with a range of 1.
@@ -732,7 +728,6 @@ where
         network_name: String,
         start_blocks: Vec<BlockNumber>,
         filter: TriggerFilter,
-        include_calls_in_blocks: bool,
         metrics: Arc<BlockStreamMetrics>,
     ) -> BlockStream<C> {
         let logger = logger.new(o!(
@@ -750,10 +745,10 @@ where
             .chain_head_update_listener
             .subscribe(network_name.clone());
 
-        let requirements = chain.node_capabilities(false, include_calls_in_blocks);
+        let requirements = chain.node_capabilities(false, filter.requires_traces());
         let eth_requirements = NodeCapabilities {
             archive: false,
-            traces: include_calls_in_blocks,
+            traces: filter.requires_traces(),
         };
 
         let eth_adapter = self
@@ -783,7 +778,6 @@ where
             deployment.hash,
             filter,
             start_blocks,
-            include_calls_in_blocks,
             self.reorg_threshold,
             logger,
             metrics,

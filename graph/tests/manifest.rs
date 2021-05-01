@@ -183,6 +183,7 @@ specVersion: 0.0.2
     })
 }
 
+// ETHDEP: This test needs to be moved to the chain::ethereum crate
 #[tokio::test]
 async fn parse_call_handlers() {
     const YAML: &str = "
