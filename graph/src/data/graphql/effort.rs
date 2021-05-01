@@ -1,6 +1,7 @@
 //! Utilities to keep moving statistics about queries
 
 use lazy_static::lazy_static;
+use prometheus::core::GenericCounter;
 use rand::{prelude::Rng, thread_rng};
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -334,7 +335,7 @@ impl LoadManager {
     pub fn record_work(&self, shape_hash: u64, duration: Duration, cache_status: CacheStatus) {
         self.query_counters
             .get(&cache_status)
-            .map(|counter| counter.inc());
+            .map(GenericCounter::inc);
         if !*LOAD_MANAGEMENT_DISABLED {
             self.effort.add(shape_hash, duration, &self.effort_gauge);
         }

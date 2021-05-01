@@ -281,7 +281,7 @@ where
             let is_elapsed = result_with_timeout
                 .as_ref()
                 .err()
-                .map(|e| e.is_elapsed())
+                .map(TimeoutError::is_elapsed)
                 .unwrap_or(false);
 
             if is_elapsed {
