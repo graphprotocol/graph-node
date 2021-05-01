@@ -29,7 +29,7 @@ pub fn build_query<'a>(
         ObjectOrInterface::Interface(interface) => types_for_interface
             [&EntityType::from(*interface)]
             .iter()
-            .map(|o| o.into())
+            .map(Into::into)
             .collect(),
     });
     let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types)

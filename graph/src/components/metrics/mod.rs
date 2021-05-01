@@ -98,7 +98,7 @@ pub trait MetricsRegistry: Send + Sync + 'static {
             opts,
             variable_labels
                 .iter()
-                .map(|s| s.as_str())
+                .map(String::as_str)
                 .collect::<Vec<&str>>()
                 .as_slice(),
         )?);
@@ -118,7 +118,7 @@ pub trait MetricsRegistry: Send + Sync + 'static {
             opts,
             variable_labels
                 .iter()
-                .map(|s| s.as_str())
+                .map(String::as_str)
                 .collect::<Vec<&str>>()
                 .as_slice(),
         )?);
@@ -170,7 +170,7 @@ pub trait MetricsRegistry: Send + Sync + 'static {
             opts,
             variable_labels
                 .iter()
-                .map(|s| s.as_str())
+                .map(String::as_str)
                 .collect::<Vec<&str>>()
                 .as_slice(),
         )?);
@@ -190,7 +190,7 @@ pub trait MetricsRegistry: Send + Sync + 'static {
             opts,
             variable_labels
                 .iter()
-                .map(|s| s.as_str())
+                .map(String::as_str)
                 .collect::<Vec<&str>>()
                 .as_slice(),
         )?);
@@ -228,7 +228,7 @@ pub trait MetricsRegistry: Send + Sync + 'static {
             },
             variable_labels
                 .iter()
-                .map(|s| s.as_str())
+                .map(String::as_str)
                 .collect::<Vec<&str>>()
                 .as_slice(),
         )?);
@@ -252,7 +252,7 @@ pub trait MetricsRegistry: Send + Sync + 'static {
             },
             variable_labels
                 .iter()
-                .map(|s| s.as_str())
+                .map(String::as_str)
                 .collect::<Vec<&str>>()
                 .as_slice(),
         )?);

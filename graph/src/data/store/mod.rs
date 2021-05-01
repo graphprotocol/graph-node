@@ -351,7 +351,7 @@ impl fmt::Display for Value {
                     "[{}]",
                     values
                         .into_iter()
-                        .map(|value| format!("{}", value))
+                        .map(ToString::to_string)
                         .collect::<Vec<_>>()
                         .join(", ")
                 ),

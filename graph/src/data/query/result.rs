@@ -218,7 +218,7 @@ impl QueryResult {
         if self.has_errors() {
             Err(self.errors)
         } else {
-            Ok(self.data.map(|v| q::Value::Object(v)))
+            Ok(self.data.map(q::Value::Object))
         }
     }
 
