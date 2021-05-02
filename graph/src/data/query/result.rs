@@ -207,7 +207,7 @@ impl QueryResult {
     }
 
     pub fn has_errors(&self) -> bool {
-        return !self.errors.is_empty();
+        !self.errors.is_empty()
     }
 
     pub fn has_data(&self) -> bool {

@@ -581,7 +581,7 @@ impl Mapping {
             }
         }
 
-        return false;
+        false
     }
 
     fn has_call_handler(&self) -> bool {
