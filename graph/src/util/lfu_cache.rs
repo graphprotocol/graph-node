@@ -210,7 +210,7 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
             evicted += entry.weight;
             self.total_weight -= entry.weight;
         }
-        return Some((evicted, old_weight, self.total_weight));
+        Some((evicted, old_weight, self.total_weight))
     }
 }
 
