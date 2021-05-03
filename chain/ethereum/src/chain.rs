@@ -15,9 +15,9 @@ use graph::{
     components::{ethereum::NodeCapabilities, store::DeploymentLocator},
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
-        async_trait, error, o, serde_yaml, web3::types::H256, BlockNumber, BlockPtr, ChainStore,
-        DataSource, DeploymentHash, Future01CompatExt, LinkResolver, Logger, LoggerFactory,
-        MetricsRegistry,
+        async_trait, error, o, serde_yaml, web3::types::H256, BlockFinality, BlockNumber, BlockPtr,
+        ChainStore, DataSource, DeploymentHash, Future01CompatExt, LinkResolver, Logger,
+        LoggerFactory, MetricsRegistry,
     },
     runtime::{AscType, DeterministicHostError},
     tokio_stream::Stream,
@@ -56,7 +56,7 @@ impl Chain {
 }
 
 impl Blockchain for Chain {
-    type Block = DummyBlock;
+    type Block = WrappedBlockFinality;
 
     type DataSource = graph::data::subgraph::DataSource;
 
@@ -143,15 +143,15 @@ impl Blockchain for Chain {
     }
 }
 
-pub struct DummyBlock;
+pub struct WrappedBlockFinality(BlockFinality);
 
-impl Block for DummyBlock {
+impl Block for WrappedBlockFinality {
     fn ptr(&self) -> BlockPtr {
-        todo!()
+        self.0.ptr()
     }
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
-        todo!()
+        self.0.parent_ptr()
     }
 }
 
@@ -161,7 +161,7 @@ impl bc::DataSource<Chain> for WrappedDataSource {
     fn match_and_decode(
         &self,
         _trigger: &DummyTriggerData,
-        _block: &DummyBlock,
+        _block: &WrappedBlockFinality,
         _logger: &Logger,
     ) -> Result<Option<DummyMappingTrigger>, Error> {
         todo!()
@@ -226,7 +226,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
 
     async fn triggers_in_block(
         &self,
-        _block: DummyBlock,
+        _block: WrappedBlockFinality,
         _filter: TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         todo!()

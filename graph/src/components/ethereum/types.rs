@@ -97,6 +97,20 @@ impl BlockFinality {
             BlockFinality::NonFinal(block) => block.ethereum_block.block.number(),
         }
     }
+
+    pub fn ptr(&self) -> BlockPtr {
+        match self {
+            BlockFinality::Final(block) => block.block_ptr(),
+            BlockFinality::NonFinal(block) => block.ethereum_block.block.block_ptr(),
+        }
+    }
+
+    pub fn parent_ptr(&self) -> Option<BlockPtr> {
+        match self {
+            BlockFinality::Final(block) => block.parent_ptr(),
+            BlockFinality::NonFinal(block) => block.ethereum_block.block.parent_ptr(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
