@@ -8,7 +8,7 @@ lazy_static::lazy_static! {
     static ref LOCK_CONTENTION_LOG_THRESHOLD: Duration = {
         Duration::from_millis(
             std::env::var("GRAPH_LOCK_CONTENTION_LOG_THRESHOLD_MS")
-                .unwrap_or("100".to_string())
+                .unwrap_or_else(|_| "100".to_string())
                 .parse::<u64>()
                 .expect("Invalid value for LOCK_CONTENTION_LOG_THRESHOLD_MS environment variable")
        )
