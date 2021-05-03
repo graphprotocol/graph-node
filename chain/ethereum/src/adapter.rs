@@ -12,8 +12,11 @@ use tiny_keccak::keccak256;
 use web3::types::{Address, Block, Log, H256};
 
 use graph::{
-    blockchain as bc,
-    components::metrics::{labels, CounterVec, GaugeVec, HistogramVec},
+    blockchain::{self as bc, block_stream::BlockWithTriggers},
+    components::{
+        ethereum::NodeCapabilities,
+        metrics::{labels, CounterVec, GaugeVec, HistogramVec},
+    },
     petgraph::{self, graphmap::GraphMap},
 };
 use graph::{components::ethereum::EthereumNetworkIdentifier, prelude::*};
@@ -115,6 +118,20 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
             .extend(EthereumCallFilter::from_data_sources(data_sources.clone()));
         self.block
             .extend(EthereumBlockFilter::from_data_sources(data_sources));
+    }
+
+    fn node_capabilities(&self) -> NodeCapabilities {
+        NodeCapabilities {
+            archive: false,
+            traces: self.requires_traces(),
+        }
+    }
+
+    fn convert_block(&self, block: BlockWithTriggers<Chain>) -> EthereumBlockWithTriggers {
+        EthereumBlockWithTriggers {
+            ethereum_block: block.block.0,
+            triggers: block.trigger_data,
+        }
     }
 }
 

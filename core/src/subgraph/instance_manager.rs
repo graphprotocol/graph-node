@@ -16,11 +16,11 @@ use graph::data::subgraph::SubgraphFeature;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::util::lfu_cache::LfuCache;
 use graph::{
-    blockchain::{Blockchain, TriggerFilter as _},
+    blockchain::{block_stream::BlockStreamEvent, Blockchain, TriggerFilter as _},
     components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing},
 };
 use graph_chain_ethereum::{
-    triggers_in_block, BlockStreamBuilder, BlockStreamEvent, BlockStreamMetrics, EthereumAdapter,
+    triggers_in_block, BlockStreamBuilder, BlockStreamMetrics, EthereumAdapter,
     EthereumAdapterTrait, EthereumNetworks, SubgraphEthRpcMetrics, TriggerFilter,
 };
 
@@ -57,20 +57,20 @@ struct IndexingInputs<C> {
     templates: Arc<Vec<DataSourceTemplate>>,
 }
 
-struct IndexingState<T: RuntimeHostBuilder> {
+struct IndexingState<T: RuntimeHostBuilder, C: Blockchain> {
     logger: Logger,
     instance: SubgraphInstance<T>,
     instances: SharedInstanceKeepAliveMap,
-    filter: TriggerFilter,
+    filter: C::TriggerFilter,
     entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
 }
 
-struct IndexingContext<T: RuntimeHostBuilder, C> {
+struct IndexingContext<T: RuntimeHostBuilder, C: Blockchain> {
     /// Read only inputs that are needed while indexing a subgraph.
     pub inputs: IndexingInputs<C>,
 
     /// Mutable state that may be modified while indexing a subgraph.
-    pub state: IndexingState<T>,
+    pub state: IndexingState<T, C>,
 
     /// Sensors to measure the execution of the subgraph instance
     pub subgraph_metrics: Arc<SubgraphInstanceMetrics>,
@@ -390,7 +390,7 @@ where
         let network_name = manifest.network_name();
 
         // Obtain filters from the manifest
-        let filter = TriggerFilter::from_data_sources(manifest.data_sources.iter());
+        let filter = C::TriggerFilter::from_data_sources(manifest.data_sources.iter());
         let start_blocks = manifest.start_blocks();
 
         let templates = Arc::new(manifest.templates.clone());
@@ -529,7 +529,7 @@ where
         // Process events from the stream as long as no restart is needed
         loop {
             let block = match block_stream.next().await {
-                Some(Ok(BlockStreamEvent::Block(block))) => block,
+                Some(Ok(BlockStreamEvent::ProcessBlock(block))) => block,
                 Some(Ok(BlockStreamEvent::Revert(subgraph_ptr))) => {
                     info!(
                         logger,
@@ -609,16 +609,18 @@ where
                 None => unreachable!("The block stream stopped producing blocks"),
             };
 
-            let block_ptr = BlockPtr::from(&block.ethereum_block);
+            let block_ptr = block.ptr();
 
-            if block.triggers.len() > 0 {
+            if block.trigger_count() > 0 {
                 subgraph_metrics
                     .block_trigger_count
-                    .observe(block.triggers.len() as f64);
+                    .observe(block.trigger_count() as f64);
             }
 
             let start = Instant::now();
 
+            // ETHDEP: Stupid type conversion tricks
+            let block = ctx.state.filter.convert_block(block);
             let res = process_block(
                 &logger,
                 ctx.inputs.eth_adapter.cheap_clone(),

@@ -3,11 +3,17 @@ use std::collections::VecDeque;
 use std::mem;
 use std::time::Duration;
 
-use graph::{blockchain::BlockchainMap, prelude::*};
+use graph::{
+    blockchain::{
+        block_stream::{BlockStreamEvent, BlockWithTriggers},
+        Block, BlockchainMap, TriggerFilter as _,
+    },
+    prelude::*,
+};
 use graph::{
     blockchain::{Blockchain, TriggersAdapter as _},
     components::{
-        ethereum::{ChainHeadUpdateListener, NodeCapabilities},
+        ethereum::ChainHeadUpdateListener,
         store::{DeploymentLocator, WritableStore},
     },
 };
@@ -15,12 +21,8 @@ use graph::{
 #[cfg(debug_assertions)]
 use fail::fail_point;
 
-use crate::{
-    adapter::{BlockStreamMetrics, TriggerFilter},
-    ethereum_adapter::blocks_with_triggers,
-};
-use crate::{ethereum_adapter::triggers_in_block, network::EthereumNetworks};
-use crate::{BlockStreamEvent, EthereumAdapter};
+use crate::adapter::BlockStreamMetrics;
+use crate::network::EthereumNetworks;
 
 lazy_static! {
     /// Maximum number of blocks to request in each chunk.
@@ -36,7 +38,10 @@ lazy_static! {
         .expect("invalid GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE");
 }
 
-enum BlockStreamState {
+enum BlockStreamState<C>
+where
+    C: Blockchain,
+{
     /// Starting or restarting reconciliation.
     ///
     /// Valid next states: Reconciliation
@@ -45,13 +50,13 @@ enum BlockStreamState {
     /// The BlockStream is reconciling the subgraph store state with the chain store state.
     ///
     /// Valid next states: YieldingBlocks, Idle, BeginReconciliation (in case of revert)
-    Reconciliation(Box<dyn Future<Item = NextBlocks, Error = Error> + Send>),
+    Reconciliation(Box<dyn Future<Item = NextBlocks<C>, Error = Error> + Send>),
 
     /// The BlockStream is emitting blocks that must be processed in order to bring the subgraph
     /// store up to date with the chain store.
     ///
     /// Valid next states: BeginReconciliation
-    YieldingBlocks(VecDeque<EthereumBlockWithTriggers>),
+    YieldingBlocks(VecDeque<BlockWithTriggers<C>>),
 
     /// The BlockStream experienced an error and is pausing before attempting to produce
     /// blocks again.
@@ -71,14 +76,17 @@ enum BlockStreamState {
 
 /// A single next step to take in reconciling the state of the subgraph store with the state of the
 /// chain store.
-enum ReconciliationStep {
+enum ReconciliationStep<C>
+where
+    C: Blockchain,
+{
     /// Revert the current block pointed at by the subgraph pointer. The pointer is to the current
     /// subgraph head, and a single block will be reverted so the new head will be the parent of the
     /// current one.
     Revert(BlockPtr),
 
     /// Move forwards, processing one or more blocks. Second element is the block range size.
-    ProcessDescendantBlocks(Vec<EthereumBlockWithTriggers>, BlockNumber),
+    ProcessDescendantBlocks(Vec<BlockWithTriggers<C>>, BlockNumber),
 
     /// This step is a no-op, but we need to check again for a next step.
     Retry,
@@ -94,14 +102,13 @@ where
 {
     subgraph_store: Arc<dyn WritableStore>,
     chain_store: Arc<dyn ChainStore>,
-    eth_adapter: Arc<EthereumAdapter>,
     adapter: Arc<C::TriggersAdapter>,
     node_id: NodeId,
     subgraph_id: DeploymentHash,
     // This is not really a block number, but the (unsigned) difference
     // between two block numbers
     reorg_threshold: BlockNumber,
-    filter: TriggerFilter,
+    filter: C::TriggerFilter,
     start_blocks: Vec<BlockNumber>,
     logger: Logger,
     metrics: Arc<BlockStreamMetrics>,
@@ -117,7 +124,6 @@ impl<C: Blockchain> Clone for BlockStreamContext<C> {
         Self {
             subgraph_store: self.subgraph_store.cheap_clone(),
             chain_store: self.chain_store.cheap_clone(),
-            eth_adapter: self.eth_adapter.cheap_clone(),
             adapter: self.adapter.clone(),
             node_id: self.node_id.clone(),
             subgraph_id: self.subgraph_id.clone(),
@@ -134,16 +140,19 @@ impl<C: Blockchain> Clone for BlockStreamContext<C> {
 }
 
 pub struct BlockStream<C: Blockchain> {
-    state: BlockStreamState,
+    state: BlockStreamState<C>,
     consecutive_err_count: u32,
     chain_head_update_stream: ChainHeadUpdateStream,
     ctx: BlockStreamContext<C>,
 }
 
 // This is the same as `ReconciliationStep` but without retries.
-enum NextBlocks {
+enum NextBlocks<C>
+where
+    C: Blockchain,
+{
     /// Blocks and range size
-    Blocks(VecDeque<EthereumBlockWithTriggers>, BlockNumber),
+    Blocks(VecDeque<BlockWithTriggers<C>>, BlockNumber),
 
     /// Revert the current block pointed at by the subgraph pointer.
     Revert(BlockPtr),
@@ -158,11 +167,10 @@ where
         subgraph_store: Arc<dyn WritableStore>,
         chain_store: Arc<dyn ChainStore>,
         chain_head_update_stream: ChainHeadUpdateStream,
-        eth_adapter: Arc<EthereumAdapter>,
         adapter: Arc<C::TriggersAdapter>,
         node_id: NodeId,
         subgraph_id: DeploymentHash,
-        filter: TriggerFilter,
+        filter: C::TriggerFilter,
         start_blocks: Vec<BlockNumber>,
         reorg_threshold: BlockNumber,
         logger: Logger,
@@ -175,7 +183,6 @@ where
             ctx: BlockStreamContext {
                 subgraph_store,
                 chain_store,
-                eth_adapter,
                 adapter,
                 node_id,
                 subgraph_id,
@@ -199,7 +206,7 @@ where
     C: Blockchain,
 {
     /// Perform reconciliation steps until there are blocks to yield or we are up-to-date.
-    async fn next_blocks(&self) -> Result<NextBlocks, Error> {
+    async fn next_blocks(&self) -> Result<NextBlocks<C>, Error> {
         let ctx = self.clone();
 
         loop {
@@ -225,7 +232,7 @@ where
     }
 
     /// Determine the next reconciliation step. Does not modify Store or ChainStore.
-    async fn get_next_step(&self) -> Result<ReconciliationStep, Error> {
+    async fn get_next_step(&self) -> Result<ReconciliationStep<C>, Error> {
         let ctx = self.clone();
         let filter = self.filter.clone();
         let start_blocks = self.start_blocks.clone();
@@ -392,16 +399,7 @@ where
                 "range_size" => range_size
             );
 
-            let blocks = blocks_with_triggers(
-                ctx.eth_adapter,
-                ctx.logger.clone(),
-                ctx.chain_store.clone(),
-                ctx.metrics.ethrpc_metrics.clone(),
-                from,
-                to,
-                filter.clone(),
-            )
-            .await?;
+            let blocks = self.adapter.scan_triggers(from, to, filter.clone()).await?;
 
             section.end();
             Ok(ReconciliationStep::ProcessDescendantBlocks(
@@ -444,9 +442,8 @@ where
 
             // In principle this block should be in the store, but we have seen this error for deep
             // reorgs in ropsten.
-            let head_ancestor_opt = ctx.chain_store.ancestor_block(head_ptr, offset)?;
+            let head_ancestor_opt = self.adapter.ancestor_block(head_ptr, offset)?;
 
-            let logger = self.logger.clone();
             match head_ancestor_opt {
                 None => {
                     // Block is missing in the block store.
@@ -459,28 +456,16 @@ where
                 Some(head_ancestor) => {
                     // We stopped one block short, so we'll compare the parent hash to the
                     // subgraph ptr.
-                    if head_ancestor.block.parent_hash == subgraph_ptr.hash_as_h256() {
+                    if head_ancestor.parent_hash().as_ref() == Some(&subgraph_ptr.hash) {
                         // The subgraph ptr is an ancestor of the head block.
                         // We cannot use an RPC call here to find the first interesting block
                         // due to the race conditions previously mentioned,
                         // so instead we will advance the subgraph ptr by one block.
                         // Note that head_ancestor is a child of subgraph_ptr.
-                        let eth_adapter = self.eth_adapter.clone();
-
-                        let block_with_calls = EthereumBlockWithCalls {
-                            ethereum_block: head_ancestor,
-                            calls: None,
-                        };
-
-                        let block = triggers_in_block(
-                            eth_adapter,
-                            logger,
-                            ctx.chain_store.clone(),
-                            ctx.metrics.ethrpc_metrics.clone(),
-                            filter.clone(),
-                            BlockFinality::NonFinal(block_with_calls),
-                        )
-                        .await?;
+                        let block = self
+                            .adapter
+                            .triggers_in_block(head_ancestor, filter)
+                            .await?;
                         Ok(ReconciliationStep::ProcessDescendantBlocks(vec![block], 1))
                     } else {
                         // The subgraph ptr is not on the main chain.
@@ -514,7 +499,7 @@ where
 }
 
 impl<C: Blockchain> Stream for BlockStream<C> {
-    type Item = BlockStreamEvent;
+    type Item = BlockStreamEvent<C>;
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
@@ -546,7 +531,7 @@ impl<C: Blockchain> Stream for BlockStream<C> {
                             self.consecutive_err_count = 0;
 
                             let total_triggers =
-                                next_blocks.iter().map(|b| b.triggers.len()).sum::<usize>();
+                                next_blocks.iter().map(|b| b.trigger_count()).sum::<usize>();
                             self.ctx.previous_triggers_per_block =
                                 total_triggers as f64 / block_range_size as f64;
                             self.ctx.previous_block_range_size = block_range_size;
@@ -609,7 +594,9 @@ impl<C: Blockchain> Stream for BlockStream<C> {
                         // Yield one block
                         Some(next_block) => {
                             state = BlockStreamState::YieldingBlocks(next_blocks);
-                            break Ok(Async::Ready(Some(BlockStreamEvent::Block(next_block))));
+                            break Ok(Async::Ready(Some(BlockStreamEvent::ProcessBlock(
+                                next_block,
+                            ))));
                         }
 
                         // Done yielding blocks
@@ -697,10 +684,7 @@ impl<C> Clone for BlockStreamBuilder<C> {
     }
 }
 
-impl<C> BlockStreamBuilder<C>
-where
-    C: Blockchain,
-{
+impl<C: Blockchain> BlockStreamBuilder<C> {
     pub fn new(
         subgraph_store: Arc<dyn SubgraphStore>,
         chains: Arc<BlockchainMap<C>>,
@@ -727,7 +711,7 @@ where
         deployment: DeploymentLocator,
         network_name: String,
         start_blocks: Vec<BlockNumber>,
-        filter: TriggerFilter,
+        filter: C::TriggerFilter,
         metrics: Arc<BlockStreamMetrics>,
     ) -> BlockStream<C> {
         let logger = logger.new(o!(
@@ -745,19 +729,7 @@ where
             .chain_head_update_listener
             .subscribe(network_name.clone());
 
-        let requirements = chain.node_capabilities(false, filter.requires_traces());
-        let eth_requirements = NodeCapabilities {
-            archive: false,
-            traces: filter.requires_traces(),
-        };
-
-        let eth_adapter = self
-            .eth_networks
-            .adapter_with_capabilities(network_name.clone(), &eth_requirements)
-            .expect(&format!(
-                "no eth adapter that supports network: {} with {}",
-                &network_name, &requirements
-            ));
+        let requirements = filter.node_capabilities();
 
         let triggers_adapter = chain
             .triggers_adapter(&deployment, &requirements)
@@ -772,7 +744,6 @@ where
                 .expect(&format!("no store for deployment `{}`", deployment.hash)),
             chain_store,
             chain_head_update_stream,
-            eth_adapter.clone(),
             triggers_adapter,
             self.node_id.clone(),
             deployment.hash,

@@ -5,7 +5,7 @@ use graph::{
     blockchain::{
         self as bc,
         block_stream::{
-            BlockStream, BlockStreamEvent, BlockWithTriggers, ScanTriggersError,
+            BlockStream, BlockStreamEvent, BlockWithTriggers,
             TriggersAdapter as TriggersAdapterTrait,
         },
         Block, BlockHash, Blockchain, IngestorAdapter as IngestorAdapterTrait, IngestorError,
@@ -16,14 +16,21 @@ use graph::{
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
         async_trait, error, o, serde_yaml, web3::types::H256, BlockFinality, BlockNumber, BlockPtr,
-        ChainStore, DataSource, DeploymentHash, Future01CompatExt, LinkResolver, Logger,
-        LoggerFactory, MetricsRegistry,
+        ChainStore, DataSource, DeploymentHash, EthereumBlockWithCalls, EthereumTrigger,
+        Future01CompatExt, LinkResolver, Logger, LoggerFactory, MetricsRegistry,
     },
     runtime::{AscType, DeterministicHostError},
     tokio_stream::Stream,
 };
 
-use crate::{adapter::EthereumAdapter as _, SubgraphEthRpcMetrics, TriggerFilter};
+use crate::{
+    adapter::EthereumAdapter as _,
+    ethereum_adapter::{
+        blocks_with_triggers, get_calls, parse_block_triggers, parse_call_triggers,
+        parse_log_triggers,
+    },
+    SubgraphEthRpcMetrics, TriggerFilter,
+};
 use crate::{network::EthereumNetworkAdapters, EthereumAdapter};
 
 pub struct Chain {
@@ -68,7 +75,7 @@ impl Blockchain for Chain {
 
     type BlockStream = DummyBlockStream;
 
-    type TriggerData = DummyTriggerData;
+    type TriggerData = EthereumTrigger;
 
     type MappingTrigger = DummyMappingTrigger;
 
@@ -96,7 +103,7 @@ impl Blockchain for Chain {
 
         let adapter = TriggersAdapter {
             logger,
-            _ethrpc_metrics: ethrpc_metrics,
+            ethrpc_metrics,
             eth_adapter,
             chain_store: self.chain_store.cheap_clone(),
         };
@@ -143,7 +150,8 @@ impl Blockchain for Chain {
     }
 }
 
-pub struct WrappedBlockFinality(BlockFinality);
+// ETHDEP: Wrapper until we can move BlockFinality into this crate
+pub struct WrappedBlockFinality(pub(crate) BlockFinality);
 
 impl Block for WrappedBlockFinality {
     fn ptr(&self) -> BlockPtr {
@@ -160,7 +168,7 @@ pub struct WrappedDataSource(DataSource);
 impl bc::DataSource<Chain> for WrappedDataSource {
     fn match_and_decode(
         &self,
-        _trigger: &DummyTriggerData,
+        _trigger: &EthereumTrigger,
         _block: &WrappedBlockFinality,
         _logger: &Logger,
     ) -> Result<Option<DummyMappingTrigger>, Error> {
@@ -208,7 +216,7 @@ impl Manifest<Chain> for DummyManifest {
 
 pub struct TriggersAdapter {
     logger: Logger,
-    _ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
+    ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
     chain_store: Arc<dyn ChainStore>,
     eth_adapter: Arc<EthereumAdapter>,
 }
@@ -217,25 +225,116 @@ pub struct TriggersAdapter {
 impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     async fn scan_triggers(
         &self,
-        _chain_base: BlockPtr,
-        _step_size: u32,
-        _filter: TriggerFilter,
-    ) -> Result<Vec<BlockWithTriggers<Chain>>, ScanTriggersError> {
-        todo!()
+        from: BlockNumber,
+        to: BlockNumber,
+        filter: TriggerFilter,
+    ) -> Result<Vec<BlockWithTriggers<Chain>>, Error> {
+        blocks_with_triggers(
+            self.eth_adapter.clone(),
+            self.logger.clone(),
+            self.chain_store.clone(),
+            self.ethrpc_metrics.clone(),
+            from,
+            to,
+            filter.clone(),
+        )
+        .await
+        .map(|blocks| {
+            blocks
+                .into_iter()
+                .map(|block| {
+                    BlockWithTriggers::new(
+                        Box::new(WrappedBlockFinality(block.ethereum_block)),
+                        block.triggers,
+                    )
+                })
+                .collect()
+        })
     }
 
     async fn triggers_in_block(
         &self,
-        _block: WrappedBlockFinality,
-        _filter: TriggerFilter,
+        block: WrappedBlockFinality,
+        filter: TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
-        todo!()
+        /*
+                pub async fn triggers_in_block(
+                    adapter: Arc<EthereumAdapter>,
+                    logger: Logger,
+                    chain_store: Arc<dyn ChainStore>,
+                    subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
+                    filter: TriggerFilter,
+                    ethereum_block: BlockFinality,
+                ) -> Result<EthereumBlockWithTriggers, Error> {
+        */
+        let block = get_calls(
+            self.eth_adapter.as_ref(),
+            self.logger.clone(),
+            self.ethrpc_metrics.clone(),
+            filter.clone(),
+            block.0,
+        )
+        .await?;
+
+        match &block {
+            BlockFinality::Final(_) => {
+                let block_number = block.number() as BlockNumber;
+                let mut blocks = blocks_with_triggers(
+                    self.eth_adapter.clone(),
+                    self.logger.clone(),
+                    self.chain_store.clone(),
+                    self.ethrpc_metrics.clone(),
+                    block_number,
+                    block_number,
+                    filter,
+                )
+                .await?;
+                assert!(blocks.len() <= 1);
+
+                let (block, triggers) = blocks
+                    .pop()
+                    .map(|block| (block.ethereum_block, block.triggers))
+                    .unwrap_or_else(|| (block, vec![]));
+
+                Ok(BlockWithTriggers::new(
+                    Box::new(WrappedBlockFinality(block)),
+                    triggers,
+                ))
+            }
+            BlockFinality::NonFinal(full_block) => {
+                let mut triggers = Vec::new();
+                triggers.append(&mut parse_log_triggers(
+                    filter.log,
+                    &full_block.ethereum_block,
+                ));
+                triggers.append(&mut parse_call_triggers(filter.call, &full_block));
+                triggers.append(&mut parse_block_triggers(filter.block, &full_block));
+                Ok(BlockWithTriggers::new(
+                    Box::new(WrappedBlockFinality(block)),
+                    triggers,
+                ))
+            }
+        }
     }
 
     async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error> {
         self.eth_adapter
             .is_on_main_chain(&self.logger, self.chain_store.clone(), ptr.clone())
             .await
+    }
+
+    fn ancestor_block(
+        &self,
+        ptr: BlockPtr,
+        offset: BlockNumber,
+    ) -> Result<Option<WrappedBlockFinality>, Error> {
+        let block = self.chain_store.ancestor_block(ptr, offset)?;
+        Ok(block.map(|block| {
+            WrappedBlockFinality(BlockFinality::NonFinal(EthereumBlockWithCalls {
+                ethereum_block: block,
+                calls: None,
+            }))
+        }))
     }
 }
 
@@ -253,8 +352,6 @@ impl Stream for DummyBlockStream {
 }
 
 impl BlockStream<Chain> for DummyBlockStream {}
-
-pub struct DummyTriggerData;
 
 pub struct DummyMappingTrigger;
 
