@@ -24,6 +24,7 @@ reqwest = { version = "0.10", features = ["json", "stream"] }
 ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master" }
 hex = "0.4.3"
 http = "0.2.3"
+fail = "0.4"
 futures = "0.1.21"
 graphql-parser = "0.3.0"
 lazy_static = "1.4.0"

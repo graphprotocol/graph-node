@@ -80,7 +80,6 @@ pub trait Blockchain: Sized + Send + Sync + 'static {
     type Manifest: Manifest<Self>;
 
     type TriggersAdapter: TriggersAdapter<Self>;
-    type BlockStream: BlockStream<Self>;
 
     /// Trigger data as parsed from the triggers adapter.
     type TriggerData;
@@ -113,7 +112,7 @@ pub trait Blockchain: Sized + Send + Sync + 'static {
         &self,
         current_head: BlockPtr,
         filter: Self::TriggerFilter,
-    ) -> Result<Self::BlockStream, Error>;
+    ) -> Result<BlockStream<Self>, Error>;
 
     fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter>;
 

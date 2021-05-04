@@ -6,7 +6,6 @@ use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::task;
 
-use graph::components::store::WritableStore;
 use graph::components::store::{
     BlockStore, DeploymentId, DeploymentLocator, ModificationsAndCache,
 };
@@ -15,13 +14,14 @@ use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::data::subgraph::SubgraphFeature;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::util::lfu_cache::LfuCache;
+use graph::{blockchain::block_stream::BlockStreamMetrics, components::store::WritableStore};
 use graph::{
     blockchain::{block_stream::BlockStreamEvent, Blockchain, TriggerFilter as _},
     components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing},
 };
 use graph_chain_ethereum::{
-    triggers_in_block, BlockStreamBuilder, BlockStreamMetrics, EthereumAdapter,
-    EthereumAdapterTrait, EthereumNetworks, SubgraphEthRpcMetrics, TriggerFilter,
+    triggers_in_block, BlockStreamBuilder, EthereumAdapter, EthereumAdapterTrait, EthereumNetworks,
+    SubgraphEthRpcMetrics, TriggerFilter,
 };
 
 use super::loader::load_dynamic_data_sources;

@@ -73,8 +73,6 @@ impl Blockchain for Chain {
 
     type TriggersAdapter = TriggersAdapter;
 
-    type BlockStream = DummyBlockStream;
-
     type TriggerData = EthereumTrigger;
 
     type MappingTrigger = DummyMappingTrigger;
@@ -114,7 +112,7 @@ impl Blockchain for Chain {
         &self,
         _current_head: BlockPtr,
         _filter: Self::TriggerFilter,
-    ) -> Result<Self::BlockStream, Error> {
+    ) -> Result<BlockStream<Self>, Error> {
         todo!()
     }
 
@@ -350,8 +348,6 @@ impl Stream for DummyBlockStream {
         todo!()
     }
 }
-
-impl BlockStream<Chain> for DummyBlockStream {}
 
 pub struct DummyMappingTrigger;
 
