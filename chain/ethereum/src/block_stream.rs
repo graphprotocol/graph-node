@@ -9,6 +9,7 @@ use graph::{
         Block, BlockchainMap, TriggerFilter as _,
     },
     prelude::*,
+    prometheus::labels,
 };
 use graph::{
     blockchain::{Blockchain, TriggersAdapter as _},
@@ -21,8 +22,8 @@ use graph::{
 #[cfg(debug_assertions)]
 use fail::fail_point;
 
-use crate::adapter::BlockStreamMetrics;
 use crate::network::EthereumNetworks;
+use crate::SubgraphEthRpcMetrics;
 
 lazy_static! {
     /// Maximum number of blocks to request in each chunk.
@@ -36,6 +37,46 @@ lazy_static! {
         .unwrap_or("100".into())
         .parse::<u64>()
         .expect("invalid GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE");
+}
+
+#[derive(Clone)]
+pub struct BlockStreamMetrics {
+    pub ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
+    pub deployment_head: Box<Gauge>,
+    pub reverted_blocks: Box<Gauge>,
+    pub stopwatch: StopwatchMetrics,
+}
+
+impl BlockStreamMetrics {
+    pub fn new(
+        registry: Arc<impl MetricsRegistry>,
+        ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
+        deployment_id: &DeploymentHash,
+        network: String,
+        stopwatch: StopwatchMetrics,
+    ) -> Self {
+        let reverted_blocks = registry
+            .new_deployment_gauge(
+                "deployment_reverted_blocks",
+                "Track the last reverted block for a subgraph deployment",
+                deployment_id.as_str(),
+            )
+            .expect("Failed to create `deployment_reverted_blocks` gauge");
+        let labels = labels! { String::from("deployment") => deployment_id.to_string(), String::from("network") => network };
+        let deployment_head = registry
+            .new_gauge(
+                "deployment_head",
+                "Track the head block number for a deployment",
+                labels,
+            )
+            .expect("failed to create `deployment_head` gauge");
+        Self {
+            ethrpc_metrics,
+            deployment_head,
+            reverted_blocks,
+            stopwatch,
+        }
+    }
 }
 
 enum BlockStreamState<C>

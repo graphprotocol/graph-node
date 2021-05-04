@@ -15,7 +15,7 @@ use graph::{
     blockchain::{self as bc, block_stream::BlockWithTriggers},
     components::{
         ethereum::NodeCapabilities,
-        metrics::{labels, CounterVec, GaugeVec, HistogramVec},
+        metrics::{CounterVec, GaugeVec, HistogramVec},
     },
     petgraph::{self, graphmap::GraphMap},
 };
@@ -550,46 +550,6 @@ impl SubgraphEthRpcMetrics {
 
     pub fn add_error(&self, method: &str) {
         self.errors.with_label_values(vec![method].as_slice()).inc();
-    }
-}
-
-#[derive(Clone)]
-pub struct BlockStreamMetrics {
-    pub ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
-    pub deployment_head: Box<Gauge>,
-    pub reverted_blocks: Box<Gauge>,
-    pub stopwatch: StopwatchMetrics,
-}
-
-impl BlockStreamMetrics {
-    pub fn new(
-        registry: Arc<impl MetricsRegistry>,
-        ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
-        deployment_id: &DeploymentHash,
-        network: String,
-        stopwatch: StopwatchMetrics,
-    ) -> Self {
-        let reverted_blocks = registry
-            .new_deployment_gauge(
-                "deployment_reverted_blocks",
-                "Track the last reverted block for a subgraph deployment",
-                deployment_id.as_str(),
-            )
-            .expect("Failed to create `deployment_reverted_blocks` gauge");
-        let labels = labels! { String::from("deployment") => deployment_id.to_string(), String::from("network") => network };
-        let deployment_head = registry
-            .new_gauge(
-                "deployment_head",
-                "Track the head block number for a deployment",
-                labels,
-            )
-            .expect("failed to create `deployment_head` gauge");
-        Self {
-            ethrpc_metrics,
-            deployment_head,
-            reverted_blocks,
-            stopwatch,
-        }
     }
 }
 

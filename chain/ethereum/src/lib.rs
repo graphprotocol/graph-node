@@ -15,10 +15,10 @@ mod chain;
 mod network;
 
 pub use crate::adapter::{
-    BlockStreamMetrics, EthereumAdapter as EthereumAdapterTrait, EthereumContractCall,
-    EthereumContractCallError, MockEthereumAdapter, ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
-    TriggerFilter,
+    EthereumAdapter as EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError,
+    MockEthereumAdapter, ProviderEthRpcMetrics, SubgraphEthRpcMetrics, TriggerFilter,
 };
+pub use crate::block_stream::BlockStreamMetrics;
 pub use crate::chain::Chain;
 pub use crate::network::EthereumNetworks;
 
