@@ -23,13 +23,13 @@ For Ethereum network data, you can either run your own Ethereum node or use an E
 
 ### Running a Local Graph Node
 
-This is a quick example to show a working Graph Node. It is a [subgraph for the Ethereum Name Service (ENS)](https://github.com/graphprotocol/ens-subgraph) that The Graph team built.
+This is a quick example to show a working Graph Node. It is a [subgraph for Gravatars](https://github.com/graphprotocol/example-subgraph).
 
 1. Install IPFS and run `ipfs init` followed by `ipfs daemon`.
 2. Install PostgreSQL and run `initdb -D .postgres` followed by `pg_ctl -D .postgres -l logfile start` and `createdb graph-node`.
 3. If using Ubuntu, you may need to install additional packages:
    - `sudo apt-get install -y clang libpq-dev libssl-dev pkg-config`
-4. In the terminal, clone https://github.com/graphprotocol/ens-subgraph, and install dependencies and generate types for contract ABIs:
+4. In the terminal, clone https://github.com/graphprotocol/example-subgraph, and install dependencies and generate types for contract ABIs:
 
 ```
 yarn
@@ -70,7 +70,7 @@ EOF
 
 This will also spin up a GraphiQL interface at `http://127.0.0.1:8000/`.
 
-6.  With this ENS example, to get the subgraph working locally run:
+6.  With this Gravatar example, to get the subgraph working locally run:
 
 ```
 yarn create-local
