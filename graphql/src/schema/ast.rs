@@ -28,7 +28,7 @@ pub(crate) enum FilterOp {
 }
 
 /// Split a "name_eq" style name into an attribute ("name") and a filter op (`Equal`).
-pub(crate) fn parse_field_as_filter(key: &String) -> (String, FilterOp) {
+pub(crate) fn parse_field_as_filter(key: &str) -> (String, FilterOp) {
     let (suffix, op) = match key {
         k if k.ends_with("_not") => ("_not", FilterOp::Not),
         k if k.ends_with("_gt") => ("_gt", FilterOp::GreaterThan),
@@ -85,10 +85,7 @@ pub fn get_object_type_definitions(schema: &Document) -> Vec<&ObjectType> {
 }
 
 /// Returns the object type with the given name.
-pub fn get_object_type_mut<'a>(
-    schema: &'a mut Document,
-    name: &String,
-) -> Option<&'a mut ObjectType> {
+pub fn get_object_type_mut<'a>(schema: &'a mut Document, name: &str) -> Option<&'a mut ObjectType> {
     use graphql_parser::schema::TypeDefinition::*;
 
     get_named_type_definition_mut(schema, name).and_then(|type_def| match type_def {
@@ -112,7 +109,7 @@ pub fn get_interface_type_definitions(schema: &Document) -> Vec<&InterfaceType> 
 /// Returns the interface type with the given name.
 pub fn get_interface_type_mut<'a>(
     schema: &'a mut Document,
-    name: &String,
+    name: &str,
 ) -> Option<&'a mut InterfaceType> {
     use graphql_parser::schema::TypeDefinition::*;
 
@@ -125,7 +122,7 @@ pub fn get_interface_type_mut<'a>(
 /// Returns the type of a field of an object type.
 pub fn get_field<'a>(
     object_type: impl Into<ObjectOrInterface<'a>>,
-    name: &String,
+    name: &str,
 ) -> Option<&'a Field> {
     lazy_static! {
         pub static ref TYPENAME_FIELD: Field = Field {
@@ -189,7 +186,7 @@ pub fn get_named_type<'a>(schema: &'a Document, name: &str) -> Option<&'a TypeDe
 /// Returns a mutable version of the type with the given name.
 pub fn get_named_type_definition_mut<'a>(
     schema: &'a mut Document,
-    name: &String,
+    name: &str,
 ) -> Option<&'a mut TypeDefinition> {
     schema
         .definitions
@@ -209,7 +206,7 @@ pub fn get_named_type_definition_mut<'a>(
 }
 
 /// Returns the name of a type.
-pub fn get_type_name(t: &TypeDefinition) -> &String {
+pub fn get_type_name(t: &TypeDefinition) -> &str {
     match t {
         TypeDefinition::Enum(t) => &t.name,
         TypeDefinition::InputObject(t) => &t.name,
@@ -235,7 +232,7 @@ pub fn get_type_description(t: &TypeDefinition) -> &Option<String> {
 /// Returns the argument definitions for a field of an object type.
 pub fn get_argument_definitions<'a>(
     object_type: impl Into<ObjectOrInterface<'a>>,
-    name: &String,
+    name: &str,
 ) -> Option<&'a Vec<InputValue>> {
     lazy_static! {
         pub static ref NAME_ARGUMENT: Vec<InputValue> = vec![InputValue {

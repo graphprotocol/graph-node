@@ -16,12 +16,12 @@ lazy_static! {
 }
 
 pub trait ObjectTypeExt {
-    fn field(&self, name: &String) -> Option<&Field>;
+    fn field(&self, name: &str) -> Option<&Field>;
     fn is_meta(&self) -> bool;
 }
 
 impl ObjectTypeExt for ObjectType {
-    fn field(&self, name: &String) -> Option<&Field> {
+    fn field(&self, name: &str) -> Option<&Field> {
         self.fields.iter().find(|field| &field.name == name)
     }
 
@@ -31,7 +31,7 @@ impl ObjectTypeExt for ObjectType {
 }
 
 impl ObjectTypeExt for InterfaceType {
-    fn field(&self, name: &String) -> Option<&Field> {
+    fn field(&self, name: &str) -> Option<&Field> {
         self.fields.iter().find(|field| &field.name == name)
     }
 
@@ -45,7 +45,7 @@ pub trait DocumentExt {
 
     fn get_object_type_definition(&self, name: &str) -> Option<&ObjectType>;
 
-    fn get_object_and_interface_type_fields(&self) -> HashMap<&String, &Vec<Field>>;
+    fn get_object_and_interface_type_fields(&self) -> HashMap<&str, &Vec<Field>>;
 
     fn get_enum_definitions(&self) -> Vec<&EnumType>;
 
@@ -79,11 +79,13 @@ impl DocumentExt for Document {
             .find(|object_type| object_type.name.eq(name))
     }
 
-    fn get_object_and_interface_type_fields(&self) -> HashMap<&String, &Vec<Field>> {
+    fn get_object_and_interface_type_fields(&self) -> HashMap<&str, &Vec<Field>> {
         self.definitions
             .iter()
             .filter_map(|d| match d {
-                Definition::TypeDefinition(TypeDefinition::Object(t)) => Some((&t.name, &t.fields)),
+                Definition::TypeDefinition(TypeDefinition::Object(t)) => {
+                    Some((t.name.as_str(), &t.fields))
+                }
                 Definition::TypeDefinition(TypeDefinition::Interface(t)) => {
                     Some((&t.name, &t.fields))
                 }
@@ -183,11 +185,11 @@ impl DocumentExt for Document {
 }
 
 pub trait TypeExt {
-    fn get_base_type(&self) -> &String;
+    fn get_base_type(&self) -> &str;
 }
 
 impl TypeExt for Type {
-    fn get_base_type(&self) -> &String {
+    fn get_base_type(&self) -> &str {
         match self {
             Type::NamedType(name) => name,
             Type::NonNullType(inner) => Self::get_base_type(&inner),
@@ -212,8 +214,8 @@ impl DirectiveExt for Directive {
 pub trait ValueExt {
     fn as_object(&self) -> Option<&BTreeMap<String, Value>>;
     fn as_list(&self) -> Option<&Vec<Value>>;
-    fn as_string(&self) -> Option<&String>;
-    fn as_enum(&self) -> Option<&String>;
+    fn as_str(&self) -> Option<&str>;
+    fn as_enum(&self) -> Option<&str>;
 }
 
 impl ValueExt for Value {
@@ -231,14 +233,14 @@ impl ValueExt for Value {
         }
     }
 
-    fn as_string(&self) -> Option<&String> {
+    fn as_str(&self) -> Option<&str> {
         match self {
             Value::String(string) => Some(string),
             _ => None,
         }
     }
 
-    fn as_enum(&self) -> Option<&String> {
+    fn as_enum(&self) -> Option<&str> {
         match self {
             Value::Enum(e) => Some(e),
             _ => None,

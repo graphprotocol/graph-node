@@ -167,12 +167,12 @@ impl ValueMap for &BTreeMap<String, q::Value> {
     }
 }
 
-impl ValueMap for &HashMap<&String, q::Value> {
+impl ValueMap for &HashMap<&str, q::Value> {
     fn get_required<T>(&self, key: &str) -> Result<T, Error>
     where
         T: TryFromValue,
     {
-        self.get(&String::from(key))
+        self.get(key)
             .ok_or_else(|| anyhow!("Required field `{}` not set", key))
             .and_then(|value| T::try_from_value(value).map_err(|e| e.into()))
     }
@@ -181,11 +181,10 @@ impl ValueMap for &HashMap<&String, q::Value> {
     where
         T: TryFromValue,
     {
-        self.get(&String::from(key))
-            .map_or(Ok(None), |value| match value {
-                q::Value::Null => Ok(None),
-                _ => T::try_from_value(value).map(Some).map_err(Into::into),
-            })
+        self.get(key).map_or(Ok(None), |value| match value {
+            q::Value::Null => Ok(None),
+            _ => T::try_from_value(value).map(Some).map_err(Into::into),
+        })
     }
 }
 

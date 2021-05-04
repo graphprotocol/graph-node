@@ -256,7 +256,7 @@ fn add_types_for_interface_types(
 /// Adds a `<type_name>_orderBy` enum type for the given fields to the schema.
 fn add_order_by_type(
     schema: &mut Document,
-    type_name: &String,
+    type_name: &str,
     fields: &[Field],
 ) -> Result<(), APISchemaError> {
     let type_name = format!("{}_orderBy", type_name).to_string();
@@ -290,7 +290,7 @@ fn add_order_by_type(
 /// Adds a `<type_name>_filter` enum type for the given fields to the schema.
 fn add_filter_type(
     schema: &mut Document,
-    type_name: &String,
+    type_name: &str,
     fields: &[Field],
 ) -> Result<(), APISchemaError> {
     let filter_type_name = format!("{}_filter", type_name).to_string();
@@ -485,7 +485,7 @@ fn field_list_filter_input_values(
 }
 
 /// Generates a `*_filter` input value for the given field name, suffix and value type.
-fn input_value(name: &String, suffix: &'static str, value_type: Type) -> InputValue {
+fn input_value(name: &str, suffix: &'static str, value_type: Type) -> InputValue {
     InputValue {
         position: Pos::default(),
         description: None,
@@ -545,18 +545,13 @@ fn query_field_for_fulltext(
     fulltext: &Directive,
     features: &BTreeSet<SubgraphFeature>,
 ) -> Option<Field> {
-    let name = fulltext
-        .argument("name")
-        .unwrap()
-        .as_string()
-        .unwrap()
-        .clone();
+    let name = fulltext.argument("name").unwrap().as_str().unwrap().into();
 
     let includes = fulltext.argument("include").unwrap().as_list().unwrap();
     // Only one include is allowed per fulltext directive
     let include = includes.iter().next().unwrap();
     let included_entity = include.as_object().unwrap();
-    let entity_name = included_entity.get("entity").unwrap().as_string().unwrap();
+    let entity_name = included_entity.get("entity").unwrap().as_str().unwrap();
 
     let mut arguments = vec![
         // text: String
@@ -597,10 +592,10 @@ fn query_field_for_fulltext(
     Some(Field {
         position: Pos::default(),
         description: None,
-        name: name,
+        name,
         arguments: arguments,
         field_type: Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
-            Box::new(Type::NamedType(entity_name.clone())),
+            Box::new(Type::NamedType(entity_name.into())),
         ))))), // included entity type name
         directives: vec![fulltext.clone()],
     })
@@ -674,7 +669,7 @@ fn subgraph_error_argument() -> InputValue {
 /// Generates `Query` fields for the given type name (e.g. `users` and `user`).
 fn query_fields_for_type(
     schema: &Document,
-    type_name: &String,
+    type_name: &str,
     features: &BTreeSet<SubgraphFeature>,
 ) -> Vec<Field> {
     let input_objects = ast::get_input_object_definitions(schema);
@@ -702,7 +697,7 @@ fn query_fields_for_type(
         Field {
             position: Pos::default(),
             description: None,
-            name: type_name.as_str().to_camel_case(), // Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()`
+            name: type_name.to_camel_case(), // Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()`
             arguments: by_id_arguments,
             field_type: Type::NamedType(type_name.to_owned()),
             directives: vec![],
@@ -747,7 +742,7 @@ fn meta_field() -> Field {
 /// Generates arguments for collection queries of a named type (e.g. User).
 fn collection_arguments_for_named_type(
     input_objects: &[InputObjectType],
-    type_name: &String,
+    type_name: &str,
 ) -> Vec<InputValue> {
     // `first` and `skip` should be non-nullable, but the Apollo graphql client
     // exhibts non-conforming behaviour by erroing if no value is provided for a
@@ -909,8 +904,12 @@ mod tests {
         }
         .expect("OrderDirection type is not an enum");
 
-        let values: Vec<&String> = enum_type.values.iter().map(|value| &value.name).collect();
-        assert_eq!(values, [&"asc".to_string(), &"desc".to_string()]);
+        let values: Vec<&str> = enum_type
+            .values
+            .iter()
+            .map(|value| value.name.as_str())
+            .collect();
+        assert_eq!(values, ["asc", "desc"]);
     }
 
     #[test]
@@ -942,8 +941,12 @@ mod tests {
         }
         .expect("User_orderBy type is not an enum");
 
-        let values: Vec<&String> = enum_type.values.iter().map(|value| &value.name).collect();
-        assert_eq!(values, [&"id".to_string(), &"name".to_string()]);
+        let values: Vec<&str> = enum_type
+            .values
+            .iter()
+            .map(|value| value.name.as_str())
+            .collect();
+        assert_eq!(values, ["id", "name"]);
     }
 
     #[test]
