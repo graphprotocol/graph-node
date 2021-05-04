@@ -147,7 +147,7 @@ where
             }
 
             // Then log the component hierarchy
-            if components.len() > 0 {
+            if !components.is_empty() {
                 decorator.start_comma()?;
                 write!(decorator, ", ")?;
                 decorator.start_key()?;
@@ -377,7 +377,7 @@ impl ser::Serializer for KeyValueSerializer {
 
 fn log_query_timing(kind: &str) -> bool {
     env::var("GRAPH_LOG_QUERY_TIMING")
-        .unwrap_or("".into())
+        .unwrap_or_default()
         .split(",")
         .any(|v| v == kind)
 }

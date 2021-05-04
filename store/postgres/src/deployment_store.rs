@@ -12,6 +12,7 @@ use graph::prelude::{
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
 use std::collections::{BTreeMap, HashMap};
+use std::convert::Into;
 use std::convert::TryInto;
 use std::iter::FromIterator;
 use std::ops::Deref;
@@ -681,7 +682,7 @@ impl DeploymentStore {
                 Ok(layout.supports_proof_of_indexing())
             })
             .await
-            .map_err(|e| e.into())
+            .map_err(Into::into)
         }
         .boxed()
     }
@@ -740,7 +741,7 @@ impl DeploymentStore {
 
                         Ok(Some(entities))
                     })
-                    .map_err(|e| e.into())
+                    .map_err(Into::into)
                 })
                 .await?;
 
@@ -1004,7 +1005,7 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         self.with_conn(move |conn, _| {
             conn.transaction(|| deployment::fail(&conn, &id, error))
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
         .await?;
         Ok(())
@@ -1038,7 +1039,7 @@ impl DeploymentStore {
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         self.with_conn(move |conn, _| {
             conn.transaction(|| crate::dynds::load(&conn, id.as_str()))
-                .map_err(|e| e.into())
+                .map_err(Into::into)
         })
         .await
     }

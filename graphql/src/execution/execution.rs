@@ -10,6 +10,7 @@ use lazy_static::lazy_static;
 use stable_hash::crypto::SetHasher;
 use stable_hash::prelude::*;
 use stable_hash::utils::stable_hash;
+use std::borrow::ToOwned;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter;
 use std::time::Instant;
@@ -36,7 +37,7 @@ lazy_static! {
         std::env::var("GRAPH_CACHED_SUBGRAPH_IDS")
         .unwrap_or("*".to_string())
         .split(',')
-        .map(|s| s.to_owned())
+        .map(ToOwned::to_owned)
         .collect()
     };
 
@@ -434,7 +435,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
                 let e = e.into_panic();
                 let e = match e
                     .downcast_ref::<String>()
-                    .map(|s| s.as_str())
+                    .map(String::as_str)
                     .or(e.downcast_ref::<&'static str>().map(|&s| s))
                 {
                     Some(e) => e.to_string(),

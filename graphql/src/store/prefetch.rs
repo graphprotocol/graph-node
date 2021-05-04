@@ -76,7 +76,7 @@ fn node_list_as_value(nodes: Vec<Rc<Node>>) -> q::Value {
         nodes
             .into_iter()
             .map(|node| Rc::try_unwrap(node).unwrap_or_else(|rc| rc.as_ref().clone()))
-            .map(|node| node.into())
+            .map(Into::into)
             .collect(),
     )
 }

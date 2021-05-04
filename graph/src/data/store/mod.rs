@@ -261,10 +261,7 @@ impl Value {
     }
 
     pub fn is_string(&self) -> bool {
-        match self {
-            Value::String(_) => true,
-            _ => false,
-        }
+        matches!(self, Value::String(_))
     }
 
     pub fn as_int(self) -> Option<i32> {
@@ -351,7 +348,7 @@ impl fmt::Display for Value {
                     "[{}]",
                     values
                         .into_iter()
-                        .map(|value| format!("{}", value))
+                        .map(ToString::to_string)
                         .collect::<Vec<_>>()
                         .join(", ")
                 ),
@@ -438,7 +435,7 @@ impl TryFrom<Value> for Option<scalar::BigInt> {
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
-            Value::BigInt(n) => Ok(Some(n.clone())),
+            Value::BigInt(n) => Ok(Some(n)),
             Value::Null => Ok(None),
             _ => Err(anyhow!("Value is not an BigInt")),
         }

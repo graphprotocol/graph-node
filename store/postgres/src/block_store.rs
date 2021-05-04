@@ -384,7 +384,7 @@ impl BlockStore {
             .read()
             .unwrap()
             .get(chain)
-            .map(|store| store.cheap_clone());
+            .map(CheapClone::cheap_clone);
         if store.is_some() {
             return store;
         }

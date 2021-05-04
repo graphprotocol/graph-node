@@ -57,7 +57,7 @@ pub trait Block {
     }
 
     fn hash(&self) -> BlockHash {
-        self.ptr().hash.clone()
+        self.ptr().hash
     }
 }
 

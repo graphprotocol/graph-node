@@ -1037,7 +1037,7 @@ mod tests {
                 "favoritePet_not_ends_with",
             ]
             .iter()
-            .map(|name| name.to_string())
+            .map(ToString::to_string)
             .collect::<Vec<String>>()
         );
     }
@@ -1102,7 +1102,7 @@ mod tests {
                 "block"
             ]
             .iter()
-            .map(|name| name.to_string())
+            .map(ToString::to_string)
             .collect::<Vec<String>>()
         );
 
@@ -1202,7 +1202,7 @@ mod tests {
                 "subgraphError"
             ]
             .iter()
-            .map(|name| name.to_string())
+            .map(ToString::to_string)
             .collect::<Vec<String>>()
         );
     }

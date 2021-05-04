@@ -733,14 +733,9 @@ impl Schema {
 
         fn from_is_valid(from: Option<&Value>) -> bool {
             if let Some(Value::Object(from)) = from {
-                let has_id = match from.get("id") {
-                    Some(Value::String(_)) => true,
-                    _ => false,
-                };
-                let has_name = match from.get("name") {
-                    Some(Value::String(_)) => true,
-                    _ => false,
-                };
+                let has_id = matches!(from.get("id"), Some(Value::String(_)));
+
+                let has_name = matches!(from.get("name"), Some(Value::String(_)));
                 has_id ^ has_name
             } else {
                 false
@@ -914,7 +909,7 @@ impl Schema {
 
         // Validate that each entity in fulltext.include exists
         let includes = match fulltext.argument("include") {
-            Some(Value::List(includes)) if includes.len() > 0 => includes,
+            Some(Value::List(includes)) if !includes.is_empty() => includes,
             _ => return vec![SchemaValidationError::FulltextIncludeUndefined],
         };
 
@@ -954,11 +949,8 @@ impl Schema {
                             .fields
                             .iter()
                             .find(|field| {
-                                match ValueType::from_str(field.field_type.get_base_type().as_ref())
-                                {
-                                    Ok(ValueType::String) if field.name.eq(field_name) => true,
-                                    _ => false,
-                                }
+                                let base_type: &str = field.field_type.get_base_type().as_ref();
+                                matches!(ValueType::from_str(base_type), Ok(ValueType::String) if field.name.eq(field_name))
                             })
                             .is_some()
                         {
@@ -1020,7 +1012,7 @@ impl Schema {
                         if !is_local && !is_imported {
                             Some(SchemaValidationError::ImportedTypeUndefined(
                                 name.to_string(),
-                                schema_handle.to_string(),
+                                schema_handle,
                             ))
                         } else {
                             None
@@ -1076,9 +1068,7 @@ impl Schema {
             .document
             .get_object_type_definitions()
             .iter()
-            .filter(|t| {
-                t.find_directive(String::from("entity")).is_none() && !t.name.eq(SCHEMA_TYPE_NAME)
-            })
+            .filter(|t| t.find_directive("entity").is_none() && !t.name.eq(SCHEMA_TYPE_NAME))
             .map(|t| t.name.to_owned())
             .collect::<Vec<_>>();
         if types_without_entity_directive.is_empty() {
@@ -1120,32 +1110,30 @@ impl Schema {
                     .map(move |field| (object_type, field))
             })
             .filter_map(|(object_type, field)| {
-                field
-                    .find_directive(String::from("derivedFrom"))
-                    .map(|directive| {
-                        (
-                            object_type,
-                            object_type
-                                .implements_interfaces
-                                .iter()
-                                .filter(|iface| {
-                                    // Any interface that has `field` can be used
-                                    // as the type of the field
-                                    self.document
-                                        .find_interface(iface)
-                                        .map(|iface| {
-                                            iface
-                                                .fields
-                                                .iter()
-                                                .any(|ifield| ifield.name.eq(&field.name))
-                                        })
-                                        .unwrap_or(false)
-                                })
-                                .collect::<Vec<_>>(),
-                            field,
-                            directive.argument("field"),
-                        )
-                    })
+                field.find_directive("derivedFrom").map(|directive| {
+                    (
+                        object_type,
+                        object_type
+                            .implements_interfaces
+                            .iter()
+                            .filter(|iface| {
+                                // Any interface that has `field` can be used
+                                // as the type of the field
+                                self.document
+                                    .find_interface(iface)
+                                    .map(|iface| {
+                                        iface
+                                            .fields
+                                            .iter()
+                                            .any(|ifield| ifield.name.eq(&field.name))
+                                    })
+                                    .unwrap_or(false)
+                            })
+                            .collect::<Vec<_>>(),
+                        field,
+                        directive.argument("field"),
+                    )
+                })
             })
         {
             // Turn `target_field` into the string name of the field
@@ -1275,7 +1263,7 @@ impl Schema {
             .get_fulltext_directives()?
             .into_iter()
             .filter(|directive| match directive.argument("include") {
-                Some(Value::List(includes)) if includes.len() > 0 => includes
+                Some(Value::List(includes)) if !includes.is_empty() => includes
                     .iter()
                     .find(|include| match include {
                         Value::Object(include) => match include.get("entity") {
@@ -1289,7 +1277,7 @@ impl Schema {
                     .is_some(),
                 _ => false,
             })
-            .map(|directive| FulltextDefinition::from(directive))
+            .map(FulltextDefinition::from)
             .collect())
     }
 }
