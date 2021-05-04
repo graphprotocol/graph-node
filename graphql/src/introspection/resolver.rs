@@ -365,7 +365,7 @@ impl Resolver for IntrospectionResolver {
         field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&String, q::Value>,
+        _arguments: &HashMap<&str, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         match field.name.as_str() {
             "possibleTypes" => {
@@ -400,12 +400,12 @@ impl Resolver for IntrospectionResolver {
         field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        arguments: &HashMap<&String, q::Value>,
+        arguments: &HashMap<&str, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         let object = match field.name.as_str() {
             "__schema" => self.schema_object(),
             "__type" => {
-                let name = arguments.get(&String::from("name")).ok_or_else(|| {
+                let name = arguments.get("name").ok_or_else(|| {
                     QueryExecutionError::MissingArgumentError(
                         Pos::default(),
                         "missing argument `name` in `__type(name: String!)`".to_owned(),

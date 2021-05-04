@@ -207,7 +207,7 @@ impl Query {
                 }
             };
 
-            let bc = match args.get(&"block".to_string()) {
+            let bc = match args.get("block") {
                 Some(bc) => BlockConstraint::try_from_value(bc).map_err(|_| {
                     vec![QueryExecutionError::InvalidArgumentError(
                         Pos::default(),
@@ -218,7 +218,7 @@ impl Query {
                 None => BlockConstraint::Latest,
             };
 
-            let field_error_policy = match args.get(&"subgraphError".to_string()) {
+            let field_error_policy = match args.get("subgraphError") {
                 Some(value) => ErrorPolicy::try_from(value).map_err(|_| {
                     vec![QueryExecutionError::InvalidArgumentError(
                         Pos::default(),
@@ -273,7 +273,7 @@ impl Query {
 
     /// Should only be called for fragments that exist in the query, and therefore have been
     /// validated to exist. Panics otherwise.
-    pub fn get_fragment(&self, name: &String) -> &q::FragmentDefinition {
+    pub fn get_fragment(&self, name: &str) -> &q::FragmentDefinition {
         self.fragments.get(name).unwrap()
     }
 
@@ -379,7 +379,7 @@ impl Query {
     // Checks for invalid selections.
     fn validate_fields_inner(
         &self,
-        type_name: &String,
+        type_name: &str,
         ty: ObjectOrInterface<'_>,
         selection_set: &q::SelectionSet,
     ) -> Vec<QueryExecutionError> {
@@ -394,7 +394,7 @@ impl Query {
                         Some(s_field) => {
                             let base_type = s_field.field_type.get_base_type();
                             if get_named_type(schema, base_type).is_none() {
-                                errors.push(QueryExecutionError::NamedTypeError(base_type.clone()));
+                                errors.push(QueryExecutionError::NamedTypeError(base_type.into()));
                             } else if let Some(ty) = object_or_interface(schema, base_type) {
                                 errors.extend(self.validate_fields_inner(
                                     base_type,
@@ -405,7 +405,7 @@ impl Query {
                         }
                         None => errors.push(QueryExecutionError::UnknownField(
                             field.position,
-                            type_name.clone(),
+                            type_name.into(),
                             field.name.clone(),
                         )),
                     },
@@ -601,7 +601,7 @@ fn coerce_variable(
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     use crate::values::coercion::coerce_value;
 
-    let resolver = |name: &String| sast::get_named_type(schema.document(), name);
+    let resolver = |name: &str| sast::get_named_type(schema.document(), name);
 
     coerce_value(value, &variable_def.var_type, &resolver, &HashMap::new()).map_err(|value| {
         vec![QueryExecutionError::InvalidArgumentError(

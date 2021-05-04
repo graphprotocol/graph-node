@@ -18,7 +18,7 @@ enum OrderDirection {
 pub fn build_query<'a>(
     entity: impl Into<ObjectOrInterface<'a>>,
     block: BlockNumber,
-    arguments: &HashMap<&String, q::Value>,
+    arguments: &HashMap<&str, q::Value>,
     types_for_interface: &BTreeMap<EntityType, Vec<s::ObjectType>>,
     max_first: u32,
     max_skip: u32,
@@ -55,11 +55,11 @@ pub fn build_query<'a>(
 
 /// Parses GraphQL arguments into a EntityRange, if present.
 fn build_range(
-    arguments: &HashMap<&String, q::Value>,
+    arguments: &HashMap<&str, q::Value>,
     max_first: u32,
     max_skip: u32,
 ) -> Result<EntityRange, QueryExecutionError> {
-    let first = match arguments.get(&"first".to_string()) {
+    let first = match arguments.get("first") {
         Some(q::Value::Int(n)) => {
             let n = n.as_i64().expect("first is Int");
             if n > 0 && n <= (max_first as i64) {
@@ -74,7 +74,7 @@ fn build_range(
         _ => unreachable!("first is an Int with a default value"),
     };
 
-    let skip = match arguments.get(&"skip".to_string()) {
+    let skip = match arguments.get("skip") {
         Some(q::Value::Int(n)) => {
             let n = n.as_i64().expect("skip is Int");
             if n >= 0 && n <= (max_skip as i64) {
@@ -98,12 +98,12 @@ fn build_range(
 /// Parses GraphQL arguments into an EntityFilter, if present.
 fn build_filter(
     entity: ObjectOrInterface,
-    arguments: &HashMap<&String, q::Value>,
+    arguments: &HashMap<&str, q::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
-    match arguments.get(&"where".to_string()) {
+    match arguments.get("where") {
         Some(q::Value::Object(object)) => build_filter_from_object(entity, object),
         Some(q::Value::Null) => Ok(None),
-        None => match arguments.get(&"text".to_string()) {
+        None => match arguments.get("text") {
             Some(q::Value::Object(filter)) => build_fulltext_filter_from_object(filter),
             None => Ok(None),
             _ => Err(QueryExecutionError::InvalidFilterError),
@@ -205,9 +205,9 @@ fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecu
 /// Parses GraphQL arguments into an field name to order by, if present.
 fn build_order_by(
     entity: ObjectOrInterface,
-    arguments: &HashMap<&String, q::Value>,
+    arguments: &HashMap<&str, q::Value>,
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
-    match arguments.get(&"orderBy".to_string()) {
+    match arguments.get("orderBy") {
         Some(q::Value::Enum(name)) => {
             let field = sast::get_field(entity, &name).ok_or_else(|| {
                 QueryExecutionError::EntityFieldError(entity.name().to_owned(), name.clone())
@@ -221,7 +221,7 @@ fn build_order_by(
                     )
                 })
         }
-        _ => match arguments.get(&"text".to_string()) {
+        _ => match arguments.get("text") {
             Some(q::Value::Object(filter)) => build_fulltext_order_by_from_object(filter),
             None => Ok(None),
             _ => Err(QueryExecutionError::InvalidFilterError),
@@ -246,10 +246,10 @@ fn build_fulltext_order_by_from_object(
 
 /// Parses GraphQL arguments into a EntityOrder, if present.
 fn build_order_direction(
-    arguments: &HashMap<&String, q::Value>,
+    arguments: &HashMap<&str, q::Value>,
 ) -> Result<OrderDirection, QueryExecutionError> {
     Ok(arguments
-        .get(&"orderDirection".to_string())
+        .get("orderDirection")
         .map(|value| match value {
             q::Value::Enum(name) if name == "asc" => OrderDirection::Ascending,
             q::Value::Enum(name) if name == "desc" => OrderDirection::Descending,
@@ -410,10 +410,10 @@ mod tests {
         }
     }
 
-    fn default_arguments<'a>() -> HashMap<&'a String, q::Value> {
+    fn default_arguments<'a>() -> HashMap<&'a str, q::Value> {
         let mut map = HashMap::new();
-        let first: &String = Box::leak(Box::new("first".to_owned()));
-        let skip: &String = Box::leak(Box::new("skip".to_owned()));
+        let first = "first";
+        let skip = "skip";
         map.insert(first, q::Value::Int(100.into()));
         map.insert(skip, q::Value::Int(0.into()));
         map

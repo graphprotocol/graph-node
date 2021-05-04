@@ -239,7 +239,7 @@ where
 }
 
 // Helpers to look for types and fields on both the introspection and regular schemas.
-pub(crate) fn get_named_type(schema: &s::Document, name: &String) -> Option<s::TypeDefinition> {
+pub(crate) fn get_named_type(schema: &s::Document, name: &str) -> Option<s::TypeDefinition> {
     if name.starts_with("__") {
         sast::get_named_type(&INTROSPECTION_DOCUMENT, name).cloned()
     } else {
@@ -249,7 +249,7 @@ pub(crate) fn get_named_type(schema: &s::Document, name: &String) -> Option<s::T
 
 pub(crate) fn get_field<'a>(
     object_type: impl Into<ObjectOrInterface<'a>>,
-    name: &String,
+    name: &str,
 ) -> Option<s::Field> {
     if name == "__schema" || name == "__type" {
         let object_type = *INTROSPECTION_QUERY_TYPE;
@@ -261,7 +261,7 @@ pub(crate) fn get_field<'a>(
 
 pub(crate) fn object_or_interface<'a>(
     schema: &'a s::Document,
-    name: &String,
+    name: &str,
 ) -> Option<ObjectOrInterface<'a>> {
     if name.starts_with("__") {
         INTROSPECTION_DOCUMENT.object_or_interface(name)
@@ -606,7 +606,7 @@ pub fn collect_fields<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
-) -> IndexMap<&'a String, Vec<&'a q::Field>> {
+) -> IndexMap<&'a str, Vec<&'a q::Field>> {
     let mut grouped_fields = IndexMap::new();
     collect_fields_inner(
         ctx,
@@ -622,8 +622,8 @@ pub fn collect_fields_inner<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
-    visited_fragments: &mut HashSet<&'a String>,
-    output: &mut IndexMap<&'a String, Vec<&'a q::Field>>,
+    visited_fragments: &mut HashSet<&'a str>,
+    output: &mut IndexMap<&'a str, Vec<&'a q::Field>>,
 ) {
     for selection_set in selection_sets {
         // Only consider selections that are not skipped and should be included
@@ -747,7 +747,7 @@ fn resolve_field_value(
     field: &q::Field,
     field_definition: &s::Field,
     field_type: &s::Type,
-    argument_values: &HashMap<&String, q::Value>,
+    argument_values: &HashMap<&str, q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     match field_type {
         s::Type::NonNullType(inner_type) => resolve_field_value(
@@ -789,8 +789,8 @@ fn resolve_field_value_for_named_type(
     field_value: Option<q::Value>,
     field: &q::Field,
     field_definition: &s::Field,
-    type_name: &String,
-    argument_values: &HashMap<&String, q::Value>,
+    type_name: &str,
+    argument_values: &HashMap<&str, q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     // Try to resolve the type name into the actual type
     let named_type = sast::get_named_type(ctx.query.schema.document(), type_name)
@@ -839,7 +839,7 @@ fn resolve_field_value_for_list_type(
     field: &q::Field,
     field_definition: &s::Field,
     inner_type: &s::Type,
-    argument_values: &HashMap<&String, q::Value>,
+    argument_values: &HashMap<&str, q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     match inner_type {
         s::Type::NonNullType(inner_type) => resolve_field_value_for_list_type(
@@ -1063,11 +1063,11 @@ pub fn coerce_argument_values<'a>(
     query: &crate::execution::Query,
     ty: impl Into<ObjectOrInterface<'a>>,
     field: &q::Field,
-) -> Result<HashMap<&'a String, q::Value>, Vec<QueryExecutionError>> {
+) -> Result<HashMap<&'a str, q::Value>, Vec<QueryExecutionError>> {
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
 
-    let resolver = |name: &String| sast::get_named_type(&query.schema.document(), name);
+    let resolver = |name: &str| sast::get_named_type(&query.schema.document(), name);
 
     for argument_def in sast::get_argument_definitions(ty, &field.name)
         .into_iter()
@@ -1078,7 +1078,7 @@ pub fn coerce_argument_values<'a>(
             Ok(Some(value)) => {
                 if argument_def.name == "text".to_string() {
                     coerced_values.insert(
-                        &argument_def.name,
+                        argument_def.name.as_str(),
                         q::Value::Object(BTreeMap::from_iter(vec![(field.name.clone(), value)])),
                     );
                 } else {

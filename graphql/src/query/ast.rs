@@ -1,5 +1,6 @@
 use graph::prelude::q::*;
 use std::collections::HashMap;
+use std::ops::Deref;
 
 use graph::prelude::QueryExecutionError;
 
@@ -37,12 +38,12 @@ pub fn get_operations(document: &Document) -> Vec<&OperationDefinition> {
 }
 
 /// Returns the name of the given operation (if it has one).
-pub fn get_operation_name(operation: &OperationDefinition) -> Option<&String> {
+pub fn get_operation_name(operation: &OperationDefinition) -> Option<&str> {
     match operation {
-        OperationDefinition::Mutation(m) => m.name.as_ref(),
-        OperationDefinition::Query(q) => q.name.as_ref(),
+        OperationDefinition::Mutation(m) => m.name.as_ref().map(Deref::deref),
+        OperationDefinition::Query(q) => q.name.as_ref().map(Deref::deref),
         OperationDefinition::SelectionSet(_) => None,
-        OperationDefinition::Subscription(s) => s.name.as_ref(),
+        OperationDefinition::Subscription(s) => s.name.as_ref().map(Deref::deref),
     }
 }
 
@@ -107,8 +108,12 @@ pub fn include_selection(selection: &Selection, variables: &HashMap<String, Valu
 }
 
 /// Returns the response key of a field, which is either its name or its alias (if there is one).
-pub fn get_response_key(field: &Field) -> &String {
-    field.alias.as_ref().unwrap_or(&field.name)
+pub fn get_response_key(field: &Field) -> &str {
+    field
+        .alias
+        .as_ref()
+        .map(Deref::deref)
+        .unwrap_or(field.name.as_str())
 }
 
 /// Returns up the fragment with the given name, if it exists.

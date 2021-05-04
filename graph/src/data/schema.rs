@@ -123,9 +123,9 @@ pub enum FulltextLanguage {
     Turkish,
 }
 
-impl TryFrom<&String> for FulltextLanguage {
+impl TryFrom<&str> for FulltextLanguage {
     type Error = String;
-    fn try_from(language: &String) -> Result<Self, Self::Error> {
+    fn try_from(language: &str) -> Result<Self, Self::Error> {
         match &language[..] {
             "simple" => Ok(FulltextLanguage::Simple),
             "da" => Ok(FulltextLanguage::Danish),
@@ -180,9 +180,9 @@ pub enum FulltextAlgorithm {
     ProximityRank,
 }
 
-impl TryFrom<&String> for FulltextAlgorithm {
+impl TryFrom<&str> for FulltextAlgorithm {
     type Error = String;
-    fn try_from(algorithm: &String) -> Result<Self, Self::Error> {
+    fn try_from(algorithm: &str) -> Result<Self, Self::Error> {
         match &algorithm[..] {
             "rank" => Ok(FulltextAlgorithm::Rank),
             "proximityRank" => Ok(FulltextAlgorithm::ProximityRank),
@@ -213,7 +213,7 @@ impl From<&s::Directive> for FulltextDefinition {
         let name = directive
             .argument("name")
             .unwrap()
-            .as_string()
+            .as_str()
             .unwrap()
             .clone();
 
@@ -238,9 +238,9 @@ impl From<&s::Directive> for FulltextDefinition {
                     .unwrap()
                     .get("name")
                     .unwrap()
-                    .as_string()
+                    .as_str()
                     .unwrap()
-                    .clone()
+                    .into()
             })
             .collect();
 
@@ -250,7 +250,7 @@ impl From<&s::Directive> for FulltextDefinition {
                 algorithm,
             },
             included_fields,
-            name,
+            name: name.into(),
         }
     }
 }
@@ -872,7 +872,7 @@ impl Schema {
             Some(Value::Enum(language)) => language,
             _ => return vec![SchemaValidationError::FulltextLanguageUndefined],
         };
-        match FulltextLanguage::try_from(language) {
+        match FulltextLanguage::try_from(language.as_str()) {
             Ok(_) => vec![],
             Err(_) => vec![SchemaValidationError::FulltextLanguageInvalid(
                 language.to_string(),
@@ -888,7 +888,7 @@ impl Schema {
             Some(Value::Enum(algorithm)) => algorithm,
             _ => return vec![SchemaValidationError::FulltextAlgorithmUndefined],
         };
-        match FulltextAlgorithm::try_from(algorithm) {
+        match FulltextAlgorithm::try_from(algorithm.as_str()) {
             Ok(_) => vec![],
             Err(_) => vec![SchemaValidationError::FulltextAlgorithmInvalid(
                 algorithm.to_string(),
@@ -1191,7 +1191,7 @@ impl Schema {
                     .iter()
                     .any(|iface| target_field_type.eq(iface.clone()))
             {
-                fn type_signatures(name: &String) -> Vec<String> {
+                fn type_signatures(name: &str) -> Vec<String> {
                     vec![
                         format!("{}", name),
                         format!("{}!", name),
