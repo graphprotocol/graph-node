@@ -415,7 +415,6 @@ where
         ));
         let block_stream_metrics = Arc::new(BlockStreamMetrics::new(
             registry.clone(),
-            ethrpc_metrics.clone(),
             &deployment.hash,
             manifest.network_name(),
             stopwatch_metrics,

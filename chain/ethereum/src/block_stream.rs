@@ -23,7 +23,6 @@ use graph::{
 use fail::fail_point;
 
 use crate::network::EthereumNetworks;
-use crate::SubgraphEthRpcMetrics;
 
 lazy_static! {
     /// Maximum number of blocks to request in each chunk.
@@ -41,7 +40,6 @@ lazy_static! {
 
 #[derive(Clone)]
 pub struct BlockStreamMetrics {
-    pub ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
     pub deployment_head: Box<Gauge>,
     pub reverted_blocks: Box<Gauge>,
     pub stopwatch: StopwatchMetrics,
@@ -50,7 +48,6 @@ pub struct BlockStreamMetrics {
 impl BlockStreamMetrics {
     pub fn new(
         registry: Arc<impl MetricsRegistry>,
-        ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
         deployment_id: &DeploymentHash,
         network: String,
         stopwatch: StopwatchMetrics,
@@ -71,7 +68,6 @@ impl BlockStreamMetrics {
             )
             .expect("failed to create `deployment_head` gauge");
         Self {
-            ethrpc_metrics,
             deployment_head,
             reverted_blocks,
             stopwatch,
