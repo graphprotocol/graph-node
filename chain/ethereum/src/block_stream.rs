@@ -117,6 +117,8 @@ impl<C: Blockchain> BlockStreamBuilder<C> {
             self.reorg_threshold,
             logger,
             metrics,
+            *MAX_BLOCK_RANGE_SIZE,
+            *TARGET_TRIGGERS_PER_BLOCK_RANGE,
         )
     }
 }

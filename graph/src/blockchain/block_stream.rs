@@ -15,20 +15,6 @@ use super::{Block, BlockPtr, Blockchain};
 #[cfg(debug_assertions)]
 use fail::fail_point;
 
-lazy_static! {
-    /// Maximum number of blocks to request in each chunk.
-    static ref MAX_BLOCK_RANGE_SIZE: BlockNumber = std::env::var("GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE")
-        .unwrap_or("2000".into())
-        .parse::<BlockNumber>()
-        .expect("invalid GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE");
-
-    /// Ideal number of triggers in a range. The range size will adapt to try to meet this.
-    static ref TARGET_TRIGGERS_PER_BLOCK_RANGE: u64 = std::env::var("GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE")
-        .unwrap_or("100".into())
-        .parse::<u64>()
-        .expect("invalid GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE");
-}
-
 pub struct BlockWithTriggers<C: Blockchain> {
     pub block: Box<C::Block>,
     pub trigger_data: Vec<C::TriggerData>,
@@ -218,6 +204,7 @@ where
     previous_block_range_size: BlockNumber,
     // Not a BlockNumber, but the difference between two block numbers
     max_block_range_size: BlockNumber,
+    target_triggers_per_block_range: u64,
 }
 
 impl<C: Blockchain> Clone for BlockStreamContext<C> {
@@ -236,6 +223,7 @@ impl<C: Blockchain> Clone for BlockStreamContext<C> {
             previous_triggers_per_block: self.previous_triggers_per_block,
             previous_block_range_size: self.previous_block_range_size,
             max_block_range_size: self.max_block_range_size,
+            target_triggers_per_block_range: self.target_triggers_per_block_range,
         }
     }
 }
@@ -276,6 +264,8 @@ where
         reorg_threshold: BlockNumber,
         logger: Logger,
         metrics: Arc<BlockStreamMetrics>,
+        max_block_range_size: BlockNumber,
+        target_triggers_per_block_range: u64,
     ) -> Self {
         BlockStream {
             state: BlockStreamState::BeginReconciliation,
@@ -296,7 +286,8 @@ where
                 // A high number here forces a slow start, with a range of 1.
                 previous_triggers_per_block: 1_000_000.0,
                 previous_block_range_size: 1,
-                max_block_range_size: *MAX_BLOCK_RANGE_SIZE,
+                max_block_range_size,
+                target_triggers_per_block_range,
             },
         }
     }
@@ -487,7 +478,7 @@ where
             let range_size = if ctx.previous_triggers_per_block == 0.0 {
                 range_size_upper_limit
             } else {
-                (*TARGET_TRIGGERS_PER_BLOCK_RANGE as f64 / ctx.previous_triggers_per_block)
+                (self.target_triggers_per_block_range as f64 / ctx.previous_triggers_per_block)
                     .max(1.0)
                     .min(range_size_upper_limit as f64) as BlockNumber
             };
