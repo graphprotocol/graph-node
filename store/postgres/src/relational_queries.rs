@@ -1374,13 +1374,13 @@ impl<'a, Conn> RunQueryDsl<Conn> for InsertQuery<'a> {}
 pub struct ConflictingEntityQuery<'a> {
     layout: &'a Layout,
     tables: Vec<&'a Table>,
-    entity_id: &'a String,
+    entity_id: &'a str,
 }
 impl<'a> ConflictingEntityQuery<'a> {
     pub fn new(
         layout: &'a Layout,
         entities: Vec<EntityType>,
-        entity_id: &'a String,
+        entity_id: &'a str,
     ) -> Result<Self, StoreError> {
         let tables = entities
             .iter()
@@ -1413,7 +1413,7 @@ impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
             out.push_sql(" as entity from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" where id = ");
-            out.push_bind_param::<Text, _>(self.entity_id)?;
+            out.push_bind_param::<Text, _>(&self.entity_id)?;
         }
         Ok(())
     }
@@ -2134,7 +2134,7 @@ impl<'a> SortKey<'a> {
                 out.push_identifier(name)?;
                 out.push_sql(", to_tsquery(");
 
-                out.push_bind_param::<Text, _>(&String::from(value.unwrap()))?;
+                out.push_bind_param::<Text, _>(&value.unwrap())?;
                 out.push_sql("))");
             }
             _ => {

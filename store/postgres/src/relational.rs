@@ -581,7 +581,7 @@ impl Layout {
     pub fn conflicting_entity(
         &self,
         conn: &PgConnection,
-        entity_id: &String,
+        entity_id: &str,
         entities: Vec<EntityType>,
     ) -> Result<Option<String>, StoreError> {
         Ok(ConflictingEntityQuery::new(self, entities, entity_id)?

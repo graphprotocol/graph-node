@@ -130,7 +130,7 @@ fn resolve_field_stream(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     field: &q::Field,
-    _argument_values: HashMap<&String, q::Value>,
+    _argument_values: HashMap<&str, q::Value>,
 ) -> Result<StoreEventStreamBox, SubscriptionError> {
     ctx.resolver
         .resolve_field_stream(&ctx.query.schema.document(), object_type, field)

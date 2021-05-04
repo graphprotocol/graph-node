@@ -36,7 +36,7 @@ impl Resolver for MockResolver {
         _field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&String, q::Value>,
+        _arguments: &HashMap<&str, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
     }
@@ -47,7 +47,7 @@ impl Resolver for MockResolver {
         _field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&String, q::Value>,
+        _arguments: &HashMap<&str, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
     }

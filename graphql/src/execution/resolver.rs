@@ -25,7 +25,7 @@ pub trait Resolver: Sized + Send + Sync + 'static {
         field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
-        arguments: &HashMap<&String, q::Value>,
+        arguments: &HashMap<&str, q::Value>,
     ) -> Result<q::Value, QueryExecutionError>;
 
     /// Resolves an object, `prefetched_object` is `Some` if the parent already calculated the value.
@@ -35,7 +35,7 @@ pub trait Resolver: Sized + Send + Sync + 'static {
         field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
-        arguments: &HashMap<&String, q::Value>,
+        arguments: &HashMap<&str, q::Value>,
     ) -> Result<q::Value, QueryExecutionError>;
 
     /// Resolves an enum value for a given enum type.
@@ -55,7 +55,7 @@ pub trait Resolver: Sized + Send + Sync + 'static {
         _field: &q::Field,
         _scalar_type: &s::ScalarType,
         value: Option<q::Value>,
-        _argument_values: &HashMap<&String, q::Value>,
+        _argument_values: &HashMap<&str, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         // This code is duplicated.
         // See also c2112309-44fd-4a84-92a0-5a651e6ed548

@@ -203,7 +203,7 @@ impl<'a> JoinCond<'a> {
     fn new(
         parent_type: &'a s::ObjectType,
         child_type: &'a s::ObjectType,
-        field_name: &String,
+        field_name: &str,
     ) -> Self {
         let field = parent_type
             .field(field_name)
@@ -302,7 +302,7 @@ impl<'a> Join<'a> {
         schema: &'a ApiSchema,
         parent_type: ObjectOrInterface<'a>,
         child_type: ObjectOrInterface<'a>,
-        field_name: &String,
+        field_name: &str,
     ) -> Self {
         let parent_types = parent_type
             .object_types(schema.schema())
@@ -455,7 +455,7 @@ fn execute_selection_set<'a>(
     resolver: &StoreResolver,
     ctx: &'a ExecutionContext<impl Resolver>,
     mut parents: Vec<Node>,
-    grouped_field_set: IndexMap<&'a String, CollectedResponseKey<'a>>,
+    grouped_field_set: IndexMap<&'a str, CollectedResponseKey<'a>>,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     let schema = &ctx.query.schema;
     let mut errors: Vec<QueryExecutionError> = Vec::new();
@@ -589,7 +589,7 @@ fn collect_fields<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     parent_ty: ObjectOrInterface<'a>,
     selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
-) -> IndexMap<&'a String, CollectedResponseKey<'a>> {
+) -> IndexMap<&'a str, CollectedResponseKey<'a>> {
     let mut grouped_fields = IndexMap::new();
 
     for selection_set in selection_sets {
@@ -624,8 +624,8 @@ fn collect_fields_inner<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     type_condition: ObjectOrInterface<'a>,
     selection_set: &'a q::SelectionSet,
-    visited_fragments: &mut HashSet<&'a String>,
-    output: &mut IndexMap<&'a String, CollectedResponseKey<'a>>,
+    visited_fragments: &mut HashSet<&'a str>,
+    output: &mut IndexMap<&'a str, CollectedResponseKey<'a>>,
 ) {
     fn is_reference_field(
         schema: &s::Document,
@@ -648,8 +648,8 @@ fn collect_fields_inner<'a>(
         outer_type_condition: ObjectOrInterface<'a>,
         frag_ty_condition: Option<&'a q::TypeCondition>,
         frag_selection_set: &'a q::SelectionSet,
-        visited_fragments: &mut HashSet<&'a String>,
-        output: &mut IndexMap<&'a String, CollectedResponseKey<'a>>,
+        visited_fragments: &mut HashSet<&'a str>,
+        output: &mut IndexMap<&'a str, CollectedResponseKey<'a>>,
     ) {
         let schema = &ctx.query.schema.document();
         let fragment_ty = match frag_ty_condition {
@@ -790,7 +790,7 @@ fn fetch(
     store: &(impl QueryStore + ?Sized),
     parents: &Vec<&mut Node>,
     join: &Join<'_>,
-    arguments: HashMap<&String, q::Value>,
+    arguments: HashMap<&str, q::Value>,
     multiplicity: ChildMultiplicity,
     types_for_interface: &BTreeMap<EntityType, Vec<s::ObjectType>>,
     block: BlockNumber,
@@ -815,7 +815,7 @@ fn fetch(
     }
 
     query.logger = Some(logger);
-    if let Some(q::Value::String(id)) = arguments.get(&*ARG_ID) {
+    if let Some(q::Value::String(id)) = arguments.get(ARG_ID.as_str()) {
         query.filter = Some(
             EntityFilter::Equal(ARG_ID.to_owned(), StoreValue::from(id.to_owned()))
                 .and_maybe(query.filter),
