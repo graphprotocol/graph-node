@@ -53,10 +53,12 @@ impl StopwatchMetrics {
                     subgraph_id.as_str(),
                     vec!["section".to_owned()],
                 )
-                .expect(&format!(
-                    "failed to register subgraph_sync_total_secs prometheus counter for {}",
-                    subgraph_id
-                )),
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "failed to register subgraph_sync_total_secs prometheus counter for {}",
+                        subgraph_id
+                    )
+                }),
             logger,
             section_stack: Vec::new(),
             timer: Instant::now(),

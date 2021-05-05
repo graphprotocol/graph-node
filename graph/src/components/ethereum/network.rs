@@ -193,7 +193,7 @@ impl EthereumNetworks {
     ) -> Result<&Arc<dyn EthereumAdapter>, Error> {
         self.networks
             .get(&network_name)
-            .ok_or(anyhow!("network not supported: {}", &network_name))
+            .ok_or_else(|| anyhow!("network not supported: {}", &network_name))
             .and_then(|adapters| adapters.cheapest_with(requirements))
     }
 }

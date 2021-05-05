@@ -15,7 +15,7 @@ use web3::types::Address;
 
 lazy_static! {
     static ref LOG_EVENTS: bool = std::env::var("GRAPH_LOG_POI_EVENTS")
-        .unwrap_or("false".into())
+        .unwrap_or_else(|_| "false".into())
         .parse::<bool>()
         .expect("invalid GRAPH_LOG_POI_EVENTS");
 }

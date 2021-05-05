@@ -25,13 +25,12 @@ impl Aggregate {
                     &format!("{} ({})", help, suffix),
                     &subgraph,
                 )
-                .expect(
-                    format!(
+                .unwrap_or_else(|_| {
+                    panic!(
                         "failed to register metric `{}_{}` for {}",
                         name, suffix, subgraph
                     )
-                    .as_str(),
-                )
+                })
         };
 
         Aggregate {
