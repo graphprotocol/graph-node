@@ -909,7 +909,12 @@ impl WasmInstanceContext {
         let bytes: Vec<u8> = self.asc_get(bytes_ptr)?;
 
         let result = host_exports::json_from_bytes(&bytes)
-            .with_context(|| format!("Failed to parse JSON from byte array. Bytes: `{:?}`", bytes,))
+            .with_context(|| {
+                format!(
+                    "Failed to parse JSON from byte array. Bytes (truncated to 1024 chars): `{:?}`",
+                    &bytes[..bytes.len().min(1024)],
+                )
+            })
             .map_err(DeterministicHostError)?;
         self.asc_new(&result)
     }
