@@ -5,19 +5,23 @@ use graph::{
     blockchain::{
         self as bc,
         block_stream::{
-            BlockStream, BlockStreamEvent, BlockWithTriggers,
+            BlockStream, BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers,
             TriggersAdapter as TriggersAdapterTrait,
         },
         Block, BlockHash, Blockchain, IngestorAdapter as IngestorAdapterTrait, IngestorError,
-        Manifest,
+        Manifest, TriggerFilter as _,
     },
     cheap_clone::CheapClone,
-    components::{ethereum::NodeCapabilities, store::DeploymentLocator},
+    components::{
+        ethereum::{ChainHeadUpdateListener, NodeCapabilities},
+        store::DeploymentLocator,
+    },
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
-        async_trait, error, o, serde_yaml, web3::types::H256, BlockFinality, BlockNumber, BlockPtr,
-        ChainStore, DataSource, DeploymentHash, EthereumBlockWithCalls, EthereumTrigger,
-        Future01CompatExt, LinkResolver, Logger, LoggerFactory, MetricsRegistry,
+        async_trait, error, lazy_static, o, serde_yaml, web3::types::H256, BlockFinality,
+        BlockNumber, BlockPtr, ChainStore, DataSource, DeploymentHash, EthereumBlockWithCalls,
+        EthereumTrigger, Future01CompatExt, LinkResolver, Logger, LoggerFactory, MetricsRegistry,
+        NodeId, SubgraphStore,
     },
     runtime::{AscType, DeterministicHostError},
     tokio_stream::Stream,
@@ -33,30 +37,56 @@ use crate::{
 };
 use crate::{network::EthereumNetworkAdapters, EthereumAdapter};
 
+lazy_static! {
+    /// Maximum number of blocks to request in each chunk.
+    static ref MAX_BLOCK_RANGE_SIZE: BlockNumber = std::env::var("GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE")
+        .unwrap_or("2000".into())
+        .parse::<BlockNumber>()
+        .expect("invalid GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE");
+
+    /// Ideal number of triggers in a range. The range size will adapt to try to meet this.
+    static ref TARGET_TRIGGERS_PER_BLOCK_RANGE: u64 = std::env::var("GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE")
+        .unwrap_or("100".into())
+        .parse::<u64>()
+        .expect("invalid GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE");
+}
+
 pub struct Chain {
     logger_factory: LoggerFactory,
+    node_id: NodeId,
     registry: Arc<dyn MetricsRegistry>,
     eth_adapters: EthereumNetworkAdapters,
     ancestor_count: BlockNumber,
     chain_store: Arc<dyn ChainStore>,
+    subgraph_store: Arc<dyn SubgraphStore>,
+    chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
+    reorg_threshold: BlockNumber,
     pub is_ingestible: bool,
 }
 
 impl Chain {
     pub fn new(
         logger_factory: LoggerFactory,
+        node_id: NodeId,
         registry: Arc<dyn MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
+        subgraph_store: Arc<dyn SubgraphStore>,
         eth_adapters: EthereumNetworkAdapters,
+        chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
         ancestor_count: BlockNumber,
+        reorg_threshold: BlockNumber,
         is_ingestible: bool,
     ) -> Self {
         Chain {
             logger_factory,
+            node_id,
             registry,
             eth_adapters,
             ancestor_count,
             chain_store,
+            subgraph_store,
+            chain_head_update_listener,
+            reorg_threshold,
             is_ingestible,
         }
     }
@@ -110,10 +140,49 @@ impl Blockchain for Chain {
 
     fn new_block_stream(
         &self,
-        _current_head: BlockPtr,
-        _filter: Self::TriggerFilter,
+        deployment: DeploymentLocator,
+        network_name: String,
+        start_blocks: Vec<BlockNumber>,
+        filter: TriggerFilter,
+        metrics: Arc<BlockStreamMetrics>,
     ) -> Result<BlockStream<Self>, Error> {
-        todo!()
+        let logger = self
+            .logger_factory
+            .subgraph_logger(&deployment)
+            .new(o!("component" => "BlockStream"));
+        let chain_store = self.chain_store().clone();
+        let writable = self
+            .subgraph_store
+            .writable(&deployment)
+            .expect(&format!("no store for deployment `{}`", deployment.hash));
+        let chain_head_update_stream = self
+            .chain_head_update_listener
+            .subscribe(network_name.clone());
+
+        let requirements = filter.node_capabilities();
+
+        let triggers_adapter = self
+            .triggers_adapter(&deployment, &requirements)
+            .expect(&format!(
+                "no adapter for network {} with capabilities {}",
+                network_name, requirements
+            ));
+
+        Ok(BlockStream::new(
+            writable,
+            chain_store,
+            chain_head_update_stream,
+            triggers_adapter,
+            self.node_id.clone(),
+            deployment.hash,
+            filter,
+            start_blocks,
+            self.reorg_threshold,
+            logger,
+            metrics,
+            *MAX_BLOCK_RANGE_SIZE,
+            *TARGET_TRIGGERS_PER_BLOCK_RANGE,
+        ))
     }
 
     fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter> {

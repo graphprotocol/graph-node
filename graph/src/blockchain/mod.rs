@@ -24,7 +24,7 @@ use web3::types::H256;
 
 pub use block_stream::{BlockStream, TriggersAdapter};
 
-use self::block_stream::BlockWithTriggers;
+use self::block_stream::{BlockStreamMetrics, BlockWithTriggers};
 
 /// A simple marker for byte arrays that are really block hashes
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -110,8 +110,11 @@ pub trait Blockchain: Sized + Send + Sync + 'static {
 
     fn new_block_stream(
         &self,
-        current_head: BlockPtr,
+        deployment: DeploymentLocator,
+        network_name: String,
+        start_blocks: Vec<BlockNumber>,
         filter: Self::TriggerFilter,
+        metrics: Arc<BlockStreamMetrics>,
     ) -> Result<BlockStream<Self>, Error>;
 
     fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter>;

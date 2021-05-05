@@ -34,7 +34,7 @@ use graph_server_index_node::IndexNodeServer;
 use graph_server_json_rpc::JsonRpcServer;
 use graph_server_metrics::PrometheusMetricsServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
-use graph_store_postgres::{register_jobs as register_store_jobs, BlockStore as DieselBlockStore};
+use graph_store_postgres::{register_jobs as register_store_jobs, ChainHeadUpdateListener, Store};
 
 mod config;
 mod opt;
@@ -217,9 +217,11 @@ async fn main() {
 
         let chains = Arc::new(networks_as_chains(
             &logger,
+            node_id.clone(),
             metrics_registry.clone(),
             &eth_networks,
-            network_store.block_store().as_ref(),
+            network_store.as_ref(),
+            chain_head_update_listener.clone(),
             &logger_factory,
         ));
 
@@ -690,16 +692,19 @@ fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<Ipf
 
 fn networks_as_chains(
     logger: &Logger,
+    node_id: NodeId,
     registry: Arc<MetricsRegistry>,
     eth_networks: &EthereumNetworks,
-    block_store: &DieselBlockStore,
+    store: &Store,
+    chain_head_update_listener: Arc<ChainHeadUpdateListener>,
     logger_factory: &LoggerFactory,
 ) -> HashMap<String, Arc<ethereum::Chain>> {
     let chains = eth_networks
         .networks
         .iter()
         .filter_map(|(network_name, eth_adapters)| {
-            block_store
+            store
+                .block_store()
                 .chain_store(network_name)
                 .map(|chain_store| {
                     let is_ingestible = chain_store.is_ingestible();
@@ -716,10 +721,14 @@ fn networks_as_chains(
         .map(|(network_name, eth_adapters, chain_store, is_ingestible)| {
             let chain = ethereum::Chain::new(
                 logger_factory.clone(),
+                node_id.clone(),
                 registry.clone(),
                 chain_store,
+                store.subgraph_store(),
                 eth_adapters.clone(),
+                chain_head_update_listener.clone(),
                 *ANCESTOR_COUNT,
+                *REORG_THRESHOLD,
                 is_ingestible,
             );
             (network_name.clone(), Arc::new(chain))
