@@ -210,12 +210,7 @@ impl From<&s::Directive> for FulltextDefinition {
     // Assumes the input is a Fulltext Directive that has already been validated because it makes
     // liberal use of unwrap() where specific types are expected
     fn from(directive: &Directive) -> Self {
-        let name = directive
-            .argument("name")
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .clone();
+        let name = directive.argument("name").unwrap().as_str().unwrap();
 
         let algorithm = FulltextAlgorithm::try_from(
             directive.argument("algorithm").unwrap().as_enum().unwrap(),
@@ -1189,7 +1184,7 @@ impl Schema {
                 && target_field_type != "ID"
                 && !interface_types
                     .iter()
-                    .any(|iface| target_field_type.eq(iface.clone()))
+                    .any(|iface| target_field_type.eq(iface.as_str()))
             {
                 fn type_signatures(name: &str) -> Vec<String> {
                     vec![

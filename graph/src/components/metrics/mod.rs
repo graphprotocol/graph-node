@@ -21,7 +21,7 @@ pub fn counter_with_labels(
     help: &str,
     const_labels: HashMap<String, String>,
 ) -> Result<Counter, PrometheusError> {
-    let opts = Opts::new(name.clone(), help).const_labels(const_labels);
+    let opts = Opts::new(name, help).const_labels(const_labels);
     Counter::with_opts(opts)
 }
 
@@ -31,7 +31,7 @@ pub fn gauge_with_labels(
     help: &str,
     const_labels: HashMap<String, String>,
 ) -> Result<Gauge, PrometheusError> {
-    let opts = Opts::new(name.clone(), help).const_labels(const_labels);
+    let opts = Opts::new(name, help).const_labels(const_labels);
     Gauge::with_opts(opts)
 }
 
@@ -69,7 +69,7 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         help: &str,
         const_labels: HashMap<String, String>,
     ) -> Result<Box<Gauge>, PrometheusError> {
-        let opts = Opts::new(name.clone(), help).const_labels(const_labels);
+        let opts = Opts::new(name, help).const_labels(const_labels);
         let gauge = Box::new(Gauge::with_opts(opts)?);
         self.register(name, gauge.clone());
         Ok(gauge)
@@ -81,7 +81,7 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         help: &str,
         subgraph: &str,
     ) -> Result<Box<Gauge>, PrometheusError> {
-        let opts = Opts::new(name.clone(), help).const_labels(deployment_labels(subgraph));
+        let opts = Opts::new(name, help).const_labels(deployment_labels(subgraph));
         let gauge = Box::new(Gauge::with_opts(opts)?);
         self.register(name, gauge.clone());
         Ok(gauge)
@@ -93,7 +93,7 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         help: &str,
         variable_labels: Vec<String>,
     ) -> Result<Box<GaugeVec>, PrometheusError> {
-        let opts = Opts::new(name.clone(), help);
+        let opts = Opts::new(name, help);
         let gauges = Box::new(GaugeVec::new(
             opts,
             variable_labels
@@ -113,7 +113,7 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         subgraph: &str,
         variable_labels: Vec<String>,
     ) -> Result<Box<GaugeVec>, PrometheusError> {
-        let opts = Opts::new(name.clone(), help).const_labels(deployment_labels(subgraph));
+        let opts = Opts::new(name, help).const_labels(deployment_labels(subgraph));
         let gauges = Box::new(GaugeVec::new(
             opts,
             variable_labels
@@ -127,7 +127,7 @@ pub trait MetricsRegistry: Send + Sync + 'static {
     }
 
     fn new_counter(&self, name: &str, help: &str) -> Result<Box<Counter>, PrometheusError> {
-        let opts = Opts::new(name.clone(), help);
+        let opts = Opts::new(name, help);
         let counter = Box::new(Counter::with_opts(opts)?);
         self.register(name, counter.clone());
         Ok(counter)
@@ -165,7 +165,7 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         help: &str,
         variable_labels: Vec<String>,
     ) -> Result<Box<CounterVec>, PrometheusError> {
-        let opts = Opts::new(name.clone(), help);
+        let opts = Opts::new(name, help);
         let counters = Box::new(CounterVec::new(
             opts,
             variable_labels
@@ -185,7 +185,7 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         subgraph: &str,
         variable_labels: Vec<String>,
     ) -> Result<Box<CounterVec>, PrometheusError> {
-        let opts = Opts::new(name.clone(), help).const_labels(deployment_labels(subgraph));
+        let opts = Opts::new(name, help).const_labels(deployment_labels(subgraph));
         let counters = Box::new(CounterVec::new(
             opts,
             variable_labels
@@ -205,7 +205,7 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         subgraph: &str,
         buckets: Vec<f64>,
     ) -> Result<Box<Histogram>, PrometheusError> {
-        let opts = HistogramOpts::new(name.clone(), help)
+        let opts = HistogramOpts::new(name, help)
             .const_labels(deployment_labels(subgraph))
             .buckets(buckets);
         let histogram = Box::new(Histogram::with_opts(opts)?);
@@ -220,7 +220,7 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         variable_labels: Vec<String>,
         buckets: Vec<f64>,
     ) -> Result<Box<HistogramVec>, PrometheusError> {
-        let opts = Opts::new(name.clone(), help);
+        let opts = Opts::new(name, help);
         let histograms = Box::new(HistogramVec::new(
             HistogramOpts {
                 common_opts: opts,
@@ -244,7 +244,7 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         variable_labels: Vec<String>,
         buckets: Vec<f64>,
     ) -> Result<Box<HistogramVec>, PrometheusError> {
-        let opts = Opts::new(name.clone(), help).const_labels(deployment_labels(subgraph));
+        let opts = Opts::new(name, help).const_labels(deployment_labels(subgraph));
         let histograms = Box::new(HistogramVec::new(
             HistogramOpts {
                 common_opts: opts,
