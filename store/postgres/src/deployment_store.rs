@@ -27,12 +27,10 @@ use graph::components::subgraph::ProofOfIndexingFinisher;
 use graph::constraint_violation;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
-    anyhow, anyhow, debug, debug, futures03, futures03, info, info, lazy_static, o, o, web3, web3,
-    ApiSchema, ApiSchema, BlockNumber, BlockNumber, BlockPtr, BlockPtr, CheapClone, CheapClone,
-    ColumnNames, DeploymentHash, DeploymentHash, DeploymentState, DeploymentState, DynTryFuture,
-    DynTryFuture, Entity, Entity, EntityKey, EntityKey, EntityModification, EntityQuery, Error,
-    Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent, Value,
-    BLOCK_NUMBER_MAX,
+    anyhow, debug, futures03, info, lazy_static, o, web3, ApiSchema, BlockNumber, BlockPtr,
+    CheapClone, ColumnNames, DeploymentHash, DeploymentState, DynTryFuture, Entity, EntityKey,
+    EntityModification, EntityQuery, Error, Logger, QueryExecutionError, Schema, StopwatchMetrics,
+    StoreError, StoreEvent, Value, BLOCK_NUMBER_MAX,
 };
 use graph_graphql::prelude::api_schema;
 use web3::types::Address;
