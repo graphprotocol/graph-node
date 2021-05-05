@@ -6,9 +6,6 @@ use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::task;
 
-use graph::components::store::{
-    BlockStore, DeploymentId, DeploymentLocator, ModificationsAndCache,
-};
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::data::subgraph::SubgraphFeature;
@@ -16,11 +13,15 @@ use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *}
 use graph::util::lfu_cache::LfuCache;
 use graph::{blockchain::block_stream::BlockStreamMetrics, components::store::WritableStore};
 use graph::{
+    blockchain::BlockchainMap,
+    components::store::{BlockStore, DeploymentId, DeploymentLocator, ModificationsAndCache},
+};
+use graph::{
     blockchain::{block_stream::BlockStreamEvent, Blockchain, TriggerFilter as _},
     components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing},
 };
 use graph_chain_ethereum::{
-    triggers_in_block, BlockStreamBuilder, EthereumAdapter, EthereumAdapterTrait, EthereumNetworks,
+    triggers_in_block, EthereumAdapter, EthereumAdapterTrait, EthereumNetworks,
     SubgraphEthRpcMetrics, TriggerFilter,
 };
 
@@ -53,7 +54,7 @@ struct IndexingInputs<C> {
     store: Arc<dyn WritableStore>,
     chain_store: Arc<dyn ChainStore>,
     eth_adapter: Arc<EthereumAdapter>,
-    stream_builder: BlockStreamBuilder<C>,
+    chain: Arc<C>,
     templates: Arc<Vec<DataSourceTemplate>>,
 }
 
@@ -89,8 +90,8 @@ pub struct SubgraphInstanceManager<C, S, BS, M, H, L> {
     subgraph_store: Arc<S>,
     block_store: Arc<BS>,
     eth_networks: EthereumNetworks,
+    chains: Arc<BlockchainMap<C>>,
     host_builder: H,
-    block_stream_builder: BlockStreamBuilder<C>,
     metrics_registry: Arc<M>,
     manager_metrics: SubgraphInstanceManagerMetrics,
     instances: SharedInstanceKeepAliveMap,
@@ -223,10 +224,10 @@ where
                 logger.clone(),
                 self.instances.clone(),
                 self.host_builder.clone(),
-                self.block_stream_builder.clone(),
                 self.subgraph_store.clone(),
                 self.block_store.cheap_clone(),
                 self.eth_networks.clone(),
+                self.chains.clone(),
                 loc,
                 manifest,
                 self.metrics_registry.cheap_clone(),
@@ -271,8 +272,8 @@ where
         subgraph_store: Arc<S>,
         block_store: Arc<BS>,
         eth_networks: EthereumNetworks,
+        chains: Arc<BlockchainMap<C>>,
         host_builder: H,
-        block_stream_builder: BlockStreamBuilder<C>,
         metrics_registry: Arc<M>,
         link_resolver: Arc<L>,
     ) -> Self {
@@ -292,8 +293,8 @@ where
             subgraph_store,
             block_store,
             eth_networks,
+            chains,
             host_builder,
-            block_stream_builder,
             manager_metrics: SubgraphInstanceManagerMetrics::new(metrics_registry.cheap_clone()),
             metrics_registry,
             instances: SharedInstanceKeepAliveMap::default(),
@@ -305,10 +306,10 @@ where
         logger: Logger,
         instances: SharedInstanceKeepAliveMap,
         host_builder: impl RuntimeHostBuilder,
-        stream_builder: BlockStreamBuilder<C>,
         store: Arc<dyn SubgraphStore>,
         block_store: Arc<BS>,
         eth_networks: EthereumNetworks,
+        chains: Arc<BlockchainMap<C>>,
         deployment: DeploymentLocator,
         manifest: serde_yaml::Mapping,
         registry: Arc<M>,
@@ -372,6 +373,11 @@ where
 
         let required_capabilities = manifest.required_ethereum_capabilities();
         let network = manifest.network_name();
+
+        let chain = chains
+            .get(&network)
+            .expect(&format!("no chain configured for network {}", network))
+            .clone();
 
         let chain_store = block_store.chain_store(&network).ok_or_else(|| {
             anyhow!(
@@ -442,7 +448,7 @@ where
                 chain_store,
                 store,
                 eth_adapter,
-                stream_builder,
+                chain,
                 templates,
             },
             state: IndexingState {
@@ -502,15 +508,14 @@ where
         let block_stream_cancel_handle = block_stream_canceler.handle();
         let mut block_stream = ctx
             .inputs
-            .stream_builder
-            .build(
-                logger.clone(),
+            .chain
+            .new_block_stream(
                 ctx.inputs.deployment.clone(),
                 ctx.inputs.network_name.clone(),
                 ctx.inputs.start_blocks.clone(),
                 ctx.state.filter.clone(),
                 ctx.block_stream_metrics.clone(),
-            )
+            )?
             .map_err(CancelableError::Error)
             .cancelable(&block_stream_canceler, || CancelableError::Cancel)
             .compat();

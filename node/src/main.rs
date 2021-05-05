@@ -19,9 +19,7 @@ use graph::log::logger;
 use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
 use graph::util::security::SafeDisplay;
 use graph_chain_arweave::adapter::ArweaveAdapter;
-use graph_chain_ethereum::{
-    self as ethereum, network_indexer, BlockStreamBuilder, EthereumAdapterTrait, Transport,
-};
+use graph_chain_ethereum::{self as ethereum, network_indexer, EthereumAdapterTrait, Transport};
 use graph_core::{
     three_box::ThreeBoxAdapter, LinkResolver, MetricsRegistry,
     SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
@@ -300,15 +298,6 @@ async fn main() {
             graph::spawn_blocking(job_runner.start());
         }
 
-        let block_stream_builder = BlockStreamBuilder::new(
-            network_store.subgraph_store(),
-            chains.clone(),
-            chain_head_update_listener.clone(),
-            eth_networks.clone(),
-            node_id.clone(),
-            *REORG_THRESHOLD,
-            metrics_registry.clone(),
-        );
         let runtime_host_builder = WASMRuntimeHostBuilder::new(
             eth_networks.clone(),
             link_resolver.clone(),
@@ -323,8 +312,8 @@ async fn main() {
             network_store.subgraph_store(),
             network_store.block_store(),
             eth_networks.clone(),
+            chains.clone(),
             runtime_host_builder,
-            block_stream_builder,
             metrics_registry.clone(),
             link_resolver.cheap_clone(),
         );
