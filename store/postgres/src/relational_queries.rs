@@ -2825,8 +2825,14 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
             out.push_identifier(column.name.as_str())?;
             if let ColumnType::Enum(enum_type) = &column.column_type {
                 // Have Postgres convert to the right enum type
-                out.push_sql("::text::");
-                out.push_sql(enum_type.name.as_str());
+                if column.is_list() {
+                    out.push_sql("::text[]::");
+                    out.push_sql(enum_type.name.as_str());
+                    out.push_sql("[]");
+                } else {
+                    out.push_sql("::text::");
+                    out.push_sql(enum_type.name.as_str());
+                }
             }
             out.push_sql(", ");
         }
