@@ -8,7 +8,35 @@ use web3::types::{Block, H256};
 
 use crate::{cheap_clone::CheapClone, components::store::BlockNumber};
 
-use super::BlockHash;
+/// A simple marker for byte arrays that are really block hashes
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct BlockHash(pub Box<[u8]>);
+
+impl BlockHash {
+    pub fn as_slice(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl fmt::Display for BlockHash {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "0x{}", hex::encode(&self.0))
+    }
+}
+
+impl CheapClone for BlockHash {}
+
+impl From<H256> for BlockHash {
+    fn from(hash: H256) -> Self {
+        BlockHash(hash.as_bytes().into())
+    }
+}
+
+impl From<Vec<u8>> for BlockHash {
+    fn from(bytes: Vec<u8>) -> Self {
+        BlockHash(bytes.as_slice().into())
+    }
+}
 
 /// A block hash and block number from a specific Ethereum block.
 ///

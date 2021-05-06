@@ -9,7 +9,7 @@ mod types;
 // Try to reexport most of the necessary types
 use crate::{
     components::store::{BlockNumber, ChainStore},
-    prelude::{thiserror::Error, CheapClone, DeploymentHash, LinkResolver},
+    prelude::{thiserror::Error, DeploymentHash, LinkResolver},
 };
 use crate::{
     components::{ethereum::EthereumBlockWithTriggers, store::DeploymentLocator},
@@ -19,44 +19,14 @@ use anyhow::Error;
 use async_trait::async_trait;
 use slog;
 use slog::Logger;
+use std::collections::HashMap;
 use std::sync::Arc;
-use std::{collections::HashMap, fmt};
 use web3::types::H256;
 
 pub use block_stream::{BlockStream, TriggersAdapter};
-pub use types::BlockPtr;
+pub use types::{BlockHash, BlockPtr};
 
 use self::block_stream::{BlockStreamMetrics, BlockWithTriggers};
-
-/// A simple marker for byte arrays that are really block hashes
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct BlockHash(pub Box<[u8]>);
-
-impl BlockHash {
-    pub fn as_slice(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl fmt::Display for BlockHash {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "0x{}", hex::encode(&self.0))
-    }
-}
-
-impl CheapClone for BlockHash {}
-
-impl From<H256> for BlockHash {
-    fn from(hash: H256) -> Self {
-        BlockHash(hash.as_bytes().into())
-    }
-}
-
-impl From<Vec<u8>> for BlockHash {
-    fn from(bytes: Vec<u8>) -> Self {
-        BlockHash(bytes.as_slice().into())
-    }
-}
 
 pub trait Block: Send + Sync {
     fn ptr(&self) -> BlockPtr;
