@@ -53,6 +53,7 @@ lazy_static! {
 
 pub struct Chain {
     logger_factory: LoggerFactory,
+    name: String,
     node_id: NodeId,
     registry: Arc<dyn MetricsRegistry>,
     eth_adapters: EthereumNetworkAdapters,
@@ -67,6 +68,7 @@ pub struct Chain {
 impl Chain {
     pub fn new(
         logger_factory: LoggerFactory,
+        name: String,
         node_id: NodeId,
         registry: Arc<dyn MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
@@ -79,6 +81,7 @@ impl Chain {
     ) -> Self {
         Chain {
             logger_factory,
+            name,
             node_id,
             registry,
             eth_adapters,

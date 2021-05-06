@@ -710,6 +710,7 @@ fn networks_as_chains(
         .map(|(network_name, eth_adapters, chain_store, is_ingestible)| {
             let chain = ethereum::Chain::new(
                 logger_factory.clone(),
+                network_name.clone(),
                 node_id.clone(),
                 registry.clone(),
                 chain_store,
