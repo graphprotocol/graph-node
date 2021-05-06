@@ -163,7 +163,11 @@ pub trait TriggerFilter<C: Blockchain>: Default + Clone + Send + Sync {
     // ETHDEP: This method should not be here; it is just here to
     // temporarily bridge the gap between the generic block stream and the
     // still concretely typed runtime. There's no particular reason why it
-    // is on this trait, other than that it is convenient
+    // is on this trait, other than that it is convenient.
+    //
+    // This kludge is also what is keeping us from moving
+    // crate::components::ethereum::types into chain::ethereum where it
+    // ultimately belongs
     fn convert_block(&self, block: BlockWithTriggers<C>) -> EthereumBlockWithTriggers;
 }
 
