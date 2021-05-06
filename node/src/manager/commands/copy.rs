@@ -296,6 +296,9 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: i32) -> Result<(), Err
     for table in tables {
         let status = if table.next_vid > 0 && table.next_vid < table.target_vid {
             ">".to_string()
+        } else if table.target_vid < 0 {
+            // empty source table
+            "✓".to_string()
         } else {
             done(&table.finished_at)
         };
