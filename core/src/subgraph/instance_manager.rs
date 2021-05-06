@@ -49,7 +49,6 @@ type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<DeploymentId, CancelGuard>>
 struct IndexingInputs<C> {
     deployment: DeploymentLocator,
     features: BTreeSet<SubgraphFeature>,
-    network_name: String,
     start_blocks: Vec<BlockNumber>,
     store: Arc<dyn WritableStore>,
     chain_store: Arc<dyn ChainStore>,
@@ -393,8 +392,6 @@ where
                 &network,
                 &required_capabilities, e))?.clone();
 
-        let network_name = manifest.network_name();
-
         // Obtain filters from the manifest
         let filter = C::TriggerFilter::from_data_sources(manifest.data_sources.iter());
         let start_blocks = manifest.start_blocks();
@@ -443,7 +440,6 @@ where
             inputs: IndexingInputs {
                 deployment: deployment.clone(),
                 features,
-                network_name,
                 start_blocks,
                 chain_store,
                 store,
@@ -511,7 +507,6 @@ where
             .chain
             .new_block_stream(
                 ctx.inputs.deployment.clone(),
-                ctx.inputs.network_name.clone(),
                 ctx.inputs.start_blocks.clone(),
                 ctx.state.filter.clone(),
                 ctx.block_stream_metrics.clone(),

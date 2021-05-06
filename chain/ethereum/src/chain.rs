@@ -144,7 +144,6 @@ impl Blockchain for Chain {
     fn new_block_stream(
         &self,
         deployment: DeploymentLocator,
-        network_name: String,
         start_blocks: Vec<BlockNumber>,
         filter: TriggerFilter,
         metrics: Arc<BlockStreamMetrics>,
@@ -158,9 +157,7 @@ impl Blockchain for Chain {
             .subgraph_store
             .writable(&deployment)
             .expect(&format!("no store for deployment `{}`", deployment.hash));
-        let chain_head_update_stream = self
-            .chain_head_update_listener
-            .subscribe(network_name.clone());
+        let chain_head_update_stream = self.chain_head_update_listener.subscribe(self.name.clone());
 
         let requirements = filter.node_capabilities();
 
@@ -168,7 +165,7 @@ impl Blockchain for Chain {
             .triggers_adapter(&deployment, &requirements)
             .expect(&format!(
                 "no adapter for network {} with capabilities {}",
-                network_name, requirements
+                self.name, requirements
             ));
 
         Ok(BlockStream::new(

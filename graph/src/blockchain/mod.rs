@@ -111,7 +111,6 @@ pub trait Blockchain: Sized + Send + Sync + 'static {
     fn new_block_stream(
         &self,
         deployment: DeploymentLocator,
-        network_name: String,
         start_blocks: Vec<BlockNumber>,
         filter: Self::TriggerFilter,
         metrics: Arc<BlockStreamMetrics>,
