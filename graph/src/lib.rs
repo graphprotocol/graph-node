@@ -88,12 +88,13 @@ pub mod prelude {
     pub type DynTryFuture<'a, Ok = (), Err = Error> =
         Pin<Box<dyn futures03::Future<Output = Result<Ok, Err>> + Send + 'a>>;
 
+    pub use crate::blockchain::BlockPtr;
+
     pub use crate::components::ethereum::{
-        BlockFinality, BlockPtr, ChainHeadUpdate, ChainHeadUpdateStream, EthereumBlock,
-        EthereumBlockData, EthereumBlockTriggerType, EthereumBlockWithCalls,
-        EthereumBlockWithTriggers, EthereumCall, EthereumCallData, EthereumEventData,
-        EthereumNetworkIdentifier, EthereumTransactionData, EthereumTrigger, LightEthereumBlock,
-        LightEthereumBlockExt, MappingTrigger,
+        BlockFinality, ChainHeadUpdate, ChainHeadUpdateStream, EthereumBlock, EthereumBlockData,
+        EthereumBlockTriggerType, EthereumBlockWithCalls, EthereumBlockWithTriggers, EthereumCall,
+        EthereumCallData, EthereumEventData, EthereumNetworkIdentifier, EthereumTransactionData,
+        EthereumTrigger, LightEthereumBlock, LightEthereumBlockExt, MappingTrigger,
     };
     pub use crate::components::graphql::{
         GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,

@@ -10,7 +10,7 @@ use std::time::Instant;
 
 use ethabi::ParamType;
 use graph::{
-    blockchain::IngestorError,
+    blockchain::{BlockPtr, IngestorError},
     prelude::{
         anyhow, async_trait, debug, error, ethabi,
         futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},

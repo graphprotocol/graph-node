@@ -10,7 +10,7 @@ use std::str::FromStr;
 use std::{fmt, fmt::Display};
 
 use super::DeploymentHash;
-use crate::components::{ethereum::BlockPtr, store::EntityType};
+use crate::components::store::EntityType;
 use crate::data::graphql::TryFromValue;
 use crate::data::store::Value;
 use crate::data::subgraph::SubgraphManifest;

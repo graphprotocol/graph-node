@@ -8,8 +8,8 @@ use graph::{
             BlockStream, BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers,
             TriggersAdapter as TriggersAdapterTrait,
         },
-        Block, BlockHash, Blockchain, IngestorAdapter as IngestorAdapterTrait, IngestorError,
-        Manifest, TriggerFilter as _,
+        Block, BlockHash, BlockPtr, Blockchain, IngestorAdapter as IngestorAdapterTrait,
+        IngestorError, Manifest, TriggerFilter as _,
     },
     cheap_clone::CheapClone,
     components::{
@@ -19,7 +19,7 @@ use graph::{
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
         async_trait, error, lazy_static, o, serde_yaml, web3::types::H256, BlockFinality,
-        BlockNumber, BlockPtr, ChainStore, DataSource, DeploymentHash, EthereumBlockWithCalls,
+        BlockNumber, ChainStore, DataSource, DeploymentHash, EthereumBlockWithCalls,
         EthereumTrigger, Future01CompatExt, LinkResolver, Logger, LoggerFactory, MetricsRegistry,
         NodeId, SubgraphStore,
     },

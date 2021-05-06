@@ -7,7 +7,7 @@ use web3::types::H256;
 pub use self::listener::{ChainHeadUpdate, ChainHeadUpdateListener, ChainHeadUpdateStream};
 pub use self::network::NodeCapabilities;
 pub use self::types::{
-    BlockFinality, BlockPtr, EthereumBlock, EthereumBlockData, EthereumBlockTriggerType,
+    BlockFinality, EthereumBlock, EthereumBlockData, EthereumBlockTriggerType,
     EthereumBlockWithCalls, EthereumBlockWithTriggers, EthereumCall, EthereumCallData,
     EthereumEventData, EthereumTransactionData, EthereumTrigger, LightEthereumBlock,
     LightEthereumBlockExt, MappingTrigger,

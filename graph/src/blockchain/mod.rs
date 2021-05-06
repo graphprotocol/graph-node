@@ -4,11 +4,12 @@
 
 pub mod block_ingestor;
 pub mod block_stream;
+mod types;
 
 // Try to reexport most of the necessary types
 use crate::{
     components::store::{BlockNumber, ChainStore},
-    prelude::{thiserror::Error, BlockPtr, CheapClone, DeploymentHash, LinkResolver},
+    prelude::{thiserror::Error, CheapClone, DeploymentHash, LinkResolver},
 };
 use crate::{
     components::{ethereum::EthereumBlockWithTriggers, store::DeploymentLocator},
@@ -23,6 +24,7 @@ use std::{collections::HashMap, fmt};
 use web3::types::H256;
 
 pub use block_stream::{BlockStream, TriggersAdapter};
+pub use types::BlockPtr;
 
 use self::block_stream::{BlockStreamMetrics, BlockWithTriggers};
 
