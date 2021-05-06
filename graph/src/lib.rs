@@ -70,6 +70,7 @@ pub mod prelude {
     pub use lazy_static::lazy_static;
     pub use rand;
     pub use reqwest;
+    pub use serde;
     pub use serde_derive::{Deserialize, Serialize};
     pub use serde_json;
     pub use serde_yaml;

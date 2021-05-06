@@ -1,6 +1,6 @@
 use graph::{
     parking_lot::Mutex,
-    prelude::{ChainHeadUpdate, ChainHeadUpdateStream, StoreError},
+    prelude::{ChainHeadUpdateStream, StoreError},
     prometheus::GaugeVec,
 };
 use std::collections::BTreeMap;
@@ -15,6 +15,7 @@ use crate::{
 };
 use graph::components::ethereum::ChainHeadUpdateListener as ChainHeadUpdateListenerTrait;
 use graph::prelude::futures03::prelude::stream::{StreamExt, TryStreamExt};
+use graph::prelude::serde::{Deserialize, Serialize};
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::tokio::sync::{mpsc::Receiver, watch};
 use graph::prelude::{crit, o, CheapClone, Logger, MetricsRegistry};
@@ -64,6 +65,14 @@ impl BlockIngestorMetrics {
             .set(chain_head_number as f64);
     }
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct ChainHeadUpdate {
+    pub network_name: String,
+    pub head_block_hash: String,
+    pub head_block_number: u64,
+}
+
 pub struct ChainHeadUpdateListener {
     /// Update watchers keyed by network.
     watchers: Arc<Mutex<BTreeMap<String, Watcher>>>,
