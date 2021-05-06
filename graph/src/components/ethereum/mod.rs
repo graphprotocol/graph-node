@@ -4,7 +4,7 @@ mod types;
 
 use web3::types::H256;
 
-pub use self::listener::{ChainHeadUpdate, ChainHeadUpdateListener, ChainHeadUpdateStream};
+pub use self::listener::{ChainHeadUpdateListener, ChainHeadUpdateStream};
 pub use self::network::NodeCapabilities;
 pub use self::types::{
     BlockFinality, EthereumBlock, EthereumBlockData, EthereumBlockTriggerType,
