@@ -525,7 +525,9 @@ impl<'a> CopyProgress<'a> {
     }
 
     fn progress_pct(current_vid: i64, target_vid: i64) -> f64 {
-        if target_vid == 0 {
+        // When a step is done, current_vid == target_vid + 1; don't report
+        // more than 100% completion
+        if target_vid == 0 || current_vid >= target_vid {
             100.0
         } else {
             current_vid as f64 / target_vid as f64 * 100.0
