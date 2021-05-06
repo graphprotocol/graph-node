@@ -92,10 +92,10 @@ pub mod prelude {
     pub use crate::blockchain::BlockPtr;
 
     pub use crate::components::ethereum::{
-        BlockFinality, ChainHeadUpdateStream, EthereumBlock, EthereumBlockData,
-        EthereumBlockTriggerType, EthereumBlockWithCalls, EthereumBlockWithTriggers, EthereumCall,
-        EthereumCallData, EthereumEventData, EthereumNetworkIdentifier, EthereumTransactionData,
-        EthereumTrigger, LightEthereumBlock, LightEthereumBlockExt, MappingTrigger,
+        BlockFinality, EthereumBlock, EthereumBlockData, EthereumBlockTriggerType,
+        EthereumBlockWithCalls, EthereumBlockWithTriggers, EthereumCall, EthereumCallData,
+        EthereumEventData, EthereumNetworkIdentifier, EthereumTransactionData, EthereumTrigger,
+        LightEthereumBlock, LightEthereumBlockExt, MappingTrigger,
     };
     pub use crate::components::graphql::{
         GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,

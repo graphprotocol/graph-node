@@ -8,14 +8,11 @@ use graph::{
             BlockStream, BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers,
             TriggersAdapter as TriggersAdapterTrait,
         },
-        Block, BlockHash, BlockPtr, Blockchain, IngestorAdapter as IngestorAdapterTrait,
-        IngestorError, Manifest, TriggerFilter as _,
+        Block, BlockHash, BlockPtr, Blockchain, ChainHeadUpdateListener,
+        IngestorAdapter as IngestorAdapterTrait, IngestorError, Manifest, TriggerFilter as _,
     },
     cheap_clone::CheapClone,
-    components::{
-        ethereum::{ChainHeadUpdateListener, NodeCapabilities},
-        store::DeploymentLocator,
-    },
+    components::{ethereum::NodeCapabilities, store::DeploymentLocator},
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
         async_trait, error, lazy_static, o, serde_yaml, web3::types::H256, BlockFinality,

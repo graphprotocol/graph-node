@@ -23,7 +23,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use web3::types::H256;
 
-pub use block_stream::{BlockStream, TriggersAdapter};
+pub use block_stream::{
+    BlockStream, ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter,
+};
 pub use types::{BlockHash, BlockPtr};
 
 use self::block_stream::{BlockStreamMetrics, BlockWithTriggers};

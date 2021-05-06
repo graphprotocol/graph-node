@@ -1,6 +1,5 @@
 use graph::{
-    parking_lot::Mutex,
-    prelude::{ChainHeadUpdateStream, StoreError},
+    blockchain::ChainHeadUpdateStream, parking_lot::Mutex, prelude::StoreError,
     prometheus::GaugeVec,
 };
 use std::collections::BTreeMap;
@@ -13,7 +12,7 @@ use crate::{
     connection_pool::ConnectionPool,
     notification_listener::{JsonNotification, NotificationListener, SafeChannelName},
 };
-use graph::components::ethereum::ChainHeadUpdateListener as ChainHeadUpdateListenerTrait;
+use graph::blockchain::ChainHeadUpdateListener as ChainHeadUpdateListenerTrait;
 use graph::prelude::futures03::prelude::stream::{StreamExt, TryStreamExt};
 use graph::prelude::serde::{Deserialize, Serialize};
 use graph::prelude::serde_json::{self, json};

@@ -228,6 +228,17 @@ impl<C: Blockchain> Clone for BlockStreamContext<C> {
     }
 }
 
+/// Notifications about the chain head advancing. The block ingestor sends
+/// an update on this stream whenever the head of the underlying chain
+/// changes. The updates have no payload, receivers should call
+/// `Store::chain_head_ptr` to check what the latest block is.
+pub type ChainHeadUpdateStream = Box<dyn Stream<Item = (), Error = ()> + Send>;
+
+pub trait ChainHeadUpdateListener: Send + Sync + 'static {
+    /// Subscribe to chain head updates for the given network.
+    fn subscribe(&self, network: String) -> ChainHeadUpdateStream;
+}
+
 pub struct BlockStream<C: Blockchain> {
     state: BlockStreamState<C>,
     consecutive_err_count: u32,

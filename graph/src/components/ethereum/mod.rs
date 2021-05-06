@@ -1,10 +1,8 @@
-mod listener;
 mod network;
 mod types;
 
 use web3::types::H256;
 
-pub use self::listener::{ChainHeadUpdateListener, ChainHeadUpdateStream};
 pub use self::network::NodeCapabilities;
 pub use self::types::{
     BlockFinality, EthereumBlock, EthereumBlockData, EthereumBlockTriggerType,
