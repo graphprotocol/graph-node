@@ -426,6 +426,15 @@ where
             manifest.network_name(),
             stopwatch_metrics,
         ));
+        // Initialize deployment_head with current deployment head. Any sort of trouble in
+        // getting the deployment head ptr leads to initializing with 0
+        let deployment_head = store
+            .block_ptr()
+            .ok()
+            .and_then(|ptr| ptr.map(|ptr| ptr.number))
+            .unwrap_or(0) as f64;
+        block_stream_metrics.deployment_head.set(deployment_head);
+
         let features = manifest.features.clone();
         let instance =
             SubgraphInstance::from_manifest(&logger, manifest, host_builder, host_metrics.clone())?;
