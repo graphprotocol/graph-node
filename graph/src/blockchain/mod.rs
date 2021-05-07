@@ -119,8 +119,12 @@ impl From<Error> for IngestorError {
 pub trait IngestorAdapter<C: Blockchain> {
     fn logger(&self) -> &Logger;
 
-    /// How long a chain from the current chain head back to blocks that are
-    /// considered final should be
+    /// How many ancestors of the current chain head to ingest. For chains
+    /// that can experience reorgs, this should be large enough to cover all
+    /// blocks that could be subject to reorgs to ensure that `graph-node`
+    /// has enough blocks in its local cache to traverse a sidechain back to
+    /// the main chain even if those blocks get removed from the network
+    /// client.
     fn ancestor_count(&self) -> BlockNumber;
 
     /// Get the latest block from the chain
