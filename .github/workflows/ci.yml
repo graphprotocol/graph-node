@@ -2,7 +2,7 @@ name: Continuous Integration
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
   pull_request:
     types: [opened, synchronize, reopened]
 
@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust: [ "stable", "beta" ]
+        rust: ["stable"]
     runs-on: ubuntu-latest
     services:
       ipfs:
@@ -71,7 +71,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust: [ "stable", "beta" ]
+        rust: ["stable"]
     runs-on: ubuntu-latest
 
     steps:
@@ -89,7 +89,7 @@ jobs:
       - name: Install Node 14
         uses: actions/setup-node@v2
         with:
-          node-version: '14'
+          node-version: "14"
 
       - name: Install rust toolchain
         uses: actions-rs/toolchain@v1
@@ -121,16 +121,16 @@ jobs:
     name: Check rustfmt style
     strategy:
       matrix:
-        rust: [ "stable" ]
+        rust: ["stable"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
-            profile: minimal
-            toolchain: ${{ matrix.rust }}
-            components: rustfmt
-            override: true
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          components: rustfmt
+          override: true
       - name: Cache cargo registry
         uses: actions/cache@v2
         with:
@@ -156,15 +156,15 @@ jobs:
     name: Build in release mode
     strategy:
       matrix:
-        rust: [ "stable", "beta" ]
+        rust: ["stable"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
-            profile: minimal
-            toolchain: ${{ matrix.rust }}
-            override: true
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
       - name: Cache cargo registry
         uses: actions/cache@v2
         with:
