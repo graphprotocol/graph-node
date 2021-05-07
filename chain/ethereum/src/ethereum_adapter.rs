@@ -1268,12 +1268,16 @@ where
                             call.block_ptr.clone(),
                         )
                         .map(move |result| {
-                            let _ = cache
-                                .set_call(call.address, &call_data, call.block_ptr, &result.0)
-                                .map_err(|e| {
-                                    error!(logger, "call cache set error";
+                            // Don't block handler execution on writing to the cache.
+                            let for_cache = result.0.clone();
+                            let _ = graph::spawn_blocking_allow_panic(move || {
+                                cache
+                                    .set_call(call.address, &call_data, call.block_ptr, &for_cache)
+                                    .map_err(|e| {
+                                        error!(logger, "call cache set error";
                                                    "error" => e.to_string())
-                                });
+                                    })
+                            });
                             result.0
                         }),
                     )
