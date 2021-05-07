@@ -3,7 +3,6 @@ use std::{pin::Pin, sync::Arc, task::Context};
 use anyhow::Error;
 use graph::{
     blockchain::{
-        self as bc,
         block_stream::{
             BlockStream, BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers,
             TriggersAdapter as TriggersAdapterTrait,
@@ -224,33 +223,6 @@ impl Block for WrappedBlockFinality {
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
         self.0.parent_ptr()
-    }
-}
-
-pub struct WrappedDataSource(DataSource);
-
-impl bc::DataSource<Chain> for WrappedDataSource {
-    fn match_and_decode(
-        &self,
-        _trigger: &EthereumTrigger,
-        _block: &WrappedBlockFinality,
-        _logger: &Logger,
-    ) -> Result<Option<DummyMappingTrigger>, Error> {
-        todo!()
-    }
-}
-
-impl std::ops::Deref for WrappedDataSource {
-    type Target = graph::prelude::DataSource;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<DataSource> for WrappedDataSource {
-    fn from(ds: DataSource) -> Self {
-        WrappedDataSource(ds)
     }
 }
 
