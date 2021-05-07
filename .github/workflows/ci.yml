@@ -108,8 +108,22 @@ jobs:
         with:
           command: build
 
-      - name: Run integration tests
+      # Integration tests are a bit flaky, running them twice increases the
+      # chances of one run succeeding
+      - name: Run integration tests (round 1)
+        id: integration-tests-1
         uses: actions-rs/cargo@v1
+        env:
+          RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+          N_CONCURRENT_TESTS: "1"
+        with:
+          command: test
+          args: --verbose --package graph-tests -- --nocapture
+        continue-on-error: true
+      - name: Run integration tests (round 2)
+        id: integration-tests-2
+        uses: actions-rs/cargo@v1
+        if: ${{ steps.integration-tests-1.outcome == 'failure' }}
         env:
           RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
           N_CONCURRENT_TESTS: "1"
