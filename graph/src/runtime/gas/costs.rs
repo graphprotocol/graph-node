@@ -77,8 +77,11 @@ pub const ETHEREUM_CALL: Gas = Gas(25_000_000_000);
 // Allow up to 100,000 data sources to be created
 pub const CREATE_DATA_SOURCE: Gas = Gas(CONST_MAX_GAS_PER_HANDLER / 100_000);
 
-// Allow up to 100,000 logs
-pub const LOG: Gas = Gas(CONST_MAX_GAS_PER_HANDLER / 100_000);
+pub const LOG_OP: GasOp = GasOp {
+    // Allow up to 100,000 logs
+    base_cost: CONST_MAX_GAS_PER_HANDLER / 100_000,
+    size_mult: DEFAULT_GAS_PER_BYTE,
+};
 
 // Saving to the store is one of the most expensive operations.
 pub const STORE_SET: GasOp = GasOp {

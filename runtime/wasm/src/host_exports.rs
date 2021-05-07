@@ -682,7 +682,7 @@ impl<C: Blockchain> HostExports<C> {
         msg: String,
         gas: &GasCounter,
     ) -> Result<(), DeterministicHostError> {
-        gas.consume_host_fn(gas::LOG)?;
+        gas.consume_host_fn(gas::LOG_OP.with_args(complexity::Size, &msg))?;
 
         let rs = record_static!(level, self.data_source_name.as_str());
 
