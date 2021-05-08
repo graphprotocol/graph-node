@@ -204,10 +204,6 @@ impl Blockchain for Chain {
         Arc::new(adapter)
     }
 
-    fn node_capabilities(&self, archive: bool, traces: bool) -> Self::NodeCapabilities {
-        NodeCapabilities { archive, traces }
-    }
-
     fn chain_store(&self) -> Arc<dyn ChainStore> {
         self.chain_store.clone()
     }

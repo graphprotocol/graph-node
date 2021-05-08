@@ -73,9 +73,6 @@ pub trait Blockchain: Sized + Send + Sync + 'static {
 
     fn reorg_threshold() -> u32;
 
-    // ETHDEP: This assumes that capabilities are exactly the eth capabilities
-    fn node_capabilities(&self, archive: bool, traces: bool) -> Self::NodeCapabilities;
-
     fn triggers_adapter(
         &self,
         loc: &DeploymentLocator,
