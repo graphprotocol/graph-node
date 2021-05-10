@@ -1,6 +1,8 @@
 use ethabi;
 
-use graph::runtime::{asc_get, asc_new, try_asc_get, AscPtr, AscType, AscValue, ToAscObj};
+use graph::runtime::{
+    asc_get, asc_new, try_asc_get, AscIndexId, AscPtr, AscType, AscValue, ToAscObj,
+};
 use graph::{data::store, runtime::DeterministicHostError};
 use graph::{prelude::serde_json, runtime::FromAscObj};
 use graph::{prelude::web3::types as web3, runtime::AscHeap};
@@ -354,7 +356,8 @@ impl<T: AscValue> ToAscObj<AscWrapped<T>> for AscWrapped<T> {
 impl<V, VAsc> ToAscObj<AscResult<AscPtr<VAsc>, bool>> for Result<V, bool>
 where
     V: ToAscObj<VAsc>,
-    VAsc: AscType,
+    VAsc: AscType + AscIndexId,
+    AscWrapped<AscPtr<VAsc>>: AscIndexId,
 {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,

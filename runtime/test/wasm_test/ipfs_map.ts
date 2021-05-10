@@ -1,6 +1,49 @@
-import "allocator/arena";
+enum IndexForAscTypeId {
+  STRING = 0,
+  ARRAY_BUFFER = 1,
+  UINT8_ARRAY = 6,
+  ARRAY_TYPED_MAP_ENTRY_STRING_JSON_VALUE = 20,
+  ARRAY_TYPED_MAP_ENTRY_STRING_STORE_VALUE = 21,
+  STORE_VALUE = 31,
+  JSON_VALUE = 32,
+  TYPED_MAP_ENTRY_STRING_STORE_VALUE = 34,
+  TYPED_MAP_ENTRY_STRING_JSON_VALUE = 35,
+  TYPED_MAP_STRING_STORE_VALUE = 36,
+  TYPED_MAP_STRING_JSON_VALUE = 37,
+}
 
-export { memory };
+export function id_of_type(type_id_index: IndexForAscTypeId): usize {
+  switch (type_id_index) {
+    case IndexForAscTypeId.STRING:
+      return idof<string>();
+    case IndexForAscTypeId.ARRAY_BUFFER:
+      return idof<ArrayBuffer>();
+    case IndexForAscTypeId.UINT8_ARRAY:
+      return idof<Uint8Array>();
+    case IndexForAscTypeId.ARRAY_TYPED_MAP_ENTRY_STRING_JSON_VALUE:
+      return idof<Array<TypedMapEntry<string, JSONValue>>>();
+    case IndexForAscTypeId.ARRAY_TYPED_MAP_ENTRY_STRING_STORE_VALUE:
+      return idof<Array<Entity>>();
+    case IndexForAscTypeId.STORE_VALUE:
+      return idof<Value>();
+    case IndexForAscTypeId.JSON_VALUE:
+      return idof<JSONValue>();
+    case IndexForAscTypeId.TYPED_MAP_ENTRY_STRING_STORE_VALUE:
+      return idof<Entity>();
+    case IndexForAscTypeId.TYPED_MAP_ENTRY_STRING_JSON_VALUE:
+      return idof<TypedMapEntry<string, JSONValue>>();
+    case IndexForAscTypeId.TYPED_MAP_STRING_STORE_VALUE:
+      return idof<TypedMap<string, Value>>();
+    case IndexForAscTypeId.TYPED_MAP_STRING_JSON_VALUE:
+      return idof<TypedMap<string, JSONValue>>();
+    default:
+      return 0;
+  }
+}
+
+export function allocate(n: usize): usize {
+  return __alloc(n);
+}
 
 /*
  * Declarations copied from graph-ts/input.ts and edited for brevity
@@ -81,7 +124,7 @@ class Value {
   static fromString(s: string): Value {
     let value = new Value()
     value.kind = ValueKind.STRING
-    value.data = s as u64
+    value.data = changetype<u32>(s)
     return value
   }
 }
@@ -123,14 +166,21 @@ declare namespace ipfs {
 export function echoToStore(data: JSONValue, userData: Value): void {
   // expect a map of the form { "id": "anId", "value": "aValue" }
   let map = data.toObject();
-  let id = map.get("id").toString();
-  let value = map.get("value").toString();
+
+  let id = map.get("id");
+  let value = map.get("value");
+
+  assert(id !== null, "'id' should not be null");
+  assert(value !== null, "'value' should not be null");
+
+  let stringId = id!.toString();
+  let stringValue = value!.toString();
 
   let entity = new Entity();
-  entity.set("id", Value.fromString(id));
-  entity.set("value", Value.fromString(value));
+  entity.set("id", Value.fromString(stringId));
+  entity.set("value", Value.fromString(stringValue));
   entity.set("extra", userData);
-  store.set("Thing", id, entity);
+  store.set("Thing", stringId, entity);
 }
 
 export function ipfsMap(hash: string, userData: string): void {

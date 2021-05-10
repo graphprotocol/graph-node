@@ -459,7 +459,7 @@ async fn ipfs_map() {
         .await
         .unwrap_err()
     );
-    assert!(errmsg.contains("JSON value is not a string."));
+    assert!(errmsg.contains("'id' should not be null"));
 
     // Bad IPFS hash.
     let errmsg = run_ipfs_map(ipfs.clone(), subgraph_id, BAD_IPFS_HASH.to_string())
@@ -604,7 +604,7 @@ async fn abort() {
     assert!(res
         .unwrap_err()
         .to_string()
-        .contains("line 6, column 2, with message: not true"));
+        .contains("line 25, column 3, with message: not true"));
 }
 
 #[tokio::test]

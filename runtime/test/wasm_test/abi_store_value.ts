@@ -1,6 +1,34 @@
-import "allocator/arena";
+enum IndexForAscTypeId {
+  STRING = 0,
+  ARRAY_BUFFER = 1,
+  UINT8_ARRAY = 6,
+  BIG_DECIMAL = 12,
+  ARRAY_STRING = 18,
+  STORE_VALUE = 31,
+}
 
-export { memory };
+export function id_of_type(type_id_index: IndexForAscTypeId): usize {
+  switch (type_id_index) {
+    case IndexForAscTypeId.STRING:
+      return idof<string>();
+    case IndexForAscTypeId.ARRAY_BUFFER:
+      return idof<ArrayBuffer>();
+    case IndexForAscTypeId.UINT8_ARRAY:
+      return idof<Uint8Array>();
+    case IndexForAscTypeId.BIG_DECIMAL:
+      return idof<BigDecimal>();
+    case IndexForAscTypeId.ARRAY_STRING:
+      return idof<Array<string>>();
+    case IndexForAscTypeId.STORE_VALUE:
+      return idof<Value>();
+    default:
+      return 0;
+  }
+}
+
+export function allocate(n: usize): usize {
+  return __alloc(n);
+}
 
 enum ValueKind {
     STRING = 0,
@@ -20,8 +48,8 @@ type Bytes = Uint8Array;
 type BigInt = Uint8Array;
 
 export class BigDecimal {
-    exp: BigInt
-    digits: BigInt
+    exp!: BigInt
+    digits!: BigInt
 }
 
 export class Value {
@@ -32,7 +60,7 @@ export class Value {
 export function value_from_string(str: string): Value {
     let token = new Value();
     token.kind = ValueKind.STRING;
-    token.data = str as u64;
+    token.data = changetype<u32>(str);
     return token
 }
 
@@ -46,7 +74,7 @@ export function value_from_int(int: i32): Value {
 export function value_from_big_decimal(float: BigInt): Value {
     let value = new Value();
     value.kind = ValueKind.BIG_DECIMAL;
-    value.data = float as u64;
+    value.data = changetype<u32>(float);
     return value
 }
 
@@ -64,7 +92,7 @@ export function array_from_values(str: string, i: i32): Value {
 
     let value = new Value();
     value.kind = ValueKind.ARRAY;
-    value.data = array as u64;
+    value.data = changetype<u32>(array);
     return value
 }
 
@@ -77,21 +105,21 @@ export function value_null(): Value {
 export function value_from_bytes(bytes: Bytes): Value {
     let value = new Value();
     value.kind = ValueKind.BYTES;
-    value.data = bytes as u64;
+    value.data = changetype<u32>(bytes);
     return value
 }
 
 export function value_from_bigint(bigint: BigInt): Value {
     let value = new Value();
     value.kind = ValueKind.BIG_INT;
-    value.data = bigint as u64;
+    value.data = changetype<u32>(bigint);
     return value
 }
 
 export function value_from_array(array: Array<string>): Value {
     let value = new Value()
     value.kind = ValueKind.ARRAY
-    value.data = array as u64
+    value.data = changetype<u32>(array)
     return value
 }
 
@@ -99,6 +127,6 @@ export function value_from_array(array: Array<string>): Value {
 export function invalid_discriminant(): Value {
     let token = new Value();
     token.kind = 70;
-    token.data = "blebers" as u64;
+    token.data = changetype<u32>("blebers");
     return token
 }

@@ -1,6 +1,58 @@
-import "allocator/arena";
+enum IndexForAscTypeId {
+  STRING = 0,
+  ARRAY_BUFFER = 1,
+  UINT8_ARRAY = 6,
+  BIG_DECIMAL = 12,
+  ARRAY_BOOL = 13,
+  ARRAY_UINT8_ARRAY = 14,
+  ARRAY_STORE_VALUE = 16,
+  ARRAY_STRING = 18,
+  ARRAY_TYPED_MAP_ENTRY_STRING_STORE_VALUE = 21,
+  STORE_VALUE = 31,
+  TYPED_MAP_ENTRY_STRING_STORE_VALUE = 34,
+  TYPED_MAP_STRING_STORE_VALUE = 36,
+  ARRAY_I32 = 47,
+  ARRAY_BIG_DECIMAL = 51,
+}
 
-export { memory };
+export function id_of_type(type_id_index: IndexForAscTypeId): usize {
+  switch (type_id_index) {
+    case IndexForAscTypeId.STRING:
+      return idof<string>();
+    case IndexForAscTypeId.ARRAY_BUFFER:
+      return idof<ArrayBuffer>();
+    case IndexForAscTypeId.UINT8_ARRAY:
+      return idof<Uint8Array>();
+    case IndexForAscTypeId.BIG_DECIMAL:
+      return idof<BigDecimal>();
+    case IndexForAscTypeId.ARRAY_BOOL:
+      return idof<Array<bool>>();
+    case IndexForAscTypeId.ARRAY_UINT8_ARRAY:
+      return idof<Array<Uint8Array>>();
+    case IndexForAscTypeId.ARRAY_STORE_VALUE:
+      return idof<Array<Value>>();
+    case IndexForAscTypeId.ARRAY_STRING:
+      return idof<Array<string>>();
+    case IndexForAscTypeId.ARRAY_TYPED_MAP_ENTRY_STRING_STORE_VALUE:
+      return idof<Array<Entity>>();
+    case IndexForAscTypeId.STORE_VALUE:
+      return idof<Value>();
+    case IndexForAscTypeId.TYPED_MAP_ENTRY_STRING_STORE_VALUE:
+      return idof<Entity>();
+    case IndexForAscTypeId.TYPED_MAP_STRING_STORE_VALUE:
+      return idof<TypedMap<string, Value>>();
+    case IndexForAscTypeId.ARRAY_I32:
+      return idof<Array<i32>>();
+    case IndexForAscTypeId.ARRAY_BIG_DECIMAL:
+      return idof<Array<BigDecimal>>();
+    default:
+      return 0;
+  }
+}
+
+export function allocate(n: usize): usize {
+  return __alloc(n);
+}
 
 /** Definitions copied from graph-ts/index.ts */
 declare namespace store {
@@ -472,7 +524,7 @@ class Value {
   static fromString(s: string): Value {
     let value = new Value()
     value.kind = ValueKind.STRING
-    value.data = s as u64
+    value.data = changetype<u32>(s)
     return value
   }
 

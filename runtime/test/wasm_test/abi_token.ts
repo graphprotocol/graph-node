@@ -1,6 +1,31 @@
-import "allocator/arena";
+enum IndexForAscTypeId {
+  STRING = 0,
+  ARRAY_BUFFER = 1,
+  UINT8_ARRAY = 6,
+  ARRAY_ETHEREUM_VALUE = 15,
+  ETHEREUM_VALUE = 30,
+}
 
-export { memory };
+export function id_of_type(type_id_index: IndexForAscTypeId): usize {
+  switch (type_id_index) {
+    case IndexForAscTypeId.STRING:
+      return idof<string>();
+    case IndexForAscTypeId.ARRAY_BUFFER:
+      return idof<ArrayBuffer>();
+    case IndexForAscTypeId.UINT8_ARRAY:
+      return idof<Uint8Array>();
+    case IndexForAscTypeId.ARRAY_ETHEREUM_VALUE:
+      return idof<Array<Token>>();
+    case IndexForAscTypeId.ETHEREUM_VALUE:
+      return idof<Token>();
+    default:
+      return 0;
+  }
+}
+
+export function allocate(n: usize): usize {
+  return __alloc(n);
+}
 
 // Sequence of 20 `u8`s.
 type Address = Uint8Array;
@@ -32,11 +57,11 @@ export class Token {
     data: Payload
 }
 
-export function token_to_address(token: Token): Address {  
+export function token_to_address(token: Token): Address {
     assert(token.kind == TokenKind.ADDRESS, "Token is not an address.");
     return changetype<Address>(token.data as u32);
 }
-  
+
 export function token_to_bytes(token: Token): Bytes {
     assert(token.kind == TokenKind.FIXED_BYTES 
             || token.kind == TokenKind.BYTES, "Token is not bytes.")
@@ -73,50 +98,50 @@ export function token_to_array(token: Token): Array<Token> {
 
 
 export function token_from_address(address: Address): Token {  
-    let token: Token;
+    let token = new Token();
     token.kind = TokenKind.ADDRESS;
-    token.data = address as u64;
+    token.data = changetype<u32>(address);
     return token
 }
 
 export function token_from_bytes(bytes: Bytes): Token {
-    let token: Token;
+    let token = new Token();
     token.kind = TokenKind.BYTES;
-    token.data = bytes as u64;
+    token.data = changetype<u32>(bytes);
     return token
 }
   
 export function token_from_int(int: Int): Token {
-    let token: Token;
+    let token = new Token();
     token.kind = TokenKind.INT;
-    token.data = int as u64;
+    token.data = changetype<u32>(int);
     return token
 }
 
 export function token_from_uint(uint: Uint): Token {
-    let token: Token;
+    let token = new Token();
     token.kind = TokenKind.UINT;
-    token.data = uint as u64;
+    token.data = changetype<u32>(uint);
     return token
 }
 
 export function token_from_bool(bool: boolean): Token {
-    let token: Token;
+    let token = new Token();
     token.kind = TokenKind.BOOL;
-    token.data = bool as u64;
+    token.data = bool as u32;
     return token
 }
   
 export function token_from_string(str: string): Token {
-    let token: Token;
+    let token = new Token();
     token.kind = TokenKind.STRING;
-    token.data = str as u64;
+    token.data = changetype<u32>(str);
     return token
 }
   
 export function token_from_array(array: Token): Token {
-    let token: Token;
+    let token = new Token();
     token.kind = TokenKind.ARRAY;
-    token.data = array as u64;
+    token.data = changetype<u32>(array);
     return token
 }

@@ -78,9 +78,6 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
 
             #[allow(unused_variables)]
             fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
-                if asc_obj.len() != std::mem::size_of::<Self>() {
-                    return Err(DeterministicHostError(anyhow::anyhow!("Size does not match")));
-                }
                 let mut offset = 0;
 
                 #(

@@ -14,6 +14,18 @@ use std::convert::TryInto;
 use std::fmt;
 use std::mem::size_of;
 
+/// Marker trait for AssemblyScript types that the id should
+/// be in the header.
+pub trait AscIndexId {
+    /// Constant string with the name of the type in AssemblyScript.
+    /// This is used to get the identifier for the type in memory layout.
+    /// Info about memory layout:
+    /// https://www.assemblyscript.org/memory.html#common-header-layout.
+    /// Info about identifier (`idof<T>`):
+    /// https://www.assemblyscript.org/garbage-collection.html#runtime-interface
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId;
+}
+
 /// A type that has a direct correspondence to an Asc type.
 ///
 /// This can be derived for structs that are `#[repr(C)]`, contain no padding
@@ -30,12 +42,8 @@ pub trait AscType: Sized {
     /// The Rust representation of an Asc object as layed out in Asc memory.
     fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError>;
 
-    /// Size of the corresponding Asc instance in bytes.
-    fn asc_size<H: AscHeap + ?Sized>(
-        _ptr: AscPtr<Self>,
-        _heap: &H,
-    ) -> Result<u32, DeterministicHostError> {
-        Ok(std::mem::size_of::<Self>() as u32)
+    fn content_len(&self, asc_bytes: &[u8]) -> usize {
+        asc_bytes.len()
     }
 }
 
@@ -107,6 +115,75 @@ macro_rules! impl_asc_type {
 
 impl_asc_type!(u8, u16, u32, u64, i8, i32, i64, f32, f64);
 
+// The numbers on each variant could just be comments hence the
+// `#[repr(u32)]`, however having them in code enforces each value
+// to be the same as the docs.
+#[repr(u32)]
+#[derive(Copy, Clone, Debug)]
+pub enum IndexForAscTypeId {
+    String = 0,
+    ArrayBuffer = 1,
+    Int8Array = 2,
+    Int16Array = 3,
+    Int32Array = 4,
+    Int64Array = 5,
+    Uint8Array = 6,
+    Uint16Array = 7,
+    Uint32Array = 8,
+    Uint64Array = 9,
+    Float32Array = 10,
+    Float64Array = 11,
+    BigDecimal = 12,
+    ArrayBool = 13,
+    ArrayUint8Array = 14,
+    ArrayEthereumValue = 15,
+    ArrayStoreValue = 16,
+    ArrayJsonValue = 17,
+    ArrayString = 18, // *
+    ArrayEventParam = 19,
+    ArrayTypedMapEntryStringJsonValue = 20,
+    ArrayTypedMapEntryStringStoreValue = 21,
+    SmartContractCall = 22,
+    EventParam = 23,
+    EthereumTransaction = 24,
+    EthereumBlock = 25,
+    EthereumCall = 26,
+    WrappedTypedMapStringJsonValue = 27,
+    WrappedBool = 28,
+    WrappedJsonValue = 29,
+    EthereumValue = 30,
+    StoreValue = 31,
+    JsonValue = 32,
+    EthereumEvent = 33,
+    TypedMapEntryStringStoreValue = 34,
+    TypedMapEntryStringJsonValue = 35,
+    TypedMapStringStoreValue = 36,
+    TypedMapStringJsonValue = 37,
+    TypedMapStringTypedMapStringJsonValue = 38,
+    ResultTypedMapStringJsonValueBool = 39,
+    ResultJsonValueBool = 40,
+    ArrayU8 = 41,
+    ArrayU16 = 42,
+    ArrayU32 = 43,
+    ArrayU64 = 44,
+    ArrayI8 = 45,
+    ArrayI16 = 46,
+    ArrayI32 = 47,
+    ArrayI64 = 48,
+    ArrayF32 = 49,
+    ArrayF64 = 50,
+    ArrayBigDecimal = 51,
+}
+
+impl ToAscObj<u32> for IndexForAscTypeId {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        _heap: &mut H,
+    ) -> Result<u32, DeterministicHostError> {
+        Ok(*self as u32)
+    }
+}
+
 #[derive(Debug)]
 pub struct DeterministicHostError(pub Error);
 
@@ -140,4 +217,10 @@ impl From<DeterministicHostError> for HostExportError {
     fn from(value: DeterministicHostError) -> Self {
         HostExportError::Deterministic(value.0)
     }
+}
+
+pub const HEADER_SIZE: usize = 20;
+
+pub fn get_aligned_length(content_length: usize) -> usize {
+    16 - (HEADER_SIZE + content_length) % 16
 }

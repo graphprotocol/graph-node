@@ -1,7 +1,8 @@
 use graph::prelude::{ethabi::Token, web3::types::U256};
 use graph_runtime_wasm::{
     asc_abi::class::{
-        ArrayBuffer, AscEnum, AscEnumArray, EthereumValueKind, StoreValueKind, TypedArray,
+        ArrayBuffer, AscAddress, AscEnum, AscEnumArray, EthereumValueKind, StoreValueKind,
+        TypedArray,
     },
     TRAP_TIMEOUT,
 };
@@ -54,7 +55,7 @@ async fn abi_array() {
             "2".to_owned(),
             "3".to_owned(),
             "4".to_owned(),
-            "5".to_owned()
+            "5".to_owned(),
         ]
     )
 }
@@ -111,7 +112,7 @@ async fn abi_ethabi_token_identity() {
     let token_address = Token::Address(address);
 
     let token_address_ptr = asc_new(&mut module, &token_address).unwrap();
-    let new_address_obj: AscPtr<ArrayBuffer> =
+    let new_address_obj: AscPtr<AscAddress> =
         module.invoke_export("token_to_address", token_address_ptr);
 
     let new_token_ptr = module.invoke_export("token_from_address", new_address_obj);
