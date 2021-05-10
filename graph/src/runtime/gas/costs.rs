@@ -21,7 +21,7 @@ lazy_static! {
     pub static ref MAX_GAS_PER_HANDLER: u64 = std::env::var("GRAPH_MAX_GAS_PER_HANDLER")
         .ok()
         .map(|s| {
-            u64::from_str(&s).unwrap_or_else(|_| {
+            u64::from_str(&s.replace("_", "")).unwrap_or_else(|_| {
                 panic!("GRAPH_LOAD_WINDOW_SIZE must be a number, but is `{}`", s)
             })
         })
@@ -39,8 +39,8 @@ pub const HOST_EXPORT_GAS: Gas = Gas(10_000);
 
 /// As a heuristic for the cost of host fns it makes sense to reason in terms of bandwidth and
 /// calculate the cost from there. Because we don't have benchmarks for each host fn, we go with
-/// pessimistic assumption of performance of 10 MB/s, which nonetheless allows for 36 GB to be
-/// processed through host exports by a single handler at a 1 hour budget.
+/// pessimistic assumption of performance of 10 MB/s, which nonetheless allows for 10 GB to be
+/// processed through host exports by a single handler at a 1000 seconds budget.
 const DEFAULT_BYTE_PER_SECOND: u64 = 10_000_000;
 
 /// With the current parameters DEFAULT_GAS_PER_BYTE = 1_000.

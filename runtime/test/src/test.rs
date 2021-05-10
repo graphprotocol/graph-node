@@ -219,7 +219,7 @@ fn test_json_conversions(api_version: Version) {
         scalar::BigInt::from_signed_bytes_le(&bytes)
     );
 
-    assert_eq!(module.gas_used(), 184180372);
+    assert_eq!(module.gas_used(), 51937534);
 }
 
 #[tokio::test]
@@ -583,7 +583,7 @@ fn test_big_int_to_hex(api_version: Version) {
         "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     );
 
-    assert_eq!(module.gas_used(), 184013403);
+    assert_eq!(module.gas_used(), 51770565);
 }
 
 #[tokio::test]
@@ -660,7 +660,7 @@ fn test_big_int_arithmetic(api_version: Version) {
     let result: BigInt = asc_get(&module, result_ptr).unwrap();
     assert_eq!(result, BigInt::from(1));
 
-    assert_eq!(module.gas_used(), 184342018);
+    assert_eq!(module.gas_used(), 52099180);
 }
 
 #[tokio::test]
@@ -718,7 +718,7 @@ fn test_bytes_to_base58(api_version: Version) {
     let base58: String = asc_get(&module, result_ptr).unwrap();
 
     assert_eq!(base58, "QmWmyoMoctfbAaiEs2G46gpeUmhqFRDW6KWo64y5r581Vz");
-    assert_eq!(module.gas_used(), 183820465);
+    assert_eq!(module.gas_used(), 51577627);
 }
 
 #[tokio::test]
@@ -751,7 +751,7 @@ fn test_data_source_create(api_version: Version) {
             module.invoke_export2_void("dataSourceCreate", name, params)?;
             module.instance_ctx_mut().ctx.state.exit_handler();
 
-        assert_eq!(module.gas_used(), 543636483);
+        assert_eq!(module.gas_used(), 151393645);
 
             Ok(module.take_ctx().ctx.state.drain_created_data_sources())
         };
@@ -945,7 +945,7 @@ fn test_detect_contract_calls(api_version: Version) {
         data_source_with_calls.mapping.requires_archive().unwrap(),
         true
     );
-    assert_eq!(module.gas_used(), 312058391);
+    assert_eq!(module.gas_used(), 87948791);
 }
 
 #[tokio::test]

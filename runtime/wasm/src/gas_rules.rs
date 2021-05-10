@@ -156,7 +156,6 @@ impl Rules for GasRules {
         // In practice this will never be hit unless we also
         // free pages because this is 32bit WASM.
         const MAX_PAGES: u64 = 12 * GIB / PAGE;
-        // This ends up at 439,453,125 per page.
         let gas_per_page =
             NonZeroU32::new((*MAX_GAS_PER_HANDLER / MAX_PAGES).try_into().unwrap()).unwrap();
 
