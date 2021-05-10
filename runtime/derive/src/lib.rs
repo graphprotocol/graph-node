@@ -128,7 +128,7 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
 //
 //     fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
 //         let mut u32_bytes: [u8; size_of::<u32>()] = [0; size_of::<u32>()];
-//         if std::mem::size_of_val(&u32_bytes) != std::mem::size_of_val(&as_obj) {
+//         if std::mem::size_of_val(&u32_bytes) != std::mem::size_of_val(&asc_obj) {
 //             return Err(DeterministicHostError(anyhow::anyhow!("Invalid asc bytes size")));
 //         }
 //         u32_bytes.copy_from_slice(&asc_obj);
@@ -140,7 +140,7 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
 //             3u32 => JsonValueKind::String,
 //             4u32 => JsonValueKind::Array,
 //             5u32 => JsonValueKind::Object,
-//             _ => Err(DeterministicHostError(anyhow::anyhow!("value {} is out of range for {}", discr, "JsonValueKind")),
+//             _ => Err(DeterministicHostError(anyhow::anyhow!("value {} is out of range for {}", discr, "JsonValueKind"))),
 //         }
 //     }
 // }
