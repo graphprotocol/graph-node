@@ -8,12 +8,12 @@ use std::str::FromStr;
 /// Using 10 gas = ~1ns for WASM instructions.
 const GAS_PER_SECOND: u64 = 10_000_000_000;
 
-/// Set max gas to 1 hour worth of gas per handler. The intent here is to have the determinism
+/// Set max gas to 1000 seconds worth of gas per handler. The intent here is to have the determinism
 /// cutoff be very high, while still allowing more reasonable timer based cutoffs. Having a unit
 /// like 10 gas for ~1ns allows us to be granular in instructions which are aggregated into metered
 /// blocks via https://docs.rs/pwasm-utils/0.16.0/pwasm_utils/fn.inject_gas_counter.html But we can
 /// still charge very high numbers for other things.
-const CONST_MAX_GAS_PER_HANDLER: u64 = 3600 * GAS_PER_SECOND;
+const CONST_MAX_GAS_PER_HANDLER: u64 = 1000 * GAS_PER_SECOND;
 
 lazy_static! {
     /// This is configurable only for debugging purposes. This value is set by the protocol,
@@ -68,7 +68,7 @@ pub const BIG_MATH_GAS_OP: GasOp = GasOp {
 // Allow up to 1,000 ethereum calls. The justification is that we don't know how much Ethereum gas a
 // call takes, but we limit the maximum to 25 million. One unit of Ethereum gas is at least 100ns
 // according to these benchmarks [1], so 1000 of our gas. Assuming the worst case, an Ethereum call
-// should therefore consume 25 billion gas. This allows for 1440 calls per handler with the current
+// should therefore consume 25 billion gas. This allows for 400 calls per handler with the current
 // limits.
 //
 // [1] - https://www.sciencedirect.com/science/article/abs/pii/S0166531620300900
