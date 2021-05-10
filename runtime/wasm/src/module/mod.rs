@@ -976,11 +976,10 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscEnum<JsonValueKind>>, DeterministicHostError> {
         let bytes: Vec<u8> = asc_get(self, bytes_ptr)?;
-        gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(gas::complexity::Size, &bytes))?;
         let result = self
             .ctx
             .host_exports
-            .json_from_bytes(&bytes)
+            .json_from_bytes(&bytes, gas)
             .with_context(|| {
                 format!(
                     "Failed to parse JSON from byte array. Bytes (truncated to 1024 chars): `{:?}`",
@@ -999,19 +998,22 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     ) -> Result<AscPtr<AscResult<AscPtr<AscEnum<JsonValueKind>>, bool>>, DeterministicHostError>
     {
         let bytes: Vec<u8> = asc_get(self, bytes_ptr)?;
-        gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(gas::complexity::Size, &bytes))?;
-        let result = self.ctx.host_exports.json_from_bytes(&bytes).map_err(|e| {
-            warn!(
-                &self.ctx.logger,
-                "Failed to parse JSON from byte array";
-                "bytes" => format!("{:?}", bytes),
-                "error" => format!("{}", e)
-            );
+        let result = self
+            .ctx
+            .host_exports
+            .json_from_bytes(&bytes, gas)
+            .map_err(|e| {
+                warn!(
+                    &self.ctx.logger,
+                    "Failed to parse JSON from byte array";
+                    "bytes" => format!("{:?}", bytes),
+                    "error" => format!("{}", e)
+                );
 
-            // Map JSON errors to boolean to match the `Result<JSONValue, boolean>`
-            // result type expected by mappings
-            true
-        });
+                // Map JSON errors to boolean to match the `Result<JSONValue, boolean>`
+                // result type expected by mappings
+                true
+            });
         asc_new(self, &result)
     }
 
