@@ -1519,55 +1519,6 @@ pub(crate) async fn blocks_with_triggers(
     Ok(blocks)
 }
 
-pub async fn triggers_in_block(
-    adapter: Arc<EthereumAdapter>,
-    logger: Logger,
-    chain_store: Arc<dyn ChainStore>,
-    subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-    filter: TriggerFilter,
-    ethereum_block: BlockFinality,
-) -> Result<EthereumBlockWithTriggers, Error> {
-    let ethereum_block = get_calls(
-        adapter.as_ref(),
-        logger.clone(),
-        subgraph_metrics.clone(),
-        filter.clone(),
-        ethereum_block,
-    )
-    .await?;
-
-    match &ethereum_block {
-        BlockFinality::Final(block) => {
-            let block_number = block.number() as BlockNumber;
-            let mut blocks = blocks_with_triggers(
-                adapter,
-                logger,
-                chain_store,
-                subgraph_metrics,
-                block_number,
-                block_number,
-                filter,
-            )
-            .await?;
-            assert!(blocks.len() <= 1);
-
-            Ok(blocks
-                .pop()
-                .unwrap_or_else(|| EthereumBlockWithTriggers::new(vec![], ethereum_block)))
-        }
-        BlockFinality::NonFinal(full_block) => {
-            let mut triggers = Vec::new();
-            triggers.append(&mut parse_log_triggers(
-                filter.log,
-                &full_block.ethereum_block,
-            ));
-            triggers.append(&mut parse_call_triggers(filter.call, &full_block));
-            triggers.append(&mut parse_block_triggers(filter.block, &full_block));
-            Ok(EthereumBlockWithTriggers::new(triggers, ethereum_block))
-        }
-    }
-}
-
 pub(crate) async fn get_calls(
     adapter: &EthereumAdapter,
     logger: Logger,
