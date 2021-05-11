@@ -1,29 +1,29 @@
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
 use lazy_static::lazy_static;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::task;
 
-use graph::data::store::scalar::Bytes;
-use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
-use graph::data::subgraph::SubgraphFeature;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::util::lfu_cache::LfuCache;
 use graph::{blockchain::block_stream::BlockStreamMetrics, components::store::WritableStore};
+use graph::{blockchain::block_stream::BlockWithTriggers, data::subgraph::SubgraphFeature};
 use graph::{
     blockchain::BlockchainMap,
-    components::store::{BlockStore, DeploymentId, DeploymentLocator, ModificationsAndCache},
+    components::store::{DeploymentId, DeploymentLocator, ModificationsAndCache},
+};
+use graph::{
+    blockchain::TriggersAdapter,
+    data::subgraph::schema::{SubgraphError, POI_OBJECT},
 };
 use graph::{
     blockchain::{block_stream::BlockStreamEvent, Blockchain, TriggerFilter as _},
     components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing},
 };
-use graph_chain_ethereum::{
-    triggers_in_block, EthereumAdapter, EthereumAdapterTrait, EthereumNetworks,
-    SubgraphEthRpcMetrics, TriggerFilter,
-};
+use graph::{components::ethereum::NodeCapabilities, data::store::scalar::Bytes};
+use graph_chain_ethereum::{SubgraphEthRpcMetrics, WrappedBlockFinality};
 
 use super::loader::load_dynamic_data_sources;
 use super::SubgraphInstance;
@@ -46,13 +46,12 @@ lazy_static! {
 
 type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<DeploymentId, CancelGuard>>>;
 
-struct IndexingInputs<C> {
+struct IndexingInputs<C: Blockchain> {
     deployment: DeploymentLocator,
     features: BTreeSet<SubgraphFeature>,
     start_blocks: Vec<BlockNumber>,
     store: Arc<dyn WritableStore>,
-    chain_store: Arc<dyn ChainStore>,
-    eth_adapter: Arc<EthereumAdapter>,
+    triggers_adapter: Arc<C::TriggersAdapter>,
     chain: Arc<C>,
     templates: Arc<Vec<DataSourceTemplate>>,
 }
@@ -84,11 +83,9 @@ struct IndexingContext<T: RuntimeHostBuilder, C: Blockchain> {
     pub block_stream_metrics: Arc<BlockStreamMetrics>,
 }
 
-pub struct SubgraphInstanceManager<C, S, BS, M, H, L> {
+pub struct SubgraphInstanceManager<C, S, M, H, L> {
     logger_factory: LoggerFactory,
     subgraph_store: Arc<S>,
-    block_store: Arc<BS>,
-    eth_networks: EthereumNetworks,
     chains: Arc<BlockchainMap<C>>,
     host_builder: H,
     metrics_registry: Arc<M>,
@@ -197,11 +194,16 @@ impl SubgraphInstanceMetrics {
 }
 
 #[async_trait]
-impl<C, S, BS, M, H, L> SubgraphInstanceManagerTrait for SubgraphInstanceManager<C, S, BS, M, H, L>
+impl<C, S, M, H, L> SubgraphInstanceManagerTrait for SubgraphInstanceManager<C, S, M, H, L>
 where
     S: SubgraphStore,
-    BS: BlockStore,
-    C: Blockchain,
+
+    // ETHDEP: Associated types should be unconstrained
+    C: Blockchain<
+        NodeCapabilities = NodeCapabilities,
+        Block = WrappedBlockFinality,
+        TriggerData = EthereumTrigger,
+    >,
     M: MetricsRegistry,
     H: RuntimeHostBuilder,
     L: LinkResolver + Clone,
@@ -224,8 +226,6 @@ where
                 self.instances.clone(),
                 self.host_builder.clone(),
                 self.subgraph_store.clone(),
-                self.block_store.cheap_clone(),
-                self.eth_networks.clone(),
                 self.chains.clone(),
                 loc,
                 manifest,
@@ -257,11 +257,16 @@ where
     }
 }
 
-impl<C, S, BS, M, H, L> SubgraphInstanceManager<C, S, BS, M, H, L>
+impl<C, S, M, H, L> SubgraphInstanceManager<C, S, M, H, L>
 where
     S: SubgraphStore,
-    BS: BlockStore,
-    C: Blockchain,
+
+    // ETHDEP: Associated types should be unconstrained
+    C: Blockchain<
+        NodeCapabilities = NodeCapabilities,
+        Block = WrappedBlockFinality,
+        TriggerData = EthereumTrigger,
+    >,
     M: MetricsRegistry,
     H: RuntimeHostBuilder,
     L: LinkResolver + Clone,
@@ -269,8 +274,6 @@ where
     pub fn new(
         logger_factory: &LoggerFactory,
         subgraph_store: Arc<S>,
-        block_store: Arc<BS>,
-        eth_networks: EthereumNetworks,
         chains: Arc<BlockchainMap<C>>,
         host_builder: H,
         metrics_registry: Arc<M>,
@@ -290,8 +293,6 @@ where
         SubgraphInstanceManager {
             logger_factory,
             subgraph_store,
-            block_store,
-            eth_networks,
             chains,
             host_builder,
             manager_metrics: SubgraphInstanceManagerMetrics::new(metrics_registry.cheap_clone()),
@@ -306,8 +307,6 @@ where
         instances: SharedInstanceKeepAliveMap,
         host_builder: impl RuntimeHostBuilder,
         store: Arc<dyn SubgraphStore>,
-        block_store: Arc<BS>,
-        eth_networks: EthereumNetworks,
         chains: Arc<BlockchainMap<C>>,
         deployment: DeploymentLocator,
         manifest: serde_yaml::Mapping,
@@ -378,18 +377,10 @@ where
             .expect(&format!("no chain configured for network {}", network))
             .clone();
 
-        let chain_store = block_store.chain_store(&network).ok_or_else(|| {
-            anyhow!(
-                "expected chain store that matches subgraph network: {}",
-                &network
-            )
-        })?;
-
-        let eth_adapter = eth_networks
-            .adapter_with_capabilities(network.clone(), &required_capabilities).map_err(|e|
+        let triggers_adapter = chain.triggers_adapter(&deployment, &required_capabilities).map_err(|e|
                 anyhow!(
-                "expected eth adapter that matches subgraph network {} with required capabilities: {}: {}",
-                &network,
+                "expected triggers adapter that matches deployment {} with required capabilities: {}: {}",
+                &deployment,
                 &required_capabilities, e))?.clone();
 
         // Obtain filters from the manifest
@@ -441,9 +432,8 @@ where
                 deployment: deployment.clone(),
                 features,
                 start_blocks,
-                chain_store,
                 store,
-                eth_adapter,
+                triggers_adapter,
                 chain,
                 templates,
             },
@@ -488,7 +478,7 @@ where
 async fn run_subgraph<T, C>(mut ctx: IndexingContext<T, C>) -> Result<(), Error>
 where
     T: RuntimeHostBuilder,
-    C: Blockchain,
+    C: Blockchain<Block = WrappedBlockFinality, TriggerData = EthereumTrigger>,
 {
     // Clone a few things for different parts of the async processing
     let subgraph_metrics = ctx.subgraph_metrics.cheap_clone();
@@ -541,25 +531,10 @@ where
                     // First, load the block in order to get the parent hash.
                     if let Err(e) = ctx
                         .inputs
-                        .eth_adapter
-                        .load_blocks(
-                            logger.cheap_clone(),
-                            ctx.inputs.chain_store.cheap_clone(),
-                            HashSet::from_iter(Some(subgraph_ptr.hash_as_h256())),
-                        )
-                        .collect()
-                        .compat()
+                        .triggers_adapter
+                        .parent_ptr(&subgraph_ptr)
                         .await
-                        .map(|blocks| {
-                            assert_eq!(blocks.len(), 1);
-                            blocks.into_iter().next().unwrap()
-                        })
-                        .and_then(|block| {
-                            // Produce pointer to parent block (using parent hash).
-                            let parent_ptr = block
-                                .parent_ptr()
-                                .expect("genesis block cannot be reverted");
-
+                        .and_then(|parent_ptr| {
                             // Revert entity changes from this block, and update subgraph ptr.
                             ctx.inputs
                                 .store
@@ -618,11 +593,9 @@ where
 
             let start = Instant::now();
 
-            // ETHDEP: Stupid type conversion tricks
-            let block = ctx.state.filter.convert_block(block);
             let res = process_block(
                 &logger,
-                ctx.inputs.eth_adapter.cheap_clone(),
+                ctx.inputs.triggers_adapter.cheap_clone(),
                 ctx,
                 block_stream_cancel_handle.clone(),
                 block,
@@ -720,18 +693,18 @@ impl From<Error> for BlockProcessingError {
 /// whether new dynamic data sources have been added to the subgraph.
 async fn process_block<T: RuntimeHostBuilder, C>(
     logger: &Logger,
-    eth_adapter: Arc<EthereumAdapter>,
+    triggers_adapter: Arc<C::TriggersAdapter>,
     mut ctx: IndexingContext<T, C>,
     block_stream_cancel_handle: CancelHandle,
-    block: EthereumBlockWithTriggers,
+    block: BlockWithTriggers<C>,
 ) -> Result<(IndexingContext<T, C>, bool), BlockProcessingError>
 where
-    C: Blockchain,
+    C: Blockchain<Block = WrappedBlockFinality, TriggerData = EthereumTrigger>,
 {
-    let triggers = block.triggers;
-    let block = block.ethereum_block;
+    let triggers = block.trigger_data;
+    let block = Arc::new(block.block.0);
+    let block_ptr = block.ptr();
 
-    let block_ptr = BlockPtr::from(&block);
     let logger = logger.new(o!(
         "block_number" => format!("{:?}", block_ptr.number),
         "block_hash" => format!("{}", block_ptr.hash)
@@ -746,10 +719,6 @@ where
             triggers.len()
         );
     }
-
-    // Obtain current and new block pointer (after this block is processed)
-    let light_block = Arc::new(block.light_block());
-    let block_ptr_after = BlockPtr::from(&block);
 
     let metrics = ctx.subgraph_metrics.clone();
 
@@ -778,7 +747,7 @@ where
         proof_of_indexing.cheap_clone(),
         ctx.subgraph_metrics.clone(),
         &ctx.state.instance,
-        &light_block,
+        &block,
         triggers,
     )
     .await
@@ -828,20 +797,18 @@ where
             block_state.drain_created_data_sources(),
         )?;
 
-        let filter = TriggerFilter::from_data_sources(data_sources.iter());
+        let filter = C::TriggerFilter::from_data_sources(data_sources.iter());
 
         // Reprocess the triggers from this block that match the new data sources
-        let block_with_triggers = triggers_in_block(
-            eth_adapter.clone(),
-            logger.cheap_clone(),
-            ctx.inputs.chain_store.clone(),
-            ctx.ethrpc_metrics.clone(),
-            filter,
-            block.clone(),
-        )
-        .await?;
+        let block_with_triggers = triggers_adapter
+            .triggers_in_block(
+                &logger,
+                WrappedBlockFinality(block.as_ref().clone()),
+                filter,
+            )
+            .await?;
 
-        let triggers = block_with_triggers.triggers;
+        let triggers = block_with_triggers.trigger_data;
 
         if triggers.len() == 1 {
             info!(
@@ -871,7 +838,7 @@ where
             block_state = SubgraphInstance::<T>::process_trigger_in_runtime_hosts(
                 &logger,
                 &runtime_hosts,
-                &light_block,
+                &block,
                 trigger,
                 block_state,
                 proof_of_indexing.cheap_clone(),
@@ -974,7 +941,7 @@ where
     };
 
     match ctx.inputs.store.transact_block_operations(
-        block_ptr_after,
+        block_ptr,
         mods,
         stopwatch,
         data_sources,
@@ -1056,7 +1023,7 @@ async fn process_triggers(
     proof_of_indexing: SharedProofOfIndexing,
     subgraph_metrics: Arc<SubgraphInstanceMetrics>,
     instance: &SubgraphInstance<impl RuntimeHostBuilder>,
-    block: &Arc<LightEthereumBlock>,
+    block: &Arc<BlockFinality>,
     triggers: Vec<EthereumTrigger>,
 ) -> Result<BlockState, MappingError> {
     for trigger in triggers.into_iter() {
@@ -1075,7 +1042,7 @@ async fn process_triggers(
         block_state = instance
             .process_trigger(
                 &logger,
-                &block,
+                block,
                 trigger,
                 block_state,
                 proof_of_indexing.cheap_clone(),

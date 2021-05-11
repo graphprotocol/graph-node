@@ -6,17 +6,17 @@ mod transport;
 
 use graph::prelude::{BlockPtr, EthereumBlockWithTriggers};
 
-pub use self::ethereum_adapter::{triggers_in_block, EthereumAdapter};
+pub use self::ethereum_adapter::EthereumAdapter;
 pub use self::transport::{EventLoopHandle, Transport};
 
-mod chain;
+pub mod chain;
 mod network;
 
 pub use crate::adapter::{
     EthereumAdapter as EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError,
     MockEthereumAdapter, ProviderEthRpcMetrics, SubgraphEthRpcMetrics, TriggerFilter,
 };
-pub use crate::chain::Chain;
+pub use crate::chain::{Chain, WrappedBlockFinality};
 pub use crate::network::EthereumNetworks;
 
 pub enum BlockStreamEvent {

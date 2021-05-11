@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+use std::iter::FromIterator;
 use std::{pin::Pin, sync::Arc, task::Context};
 
 use anyhow::Error;
@@ -210,7 +212,8 @@ impl Blockchain for Chain {
 }
 
 // ETHDEP: Wrapper until we can move BlockFinality into this crate
-pub struct WrappedBlockFinality(pub(crate) BlockFinality);
+#[derive(Clone)]
+pub struct WrappedBlockFinality(pub BlockFinality);
 
 impl Block for WrappedBlockFinality {
     fn ptr(&self) -> BlockPtr {
@@ -276,7 +279,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 .into_iter()
                 .map(|block| {
                     BlockWithTriggers::new(
-                        Box::new(WrappedBlockFinality(block.ethereum_block)),
+                        WrappedBlockFinality(block.ethereum_block),
                         block.triggers,
                     )
                 })
@@ -286,22 +289,13 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
 
     async fn triggers_in_block(
         &self,
+        logger: &Logger,
         block: WrappedBlockFinality,
         filter: TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
-        /*
-                pub async fn triggers_in_block(
-                    adapter: Arc<EthereumAdapter>,
-                    logger: Logger,
-                    chain_store: Arc<dyn ChainStore>,
-                    subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-                    filter: TriggerFilter,
-                    ethereum_block: BlockFinality,
-                ) -> Result<EthereumBlockWithTriggers, Error> {
-        */
         let block = get_calls(
             self.eth_adapter.as_ref(),
-            self.logger.clone(),
+            logger.clone(),
             self.ethrpc_metrics.clone(),
             filter.clone(),
             block.0,
@@ -313,7 +307,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 let block_number = block.number() as BlockNumber;
                 let mut blocks = blocks_with_triggers(
                     self.eth_adapter.clone(),
-                    self.logger.clone(),
+                    logger.clone(),
                     self.chain_store.clone(),
                     self.ethrpc_metrics.clone(),
                     block_number,
@@ -329,7 +323,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                     .unwrap_or_else(|| (block, vec![]));
 
                 Ok(BlockWithTriggers::new(
-                    Box::new(WrappedBlockFinality(block)),
+                    WrappedBlockFinality(block),
                     triggers,
                 ))
             }
@@ -342,7 +336,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 triggers.append(&mut parse_call_triggers(filter.call, &full_block));
                 triggers.append(&mut parse_block_triggers(filter.block, &full_block));
                 Ok(BlockWithTriggers::new(
-                    Box::new(WrappedBlockFinality(block)),
+                    WrappedBlockFinality(block),
                     triggers,
                 ))
             }
@@ -367,6 +361,26 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 calls: None,
             }))
         }))
+    }
+
+    async fn parent_ptr(&self, block: &BlockPtr) -> Result<BlockPtr, Error> {
+        use futures::stream::Stream;
+        use graph::prelude::LightEthereumBlockExt;
+
+        let blocks = self
+            .eth_adapter
+            .load_blocks(
+                self.logger.cheap_clone(),
+                self.chain_store.cheap_clone(),
+                HashSet::from_iter(Some(block.hash_as_h256())),
+            )
+            .collect()
+            .compat()
+            .await?;
+        assert_eq!(blocks.len(), 1);
+        Ok(blocks[0]
+            .parent_ptr()
+            .expect("genesis block cannot be reverted"))
     }
 }
 

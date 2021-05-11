@@ -16,12 +16,12 @@ use super::{Block, BlockPtr, Blockchain};
 use fail::fail_point;
 
 pub struct BlockWithTriggers<C: Blockchain> {
-    pub block: Box<C::Block>,
+    pub block: C::Block,
     pub trigger_data: Vec<C::TriggerData>,
 }
 
 impl<C: Blockchain> BlockWithTriggers<C> {
-    pub fn new(block: Box<C::Block>, trigger_data: Vec<C::TriggerData>) -> Self {
+    pub fn new(block: C::Block, trigger_data: Vec<C::TriggerData>) -> Self {
         Self {
             block,
             trigger_data,
@@ -68,6 +68,7 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
     // Used for reprocessing blocks when creating a data source.
     async fn triggers_in_block(
         &self,
+        logger: &Logger,
         block: C::Block,
         filter: C::TriggerFilter,
     ) -> Result<BlockWithTriggers<C>, Error>;
@@ -75,6 +76,9 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
     /// Return `true` if the block with the given hash and number is on the
     /// main chain, i.e., the chain going back from the current chain head.
     async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error>;
+
+    /// Get pointer to parent of `block`. This is called when reverting `block`.
+    async fn parent_ptr(&self, block: &BlockPtr) -> Result<BlockPtr, Error>;
 }
 
 pub enum BlockStreamEvent<C: Blockchain> {
@@ -567,7 +571,7 @@ where
                         // Note that head_ancestor is a child of subgraph_ptr.
                         let block = self
                             .adapter
-                            .triggers_in_block(head_ancestor, filter)
+                            .triggers_in_block(&self.logger, head_ancestor, filter)
                             .await?;
                         Ok(ReconciliationStep::ProcessDescendantBlocks(vec![block], 1))
                     } else {

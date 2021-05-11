@@ -117,7 +117,7 @@ where
     pub(crate) async fn process_trigger(
         &self,
         logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
+        block: &Arc<BlockFinality>,
         trigger: EthereumTrigger,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
@@ -136,11 +136,12 @@ where
     pub(crate) async fn process_trigger_in_runtime_hosts(
         logger: &Logger,
         hosts: &[Arc<T::Host>],
-        block: &Arc<LightEthereumBlock>,
+        block: &Arc<BlockFinality>,
         trigger: EthereumTrigger,
         mut state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, MappingError> {
+        let block = Arc::new(block.light_block());
         for host in hosts {
             let mapping_trigger = match host.match_and_decode(&trigger, &block, logger)? {
                 // Trigger matches and was decoded as a mapping trigger.
@@ -153,7 +154,7 @@ where
             state = host
                 .process_mapping_trigger(
                     logger,
-                    block,
+                    &block,
                     mapping_trigger,
                     state,
                     proof_of_indexing.cheap_clone(),
