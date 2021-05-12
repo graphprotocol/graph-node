@@ -110,24 +110,6 @@ impl BlockFinality {
 }
 
 #[derive(Clone, Debug)]
-pub struct EthereumBlockWithTriggers {
-    pub ethereum_block: BlockFinality,
-    pub triggers: Vec<EthereumTrigger>,
-}
-
-impl EthereumBlockWithTriggers {
-    pub fn new(mut triggers: Vec<EthereumTrigger>, ethereum_block: BlockFinality) -> Self {
-        // Sort the triggers
-        triggers.sort();
-
-        EthereumBlockWithTriggers {
-            ethereum_block,
-            triggers,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
 pub struct EthereumBlockWithCalls {
     pub ethereum_block: EthereumBlock,
     /// The calls in this block; `None` means we haven't checked yet,

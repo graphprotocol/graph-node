@@ -10,7 +10,7 @@ use std::time::Instant;
 
 use ethabi::ParamType;
 use graph::{
-    blockchain::{BlockPtr, IngestorError},
+    blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
         anyhow, async_trait, debug, error, ethabi,
         futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
@@ -41,7 +41,7 @@ use crate::{
         ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
     },
     transport::Transport,
-    TriggerFilter,
+    TriggerFilter, WrappedBlockFinality,
 };
 
 #[derive(Clone)]
@@ -1381,7 +1381,7 @@ pub(crate) async fn blocks_with_triggers(
     from: BlockNumber,
     to: BlockNumber,
     filter: &TriggerFilter,
-) -> Result<Vec<EthereumBlockWithTriggers>, Error> {
+) -> Result<Vec<BlockWithTriggers<crate::Chain>>, Error> {
     // Each trigger filter needs to be queried for the same block range
     // and the blocks yielded need to be deduped. If any error occurs
     // while searching for a trigger type, the entire operation fails.
@@ -1488,9 +1488,9 @@ pub(crate) async fn blocks_with_triggers(
         .load_blocks(logger1, chain_store, block_hashes)
         .and_then(
             move |block| match triggers_by_block.remove(&(block.number() as BlockNumber)) {
-                Some(triggers) => Ok(EthereumBlockWithTriggers::new(
+                Some(triggers) => Ok(BlockWithTriggers::new(
+                    WrappedBlockFinality(BlockFinality::Final(block)),
                     triggers,
-                    BlockFinality::Final(block),
                 )),
                 None => Err(anyhow!(
                     "block {:?} not found in `triggers_by_block`",
@@ -1502,12 +1502,12 @@ pub(crate) async fn blocks_with_triggers(
         .compat()
         .await?;
 
-    blocks.sort_by_key(|block| block.ethereum_block.number());
+    blocks.sort_by_key(|block| block.ptr().number);
 
     // Sanity check that the returned blocks are in the correct range.
     // Unwrap: `blocks` always includes at least `to`.
-    let first = blocks.first().unwrap().ethereum_block.number() as BlockNumber;
-    let last = blocks.last().unwrap().ethereum_block.number() as BlockNumber;
+    let first = blocks.first().unwrap().ptr().number;
+    let last = blocks.last().unwrap().ptr().number;
     if first < from {
         return Err(anyhow!(
             "block {} returned by the Ethereum node is before {}, the first block of the requested range",

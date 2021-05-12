@@ -4,8 +4,6 @@ mod ethereum_adapter;
 pub mod network_indexer;
 mod transport;
 
-use graph::prelude::{BlockPtr, EthereumBlockWithTriggers};
-
 pub use self::ethereum_adapter::EthereumAdapter;
 pub use self::transport::{EventLoopHandle, Transport};
 
@@ -18,8 +16,3 @@ pub use crate::adapter::{
 };
 pub use crate::chain::{Chain, WrappedBlockFinality};
 pub use crate::network::EthereumNetworks;
-
-pub enum BlockStreamEvent {
-    Block(EthereumBlockWithTriggers),
-    Revert(BlockPtr),
-}
