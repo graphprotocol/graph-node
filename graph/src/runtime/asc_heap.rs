@@ -20,7 +20,7 @@ pub trait AscHeap: Sized {
         T: ToAscObj<C>,
     {
         let obj = rust_obj.to_asc_obj(self)?;
-        AscPtr::alloc_obj(&obj, self)
+        AscPtr::alloc_obj(obj, self)
     }
 
     ///  Read the rust representation of an Asc object of class `C`.

@@ -81,7 +81,7 @@ impl<T: AscValue> ArrayBuffer<T> {
 }
 
 impl<T> AscType for ArrayBuffer<T> {
-    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+    fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
         let mut asc_layout: Vec<u8> = Vec::new();
 
         let byte_length: [u8; 4] = self.byte_length.to_le_bytes();
@@ -146,9 +146,9 @@ impl<T: AscValue> TypedArray<T> {
     ) -> Result<Self, DeterministicHostError> {
         let buffer = ArrayBuffer::new(content)?;
         Ok(TypedArray {
-            buffer: AscPtr::alloc_obj(&buffer, heap)?,
-            byte_offset: 0,
             byte_length: buffer.byte_length,
+            buffer: AscPtr::alloc_obj(buffer, heap)?,
+            byte_offset: 0,
         })
     }
 
@@ -187,7 +187,7 @@ impl AscString {
 }
 
 impl AscType for AscString {
-    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+    fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
         let mut asc_layout: Vec<u8> = Vec::new();
 
         let length: [u8; 4] = self.length.to_le_bytes();
@@ -276,7 +276,7 @@ pub(crate) struct Array<T> {
 impl<T: AscValue> Array<T> {
     pub fn new<H: AscHeap>(content: &[T], heap: &mut H) -> Result<Self, DeterministicHostError> {
         Ok(Array {
-            buffer: AscPtr::alloc_obj(&ArrayBuffer::new(content)?, heap)?,
+            buffer: AscPtr::alloc_obj(ArrayBuffer::new(content)?, heap)?,
             // If this cast would overflow, the above line has already panicked.
             length: content.len() as u32,
         })
@@ -293,7 +293,7 @@ impl<T: AscValue> Array<T> {
 pub(crate) struct EnumPayload(pub u64);
 
 impl AscType for EnumPayload {
-    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+    fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
         self.0.to_asc_bytes()
     }
 
