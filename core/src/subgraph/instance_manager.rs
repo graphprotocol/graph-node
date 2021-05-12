@@ -56,15 +56,15 @@ struct IndexingInputs<C: Blockchain> {
     templates: Arc<Vec<DataSourceTemplate>>,
 }
 
-struct IndexingState<T: RuntimeHostBuilder, C: Blockchain> {
+struct IndexingState<T: RuntimeHostBuilder<C>, C: Blockchain> {
     logger: Logger,
-    instance: SubgraphInstance<T>,
+    instance: SubgraphInstance<C, T>,
     instances: SharedInstanceKeepAliveMap,
     filter: C::TriggerFilter,
     entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
 }
 
-struct IndexingContext<T: RuntimeHostBuilder, C: Blockchain> {
+struct IndexingContext<T: RuntimeHostBuilder<C>, C: Blockchain> {
     /// Read only inputs that are needed while indexing a subgraph.
     pub inputs: IndexingInputs<C>,
 
@@ -205,7 +205,7 @@ where
         TriggerData = EthereumTrigger,
     >,
     M: MetricsRegistry,
-    H: RuntimeHostBuilder,
+    H: RuntimeHostBuilder<C>,
     L: LinkResolver + Clone,
 {
     async fn start_subgraph(
@@ -268,7 +268,7 @@ where
         TriggerData = EthereumTrigger,
     >,
     M: MetricsRegistry,
-    H: RuntimeHostBuilder,
+    H: RuntimeHostBuilder<C>,
     L: LinkResolver + Clone,
 {
     pub fn new(
@@ -305,7 +305,7 @@ where
     async fn start_subgraph_inner(
         logger: Logger,
         instances: SharedInstanceKeepAliveMap,
-        host_builder: impl RuntimeHostBuilder,
+        host_builder: impl RuntimeHostBuilder<C>,
         store: Arc<dyn SubgraphStore>,
         chains: Arc<BlockchainMap<C>>,
         deployment: DeploymentLocator,
@@ -477,7 +477,7 @@ where
 
 async fn run_subgraph<T, C>(mut ctx: IndexingContext<T, C>) -> Result<(), Error>
 where
-    T: RuntimeHostBuilder,
+    T: RuntimeHostBuilder<C>,
     C: Blockchain<Block = WrappedBlockFinality, TriggerData = EthereumTrigger>,
 {
     // Clone a few things for different parts of the async processing
@@ -691,7 +691,7 @@ impl From<Error> for BlockProcessingError {
 
 /// Processes a block and returns the updated context and a boolean flag indicating
 /// whether new dynamic data sources have been added to the subgraph.
-async fn process_block<T: RuntimeHostBuilder, C>(
+async fn process_block<T: RuntimeHostBuilder<C>, C>(
     logger: &Logger,
     triggers_adapter: Arc<C::TriggersAdapter>,
     mut ctx: IndexingContext<T, C>,
@@ -835,7 +835,7 @@ where
         // Process the triggers in each host in the same order the
         // corresponding data sources have been created.
         for trigger in triggers.into_iter() {
-            block_state = SubgraphInstance::<T>::process_trigger_in_runtime_hosts(
+            block_state = SubgraphInstance::<C, T>::process_trigger_in_runtime_hosts(
                 &logger,
                 &runtime_hosts,
                 &block,
@@ -1017,12 +1017,12 @@ async fn update_proof_of_indexing(
     Ok(())
 }
 
-async fn process_triggers(
+async fn process_triggers<C: Blockchain>(
     logger: &Logger,
     mut block_state: BlockState,
     proof_of_indexing: SharedProofOfIndexing,
     subgraph_metrics: Arc<SubgraphInstanceMetrics>,
-    instance: &SubgraphInstance<impl RuntimeHostBuilder>,
+    instance: &SubgraphInstance<C, impl RuntimeHostBuilder<C>>,
     block: &Arc<BlockFinality>,
     triggers: Vec<EthereumTrigger>,
 ) -> Result<BlockState, MappingError> {
@@ -1063,7 +1063,7 @@ async fn process_triggers(
     Ok(block_state)
 }
 
-fn create_dynamic_data_sources<T: RuntimeHostBuilder, C>(
+fn create_dynamic_data_sources<T: RuntimeHostBuilder<C>, C>(
     logger: Logger,
     ctx: &mut IndexingContext<T, C>,
     host_metrics: Arc<HostMetrics>,
@@ -1111,7 +1111,7 @@ where
     Ok((data_sources, runtime_hosts))
 }
 
-fn persist_dynamic_data_sources<T: RuntimeHostBuilder, C>(
+fn persist_dynamic_data_sources<T: RuntimeHostBuilder<C>, C>(
     logger: Logger,
     ctx: &mut IndexingContext<T, C>,
     entity_cache: &mut EntityCache,
