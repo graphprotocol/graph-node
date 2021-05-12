@@ -71,6 +71,10 @@ impl AscHeap for WasmInstance {
     fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, DeterministicHostError> {
         self.instance_ctx().get(offset, size)
     }
+
+    fn api_version(&self) -> Version {
+        self.instance_ctx().api_version()
+    }
 }
 
 impl WasmInstance {
@@ -630,6 +634,10 @@ impl AscHeap for WasmInstanceContext {
         })?;
 
         Ok(data)
+    }
+
+    fn api_version(&self) -> Version {
+        self.ctx.host_exports.api_version.clone()
     }
 }
 
