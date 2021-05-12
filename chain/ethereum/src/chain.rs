@@ -274,17 +274,6 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             filter,
         )
         .await
-        .map(|blocks| {
-            blocks
-                .into_iter()
-                .map(|block| {
-                    BlockWithTriggers::new(
-                        WrappedBlockFinality(block.ethereum_block),
-                        block.triggers,
-                    )
-                })
-                .collect()
-        })
     }
 
     async fn triggers_in_block(
@@ -305,7 +294,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         match &block {
             BlockFinality::Final(_) => {
                 let block_number = block.number() as BlockNumber;
-                let mut blocks = blocks_with_triggers(
+                let blocks = blocks_with_triggers(
                     self.eth_adapter.clone(),
                     logger.clone(),
                     self.chain_store.clone(),
@@ -315,17 +304,8 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                     filter,
                 )
                 .await?;
-                assert!(blocks.len() <= 1);
-
-                let (block, triggers) = blocks
-                    .pop()
-                    .map(|block| (block.ethereum_block, block.triggers))
-                    .unwrap_or_else(|| (block, vec![]));
-
-                Ok(BlockWithTriggers::new(
-                    WrappedBlockFinality(block),
-                    triggers,
-                ))
+                assert!(blocks.len() == 1);
+                Ok(blocks.into_iter().next().unwrap())
             }
             BlockFinality::NonFinal(full_block) => {
                 let mut triggers = Vec::new();

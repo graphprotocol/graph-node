@@ -6,9 +6,9 @@ use web3::types::H256;
 pub use self::network::NodeCapabilities;
 pub use self::types::{
     BlockFinality, EthereumBlock, EthereumBlockData, EthereumBlockTriggerType,
-    EthereumBlockWithCalls, EthereumBlockWithTriggers, EthereumCall, EthereumCallData,
-    EthereumEventData, EthereumTransactionData, EthereumTrigger, LightEthereumBlock,
-    LightEthereumBlockExt, MappingTrigger,
+    EthereumBlockWithCalls, EthereumCall, EthereumCallData, EthereumEventData,
+    EthereumTransactionData, EthereumTrigger, LightEthereumBlock, LightEthereumBlockExt,
+    MappingTrigger,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
