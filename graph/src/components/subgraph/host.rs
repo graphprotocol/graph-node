@@ -53,7 +53,7 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + Debug + 'static {
     async fn process_mapping_trigger(
         &self,
         logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
+        block_ptr: BlockPtr,
         trigger: MappingTrigger,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,

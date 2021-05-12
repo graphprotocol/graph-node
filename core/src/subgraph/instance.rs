@@ -158,7 +158,7 @@ where
             state = host
                 .process_mapping_trigger(
                     logger,
-                    &block,
+                    block.block_ptr(),
                     mapping_trigger,
                     state,
                     proof_of_indexing.cheap_clone(),
