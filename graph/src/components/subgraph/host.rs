@@ -46,7 +46,7 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + Debug + 'static {
     fn match_and_decode(
         &self,
         trigger: &EthereumTrigger,
-        block: &LightEthereumBlock,
+        block: Arc<LightEthereumBlock>,
         logger: &Logger,
     ) -> Result<Option<MappingTrigger>, Error>;
 

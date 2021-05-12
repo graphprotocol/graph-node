@@ -43,7 +43,7 @@ where
     fn match_and_decode(
         &self,
         _trigger: &C::TriggerData,
-        _block: &C::Block,
+        _block: Arc<C::Block>,
         _logger: &Logger,
     ) -> Result<Option<C::MappingTrigger>, Error> {
         todo!()
@@ -319,7 +319,7 @@ impl super::DataSource {
     pub fn match_and_decode(
         &self,
         trigger: &EthereumTrigger,
-        block: &LightEthereumBlock,
+        block: Arc<LightEthereumBlock>,
         logger: &Logger,
     ) -> Result<Option<MappingTrigger>, Error> {
         if !self.matches_trigger_address(&trigger) {
@@ -336,7 +336,7 @@ impl super::DataSource {
                     Some(handler) => handler,
                     None => return Ok(None),
                 };
-                Ok(Some(MappingTrigger::Block { handler }))
+                Ok(Some(MappingTrigger::Block { block, handler }))
             }
             EthereumTrigger::Log(log) => {
                 let potential_handlers = self.handlers_for_log(log)?;
@@ -415,6 +415,7 @@ impl super::DataSource {
                 );
 
                 Ok(Some(MappingTrigger::Log {
+                    block,
                     transaction,
                     log: log.cheap_clone(),
                     params,
@@ -508,6 +509,7 @@ impl super::DataSource {
                 );
 
                 Ok(Some(MappingTrigger::Call {
+                    block,
                     transaction,
                     call: call.cheap_clone(),
                     inputs,

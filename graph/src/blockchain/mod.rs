@@ -162,7 +162,7 @@ pub trait DataSource<C: Blockchain>: 'static {
     fn match_and_decode(
         &self,
         trigger: &C::TriggerData,
-        block: &C::Block,
+        block: Arc<C::Block>,
         logger: &Logger,
     ) -> Result<Option<C::MappingTrigger>, Error>;
 }

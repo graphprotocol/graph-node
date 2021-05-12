@@ -275,12 +275,14 @@ impl PartialOrd for EthereumTrigger {
 #[derive(Debug, AsStaticStr)]
 pub enum MappingTrigger {
     Log {
+        block: Arc<LightEthereumBlock>,
         transaction: Arc<Transaction>,
         log: Arc<Log>,
         params: Vec<LogParam>,
         handler: MappingEventHandler,
     },
     Call {
+        block: Arc<LightEthereumBlock>,
         transaction: Arc<Transaction>,
         call: Arc<EthereumCall>,
         inputs: Vec<LogParam>,
@@ -288,6 +290,7 @@ pub enum MappingTrigger {
         handler: MappingCallHandler,
     },
     Block {
+        block: Arc<LightEthereumBlock>,
         handler: MappingBlockHandler,
     },
 }

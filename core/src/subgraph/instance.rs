@@ -146,13 +146,14 @@ where
     ) -> Result<BlockState, MappingError> {
         let block = Arc::new(block.light_block());
         for host in hosts {
-            let mapping_trigger = match host.match_and_decode(&trigger, &block, logger)? {
-                // Trigger matches and was decoded as a mapping trigger.
-                Some(mapping_trigger) => mapping_trigger,
+            let mapping_trigger =
+                match host.match_and_decode(&trigger, block.cheap_clone(), logger)? {
+                    // Trigger matches and was decoded as a mapping trigger.
+                    Some(mapping_trigger) => mapping_trigger,
 
-                // Trigger does not match, do not process it.
-                None => continue,
-            };
+                    // Trigger does not match, do not process it.
+                    None => continue,
+                };
 
             state = host
                 .process_mapping_trigger(

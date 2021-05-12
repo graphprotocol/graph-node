@@ -270,7 +270,7 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost {
     fn match_and_decode(
         &self,
         trigger: &EthereumTrigger,
-        block: &LightEthereumBlock,
+        block: Arc<LightEthereumBlock>,
         logger: &Logger,
     ) -> Result<Option<MappingTrigger>, Error> {
         self.data_source.match_and_decode(trigger, block, logger)
