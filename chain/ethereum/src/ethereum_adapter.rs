@@ -681,14 +681,14 @@ impl EthereumAdapter {
         .boxed()
     }
 
-    pub(crate) fn calls_in_block_range(
+    pub(crate) fn calls_in_block_range<'a>(
         &self,
         logger: &Logger,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         from: BlockNumber,
         to: BlockNumber,
-        call_filter: EthereumCallFilter,
-    ) -> Box<dyn Stream<Item = EthereumCall, Error = Error> + Send> {
+        call_filter: &'a EthereumCallFilter,
+    ) -> Box<dyn Stream<Item = EthereumCall, Error = Error> + Send + 'a> {
         let eth = self.clone();
 
         let addresses: Vec<H160> = call_filter
@@ -1380,12 +1380,14 @@ pub(crate) async fn blocks_with_triggers(
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
     from: BlockNumber,
     to: BlockNumber,
-    filter: TriggerFilter,
+    filter: &TriggerFilter,
 ) -> Result<Vec<EthereumBlockWithTriggers>, Error> {
     // Each trigger filter needs to be queried for the same block range
     // and the blocks yielded need to be deduped. If any error occurs
     // while searching for a trigger type, the entire operation fails.
     let eth = adapter.clone();
+    let call_filter = EthereumCallFilter::from(filter.block.clone());
+
     let mut trigger_futs: futures::stream::FuturesUnordered<
         Box<dyn Future<Item = Vec<EthereumTrigger>, Error = Error> + Send>,
     > = futures::stream::FuturesUnordered::new();
@@ -1393,20 +1395,26 @@ pub(crate) async fn blocks_with_triggers(
     // Scan the block range from triggers to find relevant blocks
     if !filter.log.is_empty() {
         trigger_futs.push(Box::new(
-            eth.logs_in_block_range(&logger, subgraph_metrics.clone(), from, to, filter.log)
-                .map_ok(|logs: Vec<Log>| {
-                    logs.into_iter()
-                        .map(Arc::new)
-                        .map(EthereumTrigger::Log)
-                        .collect()
-                })
-                .compat(),
+            eth.logs_in_block_range(
+                &logger,
+                subgraph_metrics.clone(),
+                from,
+                to,
+                filter.log.clone(),
+            )
+            .map_ok(|logs: Vec<Log>| {
+                logs.into_iter()
+                    .map(Arc::new)
+                    .map(EthereumTrigger::Log)
+                    .collect()
+            })
+            .compat(),
         ))
     }
 
     if !filter.call.is_empty() {
         trigger_futs.push(Box::new(
-            eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, filter.call)
+            eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, &filter.call)
                 .map(Arc::new)
                 .map(EthereumTrigger::Call)
                 .collect(),
@@ -1427,9 +1435,8 @@ pub(crate) async fn blocks_with_triggers(
         // To determine which blocks include a call to addresses
         // in the block filter, transform the `block_filter` into
         // a `call_filter` and run `blocks_with_calls`
-        let call_filter = EthereumCallFilter::from(filter.block);
         trigger_futs.push(Box::new(
-            eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, call_filter)
+            eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, &call_filter)
                 .map(|call| {
                     EthereumTrigger::Block(
                         BlockPtr::from(&call),
@@ -1562,14 +1569,13 @@ pub(crate) async fn get_calls(
 }
 
 pub(crate) fn parse_log_triggers(
-    log_filter: EthereumLogFilter,
+    log_filter: &EthereumLogFilter,
     block: &EthereumBlock,
 ) -> Vec<EthereumTrigger> {
     block
         .transaction_receipts
         .iter()
         .flat_map(move |receipt| {
-            let log_filter = log_filter.clone();
             receipt
                 .logs
                 .iter()
@@ -1580,7 +1586,7 @@ pub(crate) fn parse_log_triggers(
 }
 
 pub(crate) fn parse_call_triggers(
-    call_filter: EthereumCallFilter,
+    call_filter: &EthereumCallFilter,
     block: &EthereumBlockWithCalls,
 ) -> Vec<EthereumTrigger> {
     match &block.calls {

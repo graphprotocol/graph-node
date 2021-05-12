@@ -262,7 +262,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         from: BlockNumber,
         to: BlockNumber,
-        filter: TriggerFilter,
+        filter: &TriggerFilter,
     ) -> Result<Vec<BlockWithTriggers<Chain>>, Error> {
         blocks_with_triggers(
             self.eth_adapter.clone(),
@@ -271,7 +271,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             self.ethrpc_metrics.clone(),
             from,
             to,
-            filter.clone(),
+            filter,
         )
         .await
         .map(|blocks| {
@@ -291,7 +291,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         logger: &Logger,
         block: WrappedBlockFinality,
-        filter: TriggerFilter,
+        filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         let block = get_calls(
             self.eth_adapter.as_ref(),
@@ -330,11 +330,11 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             BlockFinality::NonFinal(full_block) => {
                 let mut triggers = Vec::new();
                 triggers.append(&mut parse_log_triggers(
-                    filter.log,
+                    &filter.log,
                     &full_block.ethereum_block,
                 ));
-                triggers.append(&mut parse_call_triggers(filter.call, &full_block));
-                triggers.append(&mut parse_block_triggers(filter.block, &full_block));
+                triggers.append(&mut parse_call_triggers(&filter.call, &full_block));
+                triggers.append(&mut parse_block_triggers(filter.block.clone(), &full_block));
                 Ok(BlockWithTriggers::new(
                     WrappedBlockFinality(block),
                     triggers,
