@@ -209,7 +209,7 @@ impl RuntimeHost {
         logger: &Logger,
         state: BlockState,
         trigger: MappingTrigger,
-        block: &Arc<LightEthereumBlock>,
+        block_ptr: BlockPtr,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, MappingError> {
         let trigger_type = trigger.as_static();
@@ -235,7 +235,7 @@ impl RuntimeHost {
                     logger: logger.cheap_clone(),
                     state,
                     host_exports: self.host_exports.cheap_clone(),
-                    block: block.cheap_clone(),
+                    block_ptr,
                     proof_of_indexing,
                 },
                 trigger,
@@ -279,12 +279,12 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost {
     async fn process_mapping_trigger(
         &self,
         logger: &Logger,
-        block: &Arc<LightEthereumBlock>,
+        block_ptr: BlockPtr,
         trigger: MappingTrigger,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, MappingError> {
-        self.send_mapping_request(logger, state, trigger, block, proof_of_indexing)
+        self.send_mapping_request(logger, state, trigger, block_ptr, proof_of_indexing)
             .await
     }
 

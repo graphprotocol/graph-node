@@ -197,12 +197,12 @@ fn mock_context(
     store: Arc<impl SubgraphStore>,
     call_cache: Arc<impl EthereumCallCache>,
 ) -> MappingContext {
-    let mut block = LightEthereumBlock::default();
-    block.hash = Some(Default::default());
-    block.number = Some(0.into());
     MappingContext {
         logger: test_store::LOGGER.clone(),
-        block: Arc::new(block),
+        block_ptr: BlockPtr {
+            hash: Default::default(),
+            number: 0,
+        },
         host_exports: Arc::new(mock_host_exports(
             deployment.hash.clone(),
             data_source,

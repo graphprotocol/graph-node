@@ -2,7 +2,6 @@ use crate::{error::DeterminismLevel, module::IntoTrap, UnresolvedContractCall};
 use ethabi::param_type::Reader;
 use ethabi::{decode, encode, Address, Token};
 use graph::bytes::Bytes;
-use graph::components::ethereum::*;
 use graph::components::store::EntityKey;
 use graph::components::subgraph::{ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::components::three_box::ThreeBoxAdapter;
@@ -274,7 +273,7 @@ impl HostExports {
     pub(crate) fn ethereum_call(
         &self,
         logger: &Logger,
-        block: &LightEthereumBlock,
+        block_ptr: &BlockPtr,
         unresolved_call: UnresolvedContractCall,
     ) -> Result<Option<Vec<Token>>, EthereumCallError> {
         let start_time = Instant::now();
@@ -333,7 +332,7 @@ impl HostExports {
 
         let call = EthereumContractCall {
             address: unresolved_call.contract_address.clone(),
-            block_ptr: block.into(),
+            block_ptr: block_ptr.cheap_clone(),
             function: function.clone(),
             args: unresolved_call.function_args.clone(),
         };

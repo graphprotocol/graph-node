@@ -129,7 +129,7 @@ pub struct MappingRequest {
 pub(crate) struct MappingContext {
     pub(crate) logger: Logger,
     pub(crate) host_exports: Arc<crate::host_exports::HostExports>,
-    pub(crate) block: Arc<LightEthereumBlock>,
+    pub(crate) block_ptr: BlockPtr,
     pub(crate) state: BlockState,
     pub(crate) proof_of_indexing: SharedProofOfIndexing,
 }
@@ -137,9 +137,9 @@ pub(crate) struct MappingContext {
 impl MappingContext {
     pub fn derive_with_empty_block_state(&self) -> Self {
         MappingContext {
-            logger: self.logger.clone(),
-            host_exports: self.host_exports.clone(),
-            block: self.block.clone(),
+            logger: self.logger.cheap_clone(),
+            host_exports: self.host_exports.cheap_clone(),
+            block_ptr: self.block_ptr.cheap_clone(),
             state: BlockState::new(self.state.entity_cache.store.clone(), Default::default()),
             proof_of_indexing: self.proof_of_indexing.cheap_clone(),
         }

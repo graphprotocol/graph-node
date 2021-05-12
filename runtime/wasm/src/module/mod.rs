@@ -259,7 +259,7 @@ impl WasmInstance {
             let subgraph_error = SubgraphError {
                 subgraph_id: self.instance_ctx().ctx.host_exports.subgraph_id.clone(),
                 message,
-                block_ptr: Some(self.instance_ctx().ctx.block.block_ptr()),
+                block_ptr: Some(self.instance_ctx().ctx.block_ptr.cheap_clone()),
                 handler: Some(handler.to_string()),
                 deterministic: true,
             };
@@ -829,10 +829,10 @@ impl WasmInstanceContext {
         &mut self,
         call: UnresolvedContractCall,
     ) -> Result<AscEnumArray<EthereumValueKind>, HostExportError> {
-        let result = self
-            .ctx
-            .host_exports
-            .ethereum_call(&self.ctx.logger, &self.ctx.block, call);
+        let result =
+            self.ctx
+                .host_exports
+                .ethereum_call(&self.ctx.logger, &self.ctx.block_ptr, call);
         match result {
             Ok(Some(tokens)) => Ok(self.asc_new(tokens.as_slice())?),
             Ok(None) => Ok(AscPtr::null()),
@@ -1328,7 +1328,7 @@ impl WasmInstanceContext {
             name,
             params,
             None,
-            self.ctx.block.block_ptr().number,
+            self.ctx.block_ptr.number,
         )
     }
 
@@ -1348,7 +1348,7 @@ impl WasmInstanceContext {
             name,
             params,
             Some(context.into()),
-            self.ctx.block.block_ptr().number,
+            self.ctx.block_ptr.number,
         )
     }
 
