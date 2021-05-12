@@ -16,7 +16,6 @@ serde = "1.0"
 config = { version = "0.11", features = ["toml"], default-features = false }
 dirs-next = "2.0"
 anyhow = "1.0"
-fail = "0.4"
 
 [dev-dependencies]
 diesel = { version = "1.4.6", features = ["postgres", "serde_json", "numeric", "r2d2"] }
