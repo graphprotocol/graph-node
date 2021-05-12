@@ -5,8 +5,11 @@ use std::collections::HashMap;
 use std::env;
 use std::str::FromStr;
 
-use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::prelude::*;
+use graph::{
+    blockchain::Blockchain,
+    components::subgraph::{MappingError, SharedProofOfIndexing},
+};
 
 lazy_static! {
     static ref MAX_DATA_SOURCES: Option<usize> = env::var("GRAPH_SUBGRAPH_MAX_DATA_SOURCES")
@@ -15,7 +18,7 @@ lazy_static! {
             .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_SUBGRAPH_MAX_DATA_SOURCES")));
 }
 
-pub struct SubgraphInstance<T: RuntimeHostBuilder> {
+pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     subgraph_id: DeploymentHash,
     network: String,
     host_builder: T,
@@ -31,9 +34,9 @@ pub struct SubgraphInstance<T: RuntimeHostBuilder> {
     module_cache: HashMap<[u8; 32], Sender<T::Req>>,
 }
 
-impl<T> SubgraphInstance<T>
+impl<T, C: Blockchain> SubgraphInstance<C, T>
 where
-    T: RuntimeHostBuilder,
+    T: RuntimeHostBuilder<C>,
 {
     pub(crate) fn from_manifest(
         logger: &Logger,

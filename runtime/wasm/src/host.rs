@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
-use graph::components::store::CallCache;
+use graph::{blockchain::Blockchain, components::store::CallCache};
 use strum::AsStaticRef as _;
 
 use graph::components::arweave::ArweaveAdapter;
@@ -84,7 +84,7 @@ where
     }
 }
 
-impl<S, CC> RuntimeHostBuilderTrait for RuntimeHostBuilder<S, CC>
+impl<C: Blockchain, S, CC> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<S, CC>
 where
     S: SubgraphStore,
     CC: CallCache,
@@ -266,7 +266,7 @@ impl RuntimeHost {
 }
 
 #[async_trait]
-impl RuntimeHostTrait for RuntimeHost {
+impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost {
     fn match_and_decode(
         &self,
         trigger: &EthereumTrigger,

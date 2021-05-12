@@ -7,8 +7,8 @@ use anyhow::Error;
 use async_trait::async_trait;
 use futures::sync::mpsc;
 
-use crate::components::subgraph::SharedProofOfIndexing;
 use crate::prelude::*;
+use crate::{blockchain::Blockchain, components::subgraph::SharedProofOfIndexing};
 use crate::{components::metrics::HistogramVec, runtime::DeterministicHostError};
 
 #[derive(Debug)]
@@ -42,7 +42,7 @@ impl MappingError {
 
 /// Common trait for runtime host implementations.
 #[async_trait]
-pub trait RuntimeHost: Send + Sync + Debug + 'static {
+pub trait RuntimeHost<C: Blockchain>: Send + Sync + Debug + 'static {
     fn match_and_decode(
         &self,
         trigger: &EthereumTrigger,
@@ -147,8 +147,8 @@ impl Drop for HostFnExecutionTimer {
     }
 }
 
-pub trait RuntimeHostBuilder: Clone + Send + Sync + 'static {
-    type Host: RuntimeHost + PartialEq;
+pub trait RuntimeHostBuilder<C: Blockchain>: Clone + Send + Sync + 'static {
+    type Host: RuntimeHost<C> + PartialEq;
     type Req: 'static + Send;
 
     /// Build a new runtime host for a subgraph data source.
