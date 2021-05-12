@@ -62,7 +62,7 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
         &self,
         from: BlockNumber,
         to: BlockNumber,
-        filter: C::TriggerFilter,
+        filter: &C::TriggerFilter,
     ) -> Result<Vec<BlockWithTriggers<C>>, Error>;
 
     // Used for reprocessing blocks when creating a data source.
@@ -70,7 +70,7 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
         &self,
         logger: &Logger,
         block: C::Block,
-        filter: C::TriggerFilter,
+        filter: &C::TriggerFilter,
     ) -> Result<BlockWithTriggers<C>, Error>;
 
     /// Return `true` if the block with the given hash and number is on the
@@ -341,7 +341,6 @@ where
     /// Determine the next reconciliation step. Does not modify Store or ChainStore.
     async fn get_next_step(&self) -> Result<ReconciliationStep<C>, Error> {
         let ctx = self.clone();
-        let filter = self.filter.clone();
         let start_blocks = self.start_blocks.clone();
         let max_block_range_size = self.max_block_range_size;
 
@@ -506,7 +505,7 @@ where
                 "range_size" => range_size
             );
 
-            let blocks = self.adapter.scan_triggers(from, to, filter.clone()).await?;
+            let blocks = self.adapter.scan_triggers(from, to, &self.filter).await?;
 
             section.end();
             Ok(ReconciliationStep::ProcessDescendantBlocks(
@@ -571,7 +570,7 @@ where
                         // Note that head_ancestor is a child of subgraph_ptr.
                         let block = self
                             .adapter
-                            .triggers_in_block(&self.logger, head_ancestor, filter)
+                            .triggers_in_block(&self.logger, head_ancestor, &self.filter)
                             .await?;
                         Ok(ReconciliationStep::ProcessDescendantBlocks(vec![block], 1))
                     } else {

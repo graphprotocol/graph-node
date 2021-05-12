@@ -804,7 +804,7 @@ where
             .triggers_in_block(
                 &logger,
                 WrappedBlockFinality(block.as_ref().clone()),
-                filter,
+                &filter,
             )
             .await?;
 
