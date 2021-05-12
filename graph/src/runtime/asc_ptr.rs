@@ -55,7 +55,7 @@ impl<C: AscType> AscPtr<C> {
 
     /// Allocate `asc_obj` as an Asc object of class `C`.
     pub fn alloc_obj<H: AscHeap>(
-        asc_obj: &C,
+        asc_obj: C,
         heap: &mut H,
     ) -> Result<AscPtr<C>, DeterministicHostError> {
         let heap_ptr = heap.raw_new(&asc_obj.to_asc_bytes()?)?;
@@ -94,7 +94,7 @@ impl<C> From<u32> for AscPtr<C> {
 }
 
 impl<T> AscType for AscPtr<T> {
-    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+    fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
         self.0.to_asc_bytes()
     }
 

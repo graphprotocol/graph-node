@@ -25,7 +25,7 @@ use std::mem::size_of;
 pub trait AscType: Sized {
     /// Transform the Rust representation of this instance into an sequence of
     /// bytes that is precisely the memory layout of a corresponding Asc instance.
-    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError>;
+    fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError>;
 
     /// The Rust representation of an Asc object as layed out in Asc memory.
     fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError>;
@@ -42,8 +42,8 @@ pub trait AscType: Sized {
 pub trait AscValue: AscType + Copy + Default {}
 
 impl AscType for bool {
-    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
-        Ok(vec![*self as u8])
+    fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
+        Ok(vec![self as u8])
     }
 
     fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
@@ -65,7 +65,7 @@ macro_rules! impl_asc_type {
     ($($T:ty),*) => {
         $(
             impl AscType for $T {
-                fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+                fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
                     Ok(self.to_le_bytes().to_vec())
                 }
 

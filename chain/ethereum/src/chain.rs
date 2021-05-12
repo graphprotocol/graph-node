@@ -404,7 +404,7 @@ impl Stream for DummyBlockStream {
 pub struct DummyMappingTrigger;
 
 impl AscType for DummyMappingTrigger {
-    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+    fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
         todo!()
     }
 
