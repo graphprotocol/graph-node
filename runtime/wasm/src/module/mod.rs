@@ -104,13 +104,12 @@ impl WasmInstance {
 
     pub(crate) fn handle_ethereum_log(
         mut self,
+        block: Arc<LightEthereumBlock>,
         handler_name: &str,
         transaction: Arc<Transaction>,
         log: Arc<Log>,
         params: Vec<LogParam>,
     ) -> Result<BlockState, MappingError> {
-        let block = self.instance_ctx().ctx.block.clone();
-
         // Prepare an EthereumEvent for the WASM runtime
         // Decide on the destination type using the mapping
         // api version provided in the subgraph manifest
@@ -143,6 +142,7 @@ impl WasmInstance {
 
     pub(crate) fn handle_ethereum_call(
         mut self,
+        block: Arc<LightEthereumBlock>,
         handler_name: &str,
         transaction: Arc<Transaction>,
         call: Arc<EthereumCall>,
@@ -152,7 +152,7 @@ impl WasmInstance {
         let call = EthereumCallData {
             to: call.to,
             from: call.from,
-            block: EthereumBlockData::from(self.instance_ctx().ctx.block.as_ref()),
+            block: EthereumBlockData::from(block.as_ref()),
             transaction: EthereumTransactionData::from(transaction.deref()),
             inputs,
             outputs,
@@ -168,9 +168,10 @@ impl WasmInstance {
 
     pub(crate) fn handle_ethereum_block(
         mut self,
+        block: Arc<LightEthereumBlock>,
         handler_name: &str,
     ) -> Result<BlockState, MappingError> {
-        let block = EthereumBlockData::from(self.instance_ctx().ctx.block.as_ref());
+        let block = EthereumBlockData::from(block.as_ref());
 
         // Prepare an EthereumBlock for the WASM runtime
         let arg = self.asc_new(&block)?;
