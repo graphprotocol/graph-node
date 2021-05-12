@@ -203,6 +203,7 @@ where
         NodeCapabilities = NodeCapabilities,
         Block = WrappedBlockFinality,
         TriggerData = EthereumTrigger,
+        DataSource = DataSource,
     >,
     M: MetricsRegistry,
     H: RuntimeHostBuilder<C>,
@@ -266,6 +267,7 @@ where
         NodeCapabilities = NodeCapabilities,
         Block = WrappedBlockFinality,
         TriggerData = EthereumTrigger,
+        DataSource = DataSource,
     >,
     M: MetricsRegistry,
     H: RuntimeHostBuilder<C>,
@@ -478,7 +480,11 @@ where
 async fn run_subgraph<T, C>(mut ctx: IndexingContext<T, C>) -> Result<(), Error>
 where
     T: RuntimeHostBuilder<C>,
-    C: Blockchain<Block = WrappedBlockFinality, TriggerData = EthereumTrigger>,
+    C: Blockchain<
+        Block = WrappedBlockFinality,
+        TriggerData = EthereumTrigger,
+        DataSource = DataSource,
+    >,
 {
     // Clone a few things for different parts of the async processing
     let subgraph_metrics = ctx.subgraph_metrics.cheap_clone();
@@ -699,7 +705,11 @@ async fn process_block<T: RuntimeHostBuilder<C>, C>(
     block: BlockWithTriggers<C>,
 ) -> Result<(IndexingContext<T, C>, bool), BlockProcessingError>
 where
-    C: Blockchain<Block = WrappedBlockFinality, TriggerData = EthereumTrigger>,
+    C: Blockchain<
+        Block = WrappedBlockFinality,
+        TriggerData = EthereumTrigger,
+        DataSource = DataSource,
+    >,
 {
     let triggers = block.trigger_data;
     let block = Arc::new(block.block.0);
@@ -1117,7 +1127,7 @@ fn persist_dynamic_data_sources<T: RuntimeHostBuilder<C>, C>(
     entity_cache: &mut EntityCache,
     data_sources: Vec<DataSource>,
 ) where
-    C: Blockchain,
+    C: Blockchain<DataSource = DataSource>,
 {
     if !data_sources.is_empty() {
         debug!(

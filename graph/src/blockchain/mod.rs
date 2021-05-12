@@ -7,13 +7,10 @@ pub mod block_stream;
 mod types;
 
 // Try to reexport most of the necessary types
+use crate::{components::store::DeploymentLocator, runtime::AscType};
 use crate::{
     components::store::{BlockNumber, ChainStore},
     prelude::{thiserror::Error, DeploymentHash, LinkResolver},
-};
-use crate::{
-    components::{ethereum::EthereumBlockWithTriggers, store::DeploymentLocator},
-    runtime::AscType,
 };
 use anyhow::Error;
 use async_trait::async_trait;
@@ -28,7 +25,7 @@ pub use block_stream::{
 };
 pub use types::{BlockHash, BlockPtr};
 
-use self::block_stream::{BlockStreamMetrics, BlockWithTriggers};
+use self::block_stream::BlockStreamMetrics;
 
 pub trait Block: Send + Sync {
     fn ptr(&self) -> BlockPtr;
@@ -146,32 +143,17 @@ pub trait IngestorAdapter<C: Blockchain> {
 }
 
 pub trait TriggerFilter<C: Blockchain>: Default + Clone + Send + Sync {
-    // data_sources should be an iterator over C::DataSource
     fn from_data_sources<'a>(
-        data_sources: impl Iterator<Item = &'a crate::data::subgraph::DataSource> + Clone,
+        data_sources: impl Iterator<Item = &'a C::DataSource> + Clone,
     ) -> Self {
         let mut this = Self::default();
         this.extend(data_sources);
         this
     }
 
-    // data_sources should be an iterator over C::DataSource
-    fn extend<'a>(
-        &mut self,
-        data_sources: impl Iterator<Item = &'a crate::data::subgraph::DataSource> + Clone,
-    );
+    fn extend<'a>(&mut self, data_sources: impl Iterator<Item = &'a C::DataSource> + Clone);
 
     fn node_capabilities(&self) -> C::NodeCapabilities;
-
-    // ETHDEP: This method should not be here; it is just here to
-    // temporarily bridge the gap between the generic block stream and the
-    // still concretely typed runtime. There's no particular reason why it
-    // is on this trait, other than that it is convenient.
-    //
-    // This kludge is also what is keeping us from moving
-    // crate::components::ethereum::types into chain::ethereum where it
-    // ultimately belongs
-    fn convert_block(&self, block: BlockWithTriggers<C>) -> EthereumBlockWithTriggers;
 }
 
 pub trait DataSource<C: Blockchain>: 'static {
