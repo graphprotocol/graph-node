@@ -5,13 +5,13 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 
-use graph::components::store::BlockStore;
 use graph::components::store::{DeploymentId, DeploymentLocator, SubscriptionManager};
 use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
+use graph::{blockchain::DataSource, components::store::BlockStore};
 use graph_chain_ethereum::{EthereumAdapterTrait, EthereumNetworks};
 
 lazy_static! {
@@ -289,10 +289,13 @@ where
             .logger_factory
             .subgraph_logger(&DeploymentLocator::new(DeploymentId(0), hash.clone()));
 
-        let unvalidated =
-            UnvalidatedSubgraphManifest::resolve(hash, self.resolver.clone(), &logger)
-                .map_err(SubgraphRegistrarError::ResolveError)
-                .await?;
+        let unvalidated = UnvalidatedSubgraphManifest::<graph_chain_ethereum::DataSource>::resolve(
+            hash,
+            self.resolver.clone(),
+            &logger,
+        )
+        .map_err(SubgraphRegistrarError::ResolveError)
+        .await?;
 
         let (manifest, validation_warnings) = unvalidated
             .validate(self.store.clone())
@@ -439,7 +442,7 @@ async fn start_subgraph(
 
 /// Resolves the subgraph's earliest block and the manifest's graft base block
 fn resolve_subgraph_chain_blocks(
-    manifest: &SubgraphManifest,
+    manifest: &SubgraphManifest<impl DataSource>,
     chain_store: Arc<impl ChainStore>,
     ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
     logger: &Logger,
@@ -508,7 +511,7 @@ fn create_subgraph_version(
     chain_store: Arc<impl ChainStore>,
     ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
     name: SubgraphName,
-    manifest: SubgraphManifest,
+    manifest: SubgraphManifest<impl DataSource>,
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
 ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send> {

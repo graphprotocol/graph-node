@@ -117,7 +117,7 @@ where
 /// Inserts data in test blocks 1, 2, and 3, leaving test blocks 3A, 4, and 4A for the tests to
 /// use.
 fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator {
-    let manifest = SubgraphManifest {
+    let manifest = SubgraphManifest::<graph_chain_ethereum::DataSource> {
         id: TEST_SUBGRAPH_ID.clone(),
         spec_version: "1".to_owned(),
         features: Default::default(),

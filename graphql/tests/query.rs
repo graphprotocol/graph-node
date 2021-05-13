@@ -48,7 +48,7 @@ fn setup_with_features(id: &str, features: BTreeSet<SubgraphFeature>) -> Deploym
     test_store::remove_subgraphs();
 
     let schema = test_schema(id.clone());
-    let manifest = SubgraphManifest {
+    let manifest = SubgraphManifest::<graph_chain_ethereum::DataSource> {
         id: id.clone(),
         spec_version: "1".to_owned(),
         features,
@@ -101,7 +101,7 @@ fn test_schema(id: DeploymentHash) -> Schema {
 
 fn insert_test_entities(
     store: &impl SubgraphStore,
-    manifest: SubgraphManifest,
+    manifest: SubgraphManifest<graph_chain_ethereum::DataSource>,
 ) -> DeploymentLocator {
     let deployment = SubgraphDeploymentEntity::new(&manifest, false, None);
     let name = SubgraphName::new("test/query").unwrap();

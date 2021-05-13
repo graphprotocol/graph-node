@@ -7,7 +7,12 @@ pub mod block_stream;
 mod types;
 
 // Try to reexport most of the necessary types
-use crate::{components::store::DeploymentLocator, runtime::AscType};
+use crate::{
+    components::store::DeploymentLocator,
+    data::subgraph::{Mapping, Source},
+    prelude::DataSourceContext,
+    runtime::AscType,
+};
 use crate::{
     components::store::{BlockNumber, ChainStore},
     prelude::{thiserror::Error, DeploymentHash, LinkResolver},
@@ -17,6 +22,7 @@ use async_trait::async_trait;
 use slog;
 use slog::Logger;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::sync::Arc;
 use web3::types::H256;
 
@@ -46,7 +52,7 @@ pub trait Block: Send + Sync {
 
 pub trait Blockchain: Sized + Send + Sync + 'static {
     type Block: Block;
-    type DataSource: DataSource<Self>;
+    type DataSource: DataSource<C = Self>;
     type DataSourceTemplate;
     type Manifest: Manifest<Self>;
 
@@ -156,15 +162,38 @@ pub trait TriggerFilter<C: Blockchain>: Default + Clone + Send + Sync {
     fn node_capabilities(&self) -> C::NodeCapabilities;
 }
 
-pub trait DataSource<C: Blockchain>: 'static {
+// ETHDEP: `Source` and `Mapping`, at least, are Ethereum-specific.
+pub trait DataSource: 'static + Sized + Send + Sync + Debug {
+    type C: Blockchain;
+
+    fn mapping(&self) -> &Mapping;
+    fn source(&self) -> &Source;
+
+    fn from_manifest(
+        kind: String,
+        network: Option<String>,
+        name: String,
+        source: Source,
+        mapping: Mapping,
+        context: Option<DataSourceContext>,
+    ) -> Result<Self, Error>;
+
+    fn name(&self) -> &str;
+    fn kind(&self) -> &str;
+    fn network(&self) -> Option<&str>;
+    fn context(&self) -> Option<&DataSourceContext>;
+    fn creation_block(&self) -> Option<BlockNumber>;
+
     /// Checks if `trigger` matches this data source, and if so decodes it into a `MappingTrigger`.
     /// A return of `Ok(None)` mean the trigger does not match.
     fn match_and_decode(
         &self,
-        trigger: &C::TriggerData,
-        block: Arc<C::Block>,
+        trigger: &<Self::C as Blockchain>::TriggerData,
+        block: Arc<<Self::C as Blockchain>::Block>,
         logger: &Logger,
-    ) -> Result<Option<C::MappingTrigger>, Error>;
+    ) -> Result<Option<<Self::C as Blockchain>::MappingTrigger>, Error>;
+
+    fn is_duplicate_of(&self, other: &Self) -> bool;
 }
 
 #[async_trait]

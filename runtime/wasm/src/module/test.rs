@@ -8,7 +8,7 @@ use graph::data::store::scalar;
 use graph::data::subgraph::*;
 use graph::{components::store::*, ipfs_client::IpfsClient};
 use graph_chain_arweave::adapter::ArweaveAdapter;
-use graph_chain_ethereum::MockEthereumAdapter;
+use graph_chain_ethereum::{DataSource, MockEthereumAdapter};
 use graph_core;
 use graph_core::three_box::ThreeBoxAdapter;
 use graph_mock::MockMetricsRegistry;

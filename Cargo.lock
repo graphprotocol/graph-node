@@ -1583,6 +1583,7 @@ dependencies = [
  "fail",
  "futures 0.1.31",
  "futures 0.3.13",
+ "graph-chain-ethereum",
  "graphql-parser",
  "hex",
  "http 0.2.3",
@@ -1640,10 +1641,12 @@ dependencies = [
  "config",
  "diesel",
  "dirs-next",
+ "ethabi 12.0.0-graph",
  "futures 0.1.31",
  "graph",
  "graph-core",
  "graph-store-postgres",
+ "hex",
  "http 0.1.21",
  "jsonrpc-core",
  "lazy_static",
@@ -1652,6 +1655,8 @@ dependencies = [
  "serde",
  "state_machine_future",
  "test-store",
+ "tiny-keccak 1.5.0",
+ "web3",
 ]
 
 [[package]]
@@ -1691,6 +1696,7 @@ dependencies = [
  "defer",
  "futures 0.1.31",
  "graph",
+ "graph-chain-ethereum",
  "graphql-parser",
  "indexmap",
  "lazy_static",
@@ -4454,6 +4460,7 @@ version = "0.22.0"
 dependencies = [
  "diesel",
  "graph",
+ "graph-chain-ethereum",
  "graph-graphql",
  "graph-mock",
  "graph-node",

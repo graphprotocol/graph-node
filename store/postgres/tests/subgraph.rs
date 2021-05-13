@@ -112,7 +112,7 @@ fn create_subgraph() {
         let id = DeploymentHash::new(id.to_string()).unwrap();
         let schema = Schema::parse(SUBGRAPH_GQL, id.clone()).unwrap();
 
-        let manifest = SubgraphManifest {
+        let manifest = SubgraphManifest::<graph_chain_ethereum::DataSource> {
             id: id.clone(),
             spec_version: "1".to_owned(),
             features: Default::default(),

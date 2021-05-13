@@ -1,5 +1,3 @@
-mod data_source;
-
 use anyhow::{anyhow, ensure, Error};
 use ethabi::Contract;
 use futures03::{
@@ -24,11 +22,11 @@ use crate::components::{
     link_resolver::LinkResolver,
     store::{DeploymentLocator, StoreError, SubgraphStore},
 };
-use crate::data::graphql::TryFromValue;
 use crate::data::query::QueryExecutionError;
 use crate::data::schema::{Schema, SchemaImportError, SchemaValidationError};
 use crate::data::store::Entity;
 use crate::prelude::CheapClone;
+use crate::{blockchain::DataSource, data::graphql::TryFromValue};
 
 use crate::prelude::{impl_slog_value, q, BlockNumber, Deserialize, Serialize};
 use crate::util::ethereum::string_to_h256;
@@ -37,8 +35,6 @@ use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
-
-pub use self::data_source::DataSource;
 
 lazy_static! {
     static ref DISABLE_GRAFTS: bool = std::env::var("GRAPH_DISABLE_GRAFTS")
@@ -681,11 +677,11 @@ struct UnresolvedDataSource {
 }
 
 impl UnresolvedDataSource {
-    pub async fn resolve(
+    pub async fn resolve<DS: DataSource>(
         self,
         resolver: &impl LinkResolver,
         logger: &Logger,
-    ) -> Result<DataSource, anyhow::Error> {
+    ) -> Result<DS, anyhow::Error> {
         let UnresolvedDataSource {
             kind,
             network,
@@ -699,7 +695,7 @@ impl UnresolvedDataSource {
 
         let mapping = mapping.resolve(&*resolver, logger).await?;
 
-        DataSource::from_manifest(kind, network, name, source, mapping, context)
+        DS::from_manifest(kind, network, name, source, mapping, context)
     }
 }
 
@@ -801,12 +797,12 @@ type UnresolvedSubgraphManifest =
     BaseSubgraphManifest<UnresolvedSchema, UnresolvedDataSource, UnresolvedDataSourceTemplate>;
 
 /// SubgraphManifest validated with IPFS links resolved
-pub type SubgraphManifest = BaseSubgraphManifest<Schema, DataSource, DataSourceTemplate>;
+pub type SubgraphManifest<DS> = BaseSubgraphManifest<Schema, DS, DataSourceTemplate>;
 
 /// Unvalidated SubgraphManifest
-pub struct UnvalidatedSubgraphManifest(SubgraphManifest);
+pub struct UnvalidatedSubgraphManifest<DS: DataSource>(SubgraphManifest<DS>);
 
-impl UnvalidatedSubgraphManifest {
+impl<DS: DataSource> UnvalidatedSubgraphManifest<DS> {
     /// Entry point for resolving a subgraph definition.
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
@@ -824,7 +820,7 @@ impl UnvalidatedSubgraphManifest {
         self,
         store: Arc<S>,
     ) -> Result<
-        (SubgraphManifest, Vec<SubgraphManifestValidationWarning>),
+        (SubgraphManifest<DS>, Vec<SubgraphManifestValidationWarning>),
         Vec<SubgraphManifestValidationError>,
     > {
         let (schemas, import_errors) = self.0.schema.resolve_schema_references(store.clone());
@@ -843,9 +839,9 @@ impl UnvalidatedSubgraphManifest {
         // Validate that the manifest has a `source` address in each data source
         // which has call or block handlers
         if self.0.data_sources.iter().any(|data_source| {
-            let no_source_address = data_source.source.address.is_none();
-            let has_call_handlers = !data_source.mapping.call_handlers.is_empty();
-            let has_block_handlers = !data_source.mapping.block_handlers.is_empty();
+            let no_source_address = data_source.source().address.is_none();
+            let has_call_handlers = !data_source.mapping().call_handlers.is_empty();
+            let has_block_handlers = !data_source.mapping().block_handlers.is_empty();
 
             no_source_address && (has_call_handlers || has_block_handlers)
         }) {
@@ -855,14 +851,14 @@ impl UnvalidatedSubgraphManifest {
         // Validate that there are no more than one of each type of
         // block_handler in each data source.
         let has_too_many_block_handlers = self.0.data_sources.iter().any(|data_source| {
-            if data_source.mapping.block_handlers.is_empty() {
+            if data_source.mapping().block_handlers.is_empty() {
                 return false;
             }
 
             let mut non_filtered_block_handler_count = 0;
             let mut call_filtered_block_handler_count = 0;
             data_source
-                .mapping
+                .mapping()
                 .block_handlers
                 .iter()
                 .for_each(|block_handler| {
@@ -882,8 +878,8 @@ impl UnvalidatedSubgraphManifest {
             .0
             .data_sources
             .iter()
-            .filter(|d| d.kind.eq("ethereum/contract"))
-            .filter_map(|d| d.network.as_ref().map(|n| n.to_string()))
+            .filter(|d| d.kind().eq("ethereum/contract"))
+            .filter_map(|d| d.network().map(|n| n.to_string()))
             .collect::<Vec<String>>();
         networks.sort();
         networks.dedup();
@@ -920,7 +916,7 @@ impl UnvalidatedSubgraphManifest {
     }
 }
 
-impl SubgraphManifest {
+impl<DS: DataSource> SubgraphManifest<DS> {
     /// Entry point for resolving a subgraph definition.
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
@@ -978,8 +974,8 @@ impl SubgraphManifest {
         // Assume the manifest has been validated, ensuring network names are homogenous
         self.data_sources
             .iter()
-            .filter(|d| &d.kind == "ethereum/contract")
-            .filter_map(|d| d.network.as_ref().map(|n| n.to_string()))
+            .filter(|d| d.kind() == "ethereum/contract")
+            .filter_map(|d| d.network().map(|n| n.to_string()))
             .next()
             .expect("Validated manifest does not have a network defined on any datasource")
     }
@@ -987,7 +983,7 @@ impl SubgraphManifest {
     pub fn start_blocks(&self) -> Vec<BlockNumber> {
         self.data_sources
             .iter()
-            .map(|data_source| data_source.source.start_block)
+            .map(|data_source| data_source.source().start_block)
             .collect()
     }
 
@@ -998,7 +994,7 @@ impl SubgraphManifest {
             .chain(
                 self.data_sources
                     .iter()
-                    .map(|source| source.mapping.clone()),
+                    .map(|source| source.mapping().clone()),
             )
             .collect()
     }
@@ -1031,11 +1027,11 @@ impl SubgraphManifest {
 }
 
 impl UnresolvedSubgraphManifest {
-    pub async fn resolve(
+    pub async fn resolve<DS: DataSource>(
         self,
         resolver: &impl LinkResolver,
         logger: &Logger,
-    ) -> Result<SubgraphManifest, anyhow::Error> {
+    ) -> Result<SubgraphManifest<DS>, anyhow::Error> {
         let UnresolvedSubgraphManifest {
             id,
             spec_version,

@@ -203,7 +203,7 @@ where
         NodeCapabilities = NodeCapabilities,
         Block = WrappedBlockFinality,
         TriggerData = EthereumTrigger,
-        DataSource = DataSource,
+        DataSource = graph_chain_ethereum::DataSource,
     >,
     M: MetricsRegistry,
     H: RuntimeHostBuilder<C>,
@@ -267,7 +267,7 @@ where
         NodeCapabilities = NodeCapabilities,
         Block = WrappedBlockFinality,
         TriggerData = EthereumTrigger,
-        DataSource = DataSource,
+        DataSource = graph_chain_ethereum::DataSource,
     >,
     M: MetricsRegistry,
     H: RuntimeHostBuilder<C>,
@@ -483,7 +483,7 @@ where
     C: Blockchain<
         Block = WrappedBlockFinality,
         TriggerData = EthereumTrigger,
-        DataSource = DataSource,
+        DataSource = graph_chain_ethereum::DataSource,
     >,
 {
     // Clone a few things for different parts of the async processing
@@ -708,7 +708,7 @@ where
     C: Blockchain<
         Block = WrappedBlockFinality,
         TriggerData = EthereumTrigger,
-        DataSource = DataSource,
+        DataSource = graph_chain_ethereum::DataSource,
     >,
 {
     let triggers = block.trigger_data;
@@ -1078,16 +1078,16 @@ fn create_dynamic_data_sources<T: RuntimeHostBuilder<C>, C>(
     ctx: &mut IndexingContext<T, C>,
     host_metrics: Arc<HostMetrics>,
     created_data_sources: Vec<DataSourceTemplateInfo>,
-) -> Result<(Vec<DataSource>, Vec<Arc<T::Host>>), Error>
+) -> Result<(Vec<graph_chain_ethereum::DataSource>, Vec<Arc<T::Host>>), Error>
 where
-    C: Blockchain,
+    C: Blockchain<DataSource = graph_chain_ethereum::DataSource>,
 {
     let mut data_sources = vec![];
     let mut runtime_hosts = vec![];
 
     for info in created_data_sources {
         // Try to instantiate a data source from the template
-        let data_source = DataSource::try_from(info)?;
+        let data_source = graph_chain_ethereum::DataSource::try_from(info)?;
 
         // Try to create a runtime host for the data source
         let host = ctx.state.instance.add_dynamic_data_source(
@@ -1125,9 +1125,9 @@ fn persist_dynamic_data_sources<T: RuntimeHostBuilder<C>, C>(
     logger: Logger,
     ctx: &mut IndexingContext<T, C>,
     entity_cache: &mut EntityCache,
-    data_sources: Vec<DataSource>,
+    data_sources: Vec<graph_chain_ethereum::DataSource>,
 ) where
-    C: Blockchain<DataSource = DataSource>,
+    C: Blockchain<DataSource = graph_chain_ethereum::DataSource>,
 {
     if !data_sources.is_empty() {
         debug!(

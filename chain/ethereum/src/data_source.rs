@@ -1,21 +1,21 @@
 use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
 use ethabi::{Address, Event, Function, LogParam, ParamType, RawLog};
-use slog::{info, Logger};
+use graph::prelude::{info, Logger};
 use std::str::FromStr;
 use std::{convert::TryFrom, sync::Arc};
 use tiny_keccak::keccak256;
 use web3::types::Log;
 
-use crate::{
-    blockchain::Blockchain,
+use graph::{
+    blockchain::{self, Blockchain},
     prelude::{
         BlockNumber, CheapClone, DataSourceTemplateInfo, EthereumBlockTriggerType, EthereumCall,
         EthereumTrigger, LightEthereumBlock, LightEthereumBlockExt, MappingTrigger,
     },
 };
 
-use super::{
+use graph::data::subgraph::{
     BlockHandlerFilter, DataSourceContext, Mapping, MappingABI, MappingBlockHandler,
     MappingCallHandler, MappingEventHandler, Source,
 };
@@ -36,22 +36,27 @@ pub struct DataSource {
 }
 
 // ETHDEP: The whole DataSource struct needs to move to chain::ethereum
-impl<C> crate::blockchain::DataSource<C> for DataSource
-where
-    C: Blockchain,
-{
+impl blockchain::DataSource for DataSource {
+    type C = crate::Chain;
+
     fn match_and_decode(
         &self,
-        _trigger: &C::TriggerData,
-        _block: Arc<C::Block>,
+        _trigger: &<Self::C as Blockchain>::TriggerData,
+        _block: Arc<<Self::C as Blockchain>::Block>,
         _logger: &Logger,
-    ) -> Result<Option<C::MappingTrigger>, Error> {
+    ) -> Result<Option<<Self::C as Blockchain>::MappingTrigger>, Error> {
         todo!()
     }
-}
 
-impl super::DataSource {
-    pub(super) fn from_manifest(
+    fn mapping(&self) -> &Mapping {
+        &self.mapping
+    }
+
+    fn source(&self) -> &Source {
+        &self.source
+    }
+
+    fn from_manifest(
         kind: String,
         network: Option<String>,
         name: String,
@@ -77,6 +82,57 @@ impl super::DataSource {
         })
     }
 
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    fn network(&self) -> Option<&str> {
+        self.network.as_ref().map(|s| s.as_str())
+    }
+
+    fn context(&self) -> Option<&DataSourceContext> {
+        self.context.as_ref().as_ref()
+    }
+
+    fn creation_block(&self) -> Option<BlockNumber> {
+        self.creation_block
+    }
+
+    fn is_duplicate_of(&self, other: &Self) -> bool {
+        let DataSource {
+            kind,
+            network,
+            name,
+            source,
+            mapping,
+            context,
+
+            // The creation block is ignored for detection duplicate data sources.
+            // Contract ABI equality is implicit in `source` and `mapping.abis` equality.
+            creation_block: _,
+            contract_abi: _,
+        } = self;
+
+        // mapping_request_sender, host_metrics, and (most of) host_exports are operational structs
+        // used at runtime but not needed to define uniqueness; each runtime host should be for a
+        // unique data source.
+        kind == &other.kind
+            && network == &other.network
+            && name == &other.name
+            && source == &other.source
+            && mapping.abis == other.mapping.abis
+            && mapping.event_handlers == other.mapping.event_handlers
+            && mapping.call_handlers == other.mapping.call_handlers
+            && mapping.block_handlers == other.mapping.block_handlers
+            && context == &other.context
+    }
+}
+
+impl DataSource {
     fn handlers_for_log(&self, log: &Log) -> Result<Vec<MappingEventHandler>, Error> {
         // Get signature from the log
         let topic0 = log.topics.get(0).context("Ethereum event has no topics")?;
@@ -135,35 +191,6 @@ impl super::DataSource {
                 })
                 .cloned(),
         }
-    }
-
-    pub fn is_duplicate_of(&self, other: &Self) -> bool {
-        let DataSource {
-            kind,
-            network,
-            name,
-            source,
-            mapping,
-            context,
-
-            // The creation block is ignored for detection duplicate data sources.
-            // Contract ABI equality is implicit in `source` and `mapping.abis` equality.
-            creation_block: _,
-            contract_abi: _,
-        } = self;
-
-        // mapping_request_sender, host_metrics, and (most of) host_exports are operational structs
-        // used at runtime but not needed to define uniqueness; each runtime host should be for a
-        // unique data source.
-        kind == &other.kind
-            && network == &other.network
-            && name == &other.name
-            && source == &other.source
-            && mapping.abis == other.mapping.abis
-            && mapping.event_handlers == other.mapping.event_handlers
-            && mapping.call_handlers == other.mapping.call_handlers
-            && mapping.block_handlers == other.mapping.block_handlers
-            && context == &other.context
     }
 
     /// Returns the contract event with the given signature, if it exists. A an event from the ABI

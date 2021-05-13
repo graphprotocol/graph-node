@@ -17,9 +17,9 @@ use graph::{
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
         async_trait, error, lazy_static, o, serde_yaml, web3::types::H256, BlockFinality,
-        BlockNumber, ChainStore, DataSource, DeploymentHash, EthereumBlockWithCalls,
-        EthereumTrigger, Future01CompatExt, LinkResolver, Logger, LoggerFactory, MetricsRegistry,
-        NodeId, SubgraphStore,
+        BlockNumber, ChainStore, DeploymentHash, EthereumBlockWithCalls, EthereumTrigger,
+        Future01CompatExt, LinkResolver, Logger, LoggerFactory, MetricsRegistry, NodeId,
+        SubgraphStore,
     },
     runtime::{AscType, DeterministicHostError},
     tokio_stream::Stream,
@@ -27,6 +27,7 @@ use graph::{
 
 use crate::{
     adapter::EthereumAdapter as _,
+    data_source::DataSource,
     ethereum_adapter::{
         blocks_with_triggers, get_calls, parse_block_triggers, parse_call_triggers,
         parse_log_triggers,
@@ -96,7 +97,7 @@ impl Chain {
 impl Blockchain for Chain {
     type Block = WrappedBlockFinality;
 
-    type DataSource = graph::data::subgraph::DataSource;
+    type DataSource = DataSource;
 
     type DataSourceTemplate = DummyDataSourceTemplate;
 
