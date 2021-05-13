@@ -185,10 +185,7 @@ impl DataSource {
                 .mapping
                 .block_handlers
                 .iter()
-                .find(move |handler| {
-                    handler.filter.is_some()
-                        && handler.filter.clone().unwrap() == BlockHandlerFilter::Call
-                })
+                .find(move |handler| handler.filter == Some(BlockHandlerFilter::Call))
                 .cloned(),
         }
     }
