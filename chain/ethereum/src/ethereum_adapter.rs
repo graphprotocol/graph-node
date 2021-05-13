@@ -1530,7 +1530,7 @@ pub(crate) async fn get_calls(
     adapter: &EthereumAdapter,
     logger: Logger,
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-    filter: TriggerFilter,
+    requires_traces: bool,
     block: BlockFinality,
 ) -> Result<BlockFinality, Error> {
     // For final blocks, or nonfinal blocks where we already checked
@@ -1546,20 +1546,19 @@ pub(crate) async fn get_calls(
             ethereum_block,
             calls: None,
         }) => {
-            let calls =
-                if !filter.requires_traces() || ethereum_block.transaction_receipts.is_empty() {
-                    vec![]
-                } else {
-                    adapter
-                        .calls_in_block(
-                            &logger,
-                            subgraph_metrics.clone(),
-                            BlockNumber::try_from(ethereum_block.block.number.unwrap().as_u64())
-                                .unwrap(),
-                            ethereum_block.block.hash.unwrap(),
-                        )
-                        .await?
-                };
+            let calls = if requires_traces || ethereum_block.transaction_receipts.is_empty() {
+                vec![]
+            } else {
+                adapter
+                    .calls_in_block(
+                        &logger,
+                        subgraph_metrics.clone(),
+                        BlockNumber::try_from(ethereum_block.block.number.unwrap().as_u64())
+                            .unwrap(),
+                        ethereum_block.block.hash.unwrap(),
+                    )
+                    .await?
+            };
             Ok(BlockFinality::NonFinal(EthereumBlockWithCalls {
                 ethereum_block,
                 calls: Some(calls),

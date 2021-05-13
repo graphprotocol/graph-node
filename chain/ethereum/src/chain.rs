@@ -287,7 +287,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             self.eth_adapter.as_ref(),
             logger.clone(),
             self.ethrpc_metrics.clone(),
-            filter.clone(),
+            filter.requires_traces(),
             block.0,
         )
         .await?;
