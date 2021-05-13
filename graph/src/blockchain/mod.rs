@@ -163,7 +163,7 @@ pub trait TriggerFilter<C: Blockchain>: Default + Clone + Send + Sync {
 }
 
 // ETHDEP: `Source` and `Mapping`, at least, are Ethereum-specific.
-pub trait DataSource: 'static + Sized + Send + Sync + Debug {
+pub trait DataSource: 'static + Sized + Send + Sync {
     type C: Blockchain;
 
     fn mapping(&self) -> &Mapping;
