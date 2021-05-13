@@ -282,12 +282,6 @@ pub struct ExperimentalFeatures {
     pub allow_non_deterministic_3box: bool,
 }
 
-/// Our usage of the unsafe `wastime::Memory` API relies on the `WasmInstance` being `!Sync`.
-///
-/// ```compile_fail
-/// fn assert_sync<T: Sync>() {}
-/// assert_sync::<WasmInstanceContext>();
-/// ```
 pub(crate) struct WasmInstanceContext {
     // In the future there may be multiple memories, but currently there is only one memory per
     // module. And at least AS calls it "memory". There is no uninitialized memory in Wasm, memory
