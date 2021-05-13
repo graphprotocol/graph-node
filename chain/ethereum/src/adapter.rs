@@ -21,7 +21,7 @@ use graph::{
 };
 use graph::{components::ethereum::EthereumNetworkIdentifier, prelude::*};
 
-use crate::Chain;
+use crate::{data_source::DataSource, Chain};
 
 pub type EventSignature = H256;
 

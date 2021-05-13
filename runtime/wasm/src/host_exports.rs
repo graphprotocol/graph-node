@@ -98,7 +98,7 @@ impl std::fmt::Debug for HostExports {
 impl HostExports {
     pub(crate) fn new(
         subgraph_id: DeploymentHash,
-        data_source: &DataSource,
+        data_source: &graph_chain_ethereum::DataSource,
         data_source_network: String,
         templates: Arc<Vec<DataSourceTemplate>>,
         ethereum_adapter: Arc<dyn EthereumAdapterTrait>,

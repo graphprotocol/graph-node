@@ -152,7 +152,7 @@ pub fn create_subgraph(
 ) -> Result<DeploymentLocator, StoreError> {
     let schema = Schema::parse(schema, subgraph_id.clone()).unwrap();
 
-    let manifest = SubgraphManifest {
+    let manifest = SubgraphManifest::<graph_chain_ethereum::DataSource> {
         id: subgraph_id.clone(),
         spec_version: "1".to_owned(),
         features: BTreeSet::new(),
@@ -238,7 +238,7 @@ pub fn transact_entities_and_dynamic_data_sources(
     store: &Arc<DieselSubgraphStore>,
     deployment: DeploymentLocator,
     block_ptr_to: BlockPtr,
-    data_sources: Vec<&DataSource>,
+    data_sources: Vec<StoredDynamicDataSource>,
     ops: Vec<EntityOperation>,
 ) -> Result<(), StoreError> {
     let store = store.writable(&deployment)?;
@@ -254,10 +254,6 @@ pub fn transact_entities_and_dynamic_data_sources(
         deployment.hash.clone(),
         metrics_registry.clone(),
     );
-    let data_sources = data_sources
-        .into_iter()
-        .map(StoredDynamicDataSource::from)
-        .collect();
     store.transact_block_operations(
         block_ptr_to,
         mods,

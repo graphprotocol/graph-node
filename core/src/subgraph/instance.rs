@@ -5,11 +5,11 @@ use std::collections::HashMap;
 use std::env;
 use std::str::FromStr;
 
-use graph::prelude::*;
 use graph::{
     blockchain::Blockchain,
     components::subgraph::{MappingError, SharedProofOfIndexing},
 };
+use graph::{blockchain::DataSource, prelude::*};
 
 lazy_static! {
     static ref MAX_DATA_SOURCES: Option<usize> = env::var("GRAPH_SUBGRAPH_MAX_DATA_SOURCES")
@@ -40,7 +40,7 @@ where
 {
     pub(crate) fn from_manifest(
         logger: &Logger,
-        manifest: SubgraphManifest,
+        manifest: SubgraphManifest<C::DataSource>,
         host_builder: T,
         host_metrics: Arc<HostMetrics>,
     ) -> Result<Self, Error> {
@@ -59,27 +59,15 @@ where
         // Create a new runtime host for each data source in the subgraph manifest;
         // we use the same order here as in the subgraph manifest to make the
         // event processing behavior predictable
-        let (hosts, errors): (_, Vec<_>) = manifest
-            .data_sources
-            .into_iter()
-            .map(|d| this.new_host(logger.clone(), d, templates.clone(), host_metrics.clone()))
-            .partition(|res| res.is_ok());
-
-        if !errors.is_empty() {
-            let joined_errors = errors
-                .into_iter()
-                .map(Result::unwrap_err)
-                .map(|e| e.to_string())
-                .collect::<Vec<_>>()
-                .join(", ");
-            return Err(anyhow!("Errors loading data sources: {}", joined_errors));
+        for ds in manifest.data_sources {
+            let host = this.new_host(
+                logger.cheap_clone(),
+                ds,
+                templates.cheap_clone(),
+                host_metrics.cheap_clone(),
+            )?;
+            this.hosts.push(Arc::new(host))
         }
-
-        this.hosts = hosts
-            .into_iter()
-            .map(Result::unwrap)
-            .map(Arc::new)
-            .collect();
 
         Ok(this)
     }
@@ -87,12 +75,12 @@ where
     fn new_host(
         &mut self,
         logger: Logger,
-        data_source: DataSource,
+        data_source: C::DataSource,
         templates: Arc<Vec<DataSourceTemplate>>,
         host_metrics: Arc<HostMetrics>,
     ) -> Result<T::Host, Error> {
         let mapping_request_sender = {
-            let module_bytes = data_source.mapping.runtime.as_ref();
+            let module_bytes = data_source.mapping().runtime.as_ref();
             let module_hash = tiny_keccak::keccak256(module_bytes);
             if let Some(sender) = self.module_cache.get(&module_hash) {
                 sender.clone()
@@ -172,7 +160,7 @@ where
     pub(crate) fn add_dynamic_data_source(
         &mut self,
         logger: &Logger,
-        data_source: DataSource,
+        data_source: C::DataSource,
         templates: Arc<Vec<DataSourceTemplate>>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Option<Arc<T::Host>>, Error> {
@@ -189,7 +177,8 @@ where
         // `hosts` will remain ordered by the creation block.
         // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
         assert!(
-            self.hosts.last().and_then(|h| h.creation_block_number()) <= data_source.creation_block
+            self.hosts.last().and_then(|h| h.creation_block_number())
+                <= data_source.creation_block()
         );
 
         let host =

@@ -5,7 +5,10 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
-use graph::{blockchain::Blockchain, components::store::CallCache};
+use graph::{
+    blockchain::{Blockchain, DataSource},
+    components::store::CallCache,
+};
 use strum::AsStaticRef as _;
 
 use graph::components::arweave::ArweaveAdapter;
@@ -84,12 +87,17 @@ where
     }
 }
 
-impl<C: Blockchain, S, CC> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<S, CC>
+impl<C, S, CC> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<S, CC>
 where
     S: SubgraphStore,
     CC: CallCache,
+    C: Blockchain<
+        Block = graph_chain_ethereum::WrappedBlockFinality,
+        TriggerData = EthereumTrigger,
+        DataSource = graph_chain_ethereum::DataSource,
+    >,
 {
-    type Host = RuntimeHost;
+    type Host = RuntimeHost<C>;
     type Req = MappingRequest;
 
     fn spawn_mapping(
@@ -118,7 +126,7 @@ where
         &self,
         network_name: String,
         subgraph_id: DeploymentHash,
-        data_source: DataSource,
+        data_source: C::DataSource,
         templates: Arc<Vec<DataSourceTemplate>>,
         mapping_request_sender: Sender<MappingRequest>,
         metrics: Arc<HostMetrics>,
@@ -133,13 +141,13 @@ where
                 )
             })?;
 
-        let required_capabilities = data_source.mapping.required_capabilities();
+        let required_capabilities = data_source.mapping().required_capabilities();
 
         let ethereum_adapter = self
             .ethereum_networks
             .adapter_with_capabilities(network_name.clone(), &required_capabilities)?;
 
-        RuntimeHost::new(
+        Ok(RuntimeHost::new(
             ethereum_adapter.clone(),
             self.link_resolver.clone(),
             self.store.clone(),
@@ -152,19 +160,22 @@ where
             metrics,
             self.arweave_adapter.cheap_clone(),
             self.three_box_adapter.cheap_clone(),
-        )
+        ))
     }
 }
 
 #[derive(Debug)]
-pub struct RuntimeHost {
-    data_source: DataSource,
+pub struct RuntimeHost<C: Blockchain> {
+    data_source: C::DataSource,
     mapping_request_sender: Sender<MappingRequest>,
     host_exports: Arc<HostExports>,
     metrics: Arc<HostMetrics>,
 }
 
-impl RuntimeHost {
+impl<C> RuntimeHost<C>
+where
+    C: Blockchain<DataSource = graph_chain_ethereum::DataSource>,
+{
     fn new(
         ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
         link_resolver: Arc<dyn LinkResolver>,
@@ -172,13 +183,13 @@ impl RuntimeHost {
         call_cache: Arc<dyn EthereumCallCache>,
         network_name: String,
         subgraph_id: DeploymentHash,
-        data_source: DataSource,
+        data_source: C::DataSource,
         templates: Arc<Vec<DataSourceTemplate>>,
         mapping_request_sender: Sender<MappingRequest>,
         metrics: Arc<HostMetrics>,
         arweave_adapter: Arc<dyn ArweaveAdapter>,
         three_box_adapter: Arc<dyn ThreeBoxAdapter>,
-    ) -> Result<Self, Error> {
+    ) -> Self {
         // Create new instance of externally hosted functions invoker. The `Arc` is simply to avoid
         // implementing `Clone` for `HostExports`.
         let host_exports = Arc::new(HostExports::new(
@@ -194,12 +205,12 @@ impl RuntimeHost {
             three_box_adapter,
         ));
 
-        Ok(RuntimeHost {
+        RuntimeHost {
             data_source,
             mapping_request_sender,
             host_exports,
             metrics,
-        })
+        }
     }
 
     /// Sends a MappingRequest to the thread which owns the host,
@@ -221,7 +232,7 @@ impl RuntimeHost {
             &extras,
             "trigger_type" => trigger_type,
             "handler" => &handler,
-            "data_source" => &self.data_source.name,
+            "data_source" => &self.data_source.name(),
         );
 
         let (result_sender, result_receiver) = channel();
@@ -258,7 +269,7 @@ impl RuntimeHost {
             "trigger_type" => trigger_type,
             "total_ms" => elapsed.as_millis(),
             "handler" => handler,
-            "data_source" => &self.data_source.name,
+            "data_source" => &self.data_source.name(),
         );
 
         result
@@ -266,7 +277,14 @@ impl RuntimeHost {
 }
 
 #[async_trait]
-impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost {
+impl<C> RuntimeHostTrait<C> for RuntimeHost<C>
+where
+    C: Blockchain<
+        Block = graph_chain_ethereum::WrappedBlockFinality,
+        TriggerData = EthereumTrigger,
+        DataSource = graph_chain_ethereum::DataSource,
+    >,
+{
     fn match_and_decode(
         &self,
         trigger: &EthereumTrigger,
@@ -289,11 +307,11 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost {
     }
 
     fn creation_block_number(&self) -> Option<BlockNumber> {
-        self.data_source.creation_block
+        self.data_source.creation_block()
     }
 }
 
-impl PartialEq for RuntimeHost {
+impl<C: Blockchain> PartialEq for RuntimeHost<C> {
     fn eq(&self, other: &Self) -> bool {
         self.data_source.is_duplicate_of(&other.data_source)
     }

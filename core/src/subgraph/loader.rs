@@ -10,7 +10,7 @@ pub async fn load_dynamic_data_sources(
     deployment_id: &DeploymentHash,
     logger: Logger,
     templates: Vec<DataSourceTemplate>,
-) -> Result<Vec<DataSource>, Error> {
+) -> Result<Vec<graph_chain_ethereum::DataSource>, Error> {
     let start_time = Instant::now();
 
     let template_map: HashMap<&str, &DataSourceTemplate> = HashMap::from_iter(
@@ -18,7 +18,7 @@ pub async fn load_dynamic_data_sources(
             .iter()
             .map(|template| (template.name.as_str(), template)),
     );
-    let mut data_sources: Vec<DataSource> = vec![];
+    let mut data_sources: Vec<graph_chain_ethereum::DataSource> = vec![];
 
     for stored in store.load_dynamic_data_sources().await? {
         let StoredDynamicDataSource {
@@ -41,7 +41,7 @@ pub async fn load_dynamic_data_sources(
 
         let contract_abi = template.mapping.find_abi(&template.source.abi)?;
 
-        let ds = DataSource {
+        let ds = graph_chain_ethereum::DataSource {
             kind: template.kind.clone(),
             network: template.network.clone(),
             name,

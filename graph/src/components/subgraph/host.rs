@@ -42,7 +42,7 @@ impl MappingError {
 
 /// Common trait for runtime host implementations.
 #[async_trait]
-pub trait RuntimeHost<C: Blockchain>: Send + Sync + Debug + 'static {
+pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
     fn match_and_decode(
         &self,
         trigger: &EthereumTrigger,
@@ -156,7 +156,7 @@ pub trait RuntimeHostBuilder<C: Blockchain>: Clone + Send + Sync + 'static {
         &self,
         network_name: String,
         subgraph_id: DeploymentHash,
-        data_source: DataSource,
+        data_source: C::DataSource,
         top_level_templates: Arc<Vec<DataSourceTemplate>>,
         mapping_request_sender: mpsc::Sender<Self::Req>,
         metrics: Arc<HostMetrics>,

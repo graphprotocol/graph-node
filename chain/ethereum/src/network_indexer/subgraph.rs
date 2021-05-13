@@ -1,3 +1,5 @@
+use crate::data_source::DataSource;
+
 use super::*;
 use futures::future::FutureResult;
 use std::collections::BTreeSet;
@@ -17,7 +19,7 @@ fn create_subgraph(
     network_name: String,
 ) -> FutureResult<(), Error> {
     // Create a fake manifest
-    let manifest = SubgraphManifest {
+    let manifest = SubgraphManifest::<DataSource> {
         id: subgraph_id.clone(),
         spec_version: String::from("0.0.2"),
         features: BTreeSet::new(),

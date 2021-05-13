@@ -11,10 +11,10 @@ use std::{fmt, fmt::Display};
 
 use super::DeploymentHash;
 use crate::components::store::EntityType;
-use crate::data::graphql::TryFromValue;
 use crate::data::store::Value;
 use crate::data::subgraph::SubgraphManifest;
 use crate::prelude::*;
+use crate::{blockchain::DataSource, data::graphql::TryFromValue};
 
 pub const POI_TABLE: &str = "poi2$";
 lazy_static! {
@@ -113,7 +113,7 @@ pub struct SubgraphDeploymentEntity {
 
 impl SubgraphDeploymentEntity {
     pub fn new(
-        source_manifest: &SubgraphManifest,
+        source_manifest: &SubgraphManifest<impl DataSource>,
         synced: bool,
         earliest_block: Option<BlockPtr>,
     ) -> Self {
@@ -155,8 +155,8 @@ pub struct SubgraphManifestEntity {
     pub schema: String,
 }
 
-impl<'a> From<&'a super::SubgraphManifest> for SubgraphManifestEntity {
-    fn from(manifest: &'a super::SubgraphManifest) -> Self {
+impl<'a, DS: DataSource> From<&'a super::SubgraphManifest<DS>> for SubgraphManifestEntity {
+    fn from(manifest: &'a super::SubgraphManifest<DS>) -> Self {
         Self {
             spec_version: manifest.spec_version.clone(),
             description: manifest.description.clone(),

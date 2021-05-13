@@ -20,10 +20,13 @@ use thiserror::Error;
 use web3::types::{Address, H256};
 
 use crate::data::subgraph::status;
-use crate::data::{query::QueryTarget, subgraph::schema::*};
 use crate::data::{store::*, subgraph::Source};
 use crate::prelude::*;
 use crate::util::lfu_cache::LfuCache;
+use crate::{
+    blockchain::DataSource,
+    data::{query::QueryTarget, subgraph::schema::*},
+};
 
 use crate::components::server::index_node::VersionInfo;
 
@@ -821,17 +824,13 @@ pub struct StoredDynamicDataSource {
     pub creation_block: Option<BlockNumber>,
 }
 
-impl From<&DataSource> for StoredDynamicDataSource {
-    fn from(ds: &DataSource) -> Self {
+impl<DS: DataSource> From<&DS> for StoredDynamicDataSource {
+    fn from(ds: &DS) -> Self {
         Self {
-            name: ds.name.clone(),
-            source: ds.source.clone(),
-            context: ds
-                .context
-                .as_ref()
-                .as_ref()
-                .map(|ctx| serde_json::to_string(&ctx).unwrap()),
-            creation_block: ds.creation_block,
+            name: ds.name().to_owned(),
+            source: ds.source().clone(),
+            context: ds.context().map(|ctx| serde_json::to_string(&ctx).unwrap()),
+            creation_block: ds.creation_block(),
         }
     }
 }
@@ -1574,7 +1573,7 @@ impl EntityCache {
     }
 
     /// Add a dynamic data source
-    pub fn add_data_source(&mut self, data_source: &DataSource) {
+    pub fn add_data_source(&mut self, data_source: &impl DataSource) {
         self.data_sources.push(data_source.into());
     }
 
