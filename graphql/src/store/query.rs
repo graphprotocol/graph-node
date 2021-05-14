@@ -23,21 +23,23 @@ pub fn build_query<'a>(
     types_for_interface: &'a BTreeMap<EntityType, Vec<s::ObjectType>>,
     max_first: u32,
     max_skip: u32,
-    mut column_names: BTreeMap<ObjectCondition<'a>, ColumnNames>,
+    mut column_names: BTreeMap<ObjectCondition<'a>, AttributeNames>,
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
     let entity_types = EntityCollection::All(match &entity {
         ObjectOrInterface::Object(object) => {
             let selected_columns = column_names
                 .remove(&(*object).into())
-                .unwrap_or(ColumnNames::All);
+                .unwrap_or(AttributeNames::All);
             vec![((*object).into(), selected_columns)]
         }
         ObjectOrInterface::Interface(interface) => types_for_interface
             [&EntityType::from(*interface)]
             .iter()
             .map(|o| {
-                let selected_columns = column_names.remove(&o.into()).unwrap_or(ColumnNames::All);
+                let selected_columns = column_names
+                    .remove(&o.into())
+                    .unwrap_or(AttributeNames::All);
                 (o.into(), selected_columns)
             })
             .collect(),
@@ -443,7 +445,7 @@ mod tests {
             )
             .unwrap()
             .collection,
-            EntityCollection::All(vec![(EntityType::from("Entity1"), ColumnNames::All)])
+            EntityCollection::All(vec![(EntityType::from("Entity1"), AttributeNames::All)])
         );
         assert_eq!(
             build_query(
@@ -457,7 +459,7 @@ mod tests {
             )
             .unwrap()
             .collection,
-            EntityCollection::All(vec![(EntityType::from("Entity2"), ColumnNames::All)])
+            EntityCollection::All(vec![(EntityType::from("Entity2"), AttributeNames::All)])
         );
     }
 

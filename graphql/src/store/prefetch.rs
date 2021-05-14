@@ -13,7 +13,7 @@ use graph::{components::store::EntityType, data::graphql::*};
 use graph::{
     data::graphql::ext::DirectiveFinder,
     prelude::{
-        q, s, ApiSchema, BlockNumber, ChildMultiplicity, ColumnNames, EntityCollection,
+        q, s, ApiSchema, AttributeNames, BlockNumber, ChildMultiplicity, EntityCollection,
         EntityFilter, EntityLink, EntityOrder, EntityWindow, Logger, ParentLink,
         QueryExecutionError, QueryStore, Value as StoreValue, WindowAttribute,
     },
@@ -418,7 +418,7 @@ impl<'a> Join<'a> {
                 let child_type: EntityType = cond.child_type.to_owned();
                 let column_names = match column_names_map.get(&child_type) {
                     Some(column_names) => column_names.clone(),
-                    None => ColumnNames::All,
+                    None => AttributeNames::All,
                 };
                 windows.push(EntityWindow {
                     child_type,
@@ -532,7 +532,7 @@ fn execute_selection_set<'a>(
                 collect_fields(ctx, child_type, fields.iter().map(|f| &f.selection_set));
 
             let collected_columns =
-                CollectedColumnNames::consolidate_column_names(&mut grouped_field_set)
+                CollectedAttributeNames::consolidate_column_names(&mut grouped_field_set)
                     .resolve_interfaces(&ctx.query.schema.types_for_interface());
 
             match execute_field(
@@ -577,7 +577,7 @@ struct CollectedResponseKey<'a> {
     iface_cond: Option<&'a s::InterfaceType>,
     iface_fields: Vec<&'a q::Field>,
     obj_types: IndexMap<ObjectCondition<'a>, Vec<&'a q::Field>>,
-    collected_column_names: CollectedColumnNames<'a>,
+    collected_column_names: CollectedAttributeNames<'a>,
 }
 
 impl<'a> CollectedResponseKey<'a> {
@@ -804,7 +804,7 @@ fn execute_field(
     join: &Join<'_>,
     field: &q::Field,
     field_definition: &s::Field,
-    collected_column_names: ColumnNamesByObjectType<'_>,
+    collected_column_names: AttributeNamesByObjectType<'_>,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     let argument_values = crate::execution::coerce_argument_values(&ctx.query, object_type, field)?;
     let multiplicity = if sast::is_list_or_non_null_list_field(field_definition) {
@@ -845,7 +845,7 @@ fn fetch(
     max_first: u32,
     max_skip: u32,
     query_id: String,
-    collected_column_names: ColumnNamesByObjectType<'_>,
+    collected_column_names: AttributeNamesByObjectType<'_>,
 ) -> Result<Vec<Node>, QueryExecutionError> {
     let mut query = build_query(
         join.child_type,
@@ -888,35 +888,35 @@ fn fetch(
 
 /// Represents a finished column collection operation, mapping each object type to the final set of
 /// selected SQL columns.
-type ColumnNamesByObjectType<'a> = BTreeMap<ObjectCondition<'a>, ColumnNames>;
+type AttributeNamesByObjectType<'a> = BTreeMap<ObjectCondition<'a>, AttributeNames>;
 
 #[derive(Debug, Default, Clone)]
-struct CollectedColumnNames<'a>(HashMap<ObjectOrInterface<'a>, ColumnNames>);
+struct CollectedAttributeNames<'a>(HashMap<ObjectOrInterface<'a>, AttributeNames>);
 
-impl<'a> CollectedColumnNames<'a> {
+impl<'a> CollectedAttributeNames<'a> {
     fn update(&mut self, object_or_interface: ObjectOrInterface<'a>, field: &q::Field) {
         self.0
             .entry(object_or_interface)
-            .or_insert(ColumnNames::All)
+            .or_insert(AttributeNames::All)
             .update(field);
     }
 
     /// Consume this instance and transform it into a mapping from
-    /// `ObjectTypes` to `ColumnNames`, while resolving all interfaces
+    /// `ObjectTypes` to `AttributeNames`, while resolving all interfaces
     /// into the `ObjectType`s that implement them.
     fn resolve_interfaces(
         mut self,
         types_for_interface: &'a BTreeMap<EntityType, Vec<s::ObjectType>>,
-    ) -> ColumnNamesByObjectType {
-        let mut map: ColumnNamesByObjectType = BTreeMap::new();
+    ) -> AttributeNamesByObjectType {
+        let mut map: AttributeNamesByObjectType = BTreeMap::new();
         for (object_or_interface, column_names) in self.0.drain() {
             match object_or_interface {
                 ObjectOrInterface::Object(object) => {
-                    CollectedColumnNames::upsert(&mut map, object, column_names);
+                    CollectedAttributeNames::upsert(&mut map, object, column_names);
                 }
                 ObjectOrInterface::Interface(interface) => {
                     for object in &types_for_interface[&EntityType::from(interface)] {
-                        CollectedColumnNames::upsert(&mut map, object, column_names.clone());
+                        CollectedAttributeNames::upsert(&mut map, object, column_names.clone());
                     }
                 }
             }
@@ -924,11 +924,11 @@ impl<'a> CollectedColumnNames<'a> {
         map
     }
 
-    /// Helper function for handling insertion on the `ColumnNamesByObjectType` struct.
+    /// Helper function for handling insertion on the `AttributeNamesByObjectType` struct.
     fn upsert(
-        map: &mut BTreeMap<ObjectCondition<'a>, ColumnNames>,
+        map: &mut BTreeMap<ObjectCondition<'a>, AttributeNames>,
         object: &'a s::ObjectType,
-        column_names: ColumnNames,
+        column_names: AttributeNames,
     ) {
         use std::collections::btree_map::Entry;
         let key = ObjectCondition(object);
@@ -943,12 +943,12 @@ impl<'a> CollectedColumnNames<'a> {
         }
     }
 
-    /// Creates a new, combined `CollectedColumnNames` using drained values from `CollectedColumnNames`
+    /// Creates a new, combined `CollectedAttributeNames` using drained values from `CollectedAttributeNames`
     /// scattered across different `CollectedResponseKey`s.
     fn consolidate_column_names<'schema, 'collection>(
         grouped_field_set: &'collection mut GroupedFieldSet<'schema>,
-    ) -> CollectedColumnNames<'schema> {
-        let mut map: HashMap<ObjectOrInterface, ColumnNames> = HashMap::new();
+    ) -> CollectedAttributeNames<'schema> {
+        let mut map: HashMap<ObjectOrInterface, AttributeNames> = HashMap::new();
         for (_, collected_response_key) in grouped_field_set.into_iter() {
             for (object_or_interface, column_names) in
                 collected_response_key.collected_column_names.0.drain()
@@ -963,16 +963,19 @@ impl<'a> CollectedColumnNames<'a> {
                 }
             }
         }
-        CollectedColumnNames(map)
+        CollectedAttributeNames(map)
     }
 }
 
-/// Removes all derived fields from a `ColumnNames` collection based on a referential `ObjectType`.
-fn filter_derived_fields(column_names_type: ColumnNames, object: &s::ObjectType) -> ColumnNames {
+/// Removes all derived fields from a `AttributeNames` collection based on a referential `ObjectType`.
+fn filter_derived_fields(
+    column_names_type: AttributeNames,
+    object: &s::ObjectType,
+) -> AttributeNames {
     match column_names_type {
-        ColumnNames::All => column_names_type,
-        ColumnNames::Select(sql_column_names) => {
-            let mut filtered = ColumnNames::All;
+        AttributeNames::All => column_names_type,
+        AttributeNames::Select(sql_column_names) => {
+            let mut filtered = AttributeNames::All;
             sql_column_names
                 .into_iter()
                 .filter_map(|column_name| {

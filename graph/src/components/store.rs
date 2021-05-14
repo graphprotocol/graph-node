@@ -313,7 +313,7 @@ pub struct EntityWindow {
     pub ids: Vec<String>,
     /// How to get the parent id
     pub link: EntityLink,
-    pub column_names: ColumnNames,
+    pub column_names: AttributeNames,
 }
 
 /// The base collections from which we are going to get entities for use in
@@ -324,7 +324,7 @@ pub struct EntityWindow {
 #[derive(Clone, Debug, PartialEq)]
 pub enum EntityCollection {
     /// Use all entities of the given types
-    All(Vec<(EntityType, ColumnNames)>),
+    All(Vec<(EntityType, AttributeNames)>),
     /// Use entities according to the windows. The set of entities that we
     /// apply order and range to is formed by taking all entities matching
     /// the window, and grouping them by the attribute of the window. Entities
@@ -336,7 +336,7 @@ pub enum EntityCollection {
 }
 
 impl EntityCollection {
-    pub fn entity_types_and_column_names(&self) -> BTreeMap<EntityType, ColumnNames> {
+    pub fn entity_types_and_column_names(&self) -> BTreeMap<EntityType, AttributeNames> {
         let mut map = BTreeMap::new();
         match self {
             EntityCollection::All(pairs) => pairs.iter().for_each(|(entity_type, column_names)| {
@@ -1736,22 +1736,22 @@ impl LfuCache<EntityKey, Option<Entity>> {
 
 /// Determines which columns should be selected in a table.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum ColumnNames {
+pub enum AttributeNames {
     /// Select all columns. Equivalent to a `"SELECT *"`.
     All,
     /// Individual column names to be selected.
     Select(BTreeSet<String>),
 }
 
-impl ColumnNames {
+impl AttributeNames {
     pub fn insert(&mut self, column_name: &str) {
         match self {
-            ColumnNames::All => {
+            AttributeNames::All => {
                 let mut set = BTreeSet::new();
                 set.insert(column_name.to_string());
-                *self = ColumnNames::Select(set)
+                *self = AttributeNames::Select(set)
             }
-            ColumnNames::Select(set) => {
+            AttributeNames::Select(set) => {
                 set.insert(column_name.to_string());
             }
         }
@@ -1766,7 +1766,7 @@ impl ColumnNames {
     }
 
     pub fn extend(&mut self, other: Self) {
-        use ColumnNames::*;
+        use AttributeNames::*;
         match (self, other) {
             (All, All) => {}
             (self_ @ All, other @ Select(_)) => *self_ = other,

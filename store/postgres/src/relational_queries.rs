@@ -19,7 +19,7 @@ use graph::prelude::{
     QueryExecutionError, StoreError, Value,
 };
 use graph::{
-    components::store::{ColumnNames, EntityType},
+    components::store::{AttributeNames, EntityType},
     data::{schema::FulltextAlgorithm, store::scalar},
 };
 use itertools::Itertools;
@@ -1578,7 +1578,7 @@ pub struct FilterWindow<'a> {
     ids: Vec<String>,
     /// How to filter by a set of parents
     link: TableLink<'a>,
-    column_names: ColumnNames,
+    column_names: AttributeNames,
 }
 
 impl<'a> FilterWindow<'a> {
@@ -1892,7 +1892,7 @@ impl<'a> FilterWindow<'a> {
 pub enum FilterCollection<'a> {
     /// Collection made from all entities in a table; each entry is the table
     /// and the filter to apply to it, checked and bound to that table
-    All(Vec<(&'a Table, Option<QueryFilter<'a>>, ColumnNames)>),
+    All(Vec<(&'a Table, Option<QueryFilter<'a>>, AttributeNames)>),
     /// Collection made from windows of the same or different entity types
     SingleWindow(FilterWindow<'a>),
     MultiWindow(Vec<FilterWindow<'a>>, Vec<String>),
@@ -2282,7 +2282,7 @@ impl<'a> FilterQuery<'a> {
         table: &Table,
         filter: &Option<QueryFilter>,
         mut out: AstPass<Pg>,
-        column_names: &ColumnNames,
+        column_names: &AttributeNames,
     ) -> QueryResult<()> {
         Self::select_entity_and_data(table, &mut out);
         out.push_sql(" from (select ");
@@ -2323,7 +2323,7 @@ impl<'a> FilterQuery<'a> {
     /// No windowing, but multiple entity types
     fn query_no_window(
         &self,
-        entities: &Vec<(&Table, Option<QueryFilter>, ColumnNames)>,
+        entities: &Vec<(&Table, Option<QueryFilter>, AttributeNames)>,
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
         // We have multiple tables which might have different schemas since
@@ -2888,10 +2888,10 @@ pub struct CopyVid {
     pub vid: i64,
 }
 
-fn write_column_names(column_names: &ColumnNames, table: &Table, out: &mut AstPass<Pg>) {
+fn write_column_names(column_names: &AttributeNames, table: &Table, out: &mut AstPass<Pg>) {
     match column_names {
-        ColumnNames::All => out.push_sql(" * "),
-        ColumnNames::Select(column_names) => {
+        AttributeNames::All => out.push_sql(" * "),
+        AttributeNames::Select(column_names) => {
             let mut iterator = column_names
                 .union(&BASE_SQL_COLUMNS)
                 .into_iter()
@@ -2913,18 +2913,18 @@ fn write_column_names(column_names: &ColumnNames, table: &Table, out: &mut AstPa
 }
 
 fn jsonb_build_object(
-    column_names: &ColumnNames,
+    column_names: &AttributeNames,
     table_identifier: &str,
     table: &Table,
     out: &mut AstPass<Pg>,
 ) {
     match column_names {
-        ColumnNames::All => {
+        AttributeNames::All => {
             out.push_sql("to_jsonb(\"");
             out.push_sql(table_identifier);
             out.push_sql("\".*)");
         }
-        ColumnNames::Select(column_names) => {
+        AttributeNames::Select(column_names) => {
             out.push_sql("jsonb_build_object(");
             let mut iterator = column_names
                 .union(&BASE_SQL_COLUMNS)

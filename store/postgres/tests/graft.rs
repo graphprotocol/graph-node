@@ -263,7 +263,7 @@ fn check_graft(
     let query = EntityQuery::new(
         deployment.hash.clone(),
         BLOCK_NUMBER_MAX,
-        EntityCollection::All(vec![(EntityType::from(USER), ColumnNames::All)]),
+        EntityCollection::All(vec![(EntityType::from(USER), AttributeNames::All)]),
     )
     .order(EntityOrder::Descending(
         "name".to_string(),
