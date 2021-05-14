@@ -27,8 +27,8 @@ use graph::components::subgraph::ProofOfIndexingFinisher;
 use graph::constraint_violation;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
-    anyhow, debug, futures03, info, lazy_static, o, web3, ApiSchema, BlockNumber, BlockPtr,
-    CheapClone, ColumnNames, DeploymentHash, DeploymentState, DynTryFuture, Entity, EntityKey,
+    anyhow, debug, futures03, info, lazy_static, o, web3, ApiSchema, AttributeNames, BlockNumber,
+    BlockPtr, CheapClone, DeploymentHash, DeploymentState, DynTryFuture, Entity, EntityKey,
     EntityModification, EntityQuery, Error, Logger, QueryExecutionError, Schema, StopwatchMetrics,
     StoreError, StoreEvent, Value, BLOCK_NUMBER_MAX,
 };
@@ -733,8 +733,8 @@ impl DeploymentStore {
                             block.number.try_into().unwrap(),
                             EntityCollection::All(vec![(
                                 POI_OBJECT.cheap_clone(),
-                                // TODO: discover how we should handle the ColumnNames in this case
-                                ColumnNames::All,
+                                // TODO: discover how we should handle the AttributeNames in this case
+                                AttributeNames::All,
                             )]),
                         );
                         let entities = store
