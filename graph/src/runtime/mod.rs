@@ -36,6 +36,20 @@ pub trait AscType: Sized {
     }
 }
 
+// Only implemented because of structs that derive AscType and
+// contain fields that are PhantomData.
+impl<T> AscType for std::marker::PhantomData<T> {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        Ok(vec![])
+    }
+
+    fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
+        assert!(asc_obj.len() == 0);
+
+        Ok(Self)
+    }
+}
+
 /// An Asc primitive or an `AscPtr` into the Asc heap. A type marked as
 /// `AscValue` must have the same byte representation in Rust and Asc, including
 /// same size, and size must be equal to alignment.

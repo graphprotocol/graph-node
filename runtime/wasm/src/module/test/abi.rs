@@ -103,7 +103,7 @@ async fn abi_ethabi_token_identity() {
     let token_address = Token::Address(address);
 
     let token_address_ptr = module.asc_new(&token_address).unwrap();
-    let new_address_obj: AscPtr<ArrayBuffer<u8>> =
+    let new_address_obj: AscPtr<ArrayBuffer> =
         module.invoke_export("token_to_address", token_address_ptr);
 
     let new_token_ptr = module.invoke_export("token_from_address", new_address_obj);
@@ -115,7 +115,7 @@ async fn abi_ethabi_token_identity() {
     let token_bytes = Token::Bytes(vec![42, 45, 7, 245, 45]);
 
     let token_bytes_ptr = module.asc_new(&token_bytes).unwrap();
-    let new_bytes_obj: AscPtr<ArrayBuffer<u8>> =
+    let new_bytes_obj: AscPtr<ArrayBuffer> =
         module.invoke_export("token_to_bytes", token_bytes_ptr);
 
     let new_token_ptr = module.invoke_export("token_from_bytes", new_bytes_obj);
@@ -127,7 +127,7 @@ async fn abi_ethabi_token_identity() {
     let int_token = Token::Int(U256([256, 453452345, 0, 42]));
 
     let int_token_ptr = module.asc_new(&int_token).unwrap();
-    let new_int_obj: AscPtr<ArrayBuffer<u8>> = module.invoke_export("token_to_int", int_token_ptr);
+    let new_int_obj: AscPtr<ArrayBuffer> = module.invoke_export("token_to_int", int_token_ptr);
 
     let new_token_ptr = module.invoke_export("token_from_int", new_int_obj);
     let new_token = module.asc_get(new_token_ptr).unwrap();
@@ -138,8 +138,7 @@ async fn abi_ethabi_token_identity() {
     let uint_token = Token::Uint(U256([256, 453452345, 0, 42]));
 
     let uint_token_ptr = module.asc_new(&uint_token).unwrap();
-    let new_uint_obj: AscPtr<ArrayBuffer<u8>> =
-        module.invoke_export("token_to_uint", uint_token_ptr);
+    let new_uint_obj: AscPtr<ArrayBuffer> = module.invoke_export("token_to_uint", uint_token_ptr);
 
     let new_token_ptr = module.invoke_export("token_from_uint", new_uint_obj);
     let new_token = module.asc_get(new_token_ptr).unwrap();
