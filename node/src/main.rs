@@ -506,6 +506,7 @@ async fn create_ethereum_networks(
             );
         }
     }
+    parsed_networks.sort();
     Ok(parsed_networks)
 }
 
