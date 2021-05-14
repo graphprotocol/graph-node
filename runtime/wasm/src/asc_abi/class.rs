@@ -16,7 +16,7 @@ use std::mem::{size_of, size_of_val};
 
 /// Asc std ArrayBuffer: "a generic, fixed-length raw binary data buffer".
 /// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
-pub(crate) struct ArrayBuffer<T> {
+pub(crate) struct ArrayBuffer {
     byte_length: u32,
     // Asc allocators always align at 8 bytes, we already have 4 bytes from
     // `byte_length_size` so with 4 more bytes we align the contents at 8
@@ -25,11 +25,10 @@ pub(crate) struct ArrayBuffer<T> {
     padding: [u8; 4],
     // In Asc this slice is layed out inline with the ArrayBuffer.
     content: Box<[u8]>,
-    ty: PhantomData<T>,
 }
 
-impl<T: AscValue> ArrayBuffer<T> {
-    fn new(values: &[T]) -> Result<Self, DeterministicHostError> {
+impl ArrayBuffer {
+    fn new<T: AscType>(values: &[T]) -> Result<Self, DeterministicHostError> {
         let mut content = Vec::new();
         for value in values {
             let asc_bytes = value.to_asc_bytes()?;
@@ -46,14 +45,17 @@ impl<T: AscValue> ArrayBuffer<T> {
             byte_length: content.len() as u32,
             padding: [0; 4],
             content: content.into(),
-            ty: PhantomData,
         })
     }
 
     /// Read `length` elements of type `T` starting at `byte_offset`.
     ///
     /// Panics if that tries to read beyond the length of `self.content`.
-    fn get(&self, byte_offset: u32, length: u32) -> Result<Vec<T>, DeterministicHostError> {
+    fn get<T: AscType>(
+        &self,
+        byte_offset: u32,
+        length: u32,
+    ) -> Result<Vec<T>, DeterministicHostError> {
         let length = length as usize;
         let byte_offset = byte_offset as usize;
 
@@ -80,8 +82,8 @@ impl<T: AscValue> ArrayBuffer<T> {
     }
 }
 
-impl<T> AscType for ArrayBuffer<T> {
-    fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
+impl AscType for ArrayBuffer {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
         let mut asc_layout: Vec<u8> = Vec::new();
 
         let byte_length: [u8; 4] = self.byte_length.to_le_bytes();
@@ -114,7 +116,6 @@ impl<T> AscType for ArrayBuffer<T> {
             byte_length: u32::from_asc_bytes(&byte_length)?,
             padding: [0; 4],
             content: content.to_vec().into(),
-            ty: PhantomData,
         })
     }
 
@@ -133,10 +134,11 @@ impl<T> AscType for ArrayBuffer<T> {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct TypedArray<T> {
-    pub buffer: AscPtr<ArrayBuffer<T>>,
+    pub buffer: AscPtr<ArrayBuffer>,
     /// Byte position in `buffer` of the array start.
     byte_offset: u32,
     byte_length: u32,
+    ty: PhantomData<T>,
 }
 
 impl<T: AscValue> TypedArray<T> {
@@ -149,6 +151,7 @@ impl<T: AscValue> TypedArray<T> {
             byte_length: buffer.byte_length,
             buffer: AscPtr::alloc_obj(buffer, heap)?,
             byte_offset: 0,
+            ty: PhantomData,
         })
     }
 
@@ -187,7 +190,7 @@ impl AscString {
 }
 
 impl AscType for AscString {
-    fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
         let mut asc_layout: Vec<u8> = Vec::new();
 
         let length: [u8; 4] = self.length.to_le_bytes();
@@ -269,8 +272,9 @@ impl AscType for AscString {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct Array<T> {
-    buffer: AscPtr<ArrayBuffer<T>>,
+    buffer: AscPtr<ArrayBuffer>,
     length: u32,
+    ty: PhantomData<T>,
 }
 
 impl<T: AscValue> Array<T> {
@@ -279,6 +283,7 @@ impl<T: AscValue> Array<T> {
             buffer: AscPtr::alloc_obj(ArrayBuffer::new(content)?, heap)?,
             // If this cast would overflow, the above line has already panicked.
             length: content.len() as u32,
+            ty: PhantomData,
         })
     }
 
@@ -293,7 +298,7 @@ impl<T: AscValue> Array<T> {
 pub(crate) struct EnumPayload(pub u64);
 
 impl AscType for EnumPayload {
-    fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
         self.0.to_asc_bytes()
     }
 

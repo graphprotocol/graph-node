@@ -26,7 +26,7 @@ pub fn asc_type_derive(input: TokenStream) -> TokenStream {
 //
 // Example output:
 // impl<K, V> AscType for AscTypedMapEntry<K, V> {
-//     fn to_asc_bytes(self) -> Vec<u8> {
+//     fn to_asc_bytes(&self) -> Vec<u8> {
 //         let mut bytes = Vec::new();
 //         bytes.extend_from_slice(&self.key.to_asc_bytes());
 //         bytes.extend_from_slice(&self.value.to_asc_bytes());
@@ -67,7 +67,7 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
 
     TokenStream::from(quote! {
         impl#impl_generics AscType for #struct_name#ty_generics #where_clause {
-            fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
+            fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
                let mut bytes = Vec::new();
                 #(bytes.extend_from_slice(&self.#field_names.to_asc_bytes()?);)*
 
@@ -114,7 +114,7 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
 //
 // Example output:
 // impl AscType for JsonValueKind {
-//     fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
+//     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
 //         let discriminant: u32 = match *self {
 //             JsonValueKind::Null => 0u32,
 //             JsonValueKind::Bool => 1u32,
@@ -163,7 +163,7 @@ fn asc_type_derive_enum(item_enum: ItemEnum) -> TokenStream {
 
     TokenStream::from(quote! {
         impl#impl_generics AscType for #enum_name#ty_generics #where_clause {
-            fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
+            fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
                 let discriminant: u32 = match self {
                     #(#enum_name_iter::#variant_paths => #variant_discriminant,)*
                 };

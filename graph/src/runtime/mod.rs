@@ -25,7 +25,7 @@ use std::mem::size_of;
 pub trait AscType: Sized {
     /// Transform the Rust representation of this instance into an sequence of
     /// bytes that is precisely the memory layout of a corresponding Asc instance.
-    fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError>;
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError>;
 
     /// The Rust representation of an Asc object as layed out in Asc memory.
     fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError>;
@@ -36,14 +36,28 @@ pub trait AscType: Sized {
     }
 }
 
+// Only implemented because of structs that derive AscType and
+// contain fields that are PhantomData.
+impl<T> AscType for std::marker::PhantomData<T> {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        Ok(vec![])
+    }
+
+    fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
+        assert!(asc_obj.len() == 0);
+
+        Ok(Self)
+    }
+}
+
 /// An Asc primitive or an `AscPtr` into the Asc heap. A type marked as
 /// `AscValue` must have the same byte representation in Rust and Asc, including
 /// same size, and size must be equal to alignment.
 pub trait AscValue: AscType + Copy + Default {}
 
 impl AscType for bool {
-    fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
-        Ok(vec![self as u8])
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        Ok(vec![*self as u8])
     }
 
     fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
@@ -65,7 +79,7 @@ macro_rules! impl_asc_type {
     ($($T:ty),*) => {
         $(
             impl AscType for $T {
-                fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
+                fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
                     Ok(self.to_le_bytes().to_vec())
                 }
 

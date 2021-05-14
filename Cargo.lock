@@ -1758,8 +1758,8 @@ dependencies = [
 name = "graph-runtime-derive"
 version = "0.22.0"
 dependencies = [
- "quote 0.6.13",
- "syn 0.15.44",
+ "quote 1.0.7",
+ "syn 1.0.62",
 ]
 
 [[package]]
@@ -1906,7 +1906,7 @@ dependencies = [
 [[package]]
 name = "graphql-parser"
 version = "0.3.0"
-source = "git+https://github.com/graphql-rust/graphql-parser#45167b53e9533c331298683577ba8df7e43480ac"
+source = "git+https://github.com/graphql-rust/graphql-parser?rev=45167b53e9533c331298683577ba8df7e43480ac#45167b53e9533c331298683577ba8df7e43480ac"
 dependencies = [
  "combine",
  "thiserror",
