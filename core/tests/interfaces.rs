@@ -1192,3 +1192,61 @@ fn nested_interface_fragments_overlapping() {
         }
     );
 }
+
+#[test]
+fn enums() {
+    use graphql_parser::query::Value::Enum;
+    let subgraph_id = "enums";
+    let schema = r#"
+       enum Direction {
+         NORTH
+         EAST
+         SOUTH
+         WEST
+       }
+
+       type Trajectory @entity {
+         id: ID!
+         direction: Direction!
+         meters: Int!
+       }"#;
+
+    let entities = vec![
+        (
+            Entity::from(vec![
+                ("id", Value::from("1")),
+                ("direction", Value::from("EAST")),
+                ("meters", Value::from(10)),
+            ]),
+            "Trajectory",
+        ),
+        (
+            Entity::from(vec![
+                ("id", Value::from("2")),
+                ("direction", Value::from("NORTH")),
+                ("meters", Value::from(15)),
+            ]),
+            "Trajectory",
+        ),
+    ];
+    let query = "query { trajectories { id, direction, meters } }";
+
+    let res = insert_and_query(subgraph_id, schema, entities, query).unwrap();
+    let data = extract_data!(res).unwrap();
+    assert_eq!(
+        data,
+        object! {
+        trajectories: vec![
+            object!{
+        id: "1",
+        direction: Enum("EAST".to_string()),
+        meters: 10,
+        },
+            object!{
+                id: "2",
+        direction: Enum("NORTH".to_string()),
+        meters: 15,
+            },
+        ]}
+    );
+}

@@ -611,11 +611,8 @@ impl<'a> CollectedResponseKey<'a> {
                         }
                     }
                 }
-                s::TypeDefinition::Scalar(_) => {}
-
-                s::TypeDefinition::Union(_)
-                | s::TypeDefinition::Enum(_)
-                | s::TypeDefinition::InputObject(_) => return,
+                s::TypeDefinition::Scalar(_) | s::TypeDefinition::Enum(_) => {}
+                s::TypeDefinition::Union(_) | s::TypeDefinition::InputObject(_) => return,
             });
 
         // collect the column name if field exists in schema
