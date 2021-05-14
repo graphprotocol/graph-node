@@ -94,7 +94,7 @@ impl<C> From<u32> for AscPtr<C> {
 }
 
 impl<T> AscType for AscPtr<T> {
-    fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
         self.0.to_asc_bytes()
     }
 

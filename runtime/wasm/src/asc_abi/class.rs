@@ -81,7 +81,7 @@ impl<T: AscValue> ArrayBuffer<T> {
 }
 
 impl<T> AscType for ArrayBuffer<T> {
-    fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
         let mut asc_layout: Vec<u8> = Vec::new();
 
         let byte_length: [u8; 4] = self.byte_length.to_le_bytes();
@@ -187,7 +187,7 @@ impl AscString {
 }
 
 impl AscType for AscString {
-    fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
         let mut asc_layout: Vec<u8> = Vec::new();
 
         let length: [u8; 4] = self.length.to_le_bytes();
@@ -293,7 +293,7 @@ impl<T: AscValue> Array<T> {
 pub(crate) struct EnumPayload(pub u64);
 
 impl AscType for EnumPayload {
-    fn to_asc_bytes(self) -> Result<Vec<u8>, DeterministicHostError> {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
         self.0.to_asc_bytes()
     }
 
