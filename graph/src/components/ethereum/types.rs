@@ -11,6 +11,7 @@ use web3::types::{
 
 use crate::{
     blockchain::BlockPtr,
+    cheap_clone::CheapClone,
     prelude::{
         BlockNumber, DeploymentHash, EntityKey, MappingBlockHandler, MappingCallHandler,
         MappingEventHandler, ToEntityKey,
@@ -272,7 +273,7 @@ impl PartialOrd for EthereumTrigger {
     }
 }
 
-#[derive(Debug, AsStaticStr)]
+#[derive(AsStaticStr)]
 pub enum MappingTrigger {
     Log {
         block: Arc<LightEthereumBlock>,
@@ -293,6 +294,65 @@ pub enum MappingTrigger {
         block: Arc<LightEthereumBlock>,
         handler: MappingBlockHandler,
     },
+}
+
+// Logging the block is too verbose, so this strips the block from the trigger for Debug.
+impl std::fmt::Debug for MappingTrigger {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        #[derive(Debug)]
+        pub enum MappingTriggerWithoutBlock {
+            Log {
+                transaction: Arc<Transaction>,
+                log: Arc<Log>,
+                params: Vec<LogParam>,
+                handler: MappingEventHandler,
+            },
+            Call {
+                transaction: Arc<Transaction>,
+                call: Arc<EthereumCall>,
+                inputs: Vec<LogParam>,
+                outputs: Vec<LogParam>,
+                handler: MappingCallHandler,
+            },
+            Block {
+                handler: MappingBlockHandler,
+            },
+        }
+
+        let trigger_without_block = match self {
+            MappingTrigger::Log {
+                block: _,
+                transaction,
+                log,
+                params,
+                handler,
+            } => MappingTriggerWithoutBlock::Log {
+                transaction: transaction.cheap_clone(),
+                log: log.cheap_clone(),
+                params: params.clone(),
+                handler: handler.clone(),
+            },
+            MappingTrigger::Call {
+                block: _,
+                transaction,
+                call,
+                inputs,
+                outputs,
+                handler,
+            } => MappingTriggerWithoutBlock::Call {
+                transaction: transaction.cheap_clone(),
+                call: call.cheap_clone(),
+                inputs: inputs.clone(),
+                outputs: outputs.clone(),
+                handler: handler.clone(),
+            },
+            MappingTrigger::Block { block: _, handler } => MappingTriggerWithoutBlock::Block {
+                handler: handler.clone(),
+            },
+        };
+
+        write!(f, "{:?}", trigger_without_block)
+    }
 }
 
 impl MappingTrigger {
