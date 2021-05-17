@@ -28,6 +28,11 @@ lazy_static! {
     static ref ARG_FIRST: String = String::from("first");
     static ref ARG_SKIP: String = String::from("skip");
     static ref ARG_ID: String = String::from("id");
+
+    /// Setting this environment variable to any value will disable the experimental feature "Select by
+    /// Specific Attribute Names".
+    static ref DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES: bool =
+        std::env::var("DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES").is_ok();
 }
 
 type GroupedFieldSet<'a> = IndexMap<&'a str, CollectedResponseKey<'a>>;
@@ -531,9 +536,17 @@ fn execute_selection_set<'a>(
             let mut grouped_field_set =
                 collect_fields(ctx, child_type, fields.iter().map(|f| &f.selection_set));
 
+            // "Select by Specific Attribute Names" is an experimental feature and can be disabled completely.
+            // If this environment variable is set, the program will use an empty collection that,
+            // effectively, causes the `AttributeNames::All` variant to be used as a fallback value for all
+            // queries.
             let collected_columns =
-                CollectedAttributeNames::consolidate_column_names(&mut grouped_field_set)
-                    .resolve_interfaces(&ctx.query.schema.types_for_interface());
+                if *DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES {
+                    BTreeMap::new()
+                } else {
+                    CollectedAttributeNames::consolidate_column_names(&mut grouped_field_set)
+                        .resolve_interfaces(&ctx.query.schema.types_for_interface())
+                };
 
             match execute_field(
                 resolver,
