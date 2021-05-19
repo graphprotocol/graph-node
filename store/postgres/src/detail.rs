@@ -1,8 +1,11 @@
 //! Queries to support the index node API
+use anyhow::anyhow;
 use diesel::pg::PgConnection;
 use diesel::prelude::{
     ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl, RunQueryDsl,
 };
+use diesel_derives::Associations;
+use git2::{self, Commit, ObjectType, Repository, StatusOptions};
 use graph::{
     constraint_violation,
     data::subgraph::schema::{SubgraphError, SubgraphManifestEntity},
@@ -18,10 +21,18 @@ use std::{ops::Bound, sync::Arc};
 use crate::primary::Site;
 use crate::{
     deployment::{
-        subgraph_deployment, subgraph_error, subgraph_manifest, SubgraphHealth as HealthType,
+        graph_node_versions, subgraph_deployment, subgraph_error, subgraph_manifest,
+        SubgraphHealth as HealthType,
     },
     primary::DeploymentId,
 };
+
+const CARGO_MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
+const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
+const CARGO_PKG_VERSION_MAJOR: &str = env!("CARGO_PKG_VERSION_MAJOR");
+const CARGO_PKG_VERSION_MINOR: &str = env!("CARGO_PKG_VERSION_MINOR");
+const CARGO_PKG_VERSION_PATCH: &str = env!("CARGO_PKG_VERSION_PATCH");
+const CARGO_PKG_VERSION_PRE: &str = env!("CARGO_PKG_VERSION_PRE");
 
 type Bytes = Vec<u8>;
 
@@ -261,8 +272,9 @@ pub(crate) fn deployment_statuses(
     }
 }
 
-#[derive(Queryable, QueryableByName)]
+#[derive(Queryable, QueryableByName, Identifiable, Associations)]
 #[table_name = "subgraph_manifest"]
+#[belongs_to(GraphNodeVersion)]
 // We never read the id field but map it to make the interaction with Diesel
 // simpler
 #[allow(dead_code)]
@@ -273,6 +285,7 @@ struct StoredSubgraphManifest {
     repository: Option<String>,
     features: Vec<String>,
     schema: String,
+    graph_node_version_id: i32,
 }
 
 impl From<StoredSubgraphManifest> for SubgraphManifestEntity {
@@ -359,4 +372,96 @@ pub fn deployment_entity(
         .first::<crate::detail::DeploymentDetail>(conn)?;
 
     SubgraphDeploymentEntity::try_from(StoredDeploymentEntity(detail, manifest))
+}
+
+#[derive(Queryable, Identifiable, Insertable)]
+#[table_name = "graph_node_versions"]
+pub struct GraphNodeVersion {
+    pub id: i32,
+    pub git_commit_hash: String,
+    pub git_repository_dirty: bool,
+    pub crate_version: String,
+    pub major: i32,
+    pub minor: i32,
+    pub patch: i32,
+    pub pre_release: String,
+    pub rustc_version: String,
+    pub rustc_host: String,
+    pub rustc_channel: String,
+}
+
+impl GraphNodeVersion {
+    pub(crate) fn create_or_get(conn: &PgConnection) -> anyhow::Result<i32> {
+        let git_repository_path =
+            GraphNodeVersion::find_git_repository_path(std::path::Path::new(CARGO_MANIFEST_DIR))?;
+        let git_repository = Repository::open(&git_repository_path)?;
+        let last_commit = GraphNodeVersion::find_last_commit(&git_repository)?;
+        let git_commit_hash = last_commit.id().to_string();
+        let git_repository_dirty = GraphNodeVersion::is_repository_dirty(&git_repository)?;
+        let crate_version = CARGO_PKG_VERSION.to_string();
+        let pre_release = CARGO_PKG_VERSION_PRE.to_string();
+        let rustc = rustc_version::version_meta()?;
+        let rustc_channel = format!("{:?}", rustc.channel);
+
+        // Cargo won't run if those values are not integers, so it is safe to unwrap here.
+        let major: i32 = CARGO_PKG_VERSION_MAJOR.parse().unwrap();
+        let minor: i32 = CARGO_PKG_VERSION_MINOR.parse().unwrap();
+        let patch: i32 = CARGO_PKG_VERSION_PATCH.parse().unwrap();
+
+        // upsert
+        let graph_node_version_id = {
+            use graph_node_versions::dsl as g;
+            diesel::insert_into(g::graph_node_versions)
+                .values((
+                    g::git_commit_hash.eq(&git_commit_hash),
+                    g::git_repository_dirty.eq(git_repository_dirty),
+                    g::crate_version.eq(&crate_version),
+                    g::major.eq(&major),
+                    g::minor.eq(&minor),
+                    g::patch.eq(&patch),
+                    g::pre_release.eq(&pre_release),
+                    g::rustc_version.eq(&rustc.semver.to_string()),
+                    g::rustc_host.eq(&rustc.host.to_string()),
+                    g::rustc_channel.eq(&rustc_channel),
+                ))
+                .on_conflict(diesel::pg::upsert::on_constraint(
+                    "unique_graph_node_versions",
+                ))
+                .do_update()
+                // inert update to affect and return a row using a single query
+                .set(g::id.eq(g::id))
+                .returning(g::id)
+                .get_result(conn)?
+        };
+        Ok(graph_node_version_id)
+    }
+
+    fn find_git_repository_path(
+        starting_path: &std::path::Path,
+    ) -> anyhow::Result<std::path::PathBuf> {
+        let path = starting_path.join(".git");
+        if path.exists() {
+            Ok(path)
+        } else {
+            if let Some(parent) = starting_path.parent() {
+                GraphNodeVersion::find_git_repository_path(&parent)
+            } else {
+                Err(anyhow!("Could not find a git repository."))
+            }
+        }
+    }
+
+    fn find_last_commit(git_repository: &Repository) -> Result<Commit, git2::Error> {
+        let obj = git_repository.head()?.resolve()?.peel(ObjectType::Commit)?;
+        obj.into_commit()
+            .map_err(|_| git2::Error::from_str("Couldn't find commit"))
+    }
+
+    fn is_repository_dirty(git_repository: &Repository) -> Result<bool, git2::Error> {
+        let mut statuses_options = StatusOptions::new();
+        statuses_options.include_ignored(false);
+        statuses_options.include_unmodified(false);
+        let statuses = git_repository.statuses(Some(&mut statuses_options))?;
+        Ok(statuses.iter().next().is_some())
+    }
 }
