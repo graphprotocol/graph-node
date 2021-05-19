@@ -1,6 +1,7 @@
 //! Utilities for dealing with deployment metadata. Any connection passed
 //! into these methods must be for the shard that holds the actual
 //! deployment data and metadata
+use crate::detail::GraphNodeVersion;
 use diesel::{
     connection::SimpleConnection,
     dsl::{count, delete, insert_into, select, sql, update},
@@ -92,6 +93,23 @@ table! {
         repository -> Nullable<Text>,
         features -> Array<Text>,
         schema -> Text,
+        graph_node_version_id -> Integer,
+    }
+}
+
+table! {
+    subgraphs.graph_node_versions {
+        id -> Integer,
+        git_commit_hash -> Text,
+        git_repository_dirty -> Bool,
+        crate_version -> Text,
+        major -> Integer,
+        minor -> Integer,
+        patch -> Integer,
+        pre_release -> Text,
+        rustc_version -> Text,
+        rustc_host -> Text,
+        rustc_channel -> Text,
     }
 }
 
@@ -708,6 +726,8 @@ pub fn create_deployment(
         d::graft_block_number.eq(n(&graft_block)),
     );
 
+    let graph_node_version_id = GraphNodeVersion::create_or_get(&conn)?;
+
     let manifest_values = (
         m::id.eq(site.id),
         m::spec_version.eq(spec_version),
@@ -715,6 +735,7 @@ pub fn create_deployment(
         m::repository.eq(repository),
         m::features.eq(features),
         m::schema.eq(schema),
+        m::graph_node_version_id.eq(graph_node_version_id),
     );
 
     if exists && replace {
