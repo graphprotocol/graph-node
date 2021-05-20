@@ -21,6 +21,7 @@ use std::time::Instant;
 
 use graph::components::store::EntityCollection;
 use graph::components::subgraph::ProofOfIndexingFinisher;
+use graph::constraint_violation;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
     anyhow, debug, futures03, info, o, web3, ApiSchema, BlockNumber, BlockPtr, CheapClone,
@@ -28,7 +29,6 @@ use graph::prelude::{
     EntityQuery, Error, Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError,
     StoreEvent, Value, BLOCK_NUMBER_MAX,
 };
-
 use graph_graphql::prelude::api_schema;
 use web3::types::Address;
 
@@ -970,6 +970,17 @@ impl DeploymentStore {
     ) -> Result<StoreEvent, StoreError> {
         let conn = self.get_conn()?;
 
+        // Unwrap: If we are reverting then the block ptr is not `None`.
+        let block_ptr_from = Self::block_ptr_with_conn(&site.deployment, &conn)?.unwrap();
+
+        // Sanity check on block numbers
+        if block_ptr_from.number <= block_ptr_to.number {
+            constraint_violation!(
+                "rewind must go backwards, but would go from block {} to block {}",
+                block_ptr_from.number,
+                block_ptr_to.number
+            );
+        }
         self.rewind_with_conn(&conn, site, block_ptr_to)
     }
 
