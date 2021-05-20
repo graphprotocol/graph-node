@@ -40,7 +40,7 @@ where
 {
     pub(crate) fn from_manifest(
         logger: &Logger,
-        manifest: SubgraphManifest<C::DataSource>,
+        manifest: SubgraphManifest<C>,
         host_builder: T,
         host_metrics: Arc<HostMetrics>,
     ) -> Result<Self, Error> {

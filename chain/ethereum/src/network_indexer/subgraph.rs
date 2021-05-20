@@ -1,8 +1,8 @@
-use crate::data_source::DataSource;
+use crate::Chain;
 
 use super::*;
 use futures::future::FutureResult;
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, marker::PhantomData};
 
 fn check_subgraph_exists(
     store: Arc<dyn SubgraphStore>,
@@ -19,7 +19,7 @@ fn create_subgraph(
     network_name: String,
 ) -> FutureResult<(), Error> {
     // Create a fake manifest
-    let manifest = SubgraphManifest::<DataSource> {
+    let manifest = SubgraphManifest::<Chain> {
         id: subgraph_id.clone(),
         spec_version: String::from("0.0.2"),
         features: BTreeSet::new(),
@@ -30,6 +30,7 @@ fn create_subgraph(
         data_sources: vec![],
         graft: None,
         templates: vec![],
+        chain: PhantomData,
     };
 
     let deployment = SubgraphDeploymentEntity::new(&manifest, false, start_block);

@@ -1,9 +1,9 @@
 use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
 use lazy_static::lazy_static;
-use std::str::FromStr;
 use std::time::Duration;
 use std::{collections::HashSet, sync::Mutex};
+use std::{marker::PhantomData, str::FromStr};
 use test_store::*;
 
 use graph::components::store::{DeploymentLocator, StoredDynamicDataSource, WritableStore};
@@ -150,7 +150,7 @@ where
 /// Inserts data in test blocks `GENESIS_PTR`, `TEST_BLOCK_1_PTR`, and
 /// `TEST_BLOCK_2_PTR`
 fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator {
-    let manifest = SubgraphManifest::<graph_chain_ethereum::DataSource> {
+    let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
         id: TEST_SUBGRAPH_ID.clone(),
         spec_version: "1".to_owned(),
         features: Default::default(),
@@ -160,6 +160,7 @@ fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator {
         data_sources: vec![],
         graft: None,
         templates: vec![],
+        chain: PhantomData,
     };
 
     // Create SubgraphDeploymentEntity
@@ -1273,7 +1274,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         let subgraph_id = DeploymentHash::new("EntityChangeTestSubgraph").unwrap();
         let schema =
             Schema::parse(USER_GQL, subgraph_id.clone()).expect("Failed to parse user schema");
-        let manifest = SubgraphManifest::<graph_chain_ethereum::DataSource> {
+        let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
             id: subgraph_id.clone(),
             spec_version: "1".to_owned(),
             features: Default::default(),
@@ -1283,6 +1284,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             data_sources: vec![],
             graft: None,
             templates: vec![],
+            chain: PhantomData,
         };
 
         // Create SubgraphDeploymentEntity

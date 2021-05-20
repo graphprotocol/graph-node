@@ -26,7 +26,7 @@ use graph::{
 
 use crate::{
     adapter::EthereumAdapter as _,
-    data_source::DataSource,
+    data_source::{DataSource, UnresolvedDataSource},
     ethereum_adapter::{
         blocks_with_triggers, get_calls, parse_block_triggers, parse_call_triggers,
         parse_log_triggers,
@@ -63,6 +63,12 @@ pub struct Chain {
     pub is_ingestible: bool,
 }
 
+impl std::fmt::Debug for Chain {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "chain: ethereum")
+    }
+}
+
 impl Chain {
     pub fn new(
         logger_factory: LoggerFactory,
@@ -97,6 +103,8 @@ impl Blockchain for Chain {
     type Block = WrappedBlockFinality;
 
     type DataSource = DataSource;
+
+    type UnresolvedDataSource = UnresolvedDataSource;
 
     type DataSourceTemplate = DummyDataSourceTemplate;
 

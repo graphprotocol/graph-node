@@ -16,7 +16,7 @@ use graph::{
 use graph_store_postgres::layout_for_tests::Connection as Primary;
 use graph_store_postgres::SubgraphStore;
 
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, marker::PhantomData, sync::Arc};
 use test_store::*;
 
 const SUBGRAPH_GQL: &str = "
@@ -112,7 +112,7 @@ fn create_subgraph() {
         let id = DeploymentHash::new(id.to_string()).unwrap();
         let schema = Schema::parse(SUBGRAPH_GQL, id.clone()).unwrap();
 
-        let manifest = SubgraphManifest::<graph_chain_ethereum::DataSource> {
+        let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
             id: id.clone(),
             spec_version: "1".to_owned(),
             features: Default::default(),
@@ -122,6 +122,7 @@ fn create_subgraph() {
             data_sources: vec![],
             graft: None,
             templates: vec![],
+            chain: PhantomData,
         };
         let deployment = SubgraphDeploymentEntity::new(&manifest, false, None);
         let node_id = NodeId::new("left").unwrap();

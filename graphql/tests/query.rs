@@ -2,10 +2,13 @@
 extern crate pretty_assertions;
 
 use graphql_parser::Pos;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap},
+    marker::PhantomData,
+};
 
 use graph::{
     components::store::DeploymentLocator,
@@ -48,7 +51,7 @@ fn setup_with_features(id: &str, features: BTreeSet<SubgraphFeature>) -> Deploym
     test_store::remove_subgraphs();
 
     let schema = test_schema(id.clone());
-    let manifest = SubgraphManifest::<graph_chain_ethereum::DataSource> {
+    let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
         id: id.clone(),
         spec_version: "1".to_owned(),
         features,
@@ -58,6 +61,7 @@ fn setup_with_features(id: &str, features: BTreeSet<SubgraphFeature>) -> Deploym
         data_sources: vec![],
         graft: None,
         templates: vec![],
+        chain: PhantomData,
     };
 
     insert_test_entities(STORE.subgraph_store().as_ref(), manifest)
@@ -101,7 +105,7 @@ fn test_schema(id: DeploymentHash) -> Schema {
 
 fn insert_test_entities(
     store: &impl SubgraphStore,
-    manifest: SubgraphManifest<graph_chain_ethereum::DataSource>,
+    manifest: SubgraphManifest<graph_chain_ethereum::Chain>,
 ) -> DeploymentLocator {
     let deployment = SubgraphDeploymentEntity::new(&manifest, false, None);
     let name = SubgraphName::new("test/query").unwrap();

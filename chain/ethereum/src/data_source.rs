@@ -1,25 +1,25 @@
 use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
 use ethabi::{Address, Event, Function, LogParam, ParamType, RawLog};
-use graph::prelude::{info, Logger};
 use std::str::FromStr;
 use std::{convert::TryFrom, sync::Arc};
 use tiny_keccak::keccak256;
 use web3::types::Log;
 
 use graph::{
-    blockchain::{self, Blockchain},
+    blockchain::{self, Blockchain, DataSource as _},
     prelude::{
-        BlockNumber, CheapClone, DataSourceTemplateInfo, EthereumCall, LightEthereumBlock,
-        LightEthereumBlockExt,
+        async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize,
+        EthereumCall, LightEthereumBlock, LightEthereumBlockExt, LinkResolver, Logger,
     },
 };
 
 use graph::data::subgraph::{
     BlockHandlerFilter, DataSourceContext, Mapping, MappingABI, MappingBlockHandler,
-    MappingCallHandler, MappingEventHandler, Source,
+    MappingCallHandler, MappingEventHandler, Source, UnresolvedMapping,
 };
 
+use crate::chain::Chain;
 use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger, MappingTrigger};
 
 /// Runtime representation of a data source.
@@ -545,6 +545,40 @@ impl DataSource {
                 }))
             }
         }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+pub struct UnresolvedDataSource {
+    pub kind: String,
+    pub network: Option<String>,
+    pub name: String,
+    pub source: Source,
+    pub mapping: UnresolvedMapping,
+    pub context: Option<DataSourceContext>,
+}
+
+#[async_trait]
+impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
+    async fn resolve(
+        self,
+        resolver: &impl LinkResolver,
+        logger: &Logger,
+    ) -> Result<DataSource, anyhow::Error> {
+        let UnresolvedDataSource {
+            kind,
+            network,
+            name,
+            source,
+            mapping,
+            context,
+        } = self;
+
+        info!(logger, "Resolve data source"; "name" => &name, "source" => &source.start_block);
+
+        let mapping = mapping.resolve(&*resolver, logger).await?;
+
+        DataSource::from_manifest(kind, network, name, source, mapping, context)
     }
 }
 

@@ -1,6 +1,6 @@
 use hex_literal::hex;
 use lazy_static::lazy_static;
-use std::str::FromStr;
+use std::{marker::PhantomData, str::FromStr};
 use test_store::*;
 
 use graph::components::store::{
@@ -117,7 +117,7 @@ where
 /// Inserts data in test blocks 1, 2, and 3, leaving test blocks 3A, 4, and 4A for the tests to
 /// use.
 fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator {
-    let manifest = SubgraphManifest::<graph_chain_ethereum::DataSource> {
+    let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
         id: TEST_SUBGRAPH_ID.clone(),
         spec_version: "1".to_owned(),
         features: Default::default(),
@@ -127,6 +127,7 @@ fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator {
         data_sources: vec![],
         graft: None,
         templates: vec![],
+        chain: PhantomData,
     };
 
     // Create SubgraphDeploymentEntity

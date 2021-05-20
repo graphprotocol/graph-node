@@ -58,7 +58,7 @@ const ABI: &str = "[{\"type\":\"function\", \"inputs\": [{\"name\": \"i\",\"type
 
 const MAPPING: &str = "export function handleGet(call: getCall): void {}";
 
-async fn resolve_manifest(text: &str) -> SubgraphManifest<graph_chain_ethereum::DataSource> {
+async fn resolve_manifest(text: &str) -> SubgraphManifest<graph_chain_ethereum::Chain> {
     let mut resolver = TextResolver::default();
     let id = DeploymentHash::new("Qmmanifest").unwrap();
 
@@ -74,7 +74,7 @@ async fn resolve_manifest(text: &str) -> SubgraphManifest<graph_chain_ethereum::
 
 async fn resolve_unvalidated(
     text: &str,
-) -> UnvalidatedSubgraphManifest<graph_chain_ethereum::DataSource> {
+) -> UnvalidatedSubgraphManifest<graph_chain_ethereum::Chain> {
     let mut resolver = TextResolver::default();
     let id = DeploymentHash::new("Qmmanifest").unwrap();
 

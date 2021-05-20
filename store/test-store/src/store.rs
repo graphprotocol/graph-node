@@ -23,9 +23,9 @@ use graph_store_postgres::{
 };
 use hex_literal::hex;
 use lazy_static::lazy_static;
-use std::sync::Mutex;
 use std::time::Instant;
 use std::{collections::BTreeSet, env};
+use std::{marker::PhantomData, sync::Mutex};
 use tokio::runtime::{Builder, Runtime};
 use web3::types::H256;
 
@@ -152,7 +152,7 @@ pub fn create_subgraph(
 ) -> Result<DeploymentLocator, StoreError> {
     let schema = Schema::parse(schema, subgraph_id.clone()).unwrap();
 
-    let manifest = SubgraphManifest::<graph_chain_ethereum::DataSource> {
+    let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
         id: subgraph_id.clone(),
         spec_version: "1".to_owned(),
         features: BTreeSet::new(),
@@ -162,6 +162,7 @@ pub fn create_subgraph(
         data_sources: vec![],
         graft: None,
         templates: vec![],
+        chain: PhantomData,
     };
 
     let deployment = SubgraphDeploymentEntity::new(&manifest, false, None).graft(base);

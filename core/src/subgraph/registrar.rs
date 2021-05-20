@@ -11,7 +11,7 @@ use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
-use graph::{blockchain::DataSource, components::store::BlockStore};
+use graph::{blockchain::Blockchain, components::store::BlockStore};
 use graph_chain_ethereum::{EthereumAdapterTrait, EthereumNetworks};
 
 lazy_static! {
@@ -289,7 +289,7 @@ where
             .logger_factory
             .subgraph_logger(&DeploymentLocator::new(DeploymentId(0), hash.clone()));
 
-        let unvalidated = UnvalidatedSubgraphManifest::<graph_chain_ethereum::DataSource>::resolve(
+        let unvalidated = UnvalidatedSubgraphManifest::<graph_chain_ethereum::Chain>::resolve(
             hash,
             self.resolver.clone(),
             &logger,
@@ -442,7 +442,7 @@ async fn start_subgraph(
 
 /// Resolves the subgraph's earliest block and the manifest's graft base block
 fn resolve_subgraph_chain_blocks(
-    manifest: &SubgraphManifest<impl DataSource>,
+    manifest: &SubgraphManifest<impl Blockchain>,
     chain_store: Arc<impl ChainStore>,
     ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
     logger: &Logger,
@@ -511,7 +511,7 @@ fn create_subgraph_version(
     chain_store: Arc<impl ChainStore>,
     ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
     name: SubgraphName,
-    manifest: SubgraphManifest<impl DataSource>,
+    manifest: SubgraphManifest<impl Blockchain>,
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
 ) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send> {
