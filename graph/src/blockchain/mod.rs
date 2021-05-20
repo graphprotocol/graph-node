@@ -59,7 +59,7 @@ pub trait Blockchain: Sized + Send + Sync + 'static {
     type TriggersAdapter: TriggersAdapter<Self>;
 
     /// Trigger data as parsed from the triggers adapter.
-    type TriggerData;
+    type TriggerData: Ord;
 
     /// Decoded trigger ready to be processed by the mapping.
     type MappingTrigger: AscType;
