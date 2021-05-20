@@ -21,7 +21,9 @@ pub struct BlockWithTriggers<C: Blockchain> {
 }
 
 impl<C: Blockchain> BlockWithTriggers<C> {
-    pub fn new(block: C::Block, trigger_data: Vec<C::TriggerData>) -> Self {
+    pub fn new(block: C::Block, mut trigger_data: Vec<C::TriggerData>) -> Self {
+        // This is where triggers get sorted.
+        trigger_data.sort();
         Self {
             block,
             trigger_data,
