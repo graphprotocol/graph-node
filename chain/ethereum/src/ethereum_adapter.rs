@@ -1546,7 +1546,7 @@ pub(crate) async fn get_calls(
             ethereum_block,
             calls: None,
         }) => {
-            let calls = if requires_traces || ethereum_block.transaction_receipts.is_empty() {
+            let calls = if !requires_traces || ethereum_block.transaction_receipts.is_empty() {
                 vec![]
             } else {
                 adapter
