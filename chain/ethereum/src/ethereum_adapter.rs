@@ -41,6 +41,7 @@ use crate::{
         ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
     },
     transport::Transport,
+    trigger::{EthereumBlockTriggerType, EthereumTrigger},
     TriggerFilter, WrappedBlockFinality,
 };
 

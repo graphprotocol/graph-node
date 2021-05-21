@@ -10,8 +10,8 @@ use web3::types::Log;
 use graph::{
     blockchain::{self, Blockchain},
     prelude::{
-        BlockNumber, CheapClone, DataSourceTemplateInfo, EthereumBlockTriggerType, EthereumCall,
-        EthereumTrigger, LightEthereumBlock, LightEthereumBlockExt, MappingTrigger,
+        BlockNumber, CheapClone, DataSourceTemplateInfo, EthereumCall, LightEthereumBlock,
+        LightEthereumBlockExt,
     },
 };
 
@@ -19,6 +19,8 @@ use graph::data::subgraph::{
     BlockHandlerFilter, DataSourceContext, Mapping, MappingABI, MappingBlockHandler,
     MappingCallHandler, MappingEventHandler, Source,
 };
+
+use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger, MappingTrigger};
 
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
@@ -41,11 +43,12 @@ impl blockchain::DataSource for DataSource {
 
     fn match_and_decode(
         &self,
-        _trigger: &<Self::C as Blockchain>::TriggerData,
-        _block: Arc<<Self::C as Blockchain>::Block>,
-        _logger: &Logger,
+        trigger: &<Self::C as Blockchain>::TriggerData,
+        block: Arc<<Self::C as Blockchain>::Block>,
+        logger: &Logger,
     ) -> Result<Option<<Self::C as Blockchain>::MappingTrigger>, Error> {
-        todo!()
+        let block = Arc::new(block.0.light_block());
+        self.match_and_decode(trigger, block, logger)
     }
 
     fn mapping(&self) -> &Mapping {
@@ -94,8 +97,8 @@ impl blockchain::DataSource for DataSource {
         self.network.as_ref().map(|s| s.as_str())
     }
 
-    fn context(&self) -> Option<&DataSourceContext> {
-        self.context.as_ref().as_ref()
+    fn context(&self) -> Arc<Option<DataSourceContext>> {
+        self.context.cheap_clone()
     }
 
     fn creation_block(&self) -> Option<BlockNumber> {
@@ -340,7 +343,7 @@ impl DataSource {
 
     /// Checks if `trigger` matches this data source, and if so decodes it into a `MappingTrigger`.
     /// A return of `Ok(None)` mean the trigger does not match.
-    pub fn match_and_decode(
+    fn match_and_decode(
         &self,
         trigger: &EthereumTrigger,
         block: Arc<LightEthereumBlock>,

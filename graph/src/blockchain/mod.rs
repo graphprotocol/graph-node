@@ -11,7 +11,6 @@ use crate::{
     components::store::DeploymentLocator,
     data::subgraph::{Mapping, Source},
     prelude::DataSourceContext,
-    runtime::AscType,
 };
 use crate::{
     components::store::{BlockNumber, ChainStore},
@@ -51,7 +50,7 @@ pub trait Block: Send + Sync {
 }
 
 pub trait Blockchain: Sized + Send + Sync + 'static {
-    type Block: Block;
+    type Block: Block + Clone;
     type DataSource: DataSource<C = Self>;
     type DataSourceTemplate;
     type Manifest: Manifest<Self>;
@@ -59,10 +58,10 @@ pub trait Blockchain: Sized + Send + Sync + 'static {
     type TriggersAdapter: TriggersAdapter<Self>;
 
     /// Trigger data as parsed from the triggers adapter.
-    type TriggerData: Ord;
+    type TriggerData: TriggerData + Ord;
 
     /// Decoded trigger ready to be processed by the mapping.
-    type MappingTrigger: AscType;
+    type MappingTrigger: MappingTrigger;
 
     /// Trigger filter used as input to the triggers adapter.
     type TriggerFilter: TriggerFilter<Self>;
@@ -181,7 +180,7 @@ pub trait DataSource: 'static + Sized + Send + Sync {
     fn name(&self) -> &str;
     fn kind(&self) -> &str;
     fn network(&self) -> Option<&str>;
-    fn context(&self) -> Option<&DataSourceContext>;
+    fn context(&self) -> Arc<Option<DataSourceContext>>;
     fn creation_block(&self) -> Option<BlockNumber>;
 
     /// Checks if `trigger` matches this data source, and if so decodes it into a `MappingTrigger`.
@@ -207,4 +206,14 @@ pub trait Manifest<C: Blockchain>: Sized {
 
     fn data_sources(&self) -> &[C::DataSource];
     fn templates(&self) -> &[C::DataSourceTemplate];
+}
+
+pub trait TriggerData {
+    /// If there is an error when processing this trigger, this will called to add relevant context.
+    /// For example an useful return is: `"block #<N> (<hash>), transaction <tx_hash>".
+    fn error_context(&self) -> String;
+}
+
+pub trait MappingTrigger {
+    fn handler_name(&self) -> &str;
 }

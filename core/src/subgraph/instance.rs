@@ -5,11 +5,11 @@ use std::collections::HashMap;
 use std::env;
 use std::str::FromStr;
 
+use graph::{blockchain::DataSource, prelude::*};
 use graph::{
-    blockchain::Blockchain,
+    blockchain::{Block, Blockchain},
     components::subgraph::{MappingError, SharedProofOfIndexing},
 };
-use graph::{blockchain::DataSource, prelude::*};
 
 lazy_static! {
     static ref MAX_DATA_SOURCES: Option<usize> = env::var("GRAPH_SUBGRAPH_MAX_DATA_SOURCES")
@@ -108,8 +108,8 @@ where
     pub(crate) async fn process_trigger(
         &self,
         logger: &Logger,
-        block: &Arc<BlockFinality>,
-        trigger: EthereumTrigger,
+        block: &Arc<C::Block>,
+        trigger: &C::TriggerData,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, MappingError> {
@@ -127,15 +127,14 @@ where
     pub(crate) async fn process_trigger_in_runtime_hosts(
         logger: &Logger,
         hosts: &[Arc<T::Host>],
-        block: &Arc<BlockFinality>,
-        trigger: EthereumTrigger,
+        block: &Arc<C::Block>,
+        trigger: &C::TriggerData,
         mut state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, MappingError> {
-        let block = Arc::new(block.light_block());
         for host in hosts {
             let mapping_trigger =
-                match host.match_and_decode(&trigger, block.cheap_clone(), logger)? {
+                match host.match_and_decode(trigger, block.cheap_clone(), logger)? {
                     // Trigger matches and was decoded as a mapping trigger.
                     Some(mapping_trigger) => mapping_trigger,
 
@@ -146,7 +145,7 @@ where
             state = host
                 .process_mapping_trigger(
                     logger,
-                    block.block_ptr(),
+                    block.ptr(),
                     mapping_trigger,
                     state,
                     proof_of_indexing.cheap_clone(),

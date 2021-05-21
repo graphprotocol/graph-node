@@ -45,16 +45,16 @@ impl MappingError {
 pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
     fn match_and_decode(
         &self,
-        trigger: &EthereumTrigger,
-        block: Arc<LightEthereumBlock>,
+        trigger: &C::TriggerData,
+        block: Arc<C::Block>,
         logger: &Logger,
-    ) -> Result<Option<MappingTrigger>, Error>;
+    ) -> Result<Option<C::MappingTrigger>, Error>;
 
     async fn process_mapping_trigger(
         &self,
         logger: &Logger,
         block_ptr: BlockPtr,
-        trigger: MappingTrigger,
+        trigger: C::MappingTrigger,
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState, MappingError>;

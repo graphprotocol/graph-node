@@ -1,7 +1,6 @@
 use crate::{error::DeterminismLevel, module::IntoTrap, UnresolvedContractCall};
 use ethabi::param_type::Reader;
 use ethabi::{decode, encode, Address, Token};
-use graph::bytes::Bytes;
 use graph::components::store::EntityKey;
 use graph::components::subgraph::{ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::components::three_box::ThreeBoxAdapter;
@@ -10,6 +9,7 @@ use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
 use graph::runtime::DeterministicHostError;
+use graph::{blockchain::DataSource, bytes::Bytes};
 use graph_chain_ethereum::{EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError};
 use never::Never;
 use semver::Version;
@@ -98,7 +98,7 @@ impl std::fmt::Debug for HostExports {
 impl HostExports {
     pub(crate) fn new(
         subgraph_id: DeploymentHash,
-        data_source: &graph_chain_ethereum::DataSource,
+        data_source: &impl DataSource,
         data_source_network: String,
         templates: Arc<Vec<DataSourceTemplate>>,
         ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
@@ -112,14 +112,14 @@ impl HostExports {
 
         Self {
             subgraph_id,
-            api_version: data_source.mapping.api_version.clone(),
-            data_source_name: data_source.name.clone(),
-            data_source_address: data_source.source.address.clone(),
+            api_version: data_source.mapping().api_version.clone(),
+            data_source_name: data_source.name().to_owned(),
+            data_source_address: data_source.source().address.clone(),
             data_source_network,
-            data_source_context: data_source.context.cheap_clone(),
+            data_source_context: data_source.context().cheap_clone(),
             causality_region,
             templates,
-            abis: data_source.mapping.abis.clone(),
+            abis: data_source.mapping().abis.clone(),
             ethereum_adapter,
             link_resolver,
             call_cache,

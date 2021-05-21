@@ -39,6 +39,7 @@ pub use parking_lot;
 pub use petgraph;
 pub use prometheus;
 pub use semver;
+pub use slog;
 pub use stable_hash;
 pub use tokio_stream;
 pub use url;
@@ -92,10 +93,9 @@ pub mod prelude {
     pub use crate::blockchain::BlockPtr;
 
     pub use crate::components::ethereum::{
-        BlockFinality, EthereumBlock, EthereumBlockData, EthereumBlockTriggerType,
-        EthereumBlockWithCalls, EthereumCall, EthereumCallData, EthereumEventData,
-        EthereumNetworkIdentifier, EthereumTransactionData, EthereumTrigger, LightEthereumBlock,
-        LightEthereumBlockExt, MappingTrigger,
+        BlockFinality, EthereumBlock, EthereumBlockData, EthereumBlockWithCalls, EthereumCall,
+        EthereumCallData, EthereumEventData, EthereumNetworkIdentifier, EthereumTransactionData,
+        LightEthereumBlock, LightEthereumBlockExt,
     };
     pub use crate::components::graphql::{
         GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,
