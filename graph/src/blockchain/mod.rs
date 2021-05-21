@@ -50,6 +50,8 @@ pub trait Block: Send + Sync {
 }
 
 pub trait Blockchain: Sized + Send + Sync + 'static {
+    // The `Clone` bound is used when reprocessing a block, because `triggers_in_block` requires an
+    // owned `Block`. It would be good to come up with a way to remove this bound.
     type Block: Block + Clone;
     type DataSource: DataSource<C = Self>;
     type DataSourceTemplate;
