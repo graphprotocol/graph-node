@@ -1,9 +1,9 @@
 use crate::module::{ExperimentalFeatures, WasmInstance};
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
-use graph::components::ethereum::*;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::prelude::*;
+use graph_chain_ethereum::MappingTrigger;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::thread;

@@ -829,7 +829,11 @@ impl<DS: DataSource> From<&DS> for StoredDynamicDataSource {
         Self {
             name: ds.name().to_owned(),
             source: ds.source().clone(),
-            context: ds.context().map(|ctx| serde_json::to_string(&ctx).unwrap()),
+            context: ds
+                .context()
+                .as_ref()
+                .as_ref()
+                .map(|ctx| serde_json::to_string(&ctx).unwrap()),
             creation_block: ds.creation_block(),
         }
     }
