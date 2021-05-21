@@ -121,6 +121,7 @@ pub enum DeploymentSchemaVersion {
 table! {
     deployment_schemas(id) {
         id -> Integer,
+        created_at -> Timestamptz,
         subgraph -> Text,
         name -> Text,
         shard -> Text,
@@ -148,7 +149,8 @@ table! {
         unused_at -> Timestamptz,
         // When we actually deleted the deployment
         removed_at -> Nullable<Timestamptz>,
-
+        // When the deployment was created
+        created_at -> Timestamptz,
         /// Data that we get from the primary
         subgraphs -> Nullable<Array<Text>>,
         namespace -> Text,
@@ -178,6 +180,7 @@ allow_tables_to_appear_in_same_query!(
 #[table_name = "deployment_schemas"]
 struct Schema {
     id: DeploymentId,
+    pub created_at: PgTimestamp,
     pub subgraph: String,
     pub name: String,
     pub shard: String,
@@ -195,6 +198,7 @@ pub struct UnusedDeployment {
     pub deployment: String,
     pub unused_at: PgTimestamp,
     pub removed_at: Option<PgTimestamp>,
+    pub created_at: PgTimestamp,
     pub subgraphs: Option<Vec<String>>,
     pub namespace: String,
     pub shard: String,
@@ -1189,11 +1193,25 @@ impl<'a> Connection<'a> {
             .filter(not(exists(assigned)))
             .filter(not(exists(active)))
             .filter(not(exists(copy_src)))
-            .select((ds::id, ds::subgraph, ds::name, ds::shard, used_by));
+            .select((
+                ds::id,
+                ds::created_at,
+                ds::subgraph,
+                ds::name,
+                ds::shard,
+                used_by,
+            ));
 
         let ids = insert_into(u::table)
             .values(unused)
-            .into_columns((u::id, u::deployment, u::namespace, u::shard, u::subgraphs))
+            .into_columns((
+                u::id,
+                u::created_at,
+                u::deployment,
+                u::namespace,
+                u::shard,
+                u::subgraphs,
+            ))
             .on_conflict(u::id)
             .do_nothing()
             .returning(u::id)
