@@ -733,7 +733,6 @@ impl DeploymentStore {
                             block.number.try_into().unwrap(),
                             EntityCollection::All(vec![(
                                 POI_OBJECT.cheap_clone(),
-                                // TODO: discover how we should handle the AttributeNames in this case
                                 AttributeNames::All,
                             )]),
                         );
