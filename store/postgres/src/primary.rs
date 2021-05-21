@@ -144,7 +144,7 @@ table! {
         id -> Integer,
         // The IPFS hash of the deployment
         deployment -> Text,
-        // When we first detected that the deployment was unsued
+        // When we first detected that the deployment was unused
         unused_at -> Timestamptz,
         // When we actually deleted the deployment
         removed_at -> Nullable<Timestamptz>,
@@ -1210,7 +1210,7 @@ impl<'a> Connection<'a> {
             .collect()
     }
 
-    /// Add details from the deployment shard to unuseddeployments
+    /// Add details from the deployment shard to unused deployments
     pub fn update_unused_deployments(
         &self,
         details: &Vec<DeploymentDetail>,
