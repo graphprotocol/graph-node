@@ -1770,9 +1770,7 @@ impl AttributeNames {
         match (self, other) {
             (All, All) => {}
             (self_ @ All, other @ Select(_)) => *self_ = other,
-            (Select(_), All) => {
-                unreachable!()
-            }
+            (Select(_), All) => {} // no-op, since we want to keep selected columns
             (Select(a), Select(b)) => a.extend(b),
         }
     }
