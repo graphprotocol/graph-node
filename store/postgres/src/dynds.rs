@@ -118,6 +118,11 @@ pub(crate) fn insert(
 ) -> Result<usize, StoreError> {
     use dynamic_ethereum_contract_data_source as decds;
 
+    if data_sources.is_empty() {
+        // Avoids a roundtrip to the DB.
+        return Ok(0);
+    }
+
     let dds: Vec<_> = data_sources
         .into_iter()
         .map(|ds| {
