@@ -106,10 +106,6 @@ table! {
         major -> Integer,
         minor -> Integer,
         patch -> Integer,
-        pre_release -> Text,
-        rustc_version -> Text,
-        rustc_host -> Text,
-        rustc_channel -> Text,
     }
 }
 
