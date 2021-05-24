@@ -376,7 +376,7 @@ where
 
         let chain = chains
             .get(&network)
-            .expect(&format!("no chain configured for network {}", network))
+            .with_context(|| format!("no chain configured for network {}", network))?
             .clone();
 
         let triggers_adapter = chain.triggers_adapter(&deployment, &required_capabilities).map_err(|e|
