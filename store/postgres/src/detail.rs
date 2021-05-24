@@ -400,9 +400,10 @@ impl GraphNodeVersion {
         let minor: i32 = *PACKAGE_VERSION_MINOR;
         let patch: i32 = *PACKAGE_VERSION_PATCH;
 
-        // upsert
         let graph_node_version_id = {
             use graph_node_versions::dsl as g;
+
+            // try to insert our current values
             diesel::insert_into(g::graph_node_versions)
                 .values((
                     g::git_commit_hash.eq(&git_commit_hash),
@@ -412,13 +413,18 @@ impl GraphNodeVersion {
                     g::minor.eq(&minor),
                     g::patch.eq(&patch),
                 ))
-                .on_conflict(diesel::pg::upsert::on_constraint(
-                    "unique_graph_node_versions",
-                ))
-                .do_update()
-                // inert update to affect and return a row using a single query
-                .set(g::id.eq(g::id))
-                .returning(g::id)
+                .on_conflict_do_nothing()
+                .execute(conn)?;
+
+            // select the id for the row we just inserted
+            g::graph_node_versions
+                .select(g::id)
+                .filter(g::git_commit_hash.eq(&git_commit_hash))
+                .filter(g::git_repository_dirty.eq(git_repository_dirty))
+                .filter(g::crate_version.eq(&crate_version))
+                .filter(g::major.eq(&major))
+                .filter(g::minor.eq(&minor))
+                .filter(g::patch.eq(&patch))
                 .get_result(conn)?
         };
         Ok(graph_node_version_id)
