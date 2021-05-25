@@ -187,8 +187,18 @@ impl DockerTestClient {
         Ok(mapped_ports)
     }
 
-    /// halts execution until a trigger message is detected on stdout
-    pub async fn wait_for_message(&self, trigger_message: &[u8]) -> Result<&Self, DockerError> {
+    /// halts execution until a trigger message is detected on stdout or, optionally,
+    /// waits for a specified amount of time, disregarding the message.
+    pub async fn wait_for_message(
+        &self,
+        trigger_message: &[u8],
+        hard_wait: &Option<u64>,
+    ) -> Result<&Self, DockerError> {
+        if let Some(seconds) = hard_wait {
+            sleep(Duration::from_secs(*seconds)).await;
+            return Ok(self);
+        }
+
         // listen to container logs
         let mut stream = self.client.logs::<String>(
             &self.service.name(),
