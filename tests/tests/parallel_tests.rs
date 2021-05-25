@@ -14,6 +14,15 @@ use tokio::process::{Child, Command};
 
 const DEFAULT_N_CONCURRENT_TESTS: usize = 15;
 
+lazy_static::lazy_static! {
+    static ref GANACHE_HARD_WAIT_SECONDS: Option<u64> =
+        parse_numeric_environment_variable("TESTS_GANACHE_HARD_WAIT_SECONDS");
+    static ref IPFS_HARD_WAIT_SECONDS: Option<u64> =
+        parse_numeric_environment_variable("TESTS_IPFS_HARD_WAIT_SECONDS");
+    static ref POSTGRES_HARD_WAIT_SECONDS: Option<u64> =
+        parse_numeric_environment_variable("TESTS_POSTGRES_HARD_WAIT_SECONDS");
+}
+
 /// All integration tests subdirectories to run
 pub const INTEGRATION_TESTS_DIRECTORIES: [&str; 9] = [
     // "arweave-and-3box",
@@ -152,14 +161,17 @@ async fn parallel_integration_tests() -> anyhow::Result<()> {
             .context("failed to start container service for Postgres.")?,
     );
     postgres
-        .wait_for_message(b"database system is ready to accept connections")
+        .wait_for_message(
+            b"database system is ready to accept connections",
+            &*POSTGRES_HARD_WAIT_SECONDS,
+        )
         .await
         .context("failed to wait for Postgres container to be ready to accept connections")?;
 
     let ipfs = DockerTestClient::start(TestContainerService::Ipfs)
         .await
         .context("failed to start container service for IPFS.")?;
-    ipfs.wait_for_message(b"Daemon is ready")
+    ipfs.wait_for_message(b"Daemon is ready", &*IPFS_HARD_WAIT_SECONDS)
         .await
         .context("failed to wait for Ipfs container to be ready to accept connections")?;
 
@@ -248,7 +260,7 @@ async fn run_integration_test(
         .await
         .context("failed to start container service for Ganache.")?;
     ganache
-        .wait_for_message(b"Listening on ")
+        .wait_for_message(b"Listening on ", &*GANACHE_HARD_WAIT_SECONDS)
         .await
         .context("failed to wait for Ganache container to be ready to accept connections")?;
 
@@ -423,4 +435,10 @@ async fn run_yarn_command(base_directory: &impl AsRef<Path>) {
     println!("{}", pretty_output(&output.stdout, "[yarn:stdout]"));
     println!("{}", pretty_output(&output.stderr, "[yarn:stderr]"));
     panic!("Yarn command failed.")
+}
+
+fn parse_numeric_environment_variable(environment_variable_name: &str) -> Option<u64> {
+    std::env::var(environment_variable_name)
+        .ok()
+        .and_then(|x| x.parse().ok())
 }

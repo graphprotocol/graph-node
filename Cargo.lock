@@ -1899,6 +1899,7 @@ dependencies = [
  "anyhow",
  "bollard",
  "futures 0.3.13",
+ "lazy_static",
  "port_check",
  "tokio 1.4.0",
  "tokio-stream",
