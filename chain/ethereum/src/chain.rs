@@ -24,6 +24,8 @@ use graph::{
     tokio_stream::Stream,
 };
 
+use crate::data_source::DataSourceTemplate;
+use crate::data_source::UnresolvedDataSourceTemplate;
 use crate::{
     adapter::EthereumAdapter as _,
     data_source::{DataSource, UnresolvedDataSource},
@@ -106,7 +108,9 @@ impl Blockchain for Chain {
 
     type UnresolvedDataSource = UnresolvedDataSource;
 
-    type DataSourceTemplate = DummyDataSourceTemplate;
+    type DataSourceTemplate = DataSourceTemplate;
+
+    type UnresolvedDataSourceTemplate = UnresolvedDataSourceTemplate;
 
     type Manifest = DummyManifest;
 
@@ -252,7 +256,7 @@ impl Manifest<Chain> for DummyManifest {
         todo!()
     }
 
-    fn templates(&self) -> &[DummyDataSourceTemplate] {
+    fn templates(&self) -> &[DataSourceTemplate] {
         todo!()
     }
 }

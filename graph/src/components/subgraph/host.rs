@@ -55,9 +55,9 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
         logger: &Logger,
         block_ptr: BlockPtr,
         trigger: C::MappingTrigger,
-        state: BlockState,
+        state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, MappingError>;
+    ) -> Result<BlockState<C>, MappingError>;
 
     /// Block number in which this host was created.
     /// Returns `None` for static data sources.
@@ -157,7 +157,7 @@ pub trait RuntimeHostBuilder<C: Blockchain>: Clone + Send + Sync + 'static {
         network_name: String,
         subgraph_id: DeploymentHash,
         data_source: C::DataSource,
-        top_level_templates: Arc<Vec<DataSourceTemplate>>,
+        top_level_templates: Arc<Vec<C::DataSourceTemplate>>,
         mapping_request_sender: mpsc::Sender<Self::Req>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error>;

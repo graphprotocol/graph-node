@@ -96,7 +96,7 @@ where
     >,
 {
     type Host = RuntimeHost<C>;
-    type Req = MappingRequest;
+    type Req = MappingRequest<C>;
 
     fn spawn_mapping(
         raw_module: Vec<u8>,
@@ -125,8 +125,8 @@ where
         network_name: String,
         subgraph_id: DeploymentHash,
         data_source: C::DataSource,
-        templates: Arc<Vec<DataSourceTemplate>>,
-        mapping_request_sender: Sender<MappingRequest>,
+        templates: Arc<Vec<C::DataSourceTemplate>>,
+        mapping_request_sender: Sender<MappingRequest<C>>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error> {
         let cache = self
@@ -165,8 +165,8 @@ where
 #[derive(Debug)]
 pub struct RuntimeHost<C: Blockchain> {
     data_source: C::DataSource,
-    mapping_request_sender: Sender<MappingRequest>,
-    host_exports: Arc<HostExports>,
+    mapping_request_sender: Sender<MappingRequest<C>>,
+    host_exports: Arc<HostExports<C>>,
     metrics: Arc<HostMetrics>,
 }
 
@@ -182,8 +182,8 @@ where
         network_name: String,
         subgraph_id: DeploymentHash,
         data_source: C::DataSource,
-        templates: Arc<Vec<DataSourceTemplate>>,
-        mapping_request_sender: Sender<MappingRequest>,
+        templates: Arc<Vec<C::DataSourceTemplate>>,
+        mapping_request_sender: Sender<MappingRequest<C>>,
         metrics: Arc<HostMetrics>,
         arweave_adapter: Arc<dyn ArweaveAdapter>,
         three_box_adapter: Arc<dyn ThreeBoxAdapter>,
@@ -216,11 +216,11 @@ where
     async fn send_mapping_request(
         &self,
         logger: &Logger,
-        state: BlockState,
+        state: BlockState<C>,
         trigger: MappingTrigger,
         block_ptr: BlockPtr,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, MappingError> {
+    ) -> Result<BlockState<C>, MappingError> {
         let handler = trigger.handler_name().to_string();
 
         let extras = trigger.logging_extras();
@@ -290,9 +290,9 @@ where
         logger: &Logger,
         block_ptr: BlockPtr,
         trigger: C::MappingTrigger,
-        state: BlockState,
+        state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, MappingError> {
+    ) -> Result<BlockState<C>, MappingError> {
         self.send_mapping_request(logger, state, trigger, block_ptr, proof_of_indexing)
             .await
     }

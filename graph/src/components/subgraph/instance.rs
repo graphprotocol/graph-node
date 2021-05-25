@@ -1,29 +1,30 @@
+use crate::blockchain::Blockchain;
 use crate::prelude::*;
 use crate::util::lfu_cache::LfuCache;
 use crate::{components::store::WritableStore, data::subgraph::schema::SubgraphError};
 
 #[derive(Clone, Debug)]
-pub struct DataSourceTemplateInfo {
-    pub template: DataSourceTemplate,
+pub struct DataSourceTemplateInfo<C: Blockchain> {
+    pub template: C::DataSourceTemplate,
     pub params: Vec<String>,
     pub context: Option<DataSourceContext>,
     pub creation_block: BlockNumber,
 }
 
 #[derive(Debug)]
-pub struct BlockState {
+pub struct BlockState<C: Blockchain> {
     pub entity_cache: EntityCache,
     pub deterministic_errors: Vec<SubgraphError>,
-    created_data_sources: Vec<DataSourceTemplateInfo>,
+    created_data_sources: Vec<DataSourceTemplateInfo<C>>,
 
     // Data sources created in the current handler.
-    handler_created_data_sources: Vec<DataSourceTemplateInfo>,
+    handler_created_data_sources: Vec<DataSourceTemplateInfo<C>>,
 
     // Marks whether a handler is currently executing.
     in_handler: bool,
 }
 
-impl BlockState {
+impl<C: Blockchain> BlockState<C> {
     pub fn new(
         store: Arc<dyn WritableStore>,
         lfu_cache: LfuCache<EntityKey, Option<Entity>>,
@@ -37,7 +38,7 @@ impl BlockState {
         }
     }
 
-    pub fn extend(&mut self, other: BlockState) {
+    pub fn extend(&mut self, other: BlockState<C>) {
         assert!(!other.in_handler);
 
         let BlockState {
@@ -65,7 +66,7 @@ impl BlockState {
         !self.created_data_sources.is_empty()
     }
 
-    pub fn drain_created_data_sources(&mut self) -> Vec<DataSourceTemplateInfo> {
+    pub fn drain_created_data_sources(&mut self) -> Vec<DataSourceTemplateInfo<C>> {
         assert!(!self.in_handler);
         std::mem::replace(&mut self.created_data_sources, Vec::new())
     }
@@ -92,7 +93,7 @@ impl BlockState {
         self.deterministic_errors.push(e);
     }
 
-    pub fn push_created_data_source(&mut self, ds: DataSourceTemplateInfo) {
+    pub fn push_created_data_source(&mut self, ds: DataSourceTemplateInfo<C>) {
         assert!(self.in_handler);
         self.handler_created_data_sources.push(ds);
     }

@@ -1,6 +1,7 @@
 use crate::module::{ExperimentalFeatures, WasmInstance};
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
+use graph::blockchain::Blockchain;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::prelude::*;
 use graph_chain_ethereum::MappingTrigger;
@@ -14,7 +15,7 @@ lazy_static! {
 }
 
 /// Spawn a wasm module in its own thread.
-pub fn spawn_module(
+pub fn spawn_module<C: Blockchain>(
     raw_module: Vec<u8>,
     logger: Logger,
     subgraph_id: DeploymentHash,
@@ -22,7 +23,7 @@ pub fn spawn_module(
     runtime: tokio::runtime::Handle,
     timeout: Option<Duration>,
     experimental_features: ExperimentalFeatures,
-) -> Result<mpsc::Sender<MappingRequest>, anyhow::Error> {
+) -> Result<mpsc::Sender<MappingRequest<C>>, anyhow::Error> {
     let valid_module = Arc::new(ValidModule::new(&raw_module)?);
 
     // Create channel for event handling requests
@@ -119,22 +120,22 @@ pub fn spawn_module(
 }
 
 #[derive(Debug)]
-pub struct MappingRequest {
-    pub(crate) ctx: MappingContext,
+pub struct MappingRequest<C: Blockchain> {
+    pub(crate) ctx: MappingContext<C>,
     pub(crate) trigger: MappingTrigger,
-    pub(crate) result_sender: Sender<Result<BlockState, MappingError>>,
+    pub(crate) result_sender: Sender<Result<BlockState<C>, MappingError>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct MappingContext {
+pub(crate) struct MappingContext<C: Blockchain> {
     pub(crate) logger: Logger,
-    pub(crate) host_exports: Arc<crate::host_exports::HostExports>,
+    pub(crate) host_exports: Arc<crate::host_exports::HostExports<C>>,
     pub(crate) block_ptr: BlockPtr,
-    pub(crate) state: BlockState,
+    pub(crate) state: BlockState<C>,
     pub(crate) proof_of_indexing: SharedProofOfIndexing,
 }
 
-impl MappingContext {
+impl<C: Blockchain> MappingContext<C> {
     pub fn derive_with_empty_block_state(&self) -> Self {
         MappingContext {
             logger: self.logger.cheap_clone(),

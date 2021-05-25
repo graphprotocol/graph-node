@@ -6,10 +6,11 @@ use std::{collections::HashSet, sync::Mutex};
 use std::{marker::PhantomData, str::FromStr};
 use test_store::*;
 
-use graph::components::store::{DeploymentLocator, StoredDynamicDataSource, WritableStore};
+use graph::components::store::{DeploymentLocator, WritableStore};
 use graph::data::subgraph::*;
 use graph::prelude::*;
 use graph::{
+    blockchain::DataSource,
     components::store::{
         BlockStore as _, EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityType,
         StatusStore, SubscriptionManager as _,
@@ -1216,7 +1217,7 @@ fn revert_block_with_dynamic_data_source_operations() {
             &subgraph_store,
             deployment.clone(),
             TEST_BLOCK_3_PTR.clone(),
-            vec![StoredDynamicDataSource::from(&data_source)],
+            vec![data_source.as_stored_dynamic_data_source()],
             ops,
         )
         .unwrap();

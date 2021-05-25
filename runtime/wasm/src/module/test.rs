@@ -8,7 +8,7 @@ use graph::data::store::scalar;
 use graph::data::subgraph::*;
 use graph::{components::store::*, ipfs_client::IpfsClient};
 use graph_chain_arweave::adapter::ArweaveAdapter;
-use graph_chain_ethereum::{DataSource, MockEthereumAdapter};
+use graph_chain_ethereum::{Chain, DataSource, DataSourceTemplate, MockEthereumAdapter};
 use graph_core;
 use graph_core::three_box::ThreeBoxAdapter;
 use graph_mock::MockMetricsRegistry;
@@ -23,7 +23,11 @@ mod abi;
 fn test_valid_module_and_store(
     subgraph_id: &str,
     data_source: DataSource,
-) -> (WasmInstance, Arc<impl SubgraphStore>, DeploymentLocator) {
+) -> (
+    WasmInstance<Chain>,
+    Arc<impl SubgraphStore>,
+    DeploymentLocator,
+) {
     test_valid_module_and_store_with_timeout(subgraph_id, data_source, None)
 }
 
@@ -31,7 +35,11 @@ fn test_valid_module_and_store_with_timeout(
     subgraph_id: &str,
     data_source: DataSource,
     timeout: Option<Duration>,
-) -> (WasmInstance, Arc<impl SubgraphStore>, DeploymentLocator) {
+) -> (
+    WasmInstance<Chain>,
+    Arc<impl SubgraphStore>,
+    DeploymentLocator,
+) {
     let store = STORE.clone();
     let call_cache = store
         .block_store()
@@ -86,7 +94,7 @@ fn test_valid_module_and_store_with_timeout(
     (module, store.subgraph_store(), deployment)
 }
 
-fn test_module(subgraph_id: &str, data_source: DataSource) -> WasmInstance {
+fn test_module(subgraph_id: &str, data_source: DataSource) -> WasmInstance<Chain> {
     test_valid_module_and_store(subgraph_id, data_source).0
 }
 
@@ -148,7 +156,7 @@ fn mock_host_exports(
     data_source: DataSource,
     store: Arc<impl SubgraphStore>,
     call_cache: Arc<impl EthereumCallCache>,
-) -> HostExports {
+) -> HostExports<Chain> {
     let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default());
     let arweave_adapter = Arc::new(ArweaveAdapter::new("https://arweave.net".to_string()));
     let three_box_adapter = Arc::new(ThreeBoxAdapter::new("https://ipfs.3box.io/".to_string()));
@@ -196,7 +204,7 @@ fn mock_context(
     data_source: DataSource,
     store: Arc<impl SubgraphStore>,
     call_cache: Arc<impl EthereumCallCache>,
-) -> MappingContext {
+) -> MappingContext<Chain> {
     MappingContext {
         logger: test_store::LOGGER.clone(),
         block_ptr: BlockPtr {
@@ -214,7 +222,7 @@ fn mock_context(
     }
 }
 
-impl WasmInstance {
+impl WasmInstance<Chain> {
     fn invoke_export<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R> {
         let func = self.get_func(f).typed().unwrap().clone();
         let ptr: u32 = func.call(arg.wasm_ptr()).unwrap();
@@ -612,21 +620,22 @@ async fn bytes_to_base58() {
 
 #[tokio::test]
 async fn data_source_create() {
-    let run_data_source_create = move |name: String,
-                                       params: Vec<String>|
-          -> Result<Vec<DataSourceTemplateInfo>, wasmtime::Trap> {
-        let mut module = test_module(
-            "DataSourceCreate",
-            mock_data_source("wasm_test/data_source_create.wasm"),
-        );
+    let run_data_source_create =
+        move |name: String,
+              params: Vec<String>|
+              -> Result<Vec<DataSourceTemplateInfo<Chain>>, wasmtime::Trap> {
+            let mut module = test_module(
+                "DataSourceCreate",
+                mock_data_source("wasm_test/data_source_create.wasm"),
+            );
 
-        let name = module.asc_new(&name).unwrap();
-        let params = module.asc_new(&*params).unwrap();
-        module.instance_ctx_mut().ctx.state.enter_handler();
-        module.invoke_export2_void("dataSourceCreate", name, params)?;
-        module.instance_ctx_mut().ctx.state.exit_handler();
-        Ok(module.take_ctx().ctx.state.drain_created_data_sources())
-    };
+            let name = module.asc_new(&name).unwrap();
+            let params = module.asc_new(&*params).unwrap();
+            module.instance_ctx_mut().ctx.state.enter_handler();
+            module.invoke_export2_void("dataSourceCreate", name, params)?;
+            module.instance_ctx_mut().ctx.state.exit_handler();
+            Ok(module.take_ctx().ctx.state.drain_created_data_sources())
+        };
 
     // Test with a valid template
     let template = String::from("example template");
@@ -688,7 +697,7 @@ async fn entity_store() {
     )
     .unwrap();
 
-    let get_user = move |module: &mut WasmInstance, id: &str| -> Option<Entity> {
+    let get_user = move |module: &mut WasmInstance<Chain>, id: &str| -> Option<Entity> {
         let id = module.asc_new(id).unwrap();
         let entity_ptr: AscPtr<AscEntity> = module.invoke_export("getUser", id);
         if entity_ptr.is_null() {
@@ -702,7 +711,7 @@ async fn entity_store() {
         }
     };
 
-    let load_and_set_user_name = |module: &mut WasmInstance, id: &str, name: &str| {
+    let load_and_set_user_name = |module: &mut WasmInstance<Chain>, id: &str, name: &str| {
         let id_ptr = module.asc_new(id).unwrap();
         let name_ptr = module.asc_new(name).unwrap();
         module

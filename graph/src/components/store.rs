@@ -19,6 +19,7 @@ use std::{
 use thiserror::Error;
 use web3::types::{Address, H256};
 
+use crate::blockchain::Blockchain;
 use crate::data::subgraph::status;
 use crate::data::{store::*, subgraph::Source};
 use crate::prelude::*;
@@ -824,21 +825,6 @@ pub struct StoredDynamicDataSource {
     pub creation_block: Option<BlockNumber>,
 }
 
-impl<DS: DataSource> From<&DS> for StoredDynamicDataSource {
-    fn from(ds: &DS) -> Self {
-        Self {
-            name: ds.name().to_owned(),
-            source: ds.source().clone(),
-            context: ds
-                .context()
-                .as_ref()
-                .as_ref()
-                .map(|ctx| serde_json::to_string(&ctx).unwrap()),
-            creation_block: ds.creation_block(),
-        }
-    }
-}
-
 pub trait SubscriptionManager: Send + Sync + 'static {
     /// Subscribe to changes for specific subgraphs and entities.
     ///
@@ -1577,8 +1563,9 @@ impl EntityCache {
     }
 
     /// Add a dynamic data source
-    pub fn add_data_source(&mut self, data_source: &impl DataSource) {
-        self.data_sources.push(data_source.into());
+    pub fn add_data_source<C: Blockchain>(&mut self, data_source: &impl DataSource<C>) {
+        self.data_sources
+            .push(data_source.as_stored_dynamic_data_source());
     }
 
     fn entity_op(&mut self, key: EntityKey, op: EntityOp) {

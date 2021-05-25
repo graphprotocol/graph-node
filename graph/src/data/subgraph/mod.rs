@@ -17,13 +17,13 @@ use thiserror::Error;
 use wasmparser;
 use web3::types::{Address, H256};
 
-use crate::data::query::QueryExecutionError;
 use crate::data::schema::{Schema, SchemaImportError, SchemaValidationError};
 use crate::data::store::Entity;
 use crate::prelude::CheapClone;
 use crate::{blockchain::DataSource, data::graphql::TryFromValue};
+use crate::{blockchain::DataSourceTemplate as _, data::query::QueryExecutionError};
 use crate::{
-    blockchain::{Blockchain, UnresolvedDataSource as _},
+    blockchain::{Blockchain, UnresolvedDataSource as _, UnresolvedDataSourceTemplate as _},
     components::{
         ethereum::NodeCapabilities,
         link_resolver::LinkResolver,
@@ -669,44 +669,6 @@ impl UnresolvedMapping {
     }
 }
 
-#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
-pub struct BaseDataSourceTemplate<M> {
-    pub kind: String,
-    pub network: Option<String>,
-    pub name: String,
-    pub source: TemplateSource,
-    pub mapping: M,
-}
-
-pub type UnresolvedDataSourceTemplate = BaseDataSourceTemplate<UnresolvedMapping>;
-pub type DataSourceTemplate = BaseDataSourceTemplate<Mapping>;
-
-impl UnresolvedDataSourceTemplate {
-    pub async fn resolve(
-        self,
-        resolver: &impl LinkResolver,
-        logger: &Logger,
-    ) -> Result<DataSourceTemplate, anyhow::Error> {
-        let UnresolvedDataSourceTemplate {
-            kind,
-            network,
-            name,
-            source,
-            mapping,
-        } = self;
-
-        info!(logger, "Resolve data source template"; "name" => &name);
-
-        Ok(DataSourceTemplate {
-            kind,
-            network,
-            name,
-            source,
-            mapping: mapping.resolve(resolver, logger).await?,
-        })
-    }
-}
-
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Graft {
@@ -769,12 +731,16 @@ type UnresolvedSubgraphManifest<C> = BaseSubgraphManifest<
     C,
     UnresolvedSchema,
     <C as Blockchain>::UnresolvedDataSource,
-    UnresolvedDataSourceTemplate,
+    <C as Blockchain>::UnresolvedDataSourceTemplate,
 >;
 
 /// SubgraphManifest validated with IPFS links resolved
-pub type SubgraphManifest<C> =
-    BaseSubgraphManifest<C, Schema, <C as Blockchain>::DataSource, DataSourceTemplate>;
+pub type SubgraphManifest<C> = BaseSubgraphManifest<
+    C,
+    Schema,
+    <C as Blockchain>::DataSource,
+    <C as Blockchain>::DataSourceTemplate,
+>;
 
 /// Unvalidated SubgraphManifest
 pub struct UnvalidatedSubgraphManifest<C: Blockchain>(SubgraphManifest<C>);
@@ -967,7 +933,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
     pub fn mappings(&self) -> Vec<Mapping> {
         self.templates
             .iter()
-            .map(|template| template.mapping.clone())
+            .map(|template| template.mapping().clone())
             .chain(
                 self.data_sources
                     .iter()

@@ -76,7 +76,7 @@ where
         &mut self,
         logger: Logger,
         data_source: C::DataSource,
-        templates: Arc<Vec<DataSourceTemplate>>,
+        templates: Arc<Vec<C::DataSourceTemplate>>,
         host_metrics: Arc<HostMetrics>,
     ) -> Result<T::Host, Error> {
         let mapping_request_sender = {
@@ -110,9 +110,9 @@ where
         logger: &Logger,
         block: &Arc<C::Block>,
         trigger: &C::TriggerData,
-        state: BlockState,
+        state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, MappingError> {
+    ) -> Result<BlockState<C>, MappingError> {
         Self::process_trigger_in_runtime_hosts(
             logger,
             &self.hosts,
@@ -129,9 +129,9 @@ where
         hosts: &[Arc<T::Host>],
         block: &Arc<C::Block>,
         trigger: &C::TriggerData,
-        mut state: BlockState,
+        mut state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState, MappingError> {
+    ) -> Result<BlockState<C>, MappingError> {
         for host in hosts {
             let mapping_trigger =
                 match host.match_and_decode(trigger, block.cheap_clone(), logger)? {
@@ -160,7 +160,7 @@ where
         &mut self,
         logger: &Logger,
         data_source: C::DataSource,
-        templates: Arc<Vec<DataSourceTemplate>>,
+        templates: Arc<Vec<C::DataSourceTemplate>>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Option<Arc<T::Host>>, Error> {
         // Protect against creating more than the allowed maximum number of data sources

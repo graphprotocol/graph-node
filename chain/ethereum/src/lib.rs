@@ -9,7 +9,7 @@ pub use self::ethereum_adapter::EthereumAdapter;
 pub use self::transport::{EventLoopHandle, Transport};
 
 // ETHDEP: These concrete types should probably not be exposed.
-pub use data_source::DataSource;
+pub use data_source::{DataSource, DataSourceTemplate};
 pub use trigger::MappingTrigger;
 
 pub mod chain;

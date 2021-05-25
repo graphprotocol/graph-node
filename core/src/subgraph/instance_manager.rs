@@ -53,7 +53,7 @@ struct IndexingInputs<C: Blockchain> {
     store: Arc<dyn WritableStore>,
     triggers_adapter: Arc<C::TriggersAdapter>,
     chain: Arc<C>,
-    templates: Arc<Vec<DataSourceTemplate>>,
+    templates: Arc<Vec<C::DataSourceTemplate>>,
 }
 
 struct IndexingState<T: RuntimeHostBuilder<C>, C: Blockchain> {
@@ -184,6 +184,7 @@ where
         NodeCapabilities = NodeCapabilities,
         Block = WrappedBlockFinality,
         DataSource = graph_chain_ethereum::DataSource,
+        DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
     >,
     M: MetricsRegistry,
     H: RuntimeHostBuilder<C>,
@@ -247,6 +248,7 @@ where
         NodeCapabilities = NodeCapabilities,
         Block = WrappedBlockFinality,
         DataSource = graph_chain_ethereum::DataSource,
+        DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
     >,
     M: MetricsRegistry,
     H: RuntimeHostBuilder<C>,
@@ -459,7 +461,11 @@ where
 async fn run_subgraph<T, C>(mut ctx: IndexingContext<T, C>) -> Result<(), Error>
 where
     T: RuntimeHostBuilder<C>,
-    C: Blockchain<Block = WrappedBlockFinality, DataSource = graph_chain_ethereum::DataSource>,
+    C: Blockchain<
+        Block = WrappedBlockFinality,
+        DataSource = graph_chain_ethereum::DataSource,
+        DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
+    >,
 {
     // Clone a few things for different parts of the async processing
     let subgraph_metrics = ctx.subgraph_metrics.cheap_clone();
@@ -680,7 +686,10 @@ async fn process_block<T: RuntimeHostBuilder<C>, C>(
     block: BlockWithTriggers<C>,
 ) -> Result<(IndexingContext<T, C>, bool), BlockProcessingError>
 where
-    C: Blockchain<DataSource = graph_chain_ethereum::DataSource>,
+    C: Blockchain<
+        DataSource = graph_chain_ethereum::DataSource,
+        DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
+    >,
 {
     let triggers = block.trigger_data;
     let block = Arc::new(block.block);
@@ -996,13 +1005,13 @@ async fn update_proof_of_indexing(
 
 async fn process_triggers<C: Blockchain>(
     logger: &Logger,
-    mut block_state: BlockState,
+    mut block_state: BlockState<C>,
     proof_of_indexing: SharedProofOfIndexing,
     subgraph_metrics: Arc<SubgraphInstanceMetrics>,
     instance: &SubgraphInstance<C, impl RuntimeHostBuilder<C>>,
     block: &Arc<C::Block>,
     triggers: Vec<C::TriggerData>,
-) -> Result<BlockState, MappingError> {
+) -> Result<BlockState<C>, MappingError> {
     use graph::blockchain::TriggerData;
 
     for trigger in triggers.into_iter() {
@@ -1033,17 +1042,20 @@ fn create_dynamic_data_sources<T: RuntimeHostBuilder<C>, C>(
     logger: Logger,
     ctx: &mut IndexingContext<T, C>,
     host_metrics: Arc<HostMetrics>,
-    created_data_sources: Vec<DataSourceTemplateInfo>,
+    created_data_sources: Vec<DataSourceTemplateInfo<C>>,
 ) -> Result<(Vec<graph_chain_ethereum::DataSource>, Vec<Arc<T::Host>>), Error>
 where
-    C: Blockchain<DataSource = graph_chain_ethereum::DataSource>,
+    C: Blockchain<
+        DataSource = graph_chain_ethereum::DataSource,
+        DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
+    >,
 {
     let mut data_sources = vec![];
     let mut runtime_hosts = vec![];
 
     for info in created_data_sources {
         // Try to instantiate a data source from the template
-        let data_source = graph_chain_ethereum::DataSource::try_from(info)?;
+        let data_source = C::DataSource::try_from(info)?;
 
         // Try to create a runtime host for the data source
         let host = ctx.state.instance.add_dynamic_data_source(

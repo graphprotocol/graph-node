@@ -5,6 +5,7 @@ use std::ops::Deref;
 use std::rc::Rc;
 use std::time::Instant;
 
+use graph::blockchain::Blockchain;
 use never::Never;
 use semver::Version;
 use wasmtime::{Memory, Trap};
@@ -43,7 +44,7 @@ pub trait IntoTrap {
 }
 
 /// Handle to a WASM instance, which is terminated if and only if this is dropped.
-pub(crate) struct WasmInstance {
+pub(crate) struct WasmInstance<C: Blockchain> {
     instance: wasmtime::Instance,
 
     // This is the only reference to `WasmInstanceContext` that's not within the instance itself, so
@@ -51,10 +52,10 @@ pub(crate) struct WasmInstance {
     //
     // Also this is the only strong reference, so the instance will be dropped once this is dropped.
     // The weak references are circulary held by instance itself through host exports.
-    instance_ctx: Rc<RefCell<Option<WasmInstanceContext>>>,
+    instance_ctx: Rc<RefCell<Option<WasmInstanceContext<C>>>>,
 }
 
-impl Drop for WasmInstance {
+impl<C: Blockchain> Drop for WasmInstance<C> {
     fn drop(&mut self) {
         // Assert that the instance will be dropped.
         assert_eq!(Rc::strong_count(&self.instance_ctx), 1);
@@ -62,7 +63,7 @@ impl Drop for WasmInstance {
 }
 
 /// Proxies to the WasmInstanceContext.
-impl AscHeap for WasmInstance {
+impl<C: Blockchain> AscHeap for WasmInstance<C> {
     fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, DeterministicHostError> {
         let mut ctx = RefMut::map(self.instance_ctx.borrow_mut(), |i| i.as_mut().unwrap());
         ctx.raw_new(bytes)
@@ -77,13 +78,13 @@ impl AscHeap for WasmInstance {
     }
 }
 
-impl WasmInstance {
+impl<C: Blockchain> WasmInstance<C> {
     pub(crate) fn handle_json_callback(
         mut self,
         handler_name: &str,
         value: &serde_json::Value,
         user_data: &store::Value,
-    ) -> Result<BlockState, anyhow::Error> {
+    ) -> Result<BlockState<C>, anyhow::Error> {
         let value = self.asc_new(value)?;
         let user_data = self.asc_new(user_data)?;
 
@@ -109,7 +110,7 @@ impl WasmInstance {
         transaction: Arc<Transaction>,
         log: Arc<Log>,
         params: Vec<LogParam>,
-    ) -> Result<BlockState, MappingError> {
+    ) -> Result<BlockState<C>, MappingError> {
         // Prepare an EthereumEvent for the WASM runtime
         // Decide on the destination type using the mapping
         // api version provided in the subgraph manifest
@@ -148,7 +149,7 @@ impl WasmInstance {
         call: Arc<EthereumCall>,
         inputs: Vec<LogParam>,
         outputs: Vec<LogParam>,
-    ) -> Result<BlockState, MappingError> {
+    ) -> Result<BlockState<C>, MappingError> {
         let call = EthereumCallData {
             to: call.to,
             from: call.from,
@@ -170,7 +171,7 @@ impl WasmInstance {
         mut self,
         block: Arc<LightEthereumBlock>,
         handler_name: &str,
-    ) -> Result<BlockState, MappingError> {
+    ) -> Result<BlockState<C>, MappingError> {
         let block = EthereumBlockData::from(block.as_ref());
 
         // Prepare an EthereumBlock for the WASM runtime
@@ -179,15 +180,15 @@ impl WasmInstance {
         self.invoke_handler(handler_name, arg)
     }
 
-    pub(crate) fn take_ctx(&mut self) -> WasmInstanceContext {
+    pub(crate) fn take_ctx(&mut self) -> WasmInstanceContext<C> {
         self.instance_ctx.borrow_mut().take().unwrap()
     }
 
-    pub(crate) fn instance_ctx(&self) -> std::cell::Ref<'_, WasmInstanceContext> {
+    pub(crate) fn instance_ctx(&self) -> std::cell::Ref<'_, WasmInstanceContext<C>> {
         std::cell::Ref::map(self.instance_ctx.borrow(), |i| i.as_ref().unwrap())
     }
 
-    pub(crate) fn instance_ctx_mut(&self) -> std::cell::RefMut<'_, WasmInstanceContext> {
+    pub(crate) fn instance_ctx_mut(&self) -> std::cell::RefMut<'_, WasmInstanceContext<C>> {
         std::cell::RefMut::map(self.instance_ctx.borrow_mut(), |i| i.as_mut().unwrap())
     }
 
@@ -196,11 +197,11 @@ impl WasmInstance {
         self.instance.get_func(func_name).unwrap()
     }
 
-    fn invoke_handler<C>(
+    fn invoke_handler<T>(
         &mut self,
         handler: &str,
-        arg: AscPtr<C>,
-    ) -> Result<BlockState, MappingError> {
+        arg: AscPtr<T>,
+    ) -> Result<BlockState<C>, MappingError> {
         let func = self
             .instance
             .get_func(handler)
@@ -282,7 +283,7 @@ pub struct ExperimentalFeatures {
     pub allow_non_deterministic_3box: bool,
 }
 
-pub(crate) struct WasmInstanceContext {
+pub(crate) struct WasmInstanceContext<C: Blockchain> {
     // In the future there may be multiple memories, but currently there is only one memory per
     // module. And at least AS calls it "memory". There is no uninitialized memory in Wasm, memory
     // is zeroed when initialized or grown.
@@ -292,7 +293,7 @@ pub(crate) struct WasmInstanceContext {
     // return a pointer to the first byte of allocated space.
     memory_allocate: wasmtime::TypedFunc<i32, i32>,
 
-    pub ctx: MappingContext,
+    pub ctx: MappingContext<C>,
     pub(crate) valid_module: Arc<ValidModule>,
     pub(crate) host_metrics: Arc<HostMetrics>,
     pub(crate) timeout: Option<Duration>,
@@ -315,26 +316,26 @@ pub(crate) struct WasmInstanceContext {
     pub(crate) experimental_features: ExperimentalFeatures,
 }
 
-impl WasmInstance {
+impl<C: Blockchain> WasmInstance<C> {
     /// Instantiates the module and sets it to be interrupted after `timeout`.
     pub fn from_valid_module_with_ctx(
         valid_module: Arc<ValidModule>,
-        ctx: MappingContext,
+        ctx: MappingContext<C>,
         host_metrics: Arc<HostMetrics>,
         timeout: Option<Duration>,
         experimental_features: ExperimentalFeatures,
-    ) -> Result<WasmInstance, anyhow::Error> {
+    ) -> Result<WasmInstance<C>, anyhow::Error> {
         let mut linker = wasmtime::Linker::new(&wasmtime::Store::new(valid_module.module.engine()));
 
         // Used by exports to access the instance context. There are two ways this can be set:
         // - After instantiation, if no host export is called in the start function.
         // - During the start function, if it calls a host export.
         // Either way, after instantiation this will have been set.
-        let shared_ctx: Rc<RefCell<Option<WasmInstanceContext>>> = Rc::new(RefCell::new(None));
+        let shared_ctx: Rc<RefCell<Option<WasmInstanceContext<C>>>> = Rc::new(RefCell::new(None));
 
         // We will move the ctx only once, to init `shared_ctx`. But we don't statically know where
         // it will be moved so we need this ugly thing.
-        let ctx: Rc<RefCell<Option<MappingContext>>> = Rc::new(RefCell::new(Some(ctx)));
+        let ctx: Rc<RefCell<Option<MappingContext<C>>>> = Rc::new(RefCell::new(Some(ctx)));
 
         // Start the timeout watchdog task.
         let timeout_stopwatch = Arc::new(std::sync::Mutex::new(TimeoutStopwatch::start_new()));
@@ -584,7 +585,7 @@ impl WasmInstance {
     }
 }
 
-impl AscHeap for WasmInstanceContext {
+impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
     fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, DeterministicHostError> {
         // We request large chunks from the AssemblyScript allocator to use as arenas that we
         // manage directly.
@@ -636,10 +637,10 @@ impl AscHeap for WasmInstanceContext {
     }
 }
 
-impl WasmInstanceContext {
+impl<C: Blockchain> WasmInstanceContext<C> {
     fn from_instance(
         instance: &wasmtime::Instance,
-        ctx: MappingContext,
+        ctx: MappingContext<C>,
         valid_module: Arc<ValidModule>,
         host_metrics: Arc<HostMetrics>,
         timeout: Option<Duration>,
@@ -675,7 +676,7 @@ impl WasmInstanceContext {
 
     fn from_caller(
         caller: wasmtime::Caller,
-        ctx: MappingContext,
+        ctx: MappingContext<C>,
         valid_module: Arc<ValidModule>,
         host_metrics: Arc<HostMetrics>,
         timeout: Option<Duration>,
@@ -712,7 +713,7 @@ impl WasmInstanceContext {
 }
 
 // Implementation of externals.
-impl WasmInstanceContext {
+impl<C: Blockchain> WasmInstanceContext<C> {
     /// function abort(message?: string | null, fileName?: string | null, lineNumber?: u32, columnNumber?: u32): void
     /// Always returns a trap.
     fn abort(

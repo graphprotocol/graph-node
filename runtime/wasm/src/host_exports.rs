@@ -1,6 +1,7 @@
 use crate::{error::DeterminismLevel, module::IntoTrap, UnresolvedContractCall};
 use ethabi::param_type::Reader;
 use ethabi::{decode, encode, Address, Token};
+use graph::blockchain::{Blockchain, DataSourceTemplate as _};
 use graph::components::store::EntityKey;
 use graph::components::subgraph::{ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::components::three_box::ThreeBoxAdapter;
@@ -66,7 +67,7 @@ impl IntoTrap for HostExportError {
     }
 }
 
-pub(crate) struct HostExports {
+pub(crate) struct HostExports<C: Blockchain> {
     pub(crate) subgraph_id: DeploymentHash,
     pub(crate) api_version: Version,
     data_source_name: String,
@@ -78,7 +79,7 @@ pub(crate) struct HostExports {
     /// and merge the results later. Right now, this is just the ethereum
     /// networks but will be expanded for ipfs and the availability chain.
     causality_region: String,
-    templates: Arc<Vec<DataSourceTemplate>>,
+    templates: Arc<Vec<C::DataSourceTemplate>>,
     abis: Vec<Arc<MappingABI>>,
     ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
     pub(crate) link_resolver: Arc<dyn LinkResolver>,
@@ -89,18 +90,18 @@ pub(crate) struct HostExports {
 }
 
 // Not meant to be useful, only to allow deriving.
-impl std::fmt::Debug for HostExports {
+impl<C: Blockchain> std::fmt::Debug for HostExports<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         write!(f, "HostExports",)
     }
 }
 
-impl HostExports {
+impl<C: Blockchain> HostExports<C> {
     pub(crate) fn new(
         subgraph_id: DeploymentHash,
-        data_source: &impl DataSource,
+        data_source: &impl DataSource<C>,
         data_source_network: String,
-        templates: Arc<Vec<DataSourceTemplate>>,
+        templates: Arc<Vec<C::DataSourceTemplate>>,
         ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
         link_resolver: Arc<dyn LinkResolver>,
         store: Arc<dyn crate::RuntimeStore>,
@@ -161,7 +162,7 @@ impl HostExports {
     pub(crate) fn store_set(
         &self,
         logger: &Logger,
-        state: &mut BlockState,
+        state: &mut BlockState<C>,
         proof_of_indexing: &SharedProofOfIndexing,
         entity_type: String,
         entity_id: String,
@@ -228,7 +229,7 @@ impl HostExports {
     pub(crate) fn store_remove(
         &self,
         logger: &Logger,
-        state: &mut BlockState,
+        state: &mut BlockState<C>,
         proof_of_indexing: &SharedProofOfIndexing,
         entity_type: String,
         entity_id: String,
@@ -256,7 +257,7 @@ impl HostExports {
 
     pub(crate) fn store_get(
         &self,
-        state: &mut BlockState,
+        state: &mut BlockState<C>,
         entity_type: String,
         entity_id: String,
     ) -> Result<Option<Entity>, anyhow::Error> {
@@ -415,12 +416,12 @@ impl HostExports {
     // parameter is passed to the callback without any changes
     pub(crate) fn ipfs_map(
         link_resolver: &Arc<dyn LinkResolver>,
-        module: &mut WasmInstanceContext,
+        module: &mut WasmInstanceContext<C>,
         link: String,
         callback: &str,
         user_data: store::Value,
         flags: Vec<String>,
-    ) -> Result<Vec<BlockState>, anyhow::Error> {
+    ) -> Result<Vec<BlockState<C>>, anyhow::Error> {
         const JSON_FLAG: &str = "json";
         ensure!(
             flags.contains(&JSON_FLAG.to_string()),
@@ -678,7 +679,7 @@ impl HostExports {
     pub(crate) fn data_source_create(
         &self,
         logger: &Logger,
-        state: &mut BlockState,
+        state: &mut BlockState<C>,
         name: String,
         params: Vec<String>,
         context: Option<DataSourceContext>,
@@ -695,7 +696,7 @@ impl HostExports {
         let template = self
             .templates
             .iter()
-            .find(|template| template.name == name)
+            .find(|template| template.name() == name)
             .with_context(|| {
                 format!(
                     "Failed to create data source from name `{}`: \
@@ -705,7 +706,7 @@ impl HostExports {
                     self.data_source_name,
                     self.templates
                         .iter()
-                        .map(|template| template.name.clone())
+                        .map(|template| template.name().clone())
                         .collect::<Vec<_>>()
                         .join(", ")
                 )
