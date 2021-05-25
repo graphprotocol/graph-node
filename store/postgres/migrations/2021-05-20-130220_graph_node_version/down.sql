@@ -1,5 +1,5 @@
-ALTER TABLE subgraphs.subgraph_manifest
-    DROP CONSTRAINT graph_node_versions_fk,
-    DROP COLUMN graph_node_version_id;
+alter table subgraphs.subgraph_manifest
+    drop constraint graph_node_versions_fk,
+    drop column graph_node_version_id;
 
-DROP TABLE IF EXISTS subgraphs.graph_node_versions;
+drop table if exists subgraphs.graph_node_versions;
