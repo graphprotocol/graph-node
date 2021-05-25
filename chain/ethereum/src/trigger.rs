@@ -96,17 +96,17 @@ impl std::fmt::Debug for MappingTrigger {
 }
 
 impl MappingTrigger {
-    pub fn logging_extras(&self) -> impl SendSyncRefUnwindSafeKV {
+    pub fn logging_extras(&self) -> Box<dyn SendSyncRefUnwindSafeKV> {
         match self {
-            MappingTrigger::Log { handler, log, .. } => o! {
+            MappingTrigger::Log { handler, log, .. } => Box::new(o! {
                 "signature" => handler.event.to_string(),
                 "address" => format!("{}", &log.address),
-            },
-            MappingTrigger::Call { handler, call, .. } => o! {
+            }),
+            MappingTrigger::Call { handler, call, .. } => Box::new(o! {
                 "function" => handler.function.to_string(),
                 "to" => format!("{}", &call.to),
-            },
-            MappingTrigger::Block { .. } => o! { "" => String::new(), "" => String::new() },
+            }),
+            MappingTrigger::Block { .. } => Box::new(o! {}),
         }
     }
 }
