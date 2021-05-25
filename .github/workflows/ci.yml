@@ -116,6 +116,7 @@ jobs:
         env:
           RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
           N_CONCURRENT_TESTS: "1"
+          TESTS_GANACHE_HARD_WAIT_SECONDS: "15"
         with:
           command: test
           args: --verbose --package graph-tests -- --nocapture
@@ -127,6 +128,7 @@ jobs:
         env:
           RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
           N_CONCURRENT_TESTS: "1"
+          TESTS_GANACHE_HARD_WAIT_SECONDS: "15"
         with:
           command: test
           args: --verbose --package graph-tests -- --nocapture
