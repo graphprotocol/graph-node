@@ -188,17 +188,12 @@ impl DockerTestClient {
     }
 
     /// halts execution until a trigger message is detected on stdout or, optionally,
-    /// waits for a specified amount of time, disregarding the message.
+    /// waits for a specified amount of time after the message appears.
     pub async fn wait_for_message(
         &self,
         trigger_message: &[u8],
         hard_wait: &Option<u64>,
     ) -> Result<&Self, DockerError> {
-        if let Some(seconds) = hard_wait {
-            sleep(Duration::from_secs(*seconds)).await;
-            return Ok(self);
-        }
-
         // listen to container logs
         let mut stream = self.client.logs::<String>(
             &self.service.name(),
@@ -215,18 +210,23 @@ impl DockerTestClient {
             match stream.next().await {
                 Some(Ok(container::LogOutput::StdOut { message })) => {
                     if contains_subslice(&message, &trigger_message) {
-                        break Ok(self);
+                        break;
                     } else {
                         sleep(Duration::from_millis(100)).await;
                     }
                 }
-                Some(Err(error)) => break Err(error),
+                Some(Err(error)) => return Err(error),
                 None => {
                     panic!("stream ended before expected message could be detected")
                 }
                 _ => {}
             }
         }
+
+        if let Some(seconds) = hard_wait {
+            sleep(Duration::from_secs(*seconds)).await;
+        }
+        Ok(self)
     }
 
     /// Calls `docker exec` on the container to create a test database.
