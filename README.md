@@ -1,4 +1,14 @@
-# Graph Node
+# Massbit Graph Node (in-development)
+
+### Prerequisites to start Massbit Graph Node with Substrate
+- Clone https://github.com/massbitprotocol/rust-web3 into graph-node folder
+- Clone https://github.com/paritytech/substrate/ outside graph-node folder, we will be linking with Polkadot Substrate RPC Interface
+- Clone https://github.com/substrate-developer-hub/substrate-node-template
+### Start
+- Run substrate-node-template
+- cd into graph-node/docker and run `docker-compose up`
+
+---
 
 [![Build Status](https://travis-ci.org/graphprotocol/graph-node.svg?branch=master)](https://travis-ci.org/graphprotocol/graph-node)
 [![Getting Started Docs](https://img.shields.io/badge/docs-getting--started-brightgreen.svg)](docs/getting-started.md)
