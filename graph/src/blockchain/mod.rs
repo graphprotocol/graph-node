@@ -53,6 +53,7 @@ pub trait Block: Send + Sync {
     }
 }
 
+#[async_trait]
 // This is only `Debug` because some tests require that
 pub trait Blockchain: Debug + Sized + Send + Sync + 'static {
     // The `Clone` bound is used when reprocessing a block, because `triggers_in_block` requires an
@@ -103,6 +104,12 @@ pub trait Blockchain: Debug + Sized + Send + Sync + 'static {
     fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter>;
 
     fn chain_store(&self) -> Arc<dyn ChainStore>;
+
+    async fn block_pointer_from_number(
+        &self,
+        logger: &Logger,
+        number: BlockNumber,
+    ) -> Result<BlockPtr, IngestorError>;
 }
 
 pub type BlockchainMap<C> = HashMap<String, Arc<C>>;

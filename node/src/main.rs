@@ -338,8 +338,7 @@ async fn main() {
             Arc::new(subgraph_provider),
             network_store.subgraph_store(),
             subscription_manager,
-            network_store.block_store(),
-            eth_networks.clone(),
+            chains.clone(),
             node_id.clone(),
             version_switching_mode,
         ));

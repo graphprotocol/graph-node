@@ -3,16 +3,16 @@ use std::env;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use graph::blockchain::BlockchainMap;
 use lazy_static::lazy_static;
 
+use graph::blockchain::Blockchain;
 use graph::components::store::{DeploymentId, DeploymentLocator, SubscriptionManager};
 use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
-use graph::{blockchain::Blockchain, components::store::BlockStore};
-use graph_chain_ethereum::{EthereumAdapterTrait, EthereumNetworks};
 
 lazy_static! {
     // The timeout for IPFS requests in seconds
@@ -24,27 +24,26 @@ lazy_static! {
     );
 }
 
-pub struct SubgraphRegistrar<L, P, S, BS, SM> {
+pub struct SubgraphRegistrar<C, L, P, S, SM> {
     logger: Logger,
     logger_factory: LoggerFactory,
     resolver: Arc<L>,
     provider: Arc<P>,
     store: Arc<S>,
     subscription_manager: Arc<SM>,
-    block_store: Arc<BS>,
-    ethereum_networks: EthereumNetworks,
+    chains: Arc<BlockchainMap<C>>,
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
     assignment_event_stream_cancel_guard: CancelGuard, // cancels on drop
 }
 
-impl<L, P, S, BS, SM> SubgraphRegistrar<L, P, S, BS, SM>
+impl<C, L, P, S, SM> SubgraphRegistrar<C, L, P, S, SM>
 where
     L: LinkResolver + Clone,
     P: SubgraphAssignmentProviderTrait,
     S: SubgraphStore,
-    BS: BlockStore,
     SM: SubscriptionManager,
+    C: Blockchain,
 {
     pub fn new(
         logger_factory: &LoggerFactory,
@@ -52,8 +51,7 @@ where
         provider: Arc<P>,
         store: Arc<S>,
         subscription_manager: Arc<SM>,
-        block_store: Arc<BS>,
-        ethereum_networks: EthereumNetworks,
+        chains: Arc<BlockchainMap<C>>,
         node_id: NodeId,
         version_switching_mode: SubgraphVersionSwitchingMode,
     ) -> Self {
@@ -73,8 +71,7 @@ where
             provider,
             store,
             subscription_manager,
-            block_store,
-            ethereum_networks,
+            chains,
             node_id,
             version_switching_mode,
             assignment_event_stream_cancel_guard: CancelGuard::new(),
@@ -257,13 +254,13 @@ where
 }
 
 #[async_trait]
-impl<L, P, S, BS, SM> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, BS, SM>
+impl<C, L, P, S, SM> SubgraphRegistrarTrait for SubgraphRegistrar<C, L, P, S, SM>
 where
     L: LinkResolver,
     P: SubgraphAssignmentProviderTrait,
     S: SubgraphStore,
-    BS: BlockStore,
     SM: SubscriptionManager,
+    C: Blockchain,
 {
     async fn create_subgraph(
         &self,
@@ -303,28 +300,19 @@ where
 
         let network_name = manifest.network_name();
 
-        let chain_store = self.block_store.chain_store(&network_name).ok_or(
-            SubgraphRegistrarError::NetworkNotSupported(network_name.clone()),
-        )?;
-
-        let subgraph_eth_requirements = manifest.required_ethereum_capabilities();
-
-        let ethereum_adapter = self
-            .ethereum_networks
-            .adapter_with_capabilities(network_name.clone(), &subgraph_eth_requirements)
-            .map_err(|_| {
-                SubgraphRegistrarError::SubgraphNetworkRequirementsNotSupported(
-                    network_name,
-                    subgraph_eth_requirements,
-                )
-            })?;
+        let chain = self
+            .chains
+            .get(&network_name)
+            .ok_or(SubgraphRegistrarError::NetworkNotSupported(
+                network_name.clone(),
+            ))?
+            .cheap_clone();
 
         let manifest_id = manifest.id.clone();
         create_subgraph_version(
             &logger,
             self.store.clone(),
-            chain_store.clone(),
-            ethereum_adapter.clone(),
+            chain,
             name.clone(),
             manifest,
             node_id,
@@ -442,12 +430,10 @@ async fn start_subgraph(
 /// Resolves the subgraph's earliest block and the manifest's graft base block
 async fn resolve_subgraph_chain_blocks(
     manifest: &SubgraphManifest<impl Blockchain>,
-    chain_store: Arc<impl ChainStore>,
-    ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
+    chain: Arc<impl Blockchain>,
     logger: &Logger,
 ) -> Result<(Option<BlockPtr>, Option<(DeploymentHash, BlockPtr)>), SubgraphRegistrarError> {
     let logger1 = logger.clone();
-    let chain_store1 = chain_store.clone();
     let graft = manifest.graft.clone();
 
     // If the minimum start block is 0 (i.e. the genesis block),
@@ -460,9 +446,8 @@ async fn resolve_subgraph_chain_blocks(
         .expect("cannot identify minimum start block because there are no data sources")
     {
         0 => None,
-        min_start_block => ethereum_adapter
-            .block_pointer_from_number(logger, chain_store.clone(), min_start_block - 1)
-            .compat()
+        min_start_block => chain
+            .block_pointer_from_number(logger, min_start_block - 1)
             .await
             .map(Some)
             .map_err(move |_| {
@@ -478,9 +463,8 @@ async fn resolve_subgraph_chain_blocks(
             Some(base) => {
                 let base_block = base.block;
 
-                ethereum_adapter
-                    .block_pointer_from_number(&logger1, chain_store1.clone(), base.block)
-                    .compat()
+                chain
+                    .block_pointer_from_number(&logger1, base.block)
                     .await
                     .map(|ptr| Some((base.base, ptr)))
                     .map_err(move |_| {
@@ -497,11 +481,10 @@ async fn resolve_subgraph_chain_blocks(
     Ok((start_block_ptr, base_ptr))
 }
 
-async fn create_subgraph_version(
+async fn create_subgraph_version<C: Blockchain>(
     logger: &Logger,
     store: Arc<impl SubgraphStore>,
-    chain_store: Arc<impl ChainStore>,
-    ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
+    chain: Arc<C>,
     name: SubgraphName,
     manifest: SubgraphManifest<impl Blockchain>,
     node_id: NodeId,
@@ -520,13 +503,8 @@ async fn create_subgraph_version(
         return Err(SubgraphRegistrarError::NameNotFound(name.to_string()));
     }
 
-    let (start_block, base_block) = resolve_subgraph_chain_blocks(
-        &manifest,
-        chain_store.clone(),
-        ethereum_adapter.clone(),
-        &logger.clone(),
-    )
-    .await?;
+    let (start_block, base_block) =
+        resolve_subgraph_chain_blocks(&manifest, chain, &logger.clone()).await?;
 
     info!(
         logger,

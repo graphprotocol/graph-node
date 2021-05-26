@@ -101,6 +101,7 @@ impl Chain {
     }
 }
 
+#[async_trait]
 impl Blockchain for Chain {
     type Block = WrappedBlockFinality;
 
@@ -220,6 +221,18 @@ impl Blockchain for Chain {
 
     fn chain_store(&self) -> Arc<dyn ChainStore> {
         self.chain_store.clone()
+    }
+
+    async fn block_pointer_from_number(
+        &self,
+        logger: &Logger,
+        number: BlockNumber,
+    ) -> Result<BlockPtr, IngestorError> {
+        let eth_adapter = self.eth_adapters.cheapest().unwrap().clone();
+        eth_adapter
+            .block_pointer_from_number(logger, self.chain_store.cheap_clone(), number)
+            .compat()
+            .await
     }
 }
 
