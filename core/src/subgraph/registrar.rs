@@ -330,7 +330,6 @@ where
             node_id,
             self.version_switching_mode,
         )
-        .compat()
         .await?;
 
         debug!(
@@ -441,71 +440,64 @@ async fn start_subgraph(
 }
 
 /// Resolves the subgraph's earliest block and the manifest's graft base block
-fn resolve_subgraph_chain_blocks(
+async fn resolve_subgraph_chain_blocks(
     manifest: &SubgraphManifest<impl Blockchain>,
     chain_store: Arc<impl ChainStore>,
     ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
     logger: &Logger,
-) -> Box<
-    dyn Future<
-            Item = (Option<BlockPtr>, Option<(DeploymentHash, BlockPtr)>),
-            Error = SubgraphRegistrarError,
-        > + Send,
-> {
+) -> Result<(Option<BlockPtr>, Option<(DeploymentHash, BlockPtr)>), SubgraphRegistrarError> {
     let logger1 = logger.clone();
     let chain_store1 = chain_store.clone();
     let graft = manifest.graft.clone();
 
-    Box::new(
-        // If the minimum start block is 0 (i.e. the genesis block),
-        // return `None` to start indexing from the genesis block. Otherwise
-        // return a block pointer for the block with number `min_start_block - 1`.
-        match manifest
-            .start_blocks()
-            .into_iter()
-            .min()
-            .expect("cannot identify minimum start block because there are no data sources")
-        {
-            0 => Box::new(future::ok(None)) as Box<dyn Future<Item = _, Error = _> + Send>,
-            min_start_block => Box::new(
+    // If the minimum start block is 0 (i.e. the genesis block),
+    // return `None` to start indexing from the genesis block. Otherwise
+    // return a block pointer for the block with number `min_start_block - 1`.
+    let start_block_ptr = match manifest
+        .start_blocks()
+        .into_iter()
+        .min()
+        .expect("cannot identify minimum start block because there are no data sources")
+    {
+        0 => None,
+        min_start_block => ethereum_adapter
+            .block_pointer_from_number(logger, chain_store.clone(), min_start_block - 1)
+            .compat()
+            .await
+            .map(Some)
+            .map_err(move |_| {
+                SubgraphRegistrarError::ManifestValidationError(vec![
+                    SubgraphManifestValidationError::BlockNotFound(min_start_block.to_string()),
+                ])
+            })?,
+    };
+
+    let base_ptr = {
+        match graft {
+            None => None,
+            Some(base) => {
+                let base_block = base.block;
+
                 ethereum_adapter
-                    .block_pointer_from_number(logger, chain_store.clone(), min_start_block - 1)
-                    .map(Some)
+                    .block_pointer_from_number(&logger1, chain_store1.clone(), base.block)
+                    .compat()
+                    .await
+                    .map(|ptr| Some((base.base, ptr)))
                     .map_err(move |_| {
                         SubgraphRegistrarError::ManifestValidationError(vec![
-                            SubgraphManifestValidationError::BlockNotFound(
-                                min_start_block.to_string(),
-                            ),
+                            SubgraphManifestValidationError::BlockNotFound(format!(
+                                "graft base block {} not found",
+                                base_block
+                            )),
                         ])
-                    }),
-            ) as Box<dyn Future<Item = _, Error = _> + Send>,
-        }
-        .and_then(move |start_block_ptr| {
-            match graft {
-                None => Box::new(future::ok(None)) as Box<dyn Future<Item = _, Error = _> + Send>,
-                Some(base) => {
-                    let base_block = base.block;
-                    Box::new(
-                        ethereum_adapter
-                            .block_pointer_from_number(&logger1, chain_store1.clone(), base.block)
-                            .map(|ptr| Some((base.base, ptr)))
-                            .map_err(move |_| {
-                                SubgraphRegistrarError::ManifestValidationError(vec![
-                                    SubgraphManifestValidationError::BlockNotFound(format!(
-                                        "graft base block {} not found",
-                                        base_block
-                                    )),
-                                ])
-                            }),
-                    ) as Box<dyn Future<Item = _, Error = _> + Send>
-                }
+                    })?
             }
-            .map(move |base_ptr| (start_block_ptr, base_ptr))
-        }),
-    )
+        }
+    };
+    Ok((start_block_ptr, base_ptr))
 }
 
-fn create_subgraph_version(
+async fn create_subgraph_version(
     logger: &Logger,
     store: Arc<impl SubgraphStore>,
     chain_store: Arc<impl ChainStore>,
@@ -514,59 +506,55 @@ fn create_subgraph_version(
     manifest: SubgraphManifest<impl Blockchain>,
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
-) -> Box<dyn Future<Item = (), Error = SubgraphRegistrarError> + Send> {
+) -> Result<(), SubgraphRegistrarError> {
     let logger = logger.clone();
     let store = store.clone();
     let deployment_store = store.clone();
 
-    match store.subgraph_exists(&name) {
-        Err(e) => return Box::new(future::err(e.into())),
-        Ok(false) => {
-            debug!(
-                logger,
-                "Subgraph not found, could not create_subgraph_version";
-                "subgraph_name" => name.to_string()
-            );
-            return Box::new(future::err(SubgraphRegistrarError::NameNotFound(
-                name.to_string(),
-            )));
-        }
-        Ok(true) => { /* everything is fine, continue */ }
+    if !store.subgraph_exists(&name)? {
+        debug!(
+            logger,
+            "Subgraph not found, could not create_subgraph_version";
+            "subgraph_name" => name.to_string()
+        );
+        return Err(SubgraphRegistrarError::NameNotFound(name.to_string()));
     }
 
-    Box::new(
-            resolve_subgraph_chain_blocks(
-                &manifest,
-                chain_store.clone(),
-                ethereum_adapter.clone(),
-                &logger.clone(),
-            )
-            .and_then(move |(start_block, base_block)| {
-                info!(
-                    logger,
-                    "Set subgraph start block";
-                    "block_number" => format!("{:?}", start_block.as_ref().map(|block| block.number)),
-                    "block_hash" => format!("{:?}", start_block.as_ref().map(|block| &block.hash)),
-                );
-
-                info!(
-                    logger,
-                    "Graft base";
-                    "base" => format!("{:?}", base_block.as_ref().map(|(subgraph,_)| subgraph.to_string())),
-                    "block" => format!("{:?}", base_block.as_ref().map(|(_,ptr)| ptr.number))
-                );
-
-                // Apply the subgraph versioning and deployment operations,
-                // creating a new subgraph deployment if one doesn't exist.
-                let network = manifest.network_name();
-                let deployment = SubgraphDeploymentEntity::new(
-                        &manifest,
-                        false,
-                        start_block,
-                    ).graft(base_block);
-                    deployment_store
-                        .create_subgraph_deployment(name, &manifest.schema, deployment, node_id, network, version_switching_mode)
-                        .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e)).map(|_| ())
-            })
+    let (start_block, base_block) = resolve_subgraph_chain_blocks(
+        &manifest,
+        chain_store.clone(),
+        ethereum_adapter.clone(),
+        &logger.clone(),
     )
+    .await?;
+
+    info!(
+        logger,
+        "Set subgraph start block";
+        "block_number" => format!("{:?}", start_block.as_ref().map(|block| block.number)),
+        "block_hash" => format!("{:?}", start_block.as_ref().map(|block| &block.hash)),
+    );
+
+    info!(
+        logger,
+        "Graft base";
+        "base" => format!("{:?}", base_block.as_ref().map(|(subgraph,_)| subgraph.to_string())),
+        "block" => format!("{:?}", base_block.as_ref().map(|(_,ptr)| ptr.number))
+    );
+
+    // Apply the subgraph versioning and deployment operations,
+    // creating a new subgraph deployment if one doesn't exist.
+    let network = manifest.network_name();
+    let deployment = SubgraphDeploymentEntity::new(&manifest, false, start_block).graft(base_block);
+    deployment_store
+        .create_subgraph_deployment(
+            name,
+            &manifest.schema,
+            deployment,
+            node_id,
+            network,
+            version_switching_mode,
+        )
+        .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
+        .map(|_| ())
 }
