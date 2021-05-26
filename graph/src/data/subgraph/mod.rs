@@ -950,12 +950,6 @@ impl<C: Blockchain> SubgraphManifest<C> {
         })
     }
 
-    pub fn requires_archive(&self) -> bool {
-        self.mappings()
-            .iter()
-            .any(|mapping| mapping.calls_host_fn("ethereum.call"))
-    }
-
     pub fn required_ethereum_capabilities(&self) -> NodeCapabilities {
         let mappings = self.mappings();
         NodeCapabilities {
