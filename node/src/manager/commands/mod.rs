@@ -1,4 +1,5 @@
 pub mod assign;
+pub mod chain;
 pub mod config;
 pub mod copy;
 pub mod create;

@@ -1,0 +1,97 @@
+use std::sync::Arc;
+
+use graph::blockchain::BlockPtr;
+use graph::prelude::anyhow;
+use graph::prelude::BlockNumber;
+use graph::prelude::ChainStore as _;
+use graph::prelude::LightEthereumBlockExt as _;
+use graph::{components::store::BlockStore as _, prelude::anyhow::Error};
+use graph_store_postgres::BlockStore;
+use graph_store_postgres::{
+    command_support::catalog::block_store, connection_pool::ConnectionPool,
+};
+
+pub fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(), Error> {
+    let mut chains = block_store::load_chains(&primary)?;
+    chains.sort_by_key(|chain| chain.name.clone());
+
+    if !chains.is_empty() {
+        println!(
+            "{:^20} | {:^10} | {:^10} | {:^7} | {:^10}",
+            "name", "shard", "namespace", "version", "head block"
+        );
+        println!(
+            "{:-^20}-+-{:-^10}-+-{:-^10}-+-{:-^7}-+-{:-^10}",
+            "", "", "", "", ""
+        );
+    }
+    for chain in chains {
+        let head_block = match store.chain_store(&chain.name) {
+            None => "no chain".to_string(),
+            Some(chain_store) => chain_store
+                .chain_head_ptr()?
+                .map(|ptr| ptr.number.to_string())
+                .unwrap_or("none".to_string()),
+        };
+        println!(
+            "{:<20} | {:<10} | {:<10} | {:>7} | {:>10}",
+            chain.name, chain.shard, chain.storage, chain.net_version, head_block
+        );
+    }
+    Ok(())
+}
+
+pub fn info(
+    primary: ConnectionPool,
+    store: Arc<BlockStore>,
+    name: String,
+    offset: BlockNumber,
+    hashes: bool,
+) -> Result<(), Error> {
+    fn row(label: &str, value: impl std::fmt::Display) {
+        println!("{:<16} | {}", label, value.to_string());
+    }
+
+    fn print_ptr(label: &str, ptr: Option<BlockPtr>, hashes: bool) {
+        match ptr {
+            None => {
+                row(label, "ø");
+            }
+            Some(ptr) => {
+                row(label, ptr.number);
+                if hashes {
+                    row("", ptr.hash);
+                }
+            }
+        }
+    }
+
+    let conn = primary.get()?;
+
+    let chain =
+        block_store::find_chain(&conn, &name)?.ok_or_else(|| anyhow!("unknown chain: {}", name))?;
+
+    let chain_store = store
+        .chain_store(&chain.name)
+        .ok_or_else(|| anyhow!("unknown chain: {}", name))?;
+    let head_block = chain_store.chain_head_ptr()?;
+    let ancestor = match &head_block {
+        None => None,
+        Some(head_block) => chain_store
+            .ancestor_block(head_block.clone(), offset)?
+            .map(|b| b.block.block_ptr()),
+    };
+
+    row("name", chain.name);
+    row("shard", chain.shard);
+    row("namespace", chain.storage);
+    row("net_version", chain.net_version);
+    if hashes {
+        row("genesis", chain.genesis_block);
+    }
+    print_ptr("head block", head_block, hashes);
+    row("reorg threshold", offset);
+    print_ptr("reorg ancestor", ancestor, hashes);
+
+    Ok(())
+}

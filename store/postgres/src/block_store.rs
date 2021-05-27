@@ -30,7 +30,7 @@ pub enum ChainStatus {
     Ingestible,
 }
 
-mod primary {
+pub mod primary {
     use std::str::FromStr;
 
     use diesel::{

@@ -14,7 +14,7 @@ use graph::{
 };
 use graph_node::{manager::PanicSubscriptionManager, store_builder::StoreBuilder};
 use graph_store_postgres::{
-    connection_pool::ConnectionPool, Shard, Store, SubgraphStore, SubscriptionManager,
+    connection_pool::ConnectionPool, BlockStore, Shard, Store, SubgraphStore, SubscriptionManager,
     PRIMARY_SHARD,
 };
 
@@ -152,6 +152,8 @@ pub enum Command {
         /// The variables in the form `key=value`
         vars: Vec<String>,
     },
+    /// Get information about chains and manipulate them
+    Chain(ChainCommand),
 }
 
 impl Command {
@@ -267,6 +269,26 @@ pub enum CopyCommand {
     },
 }
 
+#[derive(Clone, Debug, StructOpt)]
+pub enum ChainCommand {
+    /// List all chains that are in the database
+    List,
+    /// Show information about a chain
+    Info {
+        #[structopt(
+            long,
+            short,
+            default_value = "50",
+            env = "ETHEREUM_REORG_THRESHOLD",
+            help = "the reorg threshold to check\n"
+        )]
+        reorg_threshold: i32,
+        #[structopt(long, help = "display block hashes\n")]
+        hashes: bool,
+        name: String,
+    },
+}
+
 impl From<Opt> for config::Opt {
     fn from(opt: Opt) -> Self {
         let mut config_opt = config::Opt::default();
@@ -351,6 +373,13 @@ impl Context {
         );
 
         (store, pools)
+    }
+
+    fn block_store_and_primary_pool(self) -> (Arc<BlockStore>, ConnectionPool) {
+        let (store, pools) = self.store_and_pools();
+
+        let primary = pools.get(&*PRIMARY_SHARD).unwrap();
+        (store.block_store(), primary.clone())
     }
 
     fn graphql_runner(self) -> Arc<GraphQlRunner<Store, PanicSubscriptionManager>> {
@@ -503,6 +532,23 @@ async fn main() {
             query,
             vars,
         } => commands::query::run(ctx.graphql_runner(), target, query, vars).await,
+        Chain(cmd) => {
+            use ChainCommand::*;
+            match cmd {
+                List => {
+                    let (block_store, primary) = ctx.block_store_and_primary_pool();
+                    commands::chain::list(primary, block_store)
+                }
+                Info {
+                    name,
+                    reorg_threshold,
+                    hashes,
+                } => {
+                    let (block_store, primary) = ctx.block_store_and_primary_pool();
+                    commands::chain::info(primary, block_store, name, reorg_threshold, hashes)
+                }
+            }
+        }
     };
     if let Err(e) = result {
         die!("error: {}", e)
