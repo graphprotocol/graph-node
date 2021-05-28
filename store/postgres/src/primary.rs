@@ -912,6 +912,17 @@ impl<'a> Connection<'a> {
         schema.map(|schema| schema.try_into()).transpose()
     }
 
+    pub fn find_sites_for_network(&self, network: &str) -> Result<Vec<Site>, StoreError> {
+        use deployment_schemas as ds;
+
+        ds::table
+            .filter(ds::network.eq(network))
+            .load::<Schema>(self.0.as_ref())?
+            .into_iter()
+            .map(|schema| schema.try_into())
+            .collect()
+    }
+
     /// Find sites by their subgraph deployment ids. If `ids` is empty,
     /// return all sites
     pub fn find_sites(&self, ids: Vec<String>, only_active: bool) -> Result<Vec<Site>, StoreError> {

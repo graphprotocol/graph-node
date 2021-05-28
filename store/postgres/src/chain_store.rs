@@ -7,9 +7,9 @@ use graph::{
 };
 
 use diesel::pg::PgConnection;
-use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
+use diesel::{delete, prelude::*};
 use diesel::{insert_into, update};
 
 use graph::ensure;
@@ -47,6 +47,7 @@ mod data {
     use graph::{constraint_violation, prelude::StoreError};
 
     use diesel::{connection::SimpleConnection, insert_into};
+    use diesel::{delete, prelude::*, sql_query};
     use diesel::{dsl::sql, pg::PgConnection};
     use diesel::{
         pg::Pg,
@@ -54,7 +55,6 @@ mod data {
         sql_types::Text,
         types::{FromSql, ToSql},
     };
-    use diesel::{prelude::*, sql_query};
     use diesel::{
         sql_types::{BigInt, Bytea, Integer, Jsonb},
         update,
@@ -350,6 +350,24 @@ mod data {
                 Storage::Shared => Ok(()),
                 Storage::Private(Schema { name, .. }) => {
                     conn.batch_execute(&make_ddl(name))?;
+                    Ok(())
+                }
+            }
+        }
+
+        pub(super) fn drop_storage(
+            &self,
+            conn: &PgConnection,
+            name: &str,
+        ) -> Result<(), StoreError> {
+            match &self {
+                Storage::Shared => {
+                    use public::ethereum_blocks as b;
+                    delete(b::table.filter(b::network_name.eq(name))).execute(conn)?;
+                    Ok(())
+                }
+                Storage::Private(Schema { name, .. }) => {
+                    conn.batch_execute(&format!("drop schema {} cascade", name))?;
                     Ok(())
                 }
             }
@@ -1061,7 +1079,7 @@ mod data {
 pub struct ChainStore {
     pool: ConnectionPool,
     pub chain: String,
-    storage: data::Storage,
+    pub(crate) storage: data::Storage,
     genesis_block_ptr: BlockPtr,
     status: ChainStatus,
     chain_head_update_sender: ChainHeadUpdateSender,
@@ -1117,6 +1135,18 @@ impl ChainStore {
         })?;
 
         Ok(())
+    }
+
+    pub(crate) fn drop_chain(&self) -> Result<(), Error> {
+        use public::ethereum_networks as n;
+
+        let conn = self.get_conn()?;
+        conn.transaction(|| {
+            self.storage.drop_storage(&conn, &self.chain)?;
+
+            delete(n::table.filter(n::name.eq(&self.chain))).execute(&conn)?;
+            Ok(())
+        })
     }
 
     pub fn chain_head_pointers(&self) -> Result<HashMap<String, BlockPtr>, StoreError> {

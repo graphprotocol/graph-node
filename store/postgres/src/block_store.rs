@@ -34,7 +34,8 @@ pub mod primary {
     use std::str::FromStr;
 
     use diesel::{
-        insert_into, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl,
+        delete, insert_into, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
+        RunQueryDsl,
     };
     use graph::{
         constraint_violation,
@@ -133,6 +134,13 @@ pub mod primary {
             .get_result::<Storage>(&conn)
             .map_err(StoreError::from)?;
         Ok(chains::table.filter(chains::name.eq(name)).first(&conn)?)
+    }
+
+    pub(super) fn drop_chain(pool: &ConnectionPool, name: &str) -> Result<(), StoreError> {
+        let conn = pool.get()?;
+
+        delete(chains::table.filter(chains::name.eq(name))).execute(&conn)?;
+        Ok(())
     }
 }
 
@@ -396,6 +404,22 @@ impl BlockStore {
                 error!(&self.logger, "Error getting chain from store"; "network" => chain, "error" => e.to_string());
                 None
             })
+    }
+
+    pub fn drop_chain(&self, chain: &str) -> Result<(), StoreError> {
+        let chain_store = self
+            .store(chain)
+            .ok_or_else(|| constraint_violation!("unknown chain {}", chain))?;
+
+        // Delete from the primary first since that's where
+        // deployment_schemas has a fk constraint on chains
+        primary::drop_chain(&self.primary, chain)?;
+
+        chain_store.drop_chain()?;
+
+        self.stores.write().unwrap().remove(chain);
+
+        Ok(())
     }
 }
 

@@ -287,6 +287,11 @@ pub enum ChainCommand {
         hashes: bool,
         name: String,
     },
+    /// Remove a chain and all its data
+    ///
+    /// There must be no deployments using that chain. If there are, the
+    /// subgraphs and/or deployments using the chain must first be removed
+    Remove { name: String },
 }
 
 impl From<Opt> for config::Opt {
@@ -546,6 +551,10 @@ async fn main() {
                 } => {
                     let (block_store, primary) = ctx.block_store_and_primary_pool();
                     commands::chain::info(primary, block_store, name, reorg_threshold, hashes)
+                }
+                Remove { name } => {
+                    let (block_store, primary) = ctx.block_store_and_primary_pool();
+                    commands::chain::remove(primary, block_store, name)
                 }
             }
         }

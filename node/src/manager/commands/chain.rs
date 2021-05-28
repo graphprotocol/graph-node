@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use graph::blockchain::BlockPtr;
-use graph::prelude::anyhow;
 use graph::prelude::BlockNumber;
 use graph::prelude::ChainStore as _;
 use graph::prelude::LightEthereumBlockExt as _;
+use graph::prelude::{anyhow, anyhow::bail};
 use graph::{components::store::BlockStore as _, prelude::anyhow::Error};
 use graph_store_postgres::BlockStore;
 use graph_store_postgres::{
@@ -92,6 +92,29 @@ pub fn info(
     print_ptr("head block", head_block, hashes);
     row("reorg threshold", offset);
     print_ptr("reorg ancestor", ancestor, hashes);
+
+    Ok(())
+}
+
+pub fn remove(primary: ConnectionPool, store: Arc<BlockStore>, name: String) -> Result<(), Error> {
+    let sites = {
+        let conn = graph_store_postgres::command_support::catalog::Connection::new(primary.get()?);
+        conn.find_sites_for_network(&name)?
+    };
+
+    if !sites.is_empty() {
+        println!(
+            "there are {} deployments using chain {}:",
+            sites.len(),
+            name
+        );
+        for site in sites {
+            println!("{:<8} | {} ", site.namespace, site.deployment);
+        }
+        bail!("remove all deployments using chain {} first", name);
+    }
+
+    store.drop_chain(&name)?;
 
     Ok(())
 }
