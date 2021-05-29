@@ -5,7 +5,6 @@ use std::ops::Deref;
 use std::rc::Rc;
 use std::time::Instant;
 
-use graph::blockchain::Blockchain;
 use never::Never;
 use semver::Version;
 use wasmtime::{Memory, Trap};
@@ -28,10 +27,14 @@ use crate::mapping::ValidModule;
 use crate::UnresolvedContractCall;
 
 mod into_wasm_ret;
-mod stopwatch;
+pub mod stopwatch;
 
 use into_wasm_ret::IntoWasmRet;
 use stopwatch::TimeoutStopwatch;
+
+use state::LocalStorage;
+pub static mut MOCK_STORE: LocalStorage<String> = LocalStorage::new();
+pub static mut SNAPSHOT: LocalStorage<String> = LocalStorage::new();
 
 #[cfg(test)]
 mod test;
@@ -44,18 +47,18 @@ pub trait IntoTrap {
 }
 
 /// Handle to a WASM instance, which is terminated if and only if this is dropped.
-pub(crate) struct WasmInstance<C: Blockchain> {
-    instance: wasmtime::Instance,
+pub struct WasmInstance {
+    pub instance: wasmtime::Instance,
 
     // This is the only reference to `WasmInstanceContext` that's not within the instance itself, so
     // we can always borrow the `RefCell` with no concern for race conditions.
     //
     // Also this is the only strong reference, so the instance will be dropped once this is dropped.
     // The weak references are circulary held by instance itself through host exports.
-    instance_ctx: Rc<RefCell<Option<WasmInstanceContext<C>>>>,
+    instance_ctx: Rc<RefCell<Option<WasmInstanceContext>>>,
 }
 
-impl<C: Blockchain> Drop for WasmInstance<C> {
+impl Drop for WasmInstance {
     fn drop(&mut self) {
         // Assert that the instance will be dropped.
         assert_eq!(Rc::strong_count(&self.instance_ctx), 1);
@@ -63,7 +66,7 @@ impl<C: Blockchain> Drop for WasmInstance<C> {
 }
 
 /// Proxies to the WasmInstanceContext.
-impl<C: Blockchain> AscHeap for WasmInstance<C> {
+impl AscHeap for WasmInstance {
     fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, DeterministicHostError> {
         let mut ctx = RefMut::map(self.instance_ctx.borrow_mut(), |i| i.as_mut().unwrap());
         ctx.raw_new(bytes)
@@ -78,13 +81,13 @@ impl<C: Blockchain> AscHeap for WasmInstance<C> {
     }
 }
 
-impl<C: Blockchain> WasmInstance<C> {
+impl WasmInstance {
     pub(crate) fn handle_json_callback(
         mut self,
         handler_name: &str,
         value: &serde_json::Value,
         user_data: &store::Value,
-    ) -> Result<BlockState<C>, anyhow::Error> {
+    ) -> Result<BlockState, anyhow::Error> {
         let value = self.asc_new(value)?;
         let user_data = self.asc_new(user_data)?;
 
@@ -110,7 +113,7 @@ impl<C: Blockchain> WasmInstance<C> {
         transaction: Arc<Transaction>,
         log: Arc<Log>,
         params: Vec<LogParam>,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         // Prepare an EthereumEvent for the WASM runtime
         // Decide on the destination type using the mapping
         // api version provided in the subgraph manifest
@@ -149,7 +152,7 @@ impl<C: Blockchain> WasmInstance<C> {
         call: Arc<EthereumCall>,
         inputs: Vec<LogParam>,
         outputs: Vec<LogParam>,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         let call = EthereumCallData {
             to: call.to,
             from: call.from,
@@ -171,7 +174,7 @@ impl<C: Blockchain> WasmInstance<C> {
         mut self,
         block: Arc<LightEthereumBlock>,
         handler_name: &str,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         let block = EthereumBlockData::from(block.as_ref());
 
         // Prepare an EthereumBlock for the WASM runtime
@@ -180,28 +183,27 @@ impl<C: Blockchain> WasmInstance<C> {
         self.invoke_handler(handler_name, arg)
     }
 
-    pub(crate) fn take_ctx(&mut self) -> WasmInstanceContext<C> {
+    pub(crate) fn take_ctx(&mut self) -> WasmInstanceContext {
         self.instance_ctx.borrow_mut().take().unwrap()
     }
 
-    pub(crate) fn instance_ctx(&self) -> std::cell::Ref<'_, WasmInstanceContext<C>> {
+    pub(crate) fn instance_ctx(&self) -> std::cell::Ref<'_, WasmInstanceContext> {
         std::cell::Ref::map(self.instance_ctx.borrow(), |i| i.as_ref().unwrap())
     }
 
-    pub(crate) fn instance_ctx_mut(&self) -> std::cell::RefMut<'_, WasmInstanceContext<C>> {
+    pub(crate) fn instance_ctx_mut(&self) -> std::cell::RefMut<'_, WasmInstanceContext> {
         std::cell::RefMut::map(self.instance_ctx.borrow_mut(), |i| i.as_mut().unwrap())
     }
 
-    #[cfg(test)]
-    pub(crate) fn get_func(&self, func_name: &str) -> wasmtime::Func {
+    pub fn get_func(&self, func_name: &str) -> wasmtime::Func {
         self.instance.get_func(func_name).unwrap()
     }
 
-    fn invoke_handler<T>(
+    fn invoke_handler<C>(
         &mut self,
         handler: &str,
-        arg: AscPtr<T>,
-    ) -> Result<BlockState<C>, MappingError> {
+        arg: AscPtr<C>,
+    ) -> Result<BlockState, MappingError> {
         let func = self
             .instance
             .get_func(handler)
@@ -283,7 +285,7 @@ pub struct ExperimentalFeatures {
     pub allow_non_deterministic_3box: bool,
 }
 
-pub(crate) struct WasmInstanceContext<C: Blockchain> {
+pub struct WasmInstanceContext {
     // In the future there may be multiple memories, but currently there is only one memory per
     // module. And at least AS calls it "memory". There is no uninitialized memory in Wasm, memory
     // is zeroed when initialized or grown.
@@ -293,7 +295,7 @@ pub(crate) struct WasmInstanceContext<C: Blockchain> {
     // return a pointer to the first byte of allocated space.
     memory_allocate: wasmtime::TypedFunc<i32, i32>,
 
-    pub ctx: MappingContext<C>,
+    pub ctx: MappingContext,
     pub(crate) valid_module: Arc<ValidModule>,
     pub(crate) host_metrics: Arc<HostMetrics>,
     pub(crate) timeout: Option<Duration>,
@@ -314,28 +316,30 @@ pub(crate) struct WasmInstanceContext<C: Blockchain> {
     deterministic_host_trap: bool,
 
     pub(crate) experimental_features: ExperimentalFeatures,
+
+    pub mock_store: HashMap<String, String>,
 }
 
-impl<C: Blockchain> WasmInstance<C> {
+impl WasmInstance {
     /// Instantiates the module and sets it to be interrupted after `timeout`.
     pub fn from_valid_module_with_ctx(
         valid_module: Arc<ValidModule>,
-        ctx: MappingContext<C>,
+        ctx: MappingContext,
         host_metrics: Arc<HostMetrics>,
         timeout: Option<Duration>,
         experimental_features: ExperimentalFeatures,
-    ) -> Result<WasmInstance<C>, anyhow::Error> {
+    ) -> Result<WasmInstance, anyhow::Error> {
         let mut linker = wasmtime::Linker::new(&wasmtime::Store::new(valid_module.module.engine()));
 
         // Used by exports to access the instance context. There are two ways this can be set:
         // - After instantiation, if no host export is called in the start function.
         // - During the start function, if it calls a host export.
         // Either way, after instantiation this will have been set.
-        let shared_ctx: Rc<RefCell<Option<WasmInstanceContext<C>>>> = Rc::new(RefCell::new(None));
+        let shared_ctx: Rc<RefCell<Option<WasmInstanceContext>>> = Rc::new(RefCell::new(None));
 
         // We will move the ctx only once, to init `shared_ctx`. But we don't statically know where
         // it will be moved so we need this ugly thing.
-        let ctx: Rc<RefCell<Option<MappingContext<C>>>> = Rc::new(RefCell::new(Some(ctx)));
+        let ctx: Rc<RefCell<Option<MappingContext>>> = Rc::new(RefCell::new(Some(ctx)));
 
         // Start the timeout watchdog task.
         let timeout_stopwatch = Arc::new(std::sync::Mutex::new(TimeoutStopwatch::start_new()));
@@ -400,9 +404,9 @@ impl<C: Blockchain> WasmInstance<C> {
                             let instance = instance.as_mut().unwrap();
                             let _section = instance.host_metrics.stopwatch.start_section($section);
 
-                            let result = instance.$rust_name(
+                            let result = {instance.$rust_name(
                                 $($param.into()),*
-                            );
+                            )};
                             match result {
                                 Ok(result) => Ok(result.into_wasm_ret()),
                                 Err(e) => {
@@ -486,11 +490,18 @@ impl<C: Blockchain> WasmInstance<C> {
         link!("store.get", store_get, "host_export_store_get", entity, id);
         link!(
             "store.set",
-            store_set,
+            mock_store_set,
             "host_export_store_set",
             entity,
             id,
             data
+        );
+
+        link!(
+            "store.assertEq",
+            mock_store_assert_eq,
+            "host_export_store_assert_eq",
+            snapshot
         );
 
         link!("ipfs.cat", ipfs_cat, "host_export_ipfs_cat", hash_ptr);
@@ -585,7 +596,7 @@ impl<C: Blockchain> WasmInstance<C> {
     }
 }
 
-impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
+impl AscHeap for WasmInstanceContext {
     fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, DeterministicHostError> {
         // We request large chunks from the AssemblyScript allocator to use as arenas that we
         // manage directly.
@@ -637,10 +648,10 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
     }
 }
 
-impl<C: Blockchain> WasmInstanceContext<C> {
-    fn from_instance(
+impl WasmInstanceContext {
+    pub fn from_instance(
         instance: &wasmtime::Instance,
-        ctx: MappingContext<C>,
+        ctx: MappingContext,
         valid_module: Arc<ValidModule>,
         host_metrics: Arc<HostMetrics>,
         timeout: Option<Duration>,
@@ -671,12 +682,13 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             possible_reorg: false,
             deterministic_host_trap: false,
             experimental_features,
+            mock_store: HashMap::new(),
         })
     }
 
     fn from_caller(
         caller: wasmtime::Caller,
-        ctx: MappingContext<C>,
+        ctx: MappingContext,
         valid_module: Arc<ValidModule>,
         host_metrics: Arc<HostMetrics>,
         timeout: Option<Duration>,
@@ -708,12 +720,13 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             possible_reorg: false,
             deterministic_host_trap: false,
             experimental_features,
+            mock_store: HashMap::new(),
         })
     }
 }
 
 // Implementation of externals.
-impl<C: Blockchain> WasmInstanceContext<C> {
+impl WasmInstanceContext {
     /// function abort(message?: string | null, fileName?: string | null, lineNumber?: u32, columnNumber?: u32): void
     /// Always returns a trap.
     fn abort(
@@ -745,8 +758,37 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             .abort(message, file_name, line_number, column_number)
     }
 
+    fn mock_store_assert_eq(
+        &mut self,
+        snapshot_ptr: AscPtr<AscString>,
+    ) -> Result<(), HostExportError> {
+        let snapshot: String = self.asc_get(snapshot_ptr)?;
+        unsafe {
+            SNAPSHOT.set(move || snapshot.clone());
+        }
+        Ok(())
+    }
+
+    fn mock_store_set(
+        &mut self,
+        entity_ptr: AscPtr<AscString>,
+        id_ptr: AscPtr<AscString>,
+        _data_ptr: AscPtr<AscEntity>,
+    ) -> Result<(), HostExportError> {
+        let entity: String = self.asc_get(entity_ptr)?;
+        let id: String = self.asc_get(id_ptr)?;
+
+        self.mock_store.insert(id, entity);
+
+        let mock_store_clone: HashMap<String, String> = HashMap::from(self.mock_store.clone());
+
+        unsafe { MOCK_STORE = LocalStorage::new() };
+        unsafe { MOCK_STORE.set(move || serde_json::to_string(&mock_store_clone).unwrap()) };
+        Ok(())
+    }
+
     /// function store.set(entity: string, id: string, data: Entity): void
-    fn store_set(
+    fn _store_set(
         &mut self,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,

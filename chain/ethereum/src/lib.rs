@@ -1,4 +1,4 @@
-mod adapter;
+pub mod adapter;
 mod config;
 mod data_source;
 mod ethereum_adapter;
@@ -8,14 +8,11 @@ mod transport;
 pub use self::ethereum_adapter::EthereumAdapter;
 pub use self::transport::{EventLoopHandle, Transport};
 
-// ETHDEP: These concrete types should probably not be exposed.
-pub use data_source::{DataSource, DataSourceTemplate};
-pub use trigger::MappingTrigger;
+// ETHDEP: This concrete type should probably not be exposed.
+pub use data_source::DataSource;
 
 pub mod chain;
-
 mod network;
-mod trigger;
 
 pub use crate::adapter::{
     EthereumAdapter as EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError,
@@ -23,6 +20,3 @@ pub use crate::adapter::{
 };
 pub use crate::chain::{Chain, WrappedBlockFinality};
 pub use crate::network::EthereumNetworks;
-
-#[cfg(test)]
-mod tests;

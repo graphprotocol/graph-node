@@ -12,24 +12,21 @@ use serde::ser;
 use serde_yaml;
 use slog::{debug, info, Logger};
 use stable_hash::prelude::*;
-use std::{collections::BTreeSet, marker::PhantomData};
+use std::collections::BTreeSet;
 use thiserror::Error;
 use wasmparser;
 use web3::types::{Address, H256};
 
+use crate::components::{
+    ethereum::NodeCapabilities,
+    link_resolver::LinkResolver,
+    store::{DeploymentLocator, StoreError, SubgraphStore},
+};
+use crate::data::query::QueryExecutionError;
 use crate::data::schema::{Schema, SchemaImportError, SchemaValidationError};
 use crate::data::store::Entity;
 use crate::prelude::CheapClone;
 use crate::{blockchain::DataSource, data::graphql::TryFromValue};
-use crate::{blockchain::DataSourceTemplate as _, data::query::QueryExecutionError};
-use crate::{
-    blockchain::{Blockchain, UnresolvedDataSource as _, UnresolvedDataSourceTemplate as _},
-    components::{
-        ethereum::NodeCapabilities,
-        link_resolver::LinkResolver,
-        store::{DeploymentLocator, StoreError, SubgraphStore},
-    },
-};
 
 use crate::prelude::{impl_slog_value, q, BlockNumber, Deserialize, Serialize};
 use crate::util::ethereum::string_to_h256;
@@ -669,6 +666,77 @@ impl UnresolvedMapping {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+struct UnresolvedDataSource {
+    pub kind: String,
+    pub network: Option<String>,
+    pub name: String,
+    pub source: Source,
+    pub mapping: UnresolvedMapping,
+    pub context: Option<DataSourceContext>,
+}
+
+impl UnresolvedDataSource {
+    pub async fn resolve<DS: DataSource>(
+        self,
+        resolver: &impl LinkResolver,
+        logger: &Logger,
+    ) -> Result<DS, anyhow::Error> {
+        let UnresolvedDataSource {
+            kind,
+            network,
+            name,
+            source,
+            mapping,
+            context,
+        } = self;
+
+        info!(logger, "Resolve data source"; "name" => &name, "source" => &source.start_block);
+
+        let mapping = mapping.resolve(&*resolver, logger).await?;
+
+        DS::from_manifest(kind, network, name, source, mapping, context)
+    }
+}
+
+#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
+pub struct BaseDataSourceTemplate<M> {
+    pub kind: String,
+    pub network: Option<String>,
+    pub name: String,
+    pub source: TemplateSource,
+    pub mapping: M,
+}
+
+pub type UnresolvedDataSourceTemplate = BaseDataSourceTemplate<UnresolvedMapping>;
+pub type DataSourceTemplate = BaseDataSourceTemplate<Mapping>;
+
+impl UnresolvedDataSourceTemplate {
+    pub async fn resolve(
+        self,
+        resolver: &impl LinkResolver,
+        logger: &Logger,
+    ) -> Result<DataSourceTemplate, anyhow::Error> {
+        let UnresolvedDataSourceTemplate {
+            kind,
+            network,
+            name,
+            source,
+            mapping,
+        } = self;
+
+        info!(logger, "Resolve data source template"; "name" => &name);
+
+        Ok(DataSourceTemplate {
+            kind,
+            network,
+            name,
+            source,
+            mapping: mapping.resolve(resolver, logger).await?,
+        })
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Graft {
@@ -710,7 +778,7 @@ impl Graft {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BaseSubgraphManifest<C, S, D, T> {
+pub struct BaseSubgraphManifest<S, D, T> {
     pub id: DeploymentHash,
     pub spec_version: String,
     #[serde(default)]
@@ -722,30 +790,19 @@ pub struct BaseSubgraphManifest<C, S, D, T> {
     pub graft: Option<Graft>,
     #[serde(default)]
     pub templates: Vec<T>,
-    #[serde(skip_serializing, default)]
-    pub chain: PhantomData<C>,
 }
 
 /// SubgraphManifest with IPFS links unresolved
-type UnresolvedSubgraphManifest<C> = BaseSubgraphManifest<
-    C,
-    UnresolvedSchema,
-    <C as Blockchain>::UnresolvedDataSource,
-    <C as Blockchain>::UnresolvedDataSourceTemplate,
->;
+type UnresolvedSubgraphManifest =
+    BaseSubgraphManifest<UnresolvedSchema, UnresolvedDataSource, UnresolvedDataSourceTemplate>;
 
 /// SubgraphManifest validated with IPFS links resolved
-pub type SubgraphManifest<C> = BaseSubgraphManifest<
-    C,
-    Schema,
-    <C as Blockchain>::DataSource,
-    <C as Blockchain>::DataSourceTemplate,
->;
+pub type SubgraphManifest<DS> = BaseSubgraphManifest<Schema, DS, DataSourceTemplate>;
 
 /// Unvalidated SubgraphManifest
-pub struct UnvalidatedSubgraphManifest<C: Blockchain>(SubgraphManifest<C>);
+pub struct UnvalidatedSubgraphManifest<DS: DataSource>(SubgraphManifest<DS>);
 
-impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
+impl<DS: DataSource> UnvalidatedSubgraphManifest<DS> {
     /// Entry point for resolving a subgraph definition.
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
@@ -763,7 +820,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         self,
         store: Arc<S>,
     ) -> Result<
-        (SubgraphManifest<C>, Vec<SubgraphManifestValidationWarning>),
+        (SubgraphManifest<DS>, Vec<SubgraphManifestValidationWarning>),
         Vec<SubgraphManifestValidationError>,
     > {
         let (schemas, import_errors) = self.0.schema.resolve_schema_references(store.clone());
@@ -859,7 +916,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
     }
 }
 
-impl<C: Blockchain> SubgraphManifest<C> {
+impl<DS: DataSource> SubgraphManifest<DS> {
     /// Entry point for resolving a subgraph definition.
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
@@ -903,7 +960,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
         );
 
         // Parse the YAML data into an UnresolvedSubgraphManifest
-        let unresolved: UnresolvedSubgraphManifest<C> = serde_yaml::from_value(raw.into())?;
+        let unresolved: UnresolvedSubgraphManifest = serde_yaml::from_value(raw.into())?;
 
         debug!(logger, "Features {:?}", unresolved.features);
 
@@ -933,7 +990,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
     pub fn mappings(&self) -> Vec<Mapping> {
         self.templates
             .iter()
-            .map(|template| template.mapping().clone())
+            .map(|template| template.mapping.clone())
             .chain(
                 self.data_sources
                     .iter()
@@ -950,6 +1007,12 @@ impl<C: Blockchain> SubgraphManifest<C> {
         })
     }
 
+    pub fn requires_archive(&self) -> bool {
+        self.mappings()
+            .iter()
+            .any(|mapping| mapping.calls_host_fn("ethereum.call"))
+    }
+
     pub fn required_ethereum_capabilities(&self) -> NodeCapabilities {
         let mappings = self.mappings();
         NodeCapabilities {
@@ -963,12 +1026,12 @@ impl<C: Blockchain> SubgraphManifest<C> {
     }
 }
 
-impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
-    pub async fn resolve(
+impl UnresolvedSubgraphManifest {
+    pub async fn resolve<DS: DataSource>(
         self,
         resolver: &impl LinkResolver,
         logger: &Logger,
-    ) -> Result<SubgraphManifest<C>, anyhow::Error> {
+    ) -> Result<SubgraphManifest<DS>, anyhow::Error> {
         let UnresolvedSubgraphManifest {
             id,
             spec_version,
@@ -979,7 +1042,6 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             data_sources,
             graft,
             templates,
-            chain,
         } = self;
 
         match semver::Version::parse(&spec_version) {
@@ -1021,7 +1083,6 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             data_sources,
             graft,
             templates,
-            chain,
         })
     }
 }

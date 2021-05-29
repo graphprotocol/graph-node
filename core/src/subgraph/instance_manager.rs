@@ -11,16 +11,16 @@ use graph::util::lfu_cache::LfuCache;
 use graph::{blockchain::block_stream::BlockStreamMetrics, components::store::WritableStore};
 use graph::{blockchain::block_stream::BlockWithTriggers, data::subgraph::SubgraphFeature};
 use graph::{
+    blockchain::BlockchainMap,
+    components::store::{DeploymentId, DeploymentLocator, ModificationsAndCache},
+};
+use graph::{
     blockchain::TriggersAdapter,
     data::subgraph::schema::{SubgraphError, POI_OBJECT},
 };
 use graph::{
     blockchain::{block_stream::BlockStreamEvent, Blockchain, TriggerFilter as _},
     components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing},
-};
-use graph::{
-    blockchain::{Block, BlockchainMap},
-    components::store::{DeploymentId, DeploymentLocator, ModificationsAndCache},
 };
 use graph::{components::ethereum::NodeCapabilities, data::store::scalar::Bytes};
 use graph_chain_ethereum::{SubgraphEthRpcMetrics, WrappedBlockFinality};
@@ -53,7 +53,7 @@ struct IndexingInputs<C: Blockchain> {
     store: Arc<dyn WritableStore>,
     triggers_adapter: Arc<C::TriggersAdapter>,
     chain: Arc<C>,
-    templates: Arc<Vec<C::DataSourceTemplate>>,
+    templates: Arc<Vec<DataSourceTemplate>>,
 }
 
 struct IndexingState<T: RuntimeHostBuilder<C>, C: Blockchain> {
@@ -111,12 +111,28 @@ impl SubgraphInstanceManagerMetrics {
     }
 }
 
+enum TriggerType {
+    Event,
+    Call,
+    Block,
+}
+
+impl TriggerType {
+    fn label_value(&self) -> &str {
+        match self {
+            TriggerType::Event => "event",
+            TriggerType::Call => "call",
+            TriggerType::Block => "block",
+        }
+    }
+}
+
 struct SubgraphInstanceMetrics {
     pub block_trigger_count: Box<Histogram>,
     pub block_processing_duration: Box<Histogram>,
     pub block_ops_transaction_duration: Box<Histogram>,
 
-    trigger_processing_duration: Box<Histogram>,
+    trigger_processing_duration: Box<HistogramVec>,
 }
 
 impl SubgraphInstanceMetrics {
@@ -130,10 +146,11 @@ impl SubgraphInstanceMetrics {
             )
             .expect("failed to create `deployment_block_trigger_count` histogram");
         let trigger_processing_duration = registry
-            .new_deployment_histogram(
+            .new_deployment_histogram_vec(
                 "deployment_trigger_processing_duration",
                 "Measures duration of trigger processing for a subgraph deployment",
                 subgraph_hash,
+                vec![String::from("trigger_type")],
                 vec![0.01, 0.05, 0.1, 0.5, 1.5, 5.0, 10.0, 30.0, 120.0],
             )
             .expect("failed to create `deployment_trigger_processing_duration` histogram");
@@ -162,8 +179,10 @@ impl SubgraphInstanceMetrics {
         }
     }
 
-    pub fn observe_trigger_processing_duration(&self, duration: f64) {
-        self.trigger_processing_duration.observe(duration);
+    pub fn observe_trigger_processing_duration(&self, duration: f64, trigger: TriggerType) {
+        self.trigger_processing_duration
+            .with_label_values(vec![trigger.label_value()].as_slice())
+            .observe(duration);
     }
 
     pub fn unregister<M: MetricsRegistry>(&self, registry: Arc<M>) {
@@ -183,8 +202,8 @@ where
     C: Blockchain<
         NodeCapabilities = NodeCapabilities,
         Block = WrappedBlockFinality,
+        TriggerData = EthereumTrigger,
         DataSource = graph_chain_ethereum::DataSource,
-        DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
     >,
     M: MetricsRegistry,
     H: RuntimeHostBuilder<C>,
@@ -247,8 +266,8 @@ where
     C: Blockchain<
         NodeCapabilities = NodeCapabilities,
         Block = WrappedBlockFinality,
+        TriggerData = EthereumTrigger,
         DataSource = graph_chain_ethereum::DataSource,
-        DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
     >,
     M: MetricsRegistry,
     H: RuntimeHostBuilder<C>,
@@ -357,7 +376,7 @@ where
 
         let chain = chains
             .get(&network)
-            .with_context(|| format!("no chain configured for network {}", network))?
+            .expect(&format!("no chain configured for network {}", network))
             .clone();
 
         let triggers_adapter = chain.triggers_adapter(&deployment, &required_capabilities).map_err(|e|
@@ -463,8 +482,8 @@ where
     T: RuntimeHostBuilder<C>,
     C: Blockchain<
         Block = WrappedBlockFinality,
+        TriggerData = EthereumTrigger,
         DataSource = graph_chain_ethereum::DataSource,
-        DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
     >,
 {
     // Clone a few things for different parts of the async processing
@@ -687,12 +706,13 @@ async fn process_block<T: RuntimeHostBuilder<C>, C>(
 ) -> Result<(IndexingContext<T, C>, bool), BlockProcessingError>
 where
     C: Blockchain<
+        Block = WrappedBlockFinality,
+        TriggerData = EthereumTrigger,
         DataSource = graph_chain_ethereum::DataSource,
-        DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
     >,
 {
     let triggers = block.trigger_data;
-    let block = Arc::new(block.block);
+    let block = Arc::new(block.block.0);
     let block_ptr = block.ptr();
 
     let logger = logger.new(o!(
@@ -791,7 +811,11 @@ where
 
         // Reprocess the triggers from this block that match the new data sources
         let block_with_triggers = triggers_adapter
-            .triggers_in_block(&logger, block.as_ref().clone(), &filter)
+            .triggers_in_block(
+                &logger,
+                WrappedBlockFinality(block.as_ref().clone()),
+                &filter,
+            )
             .await?;
 
         let triggers = block_with_triggers.trigger_data;
@@ -820,12 +844,12 @@ where
 
         // Process the triggers in each host in the same order the
         // corresponding data sources have been created.
-        for trigger in triggers {
+        for trigger in triggers.into_iter() {
             block_state = SubgraphInstance::<C, T>::process_trigger_in_runtime_hosts(
                 &logger,
                 &runtime_hosts,
                 &block,
-                &trigger,
+                trigger,
                 block_state,
                 proof_of_indexing.cheap_clone(),
             )
@@ -1005,35 +1029,46 @@ async fn update_proof_of_indexing(
 
 async fn process_triggers<C: Blockchain>(
     logger: &Logger,
-    mut block_state: BlockState<C>,
+    mut block_state: BlockState,
     proof_of_indexing: SharedProofOfIndexing,
     subgraph_metrics: Arc<SubgraphInstanceMetrics>,
     instance: &SubgraphInstance<C, impl RuntimeHostBuilder<C>>,
-    block: &Arc<C::Block>,
-    triggers: Vec<C::TriggerData>,
-) -> Result<BlockState<C>, MappingError> {
-    use graph::blockchain::TriggerData;
-
+    block: &Arc<BlockFinality>,
+    triggers: Vec<EthereumTrigger>,
+) -> Result<BlockState, MappingError> {
     for trigger in triggers.into_iter() {
+        let block_ptr = BlockPtr::from(block.as_ref());
+        let trigger_type = match trigger {
+            EthereumTrigger::Log(_) => TriggerType::Event,
+            EthereumTrigger::Call(_) => TriggerType::Call,
+            EthereumTrigger::Block(..) => TriggerType::Block,
+        };
+        let transaction_id = match &trigger {
+            EthereumTrigger::Log(log) => log.transaction_hash,
+            EthereumTrigger::Call(call) => call.transaction_hash,
+            EthereumTrigger::Block(..) => None,
+        };
         let start = Instant::now();
         block_state = instance
             .process_trigger(
                 &logger,
                 block,
-                &trigger,
+                trigger,
                 block_state,
                 proof_of_indexing.cheap_clone(),
             )
             .await
-            .map_err(move |mut e| {
-                let error_context = trigger.error_context();
-                if !error_context.is_empty() {
-                    e = e.context(error_context);
-                }
-                e.context("failed to process trigger".to_string())
+            .map_err(move |e| {
+                e.context(match transaction_id {
+                    Some(tx_hash) => format!(
+                        "Failed to process trigger in block {}, transaction {:x}",
+                        block_ptr, tx_hash
+                    ),
+                    None => "Failed to process trigger".to_string(),
+                })
             })?;
         let elapsed = start.elapsed().as_secs_f64();
-        subgraph_metrics.observe_trigger_processing_duration(elapsed);
+        subgraph_metrics.observe_trigger_processing_duration(elapsed, trigger_type);
     }
     Ok(block_state)
 }
@@ -1042,20 +1077,17 @@ fn create_dynamic_data_sources<T: RuntimeHostBuilder<C>, C>(
     logger: Logger,
     ctx: &mut IndexingContext<T, C>,
     host_metrics: Arc<HostMetrics>,
-    created_data_sources: Vec<DataSourceTemplateInfo<C>>,
+    created_data_sources: Vec<DataSourceTemplateInfo>,
 ) -> Result<(Vec<graph_chain_ethereum::DataSource>, Vec<Arc<T::Host>>), Error>
 where
-    C: Blockchain<
-        DataSource = graph_chain_ethereum::DataSource,
-        DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
-    >,
+    C: Blockchain<DataSource = graph_chain_ethereum::DataSource>,
 {
     let mut data_sources = vec![];
     let mut runtime_hosts = vec![];
 
     for info in created_data_sources {
         // Try to instantiate a data source from the template
-        let data_source = C::DataSource::try_from(info)?;
+        let data_source = graph_chain_ethereum::DataSource::try_from(info)?;
 
         // Try to create a runtime host for the data source
         let host = ctx.state.instance.add_dynamic_data_source(

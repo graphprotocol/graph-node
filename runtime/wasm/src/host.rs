@@ -5,18 +5,20 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
+use graph::{
+    blockchain::{Blockchain, DataSource},
+    components::store::CallCache,
+};
+use strum::AsStaticRef as _;
+
 use graph::components::arweave::ArweaveAdapter;
+use graph::components::ethereum::*;
 use graph::components::store::SubgraphStore;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::components::three_box::ThreeBoxAdapter;
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
-use graph::{
-    blockchain::{Blockchain, DataSource, MappingTrigger as _},
-    components::store::CallCache,
-};
-use graph_chain_ethereum::MappingTrigger;
 use graph_chain_ethereum::{EthereumAdapterTrait, EthereumNetworks};
 
 use crate::mapping::{MappingContext, MappingRequest};
@@ -91,12 +93,12 @@ where
     CC: CallCache,
     C: Blockchain<
         Block = graph_chain_ethereum::WrappedBlockFinality,
-        MappingTrigger = graph_chain_ethereum::MappingTrigger,
+        TriggerData = EthereumTrigger,
         DataSource = graph_chain_ethereum::DataSource,
     >,
 {
     type Host = RuntimeHost<C>;
-    type Req = MappingRequest<C>;
+    type Req = MappingRequest;
 
     fn spawn_mapping(
         raw_module: Vec<u8>,
@@ -125,8 +127,8 @@ where
         network_name: String,
         subgraph_id: DeploymentHash,
         data_source: C::DataSource,
-        templates: Arc<Vec<C::DataSourceTemplate>>,
-        mapping_request_sender: Sender<MappingRequest<C>>,
+        templates: Arc<Vec<DataSourceTemplate>>,
+        mapping_request_sender: Sender<MappingRequest>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error> {
         let cache = self
@@ -165,14 +167,14 @@ where
 #[derive(Debug)]
 pub struct RuntimeHost<C: Blockchain> {
     data_source: C::DataSource,
-    mapping_request_sender: Sender<MappingRequest<C>>,
-    host_exports: Arc<HostExports<C>>,
+    mapping_request_sender: Sender<MappingRequest>,
+    host_exports: Arc<HostExports>,
     metrics: Arc<HostMetrics>,
 }
 
 impl<C> RuntimeHost<C>
 where
-    C: Blockchain,
+    C: Blockchain<DataSource = graph_chain_ethereum::DataSource>,
 {
     fn new(
         ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
@@ -182,8 +184,8 @@ where
         network_name: String,
         subgraph_id: DeploymentHash,
         data_source: C::DataSource,
-        templates: Arc<Vec<C::DataSourceTemplate>>,
-        mapping_request_sender: Sender<MappingRequest<C>>,
+        templates: Arc<Vec<DataSourceTemplate>>,
+        mapping_request_sender: Sender<MappingRequest>,
         metrics: Arc<HostMetrics>,
         arweave_adapter: Arc<dyn ArweaveAdapter>,
         three_box_adapter: Arc<dyn ThreeBoxAdapter>,
@@ -216,17 +218,19 @@ where
     async fn send_mapping_request(
         &self,
         logger: &Logger,
-        state: BlockState<C>,
+        state: BlockState,
         trigger: MappingTrigger,
         block_ptr: BlockPtr,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
+        let trigger_type = trigger.as_static();
         let handler = trigger.handler_name().to_string();
 
         let extras = trigger.logging_extras();
         trace!(
             logger, "Start processing Ethereum trigger";
             &extras,
+            "trigger_type" => trigger_type,
             "handler" => &handler,
             "data_source" => &self.data_source.name(),
         );
@@ -262,6 +266,7 @@ where
         info!(
             logger, "Done processing Ethereum trigger";
             &extras,
+            "trigger_type" => trigger_type,
             "total_ms" => elapsed.as_millis(),
             "handler" => handler,
             "data_source" => &self.data_source.name(),
@@ -274,14 +279,18 @@ where
 #[async_trait]
 impl<C> RuntimeHostTrait<C> for RuntimeHost<C>
 where
-    C: Blockchain<MappingTrigger = graph_chain_ethereum::MappingTrigger>,
+    C: Blockchain<
+        Block = graph_chain_ethereum::WrappedBlockFinality,
+        TriggerData = EthereumTrigger,
+        DataSource = graph_chain_ethereum::DataSource,
+    >,
 {
     fn match_and_decode(
         &self,
-        trigger: &C::TriggerData,
-        block: Arc<C::Block>,
+        trigger: &EthereumTrigger,
+        block: Arc<LightEthereumBlock>,
         logger: &Logger,
-    ) -> Result<Option<C::MappingTrigger>, Error> {
+    ) -> Result<Option<MappingTrigger>, Error> {
         self.data_source.match_and_decode(trigger, block, logger)
     }
 
@@ -289,10 +298,10 @@ where
         &self,
         logger: &Logger,
         block_ptr: BlockPtr,
-        trigger: C::MappingTrigger,
-        state: BlockState<C>,
+        trigger: MappingTrigger,
+        state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         self.send_mapping_request(logger, state, trigger, block_ptr, proof_of_indexing)
             .await
     }

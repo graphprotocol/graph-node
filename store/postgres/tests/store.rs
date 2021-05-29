@@ -1,16 +1,15 @@
 use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
 use lazy_static::lazy_static;
+use std::str::FromStr;
 use std::time::Duration;
 use std::{collections::HashSet, sync::Mutex};
-use std::{marker::PhantomData, str::FromStr};
 use test_store::*;
 
-use graph::components::store::{DeploymentLocator, WritableStore};
+use graph::components::store::{DeploymentLocator, StoredDynamicDataSource, WritableStore};
 use graph::data::subgraph::*;
 use graph::prelude::*;
 use graph::{
-    blockchain::DataSource,
     components::store::{
         BlockStore as _, EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityType,
         StatusStore, SubscriptionManager as _,
@@ -151,7 +150,7 @@ where
 /// Inserts data in test blocks `GENESIS_PTR`, `TEST_BLOCK_1_PTR`, and
 /// `TEST_BLOCK_2_PTR`
 fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator {
-    let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
+    let manifest = SubgraphManifest::<graph_chain_ethereum::DataSource> {
         id: TEST_SUBGRAPH_ID.clone(),
         spec_version: "1".to_owned(),
         features: Default::default(),
@@ -161,7 +160,6 @@ fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator {
         data_sources: vec![],
         graft: None,
         templates: vec![],
-        chain: PhantomData,
     };
 
     // Create SubgraphDeploymentEntity
@@ -1217,7 +1215,7 @@ fn revert_block_with_dynamic_data_source_operations() {
             &subgraph_store,
             deployment.clone(),
             TEST_BLOCK_3_PTR.clone(),
-            vec![data_source.as_stored_dynamic_data_source()],
+            vec![StoredDynamicDataSource::from(&data_source)],
             ops,
         )
         .unwrap();
@@ -1275,7 +1273,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         let subgraph_id = DeploymentHash::new("EntityChangeTestSubgraph").unwrap();
         let schema =
             Schema::parse(USER_GQL, subgraph_id.clone()).expect("Failed to parse user schema");
-        let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
+        let manifest = SubgraphManifest::<graph_chain_ethereum::DataSource> {
             id: subgraph_id.clone(),
             spec_version: "1".to_owned(),
             features: Default::default(),
@@ -1285,7 +1283,6 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             data_sources: vec![],
             graft: None,
             templates: vec![],
-            chain: PhantomData,
         };
 
         // Create SubgraphDeploymentEntity

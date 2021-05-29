@@ -1,0 +1,23 @@
+[package]
+name = "subtester"
+version = "0.1.0"
+authors = ["Petko <pavlovskipetko@abv.bg>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+graph-runtime-wasm = { path= "../wasm"}
+graph = { path = "../../graph" }
+graph-mock = { path = "../../mock" }
+test-store = { path = "../../store/test-store" }
+web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "master" }
+graph-chain-ethereum = { path = "../../chain/ethereum" }
+graph-core = { path = "../../core" }
+graph-chain-arweave = { path = "../../chain/arweave" }
+ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master" }
+semver = "0.11.0"
+state = { version = "0.4", features = ["tls"] }
+serde_json = "1.0.59"
+slog = "2.7.0"
+slog-term = "2.8.0"

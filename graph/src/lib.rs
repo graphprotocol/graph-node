@@ -39,7 +39,6 @@ pub use parking_lot;
 pub use petgraph;
 pub use prometheus;
 pub use semver;
-pub use slog;
 pub use stable_hash;
 pub use tokio_stream;
 pub use url;
@@ -93,9 +92,10 @@ pub mod prelude {
     pub use crate::blockchain::BlockPtr;
 
     pub use crate::components::ethereum::{
-        BlockFinality, EthereumBlock, EthereumBlockData, EthereumBlockWithCalls, EthereumCall,
-        EthereumCallData, EthereumEventData, EthereumNetworkIdentifier, EthereumTransactionData,
-        LightEthereumBlock, LightEthereumBlockExt,
+        BlockFinality, EthereumBlock, EthereumBlockData, EthereumBlockTriggerType,
+        EthereumBlockWithCalls, EthereumCall, EthereumCallData, EthereumEventData,
+        EthereumNetworkIdentifier, EthereumTransactionData, EthereumTrigger, LightEthereumBlock,
+        LightEthereumBlockExt, MappingTrigger,
     };
     pub use crate::components::graphql::{
         GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,
@@ -142,8 +142,8 @@ pub mod prelude {
     };
     pub use crate::data::subgraph::schema::SubgraphDeploymentEntity;
     pub use crate::data::subgraph::{
-        BlockHandlerFilter, CreateSubgraphResult, DataSourceContext, DeploymentHash,
-        DeploymentState, Link, MappingABI, MappingBlockHandler, MappingCallHandler,
+        BlockHandlerFilter, CreateSubgraphResult, DataSourceContext, DataSourceTemplate,
+        DeploymentHash, DeploymentState, Link, MappingABI, MappingBlockHandler, MappingCallHandler,
         MappingEventHandler, SubgraphAssignmentProviderError, SubgraphManifest,
         SubgraphManifestResolveError, SubgraphManifestValidationError, SubgraphName,
         SubgraphRegistrarError, UnvalidatedSubgraphManifest,

@@ -1,3 +1,5 @@
+use async_trait::async_trait;
+use slog::Logger;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -7,11 +9,10 @@ use graph::components::{
     store::EntityType,
 };
 use graph::prelude::{
-    anyhow, async_trait, tokio, DeploymentHash, Entity, Link, Logger, SubgraphManifest,
-    SubgraphManifestValidationError, UnvalidatedSubgraphManifest,
+    anyhow, DeploymentHash, Entity, Link, SubgraphManifest, SubgraphManifestValidationError,
+    UnvalidatedSubgraphManifest,
 };
 
-use graph_chain_ethereum::Chain;
 use test_store::LOGGER;
 
 #[derive(Default)]
@@ -57,7 +58,7 @@ const ABI: &str = "[{\"type\":\"function\", \"inputs\": [{\"name\": \"i\",\"type
 
 const MAPPING: &str = "export function handleGet(call: getCall): void {}";
 
-async fn resolve_manifest(text: &str) -> SubgraphManifest<graph_chain_ethereum::Chain> {
+async fn resolve_manifest(text: &str) -> SubgraphManifest<graph_chain_ethereum::DataSource> {
     let mut resolver = TextResolver::default();
     let id = DeploymentHash::new("Qmmanifest").unwrap();
 
@@ -71,7 +72,9 @@ async fn resolve_manifest(text: &str) -> SubgraphManifest<graph_chain_ethereum::
         .expect("Parsing simple manifest works")
 }
 
-async fn resolve_unvalidated(text: &str) -> UnvalidatedSubgraphManifest<Chain> {
+async fn resolve_unvalidated(
+    text: &str,
+) -> UnvalidatedSubgraphManifest<graph_chain_ethereum::DataSource> {
     let mut resolver = TextResolver::default();
     let id = DeploymentHash::new("Qmmanifest").unwrap();
 
@@ -82,9 +85,6 @@ async fn resolve_unvalidated(text: &str) -> UnvalidatedSubgraphManifest<Chain> {
         .await
         .expect("Parsing simple manifest works")
 }
-
-// Some of these manifest tests should be made chain-independent, but for
-// now we just run them for the ethereum `Chain`
 
 #[tokio::test]
 async fn simple_manifest() {
@@ -185,6 +185,7 @@ specVersion: 0.0.2
     })
 }
 
+// ETHDEP: This test needs to be moved to the chain::ethereum crate
 #[tokio::test]
 async fn parse_call_handlers() {
     const YAML: &str = "

@@ -5,11 +5,11 @@ use std::collections::HashMap;
 use std::env;
 use std::str::FromStr;
 
-use graph::{blockchain::DataSource, prelude::*};
 use graph::{
-    blockchain::{Block, Blockchain},
+    blockchain::Blockchain,
     components::subgraph::{MappingError, SharedProofOfIndexing},
 };
+use graph::{blockchain::DataSource, prelude::*};
 
 lazy_static! {
     static ref MAX_DATA_SOURCES: Option<usize> = env::var("GRAPH_SUBGRAPH_MAX_DATA_SOURCES")
@@ -40,7 +40,7 @@ where
 {
     pub(crate) fn from_manifest(
         logger: &Logger,
-        manifest: SubgraphManifest<C>,
+        manifest: SubgraphManifest<C::DataSource>,
         host_builder: T,
         host_metrics: Arc<HostMetrics>,
     ) -> Result<Self, Error> {
@@ -76,7 +76,7 @@ where
         &mut self,
         logger: Logger,
         data_source: C::DataSource,
-        templates: Arc<Vec<C::DataSourceTemplate>>,
+        templates: Arc<Vec<DataSourceTemplate>>,
         host_metrics: Arc<HostMetrics>,
     ) -> Result<T::Host, Error> {
         let mapping_request_sender = {
@@ -108,11 +108,11 @@ where
     pub(crate) async fn process_trigger(
         &self,
         logger: &Logger,
-        block: &Arc<C::Block>,
-        trigger: &C::TriggerData,
-        state: BlockState<C>,
+        block: &Arc<BlockFinality>,
+        trigger: EthereumTrigger,
+        state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         Self::process_trigger_in_runtime_hosts(
             logger,
             &self.hosts,
@@ -127,14 +127,15 @@ where
     pub(crate) async fn process_trigger_in_runtime_hosts(
         logger: &Logger,
         hosts: &[Arc<T::Host>],
-        block: &Arc<C::Block>,
-        trigger: &C::TriggerData,
-        mut state: BlockState<C>,
+        block: &Arc<BlockFinality>,
+        trigger: EthereumTrigger,
+        mut state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
+        let block = Arc::new(block.light_block());
         for host in hosts {
             let mapping_trigger =
-                match host.match_and_decode(trigger, block.cheap_clone(), logger)? {
+                match host.match_and_decode(&trigger, block.cheap_clone(), logger)? {
                     // Trigger matches and was decoded as a mapping trigger.
                     Some(mapping_trigger) => mapping_trigger,
 
@@ -145,7 +146,7 @@ where
             state = host
                 .process_mapping_trigger(
                     logger,
-                    block.ptr(),
+                    block.block_ptr(),
                     mapping_trigger,
                     state,
                     proof_of_indexing.cheap_clone(),
@@ -160,7 +161,7 @@ where
         &mut self,
         logger: &Logger,
         data_source: C::DataSource,
-        templates: Arc<Vec<C::DataSourceTemplate>>,
+        templates: Arc<Vec<DataSourceTemplate>>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Option<Arc<T::Host>>, Error> {
         // Protect against creating more than the allowed maximum number of data sources

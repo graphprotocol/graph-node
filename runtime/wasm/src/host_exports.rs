@@ -1,7 +1,7 @@
 use crate::{error::DeterminismLevel, module::IntoTrap, UnresolvedContractCall};
 use ethabi::param_type::Reader;
 use ethabi::{decode, encode, Address, Token};
-use graph::blockchain::{Blockchain, DataSourceTemplate as _};
+use graph::bytes::Bytes;
 use graph::components::store::EntityKey;
 use graph::components::subgraph::{ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::components::three_box::ThreeBoxAdapter;
@@ -10,7 +10,6 @@ use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
 use graph::runtime::DeterministicHostError;
-use graph::{blockchain::DataSource, bytes::Bytes};
 use graph_chain_ethereum::{EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError};
 use never::Never;
 use semver::Version;
@@ -67,41 +66,41 @@ impl IntoTrap for HostExportError {
     }
 }
 
-pub(crate) struct HostExports<C: Blockchain> {
-    pub(crate) subgraph_id: DeploymentHash,
-    pub(crate) api_version: Version,
-    data_source_name: String,
-    data_source_address: Option<Address>,
-    data_source_network: String,
-    data_source_context: Arc<Option<DataSourceContext>>,
+pub struct HostExports {
+    pub subgraph_id: DeploymentHash,
+    pub api_version: Version,
+    pub data_source_name: String,
+    pub data_source_address: Option<Address>,
+    pub data_source_network: String,
+    pub data_source_context: Arc<Option<DataSourceContext>>,
     /// Some data sources have indeterminism or different notions of time. These
     /// need to be each be stored separately to separate causality between them,
     /// and merge the results later. Right now, this is just the ethereum
     /// networks but will be expanded for ipfs and the availability chain.
-    causality_region: String,
-    templates: Arc<Vec<C::DataSourceTemplate>>,
-    abis: Vec<Arc<MappingABI>>,
-    ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
-    pub(crate) link_resolver: Arc<dyn LinkResolver>,
-    call_cache: Arc<dyn EthereumCallCache>,
-    store: Arc<dyn crate::RuntimeStore>,
-    arweave_adapter: Arc<dyn ArweaveAdapter>,
-    three_box_adapter: Arc<dyn ThreeBoxAdapter>,
+    pub causality_region: String,
+    pub templates: Arc<Vec<DataSourceTemplate>>,
+    pub abis: Vec<Arc<MappingABI>>,
+    pub ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
+    pub link_resolver: Arc<dyn LinkResolver>,
+    pub call_cache: Arc<dyn EthereumCallCache>,
+    pub store: Arc<dyn crate::RuntimeStore>,
+    pub arweave_adapter: Arc<dyn ArweaveAdapter>,
+    pub three_box_adapter: Arc<dyn ThreeBoxAdapter>,
 }
 
 // Not meant to be useful, only to allow deriving.
-impl<C: Blockchain> std::fmt::Debug for HostExports<C> {
+impl std::fmt::Debug for HostExports {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         write!(f, "HostExports",)
     }
 }
 
-impl<C: Blockchain> HostExports<C> {
-    pub(crate) fn new(
+impl HostExports {
+    pub fn new(
         subgraph_id: DeploymentHash,
-        data_source: &impl DataSource<C>,
+        data_source: &graph_chain_ethereum::DataSource,
         data_source_network: String,
-        templates: Arc<Vec<C::DataSourceTemplate>>,
+        templates: Arc<Vec<DataSourceTemplate>>,
         ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
         link_resolver: Arc<dyn LinkResolver>,
         store: Arc<dyn crate::RuntimeStore>,
@@ -113,14 +112,14 @@ impl<C: Blockchain> HostExports<C> {
 
         Self {
             subgraph_id,
-            api_version: data_source.mapping().api_version.clone(),
-            data_source_name: data_source.name().to_owned(),
-            data_source_address: data_source.source().address.clone(),
+            api_version: data_source.mapping.api_version.clone(),
+            data_source_name: data_source.name.clone(),
+            data_source_address: data_source.source.address.clone(),
             data_source_network,
-            data_source_context: data_source.context().cheap_clone(),
+            data_source_context: data_source.context.cheap_clone(),
             causality_region,
             templates,
-            abis: data_source.mapping().abis.clone(),
+            abis: data_source.mapping.abis.clone(),
             ethereum_adapter,
             link_resolver,
             call_cache,
@@ -158,11 +157,11 @@ impl<C: Blockchain> HostExports<C> {
             message
         )))
     }
-
+    #[allow(dead_code)]
     pub(crate) fn store_set(
         &self,
         logger: &Logger,
-        state: &mut BlockState<C>,
+        state: &mut BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
         entity_type: String,
         entity_id: String,
@@ -229,7 +228,7 @@ impl<C: Blockchain> HostExports<C> {
     pub(crate) fn store_remove(
         &self,
         logger: &Logger,
-        state: &mut BlockState<C>,
+        state: &mut BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
         entity_type: String,
         entity_id: String,
@@ -257,7 +256,7 @@ impl<C: Blockchain> HostExports<C> {
 
     pub(crate) fn store_get(
         &self,
-        state: &mut BlockState<C>,
+        state: &mut BlockState,
         entity_type: String,
         entity_id: String,
     ) -> Result<Option<Entity>, anyhow::Error> {
@@ -416,12 +415,12 @@ impl<C: Blockchain> HostExports<C> {
     // parameter is passed to the callback without any changes
     pub(crate) fn ipfs_map(
         link_resolver: &Arc<dyn LinkResolver>,
-        module: &mut WasmInstanceContext<C>,
+        module: &mut WasmInstanceContext,
         link: String,
         callback: &str,
         user_data: store::Value,
         flags: Vec<String>,
-    ) -> Result<Vec<BlockState<C>>, anyhow::Error> {
+    ) -> Result<Vec<BlockState>, anyhow::Error> {
         const JSON_FLAG: &str = "json";
         ensure!(
             flags.contains(&JSON_FLAG.to_string()),
@@ -679,7 +678,7 @@ impl<C: Blockchain> HostExports<C> {
     pub(crate) fn data_source_create(
         &self,
         logger: &Logger,
-        state: &mut BlockState<C>,
+        state: &mut BlockState,
         name: String,
         params: Vec<String>,
         context: Option<DataSourceContext>,
@@ -696,7 +695,7 @@ impl<C: Blockchain> HostExports<C> {
         let template = self
             .templates
             .iter()
-            .find(|template| template.name() == name)
+            .find(|template| template.name == name)
             .with_context(|| {
                 format!(
                     "Failed to create data source from name `{}`: \
@@ -706,7 +705,7 @@ impl<C: Blockchain> HostExports<C> {
                     self.data_source_name,
                     self.templates
                         .iter()
-                        .map(|template| template.name().clone())
+                        .map(|template| template.name.clone())
                         .collect::<Vec<_>>()
                         .join(", ")
                 )

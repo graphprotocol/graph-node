@@ -1,27 +1,24 @@
 use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
 use ethabi::{Address, Event, Function, LogParam, ParamType, RawLog};
-use graph::components::store::StoredDynamicDataSource;
+use graph::prelude::{info, Logger};
 use std::str::FromStr;
 use std::{convert::TryFrom, sync::Arc};
 use tiny_keccak::keccak256;
 use web3::types::Log;
 
 use graph::{
-    blockchain::{self, Blockchain, DataSource as _},
+    blockchain::{self, Blockchain},
     prelude::{
-        async_trait, info, serde_json, BlockNumber, CheapClone, DataSourceTemplateInfo,
-        Deserialize, EthereumCall, LightEthereumBlock, LightEthereumBlockExt, LinkResolver, Logger,
+        BlockNumber, CheapClone, DataSourceTemplateInfo, EthereumBlockTriggerType, EthereumCall,
+        EthereumTrigger, LightEthereumBlock, LightEthereumBlockExt, MappingTrigger,
     },
 };
 
 use graph::data::subgraph::{
     BlockHandlerFilter, DataSourceContext, Mapping, MappingABI, MappingBlockHandler,
-    MappingCallHandler, MappingEventHandler, Source, TemplateSource, UnresolvedMapping,
+    MappingCallHandler, MappingEventHandler, Source,
 };
-
-use crate::chain::Chain;
-use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger, MappingTrigger};
 
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
@@ -39,15 +36,16 @@ pub struct DataSource {
 }
 
 // ETHDEP: The whole DataSource struct needs to move to chain::ethereum
-impl blockchain::DataSource<Chain> for DataSource {
+impl blockchain::DataSource for DataSource {
+    type C = crate::Chain;
+
     fn match_and_decode(
         &self,
-        trigger: &<Chain as Blockchain>::TriggerData,
-        block: Arc<<Chain as Blockchain>::Block>,
-        logger: &Logger,
-    ) -> Result<Option<<Chain as Blockchain>::MappingTrigger>, Error> {
-        let block = Arc::new(block.0.light_block());
-        self.match_and_decode(trigger, block, logger)
+        _trigger: &<Self::C as Blockchain>::TriggerData,
+        _block: Arc<<Self::C as Blockchain>::Block>,
+        _logger: &Logger,
+    ) -> Result<Option<<Self::C as Blockchain>::MappingTrigger>, Error> {
+        todo!()
     }
 
     fn mapping(&self) -> &Mapping {
@@ -96,8 +94,8 @@ impl blockchain::DataSource<Chain> for DataSource {
         self.network.as_ref().map(|s| s.as_str())
     }
 
-    fn context(&self) -> Arc<Option<DataSourceContext>> {
-        self.context.cheap_clone()
+    fn context(&self) -> Option<&DataSourceContext> {
+        self.context.as_ref().as_ref()
     }
 
     fn creation_block(&self) -> Option<BlockNumber> {
@@ -131,19 +129,6 @@ impl blockchain::DataSource<Chain> for DataSource {
             && mapping.call_handlers == other.mapping.call_handlers
             && mapping.block_handlers == other.mapping.block_handlers
             && context == &other.context
-    }
-
-    fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
-        StoredDynamicDataSource {
-            name: self.name.to_owned(),
-            source: self.source.clone(),
-            context: self
-                .context
-                .as_ref()
-                .as_ref()
-                .map(|ctx| serde_json::to_string(&ctx).unwrap()),
-            creation_block: self.creation_block,
-        }
     }
 }
 
@@ -200,7 +185,10 @@ impl DataSource {
                 .mapping
                 .block_handlers
                 .iter()
-                .find(move |handler| handler.filter == Some(BlockHandlerFilter::Call))
+                .find(move |handler| {
+                    handler.filter.is_some()
+                        && handler.filter.clone().unwrap() == BlockHandlerFilter::Call
+                })
                 .cloned(),
         }
     }
@@ -355,7 +343,7 @@ impl DataSource {
 
     /// Checks if `trigger` matches this data source, and if so decodes it into a `MappingTrigger`.
     /// A return of `Ok(None)` mean the trigger does not match.
-    fn match_and_decode(
+    pub fn match_and_decode(
         &self,
         trigger: &EthereumTrigger,
         block: Arc<LightEthereumBlock>,
@@ -560,46 +548,10 @@ impl DataSource {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
-pub struct UnresolvedDataSource {
-    pub kind: String,
-    pub network: Option<String>,
-    pub name: String,
-    pub source: Source,
-    pub mapping: UnresolvedMapping,
-    pub context: Option<DataSourceContext>,
-}
-
-#[async_trait]
-impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
-    async fn resolve(
-        self,
-        resolver: &impl LinkResolver,
-        logger: &Logger,
-    ) -> Result<DataSource, anyhow::Error> {
-        let UnresolvedDataSource {
-            kind,
-            network,
-            name,
-            source,
-            mapping,
-            context,
-        } = self;
-
-        info!(logger, "Resolve data source"; "name" => &name, "source" => &source.start_block);
-
-        let mapping = mapping.resolve(&*resolver, logger).await?;
-
-        DataSource::from_manifest(kind, network, name, source, mapping, context)
-    }
-}
-
-impl<C: Blockchain<DataSource = DataSource, DataSourceTemplate = DataSourceTemplate>>
-    TryFrom<DataSourceTemplateInfo<C>> for DataSource
-{
+impl TryFrom<DataSourceTemplateInfo> for DataSource {
     type Error = anyhow::Error;
 
-    fn try_from(info: DataSourceTemplateInfo<C>) -> Result<Self, anyhow::Error> {
+    fn try_from(info: DataSourceTemplateInfo) -> Result<Self, anyhow::Error> {
         let DataSourceTemplateInfo {
             template,
             params,
@@ -644,66 +596,5 @@ impl<C: Blockchain<DataSource = DataSource, DataSourceTemplate = DataSourceTempl
             creation_block: Some(creation_block),
             contract_abi,
         })
-    }
-}
-
-#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
-pub struct BaseDataSourceTemplate<M> {
-    pub kind: String,
-    pub network: Option<String>,
-    pub name: String,
-    pub source: TemplateSource,
-    pub mapping: M,
-}
-
-pub type UnresolvedDataSourceTemplate = BaseDataSourceTemplate<UnresolvedMapping>;
-pub type DataSourceTemplate = BaseDataSourceTemplate<Mapping>;
-
-#[async_trait]
-impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTemplate {
-    async fn resolve(
-        self,
-        resolver: &impl LinkResolver,
-        logger: &Logger,
-    ) -> Result<DataSourceTemplate, anyhow::Error> {
-        let UnresolvedDataSourceTemplate {
-            kind,
-            network,
-            name,
-            source,
-            mapping,
-        } = self;
-
-        info!(logger, "Resolve data source template"; "name" => &name);
-
-        Ok(DataSourceTemplate {
-            kind,
-            network,
-            name,
-            source,
-            mapping: mapping.resolve(resolver, logger).await?,
-        })
-    }
-}
-
-impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
-    fn mapping(&self) -> &Mapping {
-        &self.mapping
-    }
-
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn source(&self) -> &TemplateSource {
-        &self.source
-    }
-
-    fn kind(&self) -> &str {
-        &self.kind
-    }
-
-    fn network(&self) -> Option<&str> {
-        self.network.as_ref().map(|s| s.as_str())
     }
 }

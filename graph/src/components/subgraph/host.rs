@@ -45,19 +45,19 @@ impl MappingError {
 pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
     fn match_and_decode(
         &self,
-        trigger: &C::TriggerData,
-        block: Arc<C::Block>,
+        trigger: &EthereumTrigger,
+        block: Arc<LightEthereumBlock>,
         logger: &Logger,
-    ) -> Result<Option<C::MappingTrigger>, Error>;
+    ) -> Result<Option<MappingTrigger>, Error>;
 
     async fn process_mapping_trigger(
         &self,
         logger: &Logger,
         block_ptr: BlockPtr,
-        trigger: C::MappingTrigger,
-        state: BlockState<C>,
+        trigger: MappingTrigger,
+        state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
-    ) -> Result<BlockState<C>, MappingError>;
+    ) -> Result<BlockState, MappingError>;
 
     /// Block number in which this host was created.
     /// Returns `None` for static data sources.
@@ -157,7 +157,7 @@ pub trait RuntimeHostBuilder<C: Blockchain>: Clone + Send + Sync + 'static {
         network_name: String,
         subgraph_id: DeploymentHash,
         data_source: C::DataSource,
-        top_level_templates: Arc<Vec<C::DataSourceTemplate>>,
+        top_level_templates: Arc<Vec<DataSourceTemplate>>,
         mapping_request_sender: mpsc::Sender<Self::Req>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error>;

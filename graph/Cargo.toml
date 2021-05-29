@@ -34,7 +34,7 @@ num_cpus = "1.13.0"
 num-traits = "0.2.14"
 rand = "0.6.1"
 semver = "0.10.0"
-serde = { version = "1.0.126", features = ["rc"] }
+serde = { version = "1.0.125", features = ["rc"] }
 serde_derive = "1.0.125"
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 serde_yaml = "0.8"
@@ -48,14 +48,14 @@ slog-term = "2.6.0"
 petgraph = "0.5.1"
 tiny-keccak = "1.5.0"
 tokio = { version = "0.2.25", features = ["stream", "rt-threaded", "rt-util", "blocking", "time", "sync", "macros", "test-util", "net"] }
-tokio-stream = { version = "0.1.6", features = ["sync"] }
+tokio-stream = { version = "0.1.5", features = ["sync"] }
 tokio-retry = { git = "https://github.com/graphprotocol/rust-tokio-retry", branch = "update-to-tokio-02" }
 url = "2.2.1"
 prometheus = "0.12.0"
 priority-queue = "0.7.0"
 futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
 wasmparser = "0.77.0"
-thiserror = "1.0.25"
+thiserror = "1.0.24"
 parking_lot = "0.11.1"
 
 # Our fork contains a small but hacky patch.
@@ -65,3 +65,4 @@ web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "master" }
 test-store = { path = "../store/test-store" }
 maplit = "1.0.2"
 structopt = { version = "0.3" }
+graph-chain-ethereum = { path = "../chain/ethereum" }

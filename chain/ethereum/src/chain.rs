@@ -17,18 +17,17 @@ use graph::{
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
         async_trait, error, lazy_static, o, serde_yaml, web3::types::H256, BlockFinality,
-        BlockNumber, ChainStore, DeploymentHash, EthereumBlockWithCalls, Future01CompatExt,
-        LinkResolver, Logger, LoggerFactory, MetricsRegistry, NodeId, SubgraphStore,
+        BlockNumber, ChainStore, DeploymentHash, EthereumBlockWithCalls, EthereumTrigger,
+        Future01CompatExt, LinkResolver, Logger, LoggerFactory, MetricsRegistry, NodeId,
+        SubgraphStore,
     },
     runtime::{AscType, DeterministicHostError},
     tokio_stream::Stream,
 };
 
-use crate::data_source::DataSourceTemplate;
-use crate::data_source::UnresolvedDataSourceTemplate;
 use crate::{
     adapter::EthereumAdapter as _,
-    data_source::{DataSource, UnresolvedDataSource},
+    data_source::DataSource,
     ethereum_adapter::{
         blocks_with_triggers, get_calls, parse_block_triggers, parse_call_triggers,
         parse_log_triggers,
@@ -65,12 +64,6 @@ pub struct Chain {
     pub is_ingestible: bool,
 }
 
-impl std::fmt::Debug for Chain {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "chain: ethereum")
-    }
-}
-
 impl Chain {
     pub fn new(
         logger_factory: LoggerFactory,
@@ -101,25 +94,20 @@ impl Chain {
     }
 }
 
-#[async_trait]
 impl Blockchain for Chain {
     type Block = WrappedBlockFinality;
 
     type DataSource = DataSource;
 
-    type UnresolvedDataSource = UnresolvedDataSource;
-
-    type DataSourceTemplate = DataSourceTemplate;
-
-    type UnresolvedDataSourceTemplate = UnresolvedDataSourceTemplate;
+    type DataSourceTemplate = DummyDataSourceTemplate;
 
     type Manifest = DummyManifest;
 
     type TriggersAdapter = TriggersAdapter;
 
-    type TriggerData = crate::trigger::EthereumTrigger;
+    type TriggerData = EthereumTrigger;
 
-    type MappingTrigger = crate::trigger::MappingTrigger;
+    type MappingTrigger = DummyMappingTrigger;
 
     type TriggerFilter = crate::adapter::TriggerFilter;
 
@@ -222,18 +210,6 @@ impl Blockchain for Chain {
     fn chain_store(&self) -> Arc<dyn ChainStore> {
         self.chain_store.clone()
     }
-
-    async fn block_pointer_from_number(
-        &self,
-        logger: &Logger,
-        number: BlockNumber,
-    ) -> Result<BlockPtr, IngestorError> {
-        let eth_adapter = self.eth_adapters.cheapest().unwrap().clone();
-        eth_adapter
-            .block_pointer_from_number(logger, self.chain_store.cheap_clone(), number)
-            .compat()
-            .await
-    }
 }
 
 // ETHDEP: Wrapper until we can move BlockFinality into this crate
@@ -269,7 +245,7 @@ impl Manifest<Chain> for DummyManifest {
         todo!()
     }
 
-    fn templates(&self) -> &[DataSourceTemplate] {
+    fn templates(&self) -> &[DummyDataSourceTemplate] {
         todo!()
     }
 }
@@ -311,7 +287,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             self.eth_adapter.as_ref(),
             logger.clone(),
             self.ethrpc_metrics.clone(),
-            filter.requires_traces(),
+            filter.clone(),
             block.0,
         )
         .await?;

@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::iter::FromIterator;
 use std::time::Instant;
 
-use graph::blockchain::DataSourceTemplate as _;
 use graph::components::store::{StoredDynamicDataSource, WritableStore};
 use graph::prelude::*;
 
@@ -10,12 +9,15 @@ pub async fn load_dynamic_data_sources(
     store: Arc<dyn WritableStore>,
     deployment_id: &DeploymentHash,
     logger: Logger,
-    templates: Vec<graph_chain_ethereum::DataSourceTemplate>,
+    templates: Vec<DataSourceTemplate>,
 ) -> Result<Vec<graph_chain_ethereum::DataSource>, Error> {
     let start_time = Instant::now();
 
-    let template_map: HashMap<&str, _> =
-        HashMap::from_iter(templates.iter().map(|template| (template.name(), template)));
+    let template_map: HashMap<&str, &DataSourceTemplate> = HashMap::from_iter(
+        templates
+            .iter()
+            .map(|template| (template.name.as_str(), template)),
+    );
     let mut data_sources: Vec<graph_chain_ethereum::DataSource> = vec![];
 
     for stored in store.load_dynamic_data_sources().await? {
@@ -37,14 +39,14 @@ pub async fn load_dynamic_data_sources(
             .map(|ctx| serde_json::from_str::<Entity>(&ctx))
             .transpose()?;
 
-        let contract_abi = template.mapping().find_abi(&template.source().abi)?;
+        let contract_abi = template.mapping.find_abi(&template.source.abi)?;
 
         let ds = graph_chain_ethereum::DataSource {
-            kind: template.kind().to_string(),
-            network: template.network().map(|s| s.to_string()),
+            kind: template.kind.clone(),
+            network: template.network.clone(),
             name,
             source,
-            mapping: template.mapping().clone(),
+            mapping: template.mapping.clone(),
             context: Arc::new(context),
             creation_block,
             contract_abi,
