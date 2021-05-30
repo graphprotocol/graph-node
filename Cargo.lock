@@ -1751,6 +1751,7 @@ dependencies = [
  "graph-runtime-derive",
  "graphql-parser",
  "hex",
+ "indexmap",
  "lazy_static",
  "never",
  "semver 0.10.0",
@@ -4036,10 +4037,11 @@ dependencies = [
 
 [[package]]
 name = "serde_with"
-version = "1.6.4"
+version = "1.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b44be9227e214a0420707c9ca74c2d4991d9955bae9415a8f93f05cebf561be5"
+checksum = "edeeaecd5445109b937a3a335dc52780ca7779c4b4b7374cc6340dedfe44cfca"
 dependencies = [
+ "rustversion",
  "serde",
  "serde_with_macros",
 ]

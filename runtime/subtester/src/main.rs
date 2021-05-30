@@ -29,7 +29,7 @@ use slog::*;
 use slog_term;
 use std::str::FromStr;
 use std::sync::Arc;
-use test_store::{NETWORK_NAME, STORE};
+use test_store::{STORE};
 use web3::types::Address;
 
 fn mock_host_exports(
@@ -160,6 +160,14 @@ pub fn main() -> () {
     let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
     let logger = Logger::root(slog_term::FullFormat::new(plain).build().fuse(), o!());
 
+    let args: Vec<String> = std::env::args().collect();
+
+    if args.len() == 1 {
+        panic!("Must provide path to wasm file.")
+    }
+
+    let path_to_wasm = &args[1];
+
     let subgraph_id = "ipfsMap";
     let deployment_id = DeploymentHash::new(subgraph_id).unwrap();
 
@@ -177,8 +185,11 @@ pub fn main() -> () {
         }",
     );
 
-    let data_source = mock_data_source("BetokenProxy.wasm");
+    let data_source = mock_data_source(path_to_wasm);
+    
     let store = STORE.clone();
+
+    pub const NETWORK_NAME: &str = "fake_network";
     let call_cache = store
         .block_store()
         .ethereum_call_cache(NETWORK_NAME)
@@ -221,14 +232,24 @@ pub fn main() -> () {
     .unwrap();
 
     let fire_events = module.get_func("fireEvents");
-    fire_events.call(&[]).expect("Couldn't call wasm function 'fireEvents'.");
+    fire_events
+        .call(&[])
+        .expect("Couldn't call wasm function 'fireEvents'.");
 
     let get_store_snapshot = module.get_func("assertStoreEq");
-    get_store_snapshot.call(&[]).expect("Couldn't call wasm function 'assertStoreEq'.");
+    get_store_snapshot
+        .call(&[])
+        .expect("Couldn't call wasm function 'assertStoreEq'.");
 
-    let snapshot = unsafe { SNAPSHOT.get()};
+    let snapshot = unsafe { SNAPSHOT.get() };
     info!(logger, "Store snapshot {:?}", snapshot);
 
     let mock_store = unsafe { MOCK_STORE.get() };
-    info!(logger, "Mock store {:?}", mock_store);
+    info!(logger, "Mock store {:?}", mock_store.replace("\\", ""));
+
+    info!(
+        logger,
+        "Mock state equal to given snapshot: {:?}",
+        mock_store.replace("\\", "").eq(snapshot)
+    );
 }

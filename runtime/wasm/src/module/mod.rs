@@ -31,6 +31,7 @@ pub mod stopwatch;
 
 use into_wasm_ret::IntoWasmRet;
 use stopwatch::TimeoutStopwatch;
+use indexmap::IndexMap;
 
 use state::LocalStorage;
 pub static mut MOCK_STORE: LocalStorage<String> = LocalStorage::new();
@@ -317,7 +318,7 @@ pub struct WasmInstanceContext {
 
     pub(crate) experimental_features: ExperimentalFeatures,
 
-    pub mock_store: HashMap<String, String>,
+    pub mock_store: IndexMap<String, String>,
 }
 
 impl WasmInstance {
@@ -682,7 +683,7 @@ impl WasmInstanceContext {
             possible_reorg: false,
             deterministic_host_trap: false,
             experimental_features,
-            mock_store: HashMap::new(),
+            mock_store: IndexMap::new(),
         })
     }
 
@@ -720,7 +721,7 @@ impl WasmInstanceContext {
             possible_reorg: false,
             deterministic_host_trap: false,
             experimental_features,
-            mock_store: HashMap::new(),
+            mock_store: IndexMap::new(),
         })
     }
 }
@@ -780,7 +781,7 @@ impl WasmInstanceContext {
 
         self.mock_store.insert(id, entity);
 
-        let mock_store_clone: HashMap<String, String> = HashMap::from(self.mock_store.clone());
+        let mock_store_clone: IndexMap<String, String> = IndexMap::from(self.mock_store.clone());
 
         unsafe { MOCK_STORE = LocalStorage::new() };
         unsafe { MOCK_STORE.set(move || serde_json::to_string(&mock_store_clone).unwrap()) };
@@ -852,7 +853,7 @@ impl WasmInstanceContext {
                 let _section = self
                     .host_metrics
                     .stopwatch
-                    .start_section("store_get_asc_new");
+                    .start_section("store_get_asc_new"); 
                 self.asc_new(&entity.sorted())?
             }
             None => AscPtr::null(),
