@@ -8,7 +8,7 @@ use crate::schema::ast;
 
 use graph::data::{
     graphql::ext::{DirectiveExt, DocumentExt, ValueExt},
-    schema::{META_FIELD_NAME, META_FIELD_TYPE},
+    schema::{META_FIELD_NAME, META_FIELD_TYPE, SCHEMA_TYPE_NAME},
     subgraph::SubgraphFeature,
 };
 use graph::prelude::s::{Value, *};
@@ -85,6 +85,16 @@ pub fn api_schema(
     add_field_arguments(&mut schema, &input_schema)?;
     add_query_type(&mut schema, &object_types, &interface_types, features)?;
     add_subscription_type(&mut schema, &object_types, &interface_types, features)?;
+
+    // Remove the `_Schema_` type from the generated schema.
+    schema.definitions.retain(|d| match d {
+        Definition::TypeDefinition(def @ TypeDefinition::Object(_)) => match def {
+            TypeDefinition::Object(t) if t.name.eq(SCHEMA_TYPE_NAME) => false,
+            _ => true,
+        },
+        _ => true,
+    });
+
     Ok(schema)
 }
 
@@ -235,8 +245,10 @@ fn add_types_for_object_types(
     object_types: &Vec<&ObjectType>,
 ) -> Result<(), APISchemaError> {
     for object_type in object_types {
-        add_order_by_type(schema, &object_type.name, &object_type.fields)?;
-        add_filter_type(schema, &object_type.name, &object_type.fields)?;
+        if !object_type.name.eq(SCHEMA_TYPE_NAME) {
+            add_order_by_type(schema, &object_type.name, &object_type.fields)?;
+            add_filter_type(schema, &object_type.name, &object_type.fields)?;
+        }
     }
     Ok(())
 }
@@ -296,15 +308,6 @@ fn add_filter_type(
     let filter_type_name = format!("{}_filter", type_name).to_string();
     match ast::get_named_type(schema, &filter_type_name) {
         None => {
-            let input_values = field_input_values(schema, fields)?;
-
-            // Don't generate an input object with no fields, this makes the JS
-            // graphql library, which graphiql uses, very confused and graphiql
-            // is unable to load the schema. This happens for example with the
-            // definition `interface Foo { x: OtherEntity }`.
-            if input_values.is_empty() {
-                return Ok(());
-            }
             let typedef = TypeDefinition::InputObject(InputObjectType {
                 position: Pos::default(),
                 description: None,
@@ -516,8 +519,9 @@ fn add_query_type(
     let mut fields = object_types
         .iter()
         .map(|t| &t.name)
+        .filter(|name| !name.eq(&SCHEMA_TYPE_NAME))
         .chain(interface_types.iter().map(|t| &t.name))
-        .flat_map(|name| query_fields_for_type(schema, name, features))
+        .flat_map(|name| query_fields_for_type(name, features))
         .collect::<Vec<Field>>();
     let mut fulltext_fields = schema
         .get_fulltext_directives()
@@ -617,8 +621,9 @@ fn add_subscription_type(
     let mut fields: Vec<Field> = object_types
         .iter()
         .map(|t| &t.name)
+        .filter(|name| !name.eq(&SCHEMA_TYPE_NAME))
         .chain(interface_types.iter().map(|t| &t.name))
-        .flat_map(|name| query_fields_for_type(schema, name, features))
+        .flat_map(|name| query_fields_for_type(name, features))
         .collect();
     fields.push(meta_field());
 
@@ -667,13 +672,8 @@ fn subgraph_error_argument() -> InputValue {
 }
 
 /// Generates `Query` fields for the given type name (e.g. `users` and `user`).
-fn query_fields_for_type(
-    schema: &Document,
-    type_name: &str,
-    features: &BTreeSet<SubgraphFeature>,
-) -> Vec<Field> {
-    let input_objects = ast::get_input_object_definitions(schema);
-    let mut collection_arguments = collection_arguments_for_named_type(&input_objects, type_name);
+fn query_fields_for_type(type_name: &str, features: &BTreeSet<SubgraphFeature>) -> Vec<Field> {
+    let mut collection_arguments = collection_arguments_for_named_type(type_name);
     collection_arguments.push(block_argument());
 
     let mut by_id_arguments = vec![
@@ -740,10 +740,7 @@ fn meta_field() -> Field {
 }
 
 /// Generates arguments for collection queries of a named type (e.g. User).
-fn collection_arguments_for_named_type(
-    input_objects: &[InputObjectType],
-    type_name: &str,
-) -> Vec<InputValue> {
+fn collection_arguments_for_named_type(type_name: &str) -> Vec<InputValue> {
     // `first` and `skip` should be non-nullable, but the Apollo graphql client
     // exhibts non-conforming behaviour by erroing if no value is provided for a
     // non-nullable field, regardless of the presence of a default.
@@ -753,7 +750,7 @@ fn collection_arguments_for_named_type(
     let mut first = input_value(&"first".to_string(), "", Type::NamedType("Int".to_string()));
     first.default_value = Some(Value::Int(100.into()));
 
-    let mut args = vec![
+    let args = vec![
         skip,
         first,
         input_value(
@@ -766,17 +763,12 @@ fn collection_arguments_for_named_type(
             "",
             Type::NamedType("OrderDirection".to_string()),
         ),
-    ];
-
-    // Not all types have filter types, see comment in `add_filter_type`.
-    let filter_name = format!("{}_filter", type_name);
-    if input_objects.iter().any(|o| o.name == filter_name) {
-        args.push(input_value(
+        input_value(
             &"where".to_string(),
             "",
-            Type::NamedType(filter_name),
-        ));
-    }
+            Type::NamedType(format!("{}_filter", type_name)),
+        ),
+    ];
 
     args
 }
@@ -785,8 +777,6 @@ fn add_field_arguments(
     schema: &mut Document,
     input_schema: &Document,
 ) -> Result<(), APISchemaError> {
-    let input_objects = ast::get_input_object_definitions(schema);
-
     // Refactor: Remove the `input_schema` argument and do a mutable iteration
     // over the definitions in `schema`. Also the duplication between this and
     // the loop for interfaces below.
@@ -807,12 +797,10 @@ fn add_field_arguments(
 
                     match input_reference_type {
                         TypeDefinition::Object(ot) => {
-                            field.arguments =
-                                collection_arguments_for_named_type(&input_objects, &ot.name);
+                            field.arguments = collection_arguments_for_named_type(&ot.name);
                         }
                         TypeDefinition::Interface(it) => {
-                            field.arguments =
-                                collection_arguments_for_named_type(&input_objects, &it.name);
+                            field.arguments = collection_arguments_for_named_type(&it.name);
                         }
                         _ => unreachable!(
                             "referenced entity types can only be object or interface types"
@@ -841,12 +829,10 @@ fn add_field_arguments(
 
                     match input_reference_type {
                         TypeDefinition::Object(ot) => {
-                            field.arguments =
-                                collection_arguments_for_named_type(&input_objects, &ot.name);
+                            field.arguments = collection_arguments_for_named_type(&ot.name);
                         }
                         TypeDefinition::Interface(it) => {
-                            field.arguments =
-                                collection_arguments_for_named_type(&input_objects, &it.name);
+                            field.arguments = collection_arguments_for_named_type(&it.name);
                         }
                         _ => unreachable!(
                             "referenced entity types can only be object or interface types"
