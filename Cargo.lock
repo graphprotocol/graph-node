@@ -1613,7 +1613,7 @@ dependencies = [
  "prometheus",
  "rand 0.6.5",
  "reqwest",
- "semver 0.10.0",
+ "semver 1.0.1",
  "serde",
  "serde_derive",
  "serde_json",
@@ -1691,7 +1691,7 @@ dependencies = [
  "lazy_static",
  "lru_time_cache",
  "pretty_assertions",
- "semver 0.10.0",
+ "semver 1.0.1",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1797,7 +1797,7 @@ dependencies = [
  "hex",
  "lazy_static",
  "never",
- "semver 0.10.0",
+ "semver 1.0.1",
  "strum",
  "strum_macros",
  "test-store",
@@ -3992,12 +3992,9 @@ dependencies = [
 
 [[package]]
 name = "semver"
-version = "0.10.0"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "394cec28fa623e00903caf7ba4fa6fb9a0e260280bb8cdbbba029611108a0190"
-dependencies = [
- "semver-parser",
-]
+checksum = "d023dabf011d5dcb5ac64e3685d97d3b0ef412911077a2851455c6098524a723"
 
 [[package]]
 name = "semver-parser"
