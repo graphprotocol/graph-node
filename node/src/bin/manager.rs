@@ -154,6 +154,8 @@ pub enum Command {
     },
     /// Get information about chains and manipulate them
     Chain(ChainCommand),
+    /// Manipulate internal subgraph statistics
+    Stats(StatsCommand),
 }
 
 impl Command {
@@ -292,6 +294,16 @@ pub enum ChainCommand {
     /// There must be no deployments using that chain. If there are, the
     /// subgraphs and/or deployments using the chain must first be removed
     Remove { name: String },
+}
+
+#[derive(Clone, Debug, StructOpt)]
+pub enum StatsCommand {
+    /// List all chains that are in the database
+    AccountLike {
+        #[structopt(long, help = "do not set but clear the account-like flag\n")]
+        clear: bool,
+        table: String,
+    },
 }
 
 impl From<Opt> for config::Opt {
@@ -555,6 +567,14 @@ async fn main() {
                 Remove { name } => {
                     let (block_store, primary) = ctx.block_store_and_primary_pool();
                     commands::chain::remove(primary, block_store, name)
+                }
+            }
+        }
+        Stats(cmd) => {
+            use StatsCommand::*;
+            match cmd {
+                AccountLike { clear, table } => {
+                    commands::stats::account_like(ctx.pools(), clear, table)
                 }
             }
         }

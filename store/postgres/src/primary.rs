@@ -912,6 +912,14 @@ impl<'a> Connection<'a> {
         schema.map(|schema| schema.try_into()).transpose()
     }
 
+    pub fn find_site_by_name(&self, name: &str) -> Result<Option<Site>, StoreError> {
+        let schema = deployment_schemas::table
+            .filter(deployment_schemas::name.eq(name))
+            .first::<Schema>(self.0.as_ref())
+            .optional()?;
+        schema.map(|schema| schema.try_into()).transpose()
+    }
+
     pub fn find_sites_for_network(&self, network: &str) -> Result<Vec<Site>, StoreError> {
         use deployment_schemas as ds;
 

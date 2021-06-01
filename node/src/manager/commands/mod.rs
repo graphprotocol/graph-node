@@ -8,5 +8,6 @@ pub mod listen;
 pub mod query;
 pub mod remove;
 pub mod rewind;
+pub mod stats;
 pub mod txn_speed;
 pub mod unused_deployments;
