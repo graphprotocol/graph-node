@@ -2,6 +2,7 @@ use diesel::{connection::SimpleConnection, prelude::RunQueryDsl, select};
 use diesel::{pg::PgConnection, sql_query};
 use diesel::{sql_types::Text, ExpressionMethods, QueryDsl};
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use graph::{data::subgraph::schema::POI_TABLE, prelude::StoreError};
 
@@ -31,25 +32,22 @@ table! {
 /// Information about what tables and columns we have in the database
 #[derive(Debug, Clone)]
 pub struct Catalog {
-    pub namespace: Namespace,
+    pub site: Arc<Site>,
     text_columns: HashMap<String, HashSet<String>>,
 }
 
 impl Catalog {
-    pub fn new(conn: &PgConnection, namespace: Namespace) -> Result<Self, StoreError> {
-        let text_columns = get_text_columns(conn, &namespace)?;
-        Ok(Catalog {
-            namespace,
-            text_columns,
-        })
+    pub fn new(conn: &PgConnection, site: Arc<Site>) -> Result<Self, StoreError> {
+        let text_columns = get_text_columns(conn, &site.namespace)?;
+        Ok(Catalog { site, text_columns })
     }
 
     /// Make a catalog as if the given `schema` did not exist in the database
     /// yet. This function should only be used in situations where a database
     /// connection is definitely not available, such as in unit tests
-    pub fn make_empty(namespace: Namespace) -> Result<Self, StoreError> {
+    pub fn make_empty(site: Arc<Site>) -> Result<Self, StoreError> {
         Ok(Catalog {
-            namespace,
+            site,
             text_columns: HashMap::default(),
         })
     }

@@ -323,7 +323,7 @@ impl Layout {
             .map(|table| {
                 format!(
                     "select count(*) from \"{}\".\"{}\" where block_range @> {}",
-                    &catalog.namespace, table.name, BLOCK_NUMBER_MAX
+                    &catalog.site.namespace, table.name, BLOCK_NUMBER_MAX
                 )
             })
             .collect::<Vec<_>>()
@@ -350,7 +350,7 @@ impl Layout {
         let table_name = SqlName::verbatim(POI_TABLE.to_owned());
         Table {
             object: POI_OBJECT.to_owned(),
-            qualified_name: SqlName::qualified_name(&catalog.namespace, &table_name),
+            qualified_name: SqlName::qualified_name(&catalog.site.namespace, &table_name),
             name: table_name,
             columns: vec![
                 Column {
@@ -391,7 +391,7 @@ impl Layout {
         site: Arc<Site>,
         schema: &Schema,
     ) -> Result<Layout, StoreError> {
-        let catalog = Catalog::new(conn, site.namespace.clone())?;
+        let catalog = Catalog::new(conn, site.clone())?;
         let layout = Self::new(site, schema, catalog, true)?;
         let sql = layout
             .as_ddl()
@@ -424,7 +424,7 @@ impl Layout {
             write!(
                 out,
                 "create type {}.{}\n    as enum (",
-                self.catalog.namespace,
+                self.catalog.site.namespace,
                 name.quoted()
             )?;
             for value in values.iter() {
@@ -539,7 +539,7 @@ impl Layout {
             tables.push(self.table_for_entity(entity_type)?.as_ref());
         }
         let query = FindManyQuery {
-            namespace: &self.catalog.namespace,
+            namespace: &self.catalog.site.namespace,
             ids_for_type,
             tables,
             block,
@@ -863,7 +863,7 @@ impl ColumnType {
         if let Some(values) = enums.get(&*name) {
             // We do things this convoluted way to make sure field_type gets
             // snakecased, but the `.` must stay a `.`
-            let name = SqlName::qualified_name(&catalog.namespace, &SqlName::from(name));
+            let name = SqlName::qualified_name(&catalog.site.namespace, &SqlName::from(name));
             if is_existing_text_column {
                 // We used to have a bug where columns that should have really
                 // been of an enum type were created as text columns. To make
@@ -1130,11 +1130,11 @@ impl Table {
             .chain(fulltexts.iter().map(|def| Column::new_fulltext(def)))
             .collect::<Result<Vec<Column>, StoreError>>()?;
         let is_account_like =
-            ACCOUNT_TABLES.contains(&format!("{}.{}", catalog.namespace, table_name));
+            ACCOUNT_TABLES.contains(&format!("{}.{}", catalog.site.namespace, table_name));
         let table = Table {
             object: EntityType::from(defn),
             name: table_name.clone(),
-            qualified_name: SqlName::qualified_name(&catalog.namespace, &table_name),
+            qualified_name: SqlName::qualified_name(&catalog.site.namespace, &table_name),
             is_account_like,
             columns,
             position,
@@ -1199,7 +1199,7 @@ impl Table {
         writeln!(
             out,
             "create table {}.{} (",
-            layout.catalog.namespace,
+            layout.catalog.site.namespace,
             self.name.quoted()
         )?;
         for column in self.columns.iter() {
@@ -1242,7 +1242,7 @@ impl Table {
                     on {schema_name}.{table_name}\n \
                        using brin(lower(block_range), coalesce(upper(block_range), {block_max}), vid);\n",
             table_name = self.name,
-            schema_name = layout.catalog.namespace,
+            schema_name = layout.catalog.site.namespace,
             block_max = BLOCK_NUMBER_MAX)?;
 
         // Add a BTree index that helps with the `RevertClampQuery` by making
@@ -1253,7 +1253,7 @@ impl Table {
                      on {schema_name}.{table_name}(coalesce(upper(block_range), {block_max}))\n \
                      where coalesce(upper(block_range), {block_max}) < {block_max};\n",
             table_name = self.name,
-            schema_name = layout.catalog.namespace,
+            schema_name = layout.catalog.site.namespace,
             block_max = BLOCK_NUMBER_MAX
         )?;
 
@@ -1299,7 +1299,7 @@ impl Table {
                 table_name = self.name,
                 column_index = i,
                 column_name = column.name,
-                schema_name = layout.catalog.namespace,
+                schema_name = layout.catalog.site.namespace,
                 method = method,
                 index_expr = index_expr,
             )?;
@@ -1343,9 +1343,9 @@ mod tests {
         let subgraph = DeploymentHash::new("subgraph").unwrap();
         let schema = Schema::parse(gql, subgraph.clone()).expect("Test schema invalid");
         let namespace = Namespace::new("sgd0815".to_owned()).unwrap();
-        let catalog = Catalog::make_empty(namespace.clone()).expect("Can not create catalog");
-        let site = make_dummy_site(subgraph, namespace, "anet".to_string());
-        Layout::new(Arc::new(site), &schema, catalog, false).expect("Failed to construct Layout")
+        let site = Arc::new(make_dummy_site(subgraph, namespace, "anet".to_string()));
+        let catalog = Catalog::make_empty(site.clone()).expect("Can not create catalog");
+        Layout::new(site, &schema, catalog, false).expect("Failed to construct Layout")
     }
 
     #[test]

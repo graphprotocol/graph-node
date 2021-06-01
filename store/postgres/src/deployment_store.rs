@@ -185,8 +185,8 @@ impl DeploymentStore {
                         return Err(StoreError::Unknown(anyhow!(
                             "The subgraph `{}` cannot be used as the graft base \
                                                     for `{}` because the schemas are incompatible:\n    - {}",
-                            &base.catalog.namespace,
-                            &layout.catalog.namespace,
+                            &base.catalog.site.namespace,
+                            &layout.catalog.site.namespace,
                             errors.join("\n    - ")
                         )));
                     }
@@ -504,7 +504,7 @@ impl DeploymentStore {
 
         let subgraph_schema = deployment::schema(conn, site.as_ref())?;
         let has_poi = crate::catalog::supports_proof_of_indexing(conn, &site.namespace)?;
-        let catalog = Catalog::new(conn, site.namespace.clone())?;
+        let catalog = Catalog::new(conn, site.clone())?;
         let layout = Arc::new(Layout::new(
             site.clone(),
             &subgraph_schema,
@@ -1091,8 +1091,8 @@ impl DeploymentStore {
             info!(
                 logger,
                 "Initializing graft by copying data from {} to {}",
-                src.catalog.namespace,
-                dst.catalog.namespace
+                src.catalog.site.namespace,
+                dst.catalog.site.namespace
             );
 
             // Copy subgraph data
