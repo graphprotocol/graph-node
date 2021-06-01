@@ -314,7 +314,7 @@ async fn json_parsing() {
     let bytes_ptr = asc_new(&mut module, bytes).unwrap();
     let return_value: AscPtr<AscString> = module.invoke_export("handleJsonError", bytes_ptr);
     let output: String = asc_get(&module, return_value).unwrap();
-    assert_eq!(output, "OK: foo");
+    assert_eq!(output, "OK: foo, ERROR: false");
 }
 
 #[tokio::test(threaded_scheduler)]

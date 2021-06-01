@@ -4,7 +4,7 @@ use graph::{
     components::ethereum::{
         EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
     },
-    runtime::{asc_get, asc_new, try_asc_get, AscPtr, AscType, ToAscObj},
+    runtime::{asc_get, asc_new, try_asc_get, AscPtr, AscType, AscValue, ToAscObj},
 };
 use graph::{data::store, runtime::DeterministicHostError};
 use graph::{prelude::serde_json, runtime::FromAscObj};
@@ -517,7 +517,7 @@ impl From<u32> for LogLevel {
     }
 }
 
-impl<T: AscType> ToAscObj<AscWrapped<T>> for AscWrapped<T> {
+impl<T: AscValue> ToAscObj<AscWrapped<T>> for AscWrapped<T> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         _heap: &mut H,
@@ -526,17 +526,15 @@ impl<T: AscType> ToAscObj<AscWrapped<T>> for AscWrapped<T> {
     }
 }
 
-impl<V, E, VAsc, EAsc> ToAscObj<AscResult<VAsc, EAsc>> for Result<V, E>
+impl<V, VAsc> ToAscObj<AscResult<AscPtr<VAsc>, bool>> for Result<V, bool>
 where
     V: ToAscObj<VAsc>,
-    E: ToAscObj<EAsc>,
     VAsc: AscType,
-    EAsc: AscType,
 {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
-    ) -> Result<AscResult<VAsc, EAsc>, DeterministicHostError> {
+    ) -> Result<AscResult<AscPtr<VAsc>, bool>, DeterministicHostError> {
         Ok(match self {
             Ok(value) => AscResult {
                 value: {
@@ -544,13 +542,15 @@ where
                     let wrapped = AscWrapped { inner };
                     asc_new(heap, &wrapped)?
                 },
-                error: AscPtr::null(),
+                error: {
+                    let wrapped = AscWrapped { inner: false };
+                    asc_new(heap, &wrapped)?
+                },
             },
-            Err(e) => AscResult {
+            Err(_) => AscResult {
                 value: AscPtr::null(),
                 error: {
-                    let inner = asc_new(heap, e)?;
-                    let wrapped = AscWrapped { inner };
+                    let wrapped = AscWrapped { inner: true };
                     asc_new(heap, &wrapped)?
                 },
             },

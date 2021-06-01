@@ -936,7 +936,8 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     fn json_try_from_bytes(
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
-    ) -> Result<AscPtr<AscResult<AscEnum<JsonValueKind>, bool>>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscResult<AscPtr<AscEnum<JsonValueKind>>, bool>>, DeterministicHostError>
+    {
         let bytes: Vec<u8> = asc_get(self, bytes_ptr)?;
         let result = host_exports::json_from_bytes(&bytes).map_err(|e| {
             warn!(
