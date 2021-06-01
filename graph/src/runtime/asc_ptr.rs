@@ -48,13 +48,13 @@ impl<C: AscType> AscPtr<C> {
     }
 
     /// Read from `self` into the Rust struct `C`.
-    pub fn read_ptr<H: AscHeap>(self, heap: &H) -> Result<C, DeterministicHostError> {
+    pub fn read_ptr<H: AscHeap + ?Sized>(self, heap: &H) -> Result<C, DeterministicHostError> {
         let bytes = heap.get(self.0, C::asc_size(self, heap)?)?;
         C::from_asc_bytes(&bytes)
     }
 
     /// Allocate `asc_obj` as an Asc object of class `C`.
-    pub fn alloc_obj<H: AscHeap>(
+    pub fn alloc_obj<H: AscHeap + ?Sized>(
         asc_obj: C,
         heap: &mut H,
     ) -> Result<AscPtr<C>, DeterministicHostError> {
@@ -63,7 +63,7 @@ impl<C: AscType> AscPtr<C> {
     }
 
     /// Helper used by arrays and strings to read their length.
-    pub fn read_u32<H: AscHeap>(&self, heap: &H) -> Result<u32, DeterministicHostError> {
+    pub fn read_u32<H: AscHeap + ?Sized>(&self, heap: &H) -> Result<u32, DeterministicHostError> {
         // Read the bytes pointed to by `self` as the bytes of a `u32`.
         let raw_bytes = heap.get(self.0, size_of::<u32>() as u32)?;
         let mut u32_bytes: [u8; size_of::<u32>()] = [0; size_of::<u32>()];

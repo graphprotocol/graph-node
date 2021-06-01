@@ -6,7 +6,7 @@
 mod asc_heap;
 mod asc_ptr;
 
-pub use asc_heap::{AscHeap, FromAscObj, ToAscObj, TryFromAscObj};
+pub use asc_heap::{asc_get, asc_new, try_asc_get, AscHeap, FromAscObj, ToAscObj, TryFromAscObj};
 pub use asc_ptr::AscPtr;
 
 use anyhow::Error;
@@ -31,7 +31,10 @@ pub trait AscType: Sized {
     fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError>;
 
     /// Size of the corresponding Asc instance in bytes.
-    fn asc_size<H: AscHeap>(_ptr: AscPtr<Self>, _heap: &H) -> Result<u32, DeterministicHostError> {
+    fn asc_size<H: AscHeap + ?Sized>(
+        _ptr: AscPtr<Self>,
+        _heap: &H,
+    ) -> Result<u32, DeterministicHostError> {
         Ok(std::mem::size_of::<Self>() as u32)
     }
 }

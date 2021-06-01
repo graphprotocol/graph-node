@@ -119,7 +119,10 @@ impl AscType for ArrayBuffer {
         })
     }
 
-    fn asc_size<H: AscHeap>(ptr: AscPtr<Self>, heap: &H) -> Result<u32, DeterministicHostError> {
+    fn asc_size<H: AscHeap + ?Sized>(
+        ptr: AscPtr<Self>,
+        heap: &H,
+    ) -> Result<u32, DeterministicHostError> {
         let byte_length = ptr.read_u32(heap)?;
         let byte_length_size = size_of::<u32>() as u32;
         let padding_size = size_of::<u32>() as u32;
@@ -142,7 +145,7 @@ pub(crate) struct TypedArray<T> {
 }
 
 impl<T: AscValue> TypedArray<T> {
-    pub(crate) fn new<H: AscHeap>(
+    pub(crate) fn new<H: AscHeap + ?Sized>(
         content: &[T],
         heap: &mut H,
     ) -> Result<Self, DeterministicHostError> {
@@ -155,7 +158,10 @@ impl<T: AscValue> TypedArray<T> {
         })
     }
 
-    pub(crate) fn to_vec<H: AscHeap>(&self, heap: &H) -> Result<Vec<T>, DeterministicHostError> {
+    pub(crate) fn to_vec<H: AscHeap + ?Sized>(
+        &self,
+        heap: &H,
+    ) -> Result<Vec<T>, DeterministicHostError> {
         self.buffer
             .read_ptr(heap)?
             .get(self.byte_offset, self.byte_length / size_of::<T>() as u32)
@@ -255,7 +261,10 @@ impl AscType for AscString {
         AscString::new(&content)
     }
 
-    fn asc_size<H: AscHeap>(ptr: AscPtr<Self>, heap: &H) -> Result<u32, DeterministicHostError> {
+    fn asc_size<H: AscHeap + ?Sized>(
+        ptr: AscPtr<Self>,
+        heap: &H,
+    ) -> Result<u32, DeterministicHostError> {
         let length = ptr.read_u32(heap)?;
         let length_size = size_of::<u32>() as u32;
         let code_point_size = size_of::<u16>() as u32;
@@ -278,7 +287,10 @@ pub(crate) struct Array<T> {
 }
 
 impl<T: AscValue> Array<T> {
-    pub fn new<H: AscHeap>(content: &[T], heap: &mut H) -> Result<Self, DeterministicHostError> {
+    pub fn new<H: AscHeap + ?Sized>(
+        content: &[T],
+        heap: &mut H,
+    ) -> Result<Self, DeterministicHostError> {
         Ok(Array {
             buffer: AscPtr::alloc_obj(ArrayBuffer::new(content)?, heap)?,
             // If this cast would overflow, the above line has already panicked.
@@ -287,7 +299,10 @@ impl<T: AscValue> Array<T> {
         })
     }
 
-    pub(crate) fn to_vec<H: AscHeap>(&self, heap: &H) -> Result<Vec<T>, DeterministicHostError> {
+    pub(crate) fn to_vec<H: AscHeap + ?Sized>(
+        &self,
+        heap: &H,
+    ) -> Result<Vec<T>, DeterministicHostError> {
         self.buffer.read_ptr(heap)?.get(0, self.length)
     }
 }
