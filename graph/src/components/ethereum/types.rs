@@ -1,6 +1,6 @@
 use ethabi::LogParam;
 use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
+use std::{convert::TryFrom, sync::Arc};
 use web3::types::{
     Action, Address, Block, Bytes, Log, Res, Trace, Transaction, TransactionReceipt, H160, H256,
     U128, U256, U64,
@@ -8,6 +8,7 @@ use web3::types::{
 
 use crate::{
     blockchain::BlockPtr,
+    cheap_clone::CheapClone,
     prelude::{BlockNumber, DeploymentHash, EntityKey, ToEntityKey},
 };
 
@@ -67,17 +68,17 @@ impl LightEthereumBlockExt for LightEthereumBlock {
 #[derive(Clone, Debug)]
 pub enum BlockFinality {
     /// If a block is final, we only need the header and the triggers.
-    Final(LightEthereumBlock),
+    Final(Arc<LightEthereumBlock>),
 
     // If a block may still be reorged, we need to work with more local data.
     NonFinal(EthereumBlockWithCalls),
 }
 
 impl BlockFinality {
-    pub fn light_block(&self) -> LightEthereumBlock {
+    pub fn light_block(&self) -> Arc<LightEthereumBlock> {
         match self {
-            BlockFinality::Final(block) => block.clone(),
-            BlockFinality::NonFinal(block) => block.ethereum_block.block.clone(),
+            BlockFinality::Final(block) => block.cheap_clone(),
+            BlockFinality::NonFinal(block) => block.ethereum_block.block.cheap_clone(),
         }
     }
 
@@ -113,7 +114,7 @@ pub struct EthereumBlockWithCalls {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct EthereumBlock {
-    pub block: LightEthereumBlock,
+    pub block: Arc<LightEthereumBlock>,
     pub transaction_receipts: Vec<TransactionReceipt>,
 }
 
@@ -329,7 +330,7 @@ impl<'a> From<&'a EthereumCall> for BlockPtr {
 impl<'a> From<&'a BlockFinality> for BlockPtr {
     fn from(block: &'a BlockFinality) -> BlockPtr {
         match block {
-            BlockFinality::Final(b) => b.into(),
+            BlockFinality::Final(b) => BlockPtr::from(&**b),
             BlockFinality::NonFinal(b) => BlockPtr::from(&b.ethereum_block),
         }
     }

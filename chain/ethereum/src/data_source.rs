@@ -38,7 +38,6 @@ pub struct DataSource {
     pub contract_abi: Arc<MappingABI>,
 }
 
-// ETHDEP: The whole DataSource struct needs to move to chain::ethereum
 impl blockchain::DataSource<Chain> for DataSource {
     fn match_and_decode(
         &self,
@@ -46,7 +45,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         block: Arc<<Chain as Blockchain>::Block>,
         logger: &Logger,
     ) -> Result<Option<<Chain as Blockchain>::MappingTrigger>, Error> {
-        let block = Arc::new(block.0.light_block());
+        let block = block.0.light_block();
         self.match_and_decode(trigger, block, logger)
     }
 

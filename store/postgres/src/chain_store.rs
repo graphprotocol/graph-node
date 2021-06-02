@@ -63,6 +63,7 @@ mod data {
 
     use std::fmt;
     use std::iter::FromIterator;
+    use std::sync::Arc;
     use std::{convert::TryFrom, io::Write};
 
     use graph::prelude::{
@@ -440,7 +441,7 @@ mod data {
             let parent_hash = block.parent_hash;
             let number = block.number.unwrap().as_u64() as i64;
             let data = serde_json::to_value(&EthereumBlock {
-                block,
+                block: Arc::new(block),
                 transaction_receipts: Vec::new(),
             })
             .expect("Failed to serialize block");
@@ -1476,9 +1477,11 @@ fn contract_call_id(
 /// Support for tests
 #[cfg(debug_assertions)]
 pub mod test_support {
-    use std::str::FromStr;
+    use std::{str::FromStr, sync::Arc};
 
-    use graph::prelude::{web3::types::H256, BlockNumber, BlockPtr, EthereumBlock};
+    use graph::prelude::{
+        web3::types::H256, BlockNumber, BlockPtr, EthereumBlock, LightEthereumBlock,
+    };
 
     // Hash indicating 'no parent'
     pub const NO_PARENT: &str = "0000000000000000000000000000000000000000000000000000000000000000";
@@ -1520,12 +1523,15 @@ pub mod test_support {
             let parent_hash =
                 H256::from_str(self.parent_hash.as_str()).expect("invalid parent hash");
 
-            let mut block = EthereumBlock::default();
-            block.block.number = Some(self.number.into());
-            block.block.parent_hash = parent_hash;
-            block.block.hash = Some(self.block_hash());
+            let mut block = LightEthereumBlock::default();
+            block.number = Some(self.number.into());
+            block.parent_hash = parent_hash;
+            block.hash = Some(self.block_hash());
 
-            block
+            EthereumBlock {
+                block: Arc::new(block),
+                transaction_receipts: Vec::new(),
+            }
         }
     }
 
