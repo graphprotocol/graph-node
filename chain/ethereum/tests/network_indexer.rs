@@ -122,34 +122,39 @@ fn create_chain(n: u64, parent: Option<&BlockWithOmmers>) -> Vec<BlockWithOmmers
     let start = parent.map_or(0, |block| block.inner().number.unwrap().as_u64() + 1);
 
     (start..start + n).fold(vec![], |mut blocks, number| {
-        let mut block = BlockWithOmmers::default();
+        let mut block = LightEthereumBlock::default();
 
         // Set required fields
-        block.block.block.nonce = Some(H64::random());
-        block.block.block.mix_hash = Some(H256::random());
-        block.block.block.logs_bloom = Some(H2048::default());
-        block.block.block.total_difficulty = Some(U256::default());
+        block.nonce = Some(H64::random());
+        block.mix_hash = Some(H256::random());
+        block.logs_bloom = Some(H2048::default());
+        block.total_difficulty = Some(U256::default());
 
         // Use the index as the block number
-        block.block.block.number = Some(number.into());
+        block.number = Some(number.into());
 
         // Use a random hash as the block hash (should be unique)
-        block.block.block.hash = Some(H256::random());
+        block.hash = Some(H256::random());
 
         if number == start {
             // Set the parent hash for the first block only if a
             // parent was passed in; otherwise we're dealing with
             // the genesis block
             if let Some(parent_block) = parent {
-                block.block.block.parent_hash = parent_block.inner().hash.unwrap().clone();
+                block.parent_hash = parent_block.inner().hash.unwrap().clone();
             }
         } else {
             // Set the parent hash for all blocks but the genesis block
-            block.block.block.parent_hash =
-                blocks.last().unwrap().block.block.hash.clone().unwrap();
+            block.parent_hash = blocks.last().unwrap().block.block.hash.clone().unwrap();
         }
 
-        blocks.push(block);
+        blocks.push(BlockWithOmmers {
+            block: EthereumBlock {
+                block: Arc::new(block),
+                transaction_receipts: vec![],
+            },
+            ommers: vec![],
+        });
         blocks
     })
 }
@@ -210,7 +215,7 @@ fn create_mock_ethereum_adapter(
                 .ok_or_else(|| anyhow!("exhausted chain versions used in this test; this is ok"))
                 .and_then(|chain| chain.last().ok_or_else(|| anyhow!("empty block chain")))
                 .map_err(Into::into)
-                .map(|block| block.block.block.clone()),
+                .map(|block| block.block.block.as_ref().clone()),
         ))
     });
 
@@ -227,7 +232,7 @@ fn create_mock_ethereum_adapter(
                         chain
                             .iter()
                             .find(|block| block.inner().number() == number)
-                            .map(|block| block.clone().block.block)
+                            .map(|block| block.clone().block.block.as_ref().clone())
                     }),
             ))
         });
@@ -245,7 +250,7 @@ fn create_mock_ethereum_adapter(
                         chain
                             .iter()
                             .find(|block| block.inner().hash.unwrap() == hash)
-                            .map(|block| block.clone().block.block)
+                            .map(|block| block.clone().block.block.as_ref().clone())
                     }),
             ))
         });
@@ -738,8 +743,9 @@ fn indexing_identifies_common_ancestor_correctly_despite_ommers() {
         let mut fork1 = create_fork(initial_chain.clone(), 3, 6);
 
         // Make it so that #5' has #4 as an uncle
-        fork1[5].block.block.uncles = vec![initial_chain[4].inner().hash.clone().unwrap()];
-        fork1[5].ommers = vec![initial_chain[4].block.block.clone().into()];
+        Arc::get_mut(&mut fork1[5].block.block).unwrap().uncles =
+            vec![initial_chain[4].inner().hash.clone().unwrap()];
+        fork1[5].ommers = vec![initial_chain[4].block.block.as_ref().clone().into()];
 
         // Create fork 2 (blocks #0 - #4, #5'', #6''); this fork includes the
         // original #4 again, which at this point should no longer be part of
