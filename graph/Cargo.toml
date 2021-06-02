@@ -13,7 +13,7 @@ diesel = { version = "1.4.6", features = ["postgres", "serde_json", "numeric", "
 diesel_derives = "1.4"
 chrono = "0.4.19"
 Inflector = "0.11.3"
-isatty = "0.1.9"
+isatty = "0.2.0"
 reqwest = { version = "0.10", features = ["json", "stream"] }
 
 # master contains changes such as

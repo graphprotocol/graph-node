@@ -2359,15 +2359,9 @@ checksum = "47be2f14c678be2fdcab04ab1171db51b2762ce6f0a8ee87c8dd4a04ed216135"
 
 [[package]]
 name = "isatty"
-version = "0.1.9"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e31a8281fc93ec9693494da65fbf28c0c2aa60a2eaec25dc58e2f31952e95edc"
-dependencies = [
- "cfg-if 0.1.10",
- "libc",
- "redox_syscall",
- "winapi 0.3.9",
-]
+checksum = "05ed1865a9f01be9ed3bd618b241fb46bf2fbf1563368ca275fb491f0ecb5047"
 
 [[package]]
 name = "itertools"
