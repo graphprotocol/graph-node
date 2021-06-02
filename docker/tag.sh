@@ -20,9 +20,9 @@ set -ex
 
 tag_and_push "$SHORT_SHA"
 
-# Builds on the master branch become the 'latest'
-[ "$BRANCH_NAME" = master ] && tag_and_push latest
 # Builds of tags set the tag in Docker Hub, too
 [ -n "$TAG_NAME" ] && tag_and_push "$TAG_NAME"
+# Builds for tags vN.N.N become the 'latest'
+[[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && tag_and_push latest
 
 exit 0
