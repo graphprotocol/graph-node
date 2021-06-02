@@ -16,6 +16,7 @@ members = [
     "store/test-store",
     "graph",
     "tests",
+    "indexer/substrate",
 ]
 
 
