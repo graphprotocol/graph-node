@@ -8,7 +8,7 @@ async-trait = "0.1.50"
 atomic_refcell = "0.1.7"
 bytes = "0.5"
 futures01 = { package="futures", version="0.1.31" }
-futures = { version="0.3.4", features=["compat"] }
+futures = { version="0.3.15", features=["compat"] }
 graph = { path = "../graph" }
 # This dependency is temporary. The multiblockchain refactoring is not
 # finished as long as this dependency exists

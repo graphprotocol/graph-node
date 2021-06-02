@@ -17,7 +17,7 @@ clap = "2.33.3"
 env_logger = "0.8.2"
 git-testament = "0.2"
 graphql-parser = "0.3"
-futures = { version = "0.3.1", features = ["compat"] }
+futures = { version = "0.3.15", features = ["compat"] }
 lazy_static = "1.2.0"
 url = "2.2.1"
 crossbeam-channel = "0.5.1"

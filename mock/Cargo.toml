@@ -4,7 +4,7 @@ version = "0.22.0"
 edition = "2018"
 
 [dependencies]
-futures = "0.1.21"
+futures = "0.3.15"
 graphql-parser = "0.3"
 graph = { path = "../graph" }
 graph-graphql = { path = "../graphql" }
