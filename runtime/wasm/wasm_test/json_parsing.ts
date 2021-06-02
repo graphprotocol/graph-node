@@ -27,11 +27,11 @@ export class Result<V, E> {
   }
 
   get error(): E {
-    assert(
-      this._error != null,
-      "Trying to get an error from a successful result"
-    );
-    return (this._error as Wrapped<E>).inner;
+    let coerced = this._error === null
+      ? false
+      : (this._error as Wrapped<E>).inner
+
+    return coerced;
   }
 }
 
@@ -71,7 +71,7 @@ declare namespace json {
 export function handleJsonError(data: Bytes): string {
   let result = json.try_fromBytes(data);
   if (result.isOk) {
-    return "OK: " + result.value.toString();
+    return "OK: " + result.value.toString() + ", ERROR: " + (result.error ? "true" : "false");
   } else {
     return "ERROR: " + (result.error ? "true" : "false");
   }
