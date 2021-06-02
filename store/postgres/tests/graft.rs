@@ -86,20 +86,13 @@ lazy_static! {
 fn run_test<R, F>(test: F)
 where
     F: FnOnce(Arc<DieselSubgraphStore>, DeploymentLocator) -> R + Send + 'static,
-    R: IntoFuture<Item = ()> + Send + 'static,
-    R::Error: Send + Debug,
-    R::Future: Send,
+    R: std::future::Future<Output = Result<(), StoreError>> + Send + 'static,
 {
-    let store = STORE.subgraph_store();
+    run_test_sequentially(
+        || (),
+        |store, ()| async move {
+            let store = store.subgraph_store();
 
-    // Lock regardless of poisoning. This also forces sequential test execution.
-    let mut runtime = match STORE_RUNTIME.lock() {
-        Ok(guard) => guard,
-        Err(err) => err.into_inner(),
-    };
-
-    runtime
-        .block_on(async {
             // Reset state before starting
             remove_test_data(store.clone());
 
@@ -107,9 +100,9 @@ where
             let deployment = insert_test_data(store.clone());
 
             // Run test
-            test(store, deployment).into_future().compat().await
-        })
-        .unwrap_or_else(|e| panic!("Failed to run Store test: {:?}", e));
+            test(store, deployment).await.expect("graft test succeeds");
+        },
+    )
 }
 
 /// Inserts test data into the store.
@@ -321,7 +314,7 @@ fn check_graft(
 
 #[test]
 fn graft() {
-    run_test(move |store, _| -> Result<(), StoreError> {
+    run_test(|store, _| async move {
         const SUBGRAPH: &str = "grafted";
 
         let subgraph_id = DeploymentHash::new(SUBGRAPH).unwrap();
@@ -342,7 +335,7 @@ fn graft() {
 // two shards
 #[test]
 fn copy() {
-    run_test(move |store, src| -> Result<(), StoreError> {
+    run_test(|store, src| async move {
         let src_shard = store.shard(&src)?;
 
         let dst_shard = match all_shards()
