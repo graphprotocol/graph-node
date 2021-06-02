@@ -7,10 +7,15 @@ use graph::prelude::{
     BLOCK_NUMBER_MAX,
 };
 use graph_mock::MockMetricsRegistry;
+use graph_store_postgres::layout_for_tests::set_account_like;
+use graph_store_postgres::layout_for_tests::LayoutCache;
+use graph_store_postgres::layout_for_tests::SqlName;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::thread::sleep;
+use std::time::Duration;
 
 use graph::{
     components::store::EntityType,
@@ -766,6 +771,47 @@ fn insert_many_and_delete_many() {
         assert_eq!(2, num_removed);
         assert_eq!(1, count_scalar_entities(conn, layout));
     });
+}
+
+#[test]
+fn layout_cache() {
+    run_test_with_conn(|conn| {
+        let id = DeploymentHash::new("primaryLayoutCache").unwrap();
+        let _loc = create_test_subgraph(&id, THINGS_GQL);
+        let site = Arc::new(primary_connection().find_active_site(&id).unwrap().unwrap());
+        let table_name = SqlName::verbatim("scalar".to_string());
+
+        let cache = LayoutCache::new(Duration::from_millis(10));
+
+        // Without an entry, account_like is false
+        let layout = cache
+            .get(&*LOGGER, &conn, site.clone())
+            .expect("we can get the layout");
+        let table = layout.table(&table_name).unwrap();
+        assert_eq!(false, table.is_account_like);
+
+        set_account_like(conn, site.as_ref(), &table_name, true)
+            .expect("we can set 'scalar' to account-like");
+        sleep(Duration::from_millis(50));
+
+        // Flip account_like to true
+        let layout = cache
+            .get(&*LOGGER, &conn, site.clone())
+            .expect("we can get the layout");
+        let table = layout.table(&table_name).unwrap();
+        assert_eq!(true, table.is_account_like);
+
+        // Set it back to false
+        set_account_like(conn, site.as_ref(), &table_name, false)
+            .expect("we can set 'scalar' to account-like");
+        sleep(Duration::from_millis(50));
+
+        let layout = cache
+            .get(&*LOGGER, &conn, site.clone())
+            .expect("we can get the layout");
+        let table = layout.table(&table_name).unwrap();
+        assert_eq!(false, table.is_account_like);
+    })
 }
 
 #[test]

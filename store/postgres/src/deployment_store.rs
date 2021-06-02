@@ -14,9 +14,12 @@ use rand::{seq::SliceRandom, thread_rng};
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Into;
 use std::convert::TryInto;
+use std::env;
 use std::iter::FromIterator;
 use std::ops::Deref;
+use std::str::FromStr;
 use std::sync::{atomic::AtomicUsize, Arc, Mutex};
+use std::time::Duration;
 use std::time::Instant;
 
 use graph::components::store::EntityCollection;
@@ -24,20 +27,36 @@ use graph::components::subgraph::ProofOfIndexingFinisher;
 use graph::constraint_violation;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
-    anyhow, debug, futures03, info, o, web3, ApiSchema, BlockNumber, BlockPtr, CheapClone,
-    DeploymentHash, DeploymentState, DynTryFuture, Entity, EntityKey, EntityModification,
-    EntityQuery, Error, Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError,
-    StoreEvent, Value, BLOCK_NUMBER_MAX,
+    anyhow, debug, futures03, info, lazy_static, o, web3, ApiSchema, BlockNumber, BlockPtr,
+    CheapClone, DeploymentHash, DeploymentState, DynTryFuture, Entity, EntityKey,
+    EntityModification, EntityQuery, Error, Logger, QueryExecutionError, Schema, StopwatchMetrics,
+    StoreError, StoreEvent, Value, BLOCK_NUMBER_MAX,
 };
 use graph_graphql::prelude::api_schema;
 use web3::types::Address;
 
 use crate::block_range::block_number;
 use crate::deployment;
-use crate::relational::{Catalog, Layout};
+use crate::relational::{Layout, LayoutCache};
 use crate::relational_queries::FromEntityData;
 use crate::{connection_pool::ConnectionPool, detail};
 use crate::{dynds, primary::Site};
+
+lazy_static! {
+    /// `GRAPH_QUERY_STATS_REFRESH_INTERVAL` is how long statistics that
+    /// influence query execution are cached in memory (in seconds) before
+    /// they are reloaded from the database. Defaults to 300s (5 minutes).
+    static ref STATS_REFRESH_INTERVAL: Duration = {
+        env::var("GRAPH_QUERY_STATS_REFRESH_INTERVAL")
+        .ok()
+        .map(|s| {
+            let secs = u64::from_str(&s).unwrap_or_else(|_| {
+                panic!("GRAPH_QUERY_STATS_REFRESH_INTERVAL must be a number, but is `{}`", s)
+            });
+            Duration::from_secs(secs)
+        }).unwrap_or(Duration::from_secs(300))
+    };
+}
 
 /// When connected to read replicas, this allows choosing which DB server to use for an operation.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -85,7 +104,7 @@ pub struct StoreInner {
     /// A cache for the layout metadata for subgraphs. The Store just
     /// hosts this because it lives long enough, but it is managed from
     /// the entities module
-    pub(crate) layout_cache: Mutex<HashMap<DeploymentHash, Arc<Layout>>>,
+    pub(crate) layout_cache: LayoutCache,
 }
 
 /// Storage of the data for individual deployments. Each `DeploymentStore`
@@ -141,7 +160,7 @@ impl DeploymentStore {
             replica_order,
             conn_round_robin_counter: AtomicUsize::new(0),
             subgraph_cache: Mutex::new(LruCache::with_capacity(100)),
-            layout_cache: Mutex::new(HashMap::new()),
+            layout_cache: LayoutCache::new(*STATS_REFRESH_INTERVAL),
         };
         let store = DeploymentStore(Arc::new(store));
 
@@ -498,35 +517,14 @@ impl DeploymentStore {
         conn: &PgConnection,
         site: Arc<Site>,
     ) -> Result<Arc<Layout>, StoreError> {
-        if let Some(layout) = self.layout_cache.lock().unwrap().get(&site.deployment) {
-            return Ok(layout.clone());
-        }
-
-        let subgraph_schema = deployment::schema(conn, site.as_ref())?;
-        let has_poi = crate::catalog::supports_proof_of_indexing(conn, &site.namespace)?;
-        let catalog = Catalog::new(conn, site.clone())?;
-        let layout = Arc::new(Layout::new(
-            site.clone(),
-            &subgraph_schema,
-            catalog,
-            has_poi,
-        )?);
-
-        if layout.is_cacheable() {
-            &self
-                .layout_cache
-                .lock()
-                .unwrap()
-                .insert(site.deployment.clone(), layout.clone());
-        }
-        Ok(layout.clone())
+        self.layout_cache.get(&self.logger, conn, site)
     }
 
     /// Return the layout for a deployment. This might use a database
     /// connection for the lookup and should only be called if the caller
     /// does not have a connection currently. If it does, use `layout`
     pub(crate) fn find_layout(&self, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
-        if let Some(layout) = self.layout_cache.lock().unwrap().get(&site.deployment) {
+        if let Some(layout) = self.layout_cache.find(site.as_ref()) {
             return Ok(layout.clone());
         }
 
