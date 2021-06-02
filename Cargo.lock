@@ -1628,7 +1628,7 @@ dependencies = [
  "strum_macros",
  "test-store",
  "thiserror",
- "tiny-keccak 1.5.0",
+ "tiny-keccak 2.0.2",
  "tokio 0.2.25",
  "tokio-retry",
  "tokio-stream",
@@ -1668,7 +1668,7 @@ dependencies = [
  "serde",
  "state_machine_future",
  "test-store",
- "tiny-keccak 1.5.0",
+ "tiny-keccak 2.0.2",
  "web3",
 ]
 
