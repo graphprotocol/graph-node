@@ -91,30 +91,18 @@ fn run_network_indexer(
 fn run_test<R, F>(test: F)
 where
     F: FnOnce(Arc<DieselStore>) -> R + Send + 'static,
-    R: IntoFuture<Item = ()> + Send + 'static,
-    R::Error: Send + Debug,
-    R::Future: Send,
+    R: std::future::Future<Output = ()> + Send + 'static,
 {
-    let store = STORE.clone();
+    run_test_sequentially(
+        || (),
+        |store, ()| async move {
+            // Reset store before running
+            remove_test_data(store.clone());
 
-    // Lock regardless of poisoning. This also forces sequential test execution.
-    let mut runtime = match STORE_RUNTIME.lock() {
-        Ok(guard) => guard,
-        Err(err) => err.into_inner(),
-    };
-
-    runtime
-        .block_on(
-            future::lazy(move || {
-                // Reset store before running
-                remove_test_data(store.clone());
-
-                // Run test
-                test(store.clone())
-            })
-            .compat(),
-        )
-        .expect("failed to run test with clean store");
+            // Run test
+            test(store.clone()).await
+        },
+    );
 }
 
 // Helper to create a sequence of linked blocks.
@@ -325,14 +313,14 @@ fn create_mock_ethereum_adapter(
 #[test]
 #[ignore] // Flaky on CI.
 fn indexing_starts_at_genesis() {
-    run_test(|store: Arc<DieselStore>| {
+    run_test(|store: Arc<DieselStore>| async move {
         // Create test chain
         let chain = create_chain(10, None);
         let chains = vec![chain.clone()];
 
         // Run network indexer and collect its events
-        run_network_indexer(store, None, chains, Duration::from_secs(1)).and_then(
-            move |(_, events)| {
+        run_network_indexer(store, None, chains, Duration::from_secs(1))
+            .and_then(move |(_, events)| {
                 events.and_then(move |events| {
                     // Assert that the events emitted by the indexer match all
                     // blocks _after_ block #2 (because the network subgraph already
@@ -343,8 +331,10 @@ fn indexing_starts_at_genesis() {
                     );
                     Ok(())
                 })
-            },
-        )
+            })
+            .compat()
+            .await
+            .unwrap();
     });
 }
 
@@ -355,7 +345,7 @@ fn indexing_starts_at_genesis() {
 #[test]
 #[ignore] // Flaky on CI.
 fn indexing_resumes_from_local_head() {
-    run_test(|store: Arc<DieselStore>| {
+    run_test(|store: Arc<DieselStore>| async move {
         // Create test chain
         let chain = create_chain(10, None);
         let chains = vec![chain.clone()];
@@ -379,6 +369,9 @@ fn indexing_resumes_from_local_head() {
                 Ok(())
             })
         })
+        .compat()
+        .await
+        .unwrap();
     });
 }
 
@@ -389,7 +382,7 @@ fn indexing_resumes_from_local_head() {
 #[test]
 #[ignore] // Flaky on CI.
 fn indexing_picks_up_new_remote_head() {
-    run_test(|store: Arc<DieselStore>| {
+    run_test(|store: Arc<DieselStore>| async move {
         // The first time we pull the remote head, there are 10 blocks
         let chain_10 = create_chain(10, None);
 
@@ -406,8 +399,8 @@ fn indexing_picks_up_new_remote_head() {
         let chains = vec![chain_10.clone(), chain_20.clone(), chain_50.clone()];
 
         // Run network indexer and collect its events
-        run_network_indexer(store, None, chains, Duration::from_secs(4)).and_then(
-            move |(chains, events)| {
+        run_network_indexer(store, None, chains, Duration::from_secs(4))
+            .and_then(move |(chains, events)| {
                 thread::spawn(move || {
                     // Create the first chain update after 1s
                     {
@@ -431,8 +424,10 @@ fn indexing_picks_up_new_remote_head() {
 
                     Ok(())
                 })
-            },
-        )
+            })
+            .compat()
+            .await
+            .unwrap();
     });
 }
 
@@ -443,7 +438,7 @@ fn indexing_picks_up_new_remote_head() {
 #[test]
 #[ignore] // Flaky on CI.
 fn indexing_does_not_move_past_a_gap() {
-    run_test(|store: Arc<DieselStore>| {
+    run_test(|store: Arc<DieselStore>| async move {
         // Create test chain
         let mut blocks = create_chain(10, None);
         // Remove block #6
@@ -451,8 +446,8 @@ fn indexing_does_not_move_past_a_gap() {
         let chains = vec![blocks.clone()];
 
         // Run network indexer and collect its events
-        run_network_indexer(store, None, chains, Duration::from_secs(1)).and_then(
-            move |(_, events)| {
+        run_network_indexer(store, None, chains, Duration::from_secs(1))
+            .and_then(move |(_, events)| {
                 events.and_then(move |events| {
                     // Assert that only blocks #0 - #4 were indexed and nothing more
                     assert_eq!(
@@ -462,8 +457,10 @@ fn indexing_does_not_move_past_a_gap() {
 
                     Ok(())
                 })
-            },
-        )
+            })
+            .compat()
+            .await
+            .unwrap();
     });
 }
 
@@ -477,7 +474,7 @@ fn indexing_does_not_move_past_a_gap() {
 #[test]
 #[ignore] // Flaky on CI.
 fn indexing_handles_single_block_reorg() {
-    run_test(|store: Arc<DieselStore>| {
+    run_test(|store: Arc<DieselStore>| async move {
         // Create the initial chain
         let initial_chain = create_chain(10, None);
 
@@ -486,8 +483,8 @@ fn indexing_handles_single_block_reorg() {
 
         // Run the network indexer and collect its events
         let chains = vec![initial_chain.clone(), forked_chain.clone()];
-        run_network_indexer(store, None, chains, Duration::from_secs(2)).and_then(
-            move |(chains, events)| {
+        run_network_indexer(store, None, chains, Duration::from_secs(2))
+            .and_then(move |(chains, events)| {
                 // Trigger the reorg after 1s
                 thread::spawn(move || {
                     thread::sleep(Duration::from_secs(1));
@@ -509,8 +506,10 @@ fn indexing_handles_single_block_reorg() {
 
                     Ok(())
                 })
-            },
-        )
+            })
+            .compat()
+            .await
+            .unwrap();
     });
 }
 
@@ -524,7 +523,7 @@ fn indexing_handles_single_block_reorg() {
 #[test]
 #[ignore] // Flaky on CI.
 fn indexing_handles_simple_reorg() {
-    run_test(|store: Arc<DieselStore>| {
+    run_test(|store: Arc<DieselStore>| async move {
         // Create the initial chain
         let initial_chain = create_chain(10, None);
 
@@ -533,8 +532,8 @@ fn indexing_handles_simple_reorg() {
 
         // Run the network indexer and collect its events
         let chains = vec![initial_chain.clone(), forked_chain.clone()];
-        run_network_indexer(store, None, chains, Duration::from_secs(2)).and_then(
-            move |(chains, events)| {
+        run_network_indexer(store, None, chains, Duration::from_secs(2))
+            .and_then(move |(chains, events)| {
                 // Trigger a reorg after 1s
                 thread::spawn(move || {
                     thread::sleep(Duration::from_secs(1));
@@ -560,8 +559,10 @@ fn indexing_handles_simple_reorg() {
 
                     Ok(())
                 })
-            },
-        )
+            })
+            .compat()
+            .await
+            .unwrap();
     });
 }
 
@@ -578,7 +579,7 @@ fn indexing_handles_simple_reorg() {
 #[test]
 #[ignore] // Flaky on CI.
 fn indexing_handles_consecutive_reorgs() {
-    run_test(|store: Arc<DieselStore>| {
+    run_test(|store: Arc<DieselStore>| async move {
         // Create the initial chain
         let initial_chain = create_chain(10, None);
 
@@ -594,8 +595,8 @@ fn indexing_handles_consecutive_reorgs() {
             second_chain.clone(),
             third_chain.clone(),
         ];
-        run_network_indexer(store, None, chains, Duration::from_secs(6)).and_then(
-            move |(chains, events)| {
+        run_network_indexer(store, None, chains, Duration::from_secs(6))
+            .and_then(move |(chains, events)| {
                 thread::spawn(move || {
                     // Trigger the first reorg after 2s
                     {
@@ -636,8 +637,10 @@ fn indexing_handles_consecutive_reorgs() {
 
                     Ok(())
                 })
-            },
-        )
+            })
+            .compat()
+            .await
+            .unwrap();
     });
 }
 
@@ -654,7 +657,7 @@ fn indexing_handles_consecutive_reorgs() {
 #[test]
 #[ignore] // Flaky on CI.
 fn indexing_handles_reorg_back_and_forth() {
-    run_test(|store: Arc<DieselStore>| {
+    run_test(|store: Arc<DieselStore>| async move {
         // Create the initial chain (blocks #0 - #4)
         let initial_chain = create_chain(5, None);
 
@@ -669,8 +672,8 @@ fn indexing_handles_reorg_back_and_forth() {
 
         // Run the network indexer and collect its events
         let chains = vec![initial_chain.clone(), fork1.clone(), fork2.clone()];
-        run_network_indexer(store, None, chains, Duration::from_secs(3)).and_then(
-            move |(chains, events)| {
+        run_network_indexer(store, None, chains, Duration::from_secs(3))
+            .and_then(move |(chains, events)| {
                 thread::spawn(move || {
                     // Trigger the first reorg after 1s
                     {
@@ -706,8 +709,10 @@ fn indexing_handles_reorg_back_and_forth() {
 
                     Ok(())
                 })
-            },
-        )
+            })
+            .compat()
+            .await
+            .unwrap();
     });
 }
 
@@ -735,7 +740,7 @@ fn indexing_handles_reorg_back_and_forth() {
 #[test]
 #[ignore] // Flaky on CI.
 fn indexing_identifies_common_ancestor_correctly_despite_ommers() {
-    run_test(|store: Arc<DieselStore>| {
+    run_test(|store: Arc<DieselStore>| async move {
         // Create the initial chain (#0 - #4)
         let initial_chain = create_chain(5, None);
 
@@ -757,8 +762,8 @@ fn indexing_identifies_common_ancestor_correctly_despite_ommers() {
 
         // Run the network indexer and collect its events
         let chains = vec![initial_chain.clone(), fork1.clone(), fork2.clone()];
-        run_network_indexer(store, None, chains, Duration::from_secs(3)).and_then(
-            move |(chains, events)| {
+        run_network_indexer(store, None, chains, Duration::from_secs(3))
+            .and_then(move |(chains, events)| {
                 thread::spawn(move || {
                     // Trigger the first reorg after 1s
                     {
@@ -794,7 +799,9 @@ fn indexing_identifies_common_ancestor_correctly_despite_ommers() {
 
                     Ok(())
                 })
-            },
-        )
+            })
+            .compat()
+            .await
+            .unwrap();
     });
 }
