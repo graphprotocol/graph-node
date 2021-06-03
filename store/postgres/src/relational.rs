@@ -56,6 +56,25 @@ const DELETE_OPERATION_CHUNK_SIZE: usize = 1_000;
 pub const STRING_PREFIX_SIZE: usize = 256;
 
 lazy_static! {
+    /// Deprecated; use 'graphman stats account-like' instead. A list of
+    /// fully qualified table names that contain entities that are like
+    /// accounts in that they have a relatively small number of entities,
+    /// with a large number of change for each entity. It is useful to treat
+    /// such tables special in queries by changing the clause that selects
+    /// for a specific block range in a way that makes the BRIN index on
+    /// block_range usable
+    ///
+    /// Example: GRAPH_ACCOUNT_TABLES=sgd21902.pair,sgd1708.things
+    static ref ACCOUNT_TABLES: HashSet<String> = {
+            // Transform the entries in the form `schema.table` into
+            // `"schema"."table"` so that we can compare to a table's
+            // qualified name
+            env::var("GRAPH_ACCOUNT_TABLES")
+                .ok()
+                .map(|v| v.split(",").map(|s| format!("\"{}\"", s.replace(".", "\".\""))).collect())
+                .unwrap_or(HashSet::new())
+    };
+
     /// `GRAPH_SQL_STATEMENT_TIMEOUT` is the timeout for queries in seconds.
     /// If it is not set, no statement timeout will be enforced. The statement
     /// timeout is local, i.e., can only be used within a transaction and
@@ -785,10 +804,17 @@ impl Layout {
     /// If no update is needed, just return `self`.
     pub fn refresh(self: Arc<Self>, conn: &PgConnection) -> Result<Arc<Self>, StoreError> {
         let account_like = crate::catalog::account_like(conn, &self.site)?;
+        let is_account_like = {
+            |table: &Table| {
+                ACCOUNT_TABLES.contains(table.qualified_name.as_str())
+                    || account_like.contains(table.name.as_str())
+            }
+        };
+
         let changed_tables: Vec<_> = self
             .tables
             .values()
-            .filter(|table| table.is_account_like != account_like.contains(table.name.as_str()))
+            .filter(|table| table.is_account_like != is_account_like(table.as_ref()))
             .collect();
         if changed_tables.is_empty() {
             return Ok(self);
@@ -796,7 +822,7 @@ impl Layout {
         let mut layout = (*self).clone();
         for table in changed_tables.into_iter() {
             let mut table = (*table.as_ref()).clone();
-            table.is_account_like = account_like.contains(table.name.as_str());
+            table.is_account_like = is_account_like(&table);
             layout.tables.insert(table.object.clone(), Arc::new(table));
         }
         Ok(Arc::new(layout))
@@ -1138,11 +1164,13 @@ impl Table {
             .map(|field| Column::new(&table_name, field, catalog, enums, id_types))
             .chain(fulltexts.iter().map(|def| Column::new_fulltext(def)))
             .collect::<Result<Vec<Column>, StoreError>>()?;
+        let qualified_name = SqlName::qualified_name(&catalog.site.namespace, &table_name);
+        let is_account_like = ACCOUNT_TABLES.contains(qualified_name.as_str());
         let table = Table {
             object: EntityType::from(defn),
             name: table_name.clone(),
-            qualified_name: SqlName::qualified_name(&catalog.site.namespace, &table_name),
-            is_account_like: false,
+            qualified_name,
+            is_account_like,
             columns,
             position,
         };
