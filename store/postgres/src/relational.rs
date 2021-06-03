@@ -1403,7 +1403,7 @@ impl LayoutCache {
             catalog,
             has_poi,
         )?);
-        Ok(layout)
+        layout.refresh(conn)
     }
 
     fn cache(&self, layout: Arc<Layout>) {
