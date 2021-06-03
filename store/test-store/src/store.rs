@@ -19,7 +19,7 @@ use graph_node::store_builder::StoreBuilder;
 use graph_store_postgres::layout_for_tests::FAKE_NETWORK_SHARED;
 use graph_store_postgres::{connection_pool::ConnectionPool, Shard, SubscriptionManager};
 use graph_store_postgres::{
-    BlockStore as DieselBlcokStore, DeploymentPlacer, Store, SubgraphStore as DieselSubgraphStore,
+    BlockStore as DieselBlcokStore, DeploymentPlacer, SubgraphStore as DieselSubgraphStore,
 };
 use hex_literal::hex;
 use lazy_static::lazy_static;
@@ -31,6 +31,8 @@ use web3::types::H256;
 
 pub const NETWORK_NAME: &str = "fake_network";
 pub const NETWORK_VERSION: &str = "graph test suite";
+
+pub use graph_store_postgres::Store;
 
 const CONN_POOL_SIZE: u32 = 20;
 
@@ -97,10 +99,9 @@ lazy_static! {
 /// into `test`. All tests using `run_test_sequentially` are run in sequence,
 /// never in parallel. The `test` is passed a `Store`, but it is permissible
 /// for tests to access the global `STORE` from this module, too.
-pub fn run_test_sequentially<R, S, F, G>(setup: G, test: F)
+pub fn run_test_sequentially<R, F>(test: F)
 where
-    G: FnOnce() -> S + Send + 'static,
-    F: FnOnce(Arc<Store>, S) -> R + Send + 'static,
+    F: FnOnce(Arc<Store>) -> R + Send + 'static,
     R: std::future::Future<Output = ()> + Send + 'static,
 {
     // Lock regardless of poisoning. This also forces sequential test execution.
@@ -110,9 +111,8 @@ where
     };
 
     STORE_RUNTIME.handle().block_on(async {
-        let state = setup();
         let store = STORE.clone();
-        test(store, state).await
+        test(store).await
     })
 }
 

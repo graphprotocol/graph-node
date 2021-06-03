@@ -55,7 +55,8 @@ fn reassign_subgraph() {
             .map(|node| node.to_string())
     }
 
-    run_test_sequentially(setup, |store, id| async move {
+    run_test_sequentially(|store| async move {
+        let id = setup();
         let store = store.subgraph_store();
 
         // Check our setup
@@ -162,7 +163,8 @@ fn create_subgraph() {
     }
 
     // Test VersionSwitchingMode::Instant
-    run_test_sequentially(remove_subgraphs, |store, _| async move {
+    run_test_sequentially(|store| async move {
+        remove_subgraphs();
         let store = store.subgraph_store();
 
         const MODE: SubgraphVersionSwitchingMode = SubgraphVersionSwitchingMode::Instant;
@@ -213,7 +215,8 @@ fn create_subgraph() {
     });
 
     // Test VersionSwitchingMode::Synced
-    run_test_sequentially(remove_subgraphs, |store, _| async move {
+    run_test_sequentially(|store| async move {
+        remove_subgraphs();
         let store = store.subgraph_store();
 
         const MODE: SubgraphVersionSwitchingMode = SubgraphVersionSwitchingMode::Synced;
@@ -305,9 +308,10 @@ fn status() {
         deployment
     }
 
-    run_test_sequentially(setup, |store, deployment| async move {
+    run_test_sequentially(|store| async move {
         use graph::data::subgraph::status;
 
+        let deployment = setup();
         let infos = store
             .status(status::Filter::Deployments(vec![
                 deployment.hash.to_string(),
@@ -411,7 +415,8 @@ fn version_info() {
         create_test_subgraph(&id, SUBGRAPH_GQL)
     }
 
-    run_test_sequentially(setup, |store, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup();
         transact_entity_operations(
             &store.subgraph_store(),
             &deployment,
@@ -446,56 +451,53 @@ fn version_info() {
 
 #[test]
 fn subgraph_error() {
-    test_store::run_test_sequentially(
-        || (),
-        |store, _| async move {
-            let subgraph_id = DeploymentHash::new("testSubgraph").unwrap();
-            let deployment = test_store::create_test_subgraph(&subgraph_id, "type Foo { id: ID! }");
+    test_store::run_test_sequentially(|store| async move {
+        let subgraph_id = DeploymentHash::new("testSubgraph").unwrap();
+        let deployment = test_store::create_test_subgraph(&subgraph_id, "type Foo { id: ID! }");
 
-            let count = || -> usize {
-                let store = store.subgraph_store();
-                store.error_count(&subgraph_id).unwrap()
-            };
+        let count = || -> usize {
+            let store = store.subgraph_store();
+            store.error_count(&subgraph_id).unwrap()
+        };
 
-            let error = SubgraphError {
-                subgraph_id: subgraph_id.clone(),
-                message: "test".to_string(),
-                block_ptr: None,
-                handler: None,
-                deterministic: false,
-            };
+        let error = SubgraphError {
+            subgraph_id: subgraph_id.clone(),
+            message: "test".to_string(),
+            block_ptr: None,
+            handler: None,
+            deterministic: false,
+        };
 
-            assert!(count() == 0);
+        assert!(count() == 0);
 
-            transact_errors(&store, &deployment, BLOCKS[1].clone(), vec![error]).unwrap();
-            assert!(count() == 1);
+        transact_errors(&store, &deployment, BLOCKS[1].clone(), vec![error]).unwrap();
+        assert!(count() == 1);
 
-            let error = SubgraphError {
-                subgraph_id: subgraph_id.clone(),
-                message: "test".to_string(),
-                block_ptr: None,
-                handler: None,
-                deterministic: false,
-            };
+        let error = SubgraphError {
+            subgraph_id: subgraph_id.clone(),
+            message: "test".to_string(),
+            block_ptr: None,
+            handler: None,
+            deterministic: false,
+        };
 
-            // Inserting the same error is allowed but ignored.
-            transact_errors(&store, &deployment, BLOCKS[2].clone(), vec![error]).unwrap();
-            assert!(count() == 1);
+        // Inserting the same error is allowed but ignored.
+        transact_errors(&store, &deployment, BLOCKS[2].clone(), vec![error]).unwrap();
+        assert!(count() == 1);
 
-            let error2 = SubgraphError {
-                subgraph_id: subgraph_id.clone(),
-                message: "test2".to_string(),
-                block_ptr: None,
-                handler: None,
-                deterministic: false,
-            };
+        let error2 = SubgraphError {
+            subgraph_id: subgraph_id.clone(),
+            message: "test2".to_string(),
+            block_ptr: None,
+            handler: None,
+            deterministic: false,
+        };
 
-            transact_errors(&store, &deployment, BLOCKS[3].clone(), vec![error2]).unwrap();
-            assert!(count() == 2);
+        transact_errors(&store, &deployment, BLOCKS[3].clone(), vec![error2]).unwrap();
+        assert!(count() == 2);
 
-            test_store::remove_subgraph(&subgraph_id);
-        },
-    )
+        test_store::remove_subgraph(&subgraph_id);
+    })
 }
 
 #[test]
@@ -506,7 +508,8 @@ fn fatal_vs_non_fatal() {
         create_test_subgraph(&id, SUBGRAPH_GQL)
     }
 
-    run_test_sequentially(setup, |store, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup();
         let query_store = store
             .query_store(deployment.hash.clone().into(), false)
             .await
@@ -544,7 +547,8 @@ fn fail_unfail() {
         create_test_subgraph(&id, SUBGRAPH_GQL)
     }
 
-    run_test_sequentially(setup, |store, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup();
         let query_store = store
             .query_store(deployment.hash.cheap_clone().into(), false)
             .await

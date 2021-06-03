@@ -27,20 +27,17 @@ fn run_test<F>(chain: Chain, test: F)
 where
     F: Fn(Arc<DieselChainStore>, Arc<DieselStore>) -> Result<(), Error> + Send + 'static,
 {
-    run_test_sequentially(
-        || (),
-        |store, ()| async move {
-            for name in vec![NETWORK_NAME, FAKE_NETWORK_SHARED] {
-                block_store::set_chain(chain.clone(), name);
+    run_test_sequentially(|store| async move {
+        for name in vec![NETWORK_NAME, FAKE_NETWORK_SHARED] {
+            block_store::set_chain(chain.clone(), name);
 
-                let chain_store = store.block_store().chain_store(name).expect("chain store");
+            let chain_store = store.block_store().chain_store(name).expect("chain store");
 
-                // Run test
-                test(chain_store.cheap_clone(), store.cheap_clone())
-                    .expect(&format!("test finishes successfully on network {}", name));
-            }
-        },
-    );
+            // Run test
+            test(chain_store.cheap_clone(), store.cheap_clone())
+                .expect(&format!("test finishes successfully on network {}", name));
+        }
+    });
 }
 
 fn run_test_async<R, F>(chain: Chain, test: F)
@@ -48,19 +45,16 @@ where
     F: Fn(Arc<DieselChainStore>, Arc<DieselStore>) -> R + Send + Sync + 'static,
     R: Future<Output = ()> + Send + 'static,
 {
-    run_test_sequentially(
-        || (),
-        |store, ()| async move {
-            for name in vec![NETWORK_NAME, FAKE_NETWORK_SHARED] {
-                block_store::set_chain(chain.clone(), name);
+    run_test_sequentially(|store| async move {
+        for name in vec![NETWORK_NAME, FAKE_NETWORK_SHARED] {
+            block_store::set_chain(chain.clone(), name);
 
-                let chain_store = store.block_store().chain_store(name).expect("chain store");
+            let chain_store = store.block_store().chain_store(name).expect("chain store");
 
-                // Run test
-                test(chain_store.cheap_clone(), store.clone()).await;
-            }
-        },
-    );
+            // Run test
+            test(chain_store.cheap_clone(), store.clone()).await;
+        }
+    });
 }
 
 /// Check that `attempt_chain_head_update` works as expected on the given

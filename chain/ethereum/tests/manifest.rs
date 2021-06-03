@@ -136,56 +136,53 @@ graft:
 specVersion: 0.0.2
 ";
 
-    test_store::run_test_sequentially(
-        || (),
-        |store, ()| async move {
-            let store = store.subgraph_store();
+    test_store::run_test_sequentially(|store| async move {
+        let store = store.subgraph_store();
 
-            let unvalidated = resolve_unvalidated(YAML).await;
-            let subgraph = DeploymentHash::new("Qmbase").unwrap();
+        let unvalidated = resolve_unvalidated(YAML).await;
+        let subgraph = DeploymentHash::new("Qmbase").unwrap();
 
-            //
-            // Validation against subgraph that hasn't synced anything fails
-            //
-            let deployment = test_store::create_test_subgraph(&subgraph, GQL_SCHEMA);
-            // This check is awkward since the test manifest has other problems
-            // that the validation complains about as setting up a valid manifest
-            // would be a bit more work; we just want to make sure that
-            // graft-related checks work
-            let msg = unvalidated
-                .validate(store.clone())
-                .expect_err("Validation must fail")
-                .into_iter()
-                .find(|e| matches!(e, SubgraphManifestValidationError::GraftBaseInvalid(_)))
-                .expect("There must be a GraftBaseInvalid error")
-                .to_string();
-            assert_eq!(
-                "the graft base is invalid: failed to graft onto `Qmbase` since \
+        //
+        // Validation against subgraph that hasn't synced anything fails
+        //
+        let deployment = test_store::create_test_subgraph(&subgraph, GQL_SCHEMA);
+        // This check is awkward since the test manifest has other problems
+        // that the validation complains about as setting up a valid manifest
+        // would be a bit more work; we just want to make sure that
+        // graft-related checks work
+        let msg = unvalidated
+            .validate(store.clone())
+            .expect_err("Validation must fail")
+            .into_iter()
+            .find(|e| matches!(e, SubgraphManifestValidationError::GraftBaseInvalid(_)))
+            .expect("There must be a GraftBaseInvalid error")
+            .to_string();
+        assert_eq!(
+            "the graft base is invalid: failed to graft onto `Qmbase` since \
             it has not processed any blocks",
-                msg
-            );
+            msg
+        );
 
-            let mut thing = Entity::new();
-            thing.set("id", "datthing");
-            test_store::insert_entities(&deployment, vec![(EntityType::from("Thing"), thing)])
-                .expect("Can insert a thing");
+        let mut thing = Entity::new();
+        thing.set("id", "datthing");
+        test_store::insert_entities(&deployment, vec![(EntityType::from("Thing"), thing)])
+            .expect("Can insert a thing");
 
-            // Validation against subgraph that has not reached the graft point fails
-            let unvalidated = resolve_unvalidated(YAML).await;
-            let msg = unvalidated
-                .validate(store)
-                .expect_err("Validation must fail")
-                .into_iter()
-                .find(|e| matches!(e, SubgraphManifestValidationError::GraftBaseInvalid(_)))
-                .expect("There must be a GraftBaseInvalid error")
-                .to_string();
-            assert_eq!(
-                "the graft base is invalid: failed to graft onto `Qmbase` \
+        // Validation against subgraph that has not reached the graft point fails
+        let unvalidated = resolve_unvalidated(YAML).await;
+        let msg = unvalidated
+            .validate(store)
+            .expect_err("Validation must fail")
+            .into_iter()
+            .find(|e| matches!(e, SubgraphManifestValidationError::GraftBaseInvalid(_)))
+            .expect("There must be a GraftBaseInvalid error")
+            .to_string();
+        assert_eq!(
+            "the graft base is invalid: failed to graft onto `Qmbase` \
             at block 1 since it has only processed block 0",
-                msg
-            );
-        },
-    )
+            msg
+        );
+    })
 }
 
 #[tokio::test]

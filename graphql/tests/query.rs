@@ -31,17 +31,21 @@ use graph::{
 use graph_graphql::{prelude::*, subscription::execute_subscription};
 use test_store::{
     deployment_state, execute_subgraph_query_with_complexity, execute_subgraph_query_with_deadline,
-    revert_block, run_test_sequentially, transact_entity_operations, transact_errors, BLOCK_ONE,
-    GENESIS_PTR, LOAD_MANAGER, LOGGER, STORE, SUBSCRIPTION_MANAGER,
+    revert_block, run_test_sequentially, transact_entity_operations, transact_errors, Store,
+    BLOCK_ONE, GENESIS_PTR, LOAD_MANAGER, LOGGER, STORE, SUBSCRIPTION_MANAGER,
 };
 
 const NETWORK_NAME: &str = "fake_network";
 
-fn setup() -> DeploymentLocator {
-    setup_with_features("graphqlTestsQuery", BTreeSet::new())
+fn setup(store: &Store) -> DeploymentLocator {
+    setup_with_features(store, "graphqlTestsQuery", BTreeSet::new())
 }
 
-fn setup_with_features(id: &str, features: BTreeSet<SubgraphFeature>) -> DeploymentLocator {
+fn setup_with_features(
+    store: &Store,
+    id: &str,
+    features: BTreeSet<SubgraphFeature>,
+) -> DeploymentLocator {
     use test_store::block_store::{self, BLOCK_ONE, BLOCK_TWO, GENESIS_BLOCK};
 
     let id = DeploymentHash::new(id).unwrap();
@@ -64,7 +68,7 @@ fn setup_with_features(id: &str, features: BTreeSet<SubgraphFeature>) -> Deploym
         chain: PhantomData,
     };
 
-    insert_test_entities(STORE.subgraph_store().as_ref(), manifest)
+    insert_test_entities(store.subgraph_store().as_ref(), manifest)
 }
 
 fn test_schema(id: DeploymentHash) -> Schema {
@@ -309,7 +313,8 @@ macro_rules! extract_data {
 
 #[test]
 fn can_query_one_to_one_relationship() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let result = execute_query_document(
             &deployment.hash,
             graphql_parser::parse_query(
@@ -413,7 +418,8 @@ fn can_query_one_to_one_relationship() {
 
 #[test]
 fn can_query_one_to_many_relationships_in_both_directions() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let result = execute_query_document(
             &deployment.hash,
             graphql_parser::parse_query(
@@ -511,7 +517,8 @@ fn can_query_one_to_many_relationships_in_both_directions() {
 
 #[test]
 fn can_query_many_to_many_relationship() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let result = execute_query_document(
             &deployment.hash,
             graphql_parser::parse_query(
@@ -592,7 +599,8 @@ fn can_query_many_to_many_relationship() {
 
 #[test]
 fn query_variables_are_used() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let query = graphql_parser::parse_query(
             "
         query musicians($where: Musician_filter!) {
@@ -633,7 +641,8 @@ fn query_variables_are_used() {
 
 #[test]
 fn skip_directive_works_with_query_variables() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let query = graphql_parser::parse_query(
             "
         query musicians($skip: Boolean!) {
@@ -711,7 +720,8 @@ fn skip_directive_works_with_query_variables() {
 
 #[test]
 fn include_directive_works_with_query_variables() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let query = graphql_parser::parse_query(
             "
         query musicians($include: Boolean!) {
@@ -789,7 +799,8 @@ fn include_directive_works_with_query_variables() {
 
 #[test]
 fn query_complexity() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let query = Query::new(
             graphql_parser::parse_query(
                 "query {
@@ -856,7 +867,8 @@ fn query_complexity() {
 
 #[test]
 fn query_complexity_subscriptions() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let logger = Logger::root(slog::Discard, o!());
         let store = STORE
             .clone()
@@ -957,7 +969,8 @@ fn query_complexity_subscriptions() {
 
 #[test]
 fn instant_timeout() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let query = Query::new(
             graphql_parser::parse_query("query { musicians(first: 100) { name } }")
                 .unwrap()
@@ -984,7 +997,8 @@ fn instant_timeout() {
 
 #[test]
 fn variable_defaults() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let query = graphql_parser::parse_query(
             "
         query musicians($orderDir: OrderDirection = desc) {
@@ -1041,7 +1055,8 @@ fn variable_defaults() {
 
 #[test]
 fn skip_is_nullable() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let query = graphql_parser::parse_query(
             "
         query musicians {
@@ -1073,7 +1088,8 @@ fn skip_is_nullable() {
 
 #[test]
 fn first_is_nullable() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let query = graphql_parser::parse_query(
             "
         query musicians {
@@ -1105,7 +1121,8 @@ fn first_is_nullable() {
 
 #[test]
 fn nested_variable() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let query = graphql_parser::parse_query(
             "
         query musicians($name: String) {
@@ -1142,7 +1159,8 @@ fn nested_variable() {
 
 #[test]
 fn ambiguous_derived_from_result() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let query = graphql_parser::parse_query(
             "
         {
@@ -1185,7 +1203,8 @@ fn ambiguous_derived_from_result() {
 
 #[test]
 fn can_filter_by_relationship_fields() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let result = execute_query_document(
             &deployment.hash,
             graphql_parser::parse_query(
@@ -1243,7 +1262,8 @@ fn can_filter_by_relationship_fields() {
 
 #[test]
 fn cannot_filter_by_derved_relationship_fields() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let result = execute_query_document(
             &deployment.hash,
             graphql_parser::parse_query(
@@ -1279,7 +1299,8 @@ fn cannot_filter_by_derved_relationship_fields() {
 
 #[test]
 fn subscription_gets_result_even_without_events() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let logger = Logger::root(slog::Discard, o!());
         let store = STORE
             .clone()
@@ -1342,7 +1363,8 @@ fn subscription_gets_result_even_without_events() {
 
 #[test]
 fn can_use_nested_filter() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let result = execute_query_document(
             &deployment.hash,
             graphql_parser::parse_query(
@@ -1455,7 +1477,7 @@ async fn check_musicians_at(
 
 #[test]
 fn query_at_block() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
         use test_store::block_store::{
             FakeBlock, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK,
         };
@@ -1478,6 +1500,7 @@ fn query_at_block() {
          up to block number 1 and data for block number 7000 is therefore not yet available";
         const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 
+        let deployment = setup(store.as_ref());
         musicians_at(&deployment, "number: 7000", Err(BLOCK_NOT_INDEXED), "n7000").await;
         musicians_at(&deployment, "number: 0", Ok(vec!["m1", "m2"]), "n0").await;
         musicians_at(
@@ -1521,7 +1544,7 @@ fn query_at_block() {
 
 #[test]
 fn query_at_block_with_vars() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
         use test_store::block_store::{
             FakeBlock, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK,
         };
@@ -1564,6 +1587,7 @@ fn query_at_block_with_vars() {
          up to block number 1 and data for block number 7000 is therefore not yet available";
         const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 
+        let deployment = setup(store.as_ref());
         musicians_at_nr(&deployment, 7000, Err(BLOCK_NOT_INDEXED), "n7000").await;
         musicians_at_nr(&deployment, 0, Ok(vec!["m1", "m2"]), "n0").await;
         musicians_at_nr(&deployment, 1, Ok(vec!["m1", "m2", "m3", "m4"]), "n1").await;
@@ -1589,7 +1613,8 @@ fn query_at_block_with_vars() {
 
 #[test]
 fn query_detects_reorg() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
         let query = "query { musician(id: \"m1\") { id } }";
         let query = graphql_parser::parse_query(query)
             .expect("invalid test query")
@@ -1647,13 +1672,14 @@ fn query_detects_reorg() {
 
 #[test]
 fn can_query_meta() {
-    run_test_sequentially(setup, |_, deployment| async move {
+    run_test_sequentially(|store| async move {
         // metadata for the latest block (block 1)
         let query = "query { _meta { deployment block { hash number __typename } __typename } }";
         let query = graphql_parser::parse_query(query)
             .expect("invalid test query")
             .into_static();
 
+        let deployment = setup(store.as_ref());
         let result = execute_query_document(&deployment.hash, query).await;
         let exp = object! {
             _meta: object! {
@@ -1721,95 +1747,93 @@ fn non_fatal_errors() {
     use serde_json::json;
     use test_store::block_store::BLOCK_TWO;
 
-    run_test_sequentially(
-        || {
-            setup_with_features(
-                "testNonFatalErrors",
-                BTreeSet::from_iter(Some(SubgraphFeature::nonFatalErrors)),
-            )
-        },
-        |_, deployment| async move {
-            let err = SubgraphError {
-                subgraph_id: deployment.hash.clone(),
-                message: "cow template handler could not moo event transaction".to_string(),
-                block_ptr: Some(BLOCK_TWO.block_ptr()),
-                handler: Some("handleMoo".to_string()),
-                deterministic: true,
-            };
+    run_test_sequentially(|store| async move {
+        let deployment = setup_with_features(
+            store.as_ref(),
+            "testNonFatalErrors",
+            BTreeSet::from_iter(Some(SubgraphFeature::nonFatalErrors)),
+        );
 
-            transact_errors(&*STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err]).unwrap();
+        let err = SubgraphError {
+            subgraph_id: deployment.hash.clone(),
+            message: "cow template handler could not moo event transaction".to_string(),
+            block_ptr: Some(BLOCK_TWO.block_ptr()),
+            handler: Some("handleMoo".to_string()),
+            deterministic: true,
+        };
 
-            // `subgraphError` is implicitly `deny`, data is omitted.
-            let query = "query { musician(id: \"m1\") { id } }";
-            let query = graphql_parser::parse_query(query).unwrap().into_static();
-            let result = execute_query_document(&deployment.hash, query).await;
-            let expected = json!({
-                "errors": [
-                    {
-                        "message": "indexing_error"
-                    }
-                ]
-            });
-            assert_eq!(expected, serde_json::to_value(&result).unwrap());
+        transact_errors(&*STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err]).unwrap();
 
-            // Same result for explicit `deny`.
-            let query = "query { musician(id: \"m1\", subgraphError: deny) { id } }";
-            let query = graphql_parser::parse_query(query).unwrap().into_static();
-            let result = execute_query_document(&deployment.hash, query).await;
-            assert_eq!(expected, serde_json::to_value(&result).unwrap());
-
-            // But `_meta` is still returned.
-            let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";
-            let query = graphql_parser::parse_query(query).unwrap().into_static();
-            let result = execute_query_document(&deployment.hash, query).await;
-            let expected = json!({
-                "data": {
-                    "_meta": {
-                        "hasIndexingErrors": true
-                    }
-                },
-                "errors": [
-                    {
-                        "message": "indexing_error"
-                    }
-                ]
-            });
-            assert_eq!(expected, serde_json::to_value(&result).unwrap());
-
-            // With `allow`, the error remains but the data is included.
-            let query = "query { musician(id: \"m1\", subgraphError: allow) { id } }";
-            let query = graphql_parser::parse_query(query).unwrap().into_static();
-            let result = execute_query_document(&deployment.hash, query).await;
-            let expected = json!({
-                "data": {
-                    "musician": {
-                        "id": "m1"
-                    }
-                },
-                "errors": [
-                    {
-                        "message": "indexing_error"
-                    }
-                ]
-            });
-            assert_eq!(expected, serde_json::to_value(&result).unwrap());
-
-            // Test error reverts.
-            revert_block(&*STORE, &deployment, &*BLOCK_ONE);
-            let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";
-            let query = graphql_parser::parse_query(query).unwrap().into_static();
-            let result = execute_query_document(&deployment.hash, query).await;
-            let expected = json!({
-                "data": {
-                    "musician": {
-                        "id": "m1"
-                    },
-                    "_meta": {
-                        "hasIndexingErrors": false
-                    }
+        // `subgraphError` is implicitly `deny`, data is omitted.
+        let query = "query { musician(id: \"m1\") { id } }";
+        let query = graphql_parser::parse_query(query).unwrap().into_static();
+        let result = execute_query_document(&deployment.hash, query).await;
+        let expected = json!({
+            "errors": [
+                {
+                    "message": "indexing_error"
                 }
-            });
-            assert_eq!(expected, serde_json::to_value(&result).unwrap());
-        },
-    )
+            ]
+        });
+        assert_eq!(expected, serde_json::to_value(&result).unwrap());
+
+        // Same result for explicit `deny`.
+        let query = "query { musician(id: \"m1\", subgraphError: deny) { id } }";
+        let query = graphql_parser::parse_query(query).unwrap().into_static();
+        let result = execute_query_document(&deployment.hash, query).await;
+        assert_eq!(expected, serde_json::to_value(&result).unwrap());
+
+        // But `_meta` is still returned.
+        let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";
+        let query = graphql_parser::parse_query(query).unwrap().into_static();
+        let result = execute_query_document(&deployment.hash, query).await;
+        let expected = json!({
+            "data": {
+                "_meta": {
+                    "hasIndexingErrors": true
+                }
+            },
+            "errors": [
+                {
+                    "message": "indexing_error"
+                }
+            ]
+        });
+        assert_eq!(expected, serde_json::to_value(&result).unwrap());
+
+        // With `allow`, the error remains but the data is included.
+        let query = "query { musician(id: \"m1\", subgraphError: allow) { id } }";
+        let query = graphql_parser::parse_query(query).unwrap().into_static();
+        let result = execute_query_document(&deployment.hash, query).await;
+        let expected = json!({
+            "data": {
+                "musician": {
+                    "id": "m1"
+                }
+            },
+            "errors": [
+                {
+                    "message": "indexing_error"
+                }
+            ]
+        });
+        assert_eq!(expected, serde_json::to_value(&result).unwrap());
+
+        // Test error reverts.
+        revert_block(&*STORE, &deployment, &*BLOCK_ONE);
+        let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";
+        let query = graphql_parser::parse_query(query).unwrap().into_static();
+        let result = execute_query_document(&deployment.hash, query).await;
+        let expected = json!({
+            "data": {
+                "musician": {
+                    "id": "m1"
+                },
+                "_meta": {
+                    "hasIndexingErrors": false
+                }
+            }
+        });
+        assert_eq!(expected, serde_json::to_value(&result).unwrap());
+    })
 }

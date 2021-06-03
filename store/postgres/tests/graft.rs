@@ -88,21 +88,18 @@ where
     F: FnOnce(Arc<DieselSubgraphStore>, DeploymentLocator) -> R + Send + 'static,
     R: std::future::Future<Output = Result<(), StoreError>> + Send + 'static,
 {
-    run_test_sequentially(
-        || (),
-        |store, ()| async move {
-            let store = store.subgraph_store();
+    run_test_sequentially(|store| async move {
+        let store = store.subgraph_store();
 
-            // Reset state before starting
-            remove_test_data(store.clone());
+        // Reset state before starting
+        remove_test_data(store.clone());
 
-            // Seed database with test data
-            let deployment = insert_test_data(store.clone());
+        // Seed database with test data
+        let deployment = insert_test_data(store.clone());
 
-            // Run test
-            test(store, deployment).await.expect("graft test succeeds");
-        },
-    )
+        // Run test
+        test(store, deployment).await.expect("graft test succeeds");
+    })
 }
 
 /// Inserts test data into the store.

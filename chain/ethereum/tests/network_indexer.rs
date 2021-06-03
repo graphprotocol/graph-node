@@ -93,16 +93,13 @@ where
     F: FnOnce(Arc<DieselStore>) -> R + Send + 'static,
     R: std::future::Future<Output = ()> + Send + 'static,
 {
-    run_test_sequentially(
-        || (),
-        |store, ()| async move {
-            // Reset store before running
-            remove_test_data(store.clone());
+    run_test_sequentially(|store| async move {
+        // Reset store before running
+        remove_test_data(store.clone());
 
-            // Run test
-            test(store.clone()).await
-        },
-    );
+        // Run test
+        test(store.clone()).await
+    });
 }
 
 // Helper to create a sequence of linked blocks.

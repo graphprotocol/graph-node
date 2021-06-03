@@ -126,24 +126,21 @@ where
     F: FnOnce(Arc<DieselStore>, Arc<dyn WritableStore>, DeploymentLocator) -> R + Send + 'static,
     R: std::future::Future<Output = ()> + Send + 'static,
 {
-    run_test_sequentially(
-        || (),
-        |store, ()| async move {
-            let subgraph_store = store.subgraph_store();
-            // Reset state before starting
-            remove_test_data(subgraph_store.clone());
+    run_test_sequentially(|store| async move {
+        let subgraph_store = store.subgraph_store();
+        // Reset state before starting
+        remove_test_data(subgraph_store.clone());
 
-            // Seed database with test data
-            let deployment = insert_test_data(subgraph_store.clone());
-            let writable = store
-                .subgraph_store()
-                .writable(&deployment)
-                .expect("we can get a writable store");
+        // Seed database with test data
+        let deployment = insert_test_data(subgraph_store.clone());
+        let writable = store
+            .subgraph_store()
+            .writable(&deployment)
+            .expect("we can get a writable store");
 
-            // Run test
-            test(store, writable, deployment).await
-        },
-    );
+        // Run test
+        test(store, writable, deployment).await
+    });
 }
 
 /// Inserts test data into the store.
