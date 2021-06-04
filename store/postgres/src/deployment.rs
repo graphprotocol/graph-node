@@ -452,25 +452,31 @@ pub(crate) fn has_non_fatal_errors(
     use subgraph_deployment as d;
     use subgraph_error as e;
 
-    let block = match block {
-        Some(block) => d::table.select(sql(&block.to_string())).into_boxed(),
-        None => d::table
-            .filter(d::deployment.eq(id.as_str()))
-            .select(d::latest_ethereum_block_number)
-            .into_boxed(),
-    };
-
-    select(diesel::dsl::exists(
-        e::table
-            .filter(e::subgraph_id.eq(id.as_str()))
-            .filter(e::deterministic)
-            .filter(
-                sql("block_range @> ")
-                    .bind(block.single_value())
-                    .sql("::int"),
-            ),
-    ))
-    .get_result(conn)
+    match block {
+        Some(block) => select(diesel::dsl::exists(
+            e::table
+                .filter(e::subgraph_id.eq(id.as_str()))
+                .filter(e::deterministic)
+                .filter(sql("block_range @> ").bind::<Integer, _>(block)),
+        ))
+        .get_result(conn),
+        None => select(diesel::dsl::exists(
+            e::table
+                .filter(e::subgraph_id.eq(id.as_str()))
+                .filter(e::deterministic)
+                .filter(
+                    sql("block_range @> ")
+                        .bind(
+                            d::table
+                                .filter(d::deployment.eq(id.as_str()))
+                                .select(d::latest_ethereum_block_number)
+                                .single_value(),
+                        )
+                        .sql("::int"),
+                ),
+        ))
+        .get_result(conn),
+    }
     .map_err(|e| e.into())
 }
 
