@@ -987,6 +987,9 @@ mod data {
                         .on_conflict(meta::contract_address)
                         .do_update()
                         .set(accessed_at)
+                        // TODO: Add a where clause similar to the Private
+                        // branch to avoid unnecessary updates (not entirely
+                        // trivial with diesel)
                         .execute(conn)
                 }
                 Storage::Private(Schema {
@@ -1009,7 +1012,9 @@ mod data {
                     let query = format!(
                         "insert into {}(contract_address, accessed_at) \
                          values ($1, CURRENT_DATE) \
-                         on conflict(contract_address) do update set accessed_at = CURRENT_DATE",
+                         on conflict(contract_address)
+                         do update set accessed_at = CURRENT_DATE \
+                                 where excluded.accessed_at < CURRENT_DATE",
                         call_meta.qname
                     );
                     sql_query(query)
