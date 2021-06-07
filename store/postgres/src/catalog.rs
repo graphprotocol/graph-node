@@ -1,7 +1,9 @@
 use diesel::{connection::SimpleConnection, prelude::RunQueryDsl, select};
+use diesel::{insert_into, OptionalExtension};
 use diesel::{pg::PgConnection, sql_query};
 use diesel::{sql_types::Text, ExpressionMethods, QueryDsl};
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use graph::{data::subgraph::schema::POI_TABLE, prelude::StoreError};
 
@@ -28,28 +30,34 @@ table! {
     }
 }
 
+table! {
+    subgraphs.table_stats {
+        id -> Integer,
+        deployment -> Integer,
+        table_name -> Text,
+        is_account_like -> Nullable<Bool>,
+    }
+}
+
 /// Information about what tables and columns we have in the database
 #[derive(Debug, Clone)]
 pub struct Catalog {
-    pub namespace: Namespace,
+    pub site: Arc<Site>,
     text_columns: HashMap<String, HashSet<String>>,
 }
 
 impl Catalog {
-    pub fn new(conn: &PgConnection, namespace: Namespace) -> Result<Self, StoreError> {
-        let text_columns = get_text_columns(conn, &namespace)?;
-        Ok(Catalog {
-            namespace,
-            text_columns,
-        })
+    pub fn new(conn: &PgConnection, site: Arc<Site>) -> Result<Self, StoreError> {
+        let text_columns = get_text_columns(conn, &site.namespace)?;
+        Ok(Catalog { site, text_columns })
     }
 
     /// Make a catalog as if the given `schema` did not exist in the database
     /// yet. This function should only be used in situations where a database
     /// connection is definitely not available, such as in unit tests
-    pub fn make_empty(namespace: Namespace) -> Result<Self, StoreError> {
+    pub fn make_empty(site: Arc<Site>) -> Result<Self, StoreError> {
         Ok(Catalog {
-            namespace,
+            site,
             text_columns: HashMap::default(),
         })
     }
@@ -150,5 +158,45 @@ pub fn drop_foreign_schema(conn: &PgConnection, src: &Site) -> Result<(), StoreE
         let query = format!("drop schema if exists {} cascade", src.namespace);
         conn.batch_execute(&query)?;
     }
+    Ok(())
+}
+
+pub fn account_like(conn: &PgConnection, site: &Site) -> Result<HashSet<String>, StoreError> {
+    use table_stats as ts;
+    let names = ts::table
+        .filter(ts::deployment.eq(site.id))
+        .select((ts::table_name, ts::is_account_like))
+        .get_results::<(String, Option<bool>)>(conn)
+        .optional()?
+        .unwrap_or(vec![])
+        .into_iter()
+        .filter_map(|(name, account_like)| {
+            if account_like == Some(true) {
+                Some(name)
+            } else {
+                None
+            }
+        })
+        .collect();
+    Ok(names)
+}
+
+pub fn set_account_like(
+    conn: &PgConnection,
+    site: &Site,
+    table_name: &SqlName,
+    is_account_like: bool,
+) -> Result<(), StoreError> {
+    use table_stats as ts;
+    insert_into(ts::table)
+        .values((
+            ts::deployment.eq(site.id),
+            ts::table_name.eq(table_name.as_str()),
+            ts::is_account_like.eq(is_account_like),
+        ))
+        .on_conflict((ts::deployment, ts::table_name))
+        .do_update()
+        .set(ts::is_account_like.eq(is_account_like))
+        .execute(conn)?;
     Ok(())
 }

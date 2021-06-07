@@ -52,6 +52,7 @@ mod subgraph_store;
 pub mod layout_for_tests {
     pub use crate::block_range::*;
     pub use crate::block_store::FAKE_NETWORK_SHARED;
+    pub use crate::catalog::set_account_like;
     pub use crate::chain_store::test_support as chain_support;
     pub use crate::primary::{
         make_dummy_site, Connection, Namespace, EVENT_TAP, EVENT_TAP_ENABLED,
@@ -73,6 +74,8 @@ pub use self::subgraph_store::{unused, DeploymentPlacer, Shard, SubgraphStore, P
 /// be used in 'normal' graph-node code
 pub mod command_support {
     pub mod catalog {
+        pub use crate::block_store::primary as block_store;
+        pub use crate::catalog::set_account_like;
         pub use crate::copy::{copy_state, copy_table_state};
         pub use crate::primary::Connection;
         pub use crate::primary::{
@@ -81,5 +84,5 @@ pub mod command_support {
         };
     }
     pub use crate::primary::Namespace;
-    pub use crate::relational::{Catalog, Column, ColumnType, Layout};
+    pub use crate::relational::{Catalog, Column, ColumnType, Layout, SqlName};
 }

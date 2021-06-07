@@ -7,9 +7,9 @@ use graph::{
 };
 
 use diesel::pg::PgConnection;
-use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
+use diesel::{delete, prelude::*};
 use diesel::{insert_into, update};
 
 use graph::ensure;
@@ -47,6 +47,7 @@ mod data {
     use graph::{constraint_violation, prelude::StoreError};
 
     use diesel::{connection::SimpleConnection, insert_into};
+    use diesel::{delete, prelude::*, sql_query};
     use diesel::{dsl::sql, pg::PgConnection};
     use diesel::{
         pg::Pg,
@@ -54,7 +55,6 @@ mod data {
         sql_types::Text,
         types::{FromSql, ToSql},
     };
-    use diesel::{prelude::*, sql_query};
     use diesel::{
         sql_types::{BigInt, Bytea, Integer, Jsonb},
         update,
@@ -63,6 +63,7 @@ mod data {
 
     use std::fmt;
     use std::iter::FromIterator;
+    use std::sync::Arc;
     use std::{convert::TryFrom, io::Write};
 
     use graph::prelude::{
@@ -355,6 +356,24 @@ mod data {
             }
         }
 
+        pub(super) fn drop_storage(
+            &self,
+            conn: &PgConnection,
+            name: &str,
+        ) -> Result<(), StoreError> {
+            match &self {
+                Storage::Shared => {
+                    use public::ethereum_blocks as b;
+                    delete(b::table.filter(b::network_name.eq(name))).execute(conn)?;
+                    Ok(())
+                }
+                Storage::Private(Schema { name, .. }) => {
+                    conn.batch_execute(&format!("drop schema {} cascade", name))?;
+                    Ok(())
+                }
+            }
+        }
+
         /// Insert a block. If the table already contains a block with the
         /// same hash, then overwrite that block since it may be adding
         /// transaction receipts.
@@ -422,7 +441,7 @@ mod data {
             let parent_hash = block.parent_hash;
             let number = block.number.unwrap().as_u64() as i64;
             let data = serde_json::to_value(&EthereumBlock {
-                block,
+                block: Arc::new(block),
                 transaction_receipts: Vec::new(),
             })
             .expect("Failed to serialize block");
@@ -968,6 +987,9 @@ mod data {
                         .on_conflict(meta::contract_address)
                         .do_update()
                         .set(accessed_at)
+                        // TODO: Add a where clause similar to the Private
+                        // branch to avoid unnecessary updates (not entirely
+                        // trivial with diesel)
                         .execute(conn)
                 }
                 Storage::Private(Schema {
@@ -990,7 +1012,9 @@ mod data {
                     let query = format!(
                         "insert into {}(contract_address, accessed_at) \
                          values ($1, CURRENT_DATE) \
-                         on conflict(contract_address) do update set accessed_at = CURRENT_DATE",
+                         on conflict(contract_address)
+                         do update set accessed_at = CURRENT_DATE \
+                                 where excluded.accessed_at < CURRENT_DATE",
                         call_meta.qname
                     );
                     sql_query(query)
@@ -1061,7 +1085,7 @@ mod data {
 pub struct ChainStore {
     pool: ConnectionPool,
     pub chain: String,
-    storage: data::Storage,
+    pub(crate) storage: data::Storage,
     genesis_block_ptr: BlockPtr,
     status: ChainStatus,
     chain_head_update_sender: ChainHeadUpdateSender,
@@ -1117,6 +1141,18 @@ impl ChainStore {
         })?;
 
         Ok(())
+    }
+
+    pub(crate) fn drop_chain(&self) -> Result<(), Error> {
+        use public::ethereum_networks as n;
+
+        let conn = self.get_conn()?;
+        conn.transaction(|| {
+            self.storage.drop_storage(&conn, &self.chain)?;
+
+            delete(n::table.filter(n::name.eq(&self.chain))).execute(&conn)?;
+            Ok(())
+        })
     }
 
     pub fn chain_head_pointers(&self) -> Result<HashMap<String, BlockPtr>, StoreError> {
@@ -1446,9 +1482,11 @@ fn contract_call_id(
 /// Support for tests
 #[cfg(debug_assertions)]
 pub mod test_support {
-    use std::str::FromStr;
+    use std::{str::FromStr, sync::Arc};
 
-    use graph::prelude::{web3::types::H256, BlockNumber, BlockPtr, EthereumBlock};
+    use graph::prelude::{
+        web3::types::H256, BlockNumber, BlockPtr, EthereumBlock, LightEthereumBlock,
+    };
 
     // Hash indicating 'no parent'
     pub const NO_PARENT: &str = "0000000000000000000000000000000000000000000000000000000000000000";
@@ -1490,12 +1528,15 @@ pub mod test_support {
             let parent_hash =
                 H256::from_str(self.parent_hash.as_str()).expect("invalid parent hash");
 
-            let mut block = EthereumBlock::default();
-            block.block.number = Some(self.number.into());
-            block.block.parent_hash = parent_hash;
-            block.block.hash = Some(self.block_hash());
+            let mut block = LightEthereumBlock::default();
+            block.number = Some(self.number.into());
+            block.parent_hash = parent_hash;
+            block.hash = Some(self.block_hash());
 
-            block
+            EthereumBlock {
+                block: Arc::new(block),
+                transaction_receipts: Vec::new(),
+            }
         }
     }
 

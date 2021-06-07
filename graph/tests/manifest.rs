@@ -136,9 +136,9 @@ graft:
 specVersion: 0.0.2
 ";
 
-    let store = test_store::STORE.subgraph_store();
+    test_store::run_test_sequentially(|store| async move {
+        let store = store.subgraph_store();
 
-    test_store::STORE_RUNTIME.lock().unwrap().block_on(async {
         let unvalidated = resolve_unvalidated(YAML).await;
         let subgraph = DeploymentHash::new("Qmbase").unwrap();
 

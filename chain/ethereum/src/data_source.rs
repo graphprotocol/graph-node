@@ -35,17 +35,15 @@ pub struct DataSource {
     pub contract_abi: Arc<MappingABI>,
 }
 
-// ETHDEP: The whole DataSource struct needs to move to chain::ethereum
-impl blockchain::DataSource for DataSource {
-    type C = crate::Chain;
-
+impl blockchain::DataSource<Chain> for DataSource {
     fn match_and_decode(
         &self,
-        _trigger: &<Self::C as Blockchain>::TriggerData,
-        _block: Arc<<Self::C as Blockchain>::Block>,
-        _logger: &Logger,
-    ) -> Result<Option<<Self::C as Blockchain>::MappingTrigger>, Error> {
-        todo!()
+        trigger: &<Chain as Blockchain>::TriggerData,
+        block: Arc<<Chain as Blockchain>::Block>,
+        logger: &Logger,
+    ) -> Result<Option<<Chain as Blockchain>::MappingTrigger>, Error> {
+        let block = block.0.light_block();
+        self.match_and_decode(trigger, block, logger)
     }
 
     fn mapping(&self) -> &Mapping {

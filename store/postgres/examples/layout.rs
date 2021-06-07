@@ -145,13 +145,13 @@ pub fn main() {
         Namespace::new(namespace.to_string()),
         "Invalid database schema",
     );
+    let site = Arc::new(make_dummy_site(subgraph, namespace, "anet".to_string()));
     let catalog = ensure(
-        Catalog::make_empty(namespace.clone()),
+        Catalog::make_empty(site.clone()),
         "Failed to construct catalog",
     );
-    let site = make_dummy_site(subgraph, namespace, "anet".to_string());
     let layout = ensure(
-        Layout::new(Arc::new(site), &schema, catalog, false),
+        Layout::new(site, &schema, catalog, false),
         "Failed to construct Mapping",
     );
     match kind {

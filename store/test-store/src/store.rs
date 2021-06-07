@@ -19,7 +19,7 @@ use graph_node::store_builder::StoreBuilder;
 use graph_store_postgres::layout_for_tests::FAKE_NETWORK_SHARED;
 use graph_store_postgres::{connection_pool::ConnectionPool, Shard, SubscriptionManager};
 use graph_store_postgres::{
-    BlockStore as DieselBlcokStore, DeploymentPlacer, Store, SubgraphStore as DieselSubgraphStore,
+    BlockStore as DieselBlcokStore, DeploymentPlacer, SubgraphStore as DieselSubgraphStore,
 };
 use hex_literal::hex;
 use lazy_static::lazy_static;
@@ -32,6 +32,8 @@ use web3::types::H256;
 pub const NETWORK_NAME: &str = "fake_network";
 pub const NETWORK_VERSION: &str = "graph test suite";
 
+pub use graph_store_postgres::Store;
+
 const CONN_POOL_SIZE: u32 = 20;
 
 lazy_static! {
@@ -39,13 +41,12 @@ lazy_static! {
         Some(_) => log::logger(false),
         None => Logger::root(slog::Discard, o!()),
     };
-    pub static ref STORE_RUNTIME: Mutex<Runtime> = Mutex::new(
-        Builder::new()
-            .basic_scheduler()
-            .enable_all()
-            .build()
-            .unwrap()
-    );
+    static ref SEQ_LOCK: Mutex<()> = Mutex::new(());
+    static ref STORE_RUNTIME: Runtime = Builder::new()
+        .threaded_scheduler()
+        .enable_all()
+        .build()
+        .unwrap();
     pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(LoadManager::new(
         &*LOGGER,
         Vec::new(),
@@ -98,23 +99,20 @@ lazy_static! {
 /// into `test`. All tests using `run_test_sequentially` are run in sequence,
 /// never in parallel. The `test` is passed a `Store`, but it is permissible
 /// for tests to access the global `STORE` from this module, too.
-pub fn run_test_sequentially<R, S, F, G>(setup: G, test: F)
+pub fn run_test_sequentially<R, F>(test: F)
 where
-    G: FnOnce() -> S + Send + 'static,
-    F: FnOnce(Arc<Store>, S) -> R + Send + 'static,
+    F: FnOnce(Arc<Store>) -> R + Send + 'static,
     R: std::future::Future<Output = ()> + Send + 'static,
 {
-    let store = STORE.clone();
-
     // Lock regardless of poisoning. This also forces sequential test execution.
-    let mut runtime = match STORE_RUNTIME.lock() {
+    let _lock = match SEQ_LOCK.lock() {
         Ok(guard) => guard,
         Err(err) => err.into_inner(),
     };
 
-    runtime.block_on(async {
-        let state = setup();
-        test(store, state).await
+    STORE_RUNTIME.handle().block_on(async {
+        let store = STORE.clone();
+        test(store).await
     })
 }
 
@@ -123,14 +121,15 @@ pub fn run_test_with_conn<F>(test: F)
 where
     F: FnOnce(&PgConnection) -> (),
 {
-    let conn = PRIMARY_POOL
-        .get()
-        .expect("failed to get connection for primary database");
-
-    let _runtime = match STORE_RUNTIME.lock() {
+    // Lock regardless of poisoning. This also forces sequential test execution.
+    let _lock = match SEQ_LOCK.lock() {
         Ok(guard) => guard,
         Err(err) => err.into_inner(),
     };
+
+    let conn = PRIMARY_POOL
+        .get()
+        .expect("failed to get connection for primary database");
 
     test(&conn);
 }
@@ -470,7 +469,7 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
     let config = Config::load(&*LOGGER, &opt).expect("config is not valid");
     let registry = Arc::new(MockMetricsRegistry::new());
     std::thread::spawn(move || {
-        STORE_RUNTIME.lock().unwrap().block_on(async {
+        STORE_RUNTIME.handle().block_on(async {
             let builder = StoreBuilder::new(&*LOGGER, &*NODE_ID, &config, registry).await;
             let subscription_manager = builder.subscription_manager();
             let primary_pool = builder.primary_pool();

@@ -8,7 +8,9 @@
 //! information about mapping a GraphQL schema to database tables
 use diesel::{connection::SimpleConnection, Connection};
 use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
+use graph::cheap_clone::CheapClone;
 use graph::prelude::{q, s, StopwatchMetrics};
+use graph::slog::warn;
 use inflector::Inflector;
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -16,7 +18,7 @@ use std::convert::{From, TryFrom};
 use std::env;
 use std::fmt::{self, Write};
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::{
@@ -38,9 +40,9 @@ use graph::prelude::{
 };
 
 use crate::block_range::BLOCK_RANGE_COLUMN;
-use crate::catalog;
 pub use crate::catalog::Catalog;
 use crate::connection_pool::ForeignServer;
+use crate::{catalog, deployment};
 
 const POSTGRES_MAX_PARAMETERS: usize = u16::MAX as usize; // 65535
 const DELETE_OPERATION_CHUNK_SIZE: usize = 1_000;
@@ -54,19 +56,23 @@ const DELETE_OPERATION_CHUNK_SIZE: usize = 1_000;
 pub const STRING_PREFIX_SIZE: usize = 256;
 
 lazy_static! {
-    /// Experimental: a list of fully qualified table names that contain
-    /// entities that are like accounts in that they have a relatively small
-    /// number of entities, with a large number of change for each entity. It
-    /// is useful to treat such tables special in queries by changing the
-    /// clause that selects for a specific block range in a way that makes
-    /// the BRIN index on block_range usable
+    /// Deprecated; use 'graphman stats account-like' instead. A list of
+    /// fully qualified table names that contain entities that are like
+    /// accounts in that they have a relatively small number of entities,
+    /// with a large number of change for each entity. It is useful to treat
+    /// such tables special in queries by changing the clause that selects
+    /// for a specific block range in a way that makes the BRIN index on
+    /// block_range usable
     ///
     /// Example: GRAPH_ACCOUNT_TABLES=sgd21902.pair,sgd1708.things
     static ref ACCOUNT_TABLES: HashSet<String> = {
-        env::var("GRAPH_ACCOUNT_TABLES")
-            .ok()
-            .map(|v| v.split(",").map(|s| s.to_owned()).collect())
-            .unwrap_or(HashSet::new())
+            // Transform the entries in the form `schema.table` into
+            // `"schema"."table"` so that we can compare to a table's
+            // qualified name
+            env::var("GRAPH_ACCOUNT_TABLES")
+                .ok()
+                .map(|v| v.split(",").map(|s| format!("\"{}\"", s.replace(".", "\".\""))).collect())
+                .unwrap_or(HashSet::new())
     };
 
     /// `GRAPH_SQL_STATEMENT_TIMEOUT` is the timeout for queries in seconds.
@@ -323,7 +329,7 @@ impl Layout {
             .map(|table| {
                 format!(
                     "select count(*) from \"{}\".\"{}\" where block_range @> {}",
-                    &catalog.namespace, table.name, BLOCK_NUMBER_MAX
+                    &catalog.site.namespace, table.name, BLOCK_NUMBER_MAX
                 )
             })
             .collect::<Vec<_>>()
@@ -350,7 +356,7 @@ impl Layout {
         let table_name = SqlName::verbatim(POI_TABLE.to_owned());
         Table {
             object: POI_OBJECT.to_owned(),
-            qualified_name: SqlName::qualified_name(&catalog.namespace, &table_name),
+            qualified_name: SqlName::qualified_name(&catalog.site.namespace, &table_name),
             name: table_name,
             columns: vec![
                 Column {
@@ -391,7 +397,7 @@ impl Layout {
         site: Arc<Site>,
         schema: &Schema,
     ) -> Result<Layout, StoreError> {
-        let catalog = Catalog::new(conn, site.namespace.clone())?;
+        let catalog = Catalog::new(conn, site.clone())?;
         let layout = Self::new(site, schema, catalog, true)?;
         let sql = layout
             .as_ddl()
@@ -424,7 +430,7 @@ impl Layout {
             write!(
                 out,
                 "create type {}.{}\n    as enum (",
-                self.catalog.namespace,
+                self.catalog.site.namespace,
                 name.quoted()
             )?;
             for value in values.iter() {
@@ -539,7 +545,7 @@ impl Layout {
             tables.push(self.table_for_entity(entity_type)?.as_ref());
         }
         let query = FindManyQuery {
-            namespace: &self.catalog.namespace,
+            namespace: &self.catalog.site.namespace,
             ids_for_type,
             tables,
             block,
@@ -792,6 +798,35 @@ impl Layout {
         // safe to cache a Layout
         true
     }
+
+    /// Update the layout with the latest information from the database; for
+    /// now, an update only changes the `is_account_like` flag for tables.
+    /// If no update is needed, just return `self`.
+    pub fn refresh(self: Arc<Self>, conn: &PgConnection) -> Result<Arc<Self>, StoreError> {
+        let account_like = crate::catalog::account_like(conn, &self.site)?;
+        let is_account_like = {
+            |table: &Table| {
+                ACCOUNT_TABLES.contains(table.qualified_name.as_str())
+                    || account_like.contains(table.name.as_str())
+            }
+        };
+
+        let changed_tables: Vec<_> = self
+            .tables
+            .values()
+            .filter(|table| table.is_account_like != is_account_like(table.as_ref()))
+            .collect();
+        if changed_tables.is_empty() {
+            return Ok(self);
+        }
+        let mut layout = (*self).clone();
+        for table in changed_tables.into_iter() {
+            let mut table = (*table.as_ref()).clone();
+            table.is_account_like = is_account_like(&table);
+            layout.tables.insert(table.object.clone(), Arc::new(table));
+        }
+        Ok(Arc::new(layout))
+    }
 }
 
 /// A user-defined enum
@@ -863,7 +898,7 @@ impl ColumnType {
         if let Some(values) = enums.get(&*name) {
             // We do things this convoluted way to make sure field_type gets
             // snakecased, but the `.` must stay a `.`
-            let name = SqlName::qualified_name(&catalog.namespace, &SqlName::from(name));
+            let name = SqlName::qualified_name(&catalog.site.namespace, &SqlName::from(name));
             if is_existing_text_column {
                 // We used to have a bug where columns that should have really
                 // been of an enum type were created as text columns. To make
@@ -1085,7 +1120,7 @@ pub(crate) const PRIMARY_KEY_COLUMN: &str = "id";
 /// synthetic primary key. This is the name of the column we use.
 pub(crate) const VID_COLUMN: &str = "vid";
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct Table {
     /// The name of the GraphQL object type ('Thing')
     pub object: EntityType,
@@ -1129,12 +1164,12 @@ impl Table {
             .map(|field| Column::new(&table_name, field, catalog, enums, id_types))
             .chain(fulltexts.iter().map(|def| Column::new_fulltext(def)))
             .collect::<Result<Vec<Column>, StoreError>>()?;
-        let is_account_like =
-            ACCOUNT_TABLES.contains(&format!("{}.{}", catalog.namespace, table_name));
+        let qualified_name = SqlName::qualified_name(&catalog.site.namespace, &table_name);
+        let is_account_like = ACCOUNT_TABLES.contains(qualified_name.as_str());
         let table = Table {
             object: EntityType::from(defn),
             name: table_name.clone(),
-            qualified_name: SqlName::qualified_name(&catalog.namespace, &table_name),
+            qualified_name,
             is_account_like,
             columns,
             position,
@@ -1199,7 +1234,7 @@ impl Table {
         writeln!(
             out,
             "create table {}.{} (",
-            layout.catalog.namespace,
+            layout.catalog.site.namespace,
             self.name.quoted()
         )?;
         for column in self.columns.iter() {
@@ -1242,7 +1277,7 @@ impl Table {
                     on {schema_name}.{table_name}\n \
                        using brin(lower(block_range), coalesce(upper(block_range), {block_max}), vid);\n",
             table_name = self.name,
-            schema_name = layout.catalog.namespace,
+            schema_name = layout.catalog.site.namespace,
             block_max = BLOCK_NUMBER_MAX)?;
 
         // Add a BTree index that helps with the `RevertClampQuery` by making
@@ -1253,7 +1288,7 @@ impl Table {
                      on {schema_name}.{table_name}(coalesce(upper(block_range), {block_max}))\n \
                      where coalesce(upper(block_range), {block_max}) < {block_max};\n",
             table_name = self.name,
-            schema_name = layout.catalog.namespace,
+            schema_name = layout.catalog.site.namespace,
             block_max = BLOCK_NUMBER_MAX
         )?;
 
@@ -1299,7 +1334,7 @@ impl Table {
                 table_name = self.name,
                 column_index = i,
                 column_name = column.name,
-                schema_name = layout.catalog.namespace,
+                schema_name = layout.catalog.site.namespace,
                 method = method,
                 index_expr = index_expr,
             )?;
@@ -1331,6 +1366,130 @@ fn is_object_type(field_type: &q::Type, enums: &EnumMap) -> bool {
     !enums.contains_key(&*name) && !ValueType::is_scalar(name)
 }
 
+#[derive(Clone)]
+struct CacheEntry {
+    value: Arc<Layout>,
+    expires: Instant,
+}
+
+/// Cache layouts for some time and refresh them when they expire.
+/// Refreshing happens one at a time, and the cache makes sure we minimize
+/// blocking while a refresh happens, favoring using an expired layout over
+/// a refreshed one.
+pub struct LayoutCache {
+    entries: Mutex<HashMap<DeploymentHash, CacheEntry>>,
+    ttl: Duration,
+    /// Use this so that we only refresh one layout at any given time to
+    /// avoid refreshing the same layout multiple times
+    refresh: Mutex<()>,
+}
+
+impl LayoutCache {
+    pub fn new(ttl: Duration) -> Self {
+        Self {
+            entries: Mutex::new(HashMap::new()),
+            ttl,
+            refresh: Mutex::new(()),
+        }
+    }
+
+    fn load(conn: &PgConnection, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
+        let subgraph_schema = deployment::schema(conn, site.as_ref())?;
+        let has_poi = crate::catalog::supports_proof_of_indexing(conn, &site.namespace)?;
+        let catalog = Catalog::new(conn, site.clone())?;
+        let layout = Arc::new(Layout::new(
+            site.clone(),
+            &subgraph_schema,
+            catalog,
+            has_poi,
+        )?);
+        layout.refresh(conn)
+    }
+
+    fn cache(&self, layout: Arc<Layout>) {
+        if layout.is_cacheable() {
+            let deployment = layout.site.deployment.clone();
+            let entry = CacheEntry {
+                expires: Instant::now() + self.ttl,
+                value: layout,
+            };
+            &self.entries.lock().unwrap().insert(deployment, entry);
+        }
+    }
+
+    /// Return the corresponding layout if we have one in cache already, and
+    /// ignore expiration information
+    pub(crate) fn find(&self, site: &Site) -> Option<Arc<Layout>> {
+        self.entries
+            .lock()
+            .unwrap()
+            .get(&site.deployment)
+            .map(|CacheEntry { value, expires: _ }| value.clone())
+    }
+
+    /// Get the layout for `site`. If it's not in cache, load it. If it is
+    /// expired, try to refresh it if there isn't another refresh happening
+    /// already
+    pub fn get(
+        &self,
+        logger: &Logger,
+        conn: &PgConnection,
+        site: Arc<Site>,
+    ) -> Result<Arc<Layout>, StoreError> {
+        let now = Instant::now();
+        let entry = {
+            let lock = self.entries.lock().unwrap();
+            lock.get(&site.deployment).cloned()
+        };
+        match entry {
+            Some(CacheEntry { value, expires }) => {
+                if now <= expires {
+                    // Entry is not expired; use it
+                    return Ok(value);
+                } else {
+                    // Only do a cache refresh once; we don't want to have
+                    // multiple threads refreshing the same layout
+                    // simultaneously. It's easiest to refresh at most one
+                    // layout globally
+                    let refresh = self.refresh.try_lock();
+                    if let Err(_) = refresh {
+                        return Ok(value.clone());
+                    }
+                    match value.cheap_clone().refresh(conn) {
+                        Err(e) => {
+                            warn!(
+                                logger,
+                                "failed to refresh statistics. Continuing with old statistics";
+                                "deployment" => &value.site.deployment,
+                                "error" => e.to_string()
+                            );
+                            // Update the timestamp so we don't retry
+                            // refreshing too often
+                            self.cache(value.cheap_clone());
+                            return Ok(value);
+                        }
+                        Ok(layout) => {
+                            self.cache(layout.cheap_clone());
+                            return Ok(layout);
+                        }
+                    }
+                }
+            }
+            None => {
+                let layout = Self::load(conn, site)?;
+                self.cache(layout.cheap_clone());
+                return Ok(layout);
+            }
+        }
+    }
+
+    // Only needed for tests
+    #[cfg(debug_assertions)]
+    pub(crate) fn clear(&self) {
+        self.entries.lock().unwrap().clear()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1343,9 +1502,9 @@ mod tests {
         let subgraph = DeploymentHash::new("subgraph").unwrap();
         let schema = Schema::parse(gql, subgraph.clone()).expect("Test schema invalid");
         let namespace = Namespace::new("sgd0815".to_owned()).unwrap();
-        let catalog = Catalog::make_empty(namespace.clone()).expect("Can not create catalog");
-        let site = make_dummy_site(subgraph, namespace, "anet".to_string());
-        Layout::new(Arc::new(site), &schema, catalog, false).expect("Failed to construct Layout")
+        let site = Arc::new(make_dummy_site(subgraph, namespace, "anet".to_string()));
+        let catalog = Catalog::make_empty(site.clone()).expect("Can not create catalog");
+        Layout::new(site, &schema, catalog, false).expect("Failed to construct Layout")
     }
 
     #[test]

@@ -984,7 +984,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         if block.transactions.is_empty() {
             trace!(logger, "Block {} contains no transactions", block_hash);
             return Box::new(future::ok(EthereumBlock {
-                block,
+                block: Arc::new(block),
                 transaction_receipts: Vec::new(),
             }));
         }
@@ -1073,7 +1073,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                         .and_then(move |_| {
                             stream::futures_ordered(receipt_futures).collect().map(
                                 move |transaction_receipts| EthereumBlock {
-                                    block,
+                                    block: Arc::new(block),
                                     transaction_receipts,
                                 },
                             )
@@ -1489,7 +1489,7 @@ pub(crate) async fn blocks_with_triggers(
         .and_then(
             move |block| match triggers_by_block.remove(&(block.number() as BlockNumber)) {
                 Some(triggers) => Ok(BlockWithTriggers::new(
-                    WrappedBlockFinality(BlockFinality::Final(block)),
+                    WrappedBlockFinality(BlockFinality::Final(Arc::new(block))),
                     triggers,
                 )),
                 None => Err(anyhow!(

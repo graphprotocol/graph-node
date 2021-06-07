@@ -54,8 +54,13 @@ url = "2.2.1"
 prometheus = "0.12.0"
 priority-queue = "0.7.0"
 futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
+<<<<<<< HEAD
 wasmparser = "0.77.0"
 thiserror = "1.0.24"
+=======
+wasmparser = "0.78.2"
+thiserror = "1.0.25"
+>>>>>>> 7a125421cd40f9a00df905a88cca4999c8dbd4a9
 parking_lot = "0.11.1"
 
 # Our fork contains a small but hacky patch.

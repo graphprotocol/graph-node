@@ -17,7 +17,10 @@ use ethabi::LogParam;
 use graph::prelude::*;
 use graph::{components::subgraph::MappingError, runtime::AscPtr};
 use graph::{data::store, runtime::AscHeap};
-use graph::{data::subgraph::schema::SubgraphError, runtime::DeterministicHostError};
+use graph::{
+    data::subgraph::schema::SubgraphError,
+    runtime::{asc_get, asc_new, try_asc_get, DeterministicHostError},
+};
 use host_exports::HostExportError;
 use web3::types::{Log, Transaction, U256};
 
@@ -88,9 +91,15 @@ impl WasmInstance {
         handler_name: &str,
         value: &serde_json::Value,
         user_data: &store::Value,
+<<<<<<< HEAD
     ) -> Result<BlockState, anyhow::Error> {
         let value = self.asc_new(value)?;
         let user_data = self.asc_new(user_data)?;
+=======
+    ) -> Result<BlockState<C>, anyhow::Error> {
+        let value = asc_new(&mut self, value)?;
+        let user_data = asc_new(&mut self, user_data)?;
+>>>>>>> 7a125421cd40f9a00df905a88cca4999c8dbd4a9
 
         self.instance_ctx_mut().ctx.state.enter_handler();
 
@@ -119,26 +128,32 @@ impl WasmInstance {
         // Decide on the destination type using the mapping
         // api version provided in the subgraph manifest
         let event = if self.instance_ctx().ctx.host_exports.api_version >= Version::new(0, 0, 2) {
-            self.asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_2>, _>(&EthereumEventData {
-                block: EthereumBlockData::from(block.as_ref()),
-                transaction: EthereumTransactionData::from(transaction.deref()),
-                address: log.address,
-                log_index: log.log_index.unwrap_or(U256::zero()),
-                transaction_log_index: log.log_index.unwrap_or(U256::zero()),
-                log_type: log.log_type.clone(),
-                params,
-            })?
+            asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_2>, _, _>(
+                &mut self,
+                &EthereumEventData {
+                    block: EthereumBlockData::from(block.as_ref()),
+                    transaction: EthereumTransactionData::from(transaction.deref()),
+                    address: log.address,
+                    log_index: log.log_index.unwrap_or(U256::zero()),
+                    transaction_log_index: log.log_index.unwrap_or(U256::zero()),
+                    log_type: log.log_type.clone(),
+                    params,
+                },
+            )?
             .erase()
         } else {
-            self.asc_new::<AscEthereumEvent<AscEthereumTransaction>, _>(&EthereumEventData {
-                block: EthereumBlockData::from(block.as_ref()),
-                transaction: EthereumTransactionData::from(transaction.deref()),
-                address: log.address,
-                log_index: log.log_index.unwrap_or(U256::zero()),
-                transaction_log_index: log.log_index.unwrap_or(U256::zero()),
-                log_type: log.log_type.clone(),
-                params,
-            })?
+            asc_new::<AscEthereumEvent<AscEthereumTransaction>, _, _>(
+                &mut self,
+                &EthereumEventData {
+                    block: EthereumBlockData::from(block.as_ref()),
+                    transaction: EthereumTransactionData::from(transaction.deref()),
+                    address: log.address,
+                    log_index: log.log_index.unwrap_or(U256::zero()),
+                    transaction_log_index: log.log_index.unwrap_or(U256::zero()),
+                    log_type: log.log_type.clone(),
+                    params,
+                },
+            )?
             .erase()
         };
 
@@ -163,9 +178,9 @@ impl WasmInstance {
             outputs,
         };
         let arg = if self.instance_ctx().ctx.host_exports.api_version >= Version::new(0, 0, 3) {
-            self.asc_new::<AscEthereumCall_0_0_3, _>(&call)?.erase()
+            asc_new::<AscEthereumCall_0_0_3, _, _>(&mut self, &call)?.erase()
         } else {
-            self.asc_new::<AscEthereumCall, _>(&call)?.erase()
+            asc_new::<AscEthereumCall, _, _>(&mut self, &call)?.erase()
         };
 
         self.invoke_handler(handler_name, arg)
@@ -179,7 +194,7 @@ impl WasmInstance {
         let block = EthereumBlockData::from(block.as_ref());
 
         // Prepare an EthereumBlock for the WASM runtime
-        let arg = self.asc_new(&block)?;
+        let arg = asc_new(&mut self, &block)?;
 
         self.invoke_handler(handler_name, arg)
     }
@@ -457,9 +472,9 @@ impl WasmInstance {
                 // function signature; subgraphs using an apiVersion < 0.0.4 don't pass
                 // the the signature along with the call.
                 let arg = if instance.ctx.host_exports.api_version >= Version::new(0, 0, 4) {
-                    instance.asc_get::<_, AscUnresolvedContractCall_0_0_4>(call_ptr.into())
+                    asc_get::<_, AscUnresolvedContractCall_0_0_4, _>(instance, call_ptr.into())
                 } else {
-                    instance.asc_get::<_, AscUnresolvedContractCall>(call_ptr.into())
+                    asc_get::<_, AscUnresolvedContractCall, _>(instance, call_ptr.into())
                 }
                 .map_err(|e| {
                     instance.deterministic_host_trap = true;
@@ -738,11 +753,11 @@ impl WasmInstanceContext {
         column_number: u32,
     ) -> Result<Never, DeterministicHostError> {
         let message = match message_ptr.is_null() {
-            false => Some(self.asc_get(message_ptr)?),
+            false => Some(asc_get(self, message_ptr)?),
             true => None,
         };
         let file_name = match file_name_ptr.is_null() {
-            false => Some(self.asc_get(file_name_ptr)?),
+            false => Some(asc_get(self, file_name_ptr)?),
             true => None,
         };
         let line_number = match line_number {
@@ -798,9 +813,9 @@ impl WasmInstanceContext {
         let stopwatch = &self.host_metrics.stopwatch;
         stopwatch.start_section("host_export_store_set__wasm_instance_context_store_set");
 
-        let entity = self.asc_get(entity_ptr)?;
-        let id = self.asc_get(id_ptr)?;
-        let data = self.try_asc_get(data_ptr)?;
+        let entity = asc_get(self, entity_ptr)?;
+        let id = asc_get(self, id_ptr)?;
+        let data = try_asc_get(self, data_ptr)?;
 
         self.ctx.host_exports.store_set(
             &self.ctx.logger,
@@ -820,8 +835,8 @@ impl WasmInstanceContext {
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<(), HostExportError> {
-        let entity = self.asc_get(entity_ptr)?;
-        let id = self.asc_get(id_ptr)?;
+        let entity = asc_get(self, entity_ptr)?;
+        let id = asc_get(self, id_ptr)?;
         self.ctx.host_exports.store_remove(
             &self.ctx.logger,
             &mut self.ctx.state,
@@ -841,8 +856,8 @@ impl WasmInstanceContext {
             .host_metrics
             .cheap_clone()
             .time_host_fn_execution_region("store_get");
-        let entity_ptr = self.asc_get(entity_ptr)?;
-        let id_ptr = self.asc_get(id_ptr)?;
+        let entity_ptr = asc_get(self, entity_ptr)?;
+        let id_ptr = asc_get(self, id_ptr)?;
         let entity_option =
             self.ctx
                 .host_exports
@@ -853,8 +868,13 @@ impl WasmInstanceContext {
                 let _section = self
                     .host_metrics
                     .stopwatch
+<<<<<<< HEAD
                     .start_section("store_get_asc_new"); 
                 self.asc_new(&entity.sorted())?
+=======
+                    .start_section("store_get_asc_new");
+                asc_new(self, &entity.sorted())?
+>>>>>>> 7a125421cd40f9a00df905a88cca4999c8dbd4a9
             }
             None => AscPtr::null(),
         };
@@ -872,7 +892,7 @@ impl WasmInstanceContext {
                 .host_exports
                 .ethereum_call(&self.ctx.logger, &self.ctx.block_ptr, call);
         match result {
-            Ok(Some(tokens)) => Ok(self.asc_new(tokens.as_slice())?),
+            Ok(Some(tokens)) => Ok(asc_new(self, tokens.as_slice())?),
             Ok(None) => Ok(AscPtr::null()),
             Err(EthereumCallError::Unknown(e)) => Err(HostExportError::Unknown(e.into())),
             Err(EthereumCallError::PossibleReorg(e)) => {
@@ -887,8 +907,8 @@ impl WasmInstanceContext {
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscString>, DeterministicHostError> {
-        let string = host_exports::bytes_to_string(&self.ctx.logger, self.asc_get(bytes_ptr)?);
-        self.asc_new(&string)
+        let string = host_exports::bytes_to_string(&self.ctx.logger, asc_get(self, bytes_ptr)?);
+        asc_new(self, &string)
     }
 
     /// Converts bytes to a hex string.
@@ -900,11 +920,11 @@ impl WasmInstanceContext {
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscString>, DeterministicHostError> {
-        let bytes: Vec<u8> = self.asc_get(bytes_ptr)?;
+        let bytes: Vec<u8> = asc_get(self, bytes_ptr)?;
         // Even an empty string must be prefixed with `0x`.
         // Encodes each byte as a two hex digits.
         let hex = format!("0x{}", hex::encode(bytes));
-        self.asc_new(&hex)
+        asc_new(self, &hex)
     }
 
     /// function typeConversion.bigIntToString(n: Uint8Array): string
@@ -912,8 +932,8 @@ impl WasmInstanceContext {
         &mut self,
         big_int_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscString>, DeterministicHostError> {
-        let n: BigInt = self.asc_get(big_int_ptr)?;
-        self.asc_new(&n.to_string())
+        let n: BigInt = asc_get(self, big_int_ptr)?;
+        asc_new(self, &n.to_string())
     }
 
     /// function bigInt.fromString(x: string): BigInt
@@ -924,8 +944,8 @@ impl WasmInstanceContext {
         let result = self
             .ctx
             .host_exports
-            .big_int_from_string(self.asc_get(string_ptr)?)?;
-        self.asc_new(&result)
+            .big_int_from_string(asc_get(self, string_ptr)?)?;
+        asc_new(self, &result)
     }
 
     /// function typeConversion.bigIntToHex(n: Uint8Array): string
@@ -933,9 +953,9 @@ impl WasmInstanceContext {
         &mut self,
         big_int_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscString>, DeterministicHostError> {
-        let n: BigInt = self.asc_get(big_int_ptr)?;
+        let n: BigInt = asc_get(self, big_int_ptr)?;
         let hex = self.ctx.host_exports.big_int_to_hex(n)?;
-        self.asc_new(&hex)
+        asc_new(self, &hex)
     }
 
     /// function typeConversion.stringToH160(s: String): H160
@@ -943,9 +963,9 @@ impl WasmInstanceContext {
         &mut self,
         str_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscH160>, DeterministicHostError> {
-        let s: String = self.asc_get(str_ptr)?;
+        let s: String = asc_get(self, str_ptr)?;
         let h160 = host_exports::string_to_h160(&s)?;
-        self.asc_new(&h160)
+        asc_new(self, &h160)
     }
 
     /// function json.fromBytes(bytes: Bytes): JSONValue
@@ -953,7 +973,7 @@ impl WasmInstanceContext {
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscEnum<JsonValueKind>>, DeterministicHostError> {
-        let bytes: Vec<u8> = self.asc_get(bytes_ptr)?;
+        let bytes: Vec<u8> = asc_get(self, bytes_ptr)?;
 
         let result = host_exports::json_from_bytes(&bytes)
             .with_context(|| {
@@ -963,15 +983,16 @@ impl WasmInstanceContext {
                 )
             })
             .map_err(DeterministicHostError)?;
-        self.asc_new(&result)
+        asc_new(self, &result)
     }
 
     /// function json.try_fromBytes(bytes: Bytes): Result<JSONValue, boolean>
     fn json_try_from_bytes(
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
-    ) -> Result<AscPtr<AscResult<AscEnum<JsonValueKind>, bool>>, DeterministicHostError> {
-        let bytes: Vec<u8> = self.asc_get(bytes_ptr)?;
+    ) -> Result<AscPtr<AscResult<AscPtr<AscEnum<JsonValueKind>>, bool>>, DeterministicHostError>
+    {
+        let bytes: Vec<u8> = asc_get(self, bytes_ptr)?;
         let result = host_exports::json_from_bytes(&bytes).map_err(|e| {
             warn!(
                 &self.ctx.logger,
@@ -984,7 +1005,7 @@ impl WasmInstanceContext {
             // result type expected by mappings
             true
         });
-        self.asc_new(&result)
+        asc_new(self, &result)
     }
 
     /// function ipfs.cat(link: String): Bytes
@@ -998,15 +1019,15 @@ impl WasmInstanceContext {
             )));
         }
 
-        let link = self.asc_get(link_ptr)?;
+        let link = asc_get(self, link_ptr)?;
         let ipfs_res = self.ctx.host_exports.ipfs_cat(&self.ctx.logger, link);
         match ipfs_res {
-            Ok(bytes) => self.asc_new(&*bytes).map_err(Into::into),
+            Ok(bytes) => asc_new(self, &*bytes).map_err(Into::into),
 
             // Return null in case of error.
             Err(e) => {
                 info!(&self.ctx.logger, "Failed ipfs.cat, returning `null`";
-                                    "link" => self.asc_get::<String, _>(link_ptr)?,
+                                    "link" => asc_get::<String, _, _>(self, link_ptr)?,
                                     "error" => e.to_string());
                 Ok(AscPtr::null())
             }
@@ -1027,11 +1048,11 @@ impl WasmInstanceContext {
             )));
         }
 
-        let link: String = self.asc_get(link_ptr)?;
-        let callback: String = self.asc_get(callback)?;
-        let user_data: store::Value = self.try_asc_get(user_data)?;
+        let link: String = asc_get(self, link_ptr)?;
+        let callback: String = asc_get(self, callback)?;
+        let user_data: store::Value = try_asc_get(self, user_data)?;
 
-        let flags = self.asc_get(flags)?;
+        let flags = asc_get(self, flags)?;
 
         // Pause the timeout while running ipfs_map, ensure it will be restarted by using a guard.
         self.timeout_stopwatch.lock().unwrap().stop();
@@ -1066,19 +1087,19 @@ impl WasmInstanceContext {
     /// Expects a decimal string.
     /// function json.toI64(json: String): i64
     fn json_to_i64(&mut self, json_ptr: AscPtr<AscString>) -> Result<i64, DeterministicHostError> {
-        self.ctx.host_exports.json_to_i64(self.asc_get(json_ptr)?)
+        self.ctx.host_exports.json_to_i64(asc_get(self, json_ptr)?)
     }
 
     /// Expects a decimal string.
     /// function json.toU64(json: String): u64
     fn json_to_u64(&mut self, json_ptr: AscPtr<AscString>) -> Result<u64, DeterministicHostError> {
-        self.ctx.host_exports.json_to_u64(self.asc_get(json_ptr)?)
+        self.ctx.host_exports.json_to_u64(asc_get(self, json_ptr)?)
     }
 
     /// Expects a decimal string.
     /// function json.toF64(json: String): f64
     fn json_to_f64(&mut self, json_ptr: AscPtr<AscString>) -> Result<f64, DeterministicHostError> {
-        self.ctx.host_exports.json_to_f64(self.asc_get(json_ptr)?)
+        self.ctx.host_exports.json_to_f64(asc_get(self, json_ptr)?)
     }
 
     /// Expects a decimal string.
@@ -1090,8 +1111,8 @@ impl WasmInstanceContext {
         let big_int = self
             .ctx
             .host_exports
-            .json_to_big_int(self.asc_get(json_ptr)?)?;
-        self.asc_new(&*big_int)
+            .json_to_big_int(asc_get(self, json_ptr)?)?;
+        asc_new(self, &*big_int)
     }
 
     /// function crypto.keccak256(input: Bytes): Bytes
@@ -1102,8 +1123,8 @@ impl WasmInstanceContext {
         let input = self
             .ctx
             .host_exports
-            .crypto_keccak_256(self.asc_get(input_ptr)?)?;
-        self.asc_new(input.as_ref())
+            .crypto_keccak_256(asc_get(self, input_ptr)?)?;
+        asc_new(self, input.as_ref())
     }
 
     /// function bigInt.plus(x: BigInt, y: BigInt): BigInt
@@ -1115,8 +1136,8 @@ impl WasmInstanceContext {
         let result = self
             .ctx
             .host_exports
-            .big_int_plus(self.asc_get(x_ptr)?, self.asc_get(y_ptr)?)?;
-        self.asc_new(&result)
+            .big_int_plus(asc_get(self, x_ptr)?, asc_get(self, y_ptr)?)?;
+        asc_new(self, &result)
     }
 
     /// function bigInt.minus(x: BigInt, y: BigInt): BigInt
@@ -1128,8 +1149,8 @@ impl WasmInstanceContext {
         let result = self
             .ctx
             .host_exports
-            .big_int_minus(self.asc_get(x_ptr)?, self.asc_get(y_ptr)?)?;
-        self.asc_new(&result)
+            .big_int_minus(asc_get(self, x_ptr)?, asc_get(self, y_ptr)?)?;
+        asc_new(self, &result)
     }
 
     /// function bigInt.times(x: BigInt, y: BigInt): BigInt
@@ -1141,8 +1162,8 @@ impl WasmInstanceContext {
         let result = self
             .ctx
             .host_exports
-            .big_int_times(self.asc_get(x_ptr)?, self.asc_get(y_ptr)?)?;
-        self.asc_new(&result)
+            .big_int_times(asc_get(self, x_ptr)?, asc_get(self, y_ptr)?)?;
+        asc_new(self, &result)
     }
 
     /// function bigInt.dividedBy(x: BigInt, y: BigInt): BigInt
@@ -1154,8 +1175,8 @@ impl WasmInstanceContext {
         let result = self
             .ctx
             .host_exports
-            .big_int_divided_by(self.asc_get(x_ptr)?, self.asc_get(y_ptr)?)?;
-        self.asc_new(&result)
+            .big_int_divided_by(asc_get(self, x_ptr)?, asc_get(self, y_ptr)?)?;
+        asc_new(self, &result)
     }
 
     /// function bigInt.dividedByDecimal(x: BigInt, y: BigDecimal): BigDecimal
@@ -1164,12 +1185,12 @@ impl WasmInstanceContext {
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, DeterministicHostError> {
-        let x = BigDecimal::new(self.asc_get::<BigInt, _>(x_ptr)?, 0);
+        let x = BigDecimal::new(asc_get::<BigInt, _, _>(self, x_ptr)?, 0);
         let result = self
             .ctx
             .host_exports
-            .big_decimal_divided_by(x, self.try_asc_get(y_ptr)?)?;
-        self.asc_new(&result)
+            .big_decimal_divided_by(x, try_asc_get(self, y_ptr)?)?;
+        asc_new(self, &result)
     }
 
     /// function bigInt.mod(x: BigInt, y: BigInt): BigInt
@@ -1181,8 +1202,8 @@ impl WasmInstanceContext {
         let result = self
             .ctx
             .host_exports
-            .big_int_mod(self.asc_get(x_ptr)?, self.asc_get(y_ptr)?)?;
-        self.asc_new(&result)
+            .big_int_mod(asc_get(self, x_ptr)?, asc_get(self, y_ptr)?)?;
+        asc_new(self, &result)
     }
 
     /// function bigInt.pow(x: BigInt, exp: u8): BigInt
@@ -1195,8 +1216,8 @@ impl WasmInstanceContext {
         let result = self
             .ctx
             .host_exports
-            .big_int_pow(self.asc_get(x_ptr)?, exp)?;
-        self.asc_new(&result)
+            .big_int_pow(asc_get(self, x_ptr)?, exp)?;
+        asc_new(self, &result)
     }
 
     /// function bigInt.bitOr(x: BigInt, y: BigInt): BigInt
@@ -1208,8 +1229,8 @@ impl WasmInstanceContext {
         let result = self
             .ctx
             .host_exports
-            .big_int_bit_or(self.asc_get(x_ptr)?, self.asc_get(y_ptr)?)?;
-        self.asc_new(&result)
+            .big_int_bit_or(asc_get(self, x_ptr)?, asc_get(self, y_ptr)?)?;
+        asc_new(self, &result)
     }
 
     /// function bigInt.bitAnd(x: BigInt, y: BigInt): BigInt
@@ -1221,8 +1242,8 @@ impl WasmInstanceContext {
         let result = self
             .ctx
             .host_exports
-            .big_int_bit_and(self.asc_get(x_ptr)?, self.asc_get(y_ptr)?)?;
-        self.asc_new(&result)
+            .big_int_bit_and(asc_get(self, x_ptr)?, asc_get(self, y_ptr)?)?;
+        asc_new(self, &result)
     }
 
     /// function bigInt.leftShift(x: BigInt, bits: u8): BigInt
@@ -1235,8 +1256,8 @@ impl WasmInstanceContext {
         let result = self
             .ctx
             .host_exports
-            .big_int_left_shift(self.asc_get(x_ptr)?, bits)?;
-        self.asc_new(&result)
+            .big_int_left_shift(asc_get(self, x_ptr)?, bits)?;
+        asc_new(self, &result)
     }
 
     /// function bigInt.rightShift(x: BigInt, bits: u8): BigInt
@@ -1249,8 +1270,8 @@ impl WasmInstanceContext {
         let result = self
             .ctx
             .host_exports
-            .big_int_right_shift(self.asc_get(x_ptr)?, bits)?;
-        self.asc_new(&result)
+            .big_int_right_shift(asc_get(self, x_ptr)?, bits)?;
+        asc_new(self, &result)
     }
 
     /// function typeConversion.bytesToBase58(bytes: Bytes): string
@@ -1261,8 +1282,8 @@ impl WasmInstanceContext {
         let result = self
             .ctx
             .host_exports
-            .bytes_to_base58(self.asc_get(bytes_ptr)?)?;
-        self.asc_new(&result)
+            .bytes_to_base58(asc_get(self, bytes_ptr)?)?;
+        asc_new(self, &result)
     }
 
     /// function bigDecimal.toString(x: BigDecimal): string
@@ -1273,8 +1294,8 @@ impl WasmInstanceContext {
         let result = self
             .ctx
             .host_exports
-            .big_decimal_to_string(self.try_asc_get(big_decimal_ptr)?)?;
-        self.asc_new(&result)
+            .big_decimal_to_string(try_asc_get(self, big_decimal_ptr)?)?;
+        asc_new(self, &result)
     }
 
     /// function bigDecimal.fromString(x: string): BigDecimal
@@ -1285,8 +1306,8 @@ impl WasmInstanceContext {
         let result = self
             .ctx
             .host_exports
-            .big_decimal_from_string(self.asc_get(string_ptr)?)?;
-        self.asc_new(&result)
+            .big_decimal_from_string(asc_get(self, string_ptr)?)?;
+        asc_new(self, &result)
     }
 
     /// function bigDecimal.plus(x: BigDecimal, y: BigDecimal): BigDecimal
@@ -1298,8 +1319,8 @@ impl WasmInstanceContext {
         let result = self
             .ctx
             .host_exports
-            .big_decimal_plus(self.try_asc_get(x_ptr)?, self.try_asc_get(y_ptr)?)?;
-        self.asc_new(&result)
+            .big_decimal_plus(try_asc_get(self, x_ptr)?, try_asc_get(self, y_ptr)?)?;
+        asc_new(self, &result)
     }
 
     /// function bigDecimal.minus(x: BigDecimal, y: BigDecimal): BigDecimal
@@ -1311,8 +1332,8 @@ impl WasmInstanceContext {
         let result = self
             .ctx
             .host_exports
-            .big_decimal_minus(self.try_asc_get(x_ptr)?, self.try_asc_get(y_ptr)?)?;
-        self.asc_new(&result)
+            .big_decimal_minus(try_asc_get(self, x_ptr)?, try_asc_get(self, y_ptr)?)?;
+        asc_new(self, &result)
     }
 
     /// function bigDecimal.times(x: BigDecimal, y: BigDecimal): BigDecimal
@@ -1324,8 +1345,8 @@ impl WasmInstanceContext {
         let result = self
             .ctx
             .host_exports
-            .big_decimal_times(self.try_asc_get(x_ptr)?, self.try_asc_get(y_ptr)?)?;
-        self.asc_new(&result)
+            .big_decimal_times(try_asc_get(self, x_ptr)?, try_asc_get(self, y_ptr)?)?;
+        asc_new(self, &result)
     }
 
     /// function bigDecimal.dividedBy(x: BigDecimal, y: BigDecimal): BigDecimal
@@ -1337,8 +1358,8 @@ impl WasmInstanceContext {
         let result = self
             .ctx
             .host_exports
-            .big_decimal_divided_by(self.try_asc_get(x_ptr)?, self.try_asc_get(y_ptr)?)?;
-        self.asc_new(&result)
+            .big_decimal_divided_by(try_asc_get(self, x_ptr)?, try_asc_get(self, y_ptr)?)?;
+        asc_new(self, &result)
     }
 
     /// function bigDecimal.equals(x: BigDecimal, y: BigDecimal): bool
@@ -1349,7 +1370,7 @@ impl WasmInstanceContext {
     ) -> Result<bool, DeterministicHostError> {
         self.ctx
             .host_exports
-            .big_decimal_equals(self.try_asc_get(x_ptr)?, self.try_asc_get(y_ptr)?)
+            .big_decimal_equals(try_asc_get(self, x_ptr)?, try_asc_get(self, y_ptr)?)
     }
 
     /// function dataSource.create(name: string, params: Array<string>): void
@@ -1358,8 +1379,8 @@ impl WasmInstanceContext {
         name_ptr: AscPtr<AscString>,
         params_ptr: AscPtr<Array<AscPtr<AscString>>>,
     ) -> Result<(), HostExportError> {
-        let name: String = self.asc_get(name_ptr)?;
-        let params: Vec<String> = self.asc_get(params_ptr)?;
+        let name: String = asc_get(self, name_ptr)?;
+        let params: Vec<String> = asc_get(self, params_ptr)?;
         self.ctx.host_exports.data_source_create(
             &self.ctx.logger,
             &mut self.ctx.state,
@@ -1377,9 +1398,9 @@ impl WasmInstanceContext {
         params_ptr: AscPtr<Array<AscPtr<AscString>>>,
         context_ptr: AscPtr<AscEntity>,
     ) -> Result<(), HostExportError> {
-        let name: String = self.asc_get(name_ptr)?;
-        let params: Vec<String> = self.asc_get(params_ptr)?;
-        let context: HashMap<_, _> = self.try_asc_get(context_ptr)?;
+        let name: String = asc_get(self, name_ptr)?;
+        let params: Vec<String> = asc_get(self, params_ptr)?;
+        let context: HashMap<_, _> = try_asc_get(self, context_ptr)?;
         self.ctx.host_exports.data_source_create(
             &self.ctx.logger,
             &mut self.ctx.state,
@@ -1392,27 +1413,27 @@ impl WasmInstanceContext {
 
     /// function dataSource.address(): Bytes
     fn data_source_address(&mut self) -> Result<AscPtr<Uint8Array>, DeterministicHostError> {
-        self.asc_new(&self.ctx.host_exports.data_source_address())
+        asc_new(self, &self.ctx.host_exports.data_source_address())
     }
 
     /// function dataSource.network(): String
     fn data_source_network(&mut self) -> Result<AscPtr<AscString>, DeterministicHostError> {
-        self.asc_new(&self.ctx.host_exports.data_source_network())
+        asc_new(self, &self.ctx.host_exports.data_source_network())
     }
 
     /// function dataSource.context(): DataSourceContext
     fn data_source_context(&mut self) -> Result<AscPtr<AscEntity>, DeterministicHostError> {
-        self.asc_new(&self.ctx.host_exports.data_source_context().sorted())
+        asc_new(self, &self.ctx.host_exports.data_source_context().sorted())
     }
 
     fn ens_name_by_hash(
         &mut self,
         hash_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscString>, HostExportError> {
-        let hash: String = self.asc_get(hash_ptr)?;
+        let hash: String = asc_get(self, hash_ptr)?;
         let name = self.ctx.host_exports.ens_name_by_hash(&*hash)?;
         // map `None` to `null`, and `Some(s)` to a runtime string
-        name.map(|name| self.asc_new(&*name).map_err(Into::into))
+        name.map(|name| asc_new(self, &*name).map_err(Into::into))
             .unwrap_or(Ok(AscPtr::null()))
     }
 
@@ -1422,7 +1443,7 @@ impl WasmInstanceContext {
         msg: AscPtr<AscString>,
     ) -> Result<(), DeterministicHostError> {
         let level = LogLevel::from(level).into();
-        let msg: String = self.asc_get(msg)?;
+        let msg: String = asc_get(self, msg)?;
         self.ctx.host_exports.log_log(&self.ctx.logger, level, msg)
     }
 
@@ -1431,9 +1452,9 @@ impl WasmInstanceContext {
         &mut self,
         token_ptr: AscPtr<AscEnum<EthereumValueKind>>,
     ) -> Result<AscPtr<Uint8Array>, DeterministicHostError> {
-        let data = host_exports::ethereum_encode(self.asc_get(token_ptr)?);
+        let data = host_exports::ethereum_encode(asc_get(self, token_ptr)?);
         // return `null` if it fails
-        data.map(|bytes| self.asc_new(&*bytes))
+        data.map(|bytes| asc_new(self, &*bytes))
             .unwrap_or(Ok(AscPtr::null()))
     }
 
@@ -1444,10 +1465,10 @@ impl WasmInstanceContext {
         data_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscEnum<EthereumValueKind>>, DeterministicHostError> {
         let result =
-            host_exports::ethereum_decode(self.asc_get(types_ptr)?, self.asc_get(data_ptr)?);
+            host_exports::ethereum_decode(asc_get(self, types_ptr)?, asc_get(self, data_ptr)?);
         // return `null` if it fails
         result
-            .map(|param| self.asc_new(&param))
+            .map(|param| asc_new(self, &param))
             .unwrap_or(Ok(AscPtr::null()))
     }
 
@@ -1461,9 +1482,9 @@ impl WasmInstanceContext {
                 "`arweave.transactionData` is deprecated. Improved support for arweave may be added in the future"
             )));
         }
-        let tx_id: String = self.asc_get(tx_id)?;
+        let tx_id: String = asc_get(self, tx_id)?;
         let data = self.ctx.host_exports.arweave_transaction_data(&tx_id);
-        data.map(|data| self.asc_new(&*data).map_err(Into::into))
+        data.map(|data| asc_new(self, &*data).map_err(Into::into))
             .unwrap_or(Ok(AscPtr::null()))
     }
 
@@ -1478,10 +1499,10 @@ impl WasmInstanceContext {
                 "`box.profile` is deprecated. Improved support for 3box may be added in the future"
             )));
         }
-        let address: String = self.asc_get(address)?;
+        let address: String = asc_get(self, address)?;
         let profile = self.ctx.host_exports.box_profile(&address);
         profile
-            .map(|profile| self.asc_new(&profile).map_err(|e| e.into()))
+            .map(|profile| asc_new(self, &profile).map_err(|e| e.into()))
             .unwrap_or(Ok(AscPtr::null()))
     }
 }
