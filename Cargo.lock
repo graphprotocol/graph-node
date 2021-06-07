@@ -3308,12 +3308,12 @@ dependencies = [
 
 [[package]]
 name = "priority-queue"
-version = "0.7.0"
+version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a03dfae8e64d4aa651415e2a4321f9f09f2e388a2f8bec36bed03bc22c0b687"
+checksum = "f3cc8d04bf8e8a8acc9ee96c021780ac660fc80e332bb95b9f3faa41e380b8f1"
 dependencies = [
+ "autocfg 1.0.1",
  "indexmap",
- "take_mut",
 ]
 
 [[package]]
