@@ -75,7 +75,7 @@ fn test_valid_module_and_store_with_timeout(
             deployment.clone(),
             data_source,
             store.subgraph_store(),
-            call_cache, 
+            call_cache,
         ),
         host_metrics,
         timeout,
@@ -689,7 +689,6 @@ async fn entity_store() {
     )
     .unwrap();
 
-
     let get_user = move |module: &mut WasmInstance<Chain>, id: &str| -> Option<Entity> {
         let id = asc_new(module, id).unwrap();
         let entity_ptr: AscPtr<AscEntity> = module.invoke_export("getUser", id);
@@ -702,9 +701,9 @@ async fn entity_store() {
         }
     };
 
-        module
-            .invoke_export2_void("loadAndSetUserName", id_ptr, name_ptr)
-            .unwrap();
+    module
+        .invoke_export2_void("loadAndSetUserName", id_ptr, name_ptr)
+        .unwrap();
 
     // store.get of a nonexistent user
     assert_eq!(None, get_user(&mut module, "herobrine"));
