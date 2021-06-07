@@ -91,15 +91,9 @@ impl WasmInstance {
         handler_name: &str,
         value: &serde_json::Value,
         user_data: &store::Value,
-<<<<<<< HEAD
-    ) -> Result<BlockState, anyhow::Error> {
-        let value = self.asc_new(value)?;
-        let user_data = self.asc_new(user_data)?;
-=======
     ) -> Result<BlockState<C>, anyhow::Error> {
         let value = asc_new(&mut self, value)?;
         let user_data = asc_new(&mut self, user_data)?;
->>>>>>> 7a125421cd40f9a00df905a88cca4999c8dbd4a9
 
         self.instance_ctx_mut().ctx.state.enter_handler();
 
@@ -868,15 +862,8 @@ impl WasmInstanceContext {
                 let _section = self
                     .host_metrics
                     .stopwatch
-<<<<<<< HEAD
                     .start_section("store_get_asc_new"); 
-                self.asc_new(&entity.sorted())?
-=======
-                    .start_section("store_get_asc_new");
-                asc_new(self, &entity.sorted())?
->>>>>>> 7a125421cd40f9a00df905a88cca4999c8dbd4a9
             }
-            None => AscPtr::null(),
         };
 
         Ok(ret)

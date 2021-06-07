@@ -612,23 +612,6 @@ async fn bytes_to_base58() {
 
 #[tokio::test]
 async fn data_source_create() {
-<<<<<<< HEAD
-    let run_data_source_create = move |name: String,
-                                       params: Vec<String>|
-          -> Result<Vec<DataSourceTemplateInfo>, wasmtime::Trap> {
-        let mut module = test_module(
-            "DataSourceCreate",
-            mock_data_source("wasm_test/data_source_create.wasm"),
-        );
-
-        let name = module.asc_new(&name).unwrap();
-        let params = module.asc_new(&*params).unwrap();
-        module.instance_ctx_mut().ctx.state.enter_handler();
-        module.invoke_export2_void("dataSourceCreate", name, params)?;
-        module.instance_ctx_mut().ctx.state.exit_handler();
-        Ok(module.take_ctx().ctx.state.drain_created_data_sources())
-    };
-=======
     let run_data_source_create =
         move |name: String,
               params: Vec<String>|
@@ -645,7 +628,6 @@ async fn data_source_create() {
             module.instance_ctx_mut().ctx.state.exit_handler();
             Ok(module.take_ctx().ctx.state.drain_created_data_sources())
         };
->>>>>>> 7a125421cd40f9a00df905a88cca4999c8dbd4a9
 
     // Test with a valid template
     let template = String::from("example template");
@@ -707,13 +689,9 @@ async fn entity_store() {
     )
     .unwrap();
 
-<<<<<<< HEAD
-    let get_user = move |module: &mut WasmInstance, id: &str| -> Option<Entity> {
-        let id = module.asc_new(id).unwrap();
-=======
+
     let get_user = move |module: &mut WasmInstance<Chain>, id: &str| -> Option<Entity> {
         let id = asc_new(module, id).unwrap();
->>>>>>> 7a125421cd40f9a00df905a88cca4999c8dbd4a9
         let entity_ptr: AscPtr<AscEntity> = module.invoke_export("getUser", id);
         if entity_ptr.is_null() {
             None
@@ -724,19 +702,9 @@ async fn entity_store() {
         }
     };
 
-<<<<<<< HEAD
-    let load_and_set_user_name = |module: &mut WasmInstance, id: &str, name: &str| {
-        let id_ptr = module.asc_new(id).unwrap();
-        let name_ptr = module.asc_new(name).unwrap();
-=======
-    let load_and_set_user_name = |module: &mut WasmInstance<Chain>, id: &str, name: &str| {
-        let id_ptr = asc_new(module, id).unwrap();
-        let name_ptr = asc_new(module, name).unwrap();
->>>>>>> 7a125421cd40f9a00df905a88cca4999c8dbd4a9
         module
             .invoke_export2_void("loadAndSetUserName", id_ptr, name_ptr)
             .unwrap();
-    };
 
     // store.get of a nonexistent user
     assert_eq!(None, get_user(&mut module, "herobrine"));

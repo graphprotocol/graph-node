@@ -15,8 +15,7 @@ members = [
     "store/postgres",
     "store/test-store",
     "graph",
-    "tests",
-    "runtime/subtester"
+    "tests"
 ]
 
 

@@ -1,11 +1,6 @@
 use ethabi::LogParam;
 use serde::{Deserialize, Serialize};
-<<<<<<< HEAD
-use slog::{o, SendSyncRefUnwindSafeKV};
-use std::sync::Arc;
-use std::{cmp::Ordering, convert::TryFrom};
-use strum_macros::AsStaticStr;
-=======
+
 use std::{convert::TryFrom, sync::Arc};
 >>>>>>> 7a125421cd40f9a00df905a88cca4999c8dbd4a9
 use web3::types::{
@@ -16,22 +11,7 @@ use web3::types::{
 use crate::{
     blockchain::BlockPtr,
     cheap_clone::CheapClone,
-<<<<<<< HEAD
-    prelude::{
-        BlockNumber, DeploymentHash, EntityKey, MappingBlockHandler, MappingCallHandler,
-        MappingEventHandler, ToEntityKey,
-    },
-=======
-    prelude::{BlockNumber, DeploymentHash, EntityKey, ToEntityKey},
->>>>>>> 7a125421cd40f9a00df905a88cca4999c8dbd4a9
-};
-
-pub type LightEthereumBlock = Block<Transaction>;
-
-pub trait LightEthereumBlockExt {
-    fn number(&self) -> BlockNumber;
     fn transaction_for_log(&self, log: &Log) -> Option<Transaction>;
-    fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction>;
     fn parent_ptr(&self) -> Option<BlockPtr>;
     fn format(&self) -> String;
     fn block_ptr(&self) -> BlockPtr;
