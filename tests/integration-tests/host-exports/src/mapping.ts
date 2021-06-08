@@ -79,7 +79,7 @@ function ethereumAbiSimpleCase(): void {
 
   let encoded = ethereum.encode(address)!;
 
-  let decoded = ethereum.decode("address", encoded);
+  let decoded = ethereum.decode("address", encoded)!;
 
   assert(address.toAddress() == decoded.toAddress(), "address ethereum encoded does not equal the decoded value");
 }
@@ -109,7 +109,7 @@ function ethereumAbiComplexCase(): void {
 
   let encoded = ethereum.encode(ethereum.Value.fromTuple(changetype<ethereum.Tuple>(token)))!;
 
-  let decoded = ethereum.decode("(address,(uint256[2],bool))", encoded).toTuple();
+  let decoded = ethereum.decode("(address,(uint256[2],bool))", encoded)!.toTuple();
 
   let decodedAddress = decoded[0].toAddress();
   let decodedTuple = decoded[1].toTuple();
