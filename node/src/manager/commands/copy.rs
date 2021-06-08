@@ -256,6 +256,16 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: i32) -> Result<(), Err
         }
     };
 
+    let progress = match &state.finished_at {
+        Some(_) => done(&state.finished_at),
+        None => {
+            let target: i64 = tables.iter().map(|table| table.target_vid).sum();
+            let next: i64 = tables.iter().map(|table| table.next_vid).sum();
+            let pct = next as f64 / target as f64 * 100.0;
+            format!("{:.2}% done, {}/{}", pct, next, target)
+        }
+    };
+
     let mut lst = vec![
         "deployment",
         "src",
@@ -270,7 +280,7 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: i32) -> Result<(), Err
         state.dst.to_string(),
         state.target_block_number.to_string(),
         duration(&state.started_at, &state.finished_at),
-        done(&state.finished_at),
+        progress,
     ];
     match (cancelled_at, state.cancelled_at) {
         (Some(c), None) => {
