@@ -13,9 +13,9 @@ export function handleBlock(block: ethereum.Block): void {
   context.setBigInt("number", block.number);
 
   Template.createWithContext(
-    Address.fromHexString(
+    changetype<Address>(Address.fromHexString(
       "0x2E645469f354BB4F5c8a05B3b30A929361cf77eC"
-    ) as Address,
+    )),
     context
   );
 }

@@ -100,14 +100,14 @@ function ethereumAbiComplexCase(): void {
     bool
   ];
 
-  let tuple = ethereum.Value.fromTuple(tupleArray as ethereum.Tuple);
+  let tuple = ethereum.Value.fromTuple(changetype<ethereum.Tuple>(tupleArray));
 
   let token: Array<ethereum.Value> = [
     address,
     tuple
   ];
 
-  let encoded = ethereum.encode(ethereum.Value.fromTuple(token as ethereum.Tuple))!;
+  let encoded = ethereum.encode(ethereum.Value.fromTuple(changetype<ethereum.Tuple>(token)))!;
 
   let decoded = ethereum.decode("(address,(uint256[2],bool))", encoded).toTuple();
 
