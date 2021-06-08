@@ -298,14 +298,29 @@ pub enum ChainCommand {
 
 #[derive(Clone, Debug, StructOpt)]
 pub enum StatsCommand {
-    /// List all chains that are in the database
+    /// Toggle whether a table is account-like
+    ///
+    /// Setting a table to 'account-like' enables a query optimization that
+    /// is very effective for tables with a high ratio of entity versions
+    /// to distinct entities. It can take up to 5 minutes for this to take
+    /// effect.
     AccountLike {
         #[structopt(long, help = "do not set but clear the account-like flag\n")]
         clear: bool,
         table: String,
     },
+    /// Show statistics for the tables of a deployment
+    ///
+    /// Show how many distinct entities and how many versions the tables of
+    /// each subgraph have. The data is based on the statistics that
+    /// Postgres keeps, and only refreshed when a table is analyzed. If a
+    /// table name is passed, perform a full count of entities and versions
+    /// in that table, which can be very slow, but is needed since the
+    /// statistics based data can be off by an order of magnitude.
     Show {
+        /// The namespace of the deployment in the form `sgdNNNN`
         nsp: String,
+        /// The name of a table to fully count
         table: Option<String>,
     },
 }
