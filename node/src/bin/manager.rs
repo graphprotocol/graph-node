@@ -304,6 +304,10 @@ pub enum StatsCommand {
         clear: bool,
         table: String,
     },
+    Show {
+        nsp: String,
+        table: Option<String>,
+    },
 }
 
 impl From<Opt> for config::Opt {
@@ -576,6 +580,7 @@ async fn main() {
                 AccountLike { clear, table } => {
                     commands::stats::account_like(ctx.pools(), clear, table)
                 }
+                Show { nsp, table } => commands::stats::show(ctx.pools(), nsp, table),
             }
         }
     };
