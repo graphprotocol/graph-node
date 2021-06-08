@@ -12,9 +12,9 @@ dependencies = [
 
 [[package]]
 name = "addr2line"
-version = "0.14.0"
+version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c0929d69e78dd9bf5408269919fcbcaeb2e35e5d43e5815517cdc6a8e11a423"
+checksum = "a55f82cfe485775d02112886f4169bde0c5894d75e79ead7eafe7e40a25e45f7"
 dependencies = [
  "gimli 0.23.0",
 ]
@@ -147,15 +147,15 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
 name = "backtrace"
-version = "0.3.55"
+version = "0.3.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef5140344c85b01f9bbb4d4b7288a8aa4b3287ccef913a14bcc78a1063623598"
+checksum = "78ed203b9ba68b242c62b3fb7480f589dd49829be1edb3fe8fc8b4ffda2dcb8d"
 dependencies = [
- "addr2line 0.14.0",
+ "addr2line 0.14.1",
  "cfg-if 1.0.0",
  "libc",
  "miniz_oxide",
- "object 0.22.0",
+ "object 0.23.0",
  "rustc-demangle",
 ]
 
@@ -193,7 +193,18 @@ version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1374191e2dd25f9ae02e3aa95041ed5d747fc77b3c102b49fe2dd9a8117a6244"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.2.6",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "bigdecimal"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc403c26e6b03005522e6e8053384c4e881dfe5b2bf041c0c2c49be33d64a539"
+dependencies = [
+ "num-bigint 0.3.2",
  "num-integer",
  "num-traits",
  "serde",
@@ -936,12 +947,12 @@ version = "1.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "047bfc4d5c3bd2ef6ca6f981941046113524b9a9f9a7cbdfdd7ff40f58e6f542"
 dependencies = [
- "bigdecimal",
+ "bigdecimal 0.1.2",
  "bitflags 1.2.1",
  "byteorder",
  "chrono",
  "diesel_derives",
- "num-bigint",
+ "num-bigint 0.2.6",
  "num-integer",
  "num-traits",
  "pq-sys",
@@ -1588,7 +1599,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "atomic_refcell",
- "bigdecimal",
+ "bigdecimal 0.2.0",
  "bytes 0.5.6",
  "chrono",
  "diesel",
@@ -1604,7 +1615,7 @@ dependencies = [
  "lazy_static",
  "maplit",
  "mockall 0.8.3",
- "num-bigint",
+ "num-bigint 0.2.6",
  "num-traits",
  "num_cpus",
  "parking_lot 0.11.1",
@@ -1875,6 +1886,7 @@ name = "graph-store-postgres"
 version = "0.22.0"
 dependencies = [
  "Inflector",
+ "anyhow",
  "async-trait",
  "backtrace",
  "blake3",
@@ -1883,9 +1895,11 @@ dependencies = [
  "diesel",
  "diesel-derive-enum",
  "diesel-dynamic-schema",
+ "diesel_derives",
  "diesel_migrations",
  "fallible-iterator 0.1.6",
  "futures 0.1.31",
+ "git-testament",
  "graph",
  "graph-chain-ethereum",
  "graph-graphql",
@@ -2870,6 +2884,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-bigint"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d0a3d5e207573f948a9e5376662aa743a2ea13f7c50a554d7af443a73fbfeba"
+dependencies = [
+ "autocfg 1.0.1",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
 name = "num-integer"
 version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2900,9 +2925,9 @@ dependencies = [
 
 [[package]]
 name = "object"
-version = "0.22.0"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d3b63360ec3cb337817c2dbd47ab4a0f170d285d8e5a2064600f3def1402397"
+checksum = "a9a7ab5d64814df0fe4a4b5ead45ed6c5f181ee3ff04ba344313a6c80446c5d4"
 
 [[package]]
 name = "object"
