@@ -36,6 +36,7 @@ use graph_graphql::prelude::api_schema;
 use web3::types::Address;
 
 use crate::block_range::block_number;
+use crate::catalog;
 use crate::deployment;
 use crate::relational::{Layout, LayoutCache};
 use crate::relational_queries::FromEntityData;
@@ -1126,6 +1127,8 @@ impl DeploymentStore {
                 let count = deployment::copy_errors(&conn, &src.site, &dst.site, &block)?;
                 info!(logger, "Copied {} existing errors", count;
                       "time_ms" => start.elapsed().as_millis());
+
+                catalog::copy_account_like(&conn, &src.site, &dst.site)?;
 
                 // Rewind the subgraph so that entity versions that are
                 // clamped in the future (beyond `block`) become valid for

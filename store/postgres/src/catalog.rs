@@ -1,3 +1,4 @@
+use diesel::sql_types::Integer;
 use diesel::{connection::SimpleConnection, prelude::RunQueryDsl, select};
 use diesel::{insert_into, OptionalExtension};
 use diesel::{pg::PgConnection, sql_query};
@@ -7,6 +8,7 @@ use std::sync::Arc;
 
 use graph::{data::subgraph::schema::POI_TABLE, prelude::StoreError};
 
+use crate::connection_pool::ForeignServer;
 use crate::{
     primary::{Namespace, Site},
     relational::SqlName,
@@ -199,4 +201,23 @@ pub fn set_account_like(
         .set(ts::is_account_like.eq(is_account_like))
         .execute(conn)?;
     Ok(())
+}
+
+pub fn copy_account_like(conn: &PgConnection, src: &Site, dst: &Site) -> Result<usize, StoreError> {
+    let src_nsp = if src.shard == dst.shard {
+        "subgraphs".to_string()
+    } else {
+        ForeignServer::metadata_schema(&src.shard)
+    };
+    let query = format!(
+        "insert into subgraphs.table_stats(deployment, table_name, is_account_like)
+         select $2 as deployment, ts.table_name, ts.is_account_like
+           from {src_nsp}.table_stats ts
+          where ts.deployment = $1",
+        src_nsp = src_nsp
+    );
+    Ok(sql_query(&query)
+        .bind::<Integer, _>(src.id)
+        .bind::<Integer, _>(dst.id)
+        .execute(conn)?)
 }
