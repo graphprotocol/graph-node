@@ -1893,6 +1893,7 @@ dependencies = [
  "graphql-parser",
  "hex",
  "hex-literal",
+ "itertools",
  "lazy_static",
  "lru_time_cache",
  "maybe-owned",

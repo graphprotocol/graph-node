@@ -9,12 +9,15 @@ use std::iter::once;
 use std::rc::Rc;
 use std::time::Instant;
 
-use graph::prelude::{
-    q, s, ApiSchema, BlockNumber, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink,
-    EntityOrder, EntityWindow, Logger, ParentLink, QueryExecutionError, QueryStore,
-    Value as StoreValue, WindowAttribute,
-};
 use graph::{components::store::EntityType, data::graphql::*};
+use graph::{
+    data::graphql::ext::DirectiveFinder,
+    prelude::{
+        q, s, ApiSchema, BlockNumber, ChildMultiplicity, ColumnNames, EntityCollection,
+        EntityFilter, EntityLink, EntityOrder, EntityWindow, Logger, ParentLink,
+        QueryExecutionError, QueryStore, Value as StoreValue, WindowAttribute,
+    },
+};
 
 use crate::execution::{ExecutionContext, Resolver};
 use crate::query::ast as qast;
@@ -27,9 +30,23 @@ lazy_static! {
     static ref ARG_ID: String = String::from("id");
 }
 
+type GroupedFieldSet<'a> = IndexMap<&'a str, CollectedResponseKey<'a>>;
+
 /// An `ObjectType` with `Hash` and `Eq` derived from the name.
 #[derive(Clone, Debug)]
-struct ObjectCondition<'a>(&'a s::ObjectType);
+pub struct ObjectCondition<'a>(&'a s::ObjectType);
+
+impl<'a> Ord for ObjectCondition<'a> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.name.cmp(&other.0.name)
+    }
+}
+
+impl<'a> PartialOrd for ObjectCondition<'a> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.0.name.cmp(&other.0.name))
+    }
+}
 
 impl std::hash::Hash for ObjectCondition<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -44,6 +61,12 @@ impl PartialEq for ObjectCondition<'_> {
 }
 
 impl Eq for ObjectCondition<'_> {}
+
+impl<'a> From<&'a s::ObjectType> for ObjectCondition<'a> {
+    fn from(object: &'a s::ObjectType) -> Self {
+        ObjectCondition(object)
+    }
+}
 
 /// Intermediate data structure to hold the results of prefetching entities
 /// and their nested associations. For each association of `entity`, `children`
@@ -376,9 +399,10 @@ impl<'a> Join<'a> {
         &self,
         parents: &Vec<&mut Node>,
         multiplicity: ChildMultiplicity,
+        previous_collection: &EntityCollection,
     ) -> Vec<EntityWindow> {
         let mut windows = vec![];
-
+        let column_names_map = previous_collection.entity_types_and_column_names();
         for cond in &self.conds {
             let mut parents_by_id = parents
                 .iter()
@@ -391,10 +415,16 @@ impl<'a> Join<'a> {
                 parents_by_id.dedup_by(|(id1, _), (id2, _)| id1 == id2);
 
                 let (ids, link) = cond.entity_link(parents_by_id, multiplicity);
+                let child_type: EntityType = cond.child_type.to_owned();
+                let column_names = match column_names_map.get(&child_type) {
+                    Some(column_names) => column_names.clone(),
+                    None => ColumnNames::All,
+                };
                 windows.push(EntityWindow {
-                    child_type: cond.child_type.to_owned(),
+                    child_type,
                     ids,
                     link,
+                    column_names,
                 });
             }
         }
@@ -444,7 +474,6 @@ fn execute_root_selection_set(
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     // Obtain the root Query type and fail if there isn't one
     let query_type = ctx.query.schema.query_type.as_ref().into();
-
     let grouped_field_set = collect_fields(ctx, query_type, once(selection_set));
 
     // Execute the root selection set against the root query type
@@ -455,7 +484,7 @@ fn execute_selection_set<'a>(
     resolver: &StoreResolver,
     ctx: &'a ExecutionContext<impl Resolver>,
     mut parents: Vec<Node>,
-    grouped_field_set: IndexMap<&'a str, CollectedResponseKey<'a>>,
+    grouped_field_set: GroupedFieldSet<'a>,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     let schema = &ctx.query.schema;
     let mut errors: Vec<QueryExecutionError> = Vec::new();
@@ -498,13 +527,23 @@ fn execute_selection_set<'a>(
                 child_type,
                 &field.name,
             );
-
             // Group fields with the same response key, so we can execute them together
-            let grouped_field_set =
+            let mut grouped_field_set =
                 collect_fields(ctx, child_type, fields.iter().map(|f| &f.selection_set));
 
+            let collected_columns =
+                CollectedColumnNames::consolidate_column_names(&mut grouped_field_set)
+                    .resolve_interfaces(&ctx.query.schema.types_for_interface());
+
             match execute_field(
-                resolver, &ctx, type_cond, &parents, &join, &fields[0], field,
+                resolver,
+                &ctx,
+                type_cond,
+                &parents,
+                &join,
+                &fields[0],
+                field,
+                collected_columns,
             ) {
                 Ok(children) => {
                     match execute_selection_set(resolver, ctx, children, grouped_field_set) {
@@ -533,30 +572,56 @@ fn execute_selection_set<'a>(
 /// interface type and `iface_fields` the selected fields on the interface. `obj_types` are the
 /// fields selected on objects by fragments. In `collect_fields`, the `iface_fields` will then be
 /// merged into each entry in `obj_types`. See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct CollectedResponseKey<'a> {
     iface_cond: Option<&'a s::InterfaceType>,
     iface_fields: Vec<&'a q::Field>,
     obj_types: IndexMap<ObjectCondition<'a>, Vec<&'a q::Field>>,
+    collected_column_names: CollectedColumnNames<'a>,
 }
 
 impl<'a> CollectedResponseKey<'a> {
-    fn collect_field(&mut self, type_condition: ObjectOrInterface<'a>, field: &'a q::Field) {
-        match type_condition {
-            ObjectOrInterface::Interface(i) => {
-                // `collect_fields` will never call this with two different interfaces types.
-                assert!(
-                    self.iface_cond.is_none() || self.iface_cond.map(|x| &x.name) == Some(&i.name)
-                );
-                self.iface_cond = Some(i);
-                self.iface_fields.push(field);
-            }
-            ObjectOrInterface::Object(o) => {
-                self.obj_types
-                    .entry(ObjectCondition(o))
-                    .or_default()
-                    .push(field);
-            }
+    fn collect_field(
+        &mut self,
+        document: &s::Document,
+        object_or_interface: ObjectOrInterface<'a>,
+        field: &'a q::Field,
+    ) {
+        let schema_field = object_or_interface.field(&field.name);
+        schema_field
+            .and_then(|field_def| sast::get_type_definition_from_field(document, field_def))
+            .map(|type_def| match type_def {
+                // Only consider fields that point to objects or interfaces, and ignore nonexistent fields.
+                s::TypeDefinition::Interface(_) | s::TypeDefinition::Object(_) => {
+                    match object_or_interface {
+                        ObjectOrInterface::Interface(i) => {
+                            // `collect_fields` will never call this with two different interfaces types.
+                            assert!(
+                                self.iface_cond.is_none()
+                                    || self.iface_cond.map(|x| &x.name) == Some(&i.name)
+                            );
+                            self.iface_cond = Some(i);
+                            self.iface_fields.push(field);
+                        }
+                        ObjectOrInterface::Object(o) => {
+                            self.obj_types
+                                .entry(ObjectCondition(o))
+                                .or_default()
+                                .push(field);
+                        }
+                    }
+                }
+                s::TypeDefinition::Scalar(_) => {}
+
+                s::TypeDefinition::Union(_)
+                | s::TypeDefinition::Enum(_)
+                | s::TypeDefinition::InputObject(_) => return,
+            });
+
+        // collect the column name if field exists in schema
+        if schema_field.is_some() {
+            self.collected_column_names
+                .update(object_or_interface, &field)
         }
     }
 }
@@ -589,7 +654,7 @@ fn collect_fields<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     parent_ty: ObjectOrInterface<'a>,
     selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
-) -> IndexMap<&'a str, CollectedResponseKey<'a>> {
+) -> GroupedFieldSet<'a> {
     let mut grouped_fields = IndexMap::new();
 
     for selection_set in selection_sets {
@@ -625,31 +690,15 @@ fn collect_fields_inner<'a>(
     type_condition: ObjectOrInterface<'a>,
     selection_set: &'a q::SelectionSet,
     visited_fragments: &mut HashSet<&'a str>,
-    output: &mut IndexMap<&'a str, CollectedResponseKey<'a>>,
+    output: &mut GroupedFieldSet<'a>,
 ) {
-    fn is_reference_field(
-        schema: &s::Document,
-        object_type: ObjectOrInterface,
-        field: &q::Field,
-    ) -> bool {
-        object_type
-            .field(&field.name)
-            .map(|field_def| sast::get_type_definition_from_field(schema, field_def))
-            .unwrap_or(None)
-            .map(|type_def| match type_def {
-                s::TypeDefinition::Interface(_) | s::TypeDefinition::Object(_) => true,
-                _ => false,
-            })
-            .unwrap_or(false)
-    }
-
     fn collect_fragment<'a>(
         ctx: &'a ExecutionContext<impl Resolver>,
         outer_type_condition: ObjectOrInterface<'a>,
         frag_ty_condition: Option<&'a q::TypeCondition>,
         frag_selection_set: &'a q::SelectionSet,
         visited_fragments: &mut HashSet<&'a str>,
-        output: &mut IndexMap<&'a str, CollectedResponseKey<'a>>,
+        output: &mut GroupedFieldSet<'a>,
     ) {
         let schema = &ctx.query.schema.document();
         let fragment_ty = match frag_ty_condition {
@@ -707,15 +756,12 @@ fn collect_fields_inner<'a>(
     for selection in selections {
         match selection {
             q::Selection::Field(ref field) => {
-                // Only consider fields that point to objects or interfaces, and
-                // ignore nonexistent fields
-                if is_reference_field(&ctx.query.schema.document(), type_condition, field) {
-                    let response_key = qast::get_response_key(field);
-                    output
-                        .entry(response_key)
-                        .or_default()
-                        .collect_field(type_condition, field);
-                }
+                let response_key = qast::get_response_key(field);
+                output.entry(response_key).or_default().collect_field(
+                    &ctx.query.schema.document(),
+                    type_condition,
+                    field,
+                );
             }
 
             q::Selection::FragmentSpread(spread) => {
@@ -758,14 +804,15 @@ fn execute_field(
     join: &Join<'_>,
     field: &q::Field,
     field_definition: &s::Field,
+    collected_column_names: ColumnNamesByObjectType<'_>,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     let argument_values = crate::execution::coerce_argument_values(&ctx.query, object_type, field)?;
-
     let multiplicity = if sast::is_list_or_non_null_list_field(field_definition) {
         ChildMultiplicity::Many
     } else {
         ChildMultiplicity::Single
     };
+
     fetch(
         ctx.logger.clone(),
         resolver.store.as_ref(),
@@ -778,6 +825,7 @@ fn execute_field(
         ctx.max_first,
         ctx.max_skip,
         ctx.query.query_id.clone(),
+        collected_column_names,
     )
     .map_err(|e| vec![e])
 }
@@ -797,6 +845,7 @@ fn fetch(
     max_first: u32,
     max_skip: u32,
     query_id: String,
+    collected_column_names: ColumnNamesByObjectType<'_>,
 ) -> Result<Vec<Node>, QueryExecutionError> {
     let mut query = build_query(
         join.child_type,
@@ -805,6 +854,7 @@ fn fetch(
         types_for_interface,
         max_first,
         max_skip,
+        collected_column_names,
     )?;
     query.query_id = Some(query_id);
 
@@ -825,14 +875,119 @@ fn fetch(
     if !is_root_node(parents.iter().map(|p| &**p)) {
         // For anything but the root node, restrict the children we select
         // by the parent list
-        let windows = join.windows(parents, multiplicity);
-        if windows.len() == 0 {
+        let windows = join.windows(parents, multiplicity, &query.collection);
+        if windows.is_empty() {
             return Ok(vec![]);
         }
         query.collection = EntityCollection::Window(windows);
     }
-
     store
         .find_query_values(query)
         .map(|entities| entities.into_iter().map(|entity| entity.into()).collect())
+}
+
+/// Represents a finished column collection operation, mapping each object type to the final set of
+/// selected SQL columns.
+type ColumnNamesByObjectType<'a> = BTreeMap<ObjectCondition<'a>, ColumnNames>;
+
+#[derive(Debug, Default, Clone)]
+struct CollectedColumnNames<'a>(HashMap<ObjectOrInterface<'a>, ColumnNames>);
+
+impl<'a> CollectedColumnNames<'a> {
+    fn update(&mut self, object_or_interface: ObjectOrInterface<'a>, field: &q::Field) {
+        self.0
+            .entry(object_or_interface)
+            .or_insert(ColumnNames::All)
+            .update(field);
+    }
+
+    /// Consume this instance and transform it into a mapping from
+    /// `ObjectTypes` to `ColumnNames`, while resolving all interfaces
+    /// into the `ObjectType`s that implement them.
+    fn resolve_interfaces(
+        mut self,
+        types_for_interface: &'a BTreeMap<EntityType, Vec<s::ObjectType>>,
+    ) -> ColumnNamesByObjectType {
+        let mut map: ColumnNamesByObjectType = BTreeMap::new();
+        for (object_or_interface, column_names) in self.0.drain() {
+            match object_or_interface {
+                ObjectOrInterface::Object(object) => {
+                    CollectedColumnNames::upsert(&mut map, object, column_names);
+                }
+                ObjectOrInterface::Interface(interface) => {
+                    for object in &types_for_interface[&EntityType::from(interface)] {
+                        CollectedColumnNames::upsert(&mut map, object, column_names.clone());
+                    }
+                }
+            }
+        }
+        map
+    }
+
+    /// Helper function for handling insertion on the `ColumnNamesByObjectType` struct.
+    fn upsert(
+        map: &mut BTreeMap<ObjectCondition<'a>, ColumnNames>,
+        object: &'a s::ObjectType,
+        column_names: ColumnNames,
+    ) {
+        use std::collections::btree_map::Entry;
+        let key = ObjectCondition(object);
+        let column_names = filter_derived_fields(column_names, object);
+        match map.entry(key) {
+            Entry::Occupied(mut entry) => {
+                entry.get_mut().extend(column_names);
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(column_names);
+            }
+        }
+    }
+
+    /// Creates a new, combined `CollectedColumnNames` using drained values from `CollectedColumnNames`
+    /// scattered across different `CollectedResponseKey`s.
+    fn consolidate_column_names<'schema, 'collection>(
+        grouped_field_set: &'collection mut GroupedFieldSet<'schema>,
+    ) -> CollectedColumnNames<'schema> {
+        let mut map: HashMap<ObjectOrInterface, ColumnNames> = HashMap::new();
+        for (_, collected_response_key) in grouped_field_set.into_iter() {
+            for (object_or_interface, column_names) in
+                collected_response_key.collected_column_names.0.drain()
+            {
+                match map.entry(object_or_interface) {
+                    std::collections::hash_map::Entry::Vacant(entry) => {
+                        entry.insert(column_names);
+                    }
+                    std::collections::hash_map::Entry::Occupied(mut entry) => {
+                        entry.get_mut().extend(column_names);
+                    }
+                }
+            }
+        }
+        CollectedColumnNames(map)
+    }
+}
+
+/// Removes all derived fields from a `ColumnNames` collection based on a referential `ObjectType`.
+fn filter_derived_fields(column_names_type: ColumnNames, object: &s::ObjectType) -> ColumnNames {
+    match column_names_type {
+        ColumnNames::All => column_names_type,
+        ColumnNames::Select(sql_column_names) => {
+            let mut filtered = ColumnNames::All;
+            sql_column_names
+                .into_iter()
+                .filter_map(|column_name| {
+                    if let Some(schema_field) = sast::get_field(object, &column_name) {
+                        if schema_field.find_directive("derivedFrom").is_none() {
+                            Some(column_name) // field exists and is not derived
+                        } else {
+                            None // field exists and is derived
+                        }
+                    } else {
+                        None // field does not exist
+                    }
+                })
+                .for_each(|col| filtered.insert(&col));
+            filtered
+        }
+    }
 }

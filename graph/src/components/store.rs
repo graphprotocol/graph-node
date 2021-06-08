@@ -6,16 +6,15 @@ use mockall::predicate::*;
 use mockall::*;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
+use std::collections::btree_map::Entry;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::env;
 use std::fmt;
+use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
-use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    fmt::Display,
-};
 use thiserror::Error;
 use web3::types::{Address, H256};
 
@@ -314,6 +313,7 @@ pub struct EntityWindow {
     pub ids: Vec<String>,
     /// How to get the parent id
     pub link: EntityLink,
+    pub column_names: ColumnNames,
 }
 
 /// The base collections from which we are going to get entities for use in
@@ -324,7 +324,7 @@ pub struct EntityWindow {
 #[derive(Clone, Debug, PartialEq)]
 pub enum EntityCollection {
     /// Use all entities of the given types
-    All(Vec<EntityType>),
+    All(Vec<(EntityType, ColumnNames)>),
     /// Use entities according to the windows. The set of entities that we
     /// apply order and range to is formed by taking all entities matching
     /// the window, and grouping them by the attribute of the window. Entities
@@ -334,6 +334,31 @@ pub enum EntityCollection {
     /// column `b`; they will be grouped by using `A.a` and `B.b` as the keys
     Window(Vec<EntityWindow>),
 }
+
+impl EntityCollection {
+    pub fn entity_types_and_column_names(&self) -> BTreeMap<EntityType, ColumnNames> {
+        let mut map = BTreeMap::new();
+        match self {
+            EntityCollection::All(pairs) => pairs.iter().for_each(|(entity_type, column_names)| {
+                map.insert(entity_type.clone(), column_names.clone());
+            }),
+            EntityCollection::Window(windows) => windows.iter().for_each(
+                |EntityWindow {
+                     child_type,
+                     column_names,
+                     ..
+                 }| match map.entry(child_type.clone()) {
+                    Entry::Occupied(mut entry) => entry.get_mut().extend(column_names.clone()),
+                    Entry::Vacant(entry) => {
+                        entry.insert(column_names.clone());
+                    }
+                },
+            ),
+        }
+        map
+    }
+}
+
 /// The type we use for block numbers. This has to be a signed integer type
 /// since Postgres does not support unsigned integer types. But 2G ought to
 /// be enough for everybody
@@ -441,7 +466,10 @@ impl EntityQuery {
                             }
                         };
                         self.filter = Some(filter.and_maybe(self.filter));
-                        self.collection = EntityCollection::All(vec![window.child_type.to_owned()]);
+                        self.collection = EntityCollection::All(vec![(
+                            window.child_type.to_owned(),
+                            window.column_names.clone(),
+                        )]);
                     }
                 }
             }
@@ -1570,7 +1598,6 @@ impl EntityCache {
 
     fn entity_op(&mut self, key: EntityKey, op: EntityOp) {
         use std::collections::hash_map::Entry;
-
         let updates = match self.in_handler {
             true => &mut self.handler_updates,
             false => &mut self.updates,
@@ -1703,6 +1730,50 @@ impl LfuCache<EntityKey, Option<Entity>> {
                 Ok(entity)
             }
             Some(data) => Ok(data.to_owned()),
+        }
+    }
+}
+
+/// Determines which columns should be selected in a table.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ColumnNames {
+    /// Select all columns. Equivalent to a `"SELECT *"`.
+    All,
+    /// Individual column names to be selected.
+    Select(BTreeSet<String>),
+}
+
+impl ColumnNames {
+    pub fn insert(&mut self, column_name: &str) {
+        match self {
+            ColumnNames::All => {
+                let mut set = BTreeSet::new();
+                set.insert(column_name.to_string());
+                *self = ColumnNames::Select(set)
+            }
+            ColumnNames::Select(set) => {
+                set.insert(column_name.to_string());
+            }
+        }
+    }
+
+    pub fn update(&mut self, field: &q::Field) {
+        // ignore "meta" field names
+        if field.name.starts_with("__") {
+            return;
+        }
+        self.insert(&field.name)
+    }
+
+    pub fn extend(&mut self, other: Self) {
+        use ColumnNames::*;
+        match (self, other) {
+            (All, All) => {}
+            (self_ @ All, other @ Select(_)) => *self_ = other,
+            (Select(_), All) => {
+                unreachable!()
+            }
+            (Select(a), Select(b)) => a.extend(b),
         }
     }
 }
