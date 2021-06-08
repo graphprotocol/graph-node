@@ -7,9 +7,9 @@ use lazy_static::lazy_static;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::prelude::{
-    o, slog, web3::types::H256, ChildMultiplicity, DeploymentHash, Entity, EntityCollection,
-    EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, Logger, ParentLink, Schema,
-    StopwatchMetrics, Value, WindowAttribute, BLOCK_NUMBER_MAX,
+    o, slog, web3::types::H256, ChildMultiplicity, ColumnNames, DeploymentHash, Entity,
+    EntityCollection, EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, Logger,
+    ParentLink, Schema, StopwatchMetrics, Value, WindowAttribute, BLOCK_NUMBER_MAX,
 };
 use graph::{
     components::store::EntityType,
@@ -422,7 +422,7 @@ fn query() {
         // for a discussion of the various types of relationships and queries
 
         // EntityCollection::All
-        let coll = EntityCollection::All(vec![THING.clone()]);
+        let coll = EntityCollection::All(vec![(THING.clone(), ColumnNames::All)]);
         let things = fetch(conn, layout, coll);
         assert_eq!(vec![CHILD1, CHILD2, ROOT, GRANDCHILD1, GRANDCHILD2], things);
 
@@ -435,6 +435,7 @@ fn query() {
                 WindowAttribute::List("children".to_string()),
                 ChildMultiplicity::Many,
             ),
+            column_names: ColumnNames::All,
         }]);
         let things = fetch(conn, layout, coll);
         assert_eq!(vec![ROOT], things);
@@ -448,6 +449,7 @@ fn query() {
                 WindowAttribute::List("children".to_string()),
                 ChildMultiplicity::Single,
             ),
+            column_names: ColumnNames::All,
         }]);
         let things = fetch(conn, layout, coll);
         assert_eq!(vec![CHILD1, CHILD2], things);
@@ -461,6 +463,7 @@ fn query() {
                 WindowAttribute::Scalar("parent".to_string()),
                 ChildMultiplicity::Many,
             ),
+            column_names: ColumnNames::All,
         }]);
         let things = fetch(conn, layout, coll);
         assert_eq!(vec![CHILD1, CHILD2], things);
@@ -474,6 +477,7 @@ fn query() {
                 WindowAttribute::Scalar("parent".to_string()),
                 ChildMultiplicity::Single,
             ),
+            column_names: ColumnNames::All,
         }]);
         let things = fetch(conn, layout, coll);
         assert_eq!(vec![GRANDCHILD1, GRANDCHILD2], things);
@@ -488,6 +492,7 @@ fn query() {
                 CHILD1.to_owned(),
                 CHILD2.to_owned(),
             ]])),
+            column_names: ColumnNames::All,
         }]);
         let things = fetch(conn, layout, coll);
         assert_eq!(vec![CHILD1, CHILD2], things);
@@ -499,6 +504,7 @@ fn query() {
             child_type: THING.clone(),
             ids: vec![CHILD1.to_owned(), CHILD2.to_owned()],
             link: EntityLink::Parent(ParentLink::Scalar(vec![ROOT.to_owned(), ROOT.to_owned()])),
+            column_names: ColumnNames::All,
         }]);
         let things = fetch(conn, layout, coll);
         assert_eq!(vec![ROOT, ROOT], things);

@@ -546,7 +546,7 @@ fn user_query() -> EntityQuery {
     EntityQuery::new(
         TEST_SUBGRAPH_ID.clone(),
         BLOCK_NUMBER_MAX,
-        EntityCollection::All(vec![EntityType::from(USER)]),
+        EntityCollection::All(vec![(EntityType::from(USER), ColumnNames::All)]),
     )
 }
 
@@ -1620,7 +1620,7 @@ impl WindowQuery {
         };
         let windows = entity_types
             .into_iter()
-            .map(|child_type| {
+            .map(|(child_type, column_names)| {
                 let attribute = WindowAttribute::Scalar("favorite_color".to_owned());
                 let link = EntityLink::Direct(attribute, ChildMultiplicity::Many);
                 let ids = vec!["red", "green", "yellow", "blue"]
@@ -1629,8 +1629,9 @@ impl WindowQuery {
                     .collect();
                 EntityWindow {
                     child_type,
-                    link,
                     ids,
+                    link,
+                    column_names,
                 }
             })
             .collect();
@@ -1676,8 +1677,10 @@ impl WindowQuery {
 
     fn against_color_and_age(self) -> Self {
         let mut query = self.0;
-        query.collection =
-            EntityCollection::All(vec![EntityType::from(USER), EntityType::from("Person")]);
+        query.collection = EntityCollection::All(vec![
+            (EntityType::from(USER), ColumnNames::All),
+            (EntityType::from("Person"), ColumnNames::All),
+        ]);
         WindowQuery(query, self.1).default_window()
     }
 

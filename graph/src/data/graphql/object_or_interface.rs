@@ -1,6 +1,7 @@
 use crate::prelude::Schema;
 use crate::{components::store::EntityType, prelude::s};
 use std::collections::BTreeMap;
+use std::hash::{Hash, Hasher};
 
 use super::ObjectTypeExt;
 
@@ -8,6 +9,25 @@ use super::ObjectTypeExt;
 pub enum ObjectOrInterface<'a> {
     Object(&'a s::ObjectType),
     Interface(&'a s::InterfaceType),
+}
+
+impl<'a> PartialEq for ObjectOrInterface<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        use ObjectOrInterface::*;
+        match (self, other) {
+            (Object(a), Object(b)) => a.name == b.name,
+            (Interface(a), Interface(b)) => a.name == b.name,
+            (Interface(_), Object(_)) | (Object(_), Interface(_)) => false,
+        }
+    }
+}
+
+impl<'a> Eq for ObjectOrInterface<'a> {}
+
+impl<'a> Hash for ObjectOrInterface<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name().hash(state)
+    }
 }
 
 impl<'a> From<&'a s::ObjectType> for ObjectOrInterface<'a> {
