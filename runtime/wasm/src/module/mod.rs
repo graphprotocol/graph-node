@@ -47,7 +47,7 @@ pub trait IntoTrap {
 }
 
 /// Handle to a WASM instance, which is terminated if and only if this is dropped.
-pub(crate) struct WasmInstance<C: Blockchain> {
+pub struct WasmInstance<C: Blockchain> {
     instance: wasmtime::Instance,
 
     // This is the only reference to `WasmInstanceContext` that's not within the instance itself, so
