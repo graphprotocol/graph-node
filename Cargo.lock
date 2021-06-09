@@ -1875,6 +1875,7 @@ name = "graph-store-postgres"
 version = "0.22.0"
 dependencies = [
  "Inflector",
+ "anyhow",
  "async-trait",
  "backtrace",
  "blake3",
@@ -1883,9 +1884,11 @@ dependencies = [
  "diesel",
  "diesel-derive-enum",
  "diesel-dynamic-schema",
+ "diesel_derives",
  "diesel_migrations",
  "fallible-iterator 0.1.6",
  "futures 0.1.31",
+ "git-testament",
  "graph",
  "graph-chain-ethereum",
  "graph-graphql",
