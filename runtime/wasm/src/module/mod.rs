@@ -31,7 +31,7 @@ use crate::mapping::ValidModule;
 use crate::UnresolvedContractCall;
 
 mod into_wasm_ret;
-mod stopwatch;
+pub mod stopwatch;
 
 use into_wasm_ret::IntoWasmRet;
 use stopwatch::TimeoutStopwatch;
