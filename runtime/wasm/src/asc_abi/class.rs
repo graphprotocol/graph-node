@@ -16,7 +16,7 @@ use std::mem::{size_of, size_of_val};
 
 /// Asc std ArrayBuffer: "a generic, fixed-length raw binary data buffer".
 /// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
-pub(crate) struct ArrayBuffer {
+pub struct ArrayBuffer {
     byte_length: u32,
     // Asc allocators always align at 8 bytes, we already have 4 bytes from
     // `byte_length_size` so with 4 more bytes we align the contents at 8
@@ -136,7 +136,7 @@ impl AscType for ArrayBuffer {
 ///  See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct TypedArray<T> {
+pub struct TypedArray<T> {
     pub buffer: AscPtr<ArrayBuffer>,
     /// Byte position in `buffer` of the array start.
     byte_offset: u32,
@@ -168,7 +168,7 @@ impl<T: AscValue> TypedArray<T> {
     }
 }
 
-pub(crate) type Uint8Array = TypedArray<u8>;
+pub type Uint8Array = TypedArray<u8>;
 
 /// Asc std string: "Strings are encoded as UTF-16LE in AssemblyScript, and are
 /// prefixed with their length (in character codes) as a 32-bit integer". See
@@ -310,7 +310,7 @@ impl<T: AscValue> Array<T> {
 /// Represents any `AscValue` since they all fit in 64 bits.
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
-pub(crate) struct EnumPayload(pub u64);
+pub struct EnumPayload(pub u64);
 
 impl AscType for EnumPayload {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
