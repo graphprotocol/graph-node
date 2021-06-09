@@ -28,5 +28,5 @@ pub(crate) struct UnresolvedContractCall {
     pub function_args: Vec<ethabi::Token>,
 }
 
-trait RuntimeStore: SubgraphStore {}
+pub trait RuntimeStore: SubgraphStore {}
 impl<S: SubgraphStore> RuntimeStore for S {}
