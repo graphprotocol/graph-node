@@ -577,11 +577,11 @@ pub(crate) struct AscTypedMapEntry<K, V> {
     pub value: AscPtr<V>,
 }
 
-pub(crate) type AscTypedMapEntryArray<K, V> = Array<AscPtr<AscTypedMapEntry<K, V>>>;
+pub type AscTypedMapEntryArray<K, V> = Array<AscPtr<AscTypedMapEntry<K, V>>>;
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscTypedMap<K, V> {
+pub struct AscTypedMap<K, V> {
     pub entries: AscPtr<AscTypedMapEntryArray<K, V>>,
 }
 
@@ -609,7 +609,7 @@ pub struct AscUnresolvedContractCall_0_0_4 {
 
 #[repr(u32)]
 #[derive(AscType, Copy, Clone)]
-pub(crate) enum JsonValueKind {
+pub enum JsonValueKind {
     Null,
     Bool,
     Number,
@@ -643,7 +643,7 @@ impl JsonValueKind {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscBigDecimal {
+pub struct AscBigDecimal {
     pub digits: AscPtr<AscBigInt>,
 
     // Decimal exponent. This is the opposite of `scale` in rust BigDecimal.
@@ -673,7 +673,7 @@ impl From<LogLevel> for slog::Level {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscResult<V: AscValue, E: AscValue> {
+pub struct AscResult<V: AscValue, E: AscValue> {
     pub value: AscPtr<AscWrapped<V>>,
     pub error: AscPtr<AscWrapped<E>>,
 }

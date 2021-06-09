@@ -30,7 +30,7 @@ use crate::host_exports::{EthereumCallError, HostExports};
 use crate::mapping::ValidModule;
 use crate::UnresolvedContractCall;
 
-mod into_wasm_ret;
+pub mod into_wasm_ret;
 pub mod stopwatch;
 
 use into_wasm_ret::IntoWasmRet;
@@ -647,7 +647,7 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
 }
 
 impl<C: Blockchain> WasmInstanceContext<C> {
-    fn from_instance(
+    pub fn from_instance(
         instance: &wasmtime::Instance,
         ctx: MappingContext<C>,
         valid_module: Arc<ValidModule>,
@@ -725,7 +725,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
 impl<C: Blockchain> WasmInstanceContext<C> {
     /// function abort(message?: string | null, fileName?: string | null, lineNumber?: u32, columnNumber?: u32): void
     /// Always returns a trap.
-    fn abort(
+    pub fn abort(
         &mut self,
         message_ptr: AscPtr<AscString>,
         file_name_ptr: AscPtr<AscString>,
@@ -781,7 +781,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function store.remove(entity: string, id: string): void
-    fn store_remove(
+    pub fn store_remove(
         &mut self,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
@@ -798,7 +798,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function store.get(entity: string, id: string): Entity | null
-    fn store_get(
+    pub fn store_get(
         &mut self,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
@@ -849,7 +849,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function typeConversion.bytesToString(bytes: Bytes): string
-    fn bytes_to_string(
+    pub fn bytes_to_string(
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscString>, DeterministicHostError> {
@@ -862,7 +862,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     /// References:
     /// https://godoc.org/github.com/ethereum/go-ethereum/common/hexutil#hdr-Encoding_Rules
     /// https://github.com/ethereum/web3.js/blob/f98fe1462625a6c865125fecc9cb6b414f0a5e83/packages/web3-utils/src/utils.js#L283
-    fn bytes_to_hex(
+    pub fn bytes_to_hex(
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscString>, DeterministicHostError> {
@@ -874,7 +874,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function typeConversion.bigIntToString(n: Uint8Array): string
-    fn big_int_to_string(
+    pub fn big_int_to_string(
         &mut self,
         big_int_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscString>, DeterministicHostError> {
@@ -895,7 +895,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function typeConversion.bigIntToHex(n: Uint8Array): string
-    fn big_int_to_hex(
+    pub fn big_int_to_hex(
         &mut self,
         big_int_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscString>, DeterministicHostError> {
@@ -905,7 +905,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function typeConversion.stringToH160(s: String): H160
-    fn string_to_h160(
+    pub fn string_to_h160(
         &mut self,
         str_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscH160>, DeterministicHostError> {
@@ -915,7 +915,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function json.fromBytes(bytes: Bytes): JSONValue
-    fn json_from_bytes(
+    pub fn json_from_bytes(
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscEnum<JsonValueKind>>, DeterministicHostError> {
@@ -933,7 +933,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function json.try_fromBytes(bytes: Bytes): Result<JSONValue, boolean>
-    fn json_try_from_bytes(
+    pub fn json_try_from_bytes(
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscResult<AscPtr<AscEnum<JsonValueKind>>, bool>>, DeterministicHostError>
@@ -955,7 +955,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function ipfs.cat(link: String): Bytes
-    fn ipfs_cat(
+    pub fn ipfs_cat(
         &mut self,
         link_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<Uint8Array>, HostExportError> {
@@ -981,7 +981,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function ipfs.map(link: String, callback: String, flags: String[]): void
-    fn ipfs_map(
+    pub fn ipfs_map(
         &mut self,
         link_ptr: AscPtr<AscString>,
         callback: AscPtr<AscString>,
@@ -1032,7 +1032,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
 
     /// Expects a decimal string.
     /// function json.toI64(json: String): i64
-    fn json_to_i64(&mut self, json_ptr: AscPtr<AscString>) -> Result<i64, DeterministicHostError> {
+    pub fn json_to_i64(&mut self, json_ptr: AscPtr<AscString>) -> Result<i64, DeterministicHostError> {
         self.ctx.host_exports.json_to_i64(asc_get(self, json_ptr)?)
     }
 
@@ -1050,7 +1050,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
 
     /// Expects a decimal string.
     /// function json.toBigInt(json: String): BigInt
-    fn json_to_big_int(
+    pub fn json_to_big_int(
         &mut self,
         json_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
@@ -1062,7 +1062,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function crypto.keccak256(input: Bytes): Bytes
-    fn crypto_keccak_256(
+    pub fn crypto_keccak_256(
         &mut self,
         input_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<Uint8Array>, DeterministicHostError> {
@@ -1074,7 +1074,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigInt.plus(x: BigInt, y: BigInt): BigInt
-    fn big_int_plus(
+    pub fn big_int_plus(
         &mut self,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
@@ -1087,7 +1087,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigInt.minus(x: BigInt, y: BigInt): BigInt
-    fn big_int_minus(
+    pub fn big_int_minus(
         &mut self,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
@@ -1100,7 +1100,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigInt.times(x: BigInt, y: BigInt): BigInt
-    fn big_int_times(
+    pub fn big_int_times(
         &mut self,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
@@ -1113,7 +1113,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigInt.dividedBy(x: BigInt, y: BigInt): BigInt
-    fn big_int_divided_by(
+    pub fn big_int_divided_by(
         &mut self,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
@@ -1126,7 +1126,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigInt.dividedByDecimal(x: BigInt, y: BigDecimal): BigDecimal
-    fn big_int_divided_by_decimal(
+    pub fn big_int_divided_by_decimal(
         &mut self,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigDecimal>,
@@ -1140,7 +1140,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigInt.mod(x: BigInt, y: BigInt): BigInt
-    fn big_int_mod(
+    pub fn big_int_mod(
         &mut self,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
@@ -1153,7 +1153,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigInt.pow(x: BigInt, exp: u8): BigInt
-    fn big_int_pow(
+    pub fn big_int_pow(
         &mut self,
         x_ptr: AscPtr<AscBigInt>,
         exp: u32,
@@ -1167,7 +1167,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigInt.bitOr(x: BigInt, y: BigInt): BigInt
-    fn big_int_bit_or(
+    pub fn big_int_bit_or(
         &mut self,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
@@ -1180,7 +1180,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigInt.bitAnd(x: BigInt, y: BigInt): BigInt
-    fn big_int_bit_and(
+    pub fn big_int_bit_and(
         &mut self,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
@@ -1193,7 +1193,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigInt.leftShift(x: BigInt, bits: u8): BigInt
-    fn big_int_left_shift(
+    pub fn big_int_left_shift(
         &mut self,
         x_ptr: AscPtr<AscBigInt>,
         bits: u32,
@@ -1207,7 +1207,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigInt.rightShift(x: BigInt, bits: u8): BigInt
-    fn big_int_right_shift(
+    pub fn big_int_right_shift(
         &mut self,
         x_ptr: AscPtr<AscBigInt>,
         bits: u32,
@@ -1221,7 +1221,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function typeConversion.bytesToBase58(bytes: Bytes): string
-    fn bytes_to_base58(
+    pub fn bytes_to_base58(
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscString>, DeterministicHostError> {
@@ -1233,7 +1233,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigDecimal.toString(x: BigDecimal): string
-    fn big_decimal_to_string(
+    pub fn big_decimal_to_string(
         &mut self,
         big_decimal_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscString>, DeterministicHostError> {
@@ -1245,7 +1245,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigDecimal.fromString(x: string): BigDecimal
-    fn big_decimal_from_string(
+    pub fn big_decimal_from_string(
         &mut self,
         string_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscBigDecimal>, DeterministicHostError> {
@@ -1257,7 +1257,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigDecimal.plus(x: BigDecimal, y: BigDecimal): BigDecimal
-    fn big_decimal_plus(
+    pub fn big_decimal_plus(
         &mut self,
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
@@ -1270,7 +1270,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigDecimal.minus(x: BigDecimal, y: BigDecimal): BigDecimal
-    fn big_decimal_minus(
+    pub fn big_decimal_minus(
         &mut self,
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
@@ -1283,7 +1283,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigDecimal.times(x: BigDecimal, y: BigDecimal): BigDecimal
-    fn big_decimal_times(
+    pub fn big_decimal_times(
         &mut self,
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
@@ -1296,7 +1296,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigDecimal.dividedBy(x: BigDecimal, y: BigDecimal): BigDecimal
-    fn big_decimal_divided_by(
+    pub fn big_decimal_divided_by(
         &mut self,
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
@@ -1309,7 +1309,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigDecimal.equals(x: BigDecimal, y: BigDecimal): bool
-    fn big_decimal_equals(
+    pub fn big_decimal_equals(
         &mut self,
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
@@ -1320,7 +1320,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function dataSource.create(name: string, params: Array<string>): void
-    fn data_source_create(
+    pub fn data_source_create(
         &mut self,
         name_ptr: AscPtr<AscString>,
         params_ptr: AscPtr<Array<AscPtr<AscString>>>,
@@ -1338,7 +1338,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function createWithContext(name: string, params: Array<string>, context: DataSourceContext): void
-    fn data_source_create_with_context(
+    pub fn data_source_create_with_context(
         &mut self,
         name_ptr: AscPtr<AscString>,
         params_ptr: AscPtr<Array<AscPtr<AscString>>>,
@@ -1358,21 +1358,21 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function dataSource.address(): Bytes
-    fn data_source_address(&mut self) -> Result<AscPtr<Uint8Array>, DeterministicHostError> {
+    pub fn data_source_address(&mut self) -> Result<AscPtr<Uint8Array>, DeterministicHostError> {
         asc_new(self, &self.ctx.host_exports.data_source_address())
     }
 
     /// function dataSource.network(): String
-    fn data_source_network(&mut self) -> Result<AscPtr<AscString>, DeterministicHostError> {
+    pub fn data_source_network(&mut self) -> Result<AscPtr<AscString>, DeterministicHostError> {
         asc_new(self, &self.ctx.host_exports.data_source_network())
     }
 
     /// function dataSource.context(): DataSourceContext
-    fn data_source_context(&mut self) -> Result<AscPtr<AscEntity>, DeterministicHostError> {
+    pub fn data_source_context(&mut self) -> Result<AscPtr<AscEntity>, DeterministicHostError> {
         asc_new(self, &self.ctx.host_exports.data_source_context().sorted())
     }
 
-    fn ens_name_by_hash(
+    pub fn ens_name_by_hash(
         &mut self,
         hash_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscString>, HostExportError> {
@@ -1383,7 +1383,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             .unwrap_or(Ok(AscPtr::null()))
     }
 
-    fn log_log(
+    pub fn log_log(
         &mut self,
         level: u32,
         msg: AscPtr<AscString>,
@@ -1405,7 +1405,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function decode(types: String, data: Bytes): ethereum.Value | null
-    fn ethereum_decode(
+    pub fn ethereum_decode(
         &mut self,
         types_ptr: AscPtr<AscString>,
         data_ptr: AscPtr<Uint8Array>,
@@ -1419,7 +1419,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function arweave.transactionData(txId: string): Bytes | null
-    fn arweave_transaction_data(
+    pub fn arweave_transaction_data(
         &mut self,
         tx_id: AscPtr<AscString>,
     ) -> Result<AscPtr<Uint8Array>, HostExportError> {
@@ -1435,7 +1435,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function box.profile(address: string): JSONValue | null
-    fn box_profile(
+    pub fn box_profile(
         &mut self,
         address: AscPtr<AscString>,
     ) -> Result<AscPtr<AscJson>, HostExportError> {
