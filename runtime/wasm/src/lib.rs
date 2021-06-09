@@ -12,7 +12,7 @@ pub mod mapping;
 pub mod module;
 
 /// Runtime-agnostic implementation of exports to WASM.
-mod host_exports;
+pub mod host_exports;
 
 pub mod error;
 
