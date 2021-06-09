@@ -6,6 +6,7 @@ use http::header::CONTENT_LENGTH;
 use http::Uri;
 use reqwest::multipart;
 use serde::Deserialize;
+use std::time::Duration;
 use std::{str::FromStr, sync::Arc};
 
 #[derive(Debug, Deserialize)]
@@ -58,27 +59,37 @@ impl IpfsClient {
     }
 
     /// Calls `object stat`.
-    pub async fn object_stat(&self, path: String) -> Result<ObjectStatResponse, reqwest::Error> {
-        self.call(self.url("object/stat", path), None)
+    pub async fn object_stat(
+        &self,
+        path: String,
+        timeout: Duration,
+    ) -> Result<ObjectStatResponse, reqwest::Error> {
+        self.call(self.url("object/stat", path), None, Some(timeout))
             .await?
             .json()
             .await
     }
 
     /// Download the entire contents.
-    pub async fn cat_all(&self, cid: String) -> Result<Bytes, reqwest::Error> {
-        self.call(self.url("cat", cid), None).await?.bytes().await
+    pub async fn cat_all(&self, cid: String, timeout: Duration) -> Result<Bytes, reqwest::Error> {
+        self.call(self.url("cat", cid), None, Some(timeout))
+            .await?
+            .bytes()
+            .await
     }
 
     pub async fn cat(
         &self,
         cid: String,
     ) -> Result<impl Stream<Item = Result<Bytes, reqwest::Error>>, reqwest::Error> {
-        Ok(self.call(self.url("cat", cid), None).await?.bytes_stream())
+        Ok(self
+            .call(self.url("cat", cid), None, None)
+            .await?
+            .bytes_stream())
     }
 
     pub async fn test(&self) -> Result<(), reqwest::Error> {
-        self.call(format!("{}api/v0/version", self.base), None)
+        self.call(format!("{}api/v0/version", self.base), None, None)
             .await
             .map(|_| ())
     }
@@ -86,7 +97,7 @@ impl IpfsClient {
     pub async fn add(&self, data: Vec<u8>) -> Result<AddResponse, reqwest::Error> {
         let form = multipart::Form::new().part("path", multipart::Part::bytes(data));
 
-        self.call(format!("{}api/v0/add", self.base), Some(form))
+        self.call(format!("{}api/v0/add", self.base), Some(form), None)
             .await?
             .json()
             .await
@@ -102,6 +113,7 @@ impl IpfsClient {
         &self,
         url: String,
         form: Option<multipart::Form>,
+        timeout: Option<Duration>,
     ) -> Result<reqwest::Response, reqwest::Error> {
         let mut req = self.client.post(&url);
         if let Some(form) = form {
@@ -110,6 +122,11 @@ impl IpfsClient {
             // Some servers require `content-length` even for an empty body.
             req = req.header(CONTENT_LENGTH, 0);
         }
+
+        if let Some(timeout) = timeout {
+            req = req.timeout(timeout)
+        }
+
         req.send()
             .await
             .map(|res| res.error_for_status())

@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use bytes::BytesMut;
 use futures01::{stream::poll_fn, try_ready};
 use futures03::stream::FuturesUnordered;
+use graph::util::futures::RetryConfigNoTimeout;
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
 use serde_json::Value;
@@ -52,6 +53,26 @@ fn read_u64_from_env(name: &str) -> Option<u64> {
     })
 }
 
+fn retry_policy<I: Send + Sync>(
+    always_retry: bool,
+    op: &'static str,
+    logger: &Logger,
+) -> RetryConfigNoTimeout<I, graph::prelude::reqwest::Error> {
+    // Even if retries were not requested, networking errors are still retried until we either get
+    // a valid HTTP response or a timeout.
+    if always_retry {
+        retry(op, logger).no_limit()
+    } else {
+        retry(op, logger)
+            .no_limit()
+            .when(|res: &Result<_, reqwest::Error>| match res {
+                Ok(_) => false,
+                Err(e) => !(e.is_status() || e.is_timeout()),
+            })
+    }
+    .no_timeout() // The timeout should be set in the internal future.
+}
+
 /// The IPFS APIs don't have a quick "do you have the file" function. Instead, we
 /// just rely on whether an API times out. That makes sense for IPFS, but not for
 /// our application. We want to be able to quickly select from a potential list
@@ -78,19 +99,12 @@ async fn select_fastest_client_with_stat(
         .enumerate()
         .map(|(i, c)| {
             let c = c.cheap_clone();
-            let retry_fut = if do_retry {
-                retry("object.stat", &logger).no_limit()
-            } else {
-                retry("object.stat", &logger).limit(1)
-            }
-            .timeout(timeout);
-
             let path = path.clone();
-            retry_fut
+            retry_policy(do_retry, "object.stat", &logger)
                 .run(move || {
                     let path = path.clone();
                     let c = c.cheap_clone();
-                    async move { c.object_stat(path).map_ok(move |s| (s, i)).await }
+                    async move { c.object_stat(path, timeout).map_ok(move |s| (s, i)).await }
                         .boxed()
                         .compat()
                 })
@@ -210,27 +224,17 @@ impl LinkResolverTrait for LinkResolver {
         restrict_file_size(&path, &stat, &max_file_size)?;
 
         let path = path.clone();
-        let retry_fut = if self.retry {
-            retry("ipfs.cat", &logger).no_limit()
-        } else {
-            retry("ipfs.cat", &logger).limit(1)
-        }
-        .timeout(self.timeout);
-
         let this = self.clone();
+        let timeout = self.timeout.clone();
         let logger = logger.clone();
-        let data = retry_fut
+        let data = retry_policy(self.retry, "ipfs.cat", &logger)
             .run(move || {
                 let path = path.clone();
                 let client = client.clone();
                 let this = this.clone();
                 let logger = logger.clone();
                 async move {
-                    let data = client
-                        .cat_all(path.clone())
-                        .await
-                        .map_err(|e| anyhow::anyhow!("{}", e))?
-                        .to_vec();
+                    let data = client.cat_all(path.clone(), timeout).await?.to_vec();
 
                     // Only cache files if they are not too large
                     if data.len() <= *MAX_IPFS_CACHE_FILE_SIZE as usize {
@@ -244,7 +248,7 @@ impl LinkResolverTrait for LinkResolver {
                                     "size" => data.len()
                         );
                     }
-                    Result::<Vec<u8>, Error>::Ok(data)
+                    Result::<Vec<u8>, reqwest::Error>::Ok(data)
                 }
                 .boxed()
                 .compat()
