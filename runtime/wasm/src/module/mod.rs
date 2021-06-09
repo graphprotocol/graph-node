@@ -829,7 +829,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function ethereum.call(call: SmartContractCall): Array<Token> | null
-    fn ethereum_call(
+    pub fn ethereum_call(
         &mut self,
         call: UnresolvedContractCall,
     ) -> Result<AscEnumArray<EthereumValueKind>, HostExportError> {
