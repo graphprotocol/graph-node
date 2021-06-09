@@ -755,7 +755,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function store.set(entity: string, id: string, data: Entity): void
-    fn store_set(
+    pub fn store_set(
         &mut self,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
