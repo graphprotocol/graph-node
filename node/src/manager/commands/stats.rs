@@ -81,20 +81,25 @@ pub fn show(
     impl VersionStats {
         fn header() {
             println!(
-                "{:^20} | {:^10} | {:^10} | {:^7}",
+                "{:^30} | {:^10} | {:^10} | {:^7}",
                 "table", "entities", "versions", "ratio"
             );
-            println!("{:-^20}-+-{:-^10}-+-{:-^10}-+-{:-^7}", "", "", "", "");
+            println!("{:-^30}-+-{:-^10}-+-{:-^10}-+-{:-^7}", "", "", "", "");
         }
 
-        fn print(&self) {
+        fn print(&self, account_like: bool) {
             println!(
-                "{:<20} | {:>10} | {:>10} | {:>5.1}%",
+                "{:<26} {:3} | {:>10} | {:>10} | {:>5.1}%",
                 self.tablename,
+                if account_like { "(a)" } else { "   " },
                 self.entities,
                 self.versions,
                 self.entities as f32 * 100.0 / self.versions as f32
             );
+        }
+
+        fn footer() {
+            println!("  (a): account-like flag set");
         }
     }
 
@@ -114,10 +119,13 @@ pub fn show(
         .bind::<Text, _>(&site.namespace.as_str())
         .load::<VersionStats>(&conn)?;
 
+    let account_like = store_catalog::account_like(&conn, &site)?;
+
     VersionStats::header();
     for stat in &stats {
-        stat.print();
+        stat.print(account_like.contains(&stat.tablename));
     }
+    VersionStats::footer();
 
     if let Some(table) = table {
         if !stats.iter().any(|stat| stat.tablename == table) {
@@ -138,7 +146,7 @@ pub fn show(
             table = table
         );
         let stat = sql_query(query).get_result::<VersionStats>(&conn)?;
-        stat.print();
+        stat.print(account_like.contains(&stat.tablename));
     }
 
     Ok(())

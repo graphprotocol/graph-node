@@ -463,7 +463,7 @@ async fn ipfs_map() {
         .await
         .unwrap_err()
         .to_string();
-    assert!(errmsg.contains("Status(500)"));
+    assert!(errmsg.contains("500 Internal Server Error"));
 }
 
 #[tokio::test(threaded_scheduler)]
