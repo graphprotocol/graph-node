@@ -30,6 +30,7 @@ pub struct Opt {
     pub disable_block_ingestor: bool,
     pub node_id: String,
     pub ethereum_rpc: Vec<String>,
+    pub substrate_rpc: Vec<String>,
     pub ethereum_ws: Vec<String>,
     pub ethereum_ipc: Vec<String>,
 }
@@ -45,6 +46,7 @@ impl Default for Opt {
             disable_block_ingestor: true,
             node_id: "default".to_string(),
             ethereum_rpc: vec![],
+            substrate_rpc: vec![],
             ethereum_ws: vec![],
             ethereum_ipc: vec![],
         }
@@ -379,6 +381,7 @@ impl ChainSection {
         };
         let mut chains = BTreeMap::new();
         Self::parse_networks(&mut chains, Transport::Rpc, &opt.ethereum_rpc)?;
+        Self::parse_networks(&mut chains, Transport::Rpc, &opt.substrate_rpc)?;
         Self::parse_networks(&mut chains, Transport::Ws, &opt.ethereum_ws)?;
         Self::parse_networks(&mut chains, Transport::Ipc, &opt.ethereum_ipc)?;
         Ok(Self { ingestor, chains })

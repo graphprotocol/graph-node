@@ -795,6 +795,7 @@ mod test {
             disable_block_ingestor: true,
             node_id: "default".to_string(),
             ethereum_rpc: network_args,
+            substrate_rpc: vec![],
             ethereum_ws: vec![],
             ethereum_ipc: vec![],
         };
