@@ -585,7 +585,7 @@ pub struct AscTypedMap<K, V> {
     pub entries: AscPtr<AscTypedMapEntryArray<K, V>>,
 }
 
-pub(crate) type AscEntity = AscTypedMap<AscString, AscEnum<StoreValueKind>>;
+pub type AscEntity = AscTypedMap<AscString, AscEnum<StoreValueKind>>;
 pub(crate) type AscJson = AscTypedMap<AscString, AscEnum<JsonValueKind>>;
 
 #[repr(C)]

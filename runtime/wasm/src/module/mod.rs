@@ -202,7 +202,7 @@ impl<C: Blockchain> WasmInstance<C> {
     }
 
     #[cfg(test)]
-    pub(crate) fn get_func(&self, func_name: &str) -> wasmtime::Func {
+    pub fn get_func(&self, func_name: &str) -> wasmtime::Func {
         self.instance.get_func(func_name).unwrap()
     }
 
