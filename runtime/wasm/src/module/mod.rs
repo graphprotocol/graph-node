@@ -292,7 +292,7 @@ pub struct ExperimentalFeatures {
     pub allow_non_deterministic_3box: bool,
 }
 
-pub(crate) struct WasmInstanceContext<C: Blockchain> {
+pub struct WasmInstanceContext<C: Blockchain> {
     // In the future there may be multiple memories, but currently there is only one memory per
     // module. And at least AS calls it "memory". There is no uninitialized memory in Wasm, memory
     // is zeroed when initialized or grown.
@@ -303,7 +303,7 @@ pub(crate) struct WasmInstanceContext<C: Blockchain> {
     memory_allocate: wasmtime::TypedFunc<i32, i32>,
 
     pub ctx: MappingContext<C>,
-    pub(crate) valid_module: Arc<ValidModule>,
+    pub valid_module: Arc<ValidModule>,
     pub(crate) host_metrics: Arc<HostMetrics>,
     pub(crate) timeout: Option<Duration>,
 

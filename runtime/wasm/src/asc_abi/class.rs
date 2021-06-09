@@ -173,7 +173,7 @@ pub(crate) type Uint8Array = TypedArray<u8>;
 /// Asc std string: "Strings are encoded as UTF-16LE in AssemblyScript, and are
 /// prefixed with their length (in character codes) as a 32-bit integer". See
 /// https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#strings
-pub(crate) struct AscString {
+pub struct AscString {
     // In number of UTF-16 code units (2 bytes each).
     length: u32,
     // The sequence of UTF-16LE code units that form the string.
@@ -280,7 +280,7 @@ impl AscType for AscString {
 /// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct Array<T> {
+pub struct Array<T> {
     buffer: AscPtr<ArrayBuffer>,
     length: u32,
     ty: PhantomData<T>,
@@ -383,7 +383,7 @@ impl<C> From<AscPtr<C>> for EnumPayload {
 /// payload.
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscEnum<D: AscValue> {
+pub struct AscEnum<D: AscValue> {
     pub kind: D,
     pub _padding: u32, // Make padding explicit.
     pub payload: EnumPayload,
@@ -393,7 +393,7 @@ pub(crate) type AscEnumArray<D> = AscPtr<Array<AscPtr<AscEnum<D>>>>;
 
 #[repr(u32)]
 #[derive(AscType, Copy, Clone)]
-pub(crate) enum EthereumValueKind {
+pub enum EthereumValueKind {
     Address,
     FixedBytes,
     Bytes,
@@ -484,7 +484,7 @@ pub(crate) type Bytes = Uint8Array;
 /// cases correctly.
 pub(crate) type AscBigInt = Uint8Array;
 
-pub(crate) type AscAddress = Uint8Array;
+pub type AscAddress = Uint8Array;
 pub(crate) type AscH160 = Uint8Array;
 pub(crate) type AscH256 = Uint8Array;
 
@@ -590,7 +590,7 @@ pub(crate) type AscJson = AscTypedMap<AscString, AscEnum<JsonValueKind>>;
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscUnresolvedContractCall {
+pub struct AscUnresolvedContractCall {
     pub contract_name: AscPtr<AscString>,
     pub contract_address: AscPtr<AscAddress>,
     pub function_name: AscPtr<AscString>,
@@ -599,7 +599,7 @@ pub(crate) struct AscUnresolvedContractCall {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscUnresolvedContractCall_0_0_4 {
+pub struct AscUnresolvedContractCall_0_0_4 {
     pub contract_name: AscPtr<AscString>,
     pub contract_address: AscPtr<AscAddress>,
     pub function_name: AscPtr<AscString>,
