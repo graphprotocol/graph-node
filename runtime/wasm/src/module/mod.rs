@@ -33,7 +33,7 @@ use crate::UnresolvedContractCall;
 pub mod into_wasm_ret;
 pub mod stopwatch;
 
-use into_wasm_ret::IntoWasmRet;
+pub use into_wasm_ret::IntoWasmRet;
 use stopwatch::TimeoutStopwatch;
 
 #[cfg(test)]
