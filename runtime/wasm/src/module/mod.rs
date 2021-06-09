@@ -956,7 +956,7 @@ impl WasmInstanceContext {
     }
 
     /// function json.fromBytes(bytes: Bytes): JSONValue
-    fn json_from_bytes(
+    pub fn json_from_bytes(
         &mut self,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscEnum<JsonValueKind>>, DeterministicHostError> {
