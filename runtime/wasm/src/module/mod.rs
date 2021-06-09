@@ -320,7 +320,7 @@ pub struct WasmInstanceContext<C: Blockchain> {
     possible_reorg: bool,
 
     // A host export trap ocurred for a deterministic reason.
-    deterministic_host_trap: bool,
+    pub deterministic_host_trap: bool,
 
     pub(crate) experimental_features: ExperimentalFeatures,
 }
@@ -1394,7 +1394,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function encode(token: ethereum.Value): Bytes | null
-    fn ethereum_encode(
+    pub fn ethereum_encode(
         &mut self,
         token_ptr: AscPtr<AscEnum<EthereumValueKind>>,
     ) -> Result<AscPtr<Uint8Array>, DeterministicHostError> {
