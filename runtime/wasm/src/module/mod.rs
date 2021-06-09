@@ -883,7 +883,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigInt.fromString(x: string): BigInt
-    fn big_int_from_string(
+    pub fn big_int_from_string(
         &mut self,
         string_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
@@ -1038,13 +1038,13 @@ impl<C: Blockchain> WasmInstanceContext<C> {
 
     /// Expects a decimal string.
     /// function json.toU64(json: String): u64
-    fn json_to_u64(&mut self, json_ptr: AscPtr<AscString>) -> Result<u64, DeterministicHostError> {
+    pub fn json_to_u64(&mut self, json_ptr: AscPtr<AscString>) -> Result<u64, DeterministicHostError> {
         self.ctx.host_exports.json_to_u64(asc_get(self, json_ptr)?)
     }
 
     /// Expects a decimal string.
     /// function json.toF64(json: String): f64
-    fn json_to_f64(&mut self, json_ptr: AscPtr<AscString>) -> Result<f64, DeterministicHostError> {
+    pub fn json_to_f64(&mut self, json_ptr: AscPtr<AscString>) -> Result<f64, DeterministicHostError> {
         self.ctx.host_exports.json_to_f64(asc_get(self, json_ptr)?)
     }
 
