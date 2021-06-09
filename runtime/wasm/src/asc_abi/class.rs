@@ -572,7 +572,7 @@ pub(crate) struct AscEthereumCall_0_0_3 {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscTypedMapEntry<K, V> {
+pub struct AscTypedMapEntry<K, V> {
     pub key: AscPtr<K>,
     pub value: AscPtr<V>,
 }
@@ -680,7 +680,7 @@ pub struct AscResult<V: AscValue, E: AscValue> {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscWrapped<V: AscValue> {
+pub struct AscWrapped<V: AscValue> {
     pub inner: V,
 }
 
