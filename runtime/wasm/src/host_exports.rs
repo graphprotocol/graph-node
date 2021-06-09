@@ -97,7 +97,7 @@ impl<C: Blockchain> std::fmt::Debug for HostExports<C> {
 }
 
 impl<C: Blockchain> HostExports<C> {
-    pub(crate) fn new(
+    pub fn new(
         subgraph_id: DeploymentHash,
         data_source: &impl DataSource<C>,
         data_source_network: String,
