@@ -304,7 +304,7 @@ pub struct WasmInstanceContext<C: Blockchain> {
 
     pub ctx: MappingContext<C>,
     pub valid_module: Arc<ValidModule>,
-    pub(crate) host_metrics: Arc<HostMetrics>,
+    pub host_metrics: Arc<HostMetrics>,
     pub(crate) timeout: Option<Duration>,
 
     // Used by ipfs.map.
@@ -683,7 +683,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         })
     }
 
-    fn from_caller(
+    pub fn from_caller(
         caller: wasmtime::Caller,
         ctx: MappingContext<C>,
         valid_module: Arc<ValidModule>,
