@@ -1638,7 +1638,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql("\n/* children_type_a */  from unnest(");
         column.bind_ids(&self.ids, out)?;
         out.push_sql(") as p(id) cross join lateral (select ");
-        write_column_names(&self.column_names, &self.table, out);
+        write_column_names(&self.column_names, &self.table, out)?;
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
@@ -1717,7 +1717,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql("\n/* children_type_b */  from unnest(");
         column.bind_ids(&self.ids, out)?;
         out.push_sql(") as p(id) cross join lateral (select ");
-        write_column_names(&self.column_names, &self.table, out);
+        write_column_names(&self.column_names, &self.table, out)?;
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
@@ -1786,7 +1786,7 @@ impl<'a> FilterWindow<'a> {
         self.table.primary_key().push_matrix(&child_ids, out)?;
         out.push_sql(")) as p(id, child_ids)");
         out.push_sql(" cross join lateral (select ");
-        write_column_names(&self.column_names, &self.table, out);
+        write_column_names(&self.column_names, &self.table, out)?;
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
@@ -2286,7 +2286,7 @@ impl<'a> FilterQuery<'a> {
     ) -> QueryResult<()> {
         Self::select_entity_and_data(table, &mut out);
         out.push_sql(" from (select ");
-        write_column_names(&column_names, &table, &mut out);
+        write_column_names(&column_names, &table, &mut out)?;
         self.filtered_rows(table, filter, out.reborrow())?;
         out.push_sql("\n ");
         self.sort_key.order_by(&mut out)?;
@@ -2379,7 +2379,7 @@ impl<'a> FilterQuery<'a> {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select m.entity, ");
-            jsonb_build_object(column_names, "c", &table, &mut out);
+            jsonb_build_object(column_names, "c", &table, &mut out)?;
             out.push_sql(" as data, c.id");
             self.sort_key.select(&mut out)?;
             out.push_sql("\n  from ");
@@ -2469,7 +2469,7 @@ impl<'a> FilterQuery<'a> {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select m.*, ");
-            jsonb_build_object(&window.column_names, "c", &window.table, &mut out);
+            jsonb_build_object(&window.column_names, "c", &window.table, &mut out)?;
             out.push_sql("|| jsonb_build_object('g$parent_id', m.g$parent_id) as data");
             out.push_sql("\n  from ");
             out.push_sql(&window.table.qualified_name.as_str());
@@ -2888,7 +2888,11 @@ pub struct CopyVid {
     pub vid: i64,
 }
 
-fn write_column_names(column_names: &AttributeNames, table: &Table, out: &mut AstPass<Pg>) {
+fn write_column_names(
+    column_names: &AttributeNames,
+    table: &Table,
+    out: &mut AstPass<Pg>,
+) -> QueryResult<()> {
     match column_names {
         AttributeNames::All => out.push_sql(" * "),
         AttributeNames::Select(column_names) => {
@@ -2903,15 +2907,14 @@ fn write_column_names(column_names: &AttributeNames, table: &Table, out: &mut As
                 })
                 .peekable();
             while let Some(column_name) = iterator.next() {
-                out.push_sql("\"");
-                out.push_sql(&column_name.as_str());
-                out.push_sql("\"");
+                out.push_identifier(&column_name.as_str())?;
                 if iterator.peek().is_some() {
                     out.push_sql(", ");
                 }
             }
         }
     }
+    Ok(())
 }
 
 fn jsonb_build_object(
@@ -2919,7 +2922,7 @@ fn jsonb_build_object(
     table_identifier: &str,
     table: &Table,
     out: &mut AstPass<Pg>,
-) {
+) -> QueryResult<()> {
     match column_names {
         AttributeNames::All => {
             out.push_sql("to_jsonb(\"");
@@ -2945,9 +2948,8 @@ fn jsonb_build_object(
                 out.push_sql("', ");
                 // column identifier
                 out.push_sql(table_identifier);
-                out.push_sql(".\"");
-                out.push_sql(column_name.as_str());
-                out.push_sql("\"");
+                out.push_sql(".");
+                out.push_identifier(column_name.as_str())?;
                 if iterator.peek().is_some() {
                     out.push_sql(", ");
                 }
@@ -2955,4 +2957,5 @@ fn jsonb_build_object(
             out.push_sql(")");
         }
     }
+    Ok(())
 }
