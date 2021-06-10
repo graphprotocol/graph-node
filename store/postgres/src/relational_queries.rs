@@ -2903,7 +2903,9 @@ fn write_column_names(column_names: &AttributeNames, table: &Table, out: &mut As
                 })
                 .peekable();
             while let Some(column_name) = iterator.next() {
+                out.push_sql("\"");
                 out.push_sql(&column_name.as_str());
+                out.push_sql("\"");
                 if iterator.peek().is_some() {
                     out.push_sql(", ");
                 }
@@ -2943,8 +2945,9 @@ fn jsonb_build_object(
                 out.push_sql("', ");
                 // column identifier
                 out.push_sql(table_identifier);
-                out.push_sql(".");
+                out.push_sql(".\"");
                 out.push_sql(column_name.as_str());
+                out.push_sql("\"");
                 if iterator.peek().is_some() {
                     out.push_sql(", ");
                 }
