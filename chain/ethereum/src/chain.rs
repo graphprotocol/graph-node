@@ -3,6 +3,7 @@ use std::iter::FromIterator;
 use std::sync::Arc;
 
 use anyhow::{Context, Error};
+use graph::prelude::EthereumCallCache;
 use graph::{
     blockchain::{
         block_stream::{
@@ -24,6 +25,7 @@ use graph::{
 
 use crate::data_source::DataSourceTemplate;
 use crate::data_source::UnresolvedDataSourceTemplate;
+use crate::RuntimeAdapter;
 use crate::{
     adapter::EthereumAdapter as _,
     data_source::{DataSource, UnresolvedDataSource},
@@ -54,9 +56,10 @@ pub struct Chain {
     name: String,
     node_id: NodeId,
     registry: Arc<dyn MetricsRegistry>,
-    eth_adapters: EthereumNetworkAdapters,
+    eth_adapters: Arc<EthereumNetworkAdapters>,
     ancestor_count: BlockNumber,
     chain_store: Arc<dyn ChainStore>,
+    call_cache: Arc<dyn EthereumCallCache>,
     subgraph_store: Arc<dyn SubgraphStore>,
     chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
     reorg_threshold: BlockNumber,
@@ -76,6 +79,7 @@ impl Chain {
         node_id: NodeId,
         registry: Arc<dyn MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
+        call_cache: Arc<dyn EthereumCallCache>,
         subgraph_store: Arc<dyn SubgraphStore>,
         eth_adapters: EthereumNetworkAdapters,
         chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
@@ -88,9 +92,10 @@ impl Chain {
             name,
             node_id,
             registry,
-            eth_adapters,
+            eth_adapters: Arc::new(eth_adapters),
             ancestor_count,
             chain_store,
+            call_cache,
             subgraph_store,
             chain_head_update_listener,
             reorg_threshold,
@@ -124,6 +129,8 @@ impl Blockchain for Chain {
     type NodeCapabilities = NodeCapabilities;
 
     type IngestorAdapter = IngestorAdapter;
+
+    type RuntimeAdapter = RuntimeAdapter;
 
     fn reorg_threshold() -> u32 {
         todo!()
@@ -235,6 +242,13 @@ impl Blockchain for Chain {
             .block_pointer_from_number(logger, self.chain_store.cheap_clone(), number)
             .compat()
             .await
+    }
+
+    fn runtime_adapter(&self) -> Arc<Self::RuntimeAdapter> {
+        Arc::new(RuntimeAdapter {
+            eth_adapters: self.eth_adapters.cheap_clone(),
+            call_cache: self.call_cache.cheap_clone(),
+        })
     }
 }
 

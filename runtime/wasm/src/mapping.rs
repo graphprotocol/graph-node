@@ -1,10 +1,9 @@
 use crate::module::{ExperimentalFeatures, WasmInstance};
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
-use graph::blockchain::Blockchain;
+use graph::blockchain::{Blockchain, HostFn};
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::prelude::*;
-use graph_chain_ethereum::MappingTrigger;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::thread;
@@ -66,39 +65,7 @@ pub fn spawn_module<C: Blockchain>(
                     if *LOG_TRIGGER_DATA {
                         debug!(logger, "trigger data: {:?}", trigger);
                     }
-                    let result = match trigger {
-                        MappingTrigger::Log {
-                            block,
-                            transaction,
-                            log,
-                            params,
-                            handler,
-                        } => module.handle_ethereum_log(
-                            block,
-                            handler.handler.as_str(),
-                            transaction,
-                            log,
-                            params,
-                        ),
-                        MappingTrigger::Call {
-                            block,
-                            transaction,
-                            call,
-                            inputs,
-                            outputs,
-                            handler,
-                        } => module.handle_ethereum_call(
-                            block,
-                            handler.handler.as_str(),
-                            transaction,
-                            call,
-                            inputs,
-                            outputs,
-                        ),
-                        MappingTrigger::Block { block, handler } => {
-                            module.handle_ethereum_block(block, handler.handler.as_str())
-                        }
-                    };
+                    let result = module.handle_trigger(trigger);
                     section.end();
 
                     result_sender
@@ -119,20 +86,19 @@ pub fn spawn_module<C: Blockchain>(
     Ok(mapping_request_sender)
 }
 
-#[derive(Debug)]
 pub struct MappingRequest<C: Blockchain> {
     pub(crate) ctx: MappingContext<C>,
-    pub(crate) trigger: MappingTrigger,
+    pub(crate) trigger: C::MappingTrigger,
     pub(crate) result_sender: Sender<Result<BlockState<C>, MappingError>>,
 }
 
-#[derive(Debug)]
 pub(crate) struct MappingContext<C: Blockchain> {
     pub(crate) logger: Logger,
     pub(crate) host_exports: Arc<crate::host_exports::HostExports<C>>,
     pub(crate) block_ptr: BlockPtr,
     pub(crate) state: BlockState<C>,
     pub(crate) proof_of_indexing: SharedProofOfIndexing,
+    pub(crate) host_fns: Arc<Vec<HostFn>>,
 }
 
 impl<C: Blockchain> MappingContext<C> {
@@ -143,6 +109,7 @@ impl<C: Blockchain> MappingContext<C> {
             block_ptr: self.block_ptr.cheap_clone(),
             state: BlockState::new(self.state.entity_cache.store.clone(), Default::default()),
             proof_of_indexing: self.proof_of_indexing.cheap_clone(),
+            host_fns: self.host_fns.cheap_clone(),
         }
     }
 }

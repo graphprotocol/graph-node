@@ -21,6 +21,8 @@ serde_json = "1.0"
 serde_yaml = "0.8"
 fail = "0.4"
 
+graph-runtime-wasm = { path = "../runtime/wasm" }
+
 [dev-dependencies]
 graph-mock = { path = "../mock" }
 walkdir = "2.3.2"

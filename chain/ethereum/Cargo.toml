@@ -29,6 +29,9 @@ ethabi = { git = "https://github.com/graphprotocol/ethabi.git", branch = "master
 # We have a couple custom patches to web3.
 web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "master" }
 
+graph-runtime-wasm = { path = "../../runtime/wasm" }
+graph-runtime-derive = { path = "../../runtime/derive" }
+
 [dev-dependencies]
 diesel = { version = "1.4.6", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 graph-core = { path = "../../core" }

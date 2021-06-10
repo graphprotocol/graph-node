@@ -26,7 +26,6 @@ use graph_core::{
     SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_graphql::prelude::GraphQlRunner;
-use graph_runtime_wasm::RuntimeHostBuilder as WASMRuntimeHostBuilder;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;
 use graph_server_json_rpc::JsonRpcServer;
@@ -298,22 +297,14 @@ async fn main() {
             graph::spawn_blocking(job_runner.start());
         }
 
-        let runtime_host_builder = WASMRuntimeHostBuilder::new(
-            eth_networks.clone(),
-            link_resolver.clone(),
-            network_store.subgraph_store(),
-            network_store.block_store(),
-            arweave_adapter,
-            three_box_adapter,
-        );
-
         let subgraph_instance_manager = SubgraphInstanceManager::new(
             &logger_factory,
             network_store.subgraph_store(),
             chains.clone(),
-            runtime_host_builder,
             metrics_registry.clone(),
             link_resolver.cheap_clone(),
+            arweave_adapter,
+            three_box_adapter,
         );
 
         // Create IPFS-based subgraph provider
@@ -700,6 +691,7 @@ fn networks_as_chains(
                 network_name.clone(),
                 node_id.clone(),
                 registry.clone(),
+                chain_store.cheap_clone(),
                 chain_store,
                 store.subgraph_store(),
                 eth_adapters.clone(),

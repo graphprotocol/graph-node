@@ -8,9 +8,11 @@ mod types;
 
 // Try to reexport most of the necessary types
 use crate::{
+    cheap_clone::CheapClone,
     components::store::{DeploymentLocator, StoredDynamicDataSource},
     data::subgraph::{Mapping, Source, TemplateSource},
     prelude::DataSourceContext,
+    runtime::{AscHeap, AscPtr, DeterministicHostError, HostExportError},
 };
 use crate::{
     components::{
@@ -22,8 +24,8 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
-use slog;
 use slog::Logger;
+use slog::{self, SendSyncRefUnwindSafeKV};
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::{collections::HashMap, convert::TryFrom};
@@ -73,7 +75,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + 'static {
     type TriggerData: TriggerData + Ord;
 
     /// Decoded trigger ready to be processed by the mapping.
-    type MappingTrigger: MappingTrigger;
+    type MappingTrigger: MappingTrigger + Debug;
 
     /// Trigger filter used as input to the triggers adapter.
     type TriggerFilter: TriggerFilter<Self>;
@@ -82,8 +84,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + 'static {
 
     type IngestorAdapter: IngestorAdapter<Self>;
 
-    // type RuntimeAdapter: RuntimeAdapter;
-    // ...WIP
+    type RuntimeAdapter: RuntimeAdapter<Self>;
 
     fn reorg_threshold() -> u32;
 
@@ -110,6 +111,8 @@ pub trait Blockchain: Debug + Sized + Send + Sync + 'static {
         logger: &Logger,
         number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError>;
+
+    fn runtime_adapter(&self) -> Arc<Self::RuntimeAdapter>;
 }
 
 pub type BlockchainMap<C> = HashMap<String, Arc<C>>;
@@ -264,6 +267,42 @@ pub trait TriggerData {
     fn error_context(&self) -> String;
 }
 
-pub trait MappingTrigger {
+pub trait MappingTrigger: Send + Sync {
     fn handler_name(&self) -> &str;
+
+    /// A flexible interface for writing a type to AS memory, any pointer can be returned.
+    /// Use `AscPtr::erased` to convert `AscPtr<T>` into `AscPtr<()>`.
+    fn to_asc<H: AscHeap>(self, heap: &mut H) -> Result<AscPtr<()>, DeterministicHostError>;
+
+    /// Additional key-value pairs to be logged with the "Done processing trigger" message.
+    fn logging_extras(&self) -> Box<dyn SendSyncRefUnwindSafeKV> {
+        Box::new(slog::o! {})
+    }
+}
+
+pub struct HostFnCtx<'a> {
+    pub logger: Logger,
+    pub block_ptr: BlockPtr,
+    pub heap: &'a mut dyn AscHeap,
+}
+
+/// Host fn that receives one u32 argument and returns an u32.
+/// The name for an AS fuction is in the format `<namespace>.<function>`.
+#[derive(Clone)]
+pub struct HostFn {
+    pub name: &'static str,
+    pub func: Arc<dyn Send + Sync + Fn(HostFnCtx, u32) -> Result<u32, HostExportError>>,
+}
+
+impl CheapClone for HostFn {
+    fn cheap_clone(&self) -> Self {
+        HostFn {
+            name: self.name,
+            func: self.func.cheap_clone(),
+        }
+    }
+}
+
+pub trait RuntimeAdapter<C: Blockchain>: Send + Sync {
+    fn host_fns(&self, ds: &C::DataSource) -> Result<Vec<HostFn>, Error>;
 }

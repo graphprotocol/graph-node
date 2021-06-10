@@ -3,9 +3,11 @@ mod config;
 mod data_source;
 mod ethereum_adapter;
 pub mod network_indexer;
+mod runtime;
 mod transport;
 
 pub use self::ethereum_adapter::EthereumAdapter;
+pub use self::runtime::RuntimeAdapter;
 pub use self::transport::{EventLoopHandle, Transport};
 
 // ETHDEP: These concrete types should probably not be exposed.

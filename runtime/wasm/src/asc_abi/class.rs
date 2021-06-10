@@ -16,7 +16,7 @@ use std::mem::{size_of, size_of_val};
 
 /// Asc std ArrayBuffer: "a generic, fixed-length raw binary data buffer".
 /// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
-pub(crate) struct ArrayBuffer {
+pub struct ArrayBuffer {
     byte_length: u32,
     // Asc allocators always align at 8 bytes, we already have 4 bytes from
     // `byte_length_size` so with 4 more bytes we align the contents at 8
@@ -136,7 +136,7 @@ impl AscType for ArrayBuffer {
 ///  See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct TypedArray<T> {
+pub struct TypedArray<T> {
     pub buffer: AscPtr<ArrayBuffer>,
     /// Byte position in `buffer` of the array start.
     byte_offset: u32,
@@ -168,12 +168,12 @@ impl<T: AscValue> TypedArray<T> {
     }
 }
 
-pub(crate) type Uint8Array = TypedArray<u8>;
+pub type Uint8Array = TypedArray<u8>;
 
 /// Asc std string: "Strings are encoded as UTF-16LE in AssemblyScript, and are
 /// prefixed with their length (in character codes) as a 32-bit integer". See
 /// https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#strings
-pub(crate) struct AscString {
+pub struct AscString {
     // In number of UTF-16 code units (2 bytes each).
     length: u32,
     // The sequence of UTF-16LE code units that form the string.
@@ -280,7 +280,7 @@ impl AscType for AscString {
 /// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct Array<T> {
+pub struct Array<T> {
     buffer: AscPtr<ArrayBuffer>,
     length: u32,
     ty: PhantomData<T>,
@@ -310,7 +310,7 @@ impl<T: AscValue> Array<T> {
 /// Represents any `AscValue` since they all fit in 64 bits.
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
-pub(crate) struct EnumPayload(pub u64);
+pub struct EnumPayload(pub u64);
 
 impl AscType for EnumPayload {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
@@ -383,17 +383,17 @@ impl<C> From<AscPtr<C>> for EnumPayload {
 /// payload.
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscEnum<D: AscValue> {
+pub struct AscEnum<D: AscValue> {
     pub kind: D,
     pub _padding: u32, // Make padding explicit.
     pub payload: EnumPayload,
 }
 
-pub(crate) type AscEnumArray<D> = AscPtr<Array<AscPtr<AscEnum<D>>>>;
+pub type AscEnumArray<D> = AscPtr<Array<AscPtr<AscEnum<D>>>>;
 
 #[repr(u32)]
 #[derive(AscType, Copy, Clone)]
-pub(crate) enum EthereumValueKind {
+pub enum EthereumValueKind {
     Address,
     FixedBytes,
     Bytes,
@@ -469,106 +469,14 @@ impl Default for StoreValueKind {
 
 impl AscValue for StoreValueKind {}
 
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscLogParam {
-    pub name: AscPtr<AscString>,
-    pub value: AscPtr<AscEnum<EthereumValueKind>>,
-}
-
-pub(crate) type Bytes = Uint8Array;
-
 /// Big ints are represented using signed number representation. Note: This differs
 /// from how U256 and U128 are represented (they use two's complement). So whenever
 /// we convert between them, we need to make sure we handle signed and unsigned
 /// cases correctly.
-pub(crate) type AscBigInt = Uint8Array;
+pub type AscBigInt = Uint8Array;
 
-pub(crate) type AscAddress = Uint8Array;
-pub(crate) type AscH160 = Uint8Array;
-pub(crate) type AscH256 = Uint8Array;
-
-pub(crate) type AscLogParamArray = Array<AscPtr<AscLogParam>>;
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEthereumBlock {
-    pub hash: AscPtr<AscH256>,
-    pub parent_hash: AscPtr<AscH256>,
-    pub uncles_hash: AscPtr<AscH256>,
-    pub author: AscPtr<AscH160>,
-    pub state_root: AscPtr<AscH256>,
-    pub transactions_root: AscPtr<AscH256>,
-    pub receipts_root: AscPtr<AscH256>,
-    pub number: AscPtr<AscBigInt>,
-    pub gas_used: AscPtr<AscBigInt>,
-    pub gas_limit: AscPtr<AscBigInt>,
-    pub timestamp: AscPtr<AscBigInt>,
-    pub difficulty: AscPtr<AscBigInt>,
-    pub total_difficulty: AscPtr<AscBigInt>,
-    pub size: AscPtr<AscBigInt>,
-}
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEthereumTransaction {
-    pub hash: AscPtr<AscH256>,
-    pub index: AscPtr<AscBigInt>,
-    pub from: AscPtr<AscH160>,
-    pub to: AscPtr<AscH160>,
-    pub value: AscPtr<AscBigInt>,
-    pub gas_used: AscPtr<AscBigInt>,
-    pub gas_price: AscPtr<AscBigInt>,
-}
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEthereumTransaction_0_0_2 {
-    pub hash: AscPtr<AscH256>,
-    pub index: AscPtr<AscBigInt>,
-    pub from: AscPtr<AscH160>,
-    pub to: AscPtr<AscH160>,
-    pub value: AscPtr<AscBigInt>,
-    pub gas_used: AscPtr<AscBigInt>,
-    pub gas_price: AscPtr<AscBigInt>,
-    pub input: AscPtr<Bytes>,
-}
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEthereumEvent<T>
-where
-    T: AscType,
-{
-    pub address: AscPtr<AscAddress>,
-    pub log_index: AscPtr<AscBigInt>,
-    pub transaction_log_index: AscPtr<AscBigInt>,
-    pub log_type: AscPtr<AscString>,
-    pub block: AscPtr<AscEthereumBlock>,
-    pub transaction: AscPtr<T>,
-    pub params: AscPtr<AscLogParamArray>,
-}
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEthereumCall {
-    pub address: AscPtr<AscAddress>,
-    pub block: AscPtr<AscEthereumBlock>,
-    pub transaction: AscPtr<AscEthereumTransaction>,
-    pub inputs: AscPtr<AscLogParamArray>,
-    pub outputs: AscPtr<AscLogParamArray>,
-}
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEthereumCall_0_0_3 {
-    pub to: AscPtr<AscAddress>,
-    pub from: AscPtr<AscAddress>,
-    pub block: AscPtr<AscEthereumBlock>,
-    pub transaction: AscPtr<AscEthereumTransaction>,
-    pub inputs: AscPtr<AscLogParamArray>,
-    pub outputs: AscPtr<AscLogParamArray>,
-}
+pub type AscAddress = Uint8Array;
+pub type AscH160 = Uint8Array;
 
 #[repr(C)]
 #[derive(AscType)]
@@ -587,25 +495,6 @@ pub(crate) struct AscTypedMap<K, V> {
 
 pub(crate) type AscEntity = AscTypedMap<AscString, AscEnum<StoreValueKind>>;
 pub(crate) type AscJson = AscTypedMap<AscString, AscEnum<JsonValueKind>>;
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscUnresolvedContractCall {
-    pub contract_name: AscPtr<AscString>,
-    pub contract_address: AscPtr<AscAddress>,
-    pub function_name: AscPtr<AscString>,
-    pub function_args: AscPtr<Array<AscPtr<AscEnum<EthereumValueKind>>>>,
-}
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscUnresolvedContractCall_0_0_4 {
-    pub contract_name: AscPtr<AscString>,
-    pub contract_address: AscPtr<AscAddress>,
-    pub function_name: AscPtr<AscString>,
-    pub function_signature: AscPtr<AscString>,
-    pub function_args: AscPtr<Array<AscPtr<AscEnum<EthereumValueKind>>>>,
-}
 
 #[repr(u32)]
 #[derive(AscType, Copy, Clone)]

@@ -1,5 +1,4 @@
 use std::cmp::PartialEq;
-use std::fmt;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -68,13 +67,6 @@ pub struct HostMetrics {
     handler_execution_time: Box<HistogramVec>,
     host_fn_execution_time: Box<HistogramVec>,
     pub stopwatch: StopwatchMetrics,
-}
-
-impl fmt::Debug for HostMetrics {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // TODO: `HistogramVec` does not implement fmt::Debug, what is the best way to deal with this?
-        write!(f, "HostMetrics {{ }}")
-    }
 }
 
 impl HostMetrics {

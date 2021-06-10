@@ -1237,12 +1237,6 @@ pub trait BlockStore: Send + Sync + 'static {
     fn chain_store(&self, network: &str) -> Option<Arc<Self::ChainStore>>;
 }
 
-pub trait CallCache: Send + Sync + 'static {
-    type EthereumCallCache: EthereumCallCache;
-
-    fn ethereum_call_cache(&self, network: &str) -> Option<Arc<Self::EthereumCallCache>>;
-}
-
 /// Common trait for blockchain store implementations.
 #[automock]
 #[async_trait]

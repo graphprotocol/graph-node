@@ -72,13 +72,13 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
                 #(bytes.extend_from_slice(&self.#field_names.to_asc_bytes()?);)*
 
                 // Assert that the struct has no padding.
-                assert_eq!(bytes.len(), size_of::<Self>());
+                assert_eq!(bytes.len(), std::mem::size_of::<Self>());
                 Ok(bytes)
             }
 
             #[allow(unused_variables)]
             fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
-                if asc_obj.len() != size_of::<Self>() {
+                if asc_obj.len() != std::mem::size_of::<Self>() {
                     return Err(DeterministicHostError(anyhow::anyhow!("Size does not match")));
                 }
                 let mut offset = 0;
@@ -86,7 +86,7 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
                 #(
                 let field_size = std::mem::size_of::<#field_types>();
                 let field_data = asc_obj.get(offset..(offset + field_size)).ok_or_else(|| {
-                    DeterministicHostError(anyhow!("Attempted to read past end of array"))
+                    DeterministicHostError(anyhow::anyhow!("Attempted to read past end of array"))
                 })?;
                 let #field_names2 = AscType::from_asc_bytes(&field_data)?;
                 offset += field_size;

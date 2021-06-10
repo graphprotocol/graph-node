@@ -1,5 +1,7 @@
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
+use graph::components::arweave::ArweaveAdapter;
+use graph::components::three_box::ThreeBoxAdapter;
 use lazy_static::lazy_static;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, RwLock};
@@ -83,15 +85,16 @@ struct IndexingContext<T: RuntimeHostBuilder<C>, C: Blockchain> {
     pub block_stream_metrics: Arc<BlockStreamMetrics>,
 }
 
-pub struct SubgraphInstanceManager<C, S, M, H, L> {
+pub struct SubgraphInstanceManager<C, S, M, L> {
     logger_factory: LoggerFactory,
     subgraph_store: Arc<S>,
     chains: Arc<BlockchainMap<C>>,
-    host_builder: H,
     metrics_registry: Arc<M>,
     manager_metrics: SubgraphInstanceManagerMetrics,
     instances: SharedInstanceKeepAliveMap,
     link_resolver: Arc<L>,
+    arweave_adapter: Arc<dyn ArweaveAdapter>,
+    three_box_adapter: Arc<dyn ThreeBoxAdapter>,
 }
 
 struct SubgraphInstanceManagerMetrics {
@@ -175,7 +178,7 @@ impl SubgraphInstanceMetrics {
 }
 
 #[async_trait]
-impl<C, S, M, H, L> SubgraphInstanceManagerTrait for SubgraphInstanceManager<C, S, M, H, L>
+impl<C, S, M, L> SubgraphInstanceManagerTrait for SubgraphInstanceManager<C, S, M, L>
 where
     S: SubgraphStore,
 
@@ -187,7 +190,6 @@ where
         DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
     >,
     M: MetricsRegistry,
-    H: RuntimeHostBuilder<C>,
     L: LinkResolver + Clone,
 {
     async fn start_subgraph(
@@ -206,13 +208,14 @@ where
             match Self::start_subgraph_inner(
                 logger.clone(),
                 self.instances.clone(),
-                self.host_builder.clone(),
                 self.subgraph_store.clone(),
                 self.chains.clone(),
                 loc,
                 manifest,
                 self.metrics_registry.cheap_clone(),
                 self.link_resolver.cheap_clone(),
+                self.arweave_adapter.cheap_clone(),
+                self.three_box_adapter.cheap_clone(),
             )
             .await
             {
@@ -239,7 +242,7 @@ where
     }
 }
 
-impl<C, S, M, H, L> SubgraphInstanceManager<C, S, M, H, L>
+impl<C, S, M, L> SubgraphInstanceManager<C, S, M, L>
 where
     S: SubgraphStore,
 
@@ -251,16 +254,16 @@ where
         DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
     >,
     M: MetricsRegistry,
-    H: RuntimeHostBuilder<C>,
     L: LinkResolver + Clone,
 {
     pub fn new(
         logger_factory: &LoggerFactory,
         subgraph_store: Arc<S>,
         chains: Arc<BlockchainMap<C>>,
-        host_builder: H,
         metrics_registry: Arc<M>,
         link_resolver: Arc<L>,
+        arweave_adapter: Arc<dyn ArweaveAdapter>,
+        three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
@@ -277,25 +280,28 @@ where
             logger_factory,
             subgraph_store,
             chains,
-            host_builder,
             manager_metrics: SubgraphInstanceManagerMetrics::new(metrics_registry.cheap_clone()),
             metrics_registry,
             instances: SharedInstanceKeepAliveMap::default(),
             link_resolver,
+            arweave_adapter,
+            three_box_adapter,
         }
     }
 
     async fn start_subgraph_inner(
         logger: Logger,
         instances: SharedInstanceKeepAliveMap,
-        host_builder: impl RuntimeHostBuilder<C>,
         store: Arc<dyn SubgraphStore>,
         chains: Arc<BlockchainMap<C>>,
         deployment: DeploymentLocator,
         manifest: serde_yaml::Mapping,
         registry: Arc<M>,
         link_resolver: Arc<L>,
+        arweave_adapter: Arc<dyn ArweaveAdapter>,
+        three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Result<(), Error> {
+        let subgraph_store = store.cheap_clone();
         let store = store.writable(&deployment)?;
 
         // Start the subgraph deployment before reading dynamic data
@@ -404,6 +410,14 @@ where
             .and_then(|ptr| ptr.map(|ptr| ptr.number))
             .unwrap_or(0) as f64;
         block_stream_metrics.deployment_head.set(deployment_head);
+
+        let host_builder = graph_runtime_wasm::RuntimeHostBuilder::new(
+            chain.runtime_adapter(),
+            link_resolver.clone(),
+            subgraph_store,
+            arweave_adapter,
+            three_box_adapter,
+        );
 
         let features = manifest.features.clone();
         let instance =
