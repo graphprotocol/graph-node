@@ -4,11 +4,11 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use graph::prelude::StoreError;
 use graph::{
     components::store::BlockStore as BlockStoreTrait,
     prelude::{error, warn, BlockNumber, BlockPtr, EthereumNetworkIdentifier, Logger},
 };
-use graph::{components::store::CallCache as CallCacheTrait, prelude::StoreError};
 use graph::{
     constraint_violation,
     prelude::{anyhow, CheapClone},
@@ -427,14 +427,6 @@ impl BlockStoreTrait for BlockStore {
     type ChainStore = ChainStore;
 
     fn chain_store(&self, network: &str) -> Option<Arc<Self::ChainStore>> {
-        self.store(network)
-    }
-}
-
-impl CallCacheTrait for BlockStore {
-    type EthereumCallCache = ChainStore;
-
-    fn ethereum_call_cache(&self, network: &str) -> Option<Arc<Self::EthereumCallCache>> {
         self.store(network)
     }
 }

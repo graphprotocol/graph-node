@@ -13,9 +13,6 @@ graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
 bs58 = "0.4.0"
 graph-runtime-derive = { path = "../derive" }
-# This dependency is temporary. The multiblockchain refactoring is not
-# finished as long as this dependency exists
-graph-chain-ethereum = { path = "../../chain/ethereum" }
 semver = "1.0.3"
 lazy_static = "1.4"
 uuid = { version = "0.8.1", features = ["v4"] }
@@ -32,3 +29,4 @@ graph-core = { path = "../../core" }
 graph-mock = { path = "../../mock" }
 test-store = { path = "../../store/test-store" }
 graph-chain-arweave = { path = "../../chain/arweave" }
+graph-chain-ethereum = { path = "../../chain/ethereum" }

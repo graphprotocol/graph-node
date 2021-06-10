@@ -1,11 +1,11 @@
 use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::ops::Deref;
 use std::rc::Rc;
 use std::time::Instant;
 
-use graph::blockchain::Blockchain;
+use graph::blockchain::{Blockchain, HostFnCtx, MappingTrigger};
+use graph::runtime::HostExportError;
 use never::Never;
 use semver::Version;
 use wasmtime::{Memory, Trap};
@@ -14,7 +14,6 @@ use crate::error::DeterminismLevel;
 use crate::host_exports;
 use crate::mapping::MappingContext;
 use anyhow::Error;
-use ethabi::LogParam;
 use graph::prelude::*;
 use graph::{components::subgraph::MappingError, runtime::AscPtr};
 use graph::{data::store, runtime::AscHeap};
@@ -22,13 +21,10 @@ use graph::{
     data::subgraph::schema::SubgraphError,
     runtime::{asc_get, asc_new, try_asc_get, DeterministicHostError},
 };
-use host_exports::HostExportError;
-use web3::types::{Log, Transaction, U256};
 
 use crate::asc_abi::class::*;
-use crate::host_exports::{EthereumCallError, HostExports};
+use crate::host_exports::HostExports;
 use crate::mapping::ValidModule;
-use crate::UnresolvedContractCall;
 
 mod into_wasm_ret;
 mod stopwatch;
@@ -106,87 +102,13 @@ impl<C: Blockchain> WasmInstance<C> {
         Ok(self.take_ctx().ctx.state)
     }
 
-    pub(crate) fn handle_ethereum_log(
+    pub(crate) fn handle_trigger(
         mut self,
-        block: Arc<LightEthereumBlock>,
-        handler_name: &str,
-        transaction: Arc<Transaction>,
-        log: Arc<Log>,
-        params: Vec<LogParam>,
+        trigger: C::MappingTrigger,
     ) -> Result<BlockState<C>, MappingError> {
-        // Prepare an EthereumEvent for the WASM runtime
-        // Decide on the destination type using the mapping
-        // api version provided in the subgraph manifest
-        let event = if self.instance_ctx().ctx.host_exports.api_version >= Version::new(0, 0, 2) {
-            asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_2>, _, _>(
-                &mut self,
-                &EthereumEventData {
-                    block: EthereumBlockData::from(block.as_ref()),
-                    transaction: EthereumTransactionData::from(transaction.deref()),
-                    address: log.address,
-                    log_index: log.log_index.unwrap_or(U256::zero()),
-                    transaction_log_index: log.log_index.unwrap_or(U256::zero()),
-                    log_type: log.log_type.clone(),
-                    params,
-                },
-            )?
-            .erase()
-        } else {
-            asc_new::<AscEthereumEvent<AscEthereumTransaction>, _, _>(
-                &mut self,
-                &EthereumEventData {
-                    block: EthereumBlockData::from(block.as_ref()),
-                    transaction: EthereumTransactionData::from(transaction.deref()),
-                    address: log.address,
-                    log_index: log.log_index.unwrap_or(U256::zero()),
-                    transaction_log_index: log.log_index.unwrap_or(U256::zero()),
-                    log_type: log.log_type.clone(),
-                    params,
-                },
-            )?
-            .erase()
-        };
-
-        self.invoke_handler(handler_name, event)
-    }
-
-    pub(crate) fn handle_ethereum_call(
-        mut self,
-        block: Arc<LightEthereumBlock>,
-        handler_name: &str,
-        transaction: Arc<Transaction>,
-        call: Arc<EthereumCall>,
-        inputs: Vec<LogParam>,
-        outputs: Vec<LogParam>,
-    ) -> Result<BlockState<C>, MappingError> {
-        let call = EthereumCallData {
-            to: call.to,
-            from: call.from,
-            block: EthereumBlockData::from(block.as_ref()),
-            transaction: EthereumTransactionData::from(transaction.deref()),
-            inputs,
-            outputs,
-        };
-        let arg = if self.instance_ctx().ctx.host_exports.api_version >= Version::new(0, 0, 3) {
-            asc_new::<AscEthereumCall_0_0_3, _, _>(&mut self, &call)?.erase()
-        } else {
-            asc_new::<AscEthereumCall, _, _>(&mut self, &call)?.erase()
-        };
-
-        self.invoke_handler(handler_name, arg)
-    }
-
-    pub(crate) fn handle_ethereum_block(
-        mut self,
-        block: Arc<LightEthereumBlock>,
-        handler_name: &str,
-    ) -> Result<BlockState<C>, MappingError> {
-        let block = EthereumBlockData::from(block.as_ref());
-
-        // Prepare an EthereumBlock for the WASM runtime
-        let arg = asc_new(&mut self, &block)?;
-
-        self.invoke_handler(handler_name, arg)
+        let handler_name = trigger.handler_name().to_owned();
+        let asc_trigger = trigger.to_asc(&mut self)?;
+        self.invoke_handler(&handler_name, asc_trigger)
     }
 
     pub(crate) fn take_ctx(&mut self) -> WasmInstanceContext<C> {
@@ -335,6 +257,7 @@ impl<C: Blockchain> WasmInstance<C> {
         experimental_features: ExperimentalFeatures,
     ) -> Result<WasmInstance<C>, anyhow::Error> {
         let mut linker = wasmtime::Linker::new(&wasmtime::Store::new(valid_module.module.engine()));
+        let host_fns = ctx.host_fns.cheap_clone();
 
         // Used by exports to access the instance context. There are two ways this can be set:
         // - After instantiation, if no host export is called in the start function.
@@ -419,8 +342,12 @@ impl<C: Blockchain> WasmInstance<C> {
                                         DeterminismLevel::Deterministic => {
                                             instance.deterministic_host_trap = true;
                                         },
-                                        _ => {},
+                                        DeterminismLevel::PossibleReorg => {
+                                            instance.possible_reorg = true;
+                                        },
+                                        DeterminismLevel::Unimplemented | DeterminismLevel::NonDeterministic => {},
                                     }
+
                                     Err(IntoTrap::into_trap(e))
                                 }
                             }
@@ -430,61 +357,63 @@ impl<C: Blockchain> WasmInstance<C> {
             };
         }
 
-        let modules = valid_module
-            .import_name_to_modules
-            .get("ethereum.call")
-            .into_iter()
-            .flatten();
+        // Link chain-specifc host fns.
+        for host_fn in host_fns.iter() {
+            let modules = valid_module
+                .import_name_to_modules
+                .get(host_fn.name)
+                .into_iter()
+                .flatten();
 
-        for module in modules {
-            let func_shared_ctx = Rc::downgrade(&shared_ctx);
-            linker.func(module, "ethereum.call", move |call_ptr: u32| {
-                let start = Instant::now();
-                let instance = func_shared_ctx.upgrade().unwrap();
-                let mut instance = instance.borrow_mut();
+            for module in modules {
+                let func_shared_ctx = Rc::downgrade(&shared_ctx);
+                let host_fn = host_fn.cheap_clone();
+                linker.func(module, host_fn.name, move |call_ptr: u32| {
+                    let start = Instant::now();
+                    let instance = func_shared_ctx.upgrade().unwrap();
+                    let mut instance = instance.borrow_mut();
 
-                let instance = match &mut *instance {
-                    Some(instance) => instance,
+                    let instance = match &mut *instance {
+                        Some(instance) => instance,
 
-                    // Happens when calling a host fn in Wasm start.
-                    None => {
-                        return Err(
-                            anyhow!("ethereum.call is not allowed in global variables").into()
-                        )
-                    }
-                };
+                        // Happens when calling a host fn in Wasm start.
+                        None => {
+                            return Err(anyhow!(
+                                "{} is not allowed in global variables",
+                                host_fn.name
+                            )
+                            .into())
+                        }
+                    };
 
-                let stopwatch = &instance.host_metrics.stopwatch;
-                let _section = stopwatch.start_section("host_export_ethereum_call");
+                    let name_for_metrics = host_fn.name.replace('.', "_");
+                    let stopwatch = &instance.host_metrics.stopwatch;
+                    let _section =
+                        stopwatch.start_section(&format!("host_export_{}", name_for_metrics));
 
-                // For apiVersion >= 0.0.4 the call passed from the mapping includes the
-                // function signature; subgraphs using an apiVersion < 0.0.4 don't pass
-                // the the signature along with the call.
-                let arg = if instance.ctx.host_exports.api_version >= Version::new(0, 0, 4) {
-                    asc_get::<_, AscUnresolvedContractCall_0_0_4, _>(instance, call_ptr.into())
-                } else {
-                    asc_get::<_, AscUnresolvedContractCall, _>(instance, call_ptr.into())
-                }
-                .map_err(|e| {
-                    instance.deterministic_host_trap = true;
-                    e.0
-                })?;
-
-                let ret = instance
-                    .ethereum_call(arg)
-                    .map_err(|e| match e {
+                    let ctx = HostFnCtx {
+                        logger: instance.ctx.logger.cheap_clone(),
+                        block_ptr: instance.ctx.block_ptr.cheap_clone(),
+                        heap: instance,
+                    };
+                    let ret = (host_fn.func)(ctx, call_ptr).map_err(|e| match e {
                         HostExportError::Deterministic(e) => {
                             instance.deterministic_host_trap = true;
                             e
                         }
+                        HostExportError::PossibleReorg(e) => {
+                            instance.possible_reorg = true;
+                            e
+                        }
                         HostExportError::Unknown(e) => e,
-                    })?
-                    .wasm_ptr();
-                instance
-                    .host_metrics
-                    .observe_host_fn_execution_time(start.elapsed().as_secs_f64(), "ethereum_call");
-                Ok(ret)
-            })?;
+                    })?;
+                    instance.host_metrics.observe_host_fn_execution_time(
+                        start.elapsed().as_secs_f64(),
+                        &name_for_metrics,
+                    );
+                    Ok(ret)
+                })?;
+            }
         }
 
         link!("ethereum.encode", ethereum_encode, params_ptr);
@@ -826,26 +755,6 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         };
 
         Ok(ret)
-    }
-
-    /// function ethereum.call(call: SmartContractCall): Array<Token> | null
-    fn ethereum_call(
-        &mut self,
-        call: UnresolvedContractCall,
-    ) -> Result<AscEnumArray<EthereumValueKind>, HostExportError> {
-        let result =
-            self.ctx
-                .host_exports
-                .ethereum_call(&self.ctx.logger, &self.ctx.block_ptr, call);
-        match result {
-            Ok(Some(tokens)) => Ok(asc_new(self, tokens.as_slice())?),
-            Ok(None) => Ok(AscPtr::null()),
-            Err(EthereumCallError::Unknown(e)) => Err(HostExportError::Unknown(e.into())),
-            Err(EthereumCallError::PossibleReorg(e)) => {
-                self.possible_reorg = true;
-                Err(HostExportError::Unknown(e))
-            }
-        }
     }
 
     /// function typeConversion.bytesToString(bytes: Bytes): string

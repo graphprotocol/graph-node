@@ -1,11 +1,6 @@
 use ethabi;
 
-use graph::{
-    components::ethereum::{
-        EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
-    },
-    runtime::{asc_get, asc_new, try_asc_get, AscPtr, AscType, AscValue, ToAscObj},
-};
+use graph::runtime::{asc_get, asc_new, try_asc_get, AscPtr, AscType, AscValue, ToAscObj};
 use graph::{data::store, runtime::DeterministicHostError};
 use graph::{prelude::serde_json, runtime::FromAscObj};
 use graph::{prelude::web3::types as web3, runtime::AscHeap};
@@ -15,8 +10,6 @@ use graph::{
 };
 
 use crate::asc_abi::class::*;
-
-use crate::UnresolvedContractCall;
 
 impl ToAscObj<Uint8Array> for web3::H160 {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -244,7 +237,7 @@ impl TryFromAscObj<AscEnum<StoreValueKind>> for store::Value {
             }
             StoreValueKind::Null => Value::Null,
             StoreValueKind::Bytes => {
-                let ptr: AscPtr<Bytes> = AscPtr::from(payload);
+                let ptr: AscPtr<Uint8Array> = AscPtr::from(payload);
                 let array: Vec<u8> = asc_get(heap, ptr)?;
                 Value::Bytes(array.as_slice().into())
             }
@@ -285,18 +278,6 @@ impl ToAscObj<AscEnum<StoreValueKind>> for store::Value {
             kind: StoreValueKind::get_kind(self),
             _padding: 0,
             payload,
-        })
-    }
-}
-
-impl ToAscObj<AscLogParam> for ethabi::LogParam {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscLogParam, DeterministicHostError> {
-        Ok(AscLogParam {
-            name: asc_new(heap, self.name.as_str())?,
-            value: asc_new(heap, &self.value)?,
         })
     }
 }
@@ -344,162 +325,6 @@ impl ToAscObj<AscEnum<JsonValueKind>> for serde_json::Value {
             kind: JsonValueKind::get_kind(self),
             _padding: 0,
             payload,
-        })
-    }
-}
-
-impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscEthereumBlock, DeterministicHostError> {
-        Ok(AscEthereumBlock {
-            hash: asc_new(heap, &self.hash)?,
-            parent_hash: asc_new(heap, &self.parent_hash)?,
-            uncles_hash: asc_new(heap, &self.uncles_hash)?,
-            author: asc_new(heap, &self.author)?,
-            state_root: asc_new(heap, &self.state_root)?,
-            transactions_root: asc_new(heap, &self.transactions_root)?,
-            receipts_root: asc_new(heap, &self.receipts_root)?,
-            number: asc_new(heap, &BigInt::from(self.number))?,
-            gas_used: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_used))?,
-            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit))?,
-            timestamp: asc_new(heap, &BigInt::from_unsigned_u256(&self.timestamp))?,
-            difficulty: asc_new(heap, &BigInt::from_unsigned_u256(&self.difficulty))?,
-            total_difficulty: asc_new(heap, &BigInt::from_unsigned_u256(&self.total_difficulty))?,
-            size: self
-                .size
-                .map(|size| asc_new(heap, &BigInt::from_unsigned_u256(&size)))
-                .unwrap_or(Ok(AscPtr::null()))?,
-        })
-    }
-}
-
-impl ToAscObj<AscEthereumTransaction> for EthereumTransactionData {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscEthereumTransaction, DeterministicHostError> {
-        Ok(AscEthereumTransaction {
-            hash: asc_new(heap, &self.hash)?,
-            index: asc_new(heap, &BigInt::from(self.index))?,
-            from: asc_new(heap, &self.from)?,
-            to: self
-                .to
-                .map(|to| asc_new(heap, &to))
-                .unwrap_or(Ok(AscPtr::null()))?,
-            value: asc_new(heap, &BigInt::from_unsigned_u256(&self.value))?,
-            gas_used: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_used))?,
-            gas_price: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_price))?,
-        })
-    }
-}
-
-impl ToAscObj<AscEthereumTransaction_0_0_2> for EthereumTransactionData {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscEthereumTransaction_0_0_2, DeterministicHostError> {
-        Ok(AscEthereumTransaction_0_0_2 {
-            hash: asc_new(heap, &self.hash)?,
-            index: asc_new(heap, &BigInt::from(self.index))?,
-            from: asc_new(heap, &self.from)?,
-            to: self
-                .to
-                .map(|to| asc_new(heap, &to))
-                .unwrap_or(Ok(AscPtr::null()))?,
-            value: asc_new(heap, &BigInt::from_unsigned_u256(&self.value))?,
-            gas_used: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_used))?,
-            gas_price: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_price))?,
-            input: asc_new(heap, &*self.input.0)?,
-        })
-    }
-}
-
-impl<T: AscType> ToAscObj<AscEthereumEvent<T>> for EthereumEventData
-where
-    EthereumTransactionData: ToAscObj<T>,
-{
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscEthereumEvent<T>, DeterministicHostError> {
-        Ok(AscEthereumEvent {
-            address: asc_new(heap, &self.address)?,
-            log_index: asc_new(heap, &BigInt::from_unsigned_u256(&self.log_index))?,
-            transaction_log_index: asc_new(
-                heap,
-                &BigInt::from_unsigned_u256(&self.transaction_log_index),
-            )?,
-            log_type: self
-                .log_type
-                .clone()
-                .map(|log_type| asc_new(heap, &log_type))
-                .unwrap_or(Ok(AscPtr::null()))?,
-            block: asc_new(heap, &self.block)?,
-            transaction: asc_new::<T, EthereumTransactionData, _>(heap, &self.transaction)?,
-            params: asc_new(heap, self.params.as_slice())?,
-        })
-    }
-}
-
-impl ToAscObj<AscEthereumCall> for EthereumCallData {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscEthereumCall, DeterministicHostError> {
-        Ok(AscEthereumCall {
-            address: asc_new(heap, &self.to)?,
-            block: asc_new(heap, &self.block)?,
-            transaction: asc_new(heap, &self.transaction)?,
-            inputs: asc_new(heap, self.inputs.as_slice())?,
-            outputs: asc_new(heap, self.outputs.as_slice())?,
-        })
-    }
-}
-
-impl ToAscObj<AscEthereumCall_0_0_3> for EthereumCallData {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscEthereumCall_0_0_3, DeterministicHostError> {
-        Ok(AscEthereumCall_0_0_3 {
-            to: asc_new(heap, &self.to)?,
-            from: asc_new(heap, &self.from)?,
-            block: asc_new(heap, &self.block)?,
-            transaction: asc_new(heap, &self.transaction)?,
-            inputs: asc_new(heap, self.inputs.as_slice())?,
-            outputs: asc_new(heap, self.outputs.as_slice())?,
-        })
-    }
-}
-
-impl FromAscObj<AscUnresolvedContractCall> for UnresolvedContractCall {
-    fn from_asc_obj<H: AscHeap + ?Sized>(
-        asc_call: AscUnresolvedContractCall,
-        heap: &H,
-    ) -> Result<Self, DeterministicHostError> {
-        Ok(UnresolvedContractCall {
-            contract_name: asc_get(heap, asc_call.contract_name)?,
-            contract_address: asc_get(heap, asc_call.contract_address)?,
-            function_name: asc_get(heap, asc_call.function_name)?,
-            function_signature: None,
-            function_args: asc_get(heap, asc_call.function_args)?,
-        })
-    }
-}
-
-impl FromAscObj<AscUnresolvedContractCall_0_0_4> for UnresolvedContractCall {
-    fn from_asc_obj<H: AscHeap + ?Sized>(
-        asc_call: AscUnresolvedContractCall_0_0_4,
-        heap: &H,
-    ) -> Result<Self, DeterministicHostError> {
-        Ok(UnresolvedContractCall {
-            contract_name: asc_get(heap, asc_call.contract_name)?,
-            contract_address: asc_get(heap, asc_call.contract_address)?,
-            function_name: asc_get(heap, asc_call.function_name)?,
-            function_signature: Some(asc_get(heap, asc_call.function_signature)?),
-            function_args: asc_get(heap, asc_call.function_args)?,
         })
     }
 }

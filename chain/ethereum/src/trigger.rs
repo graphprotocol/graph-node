@@ -6,10 +6,27 @@ use graph::prelude::BlockPtr;
 use graph::prelude::{
     CheapClone, EthereumCall, MappingBlockHandler, MappingCallHandler, MappingEventHandler,
 };
+use graph::runtime::asc_new;
+use graph::runtime::AscHeap;
+use graph::runtime::AscPtr;
+use graph::runtime::DeterministicHostError;
+use graph::semver::Version;
 use graph::slog::{o, SendSyncRefUnwindSafeKV};
 use std::convert::TryFrom;
+use std::ops::Deref;
 use std::{cmp::Ordering, sync::Arc};
+use web3::types::Bytes;
+use web3::types::H160;
+use web3::types::U128;
+use web3::types::U256;
+use web3::types::U64;
 use web3::types::{Address, Block, Log, Transaction, H256};
+
+use crate::runtime::abi::AscEthereumCall;
+use crate::runtime::abi::AscEthereumCall_0_0_3;
+use crate::runtime::abi::AscEthereumEvent;
+use crate::runtime::abi::AscEthereumTransaction;
+use crate::runtime::abi::AscEthereumTransaction_0_0_2;
 
 // ETHDEP: This should be defined in only one place.
 type LightEthereumBlock = Block<Transaction>;
@@ -95,8 +112,16 @@ impl std::fmt::Debug for MappingTrigger {
     }
 }
 
-impl MappingTrigger {
-    pub fn logging_extras(&self) -> Box<dyn SendSyncRefUnwindSafeKV> {
+impl blockchain::MappingTrigger for MappingTrigger {
+    fn handler_name(&self) -> &str {
+        match self {
+            MappingTrigger::Log { handler, .. } => &handler.handler,
+            MappingTrigger::Call { handler, .. } => &handler.handler,
+            MappingTrigger::Block { handler, .. } => &handler.handler,
+        }
+    }
+
+    fn logging_extras(&self) -> Box<dyn SendSyncRefUnwindSafeKV> {
         match self {
             MappingTrigger::Log { handler, log, .. } => Box::new(o! {
                 "signature" => handler.event.to_string(),
@@ -109,15 +134,73 @@ impl MappingTrigger {
             MappingTrigger::Block { .. } => Box::new(o! {}),
         }
     }
-}
 
-impl blockchain::MappingTrigger for MappingTrigger {
-    fn handler_name(&self) -> &str {
-        match self {
-            MappingTrigger::Log { handler, .. } => &handler.handler,
-            MappingTrigger::Call { handler, .. } => &handler.handler,
-            MappingTrigger::Block { handler, .. } => &handler.handler,
-        }
+    fn to_asc<H: AscHeap>(self, heap: &mut H) -> Result<AscPtr<()>, DeterministicHostError> {
+        Ok(match self {
+            MappingTrigger::Log {
+                block,
+                transaction,
+                log,
+                params,
+                handler: _,
+            } => {
+                if heap.api_version() >= Version::new(0, 0, 2) {
+                    asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_2>, _, _>(
+                        heap,
+                        &EthereumEventData {
+                            block: EthereumBlockData::from(block.as_ref()),
+                            transaction: EthereumTransactionData::from(transaction.deref()),
+                            address: log.address,
+                            log_index: log.log_index.unwrap_or(U256::zero()),
+                            transaction_log_index: log.log_index.unwrap_or(U256::zero()),
+                            log_type: log.log_type.clone(),
+                            params,
+                        },
+                    )?
+                    .erase()
+                } else {
+                    asc_new::<AscEthereumEvent<AscEthereumTransaction>, _, _>(
+                        heap,
+                        &EthereumEventData {
+                            block: EthereumBlockData::from(block.as_ref()),
+                            transaction: EthereumTransactionData::from(transaction.deref()),
+                            address: log.address,
+                            log_index: log.log_index.unwrap_or(U256::zero()),
+                            transaction_log_index: log.log_index.unwrap_or(U256::zero()),
+                            log_type: log.log_type.clone(),
+                            params,
+                        },
+                    )?
+                    .erase()
+                }
+            }
+            MappingTrigger::Call {
+                block,
+                transaction,
+                call,
+                inputs,
+                outputs,
+                handler: _,
+            } => {
+                let call = EthereumCallData {
+                    to: call.to,
+                    from: call.from,
+                    block: EthereumBlockData::from(block.as_ref()),
+                    transaction: EthereumTransactionData::from(transaction.deref()),
+                    inputs,
+                    outputs,
+                };
+                if heap.api_version() >= Version::new(0, 0, 3) {
+                    asc_new::<AscEthereumCall_0_0_3, _, _>(heap, &call)?.erase()
+                } else {
+                    asc_new::<AscEthereumCall, _, _>(heap, &call)?.erase()
+                }
+            }
+            MappingTrigger::Block { block, handler: _ } => {
+                let block = EthereumBlockData::from(block.as_ref());
+                asc_new(heap, &block)?.erase()
+            }
+        })
     }
 }
 
@@ -234,6 +317,145 @@ impl TriggerData for EthereumTrigger {
                 tx_hash
             ),
             None => String::new(),
+        }
+    }
+}
+
+/// Ethereum block data.
+#[derive(Clone, Debug, Default)]
+pub struct EthereumBlockData {
+    pub hash: H256,
+    pub parent_hash: H256,
+    pub uncles_hash: H256,
+    pub author: H160,
+    pub state_root: H256,
+    pub transactions_root: H256,
+    pub receipts_root: H256,
+    pub number: U64,
+    pub gas_used: U256,
+    pub gas_limit: U256,
+    pub timestamp: U256,
+    pub difficulty: U256,
+    pub total_difficulty: U256,
+    pub size: Option<U256>,
+}
+
+impl<'a, T> From<&'a Block<T>> for EthereumBlockData {
+    fn from(block: &'a Block<T>) -> EthereumBlockData {
+        EthereumBlockData {
+            hash: block.hash.unwrap(),
+            parent_hash: block.parent_hash,
+            uncles_hash: block.uncles_hash,
+            author: block.author,
+            state_root: block.state_root,
+            transactions_root: block.transactions_root,
+            receipts_root: block.receipts_root,
+            number: block.number.unwrap(),
+            gas_used: block.gas_used,
+            gas_limit: block.gas_limit,
+            timestamp: block.timestamp,
+            difficulty: block.difficulty,
+            total_difficulty: block.total_difficulty.unwrap_or_default(),
+            size: block.size,
+        }
+    }
+}
+
+/// Ethereum transaction data.
+#[derive(Clone, Debug)]
+pub struct EthereumTransactionData {
+    pub hash: H256,
+    pub index: U128,
+    pub from: H160,
+    pub to: Option<H160>,
+    pub value: U256,
+    pub gas_used: U256,
+    pub gas_price: U256,
+    pub input: Bytes,
+}
+
+impl From<&'_ Transaction> for EthereumTransactionData {
+    fn from(tx: &Transaction) -> EthereumTransactionData {
+        EthereumTransactionData {
+            hash: tx.hash,
+            index: tx.transaction_index.unwrap().as_u64().into(),
+            from: tx.from,
+            to: tx.to,
+            value: tx.value,
+            gas_used: tx.gas,
+            gas_price: tx.gas_price,
+            input: tx.input.clone(),
+        }
+    }
+}
+
+/// An Ethereum event logged from a specific contract address and block.
+#[derive(Debug)]
+pub struct EthereumEventData {
+    pub address: Address,
+    pub log_index: U256,
+    pub transaction_log_index: U256,
+    pub log_type: Option<String>,
+    pub block: EthereumBlockData,
+    pub transaction: EthereumTransactionData,
+    pub params: Vec<LogParam>,
+}
+
+impl Clone for EthereumEventData {
+    fn clone(&self) -> Self {
+        EthereumEventData {
+            address: self.address,
+            log_index: self.log_index,
+            transaction_log_index: self.transaction_log_index,
+            log_type: self.log_type.clone(),
+            block: self.block.clone(),
+            transaction: self.transaction.clone(),
+            params: self
+                .params
+                .iter()
+                .map(|log_param| LogParam {
+                    name: log_param.name.clone(),
+                    value: log_param.value.clone(),
+                })
+                .collect(),
+        }
+    }
+}
+
+/// An Ethereum call executed within a transaction within a block to a contract address.
+#[derive(Debug)]
+pub struct EthereumCallData {
+    pub from: Address,
+    pub to: Address,
+    pub block: EthereumBlockData,
+    pub transaction: EthereumTransactionData,
+    pub inputs: Vec<LogParam>,
+    pub outputs: Vec<LogParam>,
+}
+
+impl Clone for EthereumCallData {
+    fn clone(&self) -> Self {
+        EthereumCallData {
+            to: self.to,
+            from: self.from,
+            block: self.block.clone(),
+            transaction: self.transaction.clone(),
+            inputs: self
+                .inputs
+                .iter()
+                .map(|log_param| LogParam {
+                    name: log_param.name.clone(),
+                    value: log_param.value.clone(),
+                })
+                .collect(),
+            outputs: self
+                .outputs
+                .iter()
+                .map(|log_param| LogParam {
+                    name: log_param.name.clone(),
+                    value: log_param.value.clone(),
+                })
+                .collect(),
         }
     }
 }

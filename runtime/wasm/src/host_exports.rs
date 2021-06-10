@@ -1,4 +1,4 @@
-use crate::{error::DeterminismLevel, module::IntoTrap, UnresolvedContractCall};
+use crate::{error::DeterminismLevel, module::IntoTrap};
 use ethabi::param_type::Reader;
 use ethabi::{decode, encode, Address, Token};
 use graph::blockchain::{Blockchain, DataSourceTemplate as _};
@@ -9,9 +9,8 @@ use graph::components::{arweave::ArweaveAdapter, store::EntityType};
 use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
-use graph::runtime::DeterministicHostError;
+use graph::runtime::{DeterministicHostError, HostExportError};
 use graph::{blockchain::DataSource, bytes::Bytes};
-use graph_chain_ethereum::{EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError};
 use never::Never;
 use semver::Version;
 use std::collections::HashMap;
@@ -26,43 +25,19 @@ use wasmtime::Trap;
 
 use crate::module::{WasmInstance, WasmInstanceContext};
 
-pub(crate) enum EthereumCallError {
-    /// We might have detected a reorg.
-    PossibleReorg(anyhow::Error),
-    Unknown(anyhow::Error),
-}
-
-impl From<anyhow::Error> for EthereumCallError {
-    fn from(e: anyhow::Error) -> Self {
-        EthereumCallError::Unknown(e)
-    }
-}
-
-#[derive(thiserror::Error, Debug)]
-pub enum HostExportError {
-    #[error("{0:#}")]
-    Unknown(anyhow::Error),
-
-    #[error("{0:#}")]
-    Deterministic(anyhow::Error),
-}
-
-impl From<anyhow::Error> for HostExportError {
-    fn from(e: anyhow::Error) -> Self {
-        HostExportError::Unknown(e)
-    }
-}
-
 impl IntoTrap for HostExportError {
     fn determinism_level(&self) -> DeterminismLevel {
         match self {
             HostExportError::Deterministic(_) => DeterminismLevel::Deterministic,
             HostExportError::Unknown(_) => DeterminismLevel::Unimplemented,
+            HostExportError::PossibleReorg(_) => DeterminismLevel::PossibleReorg,
         }
     }
     fn into_trap(self) -> Trap {
         match self {
-            HostExportError::Unknown(e) | HostExportError::Deterministic(e) => Trap::from(e),
+            HostExportError::Unknown(e)
+            | HostExportError::PossibleReorg(e)
+            | HostExportError::Deterministic(e) => Trap::from(e),
         }
     }
 }
@@ -80,20 +55,10 @@ pub(crate) struct HostExports<C: Blockchain> {
     /// networks but will be expanded for ipfs and the availability chain.
     causality_region: String,
     templates: Arc<Vec<C::DataSourceTemplate>>,
-    abis: Vec<Arc<MappingABI>>,
-    ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
     pub(crate) link_resolver: Arc<dyn LinkResolver>,
-    call_cache: Arc<dyn EthereumCallCache>,
-    store: Arc<dyn crate::RuntimeStore>,
+    store: Arc<dyn SubgraphStore>,
     arweave_adapter: Arc<dyn ArweaveAdapter>,
     three_box_adapter: Arc<dyn ThreeBoxAdapter>,
-}
-
-// Not meant to be useful, only to allow deriving.
-impl<C: Blockchain> std::fmt::Debug for HostExports<C> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        write!(f, "HostExports",)
-    }
 }
 
 impl<C: Blockchain> HostExports<C> {
@@ -102,10 +67,8 @@ impl<C: Blockchain> HostExports<C> {
         data_source: &impl DataSource<C>,
         data_source_network: String,
         templates: Arc<Vec<C::DataSourceTemplate>>,
-        ethereum_adapter: Arc<dyn EthereumAdapterTrait>,
         link_resolver: Arc<dyn LinkResolver>,
-        store: Arc<dyn crate::RuntimeStore>,
-        call_cache: Arc<dyn EthereumCallCache>,
+        store: Arc<dyn SubgraphStore>,
         arweave_adapter: Arc<dyn ArweaveAdapter>,
         three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Self {
@@ -120,10 +83,7 @@ impl<C: Blockchain> HostExports<C> {
             data_source_context: data_source.context().cheap_clone(),
             causality_region,
             templates,
-            abis: data_source.mapping().abis.clone(),
-            ethereum_adapter,
             link_resolver,
-            call_cache,
             store,
             arweave_adapter,
             three_box_adapter,
@@ -268,122 +228,6 @@ impl<C: Blockchain> HostExports<C> {
         };
 
         Ok(state.entity_cache.get(&store_key)?)
-    }
-
-    /// Returns `Ok(None)` if the call was reverted.
-    pub(crate) fn ethereum_call(
-        &self,
-        logger: &Logger,
-        block_ptr: &BlockPtr,
-        unresolved_call: UnresolvedContractCall,
-    ) -> Result<Option<Vec<Token>>, EthereumCallError> {
-        let start_time = Instant::now();
-
-        // Obtain the path to the contract ABI
-        let contract = self
-            .abis
-            .iter()
-            .find(|abi| abi.name == unresolved_call.contract_name)
-            .with_context(|| {
-                format!(
-                    "Could not find ABI for contract \"{}\", try adding it to the 'abis' section \
-                     of the subgraph manifest",
-                    unresolved_call.contract_name
-                )
-            })?
-            .contract
-            .clone();
-
-        let function = match unresolved_call.function_signature {
-            // Behavior for apiVersion < 0.0.4: look up function by name; for overloaded
-            // functions this always picks the same overloaded variant, which is incorrect
-            // and may lead to encoding/decoding errors
-            None => contract
-                .function(unresolved_call.function_name.as_str())
-                .with_context(|| {
-                    format!(
-                        "Unknown function \"{}::{}\" called from WASM runtime",
-                        unresolved_call.contract_name, unresolved_call.function_name
-                    )
-                })?,
-
-            // Behavior for apiVersion >= 0.0.04: look up function by signature of
-            // the form `functionName(uint256,string) returns (bytes32,string)`; this
-            // correctly picks the correct variant of an overloaded function
-            Some(ref function_signature) => contract
-                .functions_by_name(unresolved_call.function_name.as_str())
-                .with_context(|| {
-                    format!(
-                        "Unknown function \"{}::{}\" called from WASM runtime",
-                        unresolved_call.contract_name, unresolved_call.function_name
-                    )
-                })?
-                .iter()
-                .find(|f| function_signature == &f.signature())
-                .with_context(|| {
-                    format!(
-                        "Unknown function \"{}::{}\" with signature `{}` \
-                         called from WASM runtime",
-                        unresolved_call.contract_name,
-                        unresolved_call.function_name,
-                        function_signature,
-                    )
-                })?,
-        };
-
-        let call = EthereumContractCall {
-            address: unresolved_call.contract_address.clone(),
-            block_ptr: block_ptr.cheap_clone(),
-            function: function.clone(),
-            args: unresolved_call.function_args.clone(),
-        };
-
-        // Run Ethereum call in tokio runtime
-        let eth_adapter = self.ethereum_adapter.clone();
-        let logger1 = logger.clone();
-        let call_cache = self.call_cache.clone();
-        let result = match block_on(future::lazy(move || {
-            eth_adapter.contract_call(&logger1, call, call_cache)
-        })) {
-            Ok(tokens) => Ok(Some(tokens)),
-            Err(EthereumContractCallError::Revert(reason)) => {
-                info!(logger, "Contract call reverted"; "reason" => reason);
-                Ok(None)
-            }
-
-            // Any error reported by the Ethereum node could be due to the block no longer being on
-            // the main chain. This is very unespecific but we don't want to risk failing a
-            // subgraph due to a transient error such as a reorg.
-            Err(EthereumContractCallError::Web3Error(e)) => Err(EthereumCallError::PossibleReorg(anyhow::anyhow!(
-                "Ethereum node returned an error when calling function \"{}\" of contract \"{}\": {}",
-                unresolved_call.function_name,
-                unresolved_call.contract_name,
-                e
-            ))),
-
-            // Also retry on timeouts.
-            Err(EthereumContractCallError::Timeout) => Err(EthereumCallError::PossibleReorg(anyhow::anyhow!(
-                "Ethereum node did not respond when calling function \"{}\" of contract \"{}\"",
-                unresolved_call.function_name,
-                unresolved_call.contract_name,
-            ))),
-
-            Err(e) => Err(EthereumCallError::Unknown(anyhow::anyhow!(
-                "Failed to call function \"{}\" of contract \"{}\": {}",
-                unresolved_call.function_name,
-                unresolved_call.contract_name,
-                e
-            ))),
-        };
-
-        trace!(logger, "Contract call finished";
-              "address" => &unresolved_call.contract_address.to_string(),
-              "contract" => &unresolved_call.contract_name,
-              "function" => &unresolved_call.function_name,
-              "function_signature" => &unresolved_call.function_signature,
-              "time" => format!("{}ms", start_time.elapsed().as_millis()));
-
-        result.map_err(Into::into)
     }
 
     /// Prints the module of `n` in hex.
@@ -833,10 +677,6 @@ fn test_string_to_h160_with_0x() {
         H160::from_str("A16081F360e3847006dB660bae1c6d1b2e17eC2A").unwrap(),
         string_to_h160("0xA16081F360e3847006dB660bae1c6d1b2e17eC2A").unwrap()
     )
-}
-
-fn block_on<I, ER>(future: impl Future<Item = I, Error = ER> + Send) -> Result<I, ER> {
-    block_on03(future.compat())
 }
 
 fn block_on03<T>(future: impl futures03::Future<Output = T> + Send) -> T {

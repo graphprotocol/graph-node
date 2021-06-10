@@ -1649,6 +1649,8 @@ dependencies = [
  "futures 0.1.31",
  "graph",
  "graph-core",
+ "graph-runtime-derive",
+ "graph-runtime-wasm",
  "graph-store-postgres",
  "hex",
  "http 0.1.21",
@@ -1677,6 +1679,7 @@ dependencies = [
  "graph",
  "graph-chain-ethereum",
  "graph-mock",
+ "graph-runtime-wasm",
  "graphql-parser",
  "hex",
  "lazy_static",
@@ -1762,6 +1765,7 @@ dependencies = [
 name = "graph-runtime-derive"
 version = "0.22.0"
 dependencies = [
+ "anyhow",
  "quote 1.0.9",
  "syn 1.0.67",
 ]

@@ -5,8 +5,7 @@ use web3::types::H256;
 
 pub use self::network::NodeCapabilities;
 pub use self::types::{
-    BlockFinality, EthereumBlock, EthereumBlockData, EthereumBlockWithCalls, EthereumCall,
-    EthereumCallData, EthereumEventData, EthereumTransactionData, LightEthereumBlock,
+    BlockFinality, EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock,
     LightEthereumBlockExt,
 };
 

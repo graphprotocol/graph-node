@@ -1,4 +1,4 @@
-use crate::{host_exports::HostExportError, module::IntoTrap};
+use crate::module::IntoTrap;
 use graph::runtime::DeterministicHostError;
 use wasmtime::Trap;
 
@@ -7,18 +7,18 @@ pub enum DeterminismLevel {
     /// TODO: For these errors, a further designation should be created about the contents
     /// of the actual message.
     Deterministic,
+
     /// This error is known to be non-deterministic. For example, an intermittent http failure.
     #[allow(dead_code)]
     NonDeterministic,
+
+    /// The runtime is processing a given block, but there is an indication that the blockchain client
+    /// might not consider that block to be on the main chain. So the block must be reprocessed.
+    PossibleReorg,
+
     /// An error has not yet been designated as deterministic or not. This should be phased out over time,
     /// and is the default for errors like anyhow which are of an unknown origin.
     Unimplemented,
-}
-
-impl From<DeterministicHostError> for HostExportError {
-    fn from(value: DeterministicHostError) -> Self {
-        HostExportError::Deterministic(value.0)
-    }
 }
 
 impl IntoTrap for DeterministicHostError {

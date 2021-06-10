@@ -117,3 +117,27 @@ impl fmt::Display for DeterministicHostError {
 }
 
 impl std::error::Error for DeterministicHostError {}
+
+#[derive(thiserror::Error, Debug)]
+pub enum HostExportError {
+    #[error("{0:#}")]
+    Unknown(anyhow::Error),
+
+    #[error("{0:#}")]
+    PossibleReorg(anyhow::Error),
+
+    #[error("{0:#}")]
+    Deterministic(anyhow::Error),
+}
+
+impl From<anyhow::Error> for HostExportError {
+    fn from(e: anyhow::Error) -> Self {
+        HostExportError::Unknown(e)
+    }
+}
+
+impl From<DeterministicHostError> for HostExportError {
+    fn from(value: DeterministicHostError) -> Self {
+        HostExportError::Deterministic(value.0)
+    }
+}
