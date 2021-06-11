@@ -12,6 +12,7 @@ use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Range, Text};
 use diesel::Connection;
 use lazy_static::lazy_static;
+use std::borrow::Cow;
 
 use graph::prelude::{
     anyhow, q, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
@@ -77,7 +78,7 @@ lazy_static! {
 
     /// Those are columns that we always want to fetch from the database.
     static ref BASE_SQL_COLUMNS: BTreeSet<String> =
-        ["id"].iter().map(ToString::to_string).collect();
+        ["id", "vid"].iter().map(ToString::to_string).collect();
 }
 
 #[derive(Debug)]
@@ -2900,10 +2901,16 @@ fn write_column_names(
                 .union(&BASE_SQL_COLUMNS)
                 .into_iter()
                 .map(|column_name| {
-                    &table
-                        .column_for_field(&column_name)
-                        .expect("failed to find column for field")
-                        .name
+                    if BASE_SQL_COLUMNS.contains(column_name) {
+                        Cow::Owned(SqlName::verbatim(column_name.to_owned()))
+                    } else {
+                        Cow::Borrowed(
+                            &table
+                                .column_for_field(&column_name)
+                                .expect("failed to find column for field")
+                                .name,
+                        )
+                    }
                 })
                 .peekable();
             while let Some(column_name) = iterator.next() {
@@ -2935,10 +2942,16 @@ fn jsonb_build_object(
                 .union(&BASE_SQL_COLUMNS)
                 .into_iter()
                 .map(|column_name| {
-                    &table
-                        .column_for_field(&column_name)
-                        .expect("failed to find column for field")
-                        .name
+                    if BASE_SQL_COLUMNS.contains(column_name) {
+                        Cow::Owned(SqlName::verbatim(column_name.to_owned()))
+                    } else {
+                        Cow::Borrowed(
+                            &table
+                                .column_for_field(&column_name)
+                                .expect("failed to find column for field")
+                                .name,
+                        )
+                    }
                 })
                 .peekable();
             while let Some(column_name) = iterator.next() {
