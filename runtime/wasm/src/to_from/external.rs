@@ -542,10 +542,7 @@ where
                     let wrapped = AscWrapped { inner };
                     asc_new(heap, &wrapped)?
                 },
-                error: {
-                    let wrapped = AscWrapped { inner: false };
-                    asc_new(heap, &wrapped)?
-                },
+                error: AscPtr::null(),
             },
             Err(_) => AscResult {
                 value: AscPtr::null(),
