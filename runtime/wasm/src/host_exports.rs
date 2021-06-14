@@ -42,7 +42,7 @@ impl IntoTrap for HostExportError {
     }
 }
 
-pub(crate) struct HostExports<C: Blockchain> {
+pub struct HostExports<C: Blockchain> {
     pub(crate) subgraph_id: DeploymentHash,
     pub(crate) api_version: Version,
     data_source_name: String,
@@ -62,7 +62,7 @@ pub(crate) struct HostExports<C: Blockchain> {
 }
 
 impl<C: Blockchain> HostExports<C> {
-    pub(crate) fn new(
+    pub fn new(
         subgraph_id: DeploymentHash,
         data_source: &impl DataSource<C>,
         data_source_network: String,

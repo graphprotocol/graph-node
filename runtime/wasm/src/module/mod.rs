@@ -32,10 +32,7 @@ mod stopwatch;
 use into_wasm_ret::IntoWasmRet;
 use stopwatch::TimeoutStopwatch;
 
-#[cfg(test)]
-mod test;
-
-const TRAP_TIMEOUT: &str = "trap: interrupt";
+pub const TRAP_TIMEOUT: &str = "trap: interrupt";
 
 pub trait IntoTrap {
     fn determinism_level(&self) -> DeterminismLevel;
@@ -43,7 +40,7 @@ pub trait IntoTrap {
 }
 
 /// Handle to a WASM instance, which is terminated if and only if this is dropped.
-pub(crate) struct WasmInstance<C: Blockchain> {
+pub struct WasmInstance<C: Blockchain> {
     instance: wasmtime::Instance,
 
     // This is the only reference to `WasmInstanceContext` that's not within the instance itself, so
@@ -111,7 +108,7 @@ impl<C: Blockchain> WasmInstance<C> {
         self.invoke_handler(&handler_name, asc_trigger)
     }
 
-    pub(crate) fn take_ctx(&mut self) -> WasmInstanceContext<C> {
+    pub fn take_ctx(&mut self) -> WasmInstanceContext<C> {
         self.instance_ctx.borrow_mut().take().unwrap()
     }
 
@@ -119,12 +116,12 @@ impl<C: Blockchain> WasmInstance<C> {
         std::cell::Ref::map(self.instance_ctx.borrow(), |i| i.as_ref().unwrap())
     }
 
-    pub(crate) fn instance_ctx_mut(&self) -> std::cell::RefMut<'_, WasmInstanceContext<C>> {
+    pub fn instance_ctx_mut(&self) -> std::cell::RefMut<'_, WasmInstanceContext<C>> {
         std::cell::RefMut::map(self.instance_ctx.borrow_mut(), |i| i.as_mut().unwrap())
     }
 
-    #[cfg(test)]
-    pub(crate) fn get_func(&self, func_name: &str) -> wasmtime::Func {
+    #[cfg(debug_assertions)]
+    pub fn get_func(&self, func_name: &str) -> wasmtime::Func {
         self.instance.get_func(func_name).unwrap()
     }
 
@@ -214,7 +211,7 @@ pub struct ExperimentalFeatures {
     pub allow_non_deterministic_3box: bool,
 }
 
-pub(crate) struct WasmInstanceContext<C: Blockchain> {
+pub struct WasmInstanceContext<C: Blockchain> {
     // In the future there may be multiple memories, but currently there is only one memory per
     // module. And at least AS calls it "memory". There is no uninitialized memory in Wasm, memory
     // is zeroed when initialized or grown.

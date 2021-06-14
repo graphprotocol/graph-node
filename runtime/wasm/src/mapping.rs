@@ -92,13 +92,13 @@ pub struct MappingRequest<C: Blockchain> {
     pub(crate) result_sender: Sender<Result<BlockState<C>, MappingError>>,
 }
 
-pub(crate) struct MappingContext<C: Blockchain> {
-    pub(crate) logger: Logger,
-    pub(crate) host_exports: Arc<crate::host_exports::HostExports<C>>,
-    pub(crate) block_ptr: BlockPtr,
-    pub(crate) state: BlockState<C>,
-    pub(crate) proof_of_indexing: SharedProofOfIndexing,
-    pub(crate) host_fns: Arc<Vec<HostFn>>,
+pub struct MappingContext<C: Blockchain> {
+    pub logger: Logger,
+    pub host_exports: Arc<crate::host_exports::HostExports<C>>,
+    pub block_ptr: BlockPtr,
+    pub state: BlockState<C>,
+    pub proof_of_indexing: SharedProofOfIndexing,
+    pub host_fns: Arc<Vec<HostFn>>,
 }
 
 impl<C: Blockchain> MappingContext<C> {
@@ -115,7 +115,7 @@ impl<C: Blockchain> MappingContext<C> {
 }
 
 /// A pre-processed and valid WASM module, ready to be started as a WasmModule.
-pub(crate) struct ValidModule {
+pub struct ValidModule {
     pub(super) module: wasmtime::Module,
 
     // A wasm import consists of a `module` and a `name`. AS will generate imports such that they

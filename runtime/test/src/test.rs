@@ -1,22 +1,26 @@
-use ethabi::{Contract, Token};
-use hex;
-use std::collections::{BTreeMap, HashMap};
-use std::str::FromStr;
-
-use crate::host_exports::HostExports;
+use ethabi::Contract;
 use graph::data::store::scalar;
 use graph::data::subgraph::*;
+use graph::prelude::web3::types::U256;
+use graph::prelude::*;
+use graph::runtime::AscPtr;
+use graph::runtime::{asc_get, asc_new, try_asc_get};
 use graph::{components::store::*, ipfs_client::IpfsClient};
 use graph_chain_arweave::adapter::ArweaveAdapter;
-use graph_chain_ethereum::{Chain, DataSource, DataSourceTemplate, MockEthereumAdapter};
+use graph_chain_ethereum::{Chain, DataSource, DataSourceTemplate};
 use graph_core;
 use graph_core::three_box::ThreeBoxAdapter;
 use graph_mock::MockMetricsRegistry;
-use test_store::{NETWORK_NAME, STORE};
-
+use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString, Uint8Array};
+use graph_runtime_wasm::{
+    ExperimentalFeatures, HostExports, MappingContext, ValidModule, WasmInstance,
+};
+use hex;
+use semver::Version;
+use std::collections::{BTreeMap, HashMap};
+use std::str::FromStr;
+use test_store::STORE;
 use web3::types::{Address, H160};
-
-use super::*;
 
 mod abi;
 
@@ -41,10 +45,6 @@ fn test_valid_module_and_store_with_timeout(
     DeploymentLocator,
 ) {
     let store = STORE.clone();
-    let call_cache = store
-        .block_store()
-        .ethereum_call_cache(NETWORK_NAME)
-        .expect("call cache for test network");
     let metrics_registry = Arc::new(MockMetricsRegistry::new());
     let deployment_id = DeploymentHash::new(subgraph_id).unwrap();
     let deployment = test_store::create_test_subgraph(
@@ -79,12 +79,7 @@ fn test_valid_module_and_store_with_timeout(
 
     let module = WasmInstance::from_valid_module_with_ctx(
         Arc::new(ValidModule::new(data_source.mapping.runtime.as_ref()).unwrap()),
-        mock_context(
-            deployment.clone(),
-            data_source,
-            store.subgraph_store(),
-            call_cache,
-        ),
+        mock_context(deployment.clone(), data_source, store.subgraph_store()),
         host_metrics,
         timeout,
         experimental_features,
@@ -155,9 +150,7 @@ fn mock_host_exports(
     subgraph_id: DeploymentHash,
     data_source: DataSource,
     store: Arc<impl SubgraphStore>,
-    call_cache: Arc<impl EthereumCallCache>,
 ) -> HostExports<Chain> {
-    let mock_ethereum_adapter = Arc::new(MockEthereumAdapter::default());
     let arweave_adapter = Arc::new(ArweaveAdapter::new("https://arweave.net".to_string()));
     let three_box_adapter = Arc::new(ThreeBoxAdapter::new("https://ipfs.3box.io/".to_string()));
 
@@ -190,10 +183,8 @@ fn mock_host_exports(
         &data_source,
         network,
         Arc::new(templates),
-        mock_ethereum_adapter,
         Arc::new(graph_core::LinkResolver::from(IpfsClient::localhost())),
         store,
-        call_cache,
         arweave_adapter,
         three_box_adapter,
     )
@@ -203,7 +194,6 @@ fn mock_context(
     deployment: DeploymentLocator,
     data_source: DataSource,
     store: Arc<impl SubgraphStore>,
-    call_cache: Arc<impl EthereumCallCache>,
 ) -> MappingContext<Chain> {
     MappingContext {
         logger: test_store::LOGGER.clone(),
@@ -215,14 +205,27 @@ fn mock_context(
             deployment.hash.clone(),
             data_source,
             store.clone(),
-            call_cache,
         )),
         state: BlockState::new(store.writable(&deployment).unwrap(), Default::default()),
         proof_of_indexing: None,
+        host_fns: Arc::new(Vec::new()),
     }
 }
 
-impl WasmInstance<Chain> {
+trait WasmInstanceExt {
+    fn invoke_export<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R>;
+    fn invoke_export2<C, D, R>(&self, f: &str, arg0: AscPtr<C>, arg1: AscPtr<D>) -> AscPtr<R>;
+    fn invoke_export2_void<C, D>(
+        &self,
+        f: &str,
+        arg0: AscPtr<C>,
+        arg1: AscPtr<D>,
+    ) -> Result<(), wasmtime::Trap>;
+    fn takes_ptr_returns_val<P, V: wasmtime::WasmTy>(&mut self, fn_name: &str, v: AscPtr<P>) -> V;
+    fn takes_val_returns_ptr<P>(&mut self, fn_name: &str, val: impl wasmtime::WasmTy) -> AscPtr<P>;
+}
+
+impl WasmInstanceExt for WasmInstance<Chain> {
     fn invoke_export<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R> {
         let func = self.get_func(f).typed().unwrap().clone();
         let ptr: u32 = func.call(arg.wasm_ptr()).unwrap();
@@ -630,7 +633,7 @@ async fn data_source_create() {
             );
 
             let name = asc_new(&mut module, &name).unwrap();
-            let params = asc_new(&mut module, &*params).unwrap();
+            let params = asc_new(&mut module, params.as_slice()).unwrap();
             module.instance_ctx_mut().ctx.state.enter_handler();
             module.invoke_export2_void("dataSourceCreate", name, params)?;
             module.instance_ctx_mut().ctx.state.exit_handler();
