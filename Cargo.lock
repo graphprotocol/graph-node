@@ -1771,6 +1771,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-runtime-test"
+version = "0.22.0"
+dependencies = [
+ "graph",
+ "graph-chain-arweave",
+ "graph-chain-ethereum",
+ "graph-core",
+ "graph-mock",
+ "graph-runtime-wasm",
+ "semver 1.0.1",
+ "test-store",
+ "wasmtime",
+]
+
+[[package]]
 name = "graph-runtime-wasm"
 version = "0.22.0"
 dependencies = [
@@ -1782,20 +1797,14 @@ dependencies = [
  "ethabi 12.0.0-graph",
  "futures 0.1.31",
  "graph",
- "graph-chain-arweave",
- "graph-chain-ethereum",
- "graph-core",
  "graph-graphql",
- "graph-mock",
  "graph-runtime-derive",
- "graphql-parser",
  "hex",
  "lazy_static",
  "never",
  "semver 1.0.3",
  "strum",
  "strum_macros",
- "test-store",
  "uuid 0.8.1",
  "wasmtime",
 ]

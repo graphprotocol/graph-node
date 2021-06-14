@@ -8,6 +8,7 @@ members = [
     "node",
     "runtime/wasm",
     "runtime/derive",
+    "runtime/test",
     "server/http",
     "server/json-rpc",
     "server/index-node",

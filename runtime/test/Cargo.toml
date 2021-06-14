@@ -1,0 +1,15 @@
+[package]
+name = "graph-runtime-test"
+version = "0.22.0"
+edition = "2018"
+
+[dev-dependencies]
+semver = "1.0"
+wasmtime = "0.27.0"
+graph = { path = "../../graph" }
+graph-chain-ethereum = { path = "../../chain/ethereum" }
+graph-runtime-wasm = { path = "../wasm" }
+test-store = { path = "../../store/test-store" }
+graph-chain-arweave = { path = "../../chain/arweave" }
+graph-core = { path = "../../core" }
+graph-mock = { path = "../../mock" }

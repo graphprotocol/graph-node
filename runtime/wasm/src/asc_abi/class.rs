@@ -489,11 +489,11 @@ pub(crate) type AscTypedMapEntryArray<K, V> = Array<AscPtr<AscTypedMapEntry<K, V
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscTypedMap<K, V> {
-    pub entries: AscPtr<AscTypedMapEntryArray<K, V>>,
+pub struct AscTypedMap<K, V> {
+    pub(crate) entries: AscPtr<AscTypedMapEntryArray<K, V>>,
 }
 
-pub(crate) type AscEntity = AscTypedMap<AscString, AscEnum<StoreValueKind>>;
+pub type AscEntity = AscTypedMap<AscString, AscEnum<StoreValueKind>>;
 pub(crate) type AscJson = AscTypedMap<AscString, AscEnum<JsonValueKind>>;
 
 #[repr(u32)]
@@ -532,7 +532,7 @@ impl JsonValueKind {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscBigDecimal {
+pub struct AscBigDecimal {
     pub digits: AscPtr<AscBigInt>,
 
     // Decimal exponent. This is the opposite of `scale` in rust BigDecimal.

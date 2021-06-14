@@ -1,3 +1,11 @@
+use graph::prelude::{ethabi::Token, web3::types::U256};
+use graph_runtime_wasm::{
+    asc_abi::class::{
+        ArrayBuffer, AscEnum, AscEnumArray, EthereumValueKind, StoreValueKind, TypedArray,
+    },
+    TRAP_TIMEOUT,
+};
+
 use super::*;
 
 #[tokio::test(threaded_scheduler)]
@@ -266,7 +274,7 @@ async fn abi_store_value() {
 
     // Value::Bytes
     let bytes: &[u8] = &[0, 2, 5];
-    let bytes_ptr: AscPtr<Bytes> = asc_new(&mut module, bytes).unwrap();
+    let bytes_ptr: AscPtr<Uint8Array> = asc_new(&mut module, bytes).unwrap();
     let new_value_ptr = module.invoke_export("value_from_bytes", bytes_ptr);
     let new_value: Value = try_asc_get(&module, new_value_ptr).unwrap();
     assert_eq!(new_value, Value::Bytes(bytes.into()));
