@@ -347,7 +347,7 @@ where
 
 fn retry_strategy(limit_opt: Option<usize>) -> Box<dyn Iterator<Item = Duration> + Send> {
     // Exponential backoff, but with a maximum
-    let max_delay_ms = 30_000;
+    let max_delay_ms = 5_000;
     let backoff = ExponentialBackoff::from_millis(2)
         .max_delay(Duration::from_millis(max_delay_ms))
         .map(jitter);
