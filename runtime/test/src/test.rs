@@ -772,18 +772,8 @@ async fn entity_store() {
 #[tokio::test]
 async fn detect_contract_calls() {
     let data_source_without_calls = mock_data_source("wasm_test/abi_store_value.wasm");
-    assert_eq!(
-        data_source_without_calls
-            .mapping
-            .calls_host_fn("ethereum.call"),
-        false
-    );
+    assert_eq!(data_source_without_calls.mapping.requires_archive(), false);
 
     let data_source_with_calls = mock_data_source("wasm_test/contract_calls.wasm");
-    assert_eq!(
-        data_source_with_calls
-            .mapping
-            .calls_host_fn("ethereum.call"),
-        true
-    );
+    assert_eq!(data_source_with_calls.mapping.requires_archive(), true);
 }

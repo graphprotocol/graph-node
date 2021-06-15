@@ -561,7 +561,11 @@ pub struct Mapping {
 }
 
 impl Mapping {
-    pub fn calls_host_fn(&self, host_fn: &str) -> bool {
+    pub fn requires_archive(&self) -> bool {
+        self.calls_host_fn("ethereum.call")
+    }
+
+    fn calls_host_fn(&self, host_fn: &str) -> bool {
         use wasmparser::Payload;
 
         let runtime = self.runtime.as_ref().as_ref();
@@ -946,9 +950,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
     pub fn required_ethereum_capabilities(&self) -> NodeCapabilities {
         let mappings = self.mappings();
         NodeCapabilities {
-            archive: mappings
-                .iter()
-                .any(|mapping| mapping.calls_host_fn("ethereum.call")),
+            archive: mappings.iter().any(|mapping| mapping.requires_archive()),
             traces: mappings.iter().any(|mapping| {
                 mapping.has_call_handler() || mapping.has_block_handler_with_call_filter()
             }),
