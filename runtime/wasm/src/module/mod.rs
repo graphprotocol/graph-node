@@ -547,8 +547,22 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
             // Unwrap: This may panic if more memory needs to be requested from the OS and that
             // fails. This error is not deterministic since it depends on the operating conditions
             // of the node.
-            self.arena_start_ptr = self.memory_allocate.call(arena_size).unwrap() + 12; // + 12 is because of AssemblyScript 16 byte memory alignment
-            self.arena_free_size = arena_size - 12; // + 12 is because of AssemblyScript 16 byte memory alignment
+            self.arena_start_ptr = self.memory_allocate.call(arena_size).unwrap();
+            self.arena_free_size = arena_size;
+
+            match &self.ctx.host_exports.api_version {
+                version if *version <= Version::new(0, 0, 4) => {}
+                _ => {
+                    // This arithmetic is done because when you call AssemblyScripts's `__alloc`
+                    // function, it isn't typed and it just returns `mmInfo` on it's header,
+                    // differently from allocating on regular types (`__new` for example).
+                    // `mmInfo` has size of 4, and everything allocated on AssemblyScript memory
+                    // should have alignment of 16, this means we need to do a 12 offset on these
+                    // big chunks of untyped allocation.
+                    self.arena_start_ptr += 12;
+                    self.arena_free_size -= 12;
+                }
+            };
         };
 
         let ptr = self.arena_start_ptr as usize;
@@ -610,11 +624,16 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             .get_memory("memory")
             .context("Failed to find memory export in the WASM module")?;
 
-        let memory_allocate = instance
-            .get_func("allocate")
-            .context("`allocate` function not found")?
-            .typed()?
-            .clone();
+        let memory_allocate = match &ctx.host_exports.api_version {
+            version if *version <= Version::new(0, 0, 4) => instance
+                .get_func("memory.allocate")
+                .context("`memory.allocate` function not found"),
+            _ => instance
+                .get_func("allocate")
+                .context("`allocate` function not found"),
+        }?
+        .typed()?
+        .clone();
 
         let id_of_type = instance
             .get_func("id_of_type")
@@ -653,12 +672,18 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             .and_then(|e| e.into_memory())
             .context("Failed to find memory export in the WASM module")?;
 
-        let memory_allocate = caller
-            .get_export("allocate")
-            .and_then(|e| e.into_func())
-            .context("`allocate` function not found")?
-            .typed()?
-            .clone();
+        let memory_allocate = match &ctx.host_exports.api_version {
+            version if *version <= Version::new(0, 0, 4) => caller
+                .get_export("memory.allocate")
+                .and_then(|e| e.into_func())
+                .context("`memory.allocate` function not found"),
+            _ => caller
+                .get_export("allocate")
+                .and_then(|e| e.into_func())
+                .context("`allocate` function not found"),
+        }?
+        .typed()?
+        .clone();
 
         let id_of_type = caller
             .get_export("id_of_type")
