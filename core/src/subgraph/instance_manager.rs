@@ -25,7 +25,6 @@ use graph::{
     components::store::{DeploymentId, DeploymentLocator, ModificationsAndCache},
 };
 use graph::{components::ethereum::NodeCapabilities, data::store::scalar::Bytes};
-use graph_chain_ethereum::SubgraphEthRpcMetrics;
 
 use super::loader::load_dynamic_data_sources;
 use super::SubgraphInstance;
@@ -78,9 +77,6 @@ struct IndexingContext<T: RuntimeHostBuilder<C>, C: Blockchain> {
 
     /// Sensors to measure the execution of the subgraph's runtime hosts
     pub host_metrics: Arc<HostMetrics>,
-
-    /// Sensors to measure the execution of eth rpc calls
-    pub ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
 
     pub block_stream_metrics: Arc<BlockStreamMetrics>,
 }
@@ -390,10 +386,6 @@ where
             deployment.hash.as_str(),
             stopwatch_metrics.clone(),
         ));
-        let ethrpc_metrics = Arc::new(SubgraphEthRpcMetrics::new(
-            registry.clone(),
-            &deployment.hash,
-        ));
         let block_stream_metrics = Arc::new(BlockStreamMetrics::new(
             registry.clone(),
             &deployment.hash,
@@ -441,7 +433,6 @@ where
             },
             subgraph_metrics,
             host_metrics,
-            ethrpc_metrics,
             block_stream_metrics,
         };
 
