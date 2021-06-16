@@ -103,6 +103,16 @@ impl AscType for ArrayBuffer {
         })
     }
 
+    fn asc_size<H: AscHeap + ?Sized>(
+        ptr: AscPtr<Self>,
+        heap: &H,
+    ) -> Result<u32, DeterministicHostError> {
+        let byte_length = ptr.read_u32(heap)?;
+        let byte_length_size = size_of::<u32>() as u32;
+        let padding_size = size_of::<u32>() as u32;
+        Ok(byte_length_size + padding_size + byte_length)
+    }
+
     fn content_len(&self, _asc_bytes: &[u8]) -> usize {
         self.byte_length as usize // without extra_capacity
     }
@@ -267,6 +277,20 @@ impl AscType for AscString {
             content.push(code_point);
         }
         AscString::new(&content)
+    }
+
+    fn asc_size<H: AscHeap + ?Sized>(
+        ptr: AscPtr<Self>,
+        heap: &H,
+    ) -> Result<u32, DeterministicHostError> {
+        let length = ptr.read_u32(heap)?;
+        let length_size = size_of::<u32>() as u32;
+        let code_point_size = size_of::<u16>() as u32;
+        let data_size = code_point_size.checked_mul(length);
+        let total_size = data_size.and_then(|d| d.checked_add(length_size));
+        total_size.ok_or_else(|| {
+            DeterministicHostError(anyhow::anyhow!("Overflowed when getting size of string"))
+        })
     }
 
     fn content_len(&self, _asc_bytes: &[u8]) -> usize {

@@ -45,6 +45,15 @@ pub trait AscType: Sized {
     fn content_len(&self, asc_bytes: &[u8]) -> usize {
         asc_bytes.len()
     }
+
+    /// Size of the corresponding Asc instance in bytes.
+    /// Only used for version <= 0.0.3.
+    fn asc_size<H: AscHeap + ?Sized>(
+        _ptr: AscPtr<Self>,
+        _heap: &H,
+    ) -> Result<u32, DeterministicHostError> {
+        Ok(std::mem::size_of::<Self>() as u32)
+    }
 }
 
 // Only implemented because of structs that derive AscType and

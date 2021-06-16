@@ -1,6 +1,7 @@
 use super::{get_aligned_length, DeterministicHostError};
 
 use super::{AscHeap, AscIndexId, AscType, IndexForAscTypeId};
+use semver::Version;
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem::size_of;
@@ -49,7 +50,11 @@ impl<C: AscType + AscIndexId> AscPtr<C> {
 
     /// Read from `self` into the Rust struct `C`.
     pub fn read_ptr<H: AscHeap + ?Sized>(self, heap: &H) -> Result<C, DeterministicHostError> {
-        let bytes = heap.get(self.0, self.read_len(heap)?)?;
+        let len = match heap.api_version() {
+            version if version <= Version::new(0, 0, 4) => C::asc_size(self, heap),
+            _ => self.read_len(heap),
+        }?;
+        let bytes = heap.get(self.0, len)?;
         C::from_asc_bytes(&bytes)
     }
 
@@ -58,24 +63,45 @@ impl<C: AscType + AscIndexId> AscPtr<C> {
         asc_obj: C,
         heap: &mut H,
     ) -> Result<AscPtr<C>, DeterministicHostError> {
-        let mut bytes = asc_obj.to_asc_bytes()?;
+        match heap.api_version() {
+            version if version <= Version::new(0, 0, 4) => {
+                let heap_ptr = heap.raw_new(&asc_obj.to_asc_bytes()?)?;
+                Ok(AscPtr::new(heap_ptr))
+            }
+            _ => {
+                let mut bytes = asc_obj.to_asc_bytes()?;
 
-        let aligned_len = get_aligned_length(bytes.len());
-        bytes.extend(std::iter::repeat(0).take(aligned_len));
+                let aligned_len = get_aligned_length(bytes.len());
+                bytes.extend(std::iter::repeat(0).take(aligned_len));
 
-        let header = Self::generate_header(
-            heap,
-            C::INDEX_ASC_TYPE_ID,
-            asc_obj.content_len(&bytes),
-            bytes.len(),
-        )?;
-        let header_len = header.len() as u32;
+                let header = Self::generate_header(
+                    heap,
+                    C::INDEX_ASC_TYPE_ID,
+                    asc_obj.content_len(&bytes),
+                    bytes.len(),
+                )?;
+                let header_len = header.len() as u32;
 
-        let heap_ptr = heap.raw_new(&[header, bytes].concat())?;
-        // Use header length as offset. so the AscPtr points directly at the content.
-        Ok(AscPtr::new(heap_ptr + header_len))
+                let heap_ptr = heap.raw_new(&[header, bytes].concat())?;
+
+                // Use header length as offset. so the AscPtr points directly at the content.
+                Ok(AscPtr::new(heap_ptr + header_len))
+            }
+        }
     }
 
+    /// Helper used by arrays and strings to read their length.
+    /// Only used for version <= 0.0.4.
+    pub fn read_u32<H: AscHeap + ?Sized>(&self, heap: &H) -> Result<u32, DeterministicHostError> {
+        // Read the bytes pointed to by `self` as the bytes of a `u32`.
+        let raw_bytes = heap.get(self.0, size_of::<u32>() as u32)?;
+        let mut u32_bytes: [u8; size_of::<u32>()] = [0; size_of::<u32>()];
+        u32_bytes.copy_from_slice(&raw_bytes);
+        Ok(u32::from_le_bytes(u32_bytes))
+    }
+
+    /// Helper that generates an AssemblyScript (v0.19.2) header.
+    /// Only used for version >= 0.0.5.
     fn generate_header<H: AscHeap + ?Sized>(
         heap: &mut H,
         type_id_index: IndexForAscTypeId,
@@ -111,6 +137,7 @@ impl<C: AscType + AscIndexId> AscPtr<C> {
     /// - rt_id: u32
     /// - rt_size: u32
     /// This function returns the `rt_size`.
+    /// Only used for version >= 0.0.5.
     pub fn read_len<H: AscHeap + ?Sized>(&self, heap: &H) -> Result<u32, DeterministicHostError> {
         let size_of_rt_size = 4;
         let start_of_rt_size = self.0.checked_sub(size_of_rt_size).ok_or_else(|| {
