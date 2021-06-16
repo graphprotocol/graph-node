@@ -230,7 +230,7 @@ pub struct WasmInstanceContext<C: Blockchain> {
     memory_allocate: wasmtime::TypedFunc<i32, i32>,
 
     // Function wrapper for `idof<T>` from AssemblyScript
-    id_of_type: wasmtime::TypedFunc<u32, u32>,
+    id_of_type: Option<wasmtime::TypedFunc<u32, u32>>,
 
     pub ctx: MappingContext<C>,
     pub valid_module: Arc<ValidModule>,
@@ -602,6 +602,8 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
     ) -> Result<u32, DeterministicHostError> {
         let type_id = self
             .id_of_type
+            .as_ref()
+            .unwrap() // Unwrap ok because it's only called on correct apiVersion, look for AscPtr::generate_header
             .call(type_id_index as u32)
             .with_context(|| format!("Failed to call 'asc_type_id' with '{:?}'", type_id_index))
             .map_err(DeterministicHostError)?;
@@ -635,11 +637,16 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         .typed()?
         .clone();
 
-        let id_of_type = instance
-            .get_func("id_of_type")
-            .context("`id_of_type` function not found")?
-            .typed()?
-            .clone();
+        let id_of_type = match &ctx.host_exports.api_version {
+            version if *version <= Version::new(0, 0, 4) => None,
+            _ => Some(
+                instance
+                    .get_func("id_of_type")
+                    .context("`id_of_type` function not found")?
+                    .typed()?
+                    .clone(),
+            ),
+        };
 
         Ok(WasmInstanceContext {
             memory_allocate,
@@ -685,12 +692,17 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         .typed()?
         .clone();
 
-        let id_of_type = caller
-            .get_export("id_of_type")
-            .and_then(|e| e.into_func())
-            .context("`id_of_type` function not found")?
-            .typed()?
-            .clone();
+        let id_of_type = match &ctx.host_exports.api_version {
+            version if *version <= Version::new(0, 0, 4) => None,
+            _ => Some(
+                caller
+                    .get_export("id_of_type")
+                    .and_then(|e| e.into_func())
+                    .context("`id_of_type` function not found")?
+                    .typed()?
+                    .clone(),
+            ),
+        };
 
         Ok(WasmInstanceContext {
             id_of_type,
