@@ -1,12 +1,12 @@
 use std::collections::HashSet;
 use std::iter::FromIterator;
-use std::{pin::Pin, sync::Arc, task::Context};
+use std::sync::Arc;
 
-use anyhow::Error;
+use anyhow::{Context, Error};
 use graph::{
     blockchain::{
         block_stream::{
-            BlockStream, BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers,
+            BlockStream, BlockStreamMetrics, BlockWithTriggers,
             TriggersAdapter as TriggersAdapterTrait,
         },
         Block, BlockHash, BlockPtr, Blockchain, ChainHeadUpdateListener,
@@ -20,8 +20,6 @@ use graph::{
         BlockNumber, ChainStore, DeploymentHash, EthereumBlockWithCalls, Future01CompatExt,
         LinkResolver, Logger, LoggerFactory, MetricsRegistry, NodeId, SubgraphStore,
     },
-    runtime::{AscType, DeterministicHostError},
-    tokio_stream::Stream,
 };
 
 use crate::data_source::DataSourceTemplate;
@@ -228,7 +226,11 @@ impl Blockchain for Chain {
         logger: &Logger,
         number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
-        let eth_adapter = self.eth_adapters.cheapest().unwrap().clone();
+        let eth_adapter = self
+            .eth_adapters
+            .cheapest()
+            .with_context(|| format!("no adapter for chain {}", self.name))?
+            .clone();
         eth_adapter
             .block_pointer_from_number(logger, self.chain_store.cheap_clone(), number)
             .compat()
@@ -390,31 +392,6 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         Ok(blocks[0]
             .parent_ptr()
             .expect("genesis block cannot be reverted"))
-    }
-}
-
-pub struct DummyBlockStream;
-
-impl Stream for DummyBlockStream {
-    type Item = Result<BlockStreamEvent<Chain>, Error>;
-
-    fn poll_next(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-    ) -> std::task::Poll<Option<Self::Item>> {
-        todo!()
-    }
-}
-
-pub struct DummyMappingTrigger;
-
-impl AscType for DummyMappingTrigger {
-    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
-        todo!()
-    }
-
-    fn from_asc_bytes(_asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
-        todo!()
     }
 }
 
