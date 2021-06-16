@@ -272,7 +272,7 @@ pub trait MappingTrigger: Send + Sync {
 
     /// A flexible interface for writing a type to AS memory, any pointer can be returned.
     /// Use `AscPtr::erased` to convert `AscPtr<T>` into `AscPtr<()>`.
-    fn to_asc<H: AscHeap>(self, heap: &mut H) -> Result<AscPtr<()>, DeterministicHostError>;
+    fn to_asc_ptr<H: AscHeap>(self, heap: &mut H) -> Result<AscPtr<()>, DeterministicHostError>;
 
     /// Additional key-value pairs to be logged with the "Done processing trigger" message.
     fn logging_extras(&self) -> Box<dyn SendSyncRefUnwindSafeKV> {

@@ -135,7 +135,7 @@ impl blockchain::MappingTrigger for MappingTrigger {
         }
     }
 
-    fn to_asc<H: AscHeap>(self, heap: &mut H) -> Result<AscPtr<()>, DeterministicHostError> {
+    fn to_asc_ptr<H: AscHeap>(self, heap: &mut H) -> Result<AscPtr<()>, DeterministicHostError> {
         Ok(match self {
             MappingTrigger::Log {
                 block,

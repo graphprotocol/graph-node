@@ -104,7 +104,7 @@ impl<C: Blockchain> WasmInstance<C> {
         trigger: C::MappingTrigger,
     ) -> Result<BlockState<C>, MappingError> {
         let handler_name = trigger.handler_name().to_owned();
-        let asc_trigger = trigger.to_asc(&mut self)?;
+        let asc_trigger = trigger.to_asc_ptr(&mut self)?;
         self.invoke_handler(&handler_name, asc_trigger)
     }
 
