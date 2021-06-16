@@ -25,7 +25,7 @@ use graph::{
     components::store::{DeploymentId, DeploymentLocator, ModificationsAndCache},
 };
 use graph::{components::ethereum::NodeCapabilities, data::store::scalar::Bytes};
-use graph_chain_ethereum::{SubgraphEthRpcMetrics, WrappedBlockFinality};
+use graph_chain_ethereum::SubgraphEthRpcMetrics;
 
 use super::loader::load_dynamic_data_sources;
 use super::SubgraphInstance;
@@ -185,7 +185,6 @@ where
     // ETHDEP: Associated types should be unconstrained
     C: Blockchain<
         NodeCapabilities = NodeCapabilities,
-        Block = WrappedBlockFinality,
         DataSource = graph_chain_ethereum::DataSource,
         DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
     >,
@@ -249,7 +248,6 @@ where
     // ETHDEP: Associated types should be unconstrained
     C: Blockchain<
         NodeCapabilities = NodeCapabilities,
-        Block = WrappedBlockFinality,
         DataSource = graph_chain_ethereum::DataSource,
         DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
     >,
@@ -476,7 +474,6 @@ async fn run_subgraph<T, C>(mut ctx: IndexingContext<T, C>) -> Result<(), Error>
 where
     T: RuntimeHostBuilder<C>,
     C: Blockchain<
-        Block = WrappedBlockFinality,
         DataSource = graph_chain_ethereum::DataSource,
         DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
     >,
