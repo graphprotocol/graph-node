@@ -38,7 +38,7 @@ lazy_static! {
 
     /// The timeout for IPFS requests in seconds
     static ref IPFS_TIMEOUT: Duration = Duration::from_secs(
-        read_u64_from_env("GRAPH_IPFS_TIMEOUT").unwrap_or(60)
+        read_u64_from_env("GRAPH_IPFS_TIMEOUT").unwrap_or(30)
     );
 }
 
