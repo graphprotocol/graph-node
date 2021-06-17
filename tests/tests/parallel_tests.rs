@@ -386,6 +386,9 @@ async fn run_graph_node(test_setup: &IntegrationTestSetup) -> anyhow::Result<Chi
             "test_reorg=return(2);error_on_duplicate_ds=return",
         );
     }
+
+    command.env("GRAPH_MAX_API_VERSION", "0.0.5");
+
     command
         .spawn()
         .context("failed to start graph-node command.")
