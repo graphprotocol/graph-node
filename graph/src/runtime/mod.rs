@@ -10,6 +10,7 @@ pub use asc_heap::{asc_get, asc_new, try_asc_get, AscHeap, FromAscObj, ToAscObj,
 pub use asc_ptr::AscPtr;
 
 use anyhow::Error;
+use semver::Version;
 use std::convert::TryInto;
 use std::fmt;
 use std::mem::size_of;
@@ -40,7 +41,8 @@ pub trait AscType: Sized {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError>;
 
     /// The Rust representation of an Asc object as layed out in Asc memory.
-    fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError>;
+    fn from_asc_bytes(asc_obj: &[u8], api_version: Version)
+        -> Result<Self, DeterministicHostError>;
 
     fn content_len(&self, asc_bytes: &[u8]) -> usize {
         asc_bytes.len()
@@ -63,7 +65,10 @@ impl<T> AscType for std::marker::PhantomData<T> {
         Ok(vec![])
     }
 
-    fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        _api_version: Version,
+    ) -> Result<Self, DeterministicHostError> {
         assert!(asc_obj.len() == 0);
 
         Ok(Self)
@@ -80,7 +85,10 @@ impl AscType for bool {
         Ok(vec![*self as u8])
     }
 
-    fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        _api_version: Version,
+    ) -> Result<Self, DeterministicHostError> {
         if asc_obj.len() != 1 {
             Err(DeterministicHostError(anyhow::anyhow!(
                 "Incorrect size for bool. Expected 1, got {},",
@@ -103,7 +111,7 @@ macro_rules! impl_asc_type {
                     Ok(self.to_le_bytes().to_vec())
                 }
 
-                fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
+                fn from_asc_bytes(asc_obj: &[u8], _api_version: Version) -> Result<Self, DeterministicHostError> {
                     let bytes = asc_obj.try_into().map_err(|_| {
                         DeterministicHostError(anyhow::anyhow!(
                             "Incorrect size for {}. Expected {}, got {},",

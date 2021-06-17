@@ -85,9 +85,9 @@ impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 4] {
 impl ToAscObj<AscString> for str {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        _: &mut H,
+        heap: &mut H,
     ) -> Result<AscString, DeterministicHostError> {
-        AscString::new(&self.encode_utf16().collect::<Vec<_>>())
+        AscString::new(&self.encode_utf16().collect::<Vec<_>>(), heap.api_version())
     }
 }
 
@@ -105,7 +105,7 @@ impl FromAscObj<AscString> for String {
         asc_string: AscString,
         _: &H,
     ) -> Result<Self, DeterministicHostError> {
-        let mut string = String::from_utf16(&asc_string.content)
+        let mut string = String::from_utf16(asc_string.content())
             .map_err(|e| DeterministicHostError(e.into()))?;
 
         // Strip null characters since they are not accepted by Postgres.

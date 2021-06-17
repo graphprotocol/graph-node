@@ -41,7 +41,7 @@ impl<C> AscPtr<C> {
     }
 }
 
-impl<C: AscType + AscIndexId> AscPtr<C> {
+impl<C: AscType> AscPtr<C> {
     /// Create a pointer that is equivalent to AssemblyScript's `null`.
     #[inline(always)]
     pub fn null() -> Self {
@@ -55,14 +55,17 @@ impl<C: AscType + AscIndexId> AscPtr<C> {
             _ => self.read_len(heap),
         }?;
         let bytes = heap.get(self.0, len)?;
-        C::from_asc_bytes(&bytes)
+        C::from_asc_bytes(&bytes, heap.api_version())
     }
 
     /// Allocate `asc_obj` as an Asc object of class `C`.
     pub fn alloc_obj<H: AscHeap + ?Sized>(
         asc_obj: C,
         heap: &mut H,
-    ) -> Result<AscPtr<C>, DeterministicHostError> {
+    ) -> Result<AscPtr<C>, DeterministicHostError>
+    where
+        C: AscIndexId,
+    {
         match heap.api_version() {
             version if version <= Version::new(0, 0, 4) => {
                 let heap_ptr = heap.raw_new(&asc_obj.to_asc_bytes()?)?;
@@ -179,8 +182,11 @@ impl<T> AscType for AscPtr<T> {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
-        let bytes = u32::from_asc_bytes(asc_obj)?;
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: Version,
+    ) -> Result<Self, DeterministicHostError> {
+        let bytes = u32::from_asc_bytes(asc_obj, api_version)?;
         Ok(AscPtr::new(bytes))
     }
 }

@@ -1648,6 +1648,7 @@ dependencies = [
  "lazy_static",
  "mockall 0.9.1",
  "pretty_assertions",
+ "semver 1.0.3",
  "serde",
  "state_machine_future",
  "test-store",

@@ -1,10 +1,15 @@
 use graph::prelude::BigInt;
-use graph::runtime::{asc_get, asc_new, AscPtr, DeterministicHostError, FromAscObj, ToAscObj};
+use graph::runtime::{
+    asc_get, asc_new, get_aligned_length, AscPtr, DeterministicHostError, FromAscObj, ToAscObj,
+    HEADER_SIZE,
+};
 use graph::runtime::{AscHeap, AscIndexId, AscType, IndexForAscTypeId};
 use graph_runtime_derive::AscType;
 use graph_runtime_wasm::asc_abi::class::{
     Array, AscAddress, AscBigInt, AscEnum, AscH160, AscString, EthereumValueKind, Uint8Array,
 };
+use semver::Version;
+use std::mem::size_of;
 
 use crate::trigger::{
     EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
@@ -20,8 +25,11 @@ impl AscType for AscLogParamArray {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
         self.0.to_asc_bytes()
     }
-    fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
-        Ok(Self(Array::from_asc_bytes(asc_obj)?))
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: Version,
+    ) -> Result<Self, DeterministicHostError> {
+        Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
     }
 }
 

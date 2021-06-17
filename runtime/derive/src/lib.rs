@@ -35,14 +35,15 @@ pub fn asc_type_derive(input: TokenStream) -> TokenStream {
 //     }
 
 //     #[allow(unused_variables)]
-//     fn from_asc_bytes(asc_obj: &[u8]) -> Self {
+//     fn from_asc_bytes(asc_obj: &[u8], api_version: semver::Version) -> Self {
 //         assert_eq!(&asc_obj.len(), &size_of::<Self>());
 //         let mut offset = 0;
 //         let field_size = std::mem::size_of::<AscPtr<K>>();
-//         let key = AscType::from_asc_bytes(&asc_obj[offset..(offset + field_size)]);
+//         let key = AscType::from_asc_bytes(&asc_obj[offset..(offset + field_size)],
+//         api_version.clone());
 //         offset += field_size;
 //         let field_size = std::mem::size_of::<AscPtr<V>>();
-//         let value = AscType::from_asc_bytes(&asc_obj[offset..(offset + field_size)]);
+//         let value = AscType::from_asc_bytes(&asc_obj[offset..(offset + field_size)], api_version);
 //         offset += field_size;
 //         Self { key, value }
 //     }
@@ -77,7 +78,24 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
             }
 
             #[allow(unused_variables)]
-            fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
+            fn from_asc_bytes(asc_obj: &[u8], api_version: semver::Version) -> Result<Self, DeterministicHostError> {
+                // Sanity check
+                match &api_version {
+                    version if *version <= Version::new(0, 0, 4) => {
+                        if asc_obj.len() != std::mem::size_of::<Self>() {
+                            return Err(DeterministicHostError(anyhow::anyhow!("Size does not match")));
+                        }
+                    }
+                    _ => {
+                        let content_size = size_of::<Self>();
+                        let aligned_size = get_aligned_length(content_size);
+
+                        if HEADER_SIZE + asc_obj.len() == aligned_size + content_size {
+                            return Err(DeterministicHostError(anyhow::anyhow!("Size does not match")));
+                        }
+                    },
+                };
+
                 let mut offset = 0;
 
                 #(
@@ -85,7 +103,7 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
                 let field_data = asc_obj.get(offset..(offset + field_size)).ok_or_else(|| {
                     DeterministicHostError(anyhow::anyhow!("Attempted to read past end of array"))
                 })?;
-                let #field_names2 = AscType::from_asc_bytes(&field_data)?;
+                let #field_names2 = AscType::from_asc_bytes(&field_data, api_version.clone())?;
                 offset += field_size;
                 )*
 
@@ -123,7 +141,7 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
 //         Ok(discriminant.to_asc_bytes())
 //     }
 //
-//     fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
+//     fn from_asc_bytes(asc_obj: &[u8], _api_version: semver::Version) -> Result<Self, DeterministicHostError> {
 //         let mut u32_bytes: [u8; size_of::<u32>()] = [0; size_of::<u32>()];
 //         if std::mem::size_of_val(&u32_bytes) != std::mem::size_of_val(&asc_obj) {
 //             return Err(DeterministicHostError(anyhow::anyhow!("Invalid asc bytes size")));
@@ -167,7 +185,7 @@ fn asc_type_derive_enum(item_enum: ItemEnum) -> TokenStream {
                 discriminant.to_asc_bytes()
             }
 
-            fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
+            fn from_asc_bytes(asc_obj: &[u8], _api_version: semver::Version) -> Result<Self, DeterministicHostError> {
                 let u32_bytes = ::std::convert::TryFrom::try_from(asc_obj)
                     .map_err(|_| DeterministicHostError(anyhow::anyhow!("Invalid asc bytes size")))?;
                 let discr = u32::from_le_bytes(u32_bytes);

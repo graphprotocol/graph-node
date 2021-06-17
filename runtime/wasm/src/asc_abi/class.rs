@@ -1,77 +1,73 @@
-use anyhow::anyhow;
+use crate::asc_abi::{v0_0_4, v0_0_5};
 use ethabi;
 use graph::{
     data::store,
-    runtime::{AscHeap, AscIndexId, AscType, AscValue, IndexForAscTypeId},
+    runtime::{
+        get_aligned_length, AscHeap, AscIndexId, AscType, AscValue, IndexForAscTypeId, HEADER_SIZE,
+    },
 };
 use graph::{prelude::serde_json, runtime::DeterministicHostError};
 use graph::{prelude::slog, runtime::AscPtr};
 use graph_runtime_derive::AscType;
-use std::marker::PhantomData;
-use std::mem::{size_of, size_of_val};
+use semver::Version;
+use std::mem::size_of;
 
-///! Rust types that have with a direct correspondence to an Asc class,
-///! with their `AscType` implementations.
-
-/// Asc std ArrayBuffer: "a generic, fixed-length raw binary data buffer".
-/// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
-pub struct ArrayBuffer {
-    byte_length: u32,
-    // In Asc this slice is layed out inline with the ArrayBuffer.
-    content: Box<[u8]>,
+pub enum ArrayBuffer {
+    ApiVersion0_0_4(v0_0_4::ArrayBuffer),
+    ApiVersion0_0_5(v0_0_5::ArrayBuffer),
 }
 
 impl ArrayBuffer {
-    fn new<T: AscType>(values: &[T]) -> Result<Self, DeterministicHostError> {
-        let mut content = Vec::new();
-        for value in values {
-            let asc_bytes = value.to_asc_bytes()?;
-            // An `AscValue` has size equal to alignment, no padding required.
-            content.extend(&asc_bytes);
+    pub(crate) fn new<T: AscType>(
+        values: &[T],
+        api_version: Version,
+    ) -> Result<Self, DeterministicHostError> {
+        match api_version {
+            version if version <= Version::new(0, 0, 4) => {
+                Ok(Self::ApiVersion0_0_4(v0_0_4::ArrayBuffer::new(values)?))
+            }
+            _ => Ok(Self::ApiVersion0_0_5(v0_0_5::ArrayBuffer::new(values)?)),
         }
+    }
+}
 
-        if content.len() > u32::max_value() as usize {
-            return Err(DeterministicHostError(anyhow::anyhow!(
-                "slice cannot fit in WASM memory"
-            )));
+impl AscType for ArrayBuffer {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        match self {
+            Self::ApiVersion0_0_4(a) => a.to_asc_bytes(),
+            Self::ApiVersion0_0_5(a) => a.to_asc_bytes(),
         }
-        Ok(ArrayBuffer {
-            byte_length: content.len() as u32,
-            content: content.into(),
-        })
     }
 
-    /// Read `length` elements of type `T` starting at `byte_offset`.
-    ///
-    /// Panics if that tries to read beyond the length of `self.content`.
-    fn get<T: AscType>(
-        &self,
-        byte_offset: u32,
-        length: u32,
-    ) -> Result<Vec<T>, DeterministicHostError> {
-        let length = length as usize;
-        let byte_offset = byte_offset as usize;
+    /// The Rust representation of an Asc object as layed out in Asc memory.
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: Version,
+    ) -> Result<Self, DeterministicHostError> {
+        match &api_version {
+            version if *version <= Version::new(0, 0, 4) => Ok(Self::ApiVersion0_0_4(
+                v0_0_4::ArrayBuffer::from_asc_bytes(asc_obj, api_version.clone())?,
+            )),
+            _ => Ok(Self::ApiVersion0_0_5(v0_0_5::ArrayBuffer::from_asc_bytes(
+                asc_obj,
+                api_version,
+            )?)),
+        }
+    }
 
-        self.content[byte_offset..]
-            .chunks(size_of::<T>())
-            .take(length)
-            .map(T::from_asc_bytes)
-            .collect()
+    fn asc_size<H: AscHeap + ?Sized>(
+        ptr: AscPtr<Self>,
+        heap: &H,
+    ) -> Result<u32, DeterministicHostError> {
+        v0_0_4::ArrayBuffer::asc_size(AscPtr::new(ptr.wasm_ptr()), heap)
+    }
 
-        // TODO: This code is preferred as it validates the length of the array.
-        // But, some existing subgraphs were found to break when this was added.
-        // This needs to be root caused
-        /*
-        let range = byte_offset..byte_offset + length * size_of::<T>();
-        self.content
-            .get(range)
-            .ok_or_else(|| {
-                DeterministicHostError(anyhow::anyhow!("Attempted to read past end of array"))
-            })?
-            .chunks_exact(size_of::<T>())
-            .map(|bytes| T::from_asc_bytes(bytes))
-            .collect()
-            */
+    fn content_len(&self, asc_bytes: &[u8]) -> usize {
+        if let Self::ApiVersion0_0_5(a) = self {
+            return a.content_len(asc_bytes);
+        }
+
+        unreachable!("Only called for apiVersion >=0.0.5");
     }
 }
 
@@ -79,57 +75,9 @@ impl AscIndexId for ArrayBuffer {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::ArrayBuffer;
 }
 
-impl AscType for ArrayBuffer {
-    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
-        let mut asc_layout: Vec<u8> = Vec::new();
-
-        asc_layout.extend(self.content.iter());
-
-        // Allocate extra capacity to next power of two, as required by asc.
-        let header_size = 20;
-        let total_size = self.byte_length as usize + header_size;
-        let total_capacity = total_size.next_power_of_two();
-        let extra_capacity = total_capacity - total_size;
-        asc_layout.extend(std::iter::repeat(0).take(extra_capacity));
-
-        Ok(asc_layout)
-    }
-
-    /// The Rust representation of an Asc object as layed out in Asc memory.
-    fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
-        Ok(ArrayBuffer {
-            byte_length: asc_obj.len() as u32,
-            content: asc_obj.to_vec().into(),
-        })
-    }
-
-    fn asc_size<H: AscHeap + ?Sized>(
-        ptr: AscPtr<Self>,
-        heap: &H,
-    ) -> Result<u32, DeterministicHostError> {
-        let byte_length = ptr.read_u32(heap)?;
-        let byte_length_size = size_of::<u32>() as u32;
-        let padding_size = size_of::<u32>() as u32;
-        Ok(byte_length_size + padding_size + byte_length)
-    }
-
-    fn content_len(&self, _asc_bytes: &[u8]) -> usize {
-        self.byte_length as usize // without extra_capacity
-    }
-}
-
-/// A typed, indexable view of an `ArrayBuffer` of Asc primitives. In Asc it's
-/// an abstract class with subclasses for each primitive, for example
-/// `Uint8Array` is `TypedArray<u8>`.
-///  See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
-#[repr(C)]
-#[derive(AscType)]
-pub struct TypedArray<T> {
-    pub buffer: AscPtr<ArrayBuffer>,
-    /// Byte position in `buffer` of the array start.
-    data_start: u32,
-    byte_length: u32,
-    ty: PhantomData<T>,
+pub enum TypedArray<T> {
+    ApiVersion0_0_4(v0_0_4::TypedArray<T>),
+    ApiVersion0_0_5(v0_0_5::TypedArray<T>),
 }
 
 impl<T: AscValue> TypedArray<T> {
@@ -137,25 +85,48 @@ impl<T: AscValue> TypedArray<T> {
         content: &[T],
         heap: &mut H,
     ) -> Result<Self, DeterministicHostError> {
-        let buffer = ArrayBuffer::new(content)?;
-        let byte_length = content.len() as u32;
-        let ptr = AscPtr::alloc_obj(buffer, heap)?;
-        Ok(TypedArray {
-            buffer: ptr,
-            data_start: ptr.wasm_ptr(),
-            byte_length,
-            ty: PhantomData,
-        })
+        match heap.api_version() {
+            version if version <= Version::new(0, 0, 4) => Ok(Self::ApiVersion0_0_4(
+                v0_0_4::TypedArray::new(content, heap)?,
+            )),
+            _ => Ok(Self::ApiVersion0_0_5(v0_0_5::TypedArray::new(
+                content, heap,
+            )?)),
+        }
     }
 
     pub(crate) fn to_vec<H: AscHeap + ?Sized>(
         &self,
         heap: &H,
     ) -> Result<Vec<T>, DeterministicHostError> {
-        self.buffer.read_ptr(heap)?.get(
-            self.data_start - self.buffer.wasm_ptr(),
-            self.byte_length / size_of::<T>() as u32,
-        )
+        match self {
+            Self::ApiVersion0_0_4(t) => t.to_vec(heap),
+            Self::ApiVersion0_0_5(t) => t.to_vec(heap),
+        }
+    }
+}
+
+impl<T> AscType for TypedArray<T> {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        match self {
+            Self::ApiVersion0_0_4(t) => t.to_asc_bytes(),
+            Self::ApiVersion0_0_5(t) => t.to_asc_bytes(),
+        }
+    }
+
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: Version,
+    ) -> Result<Self, DeterministicHostError> {
+        match &api_version {
+            version if *version <= Version::new(0, 0, 4) => Ok(Self::ApiVersion0_0_4(
+                v0_0_4::TypedArray::from_asc_bytes(asc_obj, api_version.clone())?,
+            )),
+            _ => Ok(Self::ApiVersion0_0_5(v0_0_5::TypedArray::from_asc_bytes(
+                asc_obj,
+                api_version,
+            )?)),
+        }
     }
 }
 
@@ -201,28 +172,26 @@ impl AscIndexId for TypedArray<f64> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::Float64Array;
 }
 
-/// Asc std string: "Strings are encoded as UTF-16LE in AssemblyScript, and are
-/// prefixed with their length (in character codes) as a 32-bit integer". See
-/// https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#strings
-pub struct AscString {
-    // In number of UTF-16 code units (2 bytes each).
-    byte_length: u32,
-    // The sequence of UTF-16LE code units that form the string.
-    pub content: Box<[u16]>,
+pub enum AscString {
+    ApiVersion0_0_4(v0_0_4::AscString),
+    ApiVersion0_0_5(v0_0_5::AscString),
 }
 
 impl AscString {
-    pub fn new(content: &[u16]) -> Result<Self, DeterministicHostError> {
-        if size_of_val(content) > u32::max_value() as usize {
-            return Err(DeterministicHostError(anyhow!(
-                "string cannot fit in WASM memory"
-            )));
+    pub fn new(content: &[u16], api_version: Version) -> Result<Self, DeterministicHostError> {
+        match api_version {
+            version if version <= Version::new(0, 0, 4) => {
+                Ok(Self::ApiVersion0_0_4(v0_0_4::AscString::new(content)?))
+            }
+            _ => Ok(Self::ApiVersion0_0_5(v0_0_5::AscString::new(content)?)),
         }
+    }
 
-        Ok(AscString {
-            byte_length: content.len() as u32,
-            content: content.into(),
-        })
+    pub fn content(&self) -> &[u16] {
+        match self {
+            Self::ApiVersion0_0_4(s) => &s.content,
+            Self::ApiVersion0_0_5(s) => &s.content,
+        }
     }
 }
 
@@ -232,82 +201,46 @@ impl AscIndexId for AscString {
 
 impl AscType for AscString {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
-        let mut content: Vec<u8> = Vec::new();
-
-        // Write the code points, in little-endian (LE) order.
-        for &code_unit in self.content.iter() {
-            let low_byte = code_unit as u8;
-            let high_byte = (code_unit >> 8) as u8;
-            content.push(low_byte);
-            content.push(high_byte);
+        match self {
+            Self::ApiVersion0_0_4(s) => s.to_asc_bytes(),
+            Self::ApiVersion0_0_5(s) => s.to_asc_bytes(),
         }
-
-        let header_size = 20;
-        let total_size = (self.byte_length as usize * 2) + header_size;
-        let total_capacity = total_size.next_power_of_two();
-        let extra_capacity = total_capacity - total_size;
-        content.extend(std::iter::repeat(0).take(extra_capacity));
-
-        Ok(content)
     }
 
-    /// The Rust representation of an Asc object as layed out in Asc memory.
-    fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
-        // UTF-16 (used in assemblyscript) always uses one
-        // pair of bytes per code unit.
-        // https://mathiasbynens.be/notes/javascript-encoding
-        // UTF-16 (16-bit Unicode Transformation Format) is an
-        // extension of UCS-2 that allows representing code points
-        // outside the BMP. It produces a variable-length result
-        // of either one or two 16-bit code units per code point.
-        // This way, it can encode code points in the range from 0
-        // to 0x10FFFF.
-
-        let mut content = Vec::new();
-        for pair in asc_obj.chunks(2) {
-            let code_point_bytes = [
-                pair[0],
-                *pair.get(1).ok_or_else(|| {
-                    DeterministicHostError(anyhow!(
-                        "Attempted to read past end of string content bytes chunk"
-                    ))
-                })?,
-            ];
-            let code_point = u16::from_le_bytes(code_point_bytes);
-            content.push(code_point);
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: Version,
+    ) -> Result<Self, DeterministicHostError> {
+        match &api_version {
+            version if *version <= Version::new(0, 0, 4) => Ok(Self::ApiVersion0_0_4(
+                v0_0_4::AscString::from_asc_bytes(asc_obj, api_version.clone())?,
+            )),
+            _ => Ok(Self::ApiVersion0_0_5(v0_0_5::AscString::from_asc_bytes(
+                asc_obj,
+                api_version,
+            )?)),
         }
-        AscString::new(&content)
     }
 
     fn asc_size<H: AscHeap + ?Sized>(
         ptr: AscPtr<Self>,
         heap: &H,
     ) -> Result<u32, DeterministicHostError> {
-        let length = ptr.read_u32(heap)?;
-        let length_size = size_of::<u32>() as u32;
-        let code_point_size = size_of::<u16>() as u32;
-        let data_size = code_point_size.checked_mul(length);
-        let total_size = data_size.and_then(|d| d.checked_add(length_size));
-        total_size.ok_or_else(|| {
-            DeterministicHostError(anyhow::anyhow!("Overflowed when getting size of string"))
-        })
+        v0_0_4::AscString::asc_size(AscPtr::new(ptr.wasm_ptr()), heap)
     }
 
-    fn content_len(&self, _asc_bytes: &[u8]) -> usize {
-        self.byte_length as usize * 2 // without extra_capacity
+    fn content_len(&self, asc_bytes: &[u8]) -> usize {
+        if let Self::ApiVersion0_0_5(s) = self {
+            return s.content_len(asc_bytes);
+        }
+
+        unreachable!("Only called for apiVersion >=0.0.5");
     }
 }
 
-/// Growable array backed by an `ArrayBuffer`.
-/// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
-#[repr(C)]
-#[derive(AscType)]
-pub struct Array<T> {
-    buffer: AscPtr<ArrayBuffer>,
-    buffer_data_start: u32,
-    buffer_data_length: u32,
-    length: i32,
-    ty: PhantomData<T>,
+pub enum Array<T> {
+    ApiVersion0_0_4(v0_0_4::Array<T>),
+    ApiVersion0_0_5(v0_0_5::Array<T>),
 }
 
 impl<T: AscValue> Array<T> {
@@ -315,25 +248,46 @@ impl<T: AscValue> Array<T> {
         content: &[T],
         heap: &mut H,
     ) -> Result<Self, DeterministicHostError> {
-        let buffer = AscPtr::alloc_obj(ArrayBuffer::new(content)?, heap)?;
-        let buffer_data_length = buffer.read_len(heap)?;
-        Ok(Array {
-            buffer,
-            buffer_data_start: buffer.wasm_ptr(),
-            buffer_data_length,
-            length: content.len() as i32,
-            ty: PhantomData,
-        })
+        match heap.api_version() {
+            version if version <= Version::new(0, 0, 4) => {
+                Ok(Self::ApiVersion0_0_4(v0_0_4::Array::new(content, heap)?))
+            }
+            _ => Ok(Self::ApiVersion0_0_5(v0_0_5::Array::new(content, heap)?)),
+        }
     }
 
     pub(crate) fn to_vec<H: AscHeap + ?Sized>(
         &self,
         heap: &H,
     ) -> Result<Vec<T>, DeterministicHostError> {
-        self.buffer.read_ptr(heap)?.get(
-            self.buffer_data_start - self.buffer.wasm_ptr(),
-            self.length as u32,
-        )
+        match self {
+            Self::ApiVersion0_0_4(a) => a.to_vec(heap),
+            Self::ApiVersion0_0_5(a) => a.to_vec(heap),
+        }
+    }
+}
+
+impl<T> AscType for Array<T> {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        match self {
+            Self::ApiVersion0_0_4(a) => a.to_asc_bytes(),
+            Self::ApiVersion0_0_5(a) => a.to_asc_bytes(),
+        }
+    }
+
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: Version,
+    ) -> Result<Self, DeterministicHostError> {
+        match &api_version {
+            version if *version <= Version::new(0, 0, 4) => Ok(Self::ApiVersion0_0_4(
+                v0_0_4::Array::from_asc_bytes(asc_obj, api_version.clone())?,
+            )),
+            _ => Ok(Self::ApiVersion0_0_5(v0_0_5::Array::from_asc_bytes(
+                asc_obj,
+                api_version,
+            )?)),
+        }
     }
 }
 
@@ -425,8 +379,11 @@ impl AscType for EnumPayload {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
-        Ok(EnumPayload(u64::from_asc_bytes(asc_obj)?))
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: Version,
+    ) -> Result<Self, DeterministicHostError> {
+        Ok(EnumPayload(u64::from_asc_bytes(asc_obj, api_version)?))
     }
 }
 
