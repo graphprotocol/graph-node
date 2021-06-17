@@ -9,9 +9,9 @@ use graph::components::subgraph::{CausalityRegion, ProofOfIndexingEvent, SharedP
 use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
-pub use graph::runtime::{DeterministicHostError, HostExportError};
 use graph::runtime::gas::{self, complexity, Gas, GasCounter};
-use graph::{blockchain::DataSource, bytes::Bytes};
+pub use graph::runtime::{DeterministicHostError, HostExportError};
+use never::Never;
 use semver::Version;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -69,7 +69,6 @@ pub struct HostExports<C: Blockchain> {
     templates: Arc<Vec<C::DataSourceTemplate>>,
     pub(crate) link_resolver: Arc<dyn LinkResolver>,
     store: Arc<dyn SubgraphStore>,
-    gas_used: GasCounter,
 }
 
 impl<C: Blockchain> HostExports<C> {
@@ -92,7 +91,6 @@ impl<C: Blockchain> HostExports<C> {
             templates,
             link_resolver,
             store,
-            gas_used: GasCounter::new(),
         }
     }
 

@@ -10,8 +10,8 @@ pub use costs::DEFAULT_BASE_COST;
 pub use costs::*;
 pub use saturating::*;
 
-use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
+use std::sync::Arc;
 use std::{fmt, fmt::Display};
 
 pub struct GasOp {
@@ -79,13 +79,13 @@ impl Display for Gas {
 }
 
 #[derive(Clone)]
-pub struct GasCounter(Rc<AtomicU64>);
+pub struct GasCounter(Arc<AtomicU64>);
 
 impl CheapClone for GasCounter {}
 
 impl GasCounter {
     pub fn new() -> Self {
-        Self(Rc::new(AtomicU64::new(0)))
+        Self(Arc::new(AtomicU64::new(0)))
     }
 
     /// This should be called once per host export

@@ -1,6 +1,6 @@
 use crate::{
     components::store::{DeploymentLocator, EntityType},
-    prelude::{q, s, CacheWeight, EntityKey, QueryExecutionError},
+    prelude::{q, r, s, CacheWeight, EntityKey, QueryExecutionError},
     runtime::gas::{Gas, GasSizeOf},
 };
 use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};

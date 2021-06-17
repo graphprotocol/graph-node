@@ -13,13 +13,12 @@ use wasmtime::{Memory, Trap};
 
 use crate::error::DeterminismLevel;
 pub use crate::host_exports;
-use crate::gas::{self, Gas, GasCounter, SaturatingInto};
 use crate::mapping::MappingContext;
 use anyhow::Error;
 use graph::data::store;
 use graph::prelude::*;
-use graph::runtime::{AscHeap, IndexForAscTypeId};
 use graph::runtime::gas::{self, Gas, GasCounter, SaturatingInto};
+use graph::runtime::{AscHeap, IndexForAscTypeId};
 use graph::{components::subgraph::MappingError, runtime::AscPtr};
 use graph::{
     data::subgraph::schema::SubgraphError,
@@ -139,8 +138,8 @@ impl<C: Blockchain> WasmInstance<C> {
         self.instance.get_func(func_name).unwrap()
     }
 
-    #[cfg(test)]
-    pub(crate) fn gas_used(&self) -> u64 {
+    #[cfg(debug_assertions)]
+    pub fn gas_used(&self) -> u64 {
         self.gas.get().into()
     }
 
@@ -1490,7 +1489,10 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         &mut self,
         gas: &GasCounter,
     ) -> Result<AscPtr<Uint8Array>, DeterministicHostError> {
-        asc_new(self, &self.ctx.host_exports.data_source_address(gas)?)
+        asc_new(
+            self,
+            self.ctx.host_exports.data_source_address(gas)?.as_slice(),
+        )
     }
 
     /// function dataSource.network(): String
@@ -1586,7 +1588,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     /// function arweave.transactionData(txId: string): Bytes | null
     pub fn arweave_transaction_data(
         &mut self,
-        gas: &GasCounter,
+        _gas: &GasCounter,
         _tx_id: AscPtr<AscString>,
     ) -> Result<AscPtr<Uint8Array>, HostExportError> {
         Err(HostExportError::Deterministic(anyhow!(
@@ -1597,7 +1599,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     /// function box.profile(address: string): JSONValue | null
     pub fn box_profile(
         &mut self,
-        gas: &GasCounter,
+        _gas: &GasCounter,
         _address: AscPtr<AscString>,
     ) -> Result<AscPtr<AscJson>, HostExportError> {
         Err(HostExportError::Deterministic(anyhow!(
