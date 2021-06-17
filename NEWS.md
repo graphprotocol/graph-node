@@ -1,15 +1,32 @@
 # NEWS
 
-## next - unreleased
+## 0.23.0
+
+The Graph Node internals are being heavily refactored to prepare it for the multichain future.
+In the meantime, here are the changes for this release:
 
 - The `GRAPH_ETH_CALL_BY_NUMBER` environment variable has been removed. Graph Node requires an
-  Ethereum client that support EIP-1898, which all major clients support.
+  Ethereum client that supports EIP-1898, which all major clients support.
 - Added support for IPFS versions larger than 0.4.
-- Added Ethereum ABI encoding and decoding functionality #2348.
+- Added Ethereum ABI encoding and decoding functionality [#2348](https://github.com/graphprotocol/graph-node/pull/2348).
+- Experimental support for configuration files, see the documentation [here](https://github.com/graphprotocol/graph-node/blob/master/docs/config.md).
+- Better PoI performance [#2329](https://github.com/graphprotocol/graph-node/pull/2329).
+- Improve grafting performance and robustness by copying in batches [#2293](https://github.com/graphprotocol/graph-node/pull/2293).
+
+### Graphman
+Graphman is a CLI tool to manage your subgraphs. It is now included in the Docker container
+[#2289](https://github.com/graphprotocol/graph-node/pull/2289). And new commands have been added:
+- `graphman copy` can copy subgraphs across DB shards [#2313](https://github.com/graphprotocol/graph-node/pull/2313).
+- `graphman rewind` to rewind a deployment to a given block [#2373](https://github.com/graphprotocol/graph-node/pull/2373).
+- `graphman query` to log info about a GraphQL query [#2206](https://github.com/graphprotocol/graph-node/pull/2206).
+- `graphman create` to create a subgraph name [#2419](https://github.com/graphprotocol/graph-node/pull/2419).
+
+### Metrics
 - The `deployment_blocks_behind` metric has been removed, and a
   `deployment_head` metric has been added. To see how far a deployment is
   behind, use the difference between `ethereum_chain_head_number` and
-  `deployment_head`
+  `deployment_head`.
+- The `trigger_type` label was removed from the metric `deployment_trigger_processing_duration`.
 
 ## 0.22.0
 
