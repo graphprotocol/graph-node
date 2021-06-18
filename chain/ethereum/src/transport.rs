@@ -8,8 +8,6 @@ use web3::RequestId;
 
 use graph::prelude::*;
 
-use super::config::ETHEREUM_CONFIG;
-
 /// Abstraction over the different web3 transports.
 #[derive(Clone, Debug)]
 pub enum Transport {
@@ -37,13 +35,10 @@ impl Transport {
     ///
     /// Note: JSON-RPC over HTTP doesn't always support subscribing to new
     /// blocks (one such example is Infura's HTTP endpoint).
-    pub fn new_rpc(rpc: &str) -> (EventLoopHandle, Self) {
+    pub fn new_rpc(rpc: &str, headers: ::http::HeaderMap) -> (EventLoopHandle, Self) {
         let max_parallel_http: usize = env::var_os("ETHEREUM_RPC_MAX_PARALLEL_REQUESTS")
             .map(|s| s.to_str().unwrap().parse().unwrap())
             .unwrap_or(64);
-
-        let cfg = ETHEREUM_CONFIG.rpc.get(rpc);
-        let headers = cfg.map(|cfg| cfg.http_headers.clone()).unwrap_or_default();
 
         http::Http::with_max_parallel_and_headers(rpc, max_parallel_http, headers)
             .map(|(event_loop, transport)| (event_loop, Transport::RPC(transport)))

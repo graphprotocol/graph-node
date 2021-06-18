@@ -1,5 +1,4 @@
 mod adapter;
-mod config;
 mod data_source;
 mod ethereum_adapter;
 pub mod network_indexer;

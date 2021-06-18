@@ -13,7 +13,6 @@ lazy_static = "1.2.0"
 mockall = "0.9.1"
 state_machine_future = "0.2"
 serde = "1.0"
-config = { version = "0.11", features = ["toml"], default-features = false }
 dirs-next = "2.0"
 anyhow = "1.0"
 tiny-keccak = "1.5.0"

@@ -468,7 +468,7 @@ async fn create_ethereum_networks(
             use crate::config::Transport::*;
 
             let (transport_event_loop, transport) = match provider.transport {
-                Rpc => Transport::new_rpc(&provider.url),
+                Rpc => Transport::new_rpc(&provider.url, provider.headers),
                 Ipc => Transport::new_ipc(&provider.url),
                 Ws => Transport::new_ws(&provider.url),
             };
