@@ -8,6 +8,7 @@ use graph::{
 };
 use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
+use http::HeaderMap;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -436,6 +437,7 @@ impl ChainSection {
                     transport,
                     url: url.to_string(),
                     features,
+                    headers: Default::default(),
                 };
                 let entry = chains.entry(name.to_string()).or_insert_with(|| Chain {
                     shard: PRIMARY_SHARD.to_string(),
@@ -466,6 +468,23 @@ impl Chain {
     }
 }
 
+fn deserialize_http_headers<'de, D>(deserializer: D) -> Result<HeaderMap, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let kvs: BTreeMap<String, String> = Deserialize::deserialize(deserializer)?;
+    let mut headers = HeaderMap::new();
+    for (k, v) in kvs.into_iter() {
+        headers.insert(
+            k.parse::<http::header::HeaderName>()
+                .expect(&format!("invalid HTTP header name: {}", k)),
+            v.parse::<http::header::HeaderValue>()
+                .expect(&format!("invalid HTTP header value: {}: {}", k, v)),
+        );
+    }
+    Ok(headers)
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Provider {
     pub label: String,
@@ -473,6 +492,14 @@ pub struct Provider {
     pub transport: Transport,
     pub url: String,
     pub features: BTreeSet<String>,
+
+    // TODO: This should be serialized.
+    #[serde(
+        skip_serializing,
+        default,
+        deserialize_with = "deserialize_http_headers"
+    )]
+    pub headers: HeaderMap,
 }
 
 const PROVIDER_FEATURES: [&str; 3] = ["traces", "archive", "no_eip1898"];
