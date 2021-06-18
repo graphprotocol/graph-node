@@ -7,11 +7,21 @@ In the meantime, here are the changes for this release:
 
 - The `GRAPH_ETH_CALL_BY_NUMBER` environment variable has been removed. Graph Node requires an
   Ethereum client that supports EIP-1898, which all major clients support.
-- Added support for IPFS versions larger than 0.4.
+- Added support for IPFS versions larger than 0.4. Several changes to make
+  `graph-node` more tolerant of slow/flaky IPFS nodes.
 - Added Ethereum ABI encoding and decoding functionality [#2348](https://github.com/graphprotocol/graph-node/pull/2348).
 - Experimental support for configuration files, see the documentation [here](https://github.com/graphprotocol/graph-node/blob/master/docs/config.md).
 - Better PoI performance [#2329](https://github.com/graphprotocol/graph-node/pull/2329).
 - Improve grafting performance and robustness by copying in batches [#2293](https://github.com/graphprotocol/graph-node/pull/2293).
+- Subgraph metadata storage has been simplified and reorganized. External
+  tools (e.g., Grafana dashboards) that access the database directly will need to be updated.
+- Ordering in GraphQL queries is now truly reversible
+  [#2214](https://github.com/graphprotocol/graph-node/pull/2214/commits/bc559b8df09a7c24f0d718b76fa670313911a6b1)
+- The `GRAPH_SQL_STATEMENT_TIMEOUT` environment variable can be used to
+  enforce a timeout for individual SQL queries that are run in the course of
+  processing a GraphQL query
+  [#2285](https://github.com/graphprotocol/graph-node/pull/2285)
+- Using `ethereum.call` in mappings in globals is deprecated
 
 ### Graphman
 Graphman is a CLI tool to manage your subgraphs. It is now included in the Docker container
