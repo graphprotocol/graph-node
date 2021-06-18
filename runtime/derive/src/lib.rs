@@ -81,8 +81,8 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
             fn from_asc_bytes(asc_obj: &[u8], api_version: semver::Version) -> Result<Self, DeterministicHostError> {
                 // Sanity check
                 match &api_version {
-                    version if *version <= Version::new(0, 0, 4) => {
-                        if asc_obj.len() != std::mem::size_of::<Self>() {
+                    api_version if *api_version <= Version::new(0, 0, 4) => {
+                        if asc_obj.len() < std::mem::size_of::<Self>() {
                             return Err(DeterministicHostError(anyhow::anyhow!("Size does not match")));
                         }
                     }
