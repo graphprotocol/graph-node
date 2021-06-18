@@ -1,6 +1,19 @@
-# Support for Multiple Databases (experimental)
+# Advanced Graph Node configuration
 
 **This feature is considered experimental. In particular, the format of the configuration file might still change in backwards-incompatible ways**
+
+A TOML configuration file can be used to set more complex configurations than those exposed in the
+CLI. The location of the file is passed with the `--config` command line switch. When using a
+configuration file, it is not possible to use the options `--postgres-url`,
+`--postgres-secondary-hosts`, and `--postgres-host-weights`.
+
+The TOML file consists of four sections:
+* `[chains]` sets the endpoints to blockchain clients.
+* `[store]` describes the available databases.
+* `[ingestor]` sets the name of the node responsible for block ingestion.
+* `[deployment]` describes how to place newly deployed subgraphs.
+
+## Configuring Multiple Databases
 
 For most use cases, a single Postgres database is sufficient to support a
 `graph-node` instance. When a `graph-node` instance outgrows a single
@@ -8,19 +21,6 @@ Postgres database, it is possible to split the storage of `graph-node`'s
 data across multiple Postgres databases. All databases together form the
 store of the `graph-node` instance. Each individual database is called a
 _shard_.
-
-Support for multiple databases is configured through a TOML configuration
-file. The location of the file is passed with the `--config` command line
-switch. When using a configuration file, it is not possible to use the
-options `--postgres-url`, `--postgres-secondary-hosts`, and
-`--postgres-host-weights`.
-
-The TOML file consists of three sections:
-* `[store]` describes the available databases
-* `[ingestor]` sets the name of the node responsible for block ingestion
-* `[deployment]` describes how to place newly deployed subgraphs
-
-## Configuring Multiple Databases
 
 The `[store]` section must always have a primary shard configured, which
 must be called `primary`. Each shard can have additional read replicas that
@@ -108,10 +108,11 @@ chain. For each provider, the following information must be given:
 
 * `label`: a label that is used when logging information about that
   provider (not implemented yet)
-* `transport`: one of `rpc`, `ws`, and `ipc`. Defaults to `rpc`
+* `transport`: one of `rpc`, `ws`, and `ipc`. Defaults to `rpc`.
 * `url`: the URL for the provider
 * `features`: an array of features that the provider supports, either empty
   or any combination of `traces` and `archive`
+* `headers`: HTTP headers to be added on every request. Defaults to none.
 
 The following example configures two chains, `mainnet` and `kovan`, where
 blocks for `mainnet` are stored in the `vip` shard and blocks for `kovan`
@@ -124,7 +125,7 @@ ingestor = "block_ingestor_node"
 [chains.mainnet]
 shard = "vip"
 provider = [
-  { label = "mainnet1", url = "http://..", features = [] },
+  { label = "mainnet1", url = "http://..", features = [], headers = { Authorization = "Bearer foo" } },
   { label = "mainnet2", url = "http://..", features = [ "archive", "traces" ] }
 ]
 [chains.kovan]
