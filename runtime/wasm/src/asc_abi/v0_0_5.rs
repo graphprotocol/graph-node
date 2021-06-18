@@ -8,14 +8,17 @@ use semver::Version;
 use std::marker::PhantomData;
 use std::mem::{size_of, size_of_val};
 
-///! Rust types that have with a direct correspondence to an Asc class,
-///! with their `AscType` implementations.
+/// Module related to AssemblyScript version >=v0.19.2.
+/// All `to_asc_bytes`/`from_asc_bytes` only consider the #data/content/payload
+/// not the #header, that's handled on `AscPtr`.
+/// Header in question: https://www.assemblyscript.org/memory.html#common-header-layout
 
-/// Asc std ArrayBuffer: "a generic, fixed-length raw binary data buffer".
-/// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
+/// Similar as JS ArrayBuffer, "a generic, fixed-length raw binary data buffer".
+/// See https://www.assemblyscript.org/memory.html#arraybuffer-layout
 pub struct ArrayBuffer {
+    // Not included in memory layout
     pub byte_length: u32,
-    // In Asc this slice is layed out inline with the ArrayBuffer.
+    // #data
     pub content: Box<[u8]>,
 }
 
@@ -24,7 +27,6 @@ impl ArrayBuffer {
         let mut content = Vec::new();
         for value in values {
             let asc_bytes = value.to_asc_bytes()?;
-            // An `AscValue` has size equal to alignment, no padding required.
             content.extend(&asc_bytes);
         }
 
@@ -56,21 +58,6 @@ impl ArrayBuffer {
             .take(length)
             .map(|asc_obj| T::from_asc_bytes(asc_obj, api_version.clone()))
             .collect()
-
-        // TODO: This code is preferred as it validates the length of the array.
-        // But, some existing subgraphs were found to break when this was added.
-        // This needs to be root caused
-        /*
-        let range = byte_offset..byte_offset + length * size_of::<T>();
-        self.content
-            .get(range)
-            .ok_or_else(|| {
-                DeterministicHostError(anyhow::anyhow!("Attempted to read past end of array"))
-            })?
-            .chunks_exact(size_of::<T>())
-            .map(|bytes| T::from_asc_bytes(bytes))
-            .collect()
-            */
     }
 }
 
@@ -81,8 +68,7 @@ impl AscType for ArrayBuffer {
         asc_layout.extend(self.content.iter());
 
         // Allocate extra capacity to next power of two, as required by asc.
-        let header_size = 20;
-        let total_size = self.byte_length as usize + header_size;
+        let total_size = self.byte_length as usize + HEADER_SIZE;
         let total_capacity = total_size.next_power_of_two();
         let extra_capacity = total_capacity - total_size;
         asc_layout.extend(std::iter::repeat(0).take(extra_capacity));
@@ -90,7 +76,6 @@ impl AscType for ArrayBuffer {
         Ok(asc_layout)
     }
 
-    /// The Rust representation of an Asc object as layed out in Asc memory.
     fn from_asc_bytes(
         asc_obj: &[u8],
         _api_version: Version,
@@ -109,14 +94,18 @@ impl AscType for ArrayBuffer {
 /// A typed, indexable view of an `ArrayBuffer` of Asc primitives. In Asc it's
 /// an abstract class with subclasses for each primitive, for example
 /// `Uint8Array` is `TypedArray<u8>`.
-///  See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
+/// Also known as `ArrayBufferView`.
+/// See https://www.assemblyscript.org/memory.html#arraybufferview-layout
 #[repr(C)]
 #[derive(AscType)]
 pub struct TypedArray<T> {
+    // #data -> Backing buffer reference
     pub buffer: AscPtr<ArrayBuffer>,
-    /// Byte position in `buffer` of the array start.
+    // #dataStart -> Start within the #data
     data_start: u32,
+    // #dataLength -> Length of the data from #dataStart
     byte_length: u32,
+    // Not included in memory layout, it's just for typings
     ty: PhantomData<T>,
 }
 
@@ -141,19 +130,20 @@ impl<T: AscValue> TypedArray<T> {
         heap: &H,
     ) -> Result<Vec<T>, DeterministicHostError> {
         self.buffer.read_ptr(heap)?.get(
-            self.data_start - self.buffer.wasm_ptr(),
+            self.data_start - self.buffer.wasm_ptr(), // needed to get offset
             self.byte_length / size_of::<T>() as u32,
             heap.api_version(),
         )
     }
 }
 
-/// Asc std string: "Strings are encoded as UTF-16LE in AssemblyScript, and are
-/// prefixed with their length (in character codes) as a 32-bit integer". See
-/// https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#strings
+/// Asc std string: "Strings are encoded as UTF-16LE in AssemblyScript"
+/// See https://www.assemblyscript.org/memory.html#string-layout
 pub struct AscString {
+    // Not included in memory layout
     // In number of UTF-16 code units (2 bytes each).
     byte_length: u32,
+    // #data
     // The sequence of UTF-16LE code units that form the string.
     pub content: Box<[u16]>,
 }
@@ -226,19 +216,24 @@ impl AscType for AscString {
     }
 
     fn content_len(&self, _asc_bytes: &[u8]) -> usize {
-        self.byte_length as usize * 2 // without extra_capacity
+        self.byte_length as usize * 2 // without extra_capacity, and times 2 because the content is measured in u8s
     }
 }
 
 /// Growable array backed by an `ArrayBuffer`.
-/// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
+/// See https://www.assemblyscript.org/memory.html#array-layout
 #[repr(C)]
 #[derive(AscType)]
 pub struct Array<T> {
+    // #data -> Backing buffer reference
     buffer: AscPtr<ArrayBuffer>,
+    // #dataStart -> Start of the data within #data
     buffer_data_start: u32,
+    // #dataLength -> Length of the data from #dataStart
     buffer_data_length: u32,
+    // #length -> Mutable length of the data the user is interested in
     length: i32,
+    // Not included in memory layout, it's just for typings
     ty: PhantomData<T>,
 }
 
@@ -264,7 +259,7 @@ impl<T: AscValue> Array<T> {
         heap: &H,
     ) -> Result<Vec<T>, DeterministicHostError> {
         self.buffer.read_ptr(heap)?.get(
-            self.buffer_data_start - self.buffer.wasm_ptr(),
+            self.buffer_data_start - self.buffer.wasm_ptr(), // needed to get offset
             self.length as u32,
             heap.api_version(),
         )

@@ -9,8 +9,10 @@ use std::convert::TryInto as _;
 use std::marker::PhantomData;
 use std::mem::{size_of, size_of_val};
 
+/// Module related to AssemblyScript version v0.6.
+
 /// Asc std ArrayBuffer: "a generic, fixed-length raw binary data buffer".
-/// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
+/// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management/86447e88be5aa8ec633eaf5fe364651136d136ab#arrays
 pub struct ArrayBuffer {
     pub byte_length: u32,
     // Asc allocators always align at 8 bytes, we already have 4 bytes from
@@ -132,7 +134,7 @@ impl AscType for ArrayBuffer {
 /// A typed, indexable view of an `ArrayBuffer` of Asc primitives. In Asc it's
 /// an abstract class with subclasses for each primitive, for example
 /// `Uint8Array` is `TypedArray<u8>`.
-///  See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
+///  See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management/86447e88be5aa8ec633eaf5fe364651136d136ab#arrays
 #[repr(C)]
 #[derive(AscType)]
 pub struct TypedArray<T> {
@@ -177,7 +179,7 @@ impl<T: AscValue> TypedArray<T> {
 
 /// Asc std string: "Strings are encoded as UTF-16LE in AssemblyScript, and are
 /// prefixed with their length (in character codes) as a 32-bit integer". See
-/// https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#strings
+/// https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management/86447e88be5aa8ec633eaf5fe364651136d136ab#arrays
 pub struct AscString {
     // In number of UTF-16 code units (2 bytes each).
     length: u32,
@@ -285,7 +287,7 @@ impl AscType for AscString {
 }
 
 /// Growable array backed by an `ArrayBuffer`.
-/// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#arrays
+/// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management/86447e88be5aa8ec633eaf5fe364651136d136ab#arrays
 #[repr(C)]
 #[derive(AscType)]
 pub struct Array<T> {

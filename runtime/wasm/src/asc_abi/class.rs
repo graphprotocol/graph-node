@@ -12,6 +12,11 @@ use graph_runtime_derive::AscType;
 use semver::Version;
 use std::mem::size_of;
 
+///! Rust types that have with a direct correspondence to an Asc class,
+///! with their `AscType` implementations.
+
+/// Wrapper of ArrayBuffer for multiple AssemblyScript versions.
+/// It just delegates its method calls to the correct mappings apiVersion.
 pub enum ArrayBuffer {
     ApiVersion0_0_4(v0_0_4::ArrayBuffer),
     ApiVersion0_0_5(v0_0_5::ArrayBuffer),
@@ -39,7 +44,6 @@ impl AscType for ArrayBuffer {
         }
     }
 
-    /// The Rust representation of an Asc object as layed out in Asc memory.
     fn from_asc_bytes(
         asc_obj: &[u8],
         api_version: Version,
@@ -75,6 +79,8 @@ impl AscIndexId for ArrayBuffer {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::ArrayBuffer;
 }
 
+/// Wrapper of TypedArray for multiple AssemblyScript versions.
+/// It just delegates its method calls to the correct mappings apiVersion.
 pub enum TypedArray<T> {
     ApiVersion0_0_4(v0_0_4::TypedArray<T>),
     ApiVersion0_0_5(v0_0_5::TypedArray<T>),
@@ -172,6 +178,8 @@ impl AscIndexId for TypedArray<f64> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::Float64Array;
 }
 
+/// Wrapper of String for multiple AssemblyScript versions.
+/// It just delegates its method calls to the correct mappings apiVersion.
 pub enum AscString {
     ApiVersion0_0_4(v0_0_4::AscString),
     ApiVersion0_0_5(v0_0_5::AscString),
@@ -238,6 +246,8 @@ impl AscType for AscString {
     }
 }
 
+/// Wrapper of Array for multiple AssemblyScript versions.
+/// It just delegates its method calls to the correct mappings apiVersion.
 pub enum Array<T> {
     ApiVersion0_0_4(v0_0_4::Array<T>),
     ApiVersion0_0_5(v0_0_5::Array<T>),
