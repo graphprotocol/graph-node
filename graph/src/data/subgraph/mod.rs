@@ -12,7 +12,10 @@ use serde::ser;
 use serde_yaml;
 use slog::{debug, info, Logger};
 use stable_hash::prelude::*;
-use std::{collections::BTreeSet, marker::PhantomData};
+use std::{
+    collections::{BTreeSet, HashSet},
+    marker::PhantomData,
+};
 use thiserror::Error;
 use wasmparser;
 use web3::types::{Address, H256};
@@ -389,6 +392,8 @@ pub enum SubgraphManifestValidationError {
     SchemaValidationError(Vec<SchemaValidationError>),
     #[error("the graft base is invalid: {0}")]
     GraftBaseInvalid(String),
+    #[error("subgraph uses different api versions between its data sources")]
+    DifferentApiVersions,
 }
 
 #[derive(Error, Debug)]
@@ -812,6 +817,23 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         });
         if has_too_many_block_handlers {
             errors.push(SubgraphManifestValidationError::DataSourceBlockHandlerLimitExceeded)
+        }
+
+        // For API versions newer than 0.5, validate that all mappings uses the same api_version
+        let referential_api_version = Version::new(0, 5, 0);
+        let unique_api_versions: HashSet<&Version> = self
+            .0
+            .data_sources
+            .iter()
+            .map(|ds| &ds.mapping().api_version)
+            .collect();
+        if unique_api_versions.len() > 1 {
+            for version in &unique_api_versions {
+                if *version >= &referential_api_version {
+                    errors.push(SubgraphManifestValidationError::DifferentApiVersions);
+                    break;
+                }
+            }
         }
 
         let mut networks = self
