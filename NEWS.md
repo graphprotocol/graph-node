@@ -14,7 +14,7 @@
 ## 0.22.0
 
 ### Feature: Block store sharding
-This release makes it possible to [shard the block and call cache](./docs/sharding.md) for chain
+This release makes it possible to [shard the block and call cache](./docs/config.md) for chain
 data across multiple independent Postgres databases. **This feature is considered experimental. We
 encourage users to try this out in a test environment, but do not recommend it yet for production
 use.** In particular, the details of how sharding is configured may change in backwards-incompatible
@@ -46,7 +46,7 @@ Various related bug fixes have been made #2121 #2136 #2149 #2160.
 ### Feature: Database sharding
 
 This release makes it possible to [shard subgraph
-storage](./docs/sharding.md) and spread subgraph deployments, and the load
+storage](./docs/config.md) and spread subgraph deployments, and the load
 coming from indexing and querying them across multiple independent Postgres
 databases.
 
