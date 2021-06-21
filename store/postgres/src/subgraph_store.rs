@@ -130,7 +130,7 @@ pub mod unused {
 /// database, in which case they are all backed by one connection pool, or
 /// separate databases in the same Postgres cluster, or entirely separate
 /// clusters. Details of how to configure shards can be found in [this
-/// document](https://github.com/graphprotocol/graph-node/blob/master/docs/sharding.md)
+/// document](https://github.com/graphprotocol/graph-node/blob/master/docs/config.md)
 ///
 /// The primary uses the following database tables:
 /// - `public.deployment_schemas`: immutable data about deployments,
