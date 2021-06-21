@@ -819,8 +819,8 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             errors.push(SubgraphManifestValidationError::DataSourceBlockHandlerLimitExceeded)
         }
 
-        // For API versions newer than 0.5, validate that all mappings uses the same api_version
-        let referential_api_version = Version::new(0, 5, 0);
+        // For API versions newer than 0.0.5, validate that all mappings uses the same api_version
+        let referential_api_version = Version::new(0, 0, 5);
         let unique_api_versions: HashSet<&Version> = self
             .0
             .data_sources
