@@ -1,3 +1,9 @@
+use diesel::pg::PgConnection;
+use diesel::prelude::*;
+use diesel::r2d2::{ConnectionManager, PooledConnection};
+use diesel::sql_types::Text;
+use diesel::{insert_into, update};
+use graph::prelude::web3::types::H256;
 use graph::{
     constraint_violation,
     prelude::{
@@ -6,19 +12,17 @@ use graph::{
     },
 };
 
-use diesel::pg::PgConnection;
-use diesel::r2d2::{ConnectionManager, PooledConnection};
-use diesel::sql_types::Text;
-use diesel::{delete, prelude::*};
-use diesel::{insert_into, update};
-
 use graph::ensure;
-use std::{collections::HashMap, convert::TryFrom, sync::Arc};
-use std::{convert::TryInto, iter::FromIterator};
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    iter::FromIterator,
+    sync::Arc,
+};
 
 use graph::prelude::{
-    web3::types::H256, BlockNumber, BlockPtr, Error, EthereumBlock, EthereumNetworkIdentifier,
-    LightEthereumBlock,
+    transaction_receipt::LightTransactionReceipt, BlockNumber, BlockPtr, Error, EthereumBlock,
+    EthereumNetworkIdentifier, LightEthereumBlock,
 };
 
 use crate::{
@@ -44,7 +48,6 @@ pub use data::Storage;
 
 /// Encapuslate access to the blocks table for a chain.
 mod data {
-    use graph::{constraint_violation, prelude::StoreError};
 
     use diesel::{connection::SimpleConnection, insert_into};
     use diesel::{delete, prelude::*, sql_query};
@@ -60,6 +63,13 @@ mod data {
         update,
     };
     use diesel_dynamic_schema as dds;
+    use graph::{
+        constraint_violation,
+        prelude::{
+            transaction_receipt::{find_transaction_receipts_in_block, LightTransactionReceipt},
+            StoreError,
+        },
+    };
 
     use std::fmt;
     use std::iter::FromIterator;
@@ -311,9 +321,7 @@ mod data {
 
             Ok(Self::Private(Schema::new(s)))
         }
-    }
 
-    impl Storage {
         /// Create dedicated database tables for this chain if it uses
         /// `Storage::Private`. If it uses `Storage::Shared`, do nothing since
         /// a regular migration will already have created the `ethereum_blocks`
@@ -1079,6 +1087,16 @@ mod data {
                 .execute(conn)
                 .unwrap();
         }
+
+        /// Delegates to [`transaction_receipt::find_transaction_receipts_in_block`].
+        pub(crate) fn find_transaction_receipts_in_block(
+            &self,
+            conn: &PgConnection,
+            schema_name: &str,
+            block_hash: &H256,
+        ) -> anyhow::Result<Vec<LightTransactionReceipt>> {
+            find_transaction_receipts_in_block(conn, schema_name, block_hash)
+        }
     }
 }
 
@@ -1144,6 +1162,7 @@ impl ChainStore {
     }
 
     pub(crate) fn drop_chain(&self) -> Result<(), Error> {
+        use diesel::dsl::delete;
         use public::ethereum_networks as n;
 
         let conn = self.get_conn()?;
@@ -1412,6 +1431,21 @@ impl ChainStoreTrait for ChainStore {
             .storage
             .block_number(&conn, hash)?
             .map(|number| (self.chain.clone(), number)))
+    }
+
+    async fn transaction_receipts_in_block(
+        &self,
+        block_hash: &H256,
+    ) -> Result<Vec<LightTransactionReceipt>, StoreError> {
+        let pool = self.pool.clone();
+        let storage = self.storage.clone();
+        let block_hash = block_hash.clone();
+        pool.with_conn(move |conn, _| {
+            storage
+                .find_transaction_receipts_in_block(&conn, &storage.to_string(), &block_hash)
+                .map_err(|e| StoreError::from(e).into())
+        })
+        .await
     }
 }
 

@@ -1,25 +1,22 @@
+use ethabi::ParamType;
 use ethabi::Token;
 use futures::future;
 use futures::prelude::*;
-use lazy_static::lazy_static;
-use std::collections::{HashMap, HashSet};
-use std::convert::TryFrom;
-use std::iter::FromIterator;
-use std::sync::Arc;
-use std::time::Instant;
-
-use ethabi::ParamType;
+use graph::components::transaction_receipt::LightTransactionReceipt;
+use graph::data::subgraph::UnifiedMappingApiVersion;
+use graph::prelude::StopwatchMetrics;
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
-        anyhow, async_trait, debug, error, ethabi,
+        anyhow::{self, anyhow, bail},
+        async_trait, debug, error, ethabi,
         futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
-        hex, retry, stream, tiny_keccak, trace, warn,
+        hex, info, retry, stream, tiny_keccak, trace, warn,
         web3::{
             self,
             types::{
                 Address, Block, BlockId, BlockNumber as Web3BlockNumber, Bytes, CallRequest,
-                FilterBuilder, Log, H256,
+                Filter, FilterBuilder, Log, Transaction, TransactionReceipt, H256,
             },
         },
         BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger,
@@ -30,9 +27,15 @@ use graph::{
     components::ethereum::*,
     prelude::web3::types::{Trace, TraceFilter, TraceFilterBuilder, H160},
 };
+use itertools::Itertools;
+use lazy_static::lazy_static;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::convert::TryFrom;
+use std::iter::FromIterator;
+use std::sync::Arc;
+use std::time::Instant;
 use web3::api::Web3;
 use web3::transports::batch::Batch;
-use web3::types::Filter;
 
 use crate::chain::BlockFinality;
 use crate::{
@@ -1378,9 +1381,11 @@ pub(crate) async fn blocks_with_triggers(
     logger: Logger,
     chain_store: Arc<dyn ChainStore>,
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
+    stopwatch_metrics: StopwatchMetrics,
     from: BlockNumber,
     to: BlockNumber,
     filter: &TriggerFilter,
+    unified_api_version: UnifiedMappingApiVersion,
 ) -> Result<Vec<BlockWithTriggers<crate::Chain>>, Error> {
     // Each trigger filter needs to be queried for the same block range
     // and the blocks yielded need to be deduped. If any error occurs
@@ -1484,8 +1489,8 @@ pub(crate) async fn blocks_with_triggers(
     block_hashes.insert(to_hash);
     triggers_by_block.entry(to).or_insert(Vec::new());
 
-    let mut blocks = adapter
-        .load_blocks(logger1, chain_store, block_hashes)
+    let blocks = adapter
+        .load_blocks(logger1, chain_store.clone(), block_hashes)
         .and_then(
             move |block| match triggers_by_block.remove(&(block.number() as BlockNumber)) {
                 Some(triggers) => Ok(BlockWithTriggers::new(
@@ -1501,6 +1506,23 @@ pub(crate) async fn blocks_with_triggers(
         .collect()
         .compat()
         .await?;
+
+    // Filter out call triggers that come from unsuccessful transactions
+
+    let mut blocks = if unified_api_version
+        .equal_or_greater_than(&graph::data::subgraph::API_VERSION_0_0_5)
+    {
+        let section =
+            stopwatch_metrics.start_section("filter_call_triggers_from_unsuccessful_transactions");
+        let futures = blocks.into_iter().map(|block| {
+            filter_call_triggers_from_unsuccessful_transactions(block, &eth, &chain_store, &logger)
+        });
+        let blocks = futures03::future::try_join_all(futures).await?;
+        section.end();
+        blocks
+    } else {
+        blocks
+    };
 
     blocks.sort_by_key(|block| block.ptr().number);
 
@@ -1587,14 +1609,21 @@ pub(crate) fn parse_log_triggers(
 pub(crate) fn parse_call_triggers(
     call_filter: &EthereumCallFilter,
     block: &EthereumBlockWithCalls,
-) -> Vec<EthereumTrigger> {
+) -> anyhow::Result<Vec<EthereumTrigger>> {
     match &block.calls {
         Some(calls) => calls
             .iter()
             .filter(move |call| call_filter.matches(call))
-            .map(move |call| EthereumTrigger::Call(Arc::new(call.clone())))
+            .map(
+                move |call| match block.transaction_for_call_succeeded(call) {
+                    Ok(true) => Ok(Some(EthereumTrigger::Call(Arc::new(call.clone())))),
+                    Ok(false) => Ok(None),
+                    Err(e) => Err(e),
+                },
+            )
+            .filter_map_ok(|some_trigger| some_trigger)
             .collect(),
-        None => vec![],
+        None => Ok(vec![]),
     }
 }
 
@@ -1626,4 +1655,157 @@ pub(crate) fn parse_block_triggers(
         ));
     }
     triggers
+}
+
+async fn fetch_receipt_from_ethereum_client(
+    eth: &EthereumAdapter,
+    transaction_hash: &H256,
+) -> anyhow::Result<TransactionReceipt> {
+    match eth
+        .web3
+        .eth()
+        .transaction_receipt(*transaction_hash)
+        .compat()
+        .await
+    {
+        Ok(Some(receipt)) => Ok(receipt),
+        Ok(None) => bail!("Could not find transaction receipt"),
+        Err(error) => bail!("Failed to fetch transaction receipt: {}", error),
+    }
+}
+
+async fn filter_call_triggers_from_unsuccessful_transactions(
+    mut block: BlockWithTriggers<crate::Chain>,
+    eth: &EthereumAdapter,
+    chain_store: &Arc<dyn ChainStore>,
+    logger: &Logger,
+) -> anyhow::Result<BlockWithTriggers<crate::Chain>> {
+    // Return early if there is no trigger data
+    if block.trigger_data.is_empty() {
+        return Ok(block);
+    }
+
+    let initial_number_of_triggers = block.trigger_data.len();
+
+    // Get the transaction hash from each call trigger
+    let transaction_hashes: BTreeSet<H256> = block
+        .trigger_data
+        .iter()
+        .filter_map(|trigger| match trigger {
+            EthereumTrigger::Call(call_trigger) => Some(call_trigger.transaction_hash),
+            _ => None,
+        })
+        .collect::<Option<BTreeSet<H256>>>()
+        .ok_or(anyhow!(
+            "failed to obtain transaction hash from call triggers"
+        ))?;
+
+    // And obtain all Transaction values for the calls in this block.
+    let transactions: Vec<&Transaction> = {
+        match &block.block {
+            BlockFinality::Final(ref block) => block
+                .transactions
+                .iter()
+                .filter(|transaction| transaction_hashes.contains(&transaction.hash))
+                .collect(),
+            BlockFinality::NonFinal(_block_with_calls) => {
+                unreachable!(
+                    "this function should not be called when dealing with non-final blocks"
+                )
+            }
+        }
+    };
+
+    // Confidence check: Did we collect all transactions for the current call triggers?
+    if transactions.len() != transaction_hashes.len() {
+        bail!("failed to find transactions in block for the given call triggers")
+    }
+
+    // Return early if there are no transactions to inspect
+    if transactions.is_empty() {
+        return Ok(block);
+    }
+
+    // We'll also need the receipts for those transactions. In this step we collect all receipts
+    // we have in store for the current block.
+    let mut receipts = chain_store
+        .transaction_receipts_in_block(&block.ptr().hash_as_h256())
+        .await?
+        .into_iter()
+        .map(|receipt| (receipt.transaction_hash.clone(), receipt))
+        .collect::<BTreeMap<H256, LightTransactionReceipt>>();
+
+    // Do we have a receipt for each transaction under analysis?
+    let mut receipts_and_transactions: Vec<(&Transaction, LightTransactionReceipt)> = Vec::new();
+    let mut transactions_without_receipt: Vec<&Transaction> = Vec::new();
+    for transaction in transactions.iter() {
+        if let Some(receipt) = receipts.remove(&transaction.hash) {
+            receipts_and_transactions.push((transaction, receipt));
+        } else {
+            transactions_without_receipt.push(transaction);
+        }
+    }
+
+    // When some receipts are missing, we then try to fetch them from our client.
+    let futures = transactions_without_receipt
+        .iter()
+        .map(|transaction| async move {
+            fetch_receipt_from_ethereum_client(&eth, &transaction.hash)
+                .await
+                .map(|receipt| (transaction, receipt))
+        });
+    futures03::future::try_join_all(futures)
+        .await?
+        .into_iter()
+        .for_each(|(transaction, receipt)| {
+            receipts_and_transactions.push((transaction, receipt.into()))
+        });
+
+    // TODO: We should persist those fresh transaction receipts into the store, so we don't incur
+    // additional Ethereum API calls for future scans on this block.
+
+    // With all transactions and receipts in hand, we can evaluate the success of each transaction
+    let mut transaction_success: BTreeMap<&H256, bool> = BTreeMap::new();
+    for (transaction, receipt) in receipts_and_transactions.into_iter() {
+        transaction_success.insert(
+            &transaction.hash,
+            evaluate_transaction_status(receipt.status),
+        );
+    }
+
+    // Confidence check: Did we inspect the status of all transactions?
+    if !transaction_hashes
+        .iter()
+        .all(|tx| transaction_success.contains_key(tx))
+    {
+        bail!("Not all transactions status were inspected")
+    }
+
+    // Filter call triggers from unsuccessful transactions
+    block.trigger_data.retain(|trigger| {
+        if let EthereumTrigger::Call(call_trigger) = trigger {
+            // Unwrap: We already checked that those values exist
+            transaction_success[&call_trigger.transaction_hash.unwrap()]
+        } else {
+            // We are not filtering other types of triggers
+            true
+        }
+    });
+
+    // Log if any call trigger was filtered out
+    let final_number_of_triggers = block.trigger_data.len();
+    let number_of_filtered_triggers = initial_number_of_triggers - final_number_of_triggers;
+    if number_of_filtered_triggers != 0 {
+        let noun = {
+            if number_of_filtered_triggers == 1 {
+                "call trigger"
+            } else {
+                "call triggers"
+            }
+        };
+        info!(&logger,
+              "Filtered {} {} from failed transactions", number_of_filtered_triggers, noun ;
+              "block_number" => block.ptr().block_number());
+    }
+    Ok(block)
 }

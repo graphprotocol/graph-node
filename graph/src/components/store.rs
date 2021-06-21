@@ -19,6 +19,8 @@ use thiserror::Error;
 use web3::types::{Address, H256};
 
 use crate::blockchain::Blockchain;
+use crate::components::server::index_node::VersionInfo;
+use crate::components::transaction_receipt;
 use crate::data::subgraph::status;
 use crate::data::{store::*, subgraph::Source};
 use crate::prelude::*;
@@ -27,8 +29,6 @@ use crate::{
     blockchain::DataSource,
     data::{query::QueryTarget, subgraph::schema::*},
 };
-
-use crate::components::server::index_node::VersionInfo;
 
 lazy_static! {
     pub static ref SUBSCRIPTION_THROTTLE_INTERVAL: Duration =
@@ -1298,6 +1298,12 @@ pub trait ChainStore: Send + Sync + 'static {
 
     /// Find the block with `block_hash` and return the network name and number
     fn block_number(&self, block_hash: H256) -> Result<Option<(String, BlockNumber)>, StoreError>;
+
+    /// Tries to retrieve all transactions receipts for a given block.
+    async fn transaction_receipts_in_block(
+        &self,
+        block_ptr: &H256,
+    ) -> Result<Vec<transaction_receipt::LightTransactionReceipt>, StoreError>;
 }
 
 pub trait EthereumCallCache: Send + Sync + 'static {

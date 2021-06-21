@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, sync::Arc};
 use web3::types::{
     Action, Address, Block, Bytes, Log, Res, Trace, Transaction, TransactionReceipt, H256, U256,
+    U64,
 };
 
 use crate::{
@@ -65,6 +66,36 @@ pub struct EthereumBlockWithCalls {
     /// The calls in this block; `None` means we haven't checked yet,
     /// `Some(vec![])` means that we checked and there were none
     pub calls: Option<Vec<EthereumCall>>,
+}
+
+impl EthereumBlockWithCalls {
+    /// Given an `EthereumCall`, check within receipts if that transaction was successful.
+    pub fn transaction_for_call_succeeded(&self, call: &EthereumCall) -> anyhow::Result<bool> {
+        let call_transaction_hash = call.transaction_hash.ok_or(anyhow::anyhow!(
+            "failed to find a transaction for this call"
+        ))?;
+
+        let receipt = self
+            .ethereum_block
+            .transaction_receipts
+            .iter()
+            .find(|txn| txn.transaction_hash == call_transaction_hash)
+            .ok_or(anyhow::anyhow!(
+                "failed to find the receipt for this transaction"
+            ))?;
+
+        Ok(evaluate_transaction_status(receipt.status))
+    }
+}
+
+/// Evaluates if a given transaction was successful.
+///
+/// Returns `true` on success and `false` on failure.
+/// If a receipt does not have a status value (EIP-658), assume the transaction was successful.
+pub fn evaluate_transaction_status(receipt_status: Option<U64>) -> bool {
+    receipt_status
+        .map(|status| !status.is_zero())
+        .unwrap_or(true)
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
