@@ -9,7 +9,10 @@ mod types;
 // Try to reexport most of the necessary types
 use crate::{
     cheap_clone::CheapClone,
-    components::store::{DeploymentLocator, StoredDynamicDataSource},
+    components::{
+        metrics::stopwatch::StopwatchMetrics,
+        store::{DeploymentLocator, StoredDynamicDataSource},
+    },
     data::subgraph::{Mapping, Source, UnifiedMappingApiVersion},
     prelude::DataSourceContext,
     runtime::{AscHeap, AscPtr, DeterministicHostError, HostExportError},
@@ -91,6 +94,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + 'static {
         loc: &DeploymentLocator,
         capabilities: &Self::NodeCapabilities,
         unified_api_version: UnifiedMappingApiVersion,
+        stopwatch_metrics: StopwatchMetrics,
     ) -> Result<Arc<Self::TriggersAdapter>, Error>;
 
     fn new_block_stream(

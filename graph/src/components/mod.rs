@@ -76,3 +76,5 @@ pub trait EventProducer<E> {
     /// Avoid calling directly, prefer helpers such as `forward`.
     fn take_event_stream(&mut self) -> Option<Box<dyn Stream<Item = E, Error = ()> + Send>>;
 }
+
+pub mod transaction_receipt;

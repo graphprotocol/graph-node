@@ -1,10 +1,8 @@
-use std::collections::HashSet;
-use std::iter::FromIterator;
-use std::sync::Arc;
-
 use anyhow::{Context, Error};
 use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::prelude::{EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt};
+use graph::prelude::{
+    EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, StopwatchMetrics,
+};
 use graph::{
     blockchain::{
         block_stream::{
@@ -23,6 +21,9 @@ use graph::{
         SubgraphStore,
     },
 };
+use std::collections::HashSet;
+use std::iter::FromIterator;
+use std::sync::Arc;
 
 use crate::data_source::DataSourceTemplate;
 use crate::data_source::UnresolvedDataSourceTemplate;
@@ -140,6 +141,7 @@ impl Blockchain for Chain {
         loc: &DeploymentLocator,
         capabilities: &Self::NodeCapabilities,
         unified_api_version: UnifiedMappingApiVersion,
+        stopwatch_metrics: StopwatchMetrics,
     ) -> Result<Arc<Self::TriggersAdapter>, Error> {
         let eth_adapter = self.eth_adapters.cheapest_with(capabilities)?.clone();
         let logger = self
@@ -152,8 +154,9 @@ impl Blockchain for Chain {
             logger,
             ethrpc_metrics,
             eth_adapter,
+            stopwatch_metrics,
             chain_store: self.chain_store.cheap_clone(),
-            _unified_api_version: unified_api_version,
+            unified_api_version,
         };
         Ok(Arc::new(adapter))
     }
@@ -180,7 +183,12 @@ impl Blockchain for Chain {
         let requirements = filter.node_capabilities();
 
         let triggers_adapter = self
-            .triggers_adapter(&deployment, &requirements, unified_api_version.clone())
+            .triggers_adapter(
+                &deployment,
+                &requirements,
+                unified_api_version.clone(),
+                metrics.stopwatch.clone(),
+            )
             .expect(&format!(
                 "no adapter for network {} with capabilities {}",
                 self.name, requirements
@@ -306,9 +314,10 @@ pub struct DummyDataSourceTemplate;
 pub struct TriggersAdapter {
     logger: Logger,
     ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
+    stopwatch_metrics: StopwatchMetrics,
     chain_store: Arc<dyn ChainStore>,
     eth_adapter: Arc<EthereumAdapter>,
-    _unified_api_version: UnifiedMappingApiVersion,
+    unified_api_version: UnifiedMappingApiVersion,
 }
 
 #[async_trait]
@@ -324,9 +333,11 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             self.logger.clone(),
             self.chain_store.clone(),
             self.ethrpc_metrics.clone(),
+            self.stopwatch_metrics.clone(),
             from,
             to,
             filter,
+            self.unified_api_version.clone(),
         )
         .await
     }
@@ -354,9 +365,11 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                     logger.clone(),
                     self.chain_store.clone(),
                     self.ethrpc_metrics.clone(),
+                    self.stopwatch_metrics.clone(),
                     block_number,
                     block_number,
                     filter,
+                    self.unified_api_version.clone(),
                 )
                 .await?;
                 assert!(blocks.len() == 1);
@@ -368,7 +381,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                     &filter.log,
                     &full_block.ethereum_block,
                 ));
-                triggers.append(&mut parse_call_triggers(&filter.call, &full_block));
+                triggers.append(&mut parse_call_triggers(&filter.call, &full_block)?);
                 triggers.append(&mut parse_block_triggers(filter.block.clone(), &full_block));
                 Ok(BlockWithTriggers::new(block, triggers))
             }

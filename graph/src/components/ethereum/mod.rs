@@ -3,7 +3,8 @@ mod types;
 use web3::types::H256;
 
 pub use self::types::{
-    EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock, LightEthereumBlockExt,
+    evaluate_transaction_status, EthereumBlock, EthereumBlockWithCalls, EthereumCall,
+    LightEthereumBlock, LightEthereumBlockExt,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
