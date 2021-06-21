@@ -3,7 +3,8 @@ use fail::fail_point;
 use graph::components::arweave::ArweaveAdapter;
 use graph::components::three_box::ThreeBoxAdapter;
 use lazy_static::lazy_static;
-use std::collections::{BTreeSet, HashMap};
+use semver::Version;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::task;
@@ -54,6 +55,35 @@ struct IndexingInputs<C: Blockchain> {
     triggers_adapter: Arc<C::TriggersAdapter>,
     chain: Arc<C>,
     templates: Arc<Vec<C::DataSourceTemplate>>,
+}
+
+pub struct UnifiedMappingApiVersion(Option<Version>);
+
+impl UnifiedMappingApiVersion {
+    pub fn equal_or_greater_than(&self, other_version: &Version) -> bool {
+        match &self.0 {
+            Some(version) => version >= other_version,
+            None => false,
+        }
+    }
+}
+
+impl<C: Blockchain> IndexingInputs<C> {
+    pub fn unified_mapping_api_version(&self) -> UnifiedMappingApiVersion {
+        use graph::blockchain::DataSourceTemplate;
+        let api_versions: HashSet<Version> = self
+            .templates
+            .iter()
+            .map(|ds| ds.mapping().api_version.to_owned())
+            .collect();
+
+        if api_versions.len() != 1 {
+            UnifiedMappingApiVersion(None)
+        } else {
+            let version = api_versions.into_iter().nth(0).unwrap();
+            UnifiedMappingApiVersion(Some(version))
+        }
+    }
 }
 
 struct IndexingState<T: RuntimeHostBuilder<C>, C: Blockchain> {
