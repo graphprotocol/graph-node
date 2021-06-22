@@ -30,7 +30,7 @@ mod into_wasm_ret;
 mod stopwatch;
 
 use into_wasm_ret::IntoWasmRet;
-use stopwatch::TimeoutStopwatch;
+pub use stopwatch::TimeoutStopwatch;
 
 pub const TRAP_TIMEOUT: &str = "trap: interrupt";
 
