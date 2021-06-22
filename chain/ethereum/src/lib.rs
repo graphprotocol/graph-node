@@ -7,6 +7,7 @@ mod transport;
 
 pub use self::ethereum_adapter::EthereumAdapter;
 pub use self::runtime::RuntimeAdapter;
+pub use self::runtime::abi;
 pub use self::transport::{EventLoopHandle, Transport};
 
 // ETHDEP: These concrete types should probably not be exposed.
