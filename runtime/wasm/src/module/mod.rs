@@ -27,7 +27,7 @@ use crate::host_exports::HostExports;
 use crate::mapping::ValidModule;
 
 mod into_wasm_ret;
-mod stopwatch;
+pub mod stopwatch;
 
 use into_wasm_ret::IntoWasmRet;
 pub use stopwatch::TimeoutStopwatch;
