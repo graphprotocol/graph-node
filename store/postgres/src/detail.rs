@@ -284,7 +284,7 @@ struct StoredSubgraphManifest {
     repository: Option<String>,
     features: Vec<String>,
     schema: String,
-    graph_node_version_id: i32,
+    graph_node_version_id: Option<i32>,
 }
 
 impl From<StoredSubgraphManifest> for SubgraphManifestEntity {

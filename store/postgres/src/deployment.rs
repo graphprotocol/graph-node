@@ -93,7 +93,7 @@ table! {
         repository -> Nullable<Text>,
         features -> Array<Text>,
         schema -> Text,
-        graph_node_version_id -> Integer,
+        graph_node_version_id -> Nullable<Integer>,
     }
 }
 
