@@ -15,6 +15,7 @@ use slog::{debug, info, Logger};
 use stable_hash::prelude::*;
 use std::{
     collections::{BTreeSet, HashSet},
+    iter::FromIterator,
     marker::PhantomData,
 };
 use thiserror::Error;
@@ -42,6 +43,8 @@ use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
+
+pub const API_VERSION_0_0_5: Version = Version::new(0, 0, 5);
 
 lazy_static! {
     static ref DISABLE_GRAFTS: bool = std::env::var("GRAPH_DISABLE_GRAFTS")
@@ -673,6 +676,41 @@ impl UnresolvedMapping {
     }
 }
 
+pub struct UnifiedMappingApiVersion(Option<Version>);
+
+impl UnifiedMappingApiVersion {
+    pub fn equal_or_greater_than(&self, other_version: &'static Version) -> bool {
+        match &self.0 {
+            Some(version) => version >= other_version,
+            None => false,
+        }
+    }
+}
+
+impl<'a> FromIterator<&'a Mapping> for UnifiedMappingApiVersion {
+    /// Will return a `UnifiedMappingApiVersion(Some(_))` if mappings' api versions are identical
+    /// and equal to or higher than 0.0.5. Returns `UnifiedMappingApiVersion(None)` otherwise.
+    fn from_iter<T: IntoIterator<Item = &'a Mapping>>(iter: T) -> Self {
+        let mut unified_version: Option<Version> = None;
+        for api_version in iter
+            .into_iter()
+            .map(|mapping| &mapping.api_version)
+            .filter(|api_version| *api_version >= &API_VERSION_0_0_5)
+        {
+            match unified_version.as_ref() {
+                None => unified_version = Some(api_version.clone()),
+                Some(prev_version) if prev_version == api_version => {}
+                Some(_) => {
+                    // found different api versions
+                    unified_version = None;
+                    break;
+                }
+            }
+        }
+        UnifiedMappingApiVersion(unified_version)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Graft {
@@ -984,6 +1022,10 @@ impl<C: Blockchain> SubgraphManifest<C> {
                 mapping.has_call_handler() || mapping.has_block_handler_with_call_filter()
             }),
         }
+    }
+
+    pub fn unified_mapping_api_version(&self) -> UnifiedMappingApiVersion {
+        self.mappings().iter().collect()
     }
 }
 
