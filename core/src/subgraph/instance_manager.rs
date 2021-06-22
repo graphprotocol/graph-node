@@ -2,6 +2,7 @@ use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
 use graph::components::arweave::ArweaveAdapter;
 use graph::components::three_box::ThreeBoxAdapter;
+use graph::data::subgraph::UnifiedMappingApiVersion;
 use lazy_static::lazy_static;
 use semver::Version;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -55,6 +56,7 @@ struct IndexingInputs<C: Blockchain> {
     triggers_adapter: Arc<C::TriggersAdapter>,
     chain: Arc<C>,
     templates: Arc<Vec<C::DataSourceTemplate>>,
+    unified_api_version: UnifiedMappingApiVersion,
 }
 
 struct IndexingState<T: RuntimeHostBuilder<C>, C: Blockchain> {
@@ -403,6 +405,7 @@ where
         );
 
         let features = manifest.features.clone();
+        let unified_api_version = manifest.unified_mapping_api_version();
         let instance =
             SubgraphInstance::from_manifest(&logger, manifest, host_builder, host_metrics.clone())?;
 
@@ -416,6 +419,7 @@ where
                 triggers_adapter,
                 chain,
                 templates,
+                unified_api_version,
             },
             state: IndexingState {
                 logger: logger.cheap_clone(),
