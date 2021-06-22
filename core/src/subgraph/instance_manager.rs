@@ -4,8 +4,7 @@ use graph::components::arweave::ArweaveAdapter;
 use graph::components::three_box::ThreeBoxAdapter;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use lazy_static::lazy_static;
-use semver::Version;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::task;
@@ -486,6 +485,7 @@ where
                 ctx.inputs.start_blocks.clone(),
                 ctx.state.filter.clone(),
                 ctx.block_stream_metrics.clone(),
+                ctx.inputs.unified_api_version.clone(),
             )?
             .map_err(CancelableError::Error)
             .cancelable(&block_stream_canceler, || CancelableError::Cancel)

@@ -3,6 +3,7 @@ use std::iter::FromIterator;
 use std::sync::Arc;
 
 use anyhow::{Context, Error};
+use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::prelude::{EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt};
 use graph::{
     blockchain::{
@@ -163,6 +164,7 @@ impl Blockchain for Chain {
         start_blocks: Vec<BlockNumber>,
         filter: TriggerFilter,
         metrics: Arc<BlockStreamMetrics>,
+        unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<BlockStream<Self>, Error> {
         let logger = self
             .logger_factory
@@ -198,6 +200,7 @@ impl Blockchain for Chain {
             metrics,
             *MAX_BLOCK_RANGE_SIZE,
             *TARGET_TRIGGERS_PER_BLOCK_RANGE,
+            unified_api_version,
         ))
     }
 

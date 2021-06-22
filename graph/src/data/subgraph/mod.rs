@@ -676,6 +676,7 @@ impl UnresolvedMapping {
     }
 }
 
+#[derive(Clone)]
 pub struct UnifiedMappingApiVersion(Option<Version>);
 
 impl UnifiedMappingApiVersion {

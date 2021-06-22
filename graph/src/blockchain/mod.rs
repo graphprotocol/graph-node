@@ -10,7 +10,7 @@ mod types;
 use crate::{
     cheap_clone::CheapClone,
     components::store::{DeploymentLocator, StoredDynamicDataSource},
-    data::subgraph::{Mapping, Source, TemplateSource},
+    data::subgraph::{Mapping, Source, TemplateSource, UnifiedMappingApiVersion},
     prelude::DataSourceContext,
     runtime::{AscHeap, AscPtr, DeterministicHostError, HostExportError},
 };
@@ -100,6 +100,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + 'static {
         start_blocks: Vec<BlockNumber>,
         filter: Self::TriggerFilter,
         metrics: Arc<BlockStreamMetrics>,
+        unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<BlockStream<Self>, Error>;
 
     fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter>;
