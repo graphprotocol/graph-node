@@ -1,4 +1,4 @@
 pub use runtime_adapter::RuntimeAdapter;
 
-pub(crate) mod abi;
+pub mod abi;
 mod runtime_adapter;
