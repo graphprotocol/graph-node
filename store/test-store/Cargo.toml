@@ -14,5 +14,5 @@ graph = { path = "../../graph" }
 graph-store-postgres = { path = "../postgres" }
 lazy_static = "1.1"
 hex-literal = "0.3"
-diesel = { version = "1.4.6", features = ["postgres", "serde_json", "numeric", "r2d2"] }
+diesel = { version = "1.4.7", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 graph-chain-ethereum = { path = "../../chain/ethereum" }

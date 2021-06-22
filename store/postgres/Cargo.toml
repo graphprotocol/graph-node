@@ -7,7 +7,7 @@ edition = "2018"
 async-trait = "0.1.50"
 blake3 = "0.3.8"
 derive_more = { version = "0.99.14" }
-diesel = { version = "1.4.6", features = ["postgres", "serde_json", "numeric", "r2d2"] }
+diesel = { version = "1.4.7", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 # We use diesel-dynamic-schema straight from git as the project has not
 # made a release as a crate yet
 diesel-dynamic-schema = { git = "https://github.com/diesel-rs/diesel-dynamic-schema", rev="a8ec4fb1" }
