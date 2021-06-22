@@ -5,6 +5,7 @@ use futures03::{
     stream::FuturesOrdered,
     TryStreamExt as _,
 };
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use semver::{Version, VersionReq};
 use serde::de;
@@ -392,8 +393,9 @@ pub enum SubgraphManifestValidationError {
     SchemaValidationError(Vec<SchemaValidationError>),
     #[error("the graft base is invalid: {0}")]
     GraftBaseInvalid(String),
-    #[error("subgraph uses different api versions between its data sources")]
-    DifferentApiVersions,
+    #[error("subgraph must use a single apiVersion across its data sources. Found: {0:?}")]
+    // #[error("subgraph uses different api versions between its data sources")]
+    DifferentApiVersions(String),
 }
 
 #[derive(Error, Debug)]
@@ -827,13 +829,18 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             .iter()
             .map(|ds| &ds.mapping().api_version)
             .collect();
-        if unique_api_versions.len() > 1 {
-            for version in &unique_api_versions {
-                if *version >= &referential_api_version {
-                    errors.push(SubgraphManifestValidationError::DifferentApiVersions);
-                    break;
-                }
-            }
+        if unique_api_versions.len() > 1
+            && unique_api_versions
+                .iter()
+                .any(|version| *version >= &referential_api_version)
+        {
+            let error_msg = unique_api_versions
+                .iter()
+                .map(ToString::to_string)
+                .join(", ");
+            errors.push(SubgraphManifestValidationError::DifferentApiVersions(
+                error_msg,
+            ));
         }
 
         let mut networks = self

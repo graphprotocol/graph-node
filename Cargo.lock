@@ -1582,6 +1582,7 @@ dependencies = [
  "hex",
  "http 0.2.3",
  "isatty",
+ "itertools",
  "lazy_static",
  "maplit",
  "mockall 0.8.3",
