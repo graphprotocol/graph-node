@@ -28,7 +28,6 @@ use graph::{components::ethereum::NodeCapabilities, data::store::scalar::Bytes};
 
 use super::loader::load_dynamic_data_sources;
 use super::SubgraphInstance;
-use crate::subgraph::registrar::IPFS_SUBGRAPH_LOADING_TIMEOUT;
 
 lazy_static! {
     /// Size limit of the entity LFU cache, in bytes.
@@ -262,13 +261,7 @@ where
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
 
-        let link_resolver = Arc::new(
-            link_resolver
-                .as_ref()
-                .clone()
-                .with_timeout(*IPFS_SUBGRAPH_LOADING_TIMEOUT)
-                .with_retries(),
-        );
+        let link_resolver = Arc::new(link_resolver.as_ref().clone().with_retries());
 
         SubgraphInstanceManager {
             logger_factory,

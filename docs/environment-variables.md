@@ -48,10 +48,8 @@ those.
 
 - `GRAPH_MAPPING_HANDLER_TIMEOUT`: amount of time a mapping handler is allowed to
   take (in seconds, default is unlimited)
-- `GRAPH_IPFS_SUBGRAPH_LOADING_TIMEOUT`: timeout for IPFS requests made to load
-  subgraph files from IPFS (in seconds, default is 60).
-- `GRAPH_IPFS_TIMEOUT`: timeout for IPFS requests from mappings using `ipfs.cat`
-  or `ipfs.map` (in seconds, default is 30).
+- `GRAPH_IPFS_TIMEOUT`: timeout for IPFS, which includes requests for manifest files
+  and from mappings using `ipfs.cat` or `ipfs.map` (in seconds, default is 30).
 - `GRAPH_MAX_IPFS_FILE_BYTES`: maximum size for a file that can be retrieved
   with `ipfs.cat` (in bytes, default is unlimited)
 - `GRAPH_MAX_IPFS_MAP_FILE_SIZE`: maximum size of files that can be processed
