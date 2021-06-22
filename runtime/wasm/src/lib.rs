@@ -9,7 +9,7 @@ mod to_from;
 mod mapping;
 
 /// WASM module instance.
-mod module;
+pub mod module;
 
 /// Runtime-agnostic implementation of exports to WASM.
 mod host_exports;
