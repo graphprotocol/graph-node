@@ -2,7 +2,7 @@ mod adapter;
 mod data_source;
 mod ethereum_adapter;
 pub mod network_indexer;
-mod runtime;
+pub mod runtime;
 mod transport;
 
 pub use self::ethereum_adapter::EthereumAdapter;
