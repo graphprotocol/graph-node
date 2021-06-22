@@ -261,8 +261,6 @@ where
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
 
-        let link_resolver = Arc::new(link_resolver.as_ref().clone().with_retries());
-
         SubgraphInstanceManager {
             logger_factory,
             subgraph_store,
@@ -316,7 +314,8 @@ where
             let mut manifest = SubgraphManifest::resolve_from_raw(
                 deployment.hash.cheap_clone(),
                 manifest,
-                &*link_resolver,
+                // Allow for infinite retries for subgraph definition files.
+                &link_resolver.as_ref().clone().with_retries(),
                 &logger,
             )
             .await
