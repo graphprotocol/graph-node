@@ -84,13 +84,10 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
 }
 
 pub enum BlockStreamEvent<C: Blockchain> {
-    // ETHDEP: The meaning of the ptr needs to be clarified. Right now, it
-    // has the same meaning as the pointer in `NextBlocks::Revert`, and it's
-    // not clear whether that pointer should become the new subgraph head
-    // pointer, or if we should revert that block, and make the block's
-    // parent the new subgraph head. To not risk introducing bugs, for now,
-    // we take it to mean whatever `NextBlocks::Revert` means
+    // The payload is the current subgraph head pointer, which should be reverted, such that the
+    // parent of the current subgraph head becomes the new subgraph head.
     Revert(BlockPtr),
+
     ProcessBlock(BlockWithTriggers<C>),
 }
 
@@ -260,7 +257,8 @@ where
     /// Blocks and range size
     Blocks(VecDeque<BlockWithTriggers<C>>, BlockNumber),
 
-    /// Revert the current block pointed at by the subgraph pointer.
+    // The payload is the current subgraph head pointer, which should be reverted, such that the
+    // parent of the current subgraph head becomes the new subgraph head.
     Revert(BlockPtr),
     Done,
 }
