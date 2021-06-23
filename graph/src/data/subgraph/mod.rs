@@ -397,7 +397,6 @@ pub enum SubgraphManifestValidationError {
     #[error("the graft base is invalid: {0}")]
     GraftBaseInvalid(String),
     #[error("subgraph must use a single apiVersion across its data sources. Found: {0:?}")]
-    // #[error("subgraph uses different api versions between its data sources")]
     DifferentApiVersions(String),
 }
 
@@ -862,11 +861,10 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
 
         // For API versions newer than 0.0.5, validate that all mappings uses the same api_version
         let referential_api_version = Version::new(0, 0, 5);
-        let unique_api_versions: HashSet<&Version> = self
-            .0
-            .data_sources
+        let mappings = self.0.mappings();
+        let unique_api_versions: HashSet<&Version> = mappings
             .iter()
-            .map(|ds| &ds.mapping().api_version)
+            .map(|mapping| &mapping.api_version)
             .collect();
         if unique_api_versions.len() > 1
             && unique_api_versions
