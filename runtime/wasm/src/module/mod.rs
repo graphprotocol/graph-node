@@ -23,7 +23,7 @@ use graph::{
 };
 
 use crate::asc_abi::class::*;
-pub use crate::host_exports::HostExports;
+use crate::host_exports::HostExports;
 use crate::mapping::ValidModule;
 
 mod into_wasm_ret;
