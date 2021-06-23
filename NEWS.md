@@ -1,5 +1,10 @@
 # NEWS
 
+## 0.23.1
+
+- Fix ipfs timeout detection [#2584](https://github.com/graphprotocol/graph-node/pull/2584).
+- Fix discrepancy between a database table and its Diesel model [#2586](https://github.com/graphprotocol/graph-node/pull/2586).
+
 ## 0.23.0
 
 The Graph Node internals are being heavily refactored to prepare it for the multichain future.
