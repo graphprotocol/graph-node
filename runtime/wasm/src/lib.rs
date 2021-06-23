@@ -1,20 +1,20 @@
 pub mod asc_abi;
 
 mod host;
-mod to_from;
+pub mod to_from;
 
 /// Public interface of the crate, receives triggers to be processed.
 
 /// Pre-processes modules and manages their threads. Serves as an interface from `host` to `module`.
-mod mapping;
+pub mod mapping;
 
 /// WASM module instance.
-mod module;
+pub mod module;
 
 /// Runtime-agnostic implementation of exports to WASM.
-mod host_exports;
+pub mod host_exports;
 
-mod error;
+pub mod error;
 
 pub use host::RuntimeHostBuilder;
 pub use host_exports::HostExports;

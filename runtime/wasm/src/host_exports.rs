@@ -9,7 +9,7 @@ use graph::components::{arweave::ArweaveAdapter, store::EntityType};
 use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
-use graph::runtime::{DeterministicHostError, HostExportError};
+pub use graph::runtime::{DeterministicHostError, HostExportError};
 use graph::{blockchain::DataSource, bytes::Bytes};
 use never::Never;
 use semver::Version;

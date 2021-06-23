@@ -17,7 +17,7 @@ type AscLogParamArray = Array<AscPtr<AscLogParam>>;
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscUnresolvedContractCall_0_0_4 {
+pub struct AscUnresolvedContractCall_0_0_4 {
     pub contract_name: AscPtr<AscString>,
     pub contract_address: AscPtr<AscAddress>,
     pub function_name: AscPtr<AscString>,
@@ -42,7 +42,7 @@ impl FromAscObj<AscUnresolvedContractCall_0_0_4> for UnresolvedContractCall {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscUnresolvedContractCall {
+pub struct AscUnresolvedContractCall {
     pub contract_name: AscPtr<AscString>,
     pub contract_address: AscPtr<AscAddress>,
     pub function_name: AscPtr<AscString>,
