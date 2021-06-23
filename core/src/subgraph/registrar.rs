@@ -1,28 +1,15 @@
 use std::collections::HashSet;
-use std::env;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use async_trait::async_trait;
-use graph::blockchain::BlockchainMap;
-use lazy_static::lazy_static;
-
 use graph::blockchain::Blockchain;
+use graph::blockchain::BlockchainMap;
 use graph::components::store::{DeploymentId, DeploymentLocator, SubscriptionManager};
 use graph::data::subgraph::schema::SubgraphDeploymentEntity;
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
-
-lazy_static! {
-    // The timeout for IPFS requests in seconds
-    pub static ref IPFS_SUBGRAPH_LOADING_TIMEOUT: Duration = Duration::from_secs(
-        env::var("GRAPH_IPFS_SUBGRAPH_LOADING_TIMEOUT")
-            .unwrap_or("60".into())
-            .parse::<u64>()
-            .expect("invalid IPFS subgraph loading timeout")
-    );
-}
 
 pub struct SubgraphRegistrar<C, L, P, S, SM> {
     logger: Logger,
@@ -61,13 +48,7 @@ where
         SubgraphRegistrar {
             logger,
             logger_factory,
-            resolver: Arc::new(
-                resolver
-                    .as_ref()
-                    .clone()
-                    .with_timeout(*IPFS_SUBGRAPH_LOADING_TIMEOUT)
-                    .with_retries(),
-            ),
+            resolver: Arc::new(resolver.as_ref().clone().with_retries()),
             provider,
             store,
             subscription_manager,

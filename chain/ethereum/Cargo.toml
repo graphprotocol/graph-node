@@ -1,6 +1,6 @@
 [package]
 name = "graph-chain-ethereum"
-version = "0.22.0"
+version = "0.23.0"
 edition = "2018"
 
 [dependencies]
@@ -32,7 +32,7 @@ graph-runtime-wasm = { path = "../../runtime/wasm" }
 graph-runtime-derive = { path = "../../runtime/derive" }
 
 [dev-dependencies]
-diesel = { version = "1.4.6", features = ["postgres", "serde_json", "numeric", "r2d2"] }
+diesel = { version = "1.4.7", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 graph-core = { path = "../../core" }
 graph-store-postgres = { path = "../../store/postgres" }
 pretty_assertions = "0.7.2"

@@ -29,10 +29,10 @@ lazy_static! {
     static ref ARG_SKIP: String = String::from("skip");
     static ref ARG_ID: String = String::from("id");
 
-    /// Setting this environment variable to any value will disable the experimental feature "Select by
-    /// Specific Attribute Names".
+    /// Setting this environment variable to any value will enable the experimental feature "Select
+    /// by Specific Attributes".
     static ref DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES: bool =
-        std::env::var("DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES").is_ok();
+        !std::env::var("GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES").is_ok();
 }
 
 type GroupedFieldSet<'a> = IndexMap<&'a str, CollectedResponseKey<'a>>;

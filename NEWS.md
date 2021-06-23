@@ -1,20 +1,47 @@
 # NEWS
 
-## next - unreleased
+## 0.23.0
+
+The Graph Node internals are being heavily refactored to prepare it for the multichain future.
+In the meantime, here are the changes for this release:
 
 - The `GRAPH_ETH_CALL_BY_NUMBER` environment variable has been removed. Graph Node requires an
-  Ethereum client that support EIP-1898, which all major clients support.
-- Added support for IPFS versions larger than 0.4.
-- Added Ethereum ABI encoding and decoding functionality #2348.
+  Ethereum client that supports EIP-1898, which all major clients support.
+- Added support for IPFS versions larger than 0.4. Several changes to make
+  `graph-node` more tolerant of slow/flaky IPFS nodes.
+- Added Ethereum ABI encoding and decoding functionality [#2348](https://github.com/graphprotocol/graph-node/pull/2348).
+- Experimental support for configuration files, see the documentation [here](https://github.com/graphprotocol/graph-node/blob/master/docs/config.md).
+- Better PoI performance [#2329](https://github.com/graphprotocol/graph-node/pull/2329).
+- Improve grafting performance and robustness by copying in batches [#2293](https://github.com/graphprotocol/graph-node/pull/2293).
+- Subgraph metadata storage has been simplified and reorganized. External
+  tools (e.g., Grafana dashboards) that access the database directly will need to be updated.
+- Ordering in GraphQL queries is now truly reversible
+  [#2214](https://github.com/graphprotocol/graph-node/pull/2214/commits/bc559b8df09a7c24f0d718b76fa670313911a6b1)
+- The `GRAPH_SQL_STATEMENT_TIMEOUT` environment variable can be used to
+  enforce a timeout for individual SQL queries that are run in the course of
+  processing a GraphQL query
+  [#2285](https://github.com/graphprotocol/graph-node/pull/2285)
+- Using `ethereum.call` in mappings in globals is deprecated
+
+### Graphman
+Graphman is a CLI tool to manage your subgraphs. It is now included in the Docker container
+[#2289](https://github.com/graphprotocol/graph-node/pull/2289). And new commands have been added:
+- `graphman copy` can copy subgraphs across DB shards [#2313](https://github.com/graphprotocol/graph-node/pull/2313).
+- `graphman rewind` to rewind a deployment to a given block [#2373](https://github.com/graphprotocol/graph-node/pull/2373).
+- `graphman query` to log info about a GraphQL query [#2206](https://github.com/graphprotocol/graph-node/pull/2206).
+- `graphman create` to create a subgraph name [#2419](https://github.com/graphprotocol/graph-node/pull/2419).
+
+### Metrics
 - The `deployment_blocks_behind` metric has been removed, and a
   `deployment_head` metric has been added. To see how far a deployment is
   behind, use the difference between `ethereum_chain_head_number` and
-  `deployment_head`
+  `deployment_head`.
+- The `trigger_type` label was removed from the metric `deployment_trigger_processing_duration`.
 
 ## 0.22.0
 
 ### Feature: Block store sharding
-This release makes it possible to [shard the block and call cache](./docs/sharding.md) for chain
+This release makes it possible to [shard the block and call cache](./docs/config.md) for chain
 data across multiple independent Postgres databases. **This feature is considered experimental. We
 encourage users to try this out in a test environment, but do not recommend it yet for production
 use.** In particular, the details of how sharding is configured may change in backwards-incompatible
@@ -46,7 +73,7 @@ Various related bug fixes have been made #2121 #2136 #2149 #2160.
 ### Feature: Database sharding
 
 This release makes it possible to [shard subgraph
-storage](./docs/sharding.md) and spread subgraph deployments, and the load
+storage](./docs/config.md) and spread subgraph deployments, and the load
 coming from indexing and querying them across multiple independent Postgres
 databases.
 

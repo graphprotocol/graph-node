@@ -25,11 +25,9 @@ use graph::{
     components::store::{DeploymentId, DeploymentLocator, ModificationsAndCache},
 };
 use graph::{components::ethereum::NodeCapabilities, data::store::scalar::Bytes};
-use graph_chain_ethereum::{SubgraphEthRpcMetrics, WrappedBlockFinality};
 
 use super::loader::load_dynamic_data_sources;
 use super::SubgraphInstance;
-use crate::subgraph::registrar::IPFS_SUBGRAPH_LOADING_TIMEOUT;
 
 lazy_static! {
     /// Size limit of the entity LFU cache, in bytes.
@@ -78,9 +76,6 @@ struct IndexingContext<T: RuntimeHostBuilder<C>, C: Blockchain> {
 
     /// Sensors to measure the execution of the subgraph's runtime hosts
     pub host_metrics: Arc<HostMetrics>,
-
-    /// Sensors to measure the execution of eth rpc calls
-    pub ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
 
     pub block_stream_metrics: Arc<BlockStreamMetrics>,
 }
@@ -185,7 +180,6 @@ where
     // ETHDEP: Associated types should be unconstrained
     C: Blockchain<
         NodeCapabilities = NodeCapabilities,
-        Block = WrappedBlockFinality,
         DataSource = graph_chain_ethereum::DataSource,
         DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
     >,
@@ -249,7 +243,6 @@ where
     // ETHDEP: Associated types should be unconstrained
     C: Blockchain<
         NodeCapabilities = NodeCapabilities,
-        Block = WrappedBlockFinality,
         DataSource = graph_chain_ethereum::DataSource,
         DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
     >,
@@ -267,14 +260,6 @@ where
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
-
-        let link_resolver = Arc::new(
-            link_resolver
-                .as_ref()
-                .clone()
-                .with_timeout(*IPFS_SUBGRAPH_LOADING_TIMEOUT)
-                .with_retries(),
-        );
 
         SubgraphInstanceManager {
             logger_factory,
@@ -329,7 +314,8 @@ where
             let mut manifest = SubgraphManifest::resolve_from_raw(
                 deployment.hash.cheap_clone(),
                 manifest,
-                &*link_resolver,
+                // Allow for infinite retries for subgraph definition files.
+                &link_resolver.as_ref().clone().with_retries(),
                 &logger,
             )
             .await
@@ -392,10 +378,6 @@ where
             deployment.hash.as_str(),
             stopwatch_metrics.clone(),
         ));
-        let ethrpc_metrics = Arc::new(SubgraphEthRpcMetrics::new(
-            registry.clone(),
-            &deployment.hash,
-        ));
         let block_stream_metrics = Arc::new(BlockStreamMetrics::new(
             registry.clone(),
             &deployment.hash,
@@ -443,7 +425,6 @@ where
             },
             subgraph_metrics,
             host_metrics,
-            ethrpc_metrics,
             block_stream_metrics,
         };
 
@@ -476,7 +457,6 @@ async fn run_subgraph<T, C>(mut ctx: IndexingContext<T, C>) -> Result<(), Error>
 where
     T: RuntimeHostBuilder<C>,
     C: Blockchain<
-        Block = WrappedBlockFinality,
         DataSource = graph_chain_ethereum::DataSource,
         DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
     >,
