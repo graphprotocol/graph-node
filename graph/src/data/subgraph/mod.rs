@@ -693,14 +693,13 @@ impl UnifiedMappingApiVersion {
     }
 }
 
-impl<'a> FromIterator<&'a Mapping> for UnifiedMappingApiVersion {
+impl<'a> FromIterator<&'a Version> for UnifiedMappingApiVersion {
     /// Will return a `UnifiedMappingApiVersion(Some(_))` if mappings' api versions are identical
     /// and equal to or higher than 0.0.5. Returns `UnifiedMappingApiVersion(None)` otherwise.
-    fn from_iter<T: IntoIterator<Item = &'a Mapping>>(iter: T) -> Self {
+    fn from_iter<T: IntoIterator<Item = &'a Version>>(iter: T) -> Self {
         let mut unified_version: Option<Version> = None;
         for api_version in iter
             .into_iter()
-            .map(|mapping| &mapping.api_version)
             .filter(|api_version| *api_version >= &API_VERSION_0_0_5)
         {
             match unified_version.as_ref() {
@@ -1030,7 +1029,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
     }
 
     pub fn unified_mapping_api_version(&self) -> UnifiedMappingApiVersion {
-        self.mappings().iter().collect()
+        self.mappings().iter().map(|m| &m.api_version).collect()
     }
 }
 
