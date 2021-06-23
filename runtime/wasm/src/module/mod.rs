@@ -938,19 +938,28 @@ impl<C: Blockchain> WasmInstanceContext<C> {
 
     /// Expects a decimal string.
     /// function json.toI64(json: String): i64
-    pub fn json_to_i64(&mut self, json_ptr: AscPtr<AscString>) -> Result<i64, DeterministicHostError> {
+    pub fn json_to_i64(
+        &mut self,
+        json_ptr: AscPtr<AscString>,
+    ) -> Result<i64, DeterministicHostError> {
         self.ctx.host_exports.json_to_i64(asc_get(self, json_ptr)?)
     }
 
     /// Expects a decimal string.
     /// function json.toU64(json: String): u64
-    pub fn json_to_u64(&mut self, json_ptr: AscPtr<AscString>) -> Result<u64, DeterministicHostError> {
+    pub fn json_to_u64(
+        &mut self,
+        json_ptr: AscPtr<AscString>,
+    ) -> Result<u64, DeterministicHostError> {
         self.ctx.host_exports.json_to_u64(asc_get(self, json_ptr)?)
     }
 
     /// Expects a decimal string.
     /// function json.toF64(json: String): f64
-    pub fn json_to_f64(&mut self, json_ptr: AscPtr<AscString>) -> Result<f64, DeterministicHostError> {
+    pub fn json_to_f64(
+        &mut self,
+        json_ptr: AscPtr<AscString>,
+    ) -> Result<f64, DeterministicHostError> {
         self.ctx.host_exports.json_to_f64(asc_get(self, json_ptr)?)
     }
 
