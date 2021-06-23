@@ -3,6 +3,8 @@
 //! implementation. These methods take types that implement `To`/`FromAscObj` and are therefore
 //! convertible to/from an `AscType`.
 
+pub mod gas;
+
 mod asc_heap;
 mod asc_ptr;
 

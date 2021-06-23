@@ -60,7 +60,7 @@ impl BigDecimal {
         self.0.as_bigint_and_exponent()
     }
 
-    pub(crate) fn digits(&self) -> u64 {
+    pub fn digits(&self) -> u64 {
         self.0.digits()
     }
 

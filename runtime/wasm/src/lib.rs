@@ -14,6 +14,8 @@ mod module;
 /// Runtime-agnostic implementation of exports to WASM.
 mod host_exports;
 
+mod gas_rules;
+
 mod error;
 
 pub use host::RuntimeHostBuilder;
