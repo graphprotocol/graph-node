@@ -116,7 +116,7 @@ impl<C: Blockchain> MappingContext<C> {
 
 /// A pre-processed and valid WASM module, ready to be started as a WasmModule.
 pub struct ValidModule {
-    pub(super) module: wasmtime::Module,
+    pub module: wasmtime::Module,
 
     // A wasm import consists of a `module` and a `name`. AS will generate imports such that they
     // have `module` set to the name of the file it is imported from and `name` set to the imported
@@ -126,7 +126,7 @@ pub struct ValidModule {
     //
     // AS now has an `@external("module", "name")` decorator which would make things cleaner, but
     // the ship has sailed.
-    pub(super) import_name_to_modules: BTreeMap<String, Vec<String>>,
+    pub import_name_to_modules: BTreeMap<String, Vec<String>>,
 }
 
 impl ValidModule {
