@@ -155,7 +155,7 @@ impl Blockchain for Chain {
             ethrpc_metrics,
             eth_adapter,
             chain_store: self.chain_store.cheap_clone(),
-            unified_api_version,
+            _unified_api_version: unified_api_version,
         };
         Ok(Arc::new(adapter))
     }
@@ -332,7 +332,7 @@ pub struct TriggersAdapter {
     ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
     chain_store: Arc<dyn ChainStore>,
     eth_adapter: Arc<EthereumAdapter>,
-    unified_api_version: UnifiedMappingApiVersion,
+    _unified_api_version: UnifiedMappingApiVersion,
 }
 
 #[async_trait]
