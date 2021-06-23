@@ -44,6 +44,8 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
 
+/// This version adds a new validation step that rejects manifests whose mappings have different API
+/// versions if at least one of them is equal to or higher than `0.0.5`.
 pub const API_VERSION_0_0_5: Version = Version::new(0, 0, 5);
 
 lazy_static! {
@@ -396,7 +398,7 @@ pub enum SubgraphManifestValidationError {
     SchemaValidationError(Vec<SchemaValidationError>),
     #[error("the graft base is invalid: {0}")]
     GraftBaseInvalid(String),
-    #[error("subgraph must use a single apiVersion across its data sources. Found: {0:?}")]
+    #[error("subgraph must use a single apiVersion across its data sources. Found: {0}")]
     DifferentApiVersions(String),
 }
 
@@ -680,6 +682,10 @@ pub struct UnifiedMappingApiVersion(Option<Version>);
 
 impl UnifiedMappingApiVersion {
     pub fn equal_or_greater_than(&self, other_version: &'static Version) -> bool {
+        assert!(
+            other_version >= &API_VERSION_0_0_5,
+            "api versions before 0.0.5 should not be used for comparison"
+        );
         match &self.0 {
             Some(version) => version >= other_version,
             None => false,
