@@ -236,7 +236,7 @@ pub struct WasmInstanceContext<C: Blockchain> {
     arena_free_size: i32,
 
     // A trap ocurred due to a possible reorg detection.
-    possible_reorg: bool,
+    pub possible_reorg: bool,
 
     // A host export trap ocurred for a deterministic reason.
     pub deterministic_host_trap: bool,
