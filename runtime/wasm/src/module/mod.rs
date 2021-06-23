@@ -573,7 +573,7 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
 }
 
 impl<C: Blockchain> WasmInstanceContext<C> {
-    fn from_instance(
+    pub fn from_instance(
         instance: &wasmtime::Instance,
         ctx: MappingContext<C>,
         valid_module: Arc<ValidModule>,
@@ -609,7 +609,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         })
     }
 
-    fn from_caller(
+    pub fn from_caller(
         caller: wasmtime::Caller,
         ctx: MappingContext<C>,
         valid_module: Arc<ValidModule>,
@@ -1019,7 +1019,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     /// function bigInt.dividedBy(x: BigInt, y: BigInt): BigInt
-    fn big_int_divided_by(
+    pub fn big_int_divided_by(
         &mut self,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
