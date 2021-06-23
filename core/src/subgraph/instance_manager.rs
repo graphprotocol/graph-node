@@ -310,7 +310,7 @@ where
             .and_then(|x| x)?;
         }
 
-        let manifest = {
+        let manifest: SubgraphManifest<C> = {
             info!(logger, "Resolve subgraph files using IPFS");
 
             let mut manifest = SubgraphManifest::resolve_from_raw(
@@ -354,7 +354,7 @@ where
             .with_context(|| format!("no chain configured for network {}", network))?
             .clone();
 
-        let triggers_adapter = chain.triggers_adapter(&deployment, &required_capabilities).map_err(|e|
+        let triggers_adapter = chain.triggers_adapter(&deployment, &required_capabilities, manifest.unified_mapping_api_version()).map_err(|e|
                 anyhow!(
                 "expected triggers adapter that matches deployment {} with required capabilities: {}: {}",
                 &deployment,

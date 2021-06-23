@@ -92,6 +92,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + 'static {
         &self,
         loc: &DeploymentLocator,
         capabilities: &Self::NodeCapabilities,
+        unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Arc<Self::TriggersAdapter>, Error>;
 
     fn new_block_stream(
