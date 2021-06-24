@@ -14,7 +14,7 @@ use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use thiserror::Error;
 use web3::types::{Address, H256};
 
@@ -666,17 +666,10 @@ where
         store: Arc<dyn QueryStore>,
         interval: Duration,
     ) -> StoreEventStreamBox {
-        // We refresh the synced flag every SYNC_REFRESH_FREQ*interval to
-        // avoid hitting the database too often to see if the subgraph has
-        // been synced in the meantime. The only downside of this approach is
-        // that we might continue throttling subscription updates for a little
-        // bit longer than we really should
-        static SYNC_REFRESH_FREQ: u32 = 4;
-
-        // Check whether a deployment is marked as synced in the store
-        let mut synced = store.is_deployment_synced().unwrap_or(false);
-        let synced_check_interval = interval.checked_mul(SYNC_REFRESH_FREQ).unwrap();
-        let mut synced_last_refreshed = Instant::now();
+        // Check whether a deployment is marked as synced in the store. Note that in the moment a
+        // subgraph becomes synced any existing subscriptions will continue to be throttled since
+        // this is not re-checked.
+        let synced = store.is_deployment_synced().unwrap_or(false);
 
         let mut pending_event: Option<StoreEvent> = None;
         let mut source = self.source.fuse();
@@ -693,11 +686,6 @@ where
                 // event first. Indicate the error now
                 had_err = false;
                 return Err(());
-            }
-
-            if !synced && synced_last_refreshed.elapsed() > synced_check_interval {
-                synced = store.is_deployment_synced().unwrap_or(false);
-                synced_last_refreshed = Instant::now();
             }
 
             if synced {
