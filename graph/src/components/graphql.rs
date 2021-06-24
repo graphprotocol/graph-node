@@ -22,12 +22,7 @@ pub enum GraphQlTarget {
 #[async_trait]
 pub trait GraphQlRunner: Send + Sync + 'static {
     /// Runs a GraphQL query and returns its result.
-    async fn run_query(
-        self: Arc<Self>,
-        query: Query,
-        target: QueryTarget,
-        nested_resolver: bool,
-    ) -> QueryResults;
+    async fn run_query(self: Arc<Self>, query: Query, target: QueryTarget) -> QueryResults;
 
     /// Runs a GraphqL query up to the given complexity. Overrides the global complexity limit.
     async fn run_query_with_complexity(
@@ -38,7 +33,6 @@ pub trait GraphQlRunner: Send + Sync + 'static {
         max_depth: Option<u8>,
         max_first: Option<u32>,
         max_skip: Option<u32>,
-        nested_resolver: bool,
     ) -> QueryResults;
 
     /// Runs a GraphQL subscription and returns a stream of results.

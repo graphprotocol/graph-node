@@ -53,7 +53,7 @@ pub async fn run(
         Some(QueryVariables::new(HashMap::from_iter(vars))),
     );
 
-    let res = runner.run_query(query, target, false).await;
+    let res = runner.run_query(query, target).await;
     let json = serde_json::to_string(&res)?;
     println!("{}", json);
 

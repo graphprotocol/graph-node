@@ -95,7 +95,6 @@ async fn create_source_event_stream(
         max_skip: options.max_skip,
         cache_status: Default::default(),
         load_manager: options.load_manager.cheap_clone(),
-        nested_resolver: false,
     };
 
     let subscription_type = ctx
@@ -228,7 +227,6 @@ async fn execute_subscription_event(
         max_skip,
         cache_status: Default::default(),
         load_manager,
-        nested_resolver: false,
     });
 
     let subscription_type = match ctx.query.schema.subscription_type.as_ref() {

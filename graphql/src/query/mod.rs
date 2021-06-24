@@ -36,7 +36,6 @@ pub async fn execute_query<R>(
     selection_set: Option<q::SelectionSet>,
     block_ptr: Option<BlockPtr>,
     options: QueryExecutionOptions<R>,
-    nested_resolver: bool,
 ) -> Arc<QueryResult>
 where
     R: Resolver,
@@ -51,7 +50,6 @@ where
         max_skip: options.max_skip,
         cache_status: Default::default(),
         load_manager: options.load_manager.cheap_clone(),
-        nested_resolver,
     });
 
     if !query.is_query() {

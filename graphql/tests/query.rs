@@ -264,7 +264,7 @@ async fn execute_query_document_with_variables(
     let query = Query::new(query, variables);
 
     runner
-        .run_query_with_complexity(query, target, None, None, None, None, false)
+        .run_query_with_complexity(query, target, None, None, None, None)
         .await
         .first()
         .unwrap()
