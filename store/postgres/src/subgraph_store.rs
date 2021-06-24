@@ -9,6 +9,7 @@ use std::{fmt, io::Write};
 use std::{iter::FromIterator, time::Duration};
 
 use graph::{
+    cheap_clone::CheapClone,
     components::{
         server::index_node::VersionInfo,
         store::{self, DeploymentLocator, EntityType, WritableStore as WritableStoreTrait},
@@ -1099,8 +1100,11 @@ impl WritableStoreTrait for WritableStore {
         self.writable.get_many(self.site.clone(), ids_for_type)
     }
 
-    fn is_deployment_synced(&self) -> Result<bool, Error> {
-        Ok(self.writable.exists_and_synced(&self.site.deployment)?)
+    async fn is_deployment_synced(&self) -> Result<bool, Error> {
+        Ok(self
+            .writable
+            .exists_and_synced(self.site.deployment.cheap_clone())
+            .await?)
     }
 
     fn unassign_subgraph(&self) -> Result<(), StoreError> {

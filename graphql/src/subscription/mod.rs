@@ -39,7 +39,7 @@ pub struct SubscriptionExecutionOptions {
     pub load_manager: Arc<dyn QueryLoadManager>,
 }
 
-pub fn execute_subscription(
+pub async fn execute_subscription(
     subscription: Subscription,
     schema: Arc<ApiSchema>,
     options: SubscriptionExecutionOptions,
@@ -52,10 +52,10 @@ pub fn execute_subscription(
         options.max_complexity,
         options.max_depth,
     )?;
-    execute_prepared_subscription(query, options)
+    execute_prepared_subscription(query, options).await
 }
 
-pub(crate) fn execute_prepared_subscription(
+pub(crate) async fn execute_prepared_subscription(
     query: Arc<crate::execution::Query>,
     options: SubscriptionExecutionOptions,
 ) -> Result<SubscriptionResult, SubscriptionError> {
@@ -71,12 +71,12 @@ pub(crate) fn execute_prepared_subscription(
         "query" => &query.query_text,
     );
 
-    let source_stream = create_source_event_stream(query.clone(), &options)?;
+    let source_stream = create_source_event_stream(query.clone(), &options).await?;
     let response_stream = map_source_to_response_stream(query, options, source_stream);
     Ok(response_stream)
 }
 
-fn create_source_event_stream(
+async fn create_source_event_stream(
     query: Arc<crate::execution::Query>,
     options: &SubscriptionExecutionOptions,
 ) -> Result<StoreEventStreamBox, SubscriptionError> {
@@ -123,10 +123,10 @@ fn create_source_event_stream(
     let field = fields.1[0];
     let argument_values = coerce_argument_values(&ctx.query, subscription_type.as_ref(), field)?;
 
-    resolve_field_stream(&ctx, &subscription_type, field, argument_values)
+    resolve_field_stream(&ctx, &subscription_type, field, argument_values).await
 }
 
-fn resolve_field_stream(
+async fn resolve_field_stream(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     field: &q::Field,
@@ -134,6 +134,7 @@ fn resolve_field_stream(
 ) -> Result<StoreEventStreamBox, SubscriptionError> {
     ctx.resolver
         .resolve_field_stream(&ctx.query.schema.document(), object_type, field)
+        .await
         .map_err(SubscriptionError::from)
 }
 

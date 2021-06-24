@@ -301,6 +301,7 @@ where
                 load_manager: self.load_manager.cheap_clone(),
             },
         )
+        .await
     }
 
     fn load_manager(&self) -> Arc<LoadManager> {
