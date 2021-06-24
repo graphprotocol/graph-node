@@ -90,7 +90,6 @@ where
         request_body: Body,
     ) -> Result<Response<Body>, GraphQLServerError> {
         let store = self.store.clone();
-        let graphql_runner = self.graphql_runner.clone();
 
         // Obtain the schema for the index node GraphQL API
         let schema = SCHEMA.clone();
@@ -105,15 +104,14 @@ where
             Err(e) => return Ok(QueryResults::from(QueryResult::from(e)).as_http_response()),
         };
 
-        let graphql_runner = graphql_runner.clone();
-        let load_manager = graphql_runner.load_manager();
+        let load_manager = self.graphql_runner.load_manager();
 
         // Run the query using the index node resolver
         let query_clone = query.cheap_clone();
         let logger = self.logger.cheap_clone();
         let result = {
             let options = QueryExecutionOptions {
-                resolver: IndexNodeResolver::new(&logger, graphql_runner, store),
+                resolver: IndexNodeResolver::new(&logger, store),
                 deadline: None,
                 max_first: std::u32::MAX,
                 max_skip: std::u32::MAX,

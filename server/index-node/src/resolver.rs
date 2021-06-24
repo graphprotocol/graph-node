@@ -11,24 +11,18 @@ use std::convert::TryInto;
 use web3::types::{Address, H256};
 
 /// Resolver for the index node GraphQL API.
-pub struct IndexNodeResolver<R, S> {
+pub struct IndexNodeResolver<S> {
     logger: Logger,
-    graphql_runner: Arc<R>,
     store: Arc<S>,
 }
 
-impl<R, S> IndexNodeResolver<R, S>
+impl<S> IndexNodeResolver<S>
 where
-    R: GraphQlRunner,
     S: StatusStore,
 {
-    pub fn new(logger: &Logger, graphql_runner: Arc<R>, store: Arc<S>) -> Self {
+    pub fn new(logger: &Logger, store: Arc<S>) -> Self {
         let logger = logger.new(o!("component" => "IndexNodeResolver"));
-        Self {
-            logger,
-            graphql_runner,
-            store,
-        }
+        Self { logger, store }
     }
 
     fn resolve_indexing_statuses(
@@ -157,23 +151,20 @@ where
     }
 }
 
-impl<R, S> Clone for IndexNodeResolver<R, S>
+impl<S> Clone for IndexNodeResolver<S>
 where
-    R: GraphQlRunner,
     S: SubgraphStore,
 {
     fn clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
-            graphql_runner: self.graphql_runner.clone(),
             store: self.store.clone(),
         }
     }
 }
 
-impl<R, S> Resolver for IndexNodeResolver<R, S>
+impl<S> Resolver for IndexNodeResolver<S>
 where
-    R: GraphQlRunner,
     S: StatusStore,
 {
     const CACHEABLE: bool = false;
