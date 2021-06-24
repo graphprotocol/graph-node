@@ -567,9 +567,7 @@ async fn introspection_query(schema: Schema, query: &str) -> QueryResult {
 
     let schema = Arc::new(ApiSchema::from_api_schema(schema).unwrap());
     let result = match PreparedQuery::new(&logger, schema, None, query, None, 100) {
-        Ok(query) => {
-            Ok(Arc::try_unwrap(execute_query(query, None, None, options, false).await).unwrap())
-        }
+        Ok(query) => Ok(Arc::try_unwrap(execute_query(query, None, None, options).await).unwrap()),
         Err(e) => Err(e),
     };
     QueryResult::from(result)

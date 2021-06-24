@@ -232,10 +232,6 @@ where
     pub(crate) cache_status: AtomicCell<CacheStatus>,
 
     pub load_manager: Arc<dyn QueryLoadManager>,
-
-    /// Set if this query is being executed in another resolver and therefore reentering functions
-    /// such as `execute_root_selection_set`.
-    pub nested_resolver: bool,
 }
 
 // Helpers to look for types and fields on both the introspection and regular schemas.
@@ -289,7 +285,6 @@ where
             // `cache_status` and `load_manager` are dead values for the introspection context.
             cache_status: AtomicCell::new(CacheStatus::Miss),
             load_manager: self.load_manager.cheap_clone(),
-            nested_resolver: self.nested_resolver,
         }
     }
 }
@@ -396,22 +391,11 @@ pub async fn execute_root_selection_set<R: Resolver>(
     let execute_ctx = ctx.cheap_clone();
     let execute_selection_set = selection_set.cheap_clone();
     let execute_root_type = root_type.cheap_clone();
-    let nested_resolver = ctx.nested_resolver;
     let run_query = async move {
         // Limiting the cuncurrent queries prevents increase in resource usage when the DB is
         // contended and queries start queing up. This semaphore organizes the queueing so that
         // waiting queries consume few resources.
-        //
-        // Do not request a permit in a nested resolver, since it is already holding a permit and
-        // requesting another could deadlock.
-        let _permit = if !nested_resolver {
-            execute_ctx.load_manager.query_permit().await
-        } else {
-            // Acquire a dummy semaphore. Unwrap: a semaphore that was just created can be acquired.
-            Arc::new(tokio::sync::Semaphore::new(1))
-                .acquire_owned()
-                .await
-        };
+        let _permit = execute_ctx.load_manager.query_permit().await;
 
         let logger = execute_ctx.logger.clone();
         let query_text = execute_ctx.query.query_text.cheap_clone();

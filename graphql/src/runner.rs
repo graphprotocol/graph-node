@@ -129,7 +129,6 @@ where
         max_depth: Option<u8>,
         max_first: Option<u32>,
         max_skip: Option<u32>,
-        nested_resolver: bool,
     ) -> Result<QueryResults, QueryResults> {
         // We need to use the same `QueryStore` for the entire query to ensure
         // we have a consistent view if the world, even when replicas, which
@@ -196,7 +195,6 @@ where
                     max_skip: max_skip.unwrap_or(*GRAPHQL_MAX_SKIP),
                     load_manager: self.load_manager.clone(),
                 },
-                nested_resolver,
             )
             .await;
             result.append(query_res);
@@ -216,12 +214,7 @@ where
     S: QueryStoreManager,
     SM: SubscriptionManager,
 {
-    async fn run_query(
-        self: Arc<Self>,
-        query: Query,
-        target: QueryTarget,
-        nested_resolver: bool,
-    ) -> QueryResults {
+    async fn run_query(self: Arc<Self>, query: Query, target: QueryTarget) -> QueryResults {
         self.run_query_with_complexity(
             query,
             target,
@@ -229,7 +222,6 @@ where
             Some(*GRAPHQL_MAX_DEPTH),
             Some(*GRAPHQL_MAX_FIRST),
             Some(*GRAPHQL_MAX_SKIP),
-            nested_resolver,
         )
         .await
     }
@@ -242,7 +234,6 @@ where
         max_depth: Option<u8>,
         max_first: Option<u32>,
         max_skip: Option<u32>,
-        nested_resolver: bool,
     ) -> QueryResults {
         self.execute(
             query,
@@ -251,7 +242,6 @@ where
             max_depth,
             max_first,
             max_skip,
-            nested_resolver,
         )
         .await
         .unwrap_or_else(|e| e)

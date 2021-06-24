@@ -209,7 +209,7 @@ where
         let query = GraphQLRequest::new(body).compat().await;
 
         let result = match query {
-            Ok(query) => service.graphql_runner.run_query(query, target, false).await,
+            Ok(query) => service.graphql_runner.run_query(query, target).await,
             Err(GraphQLServerError::QueryError(e)) => QueryResult::from(e).into(),
             Err(e) => return Err(e),
         };
@@ -421,17 +421,11 @@ mod tests {
             _max_depth: Option<u8>,
             _max_first: Option<u32>,
             _max_skip: Option<u32>,
-            _nested_resolver: bool,
         ) -> QueryResults {
             unimplemented!();
         }
 
-        async fn run_query(
-            self: Arc<Self>,
-            _query: Query,
-            _target: QueryTarget,
-            _: bool,
-        ) -> QueryResults {
+        async fn run_query(self: Arc<Self>, _query: Query, _target: QueryTarget) -> QueryResults {
             QueryResults::from(BTreeMap::from_iter(
                 vec![(
                     String::from("name"),
