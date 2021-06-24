@@ -15,7 +15,6 @@ use slog::{debug, info, Logger};
 use stable_hash::prelude::*;
 use std::{
     collections::{BTreeSet, HashSet},
-    iter::FromIterator,
     marker::PhantomData,
 };
 use thiserror::Error;
@@ -677,7 +676,7 @@ impl UnresolvedMapping {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct UnifiedMappingApiVersion(Option<Version>);
 
 impl UnifiedMappingApiVersion {
@@ -691,28 +690,51 @@ impl UnifiedMappingApiVersion {
             None => false,
         }
     }
+
+    pub fn try_from_versions<'a>(
+        versions: impl Iterator<Item = &'a Version>,
+    ) -> Result<Self, HashSet<&'a Version>> {
+        let unique_versions: HashSet<&Version> = versions.into_iter().collect();
+
+        let all_below_referential_version = unique_versions.iter().all(|v| *v < &API_VERSION_0_0_5);
+        let all_the_same = unique_versions.len() == 1;
+
+        let unified_version: Option<Version> = match (all_below_referential_version, all_the_same) {
+            (false, false) => return Err(unique_versions),
+            (false, true) => Some(unique_versions.iter().nth(0).unwrap().deref().clone()),
+            (true, true) => None,
+            (true, false) => None,
+        };
+
+        Ok(UnifiedMappingApiVersion(unified_version))
+    }
 }
 
-impl<'a> FromIterator<&'a Version> for UnifiedMappingApiVersion {
-    /// Will return a `UnifiedMappingApiVersion(Some(_))` if mappings' api versions are identical
-    /// and equal to or higher than 0.0.5. Returns `UnifiedMappingApiVersion(None)` otherwise.
-    fn from_iter<T: IntoIterator<Item = &'a Version>>(iter: T) -> Self {
-        let mut unified_version: Option<Version> = None;
-        for api_version in iter
-            .into_iter()
-            .filter(|api_version| *api_version >= &API_VERSION_0_0_5)
-        {
-            match unified_version.as_ref() {
-                None => unified_version = Some(api_version.clone()),
-                Some(prev_version) if prev_version == api_version => {}
-                Some(_) => {
-                    // found different api versions
-                    unified_version = None;
-                    break;
-                }
-            }
-        }
-        UnifiedMappingApiVersion(unified_version)
+#[test]
+fn unified_mapping_api_version_from_iterator() {
+    let input = [
+        vec![Version::new(0, 0, 5), Version::new(0, 0, 5)], // Ok(Some(0.0.5))
+        vec![Version::new(0, 0, 6), Version::new(0, 0, 6)], // Ok(Some(0.0.6))
+        vec![Version::new(0, 0, 3), Version::new(0, 0, 4)], // Ok(None)
+        vec![Version::new(0, 0, 4), Version::new(0, 0, 4)], // Ok(None)
+        vec![Version::new(0, 0, 3), Version::new(0, 0, 5)], // Err({0.0.3, 0.0.5})
+        vec![Version::new(0, 0, 6), Version::new(0, 0, 5)], // Err({0.0.5, 0.0.6})
+    ];
+    let output = [
+        Ok(UnifiedMappingApiVersion(Some(Version::new(0, 0, 5)))),
+        Ok(UnifiedMappingApiVersion(Some(Version::new(0, 0, 6)))),
+        Ok(UnifiedMappingApiVersion(None)),
+        Ok(UnifiedMappingApiVersion(None)),
+        Err(input[4].iter().collect::<HashSet<&Version>>()),
+        Err(input[5].iter().collect::<HashSet<&Version>>()),
+    ];
+    for (version_vec, expected_unified_version) in input.iter().zip(output.iter()) {
+        let unified = UnifiedMappingApiVersion::try_from_versions(version_vec.iter());
+        assert_eq!(
+            unified, *expected_unified_version,
+            "input was: {:?}",
+            version_vec
+        );
     }
 }
 
@@ -1029,7 +1051,10 @@ impl<C: Blockchain> SubgraphManifest<C> {
     }
 
     pub fn unified_mapping_api_version(&self) -> UnifiedMappingApiVersion {
-        self.mappings().iter().map(|m| &m.api_version).collect()
+        let mappings = self.mappings();
+        let iter = mappings.iter().map(|m| &m.api_version);
+        UnifiedMappingApiVersion::try_from_versions(iter).unwrap()
+        // TODO: remove this unwrap | turn this function into a Result
     }
 }
 
