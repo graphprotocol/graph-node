@@ -208,7 +208,7 @@ option:
 connection="<.. postgres-url argument ..>"
 [deployment]
 [[deployment.rule]]
-indexers = [ <.. list of all indexing nodes ..> ]
+indexers = [ "<.. list of all indexing nodes ..>" ]
 ```
 
 ## Validating configuration files
