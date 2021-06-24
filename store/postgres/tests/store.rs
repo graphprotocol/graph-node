@@ -1391,15 +1391,17 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
 #[test]
 fn throttle_subscription_delivers() {
     run_test(|store, _, deployment| async move {
-        let subscription = subscribe(&deployment.hash, USER).throttle_while_syncing(
-            &*LOGGER,
-            store
-                .clone()
-                .query_store(deployment.hash.clone().into(), true)
-                .await
-                .unwrap(),
-            Duration::from_millis(500),
-        );
+        let subscription = subscribe(&deployment.hash, USER)
+            .throttle_while_syncing(
+                &*LOGGER,
+                store
+                    .clone()
+                    .query_store(deployment.hash.clone().into(), true)
+                    .await
+                    .unwrap(),
+                Duration::from_millis(500),
+            )
+            .await;
 
         let user4 = create_test_entity(
             "4",
@@ -1430,15 +1432,17 @@ fn throttle_subscription_delivers() {
 fn throttle_subscription_throttles() {
     run_test(|store, _, deployment| async move {
         // Throttle for a very long time (30s)
-        let subscription = subscribe(&deployment.hash, USER).throttle_while_syncing(
-            &*LOGGER,
-            store
-                .clone()
-                .query_store(deployment.hash.clone().into(), true)
-                .await
-                .unwrap(),
-            Duration::from_secs(30),
-        );
+        let subscription = subscribe(&deployment.hash, USER)
+            .throttle_while_syncing(
+                &*LOGGER,
+                store
+                    .clone()
+                    .query_store(deployment.hash.clone().into(), true)
+                    .await
+                    .unwrap(),
+                Duration::from_secs(30),
+            )
+            .await;
 
         let user4 = create_test_entity(
             "4",

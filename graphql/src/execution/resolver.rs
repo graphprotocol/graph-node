@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 
 use crate::execution::ExecutionContext;
-use graph::prelude::{q, s, Error, QueryExecutionError, StoreEventStreamBox};
+use graph::prelude::{async_trait, q, s, Error, QueryExecutionError, StoreEventStreamBox};
 use graph::{
     data::graphql::{ext::DocumentExt, ObjectOrInterface},
     prelude::QueryResult,
 };
 
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
+#[async_trait]
 pub trait Resolver: Sized + Send + Sync + 'static {
     const CACHEABLE: bool;
 
@@ -106,11 +107,11 @@ pub trait Resolver: Sized + Send + Sync + 'static {
     }
 
     // Resolves a change stream for a given field.
-    fn resolve_field_stream<'a, 'b>(
+    async fn resolve_field_stream(
         &self,
-        _schema: &'a s::Document,
-        _object_type: &'a s::ObjectType,
-        _field: &'b q::Field,
+        _schema: &s::Document,
+        _object_type: &s::ObjectType,
+        _field: &q::Field,
     ) -> Result<StoreEventStreamBox, QueryExecutionError> {
         Err(QueryExecutionError::NotSupported(String::from(
             "Resolving field streams is not supported by this resolver",

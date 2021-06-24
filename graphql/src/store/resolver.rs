@@ -208,6 +208,7 @@ impl StoreResolver {
     }
 }
 
+#[async_trait]
 impl Resolver for StoreResolver {
     const CACHEABLE: bool = true;
 
@@ -276,11 +277,11 @@ impl Resolver for StoreResolver {
         }
     }
 
-    fn resolve_field_stream<'a, 'b>(
+    async fn resolve_field_stream(
         &self,
-        schema: &'a s::Document,
-        object_type: &'a s::ObjectType,
-        field: &'b q::Field,
+        schema: &s::Document,
+        object_type: &s::ObjectType,
+        field: &q::Field,
     ) -> result::Result<StoreEventStreamBox, QueryExecutionError> {
         // Collect all entities involved in the query field
         let entities = collect_entities_from_query_field(schema, object_type, field);
@@ -293,7 +294,8 @@ impl Resolver for StoreResolver {
                 &self.logger,
                 self.store.clone(),
                 *SUBSCRIPTION_THROTTLE_INTERVAL,
-            ))
+            )
+            .await)
     }
 
     fn post_process(&self, result: &mut QueryResult) -> Result<(), anyhow::Error> {

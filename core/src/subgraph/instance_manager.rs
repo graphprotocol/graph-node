@@ -913,14 +913,8 @@ where
     let start = Instant::now();
 
     let store = &ctx.inputs.store;
-    let fail_fast = || -> Result<bool, BlockProcessingError> {
-        Ok(!*DISABLE_FAIL_FAST
-            && !store
-                .is_deployment_synced()
-                .map_err(BlockProcessingError::Unknown)?)
-    };
 
-    match ctx.inputs.store.transact_block_operations(
+    match store.transact_block_operations(
         block_ptr,
         mods,
         stopwatch,
@@ -933,7 +927,7 @@ where
 
             // To prevent a buggy pending version from replacing a current version, if errors are
             // present the subgraph will be unassigned.
-            if has_errors && fail_fast()? {
+            if has_errors && !*DISABLE_FAIL_FAST && !store.is_deployment_synced().await? {
                 store
                     .unassign_subgraph()
                     .map_err(|e| BlockProcessingError::Unknown(e.into()))?;

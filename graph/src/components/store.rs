@@ -660,7 +660,7 @@ where
     /// on the returned stream as a single `StoreEvent`; the events are
     /// combined by using the maximum of all sources and the concatenation
     /// of the changes of the `StoreEvents` received during the interval.
-    pub fn throttle_while_syncing(
+    pub async fn throttle_while_syncing(
         self,
         logger: &Logger,
         store: Arc<dyn QueryStore>,
@@ -669,7 +669,7 @@ where
         // Check whether a deployment is marked as synced in the store. Note that in the moment a
         // subgraph becomes synced any existing subscriptions will continue to be throttled since
         // this is not re-checked.
-        let synced = store.is_deployment_synced().unwrap_or(false);
+        let synced = store.is_deployment_synced().await.unwrap_or(false);
 
         let mut pending_event: Option<StoreEvent> = None;
         let mut source = self.source.fuse();
@@ -1039,7 +1039,7 @@ pub trait WritableStore: Send + Sync + 'static {
 
     /// Return true if the deployment with the given id is fully synced,
     /// and return false otherwise. Errors from the store are passed back up
-    fn is_deployment_synced(&self) -> Result<bool, Error>;
+    async fn is_deployment_synced(&self) -> Result<bool, Error>;
 
     fn unassign_subgraph(&self) -> Result<(), StoreError>;
 
@@ -1202,7 +1202,7 @@ impl WritableStore for MockStore {
         self.get_many_mock(ids_for_type)
     }
 
-    fn is_deployment_synced(&self) -> Result<bool, Error> {
+    async fn is_deployment_synced(&self) -> Result<bool, Error> {
         unimplemented!()
     }
 
@@ -1327,7 +1327,7 @@ pub trait QueryStore: Send + Sync {
         query: EntityQuery,
     ) -> Result<Vec<BTreeMap<String, q::Value>>, QueryExecutionError>;
 
-    fn is_deployment_synced(&self) -> Result<bool, Error>;
+    async fn is_deployment_synced(&self) -> Result<bool, Error>;
 
     fn block_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 
