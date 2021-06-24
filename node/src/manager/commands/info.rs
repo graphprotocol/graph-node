@@ -40,9 +40,9 @@ pub fn run(
     used: bool,
 ) -> Result<(), anyhow::Error> {
     let deployments = find(pool, name, current, pending, used)?;
-    let hashes: Vec<_> = deployments.iter().map(|d| d.deployment.clone()).collect();
+    let ids: Vec<_> = deployments.iter().map(|d| d.locator().id).collect();
     let statuses = match store {
-        Some(store) => store.status(status::Filter::Deployments(hashes))?,
+        Some(store) => store.status(status::Filter::DeploymentIds(ids))?,
         None => vec![],
     };
 

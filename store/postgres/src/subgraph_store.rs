@@ -749,6 +749,10 @@ impl SubgraphStoreInner {
             status::Filter::Deployments(deployments) => {
                 self.primary_conn()?.find_sites(deployments, true)?
             }
+            status::Filter::DeploymentIds(ids) => {
+                let ids = ids.into_iter().map(|id| id.into()).collect();
+                self.primary_conn()?.find_sites_by_id(ids)?
+            }
         };
 
         let by_shard: HashMap<Shard, Vec<Arc<Site>>> = self.deployments_by_shard(sites)?;

@@ -1,6 +1,7 @@
 use diesel::{dsl::sql, prelude::*};
 use diesel::{sql_types::Text, PgConnection};
 
+use graph::components::store::DeploymentId;
 use graph::{
     components::store::DeploymentLocator,
     data::subgraph::status,
@@ -20,9 +21,11 @@ pub struct Deployment {
     pub status: String,
     pub deployment: String,
     pub namespace: String,
+    pub id: i32,
     pub node_id: Option<String>,
     pub shard: String,
     pub chain: String,
+    pub active: bool,
 }
 
 impl Deployment {
@@ -46,9 +49,11 @@ impl Deployment {
                 ),
                 v::deployment,
                 ds::name,
+                ds::id,
                 a::node_id.nullable(),
                 ds::shard,
                 ds::network,
+                ds::active,
             ));
 
         let deployments: Vec<Deployment> = if name.starts_with("sgd") {
@@ -63,6 +68,13 @@ impl Deployment {
         Ok(deployments)
     }
 
+    pub fn locator(&self) -> DeploymentLocator {
+        DeploymentLocator::new(
+            DeploymentId(self.id),
+            DeploymentHash::new(self.deployment.clone()).unwrap(),
+        )
+    }
+
     pub fn print_table(deployments: Vec<Self>, statuses: Vec<status::Info>) {
         let mut rows = vec![
             "name",
@@ -70,6 +82,7 @@ impl Deployment {
             "id",
             "namespace",
             "shard",
+            "active",
             "chain",
             "node_id",
         ];
@@ -82,7 +95,7 @@ impl Deployment {
         for deployment in deployments {
             let status = statuses
                 .iter()
-                .find(|status| &status.subgraph == &deployment.deployment);
+                .find(|status| &status.id.0 == &deployment.id);
 
             let mut rows = vec![
                 deployment.name,
@@ -90,6 +103,7 @@ impl Deployment {
                 deployment.deployment,
                 deployment.namespace,
                 deployment.shard,
+                deployment.active.to_string(),
                 deployment.chain,
                 deployment.node_id.unwrap_or("---".to_string()),
             ];

@@ -157,6 +157,7 @@ impl<'a> TryFrom<DetailAndError<'a>> for status::Info {
         let DetailAndError(detail, error, sites) = detail_and_error;
 
         let DeploymentDetail {
+            id,
             deployment,
             failed: _,
             health,
@@ -210,6 +211,7 @@ impl<'a> TryFrom<DetailAndError<'a>> for status::Info {
         let fatal_error = error.map(|e| SubgraphError::try_from(e)).transpose()?;
         // 'node' needs to be filled in later from a different shard
         Ok(status::Info {
+            id: id.into(),
             subgraph: deployment,
             synced,
             health,
@@ -256,14 +258,11 @@ pub(crate) fn deployment_statuses(
             .map(|(detail, error)| status::Info::try_from(DetailAndError(detail, error, sites)))
             .collect()
     } else {
-        let ids: Vec<_> = sites
-            .into_iter()
-            .map(|site| site.deployment.to_string())
-            .collect();
+        let ids: Vec<_> = sites.into_iter().map(|site| site.id).collect();
 
         d::table
             .left_outer_join(e::table.on(d::fatal_error.eq(e::id.nullable())))
-            .filter(d::deployment.eq_any(&ids))
+            .filter(d::id.eq_any(&ids))
             .load::<(DeploymentDetail, Option<ErrorDetail>)>(conn)?
             .into_iter()
             .map(|(detail, error)| status::Info::try_from(DetailAndError(detail, error, sites)))

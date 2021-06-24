@@ -1,6 +1,7 @@
 //! Support for the indexing status API
 
 use super::schema::{SubgraphError, SubgraphHealth};
+use crate::components::store::DeploymentId;
 use crate::data::graphql::{object, IntoValue};
 use crate::prelude::{q, web3::types::H256, BlockPtr, Value};
 
@@ -10,8 +11,10 @@ pub enum Filter {
     /// Get the current (`true`) or pending (`false`) version of the named
     /// subgraph
     SubgraphVersion(String, bool),
-    /// Get the status of all deployments whose ids are given
+    /// Get the status of all deployments whose the given given IPFS hashes
     Deployments(Vec<String>),
+    /// Get the status of all deployments with the given ids
+    DeploymentIds(Vec<DeploymentId>),
 }
 
 /// Light wrapper around `EthereumBlockPointer` that is compatible with GraphQL values.
@@ -85,7 +88,9 @@ impl IntoValue for ChainInfo {
 
 #[derive(Debug)]
 pub struct Info {
-    /// The subgraph ID.
+    pub id: DeploymentId,
+
+    /// The deployment hash
     pub subgraph: String,
 
     /// Whether or not the subgraph has synced all the way to the current chain head.
@@ -106,6 +111,7 @@ pub struct Info {
 impl IntoValue for Info {
     fn into_value(self) -> q::Value {
         let Info {
+            id: _,
             subgraph,
             chains,
             entity_count,
