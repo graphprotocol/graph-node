@@ -1250,3 +1250,63 @@ fn enums() {
         ]}
     );
 }
+
+#[test]
+fn recursive_fragment() {
+    let subgraph_id = "RecursiveFragment";
+    let schema = "
+        type Foo @entity {
+            id: ID!
+            foo: Foo!
+            bar: Bar!
+        }
+
+        type Bar @entity {
+            id: ID!
+            foo: Foo!
+        }
+    ";
+
+    let self_recursive = "
+        query {
+            foos {
+              ...FooFrag
+            }
+        }
+
+        fragment FooFrag on Foo {
+          id
+          foo {
+            ...FooFrag
+          }
+        }
+    ";
+    let res = insert_and_query(subgraph_id, schema, vec![], self_recursive).unwrap();
+    let data = res.to_result().unwrap_err()[0].to_string();
+    assert_eq!(data, "query has fragment cycle including `FooFrag`");
+
+    let co_recursive = "
+        query {
+          foos {
+            ...BarFrag
+          }
+        }
+
+        fragment BarFrag on Bar {
+          id
+          foo {
+             ...FooFrag
+          }
+        }
+
+        fragment FooFrag on Foo {
+          id
+          bar {
+            ...BarFrag
+          }
+        }
+    ";
+    let res = insert_and_query(subgraph_id, schema, vec![], co_recursive).unwrap();
+    let data = res.to_result().unwrap_err()[0].to_string();
+    assert_eq!(data, "query has fragment cycle including `BarFrag`");
+}
