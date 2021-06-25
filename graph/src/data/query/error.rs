@@ -69,6 +69,7 @@ pub enum QueryExecutionError {
     ScalarCoercionError(Pos, String, q::Value, String),
     TooComplex(u64, u64), // (complexity, max_complexity)
     TooDeep(u8),          // max_depth
+    CyclicalFragment(String),
     TooExpensive,
     Throttled,
     UndefinedFragment(String),
@@ -207,6 +208,7 @@ impl fmt::Display for QueryExecutionError {
                            return smaller collections", complexity, max_complexity)
             }
             TooDeep(max_depth) => write!(f, "query has a depth that exceeds the limit of `{}`", max_depth),
+            CyclicalFragment(name) =>write!(f, "query has fragment cycle including `{}`", name),
             UndefinedFragment(frag_name) => write!(f, "fragment `{}` is not defined", frag_name),
             IncorrectPrefetchResult{ .. } => write!(f, "Running query with prefetch \
                            and slow query resolution yielded different results. \

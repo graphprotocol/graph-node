@@ -1,5 +1,5 @@
 use graphql_parser::Pos;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::Instant;
@@ -23,11 +23,12 @@ use crate::{
     schema::api::ErrorPolicy,
 };
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum ComplexityError {
     TooDeep,
     Overflow,
     Invalid,
+    CyclicalFragment(String),
 }
 
 #[derive(Copy, Clone)]
@@ -174,8 +175,10 @@ impl Query {
             complexity: 0,
         };
 
-        query.validate_fields()?;
+        // It's important to check complexity first, so `validate_fields` doesn't risk a stack
+        // overflow from invalid queries.
         query.check_complexity(max_complexity, max_depth)?;
+        query.validate_fields()?;
 
         Ok(Arc::new(query))
     }
@@ -334,16 +337,16 @@ impl Query {
         max_complexity: Option<u64>,
         max_depth: u8,
     ) -> Result<(), Vec<QueryExecutionError>> {
+        let complexity = self.complexity(max_depth).map_err(|e| vec![e])?;
         if let Some(max_complexity) = max_complexity {
-            let complexity = self.complexity(max_depth).map_err(|e| vec![e])?;
             if complexity > max_complexity {
                 return Err(vec![QueryExecutionError::TooComplex(
                     complexity,
                     max_complexity,
                 )]);
             }
-            self.complexity = complexity;
         }
+        self.complexity = complexity;
         Ok(())
     }
 
@@ -354,12 +357,21 @@ impl Query {
     fn complexity(&self, max_depth: u8) -> Result<u64, QueryExecutionError> {
         let root_type = sast::get_root_query_type_def(self.schema.document()).unwrap();
 
-        match self.complexity_inner(root_type, &self.selection_set, max_depth, 0) {
+        match self.complexity_inner(
+            root_type,
+            &self.selection_set,
+            max_depth,
+            0,
+            &HashSet::new(),
+        ) {
             Ok(complexity) => Ok(complexity),
             Err(ComplexityError::Invalid) => Ok(0),
             Err(ComplexityError::TooDeep) => Err(QueryExecutionError::TooDeep(max_depth)),
             Err(ComplexityError::Overflow) => {
                 Err(QueryExecutionError::TooComplex(u64::max_value(), 0))
+            }
+            Err(ComplexityError::CyclicalFragment(name)) => {
+                Err(QueryExecutionError::CyclicalFragment(name))
             }
         }
     }
@@ -452,12 +464,13 @@ impl Query {
             })
     }
 
-    fn complexity_inner(
-        &self,
+    fn complexity_inner<'a>(
+        &'a self,
         ty: &s::TypeDefinition,
-        selection_set: &q::SelectionSet,
+        selection_set: &'a q::SelectionSet,
         max_depth: u8,
         depth: u8,
+        visited_fragments: &'a HashSet<&'a str>,
     ) -> Result<u64, ComplexityError> {
         use ComplexityError::*;
 
@@ -498,6 +511,7 @@ impl Query {
                             &field.selection_set,
                             max_depth,
                             depth + 1,
+                            visited_fragments,
                         )?;
 
                         // Non-collection queries pass through.
@@ -522,7 +536,19 @@ impl Query {
                         let def = self.get_fragment(&fragment.fragment_name);
                         let q::TypeCondition::On(type_name) = &def.type_condition;
                         let ty = get_named_type(schema, &type_name).ok_or(Invalid)?;
-                        self.complexity_inner(&ty, &def.selection_set, max_depth, depth + 1)
+
+                        // Copy `visited_fragments` on write.
+                        let mut visited_fragments = visited_fragments.clone();
+                        if !visited_fragments.insert(&fragment.fragment_name) {
+                            return Err(CyclicalFragment(fragment.fragment_name.clone()));
+                        }
+                        self.complexity_inner(
+                            &ty,
+                            &def.selection_set,
+                            max_depth,
+                            depth + 1,
+                            &visited_fragments,
+                        )
                     }
                     q::Selection::InlineFragment(fragment) => {
                         let ty = match &fragment.type_condition {
@@ -531,7 +557,13 @@ impl Query {
                             }
                             _ => ty.clone(),
                         };
-                        self.complexity_inner(&ty, &fragment.selection_set, max_depth, depth + 1)
+                        self.complexity_inner(
+                            &ty,
+                            &fragment.selection_set,
+                            max_depth,
+                            depth + 1,
+                            visited_fragments,
+                        )
                     }
                 }
                 .and_then(|complexity| total_complexity.checked_add(complexity).ok_or(Overflow))
