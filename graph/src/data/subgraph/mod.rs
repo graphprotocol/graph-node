@@ -13,10 +13,7 @@ use serde::ser;
 use serde_yaml;
 use slog::{debug, info, Logger};
 use stable_hash::prelude::*;
-use std::{
-    collections::{BTreeSet, HashSet},
-    marker::PhantomData,
-};
+use std::{collections::BTreeSet, marker::PhantomData};
 use thiserror::Error;
 use wasmparser;
 use web3::types::{Address, H256};
@@ -693,8 +690,8 @@ impl UnifiedMappingApiVersion {
 
     pub fn try_from_versions<'a>(
         versions: impl Iterator<Item = &'a Version>,
-    ) -> Result<Self, HashSet<&'a Version>> {
-        let unique_versions: HashSet<&Version> = versions.into_iter().collect();
+    ) -> Result<Self, BTreeSet<&'a Version>> {
+        let unique_versions: BTreeSet<&Version> = versions.into_iter().collect();
 
         let all_below_referential_version = unique_versions.iter().all(|v| *v < &API_VERSION_0_0_5);
         let all_the_same = unique_versions.len() == 1;
@@ -702,8 +699,7 @@ impl UnifiedMappingApiVersion {
         let unified_version: Option<Version> = match (all_below_referential_version, all_the_same) {
             (false, false) => return Err(unique_versions),
             (false, true) => Some(unique_versions.iter().nth(0).unwrap().deref().clone()),
-            (true, true) => None,
-            (true, false) => None,
+            (true, _) => None,
         };
 
         Ok(UnifiedMappingApiVersion(unified_version))
@@ -887,25 +883,19 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         }
 
         // For API versions newer than 0.0.5, validate that all mappings uses the same api_version
-        let referential_api_version = Version::new(0, 0, 5);
         let mappings = self.0.mappings();
-        let unique_api_versions: HashSet<&Version> = mappings
-            .iter()
-            .map(|mapping| &mapping.api_version)
-            .collect();
-        if unique_api_versions.len() > 1
-            && unique_api_versions
-                .iter()
-                .any(|version| *version >= &referential_api_version)
+        let versions_iterator = mappings.iter().map(|mapping| &mapping.api_version);
+        if let Err(different_api_versions) =
+            UnifiedMappingApiVersion::try_from_versions(versions_iterator)
         {
-            let error_msg = unique_api_versions
+            let error_msg = different_api_versions
                 .iter()
                 .map(ToString::to_string)
                 .join(", ");
             errors.push(SubgraphManifestValidationError::DifferentApiVersions(
                 error_msg,
             ));
-        }
+        };
 
         let mut networks = self
             .0
