@@ -100,6 +100,7 @@ lazy_static! {
     /// It is not safe to set something higher because Geth will silently override the gas limit
     /// with the default. This means that we do not support indexing against a Geth node with
     /// `RPCGasCap` set below 25 million.
+    // See also f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
     static ref ETH_CALL_GAS: u32 = std::env::var("GRAPH_ETH_CALL_GAS")
                                     .map(|s| s.parse::<u32>().expect("invalid GRAPH_ETH_CALL_GAS env var"))
                                     .unwrap_or(25_000_000);
@@ -494,6 +495,8 @@ impl EthereumAdapter {
                         "invalid opcode",
                         // Ethereum says 1024 is the stack sizes limit, so this is deterministic.
                         "stack limit reached 1024",
+                        // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61 for why the gas limit is considered deterministic.
+                        "out of gas",
                     ];
 
                     let as_solidity_revert_with_reason = |bytes: &[u8]| {
