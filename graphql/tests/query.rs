@@ -15,16 +15,15 @@ use graph::{
     data::graphql::{object, object_value},
     data::subgraph::schema::SubgraphError,
     data::{
-        query::CacheStatus,
         query::{QueryResults, QueryTarget},
         subgraph::SubgraphFeature,
     },
     prelude::{
-        async_trait, futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt,
-        o, q, serde_json, slog, tokio, BlockPtr, DeploymentHash, Entity, EntityKey,
-        EntityOperation, FutureExtension, GraphQlRunner as _, Logger, NodeId, Query, QueryError,
-        QueryExecutionError, QueryLoadManager, QueryResult, QueryStoreManager, QueryVariables,
-        Schema, SubgraphDeploymentEntity, SubgraphManifest, SubgraphName, SubgraphStore,
+        futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt, o, q,
+        serde_json, slog, BlockPtr, DeploymentHash, Entity, EntityKey, EntityOperation,
+        FutureExtension, GraphQlRunner as _, Logger, NodeId, Query, QueryError,
+        QueryExecutionError, QueryResult, QueryStoreManager, QueryVariables, Schema,
+        SubgraphDeploymentEntity, SubgraphManifest, SubgraphName, SubgraphStore,
         SubgraphVersionSwitchingMode, Subscription, SubscriptionError, Value,
     },
 };
@@ -281,24 +280,6 @@ where
         .first()
         .unwrap()
         .duplicate()
-}
-
-struct MockQueryLoadManager(Arc<tokio::sync::Semaphore>);
-
-#[async_trait]
-impl QueryLoadManager for MockQueryLoadManager {
-    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
-        // Unwrap: The semaphore is never closed.
-        self.0.clone().acquire_owned().await
-    }
-
-    fn record_work(&self, _shape_hash: u64, _duration: Duration, _cache_status: CacheStatus) {}
-}
-
-fn mock_query_load_manager() -> Arc<MockQueryLoadManager> {
-    Arc::new(MockQueryLoadManager(Arc::new(tokio::sync::Semaphore::new(
-        10,
-    ))))
 }
 
 /// Extract the data from a `QueryResult`, and panic if it has errors
@@ -904,7 +885,6 @@ fn query_complexity_subscriptions() {
             max_depth: 100,
             max_first: std::u32::MAX,
             max_skip: std::u32::MAX,
-            load_manager: mock_query_load_manager(),
         };
         let schema = STORE.subgraph_store().api_schema(&deployment.hash).unwrap();
 
@@ -953,7 +933,6 @@ fn query_complexity_subscriptions() {
             max_depth: 100,
             max_first: std::u32::MAX,
             max_skip: std::u32::MAX,
-            load_manager: mock_query_load_manager(),
         };
 
         // The extra introspection causes the complexity to go over.
@@ -1332,7 +1311,6 @@ fn subscription_gets_result_even_without_events() {
             max_depth: 100,
             max_first: std::u32::MAX,
             max_skip: std::u32::MAX,
-            load_manager: mock_query_load_manager(),
         };
         // Execute the subscription and expect at least one result to be
         // available in the result stream

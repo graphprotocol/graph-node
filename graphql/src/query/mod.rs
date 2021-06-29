@@ -49,7 +49,6 @@ where
         max_first: options.max_first,
         max_skip: options.max_skip,
         cache_status: Default::default(),
-        load_manager: options.load_manager.cheap_clone(),
     });
 
     if !query.is_query() {

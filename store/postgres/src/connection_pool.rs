@@ -4,6 +4,9 @@ use diesel::{
     Connection,
 };
 
+use graph::cheap_clone::CheapClone;
+use graph::prelude::tokio;
+use graph::prelude::tokio::time::Instant;
 use graph::{
     prelude::{
         anyhow::{self, anyhow, bail},
@@ -16,6 +19,7 @@ use graph::{
 };
 
 use std::fmt;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{collections::HashMap, sync::RwLock};
@@ -24,6 +28,21 @@ use postgres::config::{Config, Host};
 
 use crate::advisory_lock;
 use crate::{Shard, PRIMARY_SHARD};
+
+lazy_static::lazy_static! {
+    // There is typically no need to configure this. But this can be used to effectivey disable the
+    // query semaphore by setting it to a high number.
+    static ref EXTRA_QUERY_PERMITS: usize = {
+        std::env::var("GRAPH_EXTRA_QUERY_PERMITS")
+            .ok()
+            .map(|s| {
+                usize::from_str(&s).unwrap_or_else(|_| {
+                    panic!("GRAPH_EXTRA_QUERY_PERMITS must be a number, but is `{}`", s)
+                })
+            })
+            .unwrap_or(0)
+    };
+}
 
 pub struct ForeignServer {
     pub name: String,
@@ -203,6 +222,14 @@ pub struct ConnectionPool {
     limiter: Arc<Semaphore>,
     postgres_url: String,
     pub(crate) wait_stats: PoolWaitStats,
+
+    // Limits the number of graphql queries that may execute concurrently. Since one graphql query
+    // may require multiple DB queries, it is useful to organize the queue at the graphql level so
+    // that waiting queries consume few resources. Still this is placed here because the semaphore
+    // is sized acording to the DB connection pool size.
+    query_semaphore: Arc<tokio::sync::Semaphore>,
+    semaphore_wait_stats: Arc<RwLock<MovingStats>>,
+    semaphore_wait_gauge: Box<Gauge>,
 }
 
 #[derive(Clone)]
@@ -258,14 +285,11 @@ impl EventHandler {
         }
     }
 
-    fn add_wait_time(&self, duration: Duration) {
-        let wait_avg = {
-            let mut wait_stats = self.wait_stats.write().unwrap();
-            wait_stats.add(duration);
-            wait_stats.average()
-        };
-        let wait_avg = wait_avg.map(|wait_avg| wait_avg.as_millis()).unwrap_or(0);
-        self.wait_gauge.set(wait_avg as f64);
+    fn add_conn_wait_time(&self, duration: Duration) {
+        self.wait_stats
+            .write()
+            .unwrap()
+            .add_and_register(duration, &self.wait_gauge);
     }
 }
 
@@ -280,10 +304,10 @@ impl HandleEvent for EventHandler {
     fn handle_release(&self, _: e::ReleaseEvent) {}
     fn handle_checkout(&self, event: e::CheckoutEvent) {
         self.count_gauge.inc();
-        self.add_wait_time(event.duration());
+        self.add_conn_wait_time(event.duration());
     }
     fn handle_timeout(&self, event: e::TimeoutEvent) {
-        self.add_wait_time(event.timeout());
+        self.add_conn_wait_time(event.timeout());
         error!(self.logger, "Connection checkout timed out";
            "wait_ms" => event.timeout().as_millis(),
            "backtrace" => format!("{:?}", backtrace::Backtrace::new()),
@@ -331,9 +355,9 @@ impl ConnectionPool {
         let wait_stats = Arc::new(RwLock::new(MovingStats::default()));
         let event_handler = Box::new(EventHandler::new(
             logger_pool.clone(),
-            registry,
+            registry.cheap_clone(),
             wait_stats.clone(),
-            const_labels,
+            const_labels.clone(),
         ));
 
         // Connect to Postgres
@@ -372,6 +396,16 @@ impl ConnectionPool {
 
         let limiter = Arc::new(Semaphore::new(pool_size as usize));
         info!(logger_store, "Pool successfully connected to Postgres");
+
+        let semaphore_wait_gauge = registry
+            .new_gauge(
+                "query_semaphore_wait_ms",
+                "Moving average of time spent running queries",
+                const_labels,
+            )
+            .expect("failed to create `query_effort_ms` counter");
+        let max_concurrent_queries = pool_size as usize + *EXTRA_QUERY_PERMITS;
+        let query_semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_queries));
         ConnectionPool {
             logger: logger_pool,
             shard: Shard::new(shard_name.to_string())
@@ -381,6 +415,9 @@ impl ConnectionPool {
             fdw_pool,
             limiter,
             wait_stats,
+            semaphore_wait_stats: Arc::new(RwLock::new(MovingStats::default())),
+            query_semaphore,
+            semaphore_wait_gauge,
         }
     }
 
@@ -557,6 +594,16 @@ impl ConnectionPool {
             })
             .await;
         res.unwrap_or_else(|err| die(&self.logger, "migrations were canceled", &err))
+    }
+
+    pub(crate) async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+        let start = Instant::now();
+        let permit = self.query_semaphore.cheap_clone().acquire_owned().await;
+        self.semaphore_wait_stats
+            .write()
+            .unwrap()
+            .add_and_register(start.elapsed(), &self.semaphore_wait_gauge);
+        permit
     }
 
     fn configure_fdw(&self, servers: &Vec<ForeignServer>) -> Result<(), StoreError> {

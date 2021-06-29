@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use graph::prelude::StoreError;
+use graph::prelude::{tokio, StoreError};
 use graph::{
     components::store::BlockStore as BlockStoreTrait,
     prelude::{error, warn, BlockNumber, BlockPtr, EthereumNetworkIdentifier, Logger},
@@ -321,6 +321,10 @@ impl BlockStore {
             block_store.add_chain_store(&chain, ChainStatus::ReadOnly, false)?;
         }
         Ok(block_store)
+    }
+
+    pub(crate) async fn query_permit_primary(&self) -> tokio::sync::OwnedSemaphorePermit {
+        self.primary.query_permit().await
     }
 
     fn add_chain_store(

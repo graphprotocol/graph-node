@@ -212,6 +212,10 @@ impl StoreResolver {
 impl Resolver for StoreResolver {
     const CACHEABLE: bool = true;
 
+    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+        self.store.query_permit().await
+    }
+
     fn prefetch(
         &self,
         ctx: &ExecutionContext<Self>,

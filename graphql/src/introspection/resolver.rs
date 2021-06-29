@@ -346,10 +346,15 @@ impl IntrospectionResolver {
 }
 
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
+#[async_trait]
 impl Resolver for IntrospectionResolver {
     // `IntrospectionResolver` is not used as a "top level" resolver,
     // see `fn as_introspection_context`, so this value is irrelevant.
     const CACHEABLE: bool = false;
+
+    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+        unreachable!()
+    }
 
     fn prefetch(
         &self,

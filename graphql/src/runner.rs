@@ -288,7 +288,6 @@ where
                 max_depth: *GRAPHQL_MAX_DEPTH,
                 max_first: *GRAPHQL_MAX_FIRST,
                 max_skip: *GRAPHQL_MAX_SKIP,
-                load_manager: self.load_manager.cheap_clone(),
             },
         )
         .await

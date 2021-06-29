@@ -230,8 +230,6 @@ where
 
     /// Records whether this was a cache hit, used for logging.
     pub(crate) cache_status: AtomicCell<CacheStatus>,
-
-    pub load_manager: Arc<dyn QueryLoadManager>,
 }
 
 // Helpers to look for types and fields on both the introspection and regular schemas.
@@ -282,9 +280,8 @@ where
             max_first: std::u32::MAX,
             max_skip: std::u32::MAX,
 
-            // `cache_status` and `load_manager` are dead values for the introspection context.
+            // `cache_status` is a dead value for the introspection context.
             cache_status: AtomicCell::new(CacheStatus::Miss),
-            load_manager: self.load_manager.cheap_clone(),
         }
     }
 }
@@ -392,10 +389,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
     let execute_selection_set = selection_set.cheap_clone();
     let execute_root_type = root_type.cheap_clone();
     let run_query = async move {
-        // Limiting the cuncurrent queries prevents increase in resource usage when the DB is
-        // contended and queries start queing up. This semaphore organizes the queueing so that
-        // waiting queries consume few resources.
-        let _permit = execute_ctx.load_manager.query_permit().await;
+        let _permit = execute_ctx.resolver.query_permit().await;
 
         let logger = execute_ctx.logger.clone();
         let query_text = execute_ctx.query.query_text.cheap_clone();

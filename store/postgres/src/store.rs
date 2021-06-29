@@ -9,7 +9,8 @@ use graph::{
     constraint_violation,
     data::subgraph::status,
     prelude::{
-        web3::types::Address, BlockPtr, CheapClone, DeploymentHash, QueryExecutionError, StoreError,
+        tokio, web3::types::Address, BlockPtr, CheapClone, DeploymentHash, QueryExecutionError,
+        StoreError,
     },
 };
 
@@ -78,6 +79,7 @@ impl QueryStoreManager for Store {
     }
 }
 
+#[async_trait]
 impl StatusStore for Store {
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
         let mut infos = self.subgraph_store.status(filter)?;
@@ -114,5 +116,10 @@ impl StatusStore for Store {
     ) -> graph::prelude::DynTryFuture<'a, Option<[u8; 32]>> {
         self.subgraph_store
             .get_proof_of_indexing(subgraph_id, indexer, block)
+    }
+
+    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+        // Status queries go to the primary shard.
+        self.block_store.query_permit_primary().await
     }
 }

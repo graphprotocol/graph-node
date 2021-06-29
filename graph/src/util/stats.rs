@@ -4,6 +4,7 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 use lazy_static::lazy_static;
+use prometheus::Gauge;
 
 lazy_static! {
     pub static ref WINDOW_SIZE: Duration = {
@@ -178,6 +179,16 @@ impl MovingStats {
 
     pub fn duration(&self) -> Duration {
         self.total.duration
+    }
+
+    /// Adds `duration` to the stats, and register the average ms to `avg_gauge`.
+    pub fn add_and_register(&mut self, duration: Duration, avg_gauge: &Gauge) {
+        let wait_avg = {
+            self.add(duration);
+            self.average()
+        };
+        let wait_avg = wait_avg.map(|wait_avg| wait_avg.as_millis()).unwrap_or(0);
+        avg_gauge.set(wait_avg as f64);
     }
 }
 
