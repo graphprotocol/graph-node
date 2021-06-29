@@ -47,7 +47,5 @@ pub trait GraphQlRunner: Send + Sync + 'static {
 
 #[async_trait]
 pub trait QueryLoadManager: Send + Sync {
-    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit;
-
     fn record_work(&self, shape_hash: u64, duration: Duration, cache_status: CacheStatus);
 }

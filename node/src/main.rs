@@ -148,9 +148,6 @@ async fn main() {
     // Obtain metrics server port
     let metrics_port = opt.metrics_port;
 
-    // Obtain STORE_CONNECTION_POOL_SIZE setting
-    let store_conn_pool_size: u32 = opt.store_connection_pool_size;
-
     let arweave_adapter = Arc::new(ArweaveAdapter::new(opt.arweave_api.clone()));
 
     let three_box_adapter = Arc::new(ThreeBoxAdapter::new(opt.three_box_api.clone()));
@@ -226,7 +223,6 @@ async fn main() {
             &logger,
             expensive_queries,
             metrics_registry.clone(),
-            store_conn_pool_size as usize,
         ));
         let graphql_runner = Arc::new(GraphQlRunner::new(
             &logger,

@@ -110,4 +110,8 @@ impl QueryStoreTrait for QueryStore {
     fn network_name(&self) -> &str {
         &self.site.network
     }
+
+    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+        self.store.query_permit(self.replica_id).await
+    }
 }

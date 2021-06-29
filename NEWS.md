@@ -1,5 +1,10 @@
 # NEWS
 
+## Unreleased
+
+### Metrics
+- `query_semaphore_wait_ms` is now by shard, and has the `pool` and `shard` labels.
+
 ## 0.23.1
 
 - Fix ipfs timeout detection [#2584](https://github.com/graphprotocol/graph-node/pull/2584).

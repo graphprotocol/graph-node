@@ -1345,11 +1345,18 @@ pub trait QueryStore: Send + Sync {
     fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError>;
 
     fn network_name(&self) -> &str;
+
+    /// A permit should be acquired before starting query execution.
+    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit;
 }
 
 /// A view of the store that can provide information about the indexing status
 /// of any subgraph and any deployment
+#[async_trait]
 pub trait StatusStore: Send + Sync + 'static {
+    /// A permit should be acquired before starting query execution.
+    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit;
+
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
 
     /// Support for the explorer-specific API

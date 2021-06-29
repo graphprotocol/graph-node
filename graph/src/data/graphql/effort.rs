@@ -15,7 +15,7 @@ use crate::components::store::PoolWaitStats;
 use crate::data::graphql::shape_hash::shape_hash;
 use crate::data::query::{CacheStatus, QueryExecutionError};
 use crate::prelude::q;
-use crate::prelude::{async_trait, debug, info, o, warn, CheapClone, Logger, QueryLoadManager};
+use crate::prelude::{async_trait, debug, info, o, warn, Logger, QueryLoadManager};
 use crate::util::stats::{MovingStats, BIN_SIZE, WINDOW_SIZE};
 
 const ZERO_DURATION: Duration = Duration::from_millis(0);
@@ -52,19 +52,6 @@ lazy_static! {
     static ref LOAD_MANAGEMENT_DISABLED: bool = *LOAD_THRESHOLD == ZERO_DURATION;
 
     static ref SIMULATE: bool = env::var("GRAPH_LOAD_SIMULATE").is_ok();
-
-    // There is typically no need to configure this. But this can be used to effectivey disable the
-    // semaphore by setting it to a high number.
-    static ref EXTRA_QUERY_PERMITS: usize = {
-        env::var("GRAPH_EXTRA_QUERY_PERMITS")
-            .ok()
-            .map(|s| {
-                usize::from_str(&s).unwrap_or_else(|_| {
-                    panic!("GRAPH_EXTRA_QUERY_PERMITS must be a number, but is `{}`", s)
-                })
-            })
-            .unwrap_or(0)
-    };
 }
 
 struct QueryEffort {
@@ -252,11 +239,6 @@ pub struct LoadManager {
     kill_state: RwLock<KillState>,
     effort_gauge: Box<Gauge>,
     query_counters: HashMap<CacheStatus, Counter>,
-
-    // Limits the number of graphql queries that may execute concurrently.
-    query_semaphore: Arc<tokio::sync::Semaphore>,
-    semaphore_wait_stats: RwLock<MovingStats>,
-    semaphore_wait_gauge: Box<Gauge>,
 }
 
 impl LoadManager {
@@ -264,7 +246,6 @@ impl LoadManager {
         logger: &Logger,
         blocked_queries: Vec<Arc<q::Document>>,
         registry: Arc<dyn MetricsRegistry>,
-        store_conn_pool_size: usize,
     ) -> Self {
         let logger = logger.new(o!("component" => "LoadManager"));
         let blocked_queries = blocked_queries
@@ -302,19 +283,6 @@ impl LoadManager {
             })
             .collect::<HashMap<_, _>>();
 
-        let semaphore_wait_gauge = registry
-            .new_gauge(
-                "query_semaphore_wait_ms",
-                "Moving average of time spent running queries",
-                HashMap::new(),
-            )
-            .expect("failed to create `query_effort_ms` counter");
-
-        // A query is always consuming a CPU core, or a DB connection, or both.
-        // So if more than `store_conn_pool_size + num_cpus::get()` queries are executing,
-        // there will be contention for resources.
-        let max_concurrent_queries = store_conn_pool_size + num_cpus::get() + *EXTRA_QUERY_PERMITS;
-        let query_semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_queries));
         Self {
             logger,
             effort: QueryEffort::default(),
@@ -323,9 +291,6 @@ impl LoadManager {
             kill_state: RwLock::new(KillState::new()),
             effort_gauge,
             query_counters,
-            query_semaphore,
-            semaphore_wait_stats: RwLock::new(MovingStats::default()),
-            semaphore_wait_gauge,
         }
     }
 
@@ -458,12 +423,10 @@ impl LoadManager {
 
     fn overloaded(&self, wait_stats: &PoolWaitStats) -> (bool, Duration) {
         let store_avg = wait_stats.read().unwrap().average();
-        let semaphore_avg = self.semaphore_wait_stats.read().unwrap().average();
-        let max_avg = store_avg.max(semaphore_avg);
-        let overloaded = max_avg
+        let overloaded = store_avg
             .map(|average| average > *LOAD_THRESHOLD)
             .unwrap_or(false);
-        (overloaded, max_avg.unwrap_or(ZERO_DURATION))
+        (overloaded, store_avg.unwrap_or(ZERO_DURATION))
     }
 
     fn kill_state(&self) -> (f64, Instant) {
@@ -544,30 +507,10 @@ impl LoadManager {
         }
         kill_rate
     }
-
-    fn add_wait_time(&self, duration: Duration) {
-        let wait_avg = {
-            let mut wait_stats = self.semaphore_wait_stats.write().unwrap();
-            wait_stats.add(duration);
-            wait_stats.average()
-        };
-        if let Some(wait_avg) = wait_avg.map(|wait_avg| wait_avg.as_millis()) {
-            self.semaphore_wait_gauge.set(wait_avg as f64);
-        }
-    }
 }
 
 #[async_trait]
 impl QueryLoadManager for LoadManager {
-    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
-        let start = Instant::now();
-
-        // Unwrap: The semaphore is never closed.
-        let permit = self.query_semaphore.cheap_clone().acquire_owned().await;
-        self.add_wait_time(start.elapsed());
-        permit
-    }
-
     fn record_work(&self, shape_hash: u64, duration: Duration, cache_status: CacheStatus) {
         self.query_counters
             .get(&cache_status)

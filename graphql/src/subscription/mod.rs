@@ -35,8 +35,6 @@ pub struct SubscriptionExecutionOptions {
 
     /// Maximum value for the `skip` argument.
     pub max_skip: u32,
-
-    pub load_manager: Arc<dyn QueryLoadManager>,
 }
 
 pub async fn execute_subscription(
@@ -94,7 +92,6 @@ async fn create_source_event_stream(
         max_first: options.max_first,
         max_skip: options.max_skip,
         cache_status: Default::default(),
-        load_manager: options.load_manager.cheap_clone(),
     };
 
     let subscription_type = ctx
@@ -161,7 +158,6 @@ fn map_source_to_response_stream(
         max_depth: _,
         max_first,
         max_skip,
-        load_manager,
     } = options;
 
     Box::new(
@@ -181,7 +177,6 @@ fn map_source_to_response_stream(
                     timeout,
                     max_first,
                     max_skip,
-                    load_manager.cheap_clone(),
                 )
                 .boxed(),
             }),
@@ -197,7 +192,6 @@ async fn execute_subscription_event(
     timeout: Option<Duration>,
     max_first: u32,
     max_skip: u32,
-    load_manager: Arc<dyn QueryLoadManager>,
 ) -> Arc<QueryResult> {
     debug!(logger, "Execute subscription event"; "event" => format!("{:?}", event));
 
@@ -226,7 +220,6 @@ async fn execute_subscription_event(
         max_first,
         max_skip,
         cache_status: Default::default(),
-        load_manager,
     });
 
     let subscription_type = match ctx.query.schema.subscription_type.as_ref() {

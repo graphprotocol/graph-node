@@ -51,7 +51,6 @@ lazy_static! {
         &*LOGGER,
         Vec::new(),
         Arc::new(MockMetricsRegistry::new()),
-        CONN_POOL_SIZE as usize
     ));
     static ref STORE_POOL_CONFIG: (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager>) =
         build_store();

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::execution::ExecutionContext;
-use graph::prelude::{async_trait, q, s, Error, QueryExecutionError, StoreEventStreamBox};
+use graph::prelude::{async_trait, q, s, tokio, Error, QueryExecutionError, StoreEventStreamBox};
 use graph::{
     data::graphql::{ext::DocumentExt, ObjectOrInterface},
     prelude::QueryResult,
@@ -11,6 +11,8 @@ use graph::{
 #[async_trait]
 pub trait Resolver: Sized + Send + Sync + 'static {
     const CACHEABLE: bool;
+
+    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit;
 
     /// Prepare for executing a query by prefetching as much data as possible
     fn prefetch(

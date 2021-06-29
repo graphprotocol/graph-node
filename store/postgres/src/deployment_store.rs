@@ -7,7 +7,7 @@ use futures03::FutureExt as _;
 use graph::components::store::{EntityType, StoredDynamicDataSource};
 use graph::data::subgraph::status;
 use graph::prelude::{
-    CancelHandle, CancelToken, CancelableError, PoolWaitStats, SubgraphDeploymentEntity,
+    tokio, CancelHandle, CancelToken, CancelableError, PoolWaitStats, SubgraphDeploymentEntity,
 };
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
@@ -498,6 +498,17 @@ impl DeploymentStore {
             ReplicaId::ReadOnly(idx) => self.read_only_conn(idx)?,
         };
         Ok(conn)
+    }
+
+    pub(crate) async fn query_permit(
+        &self,
+        replica: ReplicaId,
+    ) -> tokio::sync::OwnedSemaphorePermit {
+        let pool = match replica {
+            ReplicaId::Main => &self.conn,
+            ReplicaId::ReadOnly(idx) => &self.read_only_pools[idx],
+        };
+        pool.query_permit().await
     }
 
     pub(crate) fn wait_stats(&self, replica: ReplicaId) -> &PoolWaitStats {

@@ -163,11 +163,16 @@ where
     }
 }
 
+#[async_trait]
 impl<S> Resolver for IndexNodeResolver<S>
 where
     S: StatusStore,
 {
     const CACHEABLE: bool = false;
+
+    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+        self.store.query_permit().await
+    }
 
     fn prefetch(
         &self,

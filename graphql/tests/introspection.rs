@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use graph::data::graphql::{object, object_value, ObjectOrInterface};
 use graph::prelude::{
-    o, q, s, slog, tokio, ApiSchema, DeploymentHash, Logger, Query, QueryExecutionError,
-    QueryResult, Schema,
+    async_trait, o, q, s, slog, tokio, ApiSchema, DeploymentHash, Logger, Query,
+    QueryExecutionError, QueryResult, Schema,
 };
 use graph_graphql::prelude::{
     api_schema, execute_query, ExecutionContext, Query as PreparedQuery, QueryExecutionOptions,
@@ -19,6 +19,7 @@ use test_store::LOAD_MANAGER;
 #[derive(Clone)]
 pub struct MockResolver;
 
+#[async_trait]
 impl Resolver for MockResolver {
     const CACHEABLE: bool = false;
 
@@ -50,6 +51,12 @@ impl Resolver for MockResolver {
         _arguments: &HashMap<&str, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
         Ok(q::Value::Null)
+    }
+
+    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+        Arc::new(tokio::sync::Semaphore::new(1))
+            .acquire_owned()
+            .await
     }
 }
 
