@@ -6,7 +6,6 @@ use web3::types::{
 
 use crate::{
     blockchain::BlockPtr,
-    cheap_clone::CheapClone,
     prelude::{BlockNumber, DeploymentHash, EntityKey, ToEntityKey},
 };
 
@@ -57,48 +56,6 @@ impl LightEthereumBlockExt for LightEthereumBlock {
 
     fn block_ptr(&self) -> BlockPtr {
         BlockPtr::from((self.hash.unwrap(), self.number.unwrap().as_u64()))
-    }
-}
-
-/// This is used in `EthereumAdapter::triggers_in_block`, called when re-processing a block for
-/// newly created data sources. This allows the re-processing to be reorg safe without having to
-/// always fetch the full block data.
-#[derive(Clone, Debug)]
-pub enum BlockFinality {
-    /// If a block is final, we only need the header and the triggers.
-    Final(Arc<LightEthereumBlock>),
-
-    // If a block may still be reorged, we need to work with more local data.
-    NonFinal(EthereumBlockWithCalls),
-}
-
-impl BlockFinality {
-    pub fn light_block(&self) -> Arc<LightEthereumBlock> {
-        match self {
-            BlockFinality::Final(block) => block.cheap_clone(),
-            BlockFinality::NonFinal(block) => block.ethereum_block.block.cheap_clone(),
-        }
-    }
-
-    pub fn number(&self) -> BlockNumber {
-        match self {
-            BlockFinality::Final(block) => block.number(),
-            BlockFinality::NonFinal(block) => block.ethereum_block.block.number(),
-        }
-    }
-
-    pub fn ptr(&self) -> BlockPtr {
-        match self {
-            BlockFinality::Final(block) => block.block_ptr(),
-            BlockFinality::NonFinal(block) => block.ethereum_block.block.block_ptr(),
-        }
-    }
-
-    pub fn parent_ptr(&self) -> Option<BlockPtr> {
-        match self {
-            BlockFinality::Final(block) => block.parent_ptr(),
-            BlockFinality::NonFinal(block) => block.ethereum_block.block.parent_ptr(),
-        }
     }
 }
 
@@ -183,15 +140,6 @@ impl<'a> From<&'a EthereumBlock> for BlockPtr {
 impl<'a> From<&'a EthereumCall> for BlockPtr {
     fn from(call: &'a EthereumCall) -> BlockPtr {
         BlockPtr::from((call.block_hash, call.block_number))
-    }
-}
-
-impl<'a> From<&'a BlockFinality> for BlockPtr {
-    fn from(block: &'a BlockFinality) -> BlockPtr {
-        match block {
-            BlockFinality::Final(b) => BlockPtr::from(&**b),
-            BlockFinality::NonFinal(b) => BlockPtr::from(&b.ethereum_block),
-        }
     }
 }
 

@@ -34,6 +34,7 @@ use web3::api::Web3;
 use web3::transports::batch::Batch;
 use web3::types::Filter;
 
+use crate::chain::BlockFinality;
 use crate::{
     adapter::{
         EthGetLogsFilter, EthereumAdapter as EthereumAdapterTrait, EthereumBlockFilter,
@@ -42,7 +43,7 @@ use crate::{
     },
     transport::Transport,
     trigger::{EthereumBlockTriggerType, EthereumTrigger},
-    TriggerFilter, WrappedBlockFinality,
+    TriggerFilter,
 };
 
 #[derive(Clone)]
@@ -1485,7 +1486,7 @@ pub(crate) async fn blocks_with_triggers(
         .and_then(
             move |block| match triggers_by_block.remove(&(block.number() as BlockNumber)) {
                 Some(triggers) => Ok(BlockWithTriggers::new(
-                    WrappedBlockFinality(BlockFinality::Final(Arc::new(block))),
+                    BlockFinality::Final(Arc::new(block)),
                     triggers,
                 )),
                 None => Err(anyhow!(

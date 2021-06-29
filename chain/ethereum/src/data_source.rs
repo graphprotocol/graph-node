@@ -45,7 +45,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         block: Arc<<Chain as Blockchain>::Block>,
         logger: &Logger,
     ) -> Result<Option<<Chain as Blockchain>::MappingTrigger>, Error> {
-        let block = block.0.light_block();
+        let block = block.light_block();
         self.match_and_decode(trigger, block, logger)
     }
 

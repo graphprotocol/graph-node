@@ -22,7 +22,7 @@ pub use crate::adapter::{
     EthereumAdapter as EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError,
     MockEthereumAdapter, ProviderEthRpcMetrics, SubgraphEthRpcMetrics, TriggerFilter,
 };
-pub use crate::chain::{Chain, WrappedBlockFinality};
+pub use crate::chain::Chain;
 pub use crate::network::EthereumNetworks;
 
 #[cfg(test)]
