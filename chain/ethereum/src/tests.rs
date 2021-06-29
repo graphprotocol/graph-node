@@ -2,11 +2,14 @@ use std::sync::Arc;
 
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr},
-    prelude::{BlockFinality, EthereumCall},
+    prelude::EthereumCall,
 };
 use web3::types::*;
 
-use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger};
+use crate::{
+    chain::BlockFinality,
+    trigger::{EthereumBlockTriggerType, EthereumTrigger},
+};
 
 #[test]
 fn test_trigger_ordering() {
@@ -82,10 +85,8 @@ fn test_trigger_ordering() {
     ];
 
     // Test that `BlockWithTriggers` sorts the triggers.
-    let block_with_triggers = BlockWithTriggers::<crate::Chain>::new(
-        crate::WrappedBlockFinality(BlockFinality::Final(Default::default())),
-        triggers,
-    );
+    let block_with_triggers =
+        BlockWithTriggers::<crate::Chain>::new(BlockFinality::Final(Default::default()), triggers);
 
     assert_eq!(
         block_with_triggers.trigger_data,

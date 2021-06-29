@@ -3,7 +3,7 @@ use std::iter::FromIterator;
 use std::sync::Arc;
 
 use anyhow::{Context, Error};
-use graph::prelude::EthereumCallCache;
+use graph::prelude::{EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt};
 use graph::{
     blockchain::{
         block_stream::{
@@ -17,9 +17,9 @@ use graph::{
     components::{ethereum::NodeCapabilities, store::DeploymentLocator},
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
-        async_trait, error, lazy_static, o, serde_yaml, web3::types::H256, BlockFinality,
-        BlockNumber, ChainStore, DeploymentHash, EthereumBlockWithCalls, Future01CompatExt,
-        LinkResolver, Logger, LoggerFactory, MetricsRegistry, NodeId, SubgraphStore,
+        async_trait, error, lazy_static, o, serde_yaml, web3::types::H256, BlockNumber, ChainStore,
+        DeploymentHash, EthereumBlockWithCalls, Future01CompatExt, LinkResolver, Logger,
+        LoggerFactory, MetricsRegistry, NodeId, SubgraphStore,
     },
 };
 
@@ -106,7 +106,7 @@ impl Chain {
 
 #[async_trait]
 impl Blockchain for Chain {
-    type Block = WrappedBlockFinality;
+    type Block = BlockFinality;
 
     type DataSource = DataSource;
 
@@ -252,17 +252,49 @@ impl Blockchain for Chain {
     }
 }
 
-// ETHDEP: Wrapper until we can move BlockFinality into this crate
-#[derive(Clone)]
-pub struct WrappedBlockFinality(pub BlockFinality);
+/// This is used in `EthereumAdapter::triggers_in_block`, called when re-processing a block for
+/// newly created data sources. This allows the re-processing to be reorg safe without having to
+/// always fetch the full block data.
+#[derive(Clone, Debug)]
+pub enum BlockFinality {
+    /// If a block is final, we only need the header and the triggers.
+    Final(Arc<LightEthereumBlock>),
 
-impl Block for WrappedBlockFinality {
+    // If a block may still be reorged, we need to work with more local data.
+    NonFinal(EthereumBlockWithCalls),
+}
+
+impl BlockFinality {
+    pub(crate) fn light_block(&self) -> Arc<LightEthereumBlock> {
+        match self {
+            BlockFinality::Final(block) => block.cheap_clone(),
+            BlockFinality::NonFinal(block) => block.ethereum_block.block.cheap_clone(),
+        }
+    }
+}
+
+impl<'a> From<&'a BlockFinality> for BlockPtr {
+    fn from(block: &'a BlockFinality) -> BlockPtr {
+        match block {
+            BlockFinality::Final(b) => BlockPtr::from(&**b),
+            BlockFinality::NonFinal(b) => BlockPtr::from(&b.ethereum_block),
+        }
+    }
+}
+
+impl Block for BlockFinality {
     fn ptr(&self) -> BlockPtr {
-        self.0.ptr()
+        match self {
+            BlockFinality::Final(block) => block.block_ptr(),
+            BlockFinality::NonFinal(block) => block.ethereum_block.block.block_ptr(),
+        }
     }
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
-        self.0.parent_ptr()
+        match self {
+            BlockFinality::Final(block) => block.parent_ptr(),
+            BlockFinality::NonFinal(block) => block.ethereum_block.block.parent_ptr(),
+        }
     }
 }
 
@@ -320,7 +352,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     async fn triggers_in_block(
         &self,
         logger: &Logger,
-        block: WrappedBlockFinality,
+        block: BlockFinality,
         filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         let block = get_calls(
@@ -328,7 +360,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             logger.clone(),
             self.ethrpc_metrics.clone(),
             filter.requires_traces(),
-            block.0,
+            block,
         )
         .await?;
 
@@ -356,10 +388,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 ));
                 triggers.append(&mut parse_call_triggers(&filter.call, &full_block));
                 triggers.append(&mut parse_block_triggers(filter.block.clone(), &full_block));
-                Ok(BlockWithTriggers::new(
-                    WrappedBlockFinality(block),
-                    triggers,
-                ))
+                Ok(BlockWithTriggers::new(block, triggers))
             }
         }
     }
@@ -374,13 +403,13 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         ptr: BlockPtr,
         offset: BlockNumber,
-    ) -> Result<Option<WrappedBlockFinality>, Error> {
+    ) -> Result<Option<BlockFinality>, Error> {
         let block = self.chain_store.ancestor_block(ptr, offset)?;
         Ok(block.map(|block| {
-            WrappedBlockFinality(BlockFinality::NonFinal(EthereumBlockWithCalls {
+            BlockFinality::NonFinal(EthereumBlockWithCalls {
                 ethereum_block: block,
                 calls: None,
-            }))
+            })
         }))
     }
 
