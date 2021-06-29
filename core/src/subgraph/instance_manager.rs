@@ -1,14 +1,13 @@
+use super::loader::load_dynamic_data_sources;
+use super::loader::load_dynamic_data_sources;
+use super::SubgraphInstance;
+use super::SubgraphInstance;
+use crate::subgraph::registrar::IPFS_SUBGRAPH_LOADING_TIMEOUT;
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
 use graph::components::arweave::ArweaveAdapter;
 use graph::components::three_box::ThreeBoxAdapter;
 use graph::data::subgraph::UnifiedMappingApiVersion;
-use lazy_static::lazy_static;
-use std::collections::{BTreeSet, HashMap};
-use std::sync::{Arc, RwLock};
-use std::time::Instant;
-use tokio::task;
-
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::util::lfu_cache::LfuCache;
 use graph::{blockchain::block_stream::BlockStreamMetrics, components::store::WritableStore};
@@ -26,9 +25,12 @@ use graph::{
     components::store::{DeploymentId, DeploymentLocator, ModificationsAndCache},
 };
 use graph::{components::ethereum::NodeCapabilities, data::store::scalar::Bytes};
-
-use super::loader::load_dynamic_data_sources;
-use super::SubgraphInstance;
+use graph_chain_ethereum::{SubgraphEthRpcMetrics, WrappedBlockFinality};
+use lazy_static::lazy_static;
+use std::collections::{BTreeSet, HashMap};
+use std::sync::{Arc, RwLock};
+use std::time::Instant;
+use tokio::task;
 
 lazy_static! {
     /// Size limit of the entity LFU cache, in bytes.
@@ -354,7 +356,8 @@ where
             .with_context(|| format!("no chain configured for network {}", network))?
             .clone();
 
-        let triggers_adapter = chain.triggers_adapter(&deployment, &required_capabilities, manifest.unified_mapping_api_version()).map_err(|e|
+        let unified_mapping_api_version = manifest.unified_mapping_api_version()?;
+        let triggers_adapter = chain.triggers_adapter(&deployment, &required_capabilities, unified_mapping_api_version).map_err(|e|
                 anyhow!(
                 "expected triggers adapter that matches deployment {} with required capabilities: {}: {}",
                 &deployment,
@@ -404,7 +407,7 @@ where
         );
 
         let features = manifest.features.clone();
-        let unified_api_version = manifest.unified_mapping_api_version();
+        let unified_api_version = manifest.unified_mapping_api_version()?;
         let instance =
             SubgraphInstance::from_manifest(&logger, manifest, host_builder, host_metrics.clone())?;
 

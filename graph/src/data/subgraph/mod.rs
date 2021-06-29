@@ -394,8 +394,8 @@ pub enum SubgraphManifestValidationError {
     SchemaValidationError(Vec<SchemaValidationError>),
     #[error("the graft base is invalid: {0}")]
     GraftBaseInvalid(String),
-    #[error("subgraph must use a single apiVersion across its data sources. Found: {0}")]
-    DifferentApiVersions(String),
+    #[error("subgraph must use a single apiVersion across its data sources. Found: {}", format_versions(.0))]
+    DifferentApiVersions(BTreeSet<Version>),
 }
 
 #[derive(Error, Debug)]
@@ -690,14 +690,14 @@ impl UnifiedMappingApiVersion {
 
     pub fn try_from_versions<'a>(
         versions: impl Iterator<Item = &'a Version>,
-    ) -> Result<Self, BTreeSet<&'a Version>> {
-        let unique_versions: BTreeSet<&Version> = versions.into_iter().collect();
+    ) -> Result<Self, DifferentMappingApiVersions> {
+        let unique_versions: BTreeSet<Version> = versions.into_iter().cloned().collect();
 
-        let all_below_referential_version = unique_versions.iter().all(|v| *v < &API_VERSION_0_0_5);
+        let all_below_referential_version = unique_versions.iter().all(|v| *v < API_VERSION_0_0_5);
         let all_the_same = unique_versions.len() == 1;
 
         let unified_version: Option<Version> = match (all_below_referential_version, all_the_same) {
-            (false, false) => return Err(unique_versions),
+            (false, false) => return Err(unique_versions.into()),
             (false, true) => Some(unique_versions.iter().nth(0).unwrap().deref().clone()),
             (true, _) => None,
         };
@@ -716,21 +716,49 @@ fn unified_mapping_api_version_from_iterator() {
         vec![Version::new(0, 0, 3), Version::new(0, 0, 5)], // Err({0.0.3, 0.0.5})
         vec![Version::new(0, 0, 6), Version::new(0, 0, 5)], // Err({0.0.5, 0.0.6})
     ];
-    let output = [
+    let output: [Result<UnifiedMappingApiVersion, DifferentMappingApiVersions>; 6] = [
         Ok(UnifiedMappingApiVersion(Some(Version::new(0, 0, 5)))),
         Ok(UnifiedMappingApiVersion(Some(Version::new(0, 0, 6)))),
         Ok(UnifiedMappingApiVersion(None)),
         Ok(UnifiedMappingApiVersion(None)),
-        Err(input[4].iter().collect::<HashSet<&Version>>()),
-        Err(input[5].iter().collect::<HashSet<&Version>>()),
+        Err(input[4]
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<Version>>()
+            .into()),
+        Err(input[5]
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<Version>>()
+            .into()),
     ];
     for (version_vec, expected_unified_version) in input.iter().zip(output.iter()) {
         let unified = UnifiedMappingApiVersion::try_from_versions(version_vec.iter());
-        assert_eq!(
-            unified, *expected_unified_version,
-            "input was: {:?}",
-            version_vec
-        );
+        match (unified, expected_unified_version) {
+            (Ok(a), Ok(b)) => assert_eq!(a, *b),
+            (Err(a), Err(b)) => assert_eq!(a, *b),
+            _ => panic!(),
+        }
+    }
+}
+
+#[derive(Error, Debug, PartialEq)]
+#[error("Expected a single apiVersion for mapings. Found: {}.", format_versions(.0))]
+pub struct DifferentMappingApiVersions(BTreeSet<Version>);
+
+fn format_versions(versions: &BTreeSet<Version>) -> String {
+    versions.iter().map(ToString::to_string).join(", ")
+}
+
+impl From<BTreeSet<Version>> for DifferentMappingApiVersions {
+    fn from(versions: BTreeSet<Version>) -> Self {
+        Self(versions)
+    }
+}
+
+impl From<DifferentMappingApiVersions> for SubgraphManifestValidationError {
+    fn from(versions: DifferentMappingApiVersions) -> Self {
+        SubgraphManifestValidationError::DifferentApiVersions(versions.0)
     }
 }
 
@@ -888,13 +916,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         if let Err(different_api_versions) =
             UnifiedMappingApiVersion::try_from_versions(versions_iterator)
         {
-            let error_msg = different_api_versions
-                .iter()
-                .map(ToString::to_string)
-                .join(", ");
-            errors.push(SubgraphManifestValidationError::DifferentApiVersions(
-                error_msg,
-            ));
+            errors.push(different_api_versions.into());
         };
 
         let mut networks = self
@@ -1040,11 +1062,12 @@ impl<C: Blockchain> SubgraphManifest<C> {
         }
     }
 
-    pub fn unified_mapping_api_version(&self) -> UnifiedMappingApiVersion {
+    pub fn unified_mapping_api_version(
+        &self,
+    ) -> Result<UnifiedMappingApiVersion, DifferentMappingApiVersions> {
         let mappings = self.mappings();
         let iter = mappings.iter().map(|m| &m.api_version);
-        UnifiedMappingApiVersion::try_from_versions(iter).unwrap()
-        // TODO: remove this unwrap | turn this function into a Result
+        UnifiedMappingApiVersion::try_from_versions(iter)
     }
 }
 
