@@ -361,10 +361,10 @@ pub struct ChainSection {
 }
 
 impl ChainSection {
-    fn validate(&self) -> Result<()> {
+    fn validate(&mut self) -> Result<()> {
         NodeId::new(&self.ingestor)
             .map_err(|()| anyhow!("invalid node id for ingestor {}", &self.ingestor))?;
-        for (_, chain) in &self.chains {
+        for (_, chain) in self.chains.iter_mut() {
             chain.validate()?
         }
         Ok(())
@@ -458,10 +458,10 @@ pub struct Chain {
 }
 
 impl Chain {
-    fn validate(&self) -> Result<()> {
+    fn validate(&mut self) -> Result<()> {
         // `Config` validates that `self.shard` references a configured shard
 
-        for provider in &self.providers {
+        for provider in self.providers.iter_mut() {
             provider.validate()?
         }
         Ok(())
@@ -506,7 +506,7 @@ const PROVIDER_FEATURES: [&str; 3] = ["traces", "archive", "no_eip1898"];
 const DEFAULT_PROVIDER_FEATURES: [&str; 2] = ["traces", "archive"];
 
 impl Provider {
-    fn validate(&self) -> Result<()> {
+    fn validate(&mut self) -> Result<()> {
         validate_name(&self.label).context("illegal provider name")?;
 
         for feature in &self.features {
@@ -519,6 +519,8 @@ impl Provider {
                 ));
             }
         }
+
+        self.url = shellexpand::env(&self.url)?.into_owned();
 
         Url::parse(&self.url).map_err(|e| {
             anyhow!(
