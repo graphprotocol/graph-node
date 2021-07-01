@@ -1,13 +1,10 @@
+use super::loader::load_dynamic_data_sources;
+use super::SubgraphInstance;
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
 use graph::components::arweave::ArweaveAdapter;
 use graph::components::three_box::ThreeBoxAdapter;
-use lazy_static::lazy_static;
-use std::collections::{BTreeSet, HashMap};
-use std::sync::{Arc, RwLock};
-use std::time::Instant;
-use tokio::task;
-
+use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::util::lfu_cache::LfuCache;
 use graph::{blockchain::block_stream::BlockStreamMetrics, components::store::WritableStore};
@@ -25,9 +22,11 @@ use graph::{
     components::store::{DeploymentId, DeploymentLocator, ModificationsAndCache},
 };
 use graph::{components::ethereum::NodeCapabilities, data::store::scalar::Bytes};
-
-use super::loader::load_dynamic_data_sources;
-use super::SubgraphInstance;
+use lazy_static::lazy_static;
+use std::collections::{BTreeSet, HashMap};
+use std::sync::{Arc, RwLock};
+use std::time::Instant;
+use tokio::task;
 
 lazy_static! {
     /// Size limit of the entity LFU cache, in bytes.
@@ -54,6 +53,7 @@ struct IndexingInputs<C: Blockchain> {
     triggers_adapter: Arc<C::TriggersAdapter>,
     chain: Arc<C>,
     templates: Arc<Vec<C::DataSourceTemplate>>,
+    unified_api_version: UnifiedMappingApiVersion,
 }
 
 struct IndexingState<T: RuntimeHostBuilder<C>, C: Blockchain> {
@@ -308,7 +308,7 @@ where
             .and_then(|x| x)?;
         }
 
-        let manifest = {
+        let manifest: SubgraphManifest<C> = {
             info!(logger, "Resolve subgraph files using IPFS");
 
             let mut manifest = SubgraphManifest::resolve_from_raw(
@@ -352,7 +352,8 @@ where
             .with_context(|| format!("no chain configured for network {}", network))?
             .clone();
 
-        let triggers_adapter = chain.triggers_adapter(&deployment, &required_capabilities).map_err(|e|
+        let unified_mapping_api_version = manifest.unified_mapping_api_version()?;
+        let triggers_adapter = chain.triggers_adapter(&deployment, &required_capabilities, unified_mapping_api_version).map_err(|e|
                 anyhow!(
                 "expected triggers adapter that matches deployment {} with required capabilities: {}: {}",
                 &deployment,
@@ -402,6 +403,7 @@ where
         );
 
         let features = manifest.features.clone();
+        let unified_api_version = manifest.unified_mapping_api_version()?;
         let instance =
             SubgraphInstance::from_manifest(&logger, manifest, host_builder, host_metrics.clone())?;
 
@@ -415,6 +417,7 @@ where
                 triggers_adapter,
                 chain,
                 templates,
+                unified_api_version,
             },
             state: IndexingState {
                 logger: logger.cheap_clone(),
@@ -481,6 +484,7 @@ where
                 ctx.inputs.start_blocks.clone(),
                 ctx.state.filter.clone(),
                 ctx.block_stream_metrics.clone(),
+                ctx.inputs.unified_api_version.clone(),
             )?
             .map_err(CancelableError::Error)
             .cancelable(&block_stream_canceler, || CancelableError::Cancel)

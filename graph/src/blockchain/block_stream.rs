@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use crate::components::store::BlockNumber;
 use crate::components::store::WritableStore;
+use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::{prelude::*, prometheus::labels};
 
 use super::{Block, BlockPtr, Blockchain};
@@ -208,6 +209,7 @@ where
     // Not a BlockNumber, but the difference between two block numbers
     max_block_range_size: BlockNumber,
     target_triggers_per_block_range: u64,
+    unified_api_version: UnifiedMappingApiVersion,
 }
 
 impl<C: Blockchain> Clone for BlockStreamContext<C> {
@@ -227,6 +229,7 @@ impl<C: Blockchain> Clone for BlockStreamContext<C> {
             previous_block_range_size: self.previous_block_range_size,
             max_block_range_size: self.max_block_range_size,
             target_triggers_per_block_range: self.target_triggers_per_block_range,
+            unified_api_version: self.unified_api_version.clone(),
         }
     }
 }
@@ -281,6 +284,7 @@ where
         metrics: Arc<BlockStreamMetrics>,
         max_block_range_size: BlockNumber,
         target_triggers_per_block_range: u64,
+        unified_api_version: UnifiedMappingApiVersion,
     ) -> Self {
         BlockStream {
             state: BlockStreamState::BeginReconciliation,
@@ -303,6 +307,7 @@ where
                 previous_block_range_size: 1,
                 max_block_range_size,
                 target_triggers_per_block_range,
+                unified_api_version,
             },
         }
     }

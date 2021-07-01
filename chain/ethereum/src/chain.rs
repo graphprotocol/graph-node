@@ -3,6 +3,7 @@ use std::iter::FromIterator;
 use std::sync::Arc;
 
 use anyhow::{Context, Error};
+use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::prelude::{EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt};
 use graph::{
     blockchain::{
@@ -140,6 +141,7 @@ impl Blockchain for Chain {
         &self,
         loc: &DeploymentLocator,
         capabilities: &Self::NodeCapabilities,
+        unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Arc<Self::TriggersAdapter>, Error> {
         let eth_adapter = self.eth_adapters.cheapest_with(capabilities)?.clone();
         let logger = self
@@ -153,6 +155,7 @@ impl Blockchain for Chain {
             ethrpc_metrics,
             eth_adapter,
             chain_store: self.chain_store.cheap_clone(),
+            _unified_api_version: unified_api_version,
         };
         Ok(Arc::new(adapter))
     }
@@ -163,6 +166,7 @@ impl Blockchain for Chain {
         start_blocks: Vec<BlockNumber>,
         filter: TriggerFilter,
         metrics: Arc<BlockStreamMetrics>,
+        unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<BlockStream<Self>, Error> {
         let logger = self
             .logger_factory
@@ -178,7 +182,7 @@ impl Blockchain for Chain {
         let requirements = filter.node_capabilities();
 
         let triggers_adapter = self
-            .triggers_adapter(&deployment, &requirements)
+            .triggers_adapter(&deployment, &requirements, unified_api_version.clone())
             .expect(&format!(
                 "no adapter for network {} with capabilities {}",
                 self.name, requirements
@@ -198,6 +202,7 @@ impl Blockchain for Chain {
             metrics,
             *MAX_BLOCK_RANGE_SIZE,
             *TARGET_TRIGGERS_PER_BLOCK_RANGE,
+            unified_api_version,
         ))
     }
 
@@ -327,6 +332,7 @@ pub struct TriggersAdapter {
     ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
     chain_store: Arc<dyn ChainStore>,
     eth_adapter: Arc<EthereumAdapter>,
+    _unified_api_version: UnifiedMappingApiVersion,
 }
 
 #[async_trait]
