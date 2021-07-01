@@ -251,36 +251,6 @@ impl<'de> de::Deserialize<'de> for SubgraphName {
     }
 }
 
-#[test]
-fn test_subgraph_name_validation() {
-    assert!(SubgraphName::new("a").is_ok());
-    assert!(SubgraphName::new("a/a").is_ok());
-    assert!(SubgraphName::new("a-lOng-name_with_0ne-component").is_ok());
-    assert!(SubgraphName::new("a-long-name_with_one-3omponent").is_ok());
-    assert!(SubgraphName::new("a/b_c").is_ok());
-    assert!(SubgraphName::new("A/Z-Z").is_ok());
-    assert!(SubgraphName::new("a1/A-A").is_ok());
-    assert!(SubgraphName::new("aaa/a1").is_ok());
-    assert!(SubgraphName::new("1a/aaaa").is_ok());
-    assert!(SubgraphName::new("aaaa/1a").is_ok());
-    assert!(SubgraphName::new("2nena4test/lala").is_ok());
-
-    assert!(SubgraphName::new("").is_err());
-    assert!(SubgraphName::new("/a").is_err());
-    assert!(SubgraphName::new("a/").is_err());
-    assert!(SubgraphName::new("a//a").is_err());
-    assert!(SubgraphName::new("a/0").is_err());
-    assert!(SubgraphName::new("a/_").is_err());
-    assert!(SubgraphName::new("a/a_").is_err());
-    assert!(SubgraphName::new("a/_a").is_err());
-    assert!(SubgraphName::new("aaaa aaaaa").is_err());
-    assert!(SubgraphName::new("aaaa!aaaaa").is_err());
-    assert!(SubgraphName::new("aaaa+aaaaa").is_err());
-    assert!(SubgraphName::new("a/graphql").is_err());
-    assert!(SubgraphName::new("graphql/a").is_err());
-    assert!(SubgraphName::new("this-component-is-longer-than-the-length-limit").is_err());
-}
-
 /// Result of a creating a subgraph in the registar.
 #[derive(Serialize)]
 pub struct CreateSubgraphResult {
@@ -703,42 +673,6 @@ impl UnifiedMappingApiVersion {
         };
 
         Ok(UnifiedMappingApiVersion(unified_version))
-    }
-}
-
-#[test]
-fn unified_mapping_api_version_from_iterator() {
-    let input = [
-        vec![Version::new(0, 0, 5), Version::new(0, 0, 5)], // Ok(Some(0.0.5))
-        vec![Version::new(0, 0, 6), Version::new(0, 0, 6)], // Ok(Some(0.0.6))
-        vec![Version::new(0, 0, 3), Version::new(0, 0, 4)], // Ok(None)
-        vec![Version::new(0, 0, 4), Version::new(0, 0, 4)], // Ok(None)
-        vec![Version::new(0, 0, 3), Version::new(0, 0, 5)], // Err({0.0.3, 0.0.5})
-        vec![Version::new(0, 0, 6), Version::new(0, 0, 5)], // Err({0.0.5, 0.0.6})
-    ];
-    let output: [Result<UnifiedMappingApiVersion, DifferentMappingApiVersions>; 6] = [
-        Ok(UnifiedMappingApiVersion(Some(Version::new(0, 0, 5)))),
-        Ok(UnifiedMappingApiVersion(Some(Version::new(0, 0, 6)))),
-        Ok(UnifiedMappingApiVersion(None)),
-        Ok(UnifiedMappingApiVersion(None)),
-        Err(input[4]
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<Version>>()
-            .into()),
-        Err(input[5]
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<Version>>()
-            .into()),
-    ];
-    for (version_vec, expected_unified_version) in input.iter().zip(output.iter()) {
-        let unified = UnifiedMappingApiVersion::try_from_versions(version_vec.iter());
-        match (unified, expected_unified_version) {
-            (Ok(a), Ok(b)) => assert_eq!(a, *b),
-            (Err(a), Err(b)) => assert_eq!(a, *b),
-            _ => panic!(),
-        }
     }
 }
 
@@ -1193,6 +1127,72 @@ fn display_vector(input: &Vec<impl std::fmt::Display>) -> impl std::fmt::Display
         .collect::<Vec<String>>()
         .join("; ");
     format!("[{}]", formatted_errors)
+}
+
+#[test]
+fn test_subgraph_name_validation() {
+    assert!(SubgraphName::new("a").is_ok());
+    assert!(SubgraphName::new("a/a").is_ok());
+    assert!(SubgraphName::new("a-lOng-name_with_0ne-component").is_ok());
+    assert!(SubgraphName::new("a-long-name_with_one-3omponent").is_ok());
+    assert!(SubgraphName::new("a/b_c").is_ok());
+    assert!(SubgraphName::new("A/Z-Z").is_ok());
+    assert!(SubgraphName::new("a1/A-A").is_ok());
+    assert!(SubgraphName::new("aaa/a1").is_ok());
+    assert!(SubgraphName::new("1a/aaaa").is_ok());
+    assert!(SubgraphName::new("aaaa/1a").is_ok());
+    assert!(SubgraphName::new("2nena4test/lala").is_ok());
+
+    assert!(SubgraphName::new("").is_err());
+    assert!(SubgraphName::new("/a").is_err());
+    assert!(SubgraphName::new("a/").is_err());
+    assert!(SubgraphName::new("a//a").is_err());
+    assert!(SubgraphName::new("a/0").is_err());
+    assert!(SubgraphName::new("a/_").is_err());
+    assert!(SubgraphName::new("a/a_").is_err());
+    assert!(SubgraphName::new("a/_a").is_err());
+    assert!(SubgraphName::new("aaaa aaaaa").is_err());
+    assert!(SubgraphName::new("aaaa!aaaaa").is_err());
+    assert!(SubgraphName::new("aaaa+aaaaa").is_err());
+    assert!(SubgraphName::new("a/graphql").is_err());
+    assert!(SubgraphName::new("graphql/a").is_err());
+    assert!(SubgraphName::new("this-component-is-longer-than-the-length-limit").is_err());
+}
+
+#[test]
+fn unified_mapping_api_version_from_iterator() {
+    let input = [
+        vec![Version::new(0, 0, 5), Version::new(0, 0, 5)], // Ok(Some(0.0.5))
+        vec![Version::new(0, 0, 6), Version::new(0, 0, 6)], // Ok(Some(0.0.6))
+        vec![Version::new(0, 0, 3), Version::new(0, 0, 4)], // Ok(None)
+        vec![Version::new(0, 0, 4), Version::new(0, 0, 4)], // Ok(None)
+        vec![Version::new(0, 0, 3), Version::new(0, 0, 5)], // Err({0.0.3, 0.0.5})
+        vec![Version::new(0, 0, 6), Version::new(0, 0, 5)], // Err({0.0.5, 0.0.6})
+    ];
+    let output: [Result<UnifiedMappingApiVersion, DifferentMappingApiVersions>; 6] = [
+        Ok(UnifiedMappingApiVersion(Some(Version::new(0, 0, 5)))),
+        Ok(UnifiedMappingApiVersion(Some(Version::new(0, 0, 6)))),
+        Ok(UnifiedMappingApiVersion(None)),
+        Ok(UnifiedMappingApiVersion(None)),
+        Err(input[4]
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<Version>>()
+            .into()),
+        Err(input[5]
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<Version>>()
+            .into()),
+    ];
+    for (version_vec, expected_unified_version) in input.iter().zip(output.iter()) {
+        let unified = UnifiedMappingApiVersion::try_from_versions(version_vec.iter());
+        match (unified, expected_unified_version) {
+            (Ok(a), Ok(b)) => assert_eq!(a, *b),
+            (Err(a), Err(b)) => assert_eq!(a, *b),
+            _ => panic!(),
+        }
+    }
 }
 
 #[test]
