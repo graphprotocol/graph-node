@@ -25,7 +25,7 @@ use web3::types::{Address, Block, Log, Transaction, H256};
 use crate::runtime::abi::AscEthereumCall;
 use crate::runtime::abi::AscEthereumCall_0_0_3;
 use crate::runtime::abi::AscEthereumEvent;
-use crate::runtime::abi::AscEthereumTransaction;
+use crate::runtime::abi::AscEthereumTransaction_0_0_1;
 use crate::runtime::abi::AscEthereumTransaction_0_0_2;
 
 // ETHDEP: This should be defined in only one place.
@@ -159,7 +159,7 @@ impl blockchain::MappingTrigger for MappingTrigger {
                     )?
                     .erase()
                 } else {
-                    asc_new::<AscEthereumEvent<AscEthereumTransaction>, _, _>(
+                    asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_1>, _, _>(
                         heap,
                         &EthereumEventData {
                             block: EthereumBlockData::from(block.as_ref()),

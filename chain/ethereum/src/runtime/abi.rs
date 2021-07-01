@@ -85,7 +85,7 @@ pub(crate) struct AscEthereumBlock {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscEthereumTransaction {
+pub(crate) struct AscEthereumTransaction_0_0_1 {
     pub hash: AscPtr<AscH256>,
     pub index: AscPtr<AscBigInt>,
     pub from: AscPtr<AscH160>,
@@ -135,7 +135,7 @@ pub(crate) struct AscLogParam {
 pub(crate) struct AscEthereumCall {
     pub address: AscPtr<AscAddress>,
     pub block: AscPtr<AscEthereumBlock>,
-    pub transaction: AscPtr<AscEthereumTransaction>,
+    pub transaction: AscPtr<AscEthereumTransaction_0_0_1>,
     pub inputs: AscPtr<AscLogParamArray>,
     pub outputs: AscPtr<AscLogParamArray>,
 }
@@ -146,7 +146,7 @@ pub(crate) struct AscEthereumCall_0_0_3 {
     pub to: AscPtr<AscAddress>,
     pub from: AscPtr<AscAddress>,
     pub block: AscPtr<AscEthereumBlock>,
-    pub transaction: AscPtr<AscEthereumTransaction>,
+    pub transaction: AscPtr<AscEthereumTransaction_0_0_2>,
     pub inputs: AscPtr<AscLogParamArray>,
     pub outputs: AscPtr<AscLogParamArray>,
 }
@@ -178,12 +178,12 @@ impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
     }
 }
 
-impl ToAscObj<AscEthereumTransaction> for EthereumTransactionData {
+impl ToAscObj<AscEthereumTransaction_0_0_1> for EthereumTransactionData {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
-    ) -> Result<AscEthereumTransaction, DeterministicHostError> {
-        Ok(AscEthereumTransaction {
+    ) -> Result<AscEthereumTransaction_0_0_1, DeterministicHostError> {
+        Ok(AscEthereumTransaction_0_0_1 {
             hash: asc_new(heap, &self.hash)?,
             index: asc_new(heap, &BigInt::from(self.index))?,
             from: asc_new(heap, &self.from)?,
