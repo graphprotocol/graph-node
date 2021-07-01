@@ -743,7 +743,7 @@ fn unified_mapping_api_version_from_iterator() {
 }
 
 #[derive(Error, Debug, PartialEq)]
-#[error("Expected a single apiVersion for mapings. Found: {}.", format_versions(.0))]
+#[error("Expected a single apiVersion for mappings. Found: {}.", format_versions(.0))]
 pub struct DifferentMappingApiVersions(BTreeSet<Version>);
 
 fn format_versions(versions: &BTreeSet<Version>) -> String {
