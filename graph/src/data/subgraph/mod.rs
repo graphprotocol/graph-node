@@ -845,11 +845,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         }
 
         // For API versions newer than 0.0.5, validate that all mappings uses the same api_version
-        let mappings = self.0.mappings();
-        let versions_iterator = mappings.iter().map(|mapping| &mapping.api_version);
-        if let Err(different_api_versions) =
-            UnifiedMappingApiVersion::try_from_versions(versions_iterator)
-        {
+        if let Err(different_api_versions) = self.0.unified_mapping_api_version() {
             errors.push(different_api_versions.into());
         };
 
