@@ -266,6 +266,7 @@ impl<C: Blockchain> WasmInstance<C> {
     ) -> Result<WasmInstance<C>, anyhow::Error> {
         let mut linker = wasmtime::Linker::new(&wasmtime::Store::new(valid_module.module.engine()));
         let host_fns = ctx.host_fns.cheap_clone();
+        let api_version = ctx.host_exports.api_version.clone();
 
         // Used by exports to access the instance context. There are two ways this can be set:
         // - After instantiation, if no host export is called in the start function.
@@ -522,6 +523,18 @@ impl<C: Blockchain> WasmInstance<C> {
                 timeout_stopwatch,
                 experimental_features,
             )?);
+        }
+
+        match api_version {
+            version if version <= Version::new(0, 0, 4) => {}
+            _ => {
+                instance
+                    .get_func("_start")
+                    .context("`_start` function not found")?
+                    .typed::<(), ()>()?
+                    .call(())
+                    .unwrap();
+            }
         }
 
         Ok(WasmInstance {

@@ -1,7 +1,9 @@
 import { Trigger } from "../generated/Contract/Contract";
 import { Address, BigDecimal, BigInt, ethereum } from "@graphprotocol/graph-ts";
 
-// Test that host exports work in globals.
+// TODO: remove this, graph-ts should guarantee this
+__alloc(0);
+
 let one = BigDecimal.fromString("1");
 
 export function handleTrigger(event: Trigger): void {

@@ -783,7 +783,7 @@
 
 "@graphprotocol/graph-cli@https://github.com/graphprotocol/graph-cli#otavio/update-assembly-script":
   version "0.20.1"
-  resolved "https://github.com/graphprotocol/graph-cli#7c1010e286ee3330c38f29109a4274327ba91dcd"
+  resolved "https://github.com/graphprotocol/graph-cli#8ff5148bb7c5f73a7cc73f77acbb68716696c45a"
   dependencies:
     assemblyscript "0.19.2"
     chalk "^3.0.0"
@@ -816,7 +816,7 @@
 
 "@graphprotocol/graph-ts@https://github.com/graphprotocol/graph-ts#otavio/update-assembly-script":
   version "0.21.0"
-  resolved "https://github.com/graphprotocol/graph-ts#2898e2573d441a731746893210de3cb55cd56d51"
+  resolved "https://github.com/graphprotocol/graph-ts#da9d30f105695aa86df90ed559fc984768e0a9f1"
   dependencies:
     assemblyscript "0.19.2"
 

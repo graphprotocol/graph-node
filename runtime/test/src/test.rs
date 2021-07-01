@@ -234,6 +234,7 @@ fn mock_context(
 }
 
 trait WasmInstanceExt {
+    fn invoke_export0(&self, f: &str);
     fn invoke_export<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R>;
     fn invoke_export2<C, D, R>(&self, f: &str, arg0: AscPtr<C>, arg1: AscPtr<D>) -> AscPtr<R>;
     fn invoke_export2_void<C, D>(
@@ -247,6 +248,11 @@ trait WasmInstanceExt {
 }
 
 impl WasmInstanceExt for WasmInstance<Chain> {
+    fn invoke_export0(&self, f: &str) {
+        let func = self.get_func(f).typed().unwrap().clone();
+        let _: () = func.call(()).unwrap();
+    }
+
     fn invoke_export<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R> {
         let func = self.get_func(f).typed().unwrap().clone();
         let ptr: u32 = func.call(arg.wasm_ptr()).unwrap();
@@ -1385,5 +1391,26 @@ async fn detect_contract_calls() {
     }
 
     v0_0_4();
+    v0_0_5();
+}
+
+#[tokio::test]
+async fn allocate_global() {
+    fn v0_0_5() {
+        let module = test_module(
+            "AllocateGlobal",
+            mock_data_source("allocate_global.wasm", API_VERSION_0_0_5),
+            API_VERSION_0_0_5,
+        );
+
+        // Assert globals can be allocated and don't break the heap
+        module.invoke_export0("assert_global_works");
+    }
+
+    // Only in apiVersion v0.0.5 because there's no issue in older versions.
+    // The problem with the new one is related to the AS stub runtime `offset`
+    // variable not being initialized (lazy) before we use it so this test checks
+    // that it works (at the moment using __alloc call to force offset to be eagerly
+    // evaluated).
     v0_0_5();
 }
