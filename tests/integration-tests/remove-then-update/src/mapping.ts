@@ -12,7 +12,7 @@ export function handleTrigger(event: Trigger): void {
     obj.removed = true;
     obj.save();
 
-    obj = changetype<Foo>(Foo.load("0"));
+    obj = <Foo>Foo.load("0");
     assert(obj.value == null);
   }
 }

@@ -7,6 +7,6 @@ export function handleTrigger(event: Trigger): void {
   obj.save();
 
   // Null characters are stripped.
-  obj = changetype<Foo>(Foo.load("0"));
+  obj = <Foo>Foo.load("0");
   assert(obj.value == "bla", "nulls not stripped");
 }
