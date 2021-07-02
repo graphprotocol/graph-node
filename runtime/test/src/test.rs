@@ -1016,7 +1016,7 @@ async fn abort() {
         assert!(res
             .unwrap_err()
             .to_string()
-            .contains("line 25, column 3, with message: not true"));
+            .contains("line 4, column 3, with message: not true"));
     }
 
     v0_0_4();

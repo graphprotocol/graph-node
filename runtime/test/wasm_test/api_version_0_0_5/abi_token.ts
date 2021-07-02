@@ -1,61 +1,5 @@
-enum IndexForAscTypeId {
-  STRING = 0,
-  ARRAY_BUFFER = 1,
-  UINT8_ARRAY = 6,
-  ARRAY_ETHEREUM_VALUE = 15,
-  ETHEREUM_VALUE = 30,
-}
-
-export function id_of_type(type_id_index: IndexForAscTypeId): usize {
-  switch (type_id_index) {
-    case IndexForAscTypeId.STRING:
-      return idof<string>();
-    case IndexForAscTypeId.ARRAY_BUFFER:
-      return idof<ArrayBuffer>();
-    case IndexForAscTypeId.UINT8_ARRAY:
-      return idof<Uint8Array>();
-    case IndexForAscTypeId.ARRAY_ETHEREUM_VALUE:
-      return idof<Array<Token>>();
-    case IndexForAscTypeId.ETHEREUM_VALUE:
-      return idof<Token>();
-    default:
-      return 0;
-  }
-}
-
-export function allocate(n: usize): usize {
-  return __alloc(n);
-}
-
-// Sequence of 20 `u8`s.
-type Address = Uint8Array;
-
-// Sequences of `u8`s.
-type Bytes = Uint8Array;
-
-// Sequence of 4 `u64`s.
-type Int = Uint64Array;
-type Uint = Uint64Array;
-
-enum TokenKind {
-    ADDRESS = 0,
-    FIXED_BYTES = 1,
-    BYTES = 2,
-    INT = 3,
-    UINT = 4,
-    BOOL = 5,
-    STRING = 6,
-    FIXED_ARRAY = 7,
-    ARRAY = 8
-}
-
-// Big enough to fit any pointer or native this.data.
-type Payload = u64
-
-export class Token {
-    kind: TokenKind
-    data: Payload
-}
+export * from './common/global'
+import { Address, Bytes, Token, TokenKind, Int64, Uint64 } from './common/types'
 
 export function token_to_address(token: Token): Address {
     assert(token.kind == TokenKind.ADDRESS, "Token is not an address.");
@@ -68,16 +12,16 @@ export function token_to_bytes(token: Token): Bytes {
     return changetype<Bytes>(token.data as u32)
 }
   
-export function token_to_int(token: Token): Int {
+export function token_to_int(token: Token): Int64 {
     assert(token.kind == TokenKind.INT
             || token.kind == TokenKind.UINT, "Token is not an int or uint.")
-    return changetype<Int>(token.data as u32)
+    return changetype<Int64>(token.data as u32)
 }
 
-export function token_to_uint(token: Token): Uint {
+export function token_to_uint(token: Token): Uint64 {
     assert(token.kind == TokenKind.INT
             || token.kind == TokenKind.UINT, "Token is not an int or uint.")
-    return changetype<Uint>(token.data as u32)
+    return changetype<Uint64>(token.data as u32)
 }
 
 export function token_to_bool(token: Token): boolean {
@@ -111,14 +55,14 @@ export function token_from_bytes(bytes: Bytes): Token {
     return token
 }
   
-export function token_from_int(int: Int): Token {
+export function token_from_int(int: Int64): Token {
     let token = new Token();
     token.kind = TokenKind.INT;
     token.data = changetype<u32>(int);
     return token
 }
 
-export function token_from_uint(uint: Uint): Token {
+export function token_from_uint(uint: Uint64): Token {
     let token = new Token();
     token.kind = TokenKind.UINT;
     token.data = changetype<u32>(uint);
