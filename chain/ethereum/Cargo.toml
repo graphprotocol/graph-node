@@ -10,7 +10,7 @@ http = "0.1.21" # must be compatible with the version rust-web3 uses
 jsonrpc-core = "14.2.0"
 graph = { path = "../../graph" }
 lazy_static = "1.2.0"
-mockall = "0.9.1"
+mockall = "0.10.1"
 state_machine_future = "0.2"
 serde = "1.0"
 dirs-next = "2.0"

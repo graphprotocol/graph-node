@@ -1585,7 +1585,7 @@ dependencies = [
  "itertools",
  "lazy_static",
  "maplit",
- "mockall 0.8.3",
+ "mockall",
  "num-bigint",
  "num-traits",
  "num_cpus",
@@ -1646,7 +1646,7 @@ dependencies = [
  "http 0.1.21",
  "jsonrpc-core",
  "lazy_static",
- "mockall 0.9.1",
+ "mockall",
  "pretty_assertions",
  "serde",
  "state_machine_future",
@@ -1712,7 +1712,7 @@ dependencies = [
  "graph",
  "graph-graphql",
  "graphql-parser",
- "mockall 0.8.3",
+ "mockall",
  "rand 0.6.5",
 ]
 
@@ -2718,51 +2718,24 @@ dependencies = [
 
 [[package]]
 name = "mockall"
-version = "0.8.3"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41cabea45a7fc0e37093f4f30a5e2b62602253f91791c057d5f0470c63260c3d"
-dependencies = [
- "cfg-if 0.1.10",
- "downcast",
- "fragile",
- "lazy_static",
- "mockall_derive 0.8.3",
- "predicates",
- "predicates-tree",
-]
-
-[[package]]
-name = "mockall"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18d614ad23f9bb59119b8b5670a85c7ba92c5e9adf4385c81ea00c51c8be33d5"
+checksum = "cfd9a2de7b4bd932854c776ce60880caf8fa41095a7907e3accc52ef6678895b"
 dependencies = [
  "cfg-if 1.0.0",
  "downcast",
  "fragile",
  "lazy_static",
- "mockall_derive 0.9.1",
+ "mockall_derive",
  "predicates",
  "predicates-tree",
 ]
 
 [[package]]
 name = "mockall_derive"
-version = "0.8.3"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c461918bf7f59eefb1459252756bf2351a995d6bd510d0b2061bd86bcdabfa6"
-dependencies = [
- "cfg-if 0.1.10",
- "proc-macro2 1.0.24",
- "quote 1.0.9",
- "syn 1.0.67",
-]
-
-[[package]]
-name = "mockall_derive"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5dd4234635bca06fc96c7368d038061e0aae1b00a764dc817e900dc974e3deea"
+checksum = "d07174e9c5ffb2ff849187641c48fc66f5588f012f1d248e55c3a68cd462bd29"
 dependencies = [
  "cfg-if 1.0.0",
  "proc-macro2 1.0.24",
