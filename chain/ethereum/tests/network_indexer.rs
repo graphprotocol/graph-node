@@ -81,6 +81,7 @@ fn run_network_indexer(
             .expect("failed to take stream from indexer")
             .forward(event_sink.sink_map_err(|_| ()))
             .map(|_| ())
+            .compat()
             .timeout(timeout),
     );
 
