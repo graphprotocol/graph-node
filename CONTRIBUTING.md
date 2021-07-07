@@ -1,3 +1,4 @@
+
 # Contributing to graph-node
 
 Welcome to the Graph Protocol! Thanks a ton for your interest in contributing.

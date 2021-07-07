@@ -13,7 +13,6 @@ use crate::{
     notification_listener::{JsonNotification, NotificationListener, SafeChannelName},
 };
 use graph::blockchain::ChainHeadUpdateListener as ChainHeadUpdateListenerTrait;
-use graph::prelude::futures03::prelude::stream::{StreamExt, TryStreamExt};
 use graph::prelude::serde::{Deserialize, Serialize};
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::tokio::sync::{mpsc::Receiver, watch};
@@ -164,7 +163,7 @@ impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
             .receiver
             .clone();
 
-        Box::new(update_receiver.map(Result::<_, ()>::Ok).boxed().compat())
+        Box::new(update_receiver)
     }
 }
 

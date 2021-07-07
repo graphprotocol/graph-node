@@ -366,14 +366,16 @@ where
                     let logger = logger.clone();
                     let cancel_id = id.clone();
                     let connection_id = connection_id.clone();
-                    let run_subscription = run_subscription.cancelable(&guard, move || {
-                        debug!(logger, "Stopped operation";
+                    let run_subscription =
+                        run_subscription.compat().cancelable(&guard, move || {
+                            debug!(logger, "Stopped operation";
                                        "connection" => &connection_id,
-                                       "id" => &cancel_id)
-                    });
+                                       "id" => &cancel_id);
+                            Ok(())
+                        });
                     operations.insert(id, guard);
 
-                    graph::spawn_allow_panic(run_subscription.compat());
+                    graph::spawn_allow_panic(run_subscription);
                     Ok(())
                 }
             }?

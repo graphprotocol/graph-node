@@ -19,7 +19,7 @@ use graph::{
         subgraph::SubgraphFeature,
     },
     prelude::{
-        futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt, o, q,
+        futures03::stream::StreamExt, o, q,
         serde_json, slog, BlockPtr, DeploymentHash, Entity, EntityKey, EntityOperation,
         FutureExtension, GraphQlRunner as _, Logger, NodeId, Query, QueryError,
         QueryExecutionError, QueryResult, QueryStoreManager, QueryVariables, Schema,
@@ -1320,11 +1320,10 @@ fn subscription_gets_result_even_without_events() {
         let results: Vec<_> = stream
             .take(1)
             .collect()
-            .map(Result::<_, ()>::Ok)
-            .compat()
+            // .map(Result::<_, ()>::Ok)
             .timeout(Duration::from_secs(3))
             .await
-            .unwrap()
+            // .unwrap()
             .unwrap();
 
         assert_eq!(results.len(), 1);

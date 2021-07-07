@@ -470,13 +470,12 @@ where
             .new_block_stream(
                 ctx.inputs.deployment.clone(),
                 ctx.inputs.start_blocks.clone(),
-                ctx.state.filter.clone(),
+                Arc::new(ctx.state.filter.clone()),
                 ctx.block_stream_metrics.clone(),
                 ctx.inputs.unified_api_version.clone(),
             )?
             .map_err(CancelableError::Error)
-            .cancelable(&block_stream_canceler, || CancelableError::Cancel)
-            .compat();
+            .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
 
         // Keep the stream's cancel guard around to be able to shut it down
         // when the subgraph deployment is unassigned
