@@ -1,59 +1,29 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::iter::FromIterator;
 use std::time::Instant;
 
-use graph::blockchain::DataSourceTemplate as _;
-use graph::components::store::{StoredDynamicDataSource, WritableStore};
+use graph::blockchain::{Blockchain, DataSource, DataSourceTemplate as _};
+use graph::components::store::WritableStore;
 use graph::prelude::*;
 
-pub async fn load_dynamic_data_sources(
+pub async fn load_dynamic_data_sources<C: Blockchain>(
     store: Arc<dyn WritableStore>,
-    deployment_id: &DeploymentHash,
     logger: Logger,
-    templates: Vec<graph_chain_ethereum::DataSourceTemplate>,
-) -> Result<Vec<graph_chain_ethereum::DataSource>, Error> {
+    templates: Vec<C::DataSourceTemplate>,
+) -> Result<Vec<C::DataSource>, Error> {
     let start_time = Instant::now();
 
-    let template_map: HashMap<&str, _> =
-        HashMap::from_iter(templates.iter().map(|template| (template.name(), template)));
-    let mut data_sources: Vec<graph_chain_ethereum::DataSource> = vec![];
+    let template_map: BTreeMap<&str, _> =
+        BTreeMap::from_iter(templates.iter().map(|template| (template.name(), template)));
+    let mut data_sources: Vec<C::DataSource> = vec![];
 
     for stored in store.load_dynamic_data_sources().await? {
-        let StoredDynamicDataSource {
-            name,
-            source,
-            context,
-            creation_block,
-        } = stored;
-
-        let template = template_map.get(name.as_str()).ok_or_else(|| {
-            anyhow!(
-                "deployment `{}` does not have a template called `{}`",
-                deployment_id.as_str(),
-                name
-            )
-        })?;
-        let context = context
-            .map(|ctx| serde_json::from_str::<Entity>(&ctx))
-            .transpose()?;
-
-        let contract_abi = template.mapping().find_abi(&template.source().abi)?;
-
-        let ds = graph_chain_ethereum::DataSource {
-            kind: template.kind().to_string(),
-            network: template.network().map(|s| s.to_string()),
-            name,
-            source,
-            mapping: template.mapping().clone(),
-            context: Arc::new(context),
-            creation_block,
-            contract_abi,
-        };
+        let ds = C::DataSource::from_stored_dynamic_data_source(&template_map, stored)?;
 
         // The data sources are ordered by the creation block.
         // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
         anyhow::ensure!(
-            data_sources.last().and_then(|d| d.creation_block) <= ds.creation_block,
+            data_sources.last().and_then(|d| d.creation_block()) <= ds.creation_block(),
             "Assertion failure: new data source has lower creation block than existing ones"
         );
 

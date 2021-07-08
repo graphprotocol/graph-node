@@ -2,7 +2,9 @@ use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
 use ethabi::{Address, Event, Function, LogParam, ParamType, RawLog};
 use graph::components::store::StoredDynamicDataSource;
+use graph::prelude::Entity;
 use graph::slog::trace;
+use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::{convert::TryFrom, sync::Arc};
 use tiny_keccak::keccak256;
@@ -144,6 +146,37 @@ impl blockchain::DataSource<Chain> for DataSource {
                 .map(|ctx| serde_json::to_string(&ctx).unwrap()),
             creation_block: self.creation_block,
         }
+    }
+
+    fn from_stored_dynamic_data_source(
+        templates: &BTreeMap<&str, &DataSourceTemplate>,
+        stored: StoredDynamicDataSource,
+    ) -> Result<Self, Error> {
+        let StoredDynamicDataSource {
+            name,
+            source,
+            context,
+            creation_block,
+        } = stored;
+        let template = templates
+            .get(name.as_str())
+            .ok_or_else(|| anyhow!("no template named `{}` was found", name))?;
+        let context = context
+            .map(|ctx| serde_json::from_str::<Entity>(&ctx))
+            .transpose()?;
+
+        let contract_abi = template.mapping.find_abi(&template.source.abi)?;
+
+        Ok(DataSource {
+            kind: template.kind.to_string(),
+            network: template.network.as_ref().map(|s| s.to_string()),
+            name,
+            source,
+            mapping: template.mapping.clone(),
+            context: Arc::new(context),
+            creation_block,
+            contract_abi,
+        })
     }
 }
 
@@ -693,17 +726,5 @@ impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
 
     fn name(&self) -> &str {
         &self.name
-    }
-
-    fn source(&self) -> &TemplateSource {
-        &self.source
-    }
-
-    fn kind(&self) -> &str {
-        &self.kind
-    }
-
-    fn network(&self) -> Option<&str> {
-        self.network.as_ref().map(|s| s.as_str())
     }
 }
