@@ -2,6 +2,7 @@ use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
 use ethabi::{Address, Event, Function, LogParam, ParamType, RawLog};
 use graph::components::store::StoredDynamicDataSource;
+use graph::slog::trace;
 use std::str::FromStr;
 use std::{convert::TryFrom, sync::Arc};
 use tiny_keccak::keccak256;
@@ -415,7 +416,7 @@ impl DataSource {
                             })
                             .map(|log| log.params)
                             .map_err(|e| {
-                                info!(
+                                trace!(
                                     logger,
                                     "Skipping handler because the event parameters do not \
                                     match the event signature. This is typically the case \
