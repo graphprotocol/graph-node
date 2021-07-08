@@ -10,7 +10,7 @@ mod types;
 use crate::{
     cheap_clone::CheapClone,
     components::store::{DeploymentLocator, StoredDynamicDataSource},
-    data::subgraph::{Mapping, Source, TemplateSource, UnifiedMappingApiVersion},
+    data::subgraph::{Mapping, Source, UnifiedMappingApiVersion},
     prelude::DataSourceContext,
     runtime::{AscHeap, AscPtr, DeterministicHostError, HostExportError},
 };
@@ -26,8 +26,8 @@ use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use slog::Logger;
 use slog::{self, SendSyncRefUnwindSafeKV};
-use std::fmt::Debug;
 use std::sync::Arc;
+use std::{collections::BTreeMap, fmt::Debug};
 use std::{collections::HashMap, convert::TryFrom};
 use web3::types::H256;
 
@@ -186,7 +186,7 @@ pub trait TriggerFilter<C: Blockchain>: Default + Clone + Send + Sync {
 
 // ETHDEP: `Source` and `Mapping`, at least, are Ethereum-specific.
 pub trait DataSource<C: Blockchain>:
-    'static + Sized + Send + Sync + TryFrom<DataSourceTemplateInfo<C>, Error = anyhow::Error>
+    'static + Sized + Send + Sync + Clone + TryFrom<DataSourceTemplateInfo<C>, Error = anyhow::Error>
 {
     fn mapping(&self) -> &Mapping;
     fn source(&self) -> &Source;
@@ -218,6 +218,11 @@ pub trait DataSource<C: Blockchain>:
     fn is_duplicate_of(&self, other: &Self) -> bool;
 
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource;
+
+    fn from_stored_dynamic_data_source(
+        templates: &BTreeMap<&str, &C::DataSourceTemplate>,
+        stored: StoredDynamicDataSource,
+    ) -> Result<Self, Error>;
 }
 
 #[async_trait]
@@ -234,9 +239,6 @@ pub trait UnresolvedDataSourceTemplate<C: Blockchain>:
 pub trait DataSourceTemplate<C: Blockchain>: Send + Sync + Clone + Debug {
     fn mapping(&self) -> &Mapping;
     fn name(&self) -> &str;
-    fn source(&self) -> &TemplateSource;
-    fn kind(&self) -> &str;
-    fn network(&self) -> Option<&str>;
 }
 
 #[async_trait]

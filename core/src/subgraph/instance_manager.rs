@@ -2,6 +2,7 @@ use super::loader::load_dynamic_data_sources;
 use super::SubgraphInstance;
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
+use graph::blockchain::DataSource;
 use graph::components::arweave::ArweaveAdapter;
 use graph::components::three_box::ThreeBoxAdapter;
 use graph::data::subgraph::UnifiedMappingApiVersion;
@@ -244,7 +245,6 @@ where
     C: Blockchain<
         NodeCapabilities = NodeCapabilities,
         DataSource = graph_chain_ethereum::DataSource,
-        DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
     >,
     M: MetricsRegistry,
     L: LinkResolver + Clone,
@@ -321,9 +321,8 @@ where
             .await
             .context("Failed to resolve subgraph from IPFS")?;
 
-            let data_sources = load_dynamic_data_sources(
+            let data_sources = load_dynamic_data_sources::<C>(
                 store.clone(),
-                &deployment.hash,
                 logger.clone(),
                 manifest.templates.clone(),
             )
@@ -459,10 +458,7 @@ where
 async fn run_subgraph<T, C>(mut ctx: IndexingContext<T, C>) -> Result<(), Error>
 where
     T: RuntimeHostBuilder<C>,
-    C: Blockchain<
-        DataSource = graph_chain_ethereum::DataSource,
-        DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
-    >,
+    C: Blockchain<DataSource = graph_chain_ethereum::DataSource>,
 {
     // Clone a few things for different parts of the async processing
     let subgraph_metrics = ctx.subgraph_metrics.cheap_clone();
@@ -684,10 +680,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C>(
     block: BlockWithTriggers<C>,
 ) -> Result<(IndexingContext<T, C>, bool), BlockProcessingError>
 where
-    C: Blockchain<
-        DataSource = graph_chain_ethereum::DataSource,
-        DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
-    >,
+    C: Blockchain<DataSource = graph_chain_ethereum::DataSource>,
 {
     let triggers = block.trigger_data;
     let block = Arc::new(block.block);
@@ -1030,18 +1023,12 @@ async fn process_triggers<C: Blockchain>(
     Ok(block_state)
 }
 
-fn create_dynamic_data_sources<T: RuntimeHostBuilder<C>, C>(
+fn create_dynamic_data_sources<T: RuntimeHostBuilder<C>, C: Blockchain>(
     logger: Logger,
     ctx: &mut IndexingContext<T, C>,
     host_metrics: Arc<HostMetrics>,
     created_data_sources: Vec<DataSourceTemplateInfo<C>>,
-) -> Result<(Vec<graph_chain_ethereum::DataSource>, Vec<Arc<T::Host>>), Error>
-where
-    C: Blockchain<
-        DataSource = graph_chain_ethereum::DataSource,
-        DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
-    >,
-{
+) -> Result<(Vec<C::DataSource>, Vec<Arc<T::Host>>), Error> {
     let mut data_sources = vec![];
     let mut runtime_hosts = vec![];
 
@@ -1068,11 +1055,10 @@ where
                     logger,
                     "no runtime hosted created, there is already a runtime host instantiated for \
                      this data source";
-                    "name" => &data_source.name,
-                    "address" => &data_source.source.address
+                    "name" => &data_source.name(),
+                    "address" => &data_source.source().address
                         .map(|address| address.to_string())
                         .unwrap_or("none".to_string()),
-                    "abi" => &data_source.source.abi
                 )
             }
         }
