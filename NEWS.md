@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Logs
+- The log `"Skipping handler because the event parameters do not match the event signature."` was downgraded from info to trace level.
+
 ### Metrics
 - `query_semaphore_wait_ms` is now by shard, and has the `pool` and `shard` labels.
 
