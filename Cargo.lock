@@ -1644,6 +1644,7 @@ dependencies = [
  "graph-store-postgres",
  "hex",
  "http 0.1.21",
+ "itertools",
  "jsonrpc-core",
  "lazy_static",
  "mockall 0.9.1",

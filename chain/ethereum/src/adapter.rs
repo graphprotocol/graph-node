@@ -24,6 +24,7 @@ use graph::{components::ethereum::EthereumNetworkIdentifier, prelude::*};
 use crate::{data_source::DataSource, Chain};
 
 pub type EventSignature = H256;
+pub type FunctionSelector = [u8; 4];
 
 #[derive(Clone, Debug)]
 pub struct EthereumContractCall {
@@ -270,7 +271,8 @@ impl EthereumLogFilter {
 pub(crate) struct EthereumCallFilter {
     // Each call filter has a map of filters keyed by address, each containing a tuple with
     // start_block and the set of function signatures
-    pub contract_addresses_function_signatures: HashMap<Address, (BlockNumber, HashSet<[u8; 4]>)>,
+    pub contract_addresses_function_signatures:
+        HashMap<Address, (BlockNumber, HashSet<FunctionSelector>)>,
 }
 
 impl EthereumCallFilter {
@@ -355,12 +357,12 @@ impl EthereumCallFilter {
     }
 }
 
-impl FromIterator<(BlockNumber, Address, [u8; 4])> for EthereumCallFilter {
+impl FromIterator<(BlockNumber, Address, FunctionSelector)> for EthereumCallFilter {
     fn from_iter<I>(iter: I) -> Self
     where
-        I: IntoIterator<Item = (BlockNumber, Address, [u8; 4])>,
+        I: IntoIterator<Item = (BlockNumber, Address, FunctionSelector)>,
     {
-        let mut lookup: HashMap<Address, (BlockNumber, HashSet<[u8; 4]>)> = HashMap::new();
+        let mut lookup: HashMap<Address, (BlockNumber, HashSet<FunctionSelector>)> = HashMap::new();
         iter.into_iter()
             .for_each(|(start_block, address, function_signature)| {
                 if !lookup.contains_key(&address) {
@@ -387,7 +389,7 @@ impl From<EthereumBlockFilter> for EthereumCallFilter {
                 .contract_addresses
                 .into_iter()
                 .map(|(start_block_opt, address)| (address, (start_block_opt, HashSet::default())))
-                .collect::<HashMap<Address, (BlockNumber, HashSet<[u8; 4]>)>>(),
+                .collect::<HashMap<Address, (BlockNumber, HashSet<FunctionSelector>)>>(),
         }
     }
 }

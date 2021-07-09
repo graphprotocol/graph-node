@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, sync::Arc};
 use web3::types::{
     Action, Address, Block, Bytes, Log, Res, Trace, Transaction, TransactionReceipt, H256, U256,
+    U64,
 };
 
 use crate::{
@@ -65,6 +66,53 @@ pub struct EthereumBlockWithCalls {
     /// The calls in this block; `None` means we haven't checked yet,
     /// `Some(vec![])` means that we checked and there were none
     pub calls: Option<Vec<EthereumCall>>,
+}
+
+impl EthereumBlockWithCalls {
+    /// Given an `EthereumCall`, check within receipts if that transaction was successful.
+    pub fn transaction_for_call_succeeded(&self, call: &EthereumCall) -> anyhow::Result<bool> {
+        let call_transaction_hash = call.transaction_hash.ok_or(anyhow::anyhow!(
+            "failed to find a transaction for this call"
+        ))?;
+
+        let receipt = self
+            .ethereum_block
+            .transaction_receipts
+            .iter()
+            .find(|txn| txn.transaction_hash == call_transaction_hash)
+            .ok_or(anyhow::anyhow!(
+                "failed to find the receipt for this transaction"
+            ))?;
+
+        let transaction = self
+            .ethereum_block
+            .block
+            .transaction_for_call(&call)
+            .ok_or(anyhow::anyhow!(
+                "failed to find the transaction for this call"
+            ))?;
+
+        evaluate_transaction_status(receipt.status, receipt.gas_used, &transaction.gas)
+    }
+}
+
+/// Evaluates if a given transaction was successful.
+///
+/// According to EIP-658, there are two ways of checking if a transaction failed:
+/// 1. by checking if it ran out of gas.
+/// 2. by looking at its receipt "status" boolean field, which may be absent for blocks before
+///    Byzantium fork.
+pub fn evaluate_transaction_status(
+    receipt_status: Option<U64>,
+    receipt_gas_used: Option<U256>,
+    transaction_gas: &U256,
+) -> anyhow::Result<bool> {
+    if receipt_gas_used.ok_or(anyhow::anyhow!("Running in light client mode)"))? >= *transaction_gas
+    {
+        Ok(false)
+    } else {
+        Ok(matches!(receipt_status, Some(status) if !status.is_zero()))
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]

@@ -647,7 +647,7 @@ impl UnresolvedMapping {
 pub struct UnifiedMappingApiVersion(Option<Version>);
 
 impl UnifiedMappingApiVersion {
-    pub fn equal_or_greater_than(&self, other_version: &'static Version) -> bool {
+    pub fn equal_or_greater_than(&self, other_version: &Version) -> bool {
         assert!(
             other_version >= &API_VERSION_0_0_5,
             "api versions before 0.0.5 should not be used for comparison"
