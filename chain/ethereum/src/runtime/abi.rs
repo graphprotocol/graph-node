@@ -91,7 +91,7 @@ pub(crate) struct AscEthereumTransaction_0_0_1 {
     pub from: AscPtr<AscH160>,
     pub to: AscPtr<AscH160>,
     pub value: AscPtr<AscBigInt>,
-    pub gas_used: AscPtr<AscBigInt>,
+    pub gas_limit: AscPtr<AscBigInt>,
     pub gas_price: AscPtr<AscBigInt>,
 }
 
@@ -103,7 +103,7 @@ pub(crate) struct AscEthereumTransaction_0_0_2 {
     pub from: AscPtr<AscH160>,
     pub to: AscPtr<AscH160>,
     pub value: AscPtr<AscBigInt>,
-    pub gas_used: AscPtr<AscBigInt>,
+    pub gas_limit: AscPtr<AscBigInt>,
     pub gas_price: AscPtr<AscBigInt>,
     pub input: AscPtr<Uint8Array>,
 }
@@ -192,7 +192,7 @@ impl ToAscObj<AscEthereumTransaction_0_0_1> for EthereumTransactionData {
                 .map(|to| asc_new(heap, &to))
                 .unwrap_or(Ok(AscPtr::null()))?,
             value: asc_new(heap, &BigInt::from_unsigned_u256(&self.value))?,
-            gas_used: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_used))?,
+            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit))?,
             gas_price: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_price))?,
         })
     }
@@ -212,7 +212,7 @@ impl ToAscObj<AscEthereumTransaction_0_0_2> for EthereumTransactionData {
                 .map(|to| asc_new(heap, &to))
                 .unwrap_or(Ok(AscPtr::null()))?,
             value: asc_new(heap, &BigInt::from_unsigned_u256(&self.value))?,
-            gas_used: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_used))?,
+            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit))?,
             gas_price: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_price))?,
             input: asc_new(heap, &*self.input.0)?,
         })
