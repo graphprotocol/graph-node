@@ -464,7 +464,7 @@ Using the AssemblyScript built-in functions for arrays is the way to go. Find th
 
 ### 5.2 Getting Data from Multiple Versions of Your Contracts
 
-If you have launched multiple versions of your smart contracts onto Ethereum, it is very easy to source data from all of them. This simply requires you to add all versions of the contracts to the `subgraph.yaml` file and handle the events from each contract. Design your schema to consider both versions, and handle any changes to the event signatures that are emitted from each version. See the [0x Subgraph](thub.com/graphprotocol/0x-subgraph/tree/master/mappings) for an implementation of multiple versions of smart contracts being ingested by a subgraph.
+If you have launched multiple versions of your smart contracts onto Ethereum, it is very easy to source data from all of them. This simply requires you to add all versions of the contracts to the `subgraph.yaml` file and handle the events from each contract. Design your schema to consider both versions, and handle any changes to the event signatures that are emitted from each version. See the [0x Subgraph](https://github.com/graphprotocol/0x-subgraph/tree/master/src/mappings) for an implementation of multiple versions of smart contracts being ingested by a subgraph.
 
 ## 5 Example Subgraphs
 
