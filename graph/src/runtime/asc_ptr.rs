@@ -75,6 +75,8 @@ impl<C: AscType> AscPtr<C> {
                 let mut bytes = asc_obj.to_asc_bytes()?;
 
                 let aligned_len = padding_to_16(bytes.len());
+                // Since AssemblyScript keeps all allocated objects with a 16 byte alignment,
+                // we need to do the same when we allocate ourselves.
                 bytes.extend(std::iter::repeat(0).take(aligned_len));
 
                 let header = Self::generate_header(
