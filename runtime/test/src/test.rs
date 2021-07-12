@@ -27,6 +27,13 @@ mod abi;
 const API_VERSION_0_0_4: Version = Version::new(0, 0, 4);
 const API_VERSION_0_0_5: Version = Version::new(0, 0, 5);
 
+fn subgraph_id_with_api_version(subgraph_id: &str, api_version: Version) -> String {
+    format!(
+        "{}_{}_{}_{}",
+        subgraph_id, api_version.major, api_version.minor, api_version.patch
+    )
+}
+
 fn test_valid_module_and_store(
     subgraph_id: &str,
     data_source: DataSource,
@@ -49,9 +56,12 @@ fn test_valid_module_and_store_with_timeout(
     Arc<impl SubgraphStore>,
     DeploymentLocator,
 ) {
+    let subgraph_id_with_api_version =
+        subgraph_id_with_api_version(subgraph_id, api_version.clone());
+
     let store = STORE.clone();
     let metrics_registry = Arc::new(MockMetricsRegistry::new());
-    let deployment_id = DeploymentHash::new(subgraph_id).unwrap();
+    let deployment_id = DeploymentHash::new(&subgraph_id_with_api_version).unwrap();
     let deployment = test_store::create_test_subgraph(
         &deployment_id,
         "type User @entity {
@@ -287,199 +297,137 @@ impl WasmInstanceExt for WasmInstance<Chain> {
     }
 }
 
-#[tokio::test]
-async fn json_conversions() {
-    fn v0_0_4() {
-        let mut module = test_module(
-            "jsonConversions",
-            mock_data_source("string_to_number.wasm", API_VERSION_0_0_4),
-            API_VERSION_0_0_4,
-        );
+fn test_json_conversions(api_version: Version) {
+    let mut module = test_module(
+        "jsonConversions",
+        mock_data_source("string_to_number.wasm", api_version.clone()),
+        api_version,
+    );
 
-        // test u64 conversion
-        let number = 9223372036850770800;
-        let number_ptr = asc_new(&mut module, &number.to_string()).unwrap();
-        let converted: i64 = module.takes_ptr_returns_val("testToU64", number_ptr);
-        assert_eq!(number, u64::from_le_bytes(converted.to_le_bytes()));
+    // test u64 conversion
+    let number = 9223372036850770800;
+    let number_ptr = asc_new(&mut module, &number.to_string()).unwrap();
+    let converted: i64 = module.takes_ptr_returns_val("testToU64", number_ptr);
+    assert_eq!(number, u64::from_le_bytes(converted.to_le_bytes()));
 
-        // test i64 conversion
-        let number = -9223372036850770800;
-        let number_ptr = asc_new(&mut module, &number.to_string()).unwrap();
-        let converted: i64 = module.takes_ptr_returns_val("testToI64", number_ptr);
-        assert_eq!(number, converted);
+    // test i64 conversion
+    let number = -9223372036850770800;
+    let number_ptr = asc_new(&mut module, &number.to_string()).unwrap();
+    let converted: i64 = module.takes_ptr_returns_val("testToI64", number_ptr);
+    assert_eq!(number, converted);
 
-        // test f64 conversion
-        let number = -9223372036850770.92345034;
-        let number_ptr = asc_new(&mut module, &number.to_string()).unwrap();
-        let converted: f64 = module.takes_ptr_returns_val("testToF64", number_ptr);
-        assert_eq!(number, converted);
+    // test f64 conversion
+    let number = -9223372036850770.92345034;
+    let number_ptr = asc_new(&mut module, &number.to_string()).unwrap();
+    let converted: f64 = module.takes_ptr_returns_val("testToF64", number_ptr);
+    assert_eq!(number, converted);
 
-        // test BigInt conversion
-        let number = "-922337203685077092345034";
-        let number_ptr = asc_new(&mut module, number).unwrap();
-        let big_int_obj: AscPtr<AscBigInt> = module.invoke_export("testToBigInt", number_ptr);
-        let bytes: Vec<u8> = asc_get(&module, big_int_obj).unwrap();
-        assert_eq!(
-            scalar::BigInt::from_str(number).unwrap(),
-            scalar::BigInt::from_signed_bytes_le(&bytes)
-        );
-    }
-    fn v0_0_5() {
-        let mut module = test_module(
-            "jsonConversions",
-            mock_data_source("string_to_number.wasm", API_VERSION_0_0_5),
-            API_VERSION_0_0_5,
-        );
-
-        // test u64 conversion
-        let number = 9223372036850770800;
-        let number_ptr = asc_new(&mut module, &number.to_string()).unwrap();
-        let converted: i64 = module.takes_ptr_returns_val("testToU64", number_ptr);
-        assert_eq!(number, u64::from_le_bytes(converted.to_le_bytes()));
-
-        // test i64 conversion
-        let number = -9223372036850770800;
-        let number_ptr = asc_new(&mut module, &number.to_string()).unwrap();
-        let converted: i64 = module.takes_ptr_returns_val("testToI64", number_ptr);
-        assert_eq!(number, converted);
-
-        // test f64 conversion
-        let number = -9223372036850770.92345034;
-        let number_ptr = asc_new(&mut module, &number.to_string()).unwrap();
-        let converted: f64 = module.takes_ptr_returns_val("testToF64", number_ptr);
-        assert_eq!(number, converted);
-
-        // test BigInt conversion
-        let number = "-922337203685077092345034";
-        let number_ptr = asc_new(&mut module, number).unwrap();
-        let big_int_obj: AscPtr<AscBigInt> = module.invoke_export("testToBigInt", number_ptr);
-        let bytes: Vec<u8> = asc_get(&module, big_int_obj).unwrap();
-        assert_eq!(
-            scalar::BigInt::from_str(number).unwrap(),
-            scalar::BigInt::from_signed_bytes_le(&bytes)
-        );
-    }
-
-    v0_0_4();
-    v0_0_5();
+    // test BigInt conversion
+    let number = "-922337203685077092345034";
+    let number_ptr = asc_new(&mut module, number).unwrap();
+    let big_int_obj: AscPtr<AscBigInt> = module.invoke_export("testToBigInt", number_ptr);
+    let bytes: Vec<u8> = asc_get(&module, big_int_obj).unwrap();
+    assert_eq!(
+        scalar::BigInt::from_str(number).unwrap(),
+        scalar::BigInt::from_signed_bytes_le(&bytes)
+    );
 }
 
 #[tokio::test]
-async fn json_parsing() {
-    fn v0_0_4() {
-        let mut module = test_module(
-            "jsonParsing",
-            mock_data_source("json_parsing.wasm", API_VERSION_0_0_4),
-            API_VERSION_0_0_4,
-        );
+async fn json_conversions_v0_0_4() {
+    test_json_conversions(API_VERSION_0_0_4);
+}
 
-        // Parse invalid JSON and handle the error gracefully
-        let s = "foo"; // Invalid because there are no quotes around `foo`
-        let bytes: &[u8] = s.as_ref();
-        let bytes_ptr = asc_new(&mut module, bytes).unwrap();
-        let return_value: AscPtr<AscString> = module.invoke_export("handleJsonError", bytes_ptr);
-        let output: String = asc_get(&module, return_value).unwrap();
-        assert_eq!(output, "ERROR: true");
+#[tokio::test]
+async fn json_conversions_v0_0_5() {
+    test_json_conversions(API_VERSION_0_0_5);
+}
 
-        // Parse valid JSON and get it back
-        let s = "\"foo\""; // Valid because there are quotes around `foo`
-        let bytes: &[u8] = s.as_ref();
-        let bytes_ptr = asc_new(&mut module, bytes).unwrap();
-        let return_value: AscPtr<AscString> = module.invoke_export("handleJsonError", bytes_ptr);
-        let output: String = asc_get(&module, return_value).unwrap();
-        assert_eq!(output, "OK: foo, ERROR: false");
-    }
-    fn v0_0_5() {
-        let mut module = test_module(
-            "jsonParsing",
-            mock_data_source("json_parsing.wasm", API_VERSION_0_0_5),
-            API_VERSION_0_0_5,
-        );
+fn test_json_parsing(api_version: Version) {
+    let mut module = test_module(
+        "jsonParsing",
+        mock_data_source("json_parsing.wasm", api_version.clone()),
+        api_version,
+    );
 
-        // Parse invalid JSON and handle the error gracefully
-        let s = "foo"; // Invalid because there are no quotes around `foo`
-        let bytes: &[u8] = s.as_ref();
-        let bytes_ptr = asc_new(&mut module, bytes).unwrap();
-        let return_value: AscPtr<AscString> = module.invoke_export("handleJsonError", bytes_ptr);
-        let output: String = asc_get(&module, return_value).unwrap();
-        assert_eq!(output, "ERROR: true");
+    // Parse invalid JSON and handle the error gracefully
+    let s = "foo"; // Invalid because there are no quotes around `foo`
+    let bytes: &[u8] = s.as_ref();
+    let bytes_ptr = asc_new(&mut module, bytes).unwrap();
+    let return_value: AscPtr<AscString> = module.invoke_export("handleJsonError", bytes_ptr);
+    let output: String = asc_get(&module, return_value).unwrap();
+    assert_eq!(output, "ERROR: true");
 
-        // Parse valid JSON and get it back
-        let s = "\"foo\""; // Valid because there are quotes around `foo`
-        let bytes: &[u8] = s.as_ref();
-        let bytes_ptr = asc_new(&mut module, bytes).unwrap();
-        let return_value: AscPtr<AscString> = module.invoke_export("handleJsonError", bytes_ptr);
-        let output: String = asc_get(&module, return_value).unwrap();
-        assert_eq!(output, "OK: foo, ERROR: false");
-    }
+    // Parse valid JSON and get it back
+    let s = "\"foo\""; // Valid because there are quotes around `foo`
+    let bytes: &[u8] = s.as_ref();
+    let bytes_ptr = asc_new(&mut module, bytes).unwrap();
+    let return_value: AscPtr<AscString> = module.invoke_export("handleJsonError", bytes_ptr);
+    let output: String = asc_get(&module, return_value).unwrap();
+    assert_eq!(output, "OK: foo, ERROR: false");
+}
 
-    v0_0_4();
-    v0_0_5();
+#[tokio::test]
+async fn json_parsing_v0_0_4() {
+    test_json_parsing(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn json_parsing_v0_0_5() {
+    test_json_parsing(API_VERSION_0_0_5);
+}
+
+async fn test_ipfs_cat(api_version: Version) {
+    let ipfs = IpfsClient::localhost();
+    let hash = ipfs.add("42".into()).await.unwrap().hash;
+
+    // Ipfs host functions use `block_on` which must be called from a sync context,
+    // so we replicate what we do `spawn_module`.
+    let runtime = tokio::runtime::Handle::current();
+    std::thread::spawn(move || {
+        runtime.enter(|| {
+            let mut module = test_module(
+                "ipfsCat",
+                mock_data_source("ipfs_cat.wasm", api_version.clone()),
+                api_version,
+            );
+            let arg = asc_new(&mut module, &hash).unwrap();
+            let converted: AscPtr<AscString> = module.invoke_export("ipfsCatString", arg);
+            let data: String = asc_get(&module, converted).unwrap();
+            assert_eq!(data, "42");
+        })
+    })
+    .join()
+    .unwrap();
 }
 
 #[tokio::test(threaded_scheduler)]
-async fn ipfs_cat() {
-    async fn v0_0_4() {
-        let ipfs = IpfsClient::localhost();
-        let hash = ipfs.add("42".into()).await.unwrap().hash;
+async fn ipfs_cat_v0_0_4() {
+    test_ipfs_cat(API_VERSION_0_0_4).await;
+}
 
-        // Ipfs host functions use `block_on` which must be called from a sync context,
-        // so we replicate what we do `spawn_module`.
-        let runtime = tokio::runtime::Handle::current();
-        std::thread::spawn(move || {
-            runtime.enter(|| {
-                let mut module = test_module(
-                    "ipfsCat",
-                    mock_data_source("ipfs_cat.wasm", API_VERSION_0_0_4),
-                    API_VERSION_0_0_4,
-                );
-                let arg = asc_new(&mut module, &hash).unwrap();
-                let converted: AscPtr<AscString> = module.invoke_export("ipfsCatString", arg);
-                let data: String = asc_get(&module, converted).unwrap();
-                assert_eq!(data, "42");
-            })
-        })
-        .join()
-        .unwrap();
-    }
-    async fn v0_0_5() {
-        let ipfs = IpfsClient::localhost();
-        let hash = ipfs.add("42".into()).await.unwrap().hash;
-
-        // Ipfs host functions use `block_on` which must be called from a sync context,
-        // so we replicate what we do `spawn_module`.
-        let runtime = tokio::runtime::Handle::current();
-        std::thread::spawn(move || {
-            runtime.enter(|| {
-                let mut module = test_module(
-                    "ipfsCat",
-                    mock_data_source("ipfs_cat.wasm", API_VERSION_0_0_5),
-                    API_VERSION_0_0_5,
-                );
-                let arg = asc_new(&mut module, &hash).unwrap();
-                let converted: AscPtr<AscString> = module.invoke_export("ipfsCatString", arg);
-                let data: String = asc_get(&module, converted).unwrap();
-                assert_eq!(data, "42");
-            })
-        })
-        .join()
-        .unwrap();
-    }
-
-    v0_0_4().await;
-    v0_0_5().await;
+#[tokio::test(threaded_scheduler)]
+async fn ipfs_cat_v0_0_5() {
+    test_ipfs_cat(API_VERSION_0_0_5).await;
 }
 
 // The user_data value we use with calls to ipfs_map
 const USER_DATA: &str = "user_data";
 
-fn make_thing(subgraph_id: &str, id: &str, value: &str) -> (String, EntityModification) {
+fn make_thing(
+    subgraph_id: &str,
+    id: &str,
+    value: &str,
+    api_version: Version,
+) -> (String, EntityModification) {
+    let subgraph_id_with_api_version = subgraph_id_with_api_version(subgraph_id, api_version);
+
     let mut data = Entity::new();
     data.set("id", id);
     data.set("value", value);
     data.set("extra", USER_DATA);
     let key = EntityKey::data(
-        DeploymentHash::new(subgraph_id).unwrap(),
+        DeploymentHash::new(&subgraph_id_with_api_version).unwrap(),
         "Thing".to_string(),
         id.to_string(),
     );
@@ -509,7 +457,7 @@ async fn run_ipfs_map(
     std::thread::spawn(move || {
         runtime.enter(|| {
             let (mut module, _, _) = test_valid_module_and_store(
-                subgraph_id,
+                &subgraph_id,
                 mock_data_source("ipfs_map.wasm", api_version.clone()),
                 api_version,
             );
@@ -541,876 +489,539 @@ async fn run_ipfs_map(
     .unwrap()
 }
 
-#[tokio::test(threaded_scheduler)]
-async fn ipfs_map() {
-    async fn v0_0_4() {
-        let ipfs = IpfsClient::localhost();
-        let subgraph_id = "ipfsMap";
+async fn test_ipfs_map(api_version: Version, json_error_msg: &str) {
+    let ipfs = IpfsClient::localhost();
+    let subgraph_id = "ipfsMap";
 
-        // Try it with two valid objects
-        let (str1, thing1) = make_thing(subgraph_id, "one", "eins");
-        let (str2, thing2) = make_thing(subgraph_id, "two", "zwei");
-        let ops = run_ipfs_map(
+    // Try it with two valid objects
+    let (str1, thing1) = make_thing(&subgraph_id, "one", "eins", api_version.clone());
+    let (str2, thing2) = make_thing(&subgraph_id, "two", "zwei", api_version.clone());
+    let ops = run_ipfs_map(
+        ipfs.clone(),
+        subgraph_id,
+        format!("{}\n{}", str1, str2),
+        api_version.clone(),
+    )
+    .await
+    .expect("call failed");
+    let expected = vec![thing1, thing2];
+    assert_eq!(expected, ops);
+
+    // Valid JSON, but not what the callback expected; it will
+    // fail on an assertion
+    let err = run_ipfs_map(
+        ipfs.clone(),
+        subgraph_id,
+        format!("{}\n[1,2]", str1),
+        api_version.clone(),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        format!("{:#}", err).contains("JSON value is not an object."),
+        "{:#}",
+        err
+    );
+
+    // Malformed JSON
+    let errmsg = run_ipfs_map(
+        ipfs.clone(),
+        subgraph_id,
+        format!("{}\n[", str1),
+        api_version.clone(),
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+    assert!(errmsg.contains("EOF while parsing a list"));
+
+    // Empty input
+    let ops = run_ipfs_map(
+        ipfs.clone(),
+        subgraph_id,
+        "".to_string(),
+        api_version.clone(),
+    )
+    .await
+    .expect("call failed for emoty string");
+    assert_eq!(0, ops.len());
+
+    // Missing entry in the JSON object
+    let errmsg = format!(
+        "{:#}",
+        run_ipfs_map(
             ipfs.clone(),
             subgraph_id,
-            format!("{}\n{}", str1, str2),
-            API_VERSION_0_0_4,
-        )
-        .await
-        .expect("call failed");
-        let expected = vec![thing1, thing2];
-        assert_eq!(expected, ops);
-
-        // Valid JSON, but not what the callback expected; it will
-        // fail on an assertion
-        let err = run_ipfs_map(
-            ipfs.clone(),
-            subgraph_id,
-            format!("{}\n[1,2]", str1),
-            API_VERSION_0_0_4,
-        )
-        .await
-        .unwrap_err();
-        assert!(
-            format!("{:#}", err).contains("JSON value is not an object."),
-            "{:#}",
-            err
-        );
-
-        // Malformed JSON
-        let errmsg = run_ipfs_map(
-            ipfs.clone(),
-            subgraph_id,
-            format!("{}\n[", str1),
-            API_VERSION_0_0_4,
-        )
-        .await
-        .unwrap_err()
-        .to_string();
-        assert!(errmsg.contains("EOF while parsing a list"));
-
-        // Empty input
-        let ops = run_ipfs_map(ipfs.clone(), subgraph_id, "".to_string(), API_VERSION_0_0_4)
-            .await
-            .expect("call failed for emoty string");
-        assert_eq!(0, ops.len());
-
-        // Missing entry in the JSON object
-        let errmsg = format!(
-            "{:#}",
-            run_ipfs_map(
-                ipfs.clone(),
-                subgraph_id,
-                "{\"value\": \"drei\"}".to_string(),
-                API_VERSION_0_0_4,
-            )
-            .await
-            .unwrap_err()
-        );
-        assert!(errmsg.contains("JSON value is not a string."));
-
-        // Bad IPFS hash.
-        let errmsg = run_ipfs_map(
-            ipfs.clone(),
-            subgraph_id,
-            BAD_IPFS_HASH.to_string(),
-            API_VERSION_0_0_4,
+            "{\"value\": \"drei\"}".to_string(),
+            api_version.clone(),
         )
         .await
         .unwrap_err()
-        .to_string();
-        assert!(errmsg.contains("500 Internal Server Error"));
-    }
-    async fn v0_0_5() {
-        let ipfs = IpfsClient::localhost();
-        let subgraph_id = "ipfsMap";
+    );
+    assert!(errmsg.contains(json_error_msg));
 
-        // Try it with two valid objects
-        let (str1, thing1) = make_thing(subgraph_id, "one", "eins");
-        let (str2, thing2) = make_thing(subgraph_id, "two", "zwei");
-        let ops = run_ipfs_map(
-            ipfs.clone(),
-            subgraph_id,
-            format!("{}\n{}", str1, str2),
-            API_VERSION_0_0_5,
-        )
-        .await
-        .expect("call failed");
-        let expected = vec![thing1, thing2];
-        assert_eq!(expected, ops);
-
-        // Valid JSON, but not what the callback expected; it will
-        // fail on an assertion
-        let err = run_ipfs_map(
-            ipfs.clone(),
-            subgraph_id,
-            format!("{}\n[1,2]", str1),
-            API_VERSION_0_0_5,
-        )
-        .await
-        .unwrap_err();
-        assert!(
-            format!("{:#}", err).contains("JSON value is not an object."),
-            "{:#}",
-            err
-        );
-
-        // Malformed JSON
-        let errmsg = run_ipfs_map(
-            ipfs.clone(),
-            subgraph_id,
-            format!("{}\n[", str1),
-            API_VERSION_0_0_5,
-        )
-        .await
-        .unwrap_err()
-        .to_string();
-        assert!(errmsg.contains("EOF while parsing a list"));
-
-        // Empty input
-        let ops = run_ipfs_map(ipfs.clone(), subgraph_id, "".to_string(), API_VERSION_0_0_5)
-            .await
-            .expect("call failed for emoty string");
-        assert_eq!(0, ops.len());
-
-        // Missing entry in the JSON object
-        let errmsg = format!(
-            "{:#}",
-            run_ipfs_map(
-                ipfs.clone(),
-                subgraph_id,
-                "{\"value\": \"drei\"}".to_string(),
-                API_VERSION_0_0_5,
-            )
-            .await
-            .unwrap_err()
-        );
-        assert!(errmsg.contains("'id' should not be null"));
-
-        // Bad IPFS hash.
-        let errmsg = run_ipfs_map(
-            ipfs.clone(),
-            subgraph_id,
-            BAD_IPFS_HASH.to_string(),
-            API_VERSION_0_0_5,
-        )
-        .await
-        .unwrap_err()
-        .to_string();
-        assert!(errmsg.contains("500 Internal Server Error"));
-    }
-
-    v0_0_4().await;
-    v0_0_5().await;
+    // Bad IPFS hash.
+    let errmsg = run_ipfs_map(
+        ipfs.clone(),
+        subgraph_id,
+        BAD_IPFS_HASH.to_string(),
+        api_version.clone(),
+    )
+    .await
+    .unwrap_err()
+    .to_string();
+    assert!(errmsg.contains("500 Internal Server Error"));
 }
 
 #[tokio::test(threaded_scheduler)]
-async fn ipfs_fail() {
-    fn v0_0_4() {
-        let runtime = tokio::runtime::Handle::current();
+async fn ipfs_map_v0_0_4() {
+    test_ipfs_map(API_VERSION_0_0_4, "JSON value is not a string.").await;
+}
 
-        // Ipfs host functions use `block_on` which must be called from a sync context,
-        // so we replicate what we do `spawn_module`.
-        std::thread::spawn(move || {
-            runtime.enter(|| {
-                let mut module = test_module(
-                    "ipfsFail",
-                    mock_data_source("ipfs_cat.wasm", API_VERSION_0_0_4),
-                    API_VERSION_0_0_4,
-                );
+#[tokio::test(threaded_scheduler)]
+async fn ipfs_map_v0_0_5() {
+    test_ipfs_map(API_VERSION_0_0_5, "'id' should not be null").await;
+}
 
-                let hash = asc_new(&mut module, "invalid hash").unwrap();
-                assert!(module
-                    .invoke_export::<_, AscString>("ipfsCat", hash,)
-                    .is_null());
-            })
+async fn test_ipfs_fail(api_version: Version) {
+    let runtime = tokio::runtime::Handle::current();
+
+    // Ipfs host functions use `block_on` which must be called from a sync context,
+    // so we replicate what we do `spawn_module`.
+    std::thread::spawn(move || {
+        runtime.enter(|| {
+            let mut module = test_module(
+                "ipfsFail",
+                mock_data_source("ipfs_cat.wasm", api_version.clone()),
+                api_version,
+            );
+
+            let hash = asc_new(&mut module, "invalid hash").unwrap();
+            assert!(module
+                .invoke_export::<_, AscString>("ipfsCat", hash,)
+                .is_null());
         })
-        .join()
+    })
+    .join()
+    .unwrap();
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn ipfs_fail_v0_0_4() {
+    test_ipfs_fail(API_VERSION_0_0_4).await;
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn ipfs_fail_v0_0_5() {
+    test_ipfs_fail(API_VERSION_0_0_5).await;
+}
+
+fn test_crypto_keccak256(api_version: Version) {
+    let mut module = test_module(
+        "cryptoKeccak256",
+        mock_data_source("crypto.wasm", api_version.clone()),
+        api_version,
+    );
+    let input: &[u8] = "eth".as_ref();
+    let input: AscPtr<Uint8Array> = asc_new(&mut module, input).unwrap();
+
+    let hash: AscPtr<Uint8Array> = module.invoke_export("hash", input);
+    let hash: Vec<u8> = asc_get(&module, hash).unwrap();
+    assert_eq!(
+        hex::encode(hash),
+        "4f5b812789fc606be1b3b16908db13fc7a9adf7ca72641f84d75b47069d3d7f0"
+    );
+}
+
+#[tokio::test]
+async fn crypto_keccak256_v0_0_4() {
+    test_crypto_keccak256(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn crypto_keccak256_v0_0_5() {
+    test_crypto_keccak256(API_VERSION_0_0_5);
+}
+
+fn test_big_int_to_hex(api_version: Version) {
+    let mut module = test_module(
+        "BigIntToHex",
+        mock_data_source("big_int_to_hex.wasm", api_version.clone()),
+        api_version,
+    );
+
+    // Convert zero to hex
+    let zero = BigInt::from_unsigned_u256(&U256::zero());
+    let zero: AscPtr<AscBigInt> = asc_new(&mut module, &zero).unwrap();
+    let zero_hex_ptr: AscPtr<AscString> = module.invoke_export("big_int_to_hex", zero);
+    let zero_hex_str: String = asc_get(&module, zero_hex_ptr).unwrap();
+    assert_eq!(zero_hex_str, "0x0");
+
+    // Convert 1 to hex
+    let one = BigInt::from_unsigned_u256(&U256::one());
+    let one: AscPtr<AscBigInt> = asc_new(&mut module, &one).unwrap();
+    let one_hex_ptr: AscPtr<AscString> = module.invoke_export("big_int_to_hex", one);
+    let one_hex_str: String = asc_get(&module, one_hex_ptr).unwrap();
+    assert_eq!(one_hex_str, "0x1");
+
+    // Convert U256::max_value() to hex
+    let u256_max = BigInt::from_unsigned_u256(&U256::max_value());
+    let u256_max: AscPtr<AscBigInt> = asc_new(&mut module, &u256_max).unwrap();
+    let u256_max_hex_ptr: AscPtr<AscString> = module.invoke_export("big_int_to_hex", u256_max);
+    let u256_max_hex_str: String = asc_get(&module, u256_max_hex_ptr).unwrap();
+    assert_eq!(
+        u256_max_hex_str,
+        "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    );
+}
+
+#[tokio::test]
+async fn big_int_to_hex_v0_0_4() {
+    test_big_int_to_hex(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn big_int_to_hex_v0_0_5() {
+    test_big_int_to_hex(API_VERSION_0_0_5);
+}
+
+fn test_big_int_arithmetic(api_version: Version) {
+    let mut module = test_module(
+        "BigIntArithmetic",
+        mock_data_source("big_int_arithmetic.wasm", api_version.clone()),
+        api_version,
+    );
+
+    // 0 + 1 = 1
+    let zero = BigInt::from(0);
+    let zero: AscPtr<AscBigInt> = asc_new(&mut module, &zero).unwrap();
+    let one = BigInt::from(1);
+    let one: AscPtr<AscBigInt> = asc_new(&mut module, &one).unwrap();
+    let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("plus", zero, one);
+    let result: BigInt = asc_get(&module, result_ptr).unwrap();
+    assert_eq!(result, BigInt::from(1));
+
+    // 127 + 1 = 128
+    let zero = BigInt::from(127);
+    let zero: AscPtr<AscBigInt> = asc_new(&mut module, &zero).unwrap();
+    let one = BigInt::from(1);
+    let one: AscPtr<AscBigInt> = asc_new(&mut module, &one).unwrap();
+    let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("plus", zero, one);
+    let result: BigInt = asc_get(&module, result_ptr).unwrap();
+    assert_eq!(result, BigInt::from(128));
+
+    // 5 - 10 = -5
+    let five = BigInt::from(5);
+    let five: AscPtr<AscBigInt> = asc_new(&mut module, &five).unwrap();
+    let ten = BigInt::from(10);
+    let ten: AscPtr<AscBigInt> = asc_new(&mut module, &ten).unwrap();
+    let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("minus", five, ten);
+    let result: BigInt = asc_get(&module, result_ptr).unwrap();
+    assert_eq!(result, BigInt::from(-5));
+
+    // -20 * 5 = -100
+    let minus_twenty = BigInt::from(-20);
+    let minus_twenty: AscPtr<AscBigInt> = asc_new(&mut module, &minus_twenty).unwrap();
+    let five = BigInt::from(5);
+    let five: AscPtr<AscBigInt> = asc_new(&mut module, &five).unwrap();
+    let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("times", minus_twenty, five);
+    let result: BigInt = asc_get(&module, result_ptr).unwrap();
+    assert_eq!(result, BigInt::from(-100));
+
+    // 5 / 2 = 2
+    let five = BigInt::from(5);
+    let five: AscPtr<AscBigInt> = asc_new(&mut module, &five).unwrap();
+    let two = BigInt::from(2);
+    let two: AscPtr<AscBigInt> = asc_new(&mut module, &two).unwrap();
+    let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("dividedBy", five, two);
+    let result: BigInt = asc_get(&module, result_ptr).unwrap();
+    assert_eq!(result, BigInt::from(2));
+
+    // 5 % 2 = 1
+    let five = BigInt::from(5);
+    let five: AscPtr<AscBigInt> = asc_new(&mut module, &five).unwrap();
+    let two = BigInt::from(2);
+    let two: AscPtr<AscBigInt> = asc_new(&mut module, &two).unwrap();
+    let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("mod", five, two);
+    let result: BigInt = asc_get(&module, result_ptr).unwrap();
+    assert_eq!(result, BigInt::from(1));
+}
+
+#[tokio::test]
+async fn big_int_arithmetic_v0_0_4() {
+    test_big_int_arithmetic(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn big_int_arithmetic_v0_0_5() {
+    test_big_int_arithmetic(API_VERSION_0_0_5);
+}
+
+fn test_abort(api_version: Version, error_msg: &str) {
+    let module = test_module(
+        "abort",
+        mock_data_source("abort.wasm", api_version.clone()),
+        api_version,
+    );
+    let res: Result<(), _> = module.get_func("abort").typed().unwrap().call(());
+    assert!(res.unwrap_err().to_string().contains(error_msg));
+}
+
+#[tokio::test]
+async fn abort_v0_0_4() {
+    test_abort(
+        API_VERSION_0_0_4,
+        "line 6, column 2, with message: not true",
+    );
+}
+
+#[tokio::test]
+async fn abort_v0_0_5() {
+    test_abort(
+        API_VERSION_0_0_5,
+        "line 4, column 3, with message: not true",
+    );
+}
+
+fn test_bytes_to_base58(api_version: Version) {
+    let mut module = test_module(
+        "bytesToBase58",
+        mock_data_source("bytes_to_base58.wasm", api_version.clone()),
+        api_version,
+    );
+    let bytes = hex::decode("12207D5A99F603F231D53A4F39D1521F98D2E8BB279CF29BEBFD0687DC98458E7F89")
         .unwrap();
-    }
-    fn v0_0_5() {
-        let runtime = tokio::runtime::Handle::current();
-
-        // Ipfs host functions use `block_on` which must be called from a sync context,
-        // so we replicate what we do `spawn_module`.
-        std::thread::spawn(move || {
-            runtime.enter(|| {
-                let mut module = test_module(
-                    "ipfsFail",
-                    mock_data_source("ipfs_cat.wasm", API_VERSION_0_0_5),
-                    API_VERSION_0_0_5,
-                );
-
-                let hash = asc_new(&mut module, "invalid hash").unwrap();
-                assert!(module
-                    .invoke_export::<_, AscString>("ipfsCat", hash,)
-                    .is_null());
-            })
-        })
-        .join()
-        .unwrap();
-    }
-
-    v0_0_4();
-    v0_0_5();
+    let bytes_ptr = asc_new(&mut module, bytes.as_slice()).unwrap();
+    let result_ptr: AscPtr<AscString> = module.invoke_export("bytes_to_base58", bytes_ptr);
+    let base58: String = asc_get(&module, result_ptr).unwrap();
+    assert_eq!(base58, "QmWmyoMoctfbAaiEs2G46gpeUmhqFRDW6KWo64y5r581Vz");
 }
 
 #[tokio::test]
-async fn crypto_keccak256() {
-    fn v0_0_4() {
-        let mut module = test_module(
-            "cryptoKeccak256",
-            mock_data_source("crypto.wasm", API_VERSION_0_0_4),
-            API_VERSION_0_0_4,
-        );
-        let input: &[u8] = "eth".as_ref();
-        let input: AscPtr<Uint8Array> = asc_new(&mut module, input).unwrap();
-
-        let hash: AscPtr<Uint8Array> = module.invoke_export("hash", input);
-        let hash: Vec<u8> = asc_get(&module, hash).unwrap();
-        assert_eq!(
-            hex::encode(hash),
-            "4f5b812789fc606be1b3b16908db13fc7a9adf7ca72641f84d75b47069d3d7f0"
-        );
-    }
-    fn v0_0_5() {
-        let mut module = test_module(
-            "cryptoKeccak256",
-            mock_data_source("crypto.wasm", API_VERSION_0_0_5),
-            API_VERSION_0_0_5,
-        );
-        let input: &[u8] = "eth".as_ref();
-        let input: AscPtr<Uint8Array> = asc_new(&mut module, input).unwrap();
-
-        let hash: AscPtr<Uint8Array> = module.invoke_export("hash", input);
-        let hash: Vec<u8> = asc_get(&module, hash).unwrap();
-        assert_eq!(
-            hex::encode(hash),
-            "4f5b812789fc606be1b3b16908db13fc7a9adf7ca72641f84d75b47069d3d7f0"
-        );
-    }
-
-    v0_0_4();
-    v0_0_5();
+async fn bytes_to_base58_v0_0_4() {
+    test_bytes_to_base58(API_VERSION_0_0_4);
 }
 
 #[tokio::test]
-async fn big_int_to_hex() {
-    fn v0_0_4() {
-        let mut module = test_module(
-            "BigIntToHex",
-            mock_data_source("big_int_to_hex.wasm", API_VERSION_0_0_4),
-            API_VERSION_0_0_4,
-        );
-
-        // Convert zero to hex
-        let zero = BigInt::from_unsigned_u256(&U256::zero());
-        let zero: AscPtr<AscBigInt> = asc_new(&mut module, &zero).unwrap();
-        let zero_hex_ptr: AscPtr<AscString> = module.invoke_export("big_int_to_hex", zero);
-        let zero_hex_str: String = asc_get(&module, zero_hex_ptr).unwrap();
-        assert_eq!(zero_hex_str, "0x0");
-
-        // Convert 1 to hex
-        let one = BigInt::from_unsigned_u256(&U256::one());
-        let one: AscPtr<AscBigInt> = asc_new(&mut module, &one).unwrap();
-        let one_hex_ptr: AscPtr<AscString> = module.invoke_export("big_int_to_hex", one);
-        let one_hex_str: String = asc_get(&module, one_hex_ptr).unwrap();
-        assert_eq!(one_hex_str, "0x1");
-
-        // Convert U256::max_value() to hex
-        let u256_max = BigInt::from_unsigned_u256(&U256::max_value());
-        let u256_max: AscPtr<AscBigInt> = asc_new(&mut module, &u256_max).unwrap();
-        let u256_max_hex_ptr: AscPtr<AscString> = module.invoke_export("big_int_to_hex", u256_max);
-        let u256_max_hex_str: String = asc_get(&module, u256_max_hex_ptr).unwrap();
-        assert_eq!(
-            u256_max_hex_str,
-            "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-        );
-    }
-    fn v0_0_5() {
-        let mut module = test_module(
-            "BigIntToHex",
-            mock_data_source("big_int_to_hex.wasm", API_VERSION_0_0_5),
-            API_VERSION_0_0_5,
-        );
-
-        // Convert zero to hex
-        let zero = BigInt::from_unsigned_u256(&U256::zero());
-        let zero: AscPtr<AscBigInt> = asc_new(&mut module, &zero).unwrap();
-        let zero_hex_ptr: AscPtr<AscString> = module.invoke_export("big_int_to_hex", zero);
-        let zero_hex_str: String = asc_get(&module, zero_hex_ptr).unwrap();
-        assert_eq!(zero_hex_str, "0x0");
-
-        // Convert 1 to hex
-        let one = BigInt::from_unsigned_u256(&U256::one());
-        let one: AscPtr<AscBigInt> = asc_new(&mut module, &one).unwrap();
-        let one_hex_ptr: AscPtr<AscString> = module.invoke_export("big_int_to_hex", one);
-        let one_hex_str: String = asc_get(&module, one_hex_ptr).unwrap();
-        assert_eq!(one_hex_str, "0x1");
-
-        // Convert U256::max_value() to hex
-        let u256_max = BigInt::from_unsigned_u256(&U256::max_value());
-        let u256_max: AscPtr<AscBigInt> = asc_new(&mut module, &u256_max).unwrap();
-        let u256_max_hex_ptr: AscPtr<AscString> = module.invoke_export("big_int_to_hex", u256_max);
-        let u256_max_hex_str: String = asc_get(&module, u256_max_hex_ptr).unwrap();
-        assert_eq!(
-            u256_max_hex_str,
-            "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-        );
-    }
-
-    v0_0_4();
-    v0_0_5();
+async fn bytes_to_base58_v0_0_5() {
+    test_bytes_to_base58(API_VERSION_0_0_5);
 }
 
-#[tokio::test]
-async fn big_int_arithmetic() {
-    fn v0_0_4() {
-        let mut module = test_module(
-            "BigIntArithmetic",
-            mock_data_source("big_int_arithmetic.wasm", API_VERSION_0_0_4),
-            API_VERSION_0_0_4,
-        );
+fn test_data_source_create(api_version: Version) {
+    let run_data_source_create =
+        move |name: String,
+              params: Vec<String>|
+              -> Result<Vec<DataSourceTemplateInfo<Chain>>, wasmtime::Trap> {
+            let mut module = test_module(
+                "DataSourceCreate",
+                mock_data_source("data_source_create.wasm", api_version.clone()),
+                api_version.clone(),
+            );
 
-        // 0 + 1 = 1
-        let zero = BigInt::from(0);
-        let zero: AscPtr<AscBigInt> = asc_new(&mut module, &zero).unwrap();
-        let one = BigInt::from(1);
-        let one: AscPtr<AscBigInt> = asc_new(&mut module, &one).unwrap();
-        let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("plus", zero, one);
-        let result: BigInt = asc_get(&module, result_ptr).unwrap();
-        assert_eq!(result, BigInt::from(1));
+            let name = asc_new(&mut module, &name).unwrap();
+            let params = asc_new(&mut module, params.as_slice()).unwrap();
+            module.instance_ctx_mut().ctx.state.enter_handler();
+            module.invoke_export2_void("dataSourceCreate", name, params)?;
+            module.instance_ctx_mut().ctx.state.exit_handler();
+            Ok(module.take_ctx().ctx.state.drain_created_data_sources())
+        };
 
-        // 127 + 1 = 128
-        let zero = BigInt::from(127);
-        let zero: AscPtr<AscBigInt> = asc_new(&mut module, &zero).unwrap();
-        let one = BigInt::from(1);
-        let one: AscPtr<AscBigInt> = asc_new(&mut module, &one).unwrap();
-        let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("plus", zero, one);
-        let result: BigInt = asc_get(&module, result_ptr).unwrap();
-        assert_eq!(result, BigInt::from(128));
+    // Test with a valid template
+    let template = String::from("example template");
+    let params = vec![String::from("0xc0a47dFe034B400B47bDaD5FecDa2621de6c4d95")];
+    let result = run_data_source_create(template.clone(), params.clone())
+        .expect("unexpected error returned from dataSourceCreate");
+    assert_eq!(result[0].params, params.clone());
+    assert_eq!(result[0].template.name, template);
 
-        // 5 - 10 = -5
-        let five = BigInt::from(5);
-        let five: AscPtr<AscBigInt> = asc_new(&mut module, &five).unwrap();
-        let ten = BigInt::from(10);
-        let ten: AscPtr<AscBigInt> = asc_new(&mut module, &ten).unwrap();
-        let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("minus", five, ten);
-        let result: BigInt = asc_get(&module, result_ptr).unwrap();
-        assert_eq!(result, BigInt::from(-5));
-
-        // -20 * 5 = -100
-        let minus_twenty = BigInt::from(-20);
-        let minus_twenty: AscPtr<AscBigInt> = asc_new(&mut module, &minus_twenty).unwrap();
-        let five = BigInt::from(5);
-        let five: AscPtr<AscBigInt> = asc_new(&mut module, &five).unwrap();
-        let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("times", minus_twenty, five);
-        let result: BigInt = asc_get(&module, result_ptr).unwrap();
-        assert_eq!(result, BigInt::from(-100));
-
-        // 5 / 2 = 2
-        let five = BigInt::from(5);
-        let five: AscPtr<AscBigInt> = asc_new(&mut module, &five).unwrap();
-        let two = BigInt::from(2);
-        let two: AscPtr<AscBigInt> = asc_new(&mut module, &two).unwrap();
-        let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("dividedBy", five, two);
-        let result: BigInt = asc_get(&module, result_ptr).unwrap();
-        assert_eq!(result, BigInt::from(2));
-
-        // 5 % 2 = 1
-        let five = BigInt::from(5);
-        let five: AscPtr<AscBigInt> = asc_new(&mut module, &five).unwrap();
-        let two = BigInt::from(2);
-        let two: AscPtr<AscBigInt> = asc_new(&mut module, &two).unwrap();
-        let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("mod", five, two);
-        let result: BigInt = asc_get(&module, result_ptr).unwrap();
-        assert_eq!(result, BigInt::from(1));
-    }
-    fn v0_0_5() {
-        let mut module = test_module(
-            "BigIntArithmetic",
-            mock_data_source("big_int_arithmetic.wasm", API_VERSION_0_0_5),
-            API_VERSION_0_0_5,
-        );
-
-        // 0 + 1 = 1
-        let zero = BigInt::from(0);
-        let zero: AscPtr<AscBigInt> = asc_new(&mut module, &zero).unwrap();
-        let one = BigInt::from(1);
-        let one: AscPtr<AscBigInt> = asc_new(&mut module, &one).unwrap();
-        let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("plus", zero, one);
-        let result: BigInt = asc_get(&module, result_ptr).unwrap();
-        assert_eq!(result, BigInt::from(1));
-
-        // 127 + 1 = 128
-        let zero = BigInt::from(127);
-        let zero: AscPtr<AscBigInt> = asc_new(&mut module, &zero).unwrap();
-        let one = BigInt::from(1);
-        let one: AscPtr<AscBigInt> = asc_new(&mut module, &one).unwrap();
-        let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("plus", zero, one);
-        let result: BigInt = asc_get(&module, result_ptr).unwrap();
-        assert_eq!(result, BigInt::from(128));
-
-        // 5 - 10 = -5
-        let five = BigInt::from(5);
-        let five: AscPtr<AscBigInt> = asc_new(&mut module, &five).unwrap();
-        let ten = BigInt::from(10);
-        let ten: AscPtr<AscBigInt> = asc_new(&mut module, &ten).unwrap();
-        let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("minus", five, ten);
-        let result: BigInt = asc_get(&module, result_ptr).unwrap();
-        assert_eq!(result, BigInt::from(-5));
-
-        // -20 * 5 = -100
-        let minus_twenty = BigInt::from(-20);
-        let minus_twenty: AscPtr<AscBigInt> = asc_new(&mut module, &minus_twenty).unwrap();
-        let five = BigInt::from(5);
-        let five: AscPtr<AscBigInt> = asc_new(&mut module, &five).unwrap();
-        let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("times", minus_twenty, five);
-        let result: BigInt = asc_get(&module, result_ptr).unwrap();
-        assert_eq!(result, BigInt::from(-100));
-
-        // 5 / 2 = 2
-        let five = BigInt::from(5);
-        let five: AscPtr<AscBigInt> = asc_new(&mut module, &five).unwrap();
-        let two = BigInt::from(2);
-        let two: AscPtr<AscBigInt> = asc_new(&mut module, &two).unwrap();
-        let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("dividedBy", five, two);
-        let result: BigInt = asc_get(&module, result_ptr).unwrap();
-        assert_eq!(result, BigInt::from(2));
-
-        // 5 % 2 = 1
-        let five = BigInt::from(5);
-        let five: AscPtr<AscBigInt> = asc_new(&mut module, &five).unwrap();
-        let two = BigInt::from(2);
-        let two: AscPtr<AscBigInt> = asc_new(&mut module, &two).unwrap();
-        let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("mod", five, two);
-        let result: BigInt = asc_get(&module, result_ptr).unwrap();
-        assert_eq!(result, BigInt::from(1));
-    }
-
-    v0_0_4();
-    v0_0_5();
-}
-
-#[tokio::test]
-async fn abort() {
-    fn v0_0_4() {
-        let module = test_module(
-            "abort",
-            mock_data_source("abort.wasm", API_VERSION_0_0_4),
-            API_VERSION_0_0_4,
-        );
-        let res: Result<(), _> = module.get_func("abort").typed().unwrap().call(());
-        assert!(res
-            .unwrap_err()
-            .to_string()
-            .contains("line 6, column 2, with message: not true"));
-    }
-    fn v0_0_5() {
-        let module = test_module(
-            "abort",
-            mock_data_source("abort.wasm", API_VERSION_0_0_5),
-            API_VERSION_0_0_5,
-        );
-        let res: Result<(), _> = module.get_func("abort").typed().unwrap().call(());
-        assert!(res
-            .unwrap_err()
-            .to_string()
-            .contains("line 4, column 3, with message: not true"));
-    }
-
-    v0_0_4();
-    v0_0_5();
-}
-
-#[tokio::test]
-async fn bytes_to_base58() {
-    fn v0_0_4() {
-        let mut module = test_module(
-            "bytesToBase58",
-            mock_data_source("bytes_to_base58.wasm", API_VERSION_0_0_4),
-            API_VERSION_0_0_4,
-        );
-        let bytes =
-            hex::decode("12207D5A99F603F231D53A4F39D1521F98D2E8BB279CF29BEBFD0687DC98458E7F89")
-                .unwrap();
-        let bytes_ptr = asc_new(&mut module, bytes.as_slice()).unwrap();
-        let result_ptr: AscPtr<AscString> = module.invoke_export("bytes_to_base58", bytes_ptr);
-        let base58: String = asc_get(&module, result_ptr).unwrap();
-        assert_eq!(base58, "QmWmyoMoctfbAaiEs2G46gpeUmhqFRDW6KWo64y5r581Vz");
-    }
-    fn v0_0_5() {
-        let mut module = test_module(
-            "bytesToBase58",
-            mock_data_source("bytes_to_base58.wasm", API_VERSION_0_0_5),
-            API_VERSION_0_0_5,
-        );
-        let bytes =
-            hex::decode("12207D5A99F603F231D53A4F39D1521F98D2E8BB279CF29BEBFD0687DC98458E7F89")
-                .unwrap();
-        let bytes_ptr = asc_new(&mut module, bytes.as_slice()).unwrap();
-        let result_ptr: AscPtr<AscString> = module.invoke_export("bytes_to_base58", bytes_ptr);
-        let base58: String = asc_get(&module, result_ptr).unwrap();
-        assert_eq!(base58, "QmWmyoMoctfbAaiEs2G46gpeUmhqFRDW6KWo64y5r581Vz");
-    }
-
-    v0_0_4();
-    v0_0_5();
-}
-
-#[tokio::test]
-async fn data_source_create() {
-    fn v0_0_4() {
-        let run_data_source_create =
-            move |name: String,
-                  params: Vec<String>|
-                  -> Result<Vec<DataSourceTemplateInfo<Chain>>, wasmtime::Trap> {
-                let mut module = test_module(
-                    "DataSourceCreate",
-                    mock_data_source("data_source_create.wasm", API_VERSION_0_0_4),
-                    API_VERSION_0_0_4,
-                );
-
-                let name = asc_new(&mut module, &name).unwrap();
-                let params = asc_new(&mut module, params.as_slice()).unwrap();
-                module.instance_ctx_mut().ctx.state.enter_handler();
-                module.invoke_export2_void("dataSourceCreate", name, params)?;
-                module.instance_ctx_mut().ctx.state.exit_handler();
-                Ok(module.take_ctx().ctx.state.drain_created_data_sources())
-            };
-
-        // Test with a valid template
-        let template = String::from("example template");
-        let params = vec![String::from("0xc0a47dFe034B400B47bDaD5FecDa2621de6c4d95")];
-        let result = run_data_source_create(template.clone(), params.clone())
-            .expect("unexpected error returned from dataSourceCreate");
-        assert_eq!(result[0].params, params.clone());
-        assert_eq!(result[0].template.name, template);
-
-        // Test with a template that doesn't exist
-        let template = String::from("nonexistent template");
-        let params = vec![String::from("0xc000000000000000000000000000000000000000")];
-        match run_data_source_create(template.clone(), params.clone()) {
-            Ok(_) => panic!("expected an error because the template does not exist"),
-            Err(e) => assert!(e.to_string().contains(
-                "Failed to create data source from name `nonexistent template`: \
+    // Test with a template that doesn't exist
+    let template = String::from("nonexistent template");
+    let params = vec![String::from("0xc000000000000000000000000000000000000000")];
+    match run_data_source_create(template.clone(), params.clone()) {
+        Ok(_) => panic!("expected an error because the template does not exist"),
+        Err(e) => assert!(e.to_string().contains(
+            "Failed to create data source from name `nonexistent template`: \
              No template with this name in parent data source `example data source`. \
              Available names: example template."
-            )),
-        };
-    }
-    fn v0_0_5() {
-        let run_data_source_create =
-            move |name: String,
-                  params: Vec<String>|
-                  -> Result<Vec<DataSourceTemplateInfo<Chain>>, wasmtime::Trap> {
-                let mut module = test_module(
-                    "DataSourceCreate",
-                    mock_data_source("data_source_create.wasm", API_VERSION_0_0_5),
-                    API_VERSION_0_0_5,
-                );
-
-                let name = asc_new(&mut module, &name).unwrap();
-                let params = asc_new(&mut module, &*params).unwrap();
-                module.instance_ctx_mut().ctx.state.enter_handler();
-                module.invoke_export2_void("dataSourceCreate", name, params)?;
-                module.instance_ctx_mut().ctx.state.exit_handler();
-                Ok(module.take_ctx().ctx.state.drain_created_data_sources())
-            };
-
-        // Test with a valid template
-        let template = String::from("example template");
-        let params = vec![String::from("0xc0a47dFe034B400B47bDaD5FecDa2621de6c4d95")];
-        let result = run_data_source_create(template.clone(), params.clone())
-            .expect("unexpected error returned from dataSourceCreate");
-        assert_eq!(result[0].params, params.clone());
-        assert_eq!(result[0].template.name, template);
-
-        // Test with a template that doesn't exist
-        let template = String::from("nonexistent template");
-        let params = vec![String::from("0xc000000000000000000000000000000000000000")];
-        match run_data_source_create(template.clone(), params.clone()) {
-            Ok(_) => panic!("expected an error because the template does not exist"),
-            Err(e) => assert!(e.to_string().contains(
-                "Failed to create data source from name `nonexistent template`: \
-             No template with this name in parent data source `example data source`. \
-             Available names: example template."
-            )),
-        };
-    }
-
-    v0_0_4();
-    v0_0_5();
+        )),
+    };
 }
 
 #[tokio::test]
-async fn ens_name_by_hash() {
-    fn v0_0_4() {
-        let mut module = test_module(
-            "EnsNameByHash",
-            mock_data_source("ens_name_by_hash.wasm", API_VERSION_0_0_4),
-            API_VERSION_0_0_4,
-        );
-
-        let hash = "0x7f0c1b04d1a4926f9c635a030eeb611d4c26e5e73291b32a1c7a4ac56935b5b3";
-        let name = "dealdrafts";
-        test_store::insert_ens_name(hash, name);
-        let val = asc_new(&mut module, hash).unwrap();
-        let converted: AscPtr<AscString> = module.invoke_export("nameByHash", val);
-        let data: String = asc_get(&module, converted).unwrap();
-        assert_eq!(data, name);
-
-        let hash = asc_new(&mut module, "impossible keccak hash").unwrap();
-        assert!(module
-            .invoke_export::<_, AscString>("nameByHash", hash)
-            .is_null());
-    }
-    fn v0_0_5() {
-        let mut module = test_module(
-            "EnsNameByHash",
-            mock_data_source("ens_name_by_hash.wasm", API_VERSION_0_0_5),
-            API_VERSION_0_0_5,
-        );
-
-        let hash = "0x7f0c1b04d1a4926f9c635a030eeb611d4c26e5e73291b32a1c7a4ac56935b5b3";
-        let name = "dealdrafts";
-        test_store::insert_ens_name(hash, name);
-        let val = asc_new(&mut module, hash).unwrap();
-        let converted: AscPtr<AscString> = module.invoke_export("nameByHash", val);
-        let data: String = asc_get(&module, converted).unwrap();
-        assert_eq!(data, name);
-
-        let hash = asc_new(&mut module, "impossible keccak hash").unwrap();
-        assert!(module
-            .invoke_export::<_, AscString>("nameByHash", hash)
-            .is_null());
-    }
-
-    v0_0_4();
-    v0_0_5();
+async fn data_source_create_v0_0_4() {
+    test_data_source_create(API_VERSION_0_0_4);
 }
 
 #[tokio::test]
-async fn entity_store() {
-    fn v0_0_4() {
-        let (mut module, store, deployment) = test_valid_module_and_store(
-            "entityStore",
-            mock_data_source("store.wasm", API_VERSION_0_0_4),
-            API_VERSION_0_0_4,
-        );
+async fn data_source_create_v0_0_5() {
+    test_data_source_create(API_VERSION_0_0_5);
+}
 
-        let mut alex = Entity::new();
-        alex.set("id", "alex");
-        alex.set("name", "Alex");
-        let mut steve = Entity::new();
-        steve.set("id", "steve");
-        steve.set("name", "Steve");
-        let user_type = EntityType::from("User");
-        test_store::insert_entities(
-            &deployment,
-            vec![(user_type.clone(), alex), (user_type, steve)],
-        )
-        .unwrap();
+fn test_ens_name_by_hash(api_version: Version) {
+    let mut module = test_module(
+        "EnsNameByHash",
+        mock_data_source("ens_name_by_hash.wasm", api_version.clone()),
+        api_version,
+    );
 
-        let get_user = move |module: &mut WasmInstance<Chain>, id: &str| -> Option<Entity> {
-            let id = asc_new(module, id).unwrap();
-            let entity_ptr: AscPtr<AscEntity> = module.invoke_export("getUser", id);
-            if entity_ptr.is_null() {
-                None
-            } else {
-                Some(Entity::from(
-                    try_asc_get::<HashMap<String, Value>, _, _>(module, entity_ptr).unwrap(),
-                ))
-            }
-        };
+    let hash = "0x7f0c1b04d1a4926f9c635a030eeb611d4c26e5e73291b32a1c7a4ac56935b5b3";
+    let name = "dealdrafts";
+    test_store::insert_ens_name(hash, name);
+    let val = asc_new(&mut module, hash).unwrap();
+    let converted: AscPtr<AscString> = module.invoke_export("nameByHash", val);
+    let data: String = asc_get(&module, converted).unwrap();
+    assert_eq!(data, name);
 
-        let load_and_set_user_name = |module: &mut WasmInstance<Chain>, id: &str, name: &str| {
-            let id_ptr = asc_new(module, id).unwrap();
-            let name_ptr = asc_new(module, name).unwrap();
-            module
-                .invoke_export2_void("loadAndSetUserName", id_ptr, name_ptr)
-                .unwrap();
-        };
+    let hash = asc_new(&mut module, "impossible keccak hash").unwrap();
+    assert!(module
+        .invoke_export::<_, AscString>("nameByHash", hash)
+        .is_null());
+}
 
-        // store.get of a nonexistent user
-        assert_eq!(None, get_user(&mut module, "herobrine"));
-        // store.get of an existing user
-        let steve = get_user(&mut module, "steve").unwrap();
-        assert_eq!(Some(&Value::from("Steve")), steve.get("name"));
+#[tokio::test]
+async fn ens_name_by_hash_v0_0_4() {
+    test_ens_name_by_hash(API_VERSION_0_0_4);
+}
 
-        // Load, set, save cycle for an existing entity
-        load_and_set_user_name(&mut module, "steve", "Steve-O");
+#[tokio::test]
+async fn ens_name_by_hash_v0_0_5() {
+    test_ens_name_by_hash(API_VERSION_0_0_5);
+}
 
-        // We need to empty the cache for the next test
-        let writable = store.writable(&deployment).unwrap();
-        let cache = std::mem::replace(
-            &mut module.instance_ctx_mut().ctx.state.entity_cache,
-            EntityCache::new(writable.clone()),
-        );
-        let mut mods = cache.as_modifications().unwrap().modifications;
-        assert_eq!(1, mods.len());
-        match mods.pop().unwrap() {
-            EntityModification::Overwrite { data, .. } => {
-                assert_eq!(Some(&Value::from("steve")), data.get("id"));
-                assert_eq!(Some(&Value::from("Steve-O")), data.get("name"));
-            }
-            _ => assert!(false, "expected Overwrite modification"),
+fn test_entity_store(api_version: Version) {
+    let (mut module, store, deployment) = test_valid_module_and_store(
+        "entityStore",
+        mock_data_source("store.wasm", api_version.clone()),
+        api_version,
+    );
+
+    let mut alex = Entity::new();
+    alex.set("id", "alex");
+    alex.set("name", "Alex");
+    let mut steve = Entity::new();
+    steve.set("id", "steve");
+    steve.set("name", "Steve");
+    let user_type = EntityType::from("User");
+    test_store::insert_entities(
+        &deployment,
+        vec![(user_type.clone(), alex), (user_type, steve)],
+    )
+    .unwrap();
+
+    let get_user = move |module: &mut WasmInstance<Chain>, id: &str| -> Option<Entity> {
+        let id = asc_new(module, id).unwrap();
+        let entity_ptr: AscPtr<AscEntity> = module.invoke_export("getUser", id);
+        if entity_ptr.is_null() {
+            None
+        } else {
+            Some(Entity::from(
+                try_asc_get::<HashMap<String, Value>, _, _>(module, entity_ptr).unwrap(),
+            ))
         }
+    };
 
-        // Load, set, save cycle for a new entity with fulltext API
-        load_and_set_user_name(&mut module, "herobrine", "Brine-O");
-        let mut fulltext_entities = BTreeMap::new();
-        let mut fulltext_fields = BTreeMap::new();
-        fulltext_fields.insert("name".to_string(), vec!["search".to_string()]);
-        fulltext_entities.insert("User".to_string(), fulltext_fields);
-        let mut mods = module
-            .take_ctx()
-            .ctx
-            .state
-            .entity_cache
-            .as_modifications()
-            .unwrap()
-            .modifications;
-        assert_eq!(1, mods.len());
-        match mods.pop().unwrap() {
-            EntityModification::Insert { data, .. } => {
-                assert_eq!(Some(&Value::from("herobrine")), data.get("id"));
-                assert_eq!(Some(&Value::from("Brine-O")), data.get("name"));
-            }
-            _ => assert!(false, "expected Insert modification"),
-        };
-    }
-    fn v0_0_5() {
-        let (mut module, store, deployment) = test_valid_module_and_store(
-            "entityStore",
-            mock_data_source("store.wasm", API_VERSION_0_0_5),
-            API_VERSION_0_0_5,
-        );
+    let load_and_set_user_name = |module: &mut WasmInstance<Chain>, id: &str, name: &str| {
+        let id_ptr = asc_new(module, id).unwrap();
+        let name_ptr = asc_new(module, name).unwrap();
+        module
+            .invoke_export2_void("loadAndSetUserName", id_ptr, name_ptr)
+            .unwrap();
+    };
 
-        let mut alex = Entity::new();
-        alex.set("id", "alex");
-        alex.set("name", "Alex");
-        let mut steve = Entity::new();
-        steve.set("id", "steve");
-        steve.set("name", "Steve");
-        let user_type = EntityType::from("User");
-        test_store::insert_entities(
-            &deployment,
-            vec![(user_type.clone(), alex), (user_type, steve)],
-        )
-        .unwrap();
+    // store.get of a nonexistent user
+    assert_eq!(None, get_user(&mut module, "herobrine"));
+    // store.get of an existing user
+    let steve = get_user(&mut module, "steve").unwrap();
+    assert_eq!(Some(&Value::from("Steve")), steve.get("name"));
 
-        let get_user = move |module: &mut WasmInstance<Chain>, id: &str| -> Option<Entity> {
-            let id = asc_new(module, id).unwrap();
-            let entity_ptr: AscPtr<AscEntity> = module.invoke_export("getUser", id);
-            if entity_ptr.is_null() {
-                None
-            } else {
-                Some(Entity::from(
-                    try_asc_get::<HashMap<String, Value>, _, _>(module, entity_ptr).unwrap(),
-                ))
-            }
-        };
+    // Load, set, save cycle for an existing entity
+    load_and_set_user_name(&mut module, "steve", "Steve-O");
 
-        let load_and_set_user_name = |module: &mut WasmInstance<Chain>, id: &str, name: &str| {
-            let id_ptr = asc_new(module, id).unwrap();
-            let name_ptr = asc_new(module, name).unwrap();
-            module
-                .invoke_export2_void("loadAndSetUserName", id_ptr, name_ptr)
-                .unwrap();
-        };
-
-        // store.get of a nonexistent user
-        assert_eq!(None, get_user(&mut module, "herobrine"));
-        // store.get of an existing user
-        let steve = get_user(&mut module, "steve").unwrap();
-        assert_eq!(Some(&Value::from("Steve")), steve.get("name"));
-
-        // Load, set, save cycle for an existing entity
-        load_and_set_user_name(&mut module, "steve", "Steve-O");
-
-        // We need to empty the cache for the next test
-        let writable = store.writable(&deployment).unwrap();
-        let cache = std::mem::replace(
-            &mut module.instance_ctx_mut().ctx.state.entity_cache,
-            EntityCache::new(writable.clone()),
-        );
-        let mut mods = cache.as_modifications().unwrap().modifications;
-        assert_eq!(1, mods.len());
-        match mods.pop().unwrap() {
-            EntityModification::Overwrite { data, .. } => {
-                assert_eq!(Some(&Value::from("steve")), data.get("id"));
-                assert_eq!(Some(&Value::from("Steve-O")), data.get("name"));
-            }
-            _ => assert!(false, "expected Overwrite modification"),
+    // We need to empty the cache for the next test
+    let writable = store.writable(&deployment).unwrap();
+    let cache = std::mem::replace(
+        &mut module.instance_ctx_mut().ctx.state.entity_cache,
+        EntityCache::new(writable.clone()),
+    );
+    let mut mods = cache.as_modifications().unwrap().modifications;
+    assert_eq!(1, mods.len());
+    match mods.pop().unwrap() {
+        EntityModification::Overwrite { data, .. } => {
+            assert_eq!(Some(&Value::from("steve")), data.get("id"));
+            assert_eq!(Some(&Value::from("Steve-O")), data.get("name"));
         }
-
-        // Load, set, save cycle for a new entity with fulltext API
-        load_and_set_user_name(&mut module, "herobrine", "Brine-O");
-        let mut fulltext_entities = BTreeMap::new();
-        let mut fulltext_fields = BTreeMap::new();
-        fulltext_fields.insert("name".to_string(), vec!["search".to_string()]);
-        fulltext_entities.insert("User".to_string(), fulltext_fields);
-        let mut mods = module
-            .take_ctx()
-            .ctx
-            .state
-            .entity_cache
-            .as_modifications()
-            .unwrap()
-            .modifications;
-        assert_eq!(1, mods.len());
-        match mods.pop().unwrap() {
-            EntityModification::Insert { data, .. } => {
-                assert_eq!(Some(&Value::from("herobrine")), data.get("id"));
-                assert_eq!(Some(&Value::from("Brine-O")), data.get("name"));
-            }
-            _ => assert!(false, "expected Insert modification"),
-        };
+        _ => assert!(false, "expected Overwrite modification"),
     }
 
-    v0_0_4();
-    v0_0_5();
+    // Load, set, save cycle for a new entity with fulltext API
+    load_and_set_user_name(&mut module, "herobrine", "Brine-O");
+    let mut fulltext_entities = BTreeMap::new();
+    let mut fulltext_fields = BTreeMap::new();
+    fulltext_fields.insert("name".to_string(), vec!["search".to_string()]);
+    fulltext_entities.insert("User".to_string(), fulltext_fields);
+    let mut mods = module
+        .take_ctx()
+        .ctx
+        .state
+        .entity_cache
+        .as_modifications()
+        .unwrap()
+        .modifications;
+    assert_eq!(1, mods.len());
+    match mods.pop().unwrap() {
+        EntityModification::Insert { data, .. } => {
+            assert_eq!(Some(&Value::from("herobrine")), data.get("id"));
+            assert_eq!(Some(&Value::from("Brine-O")), data.get("name"));
+        }
+        _ => assert!(false, "expected Insert modification"),
+    };
 }
 
 #[tokio::test]
-async fn detect_contract_calls() {
-    fn v0_0_4() {
-        let data_source_without_calls = mock_data_source("abi_store_value.wasm", API_VERSION_0_0_4);
-        assert_eq!(data_source_without_calls.mapping.requires_archive(), false);
-
-        let data_source_with_calls = mock_data_source("contract_calls.wasm", API_VERSION_0_0_4);
-        assert_eq!(data_source_with_calls.mapping.requires_archive(), true);
-    }
-    fn v0_0_5() {
-        let data_source_without_calls = mock_data_source("abi_store_value.wasm", API_VERSION_0_0_5);
-        assert_eq!(data_source_without_calls.mapping.requires_archive(), false);
-
-        let data_source_with_calls = mock_data_source("contract_calls.wasm", API_VERSION_0_0_5);
-        assert_eq!(data_source_with_calls.mapping.requires_archive(), true);
-    }
-
-    v0_0_4();
-    v0_0_5();
+async fn entity_store_v0_0_4() {
+    test_entity_store(API_VERSION_0_0_4);
 }
 
 #[tokio::test]
-async fn allocate_global() {
-    fn v0_0_5() {
-        let module = test_module(
-            "AllocateGlobal",
-            mock_data_source("allocate_global.wasm", API_VERSION_0_0_5),
-            API_VERSION_0_0_5,
-        );
+async fn entity_store_v0_0_5() {
+    test_entity_store(API_VERSION_0_0_5);
+}
 
-        // Assert globals can be allocated and don't break the heap
-        module.invoke_export0("assert_global_works");
-    }
+fn test_detect_contract_calls(api_version: Version) {
+    let data_source_without_calls = mock_data_source("abi_store_value.wasm", api_version.clone());
+    assert_eq!(data_source_without_calls.mapping.requires_archive(), false);
 
+    let data_source_with_calls = mock_data_source("contract_calls.wasm", api_version);
+    assert_eq!(data_source_with_calls.mapping.requires_archive(), true);
+}
+
+#[tokio::test]
+async fn detect_contract_calls_v0_0_4() {
+    test_detect_contract_calls(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn detect_contract_calls_v0_0_5() {
+    test_detect_contract_calls(API_VERSION_0_0_5);
+}
+
+fn test_allocate_global(api_version: Version) {
+    let module = test_module(
+        "AllocateGlobal",
+        mock_data_source("allocate_global.wasm", api_version.clone()),
+        api_version,
+    );
+
+    // Assert globals can be allocated and don't break the heap
+    module.invoke_export0("assert_global_works");
+}
+
+#[tokio::test]
+async fn allocate_global_v0_0_5() {
     // Only in apiVersion v0.0.5 because there's no issue in older versions.
     // The problem with the new one is related to the AS stub runtime `offset`
     // variable not being initialized (lazy) before we use it so this test checks
     // that it works (at the moment using __alloc call to force offset to be eagerly
     // evaluated).
-    v0_0_5();
+    test_allocate_global(API_VERSION_0_0_5);
 }
