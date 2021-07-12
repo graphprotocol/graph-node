@@ -156,7 +156,7 @@ pub enum IndexForAscTypeId {
     ArrayEthereumValue = 15,
     ArrayStoreValue = 16,
     ArrayJsonValue = 17,
-    ArrayString = 18, // *
+    ArrayString = 18,
     ArrayEventParam = 19,
     ArrayTypedMapEntryStringJsonValue = 20,
     ArrayTypedMapEntryStringStoreValue = 21,
