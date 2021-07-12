@@ -103,7 +103,7 @@ impl<C: AscType> AscPtr<C> {
         Ok(u32::from_le_bytes(u32_bytes))
     }
 
-    /// Helper that generates an AssemblyScript (v0.19.2) header.
+    /// Helper that generates an AssemblyScript header.
     /// Only used for version >= 0.0.5.
     fn generate_header<H: AscHeap + ?Sized>(
         heap: &mut H,
