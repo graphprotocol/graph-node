@@ -127,8 +127,18 @@ impl<T: AscValue> TypedArray<T> {
         &self,
         heap: &H,
     ) -> Result<Vec<T>, DeterministicHostError> {
+        let data_start_with_offset = self
+            .data_start
+            .checked_sub(self.buffer.wasm_ptr()) // needed to get offset
+            .ok_or_else(|| {
+                DeterministicHostError(anyhow::anyhow!(
+                    "Subtract overflow on pointer: {}", // Usually when pointer is zero because of null in AssemblyScript
+                    self.data_start
+                ))
+            })?;
+
         self.buffer.read_ptr(heap)?.get(
-            self.data_start - self.buffer.wasm_ptr(), // needed to get offset
+            data_start_with_offset,
             self.byte_length / size_of::<T>() as u32,
             heap.api_version(),
         )
@@ -256,8 +266,18 @@ impl<T: AscValue> Array<T> {
         &self,
         heap: &H,
     ) -> Result<Vec<T>, DeterministicHostError> {
+        let buffer_data_start_with_offset = self
+            .buffer_data_start
+            .checked_sub(self.buffer.wasm_ptr()) // needed to get offset
+            .ok_or_else(|| {
+                DeterministicHostError(anyhow::anyhow!(
+                    "Subtract overflow on pointer: {}", // Usually when pointer is zero because of null in AssemblyScript
+                    self.buffer_data_start
+                ))
+            })?;
+
         self.buffer.read_ptr(heap)?.get(
-            self.buffer_data_start - self.buffer.wasm_ptr(), // needed to get offset
+            buffer_data_start_with_offset,
             self.length as u32,
             heap.api_version(),
         )
