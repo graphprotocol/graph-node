@@ -2,9 +2,7 @@ use crate::asc_abi::{v0_0_4, v0_0_5};
 use ethabi;
 use graph::{
     data::store,
-    runtime::{
-        get_aligned_length, AscHeap, AscIndexId, AscType, AscValue, IndexForAscTypeId, HEADER_SIZE,
-    },
+    runtime::{AscHeap, AscIndexId, AscType, AscValue, IndexForAscTypeId, HEADER_SIZE},
 };
 use graph::{prelude::serde_json, runtime::DeterministicHostError};
 use graph::{prelude::slog, runtime::AscPtr};

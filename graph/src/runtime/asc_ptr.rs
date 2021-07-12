@@ -1,4 +1,4 @@
-use super::{get_aligned_length, DeterministicHostError};
+use super::{padding_to_16, DeterministicHostError};
 
 use super::{AscHeap, AscIndexId, AscType, IndexForAscTypeId};
 use semver::Version;
@@ -74,7 +74,7 @@ impl<C: AscType> AscPtr<C> {
             _ => {
                 let mut bytes = asc_obj.to_asc_bytes()?;
 
-                let aligned_len = get_aligned_length(bytes.len());
+                let aligned_len = padding_to_16(bytes.len());
                 bytes.extend(std::iter::repeat(0).take(aligned_len));
 
                 let header = Self::generate_header(

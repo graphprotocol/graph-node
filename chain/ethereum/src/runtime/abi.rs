@@ -1,7 +1,6 @@
 use graph::prelude::BigInt;
 use graph::runtime::{
-    asc_get, asc_new, get_aligned_length, AscPtr, DeterministicHostError, FromAscObj, ToAscObj,
-    HEADER_SIZE,
+    asc_get, asc_new, AscPtr, DeterministicHostError, FromAscObj, ToAscObj, HEADER_SIZE,
 };
 use graph::runtime::{AscHeap, AscIndexId, AscType, IndexForAscTypeId};
 use graph_runtime_derive::AscType;

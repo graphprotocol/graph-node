@@ -88,7 +88,7 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
                     }
                     _ => {
                         let content_size = size_of::<Self>();
-                        let aligned_size = get_aligned_length(content_size);
+                        let aligned_size = graph::runtime::padding_to_16(content_size);
 
                         if HEADER_SIZE + asc_obj.len() == aligned_size + content_size {
                             return Err(DeterministicHostError(anyhow::anyhow!("Size does not match")));

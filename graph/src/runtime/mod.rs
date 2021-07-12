@@ -238,6 +238,6 @@ impl From<DeterministicHostError> for HostExportError {
 
 pub const HEADER_SIZE: usize = 20;
 
-pub fn get_aligned_length(content_length: usize) -> usize {
-    16 - (HEADER_SIZE + content_length) % 16
+pub fn padding_to_16(content_length: usize) -> usize {
+    (16 - (HEADER_SIZE + content_length) % 16) % 16
 }

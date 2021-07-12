@@ -1,8 +1,6 @@
 use crate::asc_abi::class;
 use anyhow::anyhow;
-use graph::runtime::{
-    get_aligned_length, AscHeap, AscPtr, AscType, AscValue, DeterministicHostError, HEADER_SIZE,
-};
+use graph::runtime::{AscHeap, AscPtr, AscType, AscValue, DeterministicHostError, HEADER_SIZE};
 use graph_runtime_derive::AscType;
 use semver::Version;
 use std::convert::TryInto as _;
