@@ -10,9 +10,9 @@ import { Trigger } from "../generated/Contract/Contract";
 
 export function handleTrigger(event: Trigger): void {
   let data = json.fromBytes(
-    arweave.transactionData(
+    changetype<Bytes>(arweave.transactionData(
       "W2czhcswOAe4TgL4Q8kHHqoZ1jbFBntUCrtamYX_rOU"
-    ) as Bytes
+    ))
   );
   assert(data.toArray()[0].toString() == "Weather data for Dallas");
 
@@ -21,9 +21,9 @@ export function handleTrigger(event: Trigger): void {
   );
   assert(no_data === null);
 
-  let moo_master = box.profile(
+  let moo_master = changetype<TypedMap<string, JSONValue>(box.profile(
     "0xc8d807011058fcc0FB717dcd549b9ced09b53404"
-  ) as TypedMap<string, JSONValue>;
+  ));
   assert(moo_master.get("name").toString() == "Moo Master");
 
   let nothing = box.profile("0xc33307011058fcc0FB717dcd549b9ced09b53333");

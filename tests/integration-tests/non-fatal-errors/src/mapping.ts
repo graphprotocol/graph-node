@@ -13,9 +13,9 @@ export function handleBlockSuccess(block: ethereum.Block): void {
   let context = new DataSourceContext();
   context.setString("id", "00");
   Dynamic.createWithContext(
-    Address.fromHexString(
+    changetype<Address>(Address.fromHexString(
       "0x2E645469f354BB4F5c8a05B3b30A929361cf77eC"
-    ) as Address,
+    )),
     context
   );
 }
@@ -26,9 +26,9 @@ export function handleBlockError(block: ethereum.Block): void {
   let context = new DataSourceContext();
   context.setString("id", "11");
   Dynamic.createWithContext(
-    Address.fromHexString(
+    changetype<Address>(Address.fromHexString(
       "0x3E645469f354BB4F5c8a05B3b30A929361cf77eD"
-    ) as Address,
+    )),
     context
   );
   assert(false);

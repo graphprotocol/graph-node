@@ -12,7 +12,7 @@ dataSources:
       abi: Contract
     mapping:
       kind: ethereum/events
-      apiVersion: 0.0.4
+      apiVersion: 0.0.5
       language: wasm/assemblyscript
       abis:
         - name: Contract
@@ -30,7 +30,7 @@ dataSources:
       abi: Contract
     mapping:
       kind: ethereum/events
-      apiVersion: 0.0.4
+      apiVersion: 0.0.5
       language: wasm/assemblyscript
       abis:
         - name: Contract
@@ -48,7 +48,7 @@ templates:
       abi: Contract
     mapping:
       kind: ethereum/events
-      apiVersion: 0.0.4
+      apiVersion: 0.0.5
       language: wasm/assemblyscript
       abis:
         - name: Contract

@@ -7,6 +7,7 @@ use crate::{
 use anyhow::{Context, Error};
 use blockchain::HostFn;
 use ethabi::{Address, Token};
+use graph::runtime::{AscIndexId, IndexForAscTypeId};
 use graph::{
     blockchain::{self, BlockPtr, DataSource as _, HostFnCtx},
     cheap_clone::CheapClone,
@@ -203,4 +204,8 @@ pub(crate) struct UnresolvedContractCall {
     pub function_name: String,
     pub function_signature: Option<String>,
     pub function_args: Vec<ethabi::Token>,
+}
+
+impl AscIndexId for AscUnresolvedContractCall {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::SmartContractCall;
 }

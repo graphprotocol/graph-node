@@ -1,6 +1,7 @@
 {
   "private": true,
   "workspaces": [
+    "api-version-v0-0-4",
     "arweave-and-3box",
     "data-source-context",
     "data-source-revert",

@@ -1,7 +1,9 @@
 import { Trigger } from "../generated/Contract/Contract";
 import { Address, BigDecimal, BigInt, ethereum } from "@graphprotocol/graph-ts";
 
-// Test that host exports work in globals.
+// TODO: remove this, graph-ts should guarantee this
+__alloc(0);
+
 let one = BigDecimal.fromString("1");
 
 export function handleTrigger(event: Trigger): void {
@@ -79,7 +81,7 @@ function ethereumAbiSimpleCase(): void {
 
   let encoded = ethereum.encode(address)!;
 
-  let decoded = ethereum.decode("address", encoded);
+  let decoded = ethereum.decode("address", encoded)!;
 
   assert(address.toAddress() == decoded.toAddress(), "address ethereum encoded does not equal the decoded value");
 }
@@ -100,16 +102,16 @@ function ethereumAbiComplexCase(): void {
     bool
   ];
 
-  let tuple = ethereum.Value.fromTuple(tupleArray as ethereum.Tuple);
+  let tuple = ethereum.Value.fromTuple(changetype<ethereum.Tuple>(tupleArray));
 
   let token: Array<ethereum.Value> = [
     address,
     tuple
   ];
 
-  let encoded = ethereum.encode(ethereum.Value.fromTuple(token as ethereum.Tuple))!;
+  let encoded = ethereum.encode(ethereum.Value.fromTuple(changetype<ethereum.Tuple>(token)))!;
 
-  let decoded = ethereum.decode("(address,(uint256[2],bool))", encoded).toTuple();
+  let decoded = ethereum.decode("(address,(uint256[2],bool))", encoded)!.toTuple();
 
   let decodedAddress = decoded[0].toAddress();
   let decodedTuple = decoded[1].toTuple();
