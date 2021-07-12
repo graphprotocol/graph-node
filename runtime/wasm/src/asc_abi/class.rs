@@ -65,11 +65,10 @@ impl AscType for ArrayBuffer {
     }
 
     fn content_len(&self, asc_bytes: &[u8]) -> usize {
-        if let Self::ApiVersion0_0_5(a) = self {
-            return a.content_len(asc_bytes);
+        match self {
+            Self::ApiVersion0_0_5(a) => a.content_len(asc_bytes),
+            _ => unreachable!("Only called for apiVersion >=0.0.5"),
         }
-
-        unreachable!("Only called for apiVersion >=0.0.5");
     }
 }
 
@@ -236,11 +235,10 @@ impl AscType for AscString {
     }
 
     fn content_len(&self, asc_bytes: &[u8]) -> usize {
-        if let Self::ApiVersion0_0_5(s) = self {
-            return s.content_len(asc_bytes);
+        match self {
+            Self::ApiVersion0_0_5(s) => s.content_len(asc_bytes),
+            _ => unreachable!("Only called for apiVersion >=0.0.5"),
         }
-
-        unreachable!("Only called for apiVersion >=0.0.5");
     }
 }
 
