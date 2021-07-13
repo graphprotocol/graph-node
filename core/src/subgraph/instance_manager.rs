@@ -179,11 +179,7 @@ where
     S: SubgraphStore,
 
     // ETHDEP: Associated types should be unconstrained
-    C: Blockchain<
-        NodeCapabilities = NodeCapabilities,
-        DataSource = graph_chain_ethereum::DataSource,
-        DataSourceTemplate = graph_chain_ethereum::DataSourceTemplate,
-    >,
+    C: Blockchain<NodeCapabilities = NodeCapabilities>,
     M: MetricsRegistry,
     L: LinkResolver + Clone,
 {
@@ -242,10 +238,7 @@ where
     S: SubgraphStore,
 
     // ETHDEP: Associated types should be unconstrained
-    C: Blockchain<
-        NodeCapabilities = NodeCapabilities,
-        DataSource = graph_chain_ethereum::DataSource,
-    >,
+    C: Blockchain<NodeCapabilities = NodeCapabilities>,
     M: MetricsRegistry,
     L: LinkResolver + Clone,
 {
@@ -458,7 +451,7 @@ where
 async fn run_subgraph<T, C>(mut ctx: IndexingContext<T, C>) -> Result<(), Error>
 where
     T: RuntimeHostBuilder<C>,
-    C: Blockchain<DataSource = graph_chain_ethereum::DataSource>,
+    C: Blockchain,
 {
     // Clone a few things for different parts of the async processing
     let subgraph_metrics = ctx.subgraph_metrics.cheap_clone();
@@ -672,16 +665,13 @@ impl From<Error> for BlockProcessingError {
 
 /// Processes a block and returns the updated context and a boolean flag indicating
 /// whether new dynamic data sources have been added to the subgraph.
-async fn process_block<T: RuntimeHostBuilder<C>, C>(
+async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
     logger: &Logger,
     triggers_adapter: Arc<C::TriggersAdapter>,
     mut ctx: IndexingContext<T, C>,
     block_stream_cancel_handle: CancelHandle,
     block: BlockWithTriggers<C>,
-) -> Result<(IndexingContext<T, C>, bool), BlockProcessingError>
-where
-    C: Blockchain<DataSource = graph_chain_ethereum::DataSource>,
-{
+) -> Result<(IndexingContext<T, C>, bool), BlockProcessingError> {
     let triggers = block.trigger_data;
     let block = Arc::new(block.block);
     let block_ptr = block.ptr();
@@ -1067,14 +1057,12 @@ fn create_dynamic_data_sources<T: RuntimeHostBuilder<C>, C: Blockchain>(
     Ok((data_sources, runtime_hosts))
 }
 
-fn persist_dynamic_data_sources<T: RuntimeHostBuilder<C>, C>(
+fn persist_dynamic_data_sources<T: RuntimeHostBuilder<C>, C: Blockchain>(
     logger: Logger,
     ctx: &mut IndexingContext<T, C>,
     entity_cache: &mut EntityCache,
-    data_sources: Vec<graph_chain_ethereum::DataSource>,
-) where
-    C: Blockchain<DataSource = graph_chain_ethereum::DataSource>,
-{
+    data_sources: Vec<C::DataSource>,
+) {
     if !data_sources.is_empty() {
         debug!(
             logger,
@@ -1089,8 +1077,8 @@ fn persist_dynamic_data_sources<T: RuntimeHostBuilder<C>, C>(
         debug!(
             logger,
             "Persisting data_source";
-            "name" => &data_source.name,
-            "address" => &data_source.source.address.map(|address| address.to_string()).unwrap_or("none".to_string()),
+            "name" => &data_source.name(),
+            "address" => &data_source.source().address.map(|address| address.to_string()).unwrap_or("none".to_string()),
         );
         entity_cache.add_data_source(data_source);
     }
