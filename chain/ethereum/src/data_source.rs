@@ -627,12 +627,10 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
     }
 }
 
-impl<C: Blockchain<DataSource = DataSource, DataSourceTemplate = DataSourceTemplate>>
-    TryFrom<DataSourceTemplateInfo<C>> for DataSource
-{
+impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
     type Error = anyhow::Error;
 
-    fn try_from(info: DataSourceTemplateInfo<C>) -> Result<Self, anyhow::Error> {
+    fn try_from(info: DataSourceTemplateInfo<Chain>) -> Result<Self, anyhow::Error> {
         let DataSourceTemplateInfo {
             template,
             params,
