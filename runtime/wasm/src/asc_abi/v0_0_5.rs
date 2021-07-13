@@ -127,9 +127,15 @@ impl<T: AscValue> TypedArray<T> {
         &self,
         heap: &H,
     ) -> Result<Vec<T>, DeterministicHostError> {
+        // This subtraction is needed because on the ArrayBufferView memory layout
+        // there are two pointers to the data.
+        // - The first (self.buffer) points to the related ArrayBuffer.
+        // - The second (self.data_start) points to where in this ArrayBuffer the data starts.
+        // So this is basically getting the offset.
+        // Related docs: https://www.assemblyscript.org/memory.html#arraybufferview-layout
         let data_start_with_offset = self
             .data_start
-            .checked_sub(self.buffer.wasm_ptr()) // needed to get offset
+            .checked_sub(self.buffer.wasm_ptr())
             .ok_or_else(|| {
                 DeterministicHostError(anyhow::anyhow!(
                     "Subtract overflow on pointer: {}", // Usually when pointer is zero because of null in AssemblyScript
@@ -266,9 +272,15 @@ impl<T: AscValue> Array<T> {
         &self,
         heap: &H,
     ) -> Result<Vec<T>, DeterministicHostError> {
+        // This subtraction is needed because on the ArrayBufferView memory layout
+        // there are two pointers to the data.
+        // - The first (self.buffer) points to the related ArrayBuffer.
+        // - The second (self.buffer_data_start) points to where in this ArrayBuffer the data starts.
+        // So this is basically getting the offset.
+        // Related docs: https://www.assemblyscript.org/memory.html#arraybufferview-layout
         let buffer_data_start_with_offset = self
             .buffer_data_start
-            .checked_sub(self.buffer.wasm_ptr()) // needed to get offset
+            .checked_sub(self.buffer.wasm_ptr())
             .ok_or_else(|| {
                 DeterministicHostError(anyhow::anyhow!(
                     "Subtract overflow on pointer: {}", // Usually when pointer is zero because of null in AssemblyScript
