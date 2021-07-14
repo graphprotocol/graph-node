@@ -5,12 +5,14 @@ use fail::fail_point;
 use graph::blockchain::DataSource;
 use graph::components::arweave::ArweaveAdapter;
 use graph::components::three_box::ThreeBoxAdapter;
+use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::util::lfu_cache::LfuCache;
 use graph::{blockchain::block_stream::BlockStreamMetrics, components::store::WritableStore};
 use graph::{blockchain::block_stream::BlockWithTriggers, data::subgraph::SubgraphFeature};
 use graph::{
+    blockchain::NodeCapabilities,
     blockchain::TriggersAdapter,
     data::subgraph::schema::{SubgraphError, POI_OBJECT},
 };
@@ -22,7 +24,6 @@ use graph::{
     blockchain::{Block, BlockchainMap},
     components::store::{DeploymentId, DeploymentLocator, ModificationsAndCache},
 };
-use graph::{components::ethereum::NodeCapabilities, data::store::scalar::Bytes};
 use lazy_static::lazy_static;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, RwLock};
@@ -177,9 +178,7 @@ impl SubgraphInstanceMetrics {
 impl<C, S, M, L> SubgraphInstanceManagerTrait for SubgraphInstanceManager<C, S, M, L>
 where
     S: SubgraphStore,
-
-    // ETHDEP: Associated types should be unconstrained
-    C: Blockchain<NodeCapabilities = NodeCapabilities>,
+    C: Blockchain,
     M: MetricsRegistry,
     L: LinkResolver + Clone,
 {
@@ -236,9 +235,7 @@ where
 impl<C, S, M, L> SubgraphInstanceManager<C, S, M, L>
 where
     S: SubgraphStore,
-
-    // ETHDEP: Associated types should be unconstrained
-    C: Blockchain<NodeCapabilities = NodeCapabilities>,
+    C: Blockchain,
     M: MetricsRegistry,
     L: LinkResolver + Clone,
 {
@@ -336,7 +333,7 @@ where
             manifest
         };
 
-        let required_capabilities = manifest.required_ethereum_capabilities();
+        let required_capabilities = C::NodeCapabilities::from_data_sources(&manifest.data_sources);
         let network = manifest.network_name();
 
         let chain = chains

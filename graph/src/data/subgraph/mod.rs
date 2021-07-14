@@ -26,7 +26,6 @@ use crate::{blockchain::DataSourceTemplate as _, data::query::QueryExecutionErro
 use crate::{
     blockchain::{Blockchain, UnresolvedDataSource as _, UnresolvedDataSourceTemplate as _},
     components::{
-        ethereum::NodeCapabilities,
         link_resolver::LinkResolver,
         store::{DeploymentLocator, StoreError, SubgraphStore},
     },
@@ -273,8 +272,6 @@ pub enum SubgraphRegistrarError {
     NameNotFound(String),
     #[error("Ethereum network not supported by registrar: {0}")]
     NetworkNotSupported(String),
-    #[error("Ethereum nodes for network {0} are missing the following capabilities: {1}")]
-    SubgraphNetworkRequirementsNotSupported(String, NodeCapabilities),
     #[error("deployment not found: {0}")]
     DeploymentNotFound(String),
     #[error("deployment assignment unchanged: {0}")]
@@ -569,11 +566,11 @@ impl Mapping {
         false
     }
 
-    fn has_call_handler(&self) -> bool {
+    pub fn has_call_handler(&self) -> bool {
         !self.call_handlers.is_empty()
     }
 
-    fn has_block_handler_with_call_filter(&self) -> bool {
+    pub fn has_block_handler_with_call_filter(&self) -> bool {
         self.block_handlers
             .iter()
             .any(|handler| matches!(handler.filter, Some(BlockHandlerFilter::Call)))
@@ -989,16 +986,6 @@ impl<C: Blockchain> SubgraphManifest<C> {
         self.mappings().iter().any(|mapping| {
             mapping.has_call_handler() || mapping.has_block_handler_with_call_filter()
         })
-    }
-
-    pub fn required_ethereum_capabilities(&self) -> NodeCapabilities {
-        let mappings = self.mappings();
-        NodeCapabilities {
-            archive: mappings.iter().any(|mapping| mapping.requires_archive()),
-            traces: mappings.iter().any(|mapping| {
-                mapping.has_call_handler() || mapping.has_block_handler_with_call_filter()
-            }),
-        }
     }
 
     pub fn unified_mapping_api_version(

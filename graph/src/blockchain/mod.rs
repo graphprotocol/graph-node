@@ -80,7 +80,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + 'static {
     /// Trigger filter used as input to the triggers adapter.
     type TriggerFilter: TriggerFilter<Self>;
 
-    type NodeCapabilities: std::fmt::Display;
+    type NodeCapabilities: NodeCapabilities<Self> + std::fmt::Display;
 
     type IngestorAdapter: IngestorAdapter<Self>;
 
@@ -311,4 +311,8 @@ impl CheapClone for HostFn {
 
 pub trait RuntimeAdapter<C: Blockchain>: Send + Sync {
     fn host_fns(&self, ds: &C::DataSource) -> Result<Vec<HostFn>, Error>;
+}
+
+pub trait NodeCapabilities<C: Blockchain> {
+    fn from_data_sources(data_sources: &[C::DataSource]) -> Self;
 }

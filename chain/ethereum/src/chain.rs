@@ -15,7 +15,7 @@ use graph::{
         IngestorAdapter as IngestorAdapterTrait, IngestorError, Manifest, TriggerFilter as _,
     },
     cheap_clone::CheapClone,
-    components::{ethereum::NodeCapabilities, store::DeploymentLocator},
+    components::store::DeploymentLocator,
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
         async_trait, error, lazy_static, o, serde_yaml, web3::types::H256, BlockNumber, ChainStore,
@@ -127,7 +127,7 @@ impl Blockchain for Chain {
 
     type TriggerFilter = crate::adapter::TriggerFilter;
 
-    type NodeCapabilities = NodeCapabilities;
+    type NodeCapabilities = crate::capabilities::NodeCapabilities;
 
     type IngestorAdapter = IngestorAdapter;
 

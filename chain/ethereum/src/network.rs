@@ -1,8 +1,5 @@
 use anyhow::anyhow;
-use graph::{
-    components::ethereum::NodeCapabilities,
-    prelude::rand::{self, seq::IteratorRandom},
-};
+use graph::prelude::rand::{self, seq::IteratorRandom};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -10,6 +7,7 @@ pub use graph::impl_slog_value;
 use graph::prelude::Error;
 
 use crate::adapter::EthereumAdapter as _;
+use crate::capabilities::NodeCapabilities;
 use crate::EthereumAdapter;
 
 #[derive(Clone)]

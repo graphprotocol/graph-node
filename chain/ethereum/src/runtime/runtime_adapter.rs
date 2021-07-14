@@ -1,8 +1,8 @@
 use std::{sync::Arc, time::Instant};
 
 use crate::{
-    network::EthereumNetworkAdapters, Chain, DataSource, EthereumAdapter, EthereumAdapterTrait,
-    EthereumContractCall, EthereumContractCallError,
+    capabilities::NodeCapabilities, network::EthereumNetworkAdapters, Chain, DataSource,
+    EthereumAdapter, EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError,
 };
 use anyhow::{Context, Error};
 use blockchain::HostFn;
@@ -11,7 +11,6 @@ use graph::runtime::{AscIndexId, IndexForAscTypeId};
 use graph::{
     blockchain::{self, BlockPtr, HostFnCtx},
     cheap_clone::CheapClone,
-    components::ethereum::NodeCapabilities,
     prelude::{EthereumCallCache, Future01CompatExt, MappingABI},
     runtime::{asc_get, asc_new, AscPtr, HostExportError},
     semver::Version,

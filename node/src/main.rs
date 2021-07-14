@@ -1,4 +1,4 @@
-use ethereum::{EthereumNetworks, ProviderEthRpcMetrics};
+use ethereum::{EthereumNetworks, NodeCapabilities, ProviderEthRpcMetrics};
 use futures::future::join_all;
 use git_testament::{git_testament, render_testament};
 use graph::{ipfs_client::IpfsClient, prometheus::Registry};
@@ -13,7 +13,7 @@ use tokio::sync::mpsc;
 
 use graph::blockchain::block_ingestor::BlockIngestor;
 use graph::blockchain::Blockchain as _;
-use graph::components::{ethereum::NodeCapabilities, store::BlockStore};
+use graph::components::store::BlockStore;
 use graph::data::graphql::effort::LoadManager;
 use graph::log::logger;
 use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};

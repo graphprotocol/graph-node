@@ -13,14 +13,12 @@ use web3::types::{Address, Block, Log, H256};
 
 use graph::{
     blockchain as bc,
-    components::{
-        ethereum::NodeCapabilities,
-        metrics::{CounterVec, GaugeVec, HistogramVec},
-    },
+    components::metrics::{CounterVec, GaugeVec, HistogramVec},
     petgraph::{self, graphmap::GraphMap},
 };
 use graph::{components::ethereum::EthereumNetworkIdentifier, prelude::*};
 
+use crate::capabilities::NodeCapabilities;
 use crate::{data_source::DataSource, Chain};
 
 pub type EventSignature = H256;
