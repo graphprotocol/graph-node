@@ -39,6 +39,8 @@ pub struct StopwatchMetrics {
     inner: Arc<Mutex<StopwatchInner>>,
 }
 
+impl CheapClone for StopwatchMetrics {}
+
 impl StopwatchMetrics {
     pub fn new(
         logger: Logger,

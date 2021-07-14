@@ -1090,10 +1090,12 @@ impl WritableStoreTrait for WritableStore {
             self.site.clone(),
             block_ptr_to,
             mods,
-            stopwatch,
+            stopwatch.cheap_clone(),
             data_sources,
             deterministic_errors,
         )?;
+
+        let _section = stopwatch.start_section("send_store_event");
         self.store.send_store_event(&event)
     }
 
