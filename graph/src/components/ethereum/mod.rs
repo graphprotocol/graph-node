@@ -1,9 +1,7 @@
-mod network;
 mod types;
 
 use web3::types::H256;
 
-pub use self::network::NodeCapabilities;
 pub use self::types::{
     EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock, LightEthereumBlockExt,
 };

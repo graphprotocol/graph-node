@@ -1,10 +1,12 @@
 mod adapter;
+mod capabilities;
 mod data_source;
 mod ethereum_adapter;
 pub mod network_indexer;
 pub mod runtime;
 mod transport;
 
+pub use self::capabilities::NodeCapabilities;
 pub use self::ethereum_adapter::EthereumAdapter;
 pub use self::runtime::RuntimeAdapter;
 pub use self::transport::{EventLoopHandle, Transport};

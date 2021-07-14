@@ -1,16 +1,15 @@
 use std::{sync::Arc, time::Instant};
 
 use crate::{
-    network::EthereumNetworkAdapters, Chain, DataSource, EthereumAdapter, EthereumAdapterTrait,
-    EthereumContractCall, EthereumContractCallError,
+    capabilities::NodeCapabilities, network::EthereumNetworkAdapters, Chain, DataSource,
+    EthereumAdapter, EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError,
 };
 use anyhow::{Context, Error};
 use blockchain::HostFn;
 use ethabi::{Address, Token};
 use graph::{
-    blockchain::{self, BlockPtr, DataSource as _, HostFnCtx},
+    blockchain::{self, BlockPtr, HostFnCtx},
     cheap_clone::CheapClone,
-    components::ethereum::NodeCapabilities,
     prelude::{EthereumCallCache, Future01CompatExt, MappingABI},
     runtime::{asc_get, asc_new, AscPtr, HostExportError},
     semver::Version,
@@ -27,12 +26,12 @@ pub struct RuntimeAdapter {
 
 impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
     fn host_fns(&self, ds: &DataSource) -> Result<Vec<HostFn>, Error> {
-        let abis = ds.mapping().abis.clone();
+        let abis = ds.mapping.abis.clone();
         let call_cache = self.call_cache.cheap_clone();
         let eth_adapter = self
             .eth_adapters
             .cheapest_with(&NodeCapabilities {
-                archive: ds.mapping().requires_archive(),
+                archive: ds.mapping.requires_archive(),
                 traces: false,
             })?
             .cheap_clone();

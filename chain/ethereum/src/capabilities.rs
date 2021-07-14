@@ -1,12 +1,13 @@
+use anyhow::Error;
+use graph::impl_slog_value;
 use std::fmt;
+use std::str::FromStr;
 use std::{
     cmp::{Ord, Ordering, PartialOrd},
     collections::BTreeSet,
 };
 
-pub use crate::impl_slog_value;
-use crate::prelude::Error;
-use std::str::FromStr;
+use crate::DataSource;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NodeCapabilities {
@@ -68,3 +69,14 @@ impl fmt::Display for NodeCapabilities {
 }
 
 impl_slog_value!(NodeCapabilities, "{}");
+
+impl graph::blockchain::NodeCapabilities<crate::Chain> for NodeCapabilities {
+    fn from_data_sources(data_sources: &[DataSource]) -> Self {
+        NodeCapabilities {
+            archive: data_sources.iter().any(|ds| ds.mapping.requires_archive()),
+            traces: data_sources.into_iter().any(|ds| {
+                ds.mapping.has_call_handler() || ds.mapping.has_block_handler_with_call_filter()
+            }),
+        }
+    }
+}
