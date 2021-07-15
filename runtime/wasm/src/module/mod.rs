@@ -1362,7 +1362,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
 
     /// function dataSource.address(): Bytes
     pub fn data_source_address(&mut self) -> Result<AscPtr<Uint8Array>, DeterministicHostError> {
-        asc_new(self, &self.ctx.host_exports.data_source_address())
+        asc_new(self, self.ctx.host_exports.data_source_address().as_slice())
     }
 
     /// function dataSource.network(): String

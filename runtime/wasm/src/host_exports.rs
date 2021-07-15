@@ -1,6 +1,6 @@
 use crate::{error::DeterminismLevel, module::IntoTrap};
 use ethabi::param_type::Reader;
-use ethabi::{decode, encode, Address, Token};
+use ethabi::{decode, encode, Token};
 use graph::blockchain::{Blockchain, DataSourceTemplate as _};
 use graph::components::store::EntityKey;
 use graph::components::subgraph::{ProofOfIndexingEvent, SharedProofOfIndexing};
@@ -46,7 +46,7 @@ pub struct HostExports<C: Blockchain> {
     pub(crate) subgraph_id: DeploymentHash,
     pub(crate) api_version: Version,
     data_source_name: String,
-    data_source_address: Option<Address>,
+    data_source_address: Vec<u8>,
     data_source_network: String,
     data_source_context: Arc<Option<DataSourceContext>>,
     /// Some data sources have indeterminism or different notions of time. These
@@ -78,7 +78,7 @@ impl<C: Blockchain> HostExports<C> {
             subgraph_id,
             api_version: data_source.mapping().api_version.clone(),
             data_source_name: data_source.name().to_owned(),
-            data_source_address: data_source.source().address.clone(),
+            data_source_address: data_source.address().unwrap_or_default().to_owned(),
             data_source_network,
             data_source_context: data_source.context().cheap_clone(),
             causality_region,
@@ -595,8 +595,8 @@ impl<C: Blockchain> HostExports<C> {
         Ok(())
     }
 
-    pub(crate) fn data_source_address(&self) -> H160 {
-        self.data_source_address.clone().unwrap_or_default()
+    pub(crate) fn data_source_address(&self) -> Vec<u8> {
+        self.data_source_address.clone()
     }
 
     pub(crate) fn data_source_network(&self) -> String {

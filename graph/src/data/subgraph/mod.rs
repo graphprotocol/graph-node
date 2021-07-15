@@ -818,7 +818,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         // Validate that the manifest has a `source` address in each data source
         // which has call or block handlers
         if self.0.data_sources.iter().any(|data_source| {
-            let no_source_address = data_source.source().address.is_none();
+            let no_source_address = data_source.address().is_none();
             let has_call_handlers = !data_source.mapping().call_handlers.is_empty();
             let has_block_handlers = !data_source.mapping().block_handlers.is_empty();
 
@@ -967,7 +967,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
     pub fn start_blocks(&self) -> Vec<BlockNumber> {
         self.data_sources
             .iter()
-            .map(|data_source| data_source.source().start_block)
+            .map(|data_source| data_source.start_block())
             .collect()
     }
 
