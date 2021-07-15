@@ -19,7 +19,7 @@ use crate::{
         store::{BlockNumber, ChainStore},
         subgraph::DataSourceTemplateInfo,
     },
-    prelude::{thiserror::Error, DeploymentHash, LinkResolver},
+    prelude::{thiserror::Error, LinkResolver},
 };
 use anyhow::Error;
 use async_trait::async_trait;
@@ -66,8 +66,6 @@ pub trait Blockchain: Debug + Sized + Send + Sync + 'static {
 
     type DataSourceTemplate: DataSourceTemplate<Self>;
     type UnresolvedDataSourceTemplate: UnresolvedDataSourceTemplate<Self>;
-
-    type Manifest: Manifest<Self>;
 
     type TriggersAdapter: TriggersAdapter<Self>;
 
@@ -252,19 +250,6 @@ pub trait UnresolvedDataSource<C: Blockchain>:
         resolver: &impl LinkResolver,
         logger: &Logger,
     ) -> Result<C::DataSource, anyhow::Error>;
-}
-
-#[async_trait]
-pub trait Manifest<C: Blockchain>: Sized {
-    async fn resolve_from_raw(
-        id: DeploymentHash,
-        raw: serde_yaml::Mapping,
-        resolver: &impl LinkResolver,
-        logger: &Logger,
-    ) -> Result<Self, Error>;
-
-    fn data_sources(&self) -> &[C::DataSource];
-    fn templates(&self) -> &[C::DataSourceTemplate];
 }
 
 pub trait TriggerData {
