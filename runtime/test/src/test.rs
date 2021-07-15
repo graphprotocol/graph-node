@@ -24,29 +24,44 @@ use web3::types::{Address, H160};
 
 mod abi;
 
+const API_VERSION_0_0_4: Version = Version::new(0, 0, 4);
+const API_VERSION_0_0_5: Version = Version::new(0, 0, 5);
+
+fn subgraph_id_with_api_version(subgraph_id: &str, api_version: Version) -> String {
+    format!(
+        "{}_{}_{}_{}",
+        subgraph_id, api_version.major, api_version.minor, api_version.patch
+    )
+}
+
 fn test_valid_module_and_store(
     subgraph_id: &str,
     data_source: DataSource,
+    api_version: Version,
 ) -> (
     WasmInstance<Chain>,
     Arc<impl SubgraphStore>,
     DeploymentLocator,
 ) {
-    test_valid_module_and_store_with_timeout(subgraph_id, data_source, None)
+    test_valid_module_and_store_with_timeout(subgraph_id, data_source, api_version, None)
 }
 
 fn test_valid_module_and_store_with_timeout(
     subgraph_id: &str,
     data_source: DataSource,
+    api_version: Version,
     timeout: Option<Duration>,
 ) -> (
     WasmInstance<Chain>,
     Arc<impl SubgraphStore>,
     DeploymentLocator,
 ) {
+    let subgraph_id_with_api_version =
+        subgraph_id_with_api_version(subgraph_id, api_version.clone());
+
     let store = STORE.clone();
     let metrics_registry = Arc::new(MockMetricsRegistry::new());
-    let deployment_id = DeploymentHash::new(subgraph_id).unwrap();
+    let deployment_id = DeploymentHash::new(&subgraph_id_with_api_version).unwrap();
     let deployment = test_store::create_test_subgraph(
         &deployment_id,
         "type User @entity {
@@ -79,7 +94,12 @@ fn test_valid_module_and_store_with_timeout(
 
     let module = WasmInstance::from_valid_module_with_ctx(
         Arc::new(ValidModule::new(data_source.mapping.runtime.as_ref()).unwrap()),
-        mock_context(deployment.clone(), data_source, store.subgraph_store()),
+        mock_context(
+            deployment.clone(),
+            data_source,
+            store.subgraph_store(),
+            api_version,
+        ),
         host_metrics,
         timeout,
         experimental_features,
@@ -89,11 +109,19 @@ fn test_valid_module_and_store_with_timeout(
     (module, store.subgraph_store(), deployment)
 }
 
-fn test_module(subgraph_id: &str, data_source: DataSource) -> WasmInstance<Chain> {
-    test_valid_module_and_store(subgraph_id, data_source).0
+fn test_module(
+    subgraph_id: &str,
+    data_source: DataSource,
+    api_version: Version,
+) -> WasmInstance<Chain> {
+    test_valid_module_and_store(subgraph_id, data_source, api_version).0
 }
 
-fn mock_data_source(path: &str) -> DataSource {
+fn mock_data_source(wasm_file: &str, api_version: Version) -> DataSource {
+    let path = format!(
+        "wasm_test/api_version_{}_{}_{}/{}",
+        api_version.major, api_version.minor, api_version.patch, wasm_file
+    );
     let runtime = std::fs::read(path).unwrap();
 
     DataSource {
@@ -107,7 +135,7 @@ fn mock_data_source(path: &str) -> DataSource {
         },
         mapping: Mapping {
             kind: String::from("ethereum/events"),
-            api_version: Version::parse("0.1.0").unwrap(),
+            api_version,
             language: String::from("wasm/assemblyscript"),
             entities: vec![],
             abis: vec![],
@@ -150,6 +178,7 @@ fn mock_host_exports(
     subgraph_id: DeploymentHash,
     data_source: DataSource,
     store: Arc<impl SubgraphStore>,
+    api_version: Version,
 ) -> HostExports<Chain> {
     let arweave_adapter = Arc::new(ArweaveAdapter::new("https://arweave.net".to_string()));
     let three_box_adapter = Arc::new(ThreeBoxAdapter::new("https://ipfs.3box.io/".to_string()));
@@ -163,7 +192,7 @@ fn mock_host_exports(
         },
         mapping: Mapping {
             kind: String::from("ethereum/events"),
-            api_version: Version::parse("0.1.0").unwrap(),
+            api_version,
             language: String::from("wasm/assemblyscript"),
             entities: vec![],
             abis: vec![],
@@ -194,6 +223,7 @@ fn mock_context(
     deployment: DeploymentLocator,
     data_source: DataSource,
     store: Arc<impl SubgraphStore>,
+    api_version: Version,
 ) -> MappingContext<Chain> {
     MappingContext {
         logger: test_store::LOGGER.clone(),
@@ -205,6 +235,7 @@ fn mock_context(
             deployment.hash.clone(),
             data_source,
             store.clone(),
+            api_version,
         )),
         state: BlockState::new(store.writable(&deployment).unwrap(), Default::default()),
         proof_of_indexing: None,
@@ -213,6 +244,7 @@ fn mock_context(
 }
 
 trait WasmInstanceExt {
+    fn invoke_export0(&self, f: &str);
     fn invoke_export<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R>;
     fn invoke_export2<C, D, R>(&self, f: &str, arg0: AscPtr<C>, arg1: AscPtr<D>) -> AscPtr<R>;
     fn invoke_export2_void<C, D>(
@@ -226,6 +258,11 @@ trait WasmInstanceExt {
 }
 
 impl WasmInstanceExt for WasmInstance<Chain> {
+    fn invoke_export0(&self, f: &str) {
+        let func = self.get_func(f).typed().unwrap().clone();
+        let _: () = func.call(()).unwrap();
+    }
+
     fn invoke_export<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R> {
         let func = self.get_func(f).typed().unwrap().clone();
         let ptr: u32 = func.call(arg.wasm_ptr()).unwrap();
@@ -260,11 +297,11 @@ impl WasmInstanceExt for WasmInstance<Chain> {
     }
 }
 
-#[tokio::test]
-async fn json_conversions() {
+fn test_json_conversions(api_version: Version) {
     let mut module = test_module(
         "jsonConversions",
-        mock_data_source("wasm_test/string_to_number.wasm"),
+        mock_data_source("string_to_number.wasm", api_version.clone()),
+        api_version,
     );
 
     // test u64 conversion
@@ -297,10 +334,20 @@ async fn json_conversions() {
 }
 
 #[tokio::test]
-async fn json_parsing() {
+async fn json_conversions_v0_0_4() {
+    test_json_conversions(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn json_conversions_v0_0_5() {
+    test_json_conversions(API_VERSION_0_0_5);
+}
+
+fn test_json_parsing(api_version: Version) {
     let mut module = test_module(
         "jsonParsing",
-        mock_data_source("wasm_test/json_parsing.wasm"),
+        mock_data_source("json_parsing.wasm", api_version.clone()),
+        api_version,
     );
 
     // Parse invalid JSON and handle the error gracefully
@@ -320,8 +367,17 @@ async fn json_parsing() {
     assert_eq!(output, "OK: foo, ERROR: false");
 }
 
-#[tokio::test(threaded_scheduler)]
-async fn ipfs_cat() {
+#[tokio::test]
+async fn json_parsing_v0_0_4() {
+    test_json_parsing(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn json_parsing_v0_0_5() {
+    test_json_parsing(API_VERSION_0_0_5);
+}
+
+async fn test_ipfs_cat(api_version: Version) {
     let ipfs = IpfsClient::localhost();
     let hash = ipfs.add("42".into()).await.unwrap().hash;
 
@@ -330,7 +386,11 @@ async fn ipfs_cat() {
     let runtime = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
         runtime.enter(|| {
-            let mut module = test_module("ipfsCat", mock_data_source("wasm_test/ipfs_cat.wasm"));
+            let mut module = test_module(
+                "ipfsCat",
+                mock_data_source("ipfs_cat.wasm", api_version.clone()),
+                api_version,
+            );
             let arg = asc_new(&mut module, &hash).unwrap();
             let converted: AscPtr<AscString> = module.invoke_export("ipfsCatString", arg);
             let data: String = asc_get(&module, converted).unwrap();
@@ -341,16 +401,33 @@ async fn ipfs_cat() {
     .unwrap();
 }
 
+#[tokio::test(threaded_scheduler)]
+async fn ipfs_cat_v0_0_4() {
+    test_ipfs_cat(API_VERSION_0_0_4).await;
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn ipfs_cat_v0_0_5() {
+    test_ipfs_cat(API_VERSION_0_0_5).await;
+}
+
 // The user_data value we use with calls to ipfs_map
 const USER_DATA: &str = "user_data";
 
-fn make_thing(subgraph_id: &str, id: &str, value: &str) -> (String, EntityModification) {
+fn make_thing(
+    subgraph_id: &str,
+    id: &str,
+    value: &str,
+    api_version: Version,
+) -> (String, EntityModification) {
+    let subgraph_id_with_api_version = subgraph_id_with_api_version(subgraph_id, api_version);
+
     let mut data = Entity::new();
     data.set("id", id);
     data.set("value", value);
     data.set("extra", USER_DATA);
     let key = EntityKey::data(
-        DeploymentHash::new(subgraph_id).unwrap(),
+        DeploymentHash::new(&subgraph_id_with_api_version).unwrap(),
         "Thing".to_string(),
         id.to_string(),
     );
@@ -360,75 +437,86 @@ fn make_thing(subgraph_id: &str, id: &str, value: &str) -> (String, EntityModifi
     )
 }
 
-#[tokio::test(threaded_scheduler)]
-async fn ipfs_map() {
-    const BAD_IPFS_HASH: &str = "bad-ipfs-hash";
+const BAD_IPFS_HASH: &str = "bad-ipfs-hash";
 
+async fn run_ipfs_map(
+    ipfs: IpfsClient,
+    subgraph_id: &'static str,
+    json_string: String,
+    api_version: Version,
+) -> Result<Vec<EntityModification>, anyhow::Error> {
+    let hash = if json_string == BAD_IPFS_HASH {
+        "Qm".to_string()
+    } else {
+        ipfs.add(json_string.into()).await.unwrap().hash
+    };
+
+    // Ipfs host functions use `block_on` which must be called from a sync context,
+    // so we replicate what we do `spawn_module`.
+    let runtime = tokio::runtime::Handle::current();
+    std::thread::spawn(move || {
+        runtime.enter(|| {
+            let (mut module, _, _) = test_valid_module_and_store(
+                &subgraph_id,
+                mock_data_source("ipfs_map.wasm", api_version.clone()),
+                api_version,
+            );
+            let value = asc_new(&mut module, &hash).unwrap();
+            let user_data = asc_new(&mut module, USER_DATA).unwrap();
+
+            // Invoke the callback
+            let func = module.get_func("ipfsMap").typed().unwrap().clone();
+            let _: () = func.call((value.wasm_ptr(), user_data.wasm_ptr()))?;
+            let mut mods = module
+                .take_ctx()
+                .ctx
+                .state
+                .entity_cache
+                .as_modifications()?
+                .modifications;
+
+            // Bring the modifications into a predictable order (by entity_id)
+            mods.sort_by(|a, b| {
+                a.entity_key()
+                    .entity_id
+                    .partial_cmp(&b.entity_key().entity_id)
+                    .unwrap()
+            });
+            Ok(mods)
+        })
+    })
+    .join()
+    .unwrap()
+}
+
+async fn test_ipfs_map(api_version: Version, json_error_msg: &str) {
     let ipfs = IpfsClient::localhost();
     let subgraph_id = "ipfsMap";
 
-    async fn run_ipfs_map(
-        ipfs: IpfsClient,
-        subgraph_id: &'static str,
-        json_string: String,
-    ) -> Result<Vec<EntityModification>, anyhow::Error> {
-        let hash = if json_string == BAD_IPFS_HASH {
-            "Qm".to_string()
-        } else {
-            ipfs.add(json_string.into()).await.unwrap().hash
-        };
-
-        // Ipfs host functions use `block_on` which must be called from a sync context,
-        // so we replicate what we do `spawn_module`.
-        let runtime = tokio::runtime::Handle::current();
-        std::thread::spawn(move || {
-            runtime.enter(|| {
-                let (mut module, _, _) = test_valid_module_and_store(
-                    subgraph_id,
-                    mock_data_source("wasm_test/ipfs_map.wasm"),
-                );
-                let value = asc_new(&mut module, &hash).unwrap();
-                let user_data = asc_new(&mut module, USER_DATA).unwrap();
-
-                // Invoke the callback
-                let func = module.get_func("ipfsMap").typed().unwrap().clone();
-                let _: () = func.call((value.wasm_ptr(), user_data.wasm_ptr()))?;
-                let mut mods = module
-                    .take_ctx()
-                    .ctx
-                    .state
-                    .entity_cache
-                    .as_modifications()?
-                    .modifications;
-
-                // Bring the modifications into a predictable order (by entity_id)
-                mods.sort_by(|a, b| {
-                    a.entity_key()
-                        .entity_id
-                        .partial_cmp(&b.entity_key().entity_id)
-                        .unwrap()
-                });
-                Ok(mods)
-            })
-        })
-        .join()
-        .unwrap()
-    }
-
     // Try it with two valid objects
-    let (str1, thing1) = make_thing(subgraph_id, "one", "eins");
-    let (str2, thing2) = make_thing(subgraph_id, "two", "zwei");
-    let ops = run_ipfs_map(ipfs.clone(), subgraph_id, format!("{}\n{}", str1, str2))
-        .await
-        .expect("call failed");
+    let (str1, thing1) = make_thing(&subgraph_id, "one", "eins", api_version.clone());
+    let (str2, thing2) = make_thing(&subgraph_id, "two", "zwei", api_version.clone());
+    let ops = run_ipfs_map(
+        ipfs.clone(),
+        subgraph_id,
+        format!("{}\n{}", str1, str2),
+        api_version.clone(),
+    )
+    .await
+    .expect("call failed");
     let expected = vec![thing1, thing2];
     assert_eq!(expected, ops);
 
     // Valid JSON, but not what the callback expected; it will
     // fail on an assertion
-    let err = run_ipfs_map(ipfs.clone(), subgraph_id, format!("{}\n[1,2]", str1))
-        .await
-        .unwrap_err();
+    let err = run_ipfs_map(
+        ipfs.clone(),
+        subgraph_id,
+        format!("{}\n[1,2]", str1),
+        api_version.clone(),
+    )
+    .await
+    .unwrap_err();
     assert!(
         format!("{:#}", err).contains("JSON value is not an object."),
         "{:#}",
@@ -436,16 +524,26 @@ async fn ipfs_map() {
     );
 
     // Malformed JSON
-    let errmsg = run_ipfs_map(ipfs.clone(), subgraph_id, format!("{}\n[", str1))
-        .await
-        .unwrap_err()
-        .to_string();
+    let errmsg = run_ipfs_map(
+        ipfs.clone(),
+        subgraph_id,
+        format!("{}\n[", str1),
+        api_version.clone(),
+    )
+    .await
+    .unwrap_err()
+    .to_string();
     assert!(errmsg.contains("EOF while parsing a list"));
 
     // Empty input
-    let ops = run_ipfs_map(ipfs.clone(), subgraph_id, "".to_string())
-        .await
-        .expect("call failed for emoty string");
+    let ops = run_ipfs_map(
+        ipfs.clone(),
+        subgraph_id,
+        "".to_string(),
+        api_version.clone(),
+    )
+    .await
+    .expect("call failed for emoty string");
     assert_eq!(0, ops.len());
 
     // Missing entry in the JSON object
@@ -455,29 +553,48 @@ async fn ipfs_map() {
             ipfs.clone(),
             subgraph_id,
             "{\"value\": \"drei\"}".to_string(),
+            api_version.clone(),
         )
         .await
         .unwrap_err()
     );
-    assert!(errmsg.contains("JSON value is not a string."));
+    assert!(errmsg.contains(json_error_msg));
 
     // Bad IPFS hash.
-    let errmsg = run_ipfs_map(ipfs.clone(), subgraph_id, BAD_IPFS_HASH.to_string())
-        .await
-        .unwrap_err()
-        .to_string();
+    let errmsg = run_ipfs_map(
+        ipfs.clone(),
+        subgraph_id,
+        BAD_IPFS_HASH.to_string(),
+        api_version.clone(),
+    )
+    .await
+    .unwrap_err()
+    .to_string();
     assert!(errmsg.contains("500 Internal Server Error"));
 }
 
 #[tokio::test(threaded_scheduler)]
-async fn ipfs_fail() {
+async fn ipfs_map_v0_0_4() {
+    test_ipfs_map(API_VERSION_0_0_4, "JSON value is not a string.").await;
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn ipfs_map_v0_0_5() {
+    test_ipfs_map(API_VERSION_0_0_5, "'id' should not be null").await;
+}
+
+async fn test_ipfs_fail(api_version: Version) {
     let runtime = tokio::runtime::Handle::current();
 
     // Ipfs host functions use `block_on` which must be called from a sync context,
     // so we replicate what we do `spawn_module`.
     std::thread::spawn(move || {
         runtime.enter(|| {
-            let mut module = test_module("ipfsFail", mock_data_source("wasm_test/ipfs_cat.wasm"));
+            let mut module = test_module(
+                "ipfsFail",
+                mock_data_source("ipfs_cat.wasm", api_version.clone()),
+                api_version,
+            );
 
             let hash = asc_new(&mut module, "invalid hash").unwrap();
             assert!(module
@@ -489,9 +606,22 @@ async fn ipfs_fail() {
     .unwrap();
 }
 
-#[tokio::test]
-async fn crypto_keccak256() {
-    let mut module = test_module("cryptoKeccak256", mock_data_source("wasm_test/crypto.wasm"));
+#[tokio::test(threaded_scheduler)]
+async fn ipfs_fail_v0_0_4() {
+    test_ipfs_fail(API_VERSION_0_0_4).await;
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn ipfs_fail_v0_0_5() {
+    test_ipfs_fail(API_VERSION_0_0_5).await;
+}
+
+fn test_crypto_keccak256(api_version: Version) {
+    let mut module = test_module(
+        "cryptoKeccak256",
+        mock_data_source("crypto.wasm", api_version.clone()),
+        api_version,
+    );
     let input: &[u8] = "eth".as_ref();
     let input: AscPtr<Uint8Array> = asc_new(&mut module, input).unwrap();
 
@@ -504,10 +634,20 @@ async fn crypto_keccak256() {
 }
 
 #[tokio::test]
-async fn big_int_to_hex() {
+async fn crypto_keccak256_v0_0_4() {
+    test_crypto_keccak256(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn crypto_keccak256_v0_0_5() {
+    test_crypto_keccak256(API_VERSION_0_0_5);
+}
+
+fn test_big_int_to_hex(api_version: Version) {
     let mut module = test_module(
         "BigIntToHex",
-        mock_data_source("wasm_test/big_int_to_hex.wasm"),
+        mock_data_source("big_int_to_hex.wasm", api_version.clone()),
+        api_version,
     );
 
     // Convert zero to hex
@@ -536,10 +676,20 @@ async fn big_int_to_hex() {
 }
 
 #[tokio::test]
-async fn big_int_arithmetic() {
+async fn big_int_to_hex_v0_0_4() {
+    test_big_int_to_hex(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn big_int_to_hex_v0_0_5() {
+    test_big_int_to_hex(API_VERSION_0_0_5);
+}
+
+fn test_big_int_arithmetic(api_version: Version) {
     let mut module = test_module(
         "BigIntArithmetic",
-        mock_data_source("wasm_test/big_int_arithmetic.wasm"),
+        mock_data_source("big_int_arithmetic.wasm", api_version.clone()),
+        api_version,
     );
 
     // 0 + 1 = 1
@@ -598,20 +748,46 @@ async fn big_int_arithmetic() {
 }
 
 #[tokio::test]
-async fn abort() {
-    let module = test_module("abort", mock_data_source("wasm_test/abort.wasm"));
-    let res: Result<(), _> = module.get_func("abort").typed().unwrap().call(());
-    assert!(res
-        .unwrap_err()
-        .to_string()
-        .contains("line 6, column 2, with message: not true"));
+async fn big_int_arithmetic_v0_0_4() {
+    test_big_int_arithmetic(API_VERSION_0_0_4);
 }
 
 #[tokio::test]
-async fn bytes_to_base58() {
+async fn big_int_arithmetic_v0_0_5() {
+    test_big_int_arithmetic(API_VERSION_0_0_5);
+}
+
+fn test_abort(api_version: Version, error_msg: &str) {
+    let module = test_module(
+        "abort",
+        mock_data_source("abort.wasm", api_version.clone()),
+        api_version,
+    );
+    let res: Result<(), _> = module.get_func("abort").typed().unwrap().call(());
+    assert!(res.unwrap_err().to_string().contains(error_msg));
+}
+
+#[tokio::test]
+async fn abort_v0_0_4() {
+    test_abort(
+        API_VERSION_0_0_4,
+        "line 6, column 2, with message: not true",
+    );
+}
+
+#[tokio::test]
+async fn abort_v0_0_5() {
+    test_abort(
+        API_VERSION_0_0_5,
+        "line 4, column 3, with message: not true",
+    );
+}
+
+fn test_bytes_to_base58(api_version: Version) {
     let mut module = test_module(
         "bytesToBase58",
-        mock_data_source("wasm_test/bytes_to_base58.wasm"),
+        mock_data_source("bytes_to_base58.wasm", api_version.clone()),
+        api_version,
     );
     let bytes = hex::decode("12207D5A99F603F231D53A4F39D1521F98D2E8BB279CF29BEBFD0687DC98458E7F89")
         .unwrap();
@@ -622,14 +798,24 @@ async fn bytes_to_base58() {
 }
 
 #[tokio::test]
-async fn data_source_create() {
+async fn bytes_to_base58_v0_0_4() {
+    test_bytes_to_base58(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn bytes_to_base58_v0_0_5() {
+    test_bytes_to_base58(API_VERSION_0_0_5);
+}
+
+fn test_data_source_create(api_version: Version) {
     let run_data_source_create =
         move |name: String,
               params: Vec<String>|
               -> Result<Vec<DataSourceTemplateInfo<Chain>>, wasmtime::Trap> {
             let mut module = test_module(
                 "DataSourceCreate",
-                mock_data_source("wasm_test/data_source_create.wasm"),
+                mock_data_source("data_source_create.wasm", api_version.clone()),
+                api_version.clone(),
             );
 
             let name = asc_new(&mut module, &name).unwrap();
@@ -662,10 +848,20 @@ async fn data_source_create() {
 }
 
 #[tokio::test]
-async fn ens_name_by_hash() {
+async fn data_source_create_v0_0_4() {
+    test_data_source_create(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn data_source_create_v0_0_5() {
+    test_data_source_create(API_VERSION_0_0_5);
+}
+
+fn test_ens_name_by_hash(api_version: Version) {
     let mut module = test_module(
         "EnsNameByHash",
-        mock_data_source("wasm_test/ens_name_by_hash.wasm"),
+        mock_data_source("ens_name_by_hash.wasm", api_version.clone()),
+        api_version,
     );
 
     let hash = "0x7f0c1b04d1a4926f9c635a030eeb611d4c26e5e73291b32a1c7a4ac56935b5b3";
@@ -683,9 +879,21 @@ async fn ens_name_by_hash() {
 }
 
 #[tokio::test]
-async fn entity_store() {
-    let (mut module, store, deployment) =
-        test_valid_module_and_store("entityStore", mock_data_source("wasm_test/store.wasm"));
+async fn ens_name_by_hash_v0_0_4() {
+    test_ens_name_by_hash(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn ens_name_by_hash_v0_0_5() {
+    test_ens_name_by_hash(API_VERSION_0_0_5);
+}
+
+fn test_entity_store(api_version: Version) {
+    let (mut module, store, deployment) = test_valid_module_and_store(
+        "entityStore",
+        mock_data_source("store.wasm", api_version.clone()),
+        api_version,
+    );
 
     let mut alex = Entity::new();
     alex.set("id", "alex");
@@ -766,14 +974,54 @@ async fn entity_store() {
             assert_eq!(Some(&Value::from("Brine-O")), data.get("name"));
         }
         _ => assert!(false, "expected Insert modification"),
-    }
+    };
 }
 
 #[tokio::test]
-async fn detect_contract_calls() {
-    let data_source_without_calls = mock_data_source("wasm_test/abi_store_value.wasm");
+async fn entity_store_v0_0_4() {
+    test_entity_store(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn entity_store_v0_0_5() {
+    test_entity_store(API_VERSION_0_0_5);
+}
+
+fn test_detect_contract_calls(api_version: Version) {
+    let data_source_without_calls = mock_data_source("abi_store_value.wasm", api_version.clone());
     assert_eq!(data_source_without_calls.mapping.requires_archive(), false);
 
-    let data_source_with_calls = mock_data_source("wasm_test/contract_calls.wasm");
+    let data_source_with_calls = mock_data_source("contract_calls.wasm", api_version);
     assert_eq!(data_source_with_calls.mapping.requires_archive(), true);
+}
+
+#[tokio::test]
+async fn detect_contract_calls_v0_0_4() {
+    test_detect_contract_calls(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn detect_contract_calls_v0_0_5() {
+    test_detect_contract_calls(API_VERSION_0_0_5);
+}
+
+fn test_allocate_global(api_version: Version) {
+    let module = test_module(
+        "AllocateGlobal",
+        mock_data_source("allocate_global.wasm", api_version.clone()),
+        api_version,
+    );
+
+    // Assert globals can be allocated and don't break the heap
+    module.invoke_export0("assert_global_works");
+}
+
+#[tokio::test]
+async fn allocate_global_v0_0_5() {
+    // Only in apiVersion v0.0.5 because there's no issue in older versions.
+    // The problem with the new one is related to the AS stub runtime `offset`
+    // variable not being initialized (lazy) before we use it so this test checks
+    // that it works (at the moment using __alloc call to force offset to be eagerly
+    // evaluated).
+    test_allocate_global(API_VERSION_0_0_5);
 }

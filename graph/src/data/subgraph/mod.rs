@@ -57,6 +57,11 @@ lazy_static! {
     // doesn't exist. In the future we should not use 0.0.3 as version
     // and skip to 0.0.4 to avoid ambiguity.
     static ref MAX_SPEC_VERSION: Version = Version::new(0, 0, 3);
+
+    static ref MAX_API_VERSION: Version = std::env::var("GRAPH_MAX_API_VERSION")
+        .ok()
+        .and_then(|api_version_str| Version::parse(&api_version_str).ok())
+        .unwrap_or(Version::new(0, 0, 4));
 }
 
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.
@@ -604,8 +609,12 @@ impl UnresolvedMapping {
 
         let api_version = Version::parse(&api_version)?;
 
-        ensure!(VersionReq::parse("<= 0.0.4").unwrap().matches(&api_version),
-            "The maximum supported mapping API version of this indexer is 0.0.4, but `{}` was found",
+        ensure!(
+            VersionReq::parse(&format!("<= {}", *MAX_API_VERSION))
+                .unwrap()
+                .matches(&api_version),
+            "The maximum supported mapping API version of this indexer is {}, but `{}` was found",
+            *MAX_API_VERSION,
             api_version
         );
 

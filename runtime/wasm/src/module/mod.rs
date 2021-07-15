@@ -14,9 +14,10 @@ use crate::error::DeterminismLevel;
 pub use crate::host_exports;
 use crate::mapping::MappingContext;
 use anyhow::Error;
+use graph::data::store;
 use graph::prelude::*;
+use graph::runtime::{AscHeap, IndexForAscTypeId};
 use graph::{components::subgraph::MappingError, runtime::AscPtr};
-use graph::{data::store, runtime::AscHeap};
 use graph::{
     data::subgraph::schema::SubgraphError,
     runtime::{asc_get, asc_new, try_asc_get, DeterministicHostError},
@@ -71,6 +72,13 @@ impl<C: Blockchain> AscHeap for WasmInstance<C> {
 
     fn api_version(&self) -> Version {
         self.instance_ctx().api_version()
+    }
+
+    fn asc_type_id(
+        &mut self,
+        type_id_index: IndexForAscTypeId,
+    ) -> Result<u32, DeterministicHostError> {
+        self.instance_ctx_mut().asc_type_id(type_id_index)
     }
 }
 
@@ -221,6 +229,9 @@ pub struct WasmInstanceContext<C: Blockchain> {
     // return a pointer to the first byte of allocated space.
     memory_allocate: wasmtime::TypedFunc<i32, i32>,
 
+    // Function wrapper for `idof<T>` from AssemblyScript
+    id_of_type: Option<wasmtime::TypedFunc<u32, u32>>,
+
     pub ctx: MappingContext<C>,
     pub valid_module: Arc<ValidModule>,
     pub host_metrics: Arc<HostMetrics>,
@@ -255,6 +266,7 @@ impl<C: Blockchain> WasmInstance<C> {
     ) -> Result<WasmInstance<C>, anyhow::Error> {
         let mut linker = wasmtime::Linker::new(&wasmtime::Store::new(valid_module.module.engine()));
         let host_fns = ctx.host_fns.cheap_clone();
+        let api_version = ctx.host_exports.api_version.clone();
 
         // Used by exports to access the instance context. There are two ways this can be set:
         // - After instantiation, if no host export is called in the start function.
@@ -513,6 +525,18 @@ impl<C: Blockchain> WasmInstance<C> {
             )?);
         }
 
+        match api_version {
+            version if version <= Version::new(0, 0, 4) => {}
+            _ => {
+                instance
+                    .get_func("_start")
+                    .context("`_start` function not found")?
+                    .typed::<(), ()>()?
+                    .call(())
+                    .unwrap();
+            }
+        }
+
         Ok(WasmInstance {
             instance,
             instance_ctx: shared_ctx,
@@ -538,6 +562,20 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
             // of the node.
             self.arena_start_ptr = self.memory_allocate.call(arena_size).unwrap();
             self.arena_free_size = arena_size;
+
+            match &self.ctx.host_exports.api_version {
+                version if *version <= Version::new(0, 0, 4) => {}
+                _ => {
+                    // This arithmetic is done because when you call AssemblyScripts's `__alloc`
+                    // function, it isn't typed and it just returns `mmInfo` on it's header,
+                    // differently from allocating on regular types (`__new` for example).
+                    // `mmInfo` has size of 4, and everything allocated on AssemblyScript memory
+                    // should have alignment of 16, this means we need to do a 12 offset on these
+                    // big chunks of untyped allocation.
+                    self.arena_start_ptr += 12;
+                    self.arena_free_size -= 12;
+                }
+            };
         };
 
         let ptr = self.arena_start_ptr as usize;
@@ -570,6 +608,20 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
     fn api_version(&self) -> Version {
         self.ctx.host_exports.api_version.clone()
     }
+
+    fn asc_type_id(
+        &mut self,
+        type_id_index: IndexForAscTypeId,
+    ) -> Result<u32, DeterministicHostError> {
+        let type_id = self
+            .id_of_type
+            .as_ref()
+            .unwrap() // Unwrap ok because it's only called on correct apiVersion, look for AscPtr::generate_header
+            .call(type_id_index as u32)
+            .with_context(|| format!("Failed to call 'asc_type_id' with '{:?}'", type_id_index))
+            .map_err(DeterministicHostError)?;
+        Ok(type_id)
+    }
 }
 
 impl<C: Blockchain> WasmInstanceContext<C> {
@@ -587,14 +639,31 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             .get_memory("memory")
             .context("Failed to find memory export in the WASM module")?;
 
-        let memory_allocate = instance
-            .get_func("memory.allocate")
-            .context("`memory.allocate` function not found")?
-            .typed()?
-            .clone();
+        let memory_allocate = match &ctx.host_exports.api_version {
+            version if *version <= Version::new(0, 0, 4) => instance
+                .get_func("memory.allocate")
+                .context("`memory.allocate` function not found"),
+            _ => instance
+                .get_func("allocate")
+                .context("`allocate` function not found"),
+        }?
+        .typed()?
+        .clone();
+
+        let id_of_type = match &ctx.host_exports.api_version {
+            version if *version <= Version::new(0, 0, 4) => None,
+            _ => Some(
+                instance
+                    .get_func("id_of_type")
+                    .context("`id_of_type` function not found")?
+                    .typed()?
+                    .clone(),
+            ),
+        };
 
         Ok(WasmInstanceContext {
             memory_allocate,
+            id_of_type,
             memory,
             ctx,
             valid_module,
@@ -623,14 +692,33 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             .and_then(|e| e.into_memory())
             .context("Failed to find memory export in the WASM module")?;
 
-        let memory_allocate = caller
-            .get_export("memory.allocate")
-            .and_then(|e| e.into_func())
-            .context("`memory.allocate` function not found")?
-            .typed()?
-            .clone();
+        let memory_allocate = match &ctx.host_exports.api_version {
+            version if *version <= Version::new(0, 0, 4) => caller
+                .get_export("memory.allocate")
+                .and_then(|e| e.into_func())
+                .context("`memory.allocate` function not found"),
+            _ => caller
+                .get_export("allocate")
+                .and_then(|e| e.into_func())
+                .context("`allocate` function not found"),
+        }?
+        .typed()?
+        .clone();
+
+        let id_of_type = match &ctx.host_exports.api_version {
+            version if *version <= Version::new(0, 0, 4) => None,
+            _ => Some(
+                caller
+                    .get_export("id_of_type")
+                    .and_then(|e| e.into_func())
+                    .context("`id_of_type` function not found")?
+                    .typed()?
+                    .clone(),
+            ),
+        };
 
         Ok(WasmInstanceContext {
+            id_of_type,
             memory_allocate,
             memory,
             ctx,

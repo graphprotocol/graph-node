@@ -7,7 +7,7 @@ export function handleTrigger(event: Trigger): void {
 
   let call = new Call("bytes32 -> uint256");
   call.value = contract
-    .exampleFunction(Bytes.fromHexString("0x1234") as Bytes)
+    .exampleFunction(changetype<Bytes>(Bytes.fromHexString("0x1234")))
     .toString();
   call.save();
 

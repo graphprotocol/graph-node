@@ -1,19 +1,20 @@
 use graph::prelude::{ethabi::Token, web3::types::U256};
 use graph_runtime_wasm::{
     asc_abi::class::{
-        ArrayBuffer, AscEnum, AscEnumArray, EthereumValueKind, StoreValueKind, TypedArray,
+        ArrayBuffer, AscAddress, AscEnum, AscEnumArray, EthereumValueKind, StoreValueKind,
+        TypedArray,
     },
     TRAP_TIMEOUT,
 };
 
 use super::*;
 
-#[tokio::test(threaded_scheduler)]
-async fn unbounded_loop() {
+fn test_unbounded_loop(api_version: Version) {
     // Set handler timeout to 3 seconds.
     let module = test_valid_module_and_store_with_timeout(
         "unboundedLoop",
-        mock_data_source("wasm_test/non_terminating.wasm"),
+        mock_data_source("non_terminating.wasm", api_version.clone()),
+        api_version,
         Some(Duration::from_secs(3)),
     )
     .0;
@@ -21,11 +22,21 @@ async fn unbounded_loop() {
     assert!(res.unwrap_err().to_string().contains(TRAP_TIMEOUT));
 }
 
-#[tokio::test]
-async fn unbounded_recursion() {
+#[tokio::test(threaded_scheduler)]
+async fn unbounded_loop_v0_0_4() {
+    test_unbounded_loop(API_VERSION_0_0_4);
+}
+
+#[tokio::test(threaded_scheduler)]
+async fn unbounded_loop_v0_0_5() {
+    test_unbounded_loop(API_VERSION_0_0_5);
+}
+
+fn test_unbounded_recursion(api_version: Version) {
     let module = test_module(
         "unboundedRecursion",
-        mock_data_source("wasm_test/non_terminating.wasm"),
+        mock_data_source("non_terminating.wasm", api_version.clone()),
+        api_version,
     );
     let res: Result<(), _> = module.get_func("rabbit_hole").typed().unwrap().call(());
     let err_msg = res.unwrap_err().to_string();
@@ -33,8 +44,21 @@ async fn unbounded_recursion() {
 }
 
 #[tokio::test]
-async fn abi_array() {
-    let mut module = test_module("abiArray", mock_data_source("wasm_test/abi_classes.wasm"));
+async fn unbounded_recursion_v0_0_4() {
+    test_unbounded_recursion(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn unbounded_recursion_v0_0_5() {
+    test_unbounded_recursion(API_VERSION_0_0_5);
+}
+
+fn test_abi_array(api_version: Version) {
+    let mut module = test_module(
+        "abiArray",
+        mock_data_source("abi_classes.wasm", api_version.clone()),
+        api_version,
+    );
 
     let vec = vec![
         "1".to_owned(),
@@ -54,16 +78,26 @@ async fn abi_array() {
             "2".to_owned(),
             "3".to_owned(),
             "4".to_owned(),
-            "5".to_owned()
+            "5".to_owned(),
         ]
-    )
+    );
 }
 
 #[tokio::test]
-async fn abi_subarray() {
+async fn abi_array_v0_0_4() {
+    test_abi_array(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn abi_array_v0_0_5() {
+    test_abi_array(API_VERSION_0_0_5);
+}
+
+fn test_abi_subarray(api_version: Version) {
     let mut module = test_module(
         "abiSubarray",
-        mock_data_source("wasm_test/abi_classes.wasm"),
+        mock_data_source("abi_classes.wasm", api_version.clone()),
+        api_version,
     );
 
     let vec: Vec<u8> = vec![1, 2, 3, 4];
@@ -73,14 +107,24 @@ async fn abi_subarray() {
         module.invoke_export("byte_array_third_quarter", vec_obj);
     let new_vec: Vec<u8> = asc_get(&module, new_vec_obj).unwrap();
 
-    assert_eq!(new_vec, vec![3])
+    assert_eq!(new_vec, vec![3]);
 }
 
 #[tokio::test]
-async fn abi_bytes_and_fixed_bytes() {
+async fn abi_subarray_v0_0_4() {
+    test_abi_subarray(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn abi_subarray_v0_0_5() {
+    test_abi_subarray(API_VERSION_0_0_5);
+}
+
+fn test_abi_bytes_and_fixed_bytes(api_version: Version) {
     let mut module = test_module(
         "abiBytesAndFixedBytes",
-        mock_data_source("wasm_test/abi_classes.wasm"),
+        mock_data_source("abi_classes.wasm", api_version.clone()),
+        api_version,
     );
     let bytes1: Vec<u8> = vec![42, 45, 7, 245, 45];
     let bytes2: Vec<u8> = vec![3, 12, 0, 1, 255];
@@ -97,13 +141,21 @@ async fn abi_bytes_and_fixed_bytes() {
     assert_eq!(new_vec, concated);
 }
 
-/// Test a roundtrip Token -> Payload -> Token identity conversion through asc,
-/// and assert the final token is the same as the starting one.
 #[tokio::test]
-async fn abi_ethabi_token_identity() {
+async fn abi_bytes_and_fixed_bytes_v0_0_4() {
+    test_abi_bytes_and_fixed_bytes(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn abi_bytes_and_fixed_bytes_v0_0_5() {
+    test_abi_bytes_and_fixed_bytes(API_VERSION_0_0_5);
+}
+
+fn test_abi_ethabi_token_identity(api_version: Version) {
     let mut module = test_module(
         "abiEthabiTokenIdentity",
-        mock_data_source("wasm_test/abi_token.wasm"),
+        mock_data_source("abi_token.wasm", api_version.clone()),
+        api_version,
     );
 
     // Token::Address
@@ -111,7 +163,7 @@ async fn abi_ethabi_token_identity() {
     let token_address = Token::Address(address);
 
     let token_address_ptr = asc_new(&mut module, &token_address).unwrap();
-    let new_address_obj: AscPtr<ArrayBuffer> =
+    let new_address_obj: AscPtr<AscAddress> =
         module.invoke_export("token_to_address", token_address_ptr);
 
     let new_token_ptr = module.invoke_export("token_from_address", new_address_obj);
@@ -192,13 +244,25 @@ async fn abi_ethabi_token_identity() {
     assert_eq!(new_token, token_array_nested);
 }
 
+/// Test a roundtrip Token -> Payload -> Token identity conversion through asc,
+/// and assert the final token is the same as the starting one.
 #[tokio::test]
-async fn abi_store_value() {
-    use graph::data::store::Value;
+async fn abi_ethabi_token_identity_v0_0_4() {
+    test_abi_ethabi_token_identity(API_VERSION_0_0_4);
+}
 
+/// Test a roundtrip Token -> Payload -> Token identity conversion through asc,
+/// and assert the final token is the same as the starting one.
+#[tokio::test]
+async fn abi_ethabi_token_identity_v0_0_5() {
+    test_abi_ethabi_token_identity(API_VERSION_0_0_5);
+}
+
+fn test_abi_store_value(api_version: Version) {
     let mut module = test_module(
         "abiStoreValue",
-        mock_data_source("wasm_test/abi_store_value.wasm"),
+        mock_data_source("abi_store_value.wasm", api_version.clone()),
+        api_version,
     );
 
     // Value::Null
@@ -291,8 +355,21 @@ async fn abi_store_value() {
 }
 
 #[tokio::test]
-async fn abi_h160() {
-    let mut module = test_module("abiH160", mock_data_source("wasm_test/abi_classes.wasm"));
+async fn abi_store_value_v0_0_4() {
+    test_abi_store_value(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn abi_store_value_v0_0_5() {
+    test_abi_store_value(API_VERSION_0_0_5);
+}
+
+fn test_abi_h160(api_version: Version) {
+    let mut module = test_module(
+        "abiH160",
+        mock_data_source("abi_classes.wasm", api_version.clone()),
+        api_version,
+    );
     let address = H160::zero();
 
     // As an `Uint8Array`
@@ -309,19 +386,45 @@ async fn abi_h160() {
 }
 
 #[tokio::test]
-async fn string() {
-    let mut module = test_module("string", mock_data_source("wasm_test/abi_classes.wasm"));
+async fn abi_h160_v0_0_4() {
+    test_abi_h160(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn abi_h160_v0_0_5() {
+    test_abi_h160(API_VERSION_0_0_5);
+}
+
+fn test_string(api_version: Version) {
+    let mut module = test_module(
+        "string",
+        mock_data_source("abi_classes.wasm", api_version.clone()),
+        api_version,
+    );
     let string = "    漢字Double_Me🇧🇷  ";
     let trimmed_string_ptr = asc_new(&mut module, string).unwrap();
     let trimmed_string_obj: AscPtr<AscString> =
         module.invoke_export("repeat_twice", trimmed_string_ptr);
     let doubled_string: String = asc_get(&module, trimmed_string_obj).unwrap();
-    assert_eq!(doubled_string, string.repeat(2))
+    assert_eq!(doubled_string, string.repeat(2));
 }
 
 #[tokio::test]
-async fn abi_big_int() {
-    let mut module = test_module("abiBigInt", mock_data_source("wasm_test/abi_classes.wasm"));
+async fn string_v0_0_4() {
+    test_string(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn string_v0_0_5() {
+    test_string(API_VERSION_0_0_5);
+}
+
+fn test_abi_big_int(api_version: Version) {
+    let mut module = test_module(
+        "abiBigInt",
+        mock_data_source("abi_classes.wasm", api_version.clone()),
+        api_version,
+    );
 
     // Test passing in 0 and increment it by 1
     let old_uint = U256::zero();
@@ -344,10 +447,20 @@ async fn abi_big_int() {
 }
 
 #[tokio::test]
-async fn big_int_to_string() {
+async fn abi_big_int_v0_0_4() {
+    test_abi_big_int(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn abi_big_int_v0_0_5() {
+    test_abi_big_int(API_VERSION_0_0_5);
+}
+
+fn test_big_int_to_string(api_version: Version) {
     let mut module = test_module(
         "bigIntToString",
-        mock_data_source("wasm_test/big_int_to_string.wasm"),
+        mock_data_source("big_int_to_string.wasm", api_version.clone()),
+        api_version,
     );
 
     let big_int_str = "30145144166666665000000000000000000";
@@ -358,14 +471,21 @@ async fn big_int_to_string() {
     assert_eq!(string, big_int_str);
 }
 
-// This should panic rather than exhibiting UB. It's hard to test for UB, but
-// when reproducing a SIGILL was observed which would be caught by this.
 #[tokio::test]
-#[should_panic]
-async fn invalid_discriminant() {
+async fn big_int_to_string_v0_0_4() {
+    test_big_int_to_string(API_VERSION_0_0_4);
+}
+
+#[tokio::test]
+async fn big_int_to_string_v0_0_5() {
+    test_big_int_to_string(API_VERSION_0_0_5);
+}
+
+fn test_invalid_discriminant(api_version: Version) {
     let module = test_module(
         "invalidDiscriminant",
-        mock_data_source("wasm_test/abi_store_value.wasm"),
+        mock_data_source("abi_store_value.wasm", api_version.clone()),
+        api_version,
     );
 
     let func = module
@@ -375,4 +495,20 @@ async fn invalid_discriminant() {
         .clone();
     let ptr: u32 = func.call(()).unwrap();
     let _value: Value = try_asc_get(&module, ptr.into()).unwrap();
+}
+
+// This should panic rather than exhibiting UB. It's hard to test for UB, but
+// when reproducing a SIGILL was observed which would be caught by this.
+#[tokio::test]
+#[should_panic]
+async fn invalid_discriminant_v0_0_4() {
+    test_invalid_discriminant(API_VERSION_0_0_4);
+}
+
+// This should panic rather than exhibiting UB. It's hard to test for UB, but
+// when reproducing a SIGILL was observed which would be caught by this.
+#[tokio::test]
+#[should_panic]
+async fn invalid_discriminant_v0_0_5() {
+    test_invalid_discriminant(API_VERSION_0_0_5);
 }

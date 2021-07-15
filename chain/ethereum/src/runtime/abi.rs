@@ -1,10 +1,12 @@
 use graph::prelude::BigInt;
 use graph::runtime::{asc_get, asc_new, AscPtr, DeterministicHostError, FromAscObj, ToAscObj};
-use graph::runtime::{AscHeap, AscType};
+use graph::runtime::{AscHeap, AscIndexId, AscType, IndexForAscTypeId};
 use graph_runtime_derive::AscType;
 use graph_runtime_wasm::asc_abi::class::{
     Array, AscAddress, AscBigInt, AscEnum, AscH160, AscString, EthereumValueKind, Uint8Array,
 };
+use semver::Version;
+use std::mem::size_of;
 
 use crate::trigger::{
     EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
@@ -13,7 +15,35 @@ use crate::trigger::{
 use super::runtime_adapter::UnresolvedContractCall;
 
 type AscH256 = Uint8Array;
-type AscLogParamArray = Array<AscPtr<AscLogParam>>;
+
+pub struct AscLogParamArray(Array<AscPtr<AscLogParam>>);
+
+impl AscType for AscLogParamArray {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        self.0.to_asc_bytes()
+    }
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: Version,
+    ) -> Result<Self, DeterministicHostError> {
+        Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
+    }
+}
+
+impl ToAscObj<AscLogParamArray> for Vec<ethabi::LogParam> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscLogParamArray, DeterministicHostError> {
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x)).collect();
+        let content = content?;
+        Ok(AscLogParamArray(Array::new(&*content, heap)?))
+    }
+}
+
+impl AscIndexId for AscLogParamArray {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::ArrayEventParam;
+}
 
 #[repr(C)]
 #[derive(AscType)]
@@ -23,6 +53,10 @@ pub struct AscUnresolvedContractCall_0_0_4 {
     pub function_name: AscPtr<AscString>,
     pub function_signature: AscPtr<AscString>,
     pub function_args: AscPtr<Array<AscPtr<AscEnum<EthereumValueKind>>>>,
+}
+
+impl AscIndexId for AscUnresolvedContractCall_0_0_4 {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::SmartContractCall;
 }
 
 impl FromAscObj<AscUnresolvedContractCall_0_0_4> for UnresolvedContractCall {
@@ -83,6 +117,10 @@ pub(crate) struct AscEthereumBlock {
     pub size: AscPtr<AscBigInt>,
 }
 
+impl AscIndexId for AscEthereumBlock {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumBlock;
+}
+
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEthereumTransaction_0_0_1 {
@@ -93,6 +131,10 @@ pub(crate) struct AscEthereumTransaction_0_0_1 {
     pub value: AscPtr<AscBigInt>,
     pub gas_limit: AscPtr<AscBigInt>,
     pub gas_price: AscPtr<AscBigInt>,
+}
+
+impl AscIndexId for AscEthereumTransaction_0_0_1 {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumTransaction;
 }
 
 #[repr(C)]
@@ -106,6 +148,10 @@ pub(crate) struct AscEthereumTransaction_0_0_2 {
     pub gas_limit: AscPtr<AscBigInt>,
     pub gas_price: AscPtr<AscBigInt>,
     pub input: AscPtr<Uint8Array>,
+}
+
+impl AscIndexId for AscEthereumTransaction_0_0_2 {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumTransaction;
 }
 
 #[repr(C)]
@@ -123,11 +169,23 @@ where
     pub params: AscPtr<AscLogParamArray>,
 }
 
+impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_1> {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
+}
+
+impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_2> {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
+}
+
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscLogParam {
     pub name: AscPtr<AscString>,
     pub value: AscPtr<AscEnum<EthereumValueKind>>,
+}
+
+impl AscIndexId for AscLogParam {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EventParam;
 }
 
 #[repr(C)]
@@ -140,6 +198,10 @@ pub(crate) struct AscEthereumCall {
     pub outputs: AscPtr<AscLogParamArray>,
 }
 
+impl AscIndexId for AscEthereumCall {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumCall;
+}
+
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEthereumCall_0_0_3 {
@@ -149,6 +211,10 @@ pub(crate) struct AscEthereumCall_0_0_3 {
     pub transaction: AscPtr<AscEthereumTransaction_0_0_2>,
     pub inputs: AscPtr<AscLogParamArray>,
     pub outputs: AscPtr<AscLogParamArray>,
+}
+
+impl AscIndexId for AscEthereumCall_0_0_3 {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumCall;
 }
 
 impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
@@ -219,7 +285,7 @@ impl ToAscObj<AscEthereumTransaction_0_0_2> for EthereumTransactionData {
     }
 }
 
-impl<T: AscType> ToAscObj<AscEthereumEvent<T>> for EthereumEventData
+impl<T: AscType + AscIndexId> ToAscObj<AscEthereumEvent<T>> for EthereumEventData
 where
     EthereumTransactionData: ToAscObj<T>,
 {
@@ -241,7 +307,7 @@ where
                 .unwrap_or(Ok(AscPtr::null()))?,
             block: asc_new(heap, &self.block)?,
             transaction: asc_new::<T, EthereumTransactionData, _>(heap, &self.transaction)?,
-            params: asc_new(heap, self.params.as_slice())?,
+            params: asc_new(heap, &self.params)?,
         })
     }
 }
@@ -255,8 +321,8 @@ impl ToAscObj<AscEthereumCall> for EthereumCallData {
             address: asc_new(heap, &self.to)?,
             block: asc_new(heap, &self.block)?,
             transaction: asc_new(heap, &self.transaction)?,
-            inputs: asc_new(heap, self.inputs.as_slice())?,
-            outputs: asc_new(heap, self.outputs.as_slice())?,
+            inputs: asc_new(heap, &self.inputs)?,
+            outputs: asc_new(heap, &self.outputs)?,
         })
     }
 }
@@ -271,8 +337,8 @@ impl ToAscObj<AscEthereumCall_0_0_3> for EthereumCallData {
             from: asc_new(heap, &self.from)?,
             block: asc_new(heap, &self.block)?,
             transaction: asc_new(heap, &self.transaction)?,
-            inputs: asc_new(heap, self.inputs.as_slice())?,
-            outputs: asc_new(heap, self.outputs.as_slice())?,
+            inputs: asc_new(heap, &self.inputs)?,
+            outputs: asc_new(heap, &self.outputs)?,
         })
     }
 }

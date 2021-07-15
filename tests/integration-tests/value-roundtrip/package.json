@@ -9,8 +9,8 @@
     "deploy:test": "graph deploy test/value-roundtrip --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
   "devDependencies": {
-    "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#master",
-    "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#master",
+    "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#otavio/update-assembly-script",
+    "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#otavio/update-assembly-script",
     "solc": "^0.8.2"
   },
   "dependencies": {
