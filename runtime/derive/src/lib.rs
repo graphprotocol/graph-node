@@ -82,6 +82,12 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
                 // Sanity check
                 match &api_version {
                     api_version if *api_version <= Version::new(0, 0, 4) => {
+                        // This was using an double equal sign before instead of less than.
+                        // This happened because of the new apiVersion support.
+                        // Since some structures need different implementations for each
+                        // version, their memory size got bigger because we're using an enum
+                        // that contains both versions (each in a variant), and that increased
+                        // the memory size, so that's why we use less than.
                         if asc_obj.len() < std::mem::size_of::<Self>() {
                             return Err(DeterministicHostError(anyhow::anyhow!("Size does not match")));
                         }
