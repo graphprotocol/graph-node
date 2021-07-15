@@ -42,6 +42,14 @@ pub struct DataSource {
 }
 
 impl blockchain::DataSource<Chain> for DataSource {
+    fn address(&self) -> Option<&[u8]> {
+        self.source.address.as_ref().map(|x| x.as_bytes())
+    }
+
+    fn start_block(&self) -> BlockNumber {
+        self.source.start_block
+    }
+
     fn match_and_decode(
         &self,
         trigger: &<Chain as Blockchain>::TriggerData,
@@ -54,10 +62,6 @@ impl blockchain::DataSource<Chain> for DataSource {
 
     fn mapping(&self) -> &Mapping {
         &self.mapping
-    }
-
-    fn source(&self) -> &Source {
-        &self.source
     }
 
     fn from_manifest(

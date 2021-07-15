@@ -184,12 +184,14 @@ pub trait TriggerFilter<C: Blockchain>: Default + Clone + Send + Sync {
     fn node_capabilities(&self) -> C::NodeCapabilities;
 }
 
-// ETHDEP: `Source` and `Mapping`, at least, are Ethereum-specific.
 pub trait DataSource<C: Blockchain>:
     'static + Sized + Send + Sync + Clone + TryFrom<DataSourceTemplateInfo<C>, Error = anyhow::Error>
 {
+    // ETHDEP: `Mapping` is Ethereum-specific.
     fn mapping(&self) -> &Mapping;
-    fn source(&self) -> &Source;
+
+    fn address(&self) -> Option<&[u8]>;
+    fn start_block(&self) -> BlockNumber;
 
     fn from_manifest(
         kind: String,

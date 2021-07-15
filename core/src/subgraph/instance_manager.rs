@@ -1046,8 +1046,8 @@ fn create_dynamic_data_sources<T: RuntimeHostBuilder<C>, C: Blockchain>(
                     "no runtime hosted created, there is already a runtime host instantiated for \
                      this data source";
                     "name" => &data_source.name(),
-                    "address" => &data_source.source().address
-                        .map(|address| address.to_string())
+                    "address" => &data_source.address()
+                        .map(|address| hex::encode(address))
                         .unwrap_or("none".to_string()),
                 )
             }
@@ -1078,7 +1078,7 @@ fn persist_dynamic_data_sources<T: RuntimeHostBuilder<C>, C: Blockchain>(
             logger,
             "Persisting data_source";
             "name" => &data_source.name(),
-            "address" => &data_source.source().address.map(|address| address.to_string()).unwrap_or("none".to_string()),
+            "address" => &data_source.address().map(|address| hex::encode(address)).unwrap_or("none".to_string()),
         );
         entity_cache.add_data_source(data_source);
     }
