@@ -745,10 +745,10 @@ fn start_block_ingestor(
 mod test {
     use super::create_ethereum_networks;
     use crate::config::{Config, Opt};
-    use graph::components::ethereum::NodeCapabilities;
     use graph::log::logger;
     use graph::prelude::tokio;
     use graph::prometheus::Registry;
+    use graph_chain_ethereum::NodeCapabilities;
     use graph_core::MetricsRegistry;
     use std::sync::Arc;
 

@@ -12,15 +12,15 @@ use graph::{
             TriggersAdapter as TriggersAdapterTrait,
         },
         Block, BlockHash, BlockPtr, Blockchain, ChainHeadUpdateListener,
-        IngestorAdapter as IngestorAdapterTrait, IngestorError, Manifest, TriggerFilter as _,
+        IngestorAdapter as IngestorAdapterTrait, IngestorError, TriggerFilter as _,
     },
     cheap_clone::CheapClone,
     components::store::DeploymentLocator,
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
-        async_trait, error, lazy_static, o, serde_yaml, web3::types::H256, BlockNumber, ChainStore,
-        DeploymentHash, EthereumBlockWithCalls, Future01CompatExt, LinkResolver, Logger,
-        LoggerFactory, MetricsRegistry, NodeId, SubgraphStore,
+        async_trait, error, lazy_static, o, web3::types::H256, BlockNumber, ChainStore,
+        EthereumBlockWithCalls, Future01CompatExt, Logger, LoggerFactory, MetricsRegistry, NodeId,
+        SubgraphStore,
     },
 };
 
@@ -116,8 +116,6 @@ impl Blockchain for Chain {
     type DataSourceTemplate = DataSourceTemplate;
 
     type UnresolvedDataSourceTemplate = UnresolvedDataSourceTemplate;
-
-    type Manifest = DummyManifest;
 
     type TriggersAdapter = TriggersAdapter;
 
@@ -304,28 +302,6 @@ impl Block for BlockFinality {
 }
 
 pub struct DummyDataSourceTemplate;
-
-pub struct DummyManifest;
-
-#[async_trait]
-impl Manifest<Chain> for DummyManifest {
-    async fn resolve_from_raw(
-        _id: DeploymentHash,
-        _raw: serde_yaml::Mapping,
-        _resolver: &impl LinkResolver,
-        _logger: &Logger,
-    ) -> Result<Self, Error> {
-        todo!()
-    }
-
-    fn data_sources(&self) -> &[DataSource] {
-        todo!()
-    }
-
-    fn templates(&self) -> &[DataSourceTemplate] {
-        todo!()
-    }
-}
 
 pub struct TriggersAdapter {
     logger: Logger,
