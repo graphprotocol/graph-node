@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use graph::data::graphql::ext::DirectiveFinder;
 use graphql_parser::Pos;
 use lazy_static::lazy_static;
 use std::ops::Deref;
@@ -382,10 +383,7 @@ pub fn get_input_object_definitions(schema: &Document) -> Vec<InputObjectType> {
 /// If the field has a `@derivedFrom(field: "foo")` directive, obtain the
 /// name of the field (e.g. `"foo"`)
 pub fn get_derived_from_directive<'a>(field_definition: &Field) -> Option<&Directive> {
-    field_definition
-        .directives
-        .iter()
-        .find(|directive| directive.name == String::from("derivedFrom"))
+    field_definition.find_directive("derivedFrom")
 }
 
 pub fn get_derived_from_field<'a>(
@@ -459,7 +457,7 @@ pub fn validate_entity(
         })?;
 
     for field in &object_type.fields {
-        let is_derived = get_derived_from_directive(field).is_some();
+        let is_derived = field.is_derived();
         match (entity.get(&field.name), is_derived) {
             (Some(value), false) => {
                 let scalar_type = scalar_value_type(schema, &field.field_type);
