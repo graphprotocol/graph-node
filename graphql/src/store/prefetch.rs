@@ -990,7 +990,7 @@ fn filter_derived_fields(
                 .into_iter()
                 .filter_map(|column_name| {
                     if let Some(schema_field) = sast::get_field(object, &column_name) {
-                        if schema_field.find_directive("derivedFrom").is_none() {
+                        if !schema_field.is_derived() {
                             Some(column_name) // field exists and is not derived
                         } else {
                             None // field exists and is derived
