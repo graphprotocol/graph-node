@@ -1353,7 +1353,6 @@ fn named_type(field_type: &q::Type) -> &str {
     }
 }
 
-
 fn is_object_type(field_type: &q::Type, enums: &EnumMap) -> bool {
     let name = named_type(field_type);
 
