@@ -29,7 +29,7 @@ use crate::{
     },
 };
 use graph::components::store::EntityType;
-use graph::data::graphql::ext::{DocumentExt, ObjectTypeExt};
+use graph::data::graphql::ext::{DirectiveFinder, DocumentExt, ObjectTypeExt};
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
 use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
@@ -1160,7 +1160,7 @@ impl Table {
         let columns = defn
             .fields
             .iter()
-            .filter(|field| !derived_column(field))
+            .filter(|field| !field.is_derived())
             .map(|field| Column::new(&table_name, field, catalog, enums, id_types))
             .chain(fulltexts.iter().map(|def| Column::new_fulltext(def)))
             .collect::<Result<Vec<Column>, StoreError>>()?;
@@ -1353,12 +1353,6 @@ fn named_type(field_type: &q::Type) -> &str {
     }
 }
 
-fn derived_column(field: &s::Field) -> bool {
-    field
-        .directives
-        .iter()
-        .any(|dir| dir.name == String::from("derivedFrom"))
-}
 
 fn is_object_type(field_type: &q::Type, enums: &EnumMap) -> bool {
     let name = named_type(field_type);
