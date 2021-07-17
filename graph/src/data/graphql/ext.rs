@@ -292,3 +292,59 @@ impl DirectiveFinder for Vec<Directive> {
         self.iter().any(is_derived)
     }
 }
+
+#[cfg(test)]
+mod directive_finder_tests {
+    use graphql_parser::parse_schema;
+
+    use super::*;
+
+    const SCHEMA: &str = "
+    type BuyEvent implements Event @derivedFrom(field: \"buyEvent\") {
+        id: ID!,
+        transaction: Transaction! @derivedFrom(field: \"buyEvent\")
+    }";
+
+    /// Makes sure that the DirectiveFinder::find_directive implementation for ObjectiveType and Field works
+    #[test]
+    fn find_directive_impls() {
+        let ast = parse_schema::<String>(SCHEMA).unwrap();
+        let object_types = ast.get_object_type_definitions();
+        assert_eq!(object_types.len(), 1);
+        let object_type = object_types[0];
+
+        // The object type BuyEvent has a @derivedFrom directive
+        assert!(object_type.find_directive("derivedFrom").is_some());
+
+        // BuyEvent has no deprecated directive
+        assert!(object_type.find_directive("deprecated").is_none());
+
+        let fields = &object_type.fields;
+        assert_eq!(fields.len(), 2);
+
+        // Field 1 `id` is not derived
+        assert!(fields[0].find_directive("derivedFrom").is_none());
+        // Field 2 `transaction` is derived
+        assert!(fields[1].find_directive("derivedFrom").is_some());
+    }
+
+    /// Makes sure that the DirectiveFinder::is_derived implementation for ObjectiveType and Field works
+    #[test]
+    fn is_derived_impls() {
+        let ast = parse_schema::<String>(SCHEMA).unwrap();
+        let object_types = ast.get_object_type_definitions();
+        assert_eq!(object_types.len(), 1);
+        let object_type = object_types[0];
+
+        // The object type BuyEvent is derived
+        assert!(object_type.is_derived());
+
+        let fields = &object_type.fields;
+        assert_eq!(fields.len(), 2);
+
+        // Field 1 `id` is not derived
+        assert!(!fields[0].is_derived());
+        // Field 2 `transaction` is derived
+        assert!(fields[1].is_derived());
+    }
+}
