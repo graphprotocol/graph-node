@@ -224,7 +224,7 @@ impl LinkResolverTrait for LinkResolver {
         let timeout = self.timeout.clone();
         let logger = logger.clone();
         let data = retry_policy(self.retry, "ipfs.cat", &logger)
-            .run( move || {
+            .run(move || {
                 let path = path.clone();
                 let client = client.clone();
                 let this = this.clone();
@@ -246,10 +246,7 @@ impl LinkResolverTrait for LinkResolver {
                     }
                     Result::<Vec<u8>, reqwest::Error>::Ok(data)
                 }
-                // .boxed()
-                // .compat()
             })
-            // .compat()
             .await?;
 
         Ok(data)
