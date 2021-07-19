@@ -1,14 +1,7 @@
+use crate::prelude::tokio::macros::support::Poll;
 use crate::prelude::{Pin, StoreError};
-
 use futures03::channel::oneshot;
 use futures03::{future::Fuse, Future, FutureExt, Stream};
-
-// use futures::future::Fuse;
-// use futures::prelude::{Future, Poll, Stream};
-// use futures::sync::oneshot;
-// use futures03::compat::{Compat01As03, Future01CompatExt};
-
-use crate::prelude::tokio::macros::support::Poll;
 use std::fmt::{Debug, Display};
 use std::sync::{Arc, Mutex, Weak};
 use std::task::Context;
@@ -30,7 +23,6 @@ impl<S: Stream + Unpin, C: Fn() -> S::Item + Unpin> Stream for Cancelable<S, C> 
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         // Error if the stream was canceled by dropping the sender.
-        // `cancel_receiver` is fused so we may ignore `Ok`s.
         match self.cancel_receiver.poll_unpin(cx) {
             Poll::Ready(Ok(_)) => unreachable!(),
             Poll::Ready(Err(_)) => Poll::Ready(Some((self.on_cancel)())),
@@ -257,11 +249,6 @@ impl<F: Future> FutureExtension for F {
     fn timeout(self, dur: Duration) -> tokio::time::Timeout<Self> {
         tokio::time::timeout(dur, self)
     }
-}
-
-pub enum CancelableItem<T> {
-    Item(T),
-    Cancel,
 }
 
 #[derive(thiserror::Error, Debug)]

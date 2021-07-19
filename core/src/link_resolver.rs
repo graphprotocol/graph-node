@@ -246,10 +246,7 @@ impl LinkResolverTrait for LinkResolver {
                     }
                     Result::<Vec<u8>, reqwest::Error>::Ok(data)
                 }
-                // .boxed()
-                // .compat()
             })
-            // .compat()
             .await?;
 
         Ok(data)
