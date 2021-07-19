@@ -8,7 +8,6 @@ use std::time::Duration;
 use thiserror::Error;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
-// use std::future::Future;
 
 /// Generic helper function for retrying async operations with built-in logging.
 ///

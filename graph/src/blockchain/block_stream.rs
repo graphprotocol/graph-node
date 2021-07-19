@@ -665,9 +665,6 @@ impl<C: Blockchain> Stream for BlockStream<C> {
                             break Poll::Ready(Some(Ok(BlockStreamEvent::Revert(block))));
                         }
                         Poll::Pending => {
-                            // Nothing to change or yield yet.
-                            // self.state =
-                            //     BlockStreamState::Reconciliation(next_blocks_future);
                             break Poll::Pending; //todo: is this ok
                         }
                         Poll::Ready(Err(e)) => {
@@ -678,7 +675,6 @@ impl<C: Blockchain> Stream for BlockStream<C> {
 
                             // Pause before trying again
                             let secs = (5 * self.consecutive_err_count).max(120) as u64;
-                            // (Pin<Box<dyn Future<Output = Result<(), Error>> + Send>>),
 
                             self.state = BlockStreamState::RetryAfterDelay(Box::pin(
                                 tokio::time::sleep(Duration::from_secs(secs)).map(Ok),
@@ -694,7 +690,6 @@ impl<C: Blockchain> Stream for BlockStream<C> {
                     match next_blocks.pop_front() {
                         // Yield one block
                         Some(next_block) => {
-                            // self.state = BlockStreamState::YieldingBlocks(next_blocks);
                             break Poll::Ready(Some(Ok(BlockStreamEvent::ProcessBlock(
                                 next_block,
                             ))));
