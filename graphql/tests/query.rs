@@ -1728,7 +1728,7 @@ fn non_fatal_errors() {
         let deployment = setup_with_features(
             store.as_ref(),
             "testNonFatalErrors",
-            BTreeSet::from_iter(Some(SubgraphFeature::nonFatalErrors)),
+            BTreeSet::from_iter(Some(SubgraphFeature::NonFatalErrors)),
         );
 
         let err = SubgraphError {
