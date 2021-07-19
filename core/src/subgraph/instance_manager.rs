@@ -825,7 +825,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
         && !ctx
             .inputs
             .features
-            .contains(&SubgraphFeature::nonFatalErrors)
+            .contains(&SubgraphFeature::NonFatalErrors)
     {
         // Take just the first error to report.
         return Err(BlockProcessingError::Deterministic(

@@ -150,7 +150,7 @@ where
 fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator {
     let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
         id: TEST_SUBGRAPH_ID.clone(),
-        spec_version: "1".to_owned(),
+        spec_version: Version::new(1, 0, 0),
         features: Default::default(),
         description: None,
         repository: None,
@@ -1275,7 +1275,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             Schema::parse(USER_GQL, subgraph_id.clone()).expect("Failed to parse user schema");
         let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
             id: subgraph_id.clone(),
-            spec_version: "1".to_owned(),
+            spec_version: Version::new(1, 0, 0),
             features: Default::default(),
             description: None,
             repository: None,
