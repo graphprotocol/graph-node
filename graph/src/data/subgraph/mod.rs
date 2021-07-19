@@ -66,7 +66,10 @@ lazy_static! {
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.
 pub mod schema;
 
+pub mod features;
 pub mod status;
+
+pub use features::SubgraphFeature;
 
 /// Deserialize an Address (with or without '0x' prefix).
 fn deserialize_address<'de, D>(deserializer: D) -> Result<Option<Address>, D::Error>
@@ -1084,12 +1087,6 @@ impl DeploymentState {
     pub fn is_deployed(&self) -> bool {
         self.latest_ethereum_block_number > 0
     }
-}
-
-#[derive(Debug, Deserialize, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(rename_all = "camelCase")]
-pub enum SubgraphFeature {
-    NonFatalErrors,
 }
 
 impl std::fmt::Display for SubgraphFeature {
