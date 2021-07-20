@@ -665,7 +665,7 @@ impl<C: Blockchain> Stream for BlockStream<C> {
                             break Poll::Ready(Some(Ok(BlockStreamEvent::Revert(block))));
                         }
                         Poll::Pending => {
-                            break Poll::Pending; //todo: is this ok
+                            break Poll::Pending;
                         }
                         Poll::Ready(Err(e)) => {
                             // Reset the block range size in an attempt to recover from the error.
