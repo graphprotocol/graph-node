@@ -161,9 +161,6 @@ where
     ///
     /// Valid next states: BeginReconciliation
     Idle,
-
-    /// Not a real state, only used when going from one state to another.
-    Transition,
 }
 
 /// A single next step to take in reconciling the state of the subgraph store with the state of the
@@ -668,7 +665,7 @@ impl<C: Blockchain> Stream for BlockStream<C> {
                             break Poll::Ready(Some(Ok(BlockStreamEvent::Revert(block))));
                         }
                         Poll::Pending => {
-                            break Poll::Pending; //todo: is this ok
+                            break Poll::Pending;
                         }
                         Poll::Ready(Err(e)) => {
                             // Reset the block range size in an attempt to recover from the error.
@@ -742,10 +739,6 @@ impl<C: Blockchain> Stream for BlockStream<C> {
                         }
                     }
                 }
-
-                // This will only happen if this poll function fails to complete normally then is
-                // called again.
-                BlockStreamState::Transition => unreachable!(),
             }
         };
 

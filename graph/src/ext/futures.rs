@@ -16,7 +16,7 @@ pub struct Cancelable<T, C> {
     cancel_receiver: Fuse<oneshot::Receiver<()>>,
     on_cancel: C,
 }
-// CancelableError::Cancel
+
 /// It's not viable to use `select` directly, so we do a custom implementation.
 impl<S: Stream + Unpin, C: Fn() -> S::Item + Unpin> Stream for Cancelable<S, C> {
     type Item = S::Item;
