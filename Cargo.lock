@@ -1620,14 +1620,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "graph-chain-arweave"
-version = "0.23.1"
-dependencies = [
- "anyhow",
- "graph",
-]
-
-[[package]]
 name = "graph-chain-ethereum"
 version = "0.23.1"
 dependencies = [
@@ -1731,7 +1723,6 @@ dependencies = [
  "futures 0.3.13",
  "git-testament",
  "graph",
- "graph-chain-arweave",
  "graph-chain-ethereum",
  "graph-core",
  "graph-graphql",
@@ -1768,7 +1759,6 @@ name = "graph-runtime-test"
 version = "0.23.1"
 dependencies = [
  "graph",
- "graph-chain-arweave",
  "graph-chain-ethereum",
  "graph-core",
  "graph-mock",

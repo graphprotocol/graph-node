@@ -26,7 +26,6 @@ lazy_static::lazy_static! {
 /// All integration tests subdirectories to run
 pub const INTEGRATION_TESTS_DIRECTORIES: [&str; 10] = [
     "api-version-v0-0-4",
-    // "arweave-and-3box",
     "data-source-context",
     "data-source-revert",
     "fatal-error",

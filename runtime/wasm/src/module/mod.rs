@@ -215,7 +215,6 @@ impl<C: Blockchain> WasmInstance<C> {
 #[derive(Copy, Clone)]
 pub struct ExperimentalFeatures {
     pub allow_non_deterministic_ipfs: bool,
-    pub allow_non_deterministic_arweave: bool,
     pub allow_non_deterministic_3box: bool,
 }
 
@@ -506,7 +505,10 @@ impl<C: Blockchain> WasmInstance<C> {
 
         link!("log.log", log_log, level, msg_ptr);
 
-        link!("arweave.transactionData", arweave_transaction_data, ptr);
+        // `arweave and `box` functionality was removed, but apiVersion <= 0.0.4 must link it.
+        if api_version <= Version::new(0, 0, 4) {
+            link!("arweave.transactionData", arweave_transaction_data, ptr);
+        }
 
         link!("box.profile", box_profile, ptr);
 
@@ -1424,17 +1426,11 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     /// function arweave.transactionData(txId: string): Bytes | null
     pub fn arweave_transaction_data(
         &mut self,
-        tx_id: AscPtr<AscString>,
+        _tx_id: AscPtr<AscString>,
     ) -> Result<AscPtr<Uint8Array>, HostExportError> {
-        if !self.experimental_features.allow_non_deterministic_arweave {
-            return Err(HostExportError::Deterministic(anyhow!(
+        Err(HostExportError::Deterministic(anyhow!(
                 "`arweave.transactionData` is deprecated. Improved support for arweave may be added in the future"
-            )));
-        }
-        let tx_id: String = asc_get(self, tx_id)?;
-        let data = self.ctx.host_exports.arweave_transaction_data(&tx_id);
-        data.map(|data| asc_new(self, &*data).map_err(Into::into))
-            .unwrap_or(Ok(AscPtr::null()))
+        )))
     }
 
     /// function box.profile(address: string): JSONValue | null

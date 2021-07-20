@@ -10,6 +10,5 @@ graph = { path = "../../graph" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
 graph-runtime-wasm = { path = "../wasm" }
 test-store = { path = "../../store/test-store" }
-graph-chain-arweave = { path = "../../chain/arweave" }
 graph-core = { path = "../../core" }
 graph-mock = { path = "../../mock" }

@@ -6,7 +6,6 @@ use graph::prelude::*;
 use graph::runtime::AscPtr;
 use graph::runtime::{asc_get, asc_new, try_asc_get};
 use graph::{components::store::*, ipfs_client::IpfsClient};
-use graph_chain_arweave::adapter::ArweaveAdapter;
 use graph_chain_ethereum::{Chain, DataSource, DataSourceTemplate};
 use graph_core;
 use graph_core::three_box::ThreeBoxAdapter;
@@ -88,7 +87,6 @@ fn test_valid_module_and_store_with_timeout(
 
     let experimental_features = ExperimentalFeatures {
         allow_non_deterministic_ipfs: true,
-        allow_non_deterministic_arweave: true,
         allow_non_deterministic_3box: true,
     };
 
@@ -180,7 +178,6 @@ fn mock_host_exports(
     store: Arc<impl SubgraphStore>,
     api_version: Version,
 ) -> HostExports<Chain> {
-    let arweave_adapter = Arc::new(ArweaveAdapter::new("https://arweave.net".to_string()));
     let three_box_adapter = Arc::new(ThreeBoxAdapter::new("https://ipfs.3box.io/".to_string()));
 
     let templates = vec![DataSourceTemplate {
@@ -214,7 +211,6 @@ fn mock_host_exports(
         Arc::new(templates),
         Arc::new(graph_core::LinkResolver::from(IpfsClient::localhost())),
         store,
-        arweave_adapter,
         three_box_adapter,
     )
 }
