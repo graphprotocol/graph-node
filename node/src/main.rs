@@ -18,7 +18,6 @@ use graph::data::graphql::effort::LoadManager;
 use graph::log::logger;
 use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
 use graph::util::security::SafeDisplay;
-use graph_chain_arweave::adapter::ArweaveAdapter;
 use graph_chain_ethereum::{self as ethereum, network_indexer, EthereumAdapterTrait, Transport};
 use graph_core::{
     three_box::ThreeBoxAdapter, LinkResolver, MetricsRegistry,
@@ -147,8 +146,6 @@ async fn main() {
 
     // Obtain metrics server port
     let metrics_port = opt.metrics_port;
-
-    let arweave_adapter = Arc::new(ArweaveAdapter::new(opt.arweave_api.clone()));
 
     let three_box_adapter = Arc::new(ThreeBoxAdapter::new(opt.three_box_api.clone()));
 
@@ -299,7 +296,6 @@ async fn main() {
             chains.clone(),
             metrics_registry.clone(),
             link_resolver.cheap_clone(),
-            arweave_adapter,
             three_box_adapter,
         );
 

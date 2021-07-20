@@ -1,8 +1,0 @@
-[package]
-name = "graph-chain-arweave"
-version = "0.23.1"
-edition = "2018"
-
-[dependencies]
-graph = { path = "../../graph" }
-anyhow = "1.0"

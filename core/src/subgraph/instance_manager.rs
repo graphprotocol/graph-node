@@ -3,7 +3,6 @@ use super::SubgraphInstance;
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
 use graph::blockchain::DataSource;
-use graph::components::arweave::ArweaveAdapter;
 use graph::components::three_box::ThreeBoxAdapter;
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::UnifiedMappingApiVersion;
@@ -90,7 +89,6 @@ pub struct SubgraphInstanceManager<C, S, M, L> {
     manager_metrics: SubgraphInstanceManagerMetrics,
     instances: SharedInstanceKeepAliveMap,
     link_resolver: Arc<L>,
-    arweave_adapter: Arc<dyn ArweaveAdapter>,
     three_box_adapter: Arc<dyn ThreeBoxAdapter>,
 }
 
@@ -204,7 +202,6 @@ where
                 manifest,
                 self.metrics_registry.cheap_clone(),
                 self.link_resolver.cheap_clone(),
-                self.arweave_adapter.cheap_clone(),
                 self.three_box_adapter.cheap_clone(),
             )
             .await
@@ -245,7 +242,6 @@ where
         chains: Arc<BlockchainMap<C>>,
         metrics_registry: Arc<M>,
         link_resolver: Arc<L>,
-        arweave_adapter: Arc<dyn ArweaveAdapter>,
         three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
@@ -259,7 +255,6 @@ where
             metrics_registry,
             instances: SharedInstanceKeepAliveMap::default(),
             link_resolver,
-            arweave_adapter,
             three_box_adapter,
         }
     }
@@ -273,7 +268,6 @@ where
         manifest: serde_yaml::Mapping,
         registry: Arc<M>,
         link_resolver: Arc<L>,
-        arweave_adapter: Arc<dyn ArweaveAdapter>,
         three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Result<(), Error> {
         let subgraph_store = store.cheap_clone();
@@ -389,7 +383,6 @@ where
             chain.runtime_adapter(),
             link_resolver.clone(),
             subgraph_store,
-            arweave_adapter,
             three_box_adapter,
         );
 

@@ -41,8 +41,6 @@ pub mod subgraph;
 /// Components dealing with Ethereum.
 pub mod ethereum;
 
-pub mod arweave;
-
 pub mod three_box;
 
 /// Components dealing with processing GraphQL.

@@ -199,13 +199,6 @@ pub struct Opt {
     )]
     pub network_subgraphs: Vec<String>,
     #[structopt(
-        long,
-        default_value = "https://arweave.net/",
-        value_name = "URL",
-        help = "HTTP endpoint of an Arweave gateway"
-    )]
-    pub arweave_api: String,
-    #[structopt(
         long = "3box-api",
         name = "3box-api",
         default_value = "https://ipfs.3box.io/",

@@ -1,16 +1,16 @@
 use crate::{error::DeterminismLevel, module::IntoTrap};
 use ethabi::param_type::Reader;
 use ethabi::{decode, encode, Token};
+use graph::blockchain::DataSource;
 use graph::blockchain::{Blockchain, DataSourceTemplate as _};
 use graph::components::store::EntityKey;
+use graph::components::store::EntityType;
 use graph::components::subgraph::{ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::components::three_box::ThreeBoxAdapter;
-use graph::components::{arweave::ArweaveAdapter, store::EntityType};
 use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
 pub use graph::runtime::{DeterministicHostError, HostExportError};
-use graph::{blockchain::DataSource, bytes::Bytes};
 use never::Never;
 use semver::Version;
 use std::collections::HashMap;
@@ -57,7 +57,6 @@ pub struct HostExports<C: Blockchain> {
     templates: Arc<Vec<C::DataSourceTemplate>>,
     pub(crate) link_resolver: Arc<dyn LinkResolver>,
     store: Arc<dyn SubgraphStore>,
-    arweave_adapter: Arc<dyn ArweaveAdapter>,
     three_box_adapter: Arc<dyn ThreeBoxAdapter>,
 }
 
@@ -69,7 +68,6 @@ impl<C: Blockchain> HostExports<C> {
         templates: Arc<Vec<C::DataSourceTemplate>>,
         link_resolver: Arc<dyn LinkResolver>,
         store: Arc<dyn SubgraphStore>,
-        arweave_adapter: Arc<dyn ArweaveAdapter>,
         three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Self {
         let causality_region = format!("ethereum/{}", data_source_network);
@@ -85,7 +83,6 @@ impl<C: Blockchain> HostExports<C> {
             templates,
             link_resolver,
             store,
-            arweave_adapter,
             three_box_adapter,
         }
     }
@@ -608,10 +605,6 @@ impl<C: Blockchain> HostExports<C> {
             .as_ref()
             .clone()
             .unwrap_or_default()
-    }
-
-    pub(crate) fn arweave_transaction_data(&self, tx_id: &str) -> Option<Bytes> {
-        block_on03(self.arweave_adapter.tx_data(tx_id)).ok()
     }
 
     pub(crate) fn box_profile(
