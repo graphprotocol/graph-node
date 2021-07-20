@@ -1089,25 +1089,6 @@ impl DeploymentState {
     }
 }
 
-impl std::fmt::Display for SubgraphFeature {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SubgraphFeature::NonFatalErrors => write!(f, "nonFatalErrors"),
-        }
-    }
-}
-
-impl FromStr for SubgraphFeature {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> anyhow::Result<Self> {
-        match s {
-            "nonFatalErrors" => Ok(SubgraphFeature::NonFatalErrors),
-            _ => Err(anyhow::anyhow!("invalid subgraph feature {}", s)),
-        }
-    }
-}
-
 fn display_vector(input: &Vec<impl std::fmt::Display>) -> impl std::fmt::Display {
     let formatted_errors = input
         .iter()
