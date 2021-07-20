@@ -1,3 +1,4 @@
+#![allow(unused)]
 use ethabi::Contract;
 use graph::data::store::scalar;
 use graph::data::subgraph::*;
@@ -113,7 +114,7 @@ fn test_module(
     test_valid_module_and_store(subgraph_id, data_source, api_version).0
 }
 
-fn mock_data_source(wasm_file: &str, api_version: Version) -> DataSource {
+pub fn mock_data_source(wasm_file: &str, api_version: Version) -> DataSource {
     let path = format!(
         "wasm_test/api_version_{}_{}_{}/{}",
         api_version.major, api_version.minor, api_version.patch, wasm_file
@@ -210,7 +211,7 @@ fn mock_host_exports(
     )
 }
 
-fn mock_context(
+pub fn mock_context(
     deployment: DeploymentLocator,
     data_source: DataSource,
     store: Arc<impl SubgraphStore>,
