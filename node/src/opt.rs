@@ -198,14 +198,6 @@ pub struct Opt {
                 (e.g. 'ethereum/mainnet')."
     )]
     pub network_subgraphs: Vec<String>,
-    #[structopt(
-        long = "3box-api",
-        name = "3box-api",
-        default_value = "https://ipfs.3box.io/",
-        value_name = "URL",
-        help = "HTTP endpoint for 3box profiles"
-    )]
-    pub three_box_api: String,
 }
 
 impl From<Opt> for config::Opt {

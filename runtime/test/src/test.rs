@@ -8,7 +8,6 @@ use graph::runtime::{asc_get, asc_new, try_asc_get};
 use graph::{components::store::*, ipfs_client::IpfsClient};
 use graph_chain_ethereum::{Chain, DataSource, DataSourceTemplate};
 use graph_core;
-use graph_core::three_box::ThreeBoxAdapter;
 use graph_mock::MockMetricsRegistry;
 use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString, Uint8Array};
 use graph_runtime_wasm::{
@@ -87,7 +86,6 @@ fn test_valid_module_and_store_with_timeout(
 
     let experimental_features = ExperimentalFeatures {
         allow_non_deterministic_ipfs: true,
-        allow_non_deterministic_3box: true,
     };
 
     let module = WasmInstance::from_valid_module_with_ctx(
@@ -178,8 +176,6 @@ fn mock_host_exports(
     store: Arc<impl SubgraphStore>,
     api_version: Version,
 ) -> HostExports<Chain> {
-    let three_box_adapter = Arc::new(ThreeBoxAdapter::new("https://ipfs.3box.io/".to_string()));
-
     let templates = vec![DataSourceTemplate {
         kind: String::from("ethereum/contract"),
         name: String::from("example template"),
@@ -211,7 +207,6 @@ fn mock_host_exports(
         Arc::new(templates),
         Arc::new(graph_core::LinkResolver::from(IpfsClient::localhost())),
         store,
-        three_box_adapter,
     )
 }
 

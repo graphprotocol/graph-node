@@ -215,7 +215,6 @@ impl<C: Blockchain> WasmInstance<C> {
 #[derive(Copy, Clone)]
 pub struct ExperimentalFeatures {
     pub allow_non_deterministic_ipfs: bool,
-    pub allow_non_deterministic_3box: bool,
 }
 
 pub struct WasmInstanceContext<C: Blockchain> {
@@ -508,9 +507,8 @@ impl<C: Blockchain> WasmInstance<C> {
         // `arweave and `box` functionality was removed, but apiVersion <= 0.0.4 must link it.
         if api_version <= Version::new(0, 0, 4) {
             link!("arweave.transactionData", arweave_transaction_data, ptr);
+            link!("box.profile", box_profile, ptr);
         }
-
-        link!("box.profile", box_profile, ptr);
 
         let instance = linker.instantiate(&valid_module.module)?;
 
@@ -1429,25 +1427,17 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         _tx_id: AscPtr<AscString>,
     ) -> Result<AscPtr<Uint8Array>, HostExportError> {
         Err(HostExportError::Deterministic(anyhow!(
-                "`arweave.transactionData` is deprecated. Improved support for arweave may be added in the future"
+            "`arweave.transactionData` has been removed."
         )))
     }
 
     /// function box.profile(address: string): JSONValue | null
     pub fn box_profile(
         &mut self,
-        address: AscPtr<AscString>,
+        _address: AscPtr<AscString>,
     ) -> Result<AscPtr<AscJson>, HostExportError> {
-        // TODO: 3box data is mutable and the best solution here is probably to remove support
-        if !self.experimental_features.allow_non_deterministic_3box {
-            return Err(HostExportError::Deterministic(anyhow!(
-                "`box.profile` is deprecated. Improved support for 3box may be added in the future"
-            )));
-        }
-        let address: String = asc_get(self, address)?;
-        let profile = self.ctx.host_exports.box_profile(&address);
-        profile
-            .map(|profile| asc_new(self, &profile).map_err(|e| e.into()))
-            .unwrap_or(Ok(AscPtr::null()))
+        Err(HostExportError::Deterministic(anyhow!(
+            "`box.profile` has been removed."
+        )))
     }
 }
