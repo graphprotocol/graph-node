@@ -1,3 +1,16 @@
+//! Functions to detect subgraph features.
+//!
+//! The rationale of this module revolves around the concept of feature declaration and detection.
+//!
+//! Features are declared in the `subgraph.yml` file, also known as the subgraph's manifest, and are
+//! validated by a graph-node instance during the deploy phase or by direct request.
+//!
+//! A feature validation error will be triggered in either one of the following cases:
+//! 1. Using undeclared features.
+//! 2. Declaring a nonexistent feature name.
+//!
+//! Feature validation is performed by the [`validate_subgraph_features`] function.
+
 use crate::{
     blockchain::Blockchain,
     data::{schema::Schema, subgraph::SubgraphManifest},
@@ -30,6 +43,28 @@ impl FromStr for SubgraphFeature {
             .map_err(|_error| anyhow::anyhow!("Invalid subgraph feature: {}", value))
     }
 }
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, thiserror::Error)]
+pub enum SubgraphFeatureValidationError {
+    /// A feature is used by the subgraph but it is not declared in the `features` section of the manifest file.
+    #[error("The feature `{0}` is used by the subgraph  but it is not declared in the manifest.")]
+    Undeclared(SubgraphFeature),
+
+    /// A name for a feature that doesn't exist was declared.
+    #[error("The name `{0}` is not a known feature.")]
+    NonExistent(String),
+
+    /// A feature is declared but is not used by the subgraph.
+    #[error("The feature `{0}` is declared but is not used by the subgraph.")]
+    Unused(SubgraphFeature),
+}
+
+pub fn validate_subgraph_features<C: Blockchain>(
+    manifest: &SubgraphManifest<C>,
+) -> Result<BTreeSet<SubgraphFeature>, BTreeSet<SubgraphFeatureValidationError>> {
+    todo!()
+}
+
 // TODO: How can we access the mapping source code? (schema and manifest are ok)
 pub fn detect_features<C: Blockchain>(manifest: &SubgraphManifest<C>) -> BTreeSet<SubgraphFeature> {
     vec![
