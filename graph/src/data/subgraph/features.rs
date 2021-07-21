@@ -16,6 +16,7 @@ use crate::{
     data::{schema::Schema, subgraph::SubgraphManifest},
     prelude::{Deserialize, Serialize},
 };
+use itertools::Itertools;
 use std::{collections::BTreeSet, fmt, str::FromStr};
 
 #[derive(Debug, Deserialize, Serialize, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -44,7 +45,7 @@ impl FromStr for SubgraphFeature {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, thiserror::Error)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Serialize, thiserror::Error, Debug)]
 pub enum SubgraphFeatureValidationError {
     /// A feature is used by the subgraph but it is not declared in the `features` section of the manifest file.
     #[error("The feature `{0}` is used by the subgraph  but it is not declared in the manifest.")]
@@ -57,12 +58,54 @@ pub enum SubgraphFeatureValidationError {
     /// A feature is declared but is not used by the subgraph.
     #[error("The feature `{0}` is declared but is not used by the subgraph.")]
     Unused(SubgraphFeature),
+    /// A feature name was declared multiple times in the manifest file.
+
+    #[error("The feature `{0}` was declared more than once in the manifest file.")]
+    MultipleDeclarations(String),
+}
+
+#[derive(Serialize)]
+pub struct FeatureValidationResults {
+    used: BTreeSet<SubgraphFeature>,
+    errors: BTreeSet<SubgraphFeatureValidationError>,
 }
 
 pub fn validate_subgraph_features<C: Blockchain>(
     manifest: &SubgraphManifest<C>,
-) -> Result<BTreeSet<SubgraphFeature>, BTreeSet<SubgraphFeatureValidationError>> {
-    todo!()
+) -> FeatureValidationResults {
+    let mut errors: BTreeSet<SubgraphFeatureValidationError> = BTreeSet::new();
+    let mut declared: BTreeSet<SubgraphFeature> = BTreeSet::new();
+
+    let declared_feature_names: Vec<&str> =
+        todo!("just list the names inside the features section of the manifest");
+    let used = detect_features(&manifest);
+
+    // check if any feature name were declared more than once
+    declared_feature_names
+        .iter()
+        .counts()
+        .into_iter()
+        .filter(|(_, count)| *count != 1)
+        .for_each(|(feature_name, _)| {
+            errors.insert(SubgraphFeatureValidationError::MultipleDeclarations(
+                feature_name.to_string(),
+            ));
+        });
+
+    for declared_feature_name in &declared_feature_names {
+        match SubgraphFeature::from_str(declared_feature_name) {
+            Ok(feature) => declared.insert(feature),
+            Err(_) => errors.insert(SubgraphFeatureValidationError::NonExistent(
+                declared_feature_name.to_string(),
+            )),
+        };
+    }
+
+    let undeclared = used.difference(&declared);
+    for feature in undeclared {
+        errors.insert(SubgraphFeatureValidationError::Undeclared(feature.clone()));
+    }
+    FeatureValidationResults { used, errors }
 }
 
 // TODO: How can we access the mapping source code? (schema and manifest are ok)
