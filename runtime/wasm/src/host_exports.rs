@@ -6,7 +6,6 @@ use graph::blockchain::{Blockchain, DataSourceTemplate as _};
 use graph::components::store::EntityKey;
 use graph::components::store::EntityType;
 use graph::components::subgraph::{ProofOfIndexingEvent, SharedProofOfIndexing};
-use graph::components::three_box::ThreeBoxAdapter;
 use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
@@ -57,7 +56,6 @@ pub struct HostExports<C: Blockchain> {
     templates: Arc<Vec<C::DataSourceTemplate>>,
     pub(crate) link_resolver: Arc<dyn LinkResolver>,
     store: Arc<dyn SubgraphStore>,
-    three_box_adapter: Arc<dyn ThreeBoxAdapter>,
 }
 
 impl<C: Blockchain> HostExports<C> {
@@ -68,7 +66,6 @@ impl<C: Blockchain> HostExports<C> {
         templates: Arc<Vec<C::DataSourceTemplate>>,
         link_resolver: Arc<dyn LinkResolver>,
         store: Arc<dyn SubgraphStore>,
-        three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Self {
         let causality_region = format!("ethereum/{}", data_source_network);
 
@@ -83,7 +80,6 @@ impl<C: Blockchain> HostExports<C> {
             templates,
             link_resolver,
             store,
-            three_box_adapter,
         }
     }
 
@@ -605,13 +601,6 @@ impl<C: Blockchain> HostExports<C> {
             .as_ref()
             .clone()
             .unwrap_or_default()
-    }
-
-    pub(crate) fn box_profile(
-        &self,
-        address: &str,
-    ) -> Option<serde_json::Map<String, serde_json::Value>> {
-        block_on03(self.three_box_adapter.profile(address)).ok()
     }
 }
 

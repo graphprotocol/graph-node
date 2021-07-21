@@ -20,9 +20,8 @@ use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
 use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{self as ethereum, network_indexer, EthereumAdapterTrait, Transport};
 use graph_core::{
-    three_box::ThreeBoxAdapter, LinkResolver, MetricsRegistry,
-    SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
-    SubgraphRegistrar as IpfsSubgraphRegistrar,
+    LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
+    SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_graphql::prelude::GraphQlRunner;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
@@ -146,8 +145,6 @@ async fn main() {
 
     // Obtain metrics server port
     let metrics_port = opt.metrics_port;
-
-    let three_box_adapter = Arc::new(ThreeBoxAdapter::new(opt.three_box_api.clone()));
 
     info!(logger, "Starting up");
 
@@ -296,7 +293,6 @@ async fn main() {
             chains.clone(),
             metrics_registry.clone(),
             link_resolver.cheap_clone(),
-            three_box_adapter,
         );
 
         // Create IPFS-based subgraph provider

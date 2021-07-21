@@ -10,7 +10,6 @@ use graph::blockchain::RuntimeAdapter;
 use graph::blockchain::{Blockchain, DataSource, MappingTrigger as _};
 use graph::components::store::SubgraphStore;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
-use graph::components::three_box::ThreeBoxAdapter;
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
@@ -25,15 +24,12 @@ lazy_static! {
         .map(Duration::from_secs);
     static ref ALLOW_NON_DETERMINISTIC_IPFS: bool =
         std::env::var("GRAPH_ALLOW_NON_DETERMINISTIC_IPFS").is_ok();
-    static ref ALLOW_NON_DETERMINISTIC_3BOX: bool =
-        std::env::var("GRAPH_ALLOW_NON_DETERMINISTIC_3BOX").is_ok();
 }
 
 pub struct RuntimeHostBuilder<C: Blockchain> {
     runtime_adapter: Arc<C::RuntimeAdapter>,
     link_resolver: Arc<dyn LinkResolver>,
     store: Arc<dyn SubgraphStore>,
-    three_box_adapter: Arc<dyn ThreeBoxAdapter>,
 }
 
 impl<C: Blockchain> Clone for RuntimeHostBuilder<C> {
@@ -42,7 +38,6 @@ impl<C: Blockchain> Clone for RuntimeHostBuilder<C> {
             runtime_adapter: self.runtime_adapter.cheap_clone(),
             link_resolver: self.link_resolver.cheap_clone(),
             store: self.store.cheap_clone(),
-            three_box_adapter: self.three_box_adapter.cheap_clone(),
         }
     }
 }
@@ -52,13 +47,11 @@ impl<C: Blockchain> RuntimeHostBuilder<C> {
         runtime_adapter: Arc<C::RuntimeAdapter>,
         link_resolver: Arc<dyn LinkResolver>,
         store: Arc<dyn SubgraphStore>,
-        three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Self {
         RuntimeHostBuilder {
             runtime_adapter,
             link_resolver,
             store,
-            three_box_adapter,
         }
     }
 }
@@ -74,7 +67,6 @@ impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C> {
         metrics: Arc<HostMetrics>,
     ) -> Result<Sender<Self::Req>, Error> {
         let experimental_features = ExperimentalFeatures {
-            allow_non_deterministic_3box: *ALLOW_NON_DETERMINISTIC_3BOX,
             allow_non_deterministic_ipfs: *ALLOW_NON_DETERMINISTIC_IPFS,
         };
         crate::mapping::spawn_module(
@@ -107,7 +99,6 @@ impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C> {
             templates,
             mapping_request_sender,
             metrics,
-            self.three_box_adapter.cheap_clone(),
         )
     }
 }
@@ -134,7 +125,6 @@ where
         templates: Arc<Vec<C::DataSourceTemplate>>,
         mapping_request_sender: Sender<MappingRequest<C>>,
         metrics: Arc<HostMetrics>,
-        three_box_adapter: Arc<dyn ThreeBoxAdapter>,
     ) -> Result<Self, Error> {
         // Create new instance of externally hosted functions invoker. The `Arc` is simply to avoid
         // implementing `Clone` for `HostExports`.
@@ -145,7 +135,6 @@ where
             templates,
             link_resolver,
             store,
-            three_box_adapter,
         ));
 
         let host_fns = Arc::new(runtime_adapter.host_fns(&data_source)?);
