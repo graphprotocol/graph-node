@@ -33,7 +33,7 @@ create or replace function ethereum_hex_to_bytea (eth_hex text)
     select
         case when $1 is null then
             null
-        when not substring(eth_hex, from 1 for 2) = '0x' then
+        when not substring(eth_hex from 1 for  2) = '0x' then
             raise_exception_bytea('Input must start with ''0x''.')
         when length(eth_hex) = 2 then
             raise_exception_bytea('Can''t decode an empty hexadecimal string.')
