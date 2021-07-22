@@ -58,10 +58,9 @@ pub enum SubgraphFeatureValidationError {
     /// A feature is declared but is not used by the subgraph.
     #[error("The feature `{0}` is declared but is not used by the subgraph.")]
     Unused(SubgraphFeature),
-    /// A feature name was declared multiple times in the manifest file.
-
-    #[error("The feature `{0}` was declared more than once in the manifest file.")]
-    MultipleDeclarations(String),
+    // /// A feature name was declared multiple times in the manifest file.
+    // #[error("The feature `{0}` was declared more than once in the manifest file.")]
+    // MultipleDeclarations(String),
 }
 
 #[derive(Serialize)]
@@ -76,30 +75,8 @@ pub fn validate_subgraph_features<C: Blockchain>(
     let mut errors: BTreeSet<SubgraphFeatureValidationError> = BTreeSet::new();
     let mut declared: BTreeSet<SubgraphFeature> = BTreeSet::new();
 
-    let declared_feature_names: Vec<&str> =
-        todo!("just list the names inside the features section of the manifest");
+    let declared: &BTreeSet<SubgraphFeature> = &manifest.features;
     let used = detect_features(&manifest);
-
-    // check if any feature name were declared more than once
-    declared_feature_names
-        .iter()
-        .counts()
-        .into_iter()
-        .filter(|(_, count)| *count != 1)
-        .for_each(|(feature_name, _)| {
-            errors.insert(SubgraphFeatureValidationError::MultipleDeclarations(
-                feature_name.to_string(),
-            ));
-        });
-
-    for declared_feature_name in &declared_feature_names {
-        match SubgraphFeature::from_str(declared_feature_name) {
-            Ok(feature) => declared.insert(feature),
-            Err(_) => errors.insert(SubgraphFeatureValidationError::NonExistent(
-                declared_feature_name.to_string(),
-            )),
-        };
-    }
 
     let undeclared = used.difference(&declared);
     for feature in undeclared {
