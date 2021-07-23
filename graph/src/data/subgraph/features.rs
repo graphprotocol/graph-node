@@ -99,7 +99,11 @@ pub fn detect_features<C: Blockchain>(
 fn detect_non_fatal_errors<C: Blockchain>(
     manifest: &SubgraphManifest<C>,
 ) -> Option<SubgraphFeature> {
-    todo!()
+    if manifest.features.contains(&SubgraphFeature::NonFatalErrors) {
+        Some(SubgraphFeature::NonFatalErrors)
+    } else {
+        None
+    }
 }
 fn detect_grafting<C: Blockchain>(manifest: &SubgraphManifest<C>) -> Option<SubgraphFeature> {
     todo!()
