@@ -43,6 +43,8 @@ impl ObjectTypeExt for InterfaceType {
 pub trait DocumentExt {
     fn get_object_type_definitions(&self) -> Vec<&ObjectType>;
 
+    fn get_interface_type_definitions(&self) -> Vec<&InterfaceType>;
+
     fn get_object_type_definition(&self, name: &str) -> Option<&ObjectType>;
 
     fn get_object_and_interface_type_fields(&self) -> HashMap<&str, &Vec<Field>>;
@@ -63,11 +65,23 @@ pub trait DocumentExt {
 }
 
 impl DocumentExt for Document {
+    /// Returns all object type definitions in the schema.
     fn get_object_type_definitions(&self) -> Vec<&ObjectType> {
         self.definitions
             .iter()
             .filter_map(|d| match d {
                 Definition::TypeDefinition(TypeDefinition::Object(t)) => Some(t),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Returns all interface definitions in the schema.
+    fn get_interface_type_definitions(&self) -> Vec<&InterfaceType> {
+        self.definitions
+            .iter()
+            .filter_map(|d| match d {
+                Definition::TypeDefinition(TypeDefinition::Interface(t)) => Some(t),
                 _ => None,
             })
             .collect()
