@@ -53,6 +53,8 @@ pub enum SchemaValidationError {
     InterfaceFieldsMissing(String, String, Strings), // (type, interface, missing_fields)
     #[error("Field `{1}` in type `{0}` has invalid @derivedFrom: {2}")]
     InvalidDerivedFrom(String, String, String), // (type, field, reason)
+    #[error("The following types are reserved: `{0}`")]
+    UsageOfReservedTypes(Strings),
     #[error("_Schema_ type is only for @imports and must not have any fields")]
     SchemaTypeWithFields,
     #[error("Imported subgraph name `{0}` is invalid")]
@@ -641,19 +643,25 @@ impl Schema {
         &self,
         schemas: &HashMap<SchemaReference, Arc<Schema>>,
     ) -> Result<(), Vec<SchemaValidationError>> {
-        let mut errors = vec![];
-        self.validate_schema_types()
-            .unwrap_or_else(|err| errors.push(err));
-        self.validate_derived_from()
-            .unwrap_or_else(|err| errors.push(err));
-        self.validate_schema_type_has_no_fields()
-            .unwrap_or_else(|err| errors.push(err));
-        self.validate_directives_on_schema_type()
-            .unwrap_or_else(|err| errors.push(err));
+        // Using this since std::array's .into_iter() doesn't work
+        // as expected (at least as of rustc 1.53)
+        let mut errors: Vec<SchemaValidationError> = std::array::IntoIter::new([
+            self.validate_schema_types(),
+            self.validate_derived_from(),
+            self.validate_schema_type_has_no_fields(),
+            self.validate_directives_on_schema_type(),
+            self.validate_reserved_types_usage(),
+        ])
+        .filter(Result::is_err)
+        // Safe unwrap due to the filter above
+        .map(Result::unwrap_err)
+        .collect();
+
         errors.append(&mut self.validate_fields());
         errors.append(&mut self.validate_import_directives());
         errors.append(&mut self.validate_fulltext_directives());
         errors.append(&mut self.validate_imported_types(schemas));
+
         if errors.is_empty() {
             Ok(())
         } else {
@@ -1056,6 +1064,34 @@ impl Schema {
                     errors
                 })
             })
+    }
+
+    /// Checks if the schema is using types that are reserved
+    /// by `graph-node`
+    fn validate_reserved_types_usage(&self) -> Result<(), SchemaValidationError> {
+        let document = &self.document;
+
+        let mut reserved_types = vec![
+            "Boolean",
+            "ID",
+            "Int",
+            "BigDecimal",
+            "String",
+            "Bytes",
+            "BigInt",
+            "Query",
+            "Subscription",
+        ];
+
+        reserved_types.retain(|reserved_type| document.get_named_type(reserved_type).is_some());
+
+        if reserved_types.is_empty() {
+            Ok(())
+        } else {
+            Err(SchemaValidationError::UsageOfReservedTypes(Strings(
+                reserved_types.iter().map(ToString::to_string).collect(),
+            )))
+        }
     }
 
     fn validate_schema_types(&self) -> Result<(), SchemaValidationError> {
