@@ -633,7 +633,7 @@ fn coerce_variable(
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     use crate::values::coercion::coerce_value;
 
-    let resolver = |name: &str| sast::get_named_type(schema.document(), name);
+    let resolver = |name: &str| schema.document().get_named_type(name);
 
     coerce_value(value, &variable_def.var_type, &resolver, &HashMap::new()).map_err(|value| {
         vec![QueryExecutionError::InvalidArgumentError(

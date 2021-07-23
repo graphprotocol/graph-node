@@ -111,7 +111,7 @@ fn add_builtin_scalar_types(schema: &mut Document) -> Result<(), APISchemaError>
     ]
     .iter()
     {
-        match ast::get_named_type(schema, &name.to_string()) {
+        match schema.get_named_type(name) {
             None => {
                 let typedef = TypeDefinition::Scalar(ScalarType {
                     position: Pos::default(),
@@ -273,7 +273,7 @@ fn add_order_by_type(
 ) -> Result<(), APISchemaError> {
     let type_name = format!("{}_orderBy", type_name).to_string();
 
-    match ast::get_named_type(schema, &type_name) {
+    match schema.get_named_type(&type_name) {
         None => {
             let typedef = TypeDefinition::Enum(EnumType {
                 position: Pos::default(),
@@ -306,7 +306,7 @@ fn add_filter_type(
     fields: &[Field],
 ) -> Result<(), APISchemaError> {
     let filter_type_name = format!("{}_filter", type_name).to_string();
-    match ast::get_named_type(schema, &filter_type_name) {
+    match schema.get_named_type(&filter_type_name) {
         None => {
             let typedef = TypeDefinition::InputObject(InputObjectType {
                 position: Pos::default(),
@@ -348,7 +348,8 @@ fn field_filter_input_values(
 ) -> Result<Vec<InputValue>, APISchemaError> {
     match field_type {
         Type::NamedType(ref name) => {
-            let named_type = ast::get_named_type(schema, name)
+            let named_type = schema
+                .get_named_type(name)
                 .ok_or_else(|| APISchemaError::TypeNotFound(name.clone()))?;
             Ok(match named_type {
                 TypeDefinition::Object(_) | TypeDefinition::Interface(_) => {
@@ -512,7 +513,7 @@ fn add_query_type(
 ) -> Result<(), APISchemaError> {
     let type_name = String::from("Query");
 
-    if ast::get_named_type(schema, &type_name).is_some() {
+    if schema.get_named_type(&type_name).is_some() {
         return Err(APISchemaError::TypeExists(type_name));
     }
 
@@ -614,7 +615,7 @@ fn add_subscription_type(
 ) -> Result<(), APISchemaError> {
     let type_name = String::from("Subscription");
 
-    if ast::get_named_type(schema, &type_name).is_some() {
+    if schema.get_named_type(&type_name).is_some() {
         return Err(APISchemaError::TypeExists(type_name));
     }
 
@@ -851,6 +852,7 @@ mod tests {
     use std::collections::BTreeSet;
     use std::iter::FromIterator;
 
+    use graph::data::graphql::DocumentExt;
     use graph::data::subgraph::SubgraphFeature;
     use graphql_parser::schema::*;
 
@@ -864,14 +866,20 @@ mod tests {
         let schema =
             api_schema(&input_schema, &BTreeSet::new()).expect("Failed to derive API schema");
 
-        ast::get_named_type(&schema, &"Boolean".to_string())
+        schema
+            .get_named_type("Boolean")
             .expect("Boolean type is missing in API schema");
-        ast::get_named_type(&schema, &"ID".to_string()).expect("ID type is missing in API schema");
-        ast::get_named_type(&schema, &"Int".to_string())
+        schema
+            .get_named_type("ID")
+            .expect("ID type is missing in API schema");
+        schema
+            .get_named_type("Int")
             .expect("Int type is missing in API schema");
-        ast::get_named_type(&schema, &"BigDecimal".to_string())
+        schema
+            .get_named_type("BigDecimal")
             .expect("BigDecimal type is missing in API schema");
-        ast::get_named_type(&schema, &"String".to_string())
+        schema
+            .get_named_type("String")
             .expect("String type is missing in API schema");
     }
 
@@ -882,7 +890,8 @@ mod tests {
         let schema =
             api_schema(&input_schema, &BTreeSet::new()).expect("Failed to derived API schema");
 
-        let order_direction = ast::get_named_type(&schema, &"OrderDirection".to_string())
+        let order_direction = schema
+            .get_named_type("OrderDirection")
             .expect("OrderDirection type is missing in derived API schema");
         let enum_type = match order_direction {
             TypeDefinition::Enum(t) => Some(t),
@@ -904,7 +913,8 @@ mod tests {
             parse_schema("type User { id: ID! }").expect("Failed to parse input schema");
         let schema =
             api_schema(&input_schema, &BTreeSet::new()).expect("Failed to derive API schema");
-        ast::get_named_type(&schema, &"Query".to_string())
+        schema
+            .get_named_type("Query")
             .expect("Root Query type is missing in API schema");
     }
 
@@ -918,7 +928,8 @@ mod tests {
         )
         .expect("Failed to derived API schema");
 
-        let user_order_by = ast::get_named_type(&schema, &"User_orderBy".to_string())
+        let user_order_by = schema
+            .get_named_type("User_orderBy")
             .expect("User_orderBy type is missing in derived API schema");
 
         let enum_type = match user_order_by {
@@ -961,7 +972,8 @@ mod tests {
         let schema =
             api_schema(&input_schema, &BTreeSet::new()).expect("Failed to derived API schema");
 
-        let user_filter = ast::get_named_type(&schema, &"User_filter".to_string())
+        let user_filter = schema
+            .get_named_type("User_filter")
             .expect("User_filter type is missing in derived API schema");
 
         let filter_type = match user_filter {
@@ -1037,7 +1049,8 @@ mod tests {
         let schema =
             api_schema(&input_schema, &BTreeSet::new()).expect("Failed to derive API schema");
 
-        let query_type = ast::get_named_type(&schema, &"Query".to_string())
+        let query_type = schema
+            .get_named_type("Query")
             .expect("Query type is missing in derived API schema");
 
         let user_singular_field = match query_type {
@@ -1132,7 +1145,8 @@ mod tests {
         )
         .expect("Failed to derived API schema");
 
-        let query_type = ast::get_named_type(&schema, &"Query".to_string())
+        let query_type = schema
+            .get_named_type("Query")
             .expect("Query type is missing in derived API schema");
 
         let singular_field = match query_type {
@@ -1221,7 +1235,8 @@ type Gravatar @entity {
         let schema =
             api_schema(&input_schema, &BTreeSet::new()).expect("Failed to derive API schema");
 
-        let query_type = ast::get_named_type(&schema, &"Query".to_string())
+        let query_type = schema
+            .get_named_type("Query")
             .expect("Query type is missing in derived API schema");
 
         let _metadata_field = match query_type {
