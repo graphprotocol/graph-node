@@ -105,9 +105,15 @@ fn detect_non_fatal_errors<C: Blockchain>(
         None
     }
 }
+
 fn detect_grafting<C: Blockchain>(manifest: &SubgraphManifest<C>) -> Option<SubgraphFeature> {
-    todo!()
+    if manifest.graft.is_some() {
+        Some(SubgraphFeature::Grafting)
+    } else {
+        None
+    }
 }
+
 fn detect_full_text_search(schema: &Schema) -> anyhow::Result<Option<SubgraphFeature>> {
     if schema.document.get_fulltext_directives()?.is_empty() {
         Ok(Some(SubgraphFeature::FullTextSearch))
