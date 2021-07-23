@@ -73,18 +73,6 @@ pub fn get_type_definitions(schema: &Document) -> Vec<&TypeDefinition> {
         .collect()
 }
 
-/// Returns all object type definitions in the schema.
-pub fn get_object_type_definitions(schema: &Document) -> Vec<&ObjectType> {
-    schema
-        .definitions
-        .iter()
-        .filter_map(|d| match d {
-            Definition::TypeDefinition(TypeDefinition::Object(t)) => Some(t),
-            _ => None,
-        })
-        .collect()
-}
-
 /// Returns the object type with the given name.
 pub fn get_object_type_mut<'a>(schema: &'a mut Document, name: &str) -> Option<&'a mut ObjectType> {
     use graphql_parser::schema::TypeDefinition::*;
@@ -93,18 +81,6 @@ pub fn get_object_type_mut<'a>(schema: &'a mut Document, name: &str) -> Option<&
         Object(object_type) => Some(object_type),
         _ => None,
     })
-}
-
-/// Returns all interface definitions in the schema.
-pub fn get_interface_type_definitions(schema: &Document) -> Vec<&InterfaceType> {
-    schema
-        .definitions
-        .iter()
-        .filter_map(|d| match d {
-            Definition::TypeDefinition(TypeDefinition::Interface(t)) => Some(t),
-            _ => None,
-        })
-        .collect()
 }
 
 /// Returns the interface type with the given name.
