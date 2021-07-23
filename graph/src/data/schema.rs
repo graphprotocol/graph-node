@@ -1591,6 +1591,78 @@ type T @entity { id: ID! }
 }
 
 #[test]
+fn test_reserved_types_validation() {
+    let reserved_types = [
+        // Built-in scalars
+        "Boolean",
+        "ID",
+        "Int",
+        "BigDecimal",
+        "String",
+        "Bytes",
+        "BigInt",
+        // Reserved keywords
+        "Query",
+        "Subscription",
+    ];
+
+    let dummy_hash = DeploymentHash::new("dummy").unwrap();
+
+    for reserved_type in reserved_types {
+        let schema = format!("type {} @entity {{ _: Boolean }}\n", reserved_type);
+
+        let schema = Schema::parse(&schema, dummy_hash.clone()).unwrap();
+
+        let errors = schema.validate(&HashMap::new()).unwrap_err();
+        for error in errors {
+            assert!(matches!(
+                error,
+                SchemaValidationError::UsageOfReservedTypes(_)
+            ))
+        }
+    }
+}
+
+#[test]
+fn test_reserved_filter_and_group_by_types_validation() {
+    const SCHEMA: &str = r#"
+    type Gravatar @entity {
+        _: Boolean
+      }
+    type Gravatar_filter @entity {
+        _: Boolean
+    }
+    type Gravatar_orderBy @entity {
+        _: Boolean
+    }
+    "#;
+
+    let dummy_hash = DeploymentHash::new("dummy").unwrap();
+
+    let schema = Schema::parse(SCHEMA, dummy_hash).unwrap();
+
+    let errors = schema.validate(&HashMap::new()).unwrap_err();
+
+    // The only problem in the schema is the usage of reserved types
+    assert_eq!(errors.len(), 1);
+
+    assert!(matches!(
+        &errors[0],
+        SchemaValidationError::UsageOfReservedTypes(Strings(_))
+    ));
+
+    // We know this will match due to the assertion above
+    match &errors[0] {
+        SchemaValidationError::UsageOfReservedTypes(Strings(reserved_types)) => {
+            let expected_types: Vec<String> =
+                vec!["Gravatar_filter".into(), "Gravatar_orderBy".into()];
+            assert_eq!(reserved_types, &expected_types);
+        }
+        _ => unreachable!(),
+    }
+}
+
+#[test]
 fn test_fulltext_directive_validation() {
     const SCHEMA: &str = r#"
 type _Schema_ @fulltext(
