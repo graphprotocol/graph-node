@@ -6,7 +6,7 @@ use std::ops::Deref;
 use std::str::FromStr;
 
 use crate::query::ast as qast;
-use graph::data::graphql::ObjectOrInterface;
+use graph::data::graphql::{DocumentExt, ObjectOrInterface};
 use graph::data::store;
 use graph::prelude::s::{Value, *};
 use graph::prelude::*;
@@ -165,25 +165,6 @@ pub fn get_field_name(field_type: &Type) -> String {
     }
 }
 
-/// Returns the type with the given name.
-pub fn get_named_type<'a>(schema: &'a Document, name: &str) -> Option<&'a TypeDefinition> {
-    schema
-        .definitions
-        .iter()
-        .filter_map(|def| match def {
-            Definition::TypeDefinition(typedef) => Some(typedef),
-            _ => None,
-        })
-        .find(|typedef| match typedef {
-            TypeDefinition::Object(t) => &t.name == name,
-            TypeDefinition::Enum(t) => &t.name == name,
-            TypeDefinition::InputObject(t) => &t.name == name,
-            TypeDefinition::Interface(t) => &t.name == name,
-            TypeDefinition::Scalar(t) => &t.name == name,
-            TypeDefinition::Union(t) => &t.name == name,
-        })
-}
-
 /// Returns a mutable version of the type with the given name.
 pub fn get_named_type_definition_mut<'a>(
     schema: &'a mut Document,
@@ -268,7 +249,7 @@ pub fn get_type_definition_from_type<'a>(
     t: &Type,
 ) -> Option<&'a TypeDefinition> {
     match t {
-        Type::NamedType(name) => get_named_type(schema, name),
+        Type::NamedType(name) => schema.get_named_type(name),
         Type::ListType(inner) => get_type_definition_from_type(schema, inner),
         Type::NonNullType(inner) => get_type_definition_from_type(schema, inner),
     }
@@ -299,7 +280,7 @@ pub fn is_input_type(schema: &Document, t: &Type) -> bool {
 
     match t {
         Type::NamedType(name) => {
-            let named_type = get_named_type(schema, name);
+            let named_type = schema.get_named_type(name);
             named_type.map_or(false, |type_def| match type_def {
                 Scalar(_) | Enum(_) | InputObject(_) => true,
                 _ => false,
@@ -314,7 +295,9 @@ pub fn is_entity_type(schema: &Document, t: &Type) -> bool {
     use graphql_parser::schema::Type::*;
 
     match t {
-        NamedType(name) => get_named_type(schema, &name).map_or(false, is_entity_type_definition),
+        NamedType(name) => schema
+            .get_named_type(&name)
+            .map_or(false, is_entity_type_definition),
         ListType(inner_type) => is_entity_type(schema, inner_type),
         NonNullType(inner_type) => is_entity_type(schema, inner_type),
     }
@@ -356,7 +339,7 @@ fn unpack_type<'a>(schema: &'a Document, t: &Type) -> Option<&'a TypeDefinition>
     use graphql_parser::schema::Type::*;
 
     match t {
-        NamedType(name) => get_named_type(schema, &name),
+        NamedType(name) => schema.get_named_type(&name),
         ListType(inner_type) => unpack_type(schema, inner_type),
         NonNullType(inner_type) => unpack_type(schema, inner_type),
     }
@@ -403,7 +386,7 @@ fn scalar_value_type(schema: &Document, field_type: &Type) -> ValueType {
     use TypeDefinition as t;
     match field_type {
         Type::NamedType(name) => {
-            ValueType::from_str(&name).unwrap_or_else(|_| match get_named_type(schema, name) {
+            ValueType::from_str(&name).unwrap_or_else(|_| match schema.get_named_type(name) {
                 Some(t::Object(_)) | Some(t::Interface(_)) | Some(t::Enum(_)) => ValueType::String,
                 Some(t::Scalar(_)) => unreachable!("user-defined scalars are not used"),
                 Some(t::Union(_)) => unreachable!("unions are not used"),

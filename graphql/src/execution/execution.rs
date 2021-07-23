@@ -235,9 +235,9 @@ where
 // Helpers to look for types and fields on both the introspection and regular schemas.
 pub(crate) fn get_named_type(schema: &s::Document, name: &str) -> Option<s::TypeDefinition> {
     if name.starts_with("__") {
-        sast::get_named_type(&INTROSPECTION_DOCUMENT, name).cloned()
+        INTROSPECTION_DOCUMENT.get_named_type(name).cloned()
     } else {
-        sast::get_named_type(schema, name).cloned()
+        schema.get_named_type(name).cloned()
     }
 }
 
@@ -672,7 +672,7 @@ fn does_fragment_type_apply(
     let q::TypeCondition::On(ref name) = fragment_type;
 
     // Resolve the type the fragment applies to based on its name
-    let named_type = sast::get_named_type(ctx.query.schema.document(), name);
+    let named_type = ctx.query.schema.document().get_named_type(name);
 
     match named_type {
         // The fragment applies to the object type if its type is the same object type
@@ -771,7 +771,11 @@ fn resolve_field_value_for_named_type(
     argument_values: &HashMap<&str, q::Value>,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     // Try to resolve the type name into the actual type
-    let named_type = sast::get_named_type(ctx.query.schema.document(), type_name)
+    let named_type = ctx
+        .query
+        .schema
+        .document()
+        .get_named_type(type_name)
         .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
     match named_type {
         // Let the resolver decide how the field (with the given object type) is resolved
@@ -831,7 +835,11 @@ fn resolve_field_value_for_list_type(
         ),
 
         s::Type::NamedType(ref type_name) => {
-            let named_type = sast::get_named_type(ctx.query.schema.document(), type_name)
+            let named_type = ctx
+                .query
+                .schema
+                .document()
+                .get_named_type(type_name)
                 .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
 
             match named_type {
@@ -947,7 +955,7 @@ fn complete_value(
         }
 
         s::Type::NamedType(name) => {
-            let named_type = sast::get_named_type(ctx.query.schema.document(), name).unwrap();
+            let named_type = ctx.query.schema.document().get_named_type(name).unwrap();
 
             match named_type {
                 // Complete scalar values
@@ -1045,7 +1053,7 @@ pub fn coerce_argument_values<'a>(
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
 
-    let resolver = |name: &str| sast::get_named_type(&query.schema.document(), name);
+    let resolver = |name: &str| query.schema.document().get_named_type(name);
 
     for argument_def in sast::get_argument_definitions(ty, &field.name)
         .into_iter()
