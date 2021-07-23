@@ -19,6 +19,8 @@ use crate::{
 use itertools::Itertools;
 use std::{collections::BTreeSet, fmt, str::FromStr};
 
+const IPFS_ON_ETHEREUM_CONTRACTS_FUNCTION_NAMES: [&'static str; 2] = ["ipfs.cat", "ipfs.map"];
+
 #[derive(Debug, Deserialize, Serialize, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "camelCase")]
 pub enum SubgraphFeature {
@@ -116,7 +118,10 @@ fn detect_ipfs_on_ethereum_contracts<C: Blockchain>(
     manifest: &SubgraphManifest<C>,
 ) -> Option<SubgraphFeature> {
     for mapping in manifest.mappings() {
-        if mapping.calls_host_fn("ipfs.map") || mapping.calls_host_fn("ipfs.cat") {
+        if IPFS_ON_ETHEREUM_CONTRACTS_FUNCTION_NAMES
+            .iter()
+            .any(|function_name| mapping.calls_host_fn(function_name))
+        {
             return Some(SubgraphFeature::IpfsOnEthereumContracts);
         }
     }
