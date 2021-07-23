@@ -70,8 +70,8 @@ pub fn api_schema(
     features: &BTreeSet<SubgraphFeature>,
 ) -> Result<Document, APISchemaError> {
     // Refactor: Take `input_schema` by value.
-    let object_types = ast::get_object_type_definitions(input_schema);
-    let interface_types = ast::get_interface_type_definitions(input_schema);
+    let object_types = input_schema.get_object_type_definitions();
+    let interface_types = input_schema.get_interface_type_definitions();
 
     // Refactor: Don't clone the schema.
     let mut schema = input_schema.clone();
@@ -781,7 +781,7 @@ fn add_field_arguments(
     // Refactor: Remove the `input_schema` argument and do a mutable iteration
     // over the definitions in `schema`. Also the duplication between this and
     // the loop for interfaces below.
-    for input_object_type in ast::get_object_type_definitions(input_schema) {
+    for input_object_type in input_schema.get_object_type_definitions() {
         for input_field in &input_object_type.fields {
             if let Some(input_reference_type) =
                 ast::get_referenced_entity_type(input_schema, &input_field)
@@ -812,7 +812,7 @@ fn add_field_arguments(
         }
     }
 
-    for input_interface_type in ast::get_interface_type_definitions(input_schema) {
+    for input_interface_type in input_schema.get_interface_type_definitions() {
         for input_field in &input_interface_type.fields {
             if let Some(input_reference_type) =
                 ast::get_referenced_entity_type(input_schema, &input_field)

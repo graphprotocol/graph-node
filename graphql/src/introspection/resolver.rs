@@ -1,7 +1,7 @@
 use graphql_parser::Pos;
 use std::collections::{BTreeMap, HashMap};
 
-use graph::data::graphql::{object, ObjectOrInterface};
+use graph::data::graphql::{DocumentExt, ObjectOrInterface, object};
 use graph::prelude::*;
 
 use crate::prelude::*;
@@ -213,7 +213,7 @@ fn union_type_object(schema: &Schema, union_type: &s::UnionType) -> q::Value {
         kind: q::Value::Enum(String::from("UNION")),
         description: union_type.description.clone(),
         possibleTypes:
-            sast::get_object_type_definitions(&schema.document)
+            schema.document.get_object_type_definitions()
                 .iter()
                 .filter(|object_type| {
                     object_type

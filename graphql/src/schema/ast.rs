@@ -404,7 +404,7 @@ pub fn validate_entity(
     key: &EntityKey,
     entity: &Entity,
 ) -> Result<(), anyhow::Error> {
-    let object_type_definitions = get_object_type_definitions(schema);
+    let object_type_definitions = schema.get_object_type_definitions();
     let object_type = object_type_definitions
         .iter()
         .find(|object_type| key.entity_type.as_str() == &object_type.name)
