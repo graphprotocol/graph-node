@@ -1,7 +1,7 @@
 use graphql_parser::Pos;
 use std::collections::{BTreeMap, HashMap};
 
-use graph::data::graphql::{DocumentExt, ObjectOrInterface, object};
+use graph::data::graphql::{object, DocumentExt, ObjectOrInterface};
 use graph::prelude::*;
 
 use crate::prelude::*;
