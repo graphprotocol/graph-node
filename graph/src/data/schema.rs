@@ -1070,26 +1070,61 @@ impl Schema {
     /// by `graph-node`
     fn validate_reserved_types_usage(&self) -> Result<(), SchemaValidationError> {
         let document = &self.document;
+        let object_types: Vec<_> = document
+            .get_object_type_definitions()
+            .into_iter()
+            .map(|obj_type| &obj_type.name)
+            .collect();
 
-        let mut reserved_types = vec![
-            "Boolean",
-            "ID",
-            "Int",
-            "BigDecimal",
-            "String",
-            "Bytes",
-            "BigInt",
-            "Query",
-            "Subscription",
+        let interface_types: Vec<_> = document
+            .get_interface_type_definitions()
+            .into_iter()
+            .map(|iface_type| &iface_type.name)
+            .collect();
+
+        // TYPE_NAME_filter types for all object and interface types
+        let mut filter_types: Vec<String> = object_types
+            .iter()
+            .chain(interface_types.iter())
+            .map(|type_name| format!("{}_filter", type_name))
+            .collect();
+
+        // TYPE_NAME_orderBy types for all object and interface types
+        let mut order_by_types: Vec<_> = object_types
+            .iter()
+            .chain(interface_types.iter())
+            .map(|type_name| format!("{}_orderBy", type_name))
+            .collect();
+
+        let mut reserved_types: Vec<String> = vec![
+            // The built-in scalar types
+            "Boolean".into(),
+            "ID".into(),
+            "Int".into(),
+            "BigDecimal".into(),
+            "String".into(),
+            "Bytes".into(),
+            "BigInt".into(),
+            // Reserved Query and Subscription types
+            "Query".into(),
+            "Subscription".into(),
         ];
 
+        reserved_types.append(&mut filter_types);
+        reserved_types.append(&mut order_by_types);
+
+        // `reserved_types` will now only contain
+        // the reserved types that the given schema *is* using.
+        //
+        // That is, if the schema is compliant and not using any reserved
+        // types, then it'll become an empty vector
         reserved_types.retain(|reserved_type| document.get_named_type(reserved_type).is_some());
 
         if reserved_types.is_empty() {
             Ok(())
         } else {
             Err(SchemaValidationError::UsageOfReservedTypes(Strings(
-                reserved_types.iter().map(ToString::to_string).collect(),
+                reserved_types,
             )))
         }
     }
