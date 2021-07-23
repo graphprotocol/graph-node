@@ -13,7 +13,7 @@
 
 use crate::{
     blockchain::Blockchain,
-    data::{schema::Schema, subgraph::SubgraphManifest},
+    data::{graphql::DocumentExt, schema::Schema, subgraph::SubgraphManifest},
     prelude::{Deserialize, Serialize},
 };
 use itertools::Itertools;
@@ -48,54 +48,52 @@ impl FromStr for SubgraphFeature {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Serialize, thiserror::Error, Debug)]
 pub enum SubgraphFeatureValidationError {
     /// A feature is used by the subgraph but it is not declared in the `features` section of the manifest file.
-    #[error("The feature `{0}` is used by the subgraph  but it is not declared in the manifest.")]
-    Undeclared(SubgraphFeature),
+    #[error("The feature `{}` is used by the subgraph  but it is not declared in the manifest.", fmt_subgraph_features(.0))]
+    Undeclared(BTreeSet<SubgraphFeature>),
 
-    /// A name for a feature that doesn't exist was declared.
-    #[error("The name `{0}` is not a known feature.")]
-    NonExistent(String),
-
-    /// A feature is declared but is not used by the subgraph.
-    #[error("The feature `{0}` is declared but is not used by the subgraph.")]
-    Unused(SubgraphFeature),
-    // /// A feature name was declared multiple times in the manifest file.
-    // #[error("The feature `{0}` was declared more than once in the manifest file.")]
-    // MultipleDeclarations(String),
+    /// TODO: Variant for errors propagated from whithin detection functions. It is still unclear
+    /// why they happen, but,hopefully, they would receive their own variant in this enum.
+    #[error("{0}")]
+    Other(String),
 }
 
-#[derive(Serialize)]
-pub struct FeatureValidationResults {
-    used: BTreeSet<SubgraphFeature>,
-    errors: BTreeSet<SubgraphFeatureValidationError>,
+fn fmt_subgraph_features(subgraph_features: &BTreeSet<SubgraphFeature>) -> String {
+    subgraph_features.iter().join(", ")
+}
+
+impl From<anyhow::Error> for SubgraphFeatureValidationError {
+    fn from(error: anyhow::Error) -> Self {
+        SubgraphFeatureValidationError::Other(error.to_string())
+    }
 }
 
 pub fn validate_subgraph_features<C: Blockchain>(
     manifest: &SubgraphManifest<C>,
-) -> FeatureValidationResults {
-    let mut errors: BTreeSet<SubgraphFeatureValidationError> = BTreeSet::new();
-    let mut declared: BTreeSet<SubgraphFeature> = BTreeSet::new();
-
+) -> Result<BTreeSet<SubgraphFeature>, SubgraphFeatureValidationError> {
     let declared: &BTreeSet<SubgraphFeature> = &manifest.features;
-    let used = detect_features(&manifest);
-
-    let undeclared = used.difference(&declared);
-    for feature in undeclared {
-        errors.insert(SubgraphFeatureValidationError::Undeclared(feature.clone()));
+    let used = detect_features(&manifest)?;
+    let undeclared: BTreeSet<SubgraphFeature> = used.difference(&declared).cloned().collect();
+    if !undeclared.is_empty() {
+        Err(SubgraphFeatureValidationError::Undeclared(undeclared))
+    } else {
+        Ok(used)
     }
-    FeatureValidationResults { used, errors }
 }
 
 // TODO: How can we access the mapping source code? (schema and manifest are ok)
-pub fn detect_features<C: Blockchain>(manifest: &SubgraphManifest<C>) -> BTreeSet<SubgraphFeature> {
-    vec![
+pub fn detect_features<C: Blockchain>(
+    manifest: &SubgraphManifest<C>,
+) -> anyhow::Result<BTreeSet<SubgraphFeature>> {
+    let collected_features: BTreeSet<SubgraphFeature> = vec![
         detect_non_fatal_errors(&manifest),
         detect_grafting(&manifest),
-        detect_full_text_search(&manifest.schema),
+        detect_full_text_search(&manifest.schema)?,
         detect_ipfs_on_ethereum_contracts(&manifest),
     ]
     .into_iter()
     .filter_map(|x| x)
-    .collect()
+    .collect();
+    Ok(collected_features)
 }
 
 fn detect_non_fatal_errors<C: Blockchain>(
@@ -106,11 +104,15 @@ fn detect_non_fatal_errors<C: Blockchain>(
 fn detect_grafting<C: Blockchain>(manifest: &SubgraphManifest<C>) -> Option<SubgraphFeature> {
     todo!()
 }
-fn detect_full_text_search(schema: &Schema) -> Option<SubgraphFeature> {
-    todo!()
+fn detect_full_text_search(schema: &Schema) -> anyhow::Result<Option<SubgraphFeature>> {
+    if schema.document.get_fulltext_directives()?.is_empty() {
+        Ok(Some(SubgraphFeature::FullTextSearch))
+    } else {
+        Ok(None)
+    }
 }
 fn detect_ipfs_on_ethereum_contracts<C: Blockchain>(
-    manifest: &SubgraphManifest<C>,
+    mainfest: &SubgraphManifest<C>,
 ) -> Option<SubgraphFeature> {
     todo!()
 }
