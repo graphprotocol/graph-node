@@ -122,7 +122,12 @@ fn detect_full_text_search(schema: &Schema) -> anyhow::Result<Option<SubgraphFea
     }
 }
 fn detect_ipfs_on_ethereum_contracts<C: Blockchain>(
-    mainfest: &SubgraphManifest<C>,
+    manifest: &SubgraphManifest<C>,
 ) -> Option<SubgraphFeature> {
-    todo!()
+    for mapping in manifest.mappings() {
+        if mapping.calls_host_fn("ipfs.map") || mapping.calls_host_fn("ipfs.cat") {
+            return Some(SubgraphFeature::IpfsOnEthereumContracts);
+        }
+    }
+    None
 }
