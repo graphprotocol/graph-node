@@ -220,20 +220,48 @@ pub fn forward_block_ptr(
     id: &DeploymentHash,
     ptr: BlockPtr,
 ) -> Result<(), StoreError> {
+    use crate::diesel::BoolExpressionMethods;
     use subgraph_deployment as d;
 
     // Work around a Diesel issue with serializing BigDecimals to numeric
     let number = format!("{}::numeric", ptr.number);
 
-    update(d::table.filter(d::deployment.eq(id.as_str())))
-        .set((
-            d::latest_ethereum_block_number.eq(sql(&number)),
-            d::latest_ethereum_block_hash.eq(ptr.hash_slice()),
-            d::current_reorg_depth.eq(0),
-        ))
-        .execute(conn)
-        .map(|_| ())
-        .map_err(|e| e.into())
+    let row_count = update(
+        d::table.filter(d::deployment.eq(id.as_str())).filter(
+            // Asserts that the processing direction is forward.
+            d::latest_ethereum_block_number
+                .lt(sql(&number))
+                .or(d::latest_ethereum_block_number.is_null()),
+        ),
+    )
+    .set((
+        d::latest_ethereum_block_number.eq(sql(&number)),
+        d::latest_ethereum_block_hash.eq(ptr.hash_slice()),
+        d::current_reorg_depth.eq(0),
+    ))
+    .execute(conn)
+    .map_err(StoreError::from)?;
+
+    match row_count {
+        // Common case: A single row was updated.
+        1 => Ok(()),
+
+        // No matching rows were found. This is an error. By the filter conditions, this can only be
+        // due to a missing deployment (which `block_ptr` catches) or duplicate block processing.
+        0 => match block_ptr(&conn, id)? {
+            Some(block_ptr_from) if block_ptr_from.number >= ptr.number => {
+                Err(StoreError::DuplicateBlockProcessing(id.clone(), ptr.number))
+            }
+            None | Some(_) => Err(StoreError::Unknown(anyhow!(
+                "unknown error forwarding block ptr"
+            ))),
+        },
+
+        // More than one matching row was found.
+        _ => Err(StoreError::ConstraintViolation(
+            "duplicate deployments in shard".to_owned(),
+        )),
+    }
 }
 
 pub fn revert_block_ptr(
@@ -268,7 +296,11 @@ pub fn block_ptr(conn: &PgConnection, id: &DeploymentHash) -> Result<Option<Bloc
             d::latest_ethereum_block_number,
             d::latest_ethereum_block_hash,
         ))
-        .first::<(Option<BigDecimal>, Option<Vec<u8>>)>(conn)?;
+        .first::<(Option<BigDecimal>, Option<Vec<u8>>)>(conn)
+        .map_err(|e| match e {
+            diesel::result::Error::NotFound => StoreError::DeploymentNotFound(id.to_string()),
+            e => e.into(),
+        })?;
 
     let ptr = crate::detail::block(id.as_str(), "latest_ethereum_block", hash, number)?
         .map(|block| block.to_ptr());

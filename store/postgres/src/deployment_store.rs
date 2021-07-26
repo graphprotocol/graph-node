@@ -866,16 +866,6 @@ impl DeploymentStore {
         let conn = self.get_conn()?;
 
         let event = conn.transaction(|| -> Result<_, StoreError> {
-            let block_ptr_from = Self::block_ptr_with_conn(&site.deployment, &conn)?;
-            if let Some(ref block_ptr_from) = block_ptr_from {
-                if block_ptr_from.number >= block_ptr_to.number {
-                    return Err(StoreError::DuplicateBlockProcessing(
-                        site.deployment.clone(),
-                        block_ptr_to.number,
-                    ));
-                }
-            }
-
             // Emit a store event for the changes we are about to make. We
             // wait with sending it until we have done all our other work
             // so that we do not hold a lock on the notification queue
