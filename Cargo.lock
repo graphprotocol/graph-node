@@ -1637,7 +1637,7 @@ dependencies = [
  "hex",
  "http 0.1.21",
  "itertools",
- "jsonrpc-core",
+ "jsonrpc-core 18.0.0",
  "lazy_static",
  "mockall 0.9.1",
  "pretty_assertions",
@@ -2407,13 +2407,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "jsonrpc-core"
+version = "18.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14f7f76aef2d054868398427f6c54943cf3d1caa9a7ec7d0c38d69df97a965eb"
+dependencies = [
+ "futures 0.3.13",
+ "futures-executor",
+ "futures-util",
+ "log 0.4.11",
+ "serde",
+ "serde_derive",
+ "serde_json",
+]
+
+[[package]]
 name = "jsonrpc-http-server"
 version = "14.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0da906d682799df05754480dac1b9e70ec92e12c19ebafd2662a5ea1c9fd6522"
 dependencies = [
  "hyper 0.12.36",
- "jsonrpc-core",
+ "jsonrpc-core 14.2.0",
  "jsonrpc-server-utils",
  "log 0.4.11",
  "net2",
@@ -2429,7 +2444,7 @@ checksum = "56cbfb462e7f902e21121d9f0d1c2b77b2c5b642e1a4e8f4ebfa2e15b94402bb"
 dependencies = [
  "bytes 0.4.12",
  "globset",
- "jsonrpc-core",
+ "jsonrpc-core 14.2.0",
  "lazy_static",
  "log 0.4.11",
  "tokio 0.1.22",
@@ -5570,7 +5585,7 @@ dependencies = [
  "futures 0.1.31",
  "hyper 0.12.36",
  "hyper-tls 0.3.2",
- "jsonrpc-core",
+ "jsonrpc-core 14.2.0",
  "log 0.4.11",
  "native-tls",
  "parking_lot 0.10.2",

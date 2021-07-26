@@ -7,7 +7,7 @@ edition = "2018"
 chrono = "0.4"
 futures = "0.1.21"
 http = "0.1.21" # must be compatible with the version rust-web3 uses
-jsonrpc-core = "14.2.0"
+jsonrpc-core = "18.0.0"
 graph = { path = "../../graph" }
 lazy_static = "1.2.0"
 mockall = "0.9.1"
