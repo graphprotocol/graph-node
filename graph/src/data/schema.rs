@@ -53,7 +53,7 @@ pub enum SchemaValidationError {
     InterfaceFieldsMissing(String, String, Strings), // (type, interface, missing_fields)
     #[error("Field `{1}` in type `{0}` has invalid @derivedFrom: {2}")]
     InvalidDerivedFrom(String, String, String), // (type, field, reason)
-    #[error("The following types are reserved: `{0}`")]
+    #[error("The following type names are reserved: `{0}`")]
     UsageOfReservedTypes(Strings),
     #[error("_Schema_ type is only for @imports and must not have any fields")]
     SchemaTypeWithFields,
