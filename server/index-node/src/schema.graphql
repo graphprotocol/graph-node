@@ -18,6 +18,7 @@ type Query {
     blockHash: Bytes!
     indexer: Bytes
   ): Bytes
+  subgraphFeatures(subgraphId: String!): SubgraphFeatures!
 }
 
 type SubgraphIndexingStatus {
@@ -79,4 +80,17 @@ enum Health {
   unhealthy
   "Subgraph halted due to errors"
   failed
+}
+
+
+type SubgraphFeatures {
+  features: [Feature!]!
+  errors: [String!]!
+}
+
+enum Feature {
+  nonFatalErrors,
+  grafting,
+  fullTextSearch,
+  ipfsOnEthereumContracts,
 }
