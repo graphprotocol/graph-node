@@ -71,7 +71,6 @@ pub fn validate_subgraph_features<C: Blockchain>(
     }
 }
 
-// TODO: How can we access the mapping source code? (schema and manifest are ok)
 pub fn detect_features<C: Blockchain>(manifest: &SubgraphManifest<C>) -> BTreeSet<SubgraphFeature> {
     vec![
         detect_non_fatal_errors(&manifest),
@@ -95,17 +94,12 @@ fn detect_non_fatal_errors<C: Blockchain>(
 }
 
 fn detect_grafting<C: Blockchain>(manifest: &SubgraphManifest<C>) -> Option<SubgraphFeature> {
-    if manifest.graft.is_some() {
-        Some(SubgraphFeature::Grafting)
-    } else {
-        None
-    }
+    manifest.graft.as_ref().map(|_| SubgraphFeature::Grafting)
 }
 
 fn detect_full_text_search(schema: &Schema) -> Option<SubgraphFeature> {
     match schema.document.get_fulltext_directives() {
-        Ok(directives) if directives.is_empty() => None,
-        Ok(_) => Some(SubgraphFeature::FullTextSearch),
+        Ok(directives) => (!directives.is_empty()).then(|| SubgraphFeature::FullTextSearch),
 
         Err(_) => {
             // Currently we retun an error from `get_fulltext_directives` function if the
