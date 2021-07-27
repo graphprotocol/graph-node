@@ -339,38 +339,38 @@ async fn run_ipfs_map(
     // so we replicate what we do `spawn_module`.
     let runtime = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
-        runtime.enter(|| {
-            let (mut module, _, _) = test_valid_module_and_store(
-                &subgraph_id,
-                mock_data_source(
-                    &wasm_file_path("ipfs_map.wasm", api_version.clone()),
-                    api_version.clone(),
-                ),
-                api_version,
-            );
-            let value = asc_new(&mut module, &hash).unwrap();
-            let user_data = asc_new(&mut module, USER_DATA).unwrap();
+        let _runtime_guard = runtime.enter();
 
-            // Invoke the callback
-            let func = module.get_func("ipfsMap").typed().unwrap().clone();
-            let _: () = func.call((value.wasm_ptr(), user_data.wasm_ptr()))?;
-            let mut mods = module
-                .take_ctx()
-                .ctx
-                .state
-                .entity_cache
-                .as_modifications()?
-                .modifications;
+        let (mut module, _, _) = test_valid_module_and_store(
+            &subgraph_id,
+            mock_data_source(
+                &wasm_file_path("ipfs_map.wasm", api_version.clone()),
+                api_version.clone(),
+            ),
+            api_version,
+        );
+        let value = asc_new(&mut module, &hash).unwrap();
+        let user_data = asc_new(&mut module, USER_DATA).unwrap();
 
-            // Bring the modifications into a predictable order (by entity_id)
-            mods.sort_by(|a, b| {
-                a.entity_key()
-                    .entity_id
-                    .partial_cmp(&b.entity_key().entity_id)
-                    .unwrap()
-            });
-            Ok(mods)
-        })
+        // Invoke the callback
+        let func = module.get_func("ipfsMap").typed().unwrap().clone();
+        let _: () = func.call((value.wasm_ptr(), user_data.wasm_ptr()))?;
+        let mut mods = module
+            .take_ctx()
+            .ctx
+            .state
+            .entity_cache
+            .as_modifications()?
+            .modifications;
+
+        // Bring the modifications into a predictable order (by entity_id)
+        mods.sort_by(|a, b| {
+            a.entity_key()
+                .entity_id
+                .partial_cmp(&b.entity_key().entity_id)
+                .unwrap()
+        });
+        Ok(mods)
     })
     .join()
     .unwrap()
@@ -476,21 +476,20 @@ async fn test_ipfs_fail(api_version: Version) {
     // Ipfs host functions use `block_on` which must be called from a sync context,
     // so we replicate what we do `spawn_module`.
     std::thread::spawn(move || {
-        runtime.enter(|| {
-            let mut module = test_module(
-                "ipfsFail",
-                mock_data_source(
-                    &wasm_file_path("ipfs_cat.wasm", api_version.clone()),
-                    api_version.clone(),
-                ),
-                api_version,
-            );
+        let _runtime_guard = runtime.enter();
+        let mut module = test_module(
+            "ipfsFail",
+            mock_data_source(
+                &wasm_file_path("ipfs_cat.wasm", api_version.clone()),
+                api_version.clone(),
+            ),
+            api_version,
+        );
 
-            let hash = asc_new(&mut module, "invalid hash").unwrap();
-            assert!(module
-                .invoke_export::<_, AscString>("ipfsCat", hash)
-                .is_null());
-        })
+        let hash = asc_new(&mut module, "invalid hash").unwrap();
+        assert!(module
+            .invoke_export::<_, AscString>("ipfsCat", hash)
+            .is_null());
     })
     .join()
     .unwrap();
