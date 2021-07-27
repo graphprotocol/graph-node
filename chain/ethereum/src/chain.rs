@@ -250,7 +250,7 @@ impl Blockchain for Chain {
             .with_context(|| format!("no adapter for chain {}", self.name))?
             .clone();
         eth_adapter
-            .block_pointer_from_number(logger, self.chain_store.cheap_clone(), number)
+            .block_pointer_from_number(logger, number)
             .compat()
             .await
     }
@@ -390,7 +390,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
 
     async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error> {
         self.eth_adapter
-            .is_on_main_chain(&self.logger, self.chain_store.clone(), ptr.clone())
+            .is_on_main_chain(&self.logger, ptr.clone())
             .await
     }
 
