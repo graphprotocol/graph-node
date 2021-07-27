@@ -613,16 +613,10 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn block_pointer_from_number(
         &self,
         logger: &Logger,
-        chain_store: Arc<dyn ChainStore>,
         block_number: BlockNumber,
     ) -> Box<dyn Future<Item = BlockPtr, Error = bc::IngestorError> + Send>;
 
-    /// Find a block by its number. The `block_is_final` flag indicates whether
-    /// it is ok to remove blocks in the block cache with that number but with
-    /// a different hash which were left over from reorgs we saw before we
-    /// settled on a final block. Since our overall logic depends on being
-    /// able to access uncled blocks back to the main chain when we revert
-    /// blocks, we need to make sure we keep those in the block cache
+    /// Find a block by its number, according to the Ethereum node.
     ///
     /// Careful: don't use this function without considering race conditions.
     /// Chain reorgs could happen at any time, and could affect the answer received.
@@ -634,9 +628,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn block_hash_by_block_number(
         &self,
         logger: &Logger,
-        chain_store: Arc<dyn ChainStore>,
         block_number: BlockNumber,
-        block_is_final: bool,
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send>;
 
     /// Obtain all uncle blocks for a given block hash.

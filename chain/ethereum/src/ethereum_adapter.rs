@@ -648,11 +648,10 @@ impl EthereumAdapter {
     pub(crate) async fn is_on_main_chain(
         &self,
         logger: &Logger,
-        chain_store: Arc<dyn ChainStore>,
         block_ptr: BlockPtr,
     ) -> Result<bool, Error> {
         let block_hash = self
-            .block_hash_by_block_number(&logger, chain_store, block_ptr.number, true)
+            .block_hash_by_block_number(&logger, block_ptr.number)
             .compat()
             .await?;
         block_hash
@@ -1099,14 +1098,10 @@ impl EthereumAdapterTrait for EthereumAdapter {
     fn block_pointer_from_number(
         &self,
         logger: &Logger,
-        chain_store: Arc<dyn ChainStore>,
         block_number: BlockNumber,
     ) -> Box<dyn Future<Item = BlockPtr, Error = IngestorError> + Send> {
         Box::new(
-            // When this method is called (from the subgraph registrar), we don't
-            // know yet whether the block with the given number is final, it is
-            // therefore safer to assume it is not final
-            self.block_hash_by_block_number(logger, chain_store.clone(), block_number, false)
+            self.block_hash_by_block_number(logger, block_number)
                 .and_then(move |block_hash_opt| {
                     block_hash_opt.ok_or_else(|| {
                         anyhow!(
@@ -1123,71 +1118,29 @@ impl EthereumAdapterTrait for EthereumAdapter {
     fn block_hash_by_block_number(
         &self,
         logger: &Logger,
-        chain_store: Arc<dyn ChainStore>,
         block_number: BlockNumber,
-        block_is_final: bool,
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send> {
         let web3 = self.web3.clone();
 
-        let mut hashes = match chain_store.block_hashes_by_block_number(block_number) {
-            Ok(hashes) => hashes,
-            Err(e) => return Box::new(future::result(Err(e))),
-        };
-        let num_hashes = hashes.len();
-        let logger1 = logger.clone();
-        let confirm_block_hash = move |hash: &Option<H256>| {
-            // If there was more than one hash, now that we know what the
-            // 'right' one is, get rid of all the others
-            if let Some(hash) = hash {
-                if block_is_final && num_hashes > 1 {
-                    chain_store
-                        .confirm_block_hash(block_number, hash)
-                        .map(|_| ())
-                        .unwrap_or_else(|e| {
-                            warn!(
-                                logger1,
-                                "Failed to remove {} ommers for block number {} \
-                                 (hash `0x{:x}`): {}",
-                                num_hashes - 1,
-                                block_number,
-                                hash,
-                                e
-                            );
-                        });
-                }
-            } else {
-                warn!(
-                    logger1,
-                    "Failed to fetch block hash for block number";
-                    "number" => block_number
-                );
-            }
-        };
-
-        if hashes.len() == 1 {
-            Box::new(future::result(Ok(hashes.pop())))
-        } else {
-            Box::new(
-                retry("eth_getBlockByNumber RPC call", &logger)
-                    .no_limit()
-                    .timeout_secs(*JSON_RPC_TIMEOUT)
-                    .run(move || {
-                        web3.eth()
-                            .block(BlockId::Number(block_number.into()))
-                            .from_err()
-                            .map(|block_opt| block_opt.map(|block| block.hash).flatten())
+        Box::new(
+            retry("eth_getBlockByNumber RPC call", &logger)
+                .no_limit()
+                .timeout_secs(*JSON_RPC_TIMEOUT)
+                .run(move || {
+                    web3.eth()
+                        .block(BlockId::Number(block_number.into()))
+                        .from_err()
+                        .map(|block_opt| block_opt.map(|block| block.hash).flatten())
+                })
+                .map_err(move |e| {
+                    e.into_inner().unwrap_or_else(move || {
+                        anyhow!(
+                            "Ethereum node took too long to return data for block #{}",
+                            block_number
+                        )
                     })
-                    .inspect(confirm_block_hash)
-                    .map_err(move |e| {
-                        e.into_inner().unwrap_or_else(move || {
-                            anyhow!(
-                                "Ethereum node took too long to return data for block #{}",
-                                block_number
-                            )
-                        })
-                    }),
-            )
-        }
+                }),
+        )
     }
 
     fn uncles(
@@ -1460,7 +1413,7 @@ pub(crate) async fn blocks_with_triggers(
         .join(
             adapter
                 .clone()
-                .block_hash_by_block_number(&logger, chain_store.clone(), to, true)
+                .block_hash_by_block_number(&logger, to)
                 .then(move |to_hash| match to_hash {
                     Ok(n) => n.ok_or_else(|| {
                         warn!(logger2,

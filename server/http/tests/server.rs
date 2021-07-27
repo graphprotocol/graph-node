@@ -96,7 +96,7 @@ mod test {
                 let node_id = NodeId::new("test").unwrap();
                 let mut server = HyperGraphQLServer::new(&logger_factory, metrics_registry, query_runner, node_id);
                 let http_server = server
-                    .serve(8001, 8002)
+                    .serve(8007, 8008)
                     .expect("Failed to start GraphQL server");
 
                 // Launch the server to handle a single request
@@ -107,7 +107,7 @@ mod test {
                         // Send an empty JSON POST request
                         let client = Client::new();
                         let request =
-                            Request::post(format!("http://localhost:8001/subgraphs/id/{}", id))
+                            Request::post(format!("http://localhost:8007/subgraphs/id/{}", id))
                                 .body(Body::from("{}"))
                                 .unwrap();
 
