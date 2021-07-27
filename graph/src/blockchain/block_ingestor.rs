@@ -63,7 +63,7 @@ where
                 self.cleanup_cached_blocks()
             }
 
-            tokio::time::delay_for(self.polling_interval).await;
+            tokio::time::sleep(self.polling_interval).await;
         }
     }
 

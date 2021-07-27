@@ -102,7 +102,7 @@ where
         );
 
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
-        let mut socket = TcpListener::bind(&addr)
+        let socket = TcpListener::bind(&addr)
             .await
             .expect("Failed to bind WebSocket port");
 
