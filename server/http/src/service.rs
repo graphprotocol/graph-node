@@ -480,7 +480,7 @@ mod tests {
         );
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn posting_valid_queries_yields_result_response() {
         let logger = Logger::root(slog::Discard, o!());
         let metrics_registry = Arc::new(MockMetricsRegistry::new());

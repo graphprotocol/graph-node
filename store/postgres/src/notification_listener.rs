@@ -193,11 +193,7 @@ impl NotificationListener {
                                 // We'll assume here that if sending fails, this means that the
                                 // listener has already been dropped, the receiving
                                 // end is gone and we should terminate the listener loop
-                                if Box::pin(sender.clone().send(json_notification))
-                                    .compat()
-                                    .wait()
-                                    .is_err()
-                                {
+                                if sender.clone().blocking_send(json_notification).is_err() {
                                     break;
                                 }
                             }
