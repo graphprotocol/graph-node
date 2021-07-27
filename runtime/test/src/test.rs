@@ -376,28 +376,28 @@ async fn test_ipfs_cat(api_version: Version) {
     // so we replicate what we do `spawn_module`.
     let runtime = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
-        runtime.enter(|| {
-            let mut module = test_module(
-                "ipfsCat",
-                mock_data_source("ipfs_cat.wasm", api_version.clone()),
-                api_version,
-            );
-            let arg = asc_new(&mut module, &hash).unwrap();
-            let converted: AscPtr<AscString> = module.invoke_export("ipfsCatString", arg);
-            let data: String = asc_get(&module, converted).unwrap();
-            assert_eq!(data, "42");
-        })
+        let _runtime_guard = runtime.enter();
+
+        let mut module = test_module(
+            "ipfsCat",
+            mock_data_source("ipfs_cat.wasm", api_version.clone()),
+            api_version,
+        );
+        let arg = asc_new(&mut module, &hash).unwrap();
+        let converted: AscPtr<AscString> = module.invoke_export("ipfsCatString", arg);
+        let data: String = asc_get(&module, converted).unwrap();
+        assert_eq!(data, "42");
     })
     .join()
     .unwrap();
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn ipfs_cat_v0_0_4() {
     test_ipfs_cat(API_VERSION_0_0_4).await;
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn ipfs_cat_v0_0_5() {
     test_ipfs_cat(API_VERSION_0_0_5).await;
 }
@@ -564,12 +564,12 @@ async fn test_ipfs_map(api_version: Version, json_error_msg: &str) {
     assert!(errmsg.contains("500 Internal Server Error"));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn ipfs_map_v0_0_4() {
     test_ipfs_map(API_VERSION_0_0_4, "JSON value is not a string.").await;
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn ipfs_map_v0_0_5() {
     test_ipfs_map(API_VERSION_0_0_5, "'id' should not be null").await;
 }
@@ -597,12 +597,12 @@ async fn test_ipfs_fail(api_version: Version) {
     .unwrap();
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn ipfs_fail_v0_0_4() {
     test_ipfs_fail(API_VERSION_0_0_4).await;
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn ipfs_fail_v0_0_5() {
     test_ipfs_fail(API_VERSION_0_0_5).await;
 }
