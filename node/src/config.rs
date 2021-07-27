@@ -901,7 +901,7 @@ fn replace_host(url: &str, host: &str) -> String {
     if let Err(e) = url.set_host(Some(host)) {
         panic!("Invalid Postgres url {}: {}", url, e.to_string());
     }
-    url.into_string()
+    String::from(url)
 }
 
 // Various default functions for deserialization

@@ -291,7 +291,7 @@ impl<C: Blockchain> WasmInstance<C> {
                         None => break interrupt_handle.interrupt(), // Timed out.
 
                         Some(time) if time < minimum_wait => break interrupt_handle.interrupt(),
-                        Some(time) => tokio::time::delay_for(time).await,
+                        Some(time) => tokio::time::sleep(time).await,
                     }
                 }
             });
