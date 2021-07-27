@@ -57,6 +57,7 @@ impl Resolver for MockResolver {
         Arc::new(tokio::sync::Semaphore::new(1))
             .acquire_owned()
             .await
+            .unwrap()
     }
 }
 
