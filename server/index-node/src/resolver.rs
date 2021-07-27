@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use graph::data::subgraph::status;
+use graph::data::subgraph::{status, UnresolvedSchema};
 use graph::prelude::*;
 use graph::{
     components::store::StatusStore,
@@ -149,6 +149,23 @@ where
             .map(|info| info.into_value())
             .unwrap_or(q::Value::Null))
     }
+
+    fn resolve_subgraph_features(
+        &self,
+        arguments: &HashMap<&str, q::Value>,
+    ) -> Result<q::Value, QueryExecutionError> {
+        // We can safely unwrap because the argument is non-nullable and has been validated.
+        let subgraph_id = arguments.get_required::<String>("subgraphId").unwrap();
+
+        let unresolved_schema = UnresolvedSchema {
+            file: subgraph_id.into(),
+        };
+        todo!("resolve subgraph using its qm-hash");
+        // Dúvida: como resolver um subgraph dentro deste escopo? Não tenho o subgraph registrar
+        // aqui. Devo atravessá-lo até aqui?
+
+        todo!("build a graphql Value object containing the response and return it")
+    }
 }
 
 impl<S> Clone for IndexNodeResolver<S>
@@ -248,6 +265,9 @@ where
             (None, "indexingStatusForPendingVersion") => {
                 self.resolve_indexing_status_for_version(arguments, false)
             }
+
+            // The top-level `indexingStatusForPendingVersion` field
+            (None, "subgraphFeatures") => self.resolve_subgraph_features(arguments),
 
             // Resolve fields of `Object` values (e.g. the `latestBlock` field of `EthereumBlock`)
             (value, _) => Ok(value.unwrap_or(q::Value::Null)),
