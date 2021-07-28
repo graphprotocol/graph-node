@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use graph::data::subgraph::{status, UnresolvedSchema};
+use graph::data::subgraph::status;
 use graph::prelude::*;
 use graph::{
     components::store::StatusStore,
@@ -164,8 +164,6 @@ where
         // We can safely unwrap because the argument is non-nullable and has been validated.
         let subgraph_id = arguments.get_required::<String>("subgraphId").unwrap();
 
-        let unresolved_schema = UnresolvedSchema { file: todo!() };
-
         let deployment_hash = DeploymentHash::new(subgraph_id).map_err(|invalid_qm_hash| {
             QueryExecutionError::InvalidArgumentError(
                 Pos::default(),
@@ -174,10 +172,15 @@ where
             )
         })?;
 
-        unresolved_schema.resolve(deployment_hash, &*self.link_resolver, todo!());
-        todo!("resolve subgraph using its qm-hash");
-        // Dúvida: como resolver um subgraph dentro deste escopo? Não tenho o subgraph registrar
-        // aqui. Devo atravessá-lo até aqui?
+        let unvalidated_subgraph_manifest =
+            UnvalidatedSubgraphManifest::<graph_chain_ethereum::Chain>::resolve(
+                deployment_hash,
+                self.link_resolver.clone(),
+                &self.logger,
+            )
+            .map_err(SubgraphRegistrarError::ResolveError);
+
+        todo!("block_on unvalidated_subgraph_manifest");
 
         todo!("build a graphql Value object containing the response and return it")
     }
