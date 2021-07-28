@@ -25,15 +25,21 @@ impl From<hyper::Error> for IndexNodeServeError {
 }
 
 /// A GraphQL server based on Hyper.
-pub struct IndexNodeServer<Q, S> {
+pub struct IndexNodeServer<Q, S, R> {
     logger: Logger,
     graphql_runner: Arc<Q>,
     store: Arc<S>,
+    link_resolver: Arc<R>,
 }
 
-impl<Q, S> IndexNodeServer<Q, S> {
+impl<Q, S, R> IndexNodeServer<Q, S, R> {
     /// Creates a new GraphQL server.
-    pub fn new(logger_factory: &LoggerFactory, graphql_runner: Arc<Q>, store: Arc<S>) -> Self {
+    pub fn new(
+        logger_factory: &LoggerFactory,
+        graphql_runner: Arc<Q>,
+        store: Arc<S>,
+        link_resolver: Arc<R>,
+    ) -> Self {
         let logger = logger_factory.component_logger(
             "IndexNodeServer",
             Some(ComponentLoggerConfig {
@@ -47,14 +53,16 @@ impl<Q, S> IndexNodeServer<Q, S> {
             logger,
             graphql_runner,
             store,
+            link_resolver,
         }
     }
 }
 
-impl<Q, S> IndexNodeServerTrait for IndexNodeServer<Q, S>
+impl<Q, S, R> IndexNodeServerTrait for IndexNodeServer<Q, S, R>
 where
     Q: GraphQlRunner,
     S: StatusStore,
+    R: LinkResolver,
 {
     type ServeError = IndexNodeServeError;
 
@@ -80,6 +88,7 @@ where
             logger_for_service.clone(),
             graphql_runner.clone(),
             store.clone(),
+            self.link_resolver.clone(),
         );
         let new_service =
             make_service_fn(move |_| futures03::future::ok::<_, Error>(service.clone()));

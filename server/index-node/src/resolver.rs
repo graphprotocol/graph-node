@@ -11,18 +11,24 @@ use std::convert::TryInto;
 use web3::types::{Address, H256};
 
 /// Resolver for the index node GraphQL API.
-pub struct IndexNodeResolver<S> {
+pub struct IndexNodeResolver<S, R> {
     logger: Logger,
     store: Arc<S>,
+    link_resolver: Arc<R>,
 }
 
-impl<S> IndexNodeResolver<S>
+impl<S, R> IndexNodeResolver<S, R>
 where
     S: StatusStore,
+    R: LinkResolver,
 {
-    pub fn new(logger: &Logger, store: Arc<S>) -> Self {
+    pub fn new(logger: &Logger, store: Arc<S>, link_resolver: Arc<R>) -> Self {
         let logger = logger.new(o!("component" => "IndexNodeResolver"));
-        Self { logger, store }
+        Self {
+            logger,
+            store,
+            link_resolver,
+        }
     }
 
     fn resolve_indexing_statuses(
@@ -160,6 +166,7 @@ where
         let unresolved_schema = UnresolvedSchema {
             file: subgraph_id.into(),
         };
+        unresolved_schema.resolve(todo!(), &*self.link_resolver, todo!());
         todo!("resolve subgraph using its qm-hash");
         // Dúvida: como resolver um subgraph dentro deste escopo? Não tenho o subgraph registrar
         // aqui. Devo atravessá-lo até aqui?
@@ -168,22 +175,25 @@ where
     }
 }
 
-impl<S> Clone for IndexNodeResolver<S>
+impl<S, R> Clone for IndexNodeResolver<S, R>
 where
     S: SubgraphStore,
+    R: LinkResolver,
 {
     fn clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
             store: self.store.clone(),
+            link_resolver: self.link_resolver.clone(),
         }
     }
 }
 
 #[async_trait]
-impl<S> Resolver for IndexNodeResolver<S>
+impl<S, R> Resolver for IndexNodeResolver<S, R>
 where
     S: StatusStore,
+    R: LinkResolver,
 {
     const CACHEABLE: bool = false;
 

@@ -21,33 +21,41 @@ pub type IndexNodeServiceResponse = DynTryFuture<'static, Response<Body>, GraphQ
 
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
-pub struct IndexNodeService<Q, S> {
+pub struct IndexNodeService<Q, S, R> {
     logger: Logger,
     graphql_runner: Arc<Q>,
     store: Arc<S>,
     explorer: Arc<Explorer<S>>,
+    link_resolver: Arc<R>,
 }
 
-impl<Q, S> Clone for IndexNodeService<Q, S> {
+impl<Q, S, R> Clone for IndexNodeService<Q, S, R> {
     fn clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
             graphql_runner: self.graphql_runner.clone(),
             store: self.store.clone(),
             explorer: self.explorer.clone(),
+            link_resolver: self.link_resolver.clone(),
         }
     }
 }
 
-impl<Q, S> CheapClone for IndexNodeService<Q, S> {}
+impl<Q, S, R> CheapClone for IndexNodeService<Q, S, R> {}
 
-impl<Q, S> IndexNodeService<Q, S>
+impl<Q, S, R> IndexNodeService<Q, S, R>
 where
     Q: GraphQlRunner,
     S: StatusStore,
+    R: LinkResolver,
 {
     /// Creates a new GraphQL service.
-    pub fn new(logger: Logger, graphql_runner: Arc<Q>, store: Arc<S>) -> Self {
+    pub fn new(
+        logger: Logger,
+        graphql_runner: Arc<Q>,
+        store: Arc<S>,
+        link_resolver: Arc<R>,
+    ) -> Self {
         let explorer = Arc::new(Explorer::new(store.clone()));
 
         IndexNodeService {
@@ -55,6 +63,7 @@ where
             graphql_runner,
             store,
             explorer,
+            link_resolver,
         }
     }
 
@@ -111,7 +120,7 @@ where
         let logger = self.logger.cheap_clone();
         let result = {
             let options = QueryExecutionOptions {
-                resolver: IndexNodeResolver::new(&logger, store),
+                resolver: IndexNodeResolver::new(&logger, store, self.link_resolver.clone()),
                 deadline: None,
                 max_first: std::u32::MAX,
                 max_skip: std::u32::MAX,
@@ -207,10 +216,11 @@ where
     }
 }
 
-impl<Q, S> Service<Request<Body>> for IndexNodeService<Q, S>
+impl<Q, S, R> Service<Request<Body>> for IndexNodeService<Q, S, R>
 where
     Q: GraphQlRunner,
     S: StatusStore,
+    R: LinkResolver,
 {
     type Response = Response<Body>;
     type Error = GraphQLServerError;
