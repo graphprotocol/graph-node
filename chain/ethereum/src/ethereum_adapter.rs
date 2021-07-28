@@ -1050,7 +1050,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
                                     // Check if receipt is for the right block
                                     if receipt_block_hash != block_hash {
-                                        trace!(
+                                        info!(
                                             logger, "receipt block mismatch";
                                             "receipt_block_hash" =>
                                                 receipt_block_hash.to_string(),
