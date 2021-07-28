@@ -79,6 +79,7 @@ pub enum QueryExecutionError {
     EventStreamError,
     FulltextQueryRequiresFilter,
     DeploymentReverted,
+    SubgraphManifestResolveError,
 }
 
 impl Error for QueryExecutionError {
@@ -220,6 +221,7 @@ impl fmt::Display for QueryExecutionError {
             TooExpensive => write!(f, "query is too expensive"),
             Throttled=> write!(f, "service is overloaded and can not run the query right now. Please try again in a few minutes"),
             DeploymentReverted => write!(f, "the chain was reorganized while executing the query"),
+            SubgraphManifestResolveError => write!(f, "failed to resolve subgraph manifest"),
         }
     }
 }

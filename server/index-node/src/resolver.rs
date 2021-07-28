@@ -165,22 +165,21 @@ where
         let subgraph_id = arguments.get_required::<String>("subgraphId").unwrap();
 
         let deployment_hash = DeploymentHash::new(subgraph_id).map_err(|invalid_qm_hash| {
-            QueryExecutionError::InvalidArgumentError(
-                Pos::default(),
-                "subgraphId".to_string(),
-                q::Value::String(invalid_qm_hash),
-            )
+            QueryExecutionError::SubgraphDeploymentIdError(invalid_qm_hash)
         })?;
 
-        let unvalidated_subgraph_manifest =
+        let unvalidated_subgraph_manifest_future =
             UnvalidatedSubgraphManifest::<graph_chain_ethereum::Chain>::resolve(
                 deployment_hash,
                 self.link_resolver.clone(),
                 &self.logger,
-            )
-            .map_err(SubgraphRegistrarError::ResolveError);
+            );
 
-        todo!("block_on unvalidated_subgraph_manifest");
+        let unvalidated_subgraph_manifest =
+            futures03::executor::block_on(unvalidated_subgraph_manifest_future)
+                .map_err(|_error| QueryExecutionError::SubgraphManifestResolveError)?;
+
+        todo!("validate this subgraph manifest");
 
         todo!("build a graphql Value object containing the response and return it")
     }
