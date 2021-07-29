@@ -8,28 +8,35 @@ use graph::{
     data::graphql::{IntoValue, ObjectOrInterface, ValueMap},
 };
 use graph_graphql::prelude::{ExecutionContext, Resolver};
-use graphql_parser::Pos;
 use std::convert::TryInto;
 use web3::types::{Address, H256};
 
 /// Resolver for the index node GraphQL API.
-pub struct IndexNodeResolver<S, R> {
+pub struct IndexNodeResolver<S, R, St> {
     logger: Logger,
     store: Arc<S>,
     link_resolver: Arc<R>,
+    subgraph_store: Arc<St>,
 }
 
-impl<S, R> IndexNodeResolver<S, R>
+impl<S, R, St> IndexNodeResolver<S, R, St>
 where
     S: StatusStore,
     R: LinkResolver,
+    St: SubgraphStore,
 {
-    pub fn new(logger: &Logger, store: Arc<S>, link_resolver: Arc<R>) -> Self {
+    pub fn new(
+        logger: &Logger,
+        store: Arc<S>,
+        link_resolver: Arc<R>,
+        subgraph_store: Arc<St>,
+    ) -> Self {
         let logger = logger.new(o!("component" => "IndexNodeResolver"));
         Self {
             logger,
             store,
             link_resolver,
+            subgraph_store,
         }
     }
 
@@ -182,35 +189,37 @@ where
             futures03::executor::block_on(unvalidated_subgraph_manifest_future)
                 .map_err(|_error| QueryExecutionError::SubgraphManifestResolveError)?;
 
-        todo!("pass SubgraphStore to this struct");
         let (subgraph_manifest, _) = unvalidated_subgraph_manifest
             .validate(self.subgraph_store.clone())
-            .map_err(SubgraphRegistrarError::ManifestValidationError)?;
+            .map_err(|_error| QueryExecutionError::InvalidSubgraphManifest)?;
 
         detect_features(&subgraph_manifest);
         todo!("build a graphql Value object containing the response and return it")
     }
 }
 
-impl<S, R> Clone for IndexNodeResolver<S, R>
+impl<S, R, St> Clone for IndexNodeResolver<S, R, St>
 where
     S: SubgraphStore,
     R: LinkResolver,
+    St: SubgraphStore,
 {
     fn clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
             store: self.store.clone(),
             link_resolver: self.link_resolver.clone(),
+            subgraph_store: self.subgraph_store.clone(),
         }
     }
 }
 
 #[async_trait]
-impl<S, R> Resolver for IndexNodeResolver<S, R>
+impl<S, R, St> Resolver for IndexNodeResolver<S, R, St>
 where
     S: StatusStore,
     R: LinkResolver,
+    St: SubgraphStore,
 {
     const CACHEABLE: bool = false;
 
