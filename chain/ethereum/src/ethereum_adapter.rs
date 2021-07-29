@@ -789,6 +789,10 @@ impl EthereumAdapter {
                 .collect(),
         )
     }
+
+    pub async fn chain_id(&self) -> Result<u64, Error> {
+        Ok(u64::try_from(self.web3.eth().chain_id().compat().await?).unwrap())
+    }
 }
 
 #[async_trait]

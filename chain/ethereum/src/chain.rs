@@ -53,6 +53,9 @@ lazy_static! {
         .expect("invalid GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE");
 }
 
+/// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
+const CELO_CHAIN_IDS: [u64; 3] = [42220, 44787, 62320];
+
 pub struct Chain {
     logger_factory: LoggerFactory,
     name: String,
@@ -161,7 +164,7 @@ impl Blockchain for Chain {
         Ok(Arc::new(adapter))
     }
 
-    fn new_block_stream(
+    async fn new_block_stream(
         &self,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
@@ -194,6 +197,16 @@ impl Blockchain for Chain {
                 self.name, requirements
             ));
 
+        // Special case: Detect Celo and set the threshold to 0, so that eth_getLogs is always used.
+        // This is ok because Celo blocks are always final. And we _need_ to do this because
+        // some events appear only in eth_getLogs but not in transaction receipts.
+        // See also ca0edc58-0ec5-4c89-a7dd-2241797f5e50.
+        let chain_id = self.eth_adapters.cheapest().unwrap().chain_id().await?;
+        let reorg_threshold = match CELO_CHAIN_IDS.contains(&chain_id) {
+            false => self.reorg_threshold,
+            true => 0,
+        };
+
         Ok(BlockStream::new(
             writable,
             chain_store,
@@ -203,7 +216,7 @@ impl Blockchain for Chain {
             deployment.hash,
             filter,
             start_blocks,
-            self.reorg_threshold,
+            reorg_threshold,
             logger,
             metrics,
             *MAX_BLOCK_RANGE_SIZE,
