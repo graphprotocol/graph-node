@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::{convert::TryFrom, sync::Arc};
 use tiny_keccak::keccak256;
-use web3::types::Log;
+use web3::types::{Log, Transaction};
 
 use graph::{
     blockchain::{self, Blockchain, DataSource as _},
@@ -484,15 +484,28 @@ impl DataSource {
                     )
                 );
 
-                let transaction = Arc::new(
+                // Special case: In Celo, there are Epoch Rewards events, which do not have an
+                // associated transaction and instead have `transaction_hash == block.hash`,
+                // in which case we pass a dummy transaction to the mappings.
+                // See also ca0edc58-0ec5-4c89-a7dd-2241797f5e50.
+                let transaction = if log.transaction_hash != block.hash {
                     block
                         .transaction_for_log(&log)
-                        .context("Found no transaction for event")?,
-                );
+                        .context("Found no transaction for event")?
+                } else {
+                    // Infer some fields from the log and fill the rest with zeros.
+                    Transaction {
+                        hash: log.transaction_hash.unwrap(),
+                        block_hash: block.hash,
+                        block_number: block.number,
+                        transaction_index: log.transaction_index,
+                        ..Transaction::default()
+                    }
+                };
 
                 Ok(Some(MappingTrigger::Log {
                     block,
-                    transaction,
+                    transaction: Arc::new(transaction),
                     log: log.cheap_clone(),
                     params,
                     handler: event_handler,

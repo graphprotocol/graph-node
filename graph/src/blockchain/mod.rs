@@ -97,7 +97,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + 'static {
         stopwatch_metrics: StopwatchMetrics,
     ) -> Result<Arc<Self::TriggersAdapter>, Error>;
 
-    fn new_block_stream(
+    async fn new_block_stream(
         &self,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
