@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use graph::data::subgraph::features::detect_features;
+use graph::data::subgraph::features::validate_subgraph_features;
 use graph::data::subgraph::status;
 use graph::prelude::*;
 use graph::{
@@ -193,8 +193,28 @@ where
             .validate(self.subgraph_store.clone())
             .map_err(|_error| QueryExecutionError::InvalidSubgraphManifest)?;
 
-        detect_features(&subgraph_manifest);
-        todo!("build a graphql Value object containing the response and return it")
+        let response = {
+            // The response object will have either:
+            // - a list of features for the "feature" key and a null value for the "error" key; OR
+            // -. a an empty list for the "feature" key and a string for the "error" key.
+            let mut detected_features = Vec::new();
+            let mut error: q::Value = q::Value::Null;
+
+            match validate_subgraph_features(&subgraph_manifest) {
+                Ok(features) => features
+                    .iter()
+                    .map(ToString::to_string)
+                    .map(q::Value::String)
+                    .for_each(|feature| detected_features.push(feature)),
+                Err(validation_error) => error = q::Value::String(validation_error.to_string()),
+            }
+
+            let mut response: BTreeMap<String, q::Value> = BTreeMap::new();
+            response.insert("features".to_string(), q::Value::List(detected_features));
+            response.insert("errors".to_string(), error);
+            response
+        };
+        Ok(q::Value::Object(response))
     }
 }
 
