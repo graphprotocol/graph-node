@@ -178,16 +178,15 @@ where
             QueryExecutionError::SubgraphDeploymentIdError(invalid_qm_hash)
         })?;
 
-        let unvalidated_subgraph_manifest_future =
-            UnvalidatedSubgraphManifest::<graph_chain_ethereum::Chain>::resolve(
+        let unvalidated_subgraph_manifest = {
+            let future = UnvalidatedSubgraphManifest::<graph_chain_ethereum::Chain>::resolve(
                 deployment_hash,
                 self.link_resolver.clone(),
                 &self.logger,
             );
-
-        let unvalidated_subgraph_manifest =
-            futures03::executor::block_on(unvalidated_subgraph_manifest_future)
-                .map_err(|_error| QueryExecutionError::SubgraphManifestResolveError)?;
+            futures03::executor::block_on(future)
+                .map_err(|_error| QueryExecutionError::SubgraphManifestResolveError)?
+        };
 
         let (subgraph_manifest, _) = unvalidated_subgraph_manifest
             .validate(self.subgraph_store.clone())
