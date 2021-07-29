@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use graph::data::subgraph::features::detect_features;
 use graph::data::subgraph::status;
 use graph::prelude::*;
 use graph::{
@@ -164,6 +165,8 @@ where
         // We can safely unwrap because the argument is non-nullable and has been validated.
         let subgraph_id = arguments.get_required::<String>("subgraphId").unwrap();
 
+        todo!("try to fetch this subgraph from our SubgraphStore before hitting IPFS");
+
         let deployment_hash = DeploymentHash::new(subgraph_id).map_err(|invalid_qm_hash| {
             QueryExecutionError::SubgraphDeploymentIdError(invalid_qm_hash)
         })?;
@@ -179,8 +182,12 @@ where
             futures03::executor::block_on(unvalidated_subgraph_manifest_future)
                 .map_err(|_error| QueryExecutionError::SubgraphManifestResolveError)?;
 
-        todo!("validate this subgraph manifest");
+        todo!("pass SubgraphStore to this struct");
+        let (subgraph_manifest, _) = unvalidated_subgraph_manifest
+            .validate(self.subgraph_store.clone())
+            .map_err(SubgraphRegistrarError::ManifestValidationError)?;
 
+        detect_features(&subgraph_manifest);
         todo!("build a graphql Value object containing the response and return it")
     }
 }
