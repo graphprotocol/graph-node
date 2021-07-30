@@ -174,10 +174,13 @@ where
 
         todo!("try to fetch this subgraph from our SubgraphStore before hitting IPFS");
 
+        // Try to build a deployment hash with the input string
         let deployment_hash = DeploymentHash::new(subgraph_id).map_err(|invalid_qm_hash| {
             QueryExecutionError::SubgraphDeploymentIdError(invalid_qm_hash)
         })?;
 
+        // Try to fetch the subgraph manifest from IPFS. Since this operation is asynchronous, we
+        // must wait for it to finish using the `block_on` function.
         let unvalidated_subgraph_manifest = {
             let future = UnvalidatedSubgraphManifest::<graph_chain_ethereum::Chain>::resolve(
                 deployment_hash,
@@ -188,10 +191,13 @@ where
                 .map_err(|_error| QueryExecutionError::SubgraphManifestResolveError)?
         };
 
+        // We then need to validate the subgraph we've justo obtained
         let (subgraph_manifest, _) = unvalidated_subgraph_manifest
             .validate(self.subgraph_store.clone())
             .map_err(|_error| QueryExecutionError::InvalidSubgraphManifest)?;
 
+        // We then bulid a GraphqQL `Object` value that contains the feature detection and
+        // validation results and send it back as a response.
         let response = {
             // The response object will have either:
             // - a list of features for the "feature" key and a null value for the "error" key; OR
@@ -213,6 +219,7 @@ where
             response.insert("errors".to_string(), error);
             response
         };
+
         Ok(q::Value::Object(response))
     }
 }
