@@ -52,6 +52,7 @@ impl From<LightEthereumBlock> for Ommer {
             size: block.size,
             mix_hash: block.mix_hash,
             nonce: block.nonce,
+            base_fee_per_gas: block.base_fee_per_gas,
         })
     }
 }
