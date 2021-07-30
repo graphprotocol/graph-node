@@ -431,12 +431,12 @@ mod tests {
     use futures03::compat::Future01CompatExt;
     use slog::o;
     use std::sync::Mutex;
-    use tokio18;
+
     #[test]
     fn test() {
         let logger = Logger::root(::slog::Discard, o!());
 
-        let runtime = tokio18::runtime::Builder::new_current_thread()
+        let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
@@ -464,7 +464,7 @@ mod tests {
     #[test]
     fn limit_reached() {
         let logger = Logger::root(::slog::Discard, o!());
-        let runtime = tokio18::runtime::Builder::new_current_thread()
+        let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
@@ -492,7 +492,7 @@ mod tests {
     #[test]
     fn limit_not_reached() {
         let logger = Logger::root(::slog::Discard, o!());
-        let runtime = tokio18::runtime::Builder::new_current_thread()
+        let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
@@ -522,7 +522,7 @@ mod tests {
         let logger = Logger::root(::slog::Discard, o!());
         let c = Mutex::new(0);
 
-        let runtime = tokio18::runtime::Builder::new_current_thread()
+        let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
