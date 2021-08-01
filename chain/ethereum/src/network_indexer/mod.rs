@@ -41,6 +41,7 @@ impl From<LightEthereumBlock> for Ommer {
             number: block.number,
             gas_used: block.gas_used,
             gas_limit: block.gas_limit,
+            base_fee_per_gas: block.base_fee_per_gas,
             extra_data: block.extra_data,
             logs_bloom: block.logs_bloom,
             timestamp: block.timestamp,

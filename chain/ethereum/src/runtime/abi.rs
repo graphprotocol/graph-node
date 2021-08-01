@@ -111,6 +111,7 @@ pub(crate) struct AscEthereumBlock {
     pub number: AscPtr<AscBigInt>,
     pub gas_used: AscPtr<AscBigInt>,
     pub gas_limit: AscPtr<AscBigInt>,
+    pub base_fee_per_gas: AscPtr<AscBigInt>,
     pub timestamp: AscPtr<AscBigInt>,
     pub difficulty: AscPtr<AscBigInt>,
     pub total_difficulty: AscPtr<AscBigInt>,
@@ -233,6 +234,10 @@ impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
             number: asc_new(heap, &BigInt::from(self.number))?,
             gas_used: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_used))?,
             gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit))?,
+            base_fee_per_gas: self
+                .base_fee_per_gas
+                .map(|base_fee_per_gas| asc_new(heap, &BigInt::from_unsigned_u256(&base_fee_per_gas)))
+                .unwrap_or(Ok(AscPtr::null()))?,
             timestamp: asc_new(heap, &BigInt::from_unsigned_u256(&self.timestamp))?,
             difficulty: asc_new(heap, &BigInt::from_unsigned_u256(&self.difficulty))?,
             total_difficulty: asc_new(heap, &BigInt::from_unsigned_u256(&self.total_difficulty))?,

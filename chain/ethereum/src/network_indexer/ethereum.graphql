@@ -38,6 +38,9 @@ type Block @entity {
   """The amount of gas that was used executing transactions in this block."""
   gasUsed: BigInt!
 
+  """The base amount of Ether charged per unit of gas (in gwei)."""
+  baseFeePerGas: BigInt!
+
   """The unix timestamp at which this block was mined."""
   timestamp: BigInt!
 
