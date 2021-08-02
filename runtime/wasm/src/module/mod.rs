@@ -49,7 +49,7 @@ pub struct WasmInstance<C: Blockchain> {
     //
     // Also this is the only strong reference, so the instance will be dropped once this is dropped.
     // The weak references are circulary held by instance itself through host exports.
-    instance_ctx: Rc<RefCell<Option<WasmInstanceContext<C>>>>,
+    pub instance_ctx: Rc<RefCell<Option<WasmInstanceContext<C>>>>,
 }
 
 impl<C: Blockchain> Drop for WasmInstance<C> {
