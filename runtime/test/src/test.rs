@@ -637,6 +637,7 @@ async fn ipfs_fail_v0_0_4() {
 }
 
 #[cfg(test)]
+#[tokio::test(threaded_scheduler)]
 async fn ipfs_fail_v0_0_5() {
     test_ipfs_fail(API_VERSION_0_0_5).await;
 }
