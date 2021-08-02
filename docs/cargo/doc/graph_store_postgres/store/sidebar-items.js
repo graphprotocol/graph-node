@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["Store","The overall store of the system, consisting of a [SubgraphStore] and a [BlockStore], each of which multiplex across multiple database shards. The `SubgraphStore` is responsible for storing all data and metadata related to individual subgraphs, and the `BlockStore` does the same for data belonging to the chains that are being processed."]]});

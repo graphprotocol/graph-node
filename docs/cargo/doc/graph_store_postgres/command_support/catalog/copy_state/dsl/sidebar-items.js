@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["cancelled_at",""],["copy_state","The actual table struct"],["dst",""],["finished_at",""],["src",""],["started_at",""],["target_block_hash",""],["target_block_number",""]]});

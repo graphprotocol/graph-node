@@ -1,0 +1,26 @@
+cargo:rustc-cfg=asm
+cargo:rustc-cfg=switchable_stack
+OPT_LEVEL = Some("0")
+TARGET = Some("aarch64-apple-darwin")
+HOST = Some("aarch64-apple-darwin")
+CC_aarch64-apple-darwin = None
+CC_aarch64_apple_darwin = None
+HOST_CC = None
+CC = None
+CFLAGS_aarch64-apple-darwin = None
+CFLAGS_aarch64_apple_darwin = None
+HOST_CFLAGS = None
+CFLAGS = None
+CRATE_CC_NO_DEFAULTS = None
+DEBUG = Some("true")
+CARGO_CFG_TARGET_FEATURE = None
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-arch" "arm64" "-Wall" "-Wextra" "-xassembler-with-cpp" "-DCFG_TARGET_OS_macos" "-DCFG_TARGET_ARCH_aarch64" "-DCFG_TARGET_ENV_" "-o" "/private/tmp/graph-node/docs/cargo/debug/build/psm-8cf2f7d0d7bc5408/out/src/arch/aarch_aapcs64.o" "-c" "src/arch/aarch_aapcs64.s"
+exit code: 0
+AR_aarch64-apple-darwin = None
+AR_aarch64_apple_darwin = None
+HOST_AR = None
+AR = None
+running: "ar" "crs" "/private/tmp/graph-node/docs/cargo/debug/build/psm-8cf2f7d0d7bc5408/out/libpsm_s.a" "/private/tmp/graph-node/docs/cargo/debug/build/psm-8cf2f7d0d7bc5408/out/src/arch/aarch_aapcs64.o"
+exit code: 0
+cargo:rustc-link-lib=static=psm_s
+cargo:rustc-link-search=native=/private/tmp/graph-node/docs/cargo/debug/build/psm-8cf2f7d0d7bc5408/out

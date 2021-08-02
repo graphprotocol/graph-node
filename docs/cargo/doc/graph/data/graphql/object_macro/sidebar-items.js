@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["object_value","Creates a `graphql_parser::query::Value::Object` from key/value pairs. If you don’t need to determine which keys are included dynamically at runtime consider using the `object! {}` macro instead."]],"trait":[["IntoValue",""]]});

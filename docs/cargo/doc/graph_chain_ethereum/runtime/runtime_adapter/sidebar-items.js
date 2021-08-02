@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["eth_call","Returns `Ok(None)` if the call was reverted."],["ethereum_call","function ethereum.call(call: SmartContractCall): Array | null"]],"struct":[["RuntimeAdapter",""],["UnresolvedContractCall",""]]});

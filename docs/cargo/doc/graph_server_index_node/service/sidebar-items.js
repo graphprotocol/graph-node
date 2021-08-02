@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["IndexNodeService","A Hyper Service that serves GraphQL over a POST / endpoint."]],"type":[["IndexNodeServiceResponse","An asynchronous response to a GraphQL request."]]});

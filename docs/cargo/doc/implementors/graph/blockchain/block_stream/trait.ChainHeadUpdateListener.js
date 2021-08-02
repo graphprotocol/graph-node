@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph_store_postgres"] = [{"text":"impl <a class=\"trait\" href=\"graph/blockchain/block_stream/trait.ChainHeadUpdateListener.html\" title=\"trait graph::blockchain::block_stream::ChainHeadUpdateListener\">ChainHeadUpdateListener</a> for <a class=\"struct\" href=\"graph_store_postgres/chain_head_listener/struct.ChainHeadUpdateListener.html\" title=\"struct graph_store_postgres::chain_head_listener::ChainHeadUpdateListener\">ChainHeadUpdateListener</a>","synthetic":false,"types":["graph_store_postgres::chain_head_listener::ChainHeadUpdateListener"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

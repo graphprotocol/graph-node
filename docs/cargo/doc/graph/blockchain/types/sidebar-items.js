@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["BlockHash","A simple marker for byte arrays that are really block hashes"],["BlockPtr","A block hash and block number from a specific Ethereum block."]]});

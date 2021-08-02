@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["ALLOW_NON_DETERMINISTIC_FULLTEXT_SEARCH",""]],"trait":[["DirectiveExt",""],["DirectiveFinder",""],["DocumentExt",""],["ObjectTypeExt",""],["TypeExt",""],["ValueExt",""]]});

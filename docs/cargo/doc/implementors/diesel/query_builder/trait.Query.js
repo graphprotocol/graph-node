@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph"] = [{"text":"impl&lt;'a&gt; Query for <a class=\"struct\" href=\"graph/components/transaction_receipt/struct.TransactionReceiptQuery.html\" title=\"struct graph::components::transaction_receipt::TransactionReceiptQuery\">TransactionReceiptQuery</a>&lt;'a&gt;","synthetic":false,"types":["graph::components::transaction_receipt::TransactionReceiptQuery"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

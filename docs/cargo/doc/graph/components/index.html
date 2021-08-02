@@ -1,0 +1,44 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Traits and types for all system components. The Graph network nodes are internally structured as a layers of reusable components with non-blocking communication, with each component having a corresponding trait defining it’s interface."><meta name="keywords" content="rust, rustlang, rust-lang, components"><title>graph::components - Rust</title><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../light.css"  id="themeStyle"><link rel="stylesheet" type="text/css" href="../../dark.css" disabled ><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled ><script id="default-settings"></script><script src="../../storage.js"></script><script src="../../crates.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="icon" type="image/svg+xml" href="../../favicon.svg">
+<link rel="alternate icon" type="image/png" href="../../favicon-16x16.png">
+<link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc mod"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu" role="button">&#9776;</div><a href='../../graph/index.html'><div class='logo-container rust-logo'><img src='../../rust-logo.png' alt='logo'></div></a><p class="location">Module components</p><div class="sidebar-elems"><div class="block items"><ul><li><a href="#modules">Modules</a></li><li><a href="#traits">Traits</a></li></ul></div><p class="location"><a href="../index.html">graph</a></p><div id="sidebar-vars" data-name="components" data-ty="mod" data-relpath="../"></div><script defer src="../sidebar-items.js"></script></div></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu"><img src="../../brush.svg" width="18" height="18" alt="Pick another theme!"></button><div id="theme-choices" role="menu"></div></div><script src="../../theme.js"></script><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><button type="button" class="help-button">?</button>
+                <a id="settings-menu" href="../../settings.html"><img src="../../wheel.svg" width="18" height="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><h1 class="fqn"><span class="in-band">Module <a href="../index.html">graph</a>::<wbr><a class="mod" href="">components</a></span><span class="out-of-band"><span id="render-detail"><a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">[<span class="inner">&#x2212;</span>]</a></span><a class="srclink" href="../../src/graph/components/mod.rs.html#1-76" title="goto source code">[src]</a></span></h1><div class="docblock"><p>Traits and types for all system components.
+The Graph network nodes are internally structured as a layers of reusable
+components with non-blocking communication, with each component having a
+corresponding trait defining it’s interface.</p>
+<p>As examples of components, at the top layer component there is the GraphQL
+server which interacts with clients, and at the lowest layer we have data
+sources that interact with storage backends.</p>
+<p>The layers are not well defined, but it’s expected that a higher-level
+component will make requests for a lower-level component to respond, and
+that a lower-level component will send events to interested higher-level
+components when it’s state changes.</p>
+<p>A request/response interaction between C1 and C2 is made by C1 requiring an
+<code>Arc&lt;C2&gt;</code> in it’s constructor and then calling the functions defined on C2.</p>
+<p>Event-based interactions propagate changes in the underlining data upwards
+in the component graph, with low level components generating event streams
+based on changes in external systems, mid level components transforming
+these streams and high level components finally consuming the received
+events.</p>
+<p>These events are communicated through sinks and streams (typically senders
+and receivers of channels), which are managed by long-running Tokio tasks.
+Each component may have an internal task for handling input events and
+sending out output events, and the “dumb pipes” that plug together components
+are tasks that send out events in the order that they are received.</p>
+<p>A component declares it’s inputs and outputs by having <code>EventConsumer&lt;U&gt;</code> and
+<code>EventProducer&lt;T&gt;</code> traits as supertraits.</p>
+<p>Components should use the helper functions in this module (e.g. <code>forward</code>)
+that define common operations on event streams, facilitating the
+configuration of component graphs.</p>
+</div><h2 id="modules" class="section-header"><a href="#modules">Modules</a></h2>
+<table><tr class="module-item"><td><a class="mod" href="ethereum/index.html" title="graph::components::ethereum mod">ethereum</a></td><td class="docblock-short"><p>Components dealing with Ethereum.</p>
+</td></tr><tr class="module-item"><td><a class="mod" href="graphql/index.html" title="graph::components::graphql mod">graphql</a></td><td class="docblock-short"><p>Components dealing with processing GraphQL.</p>
+</td></tr><tr class="module-item"><td><a class="mod" href="link_resolver/index.html" title="graph::components::link_resolver mod">link_resolver</a></td><td class="docblock-short"></td></tr><tr class="module-item"><td><a class="mod" href="metrics/index.html" title="graph::components::metrics mod">metrics</a></td><td class="docblock-short"><p>Components dealing with collecting metrics</p>
+</td></tr><tr class="module-item"><td><a class="mod" href="server/index.html" title="graph::components::server mod">server</a></td><td class="docblock-short"><p>Components powering GraphQL, JSON-RPC, WebSocket APIs, Metrics.</p>
+</td></tr><tr class="module-item"><td><a class="mod" href="store/index.html" title="graph::components::store mod">store</a></td><td class="docblock-short"><p>Components dealing with storing entities.</p>
+</td></tr><tr class="module-item"><td><a class="mod" href="subgraph/index.html" title="graph::components::subgraph mod">subgraph</a></td><td class="docblock-short"><p>Components dealing with subgraphs.</p>
+</td></tr><tr class="module-item"><td><a class="mod" href="transaction_receipt/index.html" title="graph::components::transaction_receipt mod">transaction_receipt</a></td><td class="docblock-short"><p>Code for retrieving transaction receipts from the database.</p>
+</td></tr></table><h2 id="traits" class="section-header"><a href="#traits">Traits</a></h2>
+<table><tr class="module-item"><td><a class="trait" href="trait.EventConsumer.html" title="graph::components::EventConsumer trait">EventConsumer</a></td><td class="docblock-short"><p>A component that receives events of type <code>T</code>.</p>
+</td></tr><tr class="module-item"><td><a class="trait" href="trait.EventProducer.html" title="graph::components::EventProducer trait">EventProducer</a></td><td class="docblock-short"><p>A component that outputs events of type <code>T</code>.</p>
+</td></tr></table></section><section id="search" class="content hidden"></section><section class="footer"></section><div id="rustdoc-vars" data-root-path="../../" data-current-crate="graph" data-search-js="../../search-index.js"></div>
+    <script src="../../main.js"></script></body></html>

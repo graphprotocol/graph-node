@@ -1,0 +1,2 @@
+cargo:rustc-cfg=has_sized_atomics
+cargo:rustc-cfg=has_checked_instant

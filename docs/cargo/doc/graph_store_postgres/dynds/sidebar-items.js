@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["copy","Copy the dynamic data sources for `src` to `dst`. All data sources that were created up to and including `target_block` will be copied."],["drop",""],["insert",""],["load",""],["revert",""],["to_source",""]],"mod":[["dynamic_ethereum_contract_data_source",""]]});

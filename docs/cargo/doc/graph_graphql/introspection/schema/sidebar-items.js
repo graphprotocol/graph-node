@@ -1,0 +1,1 @@
+initSidebarItems({"constant":[["INTROSPECTION_SCHEMA",""]],"fn":[["introspection_schema",""],["is_introspection_field",""]],"struct":[["INTROSPECTION_DOCUMENT",""],["INTROSPECTION_QUERY_TYPE",""]]});

@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["SubgraphVersionSwitchingMode",""]],"trait":[["SubgraphRegistrar","Common trait for subgraph registrars."]]});

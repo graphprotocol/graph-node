@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["BaseDataSourceTemplate",""],["DataSource","Runtime representation of a data source."],["UnresolvedDataSource",""]],"type":[["DataSourceTemplate",""],["UnresolvedDataSourceTemplate",""]]});

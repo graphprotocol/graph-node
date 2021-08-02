@@ -1,0 +1,1 @@
+initSidebarItems({"trait":[["IntoWasmRet","Helper trait for the `link!` macro."]]});

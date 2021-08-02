@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["BlockIngestorMetrics",""],["CHANNEL_NAME",""],["ChainHeadUpdate",""],["ChainHeadUpdateListener",""],["ChainHeadUpdateSender","Sender for messages that the `ChainHeadUpdateListener` on other nodes will receive. The sender is specific to a particular chain."],["Watcher",""]]});

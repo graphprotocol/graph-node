@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph_server_index_node"] = [{"text":"impl&lt;Q, S&gt; IndexNodeServer for <a class=\"struct\" href=\"graph_server_index_node/server/struct.IndexNodeServer.html\" title=\"struct graph_server_index_node::server::IndexNodeServer\">IndexNodeServer</a>&lt;Q, S&gt; <span class=\"where fmt-newline\">where<br>&nbsp;&nbsp;&nbsp;&nbsp;Q: GraphQlRunner,<br>&nbsp;&nbsp;&nbsp;&nbsp;S: StatusStore,&nbsp;</span>","synthetic":false,"types":["graph_server_index_node::server::IndexNodeServer"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

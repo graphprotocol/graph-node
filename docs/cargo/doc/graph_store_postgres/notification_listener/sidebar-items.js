@@ -1,0 +1,1 @@
+initSidebarItems({"mod":[["public",""]],"static":[["LARGE_NOTIFICATION_THRESHOLD",""]],"struct":[["JsonNotification",""],["LARGE_NOTIFICATION_CLEANUP_INTERVAL",""],["NotificationListener",""],["SafeChannelName","This newtype exists to make it hard to misuse the `NotificationListener` API in a way that could impact security."]]});

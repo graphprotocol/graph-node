@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["block_range",""],["created_at",""],["deployment",""],["id",""],["subgraph",""],["subgraph_version","The actual table struct"],["vid",""]]});

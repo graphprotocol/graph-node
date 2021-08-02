@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["IndexNodeServeError","Errors that may occur when starting the server."]],"struct":[["IndexNodeServer","A GraphQL server based on Hyper."]]});

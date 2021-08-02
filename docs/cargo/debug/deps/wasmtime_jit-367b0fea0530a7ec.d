@@ -1,0 +1,16 @@
+/private/tmp/graph-node/docs/cargo/debug/deps/wasmtime_jit-367b0fea0530a7ec.rmeta: /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/lib.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/code_memory.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/compiler.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/instantiate.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/link.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/object.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/unwind.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/native.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/trampoline.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/unwind/systemv.rs
+
+/private/tmp/graph-node/docs/cargo/debug/deps/wasmtime_jit-367b0fea0530a7ec.d: /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/lib.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/code_memory.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/compiler.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/instantiate.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/link.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/object.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/unwind.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/native.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/trampoline.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/unwind/systemv.rs
+
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/lib.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/code_memory.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/compiler.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/instantiate.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/link.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/object.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/unwind.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/native.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/trampoline.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-jit-0.27.0/src/unwind/systemv.rs:
+
+# env-dep:CARGO_PKG_VERSION=0.27.0

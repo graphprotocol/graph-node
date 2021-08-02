@@ -1,0 +1,7 @@
+cargo:rerun-if-env-changed=PQ_LIB_DIR
+cargo:rerun-if-env-changed=PQ_LIB_STATIC
+cargo:rerun-if-env-changed=TARGET
+cargo:rerun-if-env-changed=PG_CONFIG_AARCH64_APPLE_DARWIN
+cargo:rustc-link-search=native=/opt/homebrew/lib
+cargo:rerun-if-env-changed=PQ_LIB_STATIC_AARCH64_APPLE_DARWIN
+cargo:rustc-link-lib=pq

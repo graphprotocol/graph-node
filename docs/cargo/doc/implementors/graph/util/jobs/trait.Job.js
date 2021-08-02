@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph_store_postgres"] = [{"text":"impl <a class=\"trait\" href=\"graph/util/jobs/trait.Job.html\" title=\"trait graph::util::jobs::Job\">Job</a> for <a class=\"struct\" href=\"graph_store_postgres/jobs/struct.VacuumDeploymentsJob.html\" title=\"struct graph_store_postgres::jobs::VacuumDeploymentsJob\">VacuumDeploymentsJob</a>","synthetic":false,"types":["graph_store_postgres::jobs::VacuumDeploymentsJob"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

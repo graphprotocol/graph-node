@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph_store_postgres"] = [{"text":"impl BelongsTo&lt;<a class=\"struct\" href=\"graph_store_postgres/detail/struct.GraphNodeVersion.html\" title=\"struct graph_store_postgres::detail::GraphNodeVersion\">GraphNodeVersion</a>&gt; for <a class=\"struct\" href=\"graph_store_postgres/detail/struct.StoredSubgraphManifest.html\" title=\"struct graph_store_postgres::detail::StoredSubgraphManifest\">StoredSubgraphManifest</a>","synthetic":false,"types":["graph_store_postgres::detail::StoredSubgraphManifest"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

@@ -1,0 +1,1 @@
+initSidebarItems({"trait":[["CacheWeight","Estimate of how much memory a value consumes. Useful for measuring the size of caches."]]});

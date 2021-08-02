@@ -1,0 +1,2 @@
+cargo:rustc-env=TYPENUM_BUILD_CONSTS=/private/tmp/graph-node/docs/cargo/debug/build/typenum-7596f71f17d405c1/out/consts.rs
+cargo:rustc-env=TYPENUM_BUILD_OP=/private/tmp/graph-node/docs/cargo/debug/build/typenum-7596f71f17d405c1/out/op.rs

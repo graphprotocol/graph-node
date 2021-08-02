@@ -1,0 +1,36 @@
+TARGET = Some("aarch64-apple-darwin")
+OPT_LEVEL = Some("0")
+HOST = Some("aarch64-apple-darwin")
+CC_aarch64-apple-darwin = None
+CC_aarch64_apple_darwin = None
+HOST_CC = None
+CC = None
+CFLAGS_aarch64-apple-darwin = None
+CFLAGS_aarch64_apple_darwin = None
+HOST_CFLAGS = None
+CFLAGS = None
+CRATE_CC_NO_DEFAULTS = None
+DEBUG = Some("true")
+CARGO_CFG_TARGET_FEATURE = None
+CC_aarch64-apple-darwin = None
+CC_aarch64_apple_darwin = None
+HOST_CC = None
+CC = None
+CFLAGS_aarch64-apple-darwin = None
+CFLAGS_aarch64_apple_darwin = None
+HOST_CFLAGS = None
+CFLAGS = None
+CRATE_CC_NO_DEFAULTS = None
+CARGO_CFG_TARGET_FEATURE = None
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-arch" "arm64" "-I" "depend/secp256k1/" "-I" "depend/secp256k1/include" "-I" "depend/secp256k1/src" "-Wall" "-Wextra" "-Wno-unused-function" "-DSECP256K1_API=" "-DENABLE_MODULE_ECDH=1" "-DENABLE_MODULE_SCHNORRSIG=1" "-DENABLE_MODULE_EXTRAKEYS=1" "-DECMULT_GEN_PREC_BITS=4" "-DUSE_NUM_NONE=1" "-DUSE_FIELD_INV_BUILTIN=1" "-DUSE_SCALAR_INV_BUILTIN=1" "-DECMULT_WINDOW_SIZE=15" "-DUSE_EXTERNAL_DEFAULT_CALLBACKS=1" "-DENABLE_MODULE_RECOVERY=1" "-o" "/private/tmp/graph-node/docs/cargo/debug/build/secp256k1-sys-32276a72eb2e0df0/out/depend/secp256k1/contrib/lax_der_parsing.o" "-c" "depend/secp256k1/contrib/lax_der_parsing.c"
+exit code: 0
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-arch" "arm64" "-I" "depend/secp256k1/" "-I" "depend/secp256k1/include" "-I" "depend/secp256k1/src" "-Wall" "-Wextra" "-Wno-unused-function" "-DSECP256K1_API=" "-DENABLE_MODULE_ECDH=1" "-DENABLE_MODULE_SCHNORRSIG=1" "-DENABLE_MODULE_EXTRAKEYS=1" "-DECMULT_GEN_PREC_BITS=4" "-DUSE_NUM_NONE=1" "-DUSE_FIELD_INV_BUILTIN=1" "-DUSE_SCALAR_INV_BUILTIN=1" "-DECMULT_WINDOW_SIZE=15" "-DUSE_EXTERNAL_DEFAULT_CALLBACKS=1" "-DENABLE_MODULE_RECOVERY=1" "-o" "/private/tmp/graph-node/docs/cargo/debug/build/secp256k1-sys-32276a72eb2e0df0/out/depend/secp256k1/src/secp256k1.o" "-c" "depend/secp256k1/src/secp256k1.c"
+exit code: 0
+AR_aarch64-apple-darwin = None
+AR_aarch64_apple_darwin = None
+HOST_AR = None
+AR = None
+running: "ar" "crs" "/private/tmp/graph-node/docs/cargo/debug/build/secp256k1-sys-32276a72eb2e0df0/out/libsecp256k1.a" "/private/tmp/graph-node/docs/cargo/debug/build/secp256k1-sys-32276a72eb2e0df0/out/depend/secp256k1/contrib/lax_der_parsing.o" "/private/tmp/graph-node/docs/cargo/debug/build/secp256k1-sys-32276a72eb2e0df0/out/depend/secp256k1/src/secp256k1.o"
+exit code: 0
+cargo:rustc-link-lib=static=secp256k1
+cargo:rustc-link-search=native=/private/tmp/graph-node/docs/cargo/debug/build/secp256k1-sys-32276a72eb2e0df0/out

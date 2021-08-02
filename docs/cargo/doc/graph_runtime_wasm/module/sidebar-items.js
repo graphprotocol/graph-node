@@ -1,0 +1,1 @@
+initSidebarItems({"constant":[["TRAP_TIMEOUT",""]],"mod":[["into_wasm_ret",""],["stopwatch",""]],"struct":[["ExperimentalFeatures",""],["WasmInstance","Handle to a WASM instance, which is terminated if and only if this is dropped."],["WasmInstanceContext",""]],"trait":[["IntoTrap",""],["IntoWasmRet","Helper trait for the `link!` macro."]]});

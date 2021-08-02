@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/ops/bit/trait.Shr.html\" title=\"trait core::ops::bit::Shr\">Shr</a>&lt;<a class=\"primitive\" href=\"https://doc.rust-lang.org/nightly/std/primitive.u8.html\">u8</a>&gt; for <a class=\"struct\" href=\"graph/data/store/scalar/struct.BigInt.html\" title=\"struct graph::data::store::scalar::BigInt\">BigInt</a>","synthetic":false,"types":["graph::data::store::scalar::BigInt"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

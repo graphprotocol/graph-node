@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph_server_json_rpc"] = [{"text":"impl&lt;R&gt; JsonRpcServer&lt;R&gt; for <a class=\"struct\" href=\"graph_server_json_rpc/struct.JsonRpcServer.html\" title=\"struct graph_server_json_rpc::JsonRpcServer\">JsonRpcServer</a>&lt;R&gt; <span class=\"where fmt-newline\">where<br>&nbsp;&nbsp;&nbsp;&nbsp;R: SubgraphRegistrar,&nbsp;</span>","synthetic":false,"types":["graph_server_json_rpc::JsonRpcServer"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

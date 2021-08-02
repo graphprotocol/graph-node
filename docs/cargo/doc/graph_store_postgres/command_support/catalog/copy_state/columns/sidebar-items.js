@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["cancelled_at",""],["dst",""],["finished_at",""],["src",""],["star","Represents `table_name.*`, which is sometimes needed for efficient count queries. It cannot be used in place of `all_columns`, and has a `SqlType` of `()` to prevent it being used that way"],["started_at",""],["target_block_hash",""],["target_block_number",""]]});

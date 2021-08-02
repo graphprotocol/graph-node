@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph_runtime_wasm"] = [{"text":"impl&lt;C:&nbsp;<a class=\"trait\" href=\"graph/blockchain/trait.Blockchain.html\" title=\"trait graph::blockchain::Blockchain\">Blockchain</a>&gt; <a class=\"trait\" href=\"graph/components/subgraph/host/trait.RuntimeHost.html\" title=\"trait graph::components::subgraph::host::RuntimeHost\">RuntimeHost</a>&lt;C&gt; for <a class=\"struct\" href=\"graph_runtime_wasm/host/struct.RuntimeHost.html\" title=\"struct graph_runtime_wasm::host::RuntimeHost\">RuntimeHost</a>&lt;C&gt;","synthetic":false,"types":["graph_runtime_wasm::host::RuntimeHost"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

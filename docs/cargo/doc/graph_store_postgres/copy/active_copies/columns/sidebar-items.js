@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["_impl_query_id_for_cancelled_at",""],["_impl_query_id_for_dst",""],["_impl_query_id_for_src",""]],"struct":[["cancelled_at",""],["dst",""],["src",""],["star","Represents `table_name.*`, which is sometimes needed for efficient count queries. It cannot be used in place of `all_columns`, and has a `SqlType` of `()` to prevent it being used that way"]]});

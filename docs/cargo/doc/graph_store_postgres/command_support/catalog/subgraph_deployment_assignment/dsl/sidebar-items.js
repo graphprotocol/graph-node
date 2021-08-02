@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["id",""],["node_id",""],["subgraph_deployment_assignment","The actual table struct"]]});

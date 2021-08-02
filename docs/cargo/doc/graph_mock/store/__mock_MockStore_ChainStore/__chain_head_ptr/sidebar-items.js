@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["Matcher",""],["Rfunc",""]],"struct":[["Common","Holds the stuff that is independent of the output type"],["Expectation","Expectation type for methods that return a `'static` type. This is the type returned by the `expect_*` methods."]]});

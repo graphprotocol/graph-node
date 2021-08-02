@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["execute_query","Executes a query and returns a result. If the query is not cacheable, the `Arc` may be unwrapped."]],"mod":[["ast","Utilities for working with GraphQL query ASTs."],["ext","Extension traits Extension traits for graphql_parser::query structs"]],"struct":[["QueryExecutionOptions","Options available for query execution."]]});

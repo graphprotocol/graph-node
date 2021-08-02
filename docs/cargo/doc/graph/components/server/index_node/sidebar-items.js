@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["VersionInfo","This is only needed to support the explorer API"]],"trait":[["IndexNodeServer","Common trait for index node server implementations."]]});

@@ -1,0 +1,5 @@
+(function() {var implementors = {};
+implementors["graph"] = [];
+implementors["graph_mock"] = [{"text":"impl SubgraphStore for <a class=\"struct\" href=\"graph_mock/store/struct.MockStore.html\" title=\"struct graph_mock::store::MockStore\">MockStore</a>","synthetic":false,"types":["graph_mock::store::MockStore"]}];
+implementors["graph_store_postgres"] = [{"text":"impl <a class=\"trait\" href=\"graph/components/store/trait.SubgraphStore.html\" title=\"trait graph::components::store::SubgraphStore\">SubgraphStore</a> for <a class=\"struct\" href=\"graph_store_postgres/subgraph_store/struct.SubgraphStore.html\" title=\"struct graph_store_postgres::subgraph_store::SubgraphStore\">SubgraphStore</a>","synthetic":false,"types":["graph_store_postgres::subgraph_store::SubgraphStore"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

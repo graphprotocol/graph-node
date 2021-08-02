@@ -1,0 +1,1 @@
+initSidebarItems({"type":[["QueryResultStream","A stream of query results for a subscription."],["SubscriptionResult","The result of running a subscription, if successful."]]});

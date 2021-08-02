@@ -1,0 +1,3 @@
+cargo:rustc-cfg=httparse_min_2018
+cargo:rustc-cfg=httparse_simd
+cargo:warning=CARGO_CFG_TARGET_FEATURE was not set

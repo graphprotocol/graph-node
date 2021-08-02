@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["Subscription","A GraphQL subscription made by a client."]]});

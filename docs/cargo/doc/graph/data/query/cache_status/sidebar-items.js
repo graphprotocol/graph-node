@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["CacheStatus","Used for checking if a response hit the cache."]]});

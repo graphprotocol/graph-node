@@ -1,0 +1,12 @@
+/private/tmp/graph-node/docs/cargo/debug/deps/ansi_term-58aa3bab78438c4a.rmeta: /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/lib.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/ansi.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/style.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/difference.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/display.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/write.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/windows.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/debug.rs
+
+/private/tmp/graph-node/docs/cargo/debug/deps/ansi_term-58aa3bab78438c4a.d: /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/lib.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/ansi.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/style.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/difference.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/display.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/write.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/windows.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/debug.rs
+
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/lib.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/ansi.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/style.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/difference.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/display.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/write.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/windows.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/ansi_term-0.11.0/src/debug.rs:

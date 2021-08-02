@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["SplitDrainError","An error that could come from either of two slog `Drain`s."]],"fn":[["split_logger","Creates an async slog logger that writes to two drains in parallel."]],"struct":[["SplitDrain","An slog `Drain` that forwards log messages to two other drains."]]});

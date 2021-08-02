@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["SerializableValue","Serializable wrapper around a GraphQL value."]]});

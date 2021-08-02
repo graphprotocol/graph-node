@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph_server_metrics"] = [{"text":"impl MetricsServer for <a class=\"struct\" href=\"graph_server_metrics/struct.PrometheusMetricsServer.html\" title=\"struct graph_server_metrics::PrometheusMetricsServer\">PrometheusMetricsServer</a>","synthetic":false,"types":["graph_server_metrics::PrometheusMetricsServer"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

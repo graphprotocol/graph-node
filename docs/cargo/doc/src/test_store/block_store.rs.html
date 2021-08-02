@@ -1,0 +1,93 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `store/test-store/src/block_store.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>block_store.rs - source</title><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../light.css"  id="themeStyle"><link rel="stylesheet" type="text/css" href="../../dark.css" disabled ><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled ><script id="default-settings"></script><script src="../../storage.js"></script><script src="../../crates.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="icon" type="image/svg+xml" href="../../favicon.svg">
+<link rel="alternate icon" type="image/png" href="../../favicon-16x16.png">
+<link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu" role="button">&#9776;</div><a href='../../test_store/index.html'><div class='logo-container rust-logo'><img src='../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu"><img src="../../brush.svg" width="18" height="18" alt="Pick another theme!"></button><div id="theme-choices" role="menu"></div></div><script src="../../theme.js"></script><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><button type="button" class="help-button">?</button>
+                <a id="settings-menu" href="../../settings.html"><img src="../../wheel.svg" width="18" height="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><pre class="line-numbers"><span id="1"> 1</span>
+<span id="2"> 2</span>
+<span id="3"> 3</span>
+<span id="4"> 4</span>
+<span id="5"> 5</span>
+<span id="6"> 6</span>
+<span id="7"> 7</span>
+<span id="8"> 8</span>
+<span id="9"> 9</span>
+<span id="10">10</span>
+<span id="11">11</span>
+<span id="12">12</span>
+<span id="13">13</span>
+<span id="14">14</span>
+<span id="15">15</span>
+<span id="16">16</span>
+<span id="17">17</span>
+<span id="18">18</span>
+<span id="19">19</span>
+<span id="20">20</span>
+<span id="21">21</span>
+<span id="22">22</span>
+<span id="23">23</span>
+<span id="24">24</span>
+<span id="25">25</span>
+<span id="26">26</span>
+<span id="27">27</span>
+<span id="28">28</span>
+<span id="29">29</span>
+<span id="30">30</span>
+<span id="31">31</span>
+<span id="32">32</span>
+<span id="33">33</span>
+<span id="34">34</span>
+<span id="35">35</span>
+<span id="36">36</span>
+<span id="37">37</span>
+<span id="38">38</span>
+<span id="39">39</span>
+<span id="40">40</span>
+<span id="41">41</span>
+<span id="42">42</span>
+<span id="43">43</span>
+</pre><div class="example-wrap"><pre class="rust ">
+<span class="kw">use</span> <span class="ident">lazy_static</span>::<span class="ident">lazy_static</span>;
+
+<span class="kw">use</span> <span class="ident">graph</span>::<span class="ident">components</span>::<span class="ident">store</span>::<span class="ident">BlockStore</span>;
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">graph_store_postgres</span>::<span class="ident">layout_for_tests</span>::<span class="ident">chain_support</span>::{
+    <span class="ident">Chain</span>, <span class="ident">FakeBlock</span>, <span class="ident">SettableChainStore</span> <span class="kw">as</span> <span class="kw">_</span>, <span class="ident">NO_PARENT</span>,
+};
+
+<span class="macro">lazy_static</span><span class="macro">!</span> {
+    <span class="comment">// Genesis block</span>
+    <span class="kw">pub</span> <span class="kw">static</span> <span class="kw-2">ref</span> <span class="ident">GENESIS_BLOCK</span>: <span class="ident">FakeBlock</span> <span class="op">=</span> <span class="ident">FakeBlock</span> {
+        <span class="ident">number</span>: <span class="kw">super</span>::<span class="ident">GENESIS_PTR</span>.<span class="ident">number</span>,
+        <span class="ident">hash</span>: <span class="kw">super</span>::<span class="ident">GENESIS_PTR</span>.<span class="ident">hash_hex</span>(),
+        <span class="ident">parent_hash</span>: <span class="ident">NO_PARENT</span>.<span class="ident">to_string</span>()
+    };
+    <span class="kw">pub</span> <span class="kw">static</span> <span class="kw-2">ref</span> <span class="ident">BLOCK_ONE</span>: <span class="ident">FakeBlock</span> <span class="op">=</span> <span class="ident">GENESIS_BLOCK</span>
+        .<span class="ident">make_child</span>(<span class="string">&quot;8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13&quot;</span>);
+    <span class="kw">pub</span> <span class="kw">static</span> <span class="kw-2">ref</span> <span class="ident">BLOCK_ONE_SIBLING</span>: <span class="ident">FakeBlock</span> <span class="op">=</span>
+        <span class="ident">GENESIS_BLOCK</span>.<span class="ident">make_child</span>(<span class="string">&quot;b98fb783b49de5652097a989414c767824dff7e7fd765a63b493772511db81c1&quot;</span>);
+    <span class="kw">pub</span> <span class="kw">static</span> <span class="kw-2">ref</span> <span class="ident">BLOCK_ONE_NO_PARENT</span>: <span class="ident">FakeBlock</span> <span class="op">=</span> <span class="ident">FakeBlock</span>::<span class="ident">make_no_parent</span>(
+        <span class="number">1</span>,
+        <span class="string">&quot;7205bdfcf4521874cf38ce38c879ff967bf3a069941286bfe267109ad275a63d&quot;</span>
+    );
+
+    <span class="kw">pub</span> <span class="kw">static</span> <span class="kw-2">ref</span> <span class="ident">BLOCK_TWO</span>: <span class="ident">FakeBlock</span> <span class="op">=</span> <span class="ident">BLOCK_ONE</span>.<span class="ident">make_child</span>(<span class="string">&quot;f8ccbd3877eb98c958614f395dd351211afb9abba187bfc1fb4ac414b099c4a6&quot;</span>);
+    <span class="kw">pub</span> <span class="kw">static</span> <span class="kw-2">ref</span> <span class="ident">BLOCK_TWO_NO_PARENT</span>: <span class="ident">FakeBlock</span> <span class="op">=</span> <span class="ident">FakeBlock</span>::<span class="ident">make_no_parent</span>(<span class="number">2</span>, <span class="string">&quot;3b652b00bff5e168b1218ff47593d516123261c4487629c4175f642ee56113fe&quot;</span>);
+    <span class="kw">pub</span> <span class="kw">static</span> <span class="kw-2">ref</span> <span class="ident">BLOCK_THREE</span>: <span class="ident">FakeBlock</span> <span class="op">=</span> <span class="ident">BLOCK_TWO</span>.<span class="ident">make_child</span>(<span class="string">&quot;7347afe69254df06729e123610b00b8b11f15cfae3241f9366fb113aec07489c&quot;</span>);
+    <span class="kw">pub</span> <span class="kw">static</span> <span class="kw-2">ref</span> <span class="ident">BLOCK_THREE_NO_PARENT</span>: <span class="ident">FakeBlock</span> <span class="op">=</span> <span class="ident">FakeBlock</span>::<span class="ident">make_no_parent</span>(<span class="number">3</span>, <span class="string">&quot;fa9ebe3f74de4c56908b49f5c4044e85825f7350f3fa08a19151de82a82a7313&quot;</span>);
+    <span class="kw">pub</span> <span class="kw">static</span> <span class="kw-2">ref</span> <span class="ident">BLOCK_FOUR</span>: <span class="ident">FakeBlock</span> <span class="op">=</span> <span class="ident">BLOCK_THREE</span>.<span class="ident">make_child</span>(<span class="string">&quot;7cce080f5a49c2997a6cc65fc1cee9910fd8fc3721b7010c0b5d0873e2ac785e&quot;</span>);
+    <span class="kw">pub</span> <span class="kw">static</span> <span class="kw-2">ref</span> <span class="ident">BLOCK_FIVE</span>: <span class="ident">FakeBlock</span> <span class="op">=</span> <span class="ident">BLOCK_FOUR</span>.<span class="ident">make_child</span>(<span class="string">&quot;7b0ea919e258eb2b119eb32de56b85d12d50ac6a9f7c5909f843d6172c8ba196&quot;</span>);
+    <span class="kw">pub</span> <span class="kw">static</span> <span class="kw-2">ref</span> <span class="ident">BLOCK_SIX_NO_PARENT</span>: <span class="ident">FakeBlock</span> <span class="op">=</span> <span class="ident">FakeBlock</span>::<span class="ident">make_no_parent</span>(<span class="number">6</span>, <span class="string">&quot;6b834521bb753c132fdcf0e1034803ed9068e324112f8750ba93580b393a986b&quot;</span>);
+}
+
+<span class="doccomment">/// Store the given chain as the blocks for the `network` set the</span>
+<span class="doccomment">/// network&#39;s genesis block to `genesis_hash`, and head block to</span>
+<span class="doccomment">/// `null`</span>
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">set_chain</span>(<span class="ident">chain</span>: <span class="ident">Chain</span>, <span class="ident">network</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>) {
+    <span class="kw">let</span> <span class="ident">store</span> <span class="op">=</span> <span class="kw">crate</span>::<span class="ident">store</span>::<span class="ident">STORE</span>
+        .<span class="ident">block_store</span>()
+        .<span class="ident">chain_store</span>(<span class="ident">network</span>)
+        .<span class="ident">unwrap</span>();
+
+    <span class="ident">store</span>.<span class="ident">set_chain</span>(<span class="kw-2">&amp;</span><span class="ident">GENESIS_BLOCK</span>.<span class="ident">hash</span>, <span class="ident">chain</span>);
+}
+</pre></div>
+</section><section id="search" class="content hidden"></section><section class="footer"></section><div id="rustdoc-vars" data-root-path="../../" data-current-crate="test_store" data-search-js="../../search-index.js"></div>
+    <script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script></body></html>

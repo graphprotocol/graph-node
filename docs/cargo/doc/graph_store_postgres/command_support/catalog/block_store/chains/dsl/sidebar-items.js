@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["chains","The actual table struct"],["genesis_block_hash",""],["id",""],["name",""],["namespace",""],["net_version",""],["shard",""]]});

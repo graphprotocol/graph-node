@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph_chain_ethereum"] = [{"text":"impl <a class=\"trait\" href=\"graph/blockchain/trait.Blockchain.html\" title=\"trait graph::blockchain::Blockchain\">Blockchain</a> for <a class=\"struct\" href=\"graph_chain_ethereum/chain/struct.Chain.html\" title=\"struct graph_chain_ethereum::chain::Chain\">Chain</a>","synthetic":false,"types":["graph_chain_ethereum::chain::Chain"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

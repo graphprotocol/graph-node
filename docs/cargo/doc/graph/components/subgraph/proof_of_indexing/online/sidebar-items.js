@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["traverse_seq_no","Go directly to a SequenceNumber identifying a field within a struct. This is best understood by example. Consider the struct:"]],"struct":[["BlockEventStream",""],["LOG_EVENTS",""],["ProofOfIndexing",""],["ProofOfIndexingFinisher",""]]});

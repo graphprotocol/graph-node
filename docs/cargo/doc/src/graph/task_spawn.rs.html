@@ -1,0 +1,133 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `graph/src/task_spawn.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>task_spawn.rs - source</title><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../light.css"  id="themeStyle"><link rel="stylesheet" type="text/css" href="../../dark.css" disabled ><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled ><script id="default-settings"></script><script src="../../storage.js"></script><script src="../../crates.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="icon" type="image/svg+xml" href="../../favicon.svg">
+<link rel="alternate icon" type="image/png" href="../../favicon-16x16.png">
+<link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu" role="button">&#9776;</div><a href='../../graph/index.html'><div class='logo-container rust-logo'><img src='../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu"><img src="../../brush.svg" width="18" height="18" alt="Pick another theme!"></button><div id="theme-choices" role="menu"></div></div><script src="../../theme.js"></script><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><button type="button" class="help-button">?</button>
+                <a id="settings-menu" href="../../settings.html"><img src="../../wheel.svg" width="18" height="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><pre class="line-numbers"><span id="1"> 1</span>
+<span id="2"> 2</span>
+<span id="3"> 3</span>
+<span id="4"> 4</span>
+<span id="5"> 5</span>
+<span id="6"> 6</span>
+<span id="7"> 7</span>
+<span id="8"> 8</span>
+<span id="9"> 9</span>
+<span id="10">10</span>
+<span id="11">11</span>
+<span id="12">12</span>
+<span id="13">13</span>
+<span id="14">14</span>
+<span id="15">15</span>
+<span id="16">16</span>
+<span id="17">17</span>
+<span id="18">18</span>
+<span id="19">19</span>
+<span id="20">20</span>
+<span id="21">21</span>
+<span id="22">22</span>
+<span id="23">23</span>
+<span id="24">24</span>
+<span id="25">25</span>
+<span id="26">26</span>
+<span id="27">27</span>
+<span id="28">28</span>
+<span id="29">29</span>
+<span id="30">30</span>
+<span id="31">31</span>
+<span id="32">32</span>
+<span id="33">33</span>
+<span id="34">34</span>
+<span id="35">35</span>
+<span id="36">36</span>
+<span id="37">37</span>
+<span id="38">38</span>
+<span id="39">39</span>
+<span id="40">40</span>
+<span id="41">41</span>
+<span id="42">42</span>
+<span id="43">43</span>
+<span id="44">44</span>
+<span id="45">45</span>
+<span id="46">46</span>
+<span id="47">47</span>
+<span id="48">48</span>
+<span id="49">49</span>
+<span id="50">50</span>
+<span id="51">51</span>
+<span id="52">52</span>
+<span id="53">53</span>
+<span id="54">54</span>
+<span id="55">55</span>
+<span id="56">56</span>
+<span id="57">57</span>
+<span id="58">58</span>
+<span id="59">59</span>
+<span id="60">60</span>
+<span id="61">61</span>
+<span id="62">62</span>
+<span id="63">63</span>
+</pre><div class="example-wrap"><pre class="rust ">
+<span class="doccomment">//! The functions in this module should be used to execute futures, serving as a facade to the</span>
+<span class="doccomment">//! underlying executor implementation which currently is tokio. This serves a few purposes:</span>
+<span class="doccomment">//! - Avoid depending directly on tokio APIs, making upgrades or a potential switch easier.</span>
+<span class="doccomment">//! - Reflect our chosen default semantics of aborting on task panic, offering `*_allow_panic`</span>
+<span class="doccomment">//!   functions to opt out of that.</span>
+<span class="doccomment">//! - Reflect that historically we&#39;ve used blocking futures due to making DB calls directly within</span>
+<span class="doccomment">//!   futures. This point should go away once https://github.com/graphprotocol/graph-node/issues/905</span>
+<span class="doccomment">//!   is resolved. Then the blocking flavors should no longer accept futures but closures.</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! These should not be called from within executors other than tokio, particularly the blocking</span>
+<span class="doccomment">//! functions will panic in that case. We should generally avoid mixing executors whenever possible.</span>
+
+<span class="kw">use</span> <span class="ident">futures03</span>::<span class="ident">future</span>::{<span class="ident">FutureExt</span>, <span class="ident">TryFutureExt</span>};
+<span class="kw">use</span> <span class="ident">std</span>::<span class="ident">future</span>::<span class="ident">Future</span> <span class="kw">as</span> <span class="ident">Future03</span>;
+<span class="kw">use</span> <span class="ident">std</span>::<span class="ident">panic</span>::<span class="ident">AssertUnwindSafe</span>;
+<span class="kw">use</span> <span class="ident">tokio</span>::<span class="ident">task</span>::<span class="ident">JoinHandle</span>;
+
+<span class="kw">fn</span> <span class="ident">abort_on_panic</span><span class="op">&lt;</span><span class="ident">T</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="lifetime">&#39;static</span><span class="op">&gt;</span>(
+    <span class="ident">f</span>: <span class="kw">impl</span> <span class="ident">Future03</span><span class="op">&lt;</span><span class="ident">Output</span> <span class="op">=</span> <span class="ident">T</span><span class="op">&gt;</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="lifetime">&#39;static</span>,
+) <span class="op">-</span><span class="op">&gt;</span> <span class="kw">impl</span> <span class="ident">Future03</span><span class="op">&lt;</span><span class="ident">Output</span> <span class="op">=</span> <span class="ident">T</span><span class="op">&gt;</span> {
+    <span class="comment">// We&#39;re crashing, unwind safety doesn&#39;t matter.</span>
+    <span class="ident">AssertUnwindSafe</span>(<span class="ident">f</span>).<span class="ident">catch_unwind</span>().<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> {
+        <span class="macro">println</span><span class="macro">!</span>(<span class="string">&quot;Panic in tokio task, aborting!&quot;</span>);
+        <span class="ident">std</span>::<span class="ident">process</span>::<span class="ident">abort</span>()
+    })
+}
+
+<span class="doccomment">/// Aborts on panic.</span>
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">spawn</span><span class="op">&lt;</span><span class="ident">T</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="lifetime">&#39;static</span><span class="op">&gt;</span>(<span class="ident">f</span>: <span class="kw">impl</span> <span class="ident">Future03</span><span class="op">&lt;</span><span class="ident">Output</span> <span class="op">=</span> <span class="ident">T</span><span class="op">&gt;</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="lifetime">&#39;static</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">JoinHandle</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
+    <span class="ident">tokio</span>::<span class="ident">spawn</span>(<span class="ident">abort_on_panic</span>(<span class="ident">f</span>))
+}
+
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">spawn_allow_panic</span><span class="op">&lt;</span><span class="ident">T</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="lifetime">&#39;static</span><span class="op">&gt;</span>(
+    <span class="ident">f</span>: <span class="kw">impl</span> <span class="ident">Future03</span><span class="op">&lt;</span><span class="ident">Output</span> <span class="op">=</span> <span class="ident">T</span><span class="op">&gt;</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="lifetime">&#39;static</span>,
+) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">JoinHandle</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
+    <span class="ident">tokio</span>::<span class="ident">spawn</span>(<span class="ident">f</span>)
+}
+
+<span class="doccomment">/// Aborts on panic.</span>
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">spawn_blocking</span><span class="op">&lt;</span><span class="ident">T</span>: <span class="ident">Send</span> <span class="op">+</span> <span class="lifetime">&#39;static</span><span class="op">&gt;</span>(
+    <span class="ident">f</span>: <span class="kw">impl</span> <span class="ident">Future03</span><span class="op">&lt;</span><span class="ident">Output</span> <span class="op">=</span> <span class="ident">T</span><span class="op">&gt;</span> <span class="op">+</span> <span class="ident">Send</span> <span class="op">+</span> <span class="lifetime">&#39;static</span>,
+) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">JoinHandle</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
+    <span class="ident">tokio</span>::<span class="ident">task</span>::<span class="ident">spawn_blocking</span>(<span class="kw">move</span> <span class="op">|</span><span class="op">|</span> <span class="ident">block_on</span>(<span class="ident">abort_on_panic</span>(<span class="ident">f</span>)))
+}
+
+<span class="doccomment">/// Does not abort on panic, panics result in an `Err` in `JoinHandle`.</span>
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">spawn_blocking_allow_panic</span><span class="op">&lt;</span><span class="ident">R</span>: <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">Send</span><span class="op">&gt;</span>(
+    <span class="ident">f</span>: <span class="kw">impl</span> <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">FnOnce</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="ident">R</span> <span class="op">+</span> <span class="ident">Send</span>,
+) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">JoinHandle</span><span class="op">&lt;</span><span class="ident">R</span><span class="op">&gt;</span> {
+    <span class="ident">tokio</span>::<span class="ident">task</span>::<span class="ident">spawn_blocking</span>(<span class="ident">f</span>)
+}
+
+<span class="doccomment">/// Runs the future on the current thread. Panics if not within a tokio runtime.</span>
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">block_on</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span>(<span class="ident">f</span>: <span class="kw">impl</span> <span class="ident">Future03</span><span class="op">&lt;</span><span class="ident">Output</span> <span class="op">=</span> <span class="ident">T</span><span class="op">&gt;</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">T</span> {
+    <span class="ident">tokio</span>::<span class="ident">runtime</span>::<span class="ident">Handle</span>::<span class="ident">current</span>().<span class="ident">block_on</span>(<span class="ident">f</span>)
+}
+
+<span class="doccomment">/// Spawns a thread with access to the tokio runtime. Panics if the thread cannot be spawned.</span>
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">spawn_thread</span>(<span class="ident">name</span>: <span class="ident">String</span>, <span class="ident">f</span>: <span class="kw">impl</span> <span class="lifetime">&#39;static</span> <span class="op">+</span> <span class="ident">FnOnce</span>() <span class="op">+</span> <span class="ident">Send</span>) {
+    <span class="kw">let</span> <span class="ident">conf</span> <span class="op">=</span> <span class="ident">std</span>::<span class="ident">thread</span>::<span class="ident">Builder</span>::<span class="ident">new</span>().<span class="ident">name</span>(<span class="ident">name</span>);
+    <span class="kw">let</span> <span class="ident">runtime</span> <span class="op">=</span> <span class="ident">tokio</span>::<span class="ident">runtime</span>::<span class="ident">Handle</span>::<span class="ident">current</span>();
+    <span class="ident">conf</span>.<span class="ident">spawn</span>(<span class="kw">move</span> <span class="op">|</span><span class="op">|</span> <span class="ident">runtime</span>.<span class="ident">enter</span>(<span class="ident">f</span>)).<span class="ident">unwrap</span>();
+}
+</pre></div>
+</section><section id="search" class="content hidden"></section><section class="footer"></section><div id="rustdoc-vars" data-root-path="../../" data-current-crate="graph" data-search-js="../../search-index.js"></div>
+    <script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script></body></html>

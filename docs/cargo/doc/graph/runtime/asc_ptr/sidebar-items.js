@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["AscPtr","A pointer to an object in the Asc heap."]]});

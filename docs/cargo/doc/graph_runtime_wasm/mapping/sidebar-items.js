@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["spawn_module","Spawn a wasm module in its own thread."]],"struct":[["LOG_TRIGGER_DATA","Verbose logging of mapping inputs"],["MappingContext",""],["MappingRequest",""],["ValidModule","A pre-processed and valid WASM module, ready to be started as a WasmModule."]]});

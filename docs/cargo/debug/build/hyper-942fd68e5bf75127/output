@@ -1,0 +1,2 @@
+cargo:rustc-cfg=error_source
+cargo:rustc-cfg=try_from

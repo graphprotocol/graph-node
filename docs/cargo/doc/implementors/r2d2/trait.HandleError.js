@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph_store_postgres"] = [{"text":"impl <a class=\"trait\" href=\"https://docs.rs/r2d2/0.8/r2d2/trait.HandleError.html\" title=\"trait r2d2::HandleError\">HandleError</a>&lt;Error&gt; for <a class=\"struct\" href=\"graph_store_postgres/connection_pool/struct.ErrorHandler.html\" title=\"struct graph_store_postgres::connection_pool::ErrorHandler\">ErrorHandler</a>","synthetic":false,"types":["graph_store_postgres::connection_pool::ErrorHandler"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

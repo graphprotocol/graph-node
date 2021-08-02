@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph_server_websocket"] = [{"text":"impl&lt;Q, S&gt; SubscriptionServer for <a class=\"struct\" href=\"graph_server_websocket/server/struct.SubscriptionServer.html\" title=\"struct graph_server_websocket::server::SubscriptionServer\">SubscriptionServer</a>&lt;Q, S&gt; <span class=\"where fmt-newline\">where<br>&nbsp;&nbsp;&nbsp;&nbsp;Q: GraphQlRunner,<br>&nbsp;&nbsp;&nbsp;&nbsp;S: QueryStoreManager,&nbsp;</span>","synthetic":false,"types":["graph_server_websocket::server::SubscriptionServer"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

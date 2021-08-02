@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph_server_http"] = [{"text":"impl&lt;Q&gt; GraphQLServer for <a class=\"struct\" href=\"graph_server_http/server/struct.GraphQLServer.html\" title=\"struct graph_server_http::server::GraphQLServer\">GraphQLServer</a>&lt;Q&gt; <span class=\"where fmt-newline\">where<br>&nbsp;&nbsp;&nbsp;&nbsp;Q: GraphQlRunner,&nbsp;</span>","synthetic":false,"types":["graph_server_http::server::GraphQLServer"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

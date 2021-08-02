@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph_core"] = [{"text":"impl <a class=\"trait\" href=\"graph/components/link_resolver/trait.LinkResolver.html\" title=\"trait graph::components::link_resolver::LinkResolver\">LinkResolver</a> for <a class=\"struct\" href=\"graph_core/link_resolver/struct.LinkResolver.html\" title=\"struct graph_core::link_resolver::LinkResolver\">LinkResolver</a>","synthetic":false,"types":["graph_core::link_resolver::LinkResolver"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

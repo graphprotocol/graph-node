@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["GraphQLServerError","Errors that can occur while processing incoming requests."]],"trait":[["GraphQLServer","Common trait for GraphQL server implementations."]]});

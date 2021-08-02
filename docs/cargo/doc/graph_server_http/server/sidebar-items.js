@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["GraphQLServeError","Errors that may occur when starting the server."]],"struct":[["GraphQLServer","A GraphQL server based on Hyper."]]});

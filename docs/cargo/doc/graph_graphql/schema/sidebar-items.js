@@ -1,0 +1,1 @@
+initSidebarItems({"mod":[["api","Generate full-fledged API schemas from existing GraphQL schemas."],["ast","Utilities for working with GraphQL schema ASTs."]]});

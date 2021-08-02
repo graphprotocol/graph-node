@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["current_setting",""],["lower",""],["pg_notify",""],["set_config",""]]});

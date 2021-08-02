@@ -1,0 +1,1 @@
+window.ALL_CRATES = ["graph","graph_chain_ethereum","graph_core","graph_graphql","graph_mock","graph_node","graph_runtime_derive","graph_runtime_test","graph_runtime_wasm","graph_server_http","graph_server_index_node","graph_server_json_rpc","graph_server_metrics","graph_server_websocket","graph_store_postgres","graphman","test_store"];

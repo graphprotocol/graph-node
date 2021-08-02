@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph_store_postgres"] = [{"text":"impl <a class=\"trait\" href=\"graph/components/store/trait.QueryStore.html\" title=\"trait graph::components::store::QueryStore\">QueryStore</a> for <a class=\"struct\" href=\"graph_store_postgres/query_store/struct.QueryStore.html\" title=\"struct graph_store_postgres::query_store::QueryStore\">QueryStore</a>","synthetic":false,"types":["graph_store_postgres::query_store::QueryStore"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

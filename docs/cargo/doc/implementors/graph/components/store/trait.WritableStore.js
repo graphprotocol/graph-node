@@ -1,0 +1,4 @@
+(function() {var implementors = {};
+implementors["graph"] = [];
+implementors["graph_store_postgres"] = [{"text":"impl <a class=\"trait\" href=\"graph/components/store/trait.WritableStore.html\" title=\"trait graph::components::store::WritableStore\">WritableStore</a> for <a class=\"struct\" href=\"graph_store_postgres/subgraph_store/struct.WritableStore.html\" title=\"struct graph_store_postgres::subgraph_store::WritableStore\">WritableStore</a>","synthetic":false,"types":["graph_store_postgres::subgraph_store::WritableStore"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

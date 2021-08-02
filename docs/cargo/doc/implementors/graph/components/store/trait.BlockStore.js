@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph_store_postgres"] = [{"text":"impl <a class=\"trait\" href=\"graph/components/store/trait.BlockStore.html\" title=\"trait graph::components::store::BlockStore\">BlockStore</a> for <a class=\"struct\" href=\"graph_store_postgres/block_store/struct.BlockStore.html\" title=\"struct graph_store_postgres::block_store::BlockStore\">BlockStore</a>","synthetic":false,"types":["graph_store_postgres::block_store::BlockStore"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

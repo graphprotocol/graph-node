@@ -1,0 +1,1 @@
+initSidebarItems({"constant":[["INITIAL_BATCH_SIZE",""],["LOG_INTERVAL",""],["TARGET_DURATION",""]],"enum":[["Status",""]],"mod":[["active_copies",""],["copy_state",""],["copy_table_state",""]],"struct":[["Connection","A helper for copying subgraphs"],["CopyProgress",""],["CopyState",""],["TableState",""]]});

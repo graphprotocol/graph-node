@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["GraphQLRequest","Future for a query parsed from an HTTP request."]]});

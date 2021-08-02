@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["register",""]],"struct":[["VacuumDeploymentsJob","A job that vacuums `subgraphs.subgraph_deployment`. With a large number of subgraphs, the autovacuum daemon might not run often enough to keep this table, which is very write-heavy, from getting bloated. We therefore set up a separate job that vacuums the table once a minute"]]});

@@ -1,0 +1,1 @@
+initSidebarItems({"mod":[["cache",""],["execution","Implementation of the GraphQL execution algorithm."],["query",""],["resolver","Common trait for field resolvers used in the execution."]],"type":[["QueryHash",""]]});

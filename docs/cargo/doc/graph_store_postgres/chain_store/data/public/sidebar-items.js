@@ -1,0 +1,1 @@
+initSidebarItems({"mod":[["eth_call_cache","`id` is the hash of contract address + encoded function call + block number."],["eth_call_meta","When was a cached call on a contract last used? This is useful to clean old data."],["ethereum_blocks",""]]});

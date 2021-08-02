@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["Filter",""]],"struct":[["ChainInfo","Indexing status information related to the chain. Right now, we only support Ethereum, but once we support more chains, we’ll have to turn this into an enum"],["EthereumBlock","Light wrapper around `EthereumBlockPointer` that is compatible with GraphQL values."],["Info",""]]});

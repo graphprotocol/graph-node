@@ -1,0 +1,10 @@
+/private/tmp/graph-node/docs/cargo/debug/deps/libstructopt_derive-5e647dd99a6be303.dylib: /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/structopt-derive-0.4.15/src/lib.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/structopt-derive-0.4.15/src/attrs.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/structopt-derive-0.4.15/src/doc_comments.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/structopt-derive-0.4.15/src/parse.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/structopt-derive-0.4.15/src/spanned.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/structopt-derive-0.4.15/src/ty.rs
+
+/private/tmp/graph-node/docs/cargo/debug/deps/structopt_derive-5e647dd99a6be303.d: /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/structopt-derive-0.4.15/src/lib.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/structopt-derive-0.4.15/src/attrs.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/structopt-derive-0.4.15/src/doc_comments.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/structopt-derive-0.4.15/src/parse.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/structopt-derive-0.4.15/src/spanned.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/structopt-derive-0.4.15/src/ty.rs
+
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/structopt-derive-0.4.15/src/lib.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/structopt-derive-0.4.15/src/attrs.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/structopt-derive-0.4.15/src/doc_comments.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/structopt-derive-0.4.15/src/parse.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/structopt-derive-0.4.15/src/spanned.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/structopt-derive-0.4.15/src/ty.rs:

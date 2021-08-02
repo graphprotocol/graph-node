@@ -1,0 +1,2 @@
+cargo:rustc-cfg=feature="arm64"
+cargo:rerun-if-changed=/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-0.74.0/build.rs

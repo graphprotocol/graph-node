@@ -1,0 +1,15 @@
+/private/tmp/graph-node/docs/cargo/debug/deps/wasmtime_environ-8df1eb1a59190814.rmeta: /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/lib.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/address_map.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/builtin.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/compilation.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/data_structures.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/module.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/module_environ.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/tunables.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/vmoffsets.rs
+
+/private/tmp/graph-node/docs/cargo/debug/deps/wasmtime_environ-8df1eb1a59190814.d: /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/lib.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/address_map.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/builtin.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/compilation.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/data_structures.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/module.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/module_environ.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/tunables.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/vmoffsets.rs
+
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/lib.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/address_map.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/builtin.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/compilation.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/data_structures.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/module.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/module_environ.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/tunables.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/wasmtime-environ-0.27.0/src/vmoffsets.rs:
+
+# env-dep:CARGO_PKG_VERSION=0.27.0

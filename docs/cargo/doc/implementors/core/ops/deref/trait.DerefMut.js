@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/ops/deref/trait.DerefMut.html\" title=\"trait core::ops::deref::DerefMut\">DerefMut</a> for <a class=\"struct\" href=\"graph/data/query/query/struct.QueryVariables.html\" title=\"struct graph::data::query::query::QueryVariables\">QueryVariables</a>","synthetic":false,"types":["graph::data::query::query::QueryVariables"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["assert_error_response","Asserts that the response is a failed GraphQL response; returns its `\"errors\"` field."],["assert_expected_headers",""],["assert_successful_response","Asserts that the response is a successful GraphQL response; returns its `\"data\"` field."]]});

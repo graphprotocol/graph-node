@@ -1,0 +1,1 @@
+initSidebarItems({"mod":[["prefetch","Run a GraphQL query and fetch all the entitied needed to build the final result"],["query",""],["resolver",""]]});

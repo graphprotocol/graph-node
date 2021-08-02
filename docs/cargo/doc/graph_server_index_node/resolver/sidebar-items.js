@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["IndexNodeResolver","Resolver for the index node GraphQL API."]]});

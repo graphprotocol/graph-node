@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph_chain_ethereum"] = [{"text":"impl <a class=\"trait\" href=\"graph/blockchain/trait.IngestorAdapter.html\" title=\"trait graph::blockchain::IngestorAdapter\">IngestorAdapter</a>&lt;<a class=\"struct\" href=\"graph_chain_ethereum/chain/struct.Chain.html\" title=\"struct graph_chain_ethereum::chain::Chain\">Chain</a>&gt; for <a class=\"struct\" href=\"graph_chain_ethereum/chain/struct.IngestorAdapter.html\" title=\"struct graph_chain_ethereum::chain::IngestorAdapter\">IngestorAdapter</a>","synthetic":false,"types":["graph_chain_ethereum::chain::IngestorAdapter"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

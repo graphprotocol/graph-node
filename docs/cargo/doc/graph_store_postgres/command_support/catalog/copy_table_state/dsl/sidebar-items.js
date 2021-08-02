@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["batch_size",""],["copy_table_state","The actual table struct"],["dst",""],["duration_ms",""],["entity_type",""],["finished_at",""],["id",""],["next_vid",""],["started_at",""],["target_vid",""]]});

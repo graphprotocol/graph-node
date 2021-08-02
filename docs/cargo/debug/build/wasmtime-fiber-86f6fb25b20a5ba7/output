@@ -1,0 +1,24 @@
+TARGET = Some("aarch64-apple-darwin")
+OPT_LEVEL = Some("0")
+HOST = Some("aarch64-apple-darwin")
+CC_aarch64-apple-darwin = None
+CC_aarch64_apple_darwin = None
+HOST_CC = None
+CC = None
+CFLAGS_aarch64-apple-darwin = None
+CFLAGS_aarch64_apple_darwin = None
+HOST_CFLAGS = None
+CFLAGS = None
+CRATE_CC_NO_DEFAULTS = None
+DEBUG = Some("true")
+CARGO_CFG_TARGET_FEATURE = None
+running: "cc" "-O0" "-ffunction-sections" "-fdata-sections" "-fPIC" "-g" "-fno-omit-frame-pointer" "-arch" "arm64" "-Wall" "-Wextra" "-DCFG_TARGET_OS_macos" "-DCFG_TARGET_ARCH_aarch64" "-o" "/private/tmp/graph-node/docs/cargo/debug/build/wasmtime-fiber-86f6fb25b20a5ba7/out/src/arch/aarch64.o" "-c" "src/arch/aarch64.S"
+exit code: 0
+AR_aarch64-apple-darwin = None
+AR_aarch64_apple_darwin = None
+HOST_AR = None
+AR = None
+running: "ar" "crs" "/private/tmp/graph-node/docs/cargo/debug/build/wasmtime-fiber-86f6fb25b20a5ba7/out/libwasmtime-fiber.a" "/private/tmp/graph-node/docs/cargo/debug/build/wasmtime-fiber-86f6fb25b20a5ba7/out/src/arch/aarch64.o"
+exit code: 0
+cargo:rustc-link-lib=static=wasmtime-fiber
+cargo:rustc-link-search=native=/private/tmp/graph-node/docs/cargo/debug/build/wasmtime-fiber-86f6fb25b20a5ba7/out

@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["add_row",""],["list",""],["make_list",""],["record",""],["remove",""]]});

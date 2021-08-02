@@ -1,0 +1,1 @@
+initSidebarItems({"mod":[["pg_stat_database",""],["pg_stat_user_indexes",""],["pg_stat_user_tables",""]]});

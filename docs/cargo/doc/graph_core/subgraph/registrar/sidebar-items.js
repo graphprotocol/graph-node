@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["create_subgraph_version",""],["handle_assignment_event",""],["resolve_subgraph_chain_blocks","Resolves the subgraph’s earliest block and the manifest’s graft base block"],["start_subgraph",""]],"struct":[["SubgraphRegistrar",""]]});

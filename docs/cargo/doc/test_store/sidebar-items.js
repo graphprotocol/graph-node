@@ -1,0 +1,1 @@
+initSidebarItems({"macro":[["return_err","Like `try!`, but we return the contents of an `Err`, not the whole `Result`"]],"mod":[["block_store",""],["store",""]]});

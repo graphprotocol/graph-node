@@ -1,0 +1,1 @@
+initSidebarItems({"mod":[["external","! Implementations of `ToAscObj` and `FromAscObj` for Rust types. ! Standard Rust types go in `mod.rs` and external types in `external.rs`."]]});

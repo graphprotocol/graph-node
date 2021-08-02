@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["_impl_queryable_by_name_for_copystate",""],["_impl_queryable_by_name_for_copytablestate",""],["_impl_queryable_for_copystate",""],["_impl_queryable_for_copytablestate",""],["activate",""],["create",""],["list",""],["status",""]],"struct":[["CopyState",""],["CopyTableState",""]],"type":[["UtcDateTime",""]]});

@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["add_chain",""],["find_chain",""],["load_chains",""]],"mod":[["chains",""]],"struct":[["Chain","Information about the mapping of chains to storage shards. We persist this information in the database to make it possible to detect a change in the configuration file that doesn’t match what is in the database"]]});

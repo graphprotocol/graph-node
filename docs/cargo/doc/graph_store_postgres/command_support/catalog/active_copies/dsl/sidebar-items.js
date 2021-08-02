@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["active_copies","The actual table struct"],["cancelled_at",""],["dst",""],["queued_at",""],["src",""]]});

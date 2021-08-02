@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["graph"] = [{"text":"impl&lt;'a&gt; <a class=\"trait\" href=\"graph/prelude/trait.FromIterator.html\" title=\"trait graph::prelude::FromIterator\">FromIterator</a>&lt;&amp;'a <a class=\"enum\" href=\"graph/components/store/enum.EntityModification.html\" title=\"enum graph::components::store::EntityModification\">EntityModification</a>&gt; for <a class=\"struct\" href=\"graph/components/store/struct.StoreEvent.html\" title=\"struct graph::components::store::StoreEvent\">StoreEvent</a>","synthetic":false,"types":["graph::components::store::StoreEvent"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

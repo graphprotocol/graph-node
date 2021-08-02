@@ -1,0 +1,4 @@
+(function() {var implementors = {};
+implementors["graph_core"] = [{"text":"impl <a class=\"trait\" href=\"graph/components/metrics/trait.MetricsRegistry.html\" title=\"trait graph::components::metrics::MetricsRegistry\">MetricsRegistry</a> for <a class=\"struct\" href=\"graph_core/metrics/registry/struct.MetricsRegistry.html\" title=\"struct graph_core::metrics::registry::MetricsRegistry\">MetricsRegistry</a>","synthetic":false,"types":["graph_core::metrics::registry::MetricsRegistry"]}];
+implementors["graph_mock"] = [{"text":"impl MetricsRegistry for <a class=\"struct\" href=\"graph_mock/metrics_registry/struct.MockMetricsRegistry.html\" title=\"struct graph_mock::metrics_registry::MockMetricsRegistry\">MockMetricsRegistry</a>","synthetic":false,"types":["graph_mock::metrics_registry::MockMetricsRegistry"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

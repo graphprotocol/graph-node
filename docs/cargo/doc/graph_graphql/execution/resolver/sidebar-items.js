@@ -1,0 +1,1 @@
+initSidebarItems({"trait":[["Resolver","A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions."]]});

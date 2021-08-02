@@ -1,0 +1,11 @@
+/private/tmp/graph-node/docs/cargo/debug/deps/serde_urlencoded-1e2c8847ed2be09f.rmeta: /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/lib.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/de.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/ser/mod.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/ser/key.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/ser/pair.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/ser/part.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/ser/value.rs
+
+/private/tmp/graph-node/docs/cargo/debug/deps/serde_urlencoded-1e2c8847ed2be09f.d: /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/lib.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/de.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/ser/mod.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/ser/key.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/ser/pair.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/ser/part.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/ser/value.rs
+
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/lib.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/de.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/ser/mod.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/ser/key.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/ser/pair.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/ser/part.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_urlencoded-0.7.0/src/ser/value.rs:

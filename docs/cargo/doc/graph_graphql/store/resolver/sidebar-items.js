@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["StoreResolver","A resolver that fetches entities from a `Store`."]]});

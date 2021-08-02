@@ -1,0 +1,13 @@
+/private/tmp/graph-node/docs/cargo/debug/deps/cranelift_codegen_shared-4fd42baf6510938e.rmeta: /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/lib.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/condcodes.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/constant_hash.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/constants.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/isa/mod.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/isa/x86/mod.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/isa/x86/encoding_bits.rs
+
+/private/tmp/graph-node/docs/cargo/debug/deps/cranelift_codegen_shared-4fd42baf6510938e.d: /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/lib.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/condcodes.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/constant_hash.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/constants.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/isa/mod.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/isa/x86/mod.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/isa/x86/encoding_bits.rs
+
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/lib.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/condcodes.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/constant_hash.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/constants.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/isa/mod.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/isa/x86/mod.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/cranelift-codegen-shared-0.74.0/src/isa/x86/encoding_bits.rs:
+
+# env-dep:CARGO_PKG_VERSION=0.74.0

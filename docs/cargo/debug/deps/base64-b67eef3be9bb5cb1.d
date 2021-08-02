@@ -1,0 +1,12 @@
+/private/tmp/graph-node/docs/cargo/debug/deps/base64-b67eef3be9bb5cb1.rmeta: /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/lib.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/chunked_encoder.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/display.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/tables.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/write/mod.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/write/encoder.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/encode.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/decode.rs
+
+/private/tmp/graph-node/docs/cargo/debug/deps/base64-b67eef3be9bb5cb1.d: /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/lib.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/chunked_encoder.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/display.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/tables.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/write/mod.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/write/encoder.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/encode.rs /Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/decode.rs
+
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/lib.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/chunked_encoder.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/display.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/tables.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/write/mod.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/write/encoder.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/encode.rs:
+/Users/otaviopace/.cargo/registry/src/github.com-1ecc6299db9ec823/base64-0.11.0/src/decode.rs:

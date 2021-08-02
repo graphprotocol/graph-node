@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["StoreEventListener",""],["SubscriptionManager","Manage subscriptions to the `StoreEvent` stream. Keep a list of currently active subscribers and forward new events to each of them"]]});
