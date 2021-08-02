@@ -29,7 +29,7 @@ use std::collections::{BTreeMap, HashMap};
 #[cfg(test)]
 use test_store::STORE;
 #[cfg(test)]
-use web3::typesH160;
+use web3::types::H160;
 
 mod abi;
 
