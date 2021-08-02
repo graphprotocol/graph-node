@@ -1,12 +1,54 @@
 use ethabi::Contract;
 use graph::data::subgraph::*;
 use graph::prelude::*;
-use graph_chain_ethereum::DataSource;
+use graph_chain_ethereum::{DataSource, Chain, DataSourceTemplate};
 use semver::Version;
 use std::str::FromStr;
 use web3::types::Address;
+use graph::components::store::DeploymentLocator;
+use graph_runtime_wasm::{MappingContext, HostExports};
+use graph::ipfs_client::IpfsClient;
 
-#[allow(unused)]
+fn mock_host_exports(
+    subgraph_id: DeploymentHash,
+    data_source: DataSource,
+    store: Arc<impl SubgraphStore>,
+    api_version: Version,
+) -> HostExports<Chain> {
+    let templates = vec![DataSourceTemplate {
+        kind: String::from("ethereum/contract"),
+        name: String::from("example template"),
+        network: Some(String::from("mainnet")),
+        source: TemplateSource {
+            abi: String::from("foo"),
+        },
+        mapping: Mapping {
+            kind: String::from("ethereum/events"),
+            api_version,
+            language: String::from("wasm/assemblyscript"),
+            entities: vec![],
+            abis: vec![],
+            event_handlers: vec![],
+            call_handlers: vec![],
+            block_handlers: vec![],
+            link: Link {
+                link: "link".to_owned(),
+            },
+            runtime: Arc::new(vec![]),
+        },
+    }];
+
+    let network = data_source.network.clone().unwrap();
+    HostExports::new(
+        subgraph_id,
+        &data_source,
+        network,
+        Arc::new(templates),
+        Arc::new(graph_core::LinkResolver::from(IpfsClient::localhost())),
+        store,
+    )
+}
+
 pub fn mock_abi() -> MappingABI {
     MappingABI {
         name: "mock_abi".to_string(),
@@ -22,9 +64,34 @@ pub fn mock_abi() -> MappingABI {
                 "type": "constructor"
             }
         ]"#
-            .as_bytes(),
+                .as_bytes(),
         )
-        .unwrap(),
+            .unwrap(),
+    }
+}
+
+#[allow(unused)]
+pub fn mock_context(
+    deployment: DeploymentLocator,
+    data_source: DataSource,
+    store: Arc<impl SubgraphStore>,
+    api_version: Version,
+) -> MappingContext<Chain> {
+    MappingContext {
+        logger: Logger::root(slog::Discard, o!()),
+        block_ptr: BlockPtr {
+            hash: Default::default(),
+            number: 0,
+        },
+        host_exports: Arc::new(mock_host_exports(
+            deployment.hash.clone(),
+            data_source,
+            store.clone(),
+            api_version,
+        )),
+        state: BlockState::new(store.writable(&deployment).unwrap(), Default::default()),
+        proof_of_indexing: None,
+        host_fns: Arc::new(Vec::new()),
     }
 }
 
