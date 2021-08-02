@@ -1,4 +1,3 @@
-//! This crate is for tests only.
-
+mod common;
 #[cfg(test)]
 mod test;
