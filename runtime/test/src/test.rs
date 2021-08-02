@@ -294,7 +294,10 @@ async fn json_conversions_v0_0_5() {
 fn test_json_parsing(api_version: Version) {
     let mut module = test_module(
         "jsonParsing",
-        mock_data_source(&wasm_file_path("json_parsing.wasm", api_version.clone()), api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("json_parsing.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
 
@@ -336,7 +339,10 @@ async fn test_ipfs_cat(api_version: Version) {
         runtime.enter(|| {
             let mut module = test_module(
                 "ipfsCat",
-                mock_data_source(&wasm_file_path("ipfs_cat.wasm", api_version.clone()), api_version.clone()),
+                mock_data_source(
+                    &wasm_file_path("ipfs_cat.wasm", api_version.clone()),
+                    api_version.clone(),
+                ),
                 api_version,
             );
             let arg = asc_new(&mut module, &hash).unwrap();
@@ -406,7 +412,10 @@ async fn run_ipfs_map(
         runtime.enter(|| {
             let (mut module, _, _) = test_valid_module_and_store(
                 &subgraph_id,
-                mock_data_source(&wasm_file_path("ipfs_map.wasm", api_version.clone()), api_version.clone()),
+                mock_data_source(
+                    &wasm_file_path("ipfs_map.wasm", api_version.clone()),
+                    api_version.clone(),
+                ),
                 api_version,
             );
             let value = asc_new(&mut module, &hash).unwrap();
@@ -540,7 +549,10 @@ async fn test_ipfs_fail(api_version: Version) {
         runtime.enter(|| {
             let mut module = test_module(
                 "ipfsFail",
-                mock_data_source(&wasm_file_path("ipfs_cat.wasm", api_version.clone()), api_version.clone()),
+                mock_data_source(
+                    &wasm_file_path("ipfs_cat.wasm", api_version.clone()),
+                    api_version.clone(),
+                ),
                 api_version,
             );
 
@@ -567,7 +579,10 @@ async fn ipfs_fail_v0_0_5() {
 fn test_crypto_keccak256(api_version: Version) {
     let mut module = test_module(
         "cryptoKeccak256",
-        mock_data_source(&wasm_file_path("crypto.wasm", api_version.clone()), api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("crypto.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
     let input: &[u8] = "eth".as_ref();
@@ -594,7 +609,10 @@ async fn crypto_keccak256_v0_0_5() {
 fn test_big_int_to_hex(api_version: Version) {
     let mut module = test_module(
         "BigIntToHex",
-        mock_data_source(&wasm_file_path("big_int_to_hex.wasm", api_version.clone()), api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("big_int_to_hex.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
 
@@ -636,7 +654,10 @@ async fn big_int_to_hex_v0_0_5() {
 fn test_big_int_arithmetic(api_version: Version) {
     let mut module = test_module(
         "BigIntArithmetic",
-        mock_data_source(&wasm_file_path("big_int_arithmetic.wasm", api_version.clone()), api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("big_int_arithmetic.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
 
@@ -708,7 +729,10 @@ async fn big_int_arithmetic_v0_0_5() {
 fn test_abort(api_version: Version, error_msg: &str) {
     let module = test_module(
         "abort",
-        mock_data_source(&wasm_file_path("abort.wasm", api_version.clone()), api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("abort.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
     let res: Result<(), _> = module.get_func("abort").typed().unwrap().call(());
@@ -734,7 +758,10 @@ async fn abort_v0_0_5() {
 fn test_bytes_to_base58(api_version: Version) {
     let mut module = test_module(
         "bytesToBase58",
-        mock_data_source(&wasm_file_path("bytes_to_base58.wasm", api_version.clone()), api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("bytes_to_base58.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
     let bytes = hex::decode("12207D5A99F603F231D53A4F39D1521F98D2E8BB279CF29BEBFD0687DC98458E7F89")
@@ -762,7 +789,10 @@ fn test_data_source_create(api_version: Version) {
               -> Result<Vec<DataSourceTemplateInfo<Chain>>, wasmtime::Trap> {
             let mut module = test_module(
                 "DataSourceCreate",
-                mock_data_source(&wasm_file_path("data_source_create.wasm", api_version.clone()), api_version.clone()),
+                mock_data_source(
+                    &wasm_file_path("data_source_create.wasm", api_version.clone()),
+                    api_version.clone(),
+                ),
                 api_version.clone(),
             );
 
@@ -808,7 +838,10 @@ async fn data_source_create_v0_0_5() {
 fn test_ens_name_by_hash(api_version: Version) {
     let mut module = test_module(
         "EnsNameByHash",
-        mock_data_source(&wasm_file_path("ens_name_by_hash.wasm", api_version.clone()), api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("ens_name_by_hash.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
 
@@ -839,7 +872,10 @@ async fn ens_name_by_hash_v0_0_5() {
 fn test_entity_store(api_version: Version) {
     let (mut module, store, deployment) = test_valid_module_and_store(
         "entityStore",
-        mock_data_source(&wasm_file_path("store.wasm", api_version.clone()), api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("store.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
 
@@ -936,10 +972,16 @@ async fn entity_store_v0_0_5() {
 }
 
 fn test_detect_contract_calls(api_version: Version) {
-    let data_source_without_calls = mock_data_source(&wasm_file_path("abi_store_value.wasm", api_version.clone()), api_version.clone());
+    let data_source_without_calls = mock_data_source(
+        &wasm_file_path("abi_store_value.wasm", api_version.clone()),
+        api_version.clone(),
+    );
     assert_eq!(data_source_without_calls.mapping.requires_archive(), false);
 
-    let data_source_with_calls = mock_data_source(&wasm_file_path("contract_calls.wasm", api_version.clone()), api_version);
+    let data_source_with_calls = mock_data_source(
+        &wasm_file_path("contract_calls.wasm", api_version.clone()),
+        api_version,
+    );
     assert_eq!(data_source_with_calls.mapping.requires_archive(), true);
 }
 
@@ -956,7 +998,10 @@ async fn detect_contract_calls_v0_0_5() {
 fn test_allocate_global(api_version: Version) {
     let module = test_module(
         "AllocateGlobal",
-        mock_data_source(&wasm_file_path("allocate_global.wasm", api_version.clone()), api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("allocate_global.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
 
