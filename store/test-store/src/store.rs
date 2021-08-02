@@ -43,7 +43,7 @@ lazy_static! {
     };
     static ref SEQ_LOCK: Mutex<()> = Mutex::new(());
     pub static ref STORE_RUNTIME: Runtime =
-        Builder::new_current_thread().enable_all().build().unwrap();
+        Builder::new_multi_thread().enable_all().build().unwrap();
     pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(LoadManager::new(
         &*LOGGER,
         Vec::new(),
