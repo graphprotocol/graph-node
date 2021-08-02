@@ -17,28 +17,15 @@ use graph::prelude::web3::types::U256;
 #[cfg(test)]
 use graph::runtime::{asc_get, asc_new, try_asc_get};
 #[cfg(test)]
-#[cfg(test)]
-use graph::runtime::{asc_get, asc_new, try_asc_get};
-#[cfg(test)]
-use graph_mock::MockMetricsRegistry;
-#[cfg(test)]
 use graph_mock::MockMetricsRegistry;
 #[cfg(test)]
 use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString, Uint8Array};
-#[cfg(test)]
-use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString, Uint8Array};
-#[cfg(test)]
-use graph_runtime_wasm::{ExperimentalFeatures, ValidModule, WasmInstance};
 #[cfg(test)]
 use graph_runtime_wasm::{ExperimentalFeatures, ValidModule, WasmInstance};
 #[cfg(test)]
 use hex;
 #[cfg(test)]
 use std::collections::{BTreeMap, HashMap};
-#[cfg(test)]
-use std::collections::{BTreeMap, HashMap};
-#[cfg(test)]
-use test_store::STORE;
 #[cfg(test)]
 use test_store::STORE;
 #[cfg(test)]
