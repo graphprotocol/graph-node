@@ -782,8 +782,8 @@
     keytar "^7.4.0"
 
 "@graphprotocol/graph-cli@https://github.com/graphprotocol/graph-cli#otavio/update-assembly-script":
-  version "0.20.1"
-  resolved "https://github.com/graphprotocol/graph-cli#8ff5148bb7c5f73a7cc73f77acbb68716696c45a"
+  version "0.21.1"
+  resolved "https://github.com/graphprotocol/graph-cli#96adba9ef58963a82cfdd49e1359a013b7bef708"
   dependencies:
     assemblyscript "0.19.2"
     chalk "^3.0.0"
@@ -816,7 +816,7 @@
 
 "@graphprotocol/graph-ts@https://github.com/graphprotocol/graph-ts#otavio/update-assembly-script":
   version "0.21.0"
-  resolved "https://github.com/graphprotocol/graph-ts#da9d30f105695aa86df90ed559fc984768e0a9f1"
+  resolved "https://github.com/graphprotocol/graph-ts#d49f8747eea835d9cf7c3438ccd827d1f91c71e4"
   dependencies:
     assemblyscript "0.19.2"
 
