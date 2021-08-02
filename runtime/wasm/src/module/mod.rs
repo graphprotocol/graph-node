@@ -42,7 +42,7 @@ pub trait IntoTrap {
 
 /// Handle to a WASM instance, which is terminated if and only if this is dropped.
 pub struct WasmInstance<C: Blockchain> {
-    instance: wasmtime::Instance,
+    pub instance: wasmtime::Instance,
 
     // This is the only reference to `WasmInstanceContext` that's not within the instance itself, so
     // we can always borrow the `RefCell` with no concern for race conditions.
