@@ -1,11 +1,3 @@
-use std::collections::{BTreeMap, HashMap};
-use std::str::FromStr;
-
-use ethabi::Contract;
-use hex;
-use semver::Version;
-use web3::types::{Address, H160};
-
 use graph::data::store::scalar;
 use graph::data::subgraph::*;
 use graph::prelude::web3::types::U256;
@@ -20,9 +12,14 @@ use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString,
 use graph_runtime_wasm::{
     ExperimentalFeatures, HostExports, MappingContext, ValidModule, WasmInstance,
 };
+use hex;
+use semver::Version;
+use std::collections::{BTreeMap, HashMap};
+use std::str::FromStr;
 use test_store::STORE;
+use web3::types::H160;
 
-use crate::common::{mock_abi, mock_data_source};
+use crate::common::mock_data_source;
 
 mod abi;
 
