@@ -1,30 +1,58 @@
 use ethabi::Contract;
-use graph::data::store::scalar;
 use graph::data::subgraph::*;
-use graph::prelude::web3::types::U256;
 use graph::prelude::*;
 use graph::runtime::AscPtr;
-use graph::runtime::{asc_get, asc_new, try_asc_get};
 use graph::{components::store::*, ipfs_client::IpfsClient};
 use graph_chain_ethereum::{Chain, DataSource, DataSourceTemplate};
 use graph_core;
-use graph_mock::MockMetricsRegistry;
-use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString, Uint8Array};
-use graph_runtime_wasm::{
-    ExperimentalFeatures, HostExports, MappingContext, ValidModule, WasmInstance,
-};
-use hex;
+use graph_runtime_wasm::{HostExports, MappingContext};
 use semver::Version;
-use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
+use web3::types::Address;
+
+#[cfg(test)]
+use graph::data::store::scalar;
+#[cfg(test)]
+use graph::prelude::web3::types::U256;
+#[cfg(test)]
+use graph::runtime::{asc_get, asc_new, try_asc_get};
+#[cfg(test)]
+#[cfg(test)]
+use graph::runtime::{asc_get, asc_new, try_asc_get};
+#[cfg(test)]
+use graph_mock::MockMetricsRegistry;
+#[cfg(test)]
+use graph_mock::MockMetricsRegistry;
+#[cfg(test)]
+use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString, Uint8Array};
+#[cfg(test)]
+use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString, Uint8Array};
+#[cfg(test)]
+use graph_runtime_wasm::{ExperimentalFeatures, ValidModule, WasmInstance};
+#[cfg(test)]
+use graph_runtime_wasm::{ExperimentalFeatures, ValidModule, WasmInstance};
+#[cfg(test)]
+use hex;
+#[cfg(test)]
+use std::collections::{BTreeMap, HashMap};
+#[cfg(test)]
+use std::collections::{BTreeMap, HashMap};
+#[cfg(test)]
 use test_store::STORE;
-use web3::types::{Address, H160};
+#[cfg(test)]
+use test_store::STORE;
+#[cfg(test)]
+use web3::typesH160;
 
 mod abi;
 
+#[cfg(test)]
 const API_VERSION_0_0_4: Version = Version::new(0, 0, 4);
+
+#[cfg(test)]
 const API_VERSION_0_0_5: Version = Version::new(0, 0, 5);
 
+#[cfg(test)]
 fn subgraph_id_with_api_version(subgraph_id: &str, api_version: Version) -> String {
     format!(
         "{}_{}_{}_{}",
@@ -32,6 +60,7 @@ fn subgraph_id_with_api_version(subgraph_id: &str, api_version: Version) -> Stri
     )
 }
 
+#[cfg(test)]
 fn test_valid_module_and_store(
     subgraph_id: &str,
     data_source: DataSource,
@@ -44,6 +73,7 @@ fn test_valid_module_and_store(
     test_valid_module_and_store_with_timeout(subgraph_id, data_source, api_version, None)
 }
 
+#[cfg(test)]
 fn test_valid_module_and_store_with_timeout(
     subgraph_id: &str,
     data_source: DataSource,
@@ -95,6 +125,7 @@ fn test_valid_module_and_store_with_timeout(
             data_source,
             store.subgraph_store(),
             api_version,
+            test_store::LOGGER.clone(),
         ),
         host_metrics,
         timeout,
@@ -105,6 +136,7 @@ fn test_valid_module_and_store_with_timeout(
     (module, store.subgraph_store(), deployment)
 }
 
+#[cfg(test)]
 fn test_module(
     subgraph_id: &str,
     data_source: DataSource,
@@ -113,7 +145,8 @@ fn test_module(
     test_valid_module_and_store(subgraph_id, data_source, api_version).0
 }
 
-fn mock_data_source(wasm_file: &str, api_version: Version) -> DataSource {
+#[allow(unused)]
+pub fn mock_data_source(wasm_file: &str, api_version: Version) -> DataSource {
     let path = format!(
         "wasm_test/api_version_{}_{}_{}/{}",
         api_version.major, api_version.minor, api_version.patch, wasm_file
@@ -149,6 +182,7 @@ fn mock_data_source(wasm_file: &str, api_version: Version) -> DataSource {
     }
 }
 
+#[allow(unused)]
 fn mock_abi() -> MappingABI {
     MappingABI {
         name: "mock_abi".to_string(),
@@ -170,6 +204,7 @@ fn mock_abi() -> MappingABI {
     }
 }
 
+#[allow(unused)]
 fn mock_host_exports(
     subgraph_id: DeploymentHash,
     data_source: DataSource,
@@ -210,14 +245,16 @@ fn mock_host_exports(
     )
 }
 
-fn mock_context(
+#[allow(unused)]
+pub fn mock_context(
     deployment: DeploymentLocator,
     data_source: DataSource,
     store: Arc<impl SubgraphStore>,
     api_version: Version,
+    logger: Logger,
 ) -> MappingContext<Chain> {
     MappingContext {
-        logger: test_store::LOGGER.clone(),
+        logger,
         block_ptr: BlockPtr {
             hash: Default::default(),
             number: 0,
@@ -248,6 +285,7 @@ trait WasmInstanceExt {
     fn takes_val_returns_ptr<P>(&mut self, fn_name: &str, val: impl wasmtime::WasmTy) -> AscPtr<P>;
 }
 
+#[cfg(test)]
 impl WasmInstanceExt for WasmInstance<Chain> {
     fn invoke_export0(&self, f: &str) {
         let func = self.get_func(f).typed().unwrap().clone();
@@ -288,6 +326,7 @@ impl WasmInstanceExt for WasmInstance<Chain> {
     }
 }
 
+#[cfg(test)]
 fn test_json_conversions(api_version: Version) {
     let mut module = test_module(
         "jsonConversions",
@@ -334,6 +373,7 @@ async fn json_conversions_v0_0_5() {
     test_json_conversions(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_json_parsing(api_version: Version) {
     let mut module = test_module(
         "jsonParsing",
@@ -368,6 +408,7 @@ async fn json_parsing_v0_0_5() {
     test_json_parsing(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 async fn test_ipfs_cat(api_version: Version) {
     let ipfs = IpfsClient::localhost();
     let hash = ipfs.add("42".into()).await.unwrap().hash;
@@ -403,8 +444,10 @@ async fn ipfs_cat_v0_0_5() {
 }
 
 // The user_data value we use with calls to ipfs_map
+#[cfg(test)]
 const USER_DATA: &str = "user_data";
 
+#[cfg(test)]
 fn make_thing(
     subgraph_id: &str,
     id: &str,
@@ -428,8 +471,10 @@ fn make_thing(
     )
 }
 
+#[cfg(test)]
 const BAD_IPFS_HASH: &str = "bad-ipfs-hash";
 
+#[cfg(test)]
 async fn run_ipfs_map(
     ipfs: IpfsClient,
     subgraph_id: &'static str,
@@ -480,6 +525,7 @@ async fn run_ipfs_map(
     .unwrap()
 }
 
+#[cfg(test)]
 async fn test_ipfs_map(api_version: Version, json_error_msg: &str) {
     let ipfs = IpfsClient::localhost();
     let subgraph_id = "ipfsMap";
@@ -574,6 +620,7 @@ async fn ipfs_map_v0_0_5() {
     test_ipfs_map(API_VERSION_0_0_5, "'id' should not be null").await;
 }
 
+#[cfg(test)]
 async fn test_ipfs_fail(api_version: Version) {
     let runtime = tokio::runtime::Handle::current();
 
@@ -589,7 +636,7 @@ async fn test_ipfs_fail(api_version: Version) {
 
             let hash = asc_new(&mut module, "invalid hash").unwrap();
             assert!(module
-                .invoke_export::<_, AscString>("ipfsCat", hash,)
+                .invoke_export::<_, AscString>("ipfsCat", hash)
                 .is_null());
         })
     })
@@ -602,11 +649,12 @@ async fn ipfs_fail_v0_0_4() {
     test_ipfs_fail(API_VERSION_0_0_4).await;
 }
 
-#[tokio::test(threaded_scheduler)]
+#[cfg(test)]
 async fn ipfs_fail_v0_0_5() {
     test_ipfs_fail(API_VERSION_0_0_5).await;
 }
 
+#[cfg(test)]
 fn test_crypto_keccak256(api_version: Version) {
     let mut module = test_module(
         "cryptoKeccak256",
@@ -629,11 +677,13 @@ async fn crypto_keccak256_v0_0_4() {
     test_crypto_keccak256(API_VERSION_0_0_4);
 }
 
+#[cfg(test)]
 #[tokio::test]
 async fn crypto_keccak256_v0_0_5() {
     test_crypto_keccak256(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_big_int_to_hex(api_version: Version) {
     let mut module = test_module(
         "BigIntToHex",
@@ -671,11 +721,13 @@ async fn big_int_to_hex_v0_0_4() {
     test_big_int_to_hex(API_VERSION_0_0_4);
 }
 
+#[cfg(test)]
 #[tokio::test]
 async fn big_int_to_hex_v0_0_5() {
     test_big_int_to_hex(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_big_int_arithmetic(api_version: Version) {
     let mut module = test_module(
         "BigIntArithmetic",
@@ -743,11 +795,13 @@ async fn big_int_arithmetic_v0_0_4() {
     test_big_int_arithmetic(API_VERSION_0_0_4);
 }
 
+#[cfg(test)]
 #[tokio::test]
 async fn big_int_arithmetic_v0_0_5() {
     test_big_int_arithmetic(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_abort(api_version: Version, error_msg: &str) {
     let module = test_module(
         "abort",
@@ -766,6 +820,7 @@ async fn abort_v0_0_4() {
     );
 }
 
+#[cfg(test)]
 #[tokio::test]
 async fn abort_v0_0_5() {
     test_abort(
@@ -774,6 +829,7 @@ async fn abort_v0_0_5() {
     );
 }
 
+#[cfg(test)]
 fn test_bytes_to_base58(api_version: Version) {
     let mut module = test_module(
         "bytesToBase58",
@@ -798,6 +854,7 @@ async fn bytes_to_base58_v0_0_5() {
     test_bytes_to_base58(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_data_source_create(api_version: Version) {
     let run_data_source_create =
         move |name: String,
@@ -848,6 +905,7 @@ async fn data_source_create_v0_0_5() {
     test_data_source_create(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_ens_name_by_hash(api_version: Version) {
     let mut module = test_module(
         "EnsNameByHash",
@@ -879,6 +937,7 @@ async fn ens_name_by_hash_v0_0_5() {
     test_ens_name_by_hash(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_entity_store(api_version: Version) {
     let (mut module, store, deployment) = test_valid_module_and_store(
         "entityStore",
@@ -978,6 +1037,7 @@ async fn entity_store_v0_0_5() {
     test_entity_store(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_detect_contract_calls(api_version: Version) {
     let data_source_without_calls = mock_data_source("abi_store_value.wasm", api_version.clone());
     assert_eq!(data_source_without_calls.mapping.requires_archive(), false);
@@ -996,6 +1056,7 @@ async fn detect_contract_calls_v0_0_5() {
     test_detect_contract_calls(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_allocate_global(api_version: Version) {
     let module = test_module(
         "AllocateGlobal",

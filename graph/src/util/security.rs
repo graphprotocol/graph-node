@@ -13,7 +13,7 @@ fn display_url(url: &str) -> String {
             .expect("failed to redact password");
     }
 
-    url.into_string()
+    url.to_string()
 }
 
 pub struct SafeDisplay<T>(pub T);

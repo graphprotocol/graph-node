@@ -43,7 +43,7 @@ impl IntoTrap for HostExportError {
 
 pub struct HostExports<C: Blockchain> {
     pub(crate) subgraph_id: DeploymentHash,
-    pub(crate) api_version: Version,
+    pub api_version: Version,
     data_source_name: String,
     data_source_address: Vec<u8>,
     data_source_network: String,

@@ -1,14 +1,14 @@
-use graph::prelude::{ethabi::Token, web3::types::U256};
-use graph_runtime_wasm::{
-    asc_abi::class::{
-        ArrayBuffer, AscAddress, AscEnum, AscEnumArray, EthereumValueKind, StoreValueKind,
-        TypedArray,
-    },
-    TRAP_TIMEOUT,
-};
-
 use super::*;
 
+#[cfg(test)]
+use graph::prelude::{ethabi::Token, web3::types::U256};
+#[cfg(test)]
+use graph_runtime_wasm::asc_abi::class::{
+    ArrayBuffer, AscAddress, AscEnum, AscEnumArray, EthereumValueKind, StoreValueKind, TypedArray,
+};
+#[cfg(test)]
+use graph_runtime_wasm::TRAP_TIMEOUT;
+#[cfg(test)]
 fn test_unbounded_loop(api_version: Version) {
     // Set handler timeout to 3 seconds.
     let module = test_valid_module_and_store_with_timeout(
@@ -19,6 +19,8 @@ fn test_unbounded_loop(api_version: Version) {
     )
     .0;
     let res: Result<(), _> = module.get_func("loop").typed().unwrap().call(());
+
+    #[cfg(test)]
     assert!(res.unwrap_err().to_string().contains(TRAP_TIMEOUT));
 }
 
@@ -32,6 +34,7 @@ async fn unbounded_loop_v0_0_5() {
     test_unbounded_loop(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_unbounded_recursion(api_version: Version) {
     let module = test_module(
         "unboundedRecursion",
@@ -53,6 +56,7 @@ async fn unbounded_recursion_v0_0_5() {
     test_unbounded_recursion(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_abi_array(api_version: Version) {
     let mut module = test_module(
         "abiArray",
@@ -93,6 +97,7 @@ async fn abi_array_v0_0_5() {
     test_abi_array(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_abi_subarray(api_version: Version) {
     let mut module = test_module(
         "abiSubarray",
@@ -120,6 +125,7 @@ async fn abi_subarray_v0_0_5() {
     test_abi_subarray(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_abi_bytes_and_fixed_bytes(api_version: Version) {
     let mut module = test_module(
         "abiBytesAndFixedBytes",
@@ -151,6 +157,7 @@ async fn abi_bytes_and_fixed_bytes_v0_0_5() {
     test_abi_bytes_and_fixed_bytes(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_abi_ethabi_token_identity(api_version: Version) {
     let mut module = test_module(
         "abiEthabiTokenIdentity",
@@ -258,6 +265,7 @@ async fn abi_ethabi_token_identity_v0_0_5() {
     test_abi_ethabi_token_identity(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_abi_store_value(api_version: Version) {
     let mut module = test_module(
         "abiStoreValue",
@@ -364,6 +372,7 @@ async fn abi_store_value_v0_0_5() {
     test_abi_store_value(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_abi_h160(api_version: Version) {
     let mut module = test_module(
         "abiH160",
@@ -395,6 +404,7 @@ async fn abi_h160_v0_0_5() {
     test_abi_h160(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_string(api_version: Version) {
     let mut module = test_module(
         "string",
@@ -419,6 +429,7 @@ async fn string_v0_0_5() {
     test_string(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_abi_big_int(api_version: Version) {
     let mut module = test_module(
         "abiBigInt",
@@ -456,6 +467,7 @@ async fn abi_big_int_v0_0_5() {
     test_abi_big_int(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_big_int_to_string(api_version: Version) {
     let mut module = test_module(
         "bigIntToString",
@@ -481,6 +493,7 @@ async fn big_int_to_string_v0_0_5() {
     test_big_int_to_string(API_VERSION_0_0_5);
 }
 
+#[cfg(test)]
 fn test_invalid_discriminant(api_version: Version) {
     let module = test_module(
         "invalidDiscriminant",
