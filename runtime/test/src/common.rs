@@ -1,13 +1,13 @@
 use ethabi::Contract;
+use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::*;
+use graph::ipfs_client::IpfsClient;
 use graph::prelude::*;
-use graph_chain_ethereum::{DataSource, Chain, DataSourceTemplate};
+use graph_chain_ethereum::{Chain, DataSource, DataSourceTemplate};
+use graph_runtime_wasm::{HostExports, MappingContext};
 use semver::Version;
 use std::str::FromStr;
 use web3::types::Address;
-use graph::components::store::DeploymentLocator;
-use graph_runtime_wasm::{MappingContext, HostExports};
-use graph::ipfs_client::IpfsClient;
 
 fn mock_host_exports(
     subgraph_id: DeploymentHash,
@@ -64,9 +64,9 @@ pub fn mock_abi() -> MappingABI {
                 "type": "constructor"
             }
         ]"#
-                .as_bytes(),
+            .as_bytes(),
         )
-            .unwrap(),
+        .unwrap(),
     }
 }
 

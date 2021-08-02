@@ -19,7 +19,7 @@ use std::str::FromStr;
 use test_store::STORE;
 use web3::types::H160;
 
-use crate::common::{mock_data_source, mock_abi};
+use crate::common::{mock_abi, mock_data_source};
 
 mod abi;
 
