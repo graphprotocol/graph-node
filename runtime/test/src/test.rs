@@ -8,9 +8,7 @@ use graph::{components::store::*, ipfs_client::IpfsClient};
 use graph_chain_ethereum::{Chain, DataSource};
 use graph_mock::MockMetricsRegistry;
 use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString, Uint8Array};
-use graph_runtime_wasm::{
-    ExperimentalFeatures, ValidModule, WasmInstance,
-};
+use graph_runtime_wasm::{ExperimentalFeatures, ValidModule, WasmInstance};
 use hex;
 use semver::Version;
 use std::collections::{BTreeMap, HashMap};
@@ -18,7 +16,7 @@ use std::str::FromStr;
 use test_store::STORE;
 use web3::types::H160;
 
-use crate::common::{mock_data_source, mock_context};
+use crate::common::{mock_context, mock_data_source};
 
 mod abi;
 
