@@ -5,12 +5,11 @@ use graph::prelude::*;
 use graph::runtime::AscPtr;
 use graph::runtime::{asc_get, asc_new, try_asc_get};
 use graph::{components::store::*, ipfs_client::IpfsClient};
-use graph_chain_ethereum::{Chain, DataSource, DataSourceTemplate};
-use graph_core;
+use graph_chain_ethereum::{Chain, DataSource};
 use graph_mock::MockMetricsRegistry;
 use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString, Uint8Array};
 use graph_runtime_wasm::{
-    ExperimentalFeatures, HostExports, MappingContext, ValidModule, WasmInstance,
+    ExperimentalFeatures, ValidModule, WasmInstance,
 };
 use hex;
 use semver::Version;
@@ -19,7 +18,7 @@ use std::str::FromStr;
 use test_store::STORE;
 use web3::types::H160;
 
-use crate::common::{mock_abi, mock_data_source};
+use crate::common::{mock_data_source, mock_context};
 
 mod abi;
 

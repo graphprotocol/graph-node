@@ -49,7 +49,7 @@ fn mock_host_exports(
     )
 }
 
-pub fn mock_abi() -> MappingABI {
+fn mock_abi() -> MappingABI {
     MappingABI {
         name: "mock_abi".to_string(),
         contract: Contract::load(
@@ -70,7 +70,6 @@ pub fn mock_abi() -> MappingABI {
     }
 }
 
-#[allow(unused)]
 pub fn mock_context(
     deployment: DeploymentLocator,
     data_source: DataSource,
@@ -95,7 +94,6 @@ pub fn mock_context(
     }
 }
 
-#[allow(unused)]
 pub fn mock_data_source(path: &str, api_version: Version) -> DataSource {
     let runtime = std::fs::read(path).unwrap();
 
