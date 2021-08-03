@@ -50,7 +50,7 @@ impl FromStr for SubgraphFeature {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Serialize, thiserror::Error, Debug)]
 pub enum SubgraphFeatureValidationError {
     /// A feature is used by the subgraph but it is not declared in the `features` section of the manifest file.
-    #[error("The feature `{}` is used by the subgraph  but it is not declared in the manifest.", fmt_subgraph_features(.0))]
+    #[error("The feature `{}` is used by the subgraph but it is not declared in the manifest.", fmt_subgraph_features(.0))]
     Undeclared(BTreeSet<SubgraphFeature>),
 }
 

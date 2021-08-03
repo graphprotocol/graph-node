@@ -18,8 +18,11 @@ use thiserror::Error;
 use wasmparser;
 use web3::types::{Address, H256};
 
-use crate::data::schema::{Schema, SchemaImportError, SchemaValidationError};
 use crate::data::store::Entity;
+use crate::data::{
+    schema::{Schema, SchemaImportError, SchemaValidationError},
+    subgraph::features::validate_subgraph_features,
+};
 use crate::prelude::CheapClone;
 use crate::{blockchain::DataSource, data::graphql::TryFromValue};
 use crate::{blockchain::DataSourceTemplate as _, data::query::QueryExecutionError};
@@ -69,7 +72,7 @@ pub mod schema;
 pub mod features;
 pub mod status;
 
-pub use features::SubgraphFeature;
+pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
 /// Deserialize an Address (with or without '0x' prefix).
 fn deserialize_address<'de, D>(deserializer: D) -> Result<Option<Address>, D::Error>
@@ -371,6 +374,8 @@ pub enum SubgraphManifestValidationError {
     GraftBaseInvalid(String),
     #[error("subgraph must use a single apiVersion across its data sources. Found: {}", format_versions(.0))]
     DifferentApiVersions(BTreeSet<Version>),
+    #[error(transparent)]
+    FeatureValidationError(#[from] SubgraphFeatureValidationError),
 }
 
 #[derive(Error, Debug)]
@@ -891,6 +896,11 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
                 ));
             }
             errors.extend(graft.validate(store));
+        }
+
+        // Validate subgraph features usage and declaration
+        if let Err(feature_validation_error) = validate_subgraph_features(&self.0) {
+            errors.push(feature_validation_error.into())
         }
 
         match errors.is_empty() {
