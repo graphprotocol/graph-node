@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 
 use graph::data::subgraph::features::validate_subgraph_features;
 use graph::data::subgraph::status;
@@ -172,8 +172,14 @@ where
         // We can safely unwrap because the argument is non-nullable and has been validated.
         let subgraph_id = arguments.get_required::<String>("subgraphId").unwrap();
 
-        todo!("1: implement a new method in subgraph store to retrieve the SubgraphManifest of a given deployment id");
-        todo!("2: try to fetch this subgraph from our SubgraphStore before hitting IPFS");
+        // TODO:
+        //
+        // An intersting optimization would involve trying to get the subgraph manifest from the
+        // SubgraphStore before hitting IPFS, but we must fix a dependency cycle between the `graph`
+        // and `server` crates first.
+        //
+        // 1. implement a new method in subgraph store to retrieve the SubgraphManifest of a given deployment id
+        // 2. try to fetch this subgraph from our SubgraphStore before hitting IPFS
 
         // Try to build a deployment hash with the input string
         let deployment_hash = DeploymentHash::new(subgraph_id).map_err(|invalid_qm_hash| {
