@@ -44,10 +44,9 @@ where
             match self.do_poll().await {
                 // Some polls will fail due to transient issues
                 Err(err @ IngestorError::BlockUnavailable(_)) => {
-                    trace!(
+                    info!(
                         self.logger,
-                        "Trying again after block polling failed: {}",
-                        err
+                        "Trying again after block polling failed: {}", err
                     );
                 }
                 Err(IngestorError::Unknown(inner_err)) => {
