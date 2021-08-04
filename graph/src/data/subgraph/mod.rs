@@ -901,9 +901,11 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             errors.extend(graft.validate(store));
         }
 
-        // Validate subgraph features usage and declaration
-        if let Err(feature_validation_error) = validate_subgraph_features(&self.0) {
-            errors.push(feature_validation_error.into())
+        // Validate subgraph feature usage and declaration.
+        if self.0.spec_version >= SPEC_VERSION_0_0_4 {
+            if let Err(feature_validation_error) = validate_subgraph_features(&self.0) {
+                errors.push(feature_validation_error.into())
+            }
         }
 
         match errors.is_empty() {
