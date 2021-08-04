@@ -197,7 +197,7 @@ fn eth_call(
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct UnresolvedContractCall {
+pub struct UnresolvedContractCall {
     pub contract_name: String,
     pub contract_address: Address,
     pub function_name: String,

@@ -13,7 +13,10 @@ fn test_unbounded_loop(api_version: Version) {
     // Set handler timeout to 3 seconds.
     let module = test_valid_module_and_store_with_timeout(
         "unboundedLoop",
-        mock_data_source("non_terminating.wasm", api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("non_terminating.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
         Some(Duration::from_secs(3)),
     )
@@ -35,7 +38,10 @@ async fn unbounded_loop_v0_0_5() {
 fn test_unbounded_recursion(api_version: Version) {
     let module = test_module(
         "unboundedRecursion",
-        mock_data_source("non_terminating.wasm", api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("non_terminating.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
     let res: Result<(), _> = module.get_func("rabbit_hole").typed().unwrap().call(());
@@ -56,7 +62,10 @@ async fn unbounded_recursion_v0_0_5() {
 fn test_abi_array(api_version: Version) {
     let mut module = test_module(
         "abiArray",
-        mock_data_source("abi_classes.wasm", api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("abi_classes.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
 
@@ -96,7 +105,10 @@ async fn abi_array_v0_0_5() {
 fn test_abi_subarray(api_version: Version) {
     let mut module = test_module(
         "abiSubarray",
-        mock_data_source("abi_classes.wasm", api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("abi_classes.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
 
@@ -123,7 +135,10 @@ async fn abi_subarray_v0_0_5() {
 fn test_abi_bytes_and_fixed_bytes(api_version: Version) {
     let mut module = test_module(
         "abiBytesAndFixedBytes",
-        mock_data_source("abi_classes.wasm", api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("abi_classes.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
     let bytes1: Vec<u8> = vec![42, 45, 7, 245, 45];
@@ -154,7 +169,10 @@ async fn abi_bytes_and_fixed_bytes_v0_0_5() {
 fn test_abi_ethabi_token_identity(api_version: Version) {
     let mut module = test_module(
         "abiEthabiTokenIdentity",
-        mock_data_source("abi_token.wasm", api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("abi_token.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
 
@@ -261,7 +279,10 @@ async fn abi_ethabi_token_identity_v0_0_5() {
 fn test_abi_store_value(api_version: Version) {
     let mut module = test_module(
         "abiStoreValue",
-        mock_data_source("abi_store_value.wasm", api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("abi_store_value.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
 
@@ -367,7 +388,10 @@ async fn abi_store_value_v0_0_5() {
 fn test_abi_h160(api_version: Version) {
     let mut module = test_module(
         "abiH160",
-        mock_data_source("abi_classes.wasm", api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("abi_classes.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
     let address = H160::zero();
@@ -398,7 +422,10 @@ async fn abi_h160_v0_0_5() {
 fn test_string(api_version: Version) {
     let mut module = test_module(
         "string",
-        mock_data_source("abi_classes.wasm", api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("abi_classes.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
     let string = "    漢字Double_Me🇧🇷  ";
@@ -422,7 +449,10 @@ async fn string_v0_0_5() {
 fn test_abi_big_int(api_version: Version) {
     let mut module = test_module(
         "abiBigInt",
-        mock_data_source("abi_classes.wasm", api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("abi_classes.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
 
@@ -459,7 +489,10 @@ async fn abi_big_int_v0_0_5() {
 fn test_big_int_to_string(api_version: Version) {
     let mut module = test_module(
         "bigIntToString",
-        mock_data_source("big_int_to_string.wasm", api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("big_int_to_string.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
 
@@ -484,7 +517,10 @@ async fn big_int_to_string_v0_0_5() {
 fn test_invalid_discriminant(api_version: Version) {
     let module = test_module(
         "invalidDiscriminant",
-        mock_data_source("abi_store_value.wasm", api_version.clone()),
+        mock_data_source(
+            &wasm_file_path("abi_store_value.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
         api_version,
     );
 

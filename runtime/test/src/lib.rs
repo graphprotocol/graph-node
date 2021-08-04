@@ -1,4 +1,3 @@
-//! This crate is for tests only.
-
+pub mod common;
 #[cfg(test)]
 mod test;
