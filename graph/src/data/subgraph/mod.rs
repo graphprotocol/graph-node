@@ -42,24 +42,27 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
 
-/// This version adds a new validation step that rejects manifests whose mappings have different API
-/// versions if at least one of them is equal to or higher than `0.0.5`.
+/// This version adds a new subgraph validation step that rejects manifests whose mappings have
+/// different API versions if at least one of them is equal to or higher than `0.0.5`.
 pub const API_VERSION_0_0_5: Version = Version::new(0, 0, 5);
+
+/// Before this check was introduced, there were already subgraphs in the wild with spec version
+/// 0.0.3, due to confusion with the api version. To avoid breaking those, we accept 0.0.3 though it
+/// doesn't exist. In the future we should not use 0.0.3 as version and skip to 0.0.4 to avoid
+/// ambiguity.
+pub const SPEC_VERSION_0_0_3: Version = Version::new(0, 0, 3);
+
+/// This version supports subgraph feature management.
+pub const SPEC_VERSION_0_0_4: Version = Version::new(0, 0, 4);
+
+pub const MIN_SPEC_VERSION: Version = Version::new(0, 0, 2);
+pub const MAX_SPEC_VERSION: Version = SPEC_VERSION_0_0_4;
 
 lazy_static! {
     static ref DISABLE_GRAFTS: bool = std::env::var("GRAPH_DISABLE_GRAFTS")
         .ok()
         .map(|s| s.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    static ref MIN_SPEC_VERSION: Version = Version::new(0, 0, 2);
-
-    // Before this check was introduced, there were already subgraphs in
-    // the wild with spec version 0.0.3, due to confusion with the api
-    // version. To avoid breaking those, we accept 0.0.3 though it
-    // doesn't exist. In the future we should not use 0.0.3 as version
-    // and skip to 0.0.4 to avoid ambiguity.
-    static ref MAX_SPEC_VERSION: Version = Version::new(0, 0, 3);
-
     static ref MAX_API_VERSION: Version = std::env::var("GRAPH_MAX_API_VERSION")
         .ok()
         .and_then(|api_version_str| Version::parse(&api_version_str).ok())
@@ -1029,12 +1032,12 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             chain,
         } = self;
 
-        if *MIN_SPEC_VERSION <= spec_version && spec_version <= *MAX_SPEC_VERSION {
+        if MIN_SPEC_VERSION <= spec_version && spec_version <= MAX_SPEC_VERSION {
             return Err(anyhow!(
                 "This Graph Node only supports manifest spec versions between {} and {},
                     but subgraph `{}` uses `{}`",
-                *MIN_SPEC_VERSION,
-                *MAX_SPEC_VERSION,
+                MIN_SPEC_VERSION,
+                MAX_SPEC_VERSION,
                 id,
                 spec_version
             ));
