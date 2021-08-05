@@ -121,3 +121,35 @@ fn detect_ipfs_on_ethereum_contracts<C: Blockchain>(
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use SubgraphFeature::*;
+    const VARIANTS: [SubgraphFeature; 4] = [
+        NonFatalErrors,
+        Grafting,
+        FullTextSearch,
+        IpfsOnEthereumContracts,
+    ];
+    const STRING: [&'static str; 4] = [
+        "nonFatalErrors",
+        "grafting",
+        "fullTextSearch",
+        "ipfsOnEthereumContracts",
+    ];
+
+    #[test]
+    fn subgraph_feature_display() {
+        for (variant, string) in VARIANTS.iter().zip(STRING.iter()) {
+            assert_eq!(variant.to_string(), *string)
+        }
+    }
+
+    #[test]
+    fn subgraph_feature_from_str() {
+        for (variant, string) in VARIANTS.iter().zip(STRING.iter()) {
+            assert_eq!(SubgraphFeature::from_str(string).unwrap(), *variant)
+        }
+    }
+}
