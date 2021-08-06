@@ -55,6 +55,7 @@ impl LinkResolverTrait for TextResolver {
 }
 
 const GQL_SCHEMA: &str = "type Thing @entity { id: ID! }";
+const GQL_SCHEMA_FULLTEXT: &str = include_str!("full-text.graphql");
 
 const ABI: &str = "[{\"type\":\"function\", \"inputs\": [{\"name\": \"i\",\"type\": \"uint256\"}],\"name\":\"get\",\"outputs\": [{\"type\": \"address\",\"name\": \"o\"}]}]";
 
@@ -321,5 +322,93 @@ schema:
 
         let manifest = resolve_manifest(YAML).await;
         assert!(manifest.features.contains(&SubgraphFeature::NonFatalErrors))
+    });
+}
+
+#[test]
+fn declared_full_text_search_feature_causes_no_feature_validation_errors() {
+    const YAML: &str = "
+specVersion: 0.0.4
+features:
+  - fullTextSearch
+dataSources: []
+schema:
+  file:
+    /: /ipfs/Qmschema
+";
+
+    test_store::run_test_sequentially(|store| async move {
+        let store = store.subgraph_store();
+        let unvalidated: UnvalidatedSubgraphManifest<Chain> = {
+            let mut resolver = TextResolver::default();
+            let id = DeploymentHash::new("Qmmanifest").unwrap();
+            resolver.add(id.as_str(), YAML);
+            resolver.add("/ipfs/Qmabi", ABI);
+            resolver.add("/ipfs/Qmschema", GQL_SCHEMA_FULLTEXT);
+
+            UnvalidatedSubgraphManifest::resolve(id, Arc::new(resolver), &LOGGER)
+                .await
+                .expect("Parsing simple manifest works")
+        };
+
+        assert!(unvalidated
+            .validate(store.clone())
+            .expect_err("Validation must fail")
+            .into_iter()
+            .find(|e| {
+                matches!(
+                    e,
+                    SubgraphManifestValidationError::FeatureValidationError(_)
+                )
+            })
+            .is_none());
+
+        let manifest = resolve_manifest(YAML).await;
+        assert!(manifest.features.contains(&SubgraphFeature::FullTextSearch))
+    });
+}
+
+#[test]
+fn undeclared_full_text_search_feature_causes_no_feature_validation_errors() {
+    const YAML: &str = "
+specVersion: 0.0.4
+
+dataSources: []
+schema:
+  file:
+    /: /ipfs/Qmschema
+";
+
+    test_store::run_test_sequentially(|store| async move {
+        let store = store.subgraph_store();
+        let unvalidated: UnvalidatedSubgraphManifest<Chain> = {
+            let mut resolver = TextResolver::default();
+            let id = DeploymentHash::new("Qmmanifest").unwrap();
+            resolver.add(id.as_str(), YAML);
+            resolver.add("/ipfs/Qmabi", ABI);
+            resolver.add("/ipfs/Qmschema", GQL_SCHEMA_FULLTEXT);
+
+            UnvalidatedSubgraphManifest::resolve(id, Arc::new(resolver), &LOGGER)
+                .await
+                .expect("Parsing simple manifest works")
+        };
+
+        let error_msg = unvalidated
+            .validate(store.clone())
+            .expect_err("Validation must fail")
+            .into_iter()
+            .find(|e| {
+                matches!(
+                    e,
+                    SubgraphManifestValidationError::FeatureValidationError(_)
+                )
+            })
+            .expect("There must be a FeatureValidationError")
+            .to_string();
+
+        assert_eq!(
+            "The feature `fullTextSearch` is used by the subgraph but it is not declared in the manifest.",
+            error_msg
+        );
     });
 }
