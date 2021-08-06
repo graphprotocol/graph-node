@@ -222,3 +222,68 @@ specVersion: 0.0.2
     assert_eq!("Qmmanifest", manifest.id.as_str());
     assert_eq!(true, requires_traces);
 }
+
+#[test]
+fn undeclared_grafting_feature_causes_feature_validation_error() {
+    const YAML: &str = "
+specVersion: 0.0.4
+dataSources: []
+schema:
+  file:
+    /: /ipfs/Qmschema
+graft:
+  base: Qmbase
+  block: 1
+";
+    test_store::run_test_sequentially(|store| async move {
+        let store = store.subgraph_store();
+        let unvalidated = resolve_unvalidated(YAML).await;
+        let error_msg = unvalidated
+            .validate(store.clone())
+            .expect_err("Validation must fail")
+            .into_iter()
+            .find(|e| {
+                matches!(
+                    e,
+                    SubgraphManifestValidationError::FeatureValidationError(_)
+                )
+            })
+            .expect("There must be a FeatureValidation error")
+            .to_string();
+        assert_eq!(
+            "The feature `grafting` is used by the subgraph but it is not declared in the manifest.",
+            error_msg
+        )
+    })
+}
+
+#[test]
+fn declared_grafting_feature_causes_no_feature_validation_errors() {
+    const YAML: &str = "
+specVersion: 0.0.4
+features:
+  - grafting
+dataSources: []
+schema:
+  file:
+    /: /ipfs/Qmschema
+graft:
+  base: Qmbase
+  block: 1
+";
+    test_store::run_test_sequentially(|store| async move {
+        let store = store.subgraph_store();
+        let unvalidated = resolve_unvalidated(YAML).await;
+        assert!(unvalidated
+            .validate(store.clone())
+            .expect_err("Validation must fail")
+            .into_iter()
+            .find(|e| {
+                matches!(
+                    e,
+                    SubgraphManifestValidationError::FeatureValidationError(_)
+                )
+            })
+            .is_none())
+    })
+}
