@@ -2,13 +2,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use graph::components::{
-    link_resolver::{JsonValueStream, LinkResolver as LinkResolverTrait},
-    store::EntityType,
-};
 use graph::prelude::{
     anyhow, async_trait, tokio, DeploymentHash, Entity, Link, Logger, SubgraphManifest,
     SubgraphManifestValidationError, UnvalidatedSubgraphManifest,
+};
+use graph::{
+    components::{
+        link_resolver::{JsonValueStream, LinkResolver as LinkResolverTrait},
+        store::EntityType,
+    },
+    data::subgraph::SubgraphFeature,
 };
 
 use graph_chain_ethereum::Chain;
@@ -284,6 +287,39 @@ graft:
                     SubgraphManifestValidationError::FeatureValidationError(_)
                 )
             })
-            .is_none())
+            .is_none());
+        let manifest = resolve_manifest(YAML).await;
+        assert!(manifest.features.contains(&SubgraphFeature::Grafting))
     })
+}
+
+#[test]
+fn declared_non_fatal_errors_feature_causes_no_feature_validation_errors() {
+    const YAML: &str = "
+specVersion: 0.0.4
+features:
+  - nonFatalErrors
+dataSources: []
+schema:
+  file:
+    /: /ipfs/Qmschema
+";
+    test_store::run_test_sequentially(|store| async move {
+        let store = store.subgraph_store();
+        let unvalidated = resolve_unvalidated(YAML).await;
+        assert!(unvalidated
+            .validate(store.clone())
+            .expect_err("Validation must fail")
+            .into_iter()
+            .find(|e| {
+                matches!(
+                    e,
+                    SubgraphManifestValidationError::FeatureValidationError(_)
+                )
+            })
+            .is_none());
+
+        let manifest = resolve_manifest(YAML).await;
+        assert!(manifest.features.contains(&SubgraphFeature::NonFatalErrors))
+    });
 }
