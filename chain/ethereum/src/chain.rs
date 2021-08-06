@@ -135,10 +135,6 @@ impl Blockchain for Chain {
 
     type RuntimeAdapter = RuntimeAdapter;
 
-    fn reorg_threshold() -> u32 {
-        todo!()
-    }
-
     fn triggers_adapter(
         &self,
         loc: &DeploymentLocator,

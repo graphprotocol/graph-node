@@ -87,8 +87,6 @@ pub trait Blockchain: Debug + Sized + Send + Sync + 'static {
 
     type RuntimeAdapter: RuntimeAdapter<Self>;
 
-    fn reorg_threshold() -> u32;
-
     fn triggers_adapter(
         &self,
         loc: &DeploymentLocator,
