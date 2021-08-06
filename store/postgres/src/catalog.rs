@@ -2,8 +2,12 @@ use diesel::sql_types::Integer;
 use diesel::{connection::SimpleConnection, prelude::RunQueryDsl, select};
 use diesel::{insert_into, OptionalExtension};
 use diesel::{pg::PgConnection, sql_query};
-use diesel::{sql_types::Text, ExpressionMethods, QueryDsl};
+use diesel::{
+    sql_types::{Array, Text},
+    ExpressionMethods, QueryDsl,
+};
 use std::collections::{HashMap, HashSet};
+use std::iter::FromIterator;
 use std::sync::Arc;
 
 use graph::{data::subgraph::schema::POI_TABLE, prelude::StoreError};
@@ -133,6 +137,32 @@ pub fn current_servers(conn: &PgConnection) -> Result<Vec<String>, StoreError> {
         .into_iter()
         .map(|srv| srv.srvname)
         .collect())
+}
+
+/// Return the options for the foreign server `name` as a map of option
+/// names to values
+pub fn server_options(
+    conn: &PgConnection,
+    name: &str,
+) -> Result<HashMap<String, Option<String>>, StoreError> {
+    #[derive(QueryableByName)]
+    struct Srv {
+        #[sql_type = "Array<Text>"]
+        srvoptions: Vec<String>,
+    }
+    let entries = sql_query("select srvoptions from pg_foreign_server where srvname = $1")
+        .bind::<Text, _>(name)
+        .get_result::<Srv>(conn)?
+        .srvoptions
+        .into_iter()
+        .filter_map(|opt| {
+            let mut parts = opt.splitn(2, "=");
+            let key = parts.next();
+            let value = parts.next().map(|value| value.to_string());
+
+            key.map(|key| (key.to_string(), value))
+        });
+    Ok(HashMap::from_iter(entries))
 }
 
 pub fn has_namespace(conn: &PgConnection, namespace: &Namespace) -> Result<bool, StoreError> {

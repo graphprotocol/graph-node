@@ -26,7 +26,7 @@ use std::{collections::HashMap, sync::RwLock};
 
 use postgres::config::{Config, Host};
 
-use crate::advisory_lock;
+use crate::{advisory_lock, catalog};
 use crate::{Shard, PRIMARY_SHARD};
 
 lazy_static::lazy_static! {
@@ -118,12 +118,13 @@ impl ForeignServer {
             "\
         create server \"{name}\"
                foreign data wrapper postgres_fdw
-               options (host '{remote_host}', dbname '{remote_db}', updatable 'false');
+               options (host '{remote_host}', port '{remote_port}', dbname '{remote_db}', updatable 'false');
         create user mapping
                for current_user server \"{name}\"
                options (user '{remote_user}', password '{remote_password}');",
             name = self.name,
             remote_host = self.host,
+            remote_port = self.port,
             remote_db = self.dbname,
             remote_user = self.user,
             remote_password = self.password,
@@ -133,15 +134,26 @@ impl ForeignServer {
 
     /// Update an existing user mapping with possibly new details
     fn update(&self, conn: &PgConnection) -> Result<(), StoreError> {
+        let options = catalog::server_options(conn, &self.name)?;
+        let set_or_add = |option: &str| -> &'static str {
+            if options.contains_key(option) {
+                "set"
+            } else {
+                "add"
+            }
+        };
+
         let query = format!(
             "\
         alter server \"{name}\"
-              options (set host '{remote_host}', set dbname '{remote_db}');
+              options (set host '{remote_host}', {set_port} port '{remote_port}', set dbname '{remote_db}');
         alter user mapping
               for current_user server \"{name}\"
               options (set user '{remote_user}', set password '{remote_password}');",
             name = self.name,
             remote_host = self.host,
+            set_port = set_or_add("port"),
+            remote_port = self.port,
             remote_db = self.dbname,
             remote_user = self.user,
             remote_password = self.password,
