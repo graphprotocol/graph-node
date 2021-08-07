@@ -260,6 +260,79 @@ impl DeploymentStore {
         &self,
         conn: &PgConnection,
         layout: &Layout,
+        data: &[(EntityKey, Entity)],
+    ) -> Result<(), StoreError> {
+        let (key, _) = data.first().unwrap();
+        assert_eq!(&key.subgraph_id, &layout.site.deployment);
+
+        // Collect all types that share an interface implementation with this
+        // entity type, and make sure there are no conflicting IDs.
+        //
+        // To understand why this is necessary, suppose that `Dog` and `Cat` are
+        // types and both implement an interface `Pet`, and both have instances
+        // with `id: "Fred"`. If a type `PetOwner` has a field `pets: [Pet]`
+        // then with the value `pets: ["Fred"]`, there's no way to disambiguate
+        // if that's Fred the Dog, Fred the Cat or both.
+        //
+        // This assumes that there are no concurrent writes to a subgraph.
+        let schema = self.subgraph_info_with_conn(&conn, &layout.site)?.api;
+        let types_for_interface = schema.types_for_interface();
+
+        // Relates single entity type (the hashmap's key) to the entity types that share that interface
+        let mut types_with_shared_interface: HashMap<&str, Vec<EntityType>>;
+
+        for (key, _) in data {
+            let interfaces = match schema.interfaces_for_type(&key.entity_type) {
+                Some(interfaces) => interfaces,
+                None => continue,
+            };
+
+            for interface in interfaces {
+                let interface_name = interface.name;
+                let types_for_interface: Vec<_> = types_for_interface[&interface.into()]
+                    .iter()
+                    .map(EntityType::from)
+                    .filter(|type_name| type_name != &key.entity_type)
+                    .collect();
+
+                types_with_shared_interface
+                    .entry(&interface.name)
+                    .or_insert_with(Vec::new)
+                    .extend(types_for_interface);
+            }
+        }
+
+        let types_with_shared_interface = Vec::from_iter(
+            schema
+                .interfaces_for_type(&key.entity_type)
+                .into_iter()
+                .flatten()
+                .map(|interface| &types_for_interface[&interface.into()])
+                .flatten()
+                .map(EntityType::from)
+                .filter(|type_name| type_name != &key.entity_type),
+        );
+
+        let entity_type = key.entity_type.to_string();
+
+        if !types_with_shared_interface.is_empty() {
+            if let Some(conflicting_entity) =
+                layout.conflicting_entity(conn, &key.entity_id, types_with_shared_interface)?
+            {
+                return Err(StoreError::ConflictingId(
+                    entity_type,
+                    key.entity_id.clone(),
+                    conflicting_entity,
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn check_interface_entity_uniqueness_(
+        &self,
+        conn: &PgConnection,
+        layout: &Layout,
         key: &EntityKey,
     ) -> Result<(), StoreError> {
         assert_eq!(&key.subgraph_id, &layout.site.deployment);
@@ -290,7 +363,12 @@ impl DeploymentStore {
 
         if !types_with_shared_interface.is_empty() {
             if let Some(conflicting_entity) =
-                layout.conflicting_entity(conn, &key.entity_id, types_with_shared_interface)?
+                //   select 'Type1' as entity from schema.table1 where id = $1
+                layout.conflicting_entity(
+                    conn,
+                    &key.entity_id,
+                    types_with_shared_interface,
+                )?
             {
                 return Err(StoreError::ConflictingId(
                     entity_type.clone(),
@@ -375,7 +453,7 @@ impl DeploymentStore {
         let section = stopwatch.start_section("check_interface_entity_uniqueness");
         for (key, _) in data.iter() {
             // WARNING: This will potentially execute 2 queries for each entity key.
-            self.check_interface_entity_uniqueness(conn, layout, key)?;
+            self.check_interface_entity_uniqueness_(conn, layout, key)?;
         }
         section.end();
 
@@ -395,7 +473,7 @@ impl DeploymentStore {
         let section = stopwatch.start_section("check_interface_entity_uniqueness");
         for (key, _) in data.iter() {
             // WARNING: This will potentially execute 2 queries for each entity key.
-            self.check_interface_entity_uniqueness(conn, layout, key)?;
+            self.check_interface_entity_uniqueness_(conn, layout, key)?;
         }
         section.end();
 
