@@ -60,7 +60,7 @@ lazy_static! {
     static ref MAX_API_VERSION: Version = std::env::var("GRAPH_MAX_API_VERSION")
         .ok()
         .and_then(|api_version_str| Version::parse(&api_version_str).ok())
-        .unwrap_or(Version::new(0, 0, 4));
+        .unwrap_or(Version::new(0, 0, 5));
 }
 
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.
