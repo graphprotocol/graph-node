@@ -239,7 +239,7 @@ where
                         .map(q::Value::String)
                         .collect(),
                 );
-                let errors = q::Value::Null;
+                let errors = q::Value::List(vec![]);
                 (features, errors)
             }
             Either::Right(errors) => {
