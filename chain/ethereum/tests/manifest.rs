@@ -19,12 +19,15 @@ use test_store::LOGGER;
 
 #[derive(Default)]
 struct TextResolver {
-    texts: HashMap<String, String>,
+    texts: HashMap<String, Vec<u8>>,
 }
 
 impl TextResolver {
-    fn add(&mut self, link: &str, text: &str) {
-        self.texts.insert(link.to_owned(), text.to_owned());
+    fn add(&mut self, link: &str, text: &impl AsRef<[u8]>) {
+        self.texts.insert(
+            link.to_owned(),
+            text.as_ref().into_iter().cloned().collect(),
+        );
     }
 }
 
@@ -42,7 +45,7 @@ impl LinkResolverTrait for TextResolver {
         self.texts
             .get(&link.link)
             .ok_or(anyhow!("No text for {}", &link.link))
-            .map(|text| text.to_owned().into_bytes())
+            .map(Clone::clone)
     }
 
     async fn json_stream(
@@ -65,10 +68,10 @@ async fn resolve_manifest(text: &str) -> SubgraphManifest<graph_chain_ethereum::
     let mut resolver = TextResolver::default();
     let id = DeploymentHash::new("Qmmanifest").unwrap();
 
-    resolver.add(id.as_str(), text);
-    resolver.add("/ipfs/Qmschema", GQL_SCHEMA);
-    resolver.add("/ipfs/Qmabi", ABI);
-    resolver.add("/ipfs/Qmmapping", MAPPING);
+    resolver.add(id.as_str(), &text);
+    resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
+    resolver.add("/ipfs/Qmabi", &ABI);
+    resolver.add("/ipfs/Qmmapping", &MAPPING);
 
     SubgraphManifest::resolve(id, &resolver, &LOGGER)
         .await
@@ -79,8 +82,8 @@ async fn resolve_unvalidated(text: &str) -> UnvalidatedSubgraphManifest<Chain> {
     let mut resolver = TextResolver::default();
     let id = DeploymentHash::new("Qmmanifest").unwrap();
 
-    resolver.add(id.as_str(), text);
-    resolver.add("/ipfs/Qmschema", GQL_SCHEMA);
+    resolver.add(id.as_str(), &text);
+    resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
 
     UnvalidatedSubgraphManifest::resolve(id, Arc::new(resolver), &LOGGER)
         .await
@@ -342,9 +345,9 @@ schema:
         let unvalidated: UnvalidatedSubgraphManifest<Chain> = {
             let mut resolver = TextResolver::default();
             let id = DeploymentHash::new("Qmmanifest").unwrap();
-            resolver.add(id.as_str(), YAML);
-            resolver.add("/ipfs/Qmabi", ABI);
-            resolver.add("/ipfs/Qmschema", GQL_SCHEMA_FULLTEXT);
+            resolver.add(id.as_str(), &YAML);
+            resolver.add("/ipfs/Qmabi", &ABI);
+            resolver.add("/ipfs/Qmschema", &GQL_SCHEMA_FULLTEXT);
 
             UnvalidatedSubgraphManifest::resolve(id, Arc::new(resolver), &LOGGER)
                 .await
@@ -384,9 +387,9 @@ schema:
         let unvalidated: UnvalidatedSubgraphManifest<Chain> = {
             let mut resolver = TextResolver::default();
             let id = DeploymentHash::new("Qmmanifest").unwrap();
-            resolver.add(id.as_str(), YAML);
-            resolver.add("/ipfs/Qmabi", ABI);
-            resolver.add("/ipfs/Qmschema", GQL_SCHEMA_FULLTEXT);
+            resolver.add(id.as_str(), &YAML);
+            resolver.add("/ipfs/Qmabi", &ABI);
+            resolver.add("/ipfs/Qmschema", &GQL_SCHEMA_FULLTEXT);
 
             UnvalidatedSubgraphManifest::resolve(id, Arc::new(resolver), &LOGGER)
                 .await
@@ -410,5 +413,139 @@ schema:
             "The feature `fullTextSearch` is used by the subgraph but it is not declared in the manifest.",
             error_msg
         );
+    });
+}
+
+#[test]
+fn undeclared_ipfs_on_ethereum_contracts_feature_causes_feature_validation_error() {
+    const YAML: &str = "
+specVersion: 0.0.4
+schema:
+  file:
+    /: /ipfs/Qmschema
+dataSources:
+  - kind: ethereum/contract
+    name: Factory
+    network: mainnet
+    source:
+      abi: Factory
+      startBlock: 9562480
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.4
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      abis:
+        - name: Factory
+          file:
+            /: /ipfs/Qmabi
+      callHandlers:
+        - function: get(address)
+          handler: handleget
+";
+
+    test_store::run_test_sequentially(|store| async move {
+        let store = store.subgraph_store();
+        let unvalidated: UnvalidatedSubgraphManifest<Chain> = {
+            let mut resolver = TextResolver::default();
+            let id = DeploymentHash::new("Qmmanifest").unwrap();
+            resolver.add(id.as_str(), &YAML);
+            resolver.add("/ipfs/Qmabi", &ABI);
+            resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
+            resolver.add(
+                "/ipfs/Qmmapping",
+                &include_bytes!("ipfs-on-ethereum-contracts.wasm"),
+            );
+
+            UnvalidatedSubgraphManifest::resolve(id, Arc::new(resolver), &LOGGER)
+                .await
+                .expect("Parsing simple manifest works")
+        };
+
+        let error_msg = unvalidated
+            .validate(store.clone())
+            .expect_err("Validation must fail")
+            .into_iter()
+            .find(|e| {
+                matches!(
+                    e,
+                    SubgraphManifestValidationError::FeatureValidationError(_)
+                )
+            })
+            .expect("There must be a FeatureValidationError")
+            .to_string();
+
+        assert_eq!(
+            "The feature `ipfsOnEthereumContracts` is used by the subgraph but it is not declared in the manifest.",
+            error_msg
+        );
+    });
+}
+
+#[test]
+fn declared_ipfs_on_ethereum_contracts_feature_causes_no_errors() {
+    const YAML: &str = "
+specVersion: 0.0.4
+schema:
+  file:
+    /: /ipfs/Qmschema
+features:
+  - ipfsOnEthereumContracts
+dataSources:
+  - kind: ethereum/contract
+    name: Factory
+    network: mainnet
+    source:
+      abi: Factory
+      startBlock: 9562480
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.4
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      abis:
+        - name: Factory
+          file:
+            /: /ipfs/Qmabi
+      callHandlers:
+        - function: get(address)
+          handler: handleget
+";
+
+    test_store::run_test_sequentially(|store| async move {
+        let store = store.subgraph_store();
+        let unvalidated: UnvalidatedSubgraphManifest<Chain> = {
+            let mut resolver = TextResolver::default();
+            let id = DeploymentHash::new("Qmmanifest").unwrap();
+            resolver.add(id.as_str(), &YAML);
+            resolver.add("/ipfs/Qmabi", &ABI);
+            resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
+            resolver.add(
+                "/ipfs/Qmmapping",
+                &include_bytes!("ipfs-on-ethereum-contracts.wasm"),
+            );
+
+            UnvalidatedSubgraphManifest::resolve(id, Arc::new(resolver), &LOGGER)
+                .await
+                .expect("Parsing simple manifest works")
+        };
+
+        assert!(unvalidated
+            .validate(store.clone())
+            .expect_err("Validation must fail")
+            .into_iter()
+            .find(|e| {
+                matches!(
+                    e,
+                    SubgraphManifestValidationError::FeatureValidationError(_)
+                )
+            })
+            .is_none());
     });
 }
