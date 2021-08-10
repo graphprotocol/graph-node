@@ -59,7 +59,7 @@ impl LinkResolverTrait for TextResolver {
 
 const GQL_SCHEMA: &str = "type Thing @entity { id: ID! }";
 const GQL_SCHEMA_FULLTEXT: &str = include_str!("full-text.graphql");
-
+const MAPPING_WITH_IPFS_FUNC_WASM: &[u8] = include_bytes!("ipfs-on-ethereum-contracts.wasm");
 const ABI: &str = "[{\"type\":\"function\", \"inputs\": [{\"name\": \"i\",\"type\": \"uint256\"}],\"name\":\"get\",\"outputs\": [{\"type\": \"address\",\"name\": \"o\"}]}]";
 
 const MAPPING: &str = "export function handleGet(call: getCall): void {}";
@@ -455,10 +455,7 @@ dataSources:
             resolver.add(id.as_str(), &YAML);
             resolver.add("/ipfs/Qmabi", &ABI);
             resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
-            resolver.add(
-                "/ipfs/Qmmapping",
-                &include_bytes!("ipfs-on-ethereum-contracts.wasm"),
-            );
+            resolver.add("/ipfs/Qmmapping", &MAPPING_WITH_IPFS_FUNC_WASM);
 
             UnvalidatedSubgraphManifest::resolve(id, Arc::new(resolver), &LOGGER)
                 .await
@@ -526,10 +523,7 @@ dataSources:
             resolver.add(id.as_str(), &YAML);
             resolver.add("/ipfs/Qmabi", &ABI);
             resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
-            resolver.add(
-                "/ipfs/Qmmapping",
-                &include_bytes!("ipfs-on-ethereum-contracts.wasm"),
-            );
+            resolver.add("/ipfs/Qmmapping", &MAPPING_WITH_IPFS_FUNC_WASM);
 
             UnvalidatedSubgraphManifest::resolve(id, Arc::new(resolver), &LOGGER)
                 .await
