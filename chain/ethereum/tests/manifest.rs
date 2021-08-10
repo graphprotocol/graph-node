@@ -17,6 +17,11 @@ use graph::{
 use graph_chain_ethereum::Chain;
 use test_store::LOGGER;
 
+const GQL_SCHEMA: &str = "type Thing @entity { id: ID! }";
+const GQL_SCHEMA_FULLTEXT: &str = include_str!("full-text.graphql");
+const MAPPING_WITH_IPFS_FUNC_WASM: &[u8] = include_bytes!("ipfs-on-ethereum-contracts.wasm");
+const ABI: &str = "[{\"type\":\"function\", \"inputs\": [{\"name\": \"i\",\"type\": \"uint256\"}],\"name\":\"get\",\"outputs\": [{\"type\": \"address\",\"name\": \"o\"}]}]";
+
 #[derive(Default)]
 struct TextResolver {
     texts: HashMap<String, Vec<u8>>,
@@ -56,12 +61,6 @@ impl LinkResolverTrait for TextResolver {
         unimplemented!()
     }
 }
-
-const GQL_SCHEMA: &str = "type Thing @entity { id: ID! }";
-const GQL_SCHEMA_FULLTEXT: &str = include_str!("full-text.graphql");
-const MAPPING_WITH_IPFS_FUNC_WASM: &[u8] = include_bytes!("ipfs-on-ethereum-contracts.wasm");
-const ABI: &str = "[{\"type\":\"function\", \"inputs\": [{\"name\": \"i\",\"type\": \"uint256\"}],\"name\":\"get\",\"outputs\": [{\"type\": \"address\",\"name\": \"o\"}]}]";
-
 const MAPPING: &str = "export function handleGet(call: getCall): void {}";
 
 async fn resolve_manifest(text: &str) -> SubgraphManifest<graph_chain_ethereum::Chain> {
