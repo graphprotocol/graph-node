@@ -156,6 +156,8 @@ pub enum Command {
     Chain(ChainCommand),
     /// Manipulate internal subgraph statistics
     Stats(StatsCommand),
+    /// Persist relevant dispute data
+    DumpPoi(DumpPoiCommand),
 }
 
 impl Command {
@@ -323,6 +325,23 @@ pub enum StatsCommand {
         /// The name of a table to fully count
         table: Option<String>,
     },
+}
+
+#[derive(Clone, Debug, StructOpt)]
+pub enum DumpPoiCommand {
+    /// Given a subgraph name or a subgraph deployment id dump its poi table and call cache.
+    Dump {
+        subgraph_deployment: String,
+        dispute_id: String,
+        indexer_id: String,
+        subgraph_name: Option<String>,
+    },
+    GetDivergentBlocks {
+        dispute_id: String,
+        indexer_id: String,
+    }, // Upload {
+       //     file_path: String,
+       // }
 }
 
 impl From<Opt> for config::Opt {
@@ -596,6 +615,34 @@ async fn main() {
                     commands::stats::account_like(ctx.pools(), clear, table)
                 }
                 Show { nsp, table } => commands::stats::show(ctx.pools(), nsp, table),
+            }
+        }
+
+        DumpPoi(cmd) => {
+            use DumpPoiCommand::*;
+
+            match cmd {
+                Dump {
+                    subgraph_deployment,
+                    dispute_id,
+                    indexer_id,
+                    subgraph_name,
+                } => {
+                    println!("Dumping subgraph deployment {}", subgraph_deployment);
+                    commands::dump_poi::run(
+                        ctx.primary_pool(),
+                        dispute_id,
+                        indexer_id,
+                        subgraph_deployment,
+                        subgraph_name,
+                    )
+                }
+                GetDivergentBlocks {
+                    dispute_id,
+                    indexer_id,
+                } => {
+                    commands::dump_poi::get_divergent_blocks(
+                }
             }
         }
     };
