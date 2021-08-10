@@ -38,6 +38,8 @@ mod store_builder;
 use config::Config;
 use store_builder::StoreBuilder;
 
+use crate::config::ProviderDetails;
+
 lazy_static! {
     // Default to an Ethereum reorg threshold to 50 blocks
     static ref REORG_THRESHOLD: BlockNumber = env::var("ETHEREUM_REORG_THRESHOLD")
@@ -443,45 +445,47 @@ async fn create_ethereum_networks(
     let mut parsed_networks = EthereumNetworks::new();
     for (name, chain) in config.chains.chains {
         for provider in chain.providers {
-            let capabilities = provider.node_capabilities();
+            if let ProviderDetails::Web3(web3) = provider.details {
+                let capabilities = web3.node_capabilities();
 
-            let logger = logger.new(o!("provider" => provider.label.clone()));
-            info!(
-                logger,
-                "Creating transport";
-                "url" => &provider.url,
-                "capabilities" => capabilities
-            );
+                let logger = logger.new(o!("provider" => provider.label.clone()));
+                info!(
+                    logger,
+                    "Creating transport";
+                    "url" => &web3.url,
+                    "capabilities" => capabilities
+                );
 
-            use crate::config::Transport::*;
+                use crate::config::Transport::*;
 
-            let (transport_event_loop, transport) = match provider.transport {
-                Rpc => Transport::new_rpc(&provider.url, provider.headers),
-                Ipc => Transport::new_ipc(&provider.url),
-                Ws => Transport::new_ws(&provider.url),
-            };
+                let (transport_event_loop, transport) = match web3.transport {
+                    Rpc => Transport::new_rpc(&web3.url, web3.headers),
+                    Ipc => Transport::new_ipc(&web3.url),
+                    Ws => Transport::new_ws(&web3.url),
+                };
 
-            // If we drop the event loop the transport will stop working.
-            // For now it's fine to just leak it.
-            std::mem::forget(transport_event_loop);
+                // If we drop the event loop the transport will stop working.
+                // For now it's fine to just leak it.
+                std::mem::forget(transport_event_loop);
 
-            let supports_eip_1898 = !provider.features.contains("no_eip1898");
+                let supports_eip_1898 = !web3.features.contains("no_eip1898");
 
-            parsed_networks.insert(
-                name.to_string(),
-                capabilities,
-                Arc::new(
-                    graph_chain_ethereum::EthereumAdapter::new(
-                        logger,
-                        provider.label,
-                        &provider.url,
-                        transport,
-                        eth_rpc_metrics.clone(),
-                        supports_eip_1898,
-                    )
-                    .await,
-                ),
-            );
+                parsed_networks.insert(
+                    name.to_string(),
+                    capabilities,
+                    Arc::new(
+                        graph_chain_ethereum::EthereumAdapter::new(
+                            logger,
+                            provider.label,
+                            &web3.url,
+                            transport,
+                            eth_rpc_metrics.clone(),
+                            supports_eip_1898,
+                        )
+                        .await,
+                    ),
+                );
+            }
         }
     }
     parsed_networks.sort();
@@ -704,7 +708,16 @@ fn start_block_ingestor(
     // database.
     assert!(*ANCESTOR_COUNT >= *REORG_THRESHOLD);
 
-    info!(logger, "Starting block ingestors");
+    info!(
+        logger,
+        "Starting block ingestors with {} chains [{}]",
+        chains.len(),
+        chains
+            .keys()
+            .map(|v| v.clone())
+            .collect::<Vec<String>>()
+            .join(", ")
+    );
 
     // Create Ethereum block ingestors and spawn a thread to run each
     chains
