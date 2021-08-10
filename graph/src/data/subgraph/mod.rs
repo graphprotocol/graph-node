@@ -916,6 +916,10 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             false => Err(errors),
         }
     }
+
+    pub fn spec_version(&self) -> &Version {
+        &self.0.spec_version
+    }
 }
 
 impl<C: Blockchain> SubgraphManifest<C> {

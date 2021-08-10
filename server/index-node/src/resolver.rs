@@ -2,7 +2,7 @@ use either::Either;
 use std::collections::{BTreeMap, HashMap};
 
 use graph::data::subgraph::features::detect_features;
-use graph::data::subgraph::status;
+use graph::data::subgraph::{status, SPEC_VERSION_0_0_4};
 use graph::prelude::*;
 use graph::{
     components::store::StatusStore,
@@ -198,6 +198,11 @@ where
             futures03::executor::block_on(future)
                 .map_err(|_error| QueryExecutionError::SubgraphManifestResolveError)?
         };
+
+        // Feature management is not available for subgraphs with specVersion below 0.0.4
+        if *unvalidated_subgraph_manifest.spec_version() < SPEC_VERSION_0_0_4 {
+            return Err(QueryExecutionError::InvalidSubgraphManifest);
+        }
 
         // Then validate the subgraph we've just obtained.
         //
