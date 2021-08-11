@@ -1319,10 +1319,8 @@ fn subscription_gets_result_even_without_events() {
         let results: Vec<_> = stream
             .take(1)
             .collect()
-            // .map(Result::<_, ()>::Ok)
             .timeout(Duration::from_secs(3))
             .await
-            // .unwrap()
             .unwrap();
 
         assert_eq!(results.len(), 1);

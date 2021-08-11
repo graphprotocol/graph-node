@@ -703,18 +703,15 @@ impl<C: Blockchain> Stream for BlockStream<C> {
                 }
 
                 // Pausing after an error, before looking for more blocks
-                BlockStreamState::RetryAfterDelay(ref mut delay) => {
-                    match delay.as_mut().poll(cx) {
-                        Poll::Ready(Ok(..)) | Poll::Ready(Err(_)) => {
-                            self.state = BlockStreamState::BeginReconciliation;
-                        }
-
-                        Poll::Pending => {
-                            // self.state = BlockStreamState::RetryAfterDelay(delay);
-                            break Poll::Pending;
-                        }
+                BlockStreamState::RetryAfterDelay(ref mut delay) => match delay.as_mut().poll(cx) {
+                    Poll::Ready(Ok(..)) | Poll::Ready(Err(_)) => {
+                        self.state = BlockStreamState::BeginReconciliation;
                     }
-                }
+
+                    Poll::Pending => {
+                        break Poll::Pending;
+                    }
+                },
 
                 // Waiting for a chain head update
                 BlockStreamState::Idle => {
