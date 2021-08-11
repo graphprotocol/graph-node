@@ -1404,9 +1404,9 @@ impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
         out.unsafe_to_cache_prepared();
 
         // Construct a query
-        //   select 'Type1' as entity from schema.table1 where id in $1
+        //   select 'Type1' as entity from schema.table1 where id = any ($1)
         //   union all
-        //   select 'Type2' as entity from schema.table2 where id in $1
+        //   select 'Type2' as entity from schema.table2 where id = any ($1)
         //   union all
         //   ...
         for (i, table) in self.tables.iter().enumerate() {
@@ -1417,8 +1417,9 @@ impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
             out.push_bind_param::<Text, _>(&table.object.as_str())?;
             out.push_sql(" as entity from ");
             out.push_sql(table.qualified_name.as_str());
-            out.push_sql(" where id in ");
+            out.push_sql(" where id = any (");
             out.push_bind_param::<Array<Text>, _>(&self.entity_ids)?;
+            out.push_sql(")");
         }
         Ok(())
     }
