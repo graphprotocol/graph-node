@@ -6,11 +6,11 @@
     "codegen": "graph codegen",
     "test": "yarn build-contracts && truffle test --compile-none --network test",
     "create:test": "graph create test/api-version-v0-0-4 --node $GRAPH_NODE_ADMIN_URI",
-    "deploy:test": "graph deploy test/api-version-v0-0-4 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
+    "deploy:test": "graph deploy test/api-version-v0-0-4 --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
   "devDependencies": {
-    "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#master",
-    "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#master",
+    "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#v0.21.1",
+    "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#v0.21.1",
     "solc": "^0.8.2"
   },
   "dependencies": {
