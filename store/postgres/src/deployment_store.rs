@@ -256,13 +256,24 @@ impl DeploymentStore {
         )
     }
 
-    fn check_interface_entity_uniqueness(
+    fn check_interface_entity_uniqueness<'a>(
         &self,
         conn: &PgConnection,
         layout: &Layout,
-        key: &EntityKey,
+        keys: impl Iterator<Item = &'a EntityKey> + Clone,
     ) -> Result<(), StoreError> {
+        let mut keys = keys.peekable();
+
+        // We must receive at least one key
+        let key = match keys.peek() {
+            Some(&key) => key.to_owned(),
+            None => panic!("check_interface_entity_uniqueness received no keys"),
+        };
+
         assert_eq!(&key.subgraph_id, &layout.site.deployment);
+        debug_assert!(keys
+            .clone()
+            .all(|other_key| other_key.entity_type == key.entity_type));
 
         // Collect all types that share an interface implementation with this
         // entity type, and make sure there are no conflicting IDs.
@@ -373,10 +384,11 @@ impl DeploymentStore {
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let section = stopwatch.start_section("check_interface_entity_uniqueness");
-        for (key, _) in data.iter() {
-            // WARNING: This will potentially execute 2 queries for each entity key.
-            self.check_interface_entity_uniqueness(conn, layout, key)?;
-        }
+
+        let keys = data.iter().map(|(key, _)| key);
+
+        self.check_interface_entity_uniqueness(conn, layout, keys)?;
+
         section.end();
 
         let _section = stopwatch.start_section("apply_entity_modifications_insert");
@@ -393,10 +405,11 @@ impl DeploymentStore {
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let section = stopwatch.start_section("check_interface_entity_uniqueness");
-        for (key, _) in data.iter() {
-            // WARNING: This will potentially execute 2 queries for each entity key.
-            self.check_interface_entity_uniqueness(conn, layout, key)?;
-        }
+
+        let keys = data.iter().map(|(key, _)| key);
+
+        self.check_interface_entity_uniqueness(conn, layout, keys)?;
+
         section.end();
 
         let _section = stopwatch.start_section("apply_entity_modifications_update");
