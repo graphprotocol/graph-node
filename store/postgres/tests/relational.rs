@@ -829,13 +829,21 @@ fn conflicting_entity() {
 
         // If we wanted to create Fred the dog, which is forbidden, we'd run this:
         let conflict = layout
-            .conflicting_entity(&conn, &id.to_owned(), vec![cat.clone(), ferret.clone()])
+            .conflicting_entity(
+                &conn,
+                vec![&id.to_owned()],
+                vec![cat.clone(), ferret.clone()],
+            )
             .unwrap();
         assert_eq!(Some("Cat".to_owned()), conflict);
 
         // If we wanted to manipulate Fred the cat, which is ok, we'd run:
         let conflict = layout
-            .conflicting_entity(&conn, &id.to_owned(), vec![dog.clone(), ferret.clone()])
+            .conflicting_entity(
+                &conn,
+                vec![&id.to_owned()],
+                vec![dog.clone(), ferret.clone()],
+            )
             .unwrap();
         assert_eq!(None, conflict);
 
@@ -843,7 +851,7 @@ fn conflicting_entity() {
         let chair = EntityType::from("Chair");
         let result = layout.conflicting_entity(
             &conn,
-            &id.to_owned(),
+            vec![&id.to_owned()],
             vec![dog.clone(), ferret.clone(), chair.clone()],
         );
         assert!(result.is_err());
