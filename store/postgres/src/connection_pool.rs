@@ -330,14 +330,6 @@ impl HandleEvent for EventHandler {
     }
 }
 
-impl std::ops::Deref for ConnectionPool {
-    type Target = Pool<ConnectionManager<PgConnection>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.pool
-    }
-}
-
 impl ConnectionPool {
     pub fn create(
         shard_name: &str,
@@ -521,12 +513,18 @@ impl ConnectionPool {
         }
     }
 
+    pub fn get(
+        &self,
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, diesel::r2d2::PoolError> {
+        self.pool.get()
+    }
+
     pub fn get_with_timeout_warning(
         &self,
         logger: &Logger,
     ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, graph::prelude::Error> {
         loop {
-            match self.get_timeout(Duration::from_secs(60)) {
+            match self.pool.get_timeout(Duration::from_secs(60)) {
                 Ok(conn) => return Ok(conn),
                 Err(e) => error!(logger, "Error checking out connection, retrying";
                    "error" => e.to_string(),
