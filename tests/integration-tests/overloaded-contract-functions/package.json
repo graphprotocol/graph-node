@@ -6,11 +6,11 @@
     "codegen": "graph codegen",
     "test": "yarn build-contracts && truffle test --compile-none --network test",
     "create:test": "graph create test/overloaded-contract-functions --node $GRAPH_NODE_ADMIN_URI",
-    "deploy:test": "graph deploy test/overloaded-contract-functions --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
+    "deploy:test": "graph deploy test/overloaded-contract-functions --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
   "devDependencies": {
-    "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#otavio/update-assembly-script",
-    "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#otavio/update-assembly-script",
+    "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#master",
+    "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#master",
     "solc": "^0.8.2"
   },
   "dependencies": {
