@@ -791,7 +791,17 @@ impl EthereumAdapter {
     }
 
     pub async fn chain_id(&self) -> Result<u64, Error> {
-        Ok(u64::try_from(self.web3.eth().chain_id().compat().await?).unwrap())
+        let logger = self.logger.clone();
+        let web3 = self.web3.clone();
+        u64::try_from(
+            retry("chain_id RPC call", &logger)
+                .no_limit()
+                .timeout_secs(*JSON_RPC_TIMEOUT)
+                .run(move || web3.eth().chain_id().from_err::<Error>())
+                .compat()
+                .await?,
+        )
+        .map_err(Error::msg)
     }
 }
 
