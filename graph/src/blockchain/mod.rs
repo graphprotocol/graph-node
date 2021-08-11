@@ -35,11 +35,11 @@ use std::{collections::HashMap, convert::TryFrom};
 use web3::types::H256;
 
 pub use block_stream::{
-    BlockStream, ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter,
+    BlockStream, BlockStreamMetrics, ChainHeadUpdateListener, ChainHeadUpdateStream,
+    TriggersAdapter,
 };
-pub use types::{BlockHash, BlockPtr};
 
-use self::block_stream::BlockStreamMetrics;
+pub use types::{BlockHash, BlockPtr};
 
 pub trait Block: Send + Sync {
     fn ptr(&self) -> BlockPtr;
@@ -60,7 +60,7 @@ pub trait Block: Send + Sync {
 
 #[async_trait]
 // This is only `Debug` because some tests require that
-pub trait Blockchain: Debug + Sized + Send + Sync + 'static {
+pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     // The `Clone` bound is used when reprocessing a block, because `triggers_in_block` requires an
     // owned `Block`. It would be good to come up with a way to remove this bound.
     type Block: Block + Clone;
@@ -99,7 +99,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + 'static {
         &self,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        filter: Self::TriggerFilter,
+        filter: Arc<Self::TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<BlockStream<Self>, Error>;

@@ -9,5 +9,5 @@ graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
 graphql-parser = "0.3"
 http = "0.2"
-hyper = "0.13"
+hyper = "0.14"
 serde = "1.0"

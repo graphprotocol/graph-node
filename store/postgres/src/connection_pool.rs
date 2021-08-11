@@ -603,7 +603,7 @@ impl ConnectionPool {
             .write()
             .unwrap()
             .add_and_register(start.elapsed(), &self.semaphore_wait_gauge);
-        permit
+        permit.unwrap()
     }
 
     fn configure_fdw(&self, servers: &Vec<ForeignServer>) -> Result<(), StoreError> {

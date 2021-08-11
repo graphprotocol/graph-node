@@ -45,9 +45,9 @@ impl IncomingMessage {
     pub fn from_ws_message(msg: WsMessage) -> Result<Self, WsError> {
         let text = msg.into_text()?;
         serde_json::from_str(text.as_str()).map_err(|e| {
-            WsError::Protocol(
+            WsError::Http(http::Response::new(Some(
                 format!("Invalid GraphQL over WebSocket message: {}: {}", text, e).into(),
-            )
+            )))
         })
     }
 }
@@ -94,8 +94,11 @@ fn send_message(
     sink: &mpsc::UnboundedSender<WsMessage>,
     msg: OutgoingMessage,
 ) -> Result<(), WsError> {
-    sink.unbounded_send(msg.into())
-        .map_err(|_| WsError::Http(StatusCode::INTERNAL_SERVER_ERROR))
+    sink.unbounded_send(msg.into()).map_err(|_| {
+        let mut response = http::Response::new(None);
+        *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+        WsError::Http(response)
+    })
 }
 
 /// Helper function to send error messages.
@@ -105,7 +108,11 @@ fn send_error_string(
     error: String,
 ) -> Result<(), WsError> {
     sink.unbounded_send(OutgoingMessage::from_error_string(operation_id, error).into())
-        .map_err(|_| WsError::Http(StatusCode::INTERNAL_SERVER_ERROR))
+        .map_err(|_| {
+            let mut response = http::Response::new(None);
+            *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+            WsError::Http(response)
+        })
 }
 
 /// Responsible for recording operation ids and stopping them.
@@ -366,14 +373,16 @@ where
                     let logger = logger.clone();
                     let cancel_id = id.clone();
                     let connection_id = connection_id.clone();
-                    let run_subscription = run_subscription.cancelable(&guard, move || {
-                        debug!(logger, "Stopped operation";
+                    let run_subscription =
+                        run_subscription.compat().cancelable(&guard, move || {
+                            debug!(logger, "Stopped operation";
                                        "connection" => &connection_id,
-                                       "id" => &cancel_id)
-                    });
+                                       "id" => &cancel_id);
+                            Ok(())
+                        });
                     operations.insert(id, guard);
 
-                    graph::spawn_allow_panic(run_subscription.compat());
+                    graph::spawn_allow_panic(run_subscription);
                     Ok(())
                 }
             }?

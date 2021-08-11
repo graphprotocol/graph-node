@@ -100,15 +100,11 @@ async fn select_fastest_client_with_stat(
         .map(|(i, c)| {
             let c = c.cheap_clone();
             let path = path.clone();
-            retry_policy(do_retry, "object.stat", &logger)
-                .run(move || {
-                    let path = path.clone();
-                    let c = c.cheap_clone();
-                    async move { c.object_stat(path, timeout).map_ok(move |s| (s, i)).await }
-                        .boxed()
-                        .compat()
-                })
-                .compat()
+            retry_policy(do_retry, "object.stat", &logger).run(move || {
+                let path = path.clone();
+                let c = c.cheap_clone();
+                async move { c.object_stat(path, timeout).map_ok(move |s| (s, i)).await }
+            })
         })
         .collect();
 
@@ -250,10 +246,7 @@ impl LinkResolverTrait for LinkResolver {
                     }
                     Result::<Vec<u8>, reqwest::Error>::Ok(data)
                 }
-                .boxed()
-                .compat()
             })
-            .compat()
             .await?;
 
         Ok(data)

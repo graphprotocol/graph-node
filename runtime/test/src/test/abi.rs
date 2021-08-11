@@ -25,12 +25,12 @@ fn test_unbounded_loop(api_version: Version) {
     assert!(res.unwrap_err().to_string().contains(TRAP_TIMEOUT));
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn unbounded_loop_v0_0_4() {
     test_unbounded_loop(API_VERSION_0_0_4);
 }
 
-#[tokio::test(threaded_scheduler)]
+#[tokio::test(flavor = "multi_thread")]
 async fn unbounded_loop_v0_0_5() {
     test_unbounded_loop(API_VERSION_0_0_5);
 }

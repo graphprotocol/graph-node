@@ -42,11 +42,8 @@ lazy_static! {
         None => Logger::root(slog::Discard, o!()),
     };
     static ref SEQ_LOCK: Mutex<()> = Mutex::new(());
-    static ref STORE_RUNTIME: Runtime = Builder::new()
-        .threaded_scheduler()
-        .enable_all()
-        .build()
-        .unwrap();
+    pub static ref STORE_RUNTIME: Runtime =
+        Builder::new_multi_thread().enable_all().build().unwrap();
     pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(LoadManager::new(
         &*LOGGER,
         Vec::new(),
@@ -367,8 +364,7 @@ fn execute_subgraph_query_internal(
     max_complexity: Option<u64>,
     deadline: Option<Instant>,
 ) -> QueryResults {
-    let mut rt = tokio::runtime::Builder::new()
-        .basic_scheduler()
+    let rt = tokio::runtime::Builder::new_current_thread()
         .enable_io()
         .enable_time()
         .build()

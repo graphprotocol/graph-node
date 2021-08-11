@@ -415,11 +415,14 @@ where
         // forward; this is easier than updating the existing block stream.
         //
         // This is a long-running and unfortunately a blocking future (see #905), so it is run in
-        // its own thread. When upgrading to tokio 1.0 it would be logical to run this with
-        // `task::unconstrained`, since it has a dedicated OS thread so the OS will handle the
-        // preemption.
+        // its own thread. It is also run with `task::unconstrained` because we have seen deadlocks
+        // occur without it, possibly caused by our use of legacy futures and tokio versions in the
+        // codebase and dependencies, which may not play well with the tokio 1.0 cooperative
+        // scheduling. It is also logical in terms of performance to run this with `unconstrained`,
+        // it has a dedicated OS thread so the OS will handle the preemption. See
+        // https://github.com/tokio-rs/tokio/issues/3493.
         graph::spawn_thread(deployment.to_string(), move || {
-            if let Err(e) = graph::block_on(run_subgraph(ctx)) {
+            if let Err(e) = graph::block_on(task::unconstrained(run_subgraph(ctx))) {
                 error!(
                     &logger,
                     "Subgraph instance failed to run: {}",
@@ -456,14 +459,13 @@ where
             .new_block_stream(
                 ctx.inputs.deployment.clone(),
                 ctx.inputs.start_blocks.clone(),
-                ctx.state.filter.clone(),
+                Arc::new(ctx.state.filter.clone()),
                 ctx.block_stream_metrics.clone(),
                 ctx.inputs.unified_api_version.clone(),
             )
             .await?
             .map_err(CancelableError::Error)
-            .cancelable(&block_stream_canceler, || CancelableError::Cancel)
-            .compat();
+            .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
 
         // Keep the stream's cancel guard around to be able to shut it down
         // when the subgraph deployment is unassigned

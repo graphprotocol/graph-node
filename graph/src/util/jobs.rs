@@ -85,7 +85,7 @@ impl Runner {
                 next = next.min(task.next_run);
             }
             let wait = next.saturating_duration_since(Instant::now());
-            tokio::time::delay_for(wait).await;
+            tokio::time::sleep(wait).await;
         }
         self.stop.store(false, Ordering::SeqCst);
         warn!(self.logger, "Received request to stop. Stopping runner");
@@ -116,7 +116,7 @@ mod tests {
         }
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn jobs_run() {
         let count = Arc::new(Mutex::new(0));
         let job = CounterJob {
@@ -142,7 +142,7 @@ mod tests {
         stop.store(true, Ordering::SeqCst);
         // Wait for the runner to shut down
         while stop.load(Ordering::SeqCst) {
-            tokio::time::delay_for(Duration::from_millis(10)).await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
         }
     }
 }

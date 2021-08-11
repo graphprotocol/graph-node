@@ -5,9 +5,9 @@ use graph::prelude::{
 };
 use graph::{
     blockchain::{
+        block_stream::BlockStream,
         block_stream::{
-            BlockStream, BlockStreamMetrics, BlockWithTriggers,
-            TriggersAdapter as TriggersAdapterTrait,
+            BlockStreamMetrics, BlockWithTriggers, TriggersAdapter as TriggersAdapterTrait,
         },
         Block, BlockHash, BlockPtr, Blockchain, ChainHeadUpdateListener,
         IngestorAdapter as IngestorAdapterTrait, IngestorError, TriggerFilter as _,
@@ -164,7 +164,7 @@ impl Blockchain for Chain {
         &self,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        filter: TriggerFilter,
+        filter: Arc<TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<BlockStream<Self>, Error> {

@@ -952,6 +952,7 @@ async fn check_events(
             future::ok(!expected.is_empty())
         })
         .collect()
+        .compat()
         .timeout(Duration::from_secs(3))
         .await
         .expect(&format!(
@@ -1467,6 +1468,7 @@ fn throttle_subscription_throttles() {
         let res = subscription
             .take(1)
             .collect()
+            .compat()
             .timeout(Duration::from_millis(500))
             .await;
         assert!(res.is_err());

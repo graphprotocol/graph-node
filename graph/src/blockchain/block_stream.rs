@@ -1,9 +1,10 @@
 use anyhow::Error;
-use async_trait::async_trait;
-use futures::Stream;
+use futures03::{stream::Stream, Future, FutureExt};
 use std::cmp;
 use std::collections::VecDeque;
-use std::mem;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 use crate::components::store::BlockNumber;
@@ -141,28 +142,25 @@ where
     /// The BlockStream is reconciling the subgraph store state with the chain store state.
     ///
     /// Valid next states: YieldingBlocks, Idle, BeginReconciliation (in case of revert)
-    Reconciliation(Box<dyn Future<Item = NextBlocks<C>, Error = Error> + Send>),
+    Reconciliation(Pin<Box<dyn Future<Output = Result<NextBlocks<C>, Error>> + Send>>),
 
     /// The BlockStream is emitting blocks that must be processed in order to bring the subgraph
     /// store up to date with the chain store.
     ///
     /// Valid next states: BeginReconciliation
-    YieldingBlocks(VecDeque<BlockWithTriggers<C>>),
+    YieldingBlocks(Box<VecDeque<BlockWithTriggers<C>>>),
 
     /// The BlockStream experienced an error and is pausing before attempting to produce
     /// blocks again.
     ///
     /// Valid next states: BeginReconciliation
-    RetryAfterDelay(Box<dyn Future<Item = (), Error = Error> + Send>),
+    RetryAfterDelay(Pin<Box<dyn Future<Output = Result<(), Error>> + Send>>),
 
     /// The BlockStream has reconciled the subgraph store and chain store states.
     /// No more work is needed until a chain head update.
     ///
     /// Valid next states: BeginReconciliation
     Idle,
-
-    /// Not a real state, only used when going from one state to another.
-    Transition,
 }
 
 /// A single next step to take in reconciling the state of the subgraph store with the state of the
@@ -199,7 +197,7 @@ where
     // This is not really a block number, but the (unsigned) difference
     // between two block numbers
     reorg_threshold: BlockNumber,
-    filter: C::TriggerFilter,
+    filter: Arc<C::TriggerFilter>,
     start_blocks: Vec<BlockNumber>,
     logger: Logger,
     metrics: Arc<BlockStreamMetrics>,
@@ -238,7 +236,7 @@ impl<C: Blockchain> Clone for BlockStreamContext<C> {
 /// an update on this stream whenever the head of the underlying chain
 /// changes. The updates have no payload, receivers should call
 /// `Store::chain_head_ptr` to check what the latest block is.
-pub type ChainHeadUpdateStream = Box<dyn Stream<Item = (), Error = ()> + Send>;
+pub type ChainHeadUpdateStream = Box<dyn Stream<Item = ()> + Send + Unpin>;
 
 pub trait ChainHeadUpdateListener: Send + Sync + 'static {
     /// Subscribe to chain head updates for the given network.
@@ -277,7 +275,7 @@ where
         adapter: Arc<C::TriggersAdapter>,
         node_id: NodeId,
         subgraph_id: DeploymentHash,
-        filter: C::TriggerFilter,
+        filter: Arc<C::TriggerFilter>,
         start_blocks: Vec<BlockNumber>,
         reorg_threshold: BlockNumber,
         logger: Logger,
@@ -610,27 +608,22 @@ where
 }
 
 impl<C: Blockchain> Stream for BlockStream<C> {
-    type Item = BlockStreamEvent<C>;
-    type Error = Error;
+    type Item = Result<BlockStreamEvent<C>, Error>;
 
-    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        let mut state = BlockStreamState::Transition;
-        mem::swap(&mut self.state, &mut state);
-
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let result = loop {
-            match state {
+            match &mut self.state {
                 BlockStreamState::BeginReconciliation => {
                     // Start the reconciliation process by asking for blocks
                     let ctx = self.ctx.clone();
                     let fut = async move { ctx.next_blocks().await };
-                    state = BlockStreamState::Reconciliation(Box::new(fut.boxed().compat()));
+                    self.state = BlockStreamState::Reconciliation(fut.boxed());
                 }
 
                 // Waiting for the reconciliation to complete or yield blocks
-                BlockStreamState::Reconciliation(mut next_blocks_future) => {
-                    match next_blocks_future.poll() {
-                        // Reconciliation found blocks to process
-                        Ok(Async::Ready(NextBlocks::Blocks(next_blocks, block_range_size))) => {
+                BlockStreamState::Reconciliation(next_blocks_future) => {
+                    match next_blocks_future.poll_unpin(cx) {
+                        Poll::Ready(Ok(NextBlocks::Blocks(next_blocks, block_range_size))) => {
                             // We had only one error, so we infer that reducing the range size is
                             // what fixed it. Reduce the max range size to prevent future errors.
                             // See: 018c6df4-132f-4acc-8697-a2d64e83a9f0
@@ -651,36 +644,30 @@ impl<C: Blockchain> Stream for BlockStream<C> {
                             }
 
                             // Switch to yielding state until next_blocks is depleted
-                            state = BlockStreamState::YieldingBlocks(next_blocks);
+                            self.state = BlockStreamState::YieldingBlocks(Box::new(next_blocks));
 
                             // Yield the first block in next_blocks
                             continue;
                         }
-
                         // Reconciliation completed. We're caught up to chain head.
-                        Ok(Async::Ready(NextBlocks::Done)) => {
+                        Poll::Ready(Ok(NextBlocks::Done)) => {
                             // Reset error count
                             self.consecutive_err_count = 0;
 
                             // Switch to idle
-                            state = BlockStreamState::Idle;
+                            self.state = BlockStreamState::Idle;
 
                             // Poll for chain head update
                             continue;
                         }
-
-                        Ok(Async::Ready(NextBlocks::Revert(block))) => {
-                            state = BlockStreamState::BeginReconciliation;
-                            break Ok(Async::Ready(Some(BlockStreamEvent::Revert(block))));
+                        Poll::Ready(Ok(NextBlocks::Revert(block))) => {
+                            self.state = BlockStreamState::BeginReconciliation;
+                            break Poll::Ready(Some(Ok(BlockStreamEvent::Revert(block))));
                         }
-
-                        Ok(Async::NotReady) => {
-                            // Nothing to change or yield yet.
-                            state = BlockStreamState::Reconciliation(next_blocks_future);
-                            break Ok(Async::NotReady);
+                        Poll::Pending => {
+                            break Poll::Pending;
                         }
-
-                        Err(e) => {
+                        Poll::Ready(Err(e)) => {
                             // Reset the block range size in an attempt to recover from the error.
                             // See also: 018c6df4-132f-4acc-8697-a2d64e83a9f0
                             self.ctx.previous_block_range_size = 1;
@@ -688,84 +675,69 @@ impl<C: Blockchain> Stream for BlockStream<C> {
 
                             // Pause before trying again
                             let secs = (5 * self.consecutive_err_count).max(120) as u64;
-                            state = BlockStreamState::RetryAfterDelay(Box::new(
-                                tokio::time::delay_for(Duration::from_secs(secs))
-                                    .map(Ok)
-                                    .boxed()
-                                    .compat(),
+
+                            self.state = BlockStreamState::RetryAfterDelay(Box::pin(
+                                tokio::time::sleep(Duration::from_secs(secs)).map(Ok),
                             ));
-                            break Err(e);
+
+                            break Poll::Ready(Some(Err(e)));
                         }
                     }
                 }
 
                 // Yielding blocks from reconciliation process
-                BlockStreamState::YieldingBlocks(mut next_blocks) => {
+                BlockStreamState::YieldingBlocks(ref mut next_blocks) => {
                     match next_blocks.pop_front() {
                         // Yield one block
                         Some(next_block) => {
-                            state = BlockStreamState::YieldingBlocks(next_blocks);
-                            break Ok(Async::Ready(Some(BlockStreamEvent::ProcessBlock(
+                            break Poll::Ready(Some(Ok(BlockStreamEvent::ProcessBlock(
                                 next_block,
                             ))));
                         }
 
                         // Done yielding blocks
                         None => {
-                            state = BlockStreamState::BeginReconciliation;
+                            self.state = BlockStreamState::BeginReconciliation;
                         }
                     }
                 }
 
                 // Pausing after an error, before looking for more blocks
-                BlockStreamState::RetryAfterDelay(mut delay) => match delay.poll() {
-                    Ok(Async::Ready(())) | Err(_) => {
-                        state = BlockStreamState::BeginReconciliation;
+                BlockStreamState::RetryAfterDelay(ref mut delay) => match delay.as_mut().poll(cx) {
+                    Poll::Ready(Ok(..)) | Poll::Ready(Err(_)) => {
+                        self.state = BlockStreamState::BeginReconciliation;
                     }
 
-                    Ok(Async::NotReady) => {
-                        state = BlockStreamState::RetryAfterDelay(delay);
-                        break Ok(Async::NotReady);
+                    Poll::Pending => {
+                        break Poll::Pending;
                     }
                 },
 
                 // Waiting for a chain head update
                 BlockStreamState::Idle => {
-                    match self.chain_head_update_stream.poll() {
+                    match Pin::new(self.chain_head_update_stream.as_mut()).poll_next(cx) {
                         // Chain head was updated
-                        Ok(Async::Ready(Some(()))) => {
-                            state = BlockStreamState::BeginReconciliation;
+                        Poll::Ready(Some(())) => {
+                            self.state = BlockStreamState::BeginReconciliation;
                         }
 
                         // Chain head update stream ended
-                        Ok(Async::Ready(None)) => {
+                        Poll::Ready(None) => {
                             // Should not happen
-                            return Err(anyhow::anyhow!(
+                            return Poll::Ready(Some(Err(anyhow::anyhow!(
                                 "chain head update stream ended unexpectedly"
-                            ));
+                            ))));
                         }
 
-                        Ok(Async::NotReady) => {
+                        Poll::Pending => {
                             // Stay idle
-                            state = BlockStreamState::Idle;
-                            break Ok(Async::NotReady);
-                        }
-
-                        // mpsc channel failed
-                        Err(()) => {
-                            // Should not happen
-                            return Err(anyhow::anyhow!("chain head update Receiver failed"));
+                            self.state = BlockStreamState::Idle;
+                            break Poll::Pending;
                         }
                     }
                 }
-
-                // This will only happen if this poll function fails to complete normally then is
-                // called again.
-                BlockStreamState::Transition => unreachable!(),
             }
         };
-
-        self.state = state;
 
         result
     }

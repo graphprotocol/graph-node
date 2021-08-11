@@ -13,11 +13,11 @@ use crate::{
     notification_listener::{JsonNotification, NotificationListener, SafeChannelName},
 };
 use graph::blockchain::ChainHeadUpdateListener as ChainHeadUpdateListenerTrait;
-use graph::prelude::futures03::prelude::stream::{StreamExt, TryStreamExt};
 use graph::prelude::serde::{Deserialize, Serialize};
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::tokio::sync::{mpsc::Receiver, watch};
 use graph::prelude::{crit, o, CheapClone, Logger, MetricsRegistry};
+use graph::tokio_stream::wrappers::WatchStream;
 
 lazy_static! {
     pub static ref CHANNEL_NAME: SafeChannelName =
@@ -37,7 +37,7 @@ impl Watcher {
 
     fn send(&self) {
         // Unwrap: `self` holds a receiver.
-        self.sender.broadcast(()).unwrap()
+        self.sender.send(()).unwrap()
     }
 }
 
@@ -164,7 +164,7 @@ impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
             .receiver
             .clone();
 
-        Box::new(update_receiver.map(Result::<_, ()>::Ok).boxed().compat())
+        Box::new(WatchStream::new(update_receiver))
     }
 }
 
