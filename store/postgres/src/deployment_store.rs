@@ -299,9 +299,11 @@ impl DeploymentStore {
                 .filter(|type_name| type_name != &key.entity_type),
         );
 
+        let entity_ids: Vec<_> = keys.map(|key| &*key.entity_id).collect();
+
         if !types_with_shared_interface.is_empty() {
             if let Some(conflicting_entity) =
-                layout.conflicting_entity(conn, &key.entity_id, types_with_shared_interface)?
+                layout.conflicting_entity(conn, entity_ids, types_with_shared_interface)?
             {
                 return Err(StoreError::ConflictingId(
                     entity_type.clone(),

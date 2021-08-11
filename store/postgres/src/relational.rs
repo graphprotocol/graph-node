@@ -587,10 +587,10 @@ impl Layout {
     pub fn conflicting_entity(
         &self,
         conn: &PgConnection,
-        entity_id: &str,
+        entity_ids: Vec<&str>,
         entities: Vec<EntityType>,
     ) -> Result<Option<String>, StoreError> {
-        Ok(ConflictingEntityQuery::new(self, entities, entity_id)?
+        Ok(ConflictingEntityQuery::new(self, entities, entity_ids)?
             .load(conn)?
             .pop()
             .map(|data| data.entity))

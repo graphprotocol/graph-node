@@ -1379,13 +1379,13 @@ impl<'a, Conn> RunQueryDsl<Conn> for InsertQuery<'a> {}
 pub struct ConflictingEntityQuery<'a> {
     layout: &'a Layout,
     tables: Vec<&'a Table>,
-    entity_id: &'a str,
+    entity_ids: Vec<&'a str>,
 }
 impl<'a> ConflictingEntityQuery<'a> {
     pub fn new(
         layout: &'a Layout,
         entities: Vec<EntityType>,
-        entity_id: &'a str,
+        entity_ids: Vec<&'a str>,
     ) -> Result<Self, StoreError> {
         let tables = entities
             .iter()
@@ -1394,7 +1394,7 @@ impl<'a> ConflictingEntityQuery<'a> {
         Ok(ConflictingEntityQuery {
             layout,
             tables,
-            entity_id,
+            entity_ids,
         })
     }
 }
@@ -1404,9 +1404,9 @@ impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
         out.unsafe_to_cache_prepared();
 
         // Construct a query
-        //   select 'Type1' as entity from schema.table1 where id = $1
+        //   select 'Type1' as entity from schema.table1 where id in $1
         //   union all
-        //   select 'Type2' as entity from schema.table2 where id = $1
+        //   select 'Type2' as entity from schema.table2 where id in $1
         //   union all
         //   ...
         for (i, table) in self.tables.iter().enumerate() {
@@ -1417,8 +1417,8 @@ impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
             out.push_bind_param::<Text, _>(&table.object.as_str())?;
             out.push_sql(" as entity from ");
             out.push_sql(table.qualified_name.as_str());
-            out.push_sql(" where id = ");
-            out.push_bind_param::<Text, _>(&self.entity_id)?;
+            out.push_sql(" where id in ");
+            out.push_bind_param::<Array<Text>, _>(&self.entity_ids)?;
         }
         Ok(())
     }
