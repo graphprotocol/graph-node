@@ -821,8 +821,7 @@ impl EthereumAdapter {
             retry("chain_id RPC call", &logger)
                 .no_limit()
                 .timeout_secs(*JSON_RPC_TIMEOUT)
-                .run(move || web3.eth().chain_id().from_err::<Error>())
-                .compat()
+                .run(move || web3.eth().chain_id().from_err::<Error>().compat())
                 .await?,
         )
         .map_err(Error::msg)
