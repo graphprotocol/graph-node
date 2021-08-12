@@ -1716,6 +1716,7 @@ name = "graph-server-index-node"
 version = "0.23.1"
 dependencies = [
  "futures 0.3.16",
+ "either",
  "graph",
  "graph-chain-ethereum",
  "graph-graphql",

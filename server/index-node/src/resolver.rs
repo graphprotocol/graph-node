@@ -1,6 +1,7 @@
+use either::Either;
 use std::collections::{BTreeMap, HashMap};
 
-use graph::data::subgraph::features::validate_subgraph_features;
+use graph::data::subgraph::features::detect_features;
 use graph::data::subgraph::status;
 use graph::prelude::*;
 use graph::{
@@ -198,39 +199,68 @@ where
                 .map_err(|_error| QueryExecutionError::SubgraphManifestResolveError)?
         };
 
-        // We then need to validate the subgraph we've justo obtained
-        let (subgraph_manifest, _) = unvalidated_subgraph_manifest
-            .validate(self.subgraph_store.clone())
-            .map_err(|_error| QueryExecutionError::InvalidSubgraphManifest)?;
+        // Then validate the subgraph we've just obtained.
+        //
+        // Note that feature valiadation errors will be inside the error variant vector (because
+        // `validate` also validates subgraph features), so we must filter them out to build our
+        // response.
+        let subgraph_validation: Either<_, _> =
+            match unvalidated_subgraph_manifest.validate(self.subgraph_store.clone()) {
+                Ok((subgraph_manifest, _warnings)) => Either::Left(subgraph_manifest),
+                Err(validation_errors) => {
+                    if validation_errors.iter().all(|error| {
+                        matches!(
+                            error,
+                            SubgraphManifestValidationError::FeatureValidationError(_)
+                        )
+                    }) {
+                        Either::Right(validation_errors)
+                    } else {
+                        // If other errors are present, we must return early with an error.
+                        //
+                        // It might be useful to return a more thoughtful error, but that is not the
+                        // purpose of this endpoint.
+                        return Err(QueryExecutionError::InvalidSubgraphManifest);
+                    }
+                }
+            };
+
+        // At this point, we have either:
+        // 1. A valid subgraph manifest with no errors.
+        // 2. No subgraph manifest and a set of feature validation errors.
+        //
+        // For this step we must collect whichever results we have into GraphQL `Value` types.
+        let (features, errors) = match subgraph_validation {
+            Either::Left(subgraph_manifest) => {
+                let features = q::Value::List(
+                    detect_features(&subgraph_manifest)
+                        .iter()
+                        .map(ToString::to_string)
+                        .map(q::Value::String)
+                        .collect(),
+                );
+                let errors = q::Value::Null;
+                (features, errors)
+            }
+            Either::Right(errors) => {
+                assert!(!errors.is_empty());
+                let features = q::Value::List(vec![]);
+                let errors = q::Value::List(
+                    errors
+                        .iter()
+                        .map(ToString::to_string)
+                        .map(q::Value::String)
+                        .collect(),
+                );
+                (features, errors)
+            }
+        };
 
         // We then bulid a GraphqQL `Object` value that contains the feature detection and
         // validation results and send it back as a response.
-        let response = {
-            // The response object will have either:
-            // - a list of features for the "feature" key and a null value for the "error" key; OR
-            // -. a an empty list for the "feature" key and a string for the "error" key.
-            let (detected_features, error) = match validate_subgraph_features(&subgraph_manifest) {
-                Ok(features) => (
-                    q::Value::List(
-                        features
-                            .iter()
-                            .map(ToString::to_string)
-                            .map(q::Value::String)
-                            .collect(),
-                    ),
-                    q::Value::Null,
-                ),
-                Err(validation_error) => (
-                    q::Value::List(vec![]),
-                    q::Value::String(validation_error.to_string()),
-                ),
-            };
-
-            let mut response: BTreeMap<String, q::Value> = BTreeMap::new();
-            response.insert("features".to_string(), detected_features);
-            response.insert("errors".to_string(), error);
-            response
-        };
+        let mut response: BTreeMap<String, q::Value> = BTreeMap::new();
+        response.insert("features".to_string(), features);
+        response.insert("errors".to_string(), errors);
 
         Ok(q::Value::Object(response))
     }
