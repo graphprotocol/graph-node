@@ -53,7 +53,11 @@ impl StoreBuilder {
             .expect("connection url's contain enough detail");
         let details = Arc::new(details);
 
-        join_all(pools.iter().map(|(_, pool)| pool.setup(details.clone()))).await;
+        join_all(pools.iter().map(|(_, pool)| {
+            let details = details.clone();
+            async move { pool.setup(details.clone()) }
+        }))
+        .await;
 
         let chains = HashMap::from_iter(config.chains.chains.iter().map(|(name, chain)| {
             let shard = ShardName::new(chain.shard.to_string())

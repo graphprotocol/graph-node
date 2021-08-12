@@ -566,30 +566,26 @@ impl ConnectionPool {
     /// # Panics
     ///
     /// If any errors happen during the migration, the process panics
-    pub async fn setup(&self, servers: Arc<Vec<ForeignServer>>) {
+    pub fn setup(&self, servers: Arc<Vec<ForeignServer>>) {
         fn die(logger: &Logger, msg: &'static str, err: &dyn std::fmt::Display) -> ! {
             crit!(logger, "{}", msg; "error" => err.to_string());
             panic!("{}: {}", msg, err);
         }
 
         let pool = self.clone();
-        let res = self
-            .with_conn(move |conn, _| {
-                advisory_lock::lock_migration(conn)
-                    .unwrap_or_else(|err| die(&pool.logger, "failed to get migration lock", &err));
-                let result = pool
-                    .configure_fdw(servers.as_ref())
-                    .and_then(|()| migrate_schema(&pool.logger, conn))
-                    .and_then(|()| pool.map_primary())
-                    .and_then(|()| pool.map_metadata(servers.as_ref()));
-                advisory_lock::unlock_migration(conn).unwrap_or_else(|err| {
-                    die(&pool.logger, "failed to release migration lock", &err);
-                });
-                result.unwrap_or_else(|err| die(&pool.logger, "migrations failed", &err));
-                Ok(())
-            })
-            .await;
-        res.unwrap_or_else(|err| die(&self.logger, "migrations were canceled", &err))
+        let conn = self.get().expect("we can get a connection");
+
+        advisory_lock::lock_migration(&conn)
+            .unwrap_or_else(|err| die(&pool.logger, "failed to get migration lock", &err));
+        let result = pool
+            .configure_fdw(servers.as_ref())
+            .and_then(|()| migrate_schema(&pool.logger, &conn))
+            .and_then(|()| pool.map_primary())
+            .and_then(|()| pool.map_metadata(servers.as_ref()));
+        advisory_lock::unlock_migration(&conn).unwrap_or_else(|err| {
+            die(&pool.logger, "failed to release migration lock", &err);
+        });
+        result.unwrap_or_else(|err| die(&pool.logger, "migrations failed", &err));
     }
 
     pub(crate) async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
