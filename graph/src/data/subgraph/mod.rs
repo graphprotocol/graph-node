@@ -753,7 +753,7 @@ impl Graft {
 #[serde(rename_all = "camelCase")]
 pub struct BaseSubgraphManifest<C, S, D, T> {
     pub id: DeploymentHash,
-    pub spec_version: String,
+    pub spec_version: Version,
     #[serde(default)]
     pub features: BTreeSet<SubgraphFeature>,
     pub description: Option<String>,
@@ -1029,17 +1029,15 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             chain,
         } = self;
 
-        match semver::Version::parse(&spec_version) {
-            Ok(ver) if (*MIN_SPEC_VERSION <= ver && ver <= *MAX_SPEC_VERSION) => {}
-            _ => {
-                return Err(anyhow!(
-                    "This Graph Node only supports manifest spec versions between {} and {}, but subgraph `{}` uses `{}`",
-                    *MIN_SPEC_VERSION,
-                    *MAX_SPEC_VERSION,
-                    id,
-                    spec_version
-                ));
-            }
+        if *MIN_SPEC_VERSION <= spec_version && spec_version <= *MAX_SPEC_VERSION {
+            return Err(anyhow!(
+                "This Graph Node only supports manifest spec versions between {} and {},
+                    but subgraph `{}` uses `{}`",
+                *MIN_SPEC_VERSION,
+                *MAX_SPEC_VERSION,
+                id,
+                spec_version
+            ));
         }
 
         let (schema, data_sources, templates) = try_join3(

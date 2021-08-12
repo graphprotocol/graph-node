@@ -5,6 +5,7 @@ use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::log;
 use graph::prelude::{QueryStoreManager as _, SubgraphStore as _, *};
+use graph::semver::Version;
 use graph::{
     components::store::DeploymentLocator, components::store::EntityType,
     components::store::StatusStore, components::store::StoredDynamicDataSource,
@@ -149,7 +150,7 @@ pub fn create_subgraph(
 
     let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
         id: subgraph_id.clone(),
-        spec_version: "1".to_owned(),
+        spec_version: Version::new(1, 0, 0),
         features: BTreeSet::new(),
         description: Some(format!("manifest for {}", subgraph_id)),
         repository: Some(format!("repo for {}", subgraph_id)),

@@ -158,7 +158,7 @@ pub struct SubgraphManifestEntity {
 impl<'a, C: Blockchain> From<&'a super::SubgraphManifest<C>> for SubgraphManifestEntity {
     fn from(manifest: &'a super::SubgraphManifest<C>) -> Self {
         Self {
-            spec_version: manifest.spec_version.clone(),
+            spec_version: manifest.spec_version.to_string(),
             description: manifest.description.clone(),
             repository: manifest.repository.clone(),
             features: manifest.features.iter().map(|f| f.to_string()).collect(),

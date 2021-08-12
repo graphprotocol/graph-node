@@ -2,6 +2,7 @@ use crate::Chain;
 
 use super::*;
 use futures::future::FutureResult;
+use semver::Version;
 use std::{collections::BTreeSet, marker::PhantomData};
 
 fn check_subgraph_exists(
@@ -21,7 +22,7 @@ fn create_subgraph(
     // Create a fake manifest
     let manifest = SubgraphManifest::<Chain> {
         id: subgraph_id.clone(),
-        spec_version: String::from("0.0.2"),
+        spec_version: Version::new(0, 0, 2),
         features: BTreeSet::new(),
         description: None,
         repository: None,

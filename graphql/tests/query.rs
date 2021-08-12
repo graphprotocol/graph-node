@@ -25,6 +25,7 @@ use graph::{
         SubgraphDeploymentEntity, SubgraphManifest, SubgraphName, SubgraphStore,
         SubgraphVersionSwitchingMode, Subscription, SubscriptionError, Value,
     },
+    semver::Version,
 };
 use graph_graphql::{prelude::*, subscription::execute_subscription};
 use test_store::{
@@ -55,7 +56,7 @@ fn setup_with_features(
     let schema = test_schema(id.clone());
     let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
         id: id.clone(),
-        spec_version: "1".to_owned(),
+        spec_version: Version::new(1, 0, 0),
         features,
         description: None,
         repository: None,
