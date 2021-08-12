@@ -52,6 +52,10 @@ pub enum SubgraphFeatureValidationError {
     /// A feature is used by the subgraph but it is not declared in the `features` section of the manifest file.
     #[error("The feature `{}` is used by the subgraph but it is not declared in the manifest.", fmt_subgraph_features(.0))]
     Undeclared(BTreeSet<SubgraphFeature>),
+
+    /// The provided compiled mapping is not a valid WASM module.
+    #[error("Failed to parse the provided mapping WASM module")]
+    InvalidMapping,
 }
 
 fn fmt_subgraph_features(subgraph_features: &BTreeSet<SubgraphFeature>) -> String {
@@ -62,7 +66,7 @@ pub fn validate_subgraph_features<C: Blockchain>(
     manifest: &SubgraphManifest<C>,
 ) -> Result<BTreeSet<SubgraphFeature>, SubgraphFeatureValidationError> {
     let declared: &BTreeSet<SubgraphFeature> = &manifest.features;
-    let used = detect_features(&manifest);
+    let used = detect_features(&manifest)?;
     let undeclared: BTreeSet<SubgraphFeature> = used.difference(&declared).cloned().collect();
     if !undeclared.is_empty() {
         Err(SubgraphFeatureValidationError::Undeclared(undeclared))
@@ -71,16 +75,19 @@ pub fn validate_subgraph_features<C: Blockchain>(
     }
 }
 
-pub fn detect_features<C: Blockchain>(manifest: &SubgraphManifest<C>) -> BTreeSet<SubgraphFeature> {
-    vec![
+pub fn detect_features<C: Blockchain>(
+    manifest: &SubgraphManifest<C>,
+) -> Result<BTreeSet<SubgraphFeature>, InvalidMapping> {
+    let features = vec![
         detect_non_fatal_errors(&manifest),
         detect_grafting(&manifest),
         detect_full_text_search(&manifest.schema),
-        detect_ipfs_on_ethereum_contracts(&manifest),
+        detect_ipfs_on_ethereum_contracts(&manifest)?,
     ]
     .into_iter()
     .filter_map(|x| x)
-    .collect()
+    .collect();
+    Ok(features)
 }
 
 fn detect_non_fatal_errors<C: Blockchain>(
@@ -108,18 +115,29 @@ fn detect_full_text_search(schema: &Schema) -> Option<SubgraphFeature> {
         }
     }
 }
+
+pub struct InvalidMapping;
+
+impl From<InvalidMapping> for SubgraphFeatureValidationError {
+    fn from(_: InvalidMapping) -> Self {
+        SubgraphFeatureValidationError::InvalidMapping
+    }
+}
+
 fn detect_ipfs_on_ethereum_contracts<C: Blockchain>(
     manifest: &SubgraphManifest<C>,
-) -> Option<SubgraphFeature> {
+) -> Result<Option<SubgraphFeature>, InvalidMapping> {
     for mapping in manifest.mappings() {
-        if IPFS_ON_ETHEREUM_CONTRACTS_FUNCTION_NAMES
-            .iter()
-            .any(|function_name| mapping.calls_host_fn(function_name))
-        {
-            return Some(SubgraphFeature::IpfsOnEthereumContracts);
+        for function_name in IPFS_ON_ETHEREUM_CONTRACTS_FUNCTION_NAMES {
+            if mapping
+                .calls_host_fn(function_name)
+                .map_err(|_| InvalidMapping)?
+            {
+                return Ok(Some(SubgraphFeature::IpfsOnEthereumContracts));
+            }
         }
     }
-    None
+    Ok(None)
 }
 
 #[cfg(test)]

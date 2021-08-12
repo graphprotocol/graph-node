@@ -554,30 +554,27 @@ pub struct Mapping {
 }
 
 impl Mapping {
-    pub fn requires_archive(&self) -> bool {
+    pub fn requires_archive(&self) -> anyhow::Result<bool> {
         self.calls_host_fn("ethereum.call")
     }
 
-    fn calls_host_fn(&self, host_fn: &str) -> bool {
+    fn calls_host_fn(&self, host_fn: &str) -> anyhow::Result<bool> {
         use wasmparser::Payload;
 
         let runtime = self.runtime.as_ref().as_ref();
 
         for payload in wasmparser::Parser::new(0).parse_all(runtime) {
-            match payload.unwrap() {
-                Payload::ImportSection(s) => {
-                    for import in s {
-                        let import = import.unwrap();
-                        if import.field == Some(host_fn) {
-                            return true;
-                        }
+            if let Payload::ImportSection(s) = payload? {
+                for import in s {
+                    let import = import?;
+                    if import.field == Some(host_fn) {
+                        return Ok(true);
                     }
                 }
-                _ => (),
             }
         }
 
-        false
+        Ok(false)
     }
 
     pub fn has_call_handler(&self) -> bool {

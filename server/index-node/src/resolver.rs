@@ -239,6 +239,7 @@ where
             Either::Left(subgraph_manifest) => {
                 let features = q::Value::List(
                     detect_features(&subgraph_manifest)
+                        .map_err(|_| QueryExecutionError::InvalidSubgraphManifest)?
                         .iter()
                         .map(ToString::to_string)
                         .map(q::Value::String)
