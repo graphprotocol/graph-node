@@ -5,9 +5,8 @@
 //! Features are declared in the `subgraph.yml` file, also known as the subgraph's manifest, and are
 //! validated by a graph-node instance during the deploy phase or by direct request.
 //!
-//! A feature validation error will be triggered in either one of the following cases:
-//! 1. Using undeclared features.
-//! 2. Declaring a nonexistent feature name.
+//! A feature validation error will be triggered if a subgraph use any feature without declaring it
+//! in the `features` section of the manifest file.
 //!
 //! Feature validation is performed by the [`validate_subgraph_features`] function.
 
