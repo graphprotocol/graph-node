@@ -901,7 +901,10 @@ async fn entity_store_v0_0_5() {
 }
 
 fn test_detect_contract_calls(api_version: Version) {
-    let data_source_without_calls = mock_data_source("abi_store_value.wasm", api_version.clone());
+    let data_source_without_calls = mock_data_source(
+        &wasm_file_path("abi_store_value.wasm", api_version.clone()),
+        api_version.clone(),
+    );
     assert_eq!(
         data_source_without_calls
             .mapping
@@ -910,7 +913,10 @@ fn test_detect_contract_calls(api_version: Version) {
         false
     );
 
-    let data_source_with_calls = mock_data_source("contract_calls.wasm", api_version);
+    let data_source_with_calls = mock_data_source(
+        &wasm_file_path("contract_calls.wasm", api_version.clone()),
+        api_version,
+    );
     assert_eq!(
         data_source_with_calls.mapping.requires_archive().unwrap(),
         true
