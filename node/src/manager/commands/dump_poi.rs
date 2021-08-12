@@ -1,12 +1,17 @@
+use std::io::prelude::*;
+use std::io::{BufWriter, Seek, Write};
+use std::iter::Iterator;
+use std::path::Path;
+use walkdir::{DirEntry, WalkDir};
+use zip::result::ZipError;
+use zip::write::FileOptions;
+
 use diesel::r2d2::{ConnectionManager, PooledConnection};
-use diesel::result::Error as PgError;
-use diesel::sql_types::{Integer, Text};
+use diesel::sql_types::{BigInt, Integer, Text};
 use diesel::PgConnection;
 use diesel::{sql_query, RunQueryDsl};
-use postgres::{Client as PGClient, NoTls, Row};
+use postgres::{Client as PGClient, NoTls, SimpleQueryMessage};
 
-use flate2::write::GzEncoder;
-use flate2::Compression;
 use graph::data::subgraph::DeploymentHash;
 use graph::prelude::{anyhow, SubgraphName};
 use graph_store_postgres::command_support::catalog as store_catalog;
@@ -14,7 +19,6 @@ use graph_store_postgres::connection_pool::ConnectionPool;
 
 use serde::Deserialize;
 use std::fs::{self, File};
-use std::io::{BufWriter, Write};
 
 //Nothing here requires async
 use reqwest::blocking::multipart;
@@ -73,33 +77,81 @@ pub fn run(
     let directory = create_dump_directory(deployment_hash_string)?;
     let poi_records = get_poi(&pooled_connection, &subgraph_schema_name)?;
     let tmp_filepath = dump_poi(&directory, poi_records)?;
-    let compressed_filepath = compress_directory("poi", tmp_filepath)?;
-    upload_file_to_endpoint(&compressed_filepath, indexer_id, dispute_id)?;
-    delete_directory(directory)?;
+    walk_and_compress(&tmp_filepath, &tmp_filepath)?;
+    upload_file_to_endpoint(&tmp_filepath, indexer_id, dispute_id)?;
+    delete_directory(&tmp_filepath)?;
 
     Ok(())
 }
 
 /// Create a directory to store files for upload
 fn create_dump_directory(deployment_id: &str) -> Result<String, anyhow::Error> {
-    let path = format!("../../../poi_dump/{}", deployment_id);
+    let path = format!("/tmp/graph_node/data_dump/{}", deployment_id);
     fs::create_dir_all(&path)?;
     Ok(path)
 }
 
-/// Compress contents of a directory
-fn compress_directory(path: &str, kind: String) -> Result<String, anyhow::Error> {
-    let tar_path = format!("{}.tar.gz", path);
-    let tar_gz = File::create(&tar_path)?;
+/// Walks a directory path for all files and adds them to compressed archive.
+fn walk_and_compress(src_dir: &str, dst_file: &str) -> zip::result::ZipResult<()> {
+    if !Path::new(src_dir).is_dir() {
+        return Err(ZipError::FileNotFound);
+    }
 
-    let enc = GzEncoder::new(tar_gz, Compression::default());
-    let mut tar = tar::Builder::new(enc);
-    tar.append_dir_all(kind, path)?;
-    Ok(tar_path)
+    let path = Path::new(dst_file);
+    let file = File::create(&path).unwrap();
+
+    let walkdir = WalkDir::new(src_dir.to_string());
+    let it = walkdir.into_iter();
+
+    compress(&mut it.filter_map(|e| e.ok()), src_dir, file)?;
+
+    Ok(())
+}
+
+/// Compress contents of a directory
+fn compress<T>(
+    it: &mut dyn Iterator<Item = DirEntry>,
+    prefix: &str,
+    writer: T,
+) -> zip::result::ZipResult<()>
+where
+    T: Write + Seek,
+{
+    let mut zip = zip::ZipWriter::new(writer);
+    let options = FileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .unix_permissions(0o755);
+
+    let mut buffer = Vec::new();
+    for entry in it {
+        let path = entry.path();
+        let name = path.strip_prefix(Path::new(prefix)).unwrap();
+
+        // Write file or directory explicitly
+        // Some unzip tools unzip files with directory paths correctly, some do not!
+        if path.is_file() {
+            println!("Compressing file {:?} as {:?} ...", path, name);
+            #[allow(deprecated)]
+            zip.start_file_from_path(name, options)?;
+            let mut f = File::open(path)?;
+
+            f.read_to_end(&mut buffer)?;
+            zip.write_all(&*buffer)?;
+            buffer.clear();
+        } else if name.as_os_str().len() != 0 {
+            // Only if not root! Avoids path spec / warning
+            // and mapname conversion failed error on unzip
+            println!("Compressing directory {:?} as {:?} ...", path, name);
+            #[allow(deprecated)]
+            zip.add_directory_from_path(name, options)?;
+        }
+    }
+    zip.finish()?;
+    Result::Ok(())
 }
 
 /// Remove file after its been uploaded
-fn delete_directory(directory: String) -> Result<(), anyhow::Error> {
+fn delete_directory(directory: &str) -> Result<(), anyhow::Error> {
     fs::remove_dir_all(directory)?;
     Ok(())
 }
@@ -110,8 +162,8 @@ pub struct PoiRecord {
     digest: String,
     #[sql_type = "Text"]
     id: String,
-    #[sql_type = "Integer"]
-    vid: i32,
+    #[sql_type = "BigInt"]
+    vid: i64,
     #[sql_type = "Text"]
     block_range: String,
 }
@@ -119,11 +171,11 @@ pub struct PoiRecord {
 /// Gather a set of poi query records
 pub fn get_poi(
     conn: &PooledConnection<ConnectionManager<PgConnection>>,
-    subgraph_name: &str,
+    subgraph_schema_name: &str,
 ) -> Result<Vec<PoiRecord>, anyhow::Error> {
     let raw_query = format!(
         "SELECT encode(poi2$.digest,'hex') as digest, id,vid, CAST(block_range as text) from {}.poi2$",
-        subgraph_name
+        subgraph_schema_name
     );
 
     let poi_queryset = sql_query(raw_query).load::<PoiRecord>(conn).unwrap();
@@ -175,7 +227,7 @@ fn dump_poi(
     poi_records: std::vec::Vec<PoiRecord>,
 ) -> Result<String, anyhow::Error> {
     println!("dumping poi");
-    let filepath = format!("{}/poi.csv", directory);
+    let filepath = format!("{}/poi/poi.csv", directory);
     let f = File::create(&filepath).expect("Unable to create file");
     let mut file_buffer = BufWriter::new(f);
     write!(file_buffer, "digest, id, vid, block_range\n").expect("Unable to write header");
@@ -281,7 +333,7 @@ fn dump_call_cache(
     callcache_records: std::vec::Vec<CallCacheRecord>,
 ) -> Result<String, anyhow::Error> {
     println!("dumping call cache");
-    let filepath = format!("{}/call_cache.csv", directory);
+    let filepath = format!("{}/call_cache/call_cache.csv", directory);
     let f = File::create(&filepath).expect("Unable to create file");
     let mut file_buffer = BufWriter::new(f);
     write!(
@@ -320,69 +372,110 @@ fn get_subgraph_tables(
     return Ok(subgraph_tables);
 }
 
+/// Used to persist String
+fn string_to_static_str(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
+}
+
+#[derive(Queryable, QueryableByName)]
+pub struct ColumnNameAndType {
+    #[sql_type = "Text"]
+    column_name: String,
+    #[sql_type = "Text"]
+    data_type: String,
+}
+
 /// Gathers entries from entity tables that contain the divergent block if in closed interval
 /// Diesel isn't of any use here because this is dynamic.
-/// Also need to catch the columns for passing to csv
+/// Also need to catch the columns for passing to csv.
+/// Don't Run this on the poi2$ table
 fn get_filtered_subgraph_table_rows(
+    conn: &PooledConnection<ConnectionManager<PgConnection>>,
     raw_client: &mut PGClient,
     table_name: String,
     schema_name: String,
     divergent_block: i32,
-) -> Result<(Vec<Row>,Vec<Row>), anyhow::Error> {
-    //we won't know the type of this
+) -> Result<(Vec<ColumnNameAndType>, Vec<Vec<String>>), anyhow::Error> {
+    // We won't know the type of the returned table rows at compile time.
+    // And you can't use a placeholder for a table name when substituting a query string.
+    // Need to format prior and use the raw postgres driver.
 
-    let column_query = "SELECT column_name FROM information_schema.columns WHERE table_schema = '$1'
-     AND table_name   = '$2'
-       ORDER by ordinal_position";
+    let column_query = format!(
+        "SELECT column_name,data_type FROM information_schema.columns WHERE table_schema = '{}'
+     AND table_name   = '{}'
+       ORDER by ordinal_position",
+        schema_name, table_name
+    );
+    // let columns = raw_client.query(column_query, &[&schema_name, &table_name])?;
 
-    let columns = raw_client.query(column_query, &[&schema_name,&table_name])?;
+    let columns = sql_query(column_query)
+        .get_results::<ColumnNameAndType>(conn)
+        .unwrap();
 
-    let entity_query = 
-    "select * from $1.$2 as $2 WHERE ($3 <@ $2.block_range AND upper_inc($2.block_range)) OR ($3 = lower($2.block_range))";
-    let rows = raw_client.query(entity_query, &[&schema_name,&table_name,&divergent_block])?;
+    let entity_query = format!("select * from {}.{} as {} WHERE ({}::int4  <@ {}.block_range AND upper_inc({}.block_range))\
+OR ({}::int4 = lower({}.block_range))",schema_name, table_name, table_name,divergent_block, table_name, table_name,divergent_block,table_name);
 
-    Ok((columns,rows))
+    // Hack to get around the table name formatting
+    // let static_entity_query: &'static str = string_to_static_str(entity_query);
+
+    // Returns rows as strings
+    // Issue with `db error: ERROR: prepared statement "s0" already exists` when not using simple_query
+
+    let query_vec = raw_client.simple_query(&entity_query)?;
+
+    let mut row_entries: Vec<Vec<String>> = vec![];
+
+    for query_message in &query_vec {
+        let mut single_row_vector: Vec<String> = vec![];
+        match query_message {
+            SimpleQueryMessage::Row(query_row) => {
+                for idx in 0..query_row.len() {
+                    let item = query_row.get(idx).unwrap().to_string();
+                    single_row_vector.push(item);
+                }
+                row_entries.push(single_row_vector);
+            }
+            _ => println!("Empty result"),
+        }
+    }
+
+    Ok((columns, row_entries))
 }
 
 fn dump_divergent_entities(
     directory: &str,
-    table_columns: Vec<Row>,
-    table_records: Vec<Row>,
+    table_columns: Vec<ColumnNameAndType>,
+    table_records: Vec<Vec<String>>,
     table_name: String,
 ) -> Result<String, anyhow::Error> {
     println!("dumping divergent entities");
 
-    let filepath = format!("{}/{}.csv", directory,table_name);
-    let f = File::create(&filepath).expect("Unable to create file");
-    let mut file_buffer = BufWriter::new(f);
+    let record_filepath = format!("{}/{}_entities.csv", directory, table_name);
+    let record_file = File::create(&record_filepath).expect("Unable to create record file");
 
+    let meta_filepath = format!("{}/{}_entities_metadata.csv", directory, table_name);
+    let meta_file = File::create(&meta_filepath).expect("Unable to create metdata file");
 
-    let mut header = vec![];
-    let first_row = table_records.first().unwrap();
-    for (colIndex, column) in first_row.columns().iter().enumerate() {
-        header.push(column.name());
+    let mut record_buffer = BufWriter::new(record_file);
+    let mut metadata_buffer = BufWriter::new(meta_file);
+
+    write!(metadata_buffer, "column_name,data_type\n").expect("Unable to write metadata header");
+
+    let mut record_header = vec![];
+
+    for column_data in &table_columns {
+        record_header.push(column_data.column_name.clone());
+        let column_metadat_str = format!("{},{}\n", column_data.column_name, column_data.data_type);
+        write!(metadata_buffer, "{}", column_metadat_str).expect("Unable to write metadata row");
     }
 
-    write!(
-        file_buffer,
-        "{}\n",header.join(",")
-    )
-    .expect("Unable to write header");
+    let record_header_str = record_header.join(",");
 
+    write!(record_buffer, "{}\n", record_header_str).expect("Unable to write record header");
 
-    for row in table_records {
-        let mut row_as_vec_string :Vec<&str> = vec![];
-
-        for idx in 0..row.len(){
-            let row_item = row.get(idx);
-            row_as_vec_string.push(row_item);
-        }
-        write!(
-            file_buffer,
-            "{}\n",
-            row_as_vec_string.join(",")
-        )
-        .expect("unable to write row");
+    for record in &table_records {
+        write!(record_buffer, "{}\n", record.join(",")).expect("unable to write record row");
     }
-    return Ok(filepath);
+
+    return Ok(record_filepath);
 }

@@ -17,7 +17,6 @@ clap = "2.33.3"
 env_logger = "0.8.2"
 git-testament = "0.2"
 graphql-parser = "0.3"
-flate2 = "1.0"
 futures = { version = "0.3.1", features = ["compat"] }
 lazy_static = "1.2.0"
 url = "2.2.1"
@@ -46,6 +45,8 @@ reqwest = { version = "0.11.4", features = ["blocking", "multipart", "json"]}
 rand = "0.8.4"
 tar = "0.4.35"
 postgres = "0.19.1"
+walkdir = "2.3.2"
+zip = "0.5.13"
 
 [dev-dependencies]
 assert_cli = "0.6"
