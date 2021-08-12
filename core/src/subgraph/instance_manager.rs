@@ -816,17 +816,6 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
     // The triggers were processed but some were skipped due to deterministic errors, if the
     // `nonFatalErrors` feature is not present, return early with an error.
     let has_errors = block_state.has_errors();
-    if has_errors
-        && !ctx
-            .inputs
-            .features
-            .contains(&SubgraphFeature::nonFatalErrors)
-    {
-        // Take just the first error to report.
-        return Err(BlockProcessingError::Deterministic(
-            block_state.deterministic_errors.into_iter().next().unwrap(),
-        ));
-    }
 
     // Apply entity operations and advance the stream
 
@@ -889,14 +878,31 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
 
     let store = &ctx.inputs.store;
 
+    let BlockState {
+        deterministic_errors,
+        ..
+    } = block_state;
+
+    let first_error = deterministic_errors.iter().next().map(|e| e.clone());
+
     match store.transact_block_operations(
         block_ptr,
         mods,
         stopwatch,
         data_sources,
-        block_state.deterministic_errors,
+        deterministic_errors,
     ) {
         Ok(_) => {
+            if has_errors
+                && !ctx
+                    .inputs
+                    .features
+                    .contains(&SubgraphFeature::nonFatalErrors)
+            {
+                // Take just the first error to report.
+                return Err(BlockProcessingError::Deterministic(first_error.unwrap()));
+            }
+
             let elapsed = start.elapsed().as_secs_f64();
             metrics.block_ops_transaction_duration.observe(elapsed);
 
