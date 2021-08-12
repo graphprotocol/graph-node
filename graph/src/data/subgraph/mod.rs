@@ -1040,8 +1040,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
 
         if !(MIN_SPEC_VERSION..=MAX_SPEC_VERSION.clone()).contains(&spec_version) {
             return Err(anyhow!(
-                "This Graph Node only supports manifest spec versions between {} and {},
-                    but subgraph `{}` uses `{}`",
+                "This Graph Node only supports manifest spec versions between {} and {}, but subgraph `{}` uses `{}`",
                 MIN_SPEC_VERSION,
                 *MAX_SPEC_VERSION,
                 id,
