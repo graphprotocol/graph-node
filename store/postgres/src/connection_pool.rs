@@ -5,6 +5,7 @@ use diesel::{
 };
 
 use graph::cheap_clone::CheapClone;
+use graph::constraint_violation;
 use graph::prelude::tokio;
 use graph::prelude::tokio::time::Instant;
 use graph::{
@@ -499,16 +500,14 @@ impl ConnectionPool {
         }
     }
 
-    pub fn get(
-        &self,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, diesel::r2d2::PoolError> {
-        self.pool.get()
+    pub fn get(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
+        self.pool.get().map_err(|e| StoreError::Unknown(e.into()))
     }
 
     pub fn get_with_timeout_warning(
         &self,
         logger: &Logger,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, graph::prelude::Error> {
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
         loop {
             match self.pool.get_timeout(Duration::from_secs(60)) {
                 Ok(conn) => return Ok(conn),
@@ -530,7 +529,7 @@ impl ConnectionPool {
         &self,
         logger: &Logger,
         mut timeout: F,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, graph::prelude::Error>
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError>
     where
         F: FnMut() -> bool,
     {
@@ -540,7 +539,7 @@ impl ConnectionPool {
                 const MSG: &str =
                     "internal error: trying to get fdw connection on a pool that doesn't have any";
                 error!(logger, "{}", MSG);
-                bail!(MSG)
+                return Err(constraint_violation!(MSG));
             }
         };
         loop {

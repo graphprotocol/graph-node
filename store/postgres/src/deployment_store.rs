@@ -477,7 +477,7 @@ impl DeploymentStore {
     }
 
     /// Deprecated. Use `with_conn` instead.
-    fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
+    fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
         self.conn.get_with_timeout_warning(&self.logger)
     }
 
@@ -795,7 +795,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         key: EntityKey,
     ) -> Result<Option<Entity>, QueryExecutionError> {
-        let conn = self.get_conn().map_err(|e| StoreError::Unknown(e))?;
+        let conn = self.get_conn()?;
         let layout = self.layout(&conn, site)?;
 
         // We should really have callers pass in a block number; but until
@@ -836,9 +836,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         query: EntityQuery,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
-        let conn = self
-            .get_conn()
-            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
+        let conn = self.get_conn()?;
         self.execute_query(&conn, site, query)
     }
 
