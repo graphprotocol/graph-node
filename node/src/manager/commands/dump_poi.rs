@@ -25,7 +25,7 @@ use std::fs::{self, File};
 use reqwest::blocking::multipart;
 use reqwest::blocking::Client;
 
-use csv::Writer;
+use csv::WriterBuilder;
 
 /// Provide a go-like defer statement
 /// https://stackoverflow.com/questions/29963449/golang-like-defer-in-rust.
@@ -80,6 +80,7 @@ pub fn sync_poi(
     deployment_id: String,
     subgraph_name: Option<String>,
     debug: bool,
+    host: String,
 ) -> Result<(), anyhow::Error> {
     let pooled_connection = pool.get()?;
     let connection = store_catalog::Connection::new(&pooled_connection);
@@ -118,7 +119,7 @@ pub fn sync_poi(
     let dst_directory = base_path.join("poi/compressed/poi_compressed.zip");
 
     walk_and_compress(&src_directory, &dst_directory)?;
-    upload_file_to_endpoint(&dst_directory, indexer_id, dispute_id, "poi")?;
+    upload_file_to_endpoint(&dst_directory, &host, indexer_id, dispute_id, "poi")?;
 
     Ok(())
 }
@@ -145,9 +146,10 @@ pub fn sync_entities(
     deployment_id: String,
     subgraph_name: Option<String>,
     debug: bool,
+    host: String,
 ) -> Result<(), anyhow::Error> {
     //Short circuit if you error out on getting the divergent blocks
-    let divergent_blocks = get_divergent_blocks(&dispute_id, &indexer_id)?;
+    let divergent_blocks = get_divergent_blocks(&host, &dispute_id, &indexer_id)?;
     let first_divergent_block = *divergent_blocks.first().unwrap();
     println! {"FIRST DIVERGENT BLOCK {}",first_divergent_block};
     let foreign_server = pool.connection_detail()?;
@@ -215,12 +217,19 @@ pub fn sync_entities(
         )?;
 
         // Dump to entity path
-        dump_divergent_entities(&entity_dump_directory, columns, records, &table.tablename)?;
+        // dump_divergent_entities(&entity_dump_directory, columns, records, &table.tablename)?;
+        dump_divergent_entities_csv_writer(
+            &entity_dump_directory,
+            columns,
+            records,
+            &table.tablename,
+        )?;
     }
     //Compress & Upload
     walk_and_compress(&entity_dump_directory, &entity_compression_directory)?;
     upload_file_to_endpoint(
         &entity_compression_directory,
+        &host,
         indexer_id,
         dispute_id,
         "entities",
@@ -398,9 +407,10 @@ fn dump_poi_csv_writer(
     poi_records: std::vec::Vec<PoiRecord>,
 ) -> Result<(), anyhow::Error> {
     println!("dumping poi");
-    let filepath = directory.join("poi.csv");
+    let filepath = directory.join("poi.tsv");
 
-    let mut csv_writer = Writer::from_path(filepath)?;
+    let mut csv_writer = WriterBuilder::new().delimiter(b'\t').from_path(filepath)?;
+
     csv_writer.write_record(&["digest", "id", "vid", "block_range"])?;
 
     for poi in &poi_records {
@@ -412,6 +422,7 @@ fn dump_poi_csv_writer(
 /// ## Takes a filepath and sends to the dispute service for persistence.
 pub fn upload_file_to_endpoint(
     fp: &PathBuf,
+    host: &str,
     indexer_id: String,
     dispute_id: String,
     kind: &str,
@@ -419,7 +430,7 @@ pub fn upload_file_to_endpoint(
     let form = multipart::Form::new().file("file", fp)?;
     let client = Client::new();
     let res = client
-        .post(format!("http://localhost:8000/upload-{}", kind))
+        .post(format!("{}/upload-{}", host, kind))
         .header("Indexer-node", indexer_id)
         .header("Dispute-hash", dispute_id)
         .multipart(form)
@@ -439,6 +450,7 @@ pub fn upload_file_to_endpoint(
 }
 
 pub fn get_divergent_blocks(
+    host: &str,
     dispute_id: &String,
     indexer_id: &String,
 ) -> Result<Vec<i32>, anyhow::Error> {
@@ -450,7 +462,7 @@ pub fn get_divergent_blocks(
 
     let client = Client::new();
     let res = client
-        .get("http://localhost:8000/divergent_blocks")
+        .get(format!("{}/divergent_blocks", host))
         .header("Indexer-node", indexer_id)
         .header("Dispute-hash", dispute_id)
         .send()?;
@@ -504,23 +516,28 @@ fn dump_call_cache(
     callcache_records: std::vec::Vec<CallCacheRecord>,
 ) -> Result<(), anyhow::Error> {
     println!("dumping call cache");
-    let filepath = directory.join("call_cache.csv");
+    let filepath = directory.join("call_cache.tsv");
 
-    let f = File::create(&filepath).expect("Unable to create file");
-    let mut file_buffer = BufWriter::new(f);
-    write!(
-        file_buffer,
-        "id, return_value, contract_address, block_number\n"
-    )
-    .expect("Unable to write header");
+    let mut csv_writer_callcache = WriterBuilder::new().delimiter(b'\t').from_path(filepath)?;
+
+    // let f = File::create(&filepath).expect("Unable to create file");
+    // let mut file_buffer = BufWriter::new(f);
+    csv_writer_callcache.write_record(&[
+        "id",
+        "return_value",
+        "contract_address",
+        "block_number",
+    ])?;
+
     for cc in &callcache_records {
-        write!(
-            file_buffer,
-            "{},{},{},{}\n",
-            cc.id, cc.return_value, cc.contract_address, cc.block_number
-        )
-        .expect("unable to write row");
+        csv_writer_callcache.write_record(&[
+            &cc.id,
+            &cc.return_value,
+            &cc.contract_address,
+            &cc.block_number.to_string(),
+        ])?;
     }
+    csv_writer_callcache.flush()?;
     return Ok(());
 }
 
@@ -603,7 +620,7 @@ OR ({}::int4 = lower({}__.block_range))",schema_name, table_name, table_name,div
         let mut single_row_vector: Vec<String> = vec![];
         match query_message {
             SimpleQueryMessage::Row(query_row) => {
-                for idx in 0..(query_row.len() - 1) {
+                for idx in 0..(query_row.len()) {
                     let item = query_row.get(idx).unwrap_or("").to_string();
                     single_row_vector.push(item);
                 }
@@ -623,6 +640,7 @@ fn dump_divergent_entities(
     table_name: &String,
 ) -> Result<(), anyhow::Error> {
     println!("dumping divergent entities");
+
     let record_filepath = directory.join(format!("{}_entities.csv", table_name));
     let record_file = File::create(&record_filepath).expect("Unable to create record file");
 
@@ -649,6 +667,47 @@ fn dump_divergent_entities(
     for record in &table_records {
         write!(record_buffer, "{}\n", record.join(",")).expect("unable to write record row");
     }
+
+    Ok(())
+}
+
+fn dump_divergent_entities_csv_writer(
+    directory: &PathBuf,
+    table_columns: Vec<ColumnNameAndType>,
+    table_records: Vec<Vec<String>>,
+    table_name: &String,
+) -> Result<(), anyhow::Error> {
+    println!("dumping divergent entities");
+
+    let record_filepath = directory.join(format!("{}_entities.tsv", table_name));
+    let mut csv_writer_records = WriterBuilder::new()
+        .delimiter(b'\t')
+        .from_path(record_filepath)?;
+
+    let meta_filepath = directory.join(format!("{}_entities_metadata.tsv", table_name));
+    let mut csv_writer_metadata = WriterBuilder::new()
+        .delimiter(b'\t')
+        .from_path(meta_filepath)?;
+
+    csv_writer_metadata.write_record(&["column_name", "data_type"])?;
+
+    let mut record_header = vec![];
+
+    for column_data in &table_columns {
+        record_header.push(column_data.column_name.clone());
+        csv_writer_metadata.write_record(&[&column_data.column_name, &column_data.data_type])?;
+    }
+    csv_writer_metadata.flush()?;
+
+    csv_writer_records.write_record(record_header)?;
+
+    for record in &table_records {
+        let str = record.join(",");
+        println!("{}", str);
+
+        csv_writer_records.write_record(record)?;
+    }
+    csv_writer_records.flush()?;
 
     return Ok(());
 }

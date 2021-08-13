@@ -341,6 +341,8 @@ pub enum DumpPoiCommand {
         subgraph_name: Option<String>,
         #[structopt(short = "v", long)]
         debug: bool,
+        #[structopt(short = "h", long, default_value = "http://localhost:8000")]
+        host: String,
     },
     SyncEntities {
         #[structopt(short = "s", long)]
@@ -353,6 +355,8 @@ pub enum DumpPoiCommand {
         subgraph_name: Option<String>,
         #[structopt(short = "v", long)]
         debug: bool,
+        #[structopt(short = "h", long, default_value = "http://localhost:8000")]
+        host: String,
     }, // Upload {
        //     file_path: String,
        // }
@@ -642,6 +646,7 @@ async fn main() {
                     indexer_id,
                     subgraph_name,
                     debug,
+                    host,
                 } => {
                     println!("Dumping subgraph deployment {}", subgraph_deployment);
                     commands::dump_poi::sync_poi(
@@ -651,6 +656,7 @@ async fn main() {
                         subgraph_deployment,
                         subgraph_name,
                         debug,
+                        host,
                     )
                 }
                 SyncEntities {
@@ -659,6 +665,7 @@ async fn main() {
                     indexer_id,
                     subgraph_name,
                     debug,
+                    host,
                 } => commands::dump_poi::sync_entities(
                     ctx.primary_pool(),
                     dispute_id,
@@ -666,6 +673,7 @@ async fn main() {
                     subgraph_deployment,
                     subgraph_name,
                     debug,
+                    host,
                 ),
             }
         }
