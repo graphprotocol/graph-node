@@ -587,13 +587,19 @@ impl Layout {
     pub fn conflicting_entity(
         &self,
         conn: &PgConnection,
-        entity_ids: Vec<&str>,
-        entities: Vec<EntityType>,
+        entity_ids: &[&str],
+        entities: &[EntityType],
     ) -> Result<Option<String>, StoreError> {
-        Ok(ConflictingEntityQuery::new(self, entities, entity_ids)?
-            .load(conn)?
-            .pop()
-            .map(|data| data.entity))
+        // Since array lookups in PostgreSQL are not very efficient, we split our database calls to
+        // use arrays of 500 elements, maximum.
+        let mut final_result: Option<String> = None;
+        for chunk in entity_ids.chunks(500) {
+            final_result = ConflictingEntityQuery::new(self, entities, chunk)?
+                .load(conn)?
+                .pop()
+                .map(|data| data.entity)
+        }
+        Ok(final_result)
     }
 
     /// order is a tuple (attribute, value_type, direction)

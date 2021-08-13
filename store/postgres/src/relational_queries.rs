@@ -1379,13 +1379,13 @@ impl<'a, Conn> RunQueryDsl<Conn> for InsertQuery<'a> {}
 pub struct ConflictingEntityQuery<'a> {
     layout: &'a Layout,
     tables: Vec<&'a Table>,
-    entity_ids: Vec<&'a str>,
+    entity_ids: &'a [&'a str],
 }
 impl<'a> ConflictingEntityQuery<'a> {
     pub fn new(
         layout: &'a Layout,
-        entities: Vec<EntityType>,
-        entity_ids: Vec<&'a str>,
+        entities: &[EntityType],
+        entity_ids: &'a [&'a str],
     ) -> Result<Self, StoreError> {
         let tables = entities
             .iter()
