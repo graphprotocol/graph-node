@@ -45,7 +45,9 @@ zip = "0.5.13"
 postgres = "0.19.1"
 walkdir = "2.3.2"
 csv = "1.1.6"
-reqwest = {version = "0.11.4", features=["multipart", "blocking"] }
+reqwest = {version = "0.11.4", features=["multipart", "blocking", "stream"] }
+tokio = {version = "1.10.0", features=["fs"] } 
+tokio-util = {version = "0.6.7", features=["codec"]}
 
 [dev-dependencies]
 assert_cli = "0.6"

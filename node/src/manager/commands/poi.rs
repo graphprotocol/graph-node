@@ -25,6 +25,12 @@ use std::fs::{self, File};
 use reqwest::blocking::multipart;
 use reqwest::blocking::Client;
 
+//Async
+use reqwest::multipart as AsyncMultipart;
+use reqwest::{Body, Client as AsyncClient};
+use tokio::fs::File as TokFile;
+use tokio_util::codec::{BytesCodec, FramedRead};
+
 use csv::WriterBuilder;
 
 /// Provide a go-like defer statement
@@ -74,7 +80,7 @@ Process:
 /// @TODO:Make use of async reqwests client.
 ///
 /// @TODO:Make useful Error messages
-pub fn sync_poi(
+pub async fn sync_poi(
     pool: ConnectionPool,
     dispute_id: String,
     indexer_id: String,
@@ -120,7 +126,7 @@ pub fn sync_poi(
     let dst_directory = base_path.join("poi/compressed/poi_compressed.zip");
 
     walk_and_compress(&src_directory, &dst_directory)?;
-    upload_file_to_endpoint(&dst_directory, &host, indexer_id, dispute_id, "poi")?;
+    upload_file_to_endpoint_async(&dst_directory, &host, indexer_id, dispute_id, "poi").await?;
 
     Ok(())
 }
@@ -140,7 +146,7 @@ pub fn sync_poi(
 ///
 /// @TODO:Make useful Error messages
 
-pub fn sync_entities(
+pub async fn sync_entities(
     pool: ConnectionPool,
     dispute_id: String,
     indexer_id: String,
@@ -228,13 +234,14 @@ pub fn sync_entities(
     }
     //Compress & Upload
     walk_and_compress(&entity_dump_directory, &entity_compression_directory)?;
-    upload_file_to_endpoint(
+    upload_file_to_endpoint_async(
         &entity_compression_directory,
         &host,
         indexer_id,
         dispute_id,
         "entities",
-    )?;
+    )
+    .await?;
 
     Ok(())
 }
@@ -407,6 +414,7 @@ pub fn upload_file_to_endpoint(
     kind: &str,
 ) -> Result<(), anyhow::Error> {
     let form = multipart::Form::new().file("file", fp)?;
+
     let client = Client::new();
     let res = client
         .post(format!("{}/upload-{}", host, kind))
@@ -423,6 +431,54 @@ pub fn upload_file_to_endpoint(
     } else {
         println!("Something else happened. Status: {:?}", res.status());
         bail!("Error `{}`", res.text()?);
+    }
+
+    Ok(())
+}
+
+fn file_to_body(file: TokFile) -> Body {
+    let stream = FramedRead::new(file, BytesCodec::new());
+    let body = Body::wrap_stream(stream);
+    body
+}
+
+// ## Takes a filepath and sends to the dispute service for persistence.
+pub async fn upload_file_to_endpoint_async(
+    fp: &PathBuf,
+    host: &str,
+    indexer_id: String,
+    dispute_id: String,
+    kind: &str,
+) -> Result<(), anyhow::Error> {
+    let file = TokFile::open(fp).await?;
+    let file_name = fp
+        .file_name()
+        .map(|val| val.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    let client = AsyncClient::new();
+
+    let form = AsyncMultipart::Form::new().part(
+        "file",
+        AsyncMultipart::Part::stream(file_to_body(file)).file_name(file_name),
+    );
+
+    let res = client
+        .post(format!("{}/upload-{}", host, kind))
+        .header("Indexer-node", indexer_id)
+        .header("Dispute-hash", dispute_id)
+        .multipart(form)
+        .send()
+        .await?;
+
+    if res.status().is_success() {
+        println!("Success!");
+    } else if res.status().is_server_error() {
+        println!("server error! {:?}", res.status());
+        bail!("Error `{}`", res.text().await?);
+    } else {
+        println!("Something else happened. Status: {:?}", res.status());
+        bail!("Error `{}`", res.text().await?);
     }
 
     Ok(())

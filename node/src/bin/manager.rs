@@ -676,6 +676,7 @@ async fn main() {
                         keep,
                         host,
                     )
+                    .await
                 }
                 Sync {
                     subgraph_deployment,
@@ -684,15 +685,18 @@ async fn main() {
                     subgraph_name,
                     keep,
                     host,
-                } => commands::poi::sync_entities(
-                    ctx.primary_pool(),
-                    dispute_id,
-                    indexer_id,
-                    subgraph_deployment,
-                    subgraph_name,
-                    keep,
-                    host,
-                ),
+                } => {
+                    commands::poi::sync_entities(
+                        ctx.primary_pool(),
+                        dispute_id,
+                        indexer_id,
+                        subgraph_deployment,
+                        subgraph_name,
+                        keep,
+                        host,
+                    )
+                    .await
+                }
             }
         }
     };
