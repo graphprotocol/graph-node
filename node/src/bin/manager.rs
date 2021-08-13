@@ -156,6 +156,8 @@ pub enum Command {
     Chain(ChainCommand),
     /// Manipulate internal subgraph statistics
     Stats(StatsCommand),
+    /// Persist data relevant to arbitration of disputes
+    Poi(PoiCommand),
 }
 
 impl Command {
@@ -325,6 +327,59 @@ pub enum StatsCommand {
     },
 }
 
+#[derive(Clone, Debug, StructOpt)]
+pub enum PoiCommand {
+    /// Submit your POI table to arbitration for a given subgraph deployment id (Qm*).
+    /// Will generate intermediate files in `/tmp/graph_node/data_dump` that get
+    /// uploaded to a dispute service.
+    Dump {
+        /// ID of the subgraph deployment being contested.
+        /// You can list them with "SELECT deployment from subgraphs.subgraph_deployment;"
+        #[structopt(short = "s", long)]
+        subgraph_deployment: String,
+        /// ID of the dispute
+        #[structopt(short = "d", long)]
+        dispute_id: String,
+        /// Your indexer node ID. Wallet address you supply to the indexer-agent.
+        #[structopt(short = "i", long)]
+        indexer_id: String,
+        /// Optional name of the subgraph. Find this with "SELECT name from subgraphs.subgraph;"
+        #[structopt(short = "n", long)]
+        subgraph_name: Option<String>,
+        /// Intermediate files will not be deleted when this flag is set
+        #[structopt(short = "k", long)]
+        keep: bool,
+        /// Endpoint for the dispute service
+        #[structopt(short = "h", long, default_value = "http://localhost:8000")]
+        host: String,
+    },
+    /// Once POI have been processed for a dispute, you can upload entitites.
+    /// This commmand will gather the disparate blocks you need to account for
+    /// and will subsequently use those to filter all tables in your subgraph
+    /// and upload them to the dispute service.
+    Sync {
+        /// ID of the subgraph deployment being contested.
+        /// You can list them with "SELECT deployment from subgraphs.subgraph_deployment;"
+        #[structopt(short = "s", long)]
+        subgraph_deployment: String,
+        /// ID of the dispute
+        #[structopt(short = "d", long)]
+        dispute_id: String,
+        /// Your indexer node ID. Wallet address you supply to the indexer-agent.
+        #[structopt(short = "i", long)]
+        indexer_id: String,
+        /// Optional name of the subgraph. Find this with "SELECT name from subgraphs.subgraph;"
+        #[structopt(short = "n", long)]
+        subgraph_name: Option<String>,
+        /// Intermediate files will not be deleted when this flag is set
+        #[structopt(short = "k", long)]
+        keep: bool,
+        /// Endpoint for the dispute service
+        #[structopt(short = "h", long, default_value = "http://localhost:8000")]
+        host: String,
+    },
+}
+
 impl From<Opt> for config::Opt {
     fn from(opt: Opt) -> Self {
         let mut config_opt = config::Opt::default();
@@ -336,6 +391,7 @@ impl From<Opt> for config::Opt {
 
 /// Utilities to interact mostly with the store and build the parts of the
 /// store we need for specific commands
+#[derive(Clone)]
 struct Context {
     logger: Logger,
     node_id: NodeId,
@@ -596,6 +652,56 @@ async fn main() {
                     commands::stats::account_like(ctx.pools(), clear, table)
                 }
                 Show { nsp, table } => commands::stats::show(ctx.pools(), nsp, table),
+            }
+        }
+
+        Poi(cmd) => {
+            use PoiCommand::*;
+
+            match cmd {
+                Dump {
+                    subgraph_deployment,
+                    dispute_id,
+                    indexer_id,
+                    subgraph_name,
+                    keep,
+                    host,
+                } => {
+                    println!("Dumping subgraph deployment {}", subgraph_deployment);
+                    commands::poi::sync_poi(
+                        ctx.clone().store(),
+                        ctx.clone().primary_pool(),
+                        dispute_id,
+                        indexer_id,
+                        subgraph_deployment,
+                        subgraph_name,
+                        keep,
+                        host,
+                    )
+                    .await
+                }
+                Sync {
+                    subgraph_deployment,
+                    dispute_id,
+                    indexer_id,
+                    subgraph_name,
+                    keep,
+                    host,
+                } => {
+                    let (block_store, _) = ctx.clone().block_store_and_primary_pool();
+                    commands::poi::sync_entities(
+                        ctx.clone().store(),
+                        block_store,
+                        ctx.clone().primary_pool(),
+                        dispute_id,
+                        indexer_id,
+                        subgraph_deployment,
+                        subgraph_name,
+                        keep,
+                        host,
+                    )
+                    .await
+                }
             }
         }
     };

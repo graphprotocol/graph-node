@@ -201,6 +201,7 @@ fn insert_entity(
     layout: &Layout,
     entity_type: &str,
     mut entities: Vec<Entity>,
+    block_number: Option<i32>,
 ) {
     let mut entities_with_keys = entities
         .drain(..)
@@ -218,12 +219,13 @@ fn insert_entity(
         "Failed to insert entities {}[{:?}]",
         entity_type, entities_with_keys
     );
+
     let inserted = layout
         .insert(
             &conn,
             &entity_type,
             &mut entities_with_keys,
-            0,
+            block_number.unwrap_or(0),
             &MOCK_STOPWATCH,
         )
         .expect(&errmsg);
@@ -278,6 +280,7 @@ fn insert_user_entity(
     coffee: bool,
     favorite_color: Option<&str>,
     drinks: Option<Vec<&str>>,
+    block_number: i32,
 ) {
     let mut user = Entity::new();
 
@@ -303,7 +306,7 @@ fn insert_user_entity(
         user.insert("drinks".to_owned(), drinks.into());
     }
 
-    insert_entity(conn, layout, entity_type, vec![user]);
+    insert_entity(conn, layout, entity_type, vec![user], Some(block_number));
 }
 
 fn insert_users(conn: &PgConnection, layout: &Layout) {
@@ -319,6 +322,7 @@ fn insert_users(conn: &PgConnection, layout: &Layout) {
         false,
         Some("yellow"),
         None,
+        0,
     );
     insert_user_entity(
         conn,
@@ -332,6 +336,7 @@ fn insert_users(conn: &PgConnection, layout: &Layout) {
         true,
         Some("red"),
         Some(vec!["beer", "wine"]),
+        2131231231,
     );
     insert_user_entity(
         conn,
@@ -345,6 +350,7 @@ fn insert_users(conn: &PgConnection, layout: &Layout) {
         false,
         None,
         Some(vec!["coffee", "tea"]),
+        0,
     );
 }
 
@@ -392,7 +398,7 @@ fn insert_pet(conn: &PgConnection, layout: &Layout, entity_type: &str, id: &str,
     let mut pet = Entity::new();
     pet.set("id", id);
     pet.set("name", name);
-    insert_entity(conn, layout, entity_type, vec![pet]);
+    insert_entity(conn, layout, entity_type, vec![pet], None);
 }
 
 fn insert_pets(conn: &PgConnection, layout: &Layout) {
@@ -474,7 +480,7 @@ where
 #[test]
 fn find() {
     run_test(|conn, layout| {
-        insert_entity(&conn, &layout, "Scalar", vec![SCALAR_ENTITY.clone()]);
+        insert_entity(&conn, &layout, "Scalar", vec![SCALAR_ENTITY.clone()], None);
 
         // Happy path: find existing entity
         let entity = layout
@@ -509,6 +515,7 @@ fn insert_null_fulltext_fields() {
             &layout,
             "NullableStrings",
             vec![EMPTY_NULLABLESTRINGS_ENTITY.clone()],
+            None,
         );
 
         // Find entity with null string values
@@ -523,7 +530,7 @@ fn insert_null_fulltext_fields() {
 #[test]
 fn update() {
     run_test(|conn, layout| {
-        insert_entity(&conn, &layout, "Scalar", vec![SCALAR_ENTITY.clone()]);
+        insert_entity(&conn, &layout, "Scalar", vec![SCALAR_ENTITY.clone()], None);
 
         // Update with overwrite
         let mut entity = SCALAR_ENTITY.clone();
@@ -568,6 +575,7 @@ fn update_many() {
             &layout,
             "Scalar",
             vec![one.clone(), two.clone(), three.clone()],
+            None,
         );
 
         // confidence test: there should be 3 scalar entities in store right now
@@ -654,7 +662,7 @@ fn update_many() {
 #[test]
 fn serialize_bigdecimal() {
     run_test(|conn, layout| {
-        insert_entity(&conn, &layout, "Scalar", vec![SCALAR_ENTITY.clone()]);
+        insert_entity(&conn, &layout, "Scalar", vec![SCALAR_ENTITY.clone()], None);
 
         // Update with overwrite
         let mut entity = SCALAR_ENTITY.clone();
@@ -710,10 +718,10 @@ fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
 #[test]
 fn delete() {
     run_test(|conn, layout| {
-        insert_entity(&conn, &layout, "Scalar", vec![SCALAR_ENTITY.clone()]);
+        insert_entity(&conn, &layout, "Scalar", vec![SCALAR_ENTITY.clone()], None);
         let mut two = SCALAR_ENTITY.clone();
         two.set("id", "two");
-        insert_entity(&conn, &layout, "Scalar", vec![two]);
+        insert_entity(&conn, &layout, "Scalar", vec![two], None);
 
         // Delete where nothing is getting deleted
         let key = EntityKey::data(
@@ -757,7 +765,7 @@ fn insert_many_and_delete_many() {
         two.set("id", "two");
         let mut three = SCALAR_ENTITY.clone();
         three.set("id", "three");
-        insert_entity(&conn, &layout, "Scalar", vec![one, two, three]);
+        insert_entity(&conn, &layout, "Scalar", vec![one, two, three], None);
 
         // confidence test: there should be 3 scalar entities in store right now
         assert_eq!(3, count_scalar_entities(conn, layout));
@@ -825,7 +833,7 @@ fn conflicting_entity() {
         let mut fred = Entity::new();
         fred.set("id", id);
         fred.set("name", id);
-        insert_entity(&conn, &layout, "Cat", vec![fred]);
+        insert_entity(&conn, &layout, "Cat", vec![fred], None);
 
         // If we wanted to create Fred the dog, which is forbidden, we'd run this:
         let conflict = layout
@@ -879,6 +887,7 @@ impl<'a> QueryChecker<'a> {
 
     fn check(self, expected_entity_ids: Vec<&'static str>, query: EntityQuery) -> Self {
         let unordered = matches!(query.order, EntityOrder::Unordered);
+
         let entities = self
             .layout
             .query::<Entity>(
@@ -1424,6 +1433,27 @@ fn check_find() {
                     ))
                     .desc("name")
                     .first(5),
+            );
+
+        // block number filter
+        let checker = checker
+            .check(
+                vec!["3", "1"],
+                user_query()
+                    .filter(EntityFilter::ChangedAtBlock(0))
+                    .desc("name"),
+            )
+            .check(
+                vec!["2"],
+                user_query()
+                    .filter(EntityFilter::ChangedAtBlock(2131231231))
+                    .desc("name"),
+            )
+            .check(
+                vec![],
+                user_query()
+                    .filter(EntityFilter::ChangedAtBlock(1))
+                    .desc("name"),
             );
 
         // empty and / or

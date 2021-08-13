@@ -21,6 +21,7 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use crate::relational_queries::FilterAllVersionsQuery;
 use crate::{
     primary::{Namespace, Site},
     relational_queries::{
@@ -530,6 +531,21 @@ impl Layout {
             .transpose()
     }
 
+    pub fn find_with_block_range(
+        &self,
+        conn: &PgConnection,
+        entity: &EntityType,
+        id: &str,
+        block: BlockNumber,
+    ) -> Result<Option<Entity>, StoreError> {
+        let table = self.table_for_entity(entity)?;
+        FindQuery::new(table.as_ref(), id, block)
+            .get_result::<EntityData>(conn)
+            .optional()?
+            .map(|entity_data| entity_data.deserialize_with_layout_and_block_range(self))
+            .transpose()
+    }
+
     pub fn find_many<'a>(
         &self,
         conn: &PgConnection,
@@ -622,6 +638,7 @@ impl Layout {
             }
 
             let mut text = debug_query(&query).to_string().replace("\n", "\t");
+            // println!("QUERY TEXT {}", text);
             // If the query + bind variables is more than MAXLEN, truncate it;
             // this will happen when queries have very large bind variables
             // (e.g., long arrays of string ids)
@@ -647,6 +664,9 @@ impl Layout {
             block,
             query_id,
         )?;
+
+        // let text = debug_query(&query).to_string().replace("\n", "\t");
+        // println!("QUERY TEXT {}", text);
         let query_clone = query.clone();
 
         let start = Instant::now();
@@ -670,6 +690,89 @@ impl Layout {
             .map(|entity_data| {
                 entity_data
                     .deserialize_with_layout(self)
+                    .map_err(|e| e.into())
+            })
+            .collect()
+    }
+
+    pub fn query_with_block_range<T: crate::relational_queries::FromEntityData>(
+        &self,
+        logger: &Logger,
+        conn: &PgConnection,
+        collection: EntityCollection,
+        filter: Option<EntityFilter>,
+        order: EntityOrder,
+        range: EntityRange,
+        block: BlockNumber,
+        query_id: Option<String>,
+    ) -> Result<Vec<T>, QueryExecutionError> {
+        fn log_query_timing(
+            logger: &Logger,
+            query: &FilterAllVersionsQuery,
+            elapsed: Duration,
+            entity_count: usize,
+        ) {
+            // 20kB
+            const MAXLEN: usize = 20_480;
+
+            if !*graph::log::LOG_SQL_TIMING {
+                return;
+            }
+
+            let mut text = debug_query(&query).to_string().replace("\n", "\t");
+            // println!("QUERY TEXT {}", text);
+            // If the query + bind variables is more than MAXLEN, truncate it;
+            // this will happen when queries have very large bind variables
+            // (e.g., long arrays of string ids)
+            if text.len() > MAXLEN {
+                text.truncate(MAXLEN);
+                text.push_str(" ...");
+            }
+            info!(
+                logger,
+                "Query timing (SQL)";
+                "query" => text,
+                "time_ms" => elapsed.as_millis(),
+                "entity_count" => entity_count
+            );
+        }
+
+        let filter_collection = FilterCollection::new(&self, collection, filter.as_ref())?;
+        let query = FilterAllVersionsQuery::new(
+            &filter_collection,
+            filter.as_ref(),
+            order,
+            range,
+            block,
+            query_id,
+        )?;
+
+        // let text = debug_query(&query).to_string().replace("\n", "\t");
+        // println!("QUERY TEXT {}", text);
+        // println!("DEBUG QUERY {}", debug_query(&query).to_string());
+        let query_clone = query.clone();
+
+        let start = Instant::now();
+        let values = conn
+            .transaction(|| {
+                if let Some(ref timeout_sql) = *STATEMENT_TIMEOUT {
+                    conn.batch_execute(timeout_sql)?;
+                }
+                query.load::<EntityData>(conn)
+            })
+            .map_err(|e| {
+                QueryExecutionError::ResolveEntitiesError(format!(
+                    "{}, query = {:?}",
+                    e,
+                    debug_query(&query_clone).to_string()
+                ))
+            })?;
+        log_query_timing(logger, &query_clone, start.elapsed(), values.len());
+        values
+            .into_iter()
+            .map(|entity_data| {
+                entity_data
+                    .deserialize_with_layout_and_block_range(self)
                     .map_err(|e| e.into())
             })
             .collect()
@@ -867,6 +970,7 @@ pub enum ColumnType {
     /// A `bytea` in SQL, represented as a ValueType::String; this is
     /// used for `id` columns of type `Bytes`
     BytesId,
+    BlockRange,
 }
 
 impl From<IdType> for ColumnType {
@@ -936,6 +1040,7 @@ impl ColumnType {
             ColumnType::TSVector(_) => "tsvector",
             ColumnType::Enum(enum_type) => enum_type.name.as_str(),
             ColumnType::BytesId => "bytea",
+            ColumnType::BlockRange => "int4range",
         }
     }
 
@@ -960,7 +1065,7 @@ pub struct Column {
     pub field_type: q::Type,
     pub column_type: ColumnType,
     pub fulltext_fields: Option<HashSet<String>>,
-    is_reference: bool,
+    pub is_reference: bool,
 }
 
 impl Column {

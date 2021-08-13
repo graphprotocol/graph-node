@@ -1,7 +1,9 @@
 use diesel::pg::PgConnection;
+
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
+
 use diesel::{insert_into, update};
 use graph::prelude::web3::types::H256;
 use graph::{
@@ -29,6 +31,19 @@ use crate::{
     block_store::ChainStatus, chain_head_listener::ChainHeadUpdateSender,
     connection_pool::ConnectionPool,
 };
+
+use diesel::sql_types::{Bytea as SqlBytea, Integer as SqlInteger};
+#[derive(Queryable, QueryableByName)]
+pub struct CallCacheRecord {
+    #[sql_type = "SqlBytea"]
+    pub id: Vec<u8>,
+    #[sql_type = "SqlBytea"]
+    pub return_value: Vec<u8>,
+    #[sql_type = "SqlBytea"]
+    pub contract_address: Vec<u8>,
+    #[sql_type = "SqlInteger"]
+    pub block_number: i32,
+}
 
 /// Tables in the 'public' database schema that store chain-specific data
 mod public {
@@ -78,6 +93,7 @@ mod data {
         LightEthereumBlock,
     };
 
+    use crate::chain_store::CallCacheRecord;
     use crate::transaction_receipt::find_transaction_receipts_in_block;
 
     mod public {
@@ -944,6 +960,29 @@ mod data {
             }
         }
 
+        pub fn get_calls_at_block(
+            &self,
+            conn: &PgConnection,
+            block: &i32,
+        ) -> Result<Option<Vec<CallCacheRecord>>, Error> {
+            println!("GETTING BLOCKS INSIDE STORAGE");
+            let query_set = match self {
+                Storage::Private(Schema { call_cache, .. }) => {
+                    let table_name = &call_cache.qname;
+                    let query = format!("SELECT * from {} where block_number = $1", table_name);
+                    let res = sql_query(query)
+                        .bind::<Integer, _>(block)
+                        .load::<CallCacheRecord>(conn)
+                        .optional()
+                        .map_err(Error::from);
+                    res
+                }
+                _ => anyhow::bail!("Not implemented on public schema"),
+            };
+
+            query_set
+        }
+
         pub(super) fn update_accessed_at(
             &self,
             conn: &PgConnection,
@@ -1196,6 +1235,10 @@ impl ChainStore {
             })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(HashMap::from_iter(pointers))
+    }
+
+    pub fn get_storage(&self) -> &Storage {
+        &self.storage
     }
 
     pub fn chain_head_block(&self, chain: &str) -> Result<Option<BlockNumber>, StoreError> {
