@@ -156,6 +156,8 @@ pub enum Command {
     Chain(ChainCommand),
     /// Manipulate internal subgraph statistics
     Stats(StatsCommand),
+    /// Persist relevant dispute data
+    DumpPoi(DumpPoiCommand),
 }
 
 impl Command {
@@ -323,6 +325,41 @@ pub enum StatsCommand {
         /// The name of a table to fully count
         table: Option<String>,
     },
+}
+
+#[derive(Clone, Debug, StructOpt)]
+pub enum DumpPoiCommand {
+    /// Given a subgraph name or a subgraph deployment id dump its poi table and call cache.
+    Dump {
+        #[structopt(short = "s", long)]
+        subgraph_deployment: String,
+        #[structopt(short = "d", long)]
+        dispute_id: String,
+        #[structopt(short = "i", long)]
+        indexer_id: String,
+        #[structopt(short = "n", long)]
+        subgraph_name: Option<String>,
+        #[structopt(short = "v", long)]
+        debug: bool,
+        #[structopt(short = "h", long, default_value = "http://localhost:8000")]
+        host: String,
+    },
+    SyncEntities {
+        #[structopt(short = "s", long)]
+        subgraph_deployment: String,
+        #[structopt(short = "d", long)]
+        dispute_id: String,
+        #[structopt(short = "i", long)]
+        indexer_id: String,
+        #[structopt(short = "n", long)]
+        subgraph_name: Option<String>,
+        #[structopt(short = "v", long)]
+        debug: bool,
+        #[structopt(short = "h", long, default_value = "http://localhost:8000")]
+        host: String,
+    }, // Upload {
+       //     file_path: String,
+       // }
 }
 
 impl From<Opt> for config::Opt {
@@ -596,6 +633,48 @@ async fn main() {
                     commands::stats::account_like(ctx.pools(), clear, table)
                 }
                 Show { nsp, table } => commands::stats::show(ctx.pools(), nsp, table),
+            }
+        }
+
+        DumpPoi(cmd) => {
+            use DumpPoiCommand::*;
+
+            match cmd {
+                Dump {
+                    subgraph_deployment,
+                    dispute_id,
+                    indexer_id,
+                    subgraph_name,
+                    debug,
+                    host,
+                } => {
+                    println!("Dumping subgraph deployment {}", subgraph_deployment);
+                    commands::dump_poi::sync_poi(
+                        ctx.primary_pool(),
+                        dispute_id,
+                        indexer_id,
+                        subgraph_deployment,
+                        subgraph_name,
+                        debug,
+                        host,
+                    )
+                }
+                SyncEntities {
+                    subgraph_deployment,
+                    dispute_id,
+                    indexer_id,
+                    subgraph_name,
+                    debug,
+                    host,
+                } => commands::dump_poi::sync_entities(
+                    ctx.primary_pool(),
+                    dispute_id,
+                    indexer_id,
+                    subgraph_deployment,
+                    subgraph_name,
+                    debug,
+                    host,
+                ),
             }
         }
     };

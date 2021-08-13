@@ -3,6 +3,7 @@ pub mod chain;
 pub mod config;
 pub mod copy;
 pub mod create;
+pub mod dump_poi;
 pub mod info;
 pub mod listen;
 pub mod query;

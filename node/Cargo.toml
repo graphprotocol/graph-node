@@ -41,6 +41,11 @@ shellexpand = "2.1.0"
 diesel = "1.4.7"
 fail = "0.4"
 http = "0.1.21" # must be compatible with the version rust-web3 uses
+zip = "0.5.13"
+postgres = "0.19.1"
+walkdir = "2.3.2"
+csv = "1.1.6"
+reqwest = {version = "0.11.4", features=["multipart", "blocking"] }
 
 [dev-dependencies]
 assert_cli = "0.6"
