@@ -47,6 +47,7 @@ tar = "0.4.35"
 postgres = "0.19.1"
 walkdir = "2.3.2"
 zip = "0.5.13"
+csv = "1.1.6"
 
 [dev-dependencies]
 assert_cli = "0.6"

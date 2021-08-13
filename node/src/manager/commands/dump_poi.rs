@@ -1,7 +1,7 @@
 use std::io::prelude::*;
 use std::io::{BufWriter, Seek, Write};
 use std::iter::Iterator;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use walkdir::{DirEntry, WalkDir};
 use zip::result::ZipError;
 use zip::write::FileOptions;
@@ -13,6 +13,7 @@ use diesel::{sql_query, RunQueryDsl};
 use postgres::{Client as PGClient, NoTls, SimpleQueryMessage};
 
 use graph::data::subgraph::DeploymentHash;
+use graph::prelude::anyhow::bail;
 use graph::prelude::{anyhow, SubgraphName};
 use graph_store_postgres::command_support::catalog as store_catalog;
 use graph_store_postgres::connection_pool::ConnectionPool;
@@ -20,34 +21,178 @@ use graph_store_postgres::connection_pool::ConnectionPool;
 use serde::Deserialize;
 use std::fs::{self, File};
 
-//Nothing here requires async
+//Nothing here requires async.
 use reqwest::blocking::multipart;
 use reqwest::blocking::Client;
 
+use csv::Writer;
+
+/// Provide a go-like defer statement
+/// https://stackoverflow.com/questions/29963449/golang-like-defer-in-rust.
+/// Just a souped up closure that calls on function exit.
+struct ScopeCall<F: FnMut()> {
+    c: F,
+}
+impl<F: FnMut()> Drop for ScopeCall<F> {
+    fn drop(&mut self) {
+        (self.c)();
+    }
+}
+
+macro_rules! defer {
+    ($e:expr) => {
+        let _scope_call = ScopeCall {
+            c: || -> () {
+                $e;
+            },
+        };
+    };
+}
 /*
 Process:
-0. Dump your poi table and post it to a remote store with metadata pertinent to indexer.
-1. Poll external api for divergent block.
-2. Use divergent block to filter for entity updates, external data sources, and the ethereum call cache.
-3. Post this data back to dispute service.
-4. Wait for arbitration.
+0. Dump your poi table to a local file.
+1. Compress the file .
+2. Post the POI file to a remote store with metadata pertinent to indexer.
+3. Poll external api for divergent block.
+4. Use divergent block to filter for entity updates, external data sources, and the ethereum call cache.
+5. Serialize the tables to csvs. Also capture the column data types for post processing.
+6. Post the entity data back to dispute service.
+7. Wait for arbitration.
+
+@TODO: Allow for a subgraph name to be used for dumping.
+@TODO: Make upload async so status can be displayed in a progress bar.
+@TODO: Use tokio-postgres client instead of the synchronous one for entity filtering.
+@TODO: Sign indexer's identity.
 */
 
-//Modify this to run sql query that dumps database of poi to a file. Return the file location.
-
-//Create a directory for local dumps if doesn't exist. Make the dump database contain a directory with the deployment id.
-
-//@TODO: Allow for a subgraph name to be used for dumping. Allow for potential disputes in the indexer to be used too.
-
-pub fn run(
+/// Grabs `poi`, saves to intermittent file, compresses, attempts to upload, and finally cleans up.
+///
+/// @TODO: Shortcircuit failure. Expose a `GET` request on the dispute service to determine if indexer
+/// should even attempt this process.
+///
+/// @TODO:Make use of async reqwests client.
+///
+/// @TODO:Make useful Error messages
+pub fn sync_poi(
     pool: ConnectionPool,
     dispute_id: String,
     indexer_id: String,
     deployment_id: String,
     subgraph_name: Option<String>,
+    debug: bool,
 ) -> Result<(), anyhow::Error> {
+    let pooled_connection = pool.get()?;
+    let connection = store_catalog::Connection::new(&pooled_connection);
+
+    let deployment_hash = match subgraph_name {
+        Some(name) => {
+            connection.current_deployment_for_subgraph(SubgraphName::new(name).unwrap())?
+        }
+        None => DeploymentHash::new(&deployment_id).unwrap(),
+    };
+
+    let deployment_hash_string = deployment_hash.as_str();
+    let subgraph_schema_name =
+        get_subgraph_schema_name(&pooled_connection, &deployment_hash_string)?;
+
+    println!("{}", &subgraph_schema_name);
+    println!("Creating poi dump directory {}", &deployment_hash_string);
+
+    let root_path = Path::new("/tmp/graph_node/data_dump");
+    if !root_path.exists() {
+        fs::create_dir_all(&root_path)?;
+    }
+    let base_path = root_path.join(&deployment_id);
+    if !base_path.exists() {
+        fs::create_dir_all(&base_path)?;
+    }
+
+    let base_copy = base_path.clone();
+    //Register post-run cleanup
+    defer!(delete_directory(&base_copy, debug).unwrap());
+    create_dump_directories(&base_path, "poi".to_string())?;
+    let poi_records = get_poi(&pooled_connection, &subgraph_schema_name)?;
+
+    let src_directory = base_path.join("poi/raw");
+    dump_poi_csv_writer(&src_directory, poi_records)?;
+    let dst_directory = base_path.join("poi/compressed/poi_compressed.zip");
+
+    walk_and_compress(&src_directory, &dst_directory)?;
+    upload_file_to_endpoint(&dst_directory, indexer_id, dispute_id, "poi")?;
+
+    Ok(())
+}
+
+/// Grabs divergent blocks for the indexer. If they exist, proceeds to use them to filter entity tables
+/// in the subgraph schema and writes them to `csvs`. Does the same to the `call_cache`. Also persists
+/// data relevant to the types of records so that the strings can be recast into a format that
+/// respects their original types. Compresses and uploads everything and then cleans up.
+///
+/// Part of the process requires invoking dynamic sql queries that depend on subgraph specific tables
+/// That cannot be known at compile time. In this scenario the ORM is tossed out and the raw postgres
+/// driver is used.
+///
+/// @TODO:Make use of the async postgres driver.
+///
+/// @TODO:Make use of async reqwests library.
+///
+/// @TODO:Make useful Error messages
+
+pub fn sync_entities(
+    pool: ConnectionPool,
+    dispute_id: String,
+    indexer_id: String,
+    deployment_id: String,
+    subgraph_name: Option<String>,
+    debug: bool,
+) -> Result<(), anyhow::Error> {
+    //Short circuit if you error out on getting the divergent blocks
+    let divergent_blocks = get_divergent_blocks(&dispute_id, &indexer_id)?;
+    let first_divergent_block = *divergent_blocks.first().unwrap();
+    println! {"FIRST DIVERGENT BLOCK {}",first_divergent_block};
     let foreign_server = pool.connection_detail()?;
-    let synchronous_client = PGClient::connect(
+    let pooled_connection = pool.get()?;
+
+    let connection = store_catalog::Connection::new(&pooled_connection);
+
+    let deployment_hash = match subgraph_name {
+        Some(name) => {
+            connection.current_deployment_for_subgraph(SubgraphName::new(name).unwrap())?
+        }
+        None => DeploymentHash::new(&deployment_id).unwrap(),
+    };
+
+    let deployment_hash_string = deployment_hash.as_str();
+
+    let subgraph_schema_name =
+        get_subgraph_schema_name(&pooled_connection, &deployment_hash_string)?;
+
+    println!("Creating entity dump directory {}", &deployment_hash_string);
+
+    let root_path = Path::new("/tmp/graph_node/data_dump");
+    let base_path = root_path.join(&deployment_id);
+
+    let base_copy = base_path.clone();
+    //Register post-run cleanup
+    defer!(delete_directory(&base_copy, debug).unwrap());
+
+    create_dump_directories(&base_path, "entities".to_string())?;
+    let entity_dump_directory = base_path.join("entities/raw");
+    let entity_compression_directory =
+        base_path.join("entities/compressed/compressed_entities.zip");
+    // Need the chain to gather the call cache
+    let network_chain = get_subgraph_network_chain(&pooled_connection, &deployment_id)?;
+
+    println!("Network chain {}", &network_chain);
+
+    let call_cache_records =
+        get_call_cache(&pooled_connection, &network_chain, first_divergent_block)?;
+
+    dump_call_cache(&entity_dump_directory, call_cache_records)?;
+
+    // need table names to start querying entities
+    let subgraph_tables = get_subgraph_tables(&pooled_connection, &subgraph_schema_name)?;
+    let mut synchronous_client = PGClient::connect(
         &format!(
             "host={} user={} password={} port={} dbname={}",
             foreign_server.host,
@@ -57,42 +202,45 @@ pub fn run(
             foreign_server.dbname
         ),
         NoTls,
-    );
-    let pooled_connection = pool.get()?;
+    )?;
 
-    let connection = store_catalog::Connection::new(&pooled_connection);
+    for table in &subgraph_tables {
+        // Get the table records that are relevant, along with the metadata on columns.
+        let (columns, records) = get_filtered_subgraph_table_rows(
+            &pooled_connection,
+            &mut synchronous_client,
+            &table.tablename,
+            &subgraph_schema_name,
+            first_divergent_block,
+        )?;
 
-    let deployment_hash = match subgraph_name {
-        Some(name) => {
-            connection.current_deployment_for_subgraph(SubgraphName::new(name).unwrap())?
-        }
-        None => DeploymentHash::new(deployment_id).unwrap(),
-    };
-
-    let deployment_hash_string = deployment_hash.as_str();
-    let subgraph_schema_name =
-        get_subgraph_schema_name(&pooled_connection, &deployment_hash_string)?;
-
-    println!("creating dump directory {}", &deployment_hash_string);
-    let directory = create_dump_directory(deployment_hash_string)?;
-    let poi_records = get_poi(&pooled_connection, &subgraph_schema_name)?;
-    let tmp_filepath = dump_poi(&directory, poi_records)?;
-    walk_and_compress(&tmp_filepath, &tmp_filepath)?;
-    upload_file_to_endpoint(&tmp_filepath, indexer_id, dispute_id)?;
-    delete_directory(&tmp_filepath)?;
+        // Dump to entity path
+        dump_divergent_entities(&entity_dump_directory, columns, records, &table.tablename)?;
+    }
+    //Compress & Upload
+    walk_and_compress(&entity_dump_directory, &entity_compression_directory)?;
+    upload_file_to_endpoint(
+        &entity_compression_directory,
+        indexer_id,
+        dispute_id,
+        "entities",
+    )?;
 
     Ok(())
 }
 
-/// Create a directory to store files for upload
-fn create_dump_directory(deployment_id: &str) -> Result<String, anyhow::Error> {
-    let path = format!("/tmp/graph_node/data_dump/{}", deployment_id);
-    fs::create_dir_all(&path)?;
-    Ok(path)
+/// Create directories required for compression and upload
+fn create_dump_directories(path: &PathBuf, kind: String) -> Result<(), anyhow::Error> {
+    let dir_path = path.join(format!("{}/raw", kind));
+    fs::create_dir_all(&dir_path)?;
+    let compression_dir = path.join(format!("{}/compressed", kind));
+    fs::create_dir_all(&compression_dir)?;
+
+    Ok(())
 }
 
 /// Walks a directory path for all files and adds them to compressed archive.
-fn walk_and_compress(src_dir: &str, dst_file: &str) -> zip::result::ZipResult<()> {
+fn walk_and_compress(src_dir: &PathBuf, dst_file: &PathBuf) -> zip::result::ZipResult<()> {
     if !Path::new(src_dir).is_dir() {
         return Err(ZipError::FileNotFound);
     }
@@ -100,7 +248,7 @@ fn walk_and_compress(src_dir: &str, dst_file: &str) -> zip::result::ZipResult<()
     let path = Path::new(dst_file);
     let file = File::create(&path).unwrap();
 
-    let walkdir = WalkDir::new(src_dir.to_string());
+    let walkdir = WalkDir::new(src_dir);
     let it = walkdir.into_iter();
 
     compress(&mut it.filter_map(|e| e.ok()), src_dir, file)?;
@@ -111,7 +259,7 @@ fn walk_and_compress(src_dir: &str, dst_file: &str) -> zip::result::ZipResult<()
 /// Compress contents of a directory
 fn compress<T>(
     it: &mut dyn Iterator<Item = DirEntry>,
-    prefix: &str,
+    prefix: &PathBuf,
     writer: T,
 ) -> zip::result::ZipResult<()>
 where
@@ -128,7 +276,6 @@ where
         let name = path.strip_prefix(Path::new(prefix)).unwrap();
 
         // Write file or directory explicitly
-        // Some unzip tools unzip files with directory paths correctly, some do not!
         if path.is_file() {
             println!("Compressing file {:?} as {:?} ...", path, name);
             #[allow(deprecated)]
@@ -150,9 +297,11 @@ where
     Result::Ok(())
 }
 
-/// Remove file after its been uploaded
-fn delete_directory(directory: &str) -> Result<(), anyhow::Error> {
-    fs::remove_dir_all(directory)?;
+/// Remove all files in the directory after upload
+fn delete_directory(directory: &PathBuf, debug: bool) -> Result<(), anyhow::Error> {
+    if !debug {
+        fs::remove_dir_all(directory)?;
+    }
     Ok(())
 }
 
@@ -185,7 +334,7 @@ pub fn get_poi(
 #[derive(Queryable, QueryableByName)]
 struct SubgraphNameRecord {
     #[sql_type = "Text"]
-    subgraph_name: String,
+    name: String,
 }
 
 /// Schema is required for querying entities and POI
@@ -194,12 +343,12 @@ fn get_subgraph_schema_name(
     deployment_id: &str,
 ) -> Result<String, anyhow::Error> {
     let raw_query = format!(
-        "SELECT name from deployment_schemas WHERE subgraph = {} LIMIT 1",
+        "SELECT name from deployment_schemas WHERE subgraph = '{}' LIMIT 1",
         deployment_id
     );
     let name_result = sql_query(raw_query).get_result::<SubgraphNameRecord>(conn)?;
 
-    Ok(name_result.subgraph_name)
+    Ok(name_result.name)
 }
 
 #[derive(Queryable, QueryableByName)]
@@ -214,7 +363,7 @@ fn get_subgraph_network_chain(
     deployment_id: &str,
 ) -> Result<String, anyhow::Error> {
     let raw_query = format!(
-        "SELECT namespace from chains where name = (SELECT network from deployment_schemas WHERE subgraph = {} LIMIT 1)",
+        "SELECT namespace from chains where name = (SELECT network from deployment_schemas WHERE subgraph = '{}' LIMIT 1)",
         deployment_id
     );
     let name_result = sql_query(raw_query).get_result::<ChainNameSpaceRecord>(conn)?;
@@ -223,14 +372,16 @@ fn get_subgraph_network_chain(
 }
 
 fn dump_poi(
-    directory: &str,
+    directory: &PathBuf,
     poi_records: std::vec::Vec<PoiRecord>,
-) -> Result<String, anyhow::Error> {
+) -> Result<(), anyhow::Error> {
     println!("dumping poi");
-    let filepath = format!("{}/poi/poi.csv", directory);
+    let filepath = directory.join("poi.csv");
     let f = File::create(&filepath).expect("Unable to create file");
+
     let mut file_buffer = BufWriter::new(f);
     write!(file_buffer, "digest, id, vid, block_range\n").expect("Unable to write header");
+
     for poi in &poi_records {
         write!(
             file_buffer,
@@ -239,39 +390,57 @@ fn dump_poi(
         )
         .expect("unable to write row");
     }
-    return Ok(filepath);
+    return Ok(());
 }
 
+fn dump_poi_csv_writer(
+    directory: &PathBuf,
+    poi_records: std::vec::Vec<PoiRecord>,
+) -> Result<(), anyhow::Error> {
+    println!("dumping poi");
+    let filepath = directory.join("poi.csv");
+
+    let mut csv_writer = Writer::from_path(filepath)?;
+    csv_writer.write_record(&["digest", "id", "vid", "block_range"])?;
+
+    for poi in &poi_records {
+        csv_writer.write_record(&[&poi.digest, &poi.id, &poi.vid.to_string(), &poi.block_range])?;
+    }
+    csv_writer.flush()?;
+    return Ok(());
+}
 /// ## Takes a filepath and sends to the dispute service for persistence.
-/// ### @TODO: Upon completion delete the file?
 pub fn upload_file_to_endpoint(
-    fp: &str,
+    fp: &PathBuf,
     indexer_id: String,
     dispute_id: String,
+    kind: &str,
 ) -> Result<(), anyhow::Error> {
     let form = multipart::Form::new().file("file", fp)?;
     let client = Client::new();
     let res = client
-        .post("http://localhost:8000/upload")
+        .post(format!("http://localhost:8000/upload-{}", kind))
         .header("Indexer-node", indexer_id)
         .header("Dispute-hash", dispute_id)
         .multipart(form)
         .send()?;
 
     if res.status().is_success() {
-        println!("success!");
+        println!("Success!");
     } else if res.status().is_server_error() {
         println!("server error! {:?}", res.status());
+        bail!("Error `{}`", res.text()?);
     } else {
         println!("Something else happened. Status: {:?}", res.status());
+        bail!("Error `{}`", res.text()?);
     }
 
     Ok(())
 }
 
 pub fn get_divergent_blocks(
-    dispute_id: String,
-    indexer_id: String,
+    dispute_id: &String,
+    indexer_id: &String,
 ) -> Result<Vec<i32>, anyhow::Error> {
     #[derive(Deserialize)]
     struct DivergentBlockResponse {
@@ -290,8 +459,10 @@ pub fn get_divergent_blocks(
         println!("success!");
     } else if res.status().is_server_error() {
         println!("server error! {:?}", res.status());
+        bail!("Error `{}`", res.text()?);
     } else {
         println!("Something else happened. Status: {:?}", res.status());
+        bail!("Error `{}`", res.text()?);
     }
 
     let json: DivergentBlockResponse = res.json()?;
@@ -325,15 +496,16 @@ pub fn get_call_cache(
     );
 
     let callcache_queryset = sql_query(raw_query).load::<CallCacheRecord>(conn).unwrap();
-    return Ok(callcache_queryset);
+    Ok(callcache_queryset)
 }
 
 fn dump_call_cache(
-    directory: &str,
+    directory: &PathBuf,
     callcache_records: std::vec::Vec<CallCacheRecord>,
-) -> Result<String, anyhow::Error> {
+) -> Result<(), anyhow::Error> {
     println!("dumping call cache");
-    let filepath = format!("{}/call_cache/call_cache.csv", directory);
+    let filepath = directory.join("call_cache.csv");
+
     let f = File::create(&filepath).expect("Unable to create file");
     let mut file_buffer = BufWriter::new(f);
     write!(
@@ -349,7 +521,7 @@ fn dump_call_cache(
         )
         .expect("unable to write row");
     }
-    return Ok(filepath);
+    return Ok(());
 }
 
 #[derive(Queryable, QueryableByName)]
@@ -372,11 +544,6 @@ fn get_subgraph_tables(
     return Ok(subgraph_tables);
 }
 
-/// Used to persist String
-fn string_to_static_str(s: String) -> &'static str {
-    Box::leak(s.into_boxed_str())
-}
-
 #[derive(Queryable, QueryableByName)]
 pub struct ColumnNameAndType {
     #[sql_type = "Text"]
@@ -388,12 +555,14 @@ pub struct ColumnNameAndType {
 /// Gathers entries from entity tables that contain the divergent block if in closed interval
 /// Diesel isn't of any use here because this is dynamic.
 /// Also need to catch the columns for passing to csv.
-/// Don't Run this on the poi2$ table
+///
+/// Note: there may be no return values for a table filtered on a block. In this case, eagerly return
+/// Note: map null values to empty string;
 fn get_filtered_subgraph_table_rows(
     conn: &PooledConnection<ConnectionManager<PgConnection>>,
     raw_client: &mut PGClient,
-    table_name: String,
-    schema_name: String,
+    table_name: &String,
+    schema_name: &str,
     divergent_block: i32,
 ) -> Result<(Vec<ColumnNameAndType>, Vec<Vec<String>>), anyhow::Error> {
     // We won't know the type of the returned table rows at compile time.
@@ -412,25 +581,30 @@ fn get_filtered_subgraph_table_rows(
         .get_results::<ColumnNameAndType>(conn)
         .unwrap();
 
-    let entity_query = format!("select * from {}.{} as {} WHERE ({}::int4  <@ {}.block_range AND upper_inc({}.block_range))\
-OR ({}::int4 = lower({}.block_range))",schema_name, table_name, table_name,divergent_block, table_name, table_name,divergent_block,table_name);
+    // Reserved keywords in SQL appear as subgraph tables unfortunately. I circumvent this with appending underscores
+    let entity_query = format!("select * from {}.{} as {}__ WHERE ({}::int4  <@ {}__.block_range AND upper_inc({}__.block_range))\
+OR ({}::int4 = lower({}__.block_range))",schema_name, table_name, table_name,divergent_block, table_name, table_name,divergent_block,table_name);
 
-    // Hack to get around the table name formatting
-    // let static_entity_query: &'static str = string_to_static_str(entity_query);
-
-    // Returns rows as strings
+    println!("{}", entity_query);
+    // simple_query returns rows as strings
     // Issue with `db error: ERROR: prepared statement "s0" already exists` when not using simple_query
 
     let query_vec = raw_client.simple_query(&entity_query)?;
 
     let mut row_entries: Vec<Vec<String>> = vec![];
 
+    println!("{} number of rows {}", &table_name, query_vec.len());
+
+    if query_vec.len() == 0 {
+        return Ok((columns, row_entries));
+    }
+
     for query_message in &query_vec {
         let mut single_row_vector: Vec<String> = vec![];
         match query_message {
             SimpleQueryMessage::Row(query_row) => {
-                for idx in 0..query_row.len() {
-                    let item = query_row.get(idx).unwrap().to_string();
+                for idx in 0..(query_row.len() - 1) {
+                    let item = query_row.get(idx).unwrap_or("").to_string();
                     single_row_vector.push(item);
                 }
                 row_entries.push(single_row_vector);
@@ -443,17 +617,16 @@ OR ({}::int4 = lower({}.block_range))",schema_name, table_name, table_name,diver
 }
 
 fn dump_divergent_entities(
-    directory: &str,
+    directory: &PathBuf,
     table_columns: Vec<ColumnNameAndType>,
     table_records: Vec<Vec<String>>,
-    table_name: String,
-) -> Result<String, anyhow::Error> {
+    table_name: &String,
+) -> Result<(), anyhow::Error> {
     println!("dumping divergent entities");
-
-    let record_filepath = format!("{}/{}_entities.csv", directory, table_name);
+    let record_filepath = directory.join(format!("{}_entities.csv", table_name));
     let record_file = File::create(&record_filepath).expect("Unable to create record file");
 
-    let meta_filepath = format!("{}/{}_entities_metadata.csv", directory, table_name);
+    let meta_filepath = directory.join(format!("{}_entities_metadata.csv", table_name));
     let meta_file = File::create(&meta_filepath).expect("Unable to create metdata file");
 
     let mut record_buffer = BufWriter::new(record_file);
@@ -477,5 +650,5 @@ fn dump_divergent_entities(
         write!(record_buffer, "{}\n", record.join(",")).expect("unable to write record row");
     }
 
-    return Ok(record_filepath);
+    return Ok(());
 }

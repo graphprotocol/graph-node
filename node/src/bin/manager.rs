@@ -331,14 +331,28 @@ pub enum StatsCommand {
 pub enum DumpPoiCommand {
     /// Given a subgraph name or a subgraph deployment id dump its poi table and call cache.
     Dump {
+        #[structopt(short = "s", long)]
         subgraph_deployment: String,
+        #[structopt(short = "d", long)]
         dispute_id: String,
+        #[structopt(short = "i", long)]
         indexer_id: String,
+        #[structopt(short = "n", long)]
         subgraph_name: Option<String>,
+        #[structopt(short = "v", long)]
+        debug: bool,
     },
-    GetDivergentBlocks {
+    SyncEntities {
+        #[structopt(short = "s", long)]
+        subgraph_deployment: String,
+        #[structopt(short = "d", long)]
         dispute_id: String,
+        #[structopt(short = "i", long)]
         indexer_id: String,
+        #[structopt(short = "n", long)]
+        subgraph_name: Option<String>,
+        #[structopt(short = "v", long)]
+        debug: bool,
     }, // Upload {
        //     file_path: String,
        // }
@@ -627,22 +641,32 @@ async fn main() {
                     dispute_id,
                     indexer_id,
                     subgraph_name,
+                    debug,
                 } => {
                     println!("Dumping subgraph deployment {}", subgraph_deployment);
-                    commands::dump_poi::run(
+                    commands::dump_poi::sync_poi(
                         ctx.primary_pool(),
                         dispute_id,
                         indexer_id,
                         subgraph_deployment,
                         subgraph_name,
+                        debug,
                     )
                 }
-                GetDivergentBlocks {
+                SyncEntities {
+                    subgraph_deployment,
                     dispute_id,
                     indexer_id,
-                } => {
-                    commands::dump_poi::get_divergent_blocks(
-                }
+                    subgraph_name,
+                    debug,
+                } => commands::dump_poi::sync_entities(
+                    ctx.primary_pool(),
+                    dispute_id,
+                    indexer_id,
+                    subgraph_deployment,
+                    subgraph_name,
+                    debug,
+                ),
             }
         }
     };
