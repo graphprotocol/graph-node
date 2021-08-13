@@ -511,10 +511,10 @@ impl DeploymentStore {
         pool.query_permit().await
     }
 
-    pub(crate) fn wait_stats(&self, replica: ReplicaId) -> &PoolWaitStats {
+    pub(crate) fn wait_stats(&self, replica: ReplicaId) -> PoolWaitStats {
         match replica {
-            ReplicaId::Main => &self.conn.wait_stats,
-            ReplicaId::ReadOnly(idx) => &self.read_only_pools[idx].wait_stats,
+            ReplicaId::Main => self.conn.wait_stats(),
+            ReplicaId::ReadOnly(idx) => self.read_only_pools[idx].wait_stats(),
         }
     }
 

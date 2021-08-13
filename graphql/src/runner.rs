@@ -163,7 +163,7 @@ where
         )?;
         self.load_manager
             .decide(
-                store.wait_stats(),
+                &store.wait_stats(),
                 query.shape_hash,
                 query.query_text.as_ref(),
             )
@@ -268,7 +268,7 @@ where
         if let Err(err) = self
             .load_manager
             .decide(
-                store.wait_stats(),
+                &store.wait_stats(),
                 query.shape_hash,
                 query.query_text.as_ref(),
             )

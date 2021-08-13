@@ -785,6 +785,8 @@ pub enum StoreError {
     FulltextSearchNonDeterministic,
     #[error("operation was canceled")]
     Canceled,
+    #[error("database unavailable")]
+    DatabaseUnavailable,
 }
 
 // Convenience to report a constraint violation
@@ -1347,7 +1349,7 @@ pub trait QueryStore: Send + Sync {
 
     fn block_number(&self, block_hash: H256) -> Result<Option<BlockNumber>, StoreError>;
 
-    fn wait_stats(&self) -> &PoolWaitStats;
+    fn wait_stats(&self) -> PoolWaitStats;
 
     /// If `block` is `None`, assumes the latest block.
     async fn has_non_fatal_errors(&self, block: Option<BlockNumber>) -> Result<bool, StoreError>;

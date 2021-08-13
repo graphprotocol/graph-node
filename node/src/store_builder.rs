@@ -7,7 +7,7 @@ use graph::{
     prelude::{info, CheapClone, EthereumNetworkIdentifier, Logger},
     util::security::SafeDisplay,
 };
-use graph_store_postgres::connection_pool::ConnectionPool;
+use graph_store_postgres::connection_pool::{ConnectionPool, ForeignServer};
 use graph_store_postgres::{
     BlockStore as DieselBlockStore, ChainHeadUpdateListener as PostgresChainHeadUpdateListener,
     Shard as ShardName, Store as DieselStore, SubgraphStore, SubscriptionManager, PRIMARY_SHARD,
@@ -45,19 +45,11 @@ impl StoreBuilder {
         let (store, pools) =
             Self::make_subgraph_store_and_pools(logger, node, config, registry.cheap_clone());
 
-        // Perform setup for all the pools
-        let details = pools
-            .values()
-            .map(|pool| pool.connection_detail())
-            .collect::<Result<Vec<_>, _>>()
-            .expect("connection url's contain enough detail");
-        let details = Arc::new(details);
-
-        join_all(pools.iter().map(|(_, pool)| {
-            let details = details.clone();
-            async move { pool.setup(details.clone()) }
-        }))
-        .await;
+        // Try to perform setup (migrations etc.) for all the pools. If this
+        // attempt doesn't work for all of them because the database is
+        // unavailable, they will try again later in the normal course of
+        // using the pool
+        join_all(pools.iter().map(|(_, pool)| async move { pool.setup() })).await;
 
         let chains = HashMap::from_iter(config.chains.chains.iter().map(|(name, chain)| {
             let shard = ShardName::new(chain.shard.to_string())
@@ -90,15 +82,36 @@ impl StoreBuilder {
         config: &Config,
         registry: Arc<dyn MetricsRegistry>,
     ) -> (Arc<SubgraphStore>, HashMap<ShardName, ConnectionPool>) {
+        let servers = config
+            .stores
+            .iter()
+            .map(|(name, shard)| ForeignServer::new_from_raw(name.to_string(), &shard.connection))
+            .collect::<Result<Vec<_>, _>>()
+            .expect("connection url's contain enough detail");
+        let servers = Arc::new(servers);
+
         let shards: Vec<_> = config
             .stores
             .iter()
             .map(|(name, shard)| {
                 let logger = logger.new(o!("shard" => name.to_string()));
-                let conn_pool = Self::main_pool(&logger, node, name, shard, registry.cheap_clone());
+                let conn_pool = Self::main_pool(
+                    &logger,
+                    node,
+                    name,
+                    shard,
+                    registry.cheap_clone(),
+                    servers.clone(),
+                );
 
-                let (read_only_conn_pools, weights) =
-                    Self::replica_pools(&logger, node, name, shard, registry.cheap_clone());
+                let (read_only_conn_pools, weights) = Self::replica_pools(
+                    &logger,
+                    node,
+                    name,
+                    shard,
+                    registry.cheap_clone(),
+                    servers.clone(),
+                );
 
                 let name =
                     ShardName::new(name.to_string()).expect("shard names have been validated");
@@ -166,6 +179,7 @@ impl StoreBuilder {
         name: &str,
         shard: &Shard,
         registry: Arc<dyn MetricsRegistry>,
+        servers: Arc<Vec<ForeignServer>>,
     ) -> ConnectionPool {
         let logger = logger.new(o!("pool" => "main"));
         let pool_size = shard.pool_size.size_for(node, name).expect(&format!(
@@ -191,6 +205,7 @@ impl StoreBuilder {
             Some(fdw_pool_size),
             &logger,
             registry.cheap_clone(),
+            servers,
         )
     }
 
@@ -201,6 +216,7 @@ impl StoreBuilder {
         name: &str,
         shard: &Shard,
         registry: Arc<dyn MetricsRegistry>,
+        servers: Arc<Vec<ForeignServer>>,
     ) -> (Vec<ConnectionPool>, Vec<usize>) {
         let mut weights: Vec<_> = vec![shard.weight];
         (
@@ -230,6 +246,7 @@ impl StoreBuilder {
                         None,
                         &logger,
                         registry.cheap_clone(),
+                        servers.clone(),
                     )
                 })
                 .collect(),
