@@ -10,7 +10,9 @@ use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::{BigInt, Integer, Text};
 use diesel::PgConnection;
 use diesel::{sql_query, RunQueryDsl};
-use postgres::{Client as PGClient, NoTls, SimpleQueryMessage};
+// use postgres::{Client as PGClient, NoTls, SimpleQueryMessage};
+
+use tokio_postgres::{Client as AsyncPG, NoTls, SimpleQueryMessage};
 
 use graph::data::subgraph::DeploymentHash;
 use graph::prelude::anyhow::bail;
@@ -22,8 +24,8 @@ use serde::Deserialize;
 use std::fs::{self, File};
 
 //Nothing here requires async.
-use reqwest::blocking::multipart;
-use reqwest::blocking::Client;
+// use reqwest::blocking::multipart;
+// use reqwest::blocking::Client;
 
 //Async
 use reqwest::multipart as AsyncMultipart;
@@ -156,7 +158,7 @@ pub async fn sync_entities(
     host: String,
 ) -> Result<(), anyhow::Error> {
     //Short circuit if you error out on getting the divergent blocks
-    let divergent_blocks = get_divergent_blocks(&host, &dispute_id, &indexer_id)?;
+    let divergent_blocks = get_divergent_blocks(&host, &dispute_id, &indexer_id).await?;
     let first_divergent_block = *divergent_blocks.first().unwrap();
     println! {"FIRST DIVERGENT BLOCK {}",first_divergent_block};
     let foreign_server = pool.connection_detail()?;
@@ -201,7 +203,8 @@ pub async fn sync_entities(
 
     // need table names to start querying entities
     let subgraph_tables = get_subgraph_tables(&pooled_connection, &subgraph_schema_name)?;
-    let mut synchronous_client = PGClient::connect(
+
+    let (client, connection) = tokio_postgres::connect(
         &format!(
             "host={} user={} password={} port={} dbname={}",
             foreign_server.host,
@@ -211,17 +214,25 @@ pub async fn sync_entities(
             foreign_server.dbname
         ),
         NoTls,
-    )?;
+    )
+    .await?;
+
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
 
     for table in &subgraph_tables {
         // Get the table records that are relevant, along with the metadata on columns.
         let (columns, records) = get_filtered_subgraph_table_rows(
             &pooled_connection,
-            &mut synchronous_client,
+            &client,
             &table.tablename,
             &subgraph_schema_name,
             first_divergent_block,
-        )?;
+        )
+        .await?;
 
         // Dump to entity path
         // dump_divergent_entities(&entity_dump_directory, columns, records, &table.tablename)?;
@@ -405,37 +416,8 @@ fn dump_poi_csv_writer(
     csv_writer.flush()?;
     return Ok(());
 }
-/// ## Takes a filepath and sends to the dispute service for persistence.
-pub fn upload_file_to_endpoint(
-    fp: &PathBuf,
-    host: &str,
-    indexer_id: String,
-    dispute_id: String,
-    kind: &str,
-) -> Result<(), anyhow::Error> {
-    let form = multipart::Form::new().file("file", fp)?;
 
-    let client = Client::new();
-    let res = client
-        .post(format!("{}/upload-{}", host, kind))
-        .header("Indexer-node", indexer_id)
-        .header("Dispute-hash", dispute_id)
-        .multipart(form)
-        .send()?;
-
-    if res.status().is_success() {
-        println!("Success!");
-    } else if res.status().is_server_error() {
-        println!("server error! {:?}", res.status());
-        bail!("Error `{}`", res.text()?);
-    } else {
-        println!("Something else happened. Status: {:?}", res.status());
-        bail!("Error `{}`", res.text()?);
-    }
-
-    Ok(())
-}
-
+// Wrap a file as a stream for http requests.
 fn file_to_body(file: TokFile) -> Body {
     let stream = FramedRead::new(file, BytesCodec::new());
     let body = Body::wrap_stream(stream);
@@ -484,7 +466,7 @@ pub async fn upload_file_to_endpoint_async(
     Ok(())
 }
 
-pub fn get_divergent_blocks(
+pub async fn get_divergent_blocks(
     host: &str,
     dispute_id: &String,
     indexer_id: &String,
@@ -496,24 +478,25 @@ pub fn get_divergent_blocks(
         divergent_blocks: Vec<i32>,
     }
 
-    let client = Client::new();
+    let client = AsyncClient::new();
     let res = client
         .get(format!("{}/divergent_blocks", host))
         .header("Indexer-node", indexer_id)
         .header("Dispute-hash", dispute_id)
-        .send()?;
+        .send()
+        .await?;
 
     if res.status().is_success() {
         println!("success!");
     } else if res.status().is_server_error() {
         println!("server error! {:?}", res.status());
-        bail!("Error `{}`", res.text()?);
+        bail!("Error `{}`", res.text().await?);
     } else {
         println!("Something else happened. Status: {:?}", res.status());
-        bail!("Error `{}`", res.text()?);
+        bail!("Error `{}`", res.text().await?);
     }
 
-    let json: DivergentBlockResponse = res.json()?;
+    let json: DivergentBlockResponse = res.json().await?;
     //get result as json and parse out divergent_blocks
 
     return Ok(json.divergent_blocks);
@@ -611,9 +594,9 @@ pub struct ColumnNameAndType {
 ///
 /// Note: there may be no return values for a table filtered on a block. In this case, eagerly return
 /// Note: map null values to empty string;
-fn get_filtered_subgraph_table_rows(
+async fn get_filtered_subgraph_table_rows(
     conn: &PooledConnection<ConnectionManager<PgConnection>>,
-    raw_client: &mut PGClient,
+    raw_client: &AsyncPG,
     table_name: &String,
     schema_name: &str,
     divergent_block: i32,
@@ -638,15 +621,12 @@ fn get_filtered_subgraph_table_rows(
     let entity_query = format!("select * from {}.{} as {}__ WHERE ({}::int4  <@ {}__.block_range AND upper_inc({}__.block_range))\
 OR ({}::int4 = lower({}__.block_range))",schema_name, table_name, table_name,divergent_block, table_name, table_name,divergent_block,table_name);
 
-    println!("{}", entity_query);
     // simple_query returns rows as strings
     // Issue with `db error: ERROR: prepared statement "s0" already exists` when not using simple_query
 
-    let query_vec = raw_client.simple_query(&entity_query)?;
+    let query_vec = raw_client.simple_query(&entity_query).await?;
 
     let mut row_entries: Vec<Vec<String>> = vec![];
-
-    println!("{} number of rows {}", &table_name, query_vec.len());
 
     if query_vec.len() == 0 {
         return Ok((columns, row_entries));

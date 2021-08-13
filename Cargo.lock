@@ -1706,6 +1706,7 @@ dependencies = [
  "shellexpand",
  "structopt",
  "tokio 1.10.0",
+ "tokio-postgres",
  "tokio-util",
  "toml",
  "url 2.2.2",
