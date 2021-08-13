@@ -592,14 +592,18 @@ impl Layout {
     ) -> Result<Option<String>, StoreError> {
         // Since array lookups in PostgreSQL are not very efficient, we split our database calls to
         // use arrays of 500 elements, maximum.
-        let mut final_result: Option<String> = None;
         for chunk in entity_ids.chunks(500) {
-            final_result = ConflictingEntityQuery::new(self, entities, chunk)?
+            if let Some(conflicting_entity) = ConflictingEntityQuery::new(self, entities, chunk)?
                 .load(conn)?
                 .pop()
                 .map(|data| data.entity)
+            {
+                return Ok(Some(conflicting_entity));
+            }
         }
-        Ok(final_result)
+
+        // No conflicting entities were found
+        Ok(None)
     }
 
     /// order is a tuple (attribute, value_type, direction)
