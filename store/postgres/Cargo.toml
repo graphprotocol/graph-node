@@ -34,6 +34,9 @@ anyhow = "1.0.41"
 git-testament = "0.2.0"
 itertools = "0.10.1"
 
+# Our fork contains a small but hacky patch.
+web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "master" }
+
 [dev-dependencies]
 clap = "2.33.3"
 graphql-parser = "0.3"

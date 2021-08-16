@@ -1797,6 +1797,7 @@ dependencies = [
  "stable-hash",
  "test-store",
  "uuid 0.8.2",
+ "web3",
 ]
 
 [[package]]

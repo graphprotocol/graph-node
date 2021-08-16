@@ -65,10 +65,7 @@ mod data {
     use diesel_dynamic_schema as dds;
     use graph::{
         constraint_violation,
-        prelude::{
-            transaction_receipt::{find_transaction_receipts_in_block, LightTransactionReceipt},
-            StoreError,
-        },
+        prelude::{transaction_receipt::LightTransactionReceipt, StoreError},
     };
 
     use std::fmt;
@@ -1095,6 +1092,7 @@ mod data {
             schema_name: &str,
             block_hash: &H256,
         ) -> anyhow::Result<Vec<LightTransactionReceipt>> {
+            use crate::transaction_receipt::find_transaction_receipts_in_block;
             find_transaction_receipts_in_block(conn, schema_name, block_hash)
         }
     }
