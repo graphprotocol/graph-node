@@ -14,11 +14,11 @@ use graph::prelude::transaction_receipt::LightTransactionReceipt;
 /// Queries the database for all the transaction receipts in a given block range.
 pub fn find_transaction_receipts_in_block(
     conn: &PgConnection,
-    schema_name: &str,
-    block_hash: &H256,
+    blocks_table_name: &str,
+    block_hash: H256,
 ) -> anyhow::Result<Vec<LightTransactionReceipt>> {
     let query = TransactionReceiptQuery {
-        schema_name,
+        blocks_table_name,
         block_hash: block_hash.as_bytes(),
     };
 
@@ -38,7 +38,7 @@ pub fn find_transaction_receipts_in_block(
 /// Parameters for querying for all transaction receipts of a given block.
 struct TransactionReceiptQuery<'a> {
     block_hash: &'a [u8],
-    schema_name: &'a str,
+    blocks_table_name: &'a str,
 }
 
 impl<'a> diesel::query_builder::QueryId for TransactionReceiptQuery<'a> {
@@ -61,7 +61,7 @@ impl<'a> QueryFragment<Pg> for TransactionReceiptQuery<'a> {
     ///     select
     ///         jsonb_array_elements(data -> 'transaction_receipts') as receipt
     ///     from
-    ///         $CHAIN_SCHEMA.blocks
+    ///         $BLOCKS_TABLE
     ///     where hash = $BLOCK_HASH) as temp;
     ///```
     fn walk_ast(&self, mut out: diesel::query_builder::AstPass<Pg>) -> QueryResult<()> {
@@ -78,9 +78,7 @@ from (
     select jsonb_array_elements(data -> 'transaction_receipts') as receipt
     from"#,
         );
-        out.push_identifier(&self.schema_name)?;
-        out.push_sql(".");
-        out.push_identifier("blocks")?;
+        out.push_identifier(&self.blocks_table_name)?;
         out.push_sql(" where hash = ");
         out.push_bind_param::<Binary, _>(&self.block_hash)?;
         out.push_sql(") as temp;");
