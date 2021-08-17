@@ -4,6 +4,8 @@
 
 pub mod block_ingestor;
 pub mod block_stream;
+pub mod polling_block_stream;
+
 mod types;
 
 // Try to reexport most of the necessary types
@@ -38,7 +40,7 @@ pub use block_stream::{
     BlockStream, BlockStreamMetrics, ChainHeadUpdateListener, ChainHeadUpdateStream,
     TriggersAdapter,
 };
-
+pub use polling_block_stream::PollingBlockStream;
 pub use types::{BlockHash, BlockPtr};
 
 pub trait Block: Send + Sync {
@@ -102,7 +104,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         filter: Arc<Self::TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
-    ) -> Result<BlockStream<Self>, Error>;
+    ) -> Result<Box<dyn BlockStream<Self>>, Error>;
 
     fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter>;
 

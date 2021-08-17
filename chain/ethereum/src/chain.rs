@@ -9,6 +9,7 @@ use graph::{
         block_stream::{
             BlockStreamMetrics, BlockWithTriggers, TriggersAdapter as TriggersAdapterTrait,
         },
+        polling_block_stream::PollingBlockStream,
         Block, BlockHash, BlockPtr, Blockchain, ChainHeadUpdateListener,
         IngestorAdapter as IngestorAdapterTrait, IngestorError, TriggerFilter as _,
     },
@@ -167,7 +168,7 @@ impl Blockchain for Chain {
         filter: Arc<TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
-    ) -> Result<BlockStream<Self>, Error> {
+    ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let logger = self
             .logger_factory
             .subgraph_logger(&deployment)
@@ -203,7 +204,7 @@ impl Blockchain for Chain {
             true => 0,
         };
 
-        Ok(BlockStream::new(
+        Ok(Box::new(PollingBlockStream::new(
             writable,
             chain_store,
             chain_head_update_stream,
@@ -218,7 +219,7 @@ impl Blockchain for Chain {
             *MAX_BLOCK_RANGE_SIZE,
             *TARGET_TRIGGERS_PER_BLOCK_RANGE,
             unified_api_version,
-        ))
+        )))
     }
 
     fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter> {

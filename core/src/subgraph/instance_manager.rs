@@ -5,6 +5,7 @@ use fail::fail_point;
 use graph::blockchain::DataSource;
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::UnifiedMappingApiVersion;
+use graph::prelude::TryStreamExt;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::util::lfu_cache::LfuCache;
 use graph::{blockchain::block_stream::BlockStreamMetrics, components::store::WritableStore};
