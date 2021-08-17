@@ -44,7 +44,7 @@ This will watch your source directory and continuously do the following on chang
 ### Testing with a sharded store
 
 The tests can (and should) be run against a sharded store. The tests will
-read their [configuration](docs/multiple-databases.md) from the file that the
+read their [configuration](docs/config.md#configuring-multiple-databases) from the file that the
 environment variable `GRAPH_NODE_TEST_CONFIG` points to.
 
 ## Commit messages
