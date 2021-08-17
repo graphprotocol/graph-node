@@ -17,6 +17,14 @@ dirs-next = "2.0"
 anyhow = "1.0"
 tiny-keccak = "1.5.0"
 hex = "0.4.3"
+tonic = "0.5.1"
+prost = "0.8.0"
+prost-types = "0.8.0"
+
+futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
+tokio = { version = "1.9.0", features = ["full"] }
+tokio-stream = { version = "0.1.6", features = ["sync"] }
+tokio-retry = "0.3.0"
 semver = "1.0.3"
 
 # master contains changes such as
@@ -39,3 +47,6 @@ graph-core = { path = "../../core" }
 graph-store-postgres = { path = "../../store/postgres" }
 pretty_assertions = "0.7.2"
 test-store = { path = "../../store/test-store" }
+
+[build-dependencies]
+tonic-build = "0.5.1"

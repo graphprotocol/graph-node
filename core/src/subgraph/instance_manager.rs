@@ -481,69 +481,69 @@ where
 
         // Process events from the stream as long as no restart is needed
         loop {
-            let block = match block_stream.next().await {
-                Some(Ok(BlockStreamEvent::ProcessBlock(block))) => block,
-                Some(Ok(BlockStreamEvent::Revert(subgraph_ptr))) => {
-                    info!(
-                        logger,
-                        "Reverting block to get back to main chain";
-                        "block_number" => format!("{}", subgraph_ptr.number),
-                        "block_hash" => format!("{}", subgraph_ptr.hash)
-                    );
+            let (block, cursor) = match block_stream.next().await {
+                Some(res) => match res {
+                    Ok(BlockStreamEvent::ProcessBlock(block, cursor)) => (block, cursor),
+                    Ok(BlockStreamEvent::Revert(subgraph_ptr, _)) => {
+                        info!(
+                            logger,
+                            "Reverting block to get back to main chain";
+                            "block_number" => format!("{}", subgraph_ptr.number),
+                            "block_hash" => format!("{}", subgraph_ptr.hash)
+                        );
 
-                    // We would like to revert the DB state to the parent of the current block.
-                    // First, load the block in order to get the parent hash.
-                    if let Err(e) = ctx
-                        .inputs
-                        .triggers_adapter
-                        .parent_ptr(&subgraph_ptr)
-                        .await
-                        .and_then(|parent_ptr| {
-                            // Revert entity changes from this block, and update subgraph ptr.
-                            ctx.inputs
-                                .store
-                                .revert_block_operations(parent_ptr)
-                                .map_err(Into::into)
-                        })
-                    {
+                        // We would like to revert the DB state to the parent of the current block.
+                        // First, load the block in order to get the parent hash.
+                        if let Err(e) = ctx
+                            .inputs
+                            .triggers_adapter
+                            .parent_ptr(&subgraph_ptr)
+                            .await
+                            .and_then(|parent_ptr| {
+                                // Revert entity changes from this block, and update subgraph ptr.
+                                ctx.inputs
+                                    .store
+                                    .revert_block_operations(parent_ptr)
+                                    .map_err(Into::into)
+                            })
+                        {
+                            error!(
+                                &logger,
+                                "Could not revert block. \
+                                The likely cause is the block not being found due to a deep reorg. \
+                                Retrying";
+                                "block_number" => format!("{}", subgraph_ptr.number),
+                                "block_hash" => format!("{}", subgraph_ptr.hash),
+                                "error" => e.to_string(),
+                            );
+                            continue;
+                        }
+
+                        ctx.block_stream_metrics
+                            .reverted_blocks
+                            .set(subgraph_ptr.number as f64);
+
+                        // Revert the in-memory state:
+                        // - Remove hosts for reverted dynamic data sources.
+                        // - Clear the entity cache.
+                        //
+                        // Note that we do not currently revert the filters, which means the filters
+                        // will be broader than necessary. This is not ideal for performance, but is not
+                        // incorrect since we will discard triggers that match the filters but do not
+                        // match any data sources.
+                        ctx.state.instance.revert_data_sources(subgraph_ptr.number);
+                        ctx.state.entity_lfu_cache = LfuCache::new();
+                        continue;
+                    }
+                    Err(e) => {
                         debug!(
                             &logger,
-                            "Could not revert block. \
-                            The likely cause is the block not being found due to a deep reorg. \
-                            Retrying";
-                            "block_number" => format!("{}", subgraph_ptr.number),
-                            "block_hash" => format!("{}", subgraph_ptr.hash),
-                            "error" => e.to_string(),
+                            "Block stream produced a non-fatal error";
+                            "error" => format!("{}", e),
                         );
                         continue;
                     }
-
-                    ctx.block_stream_metrics
-                        .reverted_blocks
-                        .set(subgraph_ptr.number as f64);
-
-                    // Revert the in-memory state:
-                    // - Remove hosts for reverted dynamic data sources.
-                    // - Clear the entity cache.
-                    //
-                    // Note that we do not currently revert the filters, which means the filters
-                    // will be broader than necessary. This is not ideal for performance, but is not
-                    // incorrect since we will discard triggers that match the filters but do not
-                    // match any data sources.
-                    ctx.state.instance.revert_data_sources(subgraph_ptr.number);
-                    ctx.state.entity_lfu_cache = LfuCache::new();
-                    continue;
-                }
-                // Log and drop the errors from the block_stream
-                // The block stream will continue attempting to produce blocks
-                Some(Err(e)) => {
-                    debug!(
-                        &logger,
-                        "Block stream produced a non-fatal error";
-                        "error" => format!("{}", e),
-                    );
-                    continue;
-                }
+                },
                 None => unreachable!("The block stream stopped producing blocks"),
             };
 
@@ -564,6 +564,7 @@ where
                 ctx,
                 block_stream_cancel_handle.clone(),
                 block,
+                cursor.into(),
             )
             .await;
 
@@ -664,6 +665,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
     mut ctx: IndexingContext<T, C>,
     block_stream_cancel_handle: CancelHandle,
     block: BlockWithTriggers<C>,
+    firehose_cursor: Option<String>,
 ) -> Result<(IndexingContext<T, C>, bool), BlockProcessingError> {
     let triggers = block.trigger_data;
     let block = Arc::new(block.block);
@@ -896,6 +898,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
 
     match store.transact_block_operations(
         block_ptr,
+        firehose_cursor,
         mods,
         stopwatch,
         data_sources,

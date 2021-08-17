@@ -214,6 +214,7 @@ pub fn transact_errors(
         .writable(&deployment)?
         .transact_block_operations(
             block_ptr_to,
+            None,
             Vec::new(),
             stopwatch_metrics,
             Vec::new(),
@@ -253,6 +254,7 @@ pub fn transact_entities_and_dynamic_data_sources(
     );
     store.transact_block_operations(
         block_ptr_to,
+        None,
         mods,
         stopwatch_metrics,
         data_sources,

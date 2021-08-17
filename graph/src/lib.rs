@@ -22,6 +22,9 @@ pub mod blockchain;
 
 pub mod runtime;
 
+/// StreamingFast core components
+pub mod sf;
+
 /// Module with mocks for different parts of the system.
 pub mod mock {
     pub use crate::components::store::MockStore;

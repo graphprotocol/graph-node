@@ -518,8 +518,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolve
     info!(
         logger,
         "Set subgraph start block";
-        "block_number" => format!("{:?}", start_block.as_ref().map(|block| block.number)),
-        "block_hash" => format!("{:?}", start_block.as_ref().map(|block| &block.hash)),
+        "block" => format!("{:?}", start_block),
     );
 
     info!(

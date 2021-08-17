@@ -12,7 +12,9 @@ use graph::{
     cheap_clone::CheapClone,
     components::{
         server::index_node::VersionInfo,
-        store::{self, DeploymentLocator, EntityType, WritableStore as WritableStoreTrait},
+        store::{
+            self, CursorStore, DeploymentLocator, EntityType, WritableStore as WritableStoreTrait,
+        },
     },
     constraint_violation,
     data::query::QueryTarget,
@@ -983,6 +985,14 @@ impl SubgraphStoreTrait for SubgraphStore {
         Ok(Arc::new(WritableStore::new(self.clone(), site)?))
     }
 
+    fn cursor(
+        &self,
+        deployment: &DeploymentLocator,
+    ) -> Result<Arc<dyn store::CursorStore>, StoreError> {
+        let site = self.find_site(deployment.id.into())?;
+        return Ok(Arc::new(WritableStore::new(self.clone(), site)?));
+    }
+
     fn writable_for_network_indexer(
         &self,
         id: &DeploymentHash,
@@ -1054,6 +1064,14 @@ impl WritableStore {
     }
 }
 
+impl CursorStore for WritableStore {
+    fn get_cursor(&self) -> Result<String, StoreError> {
+        self.store
+            .primary_conn()?
+            .get_subgraph_firehose_cursor(&self.site.deployment)
+    }
+}
+
 #[async_trait::async_trait]
 impl WritableStoreTrait for WritableStore {
     fn block_ptr(&self) -> Result<Option<BlockPtr>, Error> {
@@ -1108,6 +1126,7 @@ impl WritableStoreTrait for WritableStore {
     fn transact_block_operations(
         &self,
         block_ptr_to: BlockPtr,
+        firehose_cursor: Option<String>,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
@@ -1117,9 +1136,11 @@ impl WritableStoreTrait for WritableStore {
             same_subgraph(&mods, &self.site.deployment),
             "can only transact operations within one shard"
         );
+
         let event = self.writable.transact_block_operations(
             self.site.clone(),
             block_ptr_to,
+            firehose_cursor,
             mods,
             stopwatch.cheap_clone(),
             data_sources,

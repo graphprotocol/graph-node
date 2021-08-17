@@ -61,6 +61,7 @@ pub struct DeploymentDetail {
     reorg_count: i32,
     current_reorg_depth: i32,
     max_reorg_depth: i32,
+    firehose_cursor: String,
 }
 
 #[derive(Queryable, QueryableByName)]

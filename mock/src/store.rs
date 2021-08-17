@@ -1,6 +1,7 @@
 use mockall::predicate::*;
 use mockall::*;
 
+use graph::components::store::CursorStore;
 use graph::{components::store::DeploymentLocator, prelude::*};
 use web3::types::H256;
 
@@ -121,6 +122,10 @@ impl SubgraphStore for MockStore {
     }
 
     fn locators(&self, _: &str) -> Result<Vec<DeploymentLocator>, StoreError> {
+        unimplemented!()
+    }
+
+    fn cursor(&self, _deployment: &DeploymentLocator) -> Result<Arc<dyn CursorStore>, StoreError> {
         unimplemented!()
     }
 }

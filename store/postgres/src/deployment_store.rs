@@ -844,6 +844,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
+        firehose_cursor: Option<String>,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
@@ -900,6 +901,8 @@ impl DeploymentStore {
             }
 
             deployment::forward_block_ptr(&conn, &site.deployment, block_ptr_to)?;
+            deployment::update_firehose_cursor(&conn, &site.deployment, firehose_cursor)?;
+
             Ok(event)
         })?;
 
