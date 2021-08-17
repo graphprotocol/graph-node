@@ -173,12 +173,14 @@ where
                                     if let Some(assigned) = assigned {
                                         if assigned == node_id {
                                             // Start subgraph on this node
+                                            debug!(logger, "Deployment assignee is this node, broadcasting add event"; "assigned_to" => assigned, "node_id" => &node_id);
                                             Box::new(stream::once(Ok(AssignmentEvent::Add {
                                                 deployment,
                                                 node_id: node_id.clone(),
                                             })))
                                         } else {
                                             // Ensure it is removed from this node
+                                            debug!(logger, "Deployment assignee is not this node, broadcasting remove event"; "assigned_to" => assigned, "node_id" => &node_id);
                                             Box::new(stream::once(Ok(AssignmentEvent::Remove {
                                                 deployment,
                                                 node_id: node_id.clone(),
@@ -186,7 +188,7 @@ where
                                         }
                                     } else {
                                         // Was added/updated, but is now gone.
-                                        // We will get a separate Removed event later.
+                                        debug!(logger, "Deployment has not assignee, we will get a separate remove event later"; "node_id" => &node_id);
                                         Box::new(stream::empty())
                                     }
                                 })
