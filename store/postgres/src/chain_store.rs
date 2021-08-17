@@ -364,10 +364,10 @@ mod data {
         }
 
         /// Returns a fully qualified table name to the blocks table
-        pub(super) fn blocks_table(&self) -> String {
+        fn blocks_table(&self) -> &str {
             match self {
-                Storage::Shared => String::from("public.ethereum_blocks"),
-                Storage::Private(Schema { name, .. }) => format!("{}.blocks", name),
+                Storage::Shared => "public.ethereum_blocks",
+                Storage::Private(Schema { blocks, .. }) => &blocks.qname,
             }
         }
 
@@ -1095,14 +1095,13 @@ mod data {
                 .unwrap();
         }
 
-        /// Delegates to [`transaction_receipt::find_transaction_receipts_in_block`].
+        /// Delegates to [`crate::transaction_receipt::find_transaction_receipts_in_block`].
         pub(crate) fn find_transaction_receipts_in_block(
             &self,
             conn: &PgConnection,
-            blocks_table_name: &str,
             block_hash: H256,
         ) -> anyhow::Result<Vec<LightTransactionReceipt>> {
-            find_transaction_receipts_in_block(conn, blocks_table_name, block_hash)
+            find_transaction_receipts_in_block(conn, self.blocks_table(), block_hash)
         }
     }
 }
@@ -1446,11 +1445,10 @@ impl ChainStoreTrait for ChainStore {
     ) -> Result<Vec<LightTransactionReceipt>, StoreError> {
         let pool = self.pool.clone();
         let storage = self.storage.clone();
-        let blocks_table_path: String = storage.blocks_table();
         let block_hash = block_hash.to_owned();
         pool.with_conn(move |conn, _| {
             storage
-                .find_transaction_receipts_in_block(&conn, &blocks_table_path, block_hash)
+                .find_transaction_receipts_in_block(&conn, block_hash)
                 .map_err(|e| StoreError::from(e).into())
         })
         .await
