@@ -5,9 +5,9 @@ use diesel::{
     sql_types::{Binary, Nullable},
 };
 use diesel_derives::{Queryable, QueryableByName};
+use graph::prelude::web3::types::H256;
 use itertools::Itertools;
 use std::convert::TryFrom;
-use web3::types::H256;
 
 use graph::prelude::transaction_receipt::LightTransactionReceipt;
 
