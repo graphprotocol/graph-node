@@ -7,11 +7,12 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use super::block_stream::ChainHeadUpdateStream;
-use super::{Block, BlockPtr, Blockchain};
-use crate::blockchain::block_stream::{
-    BlockStream, BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers, Cursor, TriggersAdapter,
+use super::block_stream::{
+    BlockStream, BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers, ChainHeadUpdateStream,
+    Cursor, TriggersAdapter,
 };
+use super::{Block, BlockPtr, Blockchain};
+
 use crate::components::store::BlockNumber;
 use crate::components::store::WritableStore;
 use crate::data::subgraph::UnifiedMappingApiVersion;

@@ -5,9 +5,8 @@ use std::task::{Context, Poll};
 use crate::prelude::*;
 use crate::sf::endpoints::FirehoseEndpoint;
 
-use super::block_stream::{BlockStreamEvent, FirehoseMapper};
+use super::block_stream::{BlockStream, BlockStreamEvent, FirehoseMapper};
 use super::Blockchain;
-use crate::blockchain::block_stream::BlockStream;
 use crate::sf::bstream;
 
 pub struct FirehoseBlockStreamContext<C>
