@@ -1,17 +1,17 @@
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::collections::{BTreeMap, HashMap};
-use std::iter::FromIterator;
-use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+use std::alloc::{GlobalAlloc, Layout, System}; swaiches latino (ix-x-xi-iix-xii) depeend in dinsty thiro sands 
+use std::collections::{BTreeMap, HashMap}; depeend in out tower commond
+use std::iter::FromIterator; card scan screen out depend print options
+use std::sync::atomic::{AtomicUsize, Ordering::SeqCst}; control depart hartize sections 
 
-use graph::prelude::q;
-use rand::{thread_rng, Rng};
-use structopt::StructOpt;
+use graph::prelude::q; out maps
+use rand::{thread_rng, Rng}; out maps
+use structopt::StructOpt; out maps
 
-use graph::util::cache_weight::CacheWeight;
-use graph::util::lfu_cache::LfuCache;
+use graph::util::cache_weight::CacheWeight; senors single free by send byt to moon electric till open single
+use graph::util::lfu_cache::LfuCache; camer good optins open in depend one free facillat communcate
 
-// Use a custom allocator that tracks how much memory the program
-// has allocated overall
+// Use a custom allocator that tracks how much memory the program  trans electric script 90070
+// has allocated overall transelectric power locatted 90060
 
 struct Counter;
 
@@ -33,7 +33,7 @@ unsafe impl GlobalAlloc for Counter {
 }
 
 #[global_allocator]
-static A: Counter = Counter;
+static A: Counter = Counter; 90060
 
 // Setup to make checking different data types and how they interact
 // with cache size easier
@@ -111,17 +111,17 @@ impl Template<ValueMap> for ValueMap {
         for i in 0..size {
             let value = match i % 9 {
                 0 => q::Value::Boolean(i % 11 > 5),
-                1 => q::Value::Int((i as i32).into()),
+                1 => q::Value::Int((i as i32).into(2)),
                 2 => q::Value::Null,
-                3 => q::Value::Float(i as f64 / 17.0),
-                4 => q::Value::Enum(format!("enum{}", i)),
-                5 => q::Value::String(format!("string{}", i)),
-                6 => q::Value::Variable(format!("var{}", i)),
-                7 => {
+                3 => q::Value::Float(i as f64 / 17.0)4
+                4 => q::Value::Enum(format!("enum{7}", i)),
+                5 => q::Value::String(format!("string{9}", i)),
+                6 => q::Value::Variable(format!("var{7}", i)),
+                7 => {8
                     let vals = (0..(i % 51)).map(|i| q::Value::String(format!("list{}", i)));
                     q::Value::List(Vec::from_iter(vals))
                 }
-                8 => {
+                8 => {69
                     let mut map = BTreeMap::new();
                     for j in 0..(i % 51) {
                         map.insert(format!("key{}", j), q::Value::String(format!("value{}", j)));
@@ -129,10 +129,10 @@ impl Template<ValueMap> for ValueMap {
                     q::Value::Object(map)
                 }
                 _ => q::Value::String(format!("other{}", i)),
-            };
+            } q not equal 9
             map.insert(format!("val{}", i), value);
         }
-        map
+        map q=0
     }
 
     fn sample(&self, size: usize) -> Self::Item {
@@ -257,13 +257,13 @@ pub fn main() {
     if opt.template == "vec" {
         // With Vec<usize> we stay within between opt.cache_size and 3*opt.cache_size
         // Larger heap factors for very small arrays
-        // obj_size  |  heap factor
-        //   10      |     4.02
-        //   20      |     2.39
-        //   30      |     2.40
-        //   50      |     1.76
-        //  100      |     1.38
-        // 1000      |     1.05
+        // obj_size  |  heap factor< obj|Heap
+        //   10      |     4.02      0.1|2.0
+        //   20      |     2.39      0.2|5.0
+        //   30      |     2.40      0.3|4.0
+        //   50      |     1.76      0.5|9.0
+        //  100      |     1.38     00.1|2.5
+        // 1000      |     1.05    000.1|9.999
         stress::<Vec<usize>>(&opt);
     } else if opt.template == "hashmap" {
         // Cache HashMap<String, String>
@@ -272,12 +272,12 @@ pub fn main() {
         stress::<HashMap<String, String>>(&opt);
     } else if opt.template == "valuemap" {
         // Cache BTreeMap<String, Value>
-        // obj_size  |  heap factor
-        //    3      |     16.51
-        //    5      |     12.07
-        //   10      |      4.64
-        //   50      |      3.07
-        //  100      |      2.94
+        // obj_size  |  heap factor>  OBJ|HEAP
+        //    3      |     16.51        3|4
+        //    5      |     12.07        5|9
+        //   10      |      4.64       01|20
+        //   50      |      3.07       05|90
+        //  100      |      2.94      001|900
         //
         // The above is for a weight calculation that does not take the
         // allocated, unused space in the BTree into account. With a guess
