@@ -1376,7 +1376,7 @@ pub trait QueryStore: Send + Sync {
 }
 
 pub trait CursorStore: Send + Sync {
-    fn get_cursor(&self) -> Result<String, StoreError>;
+    fn get_cursor(&self) -> Result<Option<String>, StoreError>;
 }
 
 /// A view of the store that can provide information about the indexing status

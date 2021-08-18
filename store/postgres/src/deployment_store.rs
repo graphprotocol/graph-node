@@ -598,6 +598,16 @@ impl DeploymentStore {
         Ok(deployment::block_ptr(&conn, subgraph_id)?)
     }
 
+    fn firehose_cursor_with_conn(
+        subgraph_id: &DeploymentHash,
+        conn: &PgConnection,
+    ) -> Result<Option<String>, StoreError> {
+        Ok(deployment::get_subgraph_firehose_cursor(
+            &conn,
+            subgraph_id,
+        )?)
+    }
+
     pub(crate) fn deployment_details(
         &self,
         ids: Vec<String>,
@@ -678,6 +688,11 @@ impl DeploymentStore {
     pub(crate) fn block_ptr(&self, site: &Site) -> Result<Option<BlockPtr>, Error> {
         let conn = self.get_conn()?;
         Self::block_ptr_with_conn(&site.deployment, &conn)
+    }
+
+    pub(crate) fn firehose_cursor(&self, site: &Site) -> Result<Option<String>, StoreError> {
+        let conn = self.get_conn()?;
+        Self::firehose_cursor_with_conn(&site.deployment, &conn)
     }
 
     pub(crate) fn supports_proof_of_indexing<'a>(

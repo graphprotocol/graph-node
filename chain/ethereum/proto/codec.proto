@@ -263,7 +263,7 @@ message Call {
   // has a status of `SUCCESS`, the chain might have reverted all the state
   // changes it performed.
   //
-  // ```
+  // ```text
   //   Trx 1
   //    Call #1 <Failed>
   //      Call #2 <Execution Success>
@@ -321,7 +321,9 @@ message BalanceChange {
 
   // Obtain all balanche change reasons under deep mind repository:
   //
-  //     ack -ho 'BalanceChangeReason\(".*"\)' | grep -Eo '".*"' | sort | uniq
+  // ```shell
+  // ack -ho 'BalanceChangeReason\(".*"\)' | grep -Eo '".*"' | sort | uniq
+  // ```
   enum Reason {
     REASON_UNKNOWN = 0;
     REASON_REWARD_MINE_UNCLE = 1;
@@ -368,7 +370,9 @@ message GasChange {
 
   // Obtain all gas change reasons under deep mind repository:
   //
-  //     ack -ho 'GasChangeReason\(".*"\)' | grep -Eo '".*"' | sort | uniq
+  // ```shell
+  // ack -ho 'GasChangeReason\(".*"\)' | grep -Eo '".*"' | sort | uniq
+  // ```
   enum Reason {
     REASON_UNKNOWN = 0;
     REASON_CALL = 1;
@@ -408,7 +412,9 @@ message GasEvent {
 
   // Obtain all gas change reasons under deep mind repository:
   //
-  //     ack -ho 'GasEventID\(".*"\)' | grep -Eo '".*"' | sort | uniq
+  // ```shell
+  // ack -ho 'GasEventID\(".*"\)' | grep -Eo '".*"' | sort | uniq
+  // ```
   enum Id {
     ID_UNKNOWN = 0;
     ID_AFTER_CALL = 1;

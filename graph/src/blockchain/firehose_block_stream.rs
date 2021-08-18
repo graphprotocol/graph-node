@@ -14,7 +14,7 @@ pub struct FirehoseBlockStreamContext<C>
 where
     C: Blockchain,
 {
-    cursor: String,
+    cursor: Option<String>,
     mapper: Arc<C::FirehoseMapper>,
     node_id: NodeId,
     subgraph_id: DeploymentHash,
@@ -64,7 +64,7 @@ where
 {
     pub fn new(
         endpoint: Arc<FirehoseEndpoint>,
-        cursor: String,
+        cursor: Option<String>,
         mapper: Arc<C::FirehoseMapper>,
         node_id: NodeId,
         subgraph_id: DeploymentHash,
@@ -116,7 +116,10 @@ impl<C: Blockchain> Stream for FirehoseBlockStream<C> {
                         .clone()
                         .stream_blocks(bstream::BlocksRequestV2 {
                             start_block_num: start_block_num as i64,
-                            start_cursor: self.ctx.cursor.clone(),
+                            start_cursor: match &self.ctx.cursor {
+                                Some(c) => c.clone(),
+                                None => "".to_string(),
+                            },
                             fork_steps: vec![
                                 bstream::ForkStep::StepNew as i32,
                                 bstream::ForkStep::StepUndo as i32,

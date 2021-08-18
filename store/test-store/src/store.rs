@@ -460,11 +460,12 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
         let url = url.into_string().unwrap();
         opt.postgres_url = Some(url);
     } else {
-        panic!("You must set either THEGRAPH_STORE_POSTGRES_DIESEL_URL or GRAPH_NODE_TEST_CONFIG (see CONTRIBUTING.md).");
+        panic!("You must set either THEGRAPH_STORE_POSTGRES_DIESEL_URL or GRAPH_NODE_TEST_CONFIG (see ./CONTRIBUTING.md).");
     }
     opt.store_connection_pool_size = CONN_POOL_SIZE;
 
-    let config = Config::load(&*LOGGER, &opt).expect("config is not valid");
+    let config = Config::load(&*LOGGER, &opt)
+        .expect(&format!("config is not valid (file={:?})", &opt.config));
     let registry = Arc::new(MockMetricsRegistry::new());
     std::thread::spawn(move || {
         STORE_RUNTIME.handle().block_on(async {

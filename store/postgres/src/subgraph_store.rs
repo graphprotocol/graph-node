@@ -1065,10 +1065,8 @@ impl WritableStore {
 }
 
 impl CursorStore for WritableStore {
-    fn get_cursor(&self) -> Result<String, StoreError> {
-        self.store
-            .primary_conn()?
-            .get_subgraph_firehose_cursor(&self.site.deployment)
+    fn get_cursor(&self) -> Result<Option<String>, StoreError> {
+        self.writable.firehose_cursor(self.site.as_ref())
     }
 }
 

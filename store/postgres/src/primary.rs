@@ -72,14 +72,6 @@ table! {
 }
 
 table! {
-    subgraphs.subgraph_deployment (id) {
-        id -> Integer,
-        deployment -> Text,
-        firehose_cursor -> Text,
-    }
-}
-
-table! {
     subgraphs.subgraph_version (vid) {
         vid -> BigInt,
         id -> Text,
@@ -524,21 +516,6 @@ impl<'a> Connection<'a> {
             self.remove_unused_assignments()?
         };
         Ok(changes)
-    }
-
-    pub fn get_subgraph_firehose_cursor(
-        &self,
-        deployment_hash: &DeploymentHash,
-    ) -> Result<String, StoreError> {
-        use subgraph_deployment as s;
-        let conn = self.0.as_ref();
-
-        let res = s::table
-            .filter(s::deployment.eq(deployment_hash.as_str()))
-            .select(s::firehose_cursor)
-            .first::<String>(conn)
-            .map_err(|e| StoreError::from(e));
-        res
     }
 
     /// Create a new subgraph with the given name. If one already exists, use

@@ -219,10 +219,7 @@ impl Chain {
         let firehose_mapper = self.firehose_mapper();
 
         let cursor_store: Arc<dyn CursorStore> = self.subgraph_store.cursor(&deployment)?;
-        let firehose_cursor = cursor_store
-            .get_cursor()
-            .map_err(|e| error!(&logger, "error getting cursor: {}", e))
-            .unwrap_or(String::from(""));
+        let firehose_cursor = cursor_store.get_cursor()?;
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,
