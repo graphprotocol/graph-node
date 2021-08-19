@@ -1069,6 +1069,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         &mut self,
         input_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<Uint8Array>, DeterministicHostError> {
+        return Ok(AscPtr::null());
         let input = self
             .ctx
             .host_exports

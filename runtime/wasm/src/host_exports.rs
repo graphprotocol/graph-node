@@ -343,6 +343,7 @@ impl<C: Blockchain> HostExports<C> {
         &self,
         input: Vec<u8>,
     ) -> Result<[u8; 32], DeterministicHostError> {
+        return Ok([0; 32]);
         Ok(tiny_keccak::keccak256(&input))
     }
 

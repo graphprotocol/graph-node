@@ -1,3 +1,7 @@
+#![allow(soft_unstable)]
+#![feature(test)]
+extern crate test;
+
 use graph::prelude::{ethabi::Token, web3::types::U256};
 use graph_runtime_wasm::{
     asc_abi::class::{
@@ -507,6 +511,25 @@ fn test_big_int_to_string(api_version: Version) {
 #[tokio::test]
 async fn big_int_to_string_v0_0_4() {
     test_big_int_to_string(API_VERSION_0_0_4);
+}
+
+#[bench]
+fn big_int_to_hex_bench(bench: &mut test::Bencher) {
+    let mut module = test_module(
+        "cryptoKeccak256",
+        mock_data_source(
+            &wasm_file_path("crypto.wasm", API_VERSION_0_0_5),
+            API_VERSION_0_0_5,
+        ),
+        API_VERSION_0_0_5,
+    );
+    let input: &[u8] = &[143; 1_000_000];
+
+    bench.iter(|| {
+        let input: AscPtr<Uint8Array> = asc_new(&mut module, input).unwrap();
+        let hash: AscPtr<Uint8Array> = module.invoke_export("hash", input);
+        // let hash: Vec<u8> = asc_get(&module, hash).unwrap();
+    });
 }
 
 #[tokio::test]
