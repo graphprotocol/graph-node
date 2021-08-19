@@ -56,7 +56,6 @@ pub const SPEC_VERSION_0_0_3: Version = Version::new(0, 0, 3);
 pub const SPEC_VERSION_0_0_4: Version = Version::new(0, 0, 4);
 
 pub const MIN_SPEC_VERSION: Version = Version::new(0, 0, 2);
-pub const MAX_SPEC_VERSION: Version = SPEC_VERSION_0_0_4;
 
 lazy_static! {
     static ref DISABLE_GRAFTS: bool = std::env::var("GRAPH_DISABLE_GRAFTS")
@@ -67,6 +66,10 @@ lazy_static! {
         .ok()
         .and_then(|api_version_str| Version::parse(&api_version_str).ok())
         .unwrap_or(Version::new(0, 0, 5));
+    static ref MAX_SPEC_VERSION: Version = std::env::var("GRAPH_MAX_SPEC_VERSION")
+        .ok()
+        .and_then(|api_version_str| Version::parse(&api_version_str).ok())
+        .unwrap_or(SPEC_VERSION_0_0_3);
 }
 
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.
@@ -1034,12 +1037,12 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             chain,
         } = self;
 
-        if MIN_SPEC_VERSION <= spec_version && spec_version <= MAX_SPEC_VERSION {
+        if !(MIN_SPEC_VERSION..=MAX_SPEC_VERSION.clone()).contains(&spec_version) {
             return Err(anyhow!(
                 "This Graph Node only supports manifest spec versions between {} and {},
                     but subgraph `{}` uses `{}`",
                 MIN_SPEC_VERSION,
-                MAX_SPEC_VERSION,
+                *MAX_SPEC_VERSION,
                 id,
                 spec_version
             ));
