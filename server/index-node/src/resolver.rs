@@ -175,7 +175,7 @@ where
 
         // TODO:
         //
-        // An intersting optimization would involve trying to get the subgraph manifest from the
+        // An interesting optimization would involve trying to get the subgraph manifest from the
         // SubgraphStore before hitting IPFS, but we must fix a dependency cycle between the `graph`
         // and `server` crates first.
         //

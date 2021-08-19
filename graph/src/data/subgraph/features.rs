@@ -112,7 +112,7 @@ fn detect_full_text_search(schema: &Schema) -> Option<SubgraphFeature> {
         Ok(directives) => (!directives.is_empty()).then(|| SubgraphFeature::FullTextSearch),
 
         Err(_) => {
-            // Currently we retun an error from `get_fulltext_directives` function if the
+            // Currently we return an error from `get_fulltext_directives` function if the
             // fullTextSearch directive is found.
             Some(SubgraphFeature::FullTextSearch)
         }
