@@ -3,13 +3,15 @@ use diesel::{connection::SimpleConnection, prelude::RunQueryDsl, select};
 use diesel::{insert_into, OptionalExtension};
 use diesel::{pg::PgConnection, sql_query};
 use diesel::{
-    sql_types::{Array, Text},
+    sql_types::{Array, Nullable, Text},
     ExpressionMethods, QueryDsl,
 };
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write;
 use std::iter::FromIterator;
 use std::sync::Arc;
 
+use graph::prelude::anyhow::anyhow;
 use graph::{data::subgraph::schema::POI_TABLE, prelude::StoreError};
 
 use crate::connection_pool::ForeignServer;
@@ -193,6 +195,17 @@ pub fn drop_foreign_schema(conn: &PgConnection, src: &Site) -> Result<(), StoreE
     Ok(())
 }
 
+/// Drop the schema `nsp` and all its contents if it exists, and create it
+/// again so that `nsp` is an empty schema
+pub fn recreate_schema(conn: &PgConnection, nsp: &str) -> Result<(), StoreError> {
+    let query = format!(
+        "drop schema if exists {nsp} cascade;\
+         create schema {nsp};",
+        nsp = nsp
+    );
+    Ok(conn.batch_execute(&query)?)
+}
+
 pub fn account_like(conn: &PgConnection, site: &Site) -> Result<HashSet<String>, StoreError> {
     use table_stats as ts;
     let names = ts::table
@@ -250,4 +263,121 @@ pub fn copy_account_like(conn: &PgConnection, src: &Site, dst: &Site) -> Result<
         .bind::<Integer, _>(src.id)
         .bind::<Integer, _>(dst.id)
         .execute(conn)?)
+}
+
+pub(crate) mod table_schema {
+    use super::*;
+
+    /// The name and data type for the column in a table. The data type is
+    /// in a form that it can be used in a `create table` statement
+    pub struct Column {
+        pub column_name: String,
+        pub data_type: String,
+    }
+
+    #[derive(QueryableByName)]
+    struct ColumnInfo {
+        #[sql_type = "Text"]
+        column_name: String,
+        #[sql_type = "Text"]
+        data_type: String,
+        #[sql_type = "Text"]
+        udt_name: String,
+        #[sql_type = "Text"]
+        udt_schema: String,
+        #[sql_type = "Nullable<Text>"]
+        elem_type: Option<String>,
+    }
+
+    impl From<ColumnInfo> for Column {
+        fn from(ci: ColumnInfo) -> Self {
+            // See description of `data_type` in
+            // https://www.postgresql.org/docs/current/infoschema-columns.html
+            let data_type = match ci.data_type.as_str() {
+                "ARRAY" => format!(
+                    "{}[]",
+                    ci.elem_type.expect("array columns have an elem_type")
+                ),
+                "USER-DEFINED" => format!("{}.{}", ci.udt_schema, ci.udt_name),
+                _ => ci.data_type.clone(),
+            };
+            Self {
+                column_name: ci.column_name.clone(),
+                data_type,
+            }
+        }
+    }
+
+    pub fn columns(
+        conn: &PgConnection,
+        nsp: &str,
+        table_name: &str,
+    ) -> Result<Vec<Column>, StoreError> {
+        const QUERY: &str = " \
+    select c.column_name::text, c.data_type::text,
+           c.udt_name::text, c.udt_schema::text, e.data_type::text as elem_type
+      from information_schema.columns c
+      left join information_schema.element_types e
+           on ((c.table_catalog, c.table_schema, c.table_name, 'TABLE', c.dtd_identifier)
+            = (e.object_catalog, e.object_schema, e.object_name, e.object_type, e.collection_type_identifier))
+     where c.table_schema = $1
+       and c.table_name = $2
+     order by c.ordinal_position";
+
+        Ok(sql_query(QUERY)
+            .bind::<Text, _>(nsp)
+            .bind::<Text, _>(table_name)
+            .get_results::<ColumnInfo>(conn)?
+            .into_iter()
+            .map(|ci| ci.into())
+            .collect())
+    }
+}
+
+/// Return a SQL statement to create the foreign table
+/// `{dst_nsp}.{table_name}` for the server `server` which has the same
+/// schema as the (local) table `{src_nsp}.{table_name}`
+pub fn create_foreign_table(
+    conn: &PgConnection,
+    src_nsp: &str,
+    table_name: &str,
+    dst_nsp: &str,
+    server: &str,
+) -> Result<String, StoreError> {
+    fn build_query(
+        columns: Vec<table_schema::Column>,
+        src_nsp: &str,
+        table_name: &str,
+        dst_nsp: &str,
+        server: &str,
+    ) -> Result<String, std::fmt::Error> {
+        let mut query = String::new();
+        write!(
+            query,
+            "create foreign table \"{}\".\"{}\" (",
+            dst_nsp, table_name
+        )?;
+        for (idx, column) in columns.into_iter().enumerate() {
+            if idx > 0 {
+                write!(query, ", ")?;
+            }
+            write!(query, "\"{}\" {}", column.column_name, column.data_type)?;
+        }
+        writeln!(
+            query,
+            ") server \"{}\" options(schema_name '{}');",
+            server, src_nsp
+        )?;
+        Ok(query)
+    }
+
+    let columns = table_schema::columns(conn, src_nsp, table_name)?;
+    let query = build_query(columns, src_nsp, table_name, dst_nsp, server).map_err(|_| {
+        anyhow!(
+            "failed to generate 'create foreign table' query for {}.{}",
+            dst_nsp,
+            table_name
+        )
+    })?;
+    Ok(query)
 }

@@ -18,7 +18,7 @@ use graph::{
     util::security::SafeDisplay,
 };
 
-use std::fmt;
+use std::fmt::{self, Write};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -167,32 +167,27 @@ impl ForeignServer {
     /// We recreate this mapping on every server start so that migrations that
     /// change one of the mapped tables actually show up in the imported tables
     fn map_primary(conn: &PgConnection, shard: &Shard) -> Result<(), StoreError> {
-        let query = format!(
-            "drop schema if exists {nsp} cascade;
-            create schema {nsp};",
-            nsp = Self::PRIMARY_PUBLIC
-        );
-        conn.batch_execute(&query)?;
+        catalog::recreate_schema(conn, Self::PRIMARY_PUBLIC)?;
 
-        let query = if shard == &*PRIMARY_SHARD {
-            format!(
-                "create view {nsp}.deployment_schemas as
-                        select * from public.deployment_schemas;
-                 create view {nsp}.chains as
-                        select * from public.chains;
-                 create view {nsp}.active_copies as
-                        select * from public.active_copies;",
-                nsp = Self::PRIMARY_PUBLIC
-            )
-        } else {
-            format!(
-                "import foreign schema public
-                        limit to (deployment_schemas, chains, active_copies) \
-                        from server {shard} into {nsp};",
-                shard = Self::name(&*PRIMARY_SHARD),
-                nsp = Self::PRIMARY_PUBLIC
-            )
-        };
+        let mut query = String::new();
+        for table_name in ["deployment_schemas", "chains", "active_copies"] {
+            let create_stmt = if shard == &*PRIMARY_SHARD {
+                format!(
+                    "create view {nsp}.{table_name} as select * from public.{table_name};",
+                    nsp = Self::PRIMARY_PUBLIC,
+                    table_name = table_name
+                )
+            } else {
+                catalog::create_foreign_table(
+                    conn,
+                    "public",
+                    table_name,
+                    Self::PRIMARY_PUBLIC,
+                    Self::name(&*PRIMARY_SHARD).as_str(),
+                )?
+            };
+            write!(query, "{}", create_stmt)?;
+        }
         conn.batch_execute(&query)?;
         Ok(())
     }
@@ -200,13 +195,18 @@ impl ForeignServer {
     /// Map the `subgraphs` schema from the foreign server `self` into the
     /// database accessible through `conn`
     fn map_metadata(&self, conn: &PgConnection) -> Result<(), StoreError> {
-        let query = format!(
-            "drop schema if exists {nsp} cascade;\
-             create schema {nsp};
-             import foreign schema subgraphs from server {srvname} into {nsp};",
-            nsp = Self::metadata_schema(&self.shard),
-            srvname = self.name
-        );
+        let nsp = Self::metadata_schema(&self.shard);
+        catalog::recreate_schema(conn, &nsp)?;
+        let mut query = String::new();
+        for table_name in [
+            "subgraph_error",
+            "dynamic_ethereum_contract_data_source",
+            "table_stats",
+        ] {
+            let create_stmt =
+                catalog::create_foreign_table(conn, "subgraphs", table_name, &nsp, &self.name)?;
+            write!(query, "{}", create_stmt)?;
+        }
         Ok(conn.batch_execute(&query)?)
     }
 }
@@ -646,9 +646,9 @@ impl ConnectionPool {
         conn.transaction(|| ForeignServer::map_primary(&conn, &self.shard))
     }
 
-    // Map the `subgraphs` metadata schema from foreign servers to
-    // ourselves. The mapping is recreated on every server start so that we
-    // pick up possible schema changes in the mappings
+    // Map some tables from the `subgraphs` metadata schema from foreign
+    // servers to ourselves. The mapping is recreated on every server start
+    // so that we pick up possible schema changes in the mappings
     fn map_metadata(&self, servers: &Vec<ForeignServer>) -> Result<(), StoreError> {
         let conn = self.get()?;
         conn.transaction(|| {

@@ -828,6 +828,12 @@ impl From<QueryExecutionError> for StoreError {
     }
 }
 
+impl From<std::fmt::Error> for StoreError {
+    fn from(e: std::fmt::Error) -> Self {
+        StoreError::Unknown(anyhow!("{}", e.to_string()))
+    }
+}
+
 pub struct StoredDynamicDataSource {
     pub name: String,
     pub source: Source,
