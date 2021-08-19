@@ -213,15 +213,23 @@ where
             match unvalidated_subgraph_manifest.validate(self.subgraph_store.clone()) {
                 Ok((subgraph_manifest, _warnings)) => Either::Left(subgraph_manifest),
                 Err(validation_errors) => {
-                    if validation_errors.iter().all(|error| {
-                        matches!(
-                            error,
-                            SubgraphManifestValidationError::FeatureValidationError(_)
-                        )
-                    }) {
-                        Either::Right(validation_errors)
+                    // We must ensure that all the errors are of the `FeatureValidationError`
+                    // variant and that there is at least one error of that kind.
+                    let feature_validation_errors: Vec<_> = validation_errors
+                        .into_iter()
+                        .filter(|error| {
+                            matches!(
+                                error,
+                                SubgraphManifestValidationError::FeatureValidationError(_)
+                            )
+                        })
+                        .collect();
+
+                    if !feature_validation_errors.is_empty() {
+                        Either::Right(feature_validation_errors)
                     } else {
-                        // If other errors are present, we must return early with an error.
+                        // If other error variants are present or there are no feature validation
+                        // errors, we must return early with an error.
                         //
                         // It might be useful to return a more thoughtful error, but that is not the
                         // purpose of this endpoint.
@@ -249,7 +257,6 @@ where
                 (features, errors)
             }
             Either::Right(errors) => {
-                assert!(!errors.is_empty());
                 let features = q::Value::List(vec![]);
                 let errors = q::Value::List(
                     errors
