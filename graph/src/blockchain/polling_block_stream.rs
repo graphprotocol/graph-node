@@ -10,12 +10,25 @@ use anyhow::Error;
 use futures03::{stream::Stream, Future, FutureExt};
 use std::cmp;
 use std::collections::VecDeque;
+use std::str::FromStr;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::sync::watch;
 
 #[cfg(debug_assertions)]
 use fail::fail_point;
+
+lazy_static! {
+    pub static ref CHAIN_HEAD_WATCHER_TIMEOUT: Duration = Duration::from_secs(
+        std::env::var("GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT")
+            .ok()
+            .map(|s| u64::from_str(&s).unwrap_or_else(|_| panic!(
+                "failed to parse env var GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT"
+            )))
+            .unwrap_or(20)
+    );
+}
+
 enum BlockStreamState<C>
 where
     C: Blockchain,
@@ -531,18 +544,35 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
                             // Reset error count
                             self.consecutive_err_count = 0;
 
-                            // Switch to idle
+                            // Switch to idle. When idle, wait for a chain head update notification,
+                            // or as a fallback poll for an update after a timeout.
                             let mut watcher = self.chain_head_update_watcher.clone();
-                            let watcher_fut = async move {
+                            let watcher_fut: Pin<Box<dyn Future<Output = _> + Send>> = async move {
                                 watcher
                                     .changed()
                                     .map_err(|_| Error::msg("chain head watcher terminated"))
                                     .await
-                            };
-                            self.state = BlockStreamState::Idle(watcher_fut.boxed());
+                            }
+                            .boxed();
 
-                            // Poll for chain head update
-                            continue;
+                            let logger = self.ctx.logger.clone();
+                            let watcher_timeout: Pin<Box<dyn Future<Output = _> + Send>> =
+                                tokio::time::sleep(*CHAIN_HEAD_WATCHER_TIMEOUT)
+                                    .map(move |_| {
+                                        info!(
+                                            logger,
+                                            "no chain head update for {} seconds, polling for update",
+                                            CHAIN_HEAD_WATCHER_TIMEOUT.as_secs()
+                                        )
+                                    })
+                                    .map(Result::Ok)
+                                    .boxed();
+
+                            self.state = BlockStreamState::Idle(
+                                futures03::future::select(watcher_fut, watcher_timeout)
+                                    .map(|x| x.factor_first().0)
+                                    .boxed(),
+                            );
                         }
                         Poll::Ready(Ok(NextBlocks::Revert(block))) => {
                             self.state = BlockStreamState::BeginReconciliation;
