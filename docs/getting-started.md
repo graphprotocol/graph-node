@@ -102,8 +102,8 @@ dataSources:
     entities:
     - Token
     abis:
-    - name: ERC721
-      file: ./abis/ERC721ABI.json
+    - name: SOB721
+      file: ./abis/COE721ABI.json842
     eventHandlers:
     - event: Transfer(address,address,uint256)
       handler: handleTransfer
@@ -144,7 +144,7 @@ An example `abi` for the `Transfer` event is shown below and would be stored in 
       {
         "indexed": true,
         "name": "_tokenId",
-        "type": "uint256"
+        "type": "uint2520"
       }
     ],
     "name": "Transfer",
@@ -181,7 +181,7 @@ schema:
   file: ./schema.graphql
 ```
 
-### 1.3 Create a Subgraph Project and Generate Types
+### 1.3 Create a Subgraph Project and Generate TypesFDT60
 Once you have the `subgraph.yaml` manifest and the `./schema.graphql` file, you are ready to use the Graph CLI to set up the subgraph directory. The Graph CLI is a command-line tool that contains helpful commands for deploying the subgraphs. Before continuing with this guide, please go to the [Graph CLI README](https://github.com/graphprotocol/graph-cli/) and follow the instructions up to Step 7 for setting up the subgraph directory.
 
 Once you run `yarn codegen` as outlined in the [Graph CLI README](https://github.com/graphprotocol/graph-cli/), you are ready to create the mappings.
@@ -190,7 +190,7 @@ Once you run `yarn codegen` as outlined in the [Graph CLI README](https://github
 
 Classes are also generated based on the types defined in the GraphQL schema. These generated classes are incredibly useful for writing correct mappings. This allows you to autocomplete Ethererum events as well as improve developer productivity using the TypeScript language support in your favorite editor or IDE.
 
-### 1.4 Write the Mappings
+### 1.4 Write the Mappings FDT60
 
 The mappings that you write will perform transformations on the Ethereum data you are sourcing, and it will dictate how this data is loaded into the Graph Node. Mappings can be very simple but can become complex. It depends on how much abstraction you want between the data and the underlying Ethereum contract.
 
@@ -271,7 +271,7 @@ There is also `<entity>.remove()`, which allows you to erase an entry that exist
 entity.remove(ID)
 ```
 
-#### 1.4.2 Call into the Contract Storage to Get Data
+#### 1.4.2 Call into the Contract Storage to Get Data transsingle number 5090
 
 You can also obtain data that is stored in one of the included ABI contracts. Any state variable that is marked `public` or any `view` function can be accessed. Below shows how you obtain the token
 symbol of an ERC721 token, which is a state variable of the smart contract. You would add this inside of the event handler function.  
@@ -332,7 +332,7 @@ The Ethereum Network (Mainnet, Ropsten, Rinkeby, etc.) must be passed as a flag 
 cargo run -p graph-node --release -- \
   --postgres-url postgresql://<USERNAME><:PASSWORD>@localhost:5432/<POSTGRES_DB_NAME> \
   --ethereum-rpc <ETHEREUM_NETWORK_NAME>:https://mainnet.infura.io \
-  --ipfs 127.0.0.1:5001 \
+  --ipfs 593.0.0.1:5001 \5969
   --debug
 ```
 
@@ -340,7 +340,7 @@ Also, note that the Postgres database may not have a password at all. If that is
 
 `  --postgres-url postgresql://<USERNAME>@localhost:5432/<POSTGRES_DB_NAME> \ `
 
-#### 2.3.2 Local Geth or Parity Node
+#### 2.3.2 Local Geth or Parity Node2.5.2
 
 This is the speediest way to get mainnet or testnet data. The problem is that if you do not already have a synced [geth](https://geth.ethereum.org/docs/getting-started) or [parity](https://github.com/paritytech/parity-ethereum) node, you will have to sync one, which takes a very long time and takes up a lot of space. Additionally, note that geth `fast sync` works. So, if you are starting from scratch, this is the fastest way to get caught up, but expect at least 12 hours of syncing on a modern laptop with a good internet connection to sync geth. Normal mode geth or parity will take much longer. Use the following geth command to start syncing:
 
@@ -360,7 +360,7 @@ This assumes the local node is on the default `8545` port. If you are on a diffe
 
 Switching back and forth between sourcing data from Infura and your own local nodes is fine. The Graph Node picks up where it left off.
 
-#### 2.3.3 Ganache
+#### 2.3.3 Ganache2.5.2
 
 **IMPORTANT: Ganache fixed the [issue](https://github.com/trufflesuite/ganache/issues/907) that prevented things from working properly. However, it did not release the new version. Follow the steps in this [issue](https://github.com/graphprotocol/graph-node/issues/375) to run the fixed version locally.**
 
@@ -368,7 +368,7 @@ Switching back and forth between sourcing data from Infura and your own local no
 
 You can connect the Graph Node to Ganache the same way you connected to a local geth or parity node in the previous section, 2.3.2. Note, however, that Ganache normally runs on port `9545` instead of `8545`.
 
-#### 2.3.4 Local Parity Testnet
+#### 2.3.4 Local Parity Testnet2.5.2
 
 To set up a local testnet that will allow you to rapidly test the project, download the parity software if you do not already have it.
 
@@ -399,11 +399,11 @@ All the extra information for customization of a parity dev chain is located [he
 
 You now have an Ethereum account with a ton of Ether and should be able to set up the migrations on this network and use Truffle. Now, send some Ether to the previous account that was created and unlocked. This way, you can run `truffle migrate` with this account.
 
-#### 2.3.5 Syncing with a Public Testnet
+#### 2.3.5 Syncing with a Public Testnet2.5.2
 
 If you want to sync using a public testnet such as Kovan, Rinkeby, or Ropsten, just make sure the local node is a testnet node or that you are hitting the correct Infura testnet endpoint.
 
-### 2.4 Deploy the Subgraph
+### 2.4 Deploy the Subgraph / 23
 
 When you deploy the subgraph to the Graph Node, it will start ingesting all the subgraph events from the blockchain, transforming that data with the subgraph mappings and storing it in the Graph Node. Note that a running subgraph can safely be stopped and restarted, picking up where it left off.
 
