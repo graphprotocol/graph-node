@@ -1,6 +1,7 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use futures03::Stream;
+use tokio::sync::watch;
 
 use super::{Block, BlockPtr, Blockchain};
 use crate::components::store::BlockNumber;
@@ -118,13 +119,9 @@ impl BlockStreamMetrics {
     }
 }
 
-/// Notifications about the chain head advancing. The block ingestor sends
-/// an update on this stream whenever the head of the underlying chain
-/// changes. The updates have no payload, receivers should call
-/// `Store::chain_head_ptr` to check what the latest block is.
-pub type ChainHeadUpdateStream = Box<dyn Stream<Item = ()> + Send + Unpin>;
-
 pub trait ChainHeadUpdateListener: Send + Sync + 'static {
-    /// Subscribe to chain head updates for the given network.
-    fn subscribe(&self, network: String) -> ChainHeadUpdateStream;
+    /// Subscribe to chain head updates for the given network. The block ingestor sends an update on
+    /// this stream whenever the head of the underlying chain changes. The updates have no payload,
+    /// receivers should call `Store::chain_head_ptr` to check what the latest block is.
+    fn subscribe(&self, network: String) -> watch::Receiver<()>;
 }

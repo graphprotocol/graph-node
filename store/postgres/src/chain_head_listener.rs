@@ -1,7 +1,4 @@
-use graph::{
-    blockchain::ChainHeadUpdateStream, parking_lot::Mutex, prelude::StoreError,
-    prometheus::GaugeVec,
-};
+use graph::{parking_lot::Mutex, prelude::StoreError, prometheus::GaugeVec};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -17,7 +14,6 @@ use graph::prelude::serde::{Deserialize, Serialize};
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::tokio::sync::{mpsc::Receiver, watch};
 use graph::prelude::{crit, o, CheapClone, Logger, MetricsRegistry};
-use graph::tokio_stream::wrappers::WatchStream;
 
 lazy_static! {
     pub static ref CHANNEL_NAME: SafeChannelName =
@@ -155,16 +151,13 @@ impl ChainHeadUpdateListener {
 }
 
 impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
-    fn subscribe(&self, network_name: String) -> ChainHeadUpdateStream {
-        let update_receiver = self
-            .watchers
+    fn subscribe(&self, network_name: String) -> watch::Receiver<()> {
+        self.watchers
             .lock()
             .entry(network_name)
             .or_insert_with(|| Watcher::new())
             .receiver
-            .clone();
-
-        Box::new(WatchStream::new(update_receiver))
+            .clone()
     }
 }
 

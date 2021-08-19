@@ -36,10 +36,7 @@ use std::{collections::BTreeMap, fmt::Debug};
 use std::{collections::HashMap, convert::TryFrom};
 use web3::types::H256;
 
-pub use block_stream::{
-    BlockStream, BlockStreamMetrics, ChainHeadUpdateListener, ChainHeadUpdateStream,
-    TriggersAdapter,
-};
+pub use block_stream::{BlockStream, BlockStreamMetrics, ChainHeadUpdateListener, TriggersAdapter};
 pub use polling_block_stream::PollingBlockStream;
 pub use types::{BlockHash, BlockPtr};
 

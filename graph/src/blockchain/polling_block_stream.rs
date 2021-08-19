@@ -1,5 +1,4 @@
 use super::block_stream::{BlockStreamEvent, BlockWithTriggers, TriggersAdapter};
-use super::ChainHeadUpdateStream;
 use super::{BlockPtr, Blockchain};
 use super::{BlockStream, BlockStreamMetrics};
 use crate::blockchain::Block;
@@ -13,6 +12,7 @@ use std::cmp;
 use std::collections::VecDeque;
 use std::task::{Context, Poll};
 use std::time::Duration;
+use tokio::sync::watch;
 
 #[cfg(debug_assertions)]
 use fail::fail_point;
@@ -43,10 +43,10 @@ where
     RetryAfterDelay(Pin<Box<dyn Future<Output = Result<(), Error>> + Send>>),
 
     /// The BlockStream has reconciled the subgraph store and chain store states.
-    /// No more work is needed until a chain head update.
+    /// No more work is needed until a chain head update happens, represented by the inner future.
     ///
     /// Valid next states: BeginReconciliation
-    Idle,
+    Idle(Pin<Box<dyn Future<Output = Result<(), Error>> + Send>>),
 }
 
 /// A single next step to take in reconciling the state of the subgraph store with the state of the
@@ -121,7 +121,7 @@ impl<C: Blockchain> Clone for BlockStreamContext<C> {
 pub struct PollingBlockStream<C: Blockchain> {
     state: BlockStreamState<C>,
     consecutive_err_count: u32,
-    chain_head_update_stream: ChainHeadUpdateStream,
+    chain_head_update_watcher: watch::Receiver<()>,
     ctx: BlockStreamContext<C>,
 }
 
@@ -146,7 +146,7 @@ where
     pub fn new(
         subgraph_store: Arc<dyn WritableStore>,
         chain_store: Arc<dyn ChainStore>,
-        chain_head_update_stream: ChainHeadUpdateStream,
+        chain_head_update_watcher: watch::Receiver<()>,
         adapter: Arc<C::TriggersAdapter>,
         node_id: NodeId,
         subgraph_id: DeploymentHash,
@@ -162,7 +162,7 @@ where
         PollingBlockStream {
             state: BlockStreamState::BeginReconciliation,
             consecutive_err_count: 0,
-            chain_head_update_stream,
+            chain_head_update_watcher,
             ctx: BlockStreamContext {
                 subgraph_store,
                 chain_store,
@@ -532,7 +532,14 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
                             self.consecutive_err_count = 0;
 
                             // Switch to idle
-                            self.state = BlockStreamState::Idle;
+                            let mut watcher = self.chain_head_update_watcher.clone();
+                            let watcher_fut = async move {
+                                watcher
+                                    .changed()
+                                    .map_err(|_| Error::msg("chain head watcher terminated"))
+                                    .await
+                            };
+                            self.state = BlockStreamState::Idle(watcher_fut.boxed());
 
                             // Poll for chain head update
                             continue;
@@ -591,24 +598,20 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
                 },
 
                 // Waiting for a chain head update
-                BlockStreamState::Idle => {
-                    match Pin::new(self.chain_head_update_stream.as_mut()).poll_next(cx) {
+                BlockStreamState::Idle(update) => {
+                    match update.poll_unpin(cx) {
                         // Chain head was updated
-                        Poll::Ready(Some(())) => {
+                        Poll::Ready(Ok(())) => {
                             self.state = BlockStreamState::BeginReconciliation;
                         }
 
                         // Chain head update stream ended
-                        Poll::Ready(None) => {
+                        Poll::Ready(Err(e)) => {
                             // Should not happen
-                            return Poll::Ready(Some(Err(anyhow::anyhow!(
-                                "chain head update stream ended unexpectedly"
-                            ))));
+                            break Poll::Ready(Some(Err(e)));
                         }
 
                         Poll::Pending => {
-                            // Stay idle
-                            self.state = BlockStreamState::Idle;
                             break Poll::Pending;
                         }
                     }
