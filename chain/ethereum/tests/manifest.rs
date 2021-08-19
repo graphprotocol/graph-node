@@ -542,3 +542,34 @@ dataSources:
             .is_none());
     });
 }
+
+#[test]
+fn can_detect_features_in_subgraphs_with_spec_version_lesser_than_0_0_4() {
+    const YAML: &str = "
+specVersion: 0.0.2
+features:
+  - nonFatalErrors
+dataSources: []
+schema:
+  file:
+    /: /ipfs/Qmschema
+";
+    test_store::run_test_sequentially(|store| async move {
+        let store = store.subgraph_store();
+        let unvalidated = resolve_unvalidated(YAML).await;
+        assert!(unvalidated
+            .validate(store.clone())
+            .expect_err("Validation must fail")
+            .into_iter()
+            .find(|e| {
+                matches!(
+                    e,
+                    SubgraphManifestValidationError::FeatureValidationError(_)
+                )
+            })
+            .is_none());
+
+        let manifest = resolve_manifest(YAML).await;
+        assert!(manifest.features.contains(&SubgraphFeature::NonFatalErrors))
+    });
+}
