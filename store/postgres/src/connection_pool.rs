@@ -45,6 +45,11 @@ lazy_static::lazy_static! {
             })
             .unwrap_or(0)
     };
+    static ref CONNECTION_TIMEOUT: Duration = {
+        std::env::var("GRAPH_STORE_CONNECTION_TIMEOUT").ok().map(|s| Duration::from_millis(u64::from_str(&s).unwrap_or_else(|_| {
+            panic!("GRAPH_STORE_CONNECTION_TIMEOUT must be a positive number, but is `{}`", s)
+        }))).unwrap_or(Duration::from_secs(5))
+    };
 }
 
 pub struct ForeignServer {
@@ -570,6 +575,7 @@ impl PoolInner {
         let builder: Builder<ConnectionManager<PgConnection>> = Pool::builder()
             .error_handler(error_handler.clone())
             .event_handler(event_handler.clone())
+            .connection_timeout(*CONNECTION_TIMEOUT)
             .max_size(pool_size);
         let pool = builder.build_unchecked(conn_manager);
         let fdw_pool = fdw_pool_size.map(|pool_size| {
@@ -577,6 +583,7 @@ impl PoolInner {
             let builder: Builder<ConnectionManager<PgConnection>> = Pool::builder()
                 .error_handler(error_handler)
                 .event_handler(event_handler)
+                .connection_timeout(*CONNECTION_TIMEOUT)
                 .max_size(pool_size)
                 .min_idle(Some(1))
                 .idle_timeout(Some(FDW_IDLE_TIMEOUT));
@@ -707,7 +714,7 @@ impl PoolInner {
         logger: &Logger,
     ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
         loop {
-            match self.pool.get_timeout(Duration::from_secs(60)) {
+            match self.pool.get_timeout(*CONNECTION_TIMEOUT) {
                 Ok(conn) => return Ok(conn),
                 Err(e) => error!(logger, "Error checking out connection, retrying";
                    "error" => e.to_string(),
