@@ -532,11 +532,12 @@ impl EthereumAdapter {
                             // A successful response.
                             Ok(bytes) => Ok(bytes),
 
-                            // Check for Geth revert.
+                            // Check for Geth revert, converting to lowercase because some clients
+                            // return the same error message as Geth but with capitalization.
                             Err(web3::Error::Rpc(rpc_error))
                                 if GETH_EXECUTION_ERRORS
                                     .iter()
-                                    .any(|e| rpc_error.message.contains(e)) =>
+                                    .any(|e| rpc_error.message.to_lowercase().contains(e)) =>
                             {
                                 Err(EthereumContractCallError::Revert(rpc_error.message))
                             }
