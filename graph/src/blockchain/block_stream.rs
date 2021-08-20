@@ -126,5 +126,5 @@ pub type ChainHeadUpdateStream = Box<dyn Stream<Item = ()> + Send + Unpin>;
 
 pub trait ChainHeadUpdateListener: Send + Sync + 'static {
     /// Subscribe to chain head updates for the given network.
-    fn subscribe(&self, network: String) -> ChainHeadUpdateStream;
+    fn subscribe(&self, network: String, logger: Logger) -> ChainHeadUpdateStream;
 }

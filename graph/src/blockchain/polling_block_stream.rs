@@ -606,11 +606,7 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
                             ))));
                         }
 
-                        Poll::Pending => {
-                            // Stay idle
-                            self.state = BlockStreamState::Idle;
-                            break Poll::Pending;
-                        }
+                        Poll::Pending => break Poll::Pending,
                     }
                 }
             }
