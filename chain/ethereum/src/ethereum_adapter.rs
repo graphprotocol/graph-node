@@ -96,17 +96,17 @@ lazy_static! {
             .parse::<usize>()
             .expect("invalid GRAPH_ETHEREUM_REQUEST_RETRIES env var");
 
-    /// Gas limit for `eth_call`. The value of 25_000_000 is a protocol-wide parameter so this
-    /// should be changed only for debugging purposes and never on an indexer in the network. The
-    /// value of 25_000_000 was chosen because it is the Geth default
-    /// https://github.com/ethereum/go-ethereum/blob/54c0d573d75ab9baa239db3f071d6cb4d1ec6aad/eth/ethconfig/config.go#L86.
+    /// Gas limit for `eth_call`. The value of 50_000_000 is a protocol-wide parameter so this
+    /// should be changed only for debugging purposes and never on an indexer in the network. This
+    /// value was chosen because it is the Geth default
+    /// https://github.com/ethereum/go-ethereum/blob/e4b687cf462870538743b3218906940ae590e7fd/eth/ethconfig/config.go#L91.
     /// It is not safe to set something higher because Geth will silently override the gas limit
     /// with the default. This means that we do not support indexing against a Geth node with
-    /// `RPCGasCap` set below 25 million.
+    /// `RPCGasCap` set below 50 million.
     // See also f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
     static ref ETH_CALL_GAS: u32 = std::env::var("GRAPH_ETH_CALL_GAS")
                                     .map(|s| s.parse::<u32>().expect("invalid GRAPH_ETH_CALL_GAS env var"))
-                                    .unwrap_or(25_000_000);
+                                    .unwrap_or(50_000_000);
 }
 
 impl CheapClone for EthereumAdapter {
