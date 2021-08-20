@@ -1,9 +1,15 @@
 use graph::{
-    blockchain::ChainHeadUpdateStream, parking_lot::Mutex, prelude::StoreError,
+    blockchain::ChainHeadUpdateStream,
+    parking_lot::Mutex,
+    prelude::{
+        futures03::{self, FutureExt},
+        tokio, StoreError,
+    },
     prometheus::GaugeVec,
 };
-use std::collections::BTreeMap;
+use std::str::FromStr;
 use std::sync::Arc;
+use std::{collections::BTreeMap, time::Duration};
 
 use diesel::RunQueryDsl;
 use lazy_static::lazy_static;
@@ -16,10 +22,17 @@ use graph::blockchain::ChainHeadUpdateListener as ChainHeadUpdateListenerTrait;
 use graph::prelude::serde::{Deserialize, Serialize};
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::tokio::sync::{mpsc::Receiver, watch};
-use graph::prelude::{crit, o, CheapClone, Logger, MetricsRegistry};
-use graph::tokio_stream::wrappers::WatchStream;
+use graph::prelude::{crit, debug, o, CheapClone, Logger, MetricsRegistry};
 
 lazy_static! {
+    pub static ref CHAIN_HEAD_WATCHER_TIMEOUT: Duration = Duration::from_secs(
+        std::env::var("GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT")
+            .ok()
+            .map(|s| u64::from_str(&s).unwrap_or_else(|_| panic!(
+                "failed to parse env var GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT"
+            )))
+            .unwrap_or(30)
+    );
     pub static ref CHANNEL_NAME: SafeChannelName =
         SafeChannelName::i_promise_this_is_safe("chain_head_updates");
 }
@@ -155,7 +168,7 @@ impl ChainHeadUpdateListener {
 }
 
 impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
-    fn subscribe(&self, network_name: String) -> ChainHeadUpdateStream {
+    fn subscribe(&self, network_name: String, logger: Logger) -> ChainHeadUpdateStream {
         let update_receiver = self
             .watchers
             .lock()
@@ -164,7 +177,36 @@ impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
             .receiver
             .clone();
 
-        Box::new(WatchStream::new(update_receiver))
+        Box::new(futures03::stream::unfold(
+            update_receiver,
+            move |mut update_receiver| {
+                let logger = logger.clone();
+                async move {
+                    // To be robust against any problems with the listener for the DB channel, a
+                    // timeout is set so that subscribers are guaranteed to get periodic updates.
+                    match tokio::time::timeout(
+                        *CHAIN_HEAD_WATCHER_TIMEOUT,
+                        update_receiver.changed(),
+                    )
+                    .await
+                    {
+                        // Received an update.
+                        Ok(Ok(())) => (),
+
+                        // The sender was dropped, this should never happen.
+                        Ok(Err(_)) => crit!(logger, "chain head watcher terminated"),
+
+                        Err(_) => debug!(
+                            logger,
+                            "no chain head update for {} seconds, polling for update",
+                            CHAIN_HEAD_WATCHER_TIMEOUT.as_secs()
+                        ),
+                    };
+                    Some(((), update_receiver))
+                }
+                .boxed()
+            },
+        ))
     }
 }
 

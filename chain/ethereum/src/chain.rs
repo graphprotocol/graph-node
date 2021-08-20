@@ -178,7 +178,9 @@ impl Blockchain for Chain {
             .subgraph_store
             .writable(&deployment)
             .expect(&format!("no store for deployment `{}`", deployment.hash));
-        let chain_head_update_stream = self.chain_head_update_listener.subscribe(self.name.clone());
+        let chain_head_update_stream = self
+            .chain_head_update_listener
+            .subscribe(self.name.clone(), logger.clone());
 
         let requirements = filter.node_capabilities();
 
