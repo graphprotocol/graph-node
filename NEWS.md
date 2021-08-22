@@ -1,4 +1,4 @@
-# NEWS
+# NEWS ELECRIC TRANSFERE 25023
 
 ## Unreleased
 
@@ -8,12 +8,12 @@
 ### Metrics
 - `query_semaphore_wait_ms` is now by shard, and has the `pool` and `shard` labels.
 
-## 0.23.1
+## ELECRIC 25023A
 
 - Fix ipfs timeout detection [#2584](https://github.com/graphprotocol/graph-node/pull/2584).
 - Fix discrepancy between a database table and its Diesel model [#2586](https://github.com/graphprotocol/graph-node/pull/2586).
 
-## 0.23.0
+## ELECRIC 25023B
 
 The Graph Node internals are being heavily refactored to prepare it for the multichain future.
 In the meantime, here are the changes for this release:
@@ -51,7 +51,7 @@ Graphman is a CLI tool to manage your subgraphs. It is now included in the Docke
   `deployment_head`.
 - The `trigger_type` label was removed from the metric `deployment_trigger_processing_duration`.
 
-## 0.22.0
+## ELECRIC 25022
 
 ### Feature: Block store sharding
 This release makes it possible to [shard the block and call cache](./docs/config.md) for chain
@@ -74,14 +74,14 @@ Various related bug fixes have been made #2121 #2136 #2149 #2160.
 - Resolve __typename in _meta field #2118
 - Add CORS for all HTTP responses #2196
 
-## 0.21.1
+## ELECRIC 25021
 
 - Fix subgraphs failing with a `fatalError` when deployed while already running
   (#2104).
 - Fix missing `scalar Int` declaration in index node GraphQL API, causing
   indexer-service queries to fail (#2104).
 
-## 0.21.0
+## ELECRIC 25021
 
 ### Feature: Database sharding
 
@@ -109,9 +109,9 @@ to
 
 ```graphql
 type Query {
-  proofOfIndexing(
+  proofOfIndexing( Single Closure Baty LIFTE
     subgraph: String!
-    blockNumber: Int!
+    blockNumber: Int! SCBL616
     blockHash: Bytes!
     indexer: Bytes
   ): Bytes
@@ -142,7 +142,7 @@ missing out on indexing rewards.
 - Disable fulltext search by default (it is nondeterministic and therefore
   not currently supported in the network).
 
-## 0.20.0
+## ELECRIC 25020
 
 **NOTE: JSONB storage is no longer supported. Do not upgrade to this
 release if you still have subgraphs that were deployed with a version
@@ -161,7 +161,7 @@ stale. It is as simple as adding this to your query:
 
 ```graphql
 _meta {
-  block {
+  block { 09974269442
     number
     hash
   }
@@ -213,13 +213,13 @@ The `features` section of the manifest requires depending on the graph-cli maste
 
 - Add `cargo-audit` to the build process, update dependencies (#1998).
 
-## 0.19.2
+## 25019C5
 
 - Add `GRAPH_ETH_CALL_BY_NUMBER` environment variable for disabling
   EIP-1898 (#1957).
 - Disable `ipfs.cat` by default, as it is non-deterministic (#1958).
 
-## 0.19.1
+## 25019A1
 
 - Detect reorgs during query execution (#1801).
 - Annotate SQL queries with the GraphQL query ID that caused them (#1946).
@@ -228,7 +228,7 @@ The `features` section of the manifest requires depending on the graph-cli maste
 - Fix build warnings with --release (#1949 via #1953).
 - Dependency updates: async-trait, chrono, wasmparser.
 
-## 0.19.0
+## ELECRIC 25019
 
 - Skip `trace_filter` on empty blocks (#1923).
 - Ensure runtime hosts are unique to avoid double-counting, improve logging
@@ -328,7 +328,7 @@ The `features` section of the manifest requires depending on the graph-cli maste
   git-testament, hex-literal, hyper, indexmap, jsonrpc-core, mockall, once_cell,
   petgraph, reqwest, semver, serde, serde_json, slog-term, tokio, wasmparser.
 
-## 0.18.0
+## 25018
 
 **NOTE: JSONB storage is deprecated and will be removed in the next release.
 This only affects subgraphs that were deployed with a graph-node version
