@@ -128,13 +128,25 @@ impl NotificationListener {
         /// Connect to the database at `postgres_url` and do a `LISTEN
         /// {channel_name}`. If that fails, retry with exponential backoff
         /// with a delay between 1s and 32s
-        fn connect_and_listen(logger: &Logger, postgres_url: &str, channel_name: &str) -> Client {
+        ///
+        /// If `barrier` is given, call `barrier.wait()` after the first
+        /// attempt to connect. When the database is up, we make sure that
+        /// we listen before other work that depends on receiving all
+        /// notifications progresses, and when the database is down, that we
+        /// do not unduly block everything.
+        fn connect_and_listen(
+            logger: &Logger,
+            postgres_url: &str,
+            channel_name: &str,
+            barrier: Option<&Barrier>,
+        ) -> Client {
             let mut attempt: usize = 0;
             loop {
                 let res = Client::connect(postgres_url, NoTls).and_then(|mut conn| {
                     conn.execute(format!("LISTEN {}", channel_name).as_str(), &[])?;
                     Ok(conn)
                 });
+                barrier.map(|barrier| barrier.wait());
                 match res {
                     Err(e) => {
                         let delay = Duration::from_secs(1 << attempt);
@@ -178,17 +190,24 @@ impl NotificationListener {
             // We exit the process on panic so unwind safety is irrelevant.
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
                 let mut connected = true;
-                let mut conn = connect_and_listen(&logger, postgres_url.as_str(), &channel_name.0);
-
-                // Wait until the listener has been started
-                barrier.wait();
+                let mut conn = connect_and_listen(
+                    &logger,
+                    postgres_url.as_str(),
+                    &channel_name.0,
+                    Some(barrier.as_ref()),
+                );
 
                 let mut max_queue_size_seen = 0;
 
                 // Read notifications until the thread is to be terminated
                 while !terminate.load(Ordering::SeqCst) {
                     if !connected {
-                        conn = connect_and_listen(&logger, postgres_url.as_str(), &channel_name.0);
+                        conn = connect_and_listen(
+                            &logger,
+                            postgres_url.as_str(),
+                            &channel_name.0,
+                            None,
+                        );
                         debug!(logger, "Reconnected notification listener");
                         connected = true;
                     }
