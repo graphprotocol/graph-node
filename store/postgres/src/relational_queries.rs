@@ -342,6 +342,8 @@ pub trait FromColumnValue: Sized {
             }
             (j::String(s), ColumnType::Bytes) => Self::from_bytes(s.trim_start_matches("\\x")),
             (j::String(s), ColumnType::BytesId) => Ok(Self::from_string(bytes_as_str(&s))),
+            (j::String(s), ColumnType::BlockRange) => Ok(Self::from_string(s)),
+
             (j::String(s), column_type) => Err(StoreError::Unknown(anyhow!(
                 "can not convert string {} to {:?}",
                 s,
@@ -495,6 +497,58 @@ impl EntityData {
             ),
         }
     }
+
+    pub fn deserialize_with_layout_and_block_range<T: FromEntityData>(
+        self,
+        layout: &Layout,
+    ) -> Result<T, StoreError> {
+        let entity_type = EntityType::new(self.entity);
+        let table = layout.table_for_entity(&entity_type)?;
+
+        use serde_json::Value as j;
+        match self.data {
+            j::Object(mut map) => {
+                let mut out = T::default();
+                out.insert_entity_data(
+                    "__typename".to_owned(),
+                    T::Value::from_string(entity_type.into_string()),
+                );
+
+                let optional_block_range = map
+                    .remove("block_range")
+                    .clone()
+                    .map(|r| Some(T::Value::from_column_value(&ColumnType::BlockRange, r).ok()?))
+                    .flatten();
+
+                match optional_block_range {
+                    Some(block_range) => {
+                        out.insert_entity_data("block_range".to_owned(), block_range)
+                    }
+                    None => println!("No block range"),
+                }
+
+                for (key, json) in map {
+                    // Simply ignore keys that do not have an underlying table
+                    // column; those will be things like the block_range that
+                    // is used internally for versioning
+                    if key == "g$parent_id" {
+                        let value = T::Value::from_column_value(&ColumnType::String, json)?;
+                        out.insert_entity_data("g$parent_id".to_owned(), value);
+                    } else if let Some(column) = table.column(&SqlName::verbatim(key)) {
+                        let value = T::Value::from_column_value(&column.column_type, json.clone())?;
+
+                        if !value.is_null() {
+                            out.insert_entity_data(column.field.clone(), value);
+                        }
+                    }
+                }
+                Ok(out)
+            }
+            _ => unreachable!(
+                "we use `to_json` in our queries, and will therefore always get an object back"
+            ),
+        }
+    }
 }
 
 /// A `QueryValue` makes it possible to bind a `Value` into a SQL query
@@ -530,7 +584,9 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     "only string, enum and tsvector columns have values of type string"
                 ),
             },
-            Value::Int(i) => out.push_bind_param::<Integer, _>(i),
+            Value::Int(i) => match &column_type {
+                _ => out.push_bind_param::<Integer, _>(i),
+            },
             Value::BigDecimal(d) => {
                 out.push_bind_param::<Text, _>(&d.to_string())?;
                 out.push_sql("::numeric");
@@ -580,6 +636,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                         Ok(())
                     }
                     ColumnType::BytesId => out.push_bind_param::<Array<Binary>, _>(&sql_values),
+                    _ => Ok(()),
                 }
             }
             Value::Null => {
@@ -605,6 +662,7 @@ enum Comparison {
     GreaterOrEqual,
     Greater,
     Match,
+    LowerRangeEqual,
 }
 
 impl Comparison {
@@ -618,6 +676,7 @@ impl Comparison {
             GreaterOrEqual => " >= ",
             Greater => " > ",
             Match => " @@ ",
+            LowerRangeEqual => " = ",
         }
     }
 }
@@ -752,6 +811,12 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
                     self.push_prefix_cmp(self.op, out.reborrow())?;
                 }
             }
+            LowerRangeEqual => {
+                self.push_prefix_cmp(LowerRangeEqual, out.reborrow())?;
+                out.push_sql("lower(");
+                out.push_identifier(BLOCK_RANGE_COLUMN)?;
+                out.push_sql(")");
+            }
         }
         Ok(())
     }
@@ -799,6 +864,7 @@ impl<'a> QueryFilter<'a> {
             | NotEndsWith(attr, _) => {
                 table.column_for_field(attr)?;
             }
+            ChangedAtBlock(_) => (),
         }
         Ok(())
     }
@@ -910,34 +976,52 @@ impl<'a> QueryFilter<'a> {
         op: Comparison,
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
-        let column = self.column(attribute);
+        if attribute == "block_range" {
+            // Short circuit to just appending the block range query.
+            let block_column = Column {
+                name: SqlName::from("block_range"),
+                field: "block_range".into(),
+                field_type: graphql_parser::query::Type::NamedType("block_range".into()),
+                column_type: ColumnType::Int,
+                fulltext_fields: None,
+                is_reference: false,
+            };
 
-        if column.is_text() && value.is_string() {
-            PrefixComparison::new(op, column, value).walk_ast(out.reborrow())?;
-        } else if column.is_fulltext() {
-            out.push_identifier(column.name.as_str())?;
-            out.push_sql(Comparison::Match.as_str());
-            QueryValue(value, &column.column_type).walk_ast(out)?;
+            QueryValue(value, &block_column.column_type).walk_ast(out.reborrow())?;
+            out.push_sql(op.as_str());
+            out.push_sql("lower(");
+            out.push_identifier(BLOCK_RANGE_COLUMN)?;
+            out.push_sql(")");
         } else {
-            out.push_identifier(column.name.as_str())?;
+            let column = self.column(attribute); //Could be a block range
 
-            match value {
-                Value::String(_)
-                | Value::BigInt(_)
-                | Value::Bool(_)
-                | Value::Bytes(_)
-                | Value::BigDecimal(_)
-                | Value::Int(_)
-                | Value::List(_) => {
-                    out.push_sql(op.as_str());
-                    QueryValue(value, &column.column_type).walk_ast(out)?;
-                }
-                Value::Null => {
-                    use Comparison as c;
-                    match op {
-                        c::Equal => out.push_sql(" is null"),
-                        c::NotEqual => out.push_sql(" is not null"),
-                        _ => unreachable!("we only call equals with '=' or '!='"),
+            if column.is_text() && value.is_string() {
+                PrefixComparison::new(op, column, value).walk_ast(out.reborrow())?;
+            } else if column.is_fulltext() {
+                out.push_identifier(column.name.as_str())?;
+                out.push_sql(Comparison::Match.as_str());
+                QueryValue(value, &column.column_type).walk_ast(out)?;
+            } else {
+                out.push_identifier(column.name.as_str())?;
+
+                match value {
+                    Value::String(_)
+                    | Value::BigInt(_)
+                    | Value::Bool(_)
+                    | Value::Bytes(_)
+                    | Value::BigDecimal(_)
+                    | Value::Int(_)
+                    | Value::List(_) => {
+                        out.push_sql(op.as_str());
+                        QueryValue(value, &column.column_type).walk_ast(out)?;
+                    }
+                    Value::Null => {
+                        use Comparison as c;
+                        match op {
+                            c::Equal => out.push_sql(" is null"),
+                            c::NotEqual => out.push_sql(" is not null"),
+                            _ => unreachable!("we only call equals with '=' or '!='"),
+                        }
                     }
                 }
             }
@@ -1136,6 +1220,12 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
             NotEndsWith(attr, value) => {
                 self.starts_or_ends_with(attr, value, " not like ", false, out)?
             }
+            ChangedAtBlock(block_number) => self.equals(
+                &"block_range".to_string(),
+                &Value::Int(*block_number),
+                c::LowerRangeEqual,
+                out,
+            )?,
         }
         Ok(())
     }
@@ -1180,6 +1270,45 @@ impl<'a> LoadQuery<PgConnection, EntityData> for FindQuery<'a> {
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
+
+#[derive(Debug, Clone, Constructor)]
+pub struct FindAllVersionsQuery<'a> {
+    table: &'a Table,
+    id: &'a str,
+    block: BlockNumber,
+}
+
+impl<'a> QueryFragment<Pg> for FindAllVersionsQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        // Generate
+        //    select '..' as entity, to_jsonb(e.*) as data
+        //      from schema.table e where id = $1
+        out.push_sql("select ");
+        out.push_bind_param::<Text, _>(&self.table.object.as_str())?;
+        out.push_sql(" as entity, to_jsonb(e.*) as data\n");
+        out.push_sql("  from ");
+        out.push_sql(self.table.qualified_name.as_str());
+        out.push_sql(" e\n where ");
+        self.table.primary_key().eq(&self.id, &mut out)?;
+        Ok(())
+    }
+}
+
+impl<'a> QueryId for FindAllVersionsQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a> LoadQuery<PgConnection, EntityData> for FindAllVersionsQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
+        conn.query_by_name(&self)
+    }
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for FindAllVersionsQuery<'a> {}
 
 #[derive(Debug, Clone, Constructor)]
 pub struct FindManyQuery<'a> {
@@ -2534,6 +2663,343 @@ impl<'a> LoadQuery<PgConnection, EntityData> for FilterQuery<'a> {
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}
+
+#[derive(Debug, Clone)]
+pub struct FilterAllVersionsQuery<'a> {
+    collection: &'a FilterCollection<'a>,
+    sort_key: SortKey<'a>,
+    range: FilterRange,
+    block: BlockNumber,
+    query_id: Option<String>,
+}
+
+impl<'a> FilterAllVersionsQuery<'a> {
+    pub fn new(
+        collection: &'a FilterCollection,
+        filter: Option<&'a EntityFilter>,
+        order: EntityOrder,
+        range: EntityRange,
+        block: BlockNumber,
+        query_id: Option<String>,
+    ) -> Result<Self, QueryExecutionError> {
+        // Get the name of the column we order by; if there is more than one
+        // table, we are querying an interface, and the order is on an attribute
+        // in that interface so that all tables have a column for that. It is
+        // therefore enough to just look at the first table to get the name
+        let first_table = collection
+            .first_table()
+            .expect("an entity query always contains at least one entity type/table");
+        let sort_key = SortKey::new(order, first_table, filter)?;
+
+        Ok(FilterAllVersionsQuery {
+            collection,
+            sort_key,
+            range: FilterRange(range),
+            block,
+            query_id,
+        })
+    }
+
+    /// Generate
+    ///     from schema.table c
+    ///    where block_range @> $block
+    ///      and query_filter
+    /// Only used when the query is against a `FilterCollection::All`, i.e.
+    /// when we do not need to window
+    fn filtered_rows(
+        &self,
+        table: &Table,
+        table_filter: &Option<QueryFilter<'a>>,
+        mut out: AstPass<Pg>,
+    ) -> QueryResult<()> {
+        out.push_sql("\n  from ");
+        out.push_sql(table.qualified_name.as_str());
+        out.push_sql(" c");
+        out.push_sql(" where true "); //HACK to chain filters without blockrange clause
+
+        if let Some(filter) = table_filter {
+            out.push_sql(" and ");
+            filter.walk_ast(out.reborrow())?;
+        }
+        out.push_sql("\n");
+        Ok(())
+    }
+
+    fn select_entity_and_data(table: &Table, out: &mut AstPass<Pg>) {
+        out.push_sql("select '");
+        out.push_sql(table.object.as_str());
+        out.push_sql("' as entity, to_jsonb(c.*) as data");
+    }
+
+    /// Only one table/filter pair, and no window. Does not invoke a limit.
+    ///
+    /// The generated query makes sure we only convert the rows we actually
+    /// want to retrieve to JSONB
+    ///
+    ///   select '..' as entity, to_jsonb(e.*) as data
+    ///     from
+    ///       (select {column names}
+    ///          from table c
+    ///         where block_range @> $block
+    ///           and filter
+    ///         order by  c
+    fn query_no_window_one_entity(
+        &self,
+        table: &Table,
+        filter: &Option<QueryFilter>,
+        mut out: AstPass<Pg>,
+        column_names: &AttributeNames,
+    ) -> QueryResult<()> {
+        Self::select_entity_and_data(table, &mut out);
+        out.push_sql(" from (select ");
+        write_column_names(&column_names, &table, &mut out)?;
+        self.filtered_rows(table, filter, out.reborrow())?;
+        out.push_sql("\n ");
+        self.sort_key.order_by(&mut out)?;
+        // self.range.walk_ast(out.reborrow())?;
+        out.push_sql(") c");
+        Ok(())
+    }
+
+    /// Only one table/filter pair, and a window
+    ///
+    /// Generate a query
+    ///   select '..' as entity, to_jsonb(e.*) as data
+    ///     from (select c.*, p.id as g$parent_id from {window.children(...)}) c
+    ///     order by c.g$parent_id, {sort_key}
+    ///     limit {first} offset {skip}
+    fn query_window_one_entity(
+        &self,
+        window: &FilterWindow,
+        mut out: AstPass<Pg>,
+    ) -> QueryResult<()> {
+        Self::select_entity_and_data(&window.table, &mut out);
+        out.push_sql(" from (\n");
+        out.push_sql("select c.*, p.id::text as g$parent_id");
+        window.children(
+            ParentLimit::Ranked(&self.sort_key, &self.range),
+            self.block,
+            out.reborrow(),
+        )?;
+        out.push_sql(") c");
+        out.push_sql("\n ");
+        self.sort_key.order_by_parent(&mut out)
+    }
+
+    /// No windowing, but multiple entity types
+    fn query_no_window(
+        &self,
+        entities: &Vec<(&Table, Option<QueryFilter>, AttributeNames)>,
+        mut out: AstPass<Pg>,
+    ) -> QueryResult<()> {
+        // We have multiple tables which might have different schemas since
+        // the entity_types come from implementing the same interface. We
+        // need to do the query in two steps: first we build a CTE with the
+        // id's of entities matching the filter and order/limit. As a second
+        // step, we get matching rows from the underlying tables and convert
+        // them to JSONB.
+        //
+        // Overall, we generate a query
+        //
+        // with matches as (
+        //   select '...' as entity, id, vid, {sort_key}
+        //     from {table} c
+        //    where {query_filter}
+        //    union all
+        //    ...
+        //    order by {sort_key}
+        //    limit n offset m)
+        //
+        // select m.entity, to_jsonb({column names}) as data, c.id, c.{sort_key}
+        //   from {table} c, matches m
+        //  where c.vid = m.vid and m.entity = '...'
+        //  union all
+        //  ...
+        //  order by c.{sort_key}
+
+        // Step 1: build matches CTE
+        out.push_sql("with matches as (");
+        for (i, (table, filter, _column_names)) in entities.iter().enumerate() {
+            if i > 0 {
+                out.push_sql("\nunion all\n");
+            }
+            // select '..' as entity,
+            //        c.id,
+            //        c.vid,
+            //        c.${sort_key}
+            out.push_sql("select '");
+            out.push_sql(&table.object.as_str());
+            out.push_sql("' as entity, c.id, c.vid");
+            self.sort_key.select(&mut out)?;
+            self.filtered_rows(table, filter, out.reborrow())?;
+        }
+        out.push_sql("\n ");
+        self.sort_key.order_by(&mut out)?;
+        self.range.walk_ast(out.reborrow())?;
+
+        out.push_sql(")\n");
+
+        // Step 2: convert to JSONB
+        for (i, (table, _, column_names)) in entities.iter().enumerate() {
+            if i > 0 {
+                out.push_sql("\nunion all\n");
+            }
+            out.push_sql("select m.entity, ");
+            jsonb_build_object(column_names, "c", &table, &mut out)?;
+            out.push_sql(" as data, c.id");
+            self.sort_key.select(&mut out)?;
+            out.push_sql("\n  from ");
+            out.push_sql(table.qualified_name.as_str());
+            out.push_sql(" c,");
+            out.push_sql(" matches m");
+            out.push_sql("\n where c.vid = m.vid and m.entity = ");
+            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+        }
+        out.push_sql("\n ");
+        self.sort_key.order_by(&mut out)?;
+        Ok(())
+    }
+
+    /// Multiple windows
+    fn query_window(
+        &self,
+        windows: &Vec<FilterWindow>,
+        parent_ids: &Vec<String>,
+        mut out: AstPass<Pg>,
+    ) -> QueryResult<()> {
+        // Note that a CTE is an optimization fence, and since we use
+        // `matches` multiple times, we actually want to materialize it first
+        // before we fill in JSON data in the main query. As a consequence, we
+        // restrict the matches results per window in the `matches` CTE to
+        // avoid a possibly gigantic materialized `matches` view rather than
+        // leave that to the main query
+        //
+        // Overall, we generate a query
+        //
+        // with matches as (
+        //     select c.*
+        //       from (select id from unnest({all_parent_ids}) as q(id)) q
+        //            cross join lateral
+        //            ({window.children_uniform("q")}
+        //             union all
+        //             ... range over all windows ...
+        //             order by c.{sort_key}
+        //             limit $first skip $skip) c)
+        //   select m.entity, to_jsonb(c.*) as data, m.parent_id
+        //     from matches m, {window.child_table} c
+        //    where c.vid = m.vid and m.entity = '{window.child_type}'
+        //    union all
+        //          ... range over all windows
+        //    order by parent_id, c.{sort_key}
+
+        // Step 1: build matches CTE
+        out.push_sql("with matches as (");
+        out.push_sql("select c.* from ");
+        out.push_sql("unnest(");
+        out.push_bind_param::<Array<Text>, _>(parent_ids)?;
+        out.push_sql("::text[]) as q(id)\n");
+        out.push_sql(" cross join lateral (");
+        for (i, window) in windows.iter().enumerate() {
+            if i > 0 {
+                out.push_sql("\nunion all\n");
+            }
+            window.children_uniform(&self.sort_key, self.block, out.reborrow())?;
+        }
+        out.push_sql("\n");
+        self.sort_key.order_by(&mut out)?;
+        self.range.walk_ast(out.reborrow())?;
+        out.push_sql(") c)\n");
+
+        // Step 2: convert to JSONB
+        // If the parent is an interface, each implementation might store its
+        // relationship to the children in different ways, leading to multiple
+        // windows that use the same table for the children. We need to make
+        // sure each table only appears once in the 'union all' otherwise we'll
+        // duplicate entities in the result
+        // We only use a table's qualified name and object to save ourselves
+        // the hassle of making `Table` hashable
+        let unique_child_tables = windows
+            .iter()
+            .unique_by(|window| {
+                (
+                    &window.table.qualified_name,
+                    &window.table.object,
+                    &window.column_names,
+                )
+            })
+            .enumerate()
+            .into_iter();
+
+        for (i, window) in unique_child_tables {
+            if i > 0 {
+                out.push_sql("\nunion all\n");
+            }
+            out.push_sql("select m.*, ");
+            jsonb_build_object(&window.column_names, "c", &window.table, &mut out)?;
+            out.push_sql("|| jsonb_build_object('g$parent_id', m.g$parent_id) as data");
+            out.push_sql("\n  from ");
+            out.push_sql(&window.table.qualified_name.as_str());
+            out.push_sql(" c, matches m\n where c.vid = m.vid and m.entity = '");
+            out.push_sql(&window.table.object.as_str());
+            out.push_sql("'");
+        }
+        out.push_sql("\n ");
+        self.sort_key.order_by_parent(&mut out)
+    }
+}
+
+impl<'a> QueryFragment<Pg> for FilterAllVersionsQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+        if self.collection.is_empty() {
+            return Ok(());
+        }
+
+        if let Some(qid) = &self.query_id {
+            out.push_sql("/* qid: ");
+            out.push_sql(qid);
+            out.push_sql(" */\n");
+        }
+        // We generate four different kinds of queries, depending on whether
+        // we need to window and whether we query just one or multiple entity
+        // types/windows; the most complex situation is windowing with multiple
+        // entity types. The other cases let us simplify the generated SQL
+        // considerably and produces faster queries
+        //
+        // Details of how all this works can be found in
+        // `https://github.com/graphprotocol/rfcs/blob/master/engineering-plans/0001-graphql-query-prefetching.md`
+        match &self.collection {
+            FilterCollection::All(entities) => {
+                if entities.len() == 1 {
+                    let (table, filter, column_names) = entities
+                        .first()
+                        .expect("a query always uses at least one table");
+                    self.query_no_window_one_entity(table, filter, out, column_names)
+                } else {
+                    self.query_no_window(entities, out)
+                }
+            }
+            FilterCollection::SingleWindow(window) => self.query_window_one_entity(window, out),
+            FilterCollection::MultiWindow(windows, parent_ids) => {
+                self.query_window(windows, parent_ids, out)
+            }
+        }
+    }
+}
+
+impl<'a> QueryId for FilterAllVersionsQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a> LoadQuery<PgConnection, EntityData> for FilterAllVersionsQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
+        conn.query_by_name(&self)
+    }
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for FilterAllVersionsQuery<'a> {}
 
 /// Reduce the upper bound of the current entry's block range to `block` as
 /// long as that does not result in an empty block range

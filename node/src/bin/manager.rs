@@ -391,6 +391,7 @@ impl From<Opt> for config::Opt {
 
 /// Utilities to interact mostly with the store and build the parts of the
 /// store we need for specific commands
+#[derive(Clone)]
 struct Context {
     logger: Logger,
     node_id: NodeId,
@@ -668,7 +669,8 @@ async fn main() {
                 } => {
                     println!("Dumping subgraph deployment {}", subgraph_deployment);
                     commands::poi::sync_poi(
-                        ctx.primary_pool(),
+                        ctx.clone().store(),
+                        ctx.clone().primary_pool(),
                         dispute_id,
                         indexer_id,
                         subgraph_deployment,
@@ -686,8 +688,11 @@ async fn main() {
                     keep,
                     host,
                 } => {
+                    let (block_store, _) = ctx.clone().block_store_and_primary_pool();
                     commands::poi::sync_entities(
-                        ctx.primary_pool(),
+                        ctx.clone().store(),
+                        block_store,
+                        ctx.clone().primary_pool(),
                         dispute_id,
                         indexer_id,
                         subgraph_deployment,

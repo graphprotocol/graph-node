@@ -1,3 +1,8 @@
+use graph::components::store::EntityType;
+use graph::data::graphql::DocumentExt;
+use graph::data::subgraph::schema::POI_OBJECT;
+use graph_store_postgres::BlockStore;
+use graphql_parser::schema::ObjectType;
 use std::io::prelude::*;
 use std::io::{Seek, Write};
 use std::iter::Iterator;
@@ -6,22 +11,24 @@ use walkdir::{DirEntry, WalkDir};
 use zip::result::ZipError;
 use zip::write::FileOptions;
 
-use diesel::r2d2::{ConnectionManager, PooledConnection};
-use diesel::sql_types::{BigInt, Integer, Text};
-use diesel::PgConnection;
-use diesel::{sql_query, RunQueryDsl};
-// use postgres::{Client as PGClient, NoTls, SimpleQueryMessage};
+use diesel::sql_types::{Integer, Text};
 
-use tokio_postgres::{Client as AsyncPG, NoTls, SimpleQueryMessage};
-
+use graph::components::store::BlockStore as _;
+use graph::data::query::QueryTarget;
 use graph::data::subgraph::DeploymentHash;
 use graph::prelude::anyhow::bail;
-use graph::prelude::{anyhow, SubgraphName};
-use graph_store_postgres::command_support::catalog as store_catalog;
-use graph_store_postgres::connection_pool::ConnectionPool;
+use graph::prelude::{
+    anyhow, AttributeNames, Entity, EntityCollection, EntityFilter, EntityQuery, Schema,
+    SubgraphName, SubgraphStore as _, BLOCK_NUMBER_MAX,
+};
 
+use graph_store_postgres::command_support::catalog as store_catalog;
+use graph_store_postgres::command_support::catalog::block_store;
+use graph_store_postgres::{connection_pool::ConnectionPool, Store, SubgraphStore};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::fs::{self, File};
+use std::sync::Arc;
 
 //Nothing here requires async.
 // use reqwest::blocking::multipart;
@@ -34,10 +41,23 @@ use tokio::fs::File as TokFile;
 use tokio_util::codec::{BytesCodec, FramedRead};
 
 use csv::WriterBuilder;
-
 /// Provide a go-like defer statement
 /// https://stackoverflow.com/questions/29963449/golang-like-defer-in-rust.
 /// Just a souped up closure that calls on function exit.
+use std::env;
+
+use graph_store_postgres::chain_store::CallCacheRecord;
+
+use chrono::prelude::{DateTime, Utc};
+
+use std::time::SystemTime;
+
+fn iso8601(st: &std::time::SystemTime) -> String {
+    let dt: DateTime<Utc> = st.clone().into();
+    format!("{}", dt.format("%+"))
+    // formats like "2001-07-08T00:34:60.026490+09:30"
+}
+
 struct ScopeCall<F: FnMut()> {
     c: F,
 }
@@ -82,7 +102,9 @@ Process:
 /// @TODO:Make use of async reqwests client.
 ///
 /// @TODO:Make useful Error messages
+
 pub async fn sync_poi(
+    store: Arc<Store>,
     pool: ConnectionPool,
     dispute_id: String,
     indexer_id: String,
@@ -91,6 +113,9 @@ pub async fn sync_poi(
     debug: bool,
     host: String,
 ) -> Result<(), anyhow::Error> {
+    let st = SystemTime::now();
+    let time_str = iso8601(&st);
+
     let pooled_connection = pool.get()?;
     let connection = store_catalog::Connection::new(&pooled_connection);
 
@@ -101,27 +126,21 @@ pub async fn sync_poi(
         None => DeploymentHash::new(&deployment_id).unwrap(),
     };
 
-    let deployment_hash_string = deployment_hash.as_str();
-    let subgraph_schema_name =
-        get_subgraph_schema_name(&pooled_connection, &deployment_hash_string)?;
-
-    println!("{}", &subgraph_schema_name);
-    println!("Creating poi dump directory {}", &deployment_hash_string);
-
-    let root_path = Path::new("/tmp/graph_node/data_dump");
-    if !root_path.exists() {
-        fs::create_dir_all(&root_path)?;
-    }
-    let base_path = root_path.join(&deployment_id);
-    if !base_path.exists() {
-        fs::create_dir_all(&base_path)?;
-    }
+    let root_path = env::temp_dir();
+    fs::create_dir_all(&root_path)?;
+    let base_path = root_path.join(&deployment_id).join(time_str);
+    fs::create_dir_all(&base_path)?;
 
     let base_copy = base_path.clone();
     //Register post-run cleanup
     defer!(delete_directory(&base_copy, debug).unwrap());
     create_dump_directories(&base_path, "poi".to_string())?;
-    let poi_records = get_poi(&pooled_connection, &subgraph_schema_name)?;
+
+    let subgraph_store = store.subgraph_store();
+
+    let poi_records_db = get_poi_from_store(subgraph_store, deployment_hash)?;
+
+    let poi_records = map_db_poi(poi_records_db);
 
     let src_directory = base_path.join("poi/raw");
     dump_poi_csv_writer(&src_directory, poi_records)?;
@@ -131,6 +150,31 @@ pub async fn sync_poi(
     upload_file_to_endpoint_async(&dst_directory, &host, indexer_id, dispute_id, "poi").await?;
 
     Ok(())
+}
+
+/// Converts Entity values pulled from the query into a struct that will serialize to csv.
+fn map_db_poi(poi_db_records: Vec<Entity>) -> Vec<PoiRecord> {
+    let mut poi_records: Vec<PoiRecord> = vec![];
+
+    for poi in poi_db_records {
+        let poi_record = PoiRecord {
+            digest: poi
+                .get("digest")
+                .map(|f| f.to_string())
+                .unwrap_or("".to_string()),
+            id: poi
+                .get("id")
+                .map(|f| f.to_string())
+                .unwrap_or("".to_string()),
+            block_range: poi
+                .get("block_range")
+                .map(|f| f.to_string())
+                .unwrap_or("".to_string()),
+        };
+        poi_records.push(poi_record);
+    }
+
+    return poi_records;
 }
 
 /// Grabs divergent blocks for the indexer. If they exist, proceeds to use them to filter entity tables
@@ -149,6 +193,8 @@ pub async fn sync_poi(
 /// @TODO:Make useful Error messages
 
 pub async fn sync_entities(
+    store: Arc<Store>,
+    block_store: Arc<BlockStore>,
     pool: ConnectionPool,
     dispute_id: String,
     indexer_id: String,
@@ -157,92 +203,122 @@ pub async fn sync_entities(
     debug: bool,
     host: String,
 ) -> Result<(), anyhow::Error> {
-    //Short circuit if you error out on getting the divergent blocks
-    let divergent_blocks = get_divergent_blocks(&host, &dispute_id, &indexer_id).await?;
-    let first_divergent_block = *divergent_blocks.first().unwrap();
-    println! {"FIRST DIVERGENT BLOCK {}",first_divergent_block};
-    let foreign_server = pool.connection_detail()?;
-    let pooled_connection = pool.get()?;
+    use graph::prelude::QueryStoreManager;
 
+    // Use time to create subdirectories. Keeps things idempotent.
+    let st = SystemTime::now();
+    let time_str = iso8601(&st);
+
+    let pooled_connection = pool.get()?;
     let connection = store_catalog::Connection::new(&pooled_connection);
 
     let deployment_hash = match subgraph_name {
         Some(name) => {
             connection.current_deployment_for_subgraph(SubgraphName::new(name).unwrap())?
         }
-        None => DeploymentHash::new(&deployment_id).unwrap(),
+        None => DeploymentHash::new(&deployment_id.clone()).unwrap(),
     };
 
-    let deployment_hash_string = deployment_hash.as_str();
+    // Get a connection to query store that will be passed entity queries
+    let query_store = store
+        .query_store(deployment_hash.clone().into(), true)
+        .await?;
 
-    let subgraph_schema_name =
-        get_subgraph_schema_name(&pooled_connection, &deployment_hash_string)?;
+    //Short circuit if you error out on getting the divergent blocks
+    let divergent_blocks = get_divergent_blocks(&host, &dispute_id, &indexer_id).await?;
+    let first_divergent_block = match divergent_blocks.first() {
+        Some(block) => *block,
+        None => bail!("No divergent block"),
+    };
 
-    println!("Creating entity dump directory {}", &deployment_hash_string);
+    let root_path = env::temp_dir();
+    fs::create_dir_all(&root_path)?;
 
-    let root_path = Path::new("/tmp/graph_node/data_dump");
-    let base_path = root_path.join(&deployment_id);
+    let base_path = root_path.join(&deployment_id).join(time_str);
+    fs::create_dir_all(&base_path)?;
 
     let base_copy = base_path.clone();
-    //Register post-run cleanup
+
+    // Register post-run cleanup. Tears down directories.
     defer!(delete_directory(&base_copy, debug).unwrap());
 
     create_dump_directories(&base_path, "entities".to_string())?;
     let entity_dump_directory = base_path.join("entities/raw");
+
     let entity_compression_directory =
         base_path.join("entities/compressed/compressed_entities.zip");
+
     // Need the chain to gather the call cache
-    let network_chain = get_subgraph_network_chain(&pooled_connection, &deployment_id)?;
+    let network_chain = query_store.network_name().to_owned();
+    println!("Pulling from network chain {}", &network_chain);
 
-    println!("Network chain {}", &network_chain);
+    let chain = block_store::find_chain(&pooled_connection, &network_chain)?
+        .ok_or_else(|| anyhow!("Unknown chain: {}", &network_chain))?;
 
-    let call_cache_records =
-        get_call_cache(&pooled_connection, &network_chain, first_divergent_block)?;
+    let chain_store = block_store
+        .chain_store(&chain.name)
+        .ok_or_else(|| anyhow!("Block store not found for chain: {}", &network_chain))?;
 
-    dump_call_cache(&entity_dump_directory, call_cache_records)?;
+    let storage = chain_store.get_storage();
 
-    // need table names to start querying entities
-    let subgraph_tables = get_subgraph_tables(&pooled_connection, &subgraph_schema_name)?;
+    // Filter for call cache at block
+    let db_call_cache_records = storage
+        .get_calls_at_block(&pooled_connection, &first_divergent_block)?
+        .ok_or_else(|| {
+            anyhow!(
+                "Couldn't pull call cache records for block: {}",
+                &first_divergent_block
+            )
+        })?;
 
-    let (client, connection) = tokio_postgres::connect(
-        &format!(
-            "host={} user={} password={} port={} dbname={}",
-            foreign_server.host,
-            foreign_server.user,
-            foreign_server.password,
-            foreign_server.port,
-            foreign_server.dbname
-        ),
-        NoTls,
-    )
-    .await?;
+    // Conversion to types amenable to csv serialization
+    let mapped_call_cache = db_call_cache_records
+        .iter()
+        .map(|cc| map_ccdb_cccsv(cc))
+        .collect();
 
-    tokio::spawn(async move {
-        if let Err(e) = connection.await {
-            eprintln!("connection error: {}", e);
-        }
-    });
+    dump_call_cache(&entity_dump_directory, mapped_call_cache)?;
 
-    for table in &subgraph_tables {
-        // Get the table records that are relevant, along with the metadata on columns.
-        let (columns, records) = get_filtered_subgraph_table_rows(
-            &pooled_connection,
-            &client,
-            &table.tablename,
-            &subgraph_schema_name,
-            first_divergent_block,
-        )
-        .await?;
+    // Subgraph schema defined object types which are used to build queries.
+    let subgraph_schema = _get_subgraph_schema(store.clone().subgraph_store(), &deployment_hash);
 
-        // Dump to entity path
-        // dump_divergent_entities(&entity_dump_directory, columns, records, &table.tablename)?;
-        dump_divergent_entities_csv_writer(
+    let entity_queries =
+        _get_entity_queries(subgraph_schema, deployment_hash, first_divergent_block);
+
+    let mut object_entities: HashMap<String, Vec<Entity>> = HashMap::new();
+
+    let mut table_typemap: HashMap<String, TableNameAndTypes> = HashMap::new();
+
+    for (object, query) in entity_queries.clone().into_iter() {
+        let object_name = &object.name.clone();
+        let entities = store.subgraph_store().find_all_versions(query)?;
+        object_entities.insert(object_name.clone(), entities);
+
+        let table_types = get_subgraph_data_type(object);
+        table_typemap.insert(object_name.clone(), table_types);
+    }
+
+    let its = object_entities.iter().collect::<Vec<_>>();
+    println!("Serializing entities");
+    for (table_name, entities) in &its {
+        let table_types = table_typemap.get(*table_name).unwrap();
+        write_divergent_entities(
             &entity_dump_directory,
-            columns,
-            records,
-            &table.tablename,
+            entities.to_vec(),
+            table_name,
+            &first_divergent_block,
+            table_types,
         )?;
     }
+
+    let entity_object_types: Vec<ObjectType<String>> =
+        entity_queries.into_iter().map(|eq| eq.0).collect();
+
+    let subgraph_types = get_subgraph_data_types(entity_object_types);
+    for table_type in subgraph_types {
+        write_column_types(&entity_dump_directory, table_type)?;
+    }
+
     //Compress & Upload
     walk_and_compress(&entity_dump_directory, &entity_compression_directory)?;
     upload_file_to_endpoint_async(
@@ -257,8 +333,89 @@ pub async fn sync_entities(
     Ok(())
 }
 
+struct TableNameAndTypes {
+    table_name: String,
+    column_types: Vec<ColumnNameAndType>,
+}
+
+fn get_subgraph_data_type(object_type: ObjectType<String>) -> TableNameAndTypes {
+    let data_types = get_object_data_types(&object_type);
+    let table_types = TableNameAndTypes {
+        table_name: object_type.name.clone(),
+        column_types: data_types,
+    };
+
+    return table_types;
+}
+
+fn get_subgraph_data_types(object_types: Vec<ObjectType<String>>) -> Vec<TableNameAndTypes> {
+    let mut subgraph_types: Vec<TableNameAndTypes> = vec![];
+
+    for obj in &object_types {
+        let data_types = get_object_data_types(obj);
+        let table_types = TableNameAndTypes {
+            table_name: obj.name.clone(),
+            column_types: data_types,
+        };
+        subgraph_types.push(table_types);
+    }
+    return subgraph_types;
+}
+
+fn get_object_data_types(obj: &ObjectType<String>) -> Vec<ColumnNameAndType> {
+    let mut data_types: Vec<ColumnNameAndType> = vec![];
+    let fields = &obj.fields;
+    for field in fields {
+        let f_type = field.field_type.to_string();
+        let f_name = field.name.clone();
+        let column_typed = ColumnNameAndType {
+            column_name: f_name,
+            data_type: f_type,
+        };
+        data_types.push(column_typed);
+    }
+    return data_types;
+}
+
+fn get_poi_from_store(
+    store: Arc<SubgraphStore>,
+    subgraph_deployment: DeploymentHash,
+) -> Result<Vec<Entity>, anyhow::Error> {
+    let query = EntityQuery::new(
+        subgraph_deployment,
+        BLOCK_NUMBER_MAX,
+        EntityCollection::All(vec![(POI_OBJECT.clone(), AttributeNames::All)]),
+    );
+
+    // @TODO: HACK to get all entities.
+    // @TODO: Implement a cursor/paginated approach
+    // query.range = EntityRange::first(4294967295);
+    let entities = store.find_all_versions(query)?;
+    Ok(entities)
+}
+
+fn map_ccdb_cccsv(input: &CallCacheRecord) -> CallCacheRecordCsv {
+    let cc = CallCacheRecordCsv {
+        id: input.id.iter().map(|&c| c as char).collect::<String>(),
+        contract_address: input
+            .contract_address
+            .iter()
+            .map(|&c| c as char)
+            .collect::<String>(),
+        return_value: input
+            .return_value
+            .iter()
+            .map(|&c| c as char)
+            .collect::<String>(),
+        block_number: input.block_number,
+    };
+    cc
+}
+
 /// Create directories required for compression and upload
 fn create_dump_directories(path: &PathBuf, kind: String) -> Result<(), anyhow::Error> {
+    println!("Creating directory {}", path.to_str().unwrap());
+
     let dir_path = path.join(format!("{}/raw", kind));
     fs::create_dir_all(&dir_path)?;
     let compression_dir = path.join(format!("{}/compressed", kind));
@@ -305,7 +462,7 @@ where
 
         // Write file or directory explicitly
         if path.is_file() {
-            println!("Compressing file {:?} as {:?} ...", path, name);
+            // println!("Compressing files {:?}", path);
             #[allow(deprecated)]
             zip.start_file_from_path(name, options)?;
             let mut f = File::open(path)?;
@@ -333,85 +490,103 @@ fn delete_directory(directory: &PathBuf, debug: bool) -> Result<(), anyhow::Erro
     Ok(())
 }
 
-#[derive(Queryable, QueryableByName)]
+#[derive(Queryable, QueryableByName, Deserialize)]
 pub struct PoiRecord {
     #[sql_type = "Text"]
     digest: String,
     #[sql_type = "Text"]
     id: String,
-    #[sql_type = "BigInt"]
-    vid: i64,
     #[sql_type = "Text"]
     block_range: String,
 }
 
-/// Gather a set of poi query records
-pub fn get_poi(
-    conn: &PooledConnection<ConnectionManager<PgConnection>>,
-    subgraph_schema_name: &str,
-) -> Result<Vec<PoiRecord>, anyhow::Error> {
-    let raw_query = format!(
-        "SELECT encode(poi2$.digest,'hex') as digest, id,vid, CAST(block_range as text) from {}.poi2$",
-        subgraph_schema_name
-    );
-
-    let poi_queryset = sql_query(raw_query).load::<PoiRecord>(conn).unwrap();
-    return Ok(poi_queryset);
+/// Returns the Schema of a deployment hash.
+fn _get_subgraph_schema(
+    subgraph_store: Arc<SubgraphStore>,
+    deployment_hash: &DeploymentHash,
+) -> Arc<Schema> {
+    let subgraph_schema = subgraph_store
+        .input_schema(deployment_hash)
+        .expect("Can't get schema for deployment_hash");
+    return subgraph_schema;
 }
 
-#[derive(Queryable, QueryableByName)]
-struct SubgraphNameRecord {
-    #[sql_type = "Text"]
-    name: String,
+/// Returns vector of tuples where the first item is the object in the graphql mapping (a table in Postgres)
+/// and the second item is the query that can be passed to a store for gathering entities at a block.
+fn _get_entity_queries(
+    schema: Arc<Schema>,
+    subgraph_id: DeploymentHash,
+    divergent_block: i32,
+) -> Vec<(ObjectType<'static, String>, EntityQuery)> {
+    let types = schema.document.get_object_type_definitions();
+
+    let mut entity_query_pair: Vec<(ObjectType<'static, String>, EntityQuery)> = vec![];
+
+    for t in types {
+        let eq = generate_query_for_type(t, &subgraph_id, divergent_block)
+            .expect("Could not generate query");
+        let new_tup = (t.to_owned(), eq);
+        entity_query_pair.push(new_tup);
+    }
+    return entity_query_pair;
 }
 
-/// Schema is required for querying entities and POI
-fn get_subgraph_schema_name(
-    conn: &PooledConnection<ConnectionManager<PgConnection>>,
+/// Returns single EntityQuery for a given object and block number.
+fn generate_query_for_type(
+    object_type: &ObjectType<String>,
+    subgraph_id: &DeploymentHash,
+    divergent_block: i32,
+) -> Result<EntityQuery, anyhow::Error> {
+    let obj_name = &object_type.name[..];
+    let entity_names = vec![obj_name.clone()];
+    let eq = EntityQuery::new(
+        subgraph_id.clone(),
+        divergent_block,
+        EntityCollection::All(
+            entity_names
+                .into_iter()
+                .map(|entity_type| (EntityType::from(entity_type), AttributeNames::All))
+                .collect(),
+        ),
+    )
+    .filter(EntityFilter::ChangedAtBlock(divergent_block));
+
+    Ok(eq)
+}
+
+/// Gets the name of a chain's network for a subgraph deployment.
+async fn _get_subgraph_network_chain(
+    store: Arc<Store>,
     deployment_id: &str,
 ) -> Result<String, anyhow::Error> {
-    let raw_query = format!(
-        "SELECT name from deployment_schemas WHERE subgraph = '{}' LIMIT 1",
-        deployment_id
-    );
-    let name_result = sql_query(raw_query).get_result::<SubgraphNameRecord>(conn)?;
+    use graph::prelude::QueryStoreManager;
 
-    Ok(name_result.name)
-}
+    let query_store = store
+        .query_store(
+            QueryTarget::Deployment(
+                DeploymentHash::new(deployment_id).expect("valid network subgraph ID"),
+            ),
+            false,
+        )
+        .await?;
 
-#[derive(Queryable, QueryableByName)]
-struct ChainNameSpaceRecord {
-    #[sql_type = "Text"]
-    namespace: String,
-}
-
-/// Chain namespace is required for querying call cache
-fn get_subgraph_network_chain(
-    conn: &PooledConnection<ConnectionManager<PgConnection>>,
-    deployment_id: &str,
-) -> Result<String, anyhow::Error> {
-    let raw_query = format!(
-        "SELECT namespace from chains where name = (SELECT network from deployment_schemas WHERE subgraph = '{}' LIMIT 1)",
-        deployment_id
-    );
-    let name_result = sql_query(raw_query).get_result::<ChainNameSpaceRecord>(conn)?;
-
-    Ok(name_result.namespace)
+    let name = query_store.network_name();
+    Ok(name.to_owned())
 }
 
 fn dump_poi_csv_writer(
     directory: &PathBuf,
     poi_records: std::vec::Vec<PoiRecord>,
 ) -> Result<(), anyhow::Error> {
-    println!("dumping poi");
+    println!("Serializing poi to file");
     let filepath = directory.join("poi.tsv");
 
     let mut csv_writer = WriterBuilder::new().delimiter(b'\t').from_path(filepath)?;
 
-    csv_writer.write_record(&["digest", "id", "vid", "block_range"])?;
+    csv_writer.write_record(&["digest", "id", "block_range"])?;
 
     for poi in &poi_records {
-        csv_writer.write_record(&[&poi.digest, &poi.id, &poi.vid.to_string(), &poi.block_range])?;
+        csv_writer.write_record(&[&poi.digest, &poi.id, &poi.block_range])?;
     }
     csv_writer.flush()?;
     return Ok(());
@@ -487,7 +662,7 @@ pub async fn get_divergent_blocks(
         .await?;
 
     if res.status().is_success() {
-        println!("success!");
+        println!("Got block!");
     } else if res.status().is_server_error() {
         println!("server error! {:?}", res.status());
         bail!("Error `{}`", res.text().await?);
@@ -503,7 +678,7 @@ pub async fn get_divergent_blocks(
 }
 
 #[derive(Queryable, QueryableByName)]
-pub struct CallCacheRecord {
+pub struct CallCacheRecordCsv {
     #[sql_type = "Text"]
     id: String,
     #[sql_type = "Text"]
@@ -514,33 +689,15 @@ pub struct CallCacheRecord {
     block_number: i32,
 }
 
-pub fn get_call_cache(
-    conn: &PooledConnection<ConnectionManager<PgConnection>>,
-    chain_namespace: &str,
-    divergent_block: i32,
-) -> Result<Vec<CallCacheRecord>, anyhow::Error> {
-    let raw_query = format!(
-        "SELECT encode(id,'hex') as id, encode(return_value,'hex') as \
-        return_value,encode(contract_address,'hex') as contract_address,\
-        block_number from {}.call_cache WHERE block_number = {}",
-        chain_namespace, divergent_block
-    );
-
-    let callcache_queryset = sql_query(raw_query).load::<CallCacheRecord>(conn).unwrap();
-    Ok(callcache_queryset)
-}
-
 fn dump_call_cache(
     directory: &PathBuf,
-    callcache_records: std::vec::Vec<CallCacheRecord>,
+    callcache_records: std::vec::Vec<CallCacheRecordCsv>,
 ) -> Result<(), anyhow::Error> {
-    println!("dumping call cache");
+    println!("Serializing call cache");
     let filepath = directory.join("call_cache.tsv");
 
     let mut csv_writer_callcache = WriterBuilder::new().delimiter(b'\t').from_path(filepath)?;
 
-    // let f = File::create(&filepath).expect("Unable to create file");
-    // let mut file_buffer = BufWriter::new(f);
     csv_writer_callcache.write_record(&[
         "id",
         "return_value",
@@ -561,26 +718,6 @@ fn dump_call_cache(
 }
 
 #[derive(Queryable, QueryableByName)]
-pub struct TableName {
-    #[sql_type = "Text"]
-    tablename: String,
-}
-
-/// Get all tables present in the subgraph schema. Will be used for dumping data
-fn get_subgraph_tables(
-    conn: &PooledConnection<ConnectionManager<PgConnection>>,
-    subgraph_schema_name: &str,
-) -> Result<Vec<TableName>, anyhow::Error> {
-    let query = format!(
-        "select tablename from pg_tables where schemaname='{}'",
-        subgraph_schema_name
-    );
-
-    let subgraph_tables = sql_query(query).get_results::<TableName>(conn).unwrap();
-    return Ok(subgraph_tables);
-}
-
-#[derive(Queryable, QueryableByName)]
 pub struct ColumnNameAndType {
     #[sql_type = "Text"]
     column_name: String,
@@ -588,104 +725,70 @@ pub struct ColumnNameAndType {
     data_type: String,
 }
 
-/// Gathers entries from entity tables that contain the divergent block if in closed interval
-/// Diesel isn't of any use here because this is dynamic.
-/// Also need to catch the columns for passing to csv.
-///
-/// Note: there may be no return values for a table filtered on a block. In this case, eagerly return
-/// Note: map null values to empty string;
-async fn get_filtered_subgraph_table_rows(
-    conn: &PooledConnection<ConnectionManager<PgConnection>>,
-    raw_client: &AsyncPG,
+/// Uses fields from the entity object to index into an entity record and write to csv
+fn write_divergent_entities(
+    directory: &PathBuf,
+    table_records: Vec<Entity>,
     table_name: &String,
-    schema_name: &str,
-    divergent_block: i32,
-) -> Result<(Vec<ColumnNameAndType>, Vec<Vec<String>>), anyhow::Error> {
-    // We won't know the type of the returned table rows at compile time.
-    // And you can't use a placeholder for a table name when substituting a query string.
-    // Need to format prior and use the raw postgres driver.
+    divergent_block: &i32,
+    table_types: &TableNameAndTypes,
+) -> Result<(), anyhow::Error> {
+    // Manually save the ordering in case there's some issue with sort
+    let head = table_records.first();
 
-    let column_query = format!(
-        "SELECT column_name,data_type FROM information_schema.columns WHERE table_schema = '{}'
-     AND table_name   = '{}'
-       ORDER by ordinal_position",
-        schema_name, table_name
-    );
-    // let columns = raw_client.query(column_query, &[&schema_name, &table_name])?;
+    match head {
+        Some(_e) => {
+            let record_filepath = directory.join(format!("{}_entities.tsv", table_name));
+            let mut csv_writer_records = WriterBuilder::new()
+                .delimiter(b'\t')
+                .from_path(record_filepath)?;
 
-    let columns = sql_query(column_query)
-        .get_results::<ColumnNameAndType>(conn)
-        .unwrap();
+            let mut header_columns: Vec<String> = table_types
+                .column_types
+                .iter()
+                .map(|c| c.column_name.clone())
+                .collect();
 
-    // Reserved keywords in SQL appear as subgraph tables unfortunately. I circumvent this with appending underscores
-    let entity_query = format!("select * from {}.{} as {}__ WHERE ({}::int4  <@ {}__.block_range AND upper_inc({}__.block_range))\
-OR ({}::int4 = lower({}__.block_range))",schema_name, table_name, table_name,divergent_block, table_name, table_name,divergent_block,table_name);
+            header_columns.push("block_range".to_string());
+            header_columns.push("filtered_block_number".to_string());
 
-    // simple_query returns rows as strings
-    // Issue with `db error: ERROR: prepared statement "s0" already exists` when not using simple_query
+            csv_writer_records.write_record(&header_columns)?;
 
-    let query_vec = raw_client.simple_query(&entity_query).await?;
-
-    let mut row_entries: Vec<Vec<String>> = vec![];
-
-    if query_vec.len() == 0 {
-        return Ok((columns, row_entries));
-    }
-
-    for query_message in &query_vec {
-        let mut single_row_vector: Vec<String> = vec![];
-        match query_message {
-            SimpleQueryMessage::Row(query_row) => {
-                for idx in 0..(query_row.len()) {
-                    let item = query_row.get(idx).unwrap_or("").to_string();
-                    single_row_vector.push(item);
+            for tr in table_records {
+                let mut entity_as_record = vec![];
+                for key in &header_columns {
+                    if key == "filtered_block_number" {
+                        continue;
+                    }
+                    let val: String = tr.get(key).map(|f| f.to_string()).unwrap_or("".to_string());
+                    entity_as_record.push(val);
                 }
-                row_entries.push(single_row_vector);
+
+                entity_as_record.push(divergent_block.to_string());
+                csv_writer_records.write_record(entity_as_record)?;
             }
-            _ => println!("Empty result"),
         }
+        None => {}
     }
 
-    Ok((columns, row_entries))
+    return Ok(());
 }
 
-fn dump_divergent_entities_csv_writer(
+fn write_column_types(
     directory: &PathBuf,
-    table_columns: Vec<ColumnNameAndType>,
-    table_records: Vec<Vec<String>>,
-    table_name: &String,
+    table_types: TableNameAndTypes,
 ) -> Result<(), anyhow::Error> {
-    println!("dumping divergent entities");
-
-    let record_filepath = directory.join(format!("{}_entities.tsv", table_name));
-    let mut csv_writer_records = WriterBuilder::new()
-        .delimiter(b'\t')
-        .from_path(record_filepath)?;
-
-    let meta_filepath = directory.join(format!("{}_entities_metadata.tsv", table_name));
+    let meta_filepath = directory.join(format!("{}_entities_metadata.tsv", table_types.table_name));
     let mut csv_writer_metadata = WriterBuilder::new()
         .delimiter(b'\t')
         .from_path(meta_filepath)?;
 
     csv_writer_metadata.write_record(&["column_name", "data_type"])?;
 
-    let mut record_header = vec![];
-
-    for column_data in &table_columns {
-        record_header.push(column_data.column_name.clone());
+    for column_data in &table_types.column_types {
         csv_writer_metadata.write_record(&[&column_data.column_name, &column_data.data_type])?;
     }
     csv_writer_metadata.flush()?;
-
-    csv_writer_records.write_record(record_header)?;
-
-    for record in &table_records {
-        let str = record.join(",");
-        println!("{}", str);
-
-        csv_writer_records.write_record(record)?;
-    }
-    csv_writer_records.flush()?;
 
     return Ok(());
 }

@@ -4,7 +4,7 @@
 
 [store]
 [store.primary]
-connection = "postgresql://graph:graph@127.0.0.1:5432/graph-test"
+connection = "postgresql://goaaron:goaaron@127.0.0.1:5432/graph-node"
 pool_size = 10
 
 [deployment]
@@ -17,10 +17,10 @@ ingestor = "default"
 
 # The tests do not talk to ethereum clients; we use valid free client
 # endpoints as an example
-[chains.fake_network]
+[chains.chain1]
 shard = "primary"
 provider = [
-  { label = "penguin", url="https://main-light.eth.linkpool.io/", features = [] }
+  { label = "mainnet", url="https://eth-mainnet.alchemyapi.io/v2/mWSH9YlhpXfXymzLxptC1TE2CIy2QuMA", features = [] }
 ]
 
 [chains.fake_network_shared]

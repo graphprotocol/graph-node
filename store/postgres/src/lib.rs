@@ -28,7 +28,7 @@ mod block_range;
 mod block_store;
 mod catalog;
 mod chain_head_listener;
-mod chain_store;
+pub mod chain_store;
 pub mod connection_pool;
 mod copy;
 mod deployment;
