@@ -46,7 +46,7 @@ This will watch your source directory and continuously do the following on chang
 ### Integrations Tests
 
 The tests can (and should) be run against a sharded store. See [store/test-store/README.md](./store/test-store/README.md) for
-detailled instructions about how to run the sharded integrations tests.
+detailed instructions about how to run the sharded integrations tests.
 
 ## Commit messages
 

@@ -19,8 +19,7 @@ To launch Postgres and IPFS server, simply do
 ./store/test-store/devel/up.sh
 ```
 
-- **Note** We assume you are in the root folder of the `graph-node` project, pratically, the `up.sh` script can be run from any folder.
-- **Note2** By default, `up.sh` cleans up any previous data you had on disk, use `./store/test-store/devel/up.sh -k` to keep
+- **Note** By default, `up.sh` cleans up any previous data you had on disk, use `./store/test-store/devel/up.sh -k` to keep
 previous data, this can be used to debug some data problems.
 
 Give a 1 minute for all the dependencies to properly starts correctly, then jump to [Running tests](#running-tests).
@@ -77,8 +76,7 @@ to point either at `config.simple.toml` or `config.sharded.toml`.
 GRAPH_NODE_TEST_CONFIG=`pwd`/store/test-store/config.simple.toml cargo test --workspace --exclude graph-tests
 ```
 
-- **Note** We assume you are in the root folder of the `graph-node` project.
-- **Note2** You can use either `config.simple.toml` or `config.sharded.toml`.
+- **Note** You can use either `config.simple.toml` or `config.sharded.toml`.
 
 This will run all unit and integration tests. The `graph-tests` crate contains more
 extensive integration tests that depend on running docker containers; that
