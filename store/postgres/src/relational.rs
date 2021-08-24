@@ -54,6 +54,7 @@ const DELETE_OPERATION_CHUNK_SIZE: usize = 1_000;
 /// This also makes sure that we do not put strings into a BTree index that's
 /// bigger than Postgres' limit on such strings which is about 2k
 pub const STRING_PREFIX_SIZE: usize = 256;
+pub const BYTE_ARRAY_PREFIX_SIZE: usize = 256;
 
 lazy_static! {
     /// Deprecated; use 'graphman stats account-like' instead. A list of
@@ -1067,6 +1068,11 @@ impl Column {
         named_type(&self.field_type) == "String" && !self.is_list()
     }
 
+    // Checks if this column's type is a binary string (Posgres' `bytea`)
+    pub fn is_binary_string(&self) -> bool {
+        named_type(&self.field_type) == "Bytes" && !self.is_list()
+    }
+
     pub fn is_assignable_from(&self, source: &Self, object: &EntityType) -> Option<String> {
         if !self.is_nullable() && source.is_nullable() {
             Some(format!(
@@ -1315,6 +1321,13 @@ impl Table {
                 // STRING_PREFIX_SIZE characters
                 let index_expr = if column.is_text() {
                     format!("left({}, {})", column.name.quoted(), STRING_PREFIX_SIZE)
+                } else if column.is_binary_string() {
+                    // Should be equivalent to `left`, but for byte arrays
+                    format!(
+                        "substring({} from 1 for {})",
+                        column.name.quoted(),
+                        BYTE_ARRAY_PREFIX_SIZE
+                    )
                 } else {
                     column.name.quoted()
                 };
@@ -1699,7 +1712,7 @@ create index attr_1_3_scalar_big_decimal
 create index attr_1_4_scalar_string
     on sgd0815.\"scalar\" using btree(left(\"string\", 256));
 create index attr_1_5_scalar_bytes
-    on sgd0815.\"scalar\" using btree(\"bytes\");
+    on sgd0815.\"scalar\" using btree(substring(\"bytes\" from 1 for 256));
 create index attr_1_6_scalar_big_int
     on sgd0815.\"scalar\" using btree(\"big_int\");
 create index attr_1_7_scalar_color
