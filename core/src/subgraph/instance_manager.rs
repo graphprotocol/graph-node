@@ -555,6 +555,7 @@ where
             }
 
             let start = Instant::now();
+            let deployment_failed = ctx.block_stream_metrics.deployment_failed.clone();
 
             let res = process_block(
                 &logger,
@@ -579,6 +580,7 @@ where
 
                         ctx.inputs.store.unfail()?;
                     }
+                    deployment_failed.set(0.0);
 
                     if needs_restart {
                         // Cancel the stream for real
@@ -613,6 +615,7 @@ where
                         handler: None,
                         deterministic: e.is_deterministic(),
                     };
+                    deployment_failed.set(1.0);
 
                     store_for_err
                         .fail_subgraph(error)
