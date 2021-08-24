@@ -362,6 +362,7 @@ where
             registry.clone(),
             &deployment.hash,
             manifest.network_name(),
+            store.shard().to_string(),
             stopwatch_metrics,
         ));
 

@@ -1039,6 +1039,10 @@ pub trait WritableStore: Send + Sync + 'static {
 
     /// Load the dynamic data sources for the given deployment
     async fn load_dynamic_data_sources(&self) -> Result<Vec<StoredDynamicDataSource>, StoreError>;
+
+    /// Report the name of the shard in which the subgraph is stored. This
+    /// should only be used for reporting and monitoring
+    fn shard(&self) -> &str;
 }
 
 #[async_trait]
@@ -1209,6 +1213,10 @@ impl WritableStore for MockStore {
     }
 
     fn deployment_synced(&self) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    fn shard(&self) -> &str {
         unimplemented!()
     }
 }

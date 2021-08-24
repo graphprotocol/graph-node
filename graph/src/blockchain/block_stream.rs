@@ -94,6 +94,7 @@ impl BlockStreamMetrics {
         registry: Arc<impl MetricsRegistry>,
         deployment_id: &DeploymentHash,
         network: String,
+        shard: String,
         stopwatch: StopwatchMetrics,
     ) -> Self {
         let reverted_blocks = registry
@@ -103,7 +104,11 @@ impl BlockStreamMetrics {
                 deployment_id.as_str(),
             )
             .expect("Failed to create `deployment_reverted_blocks` gauge");
-        let labels = labels! { String::from("deployment") => deployment_id.to_string(), String::from("network") => network };
+        let labels = labels! {
+            String::from("deployment") => deployment_id.to_string(),
+            String::from("network") => network,
+            String::from("shard") => shard
+        };
         let deployment_head = registry
             .new_gauge(
                 "deployment_head",

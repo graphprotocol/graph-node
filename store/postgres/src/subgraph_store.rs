@@ -1143,6 +1143,10 @@ impl WritableStoreTrait for WritableStore {
 
         Ok(self.store.send_store_event(&event)?)
     }
+
+    fn shard(&self) -> &str {
+        self.site.shard.as_str()
+    }
 }
 
 fn same_subgraph(mods: &Vec<EntityModification>, id: &DeploymentHash) -> bool {
