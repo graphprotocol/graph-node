@@ -479,6 +479,21 @@ impl ConnectionPool {
     }
 }
 
+fn brief_error_msg(error: &dyn std::error::Error) -> String {
+    // For 'Connection refused' errors, Postgres includes the IP and
+    // port number in the error message. We want to suppress that and
+    // only use the first line from the error message. For more detailed
+    // analysis, 'Connection refused' manifests as a
+    // `ConnectionError(BadConnection("could not connect to server:
+    // Connection refused.."))`
+    error
+        .to_string()
+        .split("\n")
+        .next()
+        .unwrap_or("no error details provided")
+        .to_string()
+}
+
 #[derive(Clone)]
 struct ErrorHandler(Logger, Counter);
 
@@ -491,7 +506,7 @@ impl std::fmt::Debug for ErrorHandler {
 impl r2d2::HandleError<r2d2::Error> for ErrorHandler {
     fn handle_error(&self, error: r2d2::Error) {
         self.1.inc();
-        error!(self.0, "Postgres connection error"; "error" => error.to_string());
+        error!(self.0, "Postgres connection error"; "error" => brief_error_msg(&error));
     }
 }
 
@@ -777,7 +792,7 @@ impl PoolInner {
             match self.pool.get_timeout(*CONNECTION_TIMEOUT) {
                 Ok(conn) => return Ok(conn),
                 Err(e) => error!(logger, "Error checking out connection, retrying";
-                   "error" => e.to_string(),
+                   "error" => brief_error_msg(&e),
                 ),
             }
         }
