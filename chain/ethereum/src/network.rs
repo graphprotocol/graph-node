@@ -1,4 +1,5 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
+use graph::cheap_clone::CheapClone;
 use graph::prelude::rand::{self, seq::IteratorRandom};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -25,22 +26,25 @@ impl EthereumNetworkAdapters {
     pub fn cheapest_with(
         &self,
         required_capabilities: &NodeCapabilities,
-    ) -> Result<&Arc<EthereumAdapter>, Error> {
-        let sufficient_adapters: Vec<&EthereumNetworkAdapter> = self
+    ) -> Result<Arc<EthereumAdapter>, Error> {
+        let cheapest_sufficient_capability = self
             .adapters
             .iter()
-            .filter(|adapter| &adapter.capabilities >= required_capabilities)
-            .collect();
-        if sufficient_adapters.is_empty() {
-            return Err(anyhow!(
-                "A matching Ethereum network with {:?} was not found.",
-                required_capabilities
-            ));
-        }
+            .find(|adapter| &adapter.capabilities >= required_capabilities)
+            .map(|adapter| &adapter.capabilities);
 
-        // Select from the matching adapters randomly
-        let mut rng = rand::thread_rng();
-        Ok(&sufficient_adapters.iter().choose(&mut rng).unwrap().adapter)
+        // Select randomly from the cheapest adapters that have sufficent capabilities.
+        self.adapters
+            .iter()
+            .filter(|adapter| Some(&adapter.capabilities) == cheapest_sufficient_capability)
+            .choose(&mut rand::thread_rng())
+            .map(|adapter| adapter.adapter.cheap_clone())
+            .with_context(|| {
+                anyhow!(
+                    "A matching Ethereum network with {:?} was not found.",
+                    required_capabilities
+                )
+            })
     }
 
     pub fn cheapest(&self) -> Option<Arc<EthereumAdapter>> {
@@ -126,7 +130,7 @@ impl EthereumNetworks {
         &self,
         network_name: String,
         requirements: &NodeCapabilities,
-    ) -> Result<&Arc<EthereumAdapter>, Error> {
+    ) -> Result<Arc<EthereumAdapter>, Error> {
         self.networks
             .get(&network_name)
             .ok_or(anyhow!("network not supported: {}", &network_name))
