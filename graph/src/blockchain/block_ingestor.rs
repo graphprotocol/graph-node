@@ -49,6 +49,12 @@ where
                         "Trying again after block polling failed: {}", err
                     );
                 }
+                Err(err @ IngestorError::ReceiptUnavailable(_, _)) => {
+                    info!(
+                        self.logger,
+                        "Trying again after block polling failed: {}", err
+                    );
+                }
                 Err(IngestorError::Unknown(inner_err)) => {
                     warn!(
                         self.logger,
