@@ -1103,27 +1103,21 @@ impl EthereumAdapterTrait for EthereumAdapter {
                                         // trying to ingest this block.
                                         //
                                         // This could also be because the receipt is simply not
-                                        // available yet.  For that case, we should retry until
+                                        // available yet. For that case, we should retry until
                                         // it becomes available.
-                                        IngestorError::BlockUnavailable(block_hash)
+                                        IngestorError::ReceiptUnavailable(block_hash, tx_hash)
                                     })
                                 })
                                 .and_then(move |receipt| {
-                                    // Parity nodes seem to return receipts with no block hash
-                                    // when a transaction is no longer in the main chain, so
-                                    // treat that case the same as a receipt being absent
-                                    // entirely.
-                                    let receipt_block_hash =
-                                        receipt.block_hash.ok_or_else(|| {
-                                            IngestorError::BlockUnavailable(block_hash)
-                                        })?;
-
-                                    // Check if receipt is for the right block
-                                    if receipt_block_hash != block_hash {
+                                    // Check if the receipt has a block hash and is for the right
+                                    // block. Parity nodes seem to return receipts with no block
+                                    // hash when a transaction is no longer in the main chain, so
+                                    // treat that case the same as a receipt being absent entirely.
+                                    if receipt.block_hash != Some(block_hash) {
                                         info!(
                                             logger, "receipt block mismatch";
                                             "receipt_block_hash" =>
-                                                receipt_block_hash.to_string(),
+                                            receipt.block_hash.unwrap_or_default().to_string(),
                                             "block_hash" =>
                                                 block_hash.to_string(),
                                             "tx_hash" => tx_hash.to_string(),
