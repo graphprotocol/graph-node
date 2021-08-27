@@ -24,6 +24,34 @@ use wasmtime::Trap;
 
 use crate::module::{WasmInstance, WasmInstanceContext};
 
+fn write_poi_event<C: Blockchain>(
+    proof_of_indexing: &SharedProofOfIndexing,
+    poi_event: &ProofOfIndexingEvent,
+    causality_region: &str,
+    state: &BlockState<C>,
+    logger: &Logger,
+) {
+    match (state.has_errors(), proof_of_indexing) {
+        // We don't want to write an event to the PoI if
+        // the BlockState contains DeterministicErrors.
+        //
+        // Let's say up until now we've written 3 events,
+        // and we can imagine the PoI something like this vector:
+        // [setEvent, removeEvent, setEvent]
+        //
+        // Then, a Deterministic error happened. At this point
+        // we'll stop writting to this "list", and we'll have the last
+        // event added by the 'instance_manager' module, like this:
+        //
+        // [setEvent, removeEvent, setEvent, deterministicErrorEvent]
+        (false, Some(proof_of_indexing)) => {
+            let mut proof_of_indexing = proof_of_indexing.deref().borrow_mut();
+            proof_of_indexing.write(logger, causality_region, poi_event);
+        }
+        _ => {}
+    }
+}
+
 impl IntoTrap for HostExportError {
     fn determinism_level(&self) -> DeterminismLevel {
         match self {
@@ -123,18 +151,17 @@ impl<C: Blockchain> HostExports<C> {
         stopwatch: &StopwatchMetrics,
     ) -> Result<(), anyhow::Error> {
         let poi_section = stopwatch.start_section("host_export_store_set__proof_of_indexing");
-        if let Some(proof_of_indexing) = proof_of_indexing {
-            let mut proof_of_indexing = proof_of_indexing.deref().borrow_mut();
-            proof_of_indexing.write(
-                logger,
-                &self.causality_region,
-                &ProofOfIndexingEvent::SetEntity {
-                    entity_type: &entity_type,
-                    id: &entity_id,
-                    data: &data,
-                },
-            );
-        }
+        write_poi_event(
+            proof_of_indexing,
+            &ProofOfIndexingEvent::SetEntity {
+                entity_type: &entity_type,
+                id: &entity_id,
+                data: &data,
+            },
+            &self.causality_region,
+            &state,
+            logger,
+        );
         poi_section.end();
 
         let id_insert_section = stopwatch.start_section("host_export_store_set__insert_id");
@@ -187,17 +214,16 @@ impl<C: Blockchain> HostExports<C> {
         entity_type: String,
         entity_id: String,
     ) -> Result<(), HostExportError> {
-        if let Some(proof_of_indexing) = proof_of_indexing {
-            let mut proof_of_indexing = proof_of_indexing.deref().borrow_mut();
-            proof_of_indexing.write(
-                logger,
-                &self.causality_region,
-                &ProofOfIndexingEvent::RemoveEntity {
-                    entity_type: &entity_type,
-                    id: &entity_id,
-                },
-            );
-        }
+        write_poi_event(
+            proof_of_indexing,
+            &ProofOfIndexingEvent::RemoveEntity {
+                entity_type: &entity_type,
+                id: &entity_id,
+            },
+            &self.causality_region,
+            &state,
+            logger,
+        );
         let key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
             entity_type: EntityType::new(entity_type),
