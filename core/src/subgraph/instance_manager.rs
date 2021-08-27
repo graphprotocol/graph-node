@@ -17,7 +17,9 @@ use graph::{
 };
 use graph::{
     blockchain::{block_stream::BlockStreamEvent, Blockchain, TriggerFilter as _},
-    components::subgraph::{MappingError, ProofOfIndexing, SharedProofOfIndexing},
+    components::subgraph::{
+        MappingError, ProofOfIndexing, ProofOfIndexingEvent, SharedProofOfIndexing,
+    },
 };
 use graph::{
     blockchain::{Block, BlockchainMap},
@@ -836,6 +838,19 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
     }
 
     if let Some(proof_of_indexing) = proof_of_indexing {
+        // If a deterministic error has happened, write a new
+        // ProofOfIndexingEvent::DeterministicError to the SharedProofOfIndexing.
+        if has_errors && !is_non_fatal_errors_active {
+            // TODO: get the correct causality region
+            let causality_region = format!("ethereum/{}", &ctx.state.instance.network);
+
+            proof_of_indexing.borrow_mut().write(
+                &logger,
+                &causality_region,
+                &ProofOfIndexingEvent::DeterministicError,
+            );
+        }
+
         let proof_of_indexing = Arc::try_unwrap(proof_of_indexing).unwrap().into_inner();
         update_proof_of_indexing(
             proof_of_indexing,
