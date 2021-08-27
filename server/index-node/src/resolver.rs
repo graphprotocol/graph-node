@@ -1,9 +1,9 @@
 use either::Either;
-use graph::blockchain::BlockchainKind;
+use graph::blockchain::{Blockchain, BlockchainKind};
 use std::collections::{BTreeMap, HashMap};
 
 use graph::data::subgraph::features::detect_features;
-use graph::data::subgraph::{status, MAX_SPEC_VERSION};
+use graph::data::subgraph::{status, SPEC_VERSION_0_0_1};
 use graph::prelude::*;
 use graph::{
     components::store::StatusStore,
@@ -204,12 +204,27 @@ where
                 .map_err(SubgraphManifestResolveError::ResolveError)?;
             match kind {
                 BlockchainKind::Ethereum => {
-                    UnvalidatedSubgraphManifest::<graph_chain_ethereum::Chain>::resolve(
+                    // FIXME (NEAR): Commented out for now otherwise it creates a compilation error because both
+                    //               types are incompatible in the match arms.
+                    // UnvalidatedSubgraphManifest::<graph_chain_ethereum::Chain>::resolve(
+                    //     deployment_hash,
+                    //     raw,
+                    //     self.link_resolver.clone(),
+                    //     &self.logger,
+                    //     MAX_SPEC_VERSION.clone(),
+                    // )
+                    // .await?
+                    unimplemented!()
+                }
+
+                BlockchainKind::Near => {
+                    UnvalidatedSubgraphManifest::<graph_chain_near::Chain>::resolve(
                         deployment_hash,
                         raw,
                         self.link_resolver.clone(),
                         &self.logger,
-                        MAX_SPEC_VERSION.clone(),
+                        // FIXME (NEAR): We should probably have a value per chain, right now max spec is 0.0.1
+                        SPEC_VERSION_0_0_1.clone(),
                     )
                     .await?
                 }
