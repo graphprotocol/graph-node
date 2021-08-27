@@ -134,7 +134,7 @@ A subgraph can be _grafted_ on top of another subgraph, meaning that, rather tha
 
 ## 1.9 Features
 
-Starting from `specVersion` `0.0.4`, a subgraph must declare all _features_ names it uses to be
+Starting from `specVersion` `0.0.4`, a subgraph must declare all _feature_ names it uses to be
 considered valid.
 
 A Graph Node instance will **reject** a subgraph deployment if:
