@@ -823,17 +823,10 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
     // The triggers were processed but some were skipped due to deterministic errors, if the
     // `nonFatalErrors` feature is not present, return early with an error.
     let has_errors = block_state.has_errors();
-    if has_errors
-        && !ctx
-            .inputs
-            .features
-            .contains(&SubgraphFeature::NonFatalErrors)
-    {
-        // Take just the first error to report.
-        return Err(BlockProcessingError::Deterministic(
-            block_state.deterministic_errors.into_iter().next().unwrap(),
-        ));
-    }
+    let is_non_fatal_errors_active = ctx
+        .inputs
+        .features
+        .contains(&SubgraphFeature::NonFatalErrors);
 
     // Apply entity operations and advance the stream
 
@@ -855,7 +848,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
 
     let section = ctx.host_metrics.stopwatch.start_section("as_modifications");
     let ModificationsAndCache {
-        modifications: mods,
+        modifications: mut mods,
         data_sources,
         entity_lfu_cache: mut cache,
     } = block_state
@@ -896,15 +889,43 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
 
     let store = &ctx.inputs.store;
 
+    // If a deterministic error has happened, make the PoI to be the only entity that'll be stored.
+    if has_errors && !is_non_fatal_errors_active {
+        let is_poi_entity = |entity_mod: &EntityModification| {
+            entity_mod.entity_key().entity_type.as_str() == "Poi$"
+        };
+        mods.retain(is_poi_entity);
+        // Confidence check
+        assert!(
+            mods.len() == 1,
+            "There should be only one PoI EntityModification"
+        );
+    }
+
+    let BlockState {
+        deterministic_errors,
+        ..
+    } = block_state;
+
+    let first_error = deterministic_errors.iter().next().map(|e| e.clone());
+
     match store.transact_block_operations(
         block_ptr,
         firehose_cursor,
         mods,
         stopwatch,
         data_sources,
-        block_state.deterministic_errors,
+        deterministic_errors,
     ) {
         Ok(_) => {
+            // If a deterministic error has happened, make the subgraph fail.
+            // In this scenario the only entity that is stored/transacted is the PoI,
+            // all of the others are discarted.
+            if has_errors && !is_non_fatal_errors_active {
+                // Only the first error is reported.
+                return Err(BlockProcessingError::Deterministic(first_error.unwrap()));
+            }
+
             let elapsed = start.elapsed().as_secs_f64();
             metrics.block_ops_transaction_duration.observe(elapsed);
 

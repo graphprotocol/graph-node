@@ -167,7 +167,7 @@ impl<'a, C: Blockchain> From<&'a super::SubgraphManifest<C>> for SubgraphManifes
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SubgraphError {
     pub subgraph_id: DeploymentHash,
     pub message: String,
