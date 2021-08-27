@@ -7,15 +7,18 @@ use strum_macros::AsStaticStr;
 
 #[derive(AsStaticStr)]
 pub enum ProofOfIndexingEvent<'a> {
-    RemoveEntity {
-        entity_type: &'a str,
-        id: &'a str,
-    },
+    /// For when an entity is removed from the store.
+    RemoveEntity { entity_type: &'a str, id: &'a str },
+    /// For when an entity is set into the store.
     SetEntity {
         entity_type: &'a str,
         id: &'a str,
         data: &'a HashMap<String, Value>,
     },
+    /// For when a deterministic error has happened.
+    /// This will be the last event written to the SharedProofOfIndexing until the subgraph
+    /// is NOT failing anymore.
+    DeterministicError,
 }
 
 impl StableHash for ProofOfIndexingEvent<'_> {
@@ -37,6 +40,7 @@ impl StableHash for ProofOfIndexingEvent<'_> {
                 id.stable_hash(sequence_number.next_child(), state);
                 data.stable_hash(sequence_number.next_child(), state);
             }
+            DeterministicError => {} // NOOP
         }
     }
 }
@@ -62,6 +66,7 @@ impl fmt::Debug for ProofOfIndexingEvent<'_> {
                 builder.field("id", id);
                 builder.field("data", &data.iter().collect::<BTreeMap<_, _>>());
             }
+            Self::DeterministicError => {} // NOOP
         }
         builder.finish()
     }
