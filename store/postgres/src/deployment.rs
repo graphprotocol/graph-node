@@ -594,7 +594,6 @@ pub(crate) fn insert_subgraph_errors(
     check_health(conn, id, block)
 }
 
-#[cfg(debug_assertions)]
 pub(crate) fn error_count(conn: &PgConnection, id: &DeploymentHash) -> Result<usize, StoreError> {
     use subgraph_error as e;
 
