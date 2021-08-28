@@ -432,7 +432,7 @@ impl UnresolvedSchema {
     ) -> Result<Schema, anyhow::Error> {
         info!(logger, "Resolve schema"; "link" => &self.file.link);
 
-        let schema_bytes = resolver.cat(&logger, &self.file).await?;
+        let schema_bytes = resolver.cat(logger, &self.file).await?;
         Schema::parse(&String::from_utf8(schema_bytes)?, id)
     }
 }
@@ -479,7 +479,7 @@ impl UnresolvedMappingABI {
             "link" => &self.file.link
         );
 
-        let contract_bytes = resolver.cat(&logger, &self.file).await?;
+        let contract_bytes = resolver.cat(logger, &self.file).await?;
         let contract = Contract::load(&*contract_bytes)?;
         Ok(MappingABI {
             name: self.name,

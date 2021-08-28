@@ -163,7 +163,7 @@ fn build_filter_from_object(
                 })?;
 
                 let ty = &field.field_type;
-                let store_value = Value::from_query_value(value, &ty)?;
+                let store_value = Value::from_query_value(value, ty)?;
 
                 Ok(match op {
                     Not => EntityFilter::Not(field_name, store_value),
@@ -221,7 +221,7 @@ fn build_order_by(
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
     match arguments.get("orderBy") {
         Some(q::Value::Enum(name)) => {
-            let field = sast::get_field(entity, &name).ok_or_else(|| {
+            let field = sast::get_field(entity, name).ok_or_else(|| {
                 QueryExecutionError::EntityFieldError(entity.name().to_owned(), name.clone())
             })?;
             sast::get_field_value_type(&field.field_type)
@@ -332,7 +332,7 @@ pub fn collect_entities_from_query_field(
                     // need to recursively process it
                     for selection in field.selection_set.items.iter() {
                         if let q::Selection::Field(sub_field) = selection {
-                            queue.push_back((&object_type, sub_field))
+                            queue.push_back((object_type, sub_field))
                         }
                     }
                 }

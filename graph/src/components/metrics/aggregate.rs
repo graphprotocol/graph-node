@@ -23,7 +23,7 @@ impl Aggregate {
                 .new_deployment_gauge(
                     &format!("{}_{}", name, suffix),
                     &format!("{} ({})", help, suffix),
-                    &subgraph,
+                    subgraph,
                 )
                 .unwrap_or_else(|_| {
                     panic!(

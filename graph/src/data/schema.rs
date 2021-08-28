@@ -521,7 +521,7 @@ impl Schema {
     }
 
     pub fn parse(raw: &str, id: DeploymentHash) -> Result<Self, Error> {
-        let document = graphql_parser::parse_schema(&raw)?.into_static();
+        let document = graphql_parser::parse_schema(raw)?.into_static();
 
         let (interfaces_for_type, types_for_interface) = Self::collect_interfaces(&document)?;
 

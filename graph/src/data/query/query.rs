@@ -141,7 +141,7 @@ impl Query {
         let (query_text, variables_text) = if *crate::log::LOG_GQL_TIMING {
             (
                 document
-                    .format(&graphql_parser::Style::default().indent(0))
+                    .format(graphql_parser::Style::default().indent(0))
                     .replace('\n', " "),
                 serde_json::to_string(&variables).unwrap_or_default(),
             )
