@@ -1012,7 +1012,7 @@ pub trait WritableStore: Send + Sync + 'static {
     fn supports_proof_of_indexing<'a>(self: Arc<Self>) -> DynTryFuture<'a, bool>;
 
     /// Looks up an entity using the given store key at the latest block.
-    fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
 
     /// Transact the entity changes from a single block atomically into the store, and update the
     /// subgraph block pointer to `block_ptr_to`.
@@ -1186,7 +1186,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn get(&self, _: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
+    fn get(&self, _: &EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
         unimplemented!()
     }
 
@@ -1726,7 +1726,7 @@ impl LfuCache<EntityKey, Option<Entity>> {
     ) -> Result<Option<Entity>, QueryExecutionError> {
         match self.get(&key) {
             None => {
-                let mut entity = store.get(key.clone())?;
+                let mut entity = store.get(key)?;
                 if let Some(entity) = &mut entity {
                     // `__typename` is for queries not for mappings.
                     entity.remove("__typename");

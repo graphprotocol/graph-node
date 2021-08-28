@@ -1070,8 +1070,8 @@ impl WritableStoreTrait for WritableStore {
             .supports_proof_of_indexing(self.site.clone())
     }
 
-    fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
-        self.writable.get(self.site.clone(), key)
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
+        self.writable.get(self.site.cheap_clone(), key)
     }
 
     fn transact_block_operations(
@@ -1103,7 +1103,8 @@ impl WritableStoreTrait for WritableStore {
         &self,
         ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
-        self.writable.get_many(self.site.clone(), ids_for_type)
+        self.writable
+            .get_many(self.site.cheap_clone(), ids_for_type)
     }
 
     async fn is_deployment_synced(&self) -> Result<bool, Error> {
