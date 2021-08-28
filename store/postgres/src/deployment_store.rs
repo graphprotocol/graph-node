@@ -793,7 +793,7 @@ impl DeploymentStore {
     pub(crate) fn get(
         &self,
         site: Arc<Site>,
-        key: EntityKey,
+        key: &EntityKey,
     ) -> Result<Option<Entity>, QueryExecutionError> {
         let conn = self.get_conn()?;
         let layout = self.layout(&conn, site)?;
