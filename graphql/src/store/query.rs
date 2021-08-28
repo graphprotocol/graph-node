@@ -275,7 +275,7 @@ pub fn parse_subgraph_id<'a>(
     entity: impl Into<ObjectOrInterface<'a>>,
 ) -> Result<DeploymentHash, QueryExecutionError> {
     let entity = entity.into();
-    let entity_name = entity.name().clone();
+    let entity_name = entity.name();
     entity
         .directives()
         .iter()
@@ -284,7 +284,7 @@ pub fn parse_subgraph_id<'a>(
             directive
                 .arguments
                 .iter()
-                .find(|(name, _)| name == &"id".to_string())
+                .find(|(name, _)| name == "id")
         })
         .and_then(|(_, value)| match value {
             s::Value::String(id) => Some(id),
