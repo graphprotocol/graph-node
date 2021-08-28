@@ -361,7 +361,7 @@ impl<'a> Join<'a> {
     /// parent; we simply pick out matching children for each parent but
     /// otherwise maintain the order in `children`
     fn perform(mut parents: Vec<&mut Node>, children: Vec<Node>, response_key: &str) {
-        let children: Vec<_> = children.into_iter().map(|child| Rc::new(child)).collect();
+        let children: Vec<_> = children.into_iter().map(Rc::new).collect();
 
         if parents.len() == 1 {
             let parent = parents.first_mut().expect("we just checked");

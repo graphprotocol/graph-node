@@ -280,12 +280,7 @@ pub fn parse_subgraph_id<'a>(
         .directives()
         .iter()
         .find(|directive| directive.name == "subgraphId")
-        .and_then(|directive| {
-            directive
-                .arguments
-                .iter()
-                .find(|(name, _)| name == "id")
-        })
+        .and_then(|directive| directive.arguments.iter().find(|(name, _)| name == "id"))
         .and_then(|(_, value)| match value {
             s::Value::String(id) => Some(id),
             _ => None,

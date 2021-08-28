@@ -331,11 +331,7 @@ fn field_input_values(
 ) -> Result<Vec<InputValue>, APISchemaError> {
     let mut input_values = vec![];
     for field in fields {
-        input_values.extend(field_filter_input_values(
-            schema,
-            field,
-            &field.field_type,
-        )?);
+        input_values.extend(field_filter_input_values(schema, field, &field.field_type)?);
     }
     Ok(input_values)
 }

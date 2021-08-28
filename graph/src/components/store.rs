@@ -706,14 +706,14 @@ where
                 match source.poll() {
                     Ok(Async::NotReady) => {
                         if should_send && pending_event.is_some() {
-                            let event = pending_event.take().map(|event| Arc::new(event));
+                            let event = pending_event.take().map(Arc::new);
                             return Ok(Async::Ready(event));
                         } else {
                             return Ok(Async::NotReady);
                         }
                     }
                     Ok(Async::Ready(None)) => {
-                        let event = pending_event.take().map(|event| Arc::new(event));
+                        let event = pending_event.take().map(Arc::new);
                         return Ok(Async::Ready(event));
                     }
                     Ok(Async::Ready(Some(event))) => {
@@ -724,7 +724,7 @@ where
                         // We will report the error the next time poll() is called
                         if pending_event.is_some() {
                             had_err = true;
-                            let event = pending_event.take().map(|event| Arc::new(event));
+                            let event = pending_event.take().map(Arc::new);
                             return Ok(Async::Ready(event));
                         } else {
                             return Err(());
