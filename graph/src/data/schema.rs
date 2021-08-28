@@ -228,7 +228,7 @@ impl From<&s::Directive> for FulltextDefinition {
         let included_entity = included_entity_list.first().unwrap().as_object().unwrap();
         let included_field_values = included_entity.get("fields").unwrap().as_list().unwrap();
         let included_fields: HashSet<String> = included_field_values
-            .into_iter()
+            .iter()
             .map(|field| {
                 field
                     .as_object()

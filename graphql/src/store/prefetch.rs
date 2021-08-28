@@ -290,7 +290,7 @@ impl<'a> JoinCond<'a> {
                                     .and_then(|value| match value {
                                         q::Value::List(values) => {
                                             let values: Vec<_> = values
-                                                .into_iter()
+                                                .iter()
                                                 .filter_map(|value| {
                                                     value.as_str().map(|value| value.to_owned())
                                                 })

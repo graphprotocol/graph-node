@@ -4,6 +4,7 @@ use crate::{
 };
 use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
 use anyhow::{anyhow, Error};
+use itertools::Itertools;
 use serde::de;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
@@ -358,9 +359,8 @@ impl fmt::Display for Value {
                 Value::List(ref values) => format!(
                     "[{}]",
                     values
-                        .into_iter()
+                        .iter()
                         .map(ToString::to_string)
-                        .collect::<Vec<_>>()
                         .join(", ")
                 ),
                 Value::Bytes(ref bytes) => bytes.to_string(),

@@ -127,7 +127,7 @@ fn build_filter(
 fn build_fulltext_filter_from_object(
     object: &BTreeMap<String, q::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
-    object.into_iter().next().map_or(
+    object.iter().next().map_or(
         Err(QueryExecutionError::FulltextQueryRequiresFilter),
         |(key, value)| {
             if let q::Value::String(s) = value {
@@ -193,7 +193,7 @@ fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecu
             // Check that all values in list are of the same type
             let root_discriminant = discriminant(&values[0]);
             values
-                .into_iter()
+                .iter()
                 .map(|value| {
                     let current_discriminant = discriminant(value);
                     if root_discriminant == current_discriminant {
@@ -244,7 +244,7 @@ fn build_order_by(
 fn build_fulltext_order_by_from_object(
     object: &BTreeMap<String, q::Value>,
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
-    object.into_iter().next().map_or(
+    object.iter().next().map_or(
         Err(QueryExecutionError::FulltextQueryRequiresFilter),
         |(key, value)| {
             if let q::Value::String(_) = value {
