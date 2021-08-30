@@ -19,10 +19,10 @@ To launch Postgres and IPFS server, simply do
 ./store/test-store/devel/up.sh
 ```
 
-- **Note** By default, `up.sh` cleans up any previous data you had on disk, use `./store/test-store/devel/up.sh -k` to keep
-previous data, this can be used to debug some data problems.
+- **Note** By default, `up.sh` re-uses existing data on disk if present, use `./store/test-store/devel/up.sh -c` to clean
+any previous data before starting the dependencies.
 
-Give a 1 minute for all the dependencies to properly starts correctly, then jump to [Running tests](#running-tests).
+Give a 1 minute for all dependencies to properly starts correctly, then jump to [Running tests](#running-tests).
 
 #### Resetting the test databases
 

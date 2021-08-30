@@ -4,21 +4,21 @@ set -e
 
 ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-keep=
+clean=
 
 main() {
   pushd "$ROOT" &> /dev/null
 
-  while getopts "hk" opt; do
+  while getopts "hc" opt; do
     case $opt in
       h) usage && exit 0;;
-      k) keep=true;;
+      c) clean=true;;
       \?) usage_error "Invalid option: -$OPTARG";;
     esac
   done
   shift $((OPTIND-1))
 
-  if [[ -d "./data" && $keep == "" ]]; then
+  if [[ -d "./data" && $clean == true ]]; then
     echo "Cleaning data directory"
     rm -rf ./data 1> /dev/null
   fi
@@ -56,7 +56,7 @@ usage() {
   echo "spinning up all required development dependencies."
   echo ""
   echo "Options"
-  echo "    -k          Clean 'data' directory before launching dependencies"
+  echo "    -c          Clean 'data' directory before launching dependencies"
   echo "    -h          Display help about this script"
 }
 
