@@ -1492,7 +1492,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "num_cpus",
- "parking_lot 0.11.1",
+ "parking_lot 0.11.2",
  "petgraph 0.6.0",
  "priority-queue",
  "prometheus",
@@ -1596,7 +1596,7 @@ dependencies = [
  "indexmap",
  "lazy_static",
  "once_cell",
- "parking_lot 0.11.1",
+ "parking_lot 0.11.2",
  "pretty_assertions",
  "stable-hash",
  "test-store",
@@ -2367,9 +2367,9 @@ dependencies = [
 
 [[package]]
 name = "lock_api"
-version = "0.4.4"
+version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0382880606dff6d15c9476c416d18690b72742aa7b605bb6dd6ec9030fbf07eb"
+checksum = "712a4d093c9976e24e7dbca41db895dabcbac38eb5f4045393d17a95bdfb1109"
 dependencies = [
  "scopeguard",
 ]
@@ -2872,13 +2872,13 @@ dependencies = [
 
 [[package]]
 name = "parking_lot"
-version = "0.11.1"
+version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d7744ac029df22dca6284efe4e898991d28e3085c706c972bcd7da4a27a15eb"
+checksum = "7d17b78036a60663b797adeaee46f5c9dfebb86948d1255007a1d6be0271ff99"
 dependencies = [
  "instant",
- "lock_api 0.4.4",
- "parking_lot_core 0.8.3",
+ "lock_api 0.4.5",
+ "parking_lot_core 0.8.5",
 ]
 
 [[package]]
@@ -2912,9 +2912,9 @@ dependencies = [
 
 [[package]]
 name = "parking_lot_core"
-version = "0.8.3"
+version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa7a782938e745763fe6907fc6ba86946d72f49fe7e21de074e08128a99fb018"
+checksum = "d76e8e1493bcac0d2766c42737f34458f1c8c50c0d23bcb24ea953affb273216"
 dependencies = [
  "cfg-if 1.0.0",
  "instant",
@@ -3219,7 +3219,7 @@ dependencies = [
  "fnv",
  "lazy_static",
  "memchr",
- "parking_lot 0.11.1",
+ "parking_lot 0.11.2",
  "protobuf",
  "thiserror",
 ]
@@ -3270,7 +3270,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "545c5bc2b880973c9c10e4067418407a0ccaa3091781d1671d46eb35107cb26f"
 dependencies = [
  "log 0.4.14",
- "parking_lot 0.11.1",
+ "parking_lot 0.11.2",
  "scheduled-thread-pool",
 ]
 
@@ -3745,7 +3745,7 @@ version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc6f74fd1204073fa02d5d5d68bec8021be4c38690b61264b2fdb48083d0e7d7"
 dependencies = [
- "parking_lot 0.11.1",
+ "parking_lot 0.11.2",
 ]
 
 [[package]]
@@ -4487,7 +4487,7 @@ dependencies = [
  "mio 0.7.13",
  "num_cpus",
  "once_cell",
- "parking_lot 0.11.1",
+ "parking_lot 0.11.2",
  "pin-project-lite",
  "signal-hook-registry",
  "tokio-macros",
@@ -4610,7 +4610,7 @@ dependencies = [
  "fallible-iterator",
  "futures 0.3.16",
  "log 0.4.14",
- "parking_lot 0.11.1",
+ "parking_lot 0.11.2",
  "percent-encoding 2.1.0",
  "phf",
  "pin-project-lite",
@@ -4898,7 +4898,7 @@ dependencies = [
  "lazy_static",
  "log 0.4.14",
  "lru-cache",
- "parking_lot 0.11.1",
+ "parking_lot 0.11.2",
  "resolv-conf",
  "smallvec 1.6.1",
  "thiserror",
