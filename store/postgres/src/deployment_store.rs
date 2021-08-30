@@ -27,10 +27,10 @@ use graph::components::subgraph::ProofOfIndexingFinisher;
 use graph::constraint_violation;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
-    anyhow, debug, futures03, info, lazy_static, o, web3, ApiSchema, AttributeNames, BlockNumber,
-    BlockPtr, CheapClone, DeploymentHash, DeploymentState, DynTryFuture, Entity, EntityKey,
-    EntityModification, EntityQuery, Error, Logger, QueryExecutionError, Schema, StopwatchMetrics,
-    StoreError, StoreEvent, Value, BLOCK_NUMBER_MAX,
+    anyhow, debug, futures03, info, lazy_static, o, warn, web3, ApiSchema, AttributeNames,
+    BlockNumber, BlockPtr, CheapClone, DeploymentHash, DeploymentState, DynTryFuture, Entity,
+    EntityKey, EntityModification, EntityQuery, Error, Logger, QueryExecutionError, Schema,
+    StopwatchMetrics, StoreError, StoreEvent, Value, BLOCK_NUMBER_MAX,
 };
 use graph_graphql::prelude::api_schema;
 use web3::types::Address;
@@ -1187,5 +1187,13 @@ impl DeploymentStore {
     pub fn error_count(&self, id: &DeploymentHash) -> Result<usize, StoreError> {
         let conn = self.get_conn()?;
         deployment::error_count(&conn, id)
+    }
+
+    pub(crate) fn mirror_primary_tables(&self, logger: &Logger) {
+        self.conn.mirror_primary_tables().unwrap_or_else(|e| {
+            warn!(logger, "Mirroring primary tables failed. We will try again in a few minutes";
+                  "error" => e.to_string(),
+                  "shard" => self.conn.shard.as_str())
+        });
     }
 }

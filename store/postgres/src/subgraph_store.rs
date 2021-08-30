@@ -899,6 +899,12 @@ impl SubgraphStoreInner {
             .as_ref()
             .map(|site| site.into()))
     }
+
+    pub fn mirror_primary_tables(&self, logger: &Logger) {
+        for store in self.stores.values() {
+            store.mirror_primary_tables(logger);
+        }
+    }
 }
 
 #[async_trait::async_trait]

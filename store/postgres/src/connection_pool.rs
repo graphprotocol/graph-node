@@ -16,11 +16,12 @@ use graph::{
         anyhow::{self, anyhow, bail},
         crit, debug, error, info, o,
         tokio::sync::Semaphore,
-        CancelGuard, CancelHandle, CancelToken as _, CancelableError, Counter, Gauge, Logger,
+        warn, CancelGuard, CancelHandle, CancelToken as _, CancelableError, Counter, Gauge, Logger,
         MetricsRegistry, MovingStats, PoolWaitStats, StoreError,
     },
     util::security::SafeDisplay,
 };
+use itertools::Itertools;
 
 use std::fmt::{self, Write};
 use std::str::FromStr;
@@ -30,6 +31,7 @@ use std::{collections::HashMap, sync::RwLock};
 
 use postgres::config::{Config, Host};
 
+use crate::primary::NAMESPACE_PUBLIC;
 use crate::{advisory_lock, catalog};
 use crate::{Shard, PRIMARY_SHARD};
 
@@ -208,7 +210,7 @@ impl ForeignServer {
             } else {
                 catalog::create_foreign_table(
                     conn,
-                    "public",
+                    NAMESPACE_PUBLIC,
                     table_name,
                     Self::PRIMARY_PUBLIC,
                     Self::name(&*PRIMARY_SHARD).as_str(),
@@ -217,6 +219,45 @@ impl ForeignServer {
             write!(query, "{}", create_stmt)?;
         }
         conn.batch_execute(&query)?;
+        Ok(())
+    }
+
+    fn mirror_primary_tables(conn: &PgConnection) -> Result<(), StoreError> {
+        // `chains` needs to be mirrored before `deployment_schemas` because
+        // of the fk constraint on `deployment_schemas.network`. We don't
+        // care much about mirroring `active_copies` but it has a fk
+        // constraint on `deployment_schemas` and is tiny, therefore it's
+        // easiest to just mirror it
+        const PUBLIC_TABLES: [&str; 3] = ["chains", "deployment_schemas", "active_copies"];
+
+        fn copy_table(
+            conn: &PgConnection,
+            src_nsp: &str,
+            dst_nsp: &str,
+            table_name: &str,
+        ) -> Result<(), StoreError> {
+            let query = format!(
+                "insert into {dst_nsp}.{table_name} select * from {src_nsp}.{table_name};",
+                src_nsp = src_nsp,
+                dst_nsp = dst_nsp,
+                table_name = table_name
+            );
+            conn.batch_execute(&query).map_err(StoreError::from)
+        }
+
+        // Truncate all tables at once, otherwise truncation can fail
+        // because of foreign key constraints
+        let tables = PUBLIC_TABLES
+            .iter()
+            .map(|name| (NAMESPACE_PUBLIC, name))
+            .map(|(nsp, name)| format!("{}.{}", nsp, name))
+            .join(", ");
+        let query = format!("truncate table {};", tables);
+        conn.batch_execute(&query)?;
+
+        for table_name in PUBLIC_TABLES {
+            copy_table(conn, &*Self::PRIMARY_PUBLIC, NAMESPACE_PUBLIC, table_name)?;
+        }
         Ok(())
     }
 
@@ -263,6 +304,7 @@ enum PoolState {
 pub struct ConnectionPool {
     inner: Arc<TimedMutex<PoolState>>,
     logger: Logger,
+    pub shard: Shard,
 }
 
 /// The name of the pool, mostly for logging, and what purpose it serves.
@@ -310,6 +352,7 @@ impl ConnectionPool {
             logger,
             registry,
         );
+        let shard = pool.shard.clone();
         let pool_state = if pool_name.is_replica() {
             PoolState::Ready(Arc::new(pool))
         } else {
@@ -318,6 +361,7 @@ impl ConnectionPool {
         ConnectionPool {
             inner: Arc::new(TimedMutex::new(pool_state, format!("pool-{}", shard_name))),
             logger: logger.clone(),
+            shard,
         }
     }
 
@@ -476,6 +520,16 @@ impl ConnectionPool {
                 pool.wait_stats.clone()
             }
         }
+    }
+
+    /// Mirror key tables from the primary into our own schema. We do this
+    /// by manually inserting or deleting rows through comparing it with the
+    /// table on the primary. Once we drop support for PG 9.6, we can
+    /// simplify all this and achieve the same result with logical
+    /// replication.
+    pub(crate) fn mirror_primary_tables(&self) -> Result<(), StoreError> {
+        let pool = self.get_ready()?;
+        pool.mirror_primary_tables()
     }
 }
 
@@ -877,6 +931,11 @@ impl PoolInner {
             die(&pool.logger, "failed to release migration lock", &err);
         });
         result.unwrap_or_else(|err| die(&pool.logger, "migrations failed", &err));
+        pool.mirror_primary_tables().unwrap_or_else(|e| {
+            warn!(&pool.logger,
+                  "reconciling primary tables failed, continuing regardless";
+                  "error" => e.to_string())
+        });
         Ok(())
     }
 
@@ -916,6 +975,16 @@ impl PoolInner {
         info!(&self.logger, "Mapping primary");
         let conn = self.get()?;
         conn.transaction(|| ForeignServer::map_primary(&conn, &self.shard))
+    }
+
+    /// Copy the data from key tables in the primary into our local schema
+    /// so it can be used as a fallback when the primary goes down
+    pub fn mirror_primary_tables(&self) -> Result<(), StoreError> {
+        if &self.shard == &*PRIMARY_SHARD {
+            return Ok(());
+        }
+        let conn = self.get()?;
+        conn.transaction(|| ForeignServer::mirror_primary_tables(&conn))
     }
 
     // Map some tables from the `subgraphs` metadata schema from foreign

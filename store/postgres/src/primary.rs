@@ -216,6 +216,8 @@ pub struct UnusedDeployment {
 /// A namespace (schema) in the database
 pub struct Namespace(String);
 
+pub const NAMESPACE_PUBLIC: &str = "public";
+
 impl Namespace {
     pub fn new(s: String) -> Result<Self, String> {
         // Normal database namespaces must be of the form `sgd[0-9]+`
