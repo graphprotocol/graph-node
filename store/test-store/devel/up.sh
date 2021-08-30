@@ -30,13 +30,8 @@ main() {
 }
 
 prepare() {
-  if [[ ! -d "./data/ipfs" ]]; then
-    mkdir -p ./data/ipfs 1> /dev/null
-  fi
-
-  if [[ ! -d "./data/postgres" ]]; then
-    mkdir -p ./data/postgres 1> /dev/null
-  fi
+  mkdir -p ./data/ipfs 1> /dev/null
+  mkdir -p ./data/postgres 1> /dev/null
 }
 
 usage_error() {
