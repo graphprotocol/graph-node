@@ -12,7 +12,7 @@ use structopt::StructOpt;
 use tokio::sync::mpsc;
 
 use graph::blockchain::block_ingestor::BlockIngestor;
-use graph::blockchain::Blockchain as _;
+use graph::blockchain::{Blockchain as _, BlockchainMap};
 use graph::components::store::BlockStore;
 use graph::data::graphql::effort::LoadManager;
 use graph::log::logger;
@@ -205,7 +205,12 @@ async fn main() {
         let chain_head_update_listener = store_builder.chain_head_update_listener();
         let network_store = store_builder.network_store(idents);
 
-        let chains = Arc::new(networks_as_chains(
+        // To support the ethereum block ingestor, ethereum networks are referenced both by the
+        // `blockchain_map` and `ethereum_chains`. Future chains should be referred to only in
+        // `blockchain_map`.
+        let mut blockchain_map = BlockchainMap::new();
+        let ethereum_chains = networks_as_chains(
+            &mut blockchain_map,
             &logger,
             node_id.clone(),
             metrics_registry.clone(),
@@ -213,7 +218,8 @@ async fn main() {
             network_store.as_ref(),
             chain_head_update_listener.clone(),
             &logger_factory,
-        ));
+        );
+        let blockchain_map = Arc::new(blockchain_map);
 
         let load_manager = Arc::new(LoadManager::new(
             &logger,
@@ -283,7 +289,7 @@ async fn main() {
         if !opt.disable_block_ingestor {
             let block_polling_interval = Duration::from_millis(opt.ethereum_polling_interval);
 
-            start_block_ingestor(&logger, block_polling_interval, &chains);
+            start_block_ingestor(&logger, block_polling_interval, ethereum_chains);
 
             // Start a task runner
             let mut job_runner = graph::util::jobs::Runner::new(&logger);
@@ -294,7 +300,7 @@ async fn main() {
         let subgraph_instance_manager = SubgraphInstanceManager::new(
             &logger_factory,
             network_store.subgraph_store(),
-            chains.clone(),
+            blockchain_map.cheap_clone(),
             metrics_registry.clone(),
             link_resolver.cheap_clone(),
         );
@@ -321,7 +327,7 @@ async fn main() {
             Arc::new(subgraph_provider),
             network_store.subgraph_store(),
             subscription_manager,
-            chains.clone(),
+            blockchain_map,
             node_id.clone(),
             version_switching_mode,
         ));
@@ -651,7 +657,9 @@ fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<Ipf
         .collect()
 }
 
+/// Return the hashmap of ethereum chains and also add them to `blockchain_map`.
 fn networks_as_chains(
+    blockchain_map: &mut BlockchainMap,
     logger: &Logger,
     node_id: NodeId,
     registry: Arc<MetricsRegistry>,
@@ -660,7 +668,7 @@ fn networks_as_chains(
     chain_head_update_listener: Arc<ChainHeadUpdateListener>,
     logger_factory: &LoggerFactory,
 ) -> HashMap<String, Arc<ethereum::Chain>> {
-    let chains = eth_networks
+    let chains: Vec<_> = eth_networks
         .networks
         .iter()
         .filter_map(|(network_name, eth_adapters)| {
@@ -695,14 +703,20 @@ fn networks_as_chains(
                 is_ingestible,
             );
             (network_name.clone(), Arc::new(chain))
-        });
+        })
+        .collect();
+
+    for (network_name, chain) in chains.iter().cloned() {
+        blockchain_map.insert::<graph_chain_ethereum::Chain>(network_name, chain)
+    }
+
     HashMap::from_iter(chains)
 }
 
 fn start_block_ingestor(
     logger: &Logger,
     block_polling_interval: Duration,
-    chains: &HashMap<String, Arc<ethereum::Chain>>,
+    chains: HashMap<String, Arc<ethereum::Chain>>,
 ) {
     // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
     // otherwise BlockStream will not work properly.

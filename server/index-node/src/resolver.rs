@@ -1,8 +1,9 @@
 use either::Either;
+use graph::blockchain::BlockchainKind;
 use std::collections::{BTreeMap, HashMap};
 
 use graph::data::subgraph::features::detect_features;
-use graph::data::subgraph::status;
+use graph::data::subgraph::{status, MAX_SPEC_VERSION};
 use graph::prelude::*;
 use graph::{
     components::store::StatusStore,
@@ -166,7 +167,7 @@ where
             .unwrap_or(q::Value::Null))
     }
 
-    fn resolve_subgraph_features(
+    async fn resolve_subgraph_features(
         &self,
         arguments: &HashMap<&str, q::Value>,
     ) -> Result<q::Value, QueryExecutionError> {
@@ -187,16 +188,32 @@ where
             QueryExecutionError::SubgraphDeploymentIdError(invalid_qm_hash)
         })?;
 
-        // Try to fetch the subgraph manifest from IPFS. Since this operation is asynchronous, we
-        // must wait for it to finish using the `block_on` function.
         let unvalidated_subgraph_manifest = {
-            let future = UnvalidatedSubgraphManifest::<graph_chain_ethereum::Chain>::resolve(
-                deployment_hash,
-                self.link_resolver.clone(),
-                &self.logger,
-            );
-            futures03::executor::block_on(future)
-                .map_err(|_error| QueryExecutionError::SubgraphManifestResolveError)?
+            let raw: serde_yaml::Mapping = {
+                let file_bytes = self
+                    .link_resolver
+                    .cat(&self.logger, &deployment_hash.to_ipfs_link())
+                    .await
+                    .map_err(SubgraphManifestResolveError::ResolveError)?;
+
+                serde_yaml::from_slice(&file_bytes)
+                    .map_err(SubgraphManifestResolveError::ParseError)?
+            };
+
+            let kind = BlockchainKind::from_manifest(&raw)
+                .map_err(SubgraphManifestResolveError::ResolveError)?;
+            match kind {
+                BlockchainKind::Ethereum => {
+                    UnvalidatedSubgraphManifest::<graph_chain_ethereum::Chain>::resolve(
+                        deployment_hash,
+                        raw,
+                        self.link_resolver.clone(),
+                        &self.logger,
+                        MAX_SPEC_VERSION.clone(),
+                    )
+                    .await?
+                }
+            }
         };
 
         // Then validate the subgraph we've just obtained.
@@ -206,7 +223,7 @@ where
         // response.
         let subgraph_validation: Either<_, _> =
             match unvalidated_subgraph_manifest.validate(self.subgraph_store.clone()) {
-                Ok((subgraph_manifest, _warnings)) => Either::Left(subgraph_manifest),
+                Ok(subgraph_manifest) => Either::Left(subgraph_manifest),
                 Err(validation_errors) => {
                     // We must ensure that all the errors are of the `FeatureValidationError`
                     // variant and that there is at least one error of that kind.
@@ -379,7 +396,9 @@ where
             }
 
             // The top-level `indexingStatusForPendingVersion` field
-            (None, "subgraphFeatures") => self.resolve_subgraph_features(arguments),
+            (None, "subgraphFeatures") => {
+                graph::block_on(self.resolve_subgraph_features(arguments))
+            }
 
             // Resolve fields of `Object` values (e.g. the `latestBlock` field of `EthereumBlock`)
             (value, _) => Ok(value.unwrap_or(q::Value::Null)),
