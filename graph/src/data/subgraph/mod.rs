@@ -66,7 +66,7 @@ lazy_static! {
         .ok()
         .and_then(|api_version_str| Version::parse(&api_version_str).ok())
         .unwrap_or(Version::new(0, 0, 5));
-    static ref MAX_SPEC_VERSION: Version = std::env::var("GRAPH_MAX_SPEC_VERSION")
+    pub static ref MAX_SPEC_VERSION: Version = std::env::var("GRAPH_MAX_SPEC_VERSION")
         .ok()
         .and_then(|api_version_str| Version::parse(&api_version_str).ok())
         .unwrap_or(SPEC_VERSION_0_0_3);
@@ -283,7 +283,7 @@ pub enum SubgraphRegistrarError {
     #[error("subgraph name not found: {0}")]
     NameNotFound(String),
     #[error("Ethereum network not supported by registrar: {0}")]
-    NetworkNotSupported(String),
+    NetworkNotSupported(Error),
     #[error("deployment not found: {0}")]
     DeploymentNotFound(String),
     #[error("deployment assignment unchanged: {0}")]
@@ -795,26 +795,22 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
     pub async fn resolve(
         id: DeploymentHash,
+        raw: serde_yaml::Mapping,
         resolver: Arc<impl LinkResolver>,
         logger: &Logger,
+        max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
         Ok(Self(
-            SubgraphManifest::resolve(id, resolver.deref(), logger).await?,
+            SubgraphManifest::resolve_from_raw(id, raw, resolver.deref(), logger, max_spec_version)
+                .await?,
         ))
     }
 
     pub fn validate<S: SubgraphStore>(
         self,
         store: Arc<S>,
-    ) -> Result<
-        (SubgraphManifest<C>, Vec<SubgraphManifestValidationWarning>),
-        Vec<SubgraphManifestValidationError>,
-    > {
-        let (schemas, import_errors) = self.0.schema.resolve_schema_references(store.clone());
-        let validation_warnings = import_errors
-            .into_iter()
-            .map(SubgraphManifestValidationWarning::SchemaValidationWarning)
-            .collect();
+    ) -> Result<SubgraphManifest<C>, Vec<SubgraphManifestValidationError>> {
+        let (schemas, _) = self.0.schema.resolve_schema_references(store.clone());
 
         let mut errors: Vec<SubgraphManifestValidationError> = vec![];
 
@@ -909,7 +905,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         }
 
         match errors.is_empty() {
-            true => Ok((self.0, validation_warnings)),
+            true => Ok(self.0),
             false => Err(errors),
         }
     }
@@ -921,40 +917,12 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
 
 impl<C: Blockchain> SubgraphManifest<C> {
     /// Entry point for resolving a subgraph definition.
-    /// Right now the only supported links are of the form:
-    /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
-    pub async fn resolve(
-        id: DeploymentHash,
-        resolver: &impl LinkResolver,
-        logger: &Logger,
-    ) -> Result<Self, SubgraphManifestResolveError> {
-        let link = Link {
-            link: id.to_string(),
-        };
-        info!(logger, "Resolve manifest"; "link" => &link.link);
-
-        let file_bytes = resolver
-            .cat(logger, &link)
-            .await
-            .map_err(SubgraphManifestResolveError::ResolveError)?;
-
-        let file = String::from_utf8(file_bytes.to_vec())
-            .map_err(|_| SubgraphManifestResolveError::NonUtf8)?;
-        let raw: serde_yaml::Value = serde_yaml::from_str(&file)?;
-
-        let raw_mapping = match raw {
-            serde_yaml::Value::Mapping(m) => m,
-            _ => return Err(SubgraphManifestResolveError::InvalidFormat),
-        };
-
-        Self::resolve_from_raw(id, raw_mapping, resolver, logger).await
-    }
-
     pub async fn resolve_from_raw(
         id: DeploymentHash,
         mut raw: serde_yaml::Mapping,
         resolver: &impl LinkResolver,
         logger: &Logger,
+        max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
         // Inject the IPFS hash as the ID of the subgraph into the definition.
         raw.insert(
@@ -968,7 +936,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
         debug!(logger, "Features {:?}", unresolved.features);
 
         unresolved
-            .resolve(&*resolver, logger)
+            .resolve(&*resolver, logger, max_spec_version)
             .await
             .map_err(SubgraphManifestResolveError::ResolveError)
     }
@@ -1024,6 +992,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
         self,
         resolver: &impl LinkResolver,
         logger: &Logger,
+        max_spec_version: semver::Version,
     ) -> Result<SubgraphManifest<C>, anyhow::Error> {
         let UnresolvedSubgraphManifest {
             id,
@@ -1038,11 +1007,11 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             chain,
         } = self;
 
-        if !(MIN_SPEC_VERSION..=MAX_SPEC_VERSION.clone()).contains(&spec_version) {
+        if !(MIN_SPEC_VERSION..=max_spec_version.clone()).contains(&spec_version) {
             return Err(anyhow!(
                 "This Graph Node only supports manifest spec versions between {} and {}, but subgraph `{}` uses `{}`",
                 MIN_SPEC_VERSION,
-                *MAX_SPEC_VERSION,
+                max_spec_version,
                 id,
                 spec_version
             ));

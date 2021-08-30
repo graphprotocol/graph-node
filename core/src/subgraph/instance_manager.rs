@@ -2,9 +2,9 @@ use super::loader::load_dynamic_data_sources;
 use super::SubgraphInstance;
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
-use graph::blockchain::DataSource;
+use graph::blockchain::{BlockchainKind, DataSource};
 use graph::data::store::scalar::Bytes;
-use graph::data::subgraph::UnifiedMappingApiVersion;
+use graph::data::subgraph::{UnifiedMappingApiVersion, MAX_SPEC_VERSION};
 use graph::prelude::TryStreamExt;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::util::lfu_cache::LfuCache;
@@ -81,10 +81,10 @@ struct IndexingContext<T: RuntimeHostBuilder<C>, C: Blockchain> {
     pub block_stream_metrics: Arc<BlockStreamMetrics>,
 }
 
-pub struct SubgraphInstanceManager<C, S, M, L> {
+pub struct SubgraphInstanceManager<S, M, L> {
     logger_factory: LoggerFactory,
     subgraph_store: Arc<S>,
-    chains: Arc<BlockchainMap<C>>,
+    chains: Arc<BlockchainMap>,
     metrics_registry: Arc<M>,
     manager_metrics: SubgraphInstanceManagerMetrics,
     instances: SharedInstanceKeepAliveMap,
@@ -172,10 +172,9 @@ impl SubgraphInstanceMetrics {
 }
 
 #[async_trait]
-impl<C, S, M, L> SubgraphInstanceManagerTrait for SubgraphInstanceManager<C, S, M, L>
+impl<S, M, L> SubgraphInstanceManagerTrait for SubgraphInstanceManager<S, M, L>
 where
     S: SubgraphStore,
-    C: Blockchain,
     M: MetricsRegistry,
     L: LinkResolver + Clone,
 {
@@ -185,28 +184,28 @@ where
         manifest: serde_yaml::Mapping,
     ) {
         let logger = self.logger_factory.subgraph_logger(&loc);
+        let err_logger = logger.clone();
+        let instance_manager = self.cheap_clone();
 
+        let subgraph_start_future = async move {
+            match BlockchainKind::from_manifest(&manifest)? {
+                BlockchainKind::Ethereum => {
+                    instance_manager
+                        .start_subgraph_inner::<graph_chain_ethereum::Chain>(logger, loc, manifest)
+                        .await
+                }
+            }
+        };
         // Perform the actual work of starting the subgraph in a separate
         // task. If the subgraph is a graft or a copy, starting it will
         // perform the actual work of grafting/copying, which can take
         // hours. Running it in the background makes sure the instance
         // manager does not hang because of that work.
         graph::spawn(async move {
-            match Self::start_subgraph_inner(
-                logger.clone(),
-                self.instances.clone(),
-                self.subgraph_store.clone(),
-                self.chains.clone(),
-                loc,
-                manifest,
-                self.metrics_registry.cheap_clone(),
-                self.link_resolver.cheap_clone(),
-            )
-            .await
-            {
+            match subgraph_start_future.await {
                 Ok(()) => self.manager_metrics.subgraph_count.inc(),
                 Err(err) => error!(
-                    logger,
+                    err_logger,
                     "Failed to start subgraph";
                     "error" => format!("{}", err),
                     "code" => LogCode::SubgraphStartFailure
@@ -227,17 +226,16 @@ where
     }
 }
 
-impl<C, S, M, L> SubgraphInstanceManager<C, S, M, L>
+impl<S, M, L> SubgraphInstanceManager<S, M, L>
 where
     S: SubgraphStore,
-    C: Blockchain,
     M: MetricsRegistry,
     L: LinkResolver + Clone,
 {
     pub fn new(
         logger_factory: &LoggerFactory,
         subgraph_store: Arc<S>,
-        chains: Arc<BlockchainMap<C>>,
+        chains: Arc<BlockchainMap>,
         metrics_registry: Arc<M>,
         link_resolver: Arc<L>,
     ) -> Self {
@@ -255,18 +253,15 @@ where
         }
     }
 
-    async fn start_subgraph_inner(
+    async fn start_subgraph_inner<C: Blockchain>(
+        self: Arc<Self>,
         logger: Logger,
-        instances: SharedInstanceKeepAliveMap,
-        store: Arc<dyn SubgraphStore>,
-        chains: Arc<BlockchainMap<C>>,
         deployment: DeploymentLocator,
         manifest: serde_yaml::Mapping,
-        registry: Arc<M>,
-        link_resolver: Arc<L>,
     ) -> Result<(), Error> {
-        let subgraph_store = store.cheap_clone();
-        let store = store.writable(&deployment)?;
+        let subgraph_store = self.subgraph_store.cheap_clone();
+        let registry = self.metrics_registry.cheap_clone();
+        let store = self.subgraph_store.writable(&deployment)?;
 
         // Start the subgraph deployment before reading dynamic data
         // sources; if the subgraph is a graft or a copy, starting it will
@@ -294,8 +289,9 @@ where
                 deployment.hash.cheap_clone(),
                 manifest,
                 // Allow for infinite retries for subgraph definition files.
-                &link_resolver.as_ref().clone().with_retries(),
+                &self.link_resolver.as_ref().clone().with_retries(),
                 &logger,
+                MAX_SPEC_VERSION.clone(),
             )
             .await
             .context("Failed to resolve subgraph from IPFS")?;
@@ -325,8 +321,9 @@ where
         let required_capabilities = C::NodeCapabilities::from_data_sources(&manifest.data_sources);
         let network = manifest.network_name();
 
-        let chain = chains
-            .get(&network)
+        let chain = self
+            .chains
+            .get::<C>(network.clone())
             .with_context(|| format!("no chain configured for network {}", network))?
             .clone();
 
@@ -338,8 +335,11 @@ where
 
         // Create a subgraph instance from the manifest; this moves
         // ownership of the manifest and host builder into the new instance
-        let stopwatch_metrics =
-            StopwatchMetrics::new(logger.clone(), deployment.hash.clone(), registry.clone());
+        let stopwatch_metrics = StopwatchMetrics::new(
+            logger.clone(),
+            deployment.hash.clone(),
+            self.metrics_registry.clone(),
+        );
 
         let unified_mapping_api_version = manifest.unified_mapping_api_version()?;
         let triggers_adapter = chain.triggers_adapter(&deployment, &required_capabilities, unified_mapping_api_version ,stopwatch_metrics.clone()).map_err(|e|
@@ -349,17 +349,17 @@ where
                 &required_capabilities, e))?.clone();
 
         let subgraph_metrics = Arc::new(SubgraphInstanceMetrics::new(
-            registry.clone(),
+            registry.cheap_clone(),
             deployment.hash.as_str(),
         ));
         let subgraph_metrics_unregister = subgraph_metrics.clone();
         let host_metrics = Arc::new(HostMetrics::new(
-            registry.clone(),
+            registry.cheap_clone(),
             deployment.hash.as_str(),
             stopwatch_metrics.clone(),
         ));
         let block_stream_metrics = Arc::new(BlockStreamMetrics::new(
-            registry.clone(),
+            registry.cheap_clone(),
             &deployment.hash,
             manifest.network_name(),
             store.shard().to_string(),
@@ -377,7 +377,7 @@ where
 
         let host_builder = graph_runtime_wasm::RuntimeHostBuilder::new(
             chain.runtime_adapter(),
-            link_resolver.clone(),
+            self.link_resolver.cheap_clone(),
             subgraph_store,
         );
 
@@ -401,7 +401,7 @@ where
             state: IndexingState {
                 logger: logger.cheap_clone(),
                 instance,
-                instances,
+                instances: self.instances.cheap_clone(),
                 filter,
                 entity_lfu_cache: LfuCache::new(),
             },
