@@ -2,6 +2,7 @@
 //! shard. Anything in this module can only be used with a database connection
 //! for the primary shard.
 use diesel::{
+    connection::SimpleConnection,
     data_types::PgTimestamp,
     dsl::{any, exists, not, select},
     pg::Pg,
@@ -32,6 +33,7 @@ use graph::{
     },
 };
 use graph::{data::subgraph::schema::generate_entity_id, prelude::StoreEvent};
+use itertools::Itertools;
 use maybe_owned::MaybeOwned;
 use std::{
     collections::HashMap,
@@ -44,8 +46,9 @@ use std::{
 
 use crate::{
     block_range::UNVERSIONED_RANGE,
+    connection_pool::{ConnectionPool, ForeignServer},
     detail::DeploymentDetail,
-    subgraph_store::{unused, Shard},
+    subgraph_store::{unused, Shard, PRIMARY_SHARD},
     NotificationSender,
 };
 
@@ -360,8 +363,6 @@ impl From<&Site> for DeploymentLocator {
 /// not originate in the database
 #[cfg(debug_assertions)]
 pub fn make_dummy_site(deployment: DeploymentHash, namespace: Namespace, network: String) -> Site {
-    use crate::PRIMARY_SHARD;
-
     Site {
         id: DeploymentId(-7),
         deployment,
@@ -1369,5 +1370,109 @@ impl<'a> Connection<'a> {
         delete(cp::table.filter(cp::dst.eq(dst.id))).execute(self.conn.as_ref())?;
 
         Ok(())
+    }
+}
+
+/// A struct that reads from pools in order, trying each pool in turn until
+/// a query returns either success or anything but a
+/// `Err(StoreError::DatabaseUnavailable)`. This only works for tables that
+/// are mirrored through `refresh_tables`
+pub struct Mirror {
+    pools: Vec<ConnectionPool>,
+}
+
+impl Mirror {
+    pub fn new(pools: &HashMap<Shard, ConnectionPool>) -> Mirror {
+        let primary = pools
+            .get(&PRIMARY_SHARD)
+            .expect("we always have a primary pool")
+            .clone();
+        let pools = pools
+            .into_iter()
+            .filter(|(shard, _)| *shard != &*PRIMARY_SHARD)
+            .fold(vec![primary], |mut pools, (_, pool)| {
+                pools.push(pool.clone());
+                pools
+            });
+        Mirror { pools }
+    }
+
+    /// Execute the function `f` with connections from each of our pools in
+    /// order until for one of them we get any result other than
+    /// `Err(StoreError::DatabaseUnavailable)`. In other words, we try to
+    /// execute `f` against our pools in order until we can be sure that we
+    /// talked to a database that is up. The function `f` must only access
+    /// tables that are mirrored through `refresh_tables`
+    pub(crate) fn read<'a, T>(
+        &self,
+        f: impl 'a + Fn(&PooledConnection<ConnectionManager<PgConnection>>) -> Result<T, StoreError>,
+    ) -> Result<T, StoreError> {
+        for pool in &self.pools {
+            let conn = match pool.get() {
+                Ok(conn) => conn,
+                Err(StoreError::DatabaseUnavailable) => continue,
+                Err(e) => return Err(e),
+            };
+            match f(&conn) {
+                Ok(v) => return Ok(v),
+                Err(StoreError::DatabaseUnavailable) => continue,
+                Err(e) => return Err(e),
+            }
+        }
+        Err(StoreError::DatabaseUnavailable)
+    }
+
+    /// Refresh the contents of mirrored tables from the primary (through
+    /// the fdw mapping that `ForeignServer` establishes)
+    pub(crate) fn refresh_tables(conn: &PgConnection) -> Result<(), StoreError> {
+        // `chains` needs to be mirrored before `deployment_schemas` because
+        // of the fk constraint on `deployment_schemas.network`. We don't
+        // care much about mirroring `active_copies` but it has a fk
+        // constraint on `deployment_schemas` and is tiny, therefore it's
+        // easiest to just mirror it
+        const PUBLIC_TABLES: [&str; 3] = ["chains", "deployment_schemas", "active_copies"];
+
+        fn copy_table(
+            conn: &PgConnection,
+            src_nsp: &str,
+            dst_nsp: &str,
+            table_name: &str,
+        ) -> Result<(), StoreError> {
+            let query = format!(
+                "insert into {dst_nsp}.{table_name} select * from {src_nsp}.{table_name};",
+                src_nsp = src_nsp,
+                dst_nsp = dst_nsp,
+                table_name = table_name
+            );
+            conn.batch_execute(&query).map_err(StoreError::from)
+        }
+
+        // Truncate all tables at once, otherwise truncation can fail
+        // because of foreign key constraints
+        let tables = PUBLIC_TABLES
+            .iter()
+            .map(|name| (NAMESPACE_PUBLIC, name))
+            .map(|(nsp, name)| format!("{}.{}", nsp, name))
+            .join(", ");
+        let query = format!("truncate table {};", tables);
+        conn.batch_execute(&query)?;
+
+        for table_name in PUBLIC_TABLES {
+            copy_table(
+                conn,
+                &*ForeignServer::PRIMARY_PUBLIC,
+                NAMESPACE_PUBLIC,
+                table_name,
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Return the actual primary connection pool; all write access to the
+    /// primary should go through this pool
+    pub(crate) fn primary(&self) -> &ConnectionPool {
+        // Will not panic since the constructor ensures we always have a
+        // primary
+        &self.pools[0]
     }
 }
