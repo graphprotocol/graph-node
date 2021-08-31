@@ -10,6 +10,7 @@ use graph::cheap_clone::CheapClone;
 use graph::constraint_violation;
 use graph::prelude::tokio;
 use graph::prelude::tokio::time::Instant;
+use graph::util::timed_rw_lock::TimedMutex;
 use graph::{
     prelude::{
         anyhow::{self, anyhow, bail},
@@ -23,7 +24,7 @@ use graph::{
 
 use std::fmt::{self, Write};
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use std::{collections::HashMap, sync::RwLock};
 
@@ -245,7 +246,8 @@ enum PoolState {
 
 #[derive(Clone)]
 pub struct ConnectionPool {
-    inner: Arc<Mutex<PoolState>>,
+    inner: Arc<TimedMutex<PoolState>>,
+    logger: Logger,
 }
 
 impl ConnectionPool {
@@ -269,7 +271,11 @@ impl ConnectionPool {
             registry,
         );
         ConnectionPool {
-            inner: Arc::new(Mutex::new(PoolState::Created(Arc::new(pool), servers))),
+            inner: Arc::new(TimedMutex::new(
+                PoolState::Created(Arc::new(pool), servers),
+                format!("pool-{}", shard_name),
+            )),
+            logger: logger.clone(),
         }
     }
 
@@ -278,7 +284,7 @@ impl ConnectionPool {
     /// or the pool is marked as unavailable, return
     /// `StoreError::DatabaseUnavailable`
     fn get_ready(&self) -> Result<Arc<PoolInner>, StoreError> {
-        let mut guard = self.inner.lock().unwrap();
+        let mut guard = self.inner.lock(&self.logger);
         match &*guard {
             PoolState::Created(pool, servers) => {
                 pool.setup(servers.clone())?;
@@ -391,7 +397,7 @@ impl ConnectionPool {
     ///
     /// If any errors happen during the migration, the process panics
     pub fn setup(&self) {
-        let mut guard = self.inner.lock().unwrap();
+        let mut guard = self.inner.lock(&self.logger);
         match &*guard {
             PoolState::Created(pool, servers) => {
                 // If setup errors, we will try again later
@@ -404,7 +410,7 @@ impl ConnectionPool {
     }
 
     pub(crate) async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
-        let pool = match &*self.inner.lock().unwrap() {
+        let pool = match &*self.inner.lock(&self.logger) {
             PoolState::Created(pool, _) | PoolState::Unavailable(pool) | PoolState::Ready(pool) => {
                 pool.clone()
             }
@@ -413,7 +419,7 @@ impl ConnectionPool {
     }
 
     pub(crate) fn wait_stats(&self) -> PoolWaitStats {
-        match &*self.inner.lock().unwrap() {
+        match &*self.inner.lock(&self.logger) {
             PoolState::Created(pool, _) | PoolState::Unavailable(pool) | PoolState::Ready(pool) => {
                 pool.wait_stats.clone()
             }
