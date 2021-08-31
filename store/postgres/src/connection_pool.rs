@@ -231,6 +231,7 @@ impl ForeignServer {
             "subgraph_error",
             "dynamic_ethereum_contract_data_source",
             "table_stats",
+            "subgraph_deployment_assignment",
         ] {
             let create_stmt =
                 catalog::create_foreign_table(conn, "subgraphs", table_name, &nsp, &self.name)?;

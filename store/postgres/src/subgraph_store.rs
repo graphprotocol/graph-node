@@ -33,7 +33,7 @@ use store::StoredDynamicDataSource;
 use crate::{
     connection_pool::ConnectionPool,
     primary,
-    primary::{DeploymentId, Site},
+    primary::{DeploymentId, Mirror as PrimaryMirror, Site},
     relational::Layout,
     NotificationSender,
 };
@@ -235,6 +235,7 @@ impl std::ops::Deref for SubgraphStore {
 
 pub struct SubgraphStoreInner {
     logger: Logger,
+    mirror: PrimaryMirror,
     primary: ConnectionPool,
     stores: HashMap<Shard, Arc<DeploymentStore>>,
     /// Cache for the mapping from deployment id to shard/namespace/id. Only
@@ -274,6 +275,14 @@ impl SubgraphStoreInner {
             .find(|(name, _, _, _)| name == &*PRIMARY_SHARD)
             .map(|(_, pool, _, _)| pool.clone())
             .expect("we always have a primary shard");
+        let mirror = {
+            let pools = HashMap::from_iter(
+                stores
+                    .iter()
+                    .map(|(name, pool, _, _)| (name.clone(), pool.clone())),
+            );
+            PrimaryMirror::new(&pools)
+        };
         let stores = HashMap::from_iter(stores.into_iter().map(
             |(name, main_pool, read_only_pools, weights)| {
                 let logger = logger.new(o!("shard" => name.to_string()));
@@ -293,6 +302,7 @@ impl SubgraphStoreInner {
         let logger = logger.new(o!("shard" => PRIMARY_SHARD.to_string()));
         SubgraphStoreInner {
             logger,
+            mirror,
             primary,
             stores,
             sites,
@@ -974,8 +984,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     }
 
     fn assignments(&self, node: &NodeId) -> Result<Vec<DeploymentLocator>, StoreError> {
-        let primary = self.primary_conn()?;
-        primary
+        self.mirror
             .assignments(node)
             .map(|sites| sites.iter().map(|site| site.into()).collect())
     }
