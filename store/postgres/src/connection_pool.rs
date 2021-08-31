@@ -21,7 +21,6 @@ use graph::{
     },
     util::security::SafeDisplay,
 };
-use itertools::Itertools;
 
 use std::fmt::{self, Write};
 use std::str::FromStr;
@@ -31,7 +30,7 @@ use std::{collections::HashMap, sync::RwLock};
 
 use postgres::config::{Config, Host};
 
-use crate::primary::NAMESPACE_PUBLIC;
+use crate::primary::{self, NAMESPACE_PUBLIC};
 use crate::{advisory_lock, catalog};
 use crate::{Shard, PRIMARY_SHARD};
 
@@ -81,7 +80,7 @@ pub struct ForeignServer {
 }
 
 impl ForeignServer {
-    const PRIMARY_PUBLIC: &'static str = "primary_public";
+    pub(crate) const PRIMARY_PUBLIC: &'static str = "primary_public";
 
     /// The name of the foreign server under which data for `shard` is
     /// accessible
@@ -219,45 +218,6 @@ impl ForeignServer {
             write!(query, "{}", create_stmt)?;
         }
         conn.batch_execute(&query)?;
-        Ok(())
-    }
-
-    fn mirror_primary_tables(conn: &PgConnection) -> Result<(), StoreError> {
-        // `chains` needs to be mirrored before `deployment_schemas` because
-        // of the fk constraint on `deployment_schemas.network`. We don't
-        // care much about mirroring `active_copies` but it has a fk
-        // constraint on `deployment_schemas` and is tiny, therefore it's
-        // easiest to just mirror it
-        const PUBLIC_TABLES: [&str; 3] = ["chains", "deployment_schemas", "active_copies"];
-
-        fn copy_table(
-            conn: &PgConnection,
-            src_nsp: &str,
-            dst_nsp: &str,
-            table_name: &str,
-        ) -> Result<(), StoreError> {
-            let query = format!(
-                "insert into {dst_nsp}.{table_name} select * from {src_nsp}.{table_name};",
-                src_nsp = src_nsp,
-                dst_nsp = dst_nsp,
-                table_name = table_name
-            );
-            conn.batch_execute(&query).map_err(StoreError::from)
-        }
-
-        // Truncate all tables at once, otherwise truncation can fail
-        // because of foreign key constraints
-        let tables = PUBLIC_TABLES
-            .iter()
-            .map(|name| (NAMESPACE_PUBLIC, name))
-            .map(|(nsp, name)| format!("{}.{}", nsp, name))
-            .join(", ");
-        let query = format!("truncate table {};", tables);
-        conn.batch_execute(&query)?;
-
-        for table_name in PUBLIC_TABLES {
-            copy_table(conn, &*Self::PRIMARY_PUBLIC, NAMESPACE_PUBLIC, table_name)?;
-        }
         Ok(())
     }
 
@@ -984,7 +944,7 @@ impl PoolInner {
             return Ok(());
         }
         let conn = self.get()?;
-        conn.transaction(|| ForeignServer::mirror_primary_tables(&conn))
+        conn.transaction(|| primary::Mirror::refresh_tables(&conn))
     }
 
     // Map some tables from the `subgraphs` metadata schema from foreign

@@ -12,7 +12,10 @@ use graph_store_postgres::{
 };
 
 pub fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(), Error> {
-    let mut chains = block_store::load_chains(&primary)?;
+    let mut chains = {
+        let conn = primary.get()?;
+        block_store::load_chains(&conn)?
+    };
     chains.sort_by_key(|chain| chain.name.clone());
 
     if !chains.is_empty() {

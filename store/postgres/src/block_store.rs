@@ -15,10 +15,9 @@ use graph::{
 };
 
 use crate::{
-    chain_head_listener::ChainHeadUpdateSender, connection_pool::ConnectionPool, ChainStore,
-    NotificationSender,
+    chain_head_listener::ChainHeadUpdateSender, connection_pool::ConnectionPool,
+    primary::Mirror as PrimaryMirror, ChainStore, NotificationSender, Shard,
 };
-use crate::{subgraph_store::PRIMARY_SHARD, Shard};
 
 #[cfg(debug_assertions)]
 pub const FAKE_NETWORK_SHARED: &str = "fake_network_shared";
@@ -86,9 +85,8 @@ pub mod primary {
         }
     }
 
-    pub fn load_chains(pool: &ConnectionPool) -> Result<Vec<Chain>, StoreError> {
-        let conn = pool.get()?;
-        Ok(chains::table.load(&conn)?)
+    pub fn load_chains(conn: &PgConnection) -> Result<Vec<Chain>, StoreError> {
+        Ok(chains::table.load(conn)?)
     }
 
     pub fn find_chain(conn: &PgConnection, name: &str) -> Result<Option<Chain>, StoreError> {
@@ -174,8 +172,8 @@ pub struct BlockStore {
     /// previous state in the database.
     stores: RwLock<HashMap<String, Arc<ChainStore>>>,
     pools: HashMap<Shard, ConnectionPool>,
-    primary: ConnectionPool,
     sender: Arc<NotificationSender>,
+    mirror: PrimaryMirror,
 }
 
 impl BlockStore {
@@ -198,18 +196,15 @@ impl BlockStore {
         pools: HashMap<Shard, ConnectionPool>,
         sender: Arc<NotificationSender>,
     ) -> Result<Self, StoreError> {
-        let primary = pools
-            .get(&PRIMARY_SHARD)
-            .expect("we always have a primary pool")
-            .clone();
-        let existing_chains = primary::load_chains(&primary)?;
+        let mirror = PrimaryMirror::new(&pools);
+        let existing_chains = mirror.read(|conn| primary::load_chains(conn))?;
 
         let block_store = Self {
             logger,
             stores: RwLock::new(HashMap::new()),
             pools,
-            primary,
             sender,
+            mirror,
         };
 
         fn reduce_idents(
@@ -295,8 +290,12 @@ impl BlockStore {
                     block_store.add_chain_store(&chain, status, false)?;
                 }
                 (None, Some(ident)) => {
-                    let chain =
-                        primary::add_chain(&block_store.primary, &chain_name, &ident, &shard)?;
+                    let chain = primary::add_chain(
+                        &block_store.mirror.primary(),
+                        &chain_name,
+                        &ident,
+                        &shard,
+                    )?;
                     block_store.add_chain_store(&chain, ChainStatus::Ingestible, true)?;
                 }
                 (None, None) => {
@@ -328,7 +327,7 @@ impl BlockStore {
     }
 
     pub(crate) async fn query_permit_primary(&self) -> tokio::sync::OwnedSemaphorePermit {
-        self.primary.query_permit().await
+        self.mirror.primary().query_permit().await
     }
 
     fn add_chain_store(
@@ -343,7 +342,7 @@ impl BlockStore {
             .ok_or_else(|| constraint_violation!("there is no pool for shard {}", chain.shard))?
             .clone();
         let sender = ChainHeadUpdateSender::new(
-            self.primary.clone(),
+            self.mirror.primary().clone(),
             chain.name.clone(),
             self.sender.clone(),
         );
@@ -389,13 +388,16 @@ impl BlockStore {
         store.chain_head_block(chain)
     }
 
-    fn lookup_chain(&self, chain: &str) -> Result<Option<Arc<ChainStore>>, StoreError> {
+    fn lookup_chain<'a>(&'a self, chain: &'a str) -> Result<Option<Arc<ChainStore>>, StoreError> {
         // See if we have that chain in the database even if it wasn't one
         // of the configured chains
-        let conn = self.primary.get()?;
-        primary::find_chain(&conn, chain)?
-            .map(|chain| self.add_chain_store(&chain, ChainStatus::ReadOnly, false))
-            .transpose()
+        self.mirror.read(|conn| {
+            primary::find_chain(&conn, chain).and_then(|chain| {
+                chain
+                    .map(|chain| self.add_chain_store(&chain, ChainStatus::ReadOnly, false))
+                    .transpose()
+            })
+        })
     }
 
     fn store(&self, chain: &str) -> Option<Arc<ChainStore>> {
@@ -425,7 +427,7 @@ impl BlockStore {
 
         // Delete from the primary first since that's where
         // deployment_schemas has a fk constraint on chains
-        primary::drop_chain(&self.primary, chain)?;
+        primary::drop_chain(&self.mirror.primary(), chain)?;
 
         chain_store.drop_chain()?;
 
