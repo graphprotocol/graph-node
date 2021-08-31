@@ -1420,7 +1420,11 @@ impl Mirror {
         // constraint on `deployment_schemas` and is tiny, therefore it's
         // easiest to just mirror it
         const PUBLIC_TABLES: [&str; 3] = ["chains", "deployment_schemas", "active_copies"];
-        const SUBGRAPHS_TABLES: [&str; 1] = ["subgraph_deployment_assignment"];
+        const SUBGRAPHS_TABLES: [&str; 3] = [
+            "subgraph_deployment_assignment",
+            "subgraph",
+            "subgraph_version",
+        ];
 
         fn copy_table(
             conn: &PgConnection,
