@@ -21,9 +21,11 @@ use graph_store_postgres::layout_for_tests::FAKE_NETWORK_SHARED;
 use graph_store_postgres::{connection_pool::ConnectionPool, Shard, SubscriptionManager};
 use graph_store_postgres::{
     BlockStore as DieselBlcokStore, DeploymentPlacer, SubgraphStore as DieselSubgraphStore,
+    PRIMARY_SHARD,
 };
 use hex_literal::hex;
 use lazy_static::lazy_static;
+use std::collections::HashMap;
 use std::time::Instant;
 use std::{collections::BTreeSet, env};
 use std::{marker::PhantomData, sync::Mutex};
@@ -496,4 +498,10 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
 pub fn primary_connection() -> graph_store_postgres::layout_for_tests::Connection<'static> {
     let conn = PRIMARY_POOL.get().unwrap();
     graph_store_postgres::layout_for_tests::Connection::new(conn)
+}
+
+pub fn primary_mirror() -> graph_store_postgres::layout_for_tests::Mirror {
+    let pool = PRIMARY_POOL.clone();
+    let map = HashMap::from_iter(Some((PRIMARY_SHARD.clone(), pool)));
+    graph_store_postgres::layout_for_tests::Mirror::new(&map)
 }
