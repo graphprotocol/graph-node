@@ -76,7 +76,7 @@ select
     ethereum_hex_to_bytea(receipt ->> 'status') as status
 from (
     select jsonb_array_elements(data -> 'transaction_receipts') as receipt
-    from"#,
+    from "#,
         );
         out.push_sql(&self.blocks_table_name);
         out.push_sql(" where hash = ");
