@@ -1,6 +1,7 @@
 use graph::components::store::{EntityCollection, EntityFilter, EntityQuery, EntityType};
 use graph::data::graphql::DocumentExt;
-use graph::data::subgraph::schema::POI_OBJECT;
+use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
+use graph::prelude::EntityKey;
 use graph_store_postgres::BlockStore;
 use graphql_parser::schema::ObjectType;
 use std::io::prelude::*;
@@ -14,33 +15,24 @@ use zip::write::FileOptions;
 use diesel::sql_types::{Integer, Text};
 
 use graph::components::store::BlockStore as _;
-use graph::data::query::QueryTarget;
 use graph::data::subgraph::DeploymentHash;
 use graph::prelude::anyhow::bail;
 use graph::prelude::{
     anyhow,
     chrono::prelude::{DateTime, Utc},
     tokio::fs::File as TokFile,
-    AttributeNames, Entity, Schema, SubgraphName, SubgraphStore as _, BLOCK_NUMBER_MAX,
+    AttributeNames, Entity, Schema, SubgraphStore as _,
 };
 
-use graph_store_postgres::command_support::catalog as store_catalog;
 use graph_store_postgres::command_support::catalog::block_store;
 use graph_store_postgres::{connection_pool::ConnectionPool, Store, SubgraphStore};
+
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::sync::Arc;
 
-//Nothing here requires async.
-// use reqwest::blocking::multipart;
-// use reqwest::blocking::Client;
-
-//Async
 use graph::prelude::reqwest::{multipart as AsyncMultipart, Body, Client as AsyncClient};
-// use reqwest::multipart as AsyncMultipart;
-// use reqwest::{Body, Client as AsyncClient};
-
 use tokio_util::codec::{BytesCodec, FramedRead};
 
 use csv::WriterBuilder;
@@ -106,26 +98,16 @@ Process:
 
 pub async fn sync_poi(
     store: Arc<Store>,
-    pool: ConnectionPool,
     dispute_id: String,
     indexer_id: String,
     deployment_id: String,
-    subgraph_name: Option<String>,
     debug: bool,
     host: String,
 ) -> Result<(), anyhow::Error> {
     let st = SystemTime::now();
     let time_str = iso8601(&st);
 
-    let pooled_connection = pool.get()?;
-    let connection = store_catalog::Connection::new(&pooled_connection);
-
-    let deployment_hash = match subgraph_name {
-        Some(name) => {
-            connection.current_deployment_for_subgraph(SubgraphName::new(name).unwrap())?
-        }
-        None => DeploymentHash::new(&deployment_id).unwrap(),
-    };
+    let deployment_hash = DeploymentHash::new(&deployment_id).unwrap();
 
     let root_path = env::temp_dir();
     fs::create_dir_all(&root_path)?;
@@ -139,7 +121,8 @@ pub async fn sync_poi(
 
     let subgraph_store = store.subgraph_store();
 
-    let poi_records_db = get_poi_from_store(subgraph_store, deployment_hash)?;
+    // let poi_records_db = get_poi_from_store(subgraph_store, deployment_hash)?;
+    let poi_records_db = get_poi_from_store_find_query(subgraph_store, deployment_hash)?;
 
     let poi_records = map_db_poi(poi_records_db);
 
@@ -200,7 +183,6 @@ pub async fn sync_entities(
     dispute_id: String,
     indexer_id: String,
     deployment_id: String,
-    subgraph_name: Option<String>,
     debug: bool,
     host: String,
 ) -> Result<(), anyhow::Error> {
@@ -211,14 +193,8 @@ pub async fn sync_entities(
     let time_str = iso8601(&st);
 
     let pooled_connection = pool.get()?;
-    let connection = store_catalog::Connection::new(&pooled_connection);
 
-    let deployment_hash = match subgraph_name {
-        Some(name) => {
-            connection.current_deployment_for_subgraph(SubgraphName::new(name).unwrap())?
-        }
-        None => DeploymentHash::new(&deployment_id.clone()).unwrap(),
-    };
+    let deployment_hash = DeploymentHash::new(&deployment_id.clone()).unwrap();
 
     // Get a connection to query store that will be passed entity queries
     let query_store = store
@@ -260,11 +236,11 @@ pub async fn sync_entities(
         .chain_store(&chain.name)
         .ok_or_else(|| anyhow!("Block store not found for chain: {}", &network_chain))?;
 
-    let storage = chain_store.get_storage();
+    // let storage = chain_store.get_storage();
 
     // Filter for call cache at block
-    let db_call_cache_records = storage
-        .get_calls_at_block(&pooled_connection, &first_divergent_block)?
+    let db_call_cache_records = chain_store
+        .get_calls_at_block(&pooled_connection, &first_divergent_block)
         .ok_or_else(|| {
             anyhow!(
                 "Couldn't pull call cache records for block: {}",
@@ -378,22 +354,44 @@ fn get_object_data_types(obj: &ObjectType<String>) -> Vec<ColumnNameAndType> {
     return data_types;
 }
 
-fn get_poi_from_store(
+fn get_poi_from_store_find_query(
     store: Arc<SubgraphStore>,
     subgraph_deployment: DeploymentHash,
 ) -> Result<Vec<Entity>, anyhow::Error> {
-    let query = EntityQuery::new(
-        subgraph_deployment,
-        BLOCK_NUMBER_MAX,
-        EntityCollection::All(vec![(POI_OBJECT.clone(), AttributeNames::All)]),
-    );
+    let poi_key = EntityKey {
+        subgraph_id: subgraph_deployment.clone(),
+        entity_type: EntityType::from(POI_OBJECT.to_owned()),
+        entity_id: "any".to_owned(),
+    };
 
-    // @TODO: HACK to get all entities.
-    // @TODO: Implement a cursor/paginated approach
-    // query.range = EntityRange::first(4294967295);
-    let entities = store.find_all_versions(query)?;
-    Ok(entities)
+    let poi = store.select_star_entity(poi_key, subgraph_deployment)?;
+    Ok(poi)
 }
+
+// fn get_poi_from_store(
+//     store: Arc<SubgraphStore>,
+//     subgraph_deployment: DeploymentHash,
+// ) -> Result<Vec<Entity>, anyhow::Error> {
+//     // let find_query = FindQuery::new(table.as_ref(), id, block)
+//     //     .get_result::<EntityData>(conn)
+//     //     .optional()?
+//     //     .map(|entity_data| entity_data.deserialize_with_layout(self))
+//     //     .transpose();
+
+//     let entity_key =
+
+//     let query = EntityQuery::new(
+//         subgraph_deployment,
+//         BLOCK_NUMBER_MAX,
+//         EntityCollection::All(vec![(POI_OBJECT.clone(), AttributeNames::All)]),
+//     );
+
+//     // @TODO: HACK to get all entities.
+//     // @TODO: Implement a cursor/paginated approach
+//     // query.range = EntityRange::first(4294967295);
+//     let entities = store.find_all_versions(query)?;
+//     Ok(entities)
+// }
 
 fn map_ccdb_cccsv(input: &CallCacheRecord) -> CallCacheRecordCsv {
     let cc = CallCacheRecordCsv {
@@ -538,8 +536,8 @@ fn generate_query_for_type(
     subgraph_id: &DeploymentHash,
     divergent_block: i32,
 ) -> Result<EntityQuery, anyhow::Error> {
-    let obj_name = &object_type.name[..];
-    let entity_names = vec![obj_name.clone()];
+    let obj_name = &object_type.name;
+    let entity_names = vec![obj_name];
     let eq = EntityQuery::new(
         subgraph_id.clone(),
         divergent_block,
@@ -560,25 +558,25 @@ fn generate_query_for_type(
     Ok(eq)
 }
 
-/// Gets the name of a chain's network for a subgraph deployment.
-async fn _get_subgraph_network_chain(
-    store: Arc<Store>,
-    deployment_id: &str,
-) -> Result<String, anyhow::Error> {
-    use graph::prelude::QueryStoreManager;
+/// Gets the name of a chain's networnetwork_chak for a subgraph deployment.
+// async fn _get_subgraph_in(
+//     store: Arc<Store>,
+//     deployment_id: &str,
+// ) -> Result<String, anyhow::Error> {
+//     use graph::prelude::QueryStoreManager;
 
-    let query_store = store
-        .query_store(
-            QueryTarget::Deployment(
-                DeploymentHash::new(deployment_id).expect("valid network subgraph ID"),
-            ),
-            false,
-        )
-        .await?;
+//     let query_store = store
+//         .query_store(
+//             QueryTarget::Deployment(
+//                 DeploymentHash::new(deployment_id).expect("valid network subgraph ID"),
+//             ),
+//             false,
+//         )
+//         .await?;
 
-    let name = query_store.network_name();
-    Ok(name.to_owned())
-}
+//     let name = query_store.network_name();
+//     Ok(name.to_owned())
+// }
 
 fn dump_poi_csv_writer(
     directory: &PathBuf,

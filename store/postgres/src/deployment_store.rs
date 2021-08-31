@@ -256,26 +256,26 @@ impl DeploymentStore {
         )
     }
 
-    pub(crate) fn execute_query_with_block_range<T: FromEntityData>(
-        &self,
-        conn: &PgConnection,
-        site: Arc<Site>,
-        query: EntityQuery,
-    ) -> Result<Vec<T>, QueryExecutionError> {
-        let layout = self.layout(conn, site)?;
+    // pub(crate) fn execute_query_with_block_range<T: FromEntityData>(
+    //     &self,
+    //     conn: &PgConnection,
+    //     site: Arc<Site>,
+    //     query: EntityQuery,
+    // ) -> Result<Vec<T>, QueryExecutionError> {
+    //     let layout = self.layout(conn, site)?;
 
-        let logger = query.logger.unwrap_or(self.logger.clone());
-        layout.query_with_block_range(
-            &logger,
-            conn,
-            query.collection,
-            query.filter,
-            query.order,
-            query.range,
-            query.block,
-            query.query_id,
-        )
-    }
+    //     let logger = query.logger.unwrap_or(self.logger.clone());
+    //     layout.query_with_block_range(
+    //         &logger,
+    //         conn,
+    //         query.collection,
+    //         query.filter,
+    //         query.order,
+    //         query.range,
+    //         query.block,
+    //         query.query_id,
+    //     )
+    // }
 
     fn check_interface_entity_uniqueness(
         &self,
@@ -863,6 +863,41 @@ impl DeploymentStore {
         self.execute_query(&conn, site, query)
     }
 
+    // pub(crate) fn find_all_versions(
+    //     &self,
+    //     site: Arc<Site>,
+    //     query: EntityQuery,
+    // ) -> Result<Vec<Entity>, QueryExecutionError> {
+    //     let conn = self
+    //         .get_conn()
+    //         .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
+    //     self.execute_query_with_block_range(&conn, site, query)
+    // }
+
+    pub(crate) fn select_star_entity(
+        &self,
+        site: Arc<Site>,
+        key: EntityKey,
+    ) -> Result<Vec<Entity>, QueryExecutionError> {
+        let conn = self
+            .get_conn()
+            .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
+
+        let layout = self.layout(&conn, site)?;
+
+        let query_result = layout
+            .select_star_entity(&conn, &key.entity_type)
+            .map_err(|e| {
+                QueryExecutionError::ResolveEntityError(
+                    key.subgraph_id.clone(),
+                    key.entity_type.to_string(),
+                    key.entity_id.clone(),
+                    format!("Invalid entity {}", e),
+                )
+            });
+        query_result
+    }
+
     pub(crate) fn find_all_versions(
         &self,
         site: Arc<Site>,
@@ -871,7 +906,21 @@ impl DeploymentStore {
         let conn = self
             .get_conn()
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-        self.execute_query_with_block_range(&conn, site, query)
+
+        let layout = self.layout(&conn, site)?;
+
+        let logger = query.logger.unwrap_or(self.logger.clone());
+
+        layout.query_with_block_range(
+            &logger,
+            &conn,
+            query.collection,
+            query.filter,
+            query.order,
+            query.range,
+            query.block,
+            query.query_id,
+        )
     }
 
     pub(crate) fn transact_block_operations(

@@ -333,7 +333,7 @@ pub enum PoiCommand {
     /// Will generate intermediate files in `/tmp/graph_node/data_dump` that get
     /// uploaded to a dispute service.
     Dump {
-        /// ID of the subgraph deployment being contested.
+        /// ID of the subgraph deployment being contested. Use graphman info <subgraph> to get.
         /// You can list them with "SELECT deployment from subgraphs.subgraph_deployment;"
         #[structopt(short = "s", long)]
         subgraph_deployment: String,
@@ -343,9 +343,6 @@ pub enum PoiCommand {
         /// Your indexer node ID. Wallet address you supply to the indexer-agent.
         #[structopt(short = "i", long)]
         indexer_id: String,
-        /// Optional name of the subgraph. Find this with "SELECT name from subgraphs.subgraph;"
-        #[structopt(short = "n", long)]
-        subgraph_name: Option<String>,
         /// Intermediate files will not be deleted when this flag is set
         #[structopt(short = "k", long)]
         keep: bool,
@@ -365,12 +362,9 @@ pub enum PoiCommand {
         /// ID of the dispute
         #[structopt(short = "d", long)]
         dispute_id: String,
-        /// Your indexer node ID. Wallet address you supply to the indexer-agent.
+        /// Your indexer node ID. Wallet address you supply to the indexer-agent. `graphman info <subgraph>` gives you a node_id
         #[structopt(short = "i", long)]
         indexer_id: String,
-        /// Optional name of the subgraph. Find this with "SELECT name from subgraphs.subgraph;"
-        #[structopt(short = "n", long)]
-        subgraph_name: Option<String>,
         /// Intermediate files will not be deleted when this flag is set
         #[structopt(short = "k", long)]
         keep: bool,
@@ -663,18 +657,15 @@ async fn main() {
                     subgraph_deployment,
                     dispute_id,
                     indexer_id,
-                    subgraph_name,
                     keep,
                     host,
                 } => {
                     println!("Dumping subgraph deployment {}", subgraph_deployment);
                     commands::poi::sync_poi(
                         ctx.clone().store(),
-                        ctx.clone().primary_pool(),
                         dispute_id,
                         indexer_id,
                         subgraph_deployment,
-                        subgraph_name,
                         keep,
                         host,
                     )
@@ -684,7 +675,6 @@ async fn main() {
                     subgraph_deployment,
                     dispute_id,
                     indexer_id,
-                    subgraph_name,
                     keep,
                     host,
                 } => {
@@ -696,7 +686,6 @@ async fn main() {
                         dispute_id,
                         indexer_id,
                         subgraph_deployment,
-                        subgraph_name,
                         keep,
                         host,
                     )

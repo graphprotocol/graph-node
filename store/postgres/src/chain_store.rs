@@ -965,7 +965,6 @@ mod data {
             conn: &PgConnection,
             block: &i32,
         ) -> Result<Option<Vec<CallCacheRecord>>, Error> {
-            println!("GETTING BLOCKS INSIDE STORAGE");
             let query_set = match self {
                 Storage::Private(Schema { call_cache, .. }) => {
                     let table_name = &call_cache.qname;
@@ -1237,8 +1236,13 @@ impl ChainStore {
         Ok(HashMap::from_iter(pointers))
     }
 
-    pub fn get_storage(&self) -> &Storage {
-        &self.storage
+    pub fn get_calls_at_block(
+        &self,
+        conn: &PgConnection,
+        block: &i32,
+    ) -> Option<Vec<CallCacheRecord>> {
+        let calls = self.storage.get_calls_at_block(conn, block).ok()?;
+        calls
     }
 
     pub fn chain_head_block(&self, chain: &str) -> Result<Option<BlockNumber>, StoreError> {

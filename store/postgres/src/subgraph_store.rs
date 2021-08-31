@@ -860,6 +860,16 @@ impl SubgraphStoreInner {
         store.find_all_versions(site, query)
     }
 
+    pub fn select_star_entity(
+        &self,
+        key: graph::prelude::EntityKey,
+        subgraph_id: DeploymentHash,
+    ) -> Result<Vec<Entity>, QueryExecutionError> {
+        let (store, site) = self.store(&subgraph_id)?;
+
+        store.select_star_entity(site, key)
+    }
+
     pub fn locate_in_shard(
         &self,
         hash: &DeploymentHash,

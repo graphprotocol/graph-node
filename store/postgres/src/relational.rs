@@ -21,12 +21,13 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::relational_queries::FilterAllVersionsQuery;
+// use crate::relational_queries::FilterAllVersionsQuery;
 use crate::{
     primary::{Namespace, Site},
     relational_queries::{
         ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterCollection, FilterQuery,
-        FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
+        FindAllVersionsQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery,
+        RevertRemoveQuery,
     },
 };
 use graph::components::store::EntityType;
@@ -531,19 +532,29 @@ impl Layout {
             .transpose()
     }
 
-    pub fn find_with_block_range(
+    pub fn select_star_entity(
         &self,
         conn: &PgConnection,
         entity: &EntityType,
-        id: &str,
-        block: BlockNumber,
-    ) -> Result<Option<Entity>, StoreError> {
+    ) -> Result<Vec<Entity>, StoreError> {
         let table = self.table_for_entity(entity)?;
-        FindQuery::new(table.as_ref(), id, block)
-            .get_result::<EntityData>(conn)
-            .optional()?
-            .map(|entity_data| entity_data.deserialize_with_layout_and_block_range(self))
-            .transpose()
+        println!("FOUND TABLE");
+        let entities = FindAllVersionsQuery::new(table.as_ref())
+            .get_results::<EntityData>(conn)
+            .optional()?;
+
+        let unwrapped_entities = entities.unwrap();
+
+        let deserialized: Vec<Entity> = unwrapped_entities
+            .into_iter()
+            .map(|entity_data| {
+                entity_data
+                    .deserialize_with_layout_and_block_range(self)
+                    .unwrap()
+            })
+            .collect();
+
+        Ok(deserialized)
     }
 
     pub fn find_many<'a>(
@@ -665,8 +676,6 @@ impl Layout {
             query_id,
         )?;
 
-        // let text = debug_query(&query).to_string().replace("\n", "\t");
-        // println!("QUERY TEXT {}", text);
         let query_clone = query.clone();
 
         let start = Instant::now();
@@ -708,7 +717,7 @@ impl Layout {
     ) -> Result<Vec<T>, QueryExecutionError> {
         fn log_query_timing(
             logger: &Logger,
-            query: &FilterAllVersionsQuery,
+            query: &FilterQuery,
             elapsed: Duration,
             entity_count: usize,
         ) {
@@ -738,7 +747,7 @@ impl Layout {
         }
 
         let filter_collection = FilterCollection::new(&self, collection, filter.as_ref())?;
-        let query = FilterAllVersionsQuery::new(
+        let query = FilterQuery::new(
             &filter_collection,
             filter.as_ref(),
             order,
@@ -747,9 +756,6 @@ impl Layout {
             query_id,
         )?;
 
-        // let text = debug_query(&query).to_string().replace("\n", "\t");
-        // println!("QUERY TEXT {}", text);
-        // println!("DEBUG QUERY {}", debug_query(&query).to_string());
         let query_clone = query.clone();
 
         let start = Instant::now();
@@ -970,6 +976,8 @@ pub enum ColumnType {
     /// A `bytea` in SQL, represented as a ValueType::String; this is
     /// used for `id` columns of type `Bytes`
     BytesId,
+    /// `BlockRange` does not map onto any of the GraphQL entity types.
+    /// used solely for the purpose of synchronizing data to analytics service
     BlockRange,
 }
 
