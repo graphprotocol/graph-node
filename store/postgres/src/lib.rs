@@ -56,7 +56,7 @@ pub mod layout_for_tests {
     pub use crate::catalog::set_account_like;
     pub use crate::chain_store::test_support as chain_support;
     pub use crate::primary::{
-        make_dummy_site, Connection, Namespace, EVENT_TAP, EVENT_TAP_ENABLED,
+        make_dummy_site, Connection, Mirror, Namespace, EVENT_TAP, EVENT_TAP_ENABLED,
     };
     pub use crate::relational::*;
 }

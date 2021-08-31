@@ -236,7 +236,6 @@ impl std::ops::Deref for SubgraphStore {
 pub struct SubgraphStoreInner {
     logger: Logger,
     mirror: PrimaryMirror,
-    primary: ConnectionPool,
     stores: HashMap<Shard, Arc<DeploymentStore>>,
     /// Cache for the mapping from deployment id to shard/namespace/id. Only
     /// active sites are cached here to ensure we have a unique mapping from
@@ -270,11 +269,6 @@ impl SubgraphStoreInner {
         placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
         sender: Arc<NotificationSender>,
     ) -> Self {
-        let primary = stores
-            .iter()
-            .find(|(name, _, _, _)| name == &*PRIMARY_SHARD)
-            .map(|(_, pool, _, _)| pool.clone())
-            .expect("we always have a primary shard");
         let mirror = {
             let pools = HashMap::from_iter(
                 stores
@@ -303,7 +297,6 @@ impl SubgraphStoreInner {
         SubgraphStoreInner {
             logger,
             mirror,
-            primary,
             stores,
             sites,
             placer,
@@ -339,8 +332,8 @@ impl SubgraphStoreInner {
             return Ok(site);
         }
 
-        let conn = self.primary_conn()?;
-        let site = conn
+        let site = self
+            .mirror
             .find_active_site(id)?
             .ok_or_else(|| StoreError::DeploymentNotFound(id.to_string()))?;
         let site = Arc::new(site);
@@ -354,8 +347,8 @@ impl SubgraphStoreInner {
             return Ok(site);
         }
 
-        let conn = self.primary_conn()?;
-        let site = conn
+        let site = self
+            .mirror
             .find_site_by_ref(id)?
             .ok_or_else(|| StoreError::DeploymentNotFound(id.to_string()))?;
         let site = Arc::new(site);
@@ -532,7 +525,7 @@ impl SubgraphStoreInner {
         // The very last thing we do when we set up a copy here is assign it
         // to a node. Therefore, if `dst` is already assigned, this function
         // should not have been called.
-        if let Some(node) = self.primary_conn()?.assigned_node(dst.as_ref())? {
+        if let Some(node) = self.mirror.assigned_node(dst.as_ref())? {
             return Err(StoreError::Unknown(anyhow!(
                 "can not copy into deployment {} since it is already assigned to node `{}`",
                 dst_loc,
@@ -634,7 +627,10 @@ impl SubgraphStoreInner {
     /// of connections in between getting the first one and trying to get the
     /// second one.
     fn primary_conn(&self) -> Result<primary::Connection, StoreError> {
-        let conn = self.primary.get_with_timeout_warning(&self.logger)?;
+        let conn = self
+            .mirror
+            .primary()
+            .get_with_timeout_warning(&self.logger)?;
         Ok(primary::Connection::new(conn))
     }
 
@@ -644,10 +640,7 @@ impl SubgraphStoreInner {
         for_subscription: bool,
     ) -> Result<(Arc<DeploymentStore>, Arc<Site>, ReplicaId), StoreError> {
         let id = match target {
-            QueryTarget::Name(name) => {
-                let conn = self.primary_conn()?;
-                conn.transaction(|| conn.current_deployment_for_subgraph(name))?
-            }
+            QueryTarget::Name(name) => self.mirror.current_deployment_for_subgraph(&name)?,
             QueryTarget::Deployment(id) => id,
         };
 
@@ -743,7 +736,7 @@ impl SubgraphStoreInner {
         let store = self.for_site(site.as_ref())?;
 
         // Check that deployment is not assigned
-        match self.primary_conn()?.assigned_node(site.as_ref())? {
+        match self.mirror.assigned_node(site.as_ref())? {
             Some(node) => {
                 return Err(constraint_violation!(
                     "deployment {} can not be removed since it is assigned to node {}",
@@ -777,14 +770,14 @@ impl SubgraphStoreInner {
     pub(crate) fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
         let sites = match filter {
             status::Filter::SubgraphName(name) => {
-                let deployments = self.primary_conn()?.deployments_for_subgraph(name)?;
+                let deployments = self.mirror.deployments_for_subgraph(&name)?;
                 if deployments.is_empty() {
                     return Ok(Vec::new());
                 }
                 deployments
             }
             status::Filter::SubgraphVersion(name, use_current) => {
-                let deployment = self.primary_conn()?.subgraph_version(name, use_current)?;
+                let deployment = self.mirror.subgraph_version(&name, use_current)?;
                 match deployment {
                     Some(deployment) => vec![deployment],
                     None => {
@@ -793,11 +786,11 @@ impl SubgraphStoreInner {
                 }
             }
             status::Filter::Deployments(deployments) => {
-                self.primary_conn()?.find_sites(deployments, true)?
+                self.mirror.find_sites(&deployments, true)?
             }
             status::Filter::DeploymentIds(ids) => {
-                let ids = ids.into_iter().map(|id| id.into()).collect();
-                self.primary_conn()?.find_sites_by_id(ids)?
+                let ids: Vec<_> = ids.into_iter().map(|id| id.into()).collect();
+                self.mirror.find_sites_by_id(&ids)?
             }
         };
 
@@ -812,12 +805,12 @@ impl SubgraphStoreInner {
                 .ok_or(StoreError::UnknownShard(shard.to_string()))?;
             infos.extend(store.deployment_statuses(&sites)?);
         }
-        let infos = self.primary_conn()?.fill_assignments(infos)?;
+        self.mirror.fill_assignments(&mut infos)?;
         Ok(infos)
     }
 
     pub(crate) fn version_info(&self, version: &str) -> Result<VersionInfo, StoreError> {
-        if let Some((deployment_id, created_at)) = self.primary_conn()?.version_info(version)? {
+        if let Some((deployment_id, created_at)) = self.mirror.version_info(version)? {
             let id = DeploymentHash::new(deployment_id.clone())
                 .map_err(|id| constraint_violation!("illegal deployment id {}", id))?;
             let (store, site) = self.store(&id)?;
@@ -856,16 +849,14 @@ impl SubgraphStoreInner {
         &self,
         subgraph_id: &str,
     ) -> Result<(Option<String>, Option<String>), StoreError> {
-        let primary = self.primary_conn()?;
-        primary.versions_for_subgraph_id(subgraph_id)
+        self.mirror.versions_for_subgraph_id(subgraph_id)
     }
 
     pub(crate) fn subgraphs_for_deployment_hash(
         &self,
         deployment_hash: &str,
     ) -> Result<Vec<(String, String)>, StoreError> {
-        let primary = self.primary_conn()?;
-        primary.subgraphs_by_deployment_hash(deployment_hash)
+        self.mirror.subgraphs_by_deployment_hash(deployment_hash)
     }
 
     #[cfg(debug_assertions)]
@@ -911,7 +902,7 @@ impl SubgraphStoreInner {
         shard: Shard,
     ) -> Result<Option<DeploymentLocator>, StoreError> {
         Ok(self
-            .primary_conn()?
+            .mirror
             .find_site_in_shard(hash, &shard)?
             .as_ref()
             .map(|site| site.into()))
@@ -979,8 +970,7 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     fn assigned_node(&self, deployment: &DeploymentLocator) -> Result<Option<NodeId>, StoreError> {
         let site = self.find_site(deployment.id.into())?;
-        let primary = self.primary_conn()?;
-        primary.assigned_node(site.as_ref())
+        self.mirror.assigned_node(site.as_ref())
     }
 
     fn assignments(&self, node: &NodeId) -> Result<Vec<DeploymentLocator>, StoreError> {
@@ -990,8 +980,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     }
 
     fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
-        let primary = self.primary_conn()?;
-        primary.subgraph_exists(name)
+        self.mirror.subgraph_exists(name)
     }
 
     fn input_schema(&self, id: &DeploymentHash) -> Result<Arc<Schema>, StoreError> {
@@ -1038,8 +1027,8 @@ impl SubgraphStoreTrait for SubgraphStore {
     /// Find the deployment locators for the subgraph with the given hash
     fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError> {
         Ok(self
-            .primary_conn()?
-            .find_sites(vec![hash.to_string()], false)?
+            .mirror
+            .find_sites(&vec![hash.to_string()], false)?
             .iter()
             .map(|site| site.into())
             .collect())
