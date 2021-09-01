@@ -417,6 +417,7 @@ impl Context {
             PRIMARY_SHARD.as_str(),
             primary,
             self.registry,
+            Arc::new(vec![]),
         )
     }
 

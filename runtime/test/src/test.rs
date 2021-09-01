@@ -905,13 +905,22 @@ fn test_detect_contract_calls(api_version: Version) {
         &wasm_file_path("abi_store_value.wasm", api_version.clone()),
         api_version.clone(),
     );
-    assert_eq!(data_source_without_calls.mapping.requires_archive(), false);
+    assert_eq!(
+        data_source_without_calls
+            .mapping
+            .requires_archive()
+            .unwrap(),
+        false
+    );
 
     let data_source_with_calls = mock_data_source(
         &wasm_file_path("contract_calls.wasm", api_version.clone()),
         api_version,
     );
-    assert_eq!(data_source_with_calls.mapping.requires_archive(), true);
+    assert_eq!(
+        data_source_with_calls.mapping.requires_archive().unwrap(),
+        true
+    );
 }
 
 #[tokio::test]

@@ -150,7 +150,7 @@ where
 fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator {
     let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
         id: TEST_SUBGRAPH_ID.clone(),
-        spec_version: "1".to_owned(),
+        spec_version: Version::new(1, 0, 0),
         features: Default::default(),
         description: None,
         repository: None,
@@ -306,7 +306,7 @@ fn delete_entity() {
         let entity_key = EntityKey::data(deployment.hash.clone(), USER.to_owned(), "3".to_owned());
 
         // Check that there is an entity to remove.
-        writable.get(entity_key.clone()).unwrap().unwrap();
+        writable.get(&entity_key).unwrap().unwrap();
 
         let count = get_entity_count(store.clone(), &&deployment.hash);
         transact_entity_operations(
@@ -324,7 +324,7 @@ fn delete_entity() {
         );
 
         // Check that that the deleted entity id is not present
-        assert!(writable.get(entity_key).unwrap().is_none());
+        assert!(writable.get(&entity_key).unwrap().is_none());
     })
 }
 
@@ -333,7 +333,7 @@ fn delete_entity() {
 fn get_entity_1() {
     run_test(|_, writable, deployment| async move {
         let key = EntityKey::data(deployment.hash.clone(), USER.to_owned(), "1".to_owned());
-        let result = writable.get(key).unwrap();
+        let result = writable.get(&key).unwrap();
 
         let mut expected_entity = Entity::new();
 
@@ -364,7 +364,7 @@ fn get_entity_1() {
 fn get_entity_3() {
     run_test(|_, writable, deployment| async move {
         let key = EntityKey::data(deployment.hash.clone(), USER.to_owned(), "3".to_owned());
-        let result = writable.get(key).unwrap();
+        let result = writable.get(&key).unwrap();
 
         let mut expected_entity = Entity::new();
 
@@ -415,7 +415,7 @@ fn insert_entity() {
         assert_eq!(count + 1, get_entity_count(store.clone(), &deployment.hash));
 
         // Check that new record is in the store
-        writable.get(entity_key).unwrap().unwrap();
+        writable.get(&entity_key).unwrap().unwrap();
     })
 }
 
@@ -440,7 +440,7 @@ fn update_existing() {
         };
 
         // Verify that the entity before updating is different from what we expect afterwards
-        assert_ne!(writable.get(entity_key.clone()).unwrap().unwrap(), new_data);
+        assert_ne!(writable.get(&entity_key).unwrap().unwrap(), new_data);
 
         // Set test entity; as the entity already exists an update should be performed
         let count = get_entity_count(store.clone(), &deployment.hash);
@@ -461,7 +461,7 @@ fn update_existing() {
 
         new_data.insert("__typename".to_owned(), USER.into());
         new_data.insert("bin_name".to_owned(), Value::Bytes(bin_name));
-        assert_eq!(writable.get(entity_key).unwrap(), Some(new_data));
+        assert_eq!(writable.get(&entity_key).unwrap(), Some(new_data));
     })
 }
 
@@ -477,7 +477,7 @@ fn partially_update_existing() {
         ]);
 
         let original_entity = writable
-            .get(entity_key.clone())
+            .get(&entity_key)
             .unwrap()
             .expect("entity not found");
 
@@ -494,7 +494,10 @@ fn partially_update_existing() {
         .unwrap();
 
         // Obtain the updated entity from the store
-        let updated_entity = writable.get(entity_key).unwrap().expect("entity not found");
+        let updated_entity = writable
+            .get(&entity_key)
+            .unwrap()
+            .expect("entity not found");
 
         // Verify that the values of all attributes we have set were either unset
         // (in the case of Value::Null) or updated to the new values
@@ -1092,10 +1095,7 @@ fn revert_block_with_partial_update() {
             ("email", Value::Null),
         ]);
 
-        let original_entity = writable
-            .get(entity_key.clone())
-            .unwrap()
-            .expect("missing entity");
+        let original_entity = writable.get(&entity_key).unwrap().expect("missing entity");
 
         // Set test entity; as the entity already exists an update should be performed
         transact_entity_operations(
@@ -1117,10 +1117,7 @@ fn revert_block_with_partial_update() {
         assert_eq!(count, get_entity_count(store.clone(), &deployment.hash));
 
         // Obtain the reverted entity from the store
-        let reverted_entity = writable
-            .get(entity_key.clone())
-            .unwrap()
-            .expect("missing entity");
+        let reverted_entity = writable.get(&entity_key).unwrap().expect("missing entity");
 
         // Verify that the entity has been returned to its original state
         assert_eq!(reverted_entity, original_entity);
@@ -1197,10 +1194,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         ]);
 
         // Get the original user for comparisons
-        let original_user = writable
-            .get(user_key.clone())
-            .unwrap()
-            .expect("missing entity");
+        let original_user = writable.get(&user_key).unwrap().expect("missing entity");
 
         // Create operations to add a dynamic data source
         let data_source = mock_data_source();
@@ -1222,10 +1216,7 @@ fn revert_block_with_dynamic_data_source_operations() {
 
         // Verify that the user is no longer the original
         assert_ne!(
-            writable
-                .get(user_key.clone())
-                .unwrap()
-                .expect("missing entity"),
+            writable.get(&user_key).unwrap().expect("missing entity"),
             original_user
         );
 
@@ -1241,10 +1232,7 @@ fn revert_block_with_dynamic_data_source_operations() {
 
         // Verify that the user is the original again
         assert_eq!(
-            writable
-                .get(user_key.clone())
-                .unwrap()
-                .expect("missing entity"),
+            writable.get(&user_key).unwrap().expect("missing entity"),
             original_user
         );
 
@@ -1275,7 +1263,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             Schema::parse(USER_GQL, subgraph_id.clone()).expect("Failed to parse user schema");
         let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
             id: subgraph_id.clone(),
-            spec_version: "1".to_owned(),
+            spec_version: Version::new(1, 0, 0),
             features: Default::default(),
             description: None,
             repository: None,

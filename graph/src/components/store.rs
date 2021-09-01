@@ -786,6 +786,8 @@ pub enum StoreError {
     FulltextSearchNonDeterministic,
     #[error("operation was canceled")]
     Canceled,
+    #[error("database unavailable")]
+    DatabaseUnavailable,
 }
 
 // Convenience to report a constraint violation
@@ -826,6 +828,12 @@ impl From<serde_json::Error> for StoreError {
 impl From<QueryExecutionError> for StoreError {
     fn from(e: QueryExecutionError) -> Self {
         StoreError::QueryExecutionError(e.to_string())
+    }
+}
+
+impl From<std::fmt::Error> for StoreError {
+    fn from(e: std::fmt::Error) -> Self {
+        StoreError::Unknown(anyhow!("{}", e.to_string()))
     }
 }
 
@@ -1005,7 +1013,7 @@ pub trait WritableStore: Send + Sync + 'static {
     fn supports_proof_of_indexing<'a>(self: Arc<Self>) -> DynTryFuture<'a, bool>;
 
     /// Looks up an entity using the given store key at the latest block.
-    fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
 
     /// Transact the entity changes from a single block atomically into the store, and update the
     /// subgraph block pointer to `block_ptr_to`.
@@ -1040,6 +1048,10 @@ pub trait WritableStore: Send + Sync + 'static {
 
     /// Load the dynamic data sources for the given deployment
     async fn load_dynamic_data_sources(&self) -> Result<Vec<StoredDynamicDataSource>, StoreError>;
+
+    /// Report the name of the shard in which the subgraph is stored. This
+    /// should only be used for reporting and monitoring
+    fn shard(&self) -> &str;
 }
 
 #[async_trait]
@@ -1175,7 +1187,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn get(&self, _: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
+    fn get(&self, _: &EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
         unimplemented!()
     }
 
@@ -1210,6 +1222,10 @@ impl WritableStore for MockStore {
     }
 
     fn deployment_synced(&self) -> Result<(), Error> {
+        unimplemented!()
+    }
+
+    fn shard(&self) -> &str {
         unimplemented!()
     }
 }
@@ -1334,7 +1350,7 @@ pub trait QueryStore: Send + Sync {
 
     fn block_number(&self, block_hash: H256) -> Result<Option<BlockNumber>, StoreError>;
 
-    fn wait_stats(&self) -> &PoolWaitStats;
+    fn wait_stats(&self) -> PoolWaitStats;
 
     /// If `block` is `None`, assumes the latest block.
     async fn has_non_fatal_errors(&self, block: Option<BlockNumber>) -> Result<bool, StoreError>;
@@ -1711,7 +1727,7 @@ impl LfuCache<EntityKey, Option<Entity>> {
     ) -> Result<Option<Entity>, QueryExecutionError> {
         match self.get(&key) {
             None => {
-                let mut entity = store.get(key.clone())?;
+                let mut entity = store.get(key)?;
                 if let Some(entity) = &mut entity {
                     // `__typename` is for queries not for mappings.
                     entity.remove("__typename");

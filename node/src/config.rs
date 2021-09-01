@@ -231,6 +231,16 @@ impl Shard {
             validate_name(name).context("illegal replica name")?;
             replica.validate(&self.pool_size)?;
         }
+
+        let no_weight =
+            self.weight == 0 && self.replicas.values().all(|replica| replica.weight == 0);
+        if no_weight {
+            return Err(anyhow!(
+                "all weights for shard `{}` are 0; \
+                remove explicit weights or set at least one of them to a value bigger than 0",
+                name
+            ));
+        }
         Ok(())
     }
 

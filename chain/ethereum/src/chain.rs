@@ -1,4 +1,5 @@
 use anyhow::{Context, Error};
+use graph::blockchain::BlockchainKind;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::prelude::{
     EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, StopwatchMetrics,
@@ -112,6 +113,8 @@ impl Chain {
 
 #[async_trait]
 impl Blockchain for Chain {
+    const KIND: BlockchainKind = BlockchainKind::Ethereum;
+
     type Block = BlockFinality;
 
     type DataSource = DataSource;

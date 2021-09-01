@@ -375,7 +375,7 @@ fn scalar_value_type(schema: &Document, field_type: &Type) -> ValueType {
     }
 }
 
-fn is_list(field_type: &Type) -> bool {
+pub fn is_list(field_type: &Type) -> bool {
     match field_type {
         Type::NamedType(_) => false,
         Type::NonNullType(inner) => is_list(inner),

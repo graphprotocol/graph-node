@@ -82,7 +82,7 @@ impl QueryStoreTrait for QueryStore {
             .transpose()
     }
 
-    fn wait_stats(&self) -> &PoolWaitStats {
+    fn wait_stats(&self) -> PoolWaitStats {
         self.store.wait_stats(self.replica_id)
     }
 

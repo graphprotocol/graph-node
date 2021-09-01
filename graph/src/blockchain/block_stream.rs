@@ -84,6 +84,7 @@ pub enum BlockStreamEvent<C: Blockchain> {
 #[derive(Clone)]
 pub struct BlockStreamMetrics {
     pub deployment_head: Box<Gauge>,
+    pub deployment_failed: Box<Gauge>,
     pub reverted_blocks: Box<Gauge>,
     pub stopwatch: StopwatchMetrics,
 }
@@ -93,6 +94,7 @@ impl BlockStreamMetrics {
         registry: Arc<impl MetricsRegistry>,
         deployment_id: &DeploymentHash,
         network: String,
+        shard: String,
         stopwatch: StopwatchMetrics,
     ) -> Self {
         let reverted_blocks = registry
@@ -102,16 +104,28 @@ impl BlockStreamMetrics {
                 deployment_id.as_str(),
             )
             .expect("Failed to create `deployment_reverted_blocks` gauge");
-        let labels = labels! { String::from("deployment") => deployment_id.to_string(), String::from("network") => network };
+        let labels = labels! {
+            String::from("deployment") => deployment_id.to_string(),
+            String::from("network") => network,
+            String::from("shard") => shard
+        };
         let deployment_head = registry
             .new_gauge(
                 "deployment_head",
                 "Track the head block number for a deployment",
-                labels,
+                labels.clone(),
             )
             .expect("failed to create `deployment_head` gauge");
+        let deployment_failed = registry
+            .new_gauge(
+                "deployment_failed",
+                "Boolean gauge to indicate whether the deployment has failed (1 == failed)",
+                labels,
+            )
+            .expect("failed to create `deployment_failed` gauge");
         Self {
             deployment_head,
+            deployment_failed,
             reverted_blocks,
             stopwatch,
         }

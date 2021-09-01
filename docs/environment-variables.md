@@ -156,3 +156,5 @@ those.
   given the other load management configuration settings, but never
   actually decline to run a query, instead log about load management
   decisions. Set to `true` to turn simulation on, defaults to `false`
+- `GRAPH_STORE_CONNECTION_TIMEOUT`: How long to wait to connect to a
+  database before assuming the database is down in ms. Defaults to 5000ms.

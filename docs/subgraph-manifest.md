@@ -1,5 +1,5 @@
 # Subgraph Manifest
-##### v.0.0.2
+##### v.0.0.4
 
 ## 1.1 Overview
 The subgraph manifest specifies all the information required to index and query a specific subgraph. This is the entry point to your subgraph.
@@ -20,6 +20,7 @@ Any data format that has a well-defined 1:1 mapping with the [IPLD Canonical For
 | **graft** | optional [*Graft Base*](#18-graft-base) | An optional base to graft onto. |
 | **dataSources**| [*Data Source Spec*](#15-data-source)| Each data source spec defines the data that will be ingested as well as the transformation logic to derive the state of the subgraph's entities based on the source data.|
 | **templates** | [*Data Source Templates Spec*](#17-data-source-templates) | Each data source template defines a data source that can be created dynamically from the mappings. |
+| **features** | optional [*[String]*](#19-features) | A list of feature names used by the subgraph. |
 
 ## 1.4 Schema
 
@@ -130,3 +131,23 @@ A subgraph can be _grafted_ on top of another subgraph, meaning that, rather tha
 | --- | --- | --- |
 | **base** | *String* | The subgraph ID of the base subgraph |
 | **block** | *BigInt* | The block number up to which to use data from the base subgraph |
+
+## 1.9 Features
+
+Starting from `specVersion` `0.0.4`, a subgraph must declare all _feature_ names it uses to be
+considered valid.
+
+A Graph Node instance will **reject** a subgraph deployment if:
+- the `specVersion` is equal to or higher than `0.0.4` **AND**
+- it hasn't explicitly declared a feature it uses.
+
+No validation errors will happen if a feature is declared but not used.
+
+These are the currently available features and their names:
+
+| Feature                    | Name                      |
+| ---                        | ---                       |
+| Non-fatal errors           | `nonFatalErrors`          |
+| Full-text Search           | `fullTextSearch`          |
+| Grafting                   | `grafting`                |
+| IPFS on Ethereum Contracts | `ipfsOnEthereumContracts` |
