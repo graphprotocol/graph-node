@@ -1,6 +1,6 @@
 use graph::components::store::{EntityCollection, EntityFilter, EntityQuery, EntityType};
 use graph::data::graphql::DocumentExt;
-use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
+use graph::data::subgraph::schema::POI_OBJECT;
 use graph::prelude::EntityKey;
 use graph_store_postgres::BlockStore;
 use graphql_parser::schema::ObjectType;
@@ -251,7 +251,7 @@ pub async fn sync_entities(
     // Conversion to types amenable to csv serialization
     let mapped_call_cache = db_call_cache_records
         .iter()
-        .map(|cc| map_ccdb_cccsv(cc))
+        .flat_map(|cc| map_ccdb_cccsv(cc))
         .collect();
 
     dump_call_cache(&entity_dump_directory, mapped_call_cache)?;
@@ -393,22 +393,31 @@ fn get_poi_from_store_find_query(
 //     Ok(entities)
 // }
 
-fn map_ccdb_cccsv(input: &CallCacheRecord) -> CallCacheRecordCsv {
+fn map_ccdb_cccsv(input: &CallCacheRecord) -> Result<CallCacheRecordCsv, anyhow::Error> {
+    use core::fmt::Write;
+
+    let mut id_string = String::with_capacity(2 * input.id.len());
+    for byte in &input.id {
+        write!(id_string, "{:02X}", byte)?;
+    }
+
+    let mut contract_string = String::with_capacity(2 * input.contract_address.len());
+    for byte in &input.contract_address {
+        write!(contract_string, "{:02X}", byte)?;
+    }
+
+    let mut return_string = String::with_capacity(2 * input.return_value.len());
+    for byte in &input.return_value {
+        write!(return_string, "{:02X}", byte)?;
+    }
+
     let cc = CallCacheRecordCsv {
-        id: input.id.iter().map(|&c| c as char).collect::<String>(),
-        contract_address: input
-            .contract_address
-            .iter()
-            .map(|&c| c as char)
-            .collect::<String>(),
-        return_value: input
-            .return_value
-            .iter()
-            .map(|&c| c as char)
-            .collect::<String>(),
+        id: id_string,
+        contract_address: contract_string,
+        return_value: return_string,
         block_number: input.block_number,
     };
-    cc
+    Ok(cc)
 }
 
 /// Create directories required for compression and upload

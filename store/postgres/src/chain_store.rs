@@ -32,16 +32,16 @@ use crate::{
     connection_pool::ConnectionPool,
 };
 
-use diesel::sql_types::{Bytea as SqlBytea, Integer as SqlInteger};
+use diesel::sql_types::{Bytea, Integer};
 #[derive(Queryable, QueryableByName)]
 pub struct CallCacheRecord {
-    #[sql_type = "SqlBytea"]
+    #[sql_type = "Bytea"]
     pub id: Vec<u8>,
-    #[sql_type = "SqlBytea"]
+    #[sql_type = "Bytea"]
     pub return_value: Vec<u8>,
-    #[sql_type = "SqlBytea"]
+    #[sql_type = "Bytea"]
     pub contract_address: Vec<u8>,
-    #[sql_type = "SqlInteger"]
+    #[sql_type = "Integer"]
     pub block_number: i32,
 }
 
