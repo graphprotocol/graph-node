@@ -11,7 +11,7 @@ use tiny_keccak::keccak256;
 use web3::types::{Log, Transaction};
 
 use graph::{
-    blockchain::{self, Blockchain, DataSource as _},
+    blockchain::{self, Blockchain},
     prelude::{
         async_trait, info, serde_json, BlockNumber, CheapClone, DataSourceTemplateInfo,
         Deserialize, EthereumCall, LightEthereumBlock, LightEthereumBlockExt, LinkResolver, Logger,
@@ -58,32 +58,6 @@ impl blockchain::DataSource<Chain> for DataSource {
     ) -> Result<Option<<Chain as Blockchain>::MappingTrigger>, Error> {
         let block = block.light_block();
         self.match_and_decode(trigger, block, logger)
-    }
-
-    fn from_manifest(
-        kind: String,
-        network: Option<String>,
-        name: String,
-        source: Source,
-        mapping: Mapping,
-        context: Option<DataSourceContext>,
-    ) -> Result<Self, Error> {
-        // Data sources in the manifest are created "before genesis" so they have no creation block.
-        let creation_block = None;
-        let contract_abi = mapping
-            .find_abi(&source.abi)
-            .with_context(|| format!("data source `{}`", name))?;
-
-        Ok(DataSource {
-            kind,
-            network,
-            name,
-            source,
-            mapping,
-            context: Arc::new(context),
-            creation_block,
-            contract_abi,
-        })
     }
 
     fn name(&self) -> &str {
@@ -223,6 +197,32 @@ impl blockchain::DataSource<Chain> for DataSource {
 }
 
 impl DataSource {
+    fn from_manifest(
+        kind: String,
+        network: Option<String>,
+        name: String,
+        source: Source,
+        mapping: Mapping,
+        context: Option<DataSourceContext>,
+    ) -> Result<Self, Error> {
+        // Data sources in the manifest are created "before genesis" so they have no creation block.
+        let creation_block = None;
+        let contract_abi = mapping
+            .find_abi(&source.abi)
+            .with_context(|| format!("data source `{}`", name))?;
+
+        Ok(DataSource {
+            kind,
+            network,
+            name,
+            source,
+            mapping,
+            context: Arc::new(context),
+            creation_block,
+            contract_abi,
+        })
+    }
+
     fn handlers_for_log(&self, log: &Log) -> Result<Vec<MappingEventHandler>, Error> {
         // Get signature from the log
         let topic0 = log.topics.get(0).context("Ethereum event has no topics")?;
