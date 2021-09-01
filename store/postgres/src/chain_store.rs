@@ -78,7 +78,9 @@ mod data {
         LightEthereumBlock,
     };
 
-    use crate::transaction_receipt::find_transaction_receipts_in_block;
+    use crate::{
+        transaction_receipt::find_transaction_receipts_in_block, ETHEREUM_BLOCKS_TABLE_NAME,
+    };
 
     mod public {
         pub(super) use super::super::public::ethereum_networks;
@@ -366,7 +368,7 @@ mod data {
         /// Returns a fully qualified table name to the blocks table
         fn blocks_table(&self) -> &str {
             match self {
-                Storage::Shared => "public.ethereum_blocks",
+                Storage::Shared => ETHEREUM_BLOCKS_TABLE_NAME,
                 Storage::Private(Schema { blocks, .. }) => &blocks.qname,
             }
         }
