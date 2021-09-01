@@ -15,7 +15,7 @@ use crate::{
         metrics::stopwatch::StopwatchMetrics,
         store::{DeploymentLocator, StoredDynamicDataSource},
     },
-    data::subgraph::{Mapping, Source, UnifiedMappingApiVersion},
+    data::subgraph::UnifiedMappingApiVersion,
     prelude::{DataSourceContext, SubgraphManifestValidationError},
     runtime::{AscHeap, AscPtr, DeterministicHostError, HostExportError},
 };
@@ -201,17 +201,6 @@ pub trait DataSource<C: Blockchain>:
 {
     fn address(&self) -> Option<&[u8]>;
     fn start_block(&self) -> BlockNumber;
-
-    // ETHDEP: These arguments are ethereum-specific
-    fn from_manifest(
-        kind: String,
-        network: Option<String>,
-        name: String,
-        source: Source,
-        mapping: Mapping,
-        context: Option<DataSourceContext>,
-    ) -> Result<Self, Error>;
-
     fn name(&self) -> &str;
     fn kind(&self) -> &str;
     fn network(&self) -> Option<&str>;
