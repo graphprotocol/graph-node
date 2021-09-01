@@ -1,3 +1,4 @@
+use graph_chain_ethereum::{Mapping, MappingABI};
 use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
 use lazy_static::lazy_static;

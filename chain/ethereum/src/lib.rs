@@ -12,7 +12,7 @@ pub use self::runtime::RuntimeAdapter;
 pub use self::transport::{EventLoopHandle, Transport};
 
 // ETHDEP: These concrete types should probably not be exposed.
-pub use data_source::{DataSource, DataSourceTemplate};
+pub use data_source::{DataSource, DataSourceTemplate, Mapping, MappingABI, TemplateSource};
 pub use trigger::MappingTrigger;
 
 pub mod chain;

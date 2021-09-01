@@ -3,9 +3,7 @@ use graph::blockchain;
 use graph::blockchain::TriggerData;
 use graph::prelude::BlockNumber;
 use graph::prelude::BlockPtr;
-use graph::prelude::{
-    CheapClone, EthereumCall, MappingBlockHandler, MappingCallHandler, MappingEventHandler,
-};
+use graph::prelude::{CheapClone, EthereumCall};
 use graph::runtime::asc_new;
 use graph::runtime::AscHeap;
 use graph::runtime::AscPtr;
@@ -22,6 +20,9 @@ use web3::types::U256;
 use web3::types::U64;
 use web3::types::{Address, Block, Log, Transaction, H256};
 
+use crate::data_source::MappingBlockHandler;
+use crate::data_source::MappingCallHandler;
+use crate::data_source::MappingEventHandler;
 use crate::runtime::abi::AscEthereumCall;
 use crate::runtime::abi::AscEthereumCall_0_0_3;
 use crate::runtime::abi::AscEthereumEvent;
@@ -57,7 +58,7 @@ pub enum MappingTrigger {
 impl std::fmt::Debug for MappingTrigger {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         #[derive(Debug)]
-        pub enum MappingTriggerWithoutBlock {
+        enum MappingTriggerWithoutBlock {
             Log {
                 transaction: Arc<Transaction>,
                 log: Arc<Log>,

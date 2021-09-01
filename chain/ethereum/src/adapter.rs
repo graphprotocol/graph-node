@@ -19,6 +19,7 @@ use graph::{
 use graph::{components::ethereum::EthereumNetworkIdentifier, prelude::*};
 
 use crate::capabilities::NodeCapabilities;
+use crate::data_source::BlockHandlerFilter;
 use crate::{data_source::DataSource, Chain};
 
 pub type EventSignature = H256;
