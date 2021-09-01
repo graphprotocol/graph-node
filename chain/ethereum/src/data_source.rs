@@ -1,30 +1,37 @@
 use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
-use ethabi::{Address, Event, Function, LogParam, ParamType, RawLog};
+use ethabi::{Address, Contract, Event, Function, LogParam, ParamType, RawLog};
 use graph::components::store::StoredDynamicDataSource;
-use graph::prelude::{Entity, SubgraphManifestValidationError};
+use graph::prelude::futures03::future::try_join;
+use graph::prelude::futures03::stream::FuturesOrdered;
+use graph::prelude::{Entity, Link, SubgraphManifestValidationError};
 use graph::slog::trace;
 use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::{convert::TryFrom, sync::Arc};
-use tiny_keccak::keccak256;
-use web3::types::{Log, Transaction};
+use tiny_keccak::{keccak256, Keccak};
+use web3::types::{Log, Transaction, H256};
 
 use graph::{
     blockchain::{self, Blockchain},
     prelude::{
-        async_trait, info, serde_json, BlockNumber, CheapClone, DataSourceTemplateInfo,
-        Deserialize, EthereumCall, LightEthereumBlock, LightEthereumBlockExt, LinkResolver, Logger,
+        async_trait, info, lazy_static, serde_json, BlockNumber, CheapClone,
+        DataSourceTemplateInfo, Deserialize, EthereumCall, LightEthereumBlock,
+        LightEthereumBlockExt, LinkResolver, Logger, TryStreamExt,
     },
 };
 
-use graph::data::subgraph::{
-    BlockHandlerFilter, DataSourceContext, Mapping, MappingABI, MappingBlockHandler,
-    MappingCallHandler, MappingEventHandler, Source, TemplateSource, UnresolvedMapping,
-};
+use graph::data::subgraph::{calls_host_fn, DataSourceContext, Source};
 
 use crate::chain::Chain;
 use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger, MappingTrigger};
+
+lazy_static! {
+    static ref MAX_API_VERSION: semver::Version = std::env::var("GRAPH_MAX_API_VERSION")
+        .ok()
+        .and_then(|api_version_str| semver::Version::parse(&api_version_str).ok())
+        .unwrap_or(semver::Version::new(0, 0, 5));
+}
 
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
@@ -784,4 +791,210 @@ impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
     fn runtime(&self) -> &[u8] {
         self.mapping.runtime.as_ref()
     }
+}
+
+#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnresolvedMapping {
+    pub kind: String,
+    pub api_version: String,
+    pub language: String,
+    pub entities: Vec<String>,
+    pub abis: Vec<UnresolvedMappingABI>,
+    #[serde(default)]
+    pub block_handlers: Vec<MappingBlockHandler>,
+    #[serde(default)]
+    pub call_handlers: Vec<MappingCallHandler>,
+    #[serde(default)]
+    pub event_handlers: Vec<MappingEventHandler>,
+    pub file: Link,
+}
+
+#[derive(Clone, Debug)]
+pub struct Mapping {
+    pub kind: String,
+    pub api_version: semver::Version,
+    pub language: String,
+    pub entities: Vec<String>,
+    pub abis: Vec<Arc<MappingABI>>,
+    pub block_handlers: Vec<MappingBlockHandler>,
+    pub call_handlers: Vec<MappingCallHandler>,
+    pub event_handlers: Vec<MappingEventHandler>,
+    pub runtime: Arc<Vec<u8>>,
+    pub link: Link,
+}
+
+impl Mapping {
+    pub fn requires_archive(&self) -> anyhow::Result<bool> {
+        calls_host_fn(&self.runtime, "ethereum.call")
+    }
+
+    pub fn has_call_handler(&self) -> bool {
+        !self.call_handlers.is_empty()
+    }
+
+    pub fn has_block_handler_with_call_filter(&self) -> bool {
+        self.block_handlers
+            .iter()
+            .any(|handler| matches!(handler.filter, Some(BlockHandlerFilter::Call)))
+    }
+
+    pub fn find_abi(&self, abi_name: &str) -> Result<Arc<MappingABI>, Error> {
+        Ok(self
+            .abis
+            .iter()
+            .find(|abi| abi.name == abi_name)
+            .ok_or_else(|| anyhow!("No ABI entry with name `{}` found", abi_name))?
+            .cheap_clone())
+    }
+}
+
+impl UnresolvedMapping {
+    pub async fn resolve(
+        self,
+        resolver: &impl LinkResolver,
+        logger: &Logger,
+    ) -> Result<Mapping, anyhow::Error> {
+        let UnresolvedMapping {
+            kind,
+            api_version,
+            language,
+            entities,
+            abis,
+            block_handlers,
+            call_handlers,
+            event_handlers,
+            file: link,
+        } = self;
+
+        let api_version = semver::Version::parse(&api_version)?;
+
+        ensure!(
+            semver::VersionReq::parse(&format!("<= {}", *MAX_API_VERSION))
+                .unwrap()
+                .matches(&api_version),
+            "The maximum supported mapping API version of this indexer is {}, but `{}` was found",
+            *MAX_API_VERSION,
+            api_version
+        );
+
+        info!(logger, "Resolve mapping"; "link" => &link.link);
+
+        let (abis, runtime) = try_join(
+            // resolve each abi
+            abis.into_iter()
+                .map(|unresolved_abi| async {
+                    Result::<_, Error>::Ok(Arc::new(
+                        unresolved_abi.resolve(resolver, logger).await?,
+                    ))
+                })
+                .collect::<FuturesOrdered<_>>()
+                .try_collect::<Vec<_>>(),
+            async {
+                let module_bytes = resolver.cat(logger, &link).await?;
+                Ok(Arc::new(module_bytes))
+            },
+        )
+        .await?;
+
+        Ok(Mapping {
+            kind,
+            api_version,
+            language,
+            entities,
+            abis,
+            block_handlers: block_handlers.clone(),
+            call_handlers: call_handlers.clone(),
+            event_handlers: event_handlers.clone(),
+            runtime,
+            link,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub struct UnresolvedMappingABI {
+    pub name: String,
+    pub file: Link,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MappingABI {
+    pub name: String,
+    pub contract: Contract,
+}
+
+impl UnresolvedMappingABI {
+    pub async fn resolve(
+        self,
+        resolver: &impl LinkResolver,
+        logger: &Logger,
+    ) -> Result<MappingABI, anyhow::Error> {
+        info!(
+            logger,
+            "Resolve ABI";
+            "name" => &self.name,
+            "link" => &self.file.link
+        );
+
+        let contract_bytes = resolver.cat(&logger, &self.file).await?;
+        let contract = Contract::load(&*contract_bytes)?;
+        Ok(MappingABI {
+            name: self.name,
+            contract,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub struct MappingBlockHandler {
+    pub handler: String,
+    pub filter: Option<BlockHandlerFilter>,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum BlockHandlerFilter {
+    // Call filter will trigger on all blocks where the data source contract
+    // address has been called
+    Call,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub struct MappingCallHandler {
+    pub function: String,
+    pub handler: String,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub struct MappingEventHandler {
+    pub event: String,
+    pub topic0: Option<H256>,
+    pub handler: String,
+}
+
+impl MappingEventHandler {
+    pub fn topic0(&self) -> H256 {
+        self.topic0
+            .unwrap_or_else(|| string_to_h256(&self.event.replace("indexed ", "")))
+    }
+}
+
+/// Hashes a string to a H256 hash.
+fn string_to_h256(s: &str) -> H256 {
+    let mut result = [0u8; 32];
+    let data = s.replace(" ", "").into_bytes();
+    let mut sponge = Keccak::new_keccak256();
+    sponge.update(&data);
+    sponge.finalize(&mut result);
+
+    // This was deprecated but the replacement seems to not be available in the
+    // version web3 uses.
+    #[allow(deprecated)]
+    H256::from_slice(&result)
+}
+
+#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
+pub struct TemplateSource {
+    pub abi: String,
 }

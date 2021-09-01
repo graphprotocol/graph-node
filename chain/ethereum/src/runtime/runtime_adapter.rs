@@ -1,5 +1,6 @@
 use std::{sync::Arc, time::Instant};
 
+use crate::data_source::MappingABI;
 use crate::{
     capabilities::NodeCapabilities, network::EthereumNetworkAdapters, Chain, DataSource,
     EthereumAdapter, EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError,
@@ -11,7 +12,7 @@ use graph::runtime::{AscIndexId, IndexForAscTypeId};
 use graph::{
     blockchain::{self, BlockPtr, HostFnCtx},
     cheap_clone::CheapClone,
-    prelude::{EthereumCallCache, Future01CompatExt, MappingABI},
+    prelude::{EthereumCallCache, Future01CompatExt},
     runtime::{asc_get, asc_new, AscPtr, HostExportError},
     semver::Version,
     slog::{info, trace, Logger},
