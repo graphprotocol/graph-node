@@ -553,28 +553,26 @@ pub struct Mapping {
     pub link: Link,
 }
 
-impl Mapping {
-    pub fn requires_archive(&self) -> anyhow::Result<bool> {
-        self.calls_host_fn("ethereum.call")
-    }
+pub fn calls_host_fn(runtime: &[u8], host_fn: &str) -> anyhow::Result<bool> {
+    use wasmparser::Payload;
 
-    fn calls_host_fn(&self, host_fn: &str) -> anyhow::Result<bool> {
-        use wasmparser::Payload;
-
-        let runtime = self.runtime.as_ref().as_ref();
-
-        for payload in wasmparser::Parser::new(0).parse_all(runtime) {
-            if let Payload::ImportSection(s) = payload? {
-                for import in s {
-                    let import = import?;
-                    if import.field == Some(host_fn) {
-                        return Ok(true);
-                    }
+    for payload in wasmparser::Parser::new(0).parse_all(runtime) {
+        if let Payload::ImportSection(s) = payload? {
+            for import in s {
+                let import = import?;
+                if import.field == Some(host_fn) {
+                    return Ok(true);
                 }
             }
         }
+    }
 
-        Ok(false)
+    Ok(false)
+}
+
+impl Mapping {
+    pub fn requires_archive(&self) -> anyhow::Result<bool> {
+        calls_host_fn(&self.runtime, "ethereum.call")
     }
 
     pub fn has_call_handler(&self) -> bool {
@@ -675,10 +673,10 @@ impl UnifiedMappingApiVersion {
         }
     }
 
-    pub fn try_from_versions<'a>(
-        versions: impl Iterator<Item = &'a Version>,
+    pub fn try_from_versions(
+        versions: impl Iterator<Item = Version>,
     ) -> Result<Self, DifferentMappingApiVersions> {
-        let unique_versions: BTreeSet<Version> = versions.into_iter().cloned().collect();
+        let unique_versions: BTreeSet<Version> = versions.collect();
 
         let all_below_referential_version = unique_versions.iter().all(|v| *v < API_VERSION_0_0_5);
         let all_the_same = unique_versions.len() == 1;
@@ -819,42 +817,8 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             errors.push(SubgraphManifestValidationError::NoDataSources);
         }
 
-        // Validate that the manifest has a `source` address in each data source
-        // which has call or block handlers
-        if self.0.data_sources.iter().any(|data_source| {
-            let no_source_address = data_source.address().is_none();
-            let has_call_handlers = !data_source.mapping().call_handlers.is_empty();
-            let has_block_handlers = !data_source.mapping().block_handlers.is_empty();
-
-            no_source_address && (has_call_handlers || has_block_handlers)
-        }) {
-            errors.push(SubgraphManifestValidationError::SourceAddressRequired)
-        };
-
-        // Validate that there are no more than one of each type of
-        // block_handler in each data source.
-        let has_too_many_block_handlers = self.0.data_sources.iter().any(|data_source| {
-            if data_source.mapping().block_handlers.is_empty() {
-                return false;
-            }
-
-            let mut non_filtered_block_handler_count = 0;
-            let mut call_filtered_block_handler_count = 0;
-            data_source
-                .mapping()
-                .block_handlers
-                .iter()
-                .for_each(|block_handler| {
-                    if block_handler.filter.is_none() {
-                        non_filtered_block_handler_count += 1
-                    } else {
-                        call_filtered_block_handler_count += 1
-                    }
-                });
-            non_filtered_block_handler_count > 1 || call_filtered_block_handler_count > 1
-        });
-        if has_too_many_block_handlers {
-            errors.push(SubgraphManifestValidationError::DataSourceBlockHandlerLimitExceeded)
+        for ds in &self.0.data_sources {
+            errors.extend(ds.validate());
         }
 
         // For API versions newer than 0.0.5, validate that all mappings uses the same api_version
@@ -958,32 +922,28 @@ impl<C: Blockchain> SubgraphManifest<C> {
             .collect()
     }
 
-    pub fn mappings(&self) -> Vec<Mapping> {
+    pub fn api_versions(&self) -> impl Iterator<Item = semver::Version> + '_ {
         self.templates
             .iter()
-            .map(|template| template.mapping().clone())
+            .map(|template| template.api_version().clone())
             .chain(
                 self.data_sources
                     .iter()
-                    .map(|source| source.mapping().clone()),
+                    .map(|source| source.api_version().clone()),
             )
-            .collect()
     }
 
-    // Only used in tests
-    #[cfg(debug_assertions)]
-    pub fn requires_traces(&self) -> bool {
-        self.mappings().iter().any(|mapping| {
-            mapping.has_call_handler() || mapping.has_block_handler_with_call_filter()
-        })
+    pub fn runtimes(&self) -> impl Iterator<Item = &[u8]> + '_ {
+        self.templates
+            .iter()
+            .map(|template| template.runtime())
+            .chain(self.data_sources.iter().map(|source| source.runtime()))
     }
 
     pub fn unified_mapping_api_version(
         &self,
     ) -> Result<UnifiedMappingApiVersion, DifferentMappingApiVersions> {
-        let mappings = self.mappings();
-        let iter = mappings.iter().map(|m| &m.api_version);
-        UnifiedMappingApiVersion::try_from_versions(iter)
+        UnifiedMappingApiVersion::try_from_versions(self.api_versions())
     }
 }
 
@@ -1140,7 +1100,7 @@ fn unified_mapping_api_version_from_iterator() {
             .into()),
     ];
     for (version_vec, expected_unified_version) in input.iter().zip(output.iter()) {
-        let unified = UnifiedMappingApiVersion::try_from_versions(version_vec.iter());
+        let unified = UnifiedMappingApiVersion::try_from_versions(version_vec.iter().cloned());
         match (unified, expected_unified_version) {
             (Ok(a), Ok(b)) => assert_eq!(a, *b),
             (Err(a), Err(b)) => assert_eq!(a, *b),

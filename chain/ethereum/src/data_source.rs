@@ -2,7 +2,7 @@ use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
 use ethabi::{Address, Event, Function, LogParam, ParamType, RawLog};
 use graph::components::store::StoredDynamicDataSource;
-use graph::prelude::Entity;
+use graph::prelude::{Entity, SubgraphManifestValidationError};
 use graph::slog::trace;
 use std::collections::BTreeMap;
 use std::str::FromStr;
@@ -58,10 +58,6 @@ impl blockchain::DataSource<Chain> for DataSource {
     ) -> Result<Option<<Chain as Blockchain>::MappingTrigger>, Error> {
         let block = block.light_block();
         self.match_and_decode(trigger, block, logger)
-    }
-
-    fn mapping(&self) -> &Mapping {
-        &self.mapping
     }
 
     fn from_manifest(
@@ -181,6 +177,48 @@ impl blockchain::DataSource<Chain> for DataSource {
             creation_block,
             contract_abi,
         })
+    }
+
+    fn validate(&self) -> Vec<graph::prelude::SubgraphManifestValidationError> {
+        let mut errors = vec![];
+
+        // Validate that there is a `source` address if there are call or block handlers
+        let no_source_address = self.address().is_none();
+        let has_call_handlers = !self.mapping.call_handlers.is_empty();
+        let has_block_handlers = !self.mapping.block_handlers.is_empty();
+        if no_source_address && (has_call_handlers || has_block_handlers) {
+            errors.push(SubgraphManifestValidationError::SourceAddressRequired);
+        };
+
+        // Validate that there are no more than one of each type of block_handler
+        let has_too_many_block_handlers = {
+            let mut non_filtered_block_handler_count = 0;
+            let mut call_filtered_block_handler_count = 0;
+            self.mapping
+                .block_handlers
+                .iter()
+                .for_each(|block_handler| {
+                    if block_handler.filter.is_none() {
+                        non_filtered_block_handler_count += 1
+                    } else {
+                        call_filtered_block_handler_count += 1
+                    }
+                });
+            non_filtered_block_handler_count > 1 || call_filtered_block_handler_count > 1
+        };
+        if has_too_many_block_handlers {
+            errors.push(SubgraphManifestValidationError::DataSourceBlockHandlerLimitExceeded);
+        }
+
+        errors
+    }
+
+    fn api_version(&self) -> semver::Version {
+        self.mapping.api_version.clone()
+    }
+
+    fn runtime(&self) -> &[u8] {
+        self.mapping.runtime.as_ref()
     }
 }
 
@@ -735,11 +773,15 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
 }
 
 impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
-    fn mapping(&self) -> &Mapping {
-        &self.mapping
-    }
-
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn api_version(&self) -> semver::Version {
+        self.mapping.api_version.clone()
+    }
+
+    fn runtime(&self) -> &[u8] {
+        self.mapping.runtime.as_ref()
     }
 }
