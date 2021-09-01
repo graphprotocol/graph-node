@@ -80,13 +80,13 @@ where
         host_metrics: Arc<HostMetrics>,
     ) -> Result<T::Host, Error> {
         let mapping_request_sender = {
-            let module_bytes = data_source.mapping().runtime.as_ref();
+            let module_bytes = data_source.runtime();
             let module_hash = tiny_keccak::keccak256(module_bytes);
             if let Some(sender) = self.module_cache.get(&module_hash) {
                 sender.clone()
             } else {
                 let sender = T::spawn_mapping(
-                    module_bytes.clone(),
+                    module_bytes.to_owned(),
                     logger,
                     self.subgraph_id.clone(),
                     host_metrics.clone(),

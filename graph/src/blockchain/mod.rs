@@ -16,7 +16,7 @@ use crate::{
         store::{DeploymentLocator, StoredDynamicDataSource},
     },
     data::subgraph::{Mapping, Source, UnifiedMappingApiVersion},
-    prelude::DataSourceContext,
+    prelude::{DataSourceContext, SubgraphManifestValidationError},
     runtime::{AscHeap, AscPtr, DeterministicHostError, HostExportError},
 };
 use crate::{
@@ -199,12 +199,10 @@ pub trait TriggerFilter<C: Blockchain>: Default + Clone + Send + Sync {
 pub trait DataSource<C: Blockchain>:
     'static + Sized + Send + Sync + Clone + TryFrom<DataSourceTemplateInfo<C>, Error = anyhow::Error>
 {
-    // ETHDEP: `Mapping` is Ethereum-specific.
-    fn mapping(&self) -> &Mapping;
-
     fn address(&self) -> Option<&[u8]>;
     fn start_block(&self) -> BlockNumber;
 
+    // ETHDEP: These arguments are ethereum-specific
     fn from_manifest(
         kind: String,
         network: Option<String>,
@@ -219,6 +217,8 @@ pub trait DataSource<C: Blockchain>:
     fn network(&self) -> Option<&str>;
     fn context(&self) -> Arc<Option<DataSourceContext>>;
     fn creation_block(&self) -> Option<BlockNumber>;
+    fn api_version(&self) -> semver::Version;
+    fn runtime(&self) -> &[u8];
 
     /// Checks if `trigger` matches this data source, and if so decodes it into a `MappingTrigger`.
     /// A return of `Ok(None)` mean the trigger does not match.
@@ -237,6 +237,9 @@ pub trait DataSource<C: Blockchain>:
         templates: &BTreeMap<&str, &C::DataSourceTemplate>,
         stored: StoredDynamicDataSource,
     ) -> Result<Self, Error>;
+
+    /// Used as part of manifest validation. If there are no errors, return an empty vector.
+    fn validate(&self) -> Vec<SubgraphManifestValidationError>;
 }
 
 #[async_trait]
@@ -251,7 +254,8 @@ pub trait UnresolvedDataSourceTemplate<C: Blockchain>:
 }
 
 pub trait DataSourceTemplate<C: Blockchain>: Send + Sync + Clone + Debug {
-    fn mapping(&self) -> &Mapping;
+    fn api_version(&self) -> semver::Version;
+    fn runtime(&self) -> &[u8];
     fn name(&self) -> &str;
 }
 
