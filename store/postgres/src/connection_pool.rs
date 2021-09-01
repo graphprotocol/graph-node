@@ -250,10 +250,35 @@ pub struct ConnectionPool {
     logger: Logger,
 }
 
+/// The name of the pool, mostly for logging, and what purpose it serves.
+/// The main pool will always be called `main`, and can be used for reading
+/// and writing. Replica pools can only be used for reading, and don't
+/// require any setup (migrations etc.)
+pub enum PoolName {
+    Main,
+    Replica(String),
+}
+
+impl PoolName {
+    fn as_str(&self) -> &str {
+        match self {
+            PoolName::Main => "main",
+            PoolName::Replica(name) => name,
+        }
+    }
+
+    fn is_replica(&self) -> bool {
+        match self {
+            PoolName::Main => false,
+            PoolName::Replica(_) => true,
+        }
+    }
+}
+
 impl ConnectionPool {
     pub fn create(
         shard_name: &str,
-        pool_name: &str,
+        pool_name: PoolName,
         postgres_url: String,
         pool_size: u32,
         fdw_pool_size: Option<u32>,
@@ -263,18 +288,20 @@ impl ConnectionPool {
     ) -> ConnectionPool {
         let pool = PoolInner::create(
             shard_name,
-            pool_name,
+            pool_name.as_str(),
             postgres_url,
             pool_size,
             fdw_pool_size,
             logger,
             registry,
         );
+        let pool_state = if pool_name.is_replica() {
+            PoolState::Ready(Arc::new(pool))
+        } else {
+            PoolState::Created(Arc::new(pool), servers)
+        };
         ConnectionPool {
-            inner: Arc::new(TimedMutex::new(
-                PoolState::Created(Arc::new(pool), servers),
-                format!("pool-{}", shard_name),
-            )),
+            inner: Arc::new(TimedMutex::new(pool_state, format!("pool-{}", shard_name))),
             logger: logger.clone(),
         }
     }

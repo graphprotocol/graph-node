@@ -7,7 +7,7 @@ use graph::{
     prelude::{info, CheapClone, EthereumNetworkIdentifier, Logger},
     util::security::SafeDisplay,
 };
-use graph_store_postgres::connection_pool::{ConnectionPool, ForeignServer};
+use graph_store_postgres::connection_pool::{ConnectionPool, ForeignServer, PoolName};
 use graph_store_postgres::{
     BlockStore as DieselBlockStore, ChainHeadUpdateListener as PostgresChainHeadUpdateListener,
     Shard as ShardName, Store as DieselStore, SubgraphStore, SubscriptionManager, PRIMARY_SHARD,
@@ -199,7 +199,7 @@ impl StoreBuilder {
         );
         ConnectionPool::create(
             name,
-            "main",
+            PoolName::Main,
             shard.connection.to_owned(),
             pool_size,
             Some(fdw_pool_size),
@@ -225,7 +225,7 @@ impl StoreBuilder {
                 .values()
                 .enumerate()
                 .map(|(i, replica)| {
-                    let pool = &format!("replica{}", i + 1);
+                    let pool = format!("replica{}", i + 1);
                     let logger = logger.new(o!("pool" => pool.clone()));
                     info!(
                         &logger,
@@ -240,7 +240,7 @@ impl StoreBuilder {
                     ));
                     ConnectionPool::create(
                         name,
-                        pool,
+                        PoolName::Replica(pool),
                         replica.connection.clone(),
                         pool_size,
                         None,
