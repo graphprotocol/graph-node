@@ -773,7 +773,7 @@ impl PoolInner {
             // closure failed.
             let conn = pool
                 .get()
-                .map_err(|e| CancelableError::Error(StoreError::Unknown(e.into())))?;
+                .map_err(|_| CancelableError::Error(StoreError::DatabaseUnavailable))?;
 
             // It is possible time has passed while establishing a connection.
             // Time to check for cancel.
@@ -798,7 +798,7 @@ impl PoolInner {
     }
 
     pub fn get(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
-        self.pool.get().map_err(|e| StoreError::Unknown(e.into()))
+        self.pool.get().map_err(|_| StoreError::DatabaseUnavailable)
     }
 
     pub fn get_with_timeout_warning(
