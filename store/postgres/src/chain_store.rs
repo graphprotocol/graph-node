@@ -49,6 +49,7 @@ pub use data::Storage;
 /// Encapuslate access to the blocks table for a chain.
 mod data {
 
+    use diesel::sql_types::Binary;
     use diesel::{connection::SimpleConnection, insert_into};
     use diesel::{delete, prelude::*, sql_query};
     use diesel::{dsl::sql, pg::PgConnection};
@@ -78,7 +79,9 @@ mod data {
         LightEthereumBlock,
     };
 
-    use crate::transaction_receipt::find_transaction_receipts_in_block;
+    use crate::transaction_receipt::RawTransactionReceipt;
+
+    pub(crate) const ETHEREUM_BLOCKS_TABLE_NAME: &'static str = "public.ethereum_blocks";
 
     mod public {
         pub(super) use super::super::public::ethereum_networks;
@@ -364,9 +367,10 @@ mod data {
         }
 
         /// Returns a fully qualified table name to the blocks table
+        #[inline]
         fn blocks_table(&self) -> &str {
             match self {
-                Storage::Shared => "public.ethereum_blocks",
+                Storage::Shared => ETHEREUM_BLOCKS_TABLE_NAME,
                 Storage::Private(Schema { blocks, .. }) => &blocks.qname,
             }
         }
@@ -1095,13 +1099,54 @@ mod data {
                 .unwrap();
         }
 
-        /// Delegates to [`crate::transaction_receipt::find_transaction_receipts_in_block`].
+        /// Queries the database for all the transaction receipts in a given block range.
         pub(crate) fn find_transaction_receipts_in_block(
             &self,
             conn: &PgConnection,
             block_hash: H256,
         ) -> anyhow::Result<Vec<LightTransactionReceipt>> {
-            find_transaction_receipts_in_block(conn, self.blocks_table(), block_hash)
+            let query = sql_query(format!(
+                "
+select
+    ethereum_hex_to_bytea(receipt ->> 'transactionHash') as transaction_hash,
+    ethereum_hex_to_bytea(receipt ->> 'transactionIndex') as transaction_index,
+    ethereum_hex_to_bytea(receipt ->> 'blockHash') as block_hash,
+    ethereum_hex_to_bytea(receipt ->> 'blockNumber') as block_number,
+    ethereum_hex_to_bytea(receipt ->> 'gasUsed') as gas_used,
+    ethereum_hex_to_bytea(receipt ->> 'status') as status
+from (
+    select
+        jsonb_array_elements(data -> 'transaction_receipts') as receipt
+    from
+        {blocks_table_name}
+    where hash = $1) as temp;
+",
+                blocks_table_name = self.blocks_table()
+            ));
+
+            let query_results: Result<Vec<RawTransactionReceipt>, diesel::result::Error> = {
+                // The `hash` column has different types between the `public.ethereum_blocks` and the
+                // `chain*.blocks` tables, so we must check which one is being queried to bind the
+                // `block_hash` parameter to the correct type
+                match self {
+                    Storage::Shared => query
+                        .bind::<Text, _>(format!("{:x}", block_hash))
+                        .get_results(conn),
+                    Storage::Private(_) => query
+                        .bind::<Binary, _>(block_hash.as_bytes())
+                        .get_results(conn),
+                }
+            };
+            query_results
+                .map_err(|error| {
+                    anyhow::anyhow!(
+                        "Error fetching transaction receipt from database: {}",
+                        error
+                    )
+                })?
+                .into_iter()
+                .map(LightTransactionReceipt::try_from)
+                .collect()
         }
     }
 }

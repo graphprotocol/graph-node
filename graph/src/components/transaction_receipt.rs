@@ -6,6 +6,7 @@
 use web3::types::{TransactionReceipt, H256, U256, U64};
 
 /// Like web3::types::Receipt, but with fewer fields.
+#[derive(Debug, PartialEq)]
 pub struct LightTransactionReceipt {
     pub transaction_hash: H256,
     pub transaction_index: U64,

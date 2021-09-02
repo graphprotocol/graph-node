@@ -1,107 +1,12 @@
-use diesel::{
-    pg::{Pg, PgConnection},
-    prelude::*,
-    query_builder::{Query, QueryFragment},
-    sql_types::{Binary, Nullable},
-};
-use diesel_derives::{Queryable, QueryableByName};
-use graph::prelude::web3::types::H256;
+use diesel::sql_types::{Binary, Nullable};
+use diesel_derives::QueryableByName;
+use graph::prelude::transaction_receipt::LightTransactionReceipt;
 use itertools::Itertools;
 use std::convert::TryFrom;
 
-use graph::prelude::transaction_receipt::LightTransactionReceipt;
-
-/// Queries the database for all the transaction receipts in a given block range.
-pub fn find_transaction_receipts_in_block(
-    conn: &PgConnection,
-    blocks_table_name: &str,
-    block_hash: H256,
-) -> anyhow::Result<Vec<LightTransactionReceipt>> {
-    let query = TransactionReceiptQuery {
-        blocks_table_name,
-        block_hash: block_hash.as_bytes(),
-    };
-
-    query
-        .get_results::<RawTransactionReceipt>(conn)
-        .or_else(|error| {
-            Err(anyhow::anyhow!(
-                "Error fetching transaction receipt from database: {}",
-                error
-            ))
-        })?
-        .into_iter()
-        .map(LightTransactionReceipt::try_from)
-        .collect()
-}
-
-/// Parameters for querying for all transaction receipts of a given block.
-struct TransactionReceiptQuery<'a> {
-    block_hash: &'a [u8],
-    blocks_table_name: &'a str,
-}
-
-impl<'a> diesel::query_builder::QueryId for TransactionReceiptQuery<'a> {
-    type QueryId = ();
-    const HAS_STATIC_QUERY_ID: bool = false;
-}
-
-impl<'a> QueryFragment<Pg> for TransactionReceiptQuery<'a> {
-    /// Writes the following SQL:
-    ///
-    /// ```sql
-    /// select
-    ///     ethereum_hex_to_bytea(receipt ->> 'transactionHash') as transaction_hash,
-    ///     ethereum_hex_to_bytea(receipt ->> 'transactionIndex') as transaction_index,
-    ///     ethereum_hex_to_bytea(receipt ->> 'blockHash') as block_hash,
-    ///     ethereum_hex_to_bytea(receipt ->> 'blockNumber') as block_number,
-    ///     ethereum_hex_to_bytea(receipt ->> 'gasUsed') as gas_used,
-    ///     ethereum_hex_to_bytea(receipt ->> 'status') as status
-    /// from (
-    ///     select
-    ///         jsonb_array_elements(data -> 'transaction_receipts') as receipt
-    ///     from
-    ///         $BLOCKS_TABLE
-    ///     where hash = $BLOCK_HASH) as temp;
-    ///```
-    fn walk_ast(&self, mut out: diesel::query_builder::AstPass<Pg>) -> QueryResult<()> {
-        out.push_sql(
-            r#"
-select
-    ethereum_hex_to_bytea(receipt ->> 'transactionHash') as transaction_hash,
-    ethereum_hex_to_bytea(receipt ->> 'transactionIndex') as transaction_index,
-    ethereum_hex_to_bytea(receipt ->> 'blockHash') as block_hash,
-    ethereum_hex_to_bytea(receipt ->> 'blockNumber') as block_number,
-    ethereum_hex_to_bytea(receipt ->> 'gasUsed') as gas_used,
-    ethereum_hex_to_bytea(receipt ->> 'status') as status
-from (
-    select jsonb_array_elements(data -> 'transaction_receipts') as receipt
-    from "#,
-        );
-        out.push_sql(&self.blocks_table_name);
-        out.push_sql(" where hash = ");
-        out.push_bind_param::<Binary, _>(&self.block_hash)?;
-        out.push_sql(") as temp;");
-        Ok(())
-    }
-}
-
-impl<'a> Query for TransactionReceiptQuery<'a> {
-    type SqlType = (
-        Binary,
-        Binary,
-        Nullable<Binary>,
-        Nullable<Binary>,
-        Nullable<Binary>,
-        Nullable<Binary>,
-    );
-}
-
-impl<'a> RunQueryDsl<PgConnection> for TransactionReceiptQuery<'a> {}
-
 /// Type that comes straight out of a SQL query
-#[derive(QueryableByName, Queryable)]
-struct RawTransactionReceipt {
+#[derive(QueryableByName)]
+pub(crate) struct RawTransactionReceipt {
     #[sql_type = "Binary"]
     transaction_hash: Vec<u8>,
     #[sql_type = "Binary"]
