@@ -321,6 +321,16 @@ impl ConnectionPool {
         }
     }
 
+    /// This is only used for `graphman` to ensure it doesn't run migrations
+    /// or other setup steps
+    pub fn skip_setup(&self) {
+        let mut guard = self.inner.lock(&self.logger);
+        match &*guard {
+            PoolState::Created(pool, _) => *guard = PoolState::Ready(pool.clone()),
+            PoolState::Unavailable(_) | PoolState::Ready(_) => { /* nothing to do */ }
+        }
+    }
+
     /// Return a pool that is ready, i.e., connected to the database. If the
     /// pool has not been set up yet, call `setup`. If there are any errors
     /// or the pool is marked as unavailable, return

@@ -361,18 +361,20 @@ impl Context {
 
     fn primary_pool(self) -> ConnectionPool {
         let primary = self.config.primary_store();
-        StoreBuilder::main_pool(
+        let pool = StoreBuilder::main_pool(
             &self.logger,
             &self.node_id,
             PRIMARY_SHARD.as_str(),
             primary,
             self.registry,
             Arc::new(vec![]),
-        )
+        );
+        pool.skip_setup();
+        pool
     }
 
     fn subgraph_store(self) -> Arc<SubgraphStore> {
-        StoreBuilder::make_subgraph_store(&self.logger, &self.node_id, &self.config, self.registry)
+        self.store_and_pools().0.subgraph_store()
     }
 
     fn subscription_manager(self) -> Arc<SubscriptionManager> {
@@ -400,6 +402,10 @@ impl Context {
             &self.config,
             self.registry,
         );
+
+        for pool in pools.values() {
+            pool.skip_setup();
+        }
 
         let store = StoreBuilder::make_store(
             &self.logger,
