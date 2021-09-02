@@ -44,7 +44,7 @@ from (
         // `block_hash` parameter to the correct type
         if blocks_table_name == ETHEREUM_BLOCKS_TABLE_NAME {
             query
-                .bind::<Text, _>(block_hash.to_string())
+                .bind::<Text, _>(format!("{:x}", block_hash))
                 .get_results(conn)
         } else {
             query
