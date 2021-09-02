@@ -80,7 +80,8 @@ mod data {
     };
 
     use crate::transaction_receipt::RawTransactionReceipt;
-    use crate::ETHEREUM_BLOCKS_TABLE_NAME;
+
+    pub(crate) const ETHEREUM_BLOCKS_TABLE_NAME: &'static str = "public.ethereum_blocks";
 
     mod public {
         pub(super) use super::super::public::ethereum_networks;
@@ -1136,7 +1137,6 @@ from (
                         .get_results(conn),
                 }
             };
-
             query_results
                 .map_err(|error| {
                     anyhow::anyhow!(

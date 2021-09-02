@@ -23,8 +23,6 @@ extern crate postgres;
 extern crate serde;
 extern crate uuid;
 
-pub const ETHEREUM_BLOCKS_TABLE_NAME: &'static str = "public.ethereum_blocks";
-
 mod advisory_lock;
 mod block_range;
 mod block_store;

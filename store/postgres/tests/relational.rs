@@ -1614,14 +1614,3 @@ fn text_not_in() {
     text_find(vec!["a2b", "a3"], filter(vec![&a1, &a2]));
     text_find(vec!["a2", "a2b"], filter(vec![&a1, &a3]));
 }
-
-#[test]
-fn test_find_transaction_receipts_in_block_function() {
-    use graph_store_postgres::transaction_receipt::find_transaction_receipts_in_block;
-    run_test_with_conn(|conn| {
-        let receipts =
-            find_transaction_receipts_in_block(conn, "public.ethereum_blocks", H256::zero())
-                .unwrap();
-        assert_eq!(receipts, vec![])
-    })
-}
