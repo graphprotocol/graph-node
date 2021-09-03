@@ -1013,7 +1013,7 @@ pub trait WritableStore: Send + Sync + 'static {
     /// Set subgraph status to failed with the given error as the cause.
     async fn fail_subgraph(&self, error: SubgraphError) -> Result<(), StoreError>;
 
-    fn supports_proof_of_indexing<'a>(self: Arc<Self>) -> DynTryFuture<'a, bool>;
+    async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError>;
 
     /// Looks up an entity using the given store key at the latest block.
     fn get(&self, key: &EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
@@ -1191,7 +1191,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn supports_proof_of_indexing<'a>(self: Arc<Self>) -> DynTryFuture<'a, bool> {
+    async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError> {
         unimplemented!()
     }
 
@@ -1402,12 +1402,12 @@ pub trait StatusStore: Send + Sync + 'static {
     /// re-sync from scratch, so existing deployments will continue without a
     /// Proof of Indexing. Once all subgraphs have been re-deployed the Option
     /// can be removed.
-    fn get_proof_of_indexing<'a>(
-        self: Arc<Self>,
-        subgraph_id: &'a DeploymentHash,
-        indexer: &'a Option<Address>,
+    async fn get_proof_of_indexing(
+        &self,
+        subgraph_id: &DeploymentHash,
+        indexer: &Option<Address>,
         block: BlockPtr,
-    ) -> DynTryFuture<'a, Option<[u8; 32]>>;
+    ) -> Result<Option<[u8; 32]>, StoreError>;
 }
 
 /// An entity operation that can be transacted into the store; as opposed to

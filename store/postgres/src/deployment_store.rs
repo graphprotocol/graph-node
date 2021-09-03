@@ -3,7 +3,6 @@ use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
-use futures03::FutureExt as _;
 use graph::components::store::{EntityType, StoredDynamicDataSource};
 use graph::data::subgraph::status;
 use graph::prelude::{
@@ -27,10 +26,10 @@ use graph::components::subgraph::ProofOfIndexingFinisher;
 use graph::constraint_violation;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
-    anyhow, debug, futures03, info, lazy_static, o, warn, web3, ApiSchema, AttributeNames,
-    BlockNumber, BlockPtr, CheapClone, DeploymentHash, DeploymentState, DynTryFuture, Entity,
-    EntityKey, EntityModification, EntityQuery, Error, Logger, QueryExecutionError, Schema,
-    StopwatchMetrics, StoreError, StoreEvent, Value, BLOCK_NUMBER_MAX,
+    anyhow, debug, info, lazy_static, o, warn, web3, ApiSchema, AttributeNames, BlockNumber,
+    BlockPtr, CheapClone, DeploymentHash, DeploymentState, Entity, EntityKey, EntityModification,
+    EntityQuery, Error, Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError,
+    StoreEvent, Value, BLOCK_NUMBER_MAX,
 };
 use graph_graphql::prelude::api_schema;
 use web3::types::Address;
@@ -689,114 +688,108 @@ impl DeploymentStore {
         )?)
     }
 
-    pub(crate) fn supports_proof_of_indexing<'a>(
-        self: Arc<Self>,
+    pub(crate) async fn supports_proof_of_indexing<'a>(
+        &self,
         site: Arc<Site>,
-    ) -> DynTryFuture<'a, bool> {
+    ) -> Result<bool, StoreError> {
         let store = self.clone();
-        async move {
-            self.with_conn(move |conn, cancel| {
-                cancel.check_cancel()?;
-                let layout = store.layout(conn, site)?;
-                Ok(layout.supports_proof_of_indexing())
-            })
-            .await
-            .map_err(Into::into)
-        }
-        .boxed()
+        self.with_conn(move |conn, cancel| {
+            cancel.check_cancel()?;
+            let layout = store.layout(conn, site)?;
+            Ok(layout.supports_proof_of_indexing())
+        })
+        .await
+        .map_err(Into::into)
     }
 
-    pub(crate) fn get_proof_of_indexing<'a>(
-        self: Arc<Self>,
+    pub(crate) async fn get_proof_of_indexing(
+        &self,
         site: Arc<Site>,
-        indexer: &'a Option<Address>,
+        indexer: &Option<Address>,
         block: BlockPtr,
-    ) -> DynTryFuture<'a, Option<[u8; 32]>> {
+    ) -> Result<Option<[u8; 32]>, StoreError> {
         let indexer = *indexer;
         let site3 = site.clone();
         let site4 = site.clone();
         let store = self.clone();
         let block2 = block.clone();
 
-        async move {
-            let entities = self
-                .with_conn(move |conn, cancel| {
+        let entities = self
+            .with_conn(move |conn, cancel| {
+                cancel.check_cancel()?;
+
+                let layout = store.layout(conn, site4.clone())?;
+
+                if !layout.supports_proof_of_indexing() {
+                    return Ok(None);
+                }
+
+                conn.transaction::<_, CancelableError<anyhow::Error>, _>(move || {
+                    let latest_block_ptr = match Self::block_ptr_with_conn(&site.deployment, conn)?
+                    {
+                        Some(inner) => inner,
+                        None => return Ok(None),
+                    };
+
                     cancel.check_cancel()?;
 
-                    let layout = store.layout(conn, site4.clone())?;
-
-                    if !layout.supports_proof_of_indexing() {
+                    // FIXME: (Determinism)
+                    //
+                    // It is vital to ensure that the block hash given in the query
+                    // is a parent of the latest block indexed for the subgraph.
+                    // Unfortunately the machinery needed to do this is not yet in place.
+                    // The best we can do right now is just to make sure that the block number
+                    // is high enough.
+                    if latest_block_ptr.number < block.number {
                         return Ok(None);
                     }
 
-                    conn.transaction::<_, CancelableError<anyhow::Error>, _>(move || {
-                        let latest_block_ptr =
-                            match Self::block_ptr_with_conn(&site.deployment, conn)? {
-                                Some(inner) => inner,
-                                None => return Ok(None),
-                            };
+                    let query = EntityQuery::new(
+                        site4.deployment.clone(),
+                        block.number.try_into().unwrap(),
+                        EntityCollection::All(vec![(
+                            POI_OBJECT.cheap_clone(),
+                            AttributeNames::All,
+                        )]),
+                    );
+                    let entities = store
+                        .execute_query::<Entity>(conn, site4, query)
+                        .map_err(anyhow::Error::from)?;
 
-                        cancel.check_cancel()?;
-
-                        // FIXME: (Determinism)
-                        //
-                        // It is vital to ensure that the block hash given in the query
-                        // is a parent of the latest block indexed for the subgraph.
-                        // Unfortunately the machinery needed to do this is not yet in place.
-                        // The best we can do right now is just to make sure that the block number
-                        // is high enough.
-                        if latest_block_ptr.number < block.number {
-                            return Ok(None);
-                        }
-
-                        let query = EntityQuery::new(
-                            site4.deployment.clone(),
-                            block.number.try_into().unwrap(),
-                            EntityCollection::All(vec![(
-                                POI_OBJECT.cheap_clone(),
-                                AttributeNames::All,
-                            )]),
-                        );
-                        let entities = store
-                            .execute_query::<Entity>(conn, site4, query)
-                            .map_err(anyhow::Error::from)?;
-
-                        Ok(Some(entities))
-                    })
-                    .map_err(Into::into)
+                    Ok(Some(entities))
                 })
-                .await?;
+                .map_err(Into::into)
+            })
+            .await?;
 
-            let entities = if let Some(entities) = entities {
-                entities
-            } else {
-                return Ok(None);
-            };
+        let entities = if let Some(entities) = entities {
+            entities
+        } else {
+            return Ok(None);
+        };
 
-            let mut by_causality_region = entities
-                .into_iter()
-                .map(|e| {
-                    let causality_region = e.id()?;
-                    let digest = match e.get("digest") {
-                        Some(Value::Bytes(b)) => Ok(b.to_owned()),
-                        other => Err(anyhow::anyhow!(
-                            "Entity has non-bytes digest attribute: {:?}",
-                            other
-                        )),
-                    }?;
+        let mut by_causality_region = entities
+            .into_iter()
+            .map(|e| {
+                let causality_region = e.id()?;
+                let digest = match e.get("digest") {
+                    Some(Value::Bytes(b)) => Ok(b.to_owned()),
+                    other => Err(anyhow::anyhow!(
+                        "Entity has non-bytes digest attribute: {:?}",
+                        other
+                    )),
+                }?;
 
-                    Ok((causality_region, digest))
-                })
-                .collect::<Result<HashMap<_, _>, anyhow::Error>>()?;
+                Ok((causality_region, digest))
+            })
+            .collect::<Result<HashMap<_, _>, anyhow::Error>>()?;
 
-            let mut finisher = ProofOfIndexingFinisher::new(&block2, &site3.deployment, &indexer);
-            for (name, region) in by_causality_region.drain() {
-                finisher.add_causality_region(&name, &region);
-            }
-
-            Ok(Some(finisher.finish()))
+        let mut finisher = ProofOfIndexingFinisher::new(&block2, &site3.deployment, &indexer);
+        for (name, region) in by_causality_region.drain() {
+            finisher.add_causality_region(&name, &region);
         }
-        .boxed()
+
+        Ok(Some(finisher.finish()))
     }
 
     pub(crate) fn get(

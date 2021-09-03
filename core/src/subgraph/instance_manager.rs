@@ -663,6 +663,12 @@ impl From<Error> for BlockProcessingError {
     }
 }
 
+impl From<StoreError> for BlockProcessingError {
+    fn from(e: StoreError) -> Self {
+        BlockProcessingError::Unknown(e.into())
+    }
+}
+
 /// Processes a block and returns the updated context and a boolean flag indicating
 /// whether new dynamic data sources have been added to the subgraph.
 async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
