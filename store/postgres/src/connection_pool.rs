@@ -24,6 +24,7 @@ use graph::{
 
 use std::fmt::{self, Write};
 use std::str::FromStr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use std::{collections::HashMap, sync::RwLock};
@@ -248,18 +249,20 @@ impl ForeignServer {
 const FDW_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// A pool goes through several states, and this enum tracks what state we
-/// are in. When first created, the pool is in state `Created`; once we
-/// successfully called `setup` on it, it moves to state `Ready`. If we
-/// detect that the database is not available, the pool goes into state
-/// `Unavailable` until we can confirm that we can connect to the database,
-/// at which point it goes back to `Ready`
-// `Unavailable` is not used in the code yet
-#[allow(dead_code)]
+/// are in, together with the `state_tracker` field on `ConnectionPool`.
+/// When first created, the pool is in state `Created`; once we successfully
+/// called `setup` on it, it moves to state `Ready`. During use, we use the
+/// r2d2 callbacks to determine if the database is available or not, and set
+/// the `available` field accordingly. Tracking that allows us to fail fast
+/// and avoids having to wait for a connection timeout every time we need a
+/// database connection. That avoids overall undesirable states like buildup
+/// of queries; instead of queueing them until the database is available,
+/// they return almost immediately with an error
 enum PoolState {
     /// A connection pool, and all the servers for which we need to
     /// establish fdw mappings when we call `setup` on the pool
     Created(Arc<PoolInner>, Arc<Vec<ForeignServer>>),
-    Unavailable(Arc<PoolInner>),
+    /// The pool has been successfully set up
     Ready(Arc<PoolInner>),
 }
 
@@ -268,6 +271,15 @@ pub struct ConnectionPool {
     inner: Arc<TimedMutex<PoolState>>,
     logger: Logger,
     pub shard: Shard,
+    state_tracker: PoolStateTracker,
+}
+
+impl fmt::Debug for ConnectionPool {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ConnectionPool")
+            .field("shard", &self.shard)
+            .finish()
+    }
 }
 
 /// The name of the pool, mostly for logging, and what purpose it serves.
@@ -295,6 +307,31 @@ impl PoolName {
     }
 }
 
+#[derive(Clone)]
+struct PoolStateTracker {
+    available: Arc<AtomicBool>,
+}
+
+impl PoolStateTracker {
+    fn new() -> Self {
+        Self {
+            available: Arc::new(AtomicBool::new(true)),
+        }
+    }
+
+    fn mark_available(&self) {
+        self.available.store(true, Ordering::Relaxed);
+    }
+
+    fn mark_unavailable(&self) {
+        self.available.store(false, Ordering::Relaxed);
+    }
+
+    fn is_available(&self) -> bool {
+        self.available.load(Ordering::Relaxed)
+    }
+}
+
 impl ConnectionPool {
     pub fn create(
         shard_name: &str,
@@ -306,6 +343,7 @@ impl ConnectionPool {
         registry: Arc<dyn MetricsRegistry>,
         servers: Arc<Vec<ForeignServer>>,
     ) -> ConnectionPool {
+        let state_tracker = PoolStateTracker::new();
         let pool = PoolInner::create(
             shard_name,
             pool_name.as_str(),
@@ -314,6 +352,7 @@ impl ConnectionPool {
             fdw_pool_size,
             logger,
             registry,
+            state_tracker.clone(),
         );
         let shard = pool.shard.clone();
         let pool_state = if pool_name.is_replica() {
@@ -325,6 +364,7 @@ impl ConnectionPool {
             inner: Arc::new(TimedMutex::new(pool_state, format!("pool-{}", shard_name))),
             logger: logger.clone(),
             shard,
+            state_tracker,
         }
     }
 
@@ -334,7 +374,7 @@ impl ConnectionPool {
         let mut guard = self.inner.lock(&self.logger);
         match &*guard {
             PoolState::Created(pool, _) => *guard = PoolState::Ready(pool.clone()),
-            PoolState::Unavailable(_) | PoolState::Ready(_) => { /* nothing to do */ }
+            PoolState::Ready(_) => { /* nothing to do */ }
         }
     }
 
@@ -349,10 +389,16 @@ impl ConnectionPool {
                 pool.setup(servers.clone())?;
                 let pool2 = pool.clone();
                 *guard = PoolState::Ready(pool.clone());
+                self.state_tracker.mark_available();
                 Ok(pool2)
             }
-            PoolState::Unavailable(_) => Err(StoreError::DatabaseUnavailable),
-            PoolState::Ready(pool) => Ok(pool.clone()),
+            PoolState::Ready(pool) => {
+                if self.state_tracker.is_available() {
+                    Ok(pool.clone())
+                } else {
+                    Err(StoreError::DatabaseUnavailable)
+                }
+            }
         }
     }
 
@@ -456,32 +502,19 @@ impl ConnectionPool {
     ///
     /// If any errors happen during the migration, the process panics
     pub fn setup(&self) {
-        let mut guard = self.inner.lock(&self.logger);
-        match &*guard {
-            PoolState::Created(pool, servers) => {
-                // If setup errors, we will try again later
-                if pool.setup(servers.clone()).is_ok() {
-                    *guard = PoolState::Ready(pool.clone());
-                }
-            }
-            PoolState::Unavailable(_) | PoolState::Ready(_) => { /* setup was previously done */ }
-        }
+        self.get_ready().ok();
     }
 
     pub(crate) async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
         let pool = match &*self.inner.lock(&self.logger) {
-            PoolState::Created(pool, _) | PoolState::Unavailable(pool) | PoolState::Ready(pool) => {
-                pool.clone()
-            }
+            PoolState::Created(pool, _) | PoolState::Ready(pool) => pool.clone(),
         };
         pool.query_permit().await
     }
 
     pub(crate) fn wait_stats(&self) -> PoolWaitStats {
         match &*self.inner.lock(&self.logger) {
-            PoolState::Created(pool, _) | PoolState::Unavailable(pool) | PoolState::Ready(pool) => {
-                pool.wait_stats.clone()
-            }
+            PoolState::Created(pool, _) | PoolState::Ready(pool) => pool.wait_stats.clone(),
         }
     }
 
@@ -512,8 +545,21 @@ fn brief_error_msg(error: &dyn std::error::Error) -> String {
 }
 
 #[derive(Clone)]
-struct ErrorHandler(Logger, Counter);
+struct ErrorHandler {
+    logger: Logger,
+    counter: Counter,
+    state_tracker: PoolStateTracker,
+}
 
+impl ErrorHandler {
+    fn new(logger: Logger, counter: Counter, state_tracker: PoolStateTracker) -> Self {
+        Self {
+            logger,
+            counter,
+            state_tracker,
+        }
+    }
+}
 impl std::fmt::Debug for ErrorHandler {
     fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Result::Ok(())
@@ -522,8 +568,11 @@ impl std::fmt::Debug for ErrorHandler {
 
 impl r2d2::HandleError<r2d2::Error> for ErrorHandler {
     fn handle_error(&self, error: r2d2::Error) {
-        self.1.inc();
-        error!(self.0, "Postgres connection error"; "error" => brief_error_msg(&error));
+        self.counter.inc();
+        if self.state_tracker.is_available() {
+            error!(self.logger, "Postgres connection error"; "error" => brief_error_msg(&error));
+        }
+        self.state_tracker.mark_unavailable();
     }
 }
 
@@ -533,6 +582,7 @@ struct EventHandler {
     count_gauge: Gauge,
     wait_gauge: Gauge,
     wait_stats: PoolWaitStats,
+    state_tracker: PoolStateTracker,
 }
 
 impl EventHandler {
@@ -541,6 +591,7 @@ impl EventHandler {
         registry: Arc<dyn MetricsRegistry>,
         wait_stats: PoolWaitStats,
         const_labels: HashMap<String, String>,
+        state_tracker: PoolStateTracker,
     ) -> Self {
         let count_gauge = registry
             .global_gauge(
@@ -561,6 +612,7 @@ impl EventHandler {
             count_gauge,
             wait_gauge,
             wait_stats,
+            state_tracker,
         }
     }
 
@@ -579,18 +631,23 @@ impl std::fmt::Debug for EventHandler {
 }
 
 impl HandleEvent for EventHandler {
-    fn handle_acquire(&self, _: e::AcquireEvent) {}
+    fn handle_acquire(&self, _: e::AcquireEvent) {
+        self.state_tracker.mark_available();
+    }
     fn handle_release(&self, _: e::ReleaseEvent) {}
     fn handle_checkout(&self, event: e::CheckoutEvent) {
         self.count_gauge.inc();
         self.add_conn_wait_time(event.duration());
+        self.state_tracker.mark_available();
     }
     fn handle_timeout(&self, event: e::TimeoutEvent) {
         self.add_conn_wait_time(event.timeout());
-        error!(self.logger, "Connection checkout timed out";
-           "wait_ms" => event.timeout().as_millis(),
-           "backtrace" => format!("{:?}", backtrace::Backtrace::new()),
-        )
+        if self.state_tracker.is_available() {
+            error!(self.logger, "Connection checkout timed out";
+               "wait_ms" => event.timeout().as_millis()
+            )
+        }
+        self.state_tracker.mark_unavailable();
     }
     fn handle_checkin(&self, _: e::CheckinEvent) {
         self.count_gauge.dec();
@@ -627,7 +684,7 @@ pub struct PoolInner {
 }
 
 impl PoolInner {
-    pub fn create(
+    fn create(
         shard_name: &str,
         pool_name: &str,
         postgres_url: String,
@@ -635,6 +692,7 @@ impl PoolInner {
         fdw_pool_size: Option<u32>,
         logger: &Logger,
         registry: Arc<dyn MetricsRegistry>,
+        state_tracker: PoolStateTracker,
     ) -> PoolInner {
         let logger_store = logger.new(o!("component" => "Store"));
         let logger_pool = logger.new(o!("component" => "ConnectionPool"));
@@ -651,13 +709,18 @@ impl PoolInner {
                 HashMap::new(),
             )
             .expect("failed to create `store_connection_error_count` counter");
-        let error_handler = Box::new(ErrorHandler(logger_pool.clone(), error_counter));
+        let error_handler = Box::new(ErrorHandler::new(
+            logger_pool.clone(),
+            error_counter,
+            state_tracker.clone(),
+        ));
         let wait_stats = Arc::new(RwLock::new(MovingStats::default()));
         let event_handler = Box::new(EventHandler::new(
             logger_pool.clone(),
             registry.cheap_clone(),
             wait_stats.clone(),
             const_labels.clone(),
+            state_tracker,
         ));
 
         // Connect to Postgres
