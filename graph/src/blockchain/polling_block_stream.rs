@@ -468,7 +468,7 @@ where
 
     /// Set subgraph deployment entity synced flag if and only if the subgraph block pointer is
     /// caught up to the head block pointer.
-    fn update_subgraph_synced_status(&self) -> Result<(), Error> {
+    fn update_subgraph_synced_status(&self) -> Result<(), StoreError> {
         let head_ptr_opt = self.chain_store.chain_head_ptr()?;
         let subgraph_ptr = self.subgraph_store.block_ptr()?;
 

@@ -910,8 +910,8 @@ impl SubgraphStoreInner {
 
 #[async_trait::async_trait]
 impl SubgraphStoreTrait for SubgraphStore {
-    fn find_ens_name(&self, hash: &str) -> Result<Option<String>, QueryExecutionError> {
-        Ok(self.primary_conn()?.find_ens_name(hash)?)
+    fn find_ens_name(&self, hash: &str) -> Result<Option<String>, StoreError> {
+        self.primary_conn()?.find_ens_name(hash)
     }
 
     // FIXME: This method should not get a node_id
@@ -1004,15 +1004,15 @@ impl SubgraphStoreTrait for SubgraphStore {
         Ok(Arc::new(WritableStore::new(self.clone(), site)?))
     }
 
-    fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, Error> {
+    fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
         match self.site(id) {
             Ok(_) => Ok(true),
             Err(StoreError::DeploymentNotFound(_)) => Ok(false),
-            Err(e) => Err(e.into()),
+            Err(e) => Err(e),
         }
     }
 
-    fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, Error> {
+    fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError> {
         let (store, site) = self.store(id)?;
         store.block_ptr(site.as_ref())
     }
@@ -1069,7 +1069,7 @@ impl WritableStore {
 
 #[async_trait::async_trait]
 impl WritableStoreTrait for WritableStore {
-    fn block_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+    fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
         self.writable.block_ptr(self.site.as_ref())
     }
 
@@ -1118,7 +1118,7 @@ impl WritableStoreTrait for WritableStore {
             .await
     }
 
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         self.writable.get(self.site.cheap_clone(), key)
     }
 
@@ -1162,11 +1162,10 @@ impl WritableStoreTrait for WritableStore {
             .get_many(self.site.cheap_clone(), ids_for_type)
     }
 
-    async fn is_deployment_synced(&self) -> Result<bool, Error> {
-        Ok(self
-            .writable
+    async fn is_deployment_synced(&self) -> Result<bool, StoreError> {
+        self.writable
             .exists_and_synced(self.site.deployment.cheap_clone())
-            .await?)
+            .await
     }
 
     fn unassign_subgraph(&self) -> Result<(), StoreError> {
@@ -1183,7 +1182,7 @@ impl WritableStoreTrait for WritableStore {
             .await
     }
 
-    fn deployment_synced(&self) -> Result<(), Error> {
+    fn deployment_synced(&self) -> Result<(), StoreError> {
         let event = {
             // Make sure we drop `pconn` before we call into the deployment
             // store so that we do not hold two database connections which
@@ -1197,7 +1196,7 @@ impl WritableStoreTrait for WritableStore {
 
         self.writable.deployment_synced(&self.site.deployment)?;
 
-        Ok(self.store.send_store_event(&event)?)
+        self.store.send_store_event(&event)
     }
 
     fn shard(&self) -> &str {

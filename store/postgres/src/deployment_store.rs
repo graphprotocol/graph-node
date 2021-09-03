@@ -593,8 +593,8 @@ impl DeploymentStore {
     fn block_ptr_with_conn(
         subgraph_id: &DeploymentHash,
         conn: &PgConnection,
-    ) -> Result<Option<BlockPtr>, Error> {
-        Ok(deployment::block_ptr(&conn, subgraph_id)?)
+    ) -> Result<Option<BlockPtr>, StoreError> {
+        deployment::block_ptr(&conn, subgraph_id)
     }
 
     pub(crate) fn deployment_details(
@@ -674,7 +674,7 @@ impl DeploymentStore {
 /// Methods that back the trait `graph::components::Store`, but have small
 /// variations in their signatures
 impl DeploymentStore {
-    pub(crate) fn block_ptr(&self, site: &Site) -> Result<Option<BlockPtr>, Error> {
+    pub(crate) fn block_ptr(&self, site: &Site) -> Result<Option<BlockPtr>, StoreError> {
         let conn = self.get_conn()?;
         Self::block_ptr_with_conn(&site.deployment, &conn)
     }
@@ -796,7 +796,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
         key: &EntityKey,
-    ) -> Result<Option<Entity>, QueryExecutionError> {
+    ) -> Result<Option<Entity>, StoreError> {
         let conn = self.get_conn()?;
         let layout = self.layout(&conn, site)?;
 
@@ -805,16 +805,7 @@ impl DeploymentStore {
         // number so that we will always return the latest version,
         // i.e., the one with an infinite upper bound
 
-        layout
-            .find(&conn, &key.entity_type, &key.entity_id, BLOCK_NUMBER_MAX)
-            .map_err(|e| {
-                QueryExecutionError::ResolveEntityError(
-                    key.subgraph_id.clone(),
-                    key.entity_type.to_string(),
-                    key.entity_id.clone(),
-                    format!("Invalid entity {}", e),
-                )
-            })
+        layout.find(&conn, &key.entity_type, &key.entity_id, BLOCK_NUMBER_MAX)
     }
 
     pub(crate) fn get_many(

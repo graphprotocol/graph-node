@@ -43,7 +43,6 @@ pub enum QueryExecutionError {
     MissingArgumentError(Pos, String),
     InvalidVariableTypeError(Pos, String),
     MissingVariableError(Pos, String),
-    ResolveEntityError(DeploymentHash, String, String, String),
     ResolveEntitiesError(String),
     OrderByNotSupportedError(String, String),
     OrderByNotSupportedForType(String),
@@ -129,9 +128,6 @@ impl fmt::Display for QueryExecutionError {
             }
             MissingVariableError(_, s) => {
                 write!(f, "No value provided for required variable `{}`", s)
-            }
-            ResolveEntityError(_, entity, id, e) => {
-                write!(f, "Failed to get `{}` entity with ID `{}` from store: {}", entity, id, e)
             }
             ResolveEntitiesError(e) => {
                 write!(f, "Failed to get entities from store: {}", e)

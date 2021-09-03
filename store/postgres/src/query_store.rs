@@ -54,7 +54,7 @@ impl QueryStoreTrait for QueryStore {
             .await?)
     }
 
-    fn block_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+    fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
         self.store.block_ptr(&self.site)
     }
 

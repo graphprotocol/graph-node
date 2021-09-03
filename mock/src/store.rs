@@ -50,7 +50,7 @@ mock! {
 
 #[async_trait]
 impl SubgraphStore for MockStore {
-    fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, QueryExecutionError> {
+    fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, StoreError> {
         unimplemented!()
     }
 
@@ -105,11 +105,11 @@ impl SubgraphStore for MockStore {
         todo!()
     }
 
-    fn is_deployed(&self, _: &DeploymentHash) -> Result<bool, Error> {
+    fn is_deployed(&self, _: &DeploymentHash) -> Result<bool, StoreError> {
         todo!()
     }
 
-    fn least_block_ptr(&self, _: &DeploymentHash) -> Result<Option<BlockPtr>, Error> {
+    fn least_block_ptr(&self, _: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError> {
         unimplemented!()
     }
 
