@@ -1188,7 +1188,7 @@ pub struct FindManyQuery<'a> {
     pub(crate) tables: Vec<&'a Table>,
 
     // Maps object name to ids.
-    pub(crate) ids_for_type: BTreeMap<&'a EntityType, Vec<&'a str>>,
+    pub(crate) ids_for_type: &'a BTreeMap<&'a EntityType, Vec<&'a str>>,
     pub(crate) block: BlockNumber,
 }
 

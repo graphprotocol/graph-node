@@ -989,6 +989,10 @@ pub trait SubgraphStore: Send + Sync + 'static {
     fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError>;
 }
 
+/// A view of the store for indexing. All indexing-related operations need
+/// to go through this trait. Methods in this trait will never return a
+/// `StoreError::DatabaseUnavailable`. Instead, they will retry the
+/// operation indefinitely until it succeeds.
 #[async_trait]
 pub trait WritableStore: Send + Sync + 'static {
     /// Get a pointer to the most recently processed block in the subgraph.
