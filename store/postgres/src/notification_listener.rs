@@ -2,6 +2,7 @@ use diesel::pg::PgConnection;
 use diesel::select;
 use diesel::sql_types::Text;
 use graph::prelude::tokio::sync::mpsc::error::SendTimeoutError;
+use graph::util::backoff::ExponentialBackoff;
 use lazy_static::lazy_static;
 use postgres::Notification;
 use postgres::{fallible_iterator::FallibleIterator, Client, NoTls};
@@ -140,7 +141,8 @@ impl NotificationListener {
             channel_name: &str,
             barrier: Option<&Barrier>,
         ) -> Client {
-            let mut attempt: usize = 0;
+            let mut backoff =
+                ExponentialBackoff::new(Duration::from_secs(1), Duration::from_secs(30));
             loop {
                 let res = Client::connect(postgres_url, NoTls).and_then(|mut conn| {
                     conn.execute(format!("LISTEN {}", channel_name).as_str(), &[])?;
@@ -149,14 +151,10 @@ impl NotificationListener {
                 barrier.map(|barrier| barrier.wait());
                 match res {
                     Err(e) => {
-                        let delay = Duration::from_secs(1 << attempt);
                         error!(logger, "Failed to connect notification listener: {}", e;
-                                       "attempt" => attempt,
-                                       "retry_delay_s" => delay.as_secs());
-                        if attempt < 5 {
-                            attempt = attempt + 1;
-                        }
-                        thread::sleep(delay);
+                                       "attempt" => backoff.attempt,
+                                       "retry_delay_s" => backoff.delay().as_secs());
+                        backoff.sleep();
                     }
                     Ok(conn) => {
                         return conn;
