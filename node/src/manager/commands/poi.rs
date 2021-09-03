@@ -368,48 +368,20 @@ fn get_poi_from_store_find_query(
     Ok(poi)
 }
 
-// fn get_poi_from_store(
-//     store: Arc<SubgraphStore>,
-//     subgraph_deployment: DeploymentHash,
-// ) -> Result<Vec<Entity>, anyhow::Error> {
-//     // let find_query = FindQuery::new(table.as_ref(), id, block)
-//     //     .get_result::<EntityData>(conn)
-//     //     .optional()?
-//     //     .map(|entity_data| entity_data.deserialize_with_layout(self))
-//     //     .transpose();
-
-//     let entity_key =
-
-//     let query = EntityQuery::new(
-//         subgraph_deployment,
-//         BLOCK_NUMBER_MAX,
-//         EntityCollection::All(vec![(POI_OBJECT.clone(), AttributeNames::All)]),
-//     );
-
-//     // @TODO: HACK to get all entities.
-//     // @TODO: Implement a cursor/paginated approach
-//     // query.range = EntityRange::first(4294967295);
-//     let entities = store.find_all_versions(query)?;
-//     Ok(entities)
-// }
-
-fn map_ccdb_cccsv(input: &CallCacheRecord) -> Result<CallCacheRecordCsv, anyhow::Error> {
+fn bytes_to_string(bytes: &Vec<u8>) -> Result<String, anyhow::Error> {
     use core::fmt::Write;
 
-    let mut id_string = String::with_capacity(2 * input.id.len());
-    for byte in &input.id {
-        write!(id_string, "{:02X}", byte)?;
+    let mut byte_string = String::with_capacity(2 * bytes.len());
+    for byte in bytes {
+        write!(byte_string, "{:02X}", byte)?;
     }
+    Ok(byte_string)
+}
 
-    let mut contract_string = String::with_capacity(2 * input.contract_address.len());
-    for byte in &input.contract_address {
-        write!(contract_string, "{:02X}", byte)?;
-    }
-
-    let mut return_string = String::with_capacity(2 * input.return_value.len());
-    for byte in &input.return_value {
-        write!(return_string, "{:02X}", byte)?;
-    }
+fn map_ccdb_cccsv(input: &CallCacheRecord) -> Result<CallCacheRecordCsv, anyhow::Error> {
+    let id_string = bytes_to_string(&input.id)?;
+    let contract_string = bytes_to_string(&input.contract_address)?;
+    let return_string = bytes_to_string(&input.return_value)?;
 
     let cc = CallCacheRecordCsv {
         id: id_string,
