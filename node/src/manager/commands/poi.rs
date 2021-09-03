@@ -257,10 +257,10 @@ pub async fn sync_entities(
     dump_call_cache(&entity_dump_directory, mapped_call_cache)?;
 
     // Subgraph schema defined object types which are used to build queries.
-    let subgraph_schema = _get_subgraph_schema(store.clone().subgraph_store(), &deployment_hash);
+    let subgraph_schema = get_subgraph_schema(store.clone().subgraph_store(), &deployment_hash);
 
     let entity_queries =
-        _get_entity_queries(subgraph_schema, deployment_hash, first_divergent_block);
+        get_entity_queries(subgraph_schema, deployment_hash, first_divergent_block);
 
     let mut object_entities: HashMap<String, Vec<Entity>> = HashMap::new();
 
@@ -481,7 +481,7 @@ pub struct PoiRecord {
 }
 
 /// Returns the Schema of a deployment hash.
-fn _get_subgraph_schema(
+fn get_subgraph_schema(
     subgraph_store: Arc<SubgraphStore>,
     deployment_hash: &DeploymentHash,
 ) -> Arc<Schema> {
@@ -493,7 +493,7 @@ fn _get_subgraph_schema(
 
 /// Returns vector of tuples where the first item is the object in the graphql mapping (a table in Postgres)
 /// and the second item is the query that can be passed to a store for gathering entities at a block.
-fn _get_entity_queries(
+fn get_entity_queries(
     schema: Arc<Schema>,
     subgraph_id: DeploymentHash,
     divergent_block: i32,

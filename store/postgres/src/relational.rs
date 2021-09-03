@@ -538,7 +538,6 @@ impl Layout {
         entity: &EntityType,
     ) -> Result<Vec<Entity>, StoreError> {
         let table = self.table_for_entity(entity)?;
-        println!("FOUND TABLE");
         let entities = FindAllVersionsQuery::new(table.as_ref())
             .get_results::<EntityData>(conn)
             .optional()?;
