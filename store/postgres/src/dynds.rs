@@ -113,7 +113,7 @@ pub fn load(conn: &PgConnection, id: &str) -> Result<Vec<StoredDynamicDataSource
 pub(crate) fn insert(
     conn: &PgConnection,
     deployment: &DeploymentHash,
-    data_sources: Vec<StoredDynamicDataSource>,
+    data_sources: &[StoredDynamicDataSource],
     block_ptr: &BlockPtr,
 ) -> Result<usize, StoreError> {
     use dynamic_ethereum_contract_data_source as decds;
@@ -152,7 +152,7 @@ pub(crate) fn insert(
                 decds::context.eq(context),
                 decds::address.eq(address),
                 decds::abi.eq(abi),
-                decds::start_block.eq(start_block as i32),
+                decds::start_block.eq(start_block),
                 decds::ethereum_block_number.eq(sql(&format!("{}::numeric", block_ptr.number))),
                 decds::ethereum_block_hash.eq(block_ptr.hash_slice()),
             ))

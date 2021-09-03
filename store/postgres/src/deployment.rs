@@ -219,7 +219,7 @@ pub fn features(conn: &PgConnection, site: &Site) -> Result<BTreeSet<SubgraphFea
 pub fn forward_block_ptr(
     conn: &PgConnection,
     id: &DeploymentHash,
-    ptr: BlockPtr,
+    ptr: &BlockPtr,
 ) -> Result<(), StoreError> {
     use crate::diesel::BoolExpressionMethods;
     use subgraph_deployment as d;
@@ -282,7 +282,7 @@ pub fn get_subgraph_firehose_cursor(
 pub fn update_firehose_cursor(
     conn: &PgConnection,
     id: &DeploymentHash,
-    cursor: &String,
+    cursor: &str,
 ) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
@@ -450,7 +450,7 @@ pub fn exists_and_synced(conn: &PgConnection, id: &str) -> Result<bool, StoreErr
 }
 
 // Does nothing if the error already exists. Returns the error id.
-fn insert_subgraph_error(conn: &PgConnection, error: SubgraphError) -> anyhow::Result<String> {
+fn insert_subgraph_error(conn: &PgConnection, error: &SubgraphError) -> anyhow::Result<String> {
     use subgraph_error as e;
 
     let error_id = hex::encode(&stable_hash::utils::stable_hash::<SetHasher, _>(&error));
@@ -464,7 +464,7 @@ fn insert_subgraph_error(conn: &PgConnection, error: SubgraphError) -> anyhow::R
 
     let block_num = match &block_ptr {
         None => {
-            assert_eq!(deterministic, false);
+            assert_eq!(*deterministic, false);
             crate::block_range::BLOCK_UNVERSIONED
         }
         Some(block) => crate::block_range::block_number(block),
@@ -489,7 +489,7 @@ fn insert_subgraph_error(conn: &PgConnection, error: SubgraphError) -> anyhow::R
 pub fn fail(
     conn: &PgConnection,
     id: &DeploymentHash,
-    error: SubgraphError,
+    error: &SubgraphError,
 ) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
@@ -584,7 +584,7 @@ pub fn unfail(conn: &PgConnection, id: &DeploymentHash) -> Result<(), StoreError
 pub(crate) fn insert_subgraph_errors(
     conn: &PgConnection,
     id: &DeploymentHash,
-    deterministic_errors: Vec<SubgraphError>,
+    deterministic_errors: &[SubgraphError],
     block: BlockNumber,
 ) -> Result<(), StoreError> {
     for error in deterministic_errors {

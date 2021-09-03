@@ -23,6 +23,7 @@ use graph::{
     data::{schema::FulltextAlgorithm, store::scalar},
 };
 use itertools::Itertools;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::env;
@@ -1240,7 +1241,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 #[derive(Debug)]
 pub struct InsertQuery<'a> {
     table: &'a Table,
-    entities: &'a [(EntityKey, Entity)],
+    entities: &'a [(&'a EntityKey, Cow<'a, Entity>)],
     unique_columns: Vec<&'a Column>,
     block: BlockNumber,
 }
@@ -1248,7 +1249,7 @@ pub struct InsertQuery<'a> {
 impl<'a> InsertQuery<'a> {
     pub fn new(
         table: &'a Table,
-        entities: &'a mut [(EntityKey, Entity)],
+        entities: &'a mut [(&'a EntityKey, Cow<Entity>)],
         block: BlockNumber,
     ) -> Result<InsertQuery<'a>, StoreError> {
         for (entity_key, entity) in entities.iter_mut() {
@@ -1261,7 +1262,7 @@ impl<'a> InsertQuery<'a> {
                             .cloned()
                             .collect::<Vec<Value>>();
                         if !fulltext_field_values.is_empty() {
-                            entity.insert(
+                            entity.to_mut().insert(
                                 column.field.to_string(),
                                 Value::List(fulltext_field_values),
                             );
@@ -1290,7 +1291,10 @@ impl<'a> InsertQuery<'a> {
     }
 
     /// Build the column name list using the subset of all keys among present entities.
-    fn unique_columns(table: &'a Table, entities: &'a [(EntityKey, Entity)]) -> Vec<&'a Column> {
+    fn unique_columns(
+        table: &'a Table,
+        entities: &'a [(&'a EntityKey, Cow<'a, Entity>)],
+    ) -> Vec<&'a Column> {
         let mut hashmap = HashMap::new();
         for (_key, entity) in entities.iter() {
             for column in &table.columns {

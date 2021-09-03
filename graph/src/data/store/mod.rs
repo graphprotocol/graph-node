@@ -8,11 +8,14 @@ use itertools::Itertools;
 use serde::de;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
-use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
 use std::fmt;
 use std::iter::FromIterator;
 use std::str::FromStr;
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, HashMap},
+};
 use strum::AsStaticRef as _;
 use strum_macros::AsStaticStr;
 
@@ -517,7 +520,7 @@ impl Entity {
         self.0.remove(key)
     }
 
-    pub fn contains_key(&mut self, key: &str) -> bool {
+    pub fn contains_key(&self, key: &str) -> bool {
         self.0.contains_key(key)
     }
 
@@ -583,6 +586,12 @@ impl From<Entity> for q::Value {
 impl From<HashMap<Attribute, Value>> for Entity {
     fn from(m: HashMap<Attribute, Value>) -> Entity {
         Entity(m)
+    }
+}
+
+impl<'a> From<&'a Entity> for Cow<'a, Entity> {
+    fn from(entity: &'a Entity) -> Self {
+        Cow::Borrowed(entity)
     }
 }
 
