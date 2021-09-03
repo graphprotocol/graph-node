@@ -17,3 +17,6 @@ pub mod cache_weight;
 pub mod timed_rw_lock;
 
 pub mod jobs;
+
+/// Increasingly longer sleeps to back off some repeated operation
+pub mod backoff;
