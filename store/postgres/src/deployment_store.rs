@@ -817,7 +817,7 @@ impl DeploymentStore {
     pub(crate) fn get_many(
         &self,
         site: Arc<Site>,
-        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+        ids_for_type: &BTreeMap<&EntityType, Vec<&str>>,
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         if ids_for_type.is_empty() {
             return Ok(BTreeMap::new());

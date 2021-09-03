@@ -258,7 +258,7 @@ fn find_many() {
         id_map.insert(&*THING, vec![ID, ID2, "badd"]);
 
         let entities = layout
-            .find_many(conn, id_map, BLOCK_NUMBER_MAX)
+            .find_many(conn, &id_map, BLOCK_NUMBER_MAX)
             .expect("Failed to read many things");
         assert_eq!(1, entities.len());
 

@@ -534,7 +534,7 @@ impl Layout {
     pub fn find_many<'a>(
         &self,
         conn: &PgConnection,
-        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+        ids_for_type: &BTreeMap<&EntityType, Vec<&str>>,
         block: BlockNumber,
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         if ids_for_type.is_empty() {
