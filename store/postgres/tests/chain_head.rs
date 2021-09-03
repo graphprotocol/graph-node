@@ -4,6 +4,7 @@
 use std::future::Future;
 use std::sync::Arc;
 
+use graph::prelude::web3::types::H256;
 use graph::prelude::{anyhow::anyhow, anyhow::Error};
 use graph::prelude::{BlockNumber, QueryStoreManager};
 use graph::{cheap_clone::CheapClone, prelude::web3::types::H160};
@@ -352,5 +353,18 @@ fn eth_call_cache() {
         assert_eq!(&new_return_value, ret.as_slice());
 
         Ok(())
+    })
+}
+
+#[test]
+/// Tests only query correctness. No data is involved.
+fn test_transaction_receipts_in_block_function() {
+    let chain = vec![];
+    run_test_async(chain, move |store, _| async move {
+        let receipts = store
+            .transaction_receipts_in_block(&H256::zero())
+            .await
+            .unwrap();
+        assert!(receipts.is_empty())
     })
 }
