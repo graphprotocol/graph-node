@@ -68,6 +68,12 @@ lazy_static::lazy_static! {
             panic!("GRAPH_STORE_CONNECTION_IDLE_TIMEOUT must be a positive number, but is `{}`", s)
         }))).unwrap_or(Duration::from_secs(600))
     };
+    // A fallback in case the logic to remember database availability goes
+    // wrong; when this is set, we always try to get a connection and never
+    // use the availability state we remembered
+    static ref TRY_ALWAYS: bool = {
+        std::env::var("GRAPH_STORE_CONNECTION_TRY_ALWAYS").ok().map(|_| true).unwrap_or(false)
+    };
 }
 
 pub struct ForeignServer {
@@ -393,7 +399,9 @@ impl ConnectionPool {
                 Ok(pool2)
             }
             PoolState::Ready(pool) => {
-                if self.state_tracker.is_available() {
+                // When TRY_ALWAYS is set, force getting a connection every
+                // time
+                if self.state_tracker.is_available() || *TRY_ALWAYS {
                     Ok(pool.clone())
                 } else {
                     Err(StoreError::DatabaseUnavailable)
