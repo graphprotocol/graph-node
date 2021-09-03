@@ -116,14 +116,15 @@ impl StatusStore for Store {
             .subgraphs_for_deployment_hash(deployment_hash)
     }
 
-    fn get_proof_of_indexing<'a>(
-        self: Arc<Self>,
-        subgraph_id: &'a DeploymentHash,
-        indexer: &'a Option<Address>,
+    async fn get_proof_of_indexing(
+        &self,
+        subgraph_id: &DeploymentHash,
+        indexer: &Option<Address>,
         block: BlockPtr,
-    ) -> graph::prelude::DynTryFuture<'a, Option<[u8; 32]>> {
+    ) -> Result<Option<[u8; 32]>, StoreError> {
         self.subgraph_store
             .get_proof_of_indexing(subgraph_id, indexer, block)
+            .await
     }
 
     async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {

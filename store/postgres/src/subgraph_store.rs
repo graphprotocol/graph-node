@@ -22,8 +22,8 @@ use graph::{
     prelude::SubgraphDeploymentEntity,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        BlockPtr, DeploymentHash, DynTryFuture, Entity, EntityKey, EntityModification, Error,
-        Logger, NodeId, QueryExecutionError, Schema, StopwatchMetrics, StoreError, SubgraphName,
+        BlockPtr, DeploymentHash, Entity, EntityKey, EntityModification, Error, Logger, NodeId,
+        QueryExecutionError, Schema, StopwatchMetrics, StoreError, SubgraphName,
         SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
     util::timed_cache::TimedCache,
@@ -211,13 +211,13 @@ impl SubgraphStore {
         }
     }
 
-    pub(crate) fn get_proof_of_indexing<'a>(
+    pub(crate) async fn get_proof_of_indexing(
         &self,
-        id: &'a DeploymentHash,
-        indexer: &'a Option<Address>,
+        id: &DeploymentHash,
+        indexer: &Option<Address>,
         block: BlockPtr,
-    ) -> DynTryFuture<'a, Option<[u8; 32]>> {
-        self.inner.clone().get_proof_of_indexing(id, indexer, block)
+    ) -> Result<Option<[u8; 32]>, StoreError> {
+        self.inner.get_proof_of_indexing(id, indexer, block).await
     }
 
     pub fn notification_sender(&self) -> Arc<NotificationSender> {
@@ -876,14 +876,14 @@ impl SubgraphStoreInner {
         self.send_store_event(&event)
     }
 
-    pub(crate) fn get_proof_of_indexing<'a>(
-        self: Arc<Self>,
-        id: &'a DeploymentHash,
-        indexer: &'a Option<Address>,
+    pub(crate) async fn get_proof_of_indexing(
+        &self,
+        id: &DeploymentHash,
+        indexer: &Option<Address>,
         block: BlockPtr,
-    ) -> DynTryFuture<'a, Option<[u8; 32]>> {
+    ) -> Result<Option<[u8; 32]>, StoreError> {
         let (store, site) = self.store(&id).unwrap();
-        store.clone().get_proof_of_indexing(site, indexer, block)
+        store.get_proof_of_indexing(site, indexer, block).await
     }
 
     // Only used by tests
@@ -1119,10 +1119,10 @@ impl WritableStoreTrait for WritableStore {
             .await
     }
 
-    fn supports_proof_of_indexing<'a>(self: Arc<Self>) -> DynTryFuture<'a, bool> {
+    async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError> {
         self.writable
-            .clone()
             .supports_proof_of_indexing(self.site.clone())
+            .await
     }
 
     fn get(&self, key: &EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
