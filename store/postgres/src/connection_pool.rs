@@ -581,6 +581,7 @@ struct EventHandler {
     logger: Logger,
     count_gauge: Gauge,
     wait_gauge: Gauge,
+    size_gauge: Gauge,
     wait_stats: PoolWaitStats,
     state_tracker: PoolStateTracker,
 }
@@ -607,11 +608,19 @@ impl EventHandler {
                 const_labels.clone(),
             )
             .expect("failed to create `store_connection_wait_time_ms` counter");
+        let size_gauge = registry
+            .global_gauge(
+                "store_connection_pool_size_count",
+                "Overall size of the connection pool",
+                const_labels.clone(),
+            )
+            .expect("failed to create `store_connection_pool_size_count` counter");
         EventHandler {
             logger,
             count_gauge,
             wait_gauge,
             wait_stats,
+            size_gauge,
             state_tracker,
         }
     }
@@ -632,14 +641,20 @@ impl std::fmt::Debug for EventHandler {
 
 impl HandleEvent for EventHandler {
     fn handle_acquire(&self, _: e::AcquireEvent) {
+        self.size_gauge.inc();
         self.state_tracker.mark_available();
     }
-    fn handle_release(&self, _: e::ReleaseEvent) {}
+
+    fn handle_release(&self, _: e::ReleaseEvent) {
+        self.size_gauge.dec();
+    }
+
     fn handle_checkout(&self, event: e::CheckoutEvent) {
         self.count_gauge.inc();
         self.add_conn_wait_time(event.duration());
         self.state_tracker.mark_available();
     }
+
     fn handle_timeout(&self, event: e::TimeoutEvent) {
         self.add_conn_wait_time(event.timeout());
         if self.state_tracker.is_available() {
@@ -649,6 +664,7 @@ impl HandleEvent for EventHandler {
         }
         self.state_tracker.mark_unavailable();
     }
+
     fn handle_checkin(&self, _: e::CheckinEvent) {
         self.count_gauge.dec();
     }
