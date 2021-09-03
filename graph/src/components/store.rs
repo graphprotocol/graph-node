@@ -909,12 +909,12 @@ impl Display for DeploymentLocator {
 pub trait SubgraphStore: Send + Sync + 'static {
     /// Find the reverse of keccak256 for `hash` through looking it up in the
     /// rainbow table.
-    fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, QueryExecutionError>;
+    fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, StoreError>;
 
     /// Check if the store is accepting queries for the specified subgraph.
     /// May return true even if the specified subgraph is not currently assigned to an indexing
     /// node, as the store will still accept queries.
-    fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, Error>;
+    fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
 
     /// Create a new deployment for the subgraph `name`. If the deployment
     /// already exists (as identified by the `schema.id`), reuse that, otherwise
@@ -983,7 +983,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// that we would use to query or copy from; in particular, this will
     /// ignore any instances of this deployment that are in the process of
     /// being set up
-    fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, Error>;
+    fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError>;
 
     /// Find the deployment locators for the subgraph with the given hash
     fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError>;
@@ -992,7 +992,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
 #[async_trait]
 pub trait WritableStore: Send + Sync + 'static {
     /// Get a pointer to the most recently processed block in the subgraph.
-    fn block_ptr(&self) -> Result<Option<BlockPtr>, Error>;
+    fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError>;
 
     /// Returns the Firehose `cursor` this deployment is currently at in the block stream of events. This
     /// is used when re-connecting a Firehose stream to start back exactly where we left off.
@@ -1016,7 +1016,7 @@ pub trait WritableStore: Send + Sync + 'static {
     async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError>;
 
     /// Looks up an entity using the given store key at the latest block.
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError>;
 
     /// Transact the entity changes from a single block atomically into the store, and update the
     /// subgraph block pointer to `block_ptr_to`, and update the firehose cursor to `firehose_cursor`
@@ -1042,11 +1042,11 @@ pub trait WritableStore: Send + Sync + 'static {
     /// The deployment `id` finished syncing, mark it as synced in the database
     /// and promote it to the current version in the subgraphs where it was the
     /// pending version so far
-    fn deployment_synced(&self) -> Result<(), Error>;
+    fn deployment_synced(&self) -> Result<(), StoreError>;
 
     /// Return true if the deployment with the given id is fully synced,
     /// and return false otherwise. Errors from the store are passed back up
-    async fn is_deployment_synced(&self) -> Result<bool, Error>;
+    async fn is_deployment_synced(&self) -> Result<bool, StoreError>;
 
     fn unassign_subgraph(&self) -> Result<(), StoreError>;
 
@@ -1092,7 +1092,7 @@ pub type PoolWaitStats = Arc<RwLock<MovingStats>>;
 // The store trait must be implemented manually because mockall does not support async_trait, nor borrowing from arguments.
 #[async_trait]
 impl SubgraphStore for MockStore {
-    fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, QueryExecutionError> {
+    fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, StoreError> {
         unimplemented!()
     }
 
@@ -1144,11 +1144,11 @@ impl SubgraphStore for MockStore {
         Ok(Arc::new(MockStore::new()))
     }
 
-    fn is_deployed(&self, _: &DeploymentHash) -> Result<bool, Error> {
+    fn is_deployed(&self, _: &DeploymentHash) -> Result<bool, StoreError> {
         unimplemented!()
     }
 
-    fn least_block_ptr(&self, _: &DeploymentHash) -> Result<Option<BlockPtr>, Error> {
+    fn least_block_ptr(&self, _: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError> {
         unimplemented!()
     }
 
@@ -1167,7 +1167,7 @@ impl SubgraphStore for MockStore {
 // The store trait must be implemented manually because mockall does not support async_trait, nor borrowing from arguments.
 #[async_trait]
 impl WritableStore for MockStore {
-    fn block_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+    fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
         unimplemented!()
     }
 
@@ -1195,7 +1195,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn get(&self, _: &EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
+    fn get(&self, _: &EntityKey) -> Result<Option<Entity>, StoreError> {
         unimplemented!()
     }
 
@@ -1218,7 +1218,7 @@ impl WritableStore for MockStore {
         self.get_many_mock(ids_for_type)
     }
 
-    async fn is_deployment_synced(&self) -> Result<bool, Error> {
+    async fn is_deployment_synced(&self) -> Result<bool, StoreError> {
         unimplemented!()
     }
 
@@ -1230,7 +1230,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn deployment_synced(&self) -> Result<(), Error> {
+    fn deployment_synced(&self) -> Result<(), StoreError> {
         unimplemented!()
     }
 
@@ -1355,7 +1355,7 @@ pub trait QueryStore: Send + Sync {
 
     async fn is_deployment_synced(&self) -> Result<bool, Error>;
 
-    fn block_ptr(&self) -> Result<Option<BlockPtr>, Error>;
+    fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError>;
 
     fn block_number(&self, block_hash: H256) -> Result<Option<BlockNumber>, StoreError>;
 
