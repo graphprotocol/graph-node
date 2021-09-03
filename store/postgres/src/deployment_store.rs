@@ -10,6 +10,7 @@ use graph::prelude::{
 };
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Into;
 use std::convert::TryInto;
@@ -305,7 +306,7 @@ impl DeploymentStore {
         &self,
         conn: &PgConnection,
         layout: &Layout,
-        mods: Vec<EntityModification>,
+        mods: &[EntityModification],
         ptr: &BlockPtr,
         stopwatch: StopwatchMetrics,
     ) -> Result<i32, StoreError> {
@@ -322,19 +323,19 @@ impl DeploymentStore {
                     inserts
                         .entry(key.entity_type.clone())
                         .or_insert_with(Vec::new)
-                        .push((key, data));
+                        .push((key, Cow::from(data)));
                 }
                 Overwrite { key, data } => {
                     overwrites
                         .entry(key.entity_type.clone())
                         .or_insert_with(Vec::new)
-                        .push((key, data));
+                        .push((key, Cow::from(data)));
                 }
                 Remove { key } => {
                     removals
                         .entry(key.entity_type.clone())
                         .or_insert_with(Vec::new)
-                        .push(key.entity_id);
+                        .push(key.entity_id.as_str());
                 }
             }
         }
@@ -355,19 +356,24 @@ impl DeploymentStore {
 
         // Removals
         for (entity_type, entity_keys) in removals.into_iter() {
-            count -=
-                self.remove_entities(&entity_type, &entity_keys, conn, layout, ptr, &stopwatch)?
-                    as i32;
+            count -= self.remove_entities(
+                &entity_type,
+                entity_keys.as_slice(),
+                conn,
+                layout,
+                ptr,
+                &stopwatch,
+            )? as i32;
         }
         Ok(count)
     }
 
-    fn insert_entities(
-        &self,
-        entity_type: &EntityType,
-        data: &mut [(EntityKey, Entity)],
+    fn insert_entities<'a>(
+        &'a self,
+        entity_type: &'a EntityType,
+        data: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
         conn: &PgConnection,
-        layout: &Layout,
+        layout: &'a Layout,
         ptr: &BlockPtr,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
@@ -382,12 +388,12 @@ impl DeploymentStore {
         layout.insert(conn, entity_type, data, block_number(ptr), stopwatch)
     }
 
-    fn overwrite_entities(
-        &self,
-        entity_type: &EntityType,
-        data: &mut [(EntityKey, Entity)],
+    fn overwrite_entities<'a>(
+        &'a self,
+        entity_type: &'a EntityType,
+        data: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
         conn: &PgConnection,
-        layout: &Layout,
+        layout: &'a Layout,
         ptr: &BlockPtr,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
@@ -405,7 +411,7 @@ impl DeploymentStore {
     fn remove_entities(
         &self,
         entity_type: &EntityType,
-        entity_keys: &[String],
+        entity_keys: &[&str],
         conn: &PgConnection,
         layout: &Layout,
         ptr: &BlockPtr,
@@ -836,12 +842,12 @@ impl DeploymentStore {
     pub(crate) fn transact_block_operations(
         &self,
         site: Arc<Site>,
-        block_ptr_to: BlockPtr,
-        firehose_cursor: Option<String>,
-        mods: Vec<EntityModification>,
+        block_ptr_to: &BlockPtr,
+        firehose_cursor: Option<&str>,
+        mods: &[EntityModification],
         stopwatch: StopwatchMetrics,
-        data_sources: Vec<StoredDynamicDataSource>,
-        deterministic_errors: Vec<SubgraphError>,
+        data_sources: &[StoredDynamicDataSource],
+        deterministic_errors: &[SubgraphError],
     ) -> Result<StoreEvent, StoreError> {
         // All operations should apply only to data or metadata for this subgraph
         if mods
@@ -1017,7 +1023,7 @@ impl DeploymentStore {
         error: SubgraphError,
     ) -> Result<(), StoreError> {
         self.with_conn(move |conn, _| {
-            conn.transaction(|| deployment::fail(&conn, &id, error))
+            conn.transaction(|| deployment::fail(&conn, &id, &error))
                 .map_err(Into::into)
         })
         .await?;
@@ -1153,7 +1159,7 @@ impl DeploymentStore {
 
                 // Set the block ptr to the graft point to signal that we successfully
                 // performed the graft
-                crate::deployment::forward_block_ptr(&conn, &dst.site.deployment, block)?;
+                crate::deployment::forward_block_ptr(&conn, &dst.site.deployment, &block)?;
                 info!(logger, "Subgraph successfully initialized";
                     "time_ms" => start.elapsed().as_millis());
                 Ok(())

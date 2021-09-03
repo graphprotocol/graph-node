@@ -13,6 +13,7 @@ use graph::prelude::{q, s, StopwatchMetrics};
 use graph::slog::warn;
 use inflector::Inflector;
 use lazy_static::lazy_static;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::{From, TryFrom};
 use std::env;
@@ -560,11 +561,11 @@ impl Layout {
         Ok(entities_for_type)
     }
 
-    pub fn insert(
-        &self,
+    pub fn insert<'a>(
+        &'a self,
         conn: &PgConnection,
-        entity_type: &EntityType,
-        entities: &mut [(EntityKey, Entity)],
+        entity_type: &'a EntityType,
+        entities: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
@@ -675,11 +676,11 @@ impl Layout {
             .collect()
     }
 
-    pub fn update(
-        &self,
+    pub fn update<'a>(
+        &'a self,
         conn: &PgConnection,
-        entity_type: &EntityType,
-        entities: &mut [(EntityKey, Entity)],
+        entity_type: &'a EntityType,
+        entities: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
@@ -711,7 +712,7 @@ impl Layout {
         &self,
         conn: &PgConnection,
         entity_type: &EntityType,
-        entity_ids: &[String],
+        entity_ids: &[&str],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {

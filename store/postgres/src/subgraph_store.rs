@@ -1142,15 +1142,14 @@ impl WritableStoreTrait for WritableStore {
             same_subgraph(&mods, &self.site.deployment),
             "can only transact operations within one shard"
         );
-
         let event = self.writable.transact_block_operations(
             self.site.clone(),
-            block_ptr_to,
-            firehose_cursor,
-            mods,
+            &block_ptr_to,
+            firehose_cursor.as_deref(),
+            &mods,
             stopwatch.cheap_clone(),
-            data_sources,
-            deterministic_errors,
+            &data_sources,
+            &deterministic_errors,
         )?;
 
         let _section = stopwatch.start_section("send_store_event");
