@@ -178,7 +178,7 @@ pub fn create_subgraph(
         SubgraphVersionSwitchingMode::Instant,
     )?;
     SUBGRAPH_STORE
-        .writable(&deployment)?
+        .writable(LOGGER.clone(), &deployment)?
         .start_subgraph_deployment(&*LOGGER)?;
     Ok(deployment)
 }
@@ -213,7 +213,7 @@ pub fn transact_errors(
     );
     store
         .subgraph_store()
-        .writable(&deployment)?
+        .writable(LOGGER.clone(), &deployment)?
         .transact_block_operations(
             block_ptr_to,
             None,
@@ -241,7 +241,7 @@ pub fn transact_entities_and_dynamic_data_sources(
     data_sources: Vec<StoredDynamicDataSource>,
     ops: Vec<EntityOperation>,
 ) -> Result<(), StoreError> {
-    let store = store.writable(&deployment)?;
+    let store = store.writable(LOGGER.clone(), &deployment)?;
     let mut entity_cache = EntityCache::new(store.clone());
     entity_cache.append(ops);
     let mods = entity_cache
@@ -267,7 +267,7 @@ pub fn transact_entities_and_dynamic_data_sources(
 pub fn revert_block(store: &Arc<Store>, deployment: &DeploymentLocator, ptr: &BlockPtr) {
     store
         .subgraph_store()
-        .writable(deployment)
+        .writable(LOGGER.clone(), deployment)
         .expect("can get writable")
         .revert_block_operations(ptr.clone())
         .unwrap();

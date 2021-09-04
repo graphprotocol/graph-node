@@ -267,7 +267,7 @@ where
     ) -> Result<(), Error> {
         let subgraph_store = self.subgraph_store.cheap_clone();
         let registry = self.metrics_registry.cheap_clone();
-        let store = self.subgraph_store.writable(&deployment)?;
+        let store = self.subgraph_store.writable(logger.clone(), &deployment)?;
 
         // Start the subgraph deployment before reading dynamic data
         // sources; if the subgraph is a graft or a copy, starting it will

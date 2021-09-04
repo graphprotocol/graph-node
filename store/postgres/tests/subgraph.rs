@@ -157,7 +157,7 @@ fn create_subgraph() {
 
     fn deployment_synced(store: &Arc<SubgraphStore>, deployment: &DeploymentLocator) {
         store
-            .writable(deployment)
+            .writable(LOGGER.clone(), deployment)
             .expect("can get writable")
             .deployment_synced()
             .unwrap();
@@ -384,7 +384,7 @@ fn status() {
 
         store
             .subgraph_store()
-            .writable(&deployment)
+            .writable(LOGGER.clone(), &deployment)
             .expect("can get writable")
             .fail_subgraph(error)
             .await
@@ -526,7 +526,7 @@ fn fatal_vs_non_fatal() {
 
         store
             .subgraph_store()
-            .writable(&deployment)
+            .writable(LOGGER.clone(), &deployment)
             .expect("can get writable")
             .fail_subgraph(error())
             .await
@@ -565,7 +565,7 @@ fn fail_unfail() {
 
         let writable = store
             .subgraph_store()
-            .writable(&deployment)
+            .writable(LOGGER.clone(), &deployment)
             .expect("can get writable");
         writable.fail_subgraph(error).await.unwrap();
 

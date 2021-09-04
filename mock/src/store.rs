@@ -100,6 +100,7 @@ impl SubgraphStore for MockStore {
 
     fn writable(
         &self,
+        _: Logger,
         _: &DeploymentLocator,
     ) -> Result<Arc<dyn graph::components::store::WritableStore>, StoreError> {
         todo!()
@@ -115,6 +116,7 @@ impl SubgraphStore for MockStore {
 
     fn writable_for_network_indexer(
         &self,
+        _: Logger,
         _: &DeploymentHash,
     ) -> Result<Arc<dyn graph::components::store::WritableStore>, StoreError> {
         unimplemented!()
