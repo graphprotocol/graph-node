@@ -296,12 +296,12 @@ fn check_graft(
     transact_entity_operations(&store, &deployment, BLOCKS[2].clone(), vec![op]).unwrap();
 
     store
-        .writable(&deployment)?
+        .writable(LOGGER.clone(), &deployment)?
         .revert_block_operations(BLOCKS[1].clone())
         .expect("We can revert a block we just created");
 
     let err = store
-        .writable(&deployment)?
+        .writable(LOGGER.clone(), &deployment)?
         .revert_block_operations(BLOCKS[0].clone())
         .expect_err("Reverting past graft point is not allowed");
 
@@ -352,7 +352,7 @@ fn copy() {
             store.copy_deployment(&src, dst_shard, NODE_ID.clone(), BLOCKS[1].clone())?;
 
         store
-            .writable(&deployment)?
+            .writable(LOGGER.clone(), &deployment)?
             .start_subgraph_deployment(&*LOGGER)?;
 
         store.activate(&deployment)?;

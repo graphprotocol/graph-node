@@ -134,7 +134,10 @@ impl Blockchain for Chain {
             .new(o!("component" => "FirehoseBlockStream"));
 
         let firehose_mapper = Arc::new(FirehoseMapper {});
-        let firehose_cursor = self.subgraph_store.writable(&deployment)?.block_cursor()?;
+        let firehose_cursor = self
+            .subgraph_store
+            .writable(logger.clone(), &deployment)?
+            .block_cursor()?;
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,

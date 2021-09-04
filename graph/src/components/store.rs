@@ -964,9 +964,12 @@ pub trait SubgraphStore: Send + Sync + 'static {
     fn api_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError>;
 
     /// Return a `WritableStore` that is used for indexing subgraphs. Only
-    /// code that is part of indexing a subgraph should ever use this.
+    /// code that is part of indexing a subgraph should ever use this. The
+    /// `logger` will be used to log important messages related to the
+    /// subgraph
     fn writable(
         &self,
+        logger: Logger,
         deployment: &DeploymentLocator,
     ) -> Result<Arc<dyn WritableStore>, StoreError>;
 
@@ -976,6 +979,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// `writable` should be used instead
     fn writable_for_network_indexer(
         &self,
+        logger: Logger,
         id: &DeploymentHash,
     ) -> Result<Arc<dyn WritableStore>, StoreError>;
 
@@ -1144,7 +1148,11 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
-    fn writable(&self, _: &DeploymentLocator) -> Result<Arc<dyn WritableStore>, StoreError> {
+    fn writable(
+        &self,
+        _: Logger,
+        _: &DeploymentLocator,
+    ) -> Result<Arc<dyn WritableStore>, StoreError> {
         Ok(Arc::new(MockStore::new()))
     }
 
@@ -1158,6 +1166,7 @@ impl SubgraphStore for MockStore {
 
     fn writable_for_network_indexer(
         &self,
+        _: Logger,
         _: &DeploymentHash,
     ) -> Result<Arc<dyn WritableStore>, StoreError> {
         unimplemented!()

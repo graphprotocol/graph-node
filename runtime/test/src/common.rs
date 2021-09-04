@@ -9,6 +9,7 @@ use graph_chain_ethereum::{
 use graph_runtime_wasm::{HostExports, MappingContext};
 use semver::Version;
 use std::str::FromStr;
+use test_store::LOGGER;
 use web3::types::Address;
 
 fn mock_host_exports(
@@ -90,7 +91,10 @@ pub fn mock_context(
             store.clone(),
             api_version,
         )),
-        state: BlockState::new(store.writable(&deployment).unwrap(), Default::default()),
+        state: BlockState::new(
+            store.writable(LOGGER.clone(), &deployment).unwrap(),
+            Default::default(),
+        ),
         proof_of_indexing: None,
         host_fns: Arc::new(Vec::new()),
     }

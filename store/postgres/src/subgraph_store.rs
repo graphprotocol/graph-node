@@ -991,18 +991,20 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     fn writable(
         &self,
+        logger: Logger,
         deployment: &DeploymentLocator,
     ) -> Result<Arc<dyn store::WritableStore>, StoreError> {
         let site = self.find_site(deployment.id.into())?;
-        Ok(Arc::new(WritableStore::new(self.clone(), site)?))
+        Ok(Arc::new(WritableStore::new(self.clone(), logger, site)?))
     }
 
     fn writable_for_network_indexer(
         &self,
+        logger: Logger,
         id: &DeploymentHash,
     ) -> Result<Arc<dyn WritableStoreTrait>, StoreError> {
         let site = self.site(id)?;
-        Ok(Arc::new(WritableStore::new(self.clone(), site)?))
+        Ok(Arc::new(WritableStore::new(self.clone(), logger, site)?))
     }
 
     fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
@@ -1051,6 +1053,7 @@ impl WritableSubgraphStore {
 }
 
 struct WritableStore {
+    logger: Logger,
     store: WritableSubgraphStore,
     writable: Arc<DeploymentStore>,
     site: Arc<Site>,
@@ -1060,14 +1063,27 @@ impl WritableStore {
     const BACKOFF_BASE: Duration = Duration::from_millis(100);
     const BACKOFF_CEIL: Duration = Duration::from_secs(10);
 
-    fn new(subgraph_store: SubgraphStore, site: Arc<Site>) -> Result<Self, StoreError> {
+    fn new(
+        subgraph_store: SubgraphStore,
+        logger: Logger,
+        site: Arc<Site>,
+    ) -> Result<Self, StoreError> {
         let store = WritableSubgraphStore(subgraph_store.clone());
         let writable = subgraph_store.for_site(site.as_ref())?.clone();
         Ok(Self {
+            logger,
             store,
             writable,
             site,
         })
+    }
+
+    fn log_backoff_warning(&self, op: &str, backoff: &ExponentialBackoff) {
+        warn!(self.logger,
+            "database unavailable, will retry";
+            "operation" => op,
+            "attempt" => backoff.attempt,
+            "delay_ms" => backoff.delay().as_millis());
     }
 
     fn retry<T, F>(&self, op: &str, f: F) -> Result<T, StoreError>
@@ -1079,11 +1095,7 @@ impl WritableStore {
             match f() {
                 Ok(v) => return Ok(v),
                 Err(StoreError::DatabaseUnavailable) => {
-                    warn!(self.store.0.logger,
-                          "database unavailable, will retry";
-                          "operation" => op,
-                          "attempt" => backoff.attempt,
-                          "delay_ms" => backoff.delay().as_millis());
+                    self.log_backoff_warning(op, &backoff);
                 }
                 Err(e) => return Err(e),
             }
@@ -1101,11 +1113,7 @@ impl WritableStore {
             match f().await {
                 Ok(v) => return Ok(v),
                 Err(StoreError::DatabaseUnavailable) => {
-                    warn!(self.store.0.logger,
-                          "database unavailable, will retry";
-                          "operation" => op,
-                          "attempt" => backoff.attempt,
-                          "delay_ms" => backoff.delay().as_millis());
+                    self.log_backoff_warning(op, &backoff);
                 }
                 Err(e) => return Err(e),
             }

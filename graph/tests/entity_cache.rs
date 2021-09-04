@@ -1,4 +1,5 @@
 use lazy_static::lazy_static;
+use slog::{o, Logger};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -30,7 +31,8 @@ fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModificati
 
 #[test]
 fn empty_cache_modifications() {
-    let store = MockStore::new().writable(&*DEPLOYMENT).unwrap();
+    let logger = Logger::root(slog::Discard, o!());
+    let store = MockStore::new().writable(logger, &*DEPLOYMENT).unwrap();
     let cache = EntityCache::new(store.clone());
     let result = cache.as_modifications();
     assert_eq!(result.unwrap().modifications, vec![]);

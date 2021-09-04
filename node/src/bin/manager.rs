@@ -485,7 +485,7 @@ async fn main() {
         }
         Ok(node) => node,
     };
-    let ctx = Context::new(logger, node, config);
+    let ctx = Context::new(logger.clone(), node, config);
 
     use Command::*;
     let result = match opt.cmd {
@@ -532,7 +532,9 @@ async fn main() {
         }
         Remove { name } => commands::remove::run(ctx.subgraph_store(), name),
         Create { name } => commands::create::run(ctx.subgraph_store(), name),
-        Unassign { id, shard } => commands::assign::unassign(ctx.subgraph_store(), id, shard),
+        Unassign { id, shard } => {
+            commands::assign::unassign(logger.clone(), ctx.subgraph_store(), id, shard)
+        }
         Reassign { id, node, shard } => {
             commands::assign::reassign(ctx.subgraph_store(), id, node, shard)
         }

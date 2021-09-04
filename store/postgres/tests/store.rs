@@ -136,7 +136,7 @@ where
         let deployment = insert_test_data(subgraph_store.clone());
         let writable = store
             .subgraph_store()
-            .writable(&deployment)
+            .writable(LOGGER.clone(), &deployment)
             .expect("we can get a writable store");
 
         // Run test
