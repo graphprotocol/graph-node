@@ -16,7 +16,7 @@ use strum::AsStaticRef as _;
 use strum_macros::AsStaticStr;
 
 /// Custom scalars in GraphQL.
-// pub mod scalar;
+pub mod scalar;
 
 // Ethereum compatibility.
 pub mod ethereum;
