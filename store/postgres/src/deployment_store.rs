@@ -275,6 +275,10 @@ impl DeploymentStore {
             .clone()
             .all(|other_key| other_key.entity_type == key.entity_type));
 
+        debug_assert!(keys
+            .clone()
+            .all(|key| key.subgraph_id == layout.site.deployment));
+
         // Collect all types that share an interface implementation with this
         // entity type, and make sure there are no conflicting IDs.
         //
