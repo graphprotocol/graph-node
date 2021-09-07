@@ -9,7 +9,6 @@ async-trait = "0.1.50"
 atomic_refcell = "0.1.7"
 bigdecimal = { version = "0.1.0", features = ["serde"] }
 bytes = "1.0.1"
-diesel = { version = "1.4.7", features = ["postgres", "serde_json", "numeric", "r2d2", "chrono"] }
 diesel_derives = "1.4"
 chrono = "0.4.19"
 Inflector = "0.11.3"
@@ -64,6 +63,7 @@ web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "master" }
 serde_plain = "1.0.0"
 
 [dev-dependencies]
+diesel = { version = "1.4.7", features = ["postgres", "serde_json", "numeric", "r2d2", "chrono"] }
 test-store = { path = "../store/test-store" }
 maplit = "1.0.2"
 structopt = { version = "0.3" }
