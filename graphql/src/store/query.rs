@@ -127,7 +127,7 @@ fn build_filter(
 fn build_fulltext_filter_from_object(
     object: &BTreeMap<String, q::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
-    object.into_iter().next().map_or(
+    object.iter().next().map_or(
         Err(QueryExecutionError::FulltextQueryRequiresFilter),
         |(key, value)| {
             if let q::Value::String(s) = value {
@@ -163,7 +163,7 @@ fn build_filter_from_object(
                 })?;
 
                 let ty = &field.field_type;
-                let store_value = Value::from_query_value(value, &ty)?;
+                let store_value = Value::from_query_value(value, ty)?;
 
                 Ok(match op {
                     Not => EntityFilter::Not(field_name, store_value),
@@ -193,7 +193,7 @@ fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecu
             // Check that all values in list are of the same type
             let root_discriminant = discriminant(&values[0]);
             values
-                .into_iter()
+                .iter()
                 .map(|value| {
                     let current_discriminant = discriminant(value);
                     if root_discriminant == current_discriminant {
@@ -221,7 +221,7 @@ fn build_order_by(
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
     match arguments.get("orderBy") {
         Some(q::Value::Enum(name)) => {
-            let field = sast::get_field(entity, &name).ok_or_else(|| {
+            let field = sast::get_field(entity, name).ok_or_else(|| {
                 QueryExecutionError::EntityFieldError(entity.name().to_owned(), name.clone())
             })?;
             sast::get_field_value_type(&field.field_type)
@@ -244,7 +244,7 @@ fn build_order_by(
 fn build_fulltext_order_by_from_object(
     object: &BTreeMap<String, q::Value>,
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
-    object.into_iter().next().map_or(
+    object.iter().next().map_or(
         Err(QueryExecutionError::FulltextQueryRequiresFilter),
         |(key, value)| {
             if let q::Value::String(_) = value {
@@ -275,17 +275,12 @@ pub fn parse_subgraph_id<'a>(
     entity: impl Into<ObjectOrInterface<'a>>,
 ) -> Result<DeploymentHash, QueryExecutionError> {
     let entity = entity.into();
-    let entity_name = entity.name().clone();
+    let entity_name = entity.name();
     entity
         .directives()
         .iter()
         .find(|directive| directive.name == "subgraphId")
-        .and_then(|directive| {
-            directive
-                .arguments
-                .iter()
-                .find(|(name, _)| name == &"id".to_string())
-        })
+        .and_then(|directive| directive.arguments.iter().find(|(name, _)| name == "id"))
         .and_then(|(_, value)| match value {
             s::Value::String(id) => Some(id),
             _ => None,
@@ -332,7 +327,7 @@ pub fn collect_entities_from_query_field(
                     // need to recursively process it
                     for selection in field.selection_set.items.iter() {
                         if let q::Selection::Field(sub_field) = selection {
-                            queue.push_back((&object_type, sub_field))
+                            queue.push_back((object_type, sub_field))
                         }
                     }
                 }

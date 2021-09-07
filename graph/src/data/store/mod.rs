@@ -4,6 +4,7 @@ use crate::{
 };
 use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
 use anyhow::{anyhow, Error};
+use itertools::Itertools;
 use serde::de;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
@@ -355,14 +356,8 @@ impl fmt::Display for Value {
                 Value::BigDecimal(d) => d.to_string(),
                 Value::Bool(b) => b.to_string(),
                 Value::Null => "null".to_string(),
-                Value::List(ref values) => format!(
-                    "[{}]",
-                    values
-                        .into_iter()
-                        .map(ToString::to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ),
+                Value::List(ref values) =>
+                    format!("[{}]", values.iter().map(ToString::to_string).join(", ")),
                 Value::Bytes(ref bytes) => bytes.to_string(),
                 Value::BigInt(ref number) => number.to_string(),
             }

@@ -206,8 +206,8 @@ impl TypeExt for Type {
     fn get_base_type(&self) -> &str {
         match self {
             Type::NamedType(name) => name,
-            Type::NonNullType(inner) => Self::get_base_type(&inner),
-            Type::ListType(inner) => Self::get_base_type(&inner),
+            Type::NonNullType(inner) => Self::get_base_type(inner),
+            Type::ListType(inner) => Self::get_base_type(inner),
         }
     }
 }
