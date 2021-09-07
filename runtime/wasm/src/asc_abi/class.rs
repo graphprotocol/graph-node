@@ -84,7 +84,7 @@ pub enum TypedArray<T> {
 }
 
 impl<T: AscValue> TypedArray<T> {
-    pub(crate) fn new<H: AscHeap + ?Sized>(
+    pub fn new<H: AscHeap + ?Sized>(
         content: &[T],
         heap: &mut H,
     ) -> Result<Self, DeterministicHostError> {
@@ -579,7 +579,7 @@ pub(crate) type AscTypedMapEntryArray<K, V> = Array<AscPtr<AscTypedMapEntry<K, V
 #[repr(C)]
 #[derive(AscType)]
 pub struct AscTypedMap<K, V> {
-    pub(crate) entries: AscPtr<AscTypedMapEntryArray<K, V>>,
+    pub entries: AscPtr<AscTypedMapEntryArray<K, V>>,
 }
 
 impl AscIndexId for AscTypedMap<AscString, AscEnum<StoreValueKind>> {
