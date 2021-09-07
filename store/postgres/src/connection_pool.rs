@@ -1,12 +1,16 @@
+use diesel::r2d2::Builder;
 use diesel::{connection::SimpleConnection, pg::PgConnection};
 use diesel::{
     r2d2::{self, event as e, ConnectionManager, HandleEvent, Pool, PooledConnection},
     Connection,
 };
+use diesel::{sql_query, RunQueryDsl};
 
 use graph::cheap_clone::CheapClone;
+use graph::constraint_violation;
 use graph::prelude::tokio;
 use graph::prelude::tokio::time::Instant;
+use graph::util::timed_rw_lock::TimedMutex;
 use graph::{
     prelude::{
         anyhow::{self, anyhow, bail},
@@ -18,7 +22,7 @@ use graph::{
     util::security::SafeDisplay,
 };
 
-use std::fmt;
+use std::fmt::{self, Write};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -26,7 +30,7 @@ use std::{collections::HashMap, sync::RwLock};
 
 use postgres::config::{Config, Host};
 
-use crate::advisory_lock;
+use crate::{advisory_lock, catalog};
 use crate::{Shard, PRIMARY_SHARD};
 
 lazy_static::lazy_static! {
@@ -41,6 +45,26 @@ lazy_static::lazy_static! {
                 })
             })
             .unwrap_or(0)
+    };
+
+    // These environment variables should really be set through the
+    // configuration file; especially for min_idle and idle_timeout, it's
+    // likely that they should be configured differently for each pool
+
+    static ref CONNECTION_TIMEOUT: Duration = {
+        std::env::var("GRAPH_STORE_CONNECTION_TIMEOUT").ok().map(|s| Duration::from_millis(u64::from_str(&s).unwrap_or_else(|_| {
+            panic!("GRAPH_STORE_CONNECTION_TIMEOUT must be a positive number, but is `{}`", s)
+        }))).unwrap_or(Duration::from_secs(5))
+    };
+    static ref MIN_IDLE: Option<u32> = {
+        std::env::var("GRAPH_STORE_CONNECTION_MIN_IDLE").ok().map(|s| u32::from_str(&s).unwrap_or_else(|_| {
+           panic!("GRAPH_STORE_CONNECTION_MIN_IDLE must be a positive number but is `{}`", s)
+        }))
+    };
+    static ref IDLE_TIMEOUT: Duration = {
+        std::env::var("GRAPH_STORE_CONNECTION_IDLE_TIMEOUT").ok().map(|s| Duration::from_secs(u64::from_str(&s).unwrap_or_else(|_| {
+            panic!("GRAPH_STORE_CONNECTION_IDLE_TIMEOUT must be a positive number, but is `{}`", s)
+        }))).unwrap_or(Duration::from_secs(600))
     };
 }
 
@@ -69,7 +93,11 @@ impl ForeignServer {
         format!("{}_subgraphs", Self::name(shard))
     }
 
-    fn new(shard: Shard, postgres_url: &str) -> Result<Self, anyhow::Error> {
+    pub fn new_from_raw(shard: String, postgres_url: &str) -> Result<Self, anyhow::Error> {
+        Self::new(Shard::new(shard)?, postgres_url)
+    }
+
+    pub fn new(shard: Shard, postgres_url: &str) -> Result<Self, anyhow::Error> {
         let config: Config = match postgres_url.parse() {
             Ok(config) => config,
             Err(e) => panic!(
@@ -118,12 +146,13 @@ impl ForeignServer {
             "\
         create server \"{name}\"
                foreign data wrapper postgres_fdw
-               options (host '{remote_host}', dbname '{remote_db}', updatable 'false');
+               options (host '{remote_host}', port '{remote_port}', dbname '{remote_db}', updatable 'false');
         create user mapping
                for current_user server \"{name}\"
                options (user '{remote_user}', password '{remote_password}');",
             name = self.name,
             remote_host = self.host,
+            remote_port = self.port,
             remote_db = self.dbname,
             remote_user = self.user,
             remote_password = self.password,
@@ -133,15 +162,26 @@ impl ForeignServer {
 
     /// Update an existing user mapping with possibly new details
     fn update(&self, conn: &PgConnection) -> Result<(), StoreError> {
+        let options = catalog::server_options(conn, &self.name)?;
+        let set_or_add = |option: &str| -> &'static str {
+            if options.contains_key(option) {
+                "set"
+            } else {
+                "add"
+            }
+        };
+
         let query = format!(
             "\
         alter server \"{name}\"
-              options (set host '{remote_host}', set dbname '{remote_db}');
+              options (set host '{remote_host}', {set_port} port '{remote_port}', set dbname '{remote_db}');
         alter user mapping
               for current_user server \"{name}\"
               options (set user '{remote_user}', set password '{remote_password}');",
             name = self.name,
             remote_host = self.host,
+            set_port = set_or_add("port"),
+            remote_port = self.port,
             remote_db = self.dbname,
             remote_user = self.user,
             remote_password = self.password,
@@ -155,32 +195,27 @@ impl ForeignServer {
     /// We recreate this mapping on every server start so that migrations that
     /// change one of the mapped tables actually show up in the imported tables
     fn map_primary(conn: &PgConnection, shard: &Shard) -> Result<(), StoreError> {
-        let query = format!(
-            "drop schema if exists {nsp} cascade;
-            create schema {nsp};",
-            nsp = Self::PRIMARY_PUBLIC
-        );
-        conn.batch_execute(&query)?;
+        catalog::recreate_schema(conn, Self::PRIMARY_PUBLIC)?;
 
-        let query = if shard == &*PRIMARY_SHARD {
-            format!(
-                "create view {nsp}.deployment_schemas as
-                        select * from public.deployment_schemas;
-                 create view {nsp}.chains as
-                        select * from public.chains;
-                 create view {nsp}.active_copies as
-                        select * from public.active_copies;",
-                nsp = Self::PRIMARY_PUBLIC
-            )
-        } else {
-            format!(
-                "import foreign schema public
-                        limit to (deployment_schemas, chains, active_copies) \
-                        from server {shard} into {nsp};",
-                shard = Self::name(&*PRIMARY_SHARD),
-                nsp = Self::PRIMARY_PUBLIC
-            )
-        };
+        let mut query = String::new();
+        for table_name in ["deployment_schemas", "chains", "active_copies"] {
+            let create_stmt = if shard == &*PRIMARY_SHARD {
+                format!(
+                    "create view {nsp}.{table_name} as select * from public.{table_name};",
+                    nsp = Self::PRIMARY_PUBLIC,
+                    table_name = table_name
+                )
+            } else {
+                catalog::create_foreign_table(
+                    conn,
+                    "public",
+                    table_name,
+                    Self::PRIMARY_PUBLIC,
+                    Self::name(&*PRIMARY_SHARD).as_str(),
+                )?
+            };
+            write!(query, "{}", create_stmt)?;
+        }
         conn.batch_execute(&query)?;
         Ok(())
     }
@@ -188,13 +223,18 @@ impl ForeignServer {
     /// Map the `subgraphs` schema from the foreign server `self` into the
     /// database accessible through `conn`
     fn map_metadata(&self, conn: &PgConnection) -> Result<(), StoreError> {
-        let query = format!(
-            "drop schema if exists {nsp} cascade;\
-             create schema {nsp};
-             import foreign schema subgraphs from server {srvname} into {nsp};",
-            nsp = Self::metadata_schema(&self.shard),
-            srvname = self.name
-        );
+        let nsp = Self::metadata_schema(&self.shard);
+        catalog::recreate_schema(conn, &nsp)?;
+        let mut query = String::new();
+        for table_name in [
+            "subgraph_error",
+            "dynamic_ethereum_contract_data_source",
+            "table_stats",
+        ] {
+            let create_stmt =
+                catalog::create_foreign_table(conn, "subgraphs", table_name, &nsp, &self.name)?;
+            write!(query, "{}", create_stmt)?;
+        }
         Ok(conn.batch_execute(&query)?)
     }
 }
@@ -203,33 +243,230 @@ impl ForeignServer {
 /// them on idle. This is much shorter than the default of 10 minutes.
 const FDW_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// A pool goes through several states, and this enum tracks what state we
+/// are in. When first created, the pool is in state `Created`; once we
+/// successfully called `setup` on it, it moves to state `Ready`. If we
+/// detect that the database is not available, the pool goes into state
+/// `Unavailable` until we can confirm that we can connect to the database,
+/// at which point it goes back to `Ready`
+// `Unavailable` is not used in the code yet
+#[allow(dead_code)]
+enum PoolState {
+    /// A connection pool, and all the servers for which we need to
+    /// establish fdw mappings when we call `setup` on the pool
+    Created(Arc<PoolInner>, Arc<Vec<ForeignServer>>),
+    Unavailable(Arc<PoolInner>),
+    Ready(Arc<PoolInner>),
+}
+
 #[derive(Clone)]
 pub struct ConnectionPool {
+    inner: Arc<TimedMutex<PoolState>>,
     logger: Logger,
-    shard: Shard,
-    pool: Pool<ConnectionManager<PgConnection>>,
-    // A separate pool for connections that will use foreign data wrappers.
-    // Once such a connection accesses a foreign table, Postgres keeps a
-    // connection to the foreign server until the connection is closed.
-    // Normal pooled connections live quite long (up to 10 minutes) and can
-    // therefore keep a lot of connections into foreign databases open. We
-    // mitigate this by using a separate small pool with a much shorter
-    // connection lifetime. Starting with postgres_fdw 1.1 in Postgres 14,
-    // this will no longer be needed since it will then be possible to
-    // explicitly close connections to foreign servers when a connection is
-    // returned to the pool.
-    fdw_pool: Option<Pool<ConnectionManager<PgConnection>>>,
-    limiter: Arc<Semaphore>,
-    postgres_url: String,
-    pub(crate) wait_stats: PoolWaitStats,
+}
 
-    // Limits the number of graphql queries that may execute concurrently. Since one graphql query
-    // may require multiple DB queries, it is useful to organize the queue at the graphql level so
-    // that waiting queries consume few resources. Still this is placed here because the semaphore
-    // is sized acording to the DB connection pool size.
-    query_semaphore: Arc<tokio::sync::Semaphore>,
-    semaphore_wait_stats: Arc<RwLock<MovingStats>>,
-    semaphore_wait_gauge: Box<Gauge>,
+/// The name of the pool, mostly for logging, and what purpose it serves.
+/// The main pool will always be called `main`, and can be used for reading
+/// and writing. Replica pools can only be used for reading, and don't
+/// require any setup (migrations etc.)
+pub enum PoolName {
+    Main,
+    Replica(String),
+}
+
+impl PoolName {
+    fn as_str(&self) -> &str {
+        match self {
+            PoolName::Main => "main",
+            PoolName::Replica(name) => name,
+        }
+    }
+
+    fn is_replica(&self) -> bool {
+        match self {
+            PoolName::Main => false,
+            PoolName::Replica(_) => true,
+        }
+    }
+}
+
+impl ConnectionPool {
+    pub fn create(
+        shard_name: &str,
+        pool_name: PoolName,
+        postgres_url: String,
+        pool_size: u32,
+        fdw_pool_size: Option<u32>,
+        logger: &Logger,
+        registry: Arc<dyn MetricsRegistry>,
+        servers: Arc<Vec<ForeignServer>>,
+    ) -> ConnectionPool {
+        let pool = PoolInner::create(
+            shard_name,
+            pool_name.as_str(),
+            postgres_url,
+            pool_size,
+            fdw_pool_size,
+            logger,
+            registry,
+        );
+        let pool_state = if pool_name.is_replica() {
+            PoolState::Ready(Arc::new(pool))
+        } else {
+            PoolState::Created(Arc::new(pool), servers)
+        };
+        ConnectionPool {
+            inner: Arc::new(TimedMutex::new(pool_state, format!("pool-{}", shard_name))),
+            logger: logger.clone(),
+        }
+    }
+
+    /// Return a pool that is ready, i.e., connected to the database. If the
+    /// pool has not been set up yet, call `setup`. If there are any errors
+    /// or the pool is marked as unavailable, return
+    /// `StoreError::DatabaseUnavailable`
+    fn get_ready(&self) -> Result<Arc<PoolInner>, StoreError> {
+        let mut guard = self.inner.lock(&self.logger);
+        match &*guard {
+            PoolState::Created(pool, servers) => {
+                pool.setup(servers.clone())?;
+                let pool2 = pool.clone();
+                *guard = PoolState::Ready(pool.clone());
+                Ok(pool2)
+            }
+            PoolState::Unavailable(_) => Err(StoreError::DatabaseUnavailable),
+            PoolState::Ready(pool) => Ok(pool.clone()),
+        }
+    }
+
+    /// Execute a closure with a connection to the database.
+    ///
+    /// # API
+    ///   The API of using a closure to bound the usage of the connection serves several
+    ///   purposes:
+    ///
+    ///   * Moves blocking database access out of the `Future::poll`. Within
+    ///     `Future::poll` (which includes all `async` methods) it is illegal to
+    ///     perform a blocking operation. This includes all accesses to the
+    ///     database, acquiring of locks, etc. Calling a blocking operation can
+    ///     cause problems with `Future` combinators (including but not limited
+    ///     to select, timeout, and FuturesUnordered) and problems with
+    ///     executors/runtimes. This method moves the database work onto another
+    ///     thread in a way which does not block `Future::poll`.
+    ///
+    ///   * Limit the total number of connections. Because the supplied closure
+    ///     takes a reference, we know the scope of the usage of all entity
+    ///     connections and can limit their use in a non-blocking way.
+    ///
+    /// # Cancellation
+    ///   The normal pattern for futures in Rust is drop to cancel. Once we
+    ///   spawn the database work in a thread though, this expectation no longer
+    ///   holds because the spawned task is the independent of this future. So,
+    ///   this method provides a cancel token which indicates that the `Future`
+    ///   has been dropped. This isn't *quite* as good as drop on cancel,
+    ///   because a drop on cancel can do things like cancel http requests that
+    ///   are in flight, but checking for cancel periodically is a significant
+    ///   improvement.
+    ///
+    ///   The implementation of the supplied closure should check for cancel
+    ///   between every operation that is potentially blocking. This includes
+    ///   any method which may interact with the database. The check can be
+    ///   conveniently written as `token.check_cancel()?;`. It is low overhead
+    ///   to check for cancel, so when in doubt it is better to have too many
+    ///   checks than too few.
+    ///
+    /// # Panics:
+    ///   * This task will panic if the supplied closure panics
+    ///   * This task will panic if the supplied closure returns Err(Cancelled)
+    ///     when the supplied cancel token is not cancelled.
+    pub(crate) async fn with_conn<T: Send + 'static>(
+        &self,
+        f: impl 'static
+            + Send
+            + FnOnce(
+                &PooledConnection<ConnectionManager<PgConnection>>,
+                &CancelHandle,
+            ) -> Result<T, CancelableError<StoreError>>,
+    ) -> Result<T, StoreError> {
+        let pool = self.get_ready()?;
+        pool.with_conn(f).await
+    }
+
+    pub fn get(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
+        self.get_ready()?.get()
+    }
+
+    pub fn get_with_timeout_warning(
+        &self,
+        logger: &Logger,
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
+        self.get_ready()?.get_with_timeout_warning(logger)
+    }
+
+    /// Get a connection from the pool for foreign data wrapper access;
+    /// since that pool can be very contended, periodically log that we are
+    /// still waiting for a connection
+    ///
+    /// The `timeout` is called every time we time out waiting for a
+    /// connection. If `timeout` returns `true`, `get_fdw` returns with that
+    /// error, otherwise we try again to get a connection.
+    pub fn get_fdw<F>(
+        &self,
+        logger: &Logger,
+        timeout: F,
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError>
+    where
+        F: FnMut() -> bool,
+    {
+        self.get_ready()?.get_fdw(logger, timeout)
+    }
+
+    pub fn connection_detail(&self) -> Result<ForeignServer, StoreError> {
+        let pool = self.get_ready()?;
+        ForeignServer::new(pool.shard.clone(), &pool.postgres_url).map_err(|e| e.into())
+    }
+
+    /// Check that we can connect to the database
+    pub fn check(&self) -> bool {
+        true
+    }
+
+    /// Setup the database for this pool. This includes configuring foreign
+    /// data wrappers for cross-shard communication, and running any pending
+    /// schema migrations for this database.
+    ///
+    /// # Panics
+    ///
+    /// If any errors happen during the migration, the process panics
+    pub fn setup(&self) {
+        let mut guard = self.inner.lock(&self.logger);
+        match &*guard {
+            PoolState::Created(pool, servers) => {
+                // If setup errors, we will try again later
+                if pool.setup(servers.clone()).is_ok() {
+                    *guard = PoolState::Ready(pool.clone());
+                }
+            }
+            PoolState::Unavailable(_) | PoolState::Ready(_) => { /* setup was previously done */ }
+        }
+    }
+
+    pub(crate) async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+        let pool = match &*self.inner.lock(&self.logger) {
+            PoolState::Created(pool, _) | PoolState::Unavailable(pool) | PoolState::Ready(pool) => {
+                pool.clone()
+            }
+        };
+        pool.query_permit().await
+    }
+
+    pub(crate) fn wait_stats(&self) -> PoolWaitStats {
+        match &*self.inner.lock(&self.logger) {
+            PoolState::Created(pool, _) | PoolState::Unavailable(pool) | PoolState::Ready(pool) => {
+                pool.wait_stats.clone()
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -318,15 +555,36 @@ impl HandleEvent for EventHandler {
     }
 }
 
-impl std::ops::Deref for ConnectionPool {
-    type Target = Pool<ConnectionManager<PgConnection>>;
+#[derive(Clone)]
+pub struct PoolInner {
+    logger: Logger,
+    shard: Shard,
+    pool: Pool<ConnectionManager<PgConnection>>,
+    // A separate pool for connections that will use foreign data wrappers.
+    // Once such a connection accesses a foreign table, Postgres keeps a
+    // connection to the foreign server until the connection is closed.
+    // Normal pooled connections live quite long (up to 10 minutes) and can
+    // therefore keep a lot of connections into foreign databases open. We
+    // mitigate this by using a separate small pool with a much shorter
+    // connection lifetime. Starting with postgres_fdw 1.1 in Postgres 14,
+    // this will no longer be needed since it will then be possible to
+    // explicitly close connections to foreign servers when a connection is
+    // returned to the pool.
+    fdw_pool: Option<Pool<ConnectionManager<PgConnection>>>,
+    limiter: Arc<Semaphore>,
+    postgres_url: String,
+    pub(crate) wait_stats: PoolWaitStats,
 
-    fn deref(&self) -> &Self::Target {
-        &self.pool
-    }
+    // Limits the number of graphql queries that may execute concurrently. Since one graphql query
+    // may require multiple DB queries, it is useful to organize the queue at the graphql level so
+    // that waiting queries consume few resources. Still this is placed here because the semaphore
+    // is sized acording to the DB connection pool size.
+    query_semaphore: Arc<tokio::sync::Semaphore>,
+    semaphore_wait_stats: Arc<RwLock<MovingStats>>,
+    semaphore_wait_gauge: Box<Gauge>,
 }
 
-impl ConnectionPool {
+impl PoolInner {
     pub fn create(
         shard_name: &str,
         pool_name: &str,
@@ -335,7 +593,7 @@ impl ConnectionPool {
         fdw_pool_size: Option<u32>,
         logger: &Logger,
         registry: Arc<dyn MetricsRegistry>,
-    ) -> ConnectionPool {
+    ) -> PoolInner {
         let logger_store = logger.new(o!("component" => "Store"));
         let logger_pool = logger.new(o!("component" => "ConnectionPool"));
         let const_labels = {
@@ -362,36 +620,24 @@ impl ConnectionPool {
 
         // Connect to Postgres
         let conn_manager = ConnectionManager::new(postgres_url.clone());
-        // Set the time we wait for a connection to 6h. The default is 30s
-        // which can be too little if database connections are highly
-        // contended; if we don't get a connection within the timeout,
-        // ultimately subgraphs get marked as failed. This effectively
-        // turns off this timeout and makes it possible that work needing
-        // a database connection blocks for a very long time
-        //
-        // When running tests however, use the default of 30 seconds.
-        // There should not be a lot of contention when running tests,
-        // and this can help debug the issue faster when a test appears
-        // to be hanging but really there is just no connection to postgres
-        // available.
-        let timeout_seconds = if cfg!(test) { 30 } else { 6 * 60 * 60 };
-        let pool = Pool::builder()
+        let builder: Builder<ConnectionManager<PgConnection>> = Pool::builder()
             .error_handler(error_handler.clone())
             .event_handler(event_handler.clone())
-            .connection_timeout(Duration::from_secs(timeout_seconds))
+            .connection_timeout(*CONNECTION_TIMEOUT)
             .max_size(pool_size)
-            .build(conn_manager)
-            .unwrap();
+            .min_idle(*MIN_IDLE)
+            .idle_timeout(Some(*IDLE_TIMEOUT));
+        let pool = builder.build_unchecked(conn_manager);
         let fdw_pool = fdw_pool_size.map(|pool_size| {
             let conn_manager = ConnectionManager::new(postgres_url.clone());
-            Pool::builder()
+            let builder: Builder<ConnectionManager<PgConnection>> = Pool::builder()
                 .error_handler(error_handler)
                 .event_handler(event_handler)
+                .connection_timeout(*CONNECTION_TIMEOUT)
                 .max_size(pool_size)
                 .min_idle(Some(1))
-                .idle_timeout(Some(FDW_IDLE_TIMEOUT))
-                .build(conn_manager)
-                .unwrap()
+                .idle_timeout(Some(FDW_IDLE_TIMEOUT));
+            builder.build_unchecked(conn_manager)
         });
 
         let limiter = Arc::new(Semaphore::new(pool_size as usize));
@@ -406,7 +652,7 @@ impl ConnectionPool {
             .expect("failed to create `query_effort_ms` counter");
         let max_concurrent_queries = pool_size as usize + *EXTRA_QUERY_PERMITS;
         let query_semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_queries));
-        ConnectionPool {
+        PoolInner {
             logger: logger_pool,
             shard: Shard::new(shard_name.to_string())
                 .expect("shard_name is a valid name for a shard"),
@@ -509,12 +755,16 @@ impl ConnectionPool {
         }
     }
 
+    pub fn get(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
+        self.pool.get().map_err(|e| StoreError::Unknown(e.into()))
+    }
+
     pub fn get_with_timeout_warning(
         &self,
         logger: &Logger,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, graph::prelude::Error> {
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
         loop {
-            match self.get_timeout(Duration::from_secs(60)) {
+            match self.pool.get_timeout(*CONNECTION_TIMEOUT) {
                 Ok(conn) => return Ok(conn),
                 Err(e) => error!(logger, "Error checking out connection, retrying";
                    "error" => e.to_string(),
@@ -534,7 +784,7 @@ impl ConnectionPool {
         &self,
         logger: &Logger,
         mut timeout: F,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, graph::prelude::Error>
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError>
     where
         F: FnMut() -> bool,
     {
@@ -544,7 +794,7 @@ impl ConnectionPool {
                 const MSG: &str =
                     "internal error: trying to get fdw connection on a pool that doesn't have any";
                 error!(logger, "{}", MSG);
-                bail!(MSG)
+                return Err(constraint_violation!(MSG));
             }
         };
         loop {
@@ -563,37 +813,46 @@ impl ConnectionPool {
         ForeignServer::new(self.shard.clone(), &self.postgres_url).map_err(|e| e.into())
     }
 
+    /// Check that we can connect to the database
+    pub fn check(&self) -> bool {
+        self.pool
+            .get()
+            .ok()
+            .map(|conn| sql_query("select 1").execute(&conn).is_ok())
+            .unwrap_or(false)
+    }
+
     /// Setup the database for this pool. This includes configuring foreign
     /// data wrappers for cross-shard communication, and running any pending
     /// schema migrations for this database.
     ///
+    /// Returns `StoreError::DatabaseUnavailable` if we can't connect to the
+    /// database. Any other error causes a panic.
+    ///
     /// # Panics
     ///
     /// If any errors happen during the migration, the process panics
-    pub async fn setup(&self, servers: Arc<Vec<ForeignServer>>) {
+    pub fn setup(&self, servers: Arc<Vec<ForeignServer>>) -> Result<(), StoreError> {
         fn die(logger: &Logger, msg: &'static str, err: &dyn std::fmt::Display) -> ! {
             crit!(logger, "{}", msg; "error" => err.to_string());
             panic!("{}: {}", msg, err);
         }
 
         let pool = self.clone();
-        let res = self
-            .with_conn(move |conn, _| {
-                advisory_lock::lock_migration(conn)
-                    .unwrap_or_else(|err| die(&pool.logger, "failed to get migration lock", &err));
-                let result = pool
-                    .configure_fdw(servers.as_ref())
-                    .and_then(|()| migrate_schema(&pool.logger, conn))
-                    .and_then(|()| pool.map_primary())
-                    .and_then(|()| pool.map_metadata(servers.as_ref()));
-                advisory_lock::unlock_migration(conn).unwrap_or_else(|err| {
-                    die(&pool.logger, "failed to release migration lock", &err);
-                });
-                result.unwrap_or_else(|err| die(&pool.logger, "migrations failed", &err));
-                Ok(())
-            })
-            .await;
-        res.unwrap_or_else(|err| die(&self.logger, "migrations were canceled", &err))
+        let conn = self.get().map_err(|_| StoreError::DatabaseUnavailable)?;
+
+        advisory_lock::lock_migration(&conn)
+            .unwrap_or_else(|err| die(&pool.logger, "failed to get migration lock", &err));
+        let result = pool
+            .configure_fdw(servers.as_ref())
+            .and_then(|()| migrate_schema(&pool.logger, &conn))
+            .and_then(|()| pool.map_primary())
+            .and_then(|()| pool.map_metadata(servers.as_ref()));
+        advisory_lock::unlock_migration(&conn).unwrap_or_else(|err| {
+            die(&pool.logger, "failed to release migration lock", &err);
+        });
+        result.unwrap_or_else(|err| die(&pool.logger, "migrations failed", &err));
+        Ok(())
     }
 
     pub(crate) async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
@@ -634,9 +893,9 @@ impl ConnectionPool {
         conn.transaction(|| ForeignServer::map_primary(&conn, &self.shard))
     }
 
-    // Map the `subgraphs` metadata schema from foreign servers to
-    // ourselves. The mapping is recreated on every server start so that we
-    // pick up possible schema changes in the mappings
+    // Map some tables from the `subgraphs` metadata schema from foreign
+    // servers to ourselves. The mapping is recreated on every server start
+    // so that we pick up possible schema changes in the mappings
     fn map_metadata(&self, servers: &Vec<ForeignServer>) -> Result<(), StoreError> {
         let conn = self.get()?;
         conn.transaction(|| {

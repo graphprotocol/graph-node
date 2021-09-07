@@ -96,18 +96,46 @@ lazy_static! {
             .parse::<usize>()
             .expect("invalid GRAPH_ETHEREUM_REQUEST_RETRIES env var");
 
-    /// Gas limit for `eth_call`. The value of 25_000_000 is a protocol-wide parameter so this
-    /// should be changed only for debugging purposes and never on an indexer in the network. The
-    /// value of 25_000_000 was chosen because it is the Geth default
-    /// https://github.com/ethereum/go-ethereum/blob/54c0d573d75ab9baa239db3f071d6cb4d1ec6aad/eth/ethconfig/config.go#L86.
+    /// Gas limit for `eth_call`. The value of 50_000_000 is a protocol-wide parameter so this
+    /// should be changed only for debugging purposes and never on an indexer in the network. This
+    /// value was chosen because it is the Geth default
+    /// https://github.com/ethereum/go-ethereum/blob/e4b687cf462870538743b3218906940ae590e7fd/eth/ethconfig/config.go#L91.
     /// It is not safe to set something higher because Geth will silently override the gas limit
     /// with the default. This means that we do not support indexing against a Geth node with
-    /// `RPCGasCap` set below 25 million.
+    /// `RPCGasCap` set below 50 million.
     // See also f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
     static ref ETH_CALL_GAS: u32 = std::env::var("GRAPH_ETH_CALL_GAS")
                                     .map(|s| s.parse::<u32>().expect("invalid GRAPH_ETH_CALL_GAS env var"))
-                                    .unwrap_or(25_000_000);
+                                    .unwrap_or(50_000_000);
+
+    /// Additional deterministic errors that have not yet been hardcoded. Separated by `;`.
+    static ref GETH_ETH_CALL_ERRORS_ENV: Vec<String> = {
+        std::env::var("GRAPH_GETH_ETH_CALL_ERRORS")
+        .unwrap_or_default()
+        .split(';')
+        .map(ToOwned::to_owned)
+        .collect()
+    };
 }
+
+// Deterministic Geth eth_call execution errors. We might need to expand this as
+// subgraphs come across other errors. See
+// https://github.com/ethereum/go-ethereum/blob/dfeb2f7e8001aef1005a8d5e1605bae1de0b4f12/core/vm/errors.go#L25-L38
+const GETH_ETH_CALL_ERRORS: &[&str] = &[
+    "execution reverted",
+    "invalid jump destination",
+    "invalid opcode",
+    // Ethereum says 1024 is the stack sizes limit, so this is deterministic.
+    "stack limit reached 1024",
+    // "out of gas" is commented out because Erigon has not yet bumped the default gas limit to 50
+    // million. It can be added through `GETH_ETH_CALL_ERRORS_ENV` if not using Erigon. Once
+    // https://github.com/ledgerwatch/erigon/pull/2572 has been released and indexers have updated,
+    // this can be uncommented.
+    //
+    // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61 for why the gas limit is considered deterministic.
+
+    // "out of gas",
+];
 
 impl CheapClone for EthereumAdapter {
     fn cheap_clone(&self) -> Self {
@@ -501,18 +529,10 @@ impl EthereumAdapter {
                         const PARITY_VM_EXECUTION_ERROR: i64 = -32015;
                         const PARITY_REVERT_PREFIX: &str = "Reverted 0x";
 
-                        // Deterministic Geth execution errors. We might need to expand this as
-                        // subgraphs come across other errors. See
-                        // https://github.com/ethereum/go-ethereum/blob/cd57d5cd38ef692de8fbedaa56598b4e9fbfbabc/core/vm/errors.go
-                        const GETH_EXECUTION_ERRORS: &[&str] = &[
-                            "execution reverted",
-                            "invalid jump destination",
-                            "invalid opcode",
-                            // Ethereum says 1024 is the stack sizes limit, so this is deterministic.
-                            "stack limit reached 1024",
-                            // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61 for why the gas limit is considered deterministic.
-                            "out of gas",
-                        ];
+                        let mut geth_execution_errors = GETH_ETH_CALL_ERRORS
+                            .iter()
+                            .map(|s| *s)
+                            .chain(GETH_ETH_CALL_ERRORS_ENV.iter().map(|s| s.as_str()));
 
                         let as_solidity_revert_with_reason = |bytes: &[u8]| {
                             let solidity_revert_function_selector =
@@ -532,11 +552,11 @@ impl EthereumAdapter {
                             // A successful response.
                             Ok(bytes) => Ok(bytes),
 
-                            // Check for Geth revert.
+                            // Check for Geth revert, converting to lowercase because some clients
+                            // return the same error message as Geth but with capitalization.
                             Err(web3::Error::Rpc(rpc_error))
-                                if GETH_EXECUTION_ERRORS
-                                    .iter()
-                                    .any(|e| rpc_error.message.contains(e)) =>
+                                if geth_execution_errors
+                                    .any(|e| rpc_error.message.to_lowercase().contains(e)) =>
                             {
                                 Err(EthereumContractCallError::Revert(rpc_error.message))
                             }
@@ -1083,27 +1103,21 @@ impl EthereumAdapterTrait for EthereumAdapter {
                                         // trying to ingest this block.
                                         //
                                         // This could also be because the receipt is simply not
-                                        // available yet.  For that case, we should retry until
+                                        // available yet. For that case, we should retry until
                                         // it becomes available.
-                                        IngestorError::BlockUnavailable(block_hash)
+                                        IngestorError::ReceiptUnavailable(block_hash, tx_hash)
                                     })
                                 })
                                 .and_then(move |receipt| {
-                                    // Parity nodes seem to return receipts with no block hash
-                                    // when a transaction is no longer in the main chain, so
-                                    // treat that case the same as a receipt being absent
-                                    // entirely.
-                                    let receipt_block_hash =
-                                        receipt.block_hash.ok_or_else(|| {
-                                            IngestorError::BlockUnavailable(block_hash)
-                                        })?;
-
-                                    // Check if receipt is for the right block
-                                    if receipt_block_hash != block_hash {
+                                    // Check if the receipt has a block hash and is for the right
+                                    // block. Parity nodes seem to return receipts with no block
+                                    // hash when a transaction is no longer in the main chain, so
+                                    // treat that case the same as a receipt being absent entirely.
+                                    if receipt.block_hash != Some(block_hash) {
                                         info!(
                                             logger, "receipt block mismatch";
                                             "receipt_block_hash" =>
-                                                receipt_block_hash.to_string(),
+                                            receipt.block_hash.unwrap_or_default().to_string(),
                                             "block_hash" =>
                                                 block_hash.to_string(),
                                             "tx_hash" => tx_hash.to_string(),

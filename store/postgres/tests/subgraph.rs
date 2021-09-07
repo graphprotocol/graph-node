@@ -12,6 +12,7 @@ use graph::{
     prelude::SubgraphName,
     prelude::SubgraphVersionSwitchingMode,
     prelude::{CheapClone, DeploymentHash, NodeId, SubgraphStore as _},
+    semver::Version,
 };
 use graph_store_postgres::layout_for_tests::Connection as Primary;
 use graph_store_postgres::SubgraphStore;
@@ -115,7 +116,7 @@ fn create_subgraph() {
 
         let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
             id: id.clone(),
-            spec_version: "1".to_owned(),
+            spec_version: Version::new(1, 0, 0),
             features: Default::default(),
             description: None,
             repository: None,

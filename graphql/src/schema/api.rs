@@ -590,7 +590,7 @@ fn query_field_for_fulltext(
         block_argument(),
     ];
 
-    if features.contains(&SubgraphFeature::nonFatalErrors) {
+    if features.contains(&SubgraphFeature::NonFatalErrors) {
         arguments.push(subgraph_error_argument())
     }
 
@@ -689,7 +689,7 @@ fn query_fields_for_type(type_name: &str, features: &BTreeSet<SubgraphFeature>) 
         block_argument(),
     ];
 
-    if features.contains(&SubgraphFeature::nonFatalErrors) {
+    if features.contains(&SubgraphFeature::NonFatalErrors) {
         collection_arguments.push(subgraph_error_argument());
         by_id_arguments.push(subgraph_error_argument());
     }
@@ -924,7 +924,7 @@ mod tests {
             .expect("Failed to parse input schema");
         let schema = api_schema(
             &input_schema,
-            &BTreeSet::from_iter(Some(SubgraphFeature::nonFatalErrors)),
+            &BTreeSet::from_iter(Some(SubgraphFeature::NonFatalErrors)),
         )
         .expect("Failed to derived API schema");
 
@@ -1141,7 +1141,7 @@ mod tests {
         .expect("Failed to parse input schema");
         let schema = api_schema(
             &input_schema,
-            &BTreeSet::from_iter(Some(SubgraphFeature::nonFatalErrors)),
+            &BTreeSet::from_iter(Some(SubgraphFeature::NonFatalErrors)),
         )
         .expect("Failed to derived API schema");
 

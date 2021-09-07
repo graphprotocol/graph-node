@@ -294,7 +294,7 @@ fn load_parent_block_from_store(context: &Context, block_ptr: BlockPtr) -> Block
         future::result(
             context
                 .writable
-                .get(block_ptr.to_entity_key(context.subgraph_id.clone()))
+                .get(&block_ptr.to_entity_key(context.subgraph_id.clone()))
                 .map_err(|e| e.into())
                 .and_then(|entity| {
                     entity.ok_or_else(|| anyhow!("block {} is missing in store", block_ptr))

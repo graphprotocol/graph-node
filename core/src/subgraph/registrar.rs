@@ -3,34 +3,35 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use graph::blockchain::Blockchain;
+use graph::blockchain::BlockchainKind;
 use graph::blockchain::BlockchainMap;
 use graph::components::store::{DeploymentId, DeploymentLocator, SubscriptionManager};
 use graph::data::subgraph::schema::SubgraphDeploymentEntity;
+use graph::data::subgraph::MAX_SPEC_VERSION;
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
 
-pub struct SubgraphRegistrar<C, L, P, S, SM> {
+pub struct SubgraphRegistrar<L, P, S, SM> {
     logger: Logger,
     logger_factory: LoggerFactory,
     resolver: Arc<L>,
     provider: Arc<P>,
     store: Arc<S>,
     subscription_manager: Arc<SM>,
-    chains: Arc<BlockchainMap<C>>,
+    chains: Arc<BlockchainMap>,
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
     assignment_event_stream_cancel_guard: CancelGuard, // cancels on drop
 }
 
-impl<C, L, P, S, SM> SubgraphRegistrar<C, L, P, S, SM>
+impl<L, P, S, SM> SubgraphRegistrar<L, P, S, SM>
 where
     L: LinkResolver + Clone,
     P: SubgraphAssignmentProviderTrait,
     S: SubgraphStore,
     SM: SubscriptionManager,
-    C: Blockchain,
 {
     pub fn new(
         logger_factory: &LoggerFactory,
@@ -38,7 +39,7 @@ where
         provider: Arc<P>,
         store: Arc<S>,
         subscription_manager: Arc<SM>,
-        chains: Arc<BlockchainMap<C>>,
+        chains: Arc<BlockchainMap>,
         node_id: NodeId,
         version_switching_mode: SubgraphVersionSwitchingMode,
     ) -> Self {
@@ -173,12 +174,14 @@ where
                                     if let Some(assigned) = assigned {
                                         if assigned == node_id {
                                             // Start subgraph on this node
+                                            debug!(logger, "Deployment assignee is this node, broadcasting add event"; "assigned_to" => assigned, "node_id" => &node_id);
                                             Box::new(stream::once(Ok(AssignmentEvent::Add {
                                                 deployment,
                                                 node_id: node_id.clone(),
                                             })))
                                         } else {
                                             // Ensure it is removed from this node
+                                            debug!(logger, "Deployment assignee is not this node, broadcasting remove event"; "assigned_to" => assigned, "node_id" => &node_id);
                                             Box::new(stream::once(Ok(AssignmentEvent::Remove {
                                                 deployment,
                                                 node_id: node_id.clone(),
@@ -186,7 +189,7 @@ where
                                         }
                                     } else {
                                         // Was added/updated, but is now gone.
-                                        // We will get a separate Removed event later.
+                                        debug!(logger, "Deployment has not assignee, we will get a separate remove event later"; "node_id" => &node_id);
                                         Box::new(stream::empty())
                                     }
                                 })
@@ -237,13 +240,12 @@ where
 }
 
 #[async_trait]
-impl<C, L, P, S, SM> SubgraphRegistrarTrait for SubgraphRegistrar<C, L, P, S, SM>
+impl<L, P, S, SM> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, SM>
 where
     L: LinkResolver,
     P: SubgraphAssignmentProviderTrait,
     S: SubgraphStore,
     SM: SubscriptionManager,
-    C: Blockchain,
 {
     async fn create_subgraph(
         &self,
@@ -269,46 +271,47 @@ where
             .logger_factory
             .subgraph_logger(&DeploymentLocator::new(DeploymentId(0), hash.clone()));
 
-        let unvalidated = UnvalidatedSubgraphManifest::<graph_chain_ethereum::Chain>::resolve(
-            hash,
-            self.resolver.clone(),
-            &logger,
-        )
-        .map_err(SubgraphRegistrarError::ResolveError)
-        .await?;
+        let raw: serde_yaml::Mapping = {
+            let file_bytes = self
+                .resolver
+                .cat(&logger, &hash.to_ipfs_link())
+                .await
+                .map_err(|e| {
+                    SubgraphRegistrarError::ResolveError(
+                        SubgraphManifestResolveError::ResolveError(e),
+                    )
+                })?;
 
-        let (manifest, validation_warnings) = unvalidated
-            .validate(self.store.clone())
-            .map_err(SubgraphRegistrarError::ManifestValidationError)?;
+            serde_yaml::from_slice(&file_bytes)
+                .map_err(|e| SubgraphRegistrarError::ResolveError(e.into()))?
+        };
 
-        let network_name = manifest.network_name();
+        let kind = BlockchainKind::from_manifest(&raw).map_err(|e| {
+            SubgraphRegistrarError::ResolveError(SubgraphManifestResolveError::ResolveError(e))
+        })?;
 
-        let chain = self
-            .chains
-            .get(&network_name)
-            .ok_or(SubgraphRegistrarError::NetworkNotSupported(
-                network_name.clone(),
-            ))?
-            .cheap_clone();
-
-        let manifest_id = manifest.id.clone();
-        create_subgraph_version(
-            &logger,
-            self.store.clone(),
-            chain,
-            name.clone(),
-            manifest,
-            node_id,
-            self.version_switching_mode,
-        )
-        .await?;
+        match kind {
+            BlockchainKind::Ethereum => {
+                create_subgraph_version::<graph_chain_ethereum::Chain, _, _>(
+                    &logger,
+                    self.store.clone(),
+                    self.chains.cheap_clone(),
+                    name.clone(),
+                    hash.cheap_clone(),
+                    raw,
+                    node_id,
+                    self.version_switching_mode,
+                    self.resolver.cheap_clone(),
+                )
+                .await?
+            }
+        };
 
         debug!(
             &logger,
             "Wrote new subgraph version to store";
             "subgraph_name" => name.to_string(),
-            "subgraph_hash" => manifest_id.to_string(),
-            "validation_warnings" => format!("{:?}", validation_warnings),
+            "subgraph_hash" => hash.to_string(),
         );
 
         Ok(())
@@ -464,15 +467,38 @@ async fn resolve_subgraph_chain_blocks(
     Ok((start_block_ptr, base_ptr))
 }
 
-async fn create_subgraph_version<C: Blockchain>(
+async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolver>(
     logger: &Logger,
-    store: Arc<impl SubgraphStore>,
-    chain: Arc<C>,
+    store: Arc<S>,
+    chains: Arc<BlockchainMap>,
     name: SubgraphName,
-    manifest: SubgraphManifest<impl Blockchain>,
+    deployment: DeploymentHash,
+    raw: serde_yaml::Mapping,
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
+    resolver: Arc<L>,
 ) -> Result<(), SubgraphRegistrarError> {
+    let unvalidated = UnvalidatedSubgraphManifest::<C>::resolve(
+        deployment,
+        raw,
+        resolver,
+        &logger,
+        MAX_SPEC_VERSION.clone(),
+    )
+    .map_err(SubgraphRegistrarError::ResolveError)
+    .await?;
+
+    let manifest = unvalidated
+        .validate(store.cheap_clone())
+        .map_err(SubgraphRegistrarError::ManifestValidationError)?;
+
+    let network_name = manifest.network_name();
+
+    let chain = chains
+        .get::<C>(network_name.clone())
+        .map_err(SubgraphRegistrarError::NetworkNotSupported)?
+        .cheap_clone();
+
     let logger = logger.clone();
     let store = store.clone();
     let deployment_store = store.clone();
@@ -505,7 +531,6 @@ async fn create_subgraph_version<C: Blockchain>(
 
     // Apply the subgraph versioning and deployment operations,
     // creating a new subgraph deployment if one doesn't exist.
-    let network = manifest.network_name();
     let deployment = SubgraphDeploymentEntity::new(&manifest, false, start_block).graft(base_block);
     deployment_store
         .create_subgraph_deployment(
@@ -513,7 +538,7 @@ async fn create_subgraph_version<C: Blockchain>(
             &manifest.schema,
             deployment,
             node_id,
-            network,
+            network_name,
             version_switching_mode,
         )
         .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))

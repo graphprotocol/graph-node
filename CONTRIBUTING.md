@@ -25,6 +25,8 @@ Set environment variables:
 export THEGRAPH_STORE_POSTGRES_DIESEL_URL=<Postgres database URL>
 ```
 
+- **Note** You can follow Docker Compose instructions in [store/test-store/README.md](./store/test-store/README.md#docker-compose) to easily run a Postgres instance and use `postgresql://graph:graph@127.0.0.1:5432/graph-test` as the Postgres database URL value.
+
 While developing, a useful command to run in the background is this:
 
 ```sh
@@ -41,11 +43,10 @@ This will watch your source directory and continuously do the following on chang
 2.  Generate docs for all packages in the workspace in `target/doc/`.
 3.  Automatically format all your source files.
 
-### Testing with a sharded store
+### Integrations Tests
 
-The tests can (and should) be run against a sharded store. The tests will
-read their [configuration](docs/multiple-databases.md) from the file that the
-environment variable `GRAPH_NODE_TEST_CONFIG` points to.
+The tests can (and should) be run against a sharded store. See [store/test-store/README.md](./store/test-store/README.md) for
+detailed instructions about how to run the sharded integrations tests.
 
 ## Commit messages
 

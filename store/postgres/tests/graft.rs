@@ -10,6 +10,7 @@ use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
 use graph::prelude::*;
+use graph::semver::Version;
 use graph_store_postgres::SubgraphStore as DieselSubgraphStore;
 use web3::types::H256;
 
@@ -109,7 +110,7 @@ where
 fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator {
     let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
         id: TEST_SUBGRAPH_ID.clone(),
-        spec_version: "1".to_owned(),
+        spec_version: Version::new(1, 0, 0),
         features: Default::default(),
         description: None,
         repository: None,

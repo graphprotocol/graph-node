@@ -1,6 +1,6 @@
 [package]
 name = "graph"
-version = "0.23.1"
+version = "0.24.0"
 edition = "2018"
 
 [dependencies]
@@ -33,7 +33,7 @@ num-bigint = { version = "^0.2.6", features = ["serde"] }
 num_cpus = "1.13.0"
 num-traits = "0.2.14"
 rand = "0.6.1"
-semver = "1.0.3"
+semver = {version = "1.0.3", features = ["serde"]}
 serde = { version = "1.0.126", features = ["rc"] }
 serde_derive = "1.0.125"
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
@@ -47,7 +47,7 @@ slog-envlogger = "2.1.0"
 slog-term = "2.7.0"
 petgraph = "0.6.0"
 tiny-keccak = "1.5.0"
-tokio = { version = "1.9.0", features = ["time", "sync", "macros", "test-util", "rt-multi-thread"] }
+tokio = { version = "1.10.1", features = ["time", "sync", "macros", "test-util", "rt-multi-thread", "parking_lot"] }
 tokio-stream = { version = "0.1.7", features = ["sync"] }
 tokio-retry = "0.3.0"
 url = "2.2.1"
@@ -56,11 +56,12 @@ priority-queue = "0.7.0"
 futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
 wasmparser = "0.78.2"
 thiserror = "1.0.25"
-parking_lot = "0.11.1"
+parking_lot = "0.11.2"
 itertools = "0.10.1"
 
 # Our fork contains a small but hacky patch.
 web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "master" }
+serde_plain = "1.0.0"
 
 [dev-dependencies]
 test-store = { path = "../store/test-store" }

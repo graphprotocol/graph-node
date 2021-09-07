@@ -1,4 +1,5 @@
 use anyhow::{Context, Error};
+use graph::blockchain::BlockchainKind;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::prelude::{
     EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, StopwatchMetrics,
@@ -9,6 +10,7 @@ use graph::{
         block_stream::{
             BlockStreamMetrics, BlockWithTriggers, TriggersAdapter as TriggersAdapterTrait,
         },
+        polling_block_stream::PollingBlockStream,
         Block, BlockHash, BlockPtr, Blockchain, ChainHeadUpdateListener,
         IngestorAdapter as IngestorAdapterTrait, IngestorError, TriggerFilter as _,
     },
@@ -111,6 +113,8 @@ impl Chain {
 
 #[async_trait]
 impl Blockchain for Chain {
+    const KIND: BlockchainKind = BlockchainKind::Ethereum;
+
     type Block = BlockFinality;
 
     type DataSource = DataSource;
@@ -167,7 +171,7 @@ impl Blockchain for Chain {
         filter: Arc<TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
-    ) -> Result<BlockStream<Self>, Error> {
+    ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let logger = self
             .logger_factory
             .subgraph_logger(&deployment)
@@ -177,7 +181,9 @@ impl Blockchain for Chain {
             .subgraph_store
             .writable(&deployment)
             .expect(&format!("no store for deployment `{}`", deployment.hash));
-        let chain_head_update_stream = self.chain_head_update_listener.subscribe(self.name.clone());
+        let chain_head_update_stream = self
+            .chain_head_update_listener
+            .subscribe(self.name.clone(), logger.clone());
 
         let requirements = filter.node_capabilities();
 
@@ -203,7 +209,7 @@ impl Blockchain for Chain {
             true => 0,
         };
 
-        Ok(BlockStream::new(
+        Ok(Box::new(PollingBlockStream::new(
             writable,
             chain_store,
             chain_head_update_stream,
@@ -218,7 +224,7 @@ impl Blockchain for Chain {
             *MAX_BLOCK_RANGE_SIZE,
             *TARGET_TRIGGERS_PER_BLOCK_RANGE,
             unified_api_version,
-        ))
+        )))
     }
 
     fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter> {

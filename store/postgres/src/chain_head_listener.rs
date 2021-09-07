@@ -1,9 +1,15 @@
 use graph::{
-    blockchain::ChainHeadUpdateStream, parking_lot::Mutex, prelude::StoreError,
+    blockchain::ChainHeadUpdateStream,
+    parking_lot::RwLock,
+    prelude::{
+        futures03::{self, FutureExt},
+        tokio, StoreError,
+    },
     prometheus::GaugeVec,
 };
-use std::collections::BTreeMap;
+use std::str::FromStr;
 use std::sync::Arc;
+use std::{collections::BTreeMap, time::Duration};
 
 use diesel::RunQueryDsl;
 use lazy_static::lazy_static;
@@ -16,10 +22,17 @@ use graph::blockchain::ChainHeadUpdateListener as ChainHeadUpdateListenerTrait;
 use graph::prelude::serde::{Deserialize, Serialize};
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::tokio::sync::{mpsc::Receiver, watch};
-use graph::prelude::{crit, o, CheapClone, Logger, MetricsRegistry};
-use graph::tokio_stream::wrappers::WatchStream;
+use graph::prelude::{crit, debug, o, CheapClone, Logger, MetricsRegistry};
 
 lazy_static! {
+    pub static ref CHAIN_HEAD_WATCHER_TIMEOUT: Duration = Duration::from_secs(
+        std::env::var("GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT")
+            .ok()
+            .map(|s| u64::from_str(&s).unwrap_or_else(|_| panic!(
+                "failed to parse env var GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT"
+            )))
+            .unwrap_or(30)
+    );
     pub static ref CHANNEL_NAME: SafeChannelName =
         SafeChannelName::i_promise_this_is_safe("chain_head_updates");
 }
@@ -74,7 +87,7 @@ struct ChainHeadUpdate {
 
 pub struct ChainHeadUpdateListener {
     /// Update watchers keyed by network.
-    watchers: Arc<Mutex<BTreeMap<String, Watcher>>>,
+    watchers: Arc<RwLock<BTreeMap<String, Watcher>>>,
     _listener: NotificationListener,
 }
 
@@ -93,7 +106,7 @@ impl ChainHeadUpdateListener {
         // Create a Postgres notification listener for chain head updates
         let (mut listener, receiver) =
             NotificationListener::new(&logger, postgres_url, CHANNEL_NAME.clone());
-        let watchers = Arc::new(Mutex::new(BTreeMap::new()));
+        let watchers = Arc::new(RwLock::new(BTreeMap::new()));
 
         Self::listen(
             logger,
@@ -118,7 +131,7 @@ impl ChainHeadUpdateListener {
         metrics: Arc<BlockIngestorMetrics>,
         listener: &mut NotificationListener,
         mut receiver: Receiver<JsonNotification>,
-        watchers: Arc<Mutex<BTreeMap<String, Watcher>>>,
+        watchers: Arc<RwLock<BTreeMap<String, Watcher>>>,
     ) {
         // Process chain head updates in a dedicated task
         graph::spawn(async move {
@@ -143,7 +156,7 @@ impl ChainHeadUpdateListener {
                     .set_chain_head_number(&update.network_name, *&update.head_block_number as i64);
 
                 // If there are subscriptions for this network, notify them.
-                if let Some(watcher) = watchers.lock().get(&update.network_name) {
+                if let Some(watcher) = watchers.read().get(&update.network_name) {
                     watcher.send()
                 }
             }
@@ -155,16 +168,60 @@ impl ChainHeadUpdateListener {
 }
 
 impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
-    fn subscribe(&self, network_name: String) -> ChainHeadUpdateStream {
-        let update_receiver = self
-            .watchers
-            .lock()
-            .entry(network_name)
-            .or_insert_with(|| Watcher::new())
-            .receiver
-            .clone();
+    fn subscribe(&self, network_name: String, logger: Logger) -> ChainHeadUpdateStream {
+        let update_receiver = {
+            let existing = {
+                let watchers = self.watchers.read();
+                watchers.get(&network_name).map(|w| w.receiver.clone())
+            };
 
-        Box::new(WatchStream::new(update_receiver))
+            if let Some(watcher) = existing {
+                // Common case, this is not the first subscription for this network.
+                watcher
+            } else {
+                // This is the first subscription for this network, a lock is required.
+                //
+                // Race condition: Another task could have simoultaneously entered this branch and
+                // inserted a writer, so we should check the entry again after acquiring the lock.
+                self.watchers
+                    .write()
+                    .entry(network_name)
+                    .or_insert_with(|| Watcher::new())
+                    .receiver
+                    .clone()
+            }
+        };
+
+        Box::new(futures03::stream::unfold(
+            update_receiver,
+            move |mut update_receiver| {
+                let logger = logger.clone();
+                async move {
+                    // To be robust against any problems with the listener for the DB channel, a
+                    // timeout is set so that subscribers are guaranteed to get periodic updates.
+                    match tokio::time::timeout(
+                        *CHAIN_HEAD_WATCHER_TIMEOUT,
+                        update_receiver.changed(),
+                    )
+                    .await
+                    {
+                        // Received an update.
+                        Ok(Ok(())) => (),
+
+                        // The sender was dropped, this should never happen.
+                        Ok(Err(_)) => crit!(logger, "chain head watcher terminated"),
+
+                        Err(_) => debug!(
+                            logger,
+                            "no chain head update for {} seconds, polling for update",
+                            CHAIN_HEAD_WATCHER_TIMEOUT.as_secs()
+                        ),
+                    };
+                    Some(((), update_receiver))
+                }
+                .boxed()
+            },
+        ))
     }
 }
 

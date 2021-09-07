@@ -12,7 +12,7 @@ use structopt::StructOpt;
 use tokio::sync::mpsc;
 
 use graph::blockchain::block_ingestor::BlockIngestor;
-use graph::blockchain::Blockchain as _;
+use graph::blockchain::{Blockchain as _, BlockchainMap};
 use graph::components::store::BlockStore;
 use graph::data::graphql::effort::LoadManager;
 use graph::log::logger;
@@ -37,6 +37,8 @@ mod store_builder;
 
 use config::Config;
 use store_builder::StoreBuilder;
+
+use crate::config::ProviderDetails;
 
 lazy_static! {
     // Default to an Ethereum reorg threshold to 50 blocks
@@ -203,7 +205,12 @@ async fn main() {
         let chain_head_update_listener = store_builder.chain_head_update_listener();
         let network_store = store_builder.network_store(idents);
 
-        let chains = Arc::new(networks_as_chains(
+        // To support the ethereum block ingestor, ethereum networks are referenced both by the
+        // `blockchain_map` and `ethereum_chains`. Future chains should be referred to only in
+        // `blockchain_map`.
+        let mut blockchain_map = BlockchainMap::new();
+        let ethereum_chains = networks_as_chains(
+            &mut blockchain_map,
             &logger,
             node_id.clone(),
             metrics_registry.clone(),
@@ -211,7 +218,8 @@ async fn main() {
             network_store.as_ref(),
             chain_head_update_listener.clone(),
             &logger_factory,
-        ));
+        );
+        let blockchain_map = Arc::new(blockchain_map);
 
         let load_manager = Arc::new(LoadManager::new(
             &logger,
@@ -237,6 +245,8 @@ async fn main() {
             &logger_factory,
             graphql_runner.clone(),
             network_store.clone(),
+            link_resolver.clone(),
+            network_store.subgraph_store().clone(),
         );
 
         // Spawn Ethereum network indexers for all networks that are to be indexed
@@ -279,7 +289,7 @@ async fn main() {
         if !opt.disable_block_ingestor {
             let block_polling_interval = Duration::from_millis(opt.ethereum_polling_interval);
 
-            start_block_ingestor(&logger, block_polling_interval, &chains);
+            start_block_ingestor(&logger, block_polling_interval, ethereum_chains);
 
             // Start a task runner
             let mut job_runner = graph::util::jobs::Runner::new(&logger);
@@ -290,7 +300,7 @@ async fn main() {
         let subgraph_instance_manager = SubgraphInstanceManager::new(
             &logger_factory,
             network_store.subgraph_store(),
-            chains.clone(),
+            blockchain_map.cheap_clone(),
             metrics_registry.clone(),
             link_resolver.cheap_clone(),
         );
@@ -317,7 +327,7 @@ async fn main() {
             Arc::new(subgraph_provider),
             network_store.subgraph_store(),
             subscription_manager,
-            chains.clone(),
+            blockchain_map,
             node_id.clone(),
             version_switching_mode,
         ));
@@ -443,45 +453,47 @@ async fn create_ethereum_networks(
     let mut parsed_networks = EthereumNetworks::new();
     for (name, chain) in config.chains.chains {
         for provider in chain.providers {
-            let capabilities = provider.node_capabilities();
+            if let ProviderDetails::Web3(web3) = provider.details {
+                let capabilities = web3.node_capabilities();
 
-            let logger = logger.new(o!("provider" => provider.label.clone()));
-            info!(
-                logger,
-                "Creating transport";
-                "url" => &provider.url,
-                "capabilities" => capabilities
-            );
+                let logger = logger.new(o!("provider" => provider.label.clone()));
+                info!(
+                    logger,
+                    "Creating transport";
+                    "url" => &web3.url,
+                    "capabilities" => capabilities
+                );
 
-            use crate::config::Transport::*;
+                use crate::config::Transport::*;
 
-            let (transport_event_loop, transport) = match provider.transport {
-                Rpc => Transport::new_rpc(&provider.url, provider.headers),
-                Ipc => Transport::new_ipc(&provider.url),
-                Ws => Transport::new_ws(&provider.url),
-            };
+                let (transport_event_loop, transport) = match web3.transport {
+                    Rpc => Transport::new_rpc(&web3.url, web3.headers),
+                    Ipc => Transport::new_ipc(&web3.url),
+                    Ws => Transport::new_ws(&web3.url),
+                };
 
-            // If we drop the event loop the transport will stop working.
-            // For now it's fine to just leak it.
-            std::mem::forget(transport_event_loop);
+                // If we drop the event loop the transport will stop working.
+                // For now it's fine to just leak it.
+                std::mem::forget(transport_event_loop);
 
-            let supports_eip_1898 = !provider.features.contains("no_eip1898");
+                let supports_eip_1898 = !web3.features.contains("no_eip1898");
 
-            parsed_networks.insert(
-                name.to_string(),
-                capabilities,
-                Arc::new(
-                    graph_chain_ethereum::EthereumAdapter::new(
-                        logger,
-                        provider.label,
-                        &provider.url,
-                        transport,
-                        eth_rpc_metrics.clone(),
-                        supports_eip_1898,
-                    )
-                    .await,
-                ),
-            );
+                parsed_networks.insert(
+                    name.to_string(),
+                    capabilities,
+                    Arc::new(
+                        graph_chain_ethereum::EthereumAdapter::new(
+                            logger,
+                            provider.label,
+                            &web3.url,
+                            transport,
+                            eth_rpc_metrics.clone(),
+                            supports_eip_1898,
+                        )
+                        .await,
+                    ),
+                );
+            }
         }
     }
     parsed_networks.sort();
@@ -645,7 +657,9 @@ fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<Ipf
         .collect()
 }
 
+/// Return the hashmap of ethereum chains and also add them to `blockchain_map`.
 fn networks_as_chains(
+    blockchain_map: &mut BlockchainMap,
     logger: &Logger,
     node_id: NodeId,
     registry: Arc<MetricsRegistry>,
@@ -654,7 +668,7 @@ fn networks_as_chains(
     chain_head_update_listener: Arc<ChainHeadUpdateListener>,
     logger_factory: &LoggerFactory,
 ) -> HashMap<String, Arc<ethereum::Chain>> {
-    let chains = eth_networks
+    let chains: Vec<_> = eth_networks
         .networks
         .iter()
         .filter_map(|(network_name, eth_adapters)| {
@@ -689,14 +703,20 @@ fn networks_as_chains(
                 is_ingestible,
             );
             (network_name.clone(), Arc::new(chain))
-        });
+        })
+        .collect();
+
+    for (network_name, chain) in chains.iter().cloned() {
+        blockchain_map.insert::<graph_chain_ethereum::Chain>(network_name, chain)
+    }
+
     HashMap::from_iter(chains)
 }
 
 fn start_block_ingestor(
     logger: &Logger,
     block_polling_interval: Duration,
-    chains: &HashMap<String, Arc<ethereum::Chain>>,
+    chains: HashMap<String, Arc<ethereum::Chain>>,
 ) {
     // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
     // otherwise BlockStream will not work properly.
@@ -704,7 +724,16 @@ fn start_block_ingestor(
     // database.
     assert!(*ANCESTOR_COUNT >= *REORG_THRESHOLD);
 
-    info!(logger, "Starting block ingestors");
+    info!(
+        logger,
+        "Starting block ingestors with {} chains [{}]",
+        chains.len(),
+        chains
+            .keys()
+            .map(|v| v.clone())
+            .collect::<Vec<String>>()
+            .join(", ")
+    );
 
     // Create Ethereum block ingestors and spawn a thread to run each
     chains

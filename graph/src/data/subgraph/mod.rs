@@ -18,8 +18,11 @@ use thiserror::Error;
 use wasmparser;
 use web3::types::{Address, H256};
 
-use crate::data::schema::{Schema, SchemaImportError, SchemaValidationError};
 use crate::data::store::Entity;
+use crate::data::{
+    schema::{Schema, SchemaImportError, SchemaValidationError},
+    subgraph::features::validate_subgraph_features,
+};
 use crate::prelude::CheapClone;
 use crate::{blockchain::DataSource, data::graphql::TryFromValue};
 use crate::{blockchain::DataSourceTemplate as _, data::query::QueryExecutionError};
@@ -39,34 +42,43 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
 
-/// This version adds a new validation step that rejects manifests whose mappings have different API
-/// versions if at least one of them is equal to or higher than `0.0.5`.
+/// This version adds a new subgraph validation step that rejects manifests whose mappings have
+/// different API versions if at least one of them is equal to or higher than `0.0.5`.
 pub const API_VERSION_0_0_5: Version = Version::new(0, 0, 5);
+
+/// Before this check was introduced, there were already subgraphs in the wild with spec version
+/// 0.0.3, due to confusion with the api version. To avoid breaking those, we accept 0.0.3 though it
+/// doesn't exist. In the future we should not use 0.0.3 as version and skip to 0.0.4 to avoid
+/// ambiguity.
+pub const SPEC_VERSION_0_0_3: Version = Version::new(0, 0, 3);
+
+/// This version supports subgraph feature management.
+pub const SPEC_VERSION_0_0_4: Version = Version::new(0, 0, 4);
+
+pub const MIN_SPEC_VERSION: Version = Version::new(0, 0, 2);
 
 lazy_static! {
     static ref DISABLE_GRAFTS: bool = std::env::var("GRAPH_DISABLE_GRAFTS")
         .ok()
         .map(|s| s.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    static ref MIN_SPEC_VERSION: Version = Version::new(0, 0, 2);
-
-    // Before this check was introduced, there were already subgraphs in
-    // the wild with spec version 0.0.3, due to confusion with the api
-    // version. To avoid breaking those, we accept 0.0.3 though it
-    // doesn't exist. In the future we should not use 0.0.3 as version
-    // and skip to 0.0.4 to avoid ambiguity.
-    static ref MAX_SPEC_VERSION: Version = Version::new(0, 0, 3);
-
     static ref MAX_API_VERSION: Version = std::env::var("GRAPH_MAX_API_VERSION")
         .ok()
         .and_then(|api_version_str| Version::parse(&api_version_str).ok())
-        .unwrap_or(Version::new(0, 0, 4));
+        .unwrap_or(Version::new(0, 0, 5));
+    pub static ref MAX_SPEC_VERSION: Version = std::env::var("GRAPH_MAX_SPEC_VERSION")
+        .ok()
+        .and_then(|api_version_str| Version::parse(&api_version_str).ok())
+        .unwrap_or(SPEC_VERSION_0_0_3);
 }
 
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.
 pub mod schema;
 
+pub mod features;
 pub mod status;
+
+pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
 /// Deserialize an Address (with or without '0x' prefix).
 fn deserialize_address<'de, D>(deserializer: D) -> Result<Option<Address>, D::Error>
@@ -271,7 +283,7 @@ pub enum SubgraphRegistrarError {
     #[error("subgraph name not found: {0}")]
     NameNotFound(String),
     #[error("Ethereum network not supported by registrar: {0}")]
-    NetworkNotSupported(String),
+    NetworkNotSupported(Error),
     #[error("deployment not found: {0}")]
     DeploymentNotFound(String),
     #[error("deployment assignment unchanged: {0}")]
@@ -368,6 +380,8 @@ pub enum SubgraphManifestValidationError {
     GraftBaseInvalid(String),
     #[error("subgraph must use a single apiVersion across its data sources. Found: {}", format_versions(.0))]
     DifferentApiVersions(BTreeSet<Version>),
+    #[error(transparent)]
+    FeatureValidationError(#[from] SubgraphFeatureValidationError),
 }
 
 #[derive(Error, Debug)]
@@ -540,30 +554,27 @@ pub struct Mapping {
 }
 
 impl Mapping {
-    pub fn requires_archive(&self) -> bool {
+    pub fn requires_archive(&self) -> anyhow::Result<bool> {
         self.calls_host_fn("ethereum.call")
     }
 
-    fn calls_host_fn(&self, host_fn: &str) -> bool {
+    fn calls_host_fn(&self, host_fn: &str) -> anyhow::Result<bool> {
         use wasmparser::Payload;
 
         let runtime = self.runtime.as_ref().as_ref();
 
         for payload in wasmparser::Parser::new(0).parse_all(runtime) {
-            match payload.unwrap() {
-                Payload::ImportSection(s) => {
-                    for import in s {
-                        let import = import.unwrap();
-                        if import.field == Some(host_fn) {
-                            return true;
-                        }
+            if let Payload::ImportSection(s) = payload? {
+                for import in s {
+                    let import = import?;
+                    if import.field == Some(host_fn) {
+                        return Ok(true);
                     }
                 }
-                _ => (),
             }
         }
 
-        false
+        Ok(false)
     }
 
     pub fn has_call_handler(&self) -> bool {
@@ -745,7 +756,7 @@ impl Graft {
 #[serde(rename_all = "camelCase")]
 pub struct BaseSubgraphManifest<C, S, D, T> {
     pub id: DeploymentHash,
-    pub spec_version: String,
+    pub spec_version: Version,
     #[serde(default)]
     pub features: BTreeSet<SubgraphFeature>,
     pub description: Option<String>,
@@ -784,26 +795,22 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
     pub async fn resolve(
         id: DeploymentHash,
+        raw: serde_yaml::Mapping,
         resolver: Arc<impl LinkResolver>,
         logger: &Logger,
+        max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
         Ok(Self(
-            SubgraphManifest::resolve(id, resolver.deref(), logger).await?,
+            SubgraphManifest::resolve_from_raw(id, raw, resolver.deref(), logger, max_spec_version)
+                .await?,
         ))
     }
 
     pub fn validate<S: SubgraphStore>(
         self,
         store: Arc<S>,
-    ) -> Result<
-        (SubgraphManifest<C>, Vec<SubgraphManifestValidationWarning>),
-        Vec<SubgraphManifestValidationError>,
-    > {
-        let (schemas, import_errors) = self.0.schema.resolve_schema_references(store.clone());
-        let validation_warnings = import_errors
-            .into_iter()
-            .map(SubgraphManifestValidationWarning::SchemaValidationWarning)
-            .collect();
+    ) -> Result<SubgraphManifest<C>, Vec<SubgraphManifestValidationError>> {
+        let (schemas, _) = self.0.schema.resolve_schema_references(store.clone());
 
         let mut errors: Vec<SubgraphManifestValidationError> = vec![];
 
@@ -890,49 +897,32 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             errors.extend(graft.validate(store));
         }
 
+        // Validate subgraph feature usage and declaration.
+        if self.0.spec_version >= SPEC_VERSION_0_0_4 {
+            if let Err(feature_validation_error) = validate_subgraph_features(&self.0) {
+                errors.push(feature_validation_error.into())
+            }
+        }
+
         match errors.is_empty() {
-            true => Ok((self.0, validation_warnings)),
+            true => Ok(self.0),
             false => Err(errors),
         }
+    }
+
+    pub fn spec_version(&self) -> &Version {
+        &self.0.spec_version
     }
 }
 
 impl<C: Blockchain> SubgraphManifest<C> {
     /// Entry point for resolving a subgraph definition.
-    /// Right now the only supported links are of the form:
-    /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
-    pub async fn resolve(
-        id: DeploymentHash,
-        resolver: &impl LinkResolver,
-        logger: &Logger,
-    ) -> Result<Self, SubgraphManifestResolveError> {
-        let link = Link {
-            link: id.to_string(),
-        };
-        info!(logger, "Resolve manifest"; "link" => &link.link);
-
-        let file_bytes = resolver
-            .cat(logger, &link)
-            .await
-            .map_err(SubgraphManifestResolveError::ResolveError)?;
-
-        let file = String::from_utf8(file_bytes.to_vec())
-            .map_err(|_| SubgraphManifestResolveError::NonUtf8)?;
-        let raw: serde_yaml::Value = serde_yaml::from_str(&file)?;
-
-        let raw_mapping = match raw {
-            serde_yaml::Value::Mapping(m) => m,
-            _ => return Err(SubgraphManifestResolveError::InvalidFormat),
-        };
-
-        Self::resolve_from_raw(id, raw_mapping, resolver, logger).await
-    }
-
     pub async fn resolve_from_raw(
         id: DeploymentHash,
         mut raw: serde_yaml::Mapping,
         resolver: &impl LinkResolver,
         logger: &Logger,
+        max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
         // Inject the IPFS hash as the ID of the subgraph into the definition.
         raw.insert(
@@ -946,7 +936,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
         debug!(logger, "Features {:?}", unresolved.features);
 
         unresolved
-            .resolve(&*resolver, logger)
+            .resolve(&*resolver, logger, max_spec_version)
             .await
             .map_err(SubgraphManifestResolveError::ResolveError)
     }
@@ -1002,6 +992,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
         self,
         resolver: &impl LinkResolver,
         logger: &Logger,
+        max_spec_version: semver::Version,
     ) -> Result<SubgraphManifest<C>, anyhow::Error> {
         let UnresolvedSubgraphManifest {
             id,
@@ -1016,17 +1007,14 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             chain,
         } = self;
 
-        match semver::Version::parse(&spec_version) {
-            Ok(ver) if (*MIN_SPEC_VERSION <= ver && ver <= *MAX_SPEC_VERSION) => {}
-            _ => {
-                return Err(anyhow!(
-                    "This Graph Node only supports manifest spec versions between {} and {}, but subgraph `{}` uses `{}`",
-                    *MIN_SPEC_VERSION,
-                    *MAX_SPEC_VERSION,
-                    id,
-                    spec_version
-                ));
-            }
+        if !(MIN_SPEC_VERSION..=max_spec_version.clone()).contains(&spec_version) {
+            return Err(anyhow!(
+                "This Graph Node only supports manifest spec versions between {} and {}, but subgraph `{}` uses `{}`",
+                MIN_SPEC_VERSION,
+                max_spec_version,
+                id,
+                spec_version
+            ));
         }
 
         let (schema, data_sources, templates) = try_join3(
@@ -1083,31 +1071,6 @@ impl DeploymentState {
     /// Is this subgraph deployed and has it processed any blocks?
     pub fn is_deployed(&self) -> bool {
         self.latest_ethereum_block_number > 0
-    }
-}
-
-#[derive(Debug, Deserialize, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-#[allow(non_camel_case_types)]
-pub enum SubgraphFeature {
-    nonFatalErrors,
-}
-
-impl std::fmt::Display for SubgraphFeature {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SubgraphFeature::nonFatalErrors => write!(f, "nonFatalErrors"),
-        }
-    }
-}
-
-impl FromStr for SubgraphFeature {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> anyhow::Result<Self> {
-        match s {
-            "nonFatalErrors" => Ok(SubgraphFeature::nonFatalErrors),
-            _ => Err(anyhow::anyhow!("invalid subgraph feature {}", s)),
-        }
     }
 }
 

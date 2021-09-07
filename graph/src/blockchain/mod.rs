@@ -4,6 +4,8 @@
 
 pub mod block_ingestor;
 pub mod block_stream;
+pub mod polling_block_stream;
+
 mod types;
 
 // Try to reexport most of the necessary types
@@ -24,21 +26,26 @@ use crate::{
     },
     prelude::{thiserror::Error, LinkResolver},
 };
-use anyhow::Error;
+use anyhow::{anyhow, Context, Error};
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use slog::Logger;
 use slog::{self, SendSyncRefUnwindSafeKV};
-use std::sync::Arc;
-use std::{collections::BTreeMap, fmt::Debug};
-use std::{collections::HashMap, convert::TryFrom};
+use std::{
+    any::Any,
+    collections::{BTreeMap, HashMap},
+    convert::TryFrom,
+    fmt::{self, Debug},
+    str::FromStr,
+    sync::Arc,
+};
 use web3::types::H256;
 
 pub use block_stream::{
     BlockStream, BlockStreamMetrics, ChainHeadUpdateListener, ChainHeadUpdateStream,
     TriggersAdapter,
 };
-
+pub use polling_block_stream::PollingBlockStream;
 pub use types::{BlockHash, BlockPtr};
 
 pub trait Block: Send + Sync {
@@ -61,6 +68,8 @@ pub trait Block: Send + Sync {
 #[async_trait]
 // This is only `Debug` because some tests require that
 pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
+    const KIND: BlockchainKind;
+
     // The `Clone` bound is used when reprocessing a block, because `triggers_in_block` requires an
     // owned `Block`. It would be good to come up with a way to remove this bound.
     type Block: Block + Clone;
@@ -102,7 +111,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         filter: Arc<Self::TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
-    ) -> Result<BlockStream<Self>, Error>;
+    ) -> Result<Box<dyn BlockStream<Self>>, Error>;
 
     fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter>;
 
@@ -117,14 +126,17 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     fn runtime_adapter(&self) -> Arc<Self::RuntimeAdapter>;
 }
 
-pub type BlockchainMap<C> = HashMap<String, Arc<C>>;
-
 #[derive(Error, Debug)]
 pub enum IngestorError {
     /// The Ethereum node does not know about this block for some reason, probably because it
     /// disappeared in a chain reorg.
     #[error("Block data unavailable, block was likely uncled (block hash = {0:?})")]
     BlockUnavailable(H256),
+
+    /// The Ethereum node does not know about this block for some reason, probably because it
+    /// disappeared in a chain reorg.
+    #[error("Receipt for tx {1:?} unavailable, block was likely uncled (block hash = {0:?})")]
+    ReceiptUnavailable(H256, H256),
 
     /// An unexpected error occurred.
     #[error("Ingestor error: {0}")]
@@ -302,4 +314,74 @@ pub trait RuntimeAdapter<C: Blockchain>: Send + Sync {
 
 pub trait NodeCapabilities<C: Blockchain> {
     fn from_data_sources(data_sources: &[C::DataSource]) -> Self;
+}
+
+/// Blockchain technologies supported by Graph Node.
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+pub enum BlockchainKind {
+    /// Ethereum itself or chains that are compatible.
+    Ethereum,
+}
+
+impl fmt::Display for BlockchainKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let value = match self {
+            BlockchainKind::Ethereum => "ethereum",
+        };
+        write!(f, "{}", value)
+    }
+}
+
+impl FromStr for BlockchainKind {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "ethereum" => Ok(BlockchainKind::Ethereum),
+            _ => Err(anyhow!("unknown blockchain kind {}", s)),
+        }
+    }
+}
+
+impl BlockchainKind {
+    pub fn from_manifest(manifest: &serde_yaml::Mapping) -> Result<Self, Error> {
+        use serde_yaml::Value;
+
+        // The `kind` field of the first data source in the manifest.
+        //
+        // Split by `/` to, for example, read 'ethereum' in 'ethereum/contracts'.
+        manifest
+            .get(&Value::String("dataSources".to_owned()))
+            .and_then(|ds| ds.as_sequence())
+            .and_then(|ds| ds.first())
+            .and_then(|ds| ds.as_mapping())
+            .and_then(|ds| ds.get(&Value::String("kind".to_owned())))
+            .and_then(|kind| kind.as_str())
+            .and_then(|kind| kind.split('/').next())
+            .context("invalid manifest")
+            .and_then(BlockchainKind::from_str)
+    }
+}
+
+/// A collection of blockchains, keyed by `BlockchainKind` and network.
+#[derive(Default)]
+pub struct BlockchainMap(HashMap<(BlockchainKind, String), Arc<dyn Any + Send + Sync>>);
+
+impl BlockchainMap {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn insert<C: Blockchain>(&mut self, network: String, chain: Arc<C>) {
+        self.0.insert((C::KIND, network), chain);
+    }
+
+    pub fn get<C: Blockchain>(&self, network: String) -> Result<Arc<C>, Error> {
+        self.0
+            .get(&(C::KIND, network.clone()))
+            .with_context(|| format!("no network {} found on chain {}", network, C::KIND))?
+            .cheap_clone()
+            .downcast()
+            .map_err(|_| anyhow!("unable to downcast, wrong type for blockchain {}", C::KIND))
+    }
 }

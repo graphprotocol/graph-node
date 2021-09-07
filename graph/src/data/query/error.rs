@@ -79,6 +79,8 @@ pub enum QueryExecutionError {
     EventStreamError,
     FulltextQueryRequiresFilter,
     DeploymentReverted,
+    SubgraphManifestResolveError(Arc<SubgraphManifestResolveError>),
+    InvalidSubgraphManifest,
 }
 
 impl Error for QueryExecutionError {
@@ -220,6 +222,8 @@ impl fmt::Display for QueryExecutionError {
             TooExpensive => write!(f, "query is too expensive"),
             Throttled=> write!(f, "service is overloaded and can not run the query right now. Please try again in a few minutes"),
             DeploymentReverted => write!(f, "the chain was reorganized while executing the query"),
+            SubgraphManifestResolveError(e) => write!(f, "failed to resolve subgraph manifest: {}", e),
+            InvalidSubgraphManifest => write!(f, "invalid subgraph manifest file"),
         }
     }
 }
@@ -251,6 +255,12 @@ impl From<bigdecimal::ParseBigDecimalError> for QueryExecutionError {
 impl From<StoreError> for QueryExecutionError {
     fn from(e: StoreError) -> Self {
         QueryExecutionError::StoreError(CloneableAnyhowError(Arc::new(e.into())))
+    }
+}
+
+impl From<SubgraphManifestResolveError> for QueryExecutionError {
+    fn from(e: SubgraphManifestResolveError) -> Self {
+        QueryExecutionError::SubgraphManifestResolveError(Arc::new(e))
     }
 }
 

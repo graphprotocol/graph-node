@@ -79,6 +79,17 @@ impl fmt::Display for NodeId {
     }
 }
 
+impl slog::Value for NodeId {
+    fn serialize(
+        &self,
+        _record: &slog::Record,
+        key: slog::Key,
+        serializer: &mut dyn slog::Serializer,
+    ) -> slog::Result {
+        serializer.emit_str(key, self.0.as_str())
+    }
+}
+
 impl<'de> de::Deserialize<'de> for NodeId {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

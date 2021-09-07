@@ -32,7 +32,7 @@ impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
         let eth_adapter = self
             .eth_adapters
             .cheapest_with(&NodeCapabilities {
-                archive: ds.mapping.requires_archive(),
+                archive: ds.mapping.requires_archive()?,
                 traces: false,
             })?
             .cheap_clone();

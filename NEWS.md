@@ -1,12 +1,30 @@
 # NEWS
 
-## Unreleased
+## 0.24
+
+### Api Version 0.0.5
+
+This release ships support for API version 0.0.5 in mappings. It contains a fix for call handlers
+and the long awaited AssemblyScript version upgrade!
+
+- AssemblyScript upgrade: The mapping runtime is updated to support up-to-date versions of the
+  AssemblyScript compiler. The graph-cli/-ts releases to support this are in alpha, soon they will
+  be released along with a migration guide for subgraphs.
+- Call handlers fix: Call handlers will never be triggered on transactions with a failed status,
+  resolving issue [#2409](https://github.com/graphprotocol/graph-node/issues/2409). Done in [#2511](https://github.com/graphprotocol/graph-node/pull/2511).
 
 ### Logs
 - The log `"Skipping handler because the event parameters do not match the event signature."` was downgraded from info to trace level.
+- Some block ingestor error logs were upgrded from debug to info level [#2666](https://github.com/graphprotocol/graph-node/pull/2666).
 
 ### Metrics
 - `query_semaphore_wait_ms` is now by shard, and has the `pool` and `shard` labels.
+- `deployment_failed` metric added, it is `1` if the subgraph has failed and `0` otherwise.
+### Other
+- Upgrade to tokio 1.0 and futures 0.3 [#2679](https://github.com/graphprotocol/graph-node/pull/2679), the first major contribution by StreamingFast!
+- Support Celo block reward events [#2670](https://github.com/graphprotocol/graph-node/pull/2670).
+- Reduce the maximum WASM stack size and make it configurable [#2719](https://github.com/graphprotocol/graph-node/pull/2719).
+- For robustness, ensure periodic updates to the chain head listener [#2725](https://github.com/graphprotocol/graph-node/pull/2725).
 
 ## 0.23.1
 

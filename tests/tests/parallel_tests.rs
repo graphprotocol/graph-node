@@ -387,8 +387,6 @@ async fn run_graph_node(test_setup: &IntegrationTestSetup) -> anyhow::Result<Chi
         );
     }
 
-    command.env("GRAPH_MAX_API_VERSION", "0.0.5");
-
     command
         .spawn()
         .context("failed to start graph-node command.")

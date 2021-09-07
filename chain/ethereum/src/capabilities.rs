@@ -73,7 +73,11 @@ impl_slog_value!(NodeCapabilities, "{}");
 impl graph::blockchain::NodeCapabilities<crate::Chain> for NodeCapabilities {
     fn from_data_sources(data_sources: &[DataSource]) -> Self {
         NodeCapabilities {
-            archive: data_sources.iter().any(|ds| ds.mapping.requires_archive()),
+            archive: data_sources.iter().any(|ds| {
+                ds.mapping
+                    .requires_archive()
+                    .expect("failed to parse mappings")
+            }),
             traces: data_sources.into_iter().any(|ds| {
                 ds.mapping.has_call_handler() || ds.mapping.has_block_handler_with_call_filter()
             }),

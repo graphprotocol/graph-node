@@ -438,6 +438,11 @@ impl<C: Blockchain> WasmInstance<C> {
             data
         );
 
+        // All IPFS-related functions exported by the host WASM runtime should be listed in the
+        // graph::data::subgraph::features::IPFS_ON_ETHEREUM_CONTRACTS_FUNCTION_NAMES array for
+        // automatic feature detection to work.
+        //
+        // For reference, search this codebase for: ff652476-e6ad-40e4-85b8-e815d6c6e5e2
         link!("ipfs.cat", ipfs_cat, "host_export_ipfs_cat", hash_ptr);
         link!(
             "ipfs.map",

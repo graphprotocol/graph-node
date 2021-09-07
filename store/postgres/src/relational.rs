@@ -1038,24 +1038,13 @@ impl Column {
     }
 
     pub fn is_list(&self) -> bool {
-        fn is_list(field_type: &q::Type) -> bool {
-            use graphql_parser::query::Type::*;
+        use graph_graphql::prelude::is_list as type_is_list;
 
-            match field_type {
-                ListType(_) => true,
-                NonNullType(inner) => is_list(inner),
-                NamedType(_) => false,
-            }
-        }
-        is_list(&self.field_type)
+        type_is_list(&self.field_type)
     }
 
     pub fn is_enum(&self) -> bool {
-        if let ColumnType::Enum(_) = self.column_type {
-            true
-        } else {
-            false
-        }
+        matches!(self.column_type, ColumnType::Enum(_))
     }
 
     pub fn is_fulltext(&self) -> bool {

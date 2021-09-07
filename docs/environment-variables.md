@@ -75,6 +75,10 @@ those.
    corresponds to 1GB.
 - `GRAPH_QUERY_CACHE_STALE_PERIOD`: Number of queries after which a cache
   entry can be considered stale. Defaults to 100.
+- `GRAPH_MAX_API_VERSION`: Maximum `apiVersion` supported, if a developer tries to create a subgraph
+  with a higher `apiVersion` than this in their mappings, they'll receive an error. Defaults to `0.0.5`.
+- `GRAPH_RUNTIME_MAX_STACK_SIZE`: Maximum stack size for the WASM runtime, if exceeded the execution
+  stops and an error is thrown. Defaults to 512KiB.
 
 ## GraphQL
 
@@ -152,3 +156,5 @@ those.
   given the other load management configuration settings, but never
   actually decline to run a query, instead log about load management
   decisions. Set to `true` to turn simulation on, defaults to `false`
+- `GRAPH_STORE_CONNECTION_TIMEOUT`: How long to wait to connect to a
+  database before assuming the database is down in ms. Defaults to 5000ms.

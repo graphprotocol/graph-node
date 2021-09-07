@@ -8,11 +8,14 @@ use graph::{
 use graph_chain_ethereum::NodeCapabilities;
 use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
-use http::HeaderMap;
+use http::{HeaderMap, Uri};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
 use std::fs::read_to_string;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+};
 use url::Url;
 
 const ANY_NAME: &str = ".*";
@@ -228,6 +231,16 @@ impl Shard {
             validate_name(name).context("illegal replica name")?;
             replica.validate(&self.pool_size)?;
         }
+
+        let no_weight =
+            self.weight == 0 && self.replicas.values().all(|replica| replica.weight == 0);
+        if no_weight {
+            return Err(anyhow!(
+                "all weights for shard `{}` are 0; \
+                remove explicit weights or set at least one of them to a value bigger than 0",
+                name
+            ));
+        }
         Ok(())
     }
 
@@ -434,10 +447,12 @@ impl ChainSection {
                 let features = features.into_iter().map(|s| s.to_string()).collect();
                 let provider = Provider {
                     label: format!("{}-{}-{}", name, transport, nr),
-                    transport,
-                    url: url.to_string(),
-                    features,
-                    headers: Default::default(),
+                    details: ProviderDetails::Web3(Web3Provider {
+                        transport,
+                        url: url.to_string(),
+                        features,
+                        headers: Default::default(),
+                    }),
                 };
                 let entry = chains.entry(name.to_string()).or_insert_with(|| Chain {
                     shard: PRIMARY_SHARD.to_string(),
@@ -473,6 +488,10 @@ where
     D: serde::Deserializer<'de>,
 {
     let kvs: BTreeMap<String, String> = Deserialize::deserialize(deserializer)?;
+    Ok(btree_map_to_http_headers(kvs))
+}
+
+fn btree_map_to_http_headers(kvs: BTreeMap<String, String>) -> HeaderMap {
     let mut headers = HeaderMap::new();
     for (k, v) in kvs.into_iter() {
         headers.insert(
@@ -482,12 +501,29 @@ where
                 .expect(&format!("invalid HTTP header value: {}: {}", k, v)),
         );
     }
-    Ok(headers)
+    headers
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct Provider {
     pub label: String,
+    pub details: ProviderDetails,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum ProviderDetails {
+    Firehose(FirehoseProvider),
+    Web3(Web3Provider),
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct FirehoseProvider {
+    pub url: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Web3Provider {
     #[serde(default)]
     pub transport: Transport,
     pub url: String,
@@ -502,37 +538,7 @@ pub struct Provider {
     pub headers: HeaderMap,
 }
 
-const PROVIDER_FEATURES: [&str; 3] = ["traces", "archive", "no_eip1898"];
-const DEFAULT_PROVIDER_FEATURES: [&str; 2] = ["traces", "archive"];
-
-impl Provider {
-    fn validate(&mut self) -> Result<()> {
-        validate_name(&self.label).context("illegal provider name")?;
-
-        for feature in &self.features {
-            if !PROVIDER_FEATURES.contains(&feature.as_str()) {
-                return Err(anyhow!(
-                    "illegal feature `{}` for provider {}. Features must be one of {}",
-                    feature,
-                    self.label,
-                    PROVIDER_FEATURES.join(", ")
-                ));
-            }
-        }
-
-        self.url = shellexpand::env(&self.url)?.into_owned();
-
-        Url::parse(&self.url).map_err(|e| {
-            anyhow!(
-                "the url `{}` for provider {} is not a legal URL: {}",
-                self.url,
-                self.label,
-                e
-            )
-        })?;
-        Ok(())
-    }
-
+impl Web3Provider {
     pub fn node_capabilities(&self) -> NodeCapabilities {
         NodeCapabilities {
             archive: self.features.contains("archive"),
@@ -541,7 +547,178 @@ impl Provider {
     }
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+const PROVIDER_FEATURES: [&str; 3] = ["traces", "archive", "no_eip1898"];
+const DEFAULT_PROVIDER_FEATURES: [&str; 2] = ["traces", "archive"];
+
+impl Provider {
+    fn validate(&mut self) -> Result<()> {
+        validate_name(&self.label).context("illegal provider name")?;
+
+        match self.details {
+            ProviderDetails::Firehose(ref firehose) => {
+                // A Firehose url must be a valid Uri since gRPC library we use (Tonic)
+                // works with Uri.
+                firehose.url.parse::<Uri>().map_err(|e| {
+                    anyhow!(
+                        "the url `{}` for firehose provider {} is not a legal URI: {}",
+                        firehose.url,
+                        self.label,
+                        e
+                    )
+                })?;
+            }
+
+            ProviderDetails::Web3(ref mut web3) => {
+                for feature in &web3.features {
+                    if !PROVIDER_FEATURES.contains(&feature.as_str()) {
+                        return Err(anyhow!(
+                            "illegal feature `{}` for provider {}. Features must be one of {}",
+                            feature,
+                            self.label,
+                            PROVIDER_FEATURES.join(", ")
+                        ));
+                    }
+                }
+
+                web3.url = shellexpand::env(&web3.url)?.into_owned();
+
+                let label = &self.label;
+                Url::parse(&web3.url).map_err(|e| {
+                    anyhow!(
+                        "the url `{}` for provider {} is not a legal URL: {}",
+                        web3.url,
+                        label,
+                        e
+                    )
+                })?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl<'de> Deserialize<'de> for Provider {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ProviderVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for ProviderVisitor {
+            type Value = Provider;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct Provider")
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<Provider, V::Error>
+            where
+                V: serde::de::MapAccess<'de>,
+            {
+                let mut label = None;
+                let mut details = None;
+
+                let mut url = None;
+                let mut transport = None;
+                let mut features = None;
+                let mut headers = None;
+
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        ProviderField::Label => {
+                            if label.is_some() {
+                                return Err(serde::de::Error::duplicate_field("label"));
+                            }
+                            label = Some(map.next_value()?);
+                        }
+                        ProviderField::Details => {
+                            if details.is_some() {
+                                return Err(serde::de::Error::duplicate_field("details"));
+                            }
+                            details = Some(map.next_value()?);
+                        }
+                        ProviderField::Url => {
+                            if url.is_some() {
+                                return Err(serde::de::Error::duplicate_field("url"));
+                            }
+                            url = Some(map.next_value()?);
+                        }
+                        ProviderField::Transport => {
+                            if transport.is_some() {
+                                return Err(serde::de::Error::duplicate_field("transport"));
+                            }
+                            transport = Some(map.next_value()?);
+                        }
+                        ProviderField::Features => {
+                            if features.is_some() {
+                                return Err(serde::de::Error::duplicate_field("features"));
+                            }
+                            features = Some(map.next_value()?);
+                        }
+                        ProviderField::Headers => {
+                            if headers.is_some() {
+                                return Err(serde::de::Error::duplicate_field("headers"));
+                            }
+
+                            let raw_headers: BTreeMap<String, String> = map.next_value()?;
+                            headers = Some(btree_map_to_http_headers(raw_headers));
+                        }
+                    }
+                }
+
+                let label = label.ok_or_else(|| serde::de::Error::missing_field("label"))?;
+                let details = match details {
+                    Some(v) => {
+                        if url.is_some()
+                            || transport.is_some()
+                            || features.is_some()
+                            || headers.is_some()
+                        {
+                            return Err(serde::de::Error::custom("when `details` field is provided, deprecated `url`, `transport`, `features` and `headers` cannot be specified"));
+                        }
+
+                        v
+                    }
+                    None => ProviderDetails::Web3(Web3Provider {
+                        url: url.ok_or_else(|| serde::de::Error::missing_field("url"))?,
+                        transport: transport.unwrap_or(Transport::Rpc),
+                        features: features
+                            .ok_or_else(|| serde::de::Error::missing_field("features"))?,
+                        headers: headers.unwrap_or_else(|| HeaderMap::new()),
+                    }),
+                };
+
+                Ok(Provider { label, details })
+            }
+        }
+
+        const FIELDS: &'static [&'static str] = &[
+            "label",
+            "details",
+            "transport",
+            "url",
+            "features",
+            "headers",
+        ];
+        deserializer.deserialize_struct("Provider", FIELDS, ProviderVisitor)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(field_identifier, rename_all = "lowercase")]
+enum ProviderField {
+    Label,
+    Details,
+
+    // Deprecated fields
+    Url,
+    Transport,
+    Features,
+    Headers,
+}
+
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub enum Transport {
     #[serde(rename = "rpc")]
     Rpc,
@@ -751,4 +928,212 @@ fn primary_store() -> String {
 
 fn one() -> usize {
     1
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::{Config, FirehoseProvider, Provider, ProviderDetails, Transport, Web3Provider};
+    use http::{HeaderMap, HeaderValue};
+    use std::collections::BTreeSet;
+    use std::fs::read_to_string;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn it_works_on_standard_config() {
+        let content = read_resource_as_string("full_config.toml");
+        let actual: Config = toml::from_str(&content).unwrap();
+
+        // We do basic checks because writing the full equality method is really too long
+
+        assert_eq!(
+            "query_node_.*".to_string(),
+            actual.general.unwrap().query.to_string()
+        );
+        assert_eq!(4, actual.chains.chains.len());
+        assert_eq!(2, actual.stores.len());
+        assert_eq!(3, actual.deployment.rules.len());
+    }
+
+    #[test]
+    fn it_works_on_deprecated_provider_from_toml() {
+        let actual = toml::from_str(
+            r#"
+            transport = "rpc"
+            label = "peering"
+            url = "http://localhost:8545"
+            features = []
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            Provider {
+                label: "peering".to_owned(),
+                details: ProviderDetails::Web3(Web3Provider {
+                    transport: Transport::Rpc,
+                    url: "http://localhost:8545".to_owned(),
+                    features: BTreeSet::new(),
+                    headers: HeaderMap::new(),
+                }),
+            },
+            actual
+        );
+    }
+
+    #[test]
+    fn it_works_on_deprecated_provider_without_transport_from_toml() {
+        let actual = toml::from_str(
+            r#"
+            label = "peering"
+            url = "http://localhost:8545"
+            features = []
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            Provider {
+                label: "peering".to_owned(),
+                details: ProviderDetails::Web3(Web3Provider {
+                    transport: Transport::Rpc,
+                    url: "http://localhost:8545".to_owned(),
+                    features: BTreeSet::new(),
+                    headers: HeaderMap::new(),
+                }),
+            },
+            actual
+        );
+    }
+
+    #[test]
+    fn it_errors_on_deprecated_provider_missing_url_from_toml() {
+        let actual = toml::from_str::<Provider>(
+            r#"
+            transport = "rpc"
+            label = "peering"
+            features = []
+        "#,
+        );
+
+        assert_eq!(true, actual.is_err());
+        assert_eq!(
+            actual.unwrap_err().to_string(),
+            "missing field `url` at line 1 column 1"
+        );
+    }
+
+    #[test]
+    fn it_errors_on_deprecated_provider_missing_features_from_toml() {
+        let actual = toml::from_str::<Provider>(
+            r#"
+            transport = "rpc"
+            url = "http://localhost:8545"
+            label = "peering"
+        "#,
+        );
+
+        assert_eq!(true, actual.is_err());
+        assert_eq!(
+            actual.unwrap_err().to_string(),
+            "missing field `features` at line 1 column 1"
+        );
+    }
+
+    #[test]
+    fn it_works_on_new_web3_provider_from_toml() {
+        let actual = toml::from_str(
+            r#"
+            label = "peering"
+            details = { type = "web3", transport = "ipc", url = "http://localhost:8545", features = ["archive"], headers = { x-test = "value" } }
+        "#,
+        )
+        .unwrap();
+
+        let mut features = BTreeSet::new();
+        features.insert("archive".to_string());
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-test", HeaderValue::from_static("value"));
+
+        assert_eq!(
+            Provider {
+                label: "peering".to_owned(),
+                details: ProviderDetails::Web3(Web3Provider {
+                    transport: Transport::Ipc,
+                    url: "http://localhost:8545".to_owned(),
+                    features,
+                    headers,
+                }),
+            },
+            actual
+        );
+    }
+
+    #[test]
+    fn it_works_on_new_web3_provider_without_transport_from_toml() {
+        let actual = toml::from_str(
+            r#"
+            label = "peering"
+            details = { type = "web3", url = "http://localhost:8545", features = [] }
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            Provider {
+                label: "peering".to_owned(),
+                details: ProviderDetails::Web3(Web3Provider {
+                    transport: Transport::Rpc,
+                    url: "http://localhost:8545".to_owned(),
+                    features: BTreeSet::new(),
+                    headers: HeaderMap::new(),
+                }),
+            },
+            actual
+        );
+    }
+
+    #[test]
+    fn it_errors_on_new_provider_with_deprecated_fields_from_toml() {
+        let actual = toml::from_str::<Provider>(
+            r#"
+            label = "peering"
+            url = "http://localhost:8545"
+            details = { type = "web3", url = "http://localhost:8545", features = [] }
+        "#,
+        );
+
+        assert_eq!(true, actual.is_err());
+        assert_eq!(actual.unwrap_err().to_string(), "when `details` field is provided, deprecated `url`, `transport`, `features` and `headers` cannot be specified at line 1 column 1");
+    }
+
+    #[test]
+    fn it_works_on_new_firehose_provider_from_toml() {
+        let actual = toml::from_str(
+            r#"
+                label = "firehose"
+                details = { type = "firehose", url = "http://localhost:9000" }
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            Provider {
+                label: "firehose".to_owned(),
+                details: ProviderDetails::Firehose(FirehoseProvider {
+                    url: "http://localhost:9000".to_owned(),
+                }),
+            },
+            actual
+        );
+    }
+
+    fn read_resource_as_string<P: AsRef<Path>>(path: P) -> String {
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("resources/tests");
+        d.push(path);
+
+        read_to_string(&d).expect(&format!("resource {:?} not found", &d))
+    }
 }

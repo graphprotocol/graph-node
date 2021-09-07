@@ -396,6 +396,16 @@ impl SubgraphStoreInner {
         }
     }
 
+    /// Create a new deployment. This requires creating an entry in
+    /// `deployment_schemas` in the primary, the subgraph schema in another
+    /// shard, assigning the deployment to a node, and handling any changes
+    /// to current/pending versions of the subgraph `name`
+    ///
+    /// This process needs to modify two databases: the primary and the
+    /// shard for the subgraph and is therefore not transactional. The code
+    /// is careful to make sure this process is at least idempotent, so that
+    /// a failed deployment creation operation can be fixed by deploying
+    /// again.
     fn create_deployment_internal(
         &self,
         name: SubgraphName,
@@ -411,12 +421,23 @@ impl SubgraphStoreInner {
         #[cfg(not(debug_assertions))]
         assert!(!replace);
 
-        let (shard, node_id) = self.place(&name, &network_name, node_id)?;
-
-        // TODO: Check this for behavior on failure
-        let site = self
-            .primary_conn()?
-            .allocate_site(shard.clone(), &schema.id, network_name)?;
+        let (site, node_id) = {
+            // We need to deal with two situations:
+            //   (1) We are really creating a new subgraph; it therefore needs
+            //       to go in the shard and onto the node that the placement
+            //       rules dictate
+            //   (2) The deployment has previously been created, and either
+            //       failed partway through, or the deployment rules have
+            //       changed since the last time we created the deployment.
+            //       In that case, we need to use the shard and node
+            //       assignment that we used last time to avoid creating
+            //       the same deployment in another shard
+            let (shard, node_id) = self.place(&name, &network_name, node_id)?;
+            let conn = self.primary_conn()?;
+            let site = conn.allocate_site(shard.clone(), &schema.id, network_name)?;
+            let node_id = conn.assigned_node(&site)?.unwrap_or(node_id);
+            (site, node_id)
+        };
         let site = Arc::new(site);
 
         let graft_base = deployment
@@ -433,8 +454,8 @@ impl SubgraphStoreInner {
         // Create the actual databases schema and metadata entries
         let deployment_store = self
             .stores
-            .get(&shard)
-            .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
+            .get(&site.shard)
+            .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))?;
         deployment_store.create_deployment(
             schema,
             deployment,
@@ -1070,8 +1091,8 @@ impl WritableStoreTrait for WritableStore {
             .supports_proof_of_indexing(self.site.clone())
     }
 
-    fn get(&self, key: EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
-        self.writable.get(self.site.clone(), key)
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
+        self.writable.get(self.site.cheap_clone(), key)
     }
 
     fn transact_block_operations(
@@ -1103,7 +1124,8 @@ impl WritableStoreTrait for WritableStore {
         &self,
         ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
-        self.writable.get_many(self.site.clone(), ids_for_type)
+        self.writable
+            .get_many(self.site.cheap_clone(), ids_for_type)
     }
 
     async fn is_deployment_synced(&self) -> Result<bool, Error> {
@@ -1142,6 +1164,10 @@ impl WritableStoreTrait for WritableStore {
         self.writable.deployment_synced(&self.site.deployment)?;
 
         Ok(self.store.send_store_event(&event)?)
+    }
+
+    fn shard(&self) -> &str {
+        self.site.shard.as_str()
     }
 }
 
