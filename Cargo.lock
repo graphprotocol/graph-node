@@ -1564,7 +1564,6 @@ dependencies = [
  "dirs-next",
  "ethabi 12.0.0-graph",
  "futures 0.1.31",
- "futures 0.3.16",
  "graph",
  "graph-core",
  "graph-runtime-derive",
@@ -1584,10 +1583,6 @@ dependencies = [
  "state_machine_future",
  "test-store",
  "tiny-keccak 1.5.0",
- "tokio 1.10.1",
- "tokio-retry",
- "tokio-stream",
- "tonic",
  "tonic-build",
  "web3",
 ]

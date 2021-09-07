@@ -5,17 +5,15 @@ use thiserror::Error;
 
 use super::{Block, BlockPtr, Blockchain};
 use crate::components::store::BlockNumber;
-use crate::sf::bstream;
+use crate::firehose::bstream;
 use crate::{prelude::*, prometheus::labels};
-
-#[cfg(debug_assertions)]
 
 pub trait BlockStream<C: Blockchain>:
     Stream<Item = Result<BlockStreamEvent<C>, Error>> + Unpin
 {
 }
 
-pub type Cursor = Option<String>;
+pub type FirehoseCursor = Option<String>;
 
 pub struct BlockWithTriggers<C: Blockchain> {
     pub block: C::Block,
@@ -82,14 +80,16 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
 pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
     fn to_block_stream_event(
         &self,
+        logger: &Logger,
         response: &bstream::BlockResponseV2,
+        adapter: &C::TriggersAdapter,
         filter: &C::TriggerFilter,
     ) -> Result<BlockStreamEvent<C>, FirehoseError>;
 }
 
 #[derive(Error, Debug)]
 pub enum FirehoseError {
-    /// We were unable to decode the received block payload into the chain specific Block struct (chain_ethereum::pb::Block)
+    /// We were unable to decode the received block payload into the chain specific Block struct (chain_ethereum::codec::Block)
     #[error("received gRPC block payload cannot be decoded")]
     DecodingError(#[from] prost::DecodeError),
 
@@ -101,9 +101,9 @@ pub enum FirehoseError {
 pub enum BlockStreamEvent<C: Blockchain> {
     // The payload is the current subgraph head pointer, which should be reverted, such that the
     // parent of the current subgraph head becomes the new subgraph head.
-    Revert(BlockPtr, Cursor),
+    Revert(BlockPtr, FirehoseCursor),
 
-    ProcessBlock(BlockWithTriggers<C>, Cursor),
+    ProcessBlock(BlockWithTriggers<C>, FirehoseCursor),
 }
 
 #[derive(Clone)]

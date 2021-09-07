@@ -970,9 +970,6 @@ pub trait SubgraphStore: Send + Sync + 'static {
         deployment: &DeploymentLocator,
     ) -> Result<Arc<dyn WritableStore>, StoreError>;
 
-    /// Return a `CursorStore` that is used
-    fn cursor(&self, deployment: &DeploymentLocator) -> Result<Arc<dyn CursorStore>, StoreError>;
-
     /// The network indexer does not follow the normal flow of how subgraphs
     /// are indexed, and therefore needs a special way to get a
     /// `WritableStore`. This method should not be used outside of that, and
@@ -996,6 +993,10 @@ pub trait SubgraphStore: Send + Sync + 'static {
 pub trait WritableStore: Send + Sync + 'static {
     /// Get a pointer to the most recently processed block in the subgraph.
     fn block_ptr(&self) -> Result<Option<BlockPtr>, Error>;
+
+    /// Returns the Firehose `cursor` this deployment is currently at in the block stream of events. This
+    /// is used when re-connecting a Firehose stream to start back exactly where we left off.
+    fn block_cursor(&self) -> Result<Option<String>, StoreError>;
 
     /// Start an existing subgraph deployment.
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError>;
@@ -1161,16 +1162,16 @@ impl SubgraphStore for MockStore {
     fn locators(&self, _: &str) -> Result<Vec<DeploymentLocator>, StoreError> {
         unimplemented!()
     }
-
-    fn cursor(&self, _deployment: &DeploymentLocator) -> Result<Arc<dyn CursorStore>, StoreError> {
-        unimplemented!()
-    }
 }
 
 // The store trait must be implemented manually because mockall does not support async_trait, nor borrowing from arguments.
 #[async_trait]
 impl WritableStore for MockStore {
     fn block_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        unimplemented!()
+    }
+
+    fn block_cursor(&self) -> Result<Option<String>, StoreError> {
         unimplemented!()
     }
 
@@ -1373,10 +1374,6 @@ pub trait QueryStore: Send + Sync {
 
     /// A permit should be acquired before starting query execution.
     async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit;
-}
-
-pub trait CursorStore: Send + Sync {
-    fn get_cursor(&self) -> Result<Option<String>, StoreError>;
 }
 
 /// A view of the store that can provide information about the indexing status

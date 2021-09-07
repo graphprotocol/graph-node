@@ -1,12 +1,13 @@
 use anyhow::Error;
 use graph::{
-    log::logger,
-    sf::{
+    firehose::{
         bstream::BlockResponseV2, bstream::BlocksRequestV2, bstream::ForkStep,
         endpoints::FirehoseEndpoint,
     },
+    log::logger,
+    prelude::{prost, tokio, tonic},
 };
-use graph_chain_ethereum::sf::pb;
+use graph_chain_ethereum::codec;
 use prost::Message;
 use std::sync::Arc;
 use tonic::Streaming;
@@ -55,7 +56,7 @@ async fn main() -> Result<(), Error> {
                 }
             };
 
-            let b = pb::Block::decode(resp.block.unwrap().value.as_ref());
+            let b = codec::Block::decode(resp.block.unwrap().value.as_ref());
             match b {
                 Ok(b) => {
                     println!(

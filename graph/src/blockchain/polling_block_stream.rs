@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use super::block_stream::{
     BlockStream, BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers, ChainHeadUpdateStream,
-    Cursor, TriggersAdapter,
+    FirehoseCursor, TriggersAdapter,
 };
 use super::{Block, BlockPtr, Blockchain};
 
@@ -545,7 +545,7 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
                             self.state = BlockStreamState::BeginReconciliation;
                             break Poll::Ready(Some(Ok(BlockStreamEvent::Revert(
                                 block,
-                                Cursor::None,
+                                FirehoseCursor::None,
                             ))));
                         }
                         Poll::Pending => {
@@ -576,7 +576,7 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
                         Some(next_block) => {
                             break Poll::Ready(Some(Ok(BlockStreamEvent::ProcessBlock(
                                 next_block,
-                                Cursor::None,
+                                FirehoseCursor::None,
                             ))));
                         }
 
@@ -588,18 +588,15 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
                 }
 
                 // Pausing after an error, before looking for more blocks
-                BlockStreamState::RetryAfterDelay(ref mut delay) => {
-                    match delay.as_mut().poll(cx) {
-                        Poll::Ready(Ok(..)) | Poll::Ready(Err(_)) => {
-                            self.state = BlockStreamState::BeginReconciliation;
-                        }
-
-                        Poll::Pending => {
-                            // self.state = BlockStreamState::RetryAfterDelay(delay);
-                            break Poll::Pending;
-                        }
+                BlockStreamState::RetryAfterDelay(ref mut delay) => match delay.as_mut().poll(cx) {
+                    Poll::Ready(Ok(..)) | Poll::Ready(Err(_)) => {
+                        self.state = BlockStreamState::BeginReconciliation;
                     }
-                }
+
+                    Poll::Pending => {
+                        break Poll::Pending;
+                    }
+                },
 
                 // Waiting for a chain head update
                 BlockStreamState::Idle => {

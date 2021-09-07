@@ -44,7 +44,7 @@ use web3::types::H256;
 pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
 pub use types::{BlockHash, BlockPtr};
 
-use self::block_stream::{BlockStream, BlockStreamMetrics, FirehoseMapper};
+use self::block_stream::{BlockStream, BlockStreamMetrics};
 
 pub trait Block: Send + Sync {
     fn ptr(&self) -> BlockPtr;
@@ -77,9 +77,6 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     type DataSourceTemplate: DataSourceTemplate<Self>;
     type UnresolvedDataSourceTemplate: UnresolvedDataSourceTemplate<Self>;
 
-    /// Firehose mapper is used to convert sf::bstream::BlockResponseV2 into a consumable BlockStreamEvent element
-    type FirehoseMapper: FirehoseMapper<Self>;
-
     type TriggersAdapter: TriggersAdapter<Self>;
 
     /// Trigger data as parsed from the triggers adapter.
@@ -104,8 +101,6 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         unified_api_version: UnifiedMappingApiVersion,
         stopwatch_metrics: StopwatchMetrics,
     ) -> Result<Arc<Self::TriggersAdapter>, Error>;
-
-    fn firehose_mapper(&self) -> Arc<Self::FirehoseMapper>;
 
     async fn new_block_stream(
         &self,

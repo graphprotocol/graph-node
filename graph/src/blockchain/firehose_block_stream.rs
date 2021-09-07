@@ -1,34 +1,38 @@
 use futures03::{FutureExt, Stream, StreamExt};
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Duration;
 
+use crate::firehose::endpoints::FirehoseEndpoint;
 use crate::prelude::*;
-use crate::sf::endpoints::FirehoseEndpoint;
 
 use super::block_stream::{BlockStream, BlockStreamEvent, FirehoseMapper};
 use super::Blockchain;
-use crate::sf::bstream;
+use crate::firehose::bstream;
 
-pub struct FirehoseBlockStreamContext<C>
+pub struct FirehoseBlockStreamContext<C, F>
 where
     C: Blockchain,
+    F: FirehoseMapper<C>,
 {
     cursor: Option<String>,
-    mapper: Arc<C::FirehoseMapper>,
+    mapper: Arc<F>,
     node_id: NodeId,
     subgraph_id: DeploymentHash,
+    adapter: Arc<C::TriggersAdapter>,
     filter: Arc<C::TriggerFilter>,
     start_blocks: Vec<BlockNumber>,
     logger: Logger,
 }
 
-impl<C: Blockchain> Clone for FirehoseBlockStreamContext<C> {
+impl<C: Blockchain, F: FirehoseMapper<C>> Clone for FirehoseBlockStreamContext<C, F> {
     fn clone(&self) -> Self {
         Self {
             cursor: self.cursor.clone(),
             mapper: self.mapper.clone(),
             node_id: self.node_id.clone(),
             subgraph_id: self.subgraph_id.clone(),
+            adapter: self.adapter.clone(),
             filter: self.filter.clone(),
             start_blocks: self.start_blocks.clone(),
             logger: self.logger.clone(),
@@ -50,23 +54,25 @@ enum BlockStreamState {
     Connected(tonic::Streaming<bstream::BlockResponseV2>),
 }
 
-pub struct FirehoseBlockStream<C: Blockchain> {
+pub struct FirehoseBlockStream<C: Blockchain, F: FirehoseMapper<C>> {
     endpoint: Arc<FirehoseEndpoint>,
     state: BlockStreamState,
-    ctx: FirehoseBlockStreamContext<C>,
+    ctx: FirehoseBlockStreamContext<C, F>,
     connection_attempts: u64,
 }
 
-impl<C> FirehoseBlockStream<C>
+impl<C, F> FirehoseBlockStream<C, F>
 where
     C: Blockchain,
+    F: FirehoseMapper<C>,
 {
     pub fn new(
         endpoint: Arc<FirehoseEndpoint>,
         cursor: Option<String>,
-        mapper: Arc<C::FirehoseMapper>,
+        mapper: Arc<F>,
         node_id: NodeId,
         subgraph_id: DeploymentHash,
+        adapter: Arc<C::TriggersAdapter>,
         filter: Arc<C::TriggerFilter>,
         start_blocks: Vec<BlockNumber>,
         logger: Logger,
@@ -80,6 +86,7 @@ where
                 node_id,
                 subgraph_id,
                 logger,
+                adapter,
                 filter,
                 start_blocks,
             },
@@ -88,9 +95,9 @@ where
     }
 }
 
-impl<C: Blockchain> BlockStream<C> for FirehoseBlockStream<C> {}
+impl<C: Blockchain, F: FirehoseMapper<C>> BlockStream<C> for FirehoseBlockStream<C, F> {}
 
-impl<C: Blockchain> Stream for FirehoseBlockStream<C> {
+impl<C: Blockchain, F: FirehoseMapper<C>> Stream for FirehoseBlockStream<C, F> {
     type Item = Result<BlockStreamEvent<C>, Error>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -108,7 +115,9 @@ impl<C: Blockchain> Stream for FirehoseBlockStream<C> {
                         .clone()
                         .into_iter()
                         .min()
-                        .unwrap_or(BLOCK_NUMBER_MAX);
+                        // Firehose knows where to start the stream for the specific chain, 0 here means
+                        // start at Genesis block.
+                        .unwrap_or(0);
 
                     let future = self
                         .endpoint
@@ -180,8 +189,13 @@ impl<C: Blockchain> Stream for FirehoseBlockStream<C> {
                 }
 
                 BlockStreamState::Connected(streaming) => match streaming.poll_next_unpin(cx) {
-                    Poll::Ready(Some(Ok(b))) => {
-                        match self.ctx.mapper.to_block_stream_event(&b, &self.ctx.filter) {
+                    Poll::Ready(Some(Ok(response))) => {
+                        match self.ctx.mapper.to_block_stream_event(
+                            &self.ctx.logger,
+                            &response,
+                            &self.ctx.adapter,
+                            &self.ctx.filter,
+                        ) {
                             Ok(event) => {
                                 return Poll::Ready(Some(Ok(event)));
                             }
@@ -225,13 +239,12 @@ impl<C: Blockchain> Stream for FirehoseBlockStream<C> {
     }
 }
 
-impl<C: Blockchain> FirehoseBlockStream<C> {
+impl<C: Blockchain, F: FirehoseMapper<C>> FirehoseBlockStream<C, F> {
     /// Schedule a delayed function that will wake us later in time. This implementation
     /// uses an exponential backoff strategy to retry with incremental longer delays.
     fn schedule_error_retry<T>(&mut self, cx: &mut Context<'_>) -> Poll<Option<T>> {
         self.connection_attempts += 1;
-        let wait_duration =
-            std::time::Duration::from_secs(wait_duration_secs(self.connection_attempts.clone()));
+        let wait_duration = wait_duration(self.connection_attempts.clone());
 
         let waker = cx.waker().clone();
         tokio::spawn(async move {
@@ -243,10 +256,12 @@ impl<C: Blockchain> FirehoseBlockStream<C> {
     }
 }
 
-fn wait_duration_secs(attempt_number: u64) -> u64 {
-    let mut pow = attempt_number;
-    if pow > 5 {
-        pow = 5;
-    }
-    return 2 << pow;
+fn wait_duration(attempt_number: u64) -> Duration {
+    let pow = if attempt_number > 5 {
+        5
+    } else {
+        attempt_number
+    };
+
+    return Duration::from_secs(2 << pow);
 }

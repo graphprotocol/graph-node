@@ -39,16 +39,13 @@ impl FirehoseEndpoint {
             .parse::<Uri>()
             .expect("the url should have been validated by now, so it is a valid Uri");
 
-        let endpoint;
-        match uri.scheme().unwrap().as_str() {
-            "http" => endpoint = Channel::builder(uri),
-            "https" => {
-                endpoint = Channel::builder(uri)
-                    .tls_config(ClientTlsConfig::new())
-                    .expect("TLS config on this host is invalid");
-            }
+        let endpoint = match uri.scheme().unwrap().as_str() {
+            "http" => Channel::builder(uri),
+            "https" => Channel::builder(uri)
+                .tls_config(ClientTlsConfig::new())
+                .expect("TLS config on this host is invalid"),
             _ => panic!("invalid uri scheme for firehose endpoint"),
-        }
+        };
 
         let uri = endpoint.uri().to_string();
         let channel = endpoint.connect().await?;

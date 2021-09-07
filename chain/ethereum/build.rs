@@ -1,5 +1,7 @@
 fn main() {
     tonic_build::configure()
+        .out_dir("src/protobuf")
+        .format(true)
         .compile(&["proto/codec.proto"], &["proto"])
-        .unwrap_or_else(|e| panic!("Failed to compile StreamingFast Ethereum proto(s) {:?}", e));
+        .expect("Failed to compile StreamingFast Ethereum proto(s)");
 }

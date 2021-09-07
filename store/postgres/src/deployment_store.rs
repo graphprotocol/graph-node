@@ -598,7 +598,7 @@ impl DeploymentStore {
         Ok(deployment::block_ptr(&conn, subgraph_id)?)
     }
 
-    fn firehose_cursor_with_conn(
+    fn block_cursor_with_conn(
         subgraph_id: &DeploymentHash,
         conn: &PgConnection,
     ) -> Result<Option<String>, StoreError> {
@@ -690,9 +690,9 @@ impl DeploymentStore {
         Self::block_ptr_with_conn(&site.deployment, &conn)
     }
 
-    pub(crate) fn firehose_cursor(&self, site: &Site) -> Result<Option<String>, StoreError> {
+    pub(crate) fn block_cursor(&self, site: &Site) -> Result<Option<String>, StoreError> {
         let conn = self.get_conn()?;
-        Self::firehose_cursor_with_conn(&site.deployment, &conn)
+        Self::block_cursor_with_conn(&site.deployment, &conn)
     }
 
     pub(crate) fn supports_proof_of_indexing<'a>(

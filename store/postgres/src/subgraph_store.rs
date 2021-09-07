@@ -12,9 +12,7 @@ use graph::{
     cheap_clone::CheapClone,
     components::{
         server::index_node::VersionInfo,
-        store::{
-            self, CursorStore, DeploymentLocator, EntityType, WritableStore as WritableStoreTrait,
-        },
+        store::{self, DeploymentLocator, EntityType, WritableStore as WritableStoreTrait},
     },
     constraint_violation,
     data::query::QueryTarget,
@@ -985,14 +983,6 @@ impl SubgraphStoreTrait for SubgraphStore {
         Ok(Arc::new(WritableStore::new(self.clone(), site)?))
     }
 
-    fn cursor(
-        &self,
-        deployment: &DeploymentLocator,
-    ) -> Result<Arc<dyn store::CursorStore>, StoreError> {
-        let site = self.find_site(deployment.id.into())?;
-        return Ok(Arc::new(WritableStore::new(self.clone(), site)?));
-    }
-
     fn writable_for_network_indexer(
         &self,
         id: &DeploymentHash,
@@ -1064,16 +1054,14 @@ impl WritableStore {
     }
 }
 
-impl CursorStore for WritableStore {
-    fn get_cursor(&self) -> Result<Option<String>, StoreError> {
-        self.writable.firehose_cursor(self.site.as_ref())
-    }
-}
-
 #[async_trait::async_trait]
 impl WritableStoreTrait for WritableStore {
     fn block_ptr(&self) -> Result<Option<BlockPtr>, Error> {
         self.writable.block_ptr(self.site.as_ref())
+    }
+
+    fn block_cursor(&self) -> Result<Option<String>, StoreError> {
+        self.writable.block_cursor(self.site.as_ref())
     }
 
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {

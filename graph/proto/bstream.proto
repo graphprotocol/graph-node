@@ -5,8 +5,43 @@ package dfuse.bstream.v1;
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/any.proto";
 
+option go_package = "github.com/streamingfast/pbgo/dfuse/bstream/v1;pbbstream";
+
+service BlockStream {
+  rpc Blocks(BlockRequest) returns (stream Block);
+}
+
 service BlockStreamV2 {
   rpc Blocks(BlocksRequestV2) returns (stream BlockResponseV2);
+}
+
+// Version 1 request
+
+message BlockRequest {
+  // Number of blocks we want to get in burst upon connection, on a best effort basis.
+  int64 burst = 1;
+
+  // Type of blocks we're after here, is it 'ethereum' data, 'eos', etc.. The server can fail early
+  // if he doesn't match the data he serves (services mismatch, etc..)
+  string content_type = 2;
+
+  // Whether we can assume the data will come ordered, unless there is a chain reorganization.
+  // mindreaders output ordered data, whereas relayers can output unordered data.
+  // The server can fail early if the assumption of the caller cannot be fulfilled.
+  enum Order {
+    UNSPECIFIED = 0;
+    ORDERED = 1;
+    UNORDERED = 2;
+  }
+  Order order = 3;
+
+  string requester = 4;
+}
+
+// Version 2 request
+
+message IrreversibleBlocksRequestV2 {
+  int64 start_block_num = 1;
 }
 
 // For historical segments, forks are not passed
@@ -61,12 +96,15 @@ message BlocksRequestV2 {
 
   // controls how many confirmations will consider a given block as final (STEP_IRREVERSIBLE). Warning, if any reorg goes beyond that number of confirmations, the request will stall forever
   uint64 confirmations = 16;
+
 }
 
 message BlockResponseV2 {
   // Chain specific block payload, one of:
-  //  - dfuse.ethereum.codec.v1.Block
-  //  - dfuse.eosio.codec.v1.Block
+  // - dfuse.eosio.codec.v1.Block
+  // - dfuse.ethereum.codec.v1.Block
+  // - sf.near.codec.v1.Block
+  // - sf.solana.codec.v1.Block
   google.protobuf.Any block = 1;
   ForkStep step = 6;
   string cursor = 10;
@@ -74,11 +112,16 @@ message BlockResponseV2 {
 
 enum ForkStep {
   STEP_UNKNOWN = 0;
-  STEP_NEW = 1; // The first time we see a block, that is linear with the previous block
-  STEP_UNDO = 2; // A block seen previously, that is to be undone
-  reserved 3; // was STEP_REDO
+  // Block is new head block of the chain, that is linear with the previous block
+  STEP_NEW = 1;
+  // Block is now forked and should be undone, it's not the head block of the chain anymore
+  STEP_UNDO = 2;
+  // Removed, was STEP_REDO
+  reserved 3;
+  // Block is now irreversible and can be committed to (finality is chain specific, see chain documentation for more details)
   STEP_IRREVERSIBLE = 4;
-  reserved 5 ; // was STEP_STALLED
+  // Removed, was STEP_STALLED
+  reserved 5 ;
 }
 
 enum BlockDetails {
@@ -93,7 +136,29 @@ message Cursor {
   ForkStep step = 4;
 }
 
+// General response and structs
+
+message Block {
+  uint64 number = 1;
+  string id = 2;
+  string previous_id = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  uint64 lib_num = 5;
+
+  Protocol payload_kind = 6;
+  int32 payload_version = 7;
+  bytes payload_buffer = 8;
+}
+
 message BlockRef {
   uint64 num = 1;
   string id = 2;
+}
+
+enum Protocol {
+  UNKNOWN = 0;
+  EOS = 1;
+  ETH = 2;
+  SOLANA = 3;
+  NEAR = 4;
 }

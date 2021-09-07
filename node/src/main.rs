@@ -1,7 +1,7 @@
 use ethereum::{EthereumNetworks, NodeCapabilities, ProviderEthRpcMetrics};
 use futures::future::join_all;
 use git_testament::{git_testament, render_testament};
-use graph::sf::endpoints::{FirehoseEndpoint, FirehoseNetworkEndpoints, FirehoseNetworks};
+use graph::firehose::endpoints::{FirehoseEndpoint, FirehoseNetworkEndpoints, FirehoseNetworks};
 use graph::{ipfs_client::IpfsClient, prometheus::Registry};
 use lazy_static::lazy_static;
 use std::io::{BufRead, BufReader};
