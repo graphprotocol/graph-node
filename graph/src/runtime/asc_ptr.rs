@@ -6,6 +6,9 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::mem::size_of;
 
+/// The `rt_size` field contained in an AssemblyScript header has a size of 4 bytes.
+const SIZE_OF_RT_SIZE: u32 = 4;
+
 /// A pointer to an object in the Asc heap.
 pub struct AscPtr<C>(u32, PhantomData<C>);
 
@@ -154,8 +157,7 @@ impl<C: AscType> AscPtr<C> {
         // not null before using it.
         self.check_is_not_null()?;
 
-        let size_of_rt_size = 4;
-        let start_of_rt_size = self.0.checked_sub(size_of_rt_size).ok_or_else(|| {
+        let start_of_rt_size = self.0.checked_sub(SIZE_OF_RT_SIZE).ok_or_else(|| {
             DeterministicHostError(anyhow::anyhow!("Subtract overflow on pointer: {}", self.0))
         })?;
         let raw_bytes = heap.get(start_of_rt_size, size_of::<u32>() as u32)?;
