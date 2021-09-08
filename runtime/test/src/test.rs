@@ -121,7 +121,7 @@ fn test_module(
 trait WasmInstanceExt {
     fn invoke_export0_void(&self, f: &str);
     fn invoke_export0<R>(&self, f: &str) -> AscPtr<R>;
-    fn invoke_export<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R>;
+    fn invoke_export1<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R>;
     fn invoke_export2<C, D, R>(&self, f: &str, arg0: AscPtr<C>, arg1: AscPtr<D>) -> AscPtr<R>;
     fn invoke_export2_void<C, D>(
         &self,
@@ -145,7 +145,7 @@ impl WasmInstanceExt for WasmInstance<Chain> {
         ptr.into()
     }
 
-    fn invoke_export<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R> {
+    fn invoke_export1<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R> {
         let func = self.get_func(f).typed().unwrap().clone();
         let ptr: u32 = func.call(arg.wasm_ptr()).unwrap();
         ptr.into()
@@ -210,7 +210,7 @@ fn test_json_conversions(api_version: Version) {
     // test BigInt conversion
     let number = "-922337203685077092345034";
     let number_ptr = asc_new(&mut module, number).unwrap();
-    let big_int_obj: AscPtr<AscBigInt> = module.invoke_export("testToBigInt", number_ptr);
+    let big_int_obj: AscPtr<AscBigInt> = module.invoke_export1("testToBigInt", number_ptr);
     let bytes: Vec<u8> = asc_get(&module, big_int_obj).unwrap();
     assert_eq!(
         scalar::BigInt::from_str(number).unwrap(),
@@ -242,7 +242,7 @@ fn test_json_parsing(api_version: Version) {
     let s = "foo"; // Invalid because there are no quotes around `foo`
     let bytes: &[u8] = s.as_ref();
     let bytes_ptr = asc_new(&mut module, bytes).unwrap();
-    let return_value: AscPtr<AscString> = module.invoke_export("handleJsonError", bytes_ptr);
+    let return_value: AscPtr<AscString> = module.invoke_export1("handleJsonError", bytes_ptr);
     let output: String = asc_get(&module, return_value).unwrap();
     assert_eq!(output, "ERROR: true");
 
@@ -250,7 +250,7 @@ fn test_json_parsing(api_version: Version) {
     let s = "\"foo\""; // Valid because there are quotes around `foo`
     let bytes: &[u8] = s.as_ref();
     let bytes_ptr = asc_new(&mut module, bytes).unwrap();
-    let return_value: AscPtr<AscString> = module.invoke_export("handleJsonError", bytes_ptr);
+    let return_value: AscPtr<AscString> = module.invoke_export1("handleJsonError", bytes_ptr);
     let output: String = asc_get(&module, return_value).unwrap();
     assert_eq!(output, "OK: foo, ERROR: false");
 }
@@ -284,7 +284,7 @@ async fn test_ipfs_cat(api_version: Version) {
             api_version,
         );
         let arg = asc_new(&mut module, &hash).unwrap();
-        let converted: AscPtr<AscString> = module.invoke_export("ipfsCatString", arg);
+        let converted: AscPtr<AscString> = module.invoke_export1("ipfsCatString", arg);
         let data: String = asc_get(&module, converted).unwrap();
         assert_eq!(data, "42");
     })
@@ -495,7 +495,7 @@ async fn test_ipfs_fail(api_version: Version) {
 
         let hash = asc_new(&mut module, "invalid hash").unwrap();
         assert!(module
-            .invoke_export::<_, AscString>("ipfsCat", hash)
+            .invoke_export1::<_, AscString>("ipfsCat", hash)
             .is_null());
     })
     .join()
@@ -524,7 +524,7 @@ fn test_crypto_keccak256(api_version: Version) {
     let input: &[u8] = "eth".as_ref();
     let input: AscPtr<Uint8Array> = asc_new(&mut module, input).unwrap();
 
-    let hash: AscPtr<Uint8Array> = module.invoke_export("hash", input);
+    let hash: AscPtr<Uint8Array> = module.invoke_export1("hash", input);
     let hash: Vec<u8> = asc_get(&module, hash).unwrap();
     assert_eq!(
         hex::encode(hash),
@@ -555,21 +555,21 @@ fn test_big_int_to_hex(api_version: Version) {
     // Convert zero to hex
     let zero = BigInt::from_unsigned_u256(&U256::zero());
     let zero: AscPtr<AscBigInt> = asc_new(&mut module, &zero).unwrap();
-    let zero_hex_ptr: AscPtr<AscString> = module.invoke_export("big_int_to_hex", zero);
+    let zero_hex_ptr: AscPtr<AscString> = module.invoke_export1("big_int_to_hex", zero);
     let zero_hex_str: String = asc_get(&module, zero_hex_ptr).unwrap();
     assert_eq!(zero_hex_str, "0x0");
 
     // Convert 1 to hex
     let one = BigInt::from_unsigned_u256(&U256::one());
     let one: AscPtr<AscBigInt> = asc_new(&mut module, &one).unwrap();
-    let one_hex_ptr: AscPtr<AscString> = module.invoke_export("big_int_to_hex", one);
+    let one_hex_ptr: AscPtr<AscString> = module.invoke_export1("big_int_to_hex", one);
     let one_hex_str: String = asc_get(&module, one_hex_ptr).unwrap();
     assert_eq!(one_hex_str, "0x1");
 
     // Convert U256::max_value() to hex
     let u256_max = BigInt::from_unsigned_u256(&U256::max_value());
     let u256_max: AscPtr<AscBigInt> = asc_new(&mut module, &u256_max).unwrap();
-    let u256_max_hex_ptr: AscPtr<AscString> = module.invoke_export("big_int_to_hex", u256_max);
+    let u256_max_hex_ptr: AscPtr<AscString> = module.invoke_export1("big_int_to_hex", u256_max);
     let u256_max_hex_str: String = asc_get(&module, u256_max_hex_ptr).unwrap();
     assert_eq!(
         u256_max_hex_str,
@@ -703,7 +703,7 @@ fn test_bytes_to_base58(api_version: Version) {
     let bytes = hex::decode("12207D5A99F603F231D53A4F39D1521F98D2E8BB279CF29BEBFD0687DC98458E7F89")
         .unwrap();
     let bytes_ptr = asc_new(&mut module, bytes.as_slice()).unwrap();
-    let result_ptr: AscPtr<AscString> = module.invoke_export("bytes_to_base58", bytes_ptr);
+    let result_ptr: AscPtr<AscString> = module.invoke_export1("bytes_to_base58", bytes_ptr);
     let base58: String = asc_get(&module, result_ptr).unwrap();
     assert_eq!(base58, "QmWmyoMoctfbAaiEs2G46gpeUmhqFRDW6KWo64y5r581Vz");
 }
@@ -785,13 +785,13 @@ fn test_ens_name_by_hash(api_version: Version) {
     let name = "dealdrafts";
     test_store::insert_ens_name(hash, name);
     let val = asc_new(&mut module, hash).unwrap();
-    let converted: AscPtr<AscString> = module.invoke_export("nameByHash", val);
+    let converted: AscPtr<AscString> = module.invoke_export1("nameByHash", val);
     let data: String = asc_get(&module, converted).unwrap();
     assert_eq!(data, name);
 
     let hash = asc_new(&mut module, "impossible keccak hash").unwrap();
     assert!(module
-        .invoke_export::<_, AscString>("nameByHash", hash)
+        .invoke_export1::<_, AscString>("nameByHash", hash)
         .is_null());
 }
 
@@ -830,7 +830,7 @@ fn test_entity_store(api_version: Version) {
 
     let get_user = move |module: &mut WasmInstance<Chain>, id: &str| -> Option<Entity> {
         let id = asc_new(module, id).unwrap();
-        let entity_ptr: AscPtr<AscEntity> = module.invoke_export("getUser", id);
+        let entity_ptr: AscPtr<AscEntity> = module.invoke_export1("getUser", id);
         if entity_ptr.is_null() {
             None
         } else {
