@@ -150,12 +150,13 @@ impl<C: AscType> AscPtr<C> {
     /// This function returns the `rt_size`.
     /// Only used for version >= 0.0.5.
     pub fn read_len<H: AscHeap + ?Sized>(&self, heap: &H) -> Result<u32, DeterministicHostError> {
+        // We're trying to read the pointer below, we should check it's
+        // not null before using it.
+        self.check_is_not_null()?;
+
         let size_of_rt_size = 4;
         let start_of_rt_size = self.0.checked_sub(size_of_rt_size).ok_or_else(|| {
-            DeterministicHostError(anyhow::anyhow!(
-                "Subtract overflow on pointer: {}", // Usually when pointer is zero because of null in AssemblyScript
-                self.0
-            ))
+            DeterministicHostError(anyhow::anyhow!("Subtract overflow on pointer: {}", self.0))
         })?;
         let raw_bytes = heap.get(start_of_rt_size, size_of::<u32>() as u32)?;
         let mut u32_bytes: [u8; size_of::<u32>()] = [0; size_of::<u32>()];
@@ -171,6 +172,21 @@ impl<C: AscType> AscPtr<C> {
     /// We typically assume `AscPtr` is never null, but for types such as `string | null` it can be.
     pub fn is_null(&self) -> bool {
         self.0 == 0
+    }
+
+    /// There's no problem in an AscPtr being 'null' (see above AscPtr::is_null function).
+    /// However if one tries to read that pointer, it should fail with a helpful error message,
+    /// this function does this error handling.
+    ///
+    /// Summary: ALWAYS call this before reading an AscPtr.
+    pub fn check_is_not_null(&self) -> Result<(), DeterministicHostError> {
+        if self.is_null() {
+            return Err(DeterministicHostError(anyhow::anyhow!(
+                "Tried to read AssemblyScript value that is 'null'. Suggestion: look into the function that the error happened and add 'log' calls till you find where a 'null' value is being used as non-nullable. It's likely that you're calling a 'graph-ts' function (or operator) with a 'null' value when it doesn't support it."
+            )));
+        }
+
+        Ok(())
     }
 
     // Erase type information.
