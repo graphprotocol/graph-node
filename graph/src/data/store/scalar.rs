@@ -64,25 +64,9 @@ impl BigDecimal {
         self.0.digits()
     }
 
-    // Copy-pasted from `bigdecimal::BigDecimal::normalize`. We can use the upstream version once it
-    // is included in a released version supported by Diesel.
     #[must_use]
     pub fn normalized(&self) -> BigDecimal {
-        if self == &BigDecimal::zero() {
-            return BigDecimal::zero();
-        }
-
-        // Round to the maximum significant digits.
-        let big_decimal = self.0.with_prec(Self::MAX_SIGNFICANT_DIGITS as u64);
-
-        let (bigint, exp) = big_decimal.as_bigint_and_exponent();
-        let (sign, mut digits) = bigint.to_radix_be(10);
-        let trailing_count = digits.iter().rev().take_while(|i| **i == 0).count();
-        digits.truncate(digits.len() - trailing_count);
-        let int_val = num_bigint::BigInt::from_radix_be(sign, &digits, 10).unwrap();
-        let scale = exp - trailing_count as i64;
-
-        BigDecimal(bigdecimal::BigDecimal::new(int_val.into(), scale))
+        Self::from(self.0.normalized())
     }
 }
 
@@ -118,9 +102,13 @@ impl From<u64> for BigDecimal {
     }
 }
 
-impl From<f64> for BigDecimal {
-    fn from(n: f64) -> Self {
-        Self::from(bigdecimal::BigDecimal::from(n))
+impl TryFrom<f64> for BigDecimal {
+    type Error = BigDecimalError;
+    fn try_from(n: f64) -> Result<Self, Self::Error> {
+        use bigdecimal::FromPrimitive;
+
+        let decimal = bigdecimal::BigDecimal::from_f64(n).ok_or(BigDecimalError::FromF64(n))?;
+        Ok(Self::from(decimal))
     }
 }
 
@@ -160,13 +148,64 @@ impl Div for BigDecimal {
     }
 }
 
+pub type OldBigInt = num_bigint02::BigInt;
+pub type OldBigDecimal = bigdecimal01::BigDecimal;
+
+pub struct BigDecimalRetrocompatibility;
+
+impl BigDecimalRetrocompatibility {
+    /// Converts a BigDecimal from bigdecimal v0.3 to a BigDecimal from bigdecimal v0.1
+    pub fn v03_to_v01(newer: &bigdecimal::BigDecimal) -> OldBigDecimal {
+        let convert_sign_versions = |sign| match sign {
+            num_bigint::Sign::Minus => num_bigint02::Sign::Minus,
+            num_bigint::Sign::NoSign => num_bigint02::Sign::NoSign,
+            num_bigint::Sign::Plus => num_bigint02::Sign::Plus,
+        };
+
+        // let (sign, biguint) = newer.into_parts();
+        let (big_int, scale) = newer.as_bigint_and_exponent();
+
+        // Converting into little-endian bytes is faster
+        let (sign, le_bytes) = big_int.to_bytes_le();
+
+        // let bytes = biguint.to_bytes_be();
+        let sign = convert_sign_versions(sign);
+
+        let new_big_int = OldBigInt::from_bytes_le(sign, &le_bytes);
+
+        OldBigDecimal::new(new_big_int, scale)
+    }
+
+    pub fn v01_to_v03(older: OldBigDecimal) -> bigdecimal::BigDecimal {
+        let convert_sign_versions = |sign| match sign {
+            num_bigint02::Sign::Minus => num_bigint::Sign::Minus,
+            num_bigint02::Sign::NoSign => num_bigint::Sign::NoSign,
+            num_bigint02::Sign::Plus => num_bigint::Sign::Plus,
+        };
+
+        let (big_int, scale) = older.into_bigint_and_exponent();
+
+        // Converting into little-endian bytes is faster
+        let (sign, le_bytes) = big_int.to_bytes_le();
+
+        // let bytes = biguint.to_bytes_be();
+        let sign = convert_sign_versions(sign);
+
+        let new_big_int = num_bigint::BigInt::from_bytes_le(sign, &le_bytes);
+
+        bigdecimal::BigDecimal::new(new_big_int, scale)
+    }
+}
+
 // Used only for JSONB support
 impl ToSql<diesel::sql_types::Numeric, diesel::pg::Pg> for BigDecimal {
     fn to_sql<W: Write>(
         &self,
         out: &mut diesel::serialize::Output<W, diesel::pg::Pg>,
     ) -> diesel::serialize::Result {
-        <_ as ToSql<diesel::sql_types::Numeric, _>>::to_sql(&self.0, out)
+        let decimal01 = BigDecimalRetrocompatibility::v03_to_v01(&self.0);
+
+        <_ as ToSql<diesel::sql_types::Numeric, _>>::to_sql(&decimal01, out)
     }
 }
 
@@ -174,7 +213,9 @@ impl FromSql<diesel::sql_types::Numeric, diesel::pg::Pg> for BigDecimal {
     fn from_sql(
         bytes: Option<&<diesel::pg::Pg as diesel::backend::Backend>::RawValue>,
     ) -> diesel::deserialize::Result<Self> {
-        Ok(Self::from(bigdecimal::BigDecimal::from_sql(bytes)?))
+        let decimal01 = bigdecimal01::BigDecimal::from_sql(bytes)?;
+        let decimal03 = BigDecimalRetrocompatibility::v01_to_v03(decimal01);
+        Ok(Self::from(decimal03))
     }
 }
 
@@ -217,6 +258,14 @@ pub enum BigIntOutOfRangeError {
     Negative,
     #[error("BigInt value is too large for type")]
     Overflow,
+}
+
+#[derive(Error, Debug)]
+pub enum BigDecimalError {
+    #[error("{0}")]
+    OutOfRange(BigIntOutOfRangeError),
+    #[error("Failed to create big decimal from {0}")]
+    FromF64(f64),
 }
 
 impl<'a> TryFrom<&'a BigInt> for u64 {
@@ -322,7 +371,7 @@ impl BigInt {
         BigInt(self.0.pow(&exponent))
     }
 
-    pub fn bits(&self) -> usize {
+    pub fn bits(&self) -> u64 {
         self.0.bits()
     }
 }
@@ -468,7 +517,9 @@ impl Shl<u8> for BigInt {
     type Output = Self;
 
     fn shl(self, bits: u8) -> Self {
-        Self::from(self.0.shl(bits.into()))
+        // let t = self.0.shl(bits.into());
+        let t = self.0 << bits;
+        Self(t)
     }
 }
 
@@ -476,7 +527,7 @@ impl Shr<u8> for BigInt {
     type Output = Self;
 
     fn shr(self, bits: u8) -> Self {
-        Self::from(self.0.shr(bits.into()))
+        Self::from(self.0 >> bits)
     }
 }
 

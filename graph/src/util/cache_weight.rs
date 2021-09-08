@@ -91,7 +91,7 @@ impl CacheWeight for BigDecimal {
 
 impl CacheWeight for BigInt {
     fn indirect_weight(&self) -> usize {
-        self.bits() / 8
+        (self.bits() / 8) as usize
     }
 }
 

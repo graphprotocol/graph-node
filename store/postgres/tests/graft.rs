@@ -1,6 +1,8 @@
+use std::convert::TryInto;
+use std::{marker::PhantomData, str::FromStr};
+
 use hex_literal::hex;
 use lazy_static::lazy_static;
-use std::{marker::PhantomData, str::FromStr};
 use test_store::*;
 
 use graph::components::store::{
@@ -221,7 +223,14 @@ fn create_test_entity(
         "seconds_age".to_owned(),
         Value::BigInt(BigInt::from(age) * 31557600.into()),
     );
-    test_entity.insert("weight".to_owned(), Value::BigDecimal(weight.into()));
+    test_entity.insert(
+        "weight".to_owned(),
+        Value::BigDecimal(
+            weight
+                .try_into()
+                .expect("failed to convert f64 into big decimal"),
+        ),
+    );
     test_entity.insert("coffee".to_owned(), Value::Bool(coffee));
     test_entity.insert(
         "favorite_color".to_owned(),

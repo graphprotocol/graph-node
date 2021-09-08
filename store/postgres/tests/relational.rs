@@ -1,4 +1,6 @@
 //! Test mapping of GraphQL schema to a relational schema
+use std::convert::TryInto;
+
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
 use graph::prelude::{
@@ -291,7 +293,10 @@ fn insert_user_entity(
         "seconds_age".to_owned(),
         Value::BigInt(BigInt::from(age) * 31557600.into()),
     );
-    user.insert("weight".to_owned(), Value::BigDecimal(weight.into()));
+    user.insert(
+        "weight".to_owned(),
+        Value::BigDecimal(weight.try_into().unwrap()),
+    );
     user.insert("coffee".to_owned(), Value::Bool(coffee));
     user.insert(
         "favorite_color".to_owned(),
@@ -373,7 +378,10 @@ fn update_user_entity(
         "seconds_age".to_owned(),
         Value::BigInt(BigInt::from(age) * 31557600.into()),
     );
-    user.insert("weight".to_owned(), Value::BigDecimal(weight.into()));
+    user.insert(
+        "weight".to_owned(),
+        Value::BigDecimal(weight.try_into().unwrap()),
+    );
     user.insert("coffee".to_owned(), Value::Bool(coffee));
     user.insert(
         "favorite_color".to_owned(),
@@ -1126,7 +1134,7 @@ fn check_find() {
                 vec!["1"],
                 user_query().filter(EntityFilter::Equal(
                     "weight".to_owned(),
-                    Value::BigDecimal(184.4.into()),
+                    Value::BigDecimal(184.4.try_into().unwrap()),
                 )),
             )
             .check(
@@ -1134,7 +1142,7 @@ fn check_find() {
                 user_query()
                     .filter(EntityFilter::Not(
                         "weight".to_owned(),
-                        Value::BigDecimal(184.4.into()),
+                        Value::BigDecimal(184.4.try_into().unwrap()),
                     ))
                     .desc("name"),
             )
@@ -1142,7 +1150,7 @@ fn check_find() {
                 vec!["1"],
                 user_query().filter(EntityFilter::GreaterThan(
                     "weight".to_owned(),
-                    Value::BigDecimal(160.0.into()),
+                    Value::BigDecimal(160.0.try_into().unwrap()),
                 )),
             )
             .check(
@@ -1150,7 +1158,7 @@ fn check_find() {
                 user_query()
                     .filter(EntityFilter::LessThan(
                         "weight".to_owned(),
-                        Value::BigDecimal(160.0.into()),
+                        Value::BigDecimal(160.0.try_into().unwrap()),
                     ))
                     .asc("name"),
             )
@@ -1159,7 +1167,7 @@ fn check_find() {
                 user_query()
                     .filter(EntityFilter::LessThan(
                         "weight".to_owned(),
-                        Value::BigDecimal(160.0.into()),
+                        Value::BigDecimal(160.0.try_into().unwrap()),
                     ))
                     .desc("name"),
             )
@@ -1168,7 +1176,7 @@ fn check_find() {
                 user_query()
                     .filter(EntityFilter::LessThan(
                         "weight".to_owned(),
-                        Value::BigDecimal(161.0.into()),
+                        Value::BigDecimal(161.0.try_into().unwrap()),
                     ))
                     .desc("name")
                     .first(1)
@@ -1180,8 +1188,8 @@ fn check_find() {
                     .filter(EntityFilter::In(
                         "weight".to_owned(),
                         vec![
-                            Value::BigDecimal(184.4.into()),
-                            Value::BigDecimal(111.7.into()),
+                            Value::BigDecimal(184.4.try_into().unwrap()),
+                            Value::BigDecimal(111.7.try_into().unwrap()),
                         ],
                     ))
                     .desc("name")
@@ -1193,8 +1201,8 @@ fn check_find() {
                     .filter(EntityFilter::NotIn(
                         "weight".to_owned(),
                         vec![
-                            Value::BigDecimal(184.4.into()),
-                            Value::BigDecimal(111.7.into()),
+                            Value::BigDecimal(184.4.try_into().unwrap()),
+                            Value::BigDecimal(111.7.try_into().unwrap()),
                         ],
                     ))
                     .desc("name")

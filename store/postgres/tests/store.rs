@@ -1,9 +1,11 @@
-use graph_mock::MockMetricsRegistry;
-use hex_literal::hex;
-use lazy_static::lazy_static;
+use std::convert::TryInto;
 use std::time::Duration;
 use std::{collections::HashSet, sync::Mutex};
 use std::{marker::PhantomData, str::FromStr};
+
+use graph_mock::MockMetricsRegistry;
+use hex_literal::hex;
+use lazy_static::lazy_static;
 use test_store::*;
 
 use graph::components::store::{DeploymentLocator, WritableStore};
@@ -266,7 +268,10 @@ fn create_test_entity(
         "seconds_age".to_owned(),
         Value::BigInt(BigInt::from(age) * 31557600.into()),
     );
-    test_entity.insert("weight".to_owned(), Value::BigDecimal(weight.into()));
+    test_entity.insert(
+        "weight".to_owned(),
+        Value::BigDecimal(weight.try_into().unwrap()),
+    );
     test_entity.insert("coffee".to_owned(), Value::Bool(coffee));
     test_entity.insert(
         "favorite_color".to_owned(),
@@ -350,7 +355,10 @@ fn get_entity_1() {
             "seconds_age".to_owned(),
             Value::BigInt(BigInt::from(2114359200)),
         );
-        expected_entity.insert("weight".to_owned(), Value::BigDecimal(184.4.into()));
+        expected_entity.insert(
+            "weight".to_owned(),
+            Value::BigDecimal(184.4.try_into().unwrap()),
+        );
         expected_entity.insert("coffee".to_owned(), Value::Bool(false));
         // "favorite_color" was set to `Null` earlier and should be absent
 
@@ -381,7 +389,10 @@ fn get_entity_3() {
             "seconds_age".to_owned(),
             Value::BigInt(BigInt::from(883612800)),
         );
-        expected_entity.insert("weight".to_owned(), Value::BigDecimal(111.7.into()));
+        expected_entity.insert(
+            "weight".to_owned(),
+            Value::BigDecimal(111.7.try_into().unwrap()),
+        );
         expected_entity.insert("coffee".to_owned(), Value::Bool(false));
         // "favorite_color" was set to `Null` earlier and should be absent
 
@@ -656,7 +667,7 @@ fn find() {
                 vec!["1"],
                 user_query().filter(EntityFilter::Equal(
                     "weight".to_owned(),
-                    Value::BigDecimal(184.4.into()),
+                    Value::BigDecimal(184.4.try_into().unwrap()),
                 )),
             )
             .check(
@@ -664,7 +675,7 @@ fn find() {
                 user_query()
                     .filter(EntityFilter::Not(
                         "weight".to_owned(),
-                        Value::BigDecimal(184.4.into()),
+                        Value::BigDecimal(184.4.try_into().unwrap()),
                     ))
                     .desc("name"),
             )
@@ -672,7 +683,7 @@ fn find() {
                 vec!["1"],
                 user_query().filter(EntityFilter::GreaterThan(
                     "weight".to_owned(),
-                    Value::BigDecimal(160.0.into()),
+                    Value::BigDecimal(160.0.try_into().unwrap()),
                 )),
             )
             .check(
@@ -680,7 +691,7 @@ fn find() {
                 user_query()
                     .filter(EntityFilter::LessThan(
                         "weight".to_owned(),
-                        Value::BigDecimal(160.0.into()),
+                        Value::BigDecimal(160.0.try_into().unwrap()),
                     ))
                     .asc("name"),
             )
@@ -689,7 +700,7 @@ fn find() {
                 user_query()
                     .filter(EntityFilter::LessThan(
                         "weight".to_owned(),
-                        Value::BigDecimal(160.0.into()),
+                        Value::BigDecimal(160.0.try_into().unwrap()),
                     ))
                     .desc("name"),
             )
@@ -698,7 +709,7 @@ fn find() {
                 user_query()
                     .filter(EntityFilter::LessThan(
                         "weight".to_owned(),
-                        Value::BigDecimal(161.0.into()),
+                        Value::BigDecimal(161.0.try_into().unwrap()),
                     ))
                     .desc("name")
                     .first(1)
@@ -710,8 +721,8 @@ fn find() {
                     .filter(EntityFilter::In(
                         "weight".to_owned(),
                         vec![
-                            Value::BigDecimal(184.4.into()),
-                            Value::BigDecimal(111.7.into()),
+                            Value::BigDecimal(184.4.try_into().unwrap()),
+                            Value::BigDecimal(111.7.try_into().unwrap()),
                         ],
                     ))
                     .desc("name")
@@ -723,8 +734,8 @@ fn find() {
                     .filter(EntityFilter::NotIn(
                         "weight".to_owned(),
                         vec![
-                            Value::BigDecimal(184.4.into()),
-                            Value::BigDecimal(111.7.into()),
+                            Value::BigDecimal(184.4.try_into().unwrap()),
+                            Value::BigDecimal(111.7.try_into().unwrap()),
                         ],
                     ))
                     .desc("name")
