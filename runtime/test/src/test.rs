@@ -119,7 +119,8 @@ fn test_module(
 }
 
 trait WasmInstanceExt {
-    fn invoke_export0(&self, f: &str);
+    fn invoke_export0_void(&self, f: &str);
+    fn invoke_export0<R>(&self, f: &str) -> AscPtr<R>;
     fn invoke_export<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R>;
     fn invoke_export2<C, D, R>(&self, f: &str, arg0: AscPtr<C>, arg1: AscPtr<D>) -> AscPtr<R>;
     fn invoke_export2_void<C, D>(
@@ -133,9 +134,15 @@ trait WasmInstanceExt {
 }
 
 impl WasmInstanceExt for WasmInstance<Chain> {
-    fn invoke_export0(&self, f: &str) {
+    fn invoke_export0_void(&self, f: &str) {
         let func = self.get_func(f).typed().unwrap().clone();
         let _: () = func.call(()).unwrap();
+    }
+
+    fn invoke_export0<R>(&self, f: &str) -> AscPtr<R> {
+        let func = self.get_func(f).typed().unwrap().clone();
+        let ptr: u32 = func.call(()).unwrap();
+        ptr.into()
     }
 
     fn invoke_export<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R> {
@@ -944,7 +951,7 @@ fn test_allocate_global(api_version: Version) {
     );
 
     // Assert globals can be allocated and don't break the heap
-    module.invoke_export0("assert_global_works");
+    module.invoke_export0_void("assert_global_works");
 }
 
 #[tokio::test]
@@ -955,4 +962,43 @@ async fn allocate_global_v0_0_5() {
     // that it works (at the moment using __alloc call to force offset to be eagerly
     // evaluated).
     test_allocate_global(API_VERSION_0_0_5);
+}
+
+fn test_null_ptr_read(api_version: Version) {
+    let module = test_module(
+        "NullPtrRead",
+        mock_data_source(
+            &wasm_file_path("null_ptr_read.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
+        api_version,
+    );
+
+    module.invoke_export0_void("nullPtrRead");
+}
+
+#[tokio::test]
+#[should_panic(expected = "Tried to read AssemblyScript value that is 'null'")]
+async fn null_ptr_read_0_0_5() {
+    test_null_ptr_read(API_VERSION_0_0_5);
+}
+
+fn test_safe_null_ptr_read(api_version: Version) {
+    let module = test_module(
+        "SafeNullPtrRead",
+        mock_data_source(
+            &wasm_file_path("null_ptr_read.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
+        api_version,
+    );
+
+    let result_ptr: AscPtr<AscBigInt> = module.invoke_export0("safeNullPtrRead");
+    let result: BigInt = asc_get(&module, result_ptr).unwrap();
+    assert_eq!(result, BigInt::from(2));
+}
+
+#[tokio::test]
+async fn safe_null_ptr_read_0_0_5() {
+    test_safe_null_ptr_read(API_VERSION_0_0_5);
 }
