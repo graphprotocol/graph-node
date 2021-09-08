@@ -5,7 +5,7 @@ These are the unit tests that check if the WASM runtime code is working. For now
 We support two versions of their compiler/language for now:
 
 - [`v0.6`](https://github.com/AssemblyScript/assemblyscript/releases/tag/v0.6)
-- +[`v0.19.2`](https://github.com/AssemblyScript/assemblyscript/releases/tag/v0.19.2)
+- +[`v0.19.10`](https://github.com/AssemblyScript/assemblyscript/releases/tag/v0.19.10)
 
 Because the internal ABIs changed between these versions, the runtime was added, etc, we had to duplicate the source files used for the tests (`.ts` and `.wasm`).
 
@@ -14,7 +14,7 @@ If you look into the [`wasm_test`](https://github.com/graphprotocol/graph-node/t
 - [`api_version_0_0_4`](https://github.com/graphprotocol/graph-node/tree/master/runtime/test/wasm_test/api_version_0_0_4)
 - [`api_version_0_0_5`](https://github.com/graphprotocol/graph-node/tree/master/runtime/test/wasm_test/api_version_0_0_5)
 
-This is because the first one (`0.0.4` `apiVersion`) is related to the `v0.6` of `AssemblyScript` and the second (`0.0.5` `apiVersion`) to +`v0.19.2`.
+This is because the first one (`0.0.4` `apiVersion`) is related to the `v0.6` of `AssemblyScript` and the second (`0.0.5` `apiVersion`) to +`v0.19.10`.
 
 ## How to change the `.ts`/`.wasm` files
 
@@ -36,13 +36,13 @@ asc wasm_test/api_version_0_0_4/abi_classes.ts -b wasm_test/api_version_0_0_4/ab
 
 ### Api Version 0.0.5
 
-First make sure your `asc` version is +`v0.19.2`, to check use `asc --version`.
+First make sure your `asc` version is +`v0.19.10`, to check use `asc --version`.
 
 To install the correct one use:
 
 ```
 # for the precise one
-npm install -g assemblyscript@0.19.2
+npm install -g assemblyscript@0.19.10
 
 # for the latest one, it should work as well
 npm install -g assemblyscript
