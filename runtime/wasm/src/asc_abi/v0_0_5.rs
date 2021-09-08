@@ -108,7 +108,7 @@ pub struct TypedArray<T> {
 }
 
 impl<T: AscValue> TypedArray<T> {
-    pub(crate) fn new<H: AscHeap + ?Sized>(
+    pub fn new<H: AscHeap + ?Sized>(
         content: &[T],
         heap: &mut H,
     ) -> Result<Self, DeterministicHostError> {
