@@ -1,3 +1,4 @@
+use anyhow::ensure;
 use anyhow::{anyhow, Error};
 use futures03::{future::try_join3, stream::FuturesOrdered, TryStreamExt as _};
 use itertools::Itertools;
@@ -60,6 +61,10 @@ lazy_static! {
         .ok()
         .and_then(|api_version_str| Version::parse(&api_version_str).ok())
         .unwrap_or(SPEC_VERSION_0_0_3);
+    static ref MAX_API_VERSION: semver::Version = std::env::var("GRAPH_MAX_API_VERSION")
+        .ok()
+        .and_then(|api_version_str| semver::Version::parse(&api_version_str).ok())
+        .unwrap_or(semver::Version::new(0, 0, 5));
 }
 
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.
@@ -789,6 +794,17 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
                 .try_collect::<Vec<_>>(),
         )
         .await?;
+
+        for ds in &data_sources {
+            ensure!(
+                semver::VersionReq::parse(&format!("<= {}", *MAX_API_VERSION))
+                    .unwrap()
+                    .matches(&ds.api_version()),
+                "The maximum supported mapping API version of this indexer is {}, but `{}` was found",
+                *MAX_API_VERSION,
+                ds.api_version()
+            );
+        }
 
         Ok(SubgraphManifest {
             id,

@@ -15,9 +15,9 @@ use web3::types::{Log, Transaction, H256};
 use graph::{
     blockchain::{self, Blockchain},
     prelude::{
-        async_trait, info, lazy_static, serde_json, BlockNumber, CheapClone,
-        DataSourceTemplateInfo, Deserialize, EthereumCall, LightEthereumBlock,
-        LightEthereumBlockExt, LinkResolver, Logger, TryStreamExt,
+        async_trait, info, serde_json, BlockNumber, CheapClone, DataSourceTemplateInfo,
+        Deserialize, EthereumCall, LightEthereumBlock, LightEthereumBlockExt, LinkResolver, Logger,
+        TryStreamExt,
     },
 };
 
@@ -25,13 +25,6 @@ use graph::data::subgraph::{calls_host_fn, DataSourceContext, Source};
 
 use crate::chain::Chain;
 use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger, MappingTrigger};
-
-lazy_static! {
-    static ref MAX_API_VERSION: semver::Version = std::env::var("GRAPH_MAX_API_VERSION")
-        .ok()
-        .and_then(|api_version_str| semver::Version::parse(&api_version_str).ok())
-        .unwrap_or(semver::Version::new(0, 0, 5));
-}
 
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
@@ -867,18 +860,9 @@ impl UnresolvedMapping {
             file: link,
         } = self;
 
-        let api_version = semver::Version::parse(&api_version)?;
-
-        ensure!(
-            semver::VersionReq::parse(&format!("<= {}", *MAX_API_VERSION))
-                .unwrap()
-                .matches(&api_version),
-            "The maximum supported mapping API version of this indexer is {}, but `{}` was found",
-            *MAX_API_VERSION,
-            api_version
-        );
-
         info!(logger, "Resolve mapping"; "link" => &link.link);
+
+        let api_version = semver::Version::parse(&api_version)?;
 
         let (abis, runtime) = try_join(
             // resolve each abi
