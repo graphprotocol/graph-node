@@ -993,12 +993,11 @@ fn test_safe_null_ptr_read(api_version: Version) {
         api_version,
     );
 
-    let result_ptr: AscPtr<AscBigInt> = module.invoke_export0("safeNullPtrRead");
-    let result: BigInt = asc_get(&module, result_ptr).unwrap();
-    assert_eq!(result, BigInt::from(2));
+    module.invoke_export0_void("safeNullPtrRead");
 }
 
 #[tokio::test]
+#[should_panic(expected = "Failed to sum BigInts because left hand side is 'null'")]
 async fn safe_null_ptr_read_0_0_5() {
     test_safe_null_ptr_read(API_VERSION_0_0_5);
 }

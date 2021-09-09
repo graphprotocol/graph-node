@@ -57,11 +57,10 @@ class SafeBigInt extends Uint8Array {
     }
 
     @operator('+')
-    plus(other: SafeBigInt | null): SafeBigInt {
-        let x = this ? this : SafeBigInt.fromI32(0);
-        let y = other ? other : SafeBigInt.fromI32(0);
+    plus(other: SafeBigInt): SafeBigInt {
+        assert(this !== null, "Failed to sum BigInts because left hand side is 'null'");
 
-        return changetype<SafeBigInt>(bigInt.plus(changetype<BigInt>(x), changetype<BigInt>(y)));
+        return changetype<SafeBigInt>(bigInt.plus(changetype<BigInt>(this), changetype<BigInt>(other)));
     }
 }
 
@@ -71,13 +70,13 @@ class Wrapper2 {
     ) {}
 }
 
-export function safeNullPtrRead(): SafeBigInt {
+export function safeNullPtrRead(): void {
     let x = SafeBigInt.fromI32(2);
     let y: SafeBigInt | null = null;
 
     let wrapper2 = new Wrapper2(y);
 
+    // Breaks as well, but by our assertion, before getting into
+    // the Rust code.
     wrapper2.n = wrapper2.n + x;
-
-    return wrapper2.n!;
 }
