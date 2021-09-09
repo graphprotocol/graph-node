@@ -1395,7 +1395,7 @@ impl LayoutCache {
                 expires: Instant::now() + self.ttl,
                 value: layout,
             };
-            &self.entries.lock().unwrap().insert(deployment, entry);
+            self.entries.lock().unwrap().insert(deployment, entry);
         }
     }
 
