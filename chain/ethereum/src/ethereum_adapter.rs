@@ -111,10 +111,8 @@ lazy_static! {
     /// Additional deterministic errors that have not yet been hardcoded. Separated by `;`.
     static ref GETH_ETH_CALL_ERRORS_ENV: Vec<String> = {
         std::env::var("GRAPH_GETH_ETH_CALL_ERRORS")
-        .unwrap_or_default()
-        .split(';')
-        .map(ToOwned::to_owned)
-        .collect()
+        .map(|s| s.split(';').filter(|s| s.len() > 0).map(ToOwned::to_owned).collect())
+        .unwrap_or(Vec::new())
     };
 }
 
