@@ -102,7 +102,7 @@ pub struct TypedArray<T> {
     // #dataStart -> Start within the #data
     data_start: u32,
     // #dataLength -> Length of the data from #dataStart
-    byte_length: u32,
+    pub byte_length: u32,
     // Not included in memory layout, it's just for typings
     ty: PhantomData<T>,
 }
@@ -118,7 +118,7 @@ impl<T: AscValue> TypedArray<T> {
         Ok(TypedArray {
             buffer: AscPtr::new(ptr.wasm_ptr()), // new AscPtr necessary to convert type parameter
             data_start: ptr.wasm_ptr(),
-            pub byte_length,
+            byte_length,
             ty: PhantomData,
         })
     }
