@@ -3,6 +3,7 @@ use diesel::serialize::ToSql;
 use diesel_derives::{AsExpression, FromSqlRow};
 use hex;
 use num_bigint;
+use num_traits::Signed;
 use serde::{self, Deserialize, Serialize};
 use thiserror::Error;
 use web3::types::*;
@@ -271,24 +272,13 @@ pub enum BigDecimalError {
 impl<'a> TryFrom<&'a BigInt> for u64 {
     type Error = BigIntOutOfRangeError;
     fn try_from(value: &'a BigInt) -> Result<u64, BigIntOutOfRangeError> {
-        let (sign, bytes) = value.to_bytes_le();
-
-        if sign == num_bigint::Sign::Minus {
-            return Err(BigIntOutOfRangeError::Negative);
+        if value.0.is_positive() {
+            (&value.0)
+                .try_into()
+                .or(Err(BigIntOutOfRangeError::Overflow))
+        } else {
+            Err(BigIntOutOfRangeError::Negative)
         }
-
-        if bytes.len() > 8 {
-            return Err(BigIntOutOfRangeError::Overflow);
-        }
-
-        // Replace this with u64::from_le_bytes when stabilized
-        let mut n = 0u64;
-        let mut shift_dist = 0;
-        for b in bytes {
-            n = ((b as u64) << shift_dist) | n;
-            shift_dist += 8;
-        }
-        Ok(n)
     }
 }
 
