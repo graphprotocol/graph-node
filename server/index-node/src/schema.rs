@@ -21,5 +21,5 @@ lazy_static! {
 
 #[test]
 fn schema_parses() {
-    &*SCHEMA;
+    let _ = &*SCHEMA;
 }
