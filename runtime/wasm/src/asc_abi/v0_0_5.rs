@@ -118,7 +118,7 @@ impl<T: AscValue> TypedArray<T> {
         Ok(TypedArray {
             buffer: AscPtr::new(ptr.wasm_ptr()), // new AscPtr necessary to convert type parameter
             data_start: ptr.wasm_ptr(),
-            byte_length,
+            pub byte_length,
             ty: PhantomData,
         })
     }
