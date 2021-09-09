@@ -139,7 +139,7 @@ pub struct TypedArray<T> {
     pub buffer: AscPtr<ArrayBuffer>,
     /// Byte position in `buffer` of the array start.
     byte_offset: u32,
-    byte_length: u32,
+    pub byte_length: u32,
     ty: PhantomData<T>,
 }
 
