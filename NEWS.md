@@ -11,6 +11,39 @@ validated during subgraph deployment
 
 > Subgraphs using previous versions are still supported and won't be affected by this change.
 
+#### New Indexer GraphQL query: `subgraphFetaures`
+
+It is now possible to query for the features a subgraph uses given its Qm-hash ID.
+
+For instance, the following query...
+
+```graphql
+{
+  subgraphFeatures(subgraphId: "QmW9ajg2oTyPfdWKyUkxc7cTJejwdyCbRrSivfryTfFe5D") {
+    features
+    errors
+  }
+}
+```
+
+... would produce this result:
+
+```json
+{
+  "data": {
+    "subgraphFeatures": {
+      "errors": [],
+      "features": [
+        "nonFatalErrors",
+        "ipfsOnEthereumContracts"
+      ]
+    }
+  }
+}
+```
+
+Subraphs with any Spec Version can be queried that way.
+
 ### Api Version 0.0.5
 
 - Added better error message for null pointers in the runtime [#2780](https://github.com/graphprotocol/graph-node/pull/2780).
