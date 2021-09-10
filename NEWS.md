@@ -17,8 +17,6 @@ validated during subgraph deployment
 
 ### Environment Variables
 
-- Added `GRAPH_STORE_CONNECTION_MIN_IDLE` for setting the minimum number of allowed database connections.
-- Added `GRAPH_STORE_CONNECTION_IDLE_TIMEOUT` for setting the timeout of when a database connection is considered idle.
 - When `GETH_ETH_CALL_ERRORS_ENV` is unset, it doesn't make `eth_call` errors to be considered determinsistic anymore [#2784](https://github.com/graphprotocol/graph-node/pull/2784)
 
 ### Robustness
@@ -30,10 +28,6 @@ validated during subgraph deployment
 ### Logs
 
 - Improve block ingestor error reporting for missing receipts [#2743](https://github.com/graphprotocol/graph-node/pull/2743).
-
-### Graph Manager (`graphman`)
-
-- Prevent migrations from running on setup [#2774](https://github.com/graphprotocol/graph-node/pull/2774).
 
 ## 0.24.0
 
