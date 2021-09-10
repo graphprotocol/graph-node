@@ -49,6 +49,12 @@ pub struct Shard(String);
 lazy_static! {
     /// The name of the primary shard that contains all instance-wide data
     pub static ref PRIMARY_SHARD: Shard = Shard("primary".to_string());
+    /// Whether to disable the notifications that feed GraphQL
+    /// subscriptions; when the environment variable is set, no updates
+    /// about entity changes will be sent to query nodes
+    pub static ref SEND_SUBSCRIPTION_NOTIFICATIONS: bool = {
+      std::env::var("GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS").ok().is_none()
+    };
 }
 
 /// How long to cache information about a deployment site
@@ -1072,7 +1078,11 @@ impl WritableStoreTrait for WritableStore {
         let event = self
             .writable
             .revert_block_operations(self.site.clone(), block_ptr_to)?;
-        self.store.send_store_event(&event)
+        if *SEND_SUBSCRIPTION_NOTIFICATIONS {
+            self.store.send_store_event(&event)
+        } else {
+            Ok(())
+        }
     }
 
     fn unfail(&self) -> Result<(), StoreError> {
@@ -1117,7 +1127,11 @@ impl WritableStoreTrait for WritableStore {
         )?;
 
         let _section = stopwatch.start_section("send_store_event");
-        self.store.send_store_event(&event)
+        if *SEND_SUBSCRIPTION_NOTIFICATIONS {
+            self.store.send_store_event(&event)
+        } else {
+            Ok(())
+        }
     }
 
     fn get_many(

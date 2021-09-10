@@ -105,6 +105,10 @@ those.
 - `GRAPH_SQL_STATEMENT_TIMEOUT`: the maximum number of seconds an
   individual SQL query is allowed to take during GraphQL
   execution. Default: unlimited
+- `GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS`: disables the internal
+  mechanism that is used to trigger updates on GraphQL subscriptions. When
+  this variable is set to any value, `graph-node` will still accept GraphQL
+  subscriptions, but they won't receive any updates.
 
 ## Miscellaneous
 
