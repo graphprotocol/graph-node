@@ -4,7 +4,7 @@
 # by running something like the following
 #   docker build --target STAGE -f docker/Dockerfile .
 
-FROM rust:latest as graph-node-build
+FROM rust:slim-buster as graph-node-build
 
 ARG COMMIT_SHA=unknown
 ARG REPO_NAME=unknown
