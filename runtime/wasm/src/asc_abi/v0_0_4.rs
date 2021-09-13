@@ -58,7 +58,7 @@ impl ArrayBuffer {
         self.content[byte_offset..]
             .chunks(size_of::<T>())
             .take(length)
-            .map(|asc_obj| T::from_asc_bytes(asc_obj, api_version.clone()))
+            .map(|asc_obj| T::from_asc_bytes(asc_obj, &api_version))
             .collect()
 
         // TODO: This code is preferred as it validates the length of the array.
@@ -101,7 +101,7 @@ impl AscType for ArrayBuffer {
     /// The Rust representation of an Asc object as layed out in Asc memory.
     fn from_asc_bytes(
         asc_obj: &[u8],
-        api_version: Version,
+        api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
         // Skip `byte_length` and the padding.
         let content_offset = size_of::<u32>() + 4;
@@ -221,7 +221,7 @@ impl AscType for AscString {
     /// The Rust representation of an Asc object as layed out in Asc memory.
     fn from_asc_bytes(
         asc_obj: &[u8],
-        _api_version: Version,
+        _api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
         // Pointer for our current position within `asc_obj`,
         // initially at the start of the content skipping `length`.

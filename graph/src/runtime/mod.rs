@@ -41,8 +41,10 @@ pub trait AscType: Sized {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError>;
 
     /// The Rust representation of an Asc object as layed out in Asc memory.
-    fn from_asc_bytes(asc_obj: &[u8], api_version: Version)
-        -> Result<Self, DeterministicHostError>;
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError>;
 
     fn content_len(&self, asc_bytes: &[u8]) -> usize {
         asc_bytes.len()
@@ -67,7 +69,7 @@ impl<T> AscType for std::marker::PhantomData<T> {
 
     fn from_asc_bytes(
         asc_obj: &[u8],
-        _api_version: Version,
+        _api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
         assert!(asc_obj.len() == 0);
 
@@ -87,7 +89,7 @@ impl AscType for bool {
 
     fn from_asc_bytes(
         asc_obj: &[u8],
-        _api_version: Version,
+        _api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
         if asc_obj.len() != 1 {
             Err(DeterministicHostError(anyhow::anyhow!(
@@ -111,7 +113,7 @@ macro_rules! impl_asc_type {
                     Ok(self.to_le_bytes().to_vec())
                 }
 
-                fn from_asc_bytes(asc_obj: &[u8], _api_version: Version) -> Result<Self, DeterministicHostError> {
+                fn from_asc_bytes(asc_obj: &[u8], _api_version: &Version) -> Result<Self, DeterministicHostError> {
                     let bytes = asc_obj.try_into().map_err(|_| {
                         DeterministicHostError(anyhow::anyhow!(
                             "Incorrect size for {}. Expected {}, got {},",

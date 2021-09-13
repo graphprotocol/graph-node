@@ -24,7 +24,7 @@ impl AscType for AscLogParamArray {
     }
     fn from_asc_bytes(
         asc_obj: &[u8],
-        api_version: Version,
+        api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
         Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
     }
