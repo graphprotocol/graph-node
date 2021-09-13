@@ -30,7 +30,7 @@ uuid = { version = "0.8.1", features = ["v4"] }
 stable-hash = { git = "https://github.com/graphprotocol/stable-hash" }
 backtrace = "0.3"
 diesel_derives = "1.4.1"
-anyhow = "1.0.43"
+anyhow = "1.0.44"
 git-testament = "0.2.0"
 itertools = "0.10.1"
 pin-utils = "0.1"
