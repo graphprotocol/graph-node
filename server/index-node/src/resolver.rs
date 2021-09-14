@@ -222,7 +222,7 @@ where
         // `validate` also validates subgraph features), so we must filter them out to build our
         // response.
         let subgraph_validation: Either<_, _> =
-            match unvalidated_subgraph_manifest.validate(self.subgraph_store.clone()) {
+            match unvalidated_subgraph_manifest.validate(self.subgraph_store.clone(), false) {
                 Ok(subgraph_manifest) => Either::Left(subgraph_manifest),
                 Err(validation_errors) => {
                     // We must ensure that all the errors are of the `FeatureValidationError`

@@ -607,9 +607,13 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         ))
     }
 
+    /// Validates the subgraph manifest file.
+    ///
+    /// Graft base validation will be skipped if the parameter `validate_graft_base` is false.
     pub fn validate<S: SubgraphStore>(
         self,
         store: Arc<S>,
+        validate_graft_base: bool,
     ) -> Result<SubgraphManifest<C>, Vec<SubgraphManifestValidationError>> {
         let (schemas, _) = self.0.schema.resolve_schema_references(store.clone());
 
@@ -661,7 +665,9 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
                     "Grafting of subgraphs is currently disabled".to_owned(),
                 ));
             }
-            errors.extend(graft.validate(store));
+            if validate_graft_base {
+                errors.extend(graft.validate(store));
+            }
         }
 
         // Validate subgraph feature usage and declaration.
