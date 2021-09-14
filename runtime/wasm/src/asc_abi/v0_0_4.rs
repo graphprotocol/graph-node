@@ -139,12 +139,12 @@ pub struct TypedArray<T> {
     pub buffer: AscPtr<ArrayBuffer>,
     /// Byte position in `buffer` of the array start.
     byte_offset: u32,
-    pub byte_length: u32,
+    byte_length: u32,
     ty: PhantomData<T>,
 }
 
 impl<T: AscValue> TypedArray<T> {
-    pub fn new<H: AscHeap + ?Sized>(
+    pub(crate) fn new<H: AscHeap + ?Sized>(
         content: &[T],
         heap: &mut H,
     ) -> Result<Self, DeterministicHostError> {

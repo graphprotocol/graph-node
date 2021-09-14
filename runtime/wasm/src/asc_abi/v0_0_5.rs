@@ -102,13 +102,13 @@ pub struct TypedArray<T> {
     // #dataStart -> Start within the #data
     data_start: u32,
     // #dataLength -> Length of the data from #dataStart
-    pub byte_length: u32,
+    byte_length: u32,
     // Not included in memory layout, it's just for typings
     ty: PhantomData<T>,
 }
 
 impl<T: AscValue> TypedArray<T> {
-    pub fn new<H: AscHeap + ?Sized>(
+    pub(crate) fn new<H: AscHeap + ?Sized>(
         content: &[T],
         heap: &mut H,
     ) -> Result<Self, DeterministicHostError> {
