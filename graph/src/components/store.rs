@@ -706,14 +706,14 @@ where
                 match source.poll() {
                     Ok(Async::NotReady) => {
                         if should_send && pending_event.is_some() {
-                            let event = pending_event.take().map(|event| Arc::new(event));
+                            let event = pending_event.take().map(Arc::new);
                             return Ok(Async::Ready(event));
                         } else {
                             return Ok(Async::NotReady);
                         }
                     }
                     Ok(Async::Ready(None)) => {
-                        let event = pending_event.take().map(|event| Arc::new(event));
+                        let event = pending_event.take().map(Arc::new);
                         return Ok(Async::Ready(event));
                     }
                     Ok(Async::Ready(Some(event))) => {
@@ -724,7 +724,7 @@ where
                         // We will report the error the next time poll() is called
                         if pending_event.is_some() {
                             had_err = true;
-                            let event = pending_event.take().map(|event| Arc::new(event));
+                            let event = pending_event.take().map(Arc::new);
                             return Ok(Async::Ready(event));
                         } else {
                             return Err(());
@@ -1562,11 +1562,11 @@ impl EntityCache {
 
     pub fn get(&mut self, key: &EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
         // Get the current entity, apply any updates from `updates`, then from `handler_updates`.
-        let mut entity = self.current.get_entity(&*self.store, &key)?;
-        if let Some(op) = self.updates.get(&key).cloned() {
+        let mut entity = self.current.get_entity(&*self.store, key)?;
+        if let Some(op) = self.updates.get(key).cloned() {
             entity = op.apply_to(entity)
         }
-        if let Some(op) = self.handler_updates.get(&key).cloned() {
+        if let Some(op) = self.handler_updates.get(key).cloned() {
             entity = op.apply_to(entity)
         }
         Ok(entity)
@@ -1724,7 +1724,7 @@ impl LfuCache<EntityKey, Option<Entity>> {
         store: &(impl WritableStore + ?Sized),
         key: &EntityKey,
     ) -> Result<Option<Entity>, QueryExecutionError> {
-        match self.get(&key) {
+        match self.get(key) {
             None => {
                 let mut entity = store.get(key)?;
                 if let Some(entity) = &mut entity {

@@ -82,7 +82,7 @@ pub fn api_schema(
     add_meta_field_type(&mut schema);
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
-    add_field_arguments(&mut schema, &input_schema)?;
+    add_field_arguments(&mut schema, input_schema)?;
     add_query_type(&mut schema, &object_types, &interface_types, features)?;
     add_subscription_type(&mut schema, &object_types, &interface_types, features)?;
 
@@ -331,11 +331,7 @@ fn field_input_values(
 ) -> Result<Vec<InputValue>, APISchemaError> {
     let mut input_values = vec![];
     for field in fields {
-        input_values.extend(field_filter_input_values(
-            schema,
-            &field,
-            &field.field_type,
-        )?);
+        input_values.extend(field_filter_input_values(schema, field, &field.field_type)?);
     }
     Ok(input_values)
 }
@@ -784,9 +780,9 @@ fn add_field_arguments(
     for input_object_type in input_schema.get_object_type_definitions() {
         for input_field in &input_object_type.fields {
             if let Some(input_reference_type) =
-                ast::get_referenced_entity_type(input_schema, &input_field)
+                ast::get_referenced_entity_type(input_schema, input_field)
             {
-                if ast::is_list_or_non_null_list_field(&input_field) {
+                if ast::is_list_or_non_null_list_field(input_field) {
                     // Get corresponding object type and field in the output schema
                     let object_type = ast::get_object_type_mut(schema, &input_object_type.name)
                         .expect("object type from input schema is missing in API schema");

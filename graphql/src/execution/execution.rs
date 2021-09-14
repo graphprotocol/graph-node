@@ -414,7 +414,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
                 let e = match e
                     .downcast_ref::<String>()
                     .map(String::as_str)
-                    .or(e.downcast_ref::<&'static str>().map(|&s| s))
+                    .or(e.downcast_ref::<&'static str>().copied())
                 {
                     Some(e) => e.to_string(),
                     None => "panic is not a string".to_string(),

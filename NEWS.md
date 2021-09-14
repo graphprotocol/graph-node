@@ -1,6 +1,68 @@
 # NEWS
 
-## 0.24
+## 0.24.1
+
+### Feature Management
+
+This release supports the upcoming Spec Version 0.0.4 that enables subgraph features to be declared in the manifest and
+validated during subgraph deployment
+[#2682](https://github.com/graphprotocol/graph-node/pull/2682)
+[#2746](https://github.com/graphprotocol/graph-node/pull/2746).
+
+> Subgraphs using previous versions are still supported and won't be affected by this change.
+
+#### New Indexer GraphQL query: `subgraphFetaures`
+
+It is now possible to query for the features a subgraph uses given its Qm-hash ID.
+
+For instance, the following query...
+
+```graphql
+{
+  subgraphFeatures(subgraphId: "QmW9ajg2oTyPfdWKyUkxc7cTJejwdyCbRrSivfryTfFe5D") {
+    features
+    errors
+  }
+}
+```
+
+... would produce this result:
+
+```json
+{
+  "data": {
+    "subgraphFeatures": {
+      "errors": [],
+      "features": [
+        "nonFatalErrors",
+        "ipfsOnEthereumContracts"
+      ]
+    }
+  }
+}
+```
+
+Subraphs with any Spec Version can be queried that way.
+
+### Api Version 0.0.5
+
+- Added better error message for null pointers in the runtime [#2780](https://github.com/graphprotocol/graph-node/pull/2780).
+
+### Environment Variables
+
+- When `GETH_ETH_CALL_ERRORS_ENV` is unset, it doesn't make `eth_call` errors to be considered determinsistic anymore [#2784](https://github.com/graphprotocol/graph-node/pull/2784)
+
+### Robustness
+
+- Tolerate a non-primary shard being down during startup [#2727](https://github.com/graphprotocol/graph-node/pull/2727).
+- Check that at least one replica for each shard has a non-zero weight [#2749](https://github.com/graphprotocol/graph-node/pull/2749).
+- Reduce locking for the chain head listener [#2763](https://github.com/graphprotocol/graph-node/pull/2763).
+
+### Logs
+
+- Improve block ingestor error reporting for missing receipts [#2743](https://github.com/graphprotocol/graph-node/pull/2743).
+
+## 0.24.0
 
 ### Api Version 0.0.5
 
@@ -20,6 +82,7 @@ and the long awaited AssemblyScript version upgrade!
 ### Metrics
 - `query_semaphore_wait_ms` is now by shard, and has the `pool` and `shard` labels.
 - `deployment_failed` metric added, it is `1` if the subgraph has failed and `0` otherwise.
+
 ### Other
 - Upgrade to tokio 1.0 and futures 0.3 [#2679](https://github.com/graphprotocol/graph-node/pull/2679), the first major contribution by StreamingFast!
 - Support Celo block reward events [#2670](https://github.com/graphprotocol/graph-node/pull/2670).

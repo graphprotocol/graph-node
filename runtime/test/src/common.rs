@@ -3,7 +3,9 @@ use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::*;
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::*;
-use graph_chain_ethereum::{Chain, DataSource, DataSourceTemplate};
+use graph_chain_ethereum::{
+    Chain, DataSource, DataSourceTemplate, Mapping, MappingABI, TemplateSource,
+};
 use graph_runtime_wasm::{HostExports, MappingContext};
 use semver::Version;
 use std::str::FromStr;

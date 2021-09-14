@@ -165,7 +165,7 @@ fn field_objects(
 ) -> q::Value {
     q::Value::List(
         fields
-            .into_iter()
+            .iter()
             .map(|field| field_object(schema, type_objects, field))
             .collect(),
     )

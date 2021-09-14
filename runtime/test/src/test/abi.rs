@@ -77,7 +77,8 @@ fn test_abi_array(api_version: Version) {
     ];
     let vec_obj: AscPtr<Array<AscPtr<AscString>>> = asc_new(&mut module, &*vec).unwrap();
 
-    let new_vec_obj: AscPtr<Array<AscPtr<AscString>>> = module.invoke_export("test_array", vec_obj);
+    let new_vec_obj: AscPtr<Array<AscPtr<AscString>>> =
+        module.invoke_export1("test_array", vec_obj);
     let new_vec: Vec<String> = asc_get(&module, new_vec_obj).unwrap();
 
     assert_eq!(
@@ -116,7 +117,7 @@ fn test_abi_subarray(api_version: Version) {
     let vec_obj: AscPtr<TypedArray<u8>> = asc_new(&mut module, &*vec).unwrap();
 
     let new_vec_obj: AscPtr<TypedArray<u8>> =
-        module.invoke_export("byte_array_third_quarter", vec_obj);
+        module.invoke_export1("byte_array_third_quarter", vec_obj);
     let new_vec: Vec<u8> = asc_get(&module, new_vec_obj).unwrap();
 
     assert_eq!(new_vec, vec![3]);
@@ -182,9 +183,9 @@ fn test_abi_ethabi_token_identity(api_version: Version) {
 
     let token_address_ptr = asc_new(&mut module, &token_address).unwrap();
     let new_address_obj: AscPtr<AscAddress> =
-        module.invoke_export("token_to_address", token_address_ptr);
+        module.invoke_export1("token_to_address", token_address_ptr);
 
-    let new_token_ptr = module.invoke_export("token_from_address", new_address_obj);
+    let new_token_ptr = module.invoke_export1("token_from_address", new_address_obj);
     let new_token = asc_get(&module, new_token_ptr).unwrap();
 
     assert_eq!(token_address, new_token);
@@ -194,9 +195,9 @@ fn test_abi_ethabi_token_identity(api_version: Version) {
 
     let token_bytes_ptr = asc_new(&mut module, &token_bytes).unwrap();
     let new_bytes_obj: AscPtr<ArrayBuffer> =
-        module.invoke_export("token_to_bytes", token_bytes_ptr);
+        module.invoke_export1("token_to_bytes", token_bytes_ptr);
 
-    let new_token_ptr = module.invoke_export("token_from_bytes", new_bytes_obj);
+    let new_token_ptr = module.invoke_export1("token_from_bytes", new_bytes_obj);
     let new_token = asc_get(&module, new_token_ptr).unwrap();
 
     assert_eq!(token_bytes, new_token);
@@ -205,9 +206,9 @@ fn test_abi_ethabi_token_identity(api_version: Version) {
     let int_token = Token::Int(U256([256, 453452345, 0, 42]));
 
     let int_token_ptr = asc_new(&mut module, &int_token).unwrap();
-    let new_int_obj: AscPtr<ArrayBuffer> = module.invoke_export("token_to_int", int_token_ptr);
+    let new_int_obj: AscPtr<ArrayBuffer> = module.invoke_export1("token_to_int", int_token_ptr);
 
-    let new_token_ptr = module.invoke_export("token_from_int", new_int_obj);
+    let new_token_ptr = module.invoke_export1("token_from_int", new_int_obj);
     let new_token = asc_get(&module, new_token_ptr).unwrap();
 
     assert_eq!(int_token, new_token);
@@ -216,9 +217,9 @@ fn test_abi_ethabi_token_identity(api_version: Version) {
     let uint_token = Token::Uint(U256([256, 453452345, 0, 42]));
 
     let uint_token_ptr = asc_new(&mut module, &uint_token).unwrap();
-    let new_uint_obj: AscPtr<ArrayBuffer> = module.invoke_export("token_to_uint", uint_token_ptr);
+    let new_uint_obj: AscPtr<ArrayBuffer> = module.invoke_export1("token_to_uint", uint_token_ptr);
 
-    let new_token_ptr = module.invoke_export("token_from_uint", new_uint_obj);
+    let new_token_ptr = module.invoke_export1("token_from_uint", new_uint_obj);
     let new_token = asc_get(&module, new_token_ptr).unwrap();
 
     assert_eq!(uint_token, new_token);
@@ -241,9 +242,9 @@ fn test_abi_ethabi_token_identity(api_version: Version) {
 
     let token_string_ptr = asc_new(&mut module, &token_string).unwrap();
     let new_string_obj: AscPtr<AscString> =
-        module.invoke_export("token_to_string", token_string_ptr);
+        module.invoke_export1("token_to_string", token_string_ptr);
 
-    let new_token_ptr = module.invoke_export("token_from_string", new_string_obj);
+    let new_token_ptr = module.invoke_export1("token_from_string", new_string_obj);
     let new_token = asc_get(&module, new_token_ptr).unwrap();
 
     assert_eq!(token_string, new_token);
@@ -254,9 +255,9 @@ fn test_abi_ethabi_token_identity(api_version: Version) {
 
     let new_array_ptr = asc_new(&mut module, &token_array_nested).unwrap();
     let new_array_obj: AscEnumArray<EthereumValueKind> =
-        module.invoke_export("token_to_array", new_array_ptr);
+        module.invoke_export1("token_to_array", new_array_ptr);
 
-    let new_token_ptr = module.invoke_export("token_from_array", new_array_obj);
+    let new_token_ptr = module.invoke_export1("token_from_array", new_array_obj);
     let new_token: Token = asc_get(&module, new_token_ptr).unwrap();
 
     assert_eq!(new_token, token_array_nested);
@@ -296,7 +297,7 @@ fn test_abi_store_value(api_version: Version) {
     // Value::String
     let string = "some string";
     let string_ptr = asc_new(&mut module, string).unwrap();
-    let new_value_ptr = module.invoke_export("value_from_string", string_ptr);
+    let new_value_ptr = module.invoke_export1("value_from_string", string_ptr);
     let new_value: Value = try_asc_get(&module, new_value_ptr).unwrap();
     assert_eq!(new_value, Value::from(string));
 
@@ -309,13 +310,13 @@ fn test_abi_store_value(api_version: Version) {
     // Value::BigDecimal
     let big_decimal = BigDecimal::from_str("3.14159001").unwrap();
     let big_decimal_ptr = asc_new(&mut module, &big_decimal).unwrap();
-    let new_value_ptr = module.invoke_export("value_from_big_decimal", big_decimal_ptr);
+    let new_value_ptr = module.invoke_export1("value_from_big_decimal", big_decimal_ptr);
     let new_value: Value = try_asc_get(&module, new_value_ptr).unwrap();
     assert_eq!(new_value, Value::BigDecimal(big_decimal));
 
     let big_decimal = BigDecimal::new(10.into(), 5);
     let big_decimal_ptr = asc_new(&mut module, &big_decimal).unwrap();
-    let new_value_ptr = module.invoke_export("value_from_big_decimal", big_decimal_ptr);
+    let new_value_ptr = module.invoke_export1("value_from_big_decimal", big_decimal_ptr);
     let new_value: Value = try_asc_get(&module, new_value_ptr).unwrap();
     assert_eq!(new_value, Value::BigDecimal(1_000_000.into()));
 
@@ -347,7 +348,7 @@ fn test_abi_store_value(api_version: Version) {
         Value::String("bar".to_owned()),
     ];
     let array_ptr = asc_new(&mut module, array).unwrap();
-    let new_value_ptr = module.invoke_export("value_from_array", array_ptr);
+    let new_value_ptr = module.invoke_export1("value_from_array", array_ptr);
     let new_value: Value = try_asc_get(&module, new_value_ptr).unwrap();
     assert_eq!(
         new_value,
@@ -360,14 +361,14 @@ fn test_abi_store_value(api_version: Version) {
     // Value::Bytes
     let bytes: &[u8] = &[0, 2, 5];
     let bytes_ptr: AscPtr<Uint8Array> = asc_new(&mut module, bytes).unwrap();
-    let new_value_ptr = module.invoke_export("value_from_bytes", bytes_ptr);
+    let new_value_ptr = module.invoke_export1("value_from_bytes", bytes_ptr);
     let new_value: Value = try_asc_get(&module, new_value_ptr).unwrap();
     assert_eq!(new_value, Value::Bytes(bytes.into()));
 
     // Value::BigInt
     let bytes: &[u8] = &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
     let bytes_ptr: AscPtr<Uint8Array> = asc_new(&mut module, bytes).unwrap();
-    let new_value_ptr = module.invoke_export("value_from_bigint", bytes_ptr);
+    let new_value_ptr = module.invoke_export1("value_from_bigint", bytes_ptr);
     let new_value: Value = try_asc_get(&module, new_value_ptr).unwrap();
     assert_eq!(
         new_value,
@@ -398,7 +399,7 @@ fn test_abi_h160(api_version: Version) {
 
     // As an `Uint8Array`
     let array_buffer: AscPtr<Uint8Array> = asc_new(&mut module, &address).unwrap();
-    let new_address_obj: AscPtr<Uint8Array> = module.invoke_export("test_address", array_buffer);
+    let new_address_obj: AscPtr<Uint8Array> = module.invoke_export1("test_address", array_buffer);
 
     // This should have 1 added to the first and last byte.
     let new_address: H160 = asc_get(&module, new_address_obj).unwrap();
@@ -431,7 +432,7 @@ fn test_string(api_version: Version) {
     let string = "    漢字Double_Me🇧🇷  ";
     let trimmed_string_ptr = asc_new(&mut module, string).unwrap();
     let trimmed_string_obj: AscPtr<AscString> =
-        module.invoke_export("repeat_twice", trimmed_string_ptr);
+        module.invoke_export1("repeat_twice", trimmed_string_ptr);
     let doubled_string: String = asc_get(&module, trimmed_string_obj).unwrap();
     assert_eq!(doubled_string, string.repeat(2));
 }
@@ -460,7 +461,7 @@ fn test_abi_big_int(api_version: Version) {
     let old_uint = U256::zero();
     let array_buffer: AscPtr<AscBigInt> =
         asc_new(&mut module, &BigInt::from_unsigned_u256(&old_uint)).unwrap();
-    let new_uint_obj: AscPtr<AscBigInt> = module.invoke_export("test_uint", array_buffer);
+    let new_uint_obj: AscPtr<AscBigInt> = module.invoke_export1("test_uint", array_buffer);
     let new_uint: BigInt = asc_get(&module, new_uint_obj).unwrap();
     assert_eq!(new_uint, BigInt::from(1 as i32));
     let new_uint = new_uint.to_unsigned_u256();
@@ -469,7 +470,7 @@ fn test_abi_big_int(api_version: Version) {
     // Test passing in -50 and increment it by 1
     let old_uint = BigInt::from(-50);
     let array_buffer: AscPtr<AscBigInt> = asc_new(&mut module, &old_uint).unwrap();
-    let new_uint_obj: AscPtr<AscBigInt> = module.invoke_export("test_uint", array_buffer);
+    let new_uint_obj: AscPtr<AscBigInt> = module.invoke_export1("test_uint", array_buffer);
     let new_uint: BigInt = asc_get(&module, new_uint_obj).unwrap();
     assert_eq!(new_uint, BigInt::from(-49 as i32));
     let new_uint_from_u256 = BigInt::from_signed_u256(&new_uint.to_signed_u256());
@@ -499,7 +500,7 @@ fn test_big_int_to_string(api_version: Version) {
     let big_int_str = "30145144166666665000000000000000000";
     let big_int = BigInt::from_str(big_int_str).unwrap();
     let ptr: AscPtr<AscBigInt> = asc_new(&mut module, &big_int).unwrap();
-    let string_obj: AscPtr<AscString> = module.invoke_export("big_int_to_string", ptr);
+    let string_obj: AscPtr<AscString> = module.invoke_export1("big_int_to_string", ptr);
     let string: String = asc_get(&module, string_obj).unwrap();
     assert_eq!(string, big_int_str);
 }

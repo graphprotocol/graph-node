@@ -100,7 +100,7 @@ where
 {
     fn try_from_value(value: &q::Value) -> Result<Self, Error> {
         match value {
-            q::Value::List(values) => values.into_iter().try_fold(vec![], |mut values, value| {
+            q::Value::List(values) => values.iter().try_fold(vec![], |mut values, value| {
                 values.push(T::try_from_value(value)?);
                 Ok(values)
             }),

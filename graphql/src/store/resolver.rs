@@ -221,7 +221,7 @@ impl Resolver for StoreResolver {
         ctx: &ExecutionContext<Self>,
         selection_set: &q::SelectionSet,
     ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
-        super::prefetch::run(&self, ctx, selection_set).map(|value| Some(value))
+        super::prefetch::run(self, ctx, selection_set).map(Some)
     }
 
     fn resolve_objects(

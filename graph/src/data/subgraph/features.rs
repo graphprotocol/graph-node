@@ -18,6 +18,8 @@ use crate::{
 use itertools::Itertools;
 use std::{collections::BTreeSet, fmt, str::FromStr};
 
+use super::calls_host_fn;
+
 /// This array must contain all IPFS-related functions that are exported by the host WASM runtime.
 ///
 /// For reference, search this codebase for: ff652476-e6ad-40e4-85b8-e815d6c6e5e2
@@ -130,12 +132,9 @@ impl From<InvalidMapping> for SubgraphFeatureValidationError {
 fn detect_ipfs_on_ethereum_contracts<C: Blockchain>(
     manifest: &SubgraphManifest<C>,
 ) -> Result<Option<SubgraphFeature>, InvalidMapping> {
-    for mapping in manifest.mappings() {
+    for runtime in manifest.runtimes() {
         for function_name in IPFS_ON_ETHEREUM_CONTRACTS_FUNCTION_NAMES {
-            if mapping
-                .calls_host_fn(function_name)
-                .map_err(|_| InvalidMapping)?
-            {
+            if calls_host_fn(runtime, function_name).map_err(|_| InvalidMapping)? {
                 return Ok(Some(SubgraphFeature::IpfsOnEthereumContracts));
             }
         }

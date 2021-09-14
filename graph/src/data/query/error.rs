@@ -386,8 +386,8 @@ impl Serialize for QueryError {
             }
             QueryError::ExecutionError(IncorrectPrefetchResult { slow, prefetch }) => {
                 map.serialize_entry("incorrectPrefetch", &true)?;
-                map.serialize_entry("single", &SerializableValue(&slow))?;
-                map.serialize_entry("prefetch", &SerializableValue(&prefetch))?;
+                map.serialize_entry("single", &SerializableValue(slow))?;
+                map.serialize_entry("prefetch", &SerializableValue(prefetch))?;
                 format!("{}", self)
             }
             _ => format!("{}", self),

@@ -127,6 +127,10 @@ impl<T: AscValue> TypedArray<T> {
         &self,
         heap: &H,
     ) -> Result<Vec<T>, DeterministicHostError> {
+        // We're trying to read the pointer below, we should check it's
+        // not null before using it.
+        self.buffer.check_is_not_null()?;
+
         // This subtraction is needed because on the ArrayBufferView memory layout
         // there are two pointers to the data.
         // - The first (self.buffer) points to the related ArrayBuffer.
@@ -138,7 +142,7 @@ impl<T: AscValue> TypedArray<T> {
             .checked_sub(self.buffer.wasm_ptr())
             .ok_or_else(|| {
                 DeterministicHostError(anyhow::anyhow!(
-                    "Subtract overflow on pointer: {}", // Usually when pointer is zero because of null in AssemblyScript
+                    "Subtract overflow on pointer: {}",
                     self.data_start
                 ))
             })?;
@@ -272,6 +276,10 @@ impl<T: AscValue> Array<T> {
         &self,
         heap: &H,
     ) -> Result<Vec<T>, DeterministicHostError> {
+        // We're trying to read the pointer below, we should check it's
+        // not null before using it.
+        self.buffer.check_is_not_null()?;
+
         // This subtraction is needed because on the ArrayBufferView memory layout
         // there are two pointers to the data.
         // - The first (self.buffer) points to the related ArrayBuffer.
@@ -283,7 +291,7 @@ impl<T: AscValue> Array<T> {
             .checked_sub(self.buffer.wasm_ptr())
             .ok_or_else(|| {
                 DeterministicHostError(anyhow::anyhow!(
-                    "Subtract overflow on pointer: {}", // Usually when pointer is zero because of null in AssemblyScript
+                    "Subtract overflow on pointer: {}",
                     self.buffer_data_start
                 ))
             })?;

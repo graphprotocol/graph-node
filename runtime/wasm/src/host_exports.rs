@@ -71,7 +71,7 @@ impl<C: Blockchain> HostExports<C> {
 
         Self {
             subgraph_id,
-            api_version: data_source.mapping().api_version.clone(),
+            api_version: data_source.api_version(),
             data_source_name: data_source.name().to_owned(),
             data_source_address: data_source.address().unwrap_or_default().to_owned(),
             data_source_network,

@@ -1,13 +1,9 @@
-use anyhow::{anyhow, ensure, Error};
-use ethabi::Contract;
-use futures03::{
-    future::{try_join, try_join3},
-    stream::FuturesOrdered,
-    TryStreamExt as _,
-};
+use anyhow::ensure;
+use anyhow::{anyhow, Error};
+use futures03::{future::try_join3, stream::FuturesOrdered, TryStreamExt as _};
 use itertools::Itertools;
 use lazy_static::lazy_static;
-use semver::{Version, VersionReq};
+use semver::Version;
 use serde::de;
 use serde::ser;
 use serde_yaml;
@@ -16,7 +12,7 @@ use stable_hash::prelude::*;
 use std::{collections::BTreeSet, marker::PhantomData};
 use thiserror::Error;
 use wasmparser;
-use web3::types::{Address, H256};
+use web3::types::Address;
 
 use crate::data::store::Entity;
 use crate::data::{
@@ -35,7 +31,6 @@ use crate::{
 };
 
 use crate::prelude::{impl_slog_value, q, BlockNumber, Deserialize, Serialize};
-use crate::util::ethereum::string_to_h256;
 
 use std::fmt;
 use std::ops::Deref;
@@ -62,14 +57,14 @@ lazy_static! {
         .ok()
         .map(|s| s.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    static ref MAX_API_VERSION: Version = std::env::var("GRAPH_MAX_API_VERSION")
-        .ok()
-        .and_then(|api_version_str| Version::parse(&api_version_str).ok())
-        .unwrap_or(Version::new(0, 0, 5));
     pub static ref MAX_SPEC_VERSION: Version = std::env::var("GRAPH_MAX_SPEC_VERSION")
         .ok()
         .and_then(|api_version_str| Version::parse(&api_version_str).ok())
         .unwrap_or(SPEC_VERSION_0_0_3);
+    static ref MAX_API_VERSION: semver::Version = std::env::var("GRAPH_MAX_API_VERSION")
+        .ok()
+        .and_then(|api_version_str| semver::Version::parse(&api_version_str).ok())
+        .unwrap_or(semver::Version::new(0, 0, 5));
 }
 
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.
@@ -432,7 +427,7 @@ impl UnresolvedSchema {
     ) -> Result<Schema, anyhow::Error> {
         info!(logger, "Resolve schema"; "link" => &self.file.link);
 
-        let schema_bytes = resolver.cat(&logger, &self.file).await?;
+        let schema_bytes = resolver.cat(logger, &self.file).await?;
         Schema::parse(&String::from_utf8(schema_bytes)?, id)
     }
 }
@@ -449,215 +444,21 @@ pub struct Source {
     pub start_block: BlockNumber,
 }
 
-#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
-pub struct TemplateSource {
-    pub abi: String,
-}
+pub fn calls_host_fn(runtime: &[u8], host_fn: &str) -> anyhow::Result<bool> {
+    use wasmparser::Payload;
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct UnresolvedMappingABI {
-    pub name: String,
-    pub file: Link,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct MappingABI {
-    pub name: String,
-    pub contract: Contract,
-}
-
-impl UnresolvedMappingABI {
-    pub async fn resolve(
-        self,
-        resolver: &impl LinkResolver,
-        logger: &Logger,
-    ) -> Result<MappingABI, anyhow::Error> {
-        info!(
-            logger,
-            "Resolve ABI";
-            "name" => &self.name,
-            "link" => &self.file.link
-        );
-
-        let contract_bytes = resolver.cat(&logger, &self.file).await?;
-        let contract = Contract::load(&*contract_bytes)?;
-        Ok(MappingABI {
-            name: self.name,
-            contract,
-        })
-    }
-}
-
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct MappingBlockHandler {
-    pub handler: String,
-    pub filter: Option<BlockHandlerFilter>,
-}
-
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
-pub enum BlockHandlerFilter {
-    // Call filter will trigger on all blocks where the data source contract
-    // address has been called
-    Call,
-}
-
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct MappingCallHandler {
-    pub function: String,
-    pub handler: String,
-}
-
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct MappingEventHandler {
-    pub event: String,
-    pub topic0: Option<H256>,
-    pub handler: String,
-}
-
-impl MappingEventHandler {
-    pub fn topic0(&self) -> H256 {
-        self.topic0
-            .unwrap_or_else(|| string_to_h256(&self.event.replace("indexed ", "")))
-    }
-}
-
-#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UnresolvedMapping {
-    pub kind: String,
-    pub api_version: String,
-    pub language: String,
-    pub entities: Vec<String>,
-    pub abis: Vec<UnresolvedMappingABI>,
-    #[serde(default)]
-    pub block_handlers: Vec<MappingBlockHandler>,
-    #[serde(default)]
-    pub call_handlers: Vec<MappingCallHandler>,
-    #[serde(default)]
-    pub event_handlers: Vec<MappingEventHandler>,
-    pub file: Link,
-}
-
-#[derive(Clone, Debug)]
-pub struct Mapping {
-    pub kind: String,
-    pub api_version: Version,
-    pub language: String,
-    pub entities: Vec<String>,
-    pub abis: Vec<Arc<MappingABI>>,
-    pub block_handlers: Vec<MappingBlockHandler>,
-    pub call_handlers: Vec<MappingCallHandler>,
-    pub event_handlers: Vec<MappingEventHandler>,
-    pub runtime: Arc<Vec<u8>>,
-    pub link: Link,
-}
-
-impl Mapping {
-    pub fn requires_archive(&self) -> anyhow::Result<bool> {
-        self.calls_host_fn("ethereum.call")
-    }
-
-    fn calls_host_fn(&self, host_fn: &str) -> anyhow::Result<bool> {
-        use wasmparser::Payload;
-
-        let runtime = self.runtime.as_ref().as_ref();
-
-        for payload in wasmparser::Parser::new(0).parse_all(runtime) {
-            if let Payload::ImportSection(s) = payload? {
-                for import in s {
-                    let import = import?;
-                    if import.field == Some(host_fn) {
-                        return Ok(true);
-                    }
+    for payload in wasmparser::Parser::new(0).parse_all(runtime) {
+        if let Payload::ImportSection(s) = payload? {
+            for import in s {
+                let import = import?;
+                if import.field == Some(host_fn) {
+                    return Ok(true);
                 }
             }
         }
-
-        Ok(false)
     }
 
-    pub fn has_call_handler(&self) -> bool {
-        !self.call_handlers.is_empty()
-    }
-
-    pub fn has_block_handler_with_call_filter(&self) -> bool {
-        self.block_handlers
-            .iter()
-            .any(|handler| matches!(handler.filter, Some(BlockHandlerFilter::Call)))
-    }
-
-    pub fn find_abi(&self, abi_name: &str) -> Result<Arc<MappingABI>, Error> {
-        Ok(self
-            .abis
-            .iter()
-            .find(|abi| abi.name == abi_name)
-            .ok_or_else(|| anyhow!("No ABI entry with name `{}` found", abi_name))?
-            .cheap_clone())
-    }
-}
-
-impl UnresolvedMapping {
-    pub async fn resolve(
-        self,
-        resolver: &impl LinkResolver,
-        logger: &Logger,
-    ) -> Result<Mapping, anyhow::Error> {
-        let UnresolvedMapping {
-            kind,
-            api_version,
-            language,
-            entities,
-            abis,
-            block_handlers,
-            call_handlers,
-            event_handlers,
-            file: link,
-        } = self;
-
-        let api_version = Version::parse(&api_version)?;
-
-        ensure!(
-            VersionReq::parse(&format!("<= {}", *MAX_API_VERSION))
-                .unwrap()
-                .matches(&api_version),
-            "The maximum supported mapping API version of this indexer is {}, but `{}` was found",
-            *MAX_API_VERSION,
-            api_version
-        );
-
-        info!(logger, "Resolve mapping"; "link" => &link.link);
-
-        let (abis, runtime) = try_join(
-            // resolve each abi
-            abis.into_iter()
-                .map(|unresolved_abi| async {
-                    Result::<_, Error>::Ok(Arc::new(
-                        unresolved_abi.resolve(resolver, logger).await?,
-                    ))
-                })
-                .collect::<FuturesOrdered<_>>()
-                .try_collect::<Vec<_>>(),
-            async {
-                let module_bytes = resolver.cat(logger, &link).await?;
-                Ok(Arc::new(module_bytes))
-            },
-        )
-        .await?;
-
-        Ok(Mapping {
-            kind,
-            api_version,
-            language,
-            entities,
-            abis,
-            block_handlers: block_handlers.clone(),
-            call_handlers: call_handlers.clone(),
-            event_handlers: event_handlers.clone(),
-            runtime,
-            link,
-        })
-    }
+    Ok(false)
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -675,10 +476,10 @@ impl UnifiedMappingApiVersion {
         }
     }
 
-    pub fn try_from_versions<'a>(
-        versions: impl Iterator<Item = &'a Version>,
+    pub fn try_from_versions(
+        versions: impl Iterator<Item = Version>,
     ) -> Result<Self, DifferentMappingApiVersions> {
-        let unique_versions: BTreeSet<Version> = versions.into_iter().cloned().collect();
+        let unique_versions: BTreeSet<Version> = versions.collect();
 
         let all_below_referential_version = unique_versions.iter().all(|v| *v < API_VERSION_0_0_5);
         let all_the_same = unique_versions.len() == 1;
@@ -819,42 +620,8 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             errors.push(SubgraphManifestValidationError::NoDataSources);
         }
 
-        // Validate that the manifest has a `source` address in each data source
-        // which has call or block handlers
-        if self.0.data_sources.iter().any(|data_source| {
-            let no_source_address = data_source.address().is_none();
-            let has_call_handlers = !data_source.mapping().call_handlers.is_empty();
-            let has_block_handlers = !data_source.mapping().block_handlers.is_empty();
-
-            no_source_address && (has_call_handlers || has_block_handlers)
-        }) {
-            errors.push(SubgraphManifestValidationError::SourceAddressRequired)
-        };
-
-        // Validate that there are no more than one of each type of
-        // block_handler in each data source.
-        let has_too_many_block_handlers = self.0.data_sources.iter().any(|data_source| {
-            if data_source.mapping().block_handlers.is_empty() {
-                return false;
-            }
-
-            let mut non_filtered_block_handler_count = 0;
-            let mut call_filtered_block_handler_count = 0;
-            data_source
-                .mapping()
-                .block_handlers
-                .iter()
-                .for_each(|block_handler| {
-                    if block_handler.filter.is_none() {
-                        non_filtered_block_handler_count += 1
-                    } else {
-                        call_filtered_block_handler_count += 1
-                    }
-                });
-            non_filtered_block_handler_count > 1 || call_filtered_block_handler_count > 1
-        });
-        if has_too_many_block_handlers {
-            errors.push(SubgraphManifestValidationError::DataSourceBlockHandlerLimitExceeded)
+        for ds in &self.0.data_sources {
+            errors.extend(ds.validate());
         }
 
         // For API versions newer than 0.0.5, validate that all mappings uses the same api_version
@@ -958,32 +725,28 @@ impl<C: Blockchain> SubgraphManifest<C> {
             .collect()
     }
 
-    pub fn mappings(&self) -> Vec<Mapping> {
+    pub fn api_versions(&self) -> impl Iterator<Item = semver::Version> + '_ {
         self.templates
             .iter()
-            .map(|template| template.mapping().clone())
+            .map(|template| template.api_version().clone())
             .chain(
                 self.data_sources
                     .iter()
-                    .map(|source| source.mapping().clone()),
+                    .map(|source| source.api_version().clone()),
             )
-            .collect()
     }
 
-    // Only used in tests
-    #[cfg(debug_assertions)]
-    pub fn requires_traces(&self) -> bool {
-        self.mappings().iter().any(|mapping| {
-            mapping.has_call_handler() || mapping.has_block_handler_with_call_filter()
-        })
+    pub fn runtimes(&self) -> impl Iterator<Item = &[u8]> + '_ {
+        self.templates
+            .iter()
+            .map(|template| template.runtime())
+            .chain(self.data_sources.iter().map(|source| source.runtime()))
     }
 
     pub fn unified_mapping_api_version(
         &self,
     ) -> Result<UnifiedMappingApiVersion, DifferentMappingApiVersions> {
-        let mappings = self.mappings();
-        let iter = mappings.iter().map(|m| &m.api_version);
-        UnifiedMappingApiVersion::try_from_versions(iter)
+        UnifiedMappingApiVersion::try_from_versions(self.api_versions())
     }
 }
 
@@ -1031,6 +794,17 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
                 .try_collect::<Vec<_>>(),
         )
         .await?;
+
+        for ds in &data_sources {
+            ensure!(
+                semver::VersionReq::parse(&format!("<= {}", *MAX_API_VERSION))
+                    .unwrap()
+                    .matches(&ds.api_version()),
+                "The maximum supported mapping API version of this indexer is {}, but `{}` was found",
+                *MAX_API_VERSION,
+                ds.api_version()
+            );
+        }
 
         Ok(SubgraphManifest {
             id,
@@ -1140,7 +914,7 @@ fn unified_mapping_api_version_from_iterator() {
             .into()),
     ];
     for (version_vec, expected_unified_version) in input.iter().zip(output.iter()) {
-        let unified = UnifiedMappingApiVersion::try_from_versions(version_vec.iter());
+        let unified = UnifiedMappingApiVersion::try_from_versions(version_vec.iter().cloned());
         match (unified, expected_unified_version) {
             (Ok(a), Ok(b)) => assert_eq!(a, *b),
             (Err(a), Err(b)) => assert_eq!(a, *b),

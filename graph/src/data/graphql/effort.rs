@@ -384,7 +384,7 @@ impl LoadManager {
         // and assume the worst. This ensures that even if we only ever see
         // new queries, we drop `kill_rate` amount of traffic
         let known_query = query_effort.is_some();
-        let query_effort = query_effort.unwrap_or_else(|| total_effort).as_millis() as f64;
+        let query_effort = query_effort.unwrap_or(total_effort).as_millis() as f64;
         let total_effort = total_effort.as_millis() as f64;
 
         if known_query && *JAIL_QUERIES && query_effort / total_effort > *JAIL_THRESHOLD {
