@@ -54,7 +54,7 @@ impl ArrayBuffer {
         self.content[byte_offset..]
             .chunks(size_of::<T>())
             .take(length)
-            .map(|asc_obj| T::from_asc_bytes(asc_obj, api_version.clone()))
+            .map(|asc_obj| T::from_asc_bytes(asc_obj, &api_version))
             .collect()
     }
 }
@@ -76,7 +76,7 @@ impl AscType for ArrayBuffer {
 
     fn from_asc_bytes(
         asc_obj: &[u8],
-        _api_version: Version,
+        _api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
         Ok(ArrayBuffer {
             byte_length: asc_obj.len() as u32,
@@ -205,7 +205,7 @@ impl AscType for AscString {
     /// The Rust representation of an Asc object as layed out in Asc memory.
     fn from_asc_bytes(
         asc_obj: &[u8],
-        _api_version: Version,
+        _api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
         // UTF-16 (used in assemblyscript) always uses one
         // pair of bytes per code unit.
