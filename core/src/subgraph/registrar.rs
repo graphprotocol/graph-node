@@ -489,7 +489,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolve
     .await?;
 
     let manifest = unvalidated
-        .validate(store.cheap_clone())
+        .validate(store.cheap_clone(), true)
         .map_err(SubgraphRegistrarError::ManifestValidationError)?;
 
     let network_name = manifest.network_name();

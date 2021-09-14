@@ -166,7 +166,7 @@ specVersion: 0.0.2
         // would be a bit more work; we just want to make sure that
         // graft-related checks work
         let msg = unvalidated
-            .validate(store.clone())
+            .validate(store.clone(), true)
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| matches!(e, SubgraphManifestValidationError::GraftBaseInvalid(_)))
@@ -186,7 +186,7 @@ specVersion: 0.0.2
         // Validation against subgraph that has not reached the graft point fails
         let unvalidated = resolve_unvalidated(YAML).await;
         let msg = unvalidated
-            .validate(store)
+            .validate(store, true)
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| matches!(e, SubgraphManifestValidationError::GraftBaseInvalid(_)))
@@ -254,7 +254,7 @@ graft:
         let store = store.subgraph_store();
         let unvalidated = resolve_unvalidated(YAML).await;
         let error_msg = unvalidated
-            .validate(store.clone())
+            .validate(store.clone(), true)
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| {
@@ -290,7 +290,7 @@ graft:
         let store = store.subgraph_store();
         let unvalidated = resolve_unvalidated(YAML).await;
         assert!(unvalidated
-            .validate(store.clone())
+            .validate(store.clone(), true)
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| {
@@ -320,7 +320,7 @@ schema:
         let store = store.subgraph_store();
         let unvalidated = resolve_unvalidated(YAML).await;
         assert!(unvalidated
-            .validate(store.clone())
+            .validate(store.clone(), true)
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| {
@@ -370,7 +370,7 @@ schema:
         };
 
         assert!(unvalidated
-            .validate(store.clone())
+            .validate(store.clone(), true)
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| {
@@ -419,7 +419,7 @@ schema:
         };
 
         let error_msg = unvalidated
-            .validate(store.clone())
+            .validate(store.clone(), true)
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| {
@@ -492,7 +492,7 @@ dataSources:
         };
 
         let error_msg = unvalidated
-            .validate(store.clone())
+            .validate(store.clone(), true)
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| {
@@ -567,7 +567,7 @@ dataSources:
         };
 
         assert!(unvalidated
-            .validate(store.clone())
+            .validate(store.clone(), true)
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| {
@@ -595,7 +595,7 @@ schema:
         let store = store.subgraph_store();
         let unvalidated = resolve_unvalidated(YAML).await;
         assert!(unvalidated
-            .validate(store.clone())
+            .validate(store.clone(), true)
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| {
