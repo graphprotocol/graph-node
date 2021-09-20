@@ -9,6 +9,8 @@ wasmtime = "0.27.0"
 graph = { path = "../../graph" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
 graph-runtime-wasm = { path = "../wasm" }
-test-store = { path = "../../store/test-store" }
 graph-core = { path = "../../core" }
 graph-mock = { path = "../../mock" }
+
+[dev-dependencies]
+test-store = { path = "../../store/test-store" }
