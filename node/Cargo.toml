@@ -38,7 +38,7 @@ serde_regex = "1.1.0"
 structopt = { version = "0.3.23", features = ["wrap_help"] }
 toml = "0.5.7"
 shellexpand = "2.1.0"
-diesel = "1.4.7"
+diesel = "1.4.8"
 fail = "0.4"
 http = "0.1.21" # must be compatible with the version rust-web3 uses
 
