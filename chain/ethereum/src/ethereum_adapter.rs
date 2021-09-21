@@ -1361,9 +1361,10 @@ impl EthereumAdapterTrait for EthereumAdapter {
         chain_store: Arc<dyn ChainStore>,
         block_hashes: HashSet<H256>,
     ) -> Box<dyn Stream<Item = LightEthereumBlock, Error = Error> + Send> {
+        let block_hashes: Vec<_> = block_hashes.iter().cloned().collect();
         // Search for the block in the store first then use json-rpc as a backup.
         let mut blocks = chain_store
-            .blocks(block_hashes.iter().cloned().collect())
+            .blocks(&block_hashes)
             .map_err(|e| error!(&logger, "Error accessing block cache {}", e))
             .unwrap_or_default();
 

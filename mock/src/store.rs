@@ -27,7 +27,7 @@ mock! {
 
         fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 
-        fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<LightEthereumBlock>, Error>;
+        fn blocks(&self, hashes: &[H256]) -> Result<Vec<LightEthereumBlock>, Error>;
 
         fn ancestor_block(
             &self,
