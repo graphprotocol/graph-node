@@ -598,16 +598,6 @@ impl DeploymentStore {
         Ok(deployment::block_ptr(&conn, subgraph_id)?)
     }
 
-    fn block_cursor_with_conn(
-        subgraph_id: &DeploymentHash,
-        conn: &PgConnection,
-    ) -> Result<Option<String>, StoreError> {
-        Ok(deployment::get_subgraph_firehose_cursor(
-            &conn,
-            subgraph_id,
-        )?)
-    }
-
     pub(crate) fn deployment_details(
         &self,
         ids: Vec<String>,
@@ -692,7 +682,11 @@ impl DeploymentStore {
 
     pub(crate) fn block_cursor(&self, site: &Site) -> Result<Option<String>, StoreError> {
         let conn = self.get_conn()?;
-        Self::block_cursor_with_conn(&site.deployment, &conn)
+
+        Ok(deployment::get_subgraph_firehose_cursor(
+            &conn,
+            &site.deployment,
+        )?)
     }
 
     pub(crate) fn supports_proof_of_indexing<'a>(
@@ -916,7 +910,12 @@ impl DeploymentStore {
             }
 
             deployment::forward_block_ptr(&conn, &site.deployment, block_ptr_to)?;
-            deployment::update_firehose_cursor(&conn, &site.deployment, firehose_cursor)?;
+
+            if let Some(cursor) = firehose_cursor {
+                if cursor != "" {
+                    deployment::update_firehose_cursor(&conn, &site.deployment, &cursor)?;
+                }
+            }
 
             Ok(event)
         })?;

@@ -282,11 +282,10 @@ pub fn get_subgraph_firehose_cursor(
 pub fn update_firehose_cursor(
     conn: &PgConnection,
     id: &DeploymentHash,
-    cursor: Option<String>,
+    cursor: &String,
 ) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
-    let cursor = cursor.unwrap_or(String::from(""));
     update(d::table.filter(d::deployment.eq(id.as_str())))
         .set((d::firehose_cursor.eq(cursor),))
         .execute(conn)
