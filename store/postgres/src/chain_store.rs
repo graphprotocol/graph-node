@@ -507,7 +507,7 @@ mod data {
             &self,
             conn: &PgConnection,
             chain: &str,
-            hashes: Vec<H256>,
+            hashes: &[H256],
         ) -> Result<Vec<LightEthereumBlock>, Error> {
             use diesel::dsl::any;
 
@@ -1375,7 +1375,7 @@ impl ChainStoreTrait for ChainStore {
             .map_err(Error::from)
     }
 
-    fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<LightEthereumBlock>, Error> {
+    fn blocks(&self, hashes: &[H256]) -> Result<Vec<LightEthereumBlock>, Error> {
         let conn = self.get_conn()?;
         self.storage.blocks(&conn, &self.chain, hashes)
     }
