@@ -678,14 +678,22 @@ pub(crate) fn copy_errors(
         .execute(conn)?)
 }
 
-/// Drop the schema `namespace`. This deletes all data for the subgraph,
-/// and can not be reversed. It does not remove any of the metadata
-/// in the `subgraphs` schema for the deployment
+/// Drop the schema `namespace`. This deletes all data for the subgraph, and
+/// can not be reversed. It does not remove any of the metadata in the
+/// `subgraphs` schema for the deployment.
+///
+/// Since long-running operations, like a vacuum on one of the tables in the
+/// schema, could block dropping the schema indefinitely, this operation
+/// will wait at most 2s to aquire all necessary locks, and fail if that is
+/// not possible.
 pub fn drop_schema(
     conn: &diesel::pg::PgConnection,
     namespace: &crate::primary::Namespace,
 ) -> Result<(), StoreError> {
-    let query = format!("drop schema if exists {} cascade", namespace);
+    let query = format!(
+        "set local lock_timeout=2000; drop schema if exists {} cascade",
+        namespace
+    );
     Ok(conn.batch_execute(&*query)?)
 }
 
