@@ -636,8 +636,21 @@ struct PrefixComparison<'a> {
 }
 
 impl<'a> PrefixComparison<'a> {
+    /// Returns the function that prefixes this column's name.
+    /// The appropriate Postgres function is `substring`, if the column's type is a byte array,
+    /// or `left` if the type is a string.
+    fn prefixing_function(column: &Column) -> &str {
+        if column.is_binary_string() {
+            "substring"
+        } else {
+            "left"
+        }
+    }
+
     fn push_column_prefix(column: &Column, mut out: AstPass<Pg>) -> QueryResult<()> {
-        out.push_sql("left(");
+        // If not a binary string (bytea), then we're prefixing text.
+        out.push_sql(Self::prefixing_function(column));
+        out.push_sql("(");
         out.push_identifier(column.name.as_str())?;
         out.push_sql(", ");
         out.push_sql(&STRING_PREFIX_SIZE.to_string());
@@ -646,7 +659,8 @@ impl<'a> PrefixComparison<'a> {
     }
 
     fn push_value_prefix(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
-        out.push_sql("left(");
+        out.push_sql(Self::prefixing_function(&self.column));
+        out.push_sql("(");
         QueryValue(self.text, &self.column.column_type).walk_ast(out.reborrow())?;
         out.push_sql(", ");
         out.push_sql(&STRING_PREFIX_SIZE.to_string());
