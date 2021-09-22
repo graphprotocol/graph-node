@@ -1,4 +1,5 @@
 fn main() {
+    println!("cargo:rerun-if-changed=proto");
     tonic_build::configure()
         .out_dir("src/protobuf")
         .format(cfg!(debug_assertions)) // Release build environments might not have rustfmt installed
