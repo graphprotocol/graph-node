@@ -212,6 +212,7 @@ where
     fn start_assigned_subgraphs(&self) -> impl Future<Item = (), Error = Error> {
         let provider = self.provider.clone();
         let logger = self.logger.clone();
+        let node_id = self.node_id.clone();
 
         future::result(self.store.assignments(&self.node_id))
             .map_err(|e| anyhow!("Error querying subgraph assignments: {}", e))
@@ -221,6 +222,7 @@ where
                 // each a `sender` and waiting for all of them to be dropped, so
                 // the receiver terminates without receiving anything.
                 let deployments = HashSet::<DeploymentLocator>::from_iter(deployments);
+                let deployments_len = deployments.len();
                 let (sender, receiver) = futures01::sync::mpsc::channel::<()>(1);
                 for id in deployments {
                     let sender = sender.clone();
@@ -232,7 +234,8 @@ where
                 }
                 drop(sender);
                 receiver.collect().then(move |_| {
-                    info!(logger, "Started all subgraphs");
+                    info!(logger, "Started all assigned subgraphs";
+                                  "count" => deployments_len, "node_id" => &node_id);
                     future::ok(())
                 })
             })
