@@ -63,6 +63,7 @@ jobs:
         uses: actions-rs/cargo@v1
         env:
           RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+          CARGO_INCREMENTAL: 0
         with:
           command: test
           args: --verbose --workspace --exclude graph-tests -- --nocapture

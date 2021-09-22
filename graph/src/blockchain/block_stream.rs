@@ -1,15 +1,19 @@
 use anyhow::Error;
-use async_trait::async_trait;
 use futures03::Stream;
+use std::sync::Arc;
+use thiserror::Error;
 
 use super::{Block, BlockPtr, Blockchain};
 use crate::components::store::BlockNumber;
+use crate::firehose::bstream;
 use crate::{prelude::*, prometheus::labels};
 
 pub trait BlockStream<C: Blockchain>:
     Stream<Item = Result<BlockStreamEvent<C>, Error>> + Unpin
 {
 }
+
+pub type FirehoseCursor = Option<String>;
 
 pub struct BlockWithTriggers<C: Blockchain> {
     pub block: C::Block,
@@ -73,12 +77,33 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<BlockPtr, Error>;
 }
 
+pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
+    fn to_block_stream_event(
+        &self,
+        logger: &Logger,
+        response: &bstream::BlockResponseV2,
+        adapter: &C::TriggersAdapter,
+        filter: &C::TriggerFilter,
+    ) -> Result<BlockStreamEvent<C>, FirehoseError>;
+}
+
+#[derive(Error, Debug)]
+pub enum FirehoseError {
+    /// We were unable to decode the received block payload into the chain specific Block struct (chain_ethereum::codec::Block)
+    #[error("received gRPC block payload cannot be decoded")]
+    DecodingError(#[from] prost::DecodeError),
+
+    /// Some unknown error occured
+    #[error("unknown error")]
+    UnknownError(#[from] anyhow::Error),
+}
+
 pub enum BlockStreamEvent<C: Blockchain> {
     // The payload is the current subgraph head pointer, which should be reverted, such that the
     // parent of the current subgraph head becomes the new subgraph head.
-    Revert(BlockPtr),
+    Revert(BlockPtr, FirehoseCursor),
 
-    ProcessBlock(BlockWithTriggers<C>),
+    ProcessBlock(BlockWithTriggers<C>, FirehoseCursor),
 }
 
 #[derive(Clone)]

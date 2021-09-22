@@ -1060,6 +1060,10 @@ impl WritableStoreTrait for WritableStore {
         self.writable.block_ptr(self.site.as_ref())
     }
 
+    fn block_cursor(&self) -> Result<Option<String>, StoreError> {
+        self.writable.block_cursor(self.site.as_ref())
+    }
+
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
         let store = &self.writable;
 
@@ -1108,6 +1112,7 @@ impl WritableStoreTrait for WritableStore {
     fn transact_block_operations(
         &self,
         block_ptr_to: BlockPtr,
+        firehose_cursor: Option<String>,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
@@ -1117,9 +1122,11 @@ impl WritableStoreTrait for WritableStore {
             same_subgraph(&mods, &self.site.deployment),
             "can only transact operations within one shard"
         );
+
         let event = self.writable.transact_block_operations(
             self.site.clone(),
             block_ptr_to,
+            firehose_cursor,
             mods,
             stopwatch.cheap_clone(),
             data_sources,

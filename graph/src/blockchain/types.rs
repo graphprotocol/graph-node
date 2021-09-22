@@ -9,7 +9,7 @@ use web3::types::{Block, H256};
 use crate::{cheap_clone::CheapClone, components::store::BlockNumber};
 
 /// A simple marker for byte arrays that are really block hashes
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Default, PartialEq, Eq, Hash)]
 pub struct BlockHash(pub Box<[u8]>);
 
 impl BlockHash {
@@ -19,6 +19,12 @@ impl BlockHash {
 }
 
 impl fmt::Display for BlockHash {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "0x{}", hex::encode(&self.0))
+    }
+}
+
+impl fmt::Debug for BlockHash {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "0x{}", hex::encode(&self.0))
     }
@@ -41,7 +47,7 @@ impl From<Vec<u8>> for BlockHash {
 /// A block hash and block number from a specific Ethereum block.
 ///
 /// Block numbers are signed 32 bit integers
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct BlockPtr {
     pub hash: BlockHash,
     pub number: BlockNumber,
@@ -82,6 +88,12 @@ impl BlockPtr {
 }
 
 impl fmt::Display for BlockPtr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "#{} ({})", self.number, self.hash_hex())
+    }
+}
+
+impl fmt::Debug for BlockPtr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "#{} ({})", self.number, self.hash_hex())
     }

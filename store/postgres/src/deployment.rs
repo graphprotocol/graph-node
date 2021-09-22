@@ -69,6 +69,7 @@ table! {
         reorg_count -> Integer,
         current_reorg_depth -> Integer,
         max_reorg_depth -> Integer,
+        firehose_cursor -> Nullable<Text>,
     }
 }
 
@@ -262,6 +263,34 @@ pub fn forward_block_ptr(
             "duplicate deployments in shard".to_owned(),
         )),
     }
+}
+
+pub fn get_subgraph_firehose_cursor(
+    conn: &PgConnection,
+    deployment_hash: &DeploymentHash,
+) -> Result<Option<String>, StoreError> {
+    use subgraph_deployment as d;
+
+    let res = d::table
+        .filter(d::deployment.eq(deployment_hash.as_str()))
+        .select(d::firehose_cursor)
+        .first::<Option<String>>(conn)
+        .map_err(|e| StoreError::from(e));
+    res
+}
+
+pub fn update_firehose_cursor(
+    conn: &PgConnection,
+    id: &DeploymentHash,
+    cursor: &String,
+) -> Result<(), StoreError> {
+    use subgraph_deployment as d;
+
+    update(d::table.filter(d::deployment.eq(id.as_str())))
+        .set((d::firehose_cursor.eq(cursor),))
+        .execute(conn)
+        .map(|_| ())
+        .map_err(|e| e.into())
 }
 
 pub fn revert_block_ptr(

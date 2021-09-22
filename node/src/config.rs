@@ -520,6 +520,7 @@ pub enum ProviderDetails {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct FirehoseProvider {
     pub url: String,
+    pub token: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -1123,6 +1124,7 @@ mod tests {
                 label: "firehose".to_owned(),
                 details: ProviderDetails::Firehose(FirehoseProvider {
                     url: "http://localhost:9000".to_owned(),
+                    token: None,
                 }),
             },
             actual

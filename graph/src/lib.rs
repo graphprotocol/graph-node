@@ -22,6 +22,8 @@ pub mod blockchain;
 
 pub mod runtime;
 
+pub mod firehose;
+
 /// Module with mocks for different parts of the system.
 pub mod mock {
     pub use crate::components::store::MockStore;
@@ -69,6 +71,7 @@ pub mod prelude {
     pub use futures03::stream::{StreamExt as _, TryStreamExt};
     pub use hex;
     pub use lazy_static::lazy_static;
+    pub use prost;
     pub use rand;
     pub use reqwest;
     pub use serde;
@@ -85,6 +88,7 @@ pub mod prelude {
     pub use thiserror;
     pub use tiny_keccak;
     pub use tokio;
+    pub use tonic;
     pub use web3;
 
     pub type DynTryFuture<'a, Ok = (), Err = Error> =

@@ -680,6 +680,15 @@ impl DeploymentStore {
         Self::block_ptr_with_conn(&site.deployment, &conn)
     }
 
+    pub(crate) fn block_cursor(&self, site: &Site) -> Result<Option<String>, StoreError> {
+        let conn = self.get_conn()?;
+
+        Ok(deployment::get_subgraph_firehose_cursor(
+            &conn,
+            &site.deployment,
+        )?)
+    }
+
     pub(crate) fn supports_proof_of_indexing<'a>(
         self: Arc<Self>,
         site: Arc<Site>,
@@ -844,6 +853,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
+        firehose_cursor: Option<String>,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
@@ -900,6 +910,13 @@ impl DeploymentStore {
             }
 
             deployment::forward_block_ptr(&conn, &site.deployment, block_ptr_to)?;
+
+            if let Some(cursor) = firehose_cursor {
+                if cursor != "" {
+                    deployment::update_firehose_cursor(&conn, &site.deployment, &cursor)?;
+                }
+            }
+
             Ok(event)
         })?;
 

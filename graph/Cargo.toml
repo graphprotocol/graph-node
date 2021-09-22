@@ -53,6 +53,9 @@ tokio-retry = "0.3.0"
 url = "2.2.1"
 prometheus = "0.12.0"
 priority-queue = "0.7.0"
+tonic = { version = "0.5.1", features = ["tls-roots"] }
+prost = "0.8.0"
+prost-types = "0.8.0"
 futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
 wasmparser = "0.78.2"
 thiserror = "1.0.25"
@@ -67,3 +70,6 @@ serde_plain = "1.0.0"
 test-store = { path = "../store/test-store" }
 maplit = "1.0.2"
 structopt = { version = "0.3" }
+
+[build-dependencies]
+tonic-build = "0.5.1"

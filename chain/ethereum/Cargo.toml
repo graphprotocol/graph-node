@@ -13,6 +13,8 @@ lazy_static = "1.2.0"
 mockall = "0.9.1"
 state_machine_future = "0.2"
 serde = "1.0"
+prost = "0.8"
+prost-types = "0.8"
 dirs-next = "2.0"
 anyhow = "1.0"
 tiny-keccak = "1.5.0"
@@ -39,3 +41,6 @@ graph-core = { path = "../../core" }
 graph-store-postgres = { path = "../../store/postgres" }
 pretty_assertions = "0.7.2"
 test-store = { path = "../../store/test-store" }
+
+[build-dependencies]
+tonic-build = "0.5.1"

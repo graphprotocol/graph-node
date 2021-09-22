@@ -1541,6 +1541,7 @@ fn handle_large_string_with_index() {
         writable
             .transact_block_operations(
                 TEST_BLOCK_3_PTR.clone(),
+                None,
                 vec![
                     make_insert_op(ONE, &long_text),
                     make_insert_op(TWO, &other_text),

@@ -4,8 +4,8 @@
 
 pub mod block_ingestor;
 pub mod block_stream;
+pub mod firehose_block_stream;
 pub mod polling_block_stream;
-
 mod types;
 
 // Try to reexport most of the necessary types
@@ -41,12 +41,10 @@ use std::{
 };
 use web3::types::H256;
 
-pub use block_stream::{
-    BlockStream, BlockStreamMetrics, ChainHeadUpdateListener, ChainHeadUpdateStream,
-    TriggersAdapter,
-};
-pub use polling_block_stream::PollingBlockStream;
+pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
 pub use types::{BlockHash, BlockPtr};
+
+use self::block_stream::{BlockStream, BlockStreamMetrics};
 
 pub trait Block: Send + Sync {
     fn ptr(&self) -> BlockPtr;

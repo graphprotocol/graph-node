@@ -994,6 +994,10 @@ pub trait WritableStore: Send + Sync + 'static {
     /// Get a pointer to the most recently processed block in the subgraph.
     fn block_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 
+    /// Returns the Firehose `cursor` this deployment is currently at in the block stream of events. This
+    /// is used when re-connecting a Firehose stream to start back exactly where we left off.
+    fn block_cursor(&self) -> Result<Option<String>, StoreError>;
+
     /// Start an existing subgraph deployment.
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError>;
 
@@ -1015,12 +1019,13 @@ pub trait WritableStore: Send + Sync + 'static {
     fn get(&self, key: &EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
 
     /// Transact the entity changes from a single block atomically into the store, and update the
-    /// subgraph block pointer to `block_ptr_to`.
+    /// subgraph block pointer to `block_ptr_to`, and update the firehose cursor to `firehose_cursor`
     ///
     /// `block_ptr_to` must point to a child block of the current subgraph block pointer.
     fn transact_block_operations(
         &self,
         block_ptr_to: BlockPtr,
+        firehose_cursor: Option<String>,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
@@ -1166,6 +1171,10 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
+    fn block_cursor(&self) -> Result<Option<String>, StoreError> {
+        unimplemented!()
+    }
+
     fn start_subgraph_deployment(&self, _: &Logger) -> Result<(), StoreError> {
         unimplemented!()
     }
@@ -1193,6 +1202,7 @@ impl WritableStore for MockStore {
     fn transact_block_operations(
         &self,
         _: BlockPtr,
+        _: Option<String>,
         _: Vec<EntityModification>,
         _: StopwatchMetrics,
         _: Vec<StoredDynamicDataSource>,

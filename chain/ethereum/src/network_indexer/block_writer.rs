@@ -155,6 +155,7 @@ impl WriteContext {
                         store
                             .transact_block_operations(
                                 block_ptr.clone(),
+                                None,
                                 modifications,
                                 stopwatch,
                                 Vec::new(),

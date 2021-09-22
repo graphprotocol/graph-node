@@ -481,9 +481,9 @@ where
 
         // Process events from the stream as long as no restart is needed
         loop {
-            let block = match block_stream.next().await {
-                Some(Ok(BlockStreamEvent::ProcessBlock(block))) => block,
-                Some(Ok(BlockStreamEvent::Revert(subgraph_ptr))) => {
+            let (block, cursor) = match block_stream.next().await {
+                Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => (block, cursor),
+                Some(Ok(BlockStreamEvent::Revert(subgraph_ptr, _))) => {
                     info!(
                         logger,
                         "Reverting block to get back to main chain";
@@ -506,7 +506,7 @@ where
                                 .map_err(Into::into)
                         })
                     {
-                        debug!(
+                        error!(
                             &logger,
                             "Could not revert block. \
                             The likely cause is the block not being found due to a deep reorg. \
@@ -564,6 +564,7 @@ where
                 ctx,
                 block_stream_cancel_handle.clone(),
                 block,
+                cursor.into(),
             )
             .await;
 
@@ -664,6 +665,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
     mut ctx: IndexingContext<T, C>,
     block_stream_cancel_handle: CancelHandle,
     block: BlockWithTriggers<C>,
+    firehose_cursor: Option<String>,
 ) -> Result<(IndexingContext<T, C>, bool), BlockProcessingError> {
     let triggers = block.trigger_data;
     let block = Arc::new(block.block);
@@ -896,6 +898,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
 
     match store.transact_block_operations(
         block_ptr,
+        firehose_cursor,
         mods,
         stopwatch,
         data_sources,
