@@ -2732,54 +2732,6 @@ fn block_number_max_is_i32_max() {
     assert_eq!(2147483647, graph::prelude::BLOCK_NUMBER_MAX);
 }
 
-/// Remove all entities from the given table whose id has a prefix that
-/// matches one of the given prefixes. This query is mostly useful to
-/// delete subgraph metadata that belongs to a certain dynamic data source
-#[derive(Debug, Clone, Constructor)]
-pub struct DeleteByPrefixQuery<'a> {
-    table: &'a Table,
-    prefixes: &'a Vec<String>,
-    prefix_len: i32,
-}
-
-impl<'a> QueryFragment<Pg> for DeleteByPrefixQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
-        out.unsafe_to_cache_prepared();
-
-        // Construct a query
-        //   delete from {table}
-        //    where left(id, {prefix_len}) = any({prefixes})
-        //   returning id
-        out.push_sql("delete from ");
-        out.push_sql(self.table.qualified_name.as_str());
-        out.push_sql("\n where left(");
-        out.push_sql(PRIMARY_KEY_COLUMN);
-        out.push_sql(",");
-        out.push_bind_param::<Integer, _>(&self.prefix_len)?;
-        out.push_sql(") = any(");
-        out.push_bind_param::<Array<Text>, _>(&self.prefixes)?;
-        out.push_sql(")\nreturning ");
-        out.push_sql(PRIMARY_KEY_COLUMN);
-        out.push_sql("::text");
-        Ok(())
-    }
-}
-
-impl<'a> QueryId for DeleteByPrefixQuery<'a> {
-    type QueryId = ();
-
-    const HAS_STATIC_QUERY_ID: bool = false;
-}
-
-impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for DeleteByPrefixQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
-        conn.query_by_name(&self)
-            .map(|data| ReturnedEntityData::bytes_as_str(&self.table, data))
-    }
-}
-
-impl<'a, Conn> RunQueryDsl<Conn> for DeleteByPrefixQuery<'a> {}
-
 /// Copy the data of one table to another table. All rows whose `vid` is in
 /// the range `[first_vid, last_vid]` will be copied
 #[derive(Debug, Clone)]
