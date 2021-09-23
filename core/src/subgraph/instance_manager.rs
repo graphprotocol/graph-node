@@ -921,7 +921,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
         ..
     } = block_state;
 
-    let first_error = deterministic_errors.iter().next().map(|e| e.clone());
+    let first_error = deterministic_errors.first().cloned();
 
     match store.transact_block_operations(
         block_ptr,
