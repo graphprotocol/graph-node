@@ -263,5 +263,5 @@ fn wait_duration(attempt_number: u64) -> Duration {
         attempt_number
     };
 
-    return Duration::from_secs(2 << pow);
+    Duration::from_secs(2 << pow)
 }

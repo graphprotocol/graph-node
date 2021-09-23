@@ -204,7 +204,7 @@ impl StoreResolver {
             );
             return Ok((None, Some(q::Value::Object(map))));
         }
-        return Ok((prefetched_object, None));
+        Ok((prefetched_object, None))
     }
 }
 
@@ -269,7 +269,7 @@ impl Resolver for StoreResolver {
                     derived_from_field.name.to_owned(),
                 ));
             } else {
-                return Ok(children.into_iter().next().unwrap_or(q::Value::Null));
+                Ok(children.into_iter().next().unwrap_or(q::Value::Null))
             }
         } else {
             return Err(QueryExecutionError::ResolveEntitiesError(format!(

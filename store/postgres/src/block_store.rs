@@ -264,11 +264,11 @@ impl BlockStore {
                     );
                         return false;
                     }
-                    return true;
+                    true
                 }
                 None => {
                     warn!(logger, "Failed to get net version and genesis hash from provider. Assuming it has not changed");
-                    return true;
+                    true
                 }
             }
         }

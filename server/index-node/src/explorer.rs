@@ -103,9 +103,7 @@ where
             ["subgraph-version", version] => self.handle_subgraph_version(version),
             ["subgraph-repo", version] => self.handle_subgraph_repo(version),
             ["entity-count", deployment] => self.handle_entity_count(logger, deployment),
-            _ => {
-                return handle_not_found();
-            }
+            _ => handle_not_found(),
         }
     }
 

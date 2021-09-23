@@ -42,7 +42,5 @@ impl MetricsRegistryTrait for MockMetricsRegistry {
         Gauge::with_opts(opts)
     }
 
-    fn unregister(&self, _: Box<dyn Collector>) {
-        return;
-    }
+    fn unregister(&self, _: Box<dyn Collector>) {}
 }
