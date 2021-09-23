@@ -26,7 +26,7 @@ use graph::{
         QueryExecutionError, Schema, StopwatchMetrics, StoreError, SubgraphName,
         SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
-    slog::warn,
+    slog::{error, warn},
     util::{backoff::ExponentialBackoff, timed_cache::TimedCache},
 };
 use store::StoredDynamicDataSource;
@@ -1120,6 +1120,22 @@ impl WritableStore {
             backoff.sleep_async().await;
         }
     }
+
+    /// Try to send a `StoreEvent`; if sending fails, log the error but
+    /// return `Ok(())`
+    fn try_send_store_event(&self, event: StoreEvent) -> Result<(), StoreError> {
+        if *SEND_SUBSCRIPTION_NOTIFICATIONS {
+            self.store
+                .send_store_event(&event)
+                .map_err(
+                    |e| error!(self.logger, "Could not send store event"; "error" => e.to_string()),
+                )
+                .ok();
+            Ok(())
+        } else {
+            Ok(())
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -1153,11 +1169,7 @@ impl WritableStoreTrait for WritableStore {
             let event = self
                 .writable
                 .revert_block_operations(self.site.clone(), block_ptr_to.clone())?;
-            if *SEND_SUBSCRIPTION_NOTIFICATIONS {
-                self.store.send_store_event(&event)
-            } else {
-                Ok(())
-            }
+            self.try_send_store_event(event)
         })
     }
 
@@ -1216,11 +1228,7 @@ impl WritableStoreTrait for WritableStore {
             )?;
 
             let _section = stopwatch.start_section("send_store_event");
-            if *SEND_SUBSCRIPTION_NOTIFICATIONS {
-                self.store.send_store_event(&event)
-            } else {
-                Ok(())
-            }
+            self.try_send_store_event(event)
         })
     }
 
