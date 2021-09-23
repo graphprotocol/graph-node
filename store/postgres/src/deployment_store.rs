@@ -88,7 +88,7 @@ pub(crate) struct SubgraphInfo {
 pub struct StoreInner {
     logger: Logger,
 
-    conn: ConnectionPool,
+    pool: ConnectionPool,
     read_only_pools: Vec<ConnectionPool>,
 
     /// A list of the available replicas set up such that when we run
@@ -156,7 +156,7 @@ impl DeploymentStore {
         // Create the store
         let store = StoreInner {
             logger: logger.clone(),
-            conn: pool,
+            pool,
             read_only_pools,
             replica_order,
             conn_round_robin_counter: AtomicUsize::new(0),
@@ -478,12 +478,12 @@ impl DeploymentStore {
                 &CancelHandle,
             ) -> Result<T, CancelableError<StoreError>>,
     ) -> Result<T, StoreError> {
-        self.conn.with_conn(f).await
+        self.pool.with_conn(f).await
     }
 
     /// Deprecated. Use `with_conn` instead.
     fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
-        self.conn.get()
+        self.pool.get()
     }
 
     /// Panics if `idx` is not a valid index for a read only pool.
@@ -510,7 +510,7 @@ impl DeploymentStore {
         replica: ReplicaId,
     ) -> tokio::sync::OwnedSemaphorePermit {
         let pool = match replica {
-            ReplicaId::Main => &self.conn,
+            ReplicaId::Main => &self.pool,
             ReplicaId::ReadOnly(idx) => &self.read_only_pools[idx],
         };
         pool.query_permit().await
@@ -518,7 +518,7 @@ impl DeploymentStore {
 
     pub(crate) fn wait_stats(&self, replica: ReplicaId) -> PoolWaitStats {
         match replica {
-            ReplicaId::Main => self.conn.wait_stats(),
+            ReplicaId::Main => self.pool.wait_stats(),
             ReplicaId::ReadOnly(idx) => self.read_only_pools[idx].wait_stats(),
         }
     }
@@ -1113,7 +1113,7 @@ impl DeploymentStore {
             // with the corresponding tables in `self`
             let copy_conn = crate::copy::Connection::new(
                 logger,
-                self.conn.clone(),
+                self.pool.clone(),
                 src.clone(),
                 dst.clone(),
                 block.clone(),
@@ -1180,10 +1180,10 @@ impl DeploymentStore {
     }
 
     pub(crate) fn mirror_primary_tables(&self, logger: &Logger) {
-        self.conn.mirror_primary_tables().unwrap_or_else(|e| {
+        self.pool.mirror_primary_tables().unwrap_or_else(|e| {
             warn!(logger, "Mirroring primary tables failed. We will try again in a few minutes";
                   "error" => e.to_string(),
-                  "shard" => self.conn.shard.as_str())
+                  "shard" => self.pool.shard.as_str())
         });
     }
 }
