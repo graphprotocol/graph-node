@@ -20,8 +20,7 @@ lazy_static! {
 
 pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     subgraph_id: DeploymentHash,
-    // TODO: this shouldn't be public
-    pub network: String,
+    network: String,
     host_builder: T,
 
     /// Runtime hosts, one for each data source mapping.
@@ -203,5 +202,9 @@ where
         {
             self.hosts.pop();
         }
+    }
+
+    pub(crate) fn network(&self) -> &str {
+        &self.network
     }
 }
