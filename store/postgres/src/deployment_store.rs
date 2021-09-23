@@ -483,7 +483,7 @@ impl DeploymentStore {
 
     /// Deprecated. Use `with_conn` instead.
     fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
-        self.conn.get_with_timeout_warning(&self.logger)
+        self.conn.get()
     }
 
     /// Panics if `idx` is not a valid index for a read only pool.

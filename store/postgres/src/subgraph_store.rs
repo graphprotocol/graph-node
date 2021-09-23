@@ -235,7 +235,6 @@ impl std::ops::Deref for SubgraphStore {
 }
 
 pub struct SubgraphStoreInner {
-    logger: Logger,
     mirror: PrimaryMirror,
     stores: HashMap<Shard, Arc<DeploymentStore>>,
     /// Cache for the mapping from deployment id to shard/namespace/id. Only
@@ -294,9 +293,7 @@ impl SubgraphStoreInner {
             },
         ));
         let sites = TimedCache::new(SITES_CACHE_TTL);
-        let logger = logger.new(o!("shard" => PRIMARY_SHARD.to_string()));
         SubgraphStoreInner {
-            logger,
             mirror,
             stores,
             sites,
@@ -628,10 +625,7 @@ impl SubgraphStoreInner {
     /// of connections in between getting the first one and trying to get the
     /// second one.
     fn primary_conn(&self) -> Result<primary::Connection, StoreError> {
-        let conn = self
-            .mirror
-            .primary()
-            .get_with_timeout_warning(&self.logger)?;
+        let conn = self.mirror.primary().get()?;
         Ok(primary::Connection::new(conn))
     }
 
