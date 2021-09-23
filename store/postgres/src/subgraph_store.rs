@@ -23,8 +23,8 @@ use graph::{
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
         BlockPtr, DeploymentHash, Entity, EntityKey, EntityModification, Error, Logger, NodeId,
-        QueryExecutionError, Schema, StopwatchMetrics, StoreError, SubgraphName,
-        SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
+        Schema, StopwatchMetrics, StoreError, SubgraphName, SubgraphStore as SubgraphStoreTrait,
+        SubgraphVersionSwitchingMode,
     },
     slog::{error, warn},
     util::{backoff::ExponentialBackoff, timed_cache::TimedCache},
@@ -886,7 +886,7 @@ impl SubgraphStoreInner {
     pub fn find(
         &self,
         query: graph::prelude::EntityQuery,
-    ) -> Result<Vec<Entity>, QueryExecutionError> {
+    ) -> Result<Vec<Entity>, graph::prelude::QueryExecutionError> {
         let (store, site) = self.store(&query.subgraph_id)?;
         store.find(site, query)
     }
