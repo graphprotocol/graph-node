@@ -934,7 +934,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
         Ok(_) => {
             // If a deterministic error has happened, make the subgraph fail.
             // In this scenario the only entity that is stored/transacted is the PoI,
-            // all of the others are discarted.
+            // all of the others are discarded.
             if has_errors && !is_non_fatal_errors_active {
                 // Only the first error is reported.
                 return Err(BlockProcessingError::Deterministic(first_error.unwrap()));
