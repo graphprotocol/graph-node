@@ -1080,7 +1080,7 @@ impl PollStateMachine for StateMachine {
 
         match state.new_local_head.poll() {
             // Adding the block is not complete yet, try again later.
-            Ok(Async::NotReady) => return Ok(Async::NotReady),
+            Ok(Async::NotReady) => Ok(Async::NotReady),
 
             // We have the new local block, update it and continue processing blocks.
             Ok(Async::Ready(block_ptr)) => {

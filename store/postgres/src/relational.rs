@@ -1427,7 +1427,7 @@ impl LayoutCache {
             Some(CacheEntry { value, expires }) => {
                 if now <= expires {
                     // Entry is not expired; use it
-                    return Ok(value);
+                    Ok(value)
                 } else {
                     // Only do a cache refresh once; we don't want to have
                     // multiple threads refreshing the same layout
@@ -1448,11 +1448,11 @@ impl LayoutCache {
                             // Update the timestamp so we don't retry
                             // refreshing too often
                             self.cache(value.cheap_clone());
-                            return Ok(value);
+                            Ok(value)
                         }
                         Ok(layout) => {
                             self.cache(layout.cheap_clone());
-                            return Ok(layout);
+                            Ok(layout)
                         }
                     }
                 }
@@ -1460,7 +1460,7 @@ impl LayoutCache {
             None => {
                 let layout = Self::load(conn, site)?;
                 self.cache(layout.cheap_clone());
-                return Ok(layout);
+                Ok(layout)
             }
         }
     }

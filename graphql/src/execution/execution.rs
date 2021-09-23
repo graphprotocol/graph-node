@@ -918,9 +918,7 @@ fn complete_value(
         }
 
         // If the resolved value is null, return null
-        _ if resolved_value == q::Value::Null => {
-            return Ok(resolved_value);
-        }
+        _ if resolved_value == q::Value::Null => Ok(resolved_value),
 
         // Complete list values
         s::Type::ListType(inner_type) => {

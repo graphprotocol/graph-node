@@ -410,8 +410,8 @@ impl EthereumBlockFilter {
                     .clone()
                     .into_iter()
                     .any(|block_handler| match block_handler.filter {
-                        Some(ref filter) if *filter == BlockHandlerFilter::Call => return true,
-                        _ => return false,
+                        Some(ref filter) if *filter == BlockHandlerFilter::Call => true,
+                        _ => false,
                     });
 
                 let has_block_handler_without_filter = data_source
