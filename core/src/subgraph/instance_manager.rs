@@ -840,7 +840,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
     if let Some(proof_of_indexing) = proof_of_indexing {
         // If a deterministic error has happened, write a new
         // ProofOfIndexingEvent::DeterministicError to the SharedProofOfIndexing.
-        if has_errors && !is_non_fatal_errors_active {
+        if has_errors {
             let causality_region = CausalityRegion::from_network(ctx.state.instance.network());
 
             proof_of_indexing.borrow_mut().write(
