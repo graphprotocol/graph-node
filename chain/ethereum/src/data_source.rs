@@ -359,7 +359,7 @@ impl DataSource {
 
                 // Extract the event name; if there is no '(' in the signature,
                 // `event_name` will be empty and not match any events, so that's ok
-                let parens = signature.find("(").unwrap_or(0);
+                let parens = signature.find('(').unwrap_or(0);
                 let event_name = &signature[0..parens];
 
                 let matching_events = self

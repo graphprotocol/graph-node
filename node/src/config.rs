@@ -431,7 +431,7 @@ impl ChainSection {
                     return Err(anyhow!("Ethereum node URL cannot be an empty string"));
                 }
 
-                let colon = rest.find(":").ok_or_else(|| {
+                let colon = rest.find(':').ok_or_else(|| {
                     return anyhow!(
                         "A network name must be provided alongside the \
                          Ethereum node location. Try e.g. 'mainnet:URL'."

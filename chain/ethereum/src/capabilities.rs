@@ -44,7 +44,7 @@ impl FromStr for NodeCapabilities {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let capabilities: BTreeSet<&str> = s.split(",").collect();
+        let capabilities: BTreeSet<&str> = s.split(',').collect();
         Ok(NodeCapabilities {
             archive: capabilities.contains("archive"),
             traces: capabilities.contains("traces"),
