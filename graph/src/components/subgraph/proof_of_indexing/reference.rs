@@ -41,6 +41,12 @@ impl StableHash for CausalityRegion<'_> {
     }
 }
 
+impl<'a> CausalityRegion<'a> {
+    pub fn from_network(network: &str) -> String {
+        format!("ethereum/{}", network)
+    }
+}
+
 #[derive(Default)]
 pub struct Block<'a> {
     pub events: Vec<ProofOfIndexingEvent<'a>>,

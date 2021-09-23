@@ -18,7 +18,7 @@ use graph::{
 use graph::{
     blockchain::{block_stream::BlockStreamEvent, Blockchain, TriggerFilter as _},
     components::subgraph::{
-        MappingError, ProofOfIndexing, ProofOfIndexingEvent, SharedProofOfIndexing,
+        CausalityRegion, MappingError, ProofOfIndexing, ProofOfIndexingEvent, SharedProofOfIndexing,
     },
 };
 use graph::{
@@ -841,8 +841,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
         // If a deterministic error has happened, write a new
         // ProofOfIndexingEvent::DeterministicError to the SharedProofOfIndexing.
         if has_errors && !is_non_fatal_errors_active {
-            // TODO: get the correct causality region
-            let causality_region = format!("ethereum/{}", &ctx.state.instance.network);
+            let causality_region = CausalityRegion::from_network(ctx.state.instance.network());
 
             proof_of_indexing.borrow_mut().write(
                 &logger,
