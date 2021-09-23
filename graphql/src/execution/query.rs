@@ -235,7 +235,7 @@ impl Query {
             let (selection_set, error_policy) = bcs.entry(bc).or_insert_with(|| {
                 (
                     q::SelectionSet {
-                        span: self.selection_set.span.clone(),
+                        span: self.selection_set.span,
                         items: vec![],
                     },
                     field_error_policy,

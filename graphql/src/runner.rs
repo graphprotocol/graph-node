@@ -283,7 +283,7 @@ where
                 logger: self.logger.clone(),
                 store,
                 subscription_manager: self.subscription_manager.cheap_clone(),
-                timeout: GRAPHQL_QUERY_TIMEOUT.clone(),
+                timeout: *GRAPHQL_QUERY_TIMEOUT,
                 max_complexity: *GRAPHQL_MAX_COMPLEXITY,
                 max_depth: *GRAPHQL_MAX_DEPTH,
                 max_first: *GRAPHQL_MAX_FIRST,

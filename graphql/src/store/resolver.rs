@@ -263,7 +263,7 @@ impl Resolver for StoreResolver {
                         .expect("only derived fields can lead to multiple children here");
 
                 return Err(QueryExecutionError::AmbiguousDerivedFromResult(
-                    field.position.clone(),
+                    field.position,
                     field.name.to_owned(),
                     object_type.name().to_owned(),
                     derived_from_field.name.to_owned(),

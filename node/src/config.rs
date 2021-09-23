@@ -294,7 +294,7 @@ impl PoolSize {
 
         let pool_size = match self {
             None => bail!("missing pool size for {}", connection),
-            Fixed(s) => s.clone(),
+            Fixed(s) => *s,
             Rule(rules) => rules.iter().map(|rule| rule.size).min().unwrap_or(0u32),
         };
 
@@ -313,7 +313,7 @@ impl PoolSize {
         use PoolSize::*;
         match self {
             None => unreachable!("validation ensures we have a pool size"),
-            Fixed(s) => Ok(s.clone()),
+            Fixed(s) => Ok(*s),
             Rule(rules) => rules
                 .iter()
                 .find(|rule| rule.matches(node.as_str()))

@@ -279,7 +279,7 @@ impl LoadManager {
                         labels,
                     )
                     .expect("Failed to register query_counter metric");
-                (s.clone(), counter)
+                (*s, counter)
             })
             .collect::<HashMap<_, _>>();
 

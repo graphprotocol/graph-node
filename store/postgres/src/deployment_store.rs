@@ -712,7 +712,7 @@ impl DeploymentStore {
         indexer: &'a Option<Address>,
         block: BlockPtr,
     ) -> DynTryFuture<'a, Option<[u8; 32]>> {
-        let indexer = indexer.clone();
+        let indexer = *indexer;
         let site3 = site.clone();
         let site4 = site.clone();
         let store = self.clone();

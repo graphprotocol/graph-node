@@ -57,13 +57,13 @@ impl GraphQLServiceMetrics {
     pub fn observe_query_execution_time(&self, duration: f64, deployment_id: String) {
         self.query_execution_time
             .with_label_values(vec![deployment_id.as_ref()].as_slice())
-            .observe(duration.clone());
+            .observe(duration);
     }
 
     pub fn observe_failed_query_execution_time(&self, duration: f64, deployment_id: String) {
         self.failed_query_execution_time
             .with_label_values(vec![deployment_id.as_ref()].as_slice())
-            .observe(duration.clone());
+            .observe(duration);
     }
 }
 

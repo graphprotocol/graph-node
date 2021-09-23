@@ -144,7 +144,7 @@ fn eth_call(
     };
 
     let call = EthereumContractCall {
-        address: unresolved_call.contract_address.clone(),
+        address: unresolved_call.contract_address,
         block_ptr: block_ptr.cheap_clone(),
         function: function.clone(),
         args: unresolved_call.function_args.clone(),

@@ -127,11 +127,11 @@ fn create_chain(n: u64, parent: Option<&BlockWithOmmers>) -> Vec<BlockWithOmmers
             // parent was passed in; otherwise we're dealing with
             // the genesis block
             if let Some(parent_block) = parent {
-                block.parent_hash = parent_block.inner().hash.unwrap().clone();
+                block.parent_hash = parent_block.inner().hash.unwrap();
             }
         } else {
             // Set the parent hash for all blocks but the genesis block
-            block.parent_hash = blocks.last().unwrap().block.block.hash.clone().unwrap();
+            block.parent_hash = blocks.last().unwrap().block.block.hash.unwrap();
         }
 
         blocks.push(BlockWithOmmers {
@@ -747,7 +747,7 @@ fn indexing_identifies_common_ancestor_correctly_despite_ommers() {
 
         // Make it so that #5' has #4 as an uncle
         Arc::get_mut(&mut fork1[5].block.block).unwrap().uncles =
-            vec![initial_chain[4].inner().hash.clone().unwrap()];
+            vec![initial_chain[4].inner().hash.unwrap()];
         fork1[5].ommers = vec![initial_chain[4].block.block.as_ref().clone().into()];
 
         // Create fork 2 (blocks #0 - #4, #5'', #6''); this fork includes the

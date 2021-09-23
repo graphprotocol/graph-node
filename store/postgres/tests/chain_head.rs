@@ -284,7 +284,7 @@ fn ancestor_block_simple() {
         check_ancestor(&store, &*BLOCK_THREE, 2, &*BLOCK_ONE)?;
 
         for offset in [6, 7, 8, 50].iter() {
-            let offset = offset.clone();
+            let offset = *offset;
             let res = store.ancestor_block(BLOCK_FIVE.block_ptr(), offset);
             assert!(res.is_err());
         }

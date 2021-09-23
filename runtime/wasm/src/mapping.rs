@@ -67,7 +67,7 @@ pub fn spawn_module<C: Blockchain>(
                     ctx,
                     host_metrics.cheap_clone(),
                     timeout,
-                    experimental_features.clone(),
+                    experimental_features,
                 )?;
                 section.end();
 
