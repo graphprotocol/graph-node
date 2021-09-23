@@ -158,7 +158,7 @@ pub fn server_options(
         .srvoptions
         .into_iter()
         .filter_map(|opt| {
-            let mut parts = opt.splitn(2, "=");
+            let mut parts = opt.splitn(2, '=');
             let key = parts.next();
             let value = parts.next().map(|value| value.to_string());
 

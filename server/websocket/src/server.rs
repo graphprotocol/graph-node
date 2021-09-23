@@ -59,7 +59,7 @@ where
         }
 
         let path_segments = {
-            let mut segments = path.split("/");
+            let mut segments = path.split('/');
 
             // Remove leading '/'
             let first_segment = segments.next();

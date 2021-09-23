@@ -71,7 +71,7 @@ lazy_static! {
             // qualified name
             env::var("GRAPH_ACCOUNT_TABLES")
                 .ok()
-                .map(|v| v.split(",").map(|s| format!("\"{}\"", s.replace(".", "\".\""))).collect())
+                .map(|v| v.split(',').map(|s| format!("\"{}\"", s.replace(".", "\".\""))).collect())
                 .unwrap_or(HashSet::new())
     };
 

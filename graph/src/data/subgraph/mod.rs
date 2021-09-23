@@ -206,7 +206,7 @@ impl SubgraphName {
         }
 
         // Parse into components and validate each
-        for part in s.split("/") {
+        for part in s.split('/') {
             // Each part must be non-empty and not too long
             if part.is_empty() || part.len() > 32 {
                 return Err(());
