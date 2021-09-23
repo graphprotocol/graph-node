@@ -468,13 +468,6 @@ impl ConnectionPool {
         self.get_ready()?.get()
     }
 
-    pub fn get_with_timeout_warning(
-        &self,
-        logger: &Logger,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
-        self.get_ready()?.get_with_timeout_warning(logger)
-    }
-
     /// Get a connection from the pool for foreign data wrapper access;
     /// since that pool can be very contended, periodically log that we are
     /// still waiting for a connection
