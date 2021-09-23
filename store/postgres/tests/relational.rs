@@ -161,7 +161,7 @@ lazy_static! {
         );
         entity.set("string", "scalar");
         entity.set("strings", strings);
-        entity.set("bytes", (*BYTES_VALUE).clone());
+        entity.set("bytes", *BYTES_VALUE);
         entity.set("byteArray", byte_array);
         let big_int = (*LARGE_INT).clone();
         entity.set("bigInt", big_int.clone());

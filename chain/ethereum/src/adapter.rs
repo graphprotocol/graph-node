@@ -150,7 +150,7 @@ impl EthereumLogFilter {
                 // The `Log` matches the filter either if the filter contains
                 // a (contract address, event signature) pair that matches the
                 // `Log`, or if the filter contains wildcard event that matches.
-                let contract = LogFilterNode::Contract(log.address.clone());
+                let contract = LogFilterNode::Contract(log.address);
                 let event = LogFilterNode::Event(*sig);
                 self.contracts_and_events_graph
                     .all_edges()
@@ -334,8 +334,7 @@ impl EthereumCallFilter {
                 .get_mut(&address)
             {
                 Some((existing_start_block, existing_sigs)) => {
-                    *existing_start_block =
-                        cmp::min(proposed_start_block, existing_start_block.clone());
+                    *existing_start_block = cmp::min(proposed_start_block, *existing_start_block);
                     existing_sigs.extend(new_sigs);
                 }
                 None => {

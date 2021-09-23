@@ -290,7 +290,7 @@ impl<C: Blockchain> HostExports<C> {
                     ctx.derive_with_empty_block_state(),
                     host_metrics.clone(),
                     module.timeout,
-                    module.experimental_features.clone(),
+                    module.experimental_features,
                 )?;
                 let result = module.handle_json_callback(&callback, &sv.value, &user_data)?;
                 // Log progress every 15s

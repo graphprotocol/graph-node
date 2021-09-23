@@ -890,7 +890,7 @@ impl ColumnType {
 
         // See if its an object type defined in the schema
         if let Some(id_type) = id_types.get(&EntityType::new(name.to_string())) {
-            return Ok(id_type.clone().into());
+            return Ok((*id_type).into());
         }
 
         // Check if it's an enum, and if it is, return an appropriate

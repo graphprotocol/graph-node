@@ -120,7 +120,7 @@ pub(crate) fn coerce_input_value<'a>(
         None => {
             return if schema::ast::is_non_null_type(&def.value_type) {
                 Err(QueryExecutionError::MissingArgumentError(
-                    def.position.clone(),
+                    def.position,
                     def.name.to_owned(),
                 ))
             } else {
@@ -132,11 +132,7 @@ pub(crate) fn coerce_input_value<'a>(
 
     Ok(Some(
         coerce_value(value, &def.value_type, resolver, variable_values).map_err(|val| {
-            QueryExecutionError::InvalidArgumentError(
-                def.position.clone(),
-                def.name.to_owned(),
-                val,
-            )
+            QueryExecutionError::InvalidArgumentError(def.position, def.name.to_owned(), val)
         })?,
     ))
 }

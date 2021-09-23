@@ -244,7 +244,7 @@ impl<C: Blockchain, F: FirehoseMapper<C>> FirehoseBlockStream<C, F> {
     /// uses an exponential backoff strategy to retry with incremental longer delays.
     fn schedule_error_retry<T>(&mut self, cx: &mut Context<'_>) -> Poll<Option<T>> {
         self.connection_attempts += 1;
-        let wait_duration = wait_duration(self.connection_attempts.clone());
+        let wait_duration = wait_duration(self.connection_attempts);
 
         let waker = cx.waker().clone();
         tokio::spawn(async move {

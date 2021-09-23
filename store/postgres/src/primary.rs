@@ -456,7 +456,7 @@ impl<'a> Connection<'a> {
             .collect();
 
         // Stop ongoing copies
-        let removed_ids: Vec<_> = removed.iter().map(|(id, _)| id.clone()).collect();
+        let removed_ids: Vec<_> = removed.iter().map(|(id, _)| *id).collect();
         self.cancel_copies(removed_ids)?;
 
         let events = removed
@@ -1024,7 +1024,7 @@ impl<'a> Connection<'a> {
 
         assigned
             .iter()
-            .map(|(node, count)| (node.as_str(), count.clone()))
+            .map(|(node, count)| (node.as_str(), *count))
             .chain(missing)
             .min_by(|(_, a), (_, b)| a.cmp(b))
             .map(|(node, _)| NodeId::new(node).map_err(|()| node))
