@@ -16,8 +16,7 @@ pub enum ProofOfIndexingEvent<'a> {
         data: &'a HashMap<String, Value>,
     },
     /// For when a deterministic error has happened.
-    /// This will be the last event written to the SharedProofOfIndexing until the subgraph
-    /// is NOT failing anymore.
+    /// This will be the last event written to the SharedProofOfIndexing.
     DeterministicError,
 }
 
