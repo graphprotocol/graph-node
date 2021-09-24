@@ -24,31 +24,15 @@ use wasmtime::Trap;
 
 use crate::module::{WasmInstance, WasmInstanceContext};
 
-fn write_poi_event<C: Blockchain>(
+fn write_poi_event(
     proof_of_indexing: &SharedProofOfIndexing,
     poi_event: &ProofOfIndexingEvent,
     causality_region: &str,
-    state: &BlockState<C>,
     logger: &Logger,
 ) {
-    match (state.has_errors(), proof_of_indexing) {
-        // We don't want to write an event to the PoI if
-        // the BlockState contains DeterministicErrors.
-        //
-        // Let's say up until now we've written 3 events,
-        // and we can imagine the PoI something like this vector:
-        // [setEvent, removeEvent, setEvent]
-        //
-        // Then, a Deterministic error happened. At this point
-        // we'll stop writting to this "list", and we'll have the last
-        // event added by the 'instance_manager' module, like this:
-        //
-        // [setEvent, removeEvent, setEvent, deterministicErrorEvent]
-        (false, Some(proof_of_indexing)) => {
-            let mut proof_of_indexing = proof_of_indexing.deref().borrow_mut();
-            proof_of_indexing.write(logger, causality_region, poi_event);
-        }
-        _ => {}
+    if let Some(proof_of_indexing) = proof_of_indexing {
+        let mut proof_of_indexing = proof_of_indexing.deref().borrow_mut();
+        proof_of_indexing.write(logger, causality_region, poi_event);
     }
 }
 
@@ -157,7 +141,6 @@ impl<C: Blockchain> HostExports<C> {
                 data: &data,
             },
             &self.causality_region,
-            &state,
             logger,
         );
         poi_section.end();
@@ -219,7 +202,6 @@ impl<C: Blockchain> HostExports<C> {
                 id: &entity_id,
             },
             &self.causality_region,
-            &state,
             logger,
         );
         let key = EntityKey {
