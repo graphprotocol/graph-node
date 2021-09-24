@@ -738,8 +738,6 @@ impl DeploymentStore {
 
                         cancel.check_cancel()?;
 
-                        let subgraph_error_count = deployment::error_count(conn, &site.deployment)?;
-
                         // FIXME: (Determinism)
                         //
                         // It is vital to ensure that the block hash given in the query
@@ -747,7 +745,7 @@ impl DeploymentStore {
                         // Unfortunately the machinery needed to do this is not yet in place.
                         // The best we can do right now is just to make sure that the block number
                         // is high enough.
-                        if latest_block_ptr.number < block.number && subgraph_error_count != 0 {
+                        if latest_block_ptr.number < block.number {
                             return Ok(None);
                         }
 
