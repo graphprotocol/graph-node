@@ -17,9 +17,7 @@ use graph::{
 };
 use graph::{
     blockchain::{block_stream::BlockStreamEvent, Blockchain, TriggerFilter as _},
-    components::subgraph::{
-        CausalityRegion, MappingError, ProofOfIndexing, ProofOfIndexingEvent, SharedProofOfIndexing,
-    },
+    components::subgraph::{CausalityRegion, MappingError, ProofOfIndexing, SharedProofOfIndexing},
 };
 use graph::{
     blockchain::{Block, BlockchainMap},
@@ -796,9 +794,20 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
             data_sources,
         );
 
+        // There are currently no other causality regions since offchain data is not supported.
+        let causality_region = CausalityRegion::from_network(ctx.state.instance.network());
+
         // Process the triggers in each host in the same order the
         // corresponding data sources have been created.
         for trigger in triggers {
+            let error_count = block_state.deterministic_errors.len();
+
+            if let Some(proof_of_indexing) = &proof_of_indexing {
+                proof_of_indexing
+                    .borrow_mut()
+                    .start_handler(&causality_region);
+            }
+
             block_state = SubgraphInstance::<C, T>::process_trigger_in_runtime_hosts(
                 &logger,
                 &runtime_hosts,
@@ -819,6 +828,18 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
                     }
                 }
             })?;
+
+            if let Some(proof_of_indexing) = &proof_of_indexing {
+                if block_state.deterministic_errors.len() != error_count {
+                    assert!(block_state.deterministic_errors.len() == error_count + 1);
+
+                    // If a deterministic error has happened, write a new
+                    // ProofOfIndexingEvent::DeterministicError to the SharedProofOfIndexing.
+                    proof_of_indexing
+                        .borrow_mut()
+                        .write_deterministic_error(&logger, &causality_region);
+                }
+            }
         }
     }
 
@@ -838,18 +859,6 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
     }
 
     if let Some(proof_of_indexing) = proof_of_indexing {
-        // If a deterministic error has happened, write a new
-        // ProofOfIndexingEvent::DeterministicError to the SharedProofOfIndexing.
-        if has_errors {
-            let causality_region = CausalityRegion::from_network(ctx.state.instance.network());
-
-            proof_of_indexing.borrow_mut().write(
-                &logger,
-                &causality_region,
-                &ProofOfIndexingEvent::DeterministicError,
-            );
-        }
-
         let proof_of_indexing = Arc::try_unwrap(proof_of_indexing).unwrap().into_inner();
         update_proof_of_indexing(
             proof_of_indexing,
