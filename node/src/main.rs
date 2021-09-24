@@ -244,7 +244,6 @@ async fn main() {
         let near_chains = near_networks_as_chains(
             &mut blockchain_map,
             &logger,
-            metrics_registry.clone(),
             &firehose_networks,
             network_store.as_ref(),
             &logger_factory,
@@ -831,7 +830,6 @@ fn ethereum_networks_as_chains(
 fn near_networks_as_chains(
     blockchain_map: &mut BlockchainMap,
     logger: &Logger,
-    registry: Arc<MetricsRegistry>,
     firehose_networks: &FirehoseNetworks,
     store: &Store,
     logger_factory: &LoggerFactory,
@@ -858,7 +856,6 @@ fn near_networks_as_chains(
                 Arc::new(near::Chain::new(
                     logger_factory.clone(),
                     network_name.clone(),
-                    registry.clone(),
                     chain_store,
                     store.subgraph_store(),
                     firehose_endpoints.clone(),

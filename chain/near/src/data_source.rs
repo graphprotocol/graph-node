@@ -1,23 +1,20 @@
 use anyhow::Error;
 use graph::components::near::NearBlockExt;
 use graph::components::store::StoredDynamicDataSource;
-use std::collections::BTreeMap;
-use std::{convert::TryFrom, sync::Arc};
-
+use graph::data::subgraph::{DataSourceContext, Source};
 use graph::{
-    blockchain::{self, Blockchain, DataSource as _},
+    blockchain::{self, Blockchain},
     prelude::{
         async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, Link,
         LinkResolver, Logger,
     },
 };
-
-use graph::data::subgraph::{DataSourceContext, Source};
+use std::collections::BTreeMap;
+use std::{convert::TryFrom, sync::Arc};
 
 use crate::chain::Chain;
 use crate::trigger::{NearBlockTriggerType, NearTrigger};
 use crate::MappingTrigger;
-
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
 // of thousands of data sources in memory at once.
@@ -45,7 +42,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         &self,
         trigger: &<Chain as Blockchain>::TriggerData,
         block: Arc<<Chain as Blockchain>::Block>,
-        logger: &Logger,
+        _logger: &Logger,
     ) -> Result<Option<<Chain as Blockchain>::MappingTrigger>, Error> {
         if self.source.start_block > block.number() {
             return Ok(None);
@@ -114,8 +111,8 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn from_stored_dynamic_data_source(
-        templates: &BTreeMap<&str, &DataSourceTemplate>,
-        stored: StoredDynamicDataSource,
+        _templates: &BTreeMap<&str, &DataSourceTemplate>,
+        _stored: StoredDynamicDataSource,
     ) -> Result<Self, Error> {
         // FIXME (NEAR): Implement me correctly
         todo!()
@@ -211,7 +208,7 @@ impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
     fn try_from(info: DataSourceTemplateInfo<Chain>) -> Result<Self, anyhow::Error> {
         let DataSourceTemplateInfo {
             template,
-            params,
+            params: _,
             context,
             creation_block,
         } = info;

@@ -1,11 +1,5 @@
-use crate::{
-    adapter::{NearAdapter as NearAdapterTrait, NearBlockFilter},
-    trigger::NearTrigger,
-};
-use graph::{
-    components::near::NearBlock,
-    prelude::{async_trait, CheapClone, Logger},
-};
+use crate::adapter::NearAdapter as NearAdapterTrait;
+use graph::prelude::{async_trait, CheapClone, Logger};
 
 #[derive(Clone)]
 pub struct NearAdapter {

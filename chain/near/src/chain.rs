@@ -1,5 +1,5 @@
 use anyhow::Error;
-use graph::blockchain::{Block, BlockchainKind};
+use graph::blockchain::BlockchainKind;
 use graph::components::near::NearBlock;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::endpoints::FirehoseNetworkEndpoints;
@@ -14,14 +14,10 @@ use graph::{
         firehose_block_stream::FirehoseBlockStream,
         BlockHash, BlockPtr, Blockchain, IngestorAdapter as IngestorAdapterTrait, IngestorError,
     },
-    cheap_clone::CheapClone,
     components::store::DeploymentLocator,
     firehose::bstream,
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
-    prelude::{
-        async_trait, o, BlockNumber, ChainStore, Logger, LoggerFactory, MetricsRegistry,
-        SubgraphStore,
-    },
+    prelude::{async_trait, o, BlockNumber, ChainStore, Logger, LoggerFactory, SubgraphStore},
 };
 use prost::Message;
 use std::sync::Arc;
@@ -40,7 +36,6 @@ use graph::blockchain::block_stream::BlockStream;
 pub struct Chain {
     logger_factory: LoggerFactory,
     name: String,
-    registry: Arc<dyn MetricsRegistry>,
     firehose_endpoints: Arc<FirehoseNetworkEndpoints>,
     chain_store: Arc<dyn ChainStore>,
     subgraph_store: Arc<dyn SubgraphStore>,
@@ -56,7 +51,6 @@ impl Chain {
     pub fn new(
         logger_factory: LoggerFactory,
         name: String,
-        registry: Arc<dyn MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
         subgraph_store: Arc<dyn SubgraphStore>,
         firehose_endpoints: FirehoseNetworkEndpoints,
@@ -64,7 +58,6 @@ impl Chain {
         Chain {
             logger_factory,
             name,
-            registry,
             firehose_endpoints: Arc::new(firehose_endpoints),
             chain_store,
             subgraph_store,
@@ -102,21 +95,12 @@ impl Blockchain for Chain {
 
     fn triggers_adapter(
         &self,
-        loc: &DeploymentLocator,
-        capabilities: &Self::NodeCapabilities,
-        unified_api_version: UnifiedMappingApiVersion,
-        stopwatch_metrics: StopwatchMetrics,
+        _loc: &DeploymentLocator,
+        _capabilities: &Self::NodeCapabilities,
+        _unified_api_version: UnifiedMappingApiVersion,
+        _stopwatch_metrics: StopwatchMetrics,
     ) -> Result<Arc<Self::TriggersAdapter>, Error> {
-        let logger = self
-            .logger_factory
-            .subgraph_logger(&loc)
-            .new(o!("component" => "TriggersAdapter"));
-
-        let adapter = TriggersAdapter {
-            logger,
-            chain_store: self.chain_store.cheap_clone(),
-            unified_api_version,
-        };
+        let adapter = TriggersAdapter {};
         Ok(Arc::new(adapter))
     }
 
@@ -182,13 +166,9 @@ impl Blockchain for Chain {
                     }),
                 }),
             )
-            // FIXME (NEAR): This had `o!("provider" => eth_adapter.provider().to_string())`, let's do the same with the actual Firehose provider
             .new(o!());
 
-        let adapter = IngestorAdapter {
-            logger,
-            chain_store: self.chain_store.clone(),
-        };
+        let adapter = IngestorAdapter { logger };
         Arc::new(adapter)
     }
 
@@ -198,8 +178,8 @@ impl Blockchain for Chain {
 
     async fn block_pointer_from_number(
         &self,
-        logger: &Logger,
-        number: BlockNumber,
+        _logger: &Logger,
+        _number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
         // FIXME (NEAR): Hmmm, what to do with this?
         Ok(BlockPtr {
@@ -215,103 +195,57 @@ impl Blockchain for Chain {
 
 pub struct DummyDataSourceTemplate;
 
-pub struct TriggersAdapter {
-    logger: Logger,
-    chain_store: Arc<dyn ChainStore>,
-    unified_api_version: UnifiedMappingApiVersion,
-}
+pub struct TriggersAdapter {}
 
 #[async_trait]
 impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     async fn scan_triggers(
         &self,
-        from: BlockNumber,
-        to: BlockNumber,
-        filter: &TriggerFilter,
+        _from: BlockNumber,
+        _to: BlockNumber,
+        _filter: &TriggerFilter,
     ) -> Result<Vec<BlockWithTriggers<Chain>>, Error> {
         // FIXME (NEAR): Scanning triggers makes little sense in Firehose approach, let's see
         Ok(vec![])
-        // blocks_with_triggers(
-        //     self.eth_adapter.clone(),
-        //     self.logger.clone(),
-        //     self.chain_store.clone(),
-        //     self.ethrpc_metrics.clone(),
-        //     self.stopwatch_metrics.clone(),
-        //     from,
-        //     to,
-        //     filter,
-        //     self.unified_api_version.clone(),
-        // )
-        // .await
     }
 
     async fn triggers_in_block(
         &self,
-        logger: &Logger,
+        _logger: &Logger,
         block: NearBlock,
-        filter: &TriggerFilter,
+        _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
-        // FIXME (NEAR): Deal with filter when we know what kind of mapping we want
         let block_ptr = BlockPtr::from(&block);
 
         // FIXME (NEAR): Share implementation with FirehoseMapper::triggers_in_block version
         Ok(BlockWithTriggers {
-            block: block,
+            block,
             trigger_data: vec![NearTrigger::Block(block_ptr, NearBlockTriggerType::Every)],
         })
     }
 
-    async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error> {
-        // FIXME (NEAR): Unusure about this, replace with Firehose?
+    async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
+        // FIXME (NEAR): Might not be necessary for NEAR support for now
         Ok(true)
-        // self.eth_adapter
-        //     .is_on_main_chain(&self.logger, ptr.clone())
-        //     .await
     }
 
     fn ancestor_block(
         &self,
-        ptr: BlockPtr,
-        offset: BlockNumber,
+        _ptr: BlockPtr,
+        _offset: BlockNumber,
     ) -> Result<Option<NearBlock>, Error> {
-        // FIXME (NEAR): Commented out for none
+        // FIXME (NEAR):  Might not be necessary for NEAR support for now
         Ok(None)
-        // let block = self.chain_store.ancestor_block(ptr, offset)?;
-        // Ok(block.map(|block| {
-        //     BlockFinality::NonFinal(EthereumBlockWithCalls {
-        //         ethereum_block: block,
-        //         calls: None,
-        //     })
-        // }))
     }
 
     /// Panics if `block` is genesis.
     /// But that's ok since this is only called when reverting `block`.
-    async fn parent_ptr(&self, block: &BlockPtr) -> Result<BlockPtr, Error> {
-        // FIXME (NEAR): I doubt we need this now, let's see
+    async fn parent_ptr(&self, _block: &BlockPtr) -> Result<BlockPtr, Error> {
+        // FIXME (NEAR):  Might not be necessary for NEAR support for now
         Ok(BlockPtr {
             hash: BlockHash::from(vec![0xff; 32]),
             number: 0,
         })
-        // use futures::stream::Stream;
-        // use graph::prelude::LightEthereumBlockExt;
-
-        // let blocks = self
-        //     .eth_adapter
-        //     .load_blocks(
-        //         self.logger.cheap_clone(),
-        //         self.chain_store.cheap_clone(),
-        //         HashSet::from_iter(Some(block.hash_as_h256())),
-        //     )
-        //     .collect()
-        //     .compat()
-        //     .await?;
-        // assert_eq!(blocks.len(), 1);
-
-        // // Expect: This is only called when reverting and therefore never for genesis.
-        // Ok(blocks[0]
-        //     .parent_ptr()
-        //     .expect("genesis block cannot be reverted"))
     }
 }
 
@@ -386,9 +320,8 @@ impl FirehoseMapper {
     fn firehose_triggers_in_block(
         &self,
         block: &codec::BlockWrapper,
-        filter: &TriggerFilter,
+        _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, FirehoseError> {
-        // FIXME (NEAR): Deal with filter when we know what kind of mapping we want
         let block = block.block.as_ref().unwrap();
         let header = block.header.as_ref().unwrap();
         let near_block = NearBlock {
@@ -411,7 +344,6 @@ impl FirehoseMapper {
 
 pub struct IngestorAdapter {
     logger: Logger,
-    chain_store: Arc<dyn ChainStore>,
 }
 
 #[async_trait]
@@ -433,49 +365,19 @@ impl IngestorAdapterTrait<Chain> for IngestorAdapter {
 
     async fn ingest_block(
         &self,
-        block_hash: &BlockHash,
+        _block_hash: &BlockHash,
     ) -> Result<Option<BlockHash>, IngestorError> {
-        // FIXME (NEAR): Commented out for none
+        // FIXME (NEAR):  Might not be necessary for NEAR support for now
         Ok(None)
-        // // TODO: H256::from_slice can panic
-        // let block_hash = H256::from_slice(block_hash.as_slice());
-
-        // // Get the fully populated block
-        // let block = self
-        //     .eth_adapter
-        //     .block_by_hash(&self.logger, block_hash)
-        //     .compat()
-        //     .await?
-        //     .ok_or_else(|| IngestorError::BlockUnavailable(block_hash))?;
-        // let block = self
-        //     .eth_adapter
-        //     .load_full_block(&self.logger, block)
-        //     .compat()
-        //     .await?;
-
-        // // Store it in the database and try to advance the chain head pointer
-        // self.chain_store.upsert_block(block).await?;
-
-        // self.chain_store
-        //     .cheap_clone()
-        //     .attempt_chain_head_update(self.ancestor_count)
-        //     .await
-        //     .map(|missing| missing.map(|h256| h256.into()))
-        //     .map_err(|e| {
-        //         error!(self.logger, "failed to update chain head");
-        //         IngestorError::Unknown(e)
-        //     })
     }
 
     fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
-        // FIXME (NEAR): Commented out for none
+        // FIXME (NEAR):  Might not be necessary for NEAR support for now
         Ok(None)
-        // self.chain_store.chain_head_ptr()
     }
 
     fn cleanup_cached_blocks(&self) -> Result<Option<(i32, usize)>, Error> {
-        // FIXME (NEAR): Commented out for none
+        // FIXME (NEAR):  Might not be necessary for NEAR support for now
         Ok(None)
-        // self.chain_store.cleanup_cached_blocks(self.ancestor_count)
     }
 }

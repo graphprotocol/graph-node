@@ -6,13 +6,12 @@ use std::str::FromStr;
 
 use crate::DataSource;
 
-// FIXME (NEAR): Hard-coded all stull related to capabilities, what capabilities means for a NEAR support,
-//               should we go with anything here?
+// FIXME (NEAR): Hard-coded all stuff related to capabilities, what capabilities means for a NEAR support?
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NodeCapabilities {}
 
 impl PartialOrd for NodeCapabilities {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    fn partial_cmp(&self, _other: &Self) -> Option<Ordering> {
         // FIXME (NEAR): Does a None ordering makes sense?
         None
     }
@@ -21,7 +20,7 @@ impl PartialOrd for NodeCapabilities {
 impl FromStr for NodeCapabilities {
     type Err = Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(_s: &str) -> Result<Self, Self::Err> {
         Ok(NodeCapabilities {})
     }
 }
@@ -35,7 +34,7 @@ impl fmt::Display for NodeCapabilities {
 impl_slog_value!(NodeCapabilities, "{}");
 
 impl graph::blockchain::NodeCapabilities<crate::Chain> for NodeCapabilities {
-    fn from_data_sources(data_sources: &[DataSource]) -> Self {
+    fn from_data_sources(_data_sources: &[DataSource]) -> Self {
         NodeCapabilities {}
     }
 }

@@ -2,7 +2,6 @@ use crate::data_source::MappingBlockHandler;
 use graph::blockchain;
 use graph::blockchain::TriggerData;
 use graph::components::near::NearBlock;
-use graph::prelude::web3::types::Address;
 use graph::prelude::web3::types::H256;
 use graph::prelude::web3::types::U64;
 use graph::prelude::BlockNumber;
