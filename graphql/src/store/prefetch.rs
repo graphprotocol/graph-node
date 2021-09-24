@@ -83,8 +83,42 @@ struct Node {
     /// copying objects until the end, when converting to `q::Value` forces
     /// us to copy any child that is referenced by multiple parents. It also
     /// makes it possible to avoid unnecessary copying of a child that is
-    /// referenced by only one parent - without the `Rc` we would have to copy
-    /// since we do not know that only one parent uses it.
+    /// referenced by only one parent - without the `Rc` we would have to
+    /// copy since we do not know that only one parent uses it.
+    ///
+    /// Multiple parents can reference a single child in the following
+    /// situation: assume a GraphQL query `balances { token { issuer {id}}}`
+    /// where `balances` stores the `id` of the `token`, and `token` stores
+    /// the `id` of its `issuer`. Execution of the query when all `balances`
+    /// reference the same `token` will happen through several invocations
+    /// of `fetch`. For the purposes of this comment, we can think of
+    /// `fetch` as taking a list of `(parent_id, child_id)` pairs and
+    /// returning entities that are identified by this pair, i.e., there
+    /// will be one entity for each unique `(parent_id, child_id)`
+    /// combination, rather than one for each unique `child_id`. In reality,
+    /// of course, we will usually not know the `child_id` yet until we
+    /// actually run the query.
+    ///
+    /// Query execution works as follows:
+    /// 1. Fetch all `balances`, returning `#b` `Balance` entities. The
+    ///    `Balance.token` field will be the same for all these entities.
+    /// 2. Fetch `#b` `Token` entities, identified through `(Balance.id,
+    ///    Balance.token)` resulting in one `Token` entity
+    /// 3. Fetch 1 `Issuer` entity, identified through `(Token.id,
+    ///    Token.issuer)`
+    /// 4. Glue all these results together into a DAG through invocations of
+    ///    `Join::perform`
+    ///
+    /// We now have `#b` `Node` instances representing the same `Token`, but
+    /// each the child of a different `Node` for the `#b` balances. Each of
+    /// those `#b` `Token` nodes points to the same `Issuer` node. It's
+    /// important to note that the issuer node could itself be the root of a
+    /// large tree and could therefore take up a lot of memory. When we
+    /// convert this DAG into `q::Value`, we need to make `#b` copies of the
+    /// `Issuer` node. Using an `Rc` in `Node` allows us to defer these
+    /// copies to the point where we need to convert to `q::Value`, and it
+    /// would be desirable to base the data structure that GraphQL execution
+    /// uses on a DAG rather than a tree, but that's a good amount of work
     children: BTreeMap<String, Vec<Rc<Node>>>,
 }
 
