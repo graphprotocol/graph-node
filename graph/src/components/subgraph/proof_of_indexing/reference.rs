@@ -41,7 +41,7 @@ impl StableHash for CausalityRegion<'_> {
     }
 }
 
-impl<'a> CausalityRegion<'a> {
+impl CausalityRegion<'_> {
     pub fn from_network(network: &str) -> String {
         format!("ethereum/{}", network)
     }
