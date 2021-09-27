@@ -1,6 +1,7 @@
 use crate::functions::pg_notify;
 use diesel::pg::PgConnection;
 use diesel::select;
+use graph::prelude::tokio::sync::mpsc::error::SendTimeoutError;
 use lazy_static::lazy_static;
 use postgres::Notification;
 use postgres::{fallible_iterator::FallibleIterator, Client, NoTls};
@@ -25,6 +26,15 @@ lazy_static! {
                 )))
             )
             .unwrap_or(Duration::from_secs(300));
+    static ref NOTIFICATION_BROADCAST_TIMEOUT: Duration =
+        env::var("GRAPH_NOTIFICATION_BROADCAST_TIMEOUT")
+            .ok()
+            .map(
+                |s| Duration::from_secs(u64::from_str(&s).unwrap_or_else(|_| panic!(
+                    "failed to parse env var GRAPH_NOTIFICATION_BROADCAST_TIMEOUT"
+                )))
+            )
+            .unwrap_or(Duration::from_secs(60));
 }
 
 #[derive(Clone)]
@@ -123,7 +133,7 @@ impl NotificationListener {
         // Create a channel for notifications
         let (sender, receiver) = channel(100);
 
-        let worker_handle = thread::spawn(move || {
+        let worker_handle = graph::spawn_thread("notification_listener", move || {
             // We exit the process on panic so unwind safety is irrelevant.
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
                 // Connect to Postgres
@@ -190,11 +200,32 @@ impl NotificationListener {
 
                         match JsonNotification::parse(&notification, &mut conn) {
                             Ok(json_notification) => {
-                                // We'll assume here that if sending fails, this means that the
-                                // listener has already been dropped, the receiving
-                                // end is gone and we should terminate the listener loop
-                                if sender.clone().blocking_send(json_notification).is_err() {
-                                    break;
+                                let timeout = *NOTIFICATION_BROADCAST_TIMEOUT;
+                                match graph::block_on(
+                                    sender.send_timeout(json_notification, timeout),
+                                ) {
+                                    // on error or timeout, continue
+                                    Ok(()) => (),
+                                    Err(SendTimeoutError::Timeout(_)) => {
+                                        crit!(
+                                            logger,
+                                            "Timeout broadcasting DB notification, skipping it";
+                                            "timeout_secs" => timeout.as_secs().to_string(),
+                                            "channel" => &channel_name.0,
+                                            "notification" => format!("{:?}", notification),
+                                        );
+                                    }
+
+                                    // If sending fails, this means that the receiver has been
+                                    // dropped and we should terminate the listener loop.
+                                    Err(SendTimeoutError::Closed(_)) => {
+                                        debug!(
+                                            logger,
+                                            "DB notification listener closed";
+                                            "channel" => &channel_name.0,
+                                        );
+                                        break;
+                                    }
                                 }
                             }
                             Err(e) => {
