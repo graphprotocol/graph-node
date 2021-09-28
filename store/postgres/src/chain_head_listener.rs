@@ -5,7 +5,7 @@ use graph::{
         futures03::{self, FutureExt},
         tokio, StoreError,
     },
-    prometheus::GaugeVec,
+    prometheus::{CounterVec, GaugeVec},
 };
 use std::str::FromStr;
 use std::sync::Arc;
@@ -103,7 +103,13 @@ impl ChainHeadUpdateListener {
     pub fn new(logger: &Logger, registry: Arc<dyn MetricsRegistry>, postgres_url: String) -> Self {
         let logger = logger.new(o!("component" => "ChainHeadUpdateListener"));
         let ingestor_metrics = Arc::new(BlockIngestorMetrics::new(registry.clone()));
-
+        let counter = registry
+            .global_counter_vec(
+                "notification_queue_recvd",
+                "Number of messages received through Postgres LISTEN",
+                vec!["channel", "network"].as_slice(),
+            )
+            .unwrap();
         // Create a Postgres notification listener for chain head updates
         let (mut listener, receiver) =
             NotificationListener::new(&logger, postgres_url, CHANNEL_NAME.clone());
@@ -115,6 +121,7 @@ impl ChainHeadUpdateListener {
             &mut listener,
             receiver,
             watchers.cheap_clone(),
+            counter,
         );
 
         ChainHeadUpdateListener {
@@ -133,14 +140,19 @@ impl ChainHeadUpdateListener {
         listener: &mut NotificationListener,
         mut receiver: Receiver<JsonNotification>,
         watchers: Arc<RwLock<BTreeMap<String, Watcher>>>,
+        counter: CounterVec,
     ) {
         // Process chain head updates in a dedicated task
         graph::spawn(async move {
             while let Some(notification) = receiver.recv().await {
                 // Create ChainHeadUpdate from JSON
                 let update: ChainHeadUpdate =
-                    match serde_json::from_value(notification.payload.clone()) {
-                        Ok(update) => update,
+                    match serde_json::from_value::<ChainHeadUpdate>(notification.payload.clone()) {
+                        Ok(update) => {
+                            let labels = [CHANNEL_NAME.as_str(), &update.network_name];
+                            counter.with_label_values(&labels).inc();
+                            update
+                        }
                         Err(e) => {
                             crit!(
                                 logger,
