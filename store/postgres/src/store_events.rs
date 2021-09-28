@@ -18,12 +18,19 @@ impl StoreEventListener {
     pub fn new(
         logger: Logger,
         postgres_url: String,
+        registry: Arc<impl MetricsRegistry>,
     ) -> (Self, Box<dyn Stream<Item = StoreEvent, Error = ()> + Send>) {
-        let (notification_listener, receiver) = NotificationListener::new(
-            &logger,
-            postgres_url,
-            SafeChannelName::i_promise_this_is_safe("store_events"),
-        );
+        let channel = SafeChannelName::i_promise_this_is_safe("store_events");
+        let (notification_listener, receiver) =
+            NotificationListener::new(&logger, postgres_url, channel.clone());
+
+        let counter = registry
+            .global_counter_vec(
+                "notification_queue_recvd",
+                "Number of messages received through Postgres LISTEN",
+                vec!["channel", "network"].as_slice(),
+            )
+            .unwrap();
 
         let event_stream = Box::new(
             ReceiverStream::new(receiver)
@@ -55,6 +62,7 @@ impl StoreEventListener {
                         },
                         |change| {
                             num_valid.fetch_add(1, Ordering::SeqCst);
+                            counter.with_label_values(&[channel.as_str(), "none"]).inc();
                             Some(change)
                         },
                     )
@@ -84,8 +92,8 @@ pub struct SubscriptionManager {
 }
 
 impl SubscriptionManager {
-    pub fn new(logger: Logger, postgres_url: String) -> Self {
-        let (listener, store_events) = StoreEventListener::new(logger, postgres_url);
+    pub fn new(logger: Logger, postgres_url: String, registry: Arc<impl MetricsRegistry>) -> Self {
+        let (listener, store_events) = StoreEventListener::new(logger, postgres_url, registry);
 
         let mut manager = SubscriptionManager {
             subscriptions: Arc::new(RwLock::new(HashMap::new())),

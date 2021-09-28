@@ -41,6 +41,7 @@ impl StoreBuilder {
         let subscription_manager = Arc::new(SubscriptionManager::new(
             logger.cheap_clone(),
             primary_shard.connection.to_owned(),
+            registry.clone(),
         ));
 
         let (store, pools) =
