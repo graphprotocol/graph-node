@@ -277,10 +277,6 @@ impl StoreBuilder {
         self.chain_head_update_listener.clone()
     }
 
-    // This is used in the test-store, but rustc keeps complaining that it
-    // is not used
-    #[cfg(debug_assertions)]
-    #[allow(dead_code)]
     pub fn primary_pool(&self) -> ConnectionPool {
         self.pools.get(&*PRIMARY_SHARD).unwrap().clone()
     }

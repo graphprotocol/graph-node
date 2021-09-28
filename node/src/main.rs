@@ -212,6 +212,7 @@ async fn main() {
 
         let subscription_manager = store_builder.subscription_manager();
         let chain_head_update_listener = store_builder.chain_head_update_listener();
+        let primary_pool = store_builder.primary_pool();
         let network_store = store_builder.network_store(idents);
 
         // To support the ethereum block ingestor, ethereum networks are referenced both by the
@@ -303,7 +304,12 @@ async fn main() {
 
             // Start a task runner
             let mut job_runner = graph::util::jobs::Runner::new(&logger);
-            register_store_jobs(&mut job_runner, network_store.clone());
+            register_store_jobs(
+                &mut job_runner,
+                network_store.clone(),
+                primary_pool,
+                metrics_registry.clone(),
+            );
             graph::spawn_blocking(job_runner.start());
         }
 
