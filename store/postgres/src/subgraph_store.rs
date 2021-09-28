@@ -35,6 +35,7 @@ use crate::{
     primary,
     primary::{DeploymentId, Site},
     relational::Layout,
+    NotificationSender,
 };
 use crate::{
     deployment_store::{DeploymentStore, ReplicaId},
@@ -203,9 +204,10 @@ impl SubgraphStore {
         logger: &Logger,
         stores: Vec<(Shard, ConnectionPool, Vec<ConnectionPool>, Vec<usize>)>,
         placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
+        sender: Arc<NotificationSender>,
     ) -> Self {
         Self {
-            inner: Arc::new(SubgraphStoreInner::new(logger, stores, placer)),
+            inner: Arc::new(SubgraphStoreInner::new(logger, stores, placer, sender)),
         }
     }
 
@@ -239,6 +241,7 @@ pub struct SubgraphStoreInner {
     /// graph-node processes over time.
     sites: TimedCache<DeploymentHash, Site>,
     placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
+    sender: Arc<NotificationSender>,
 }
 
 impl SubgraphStoreInner {
@@ -260,6 +263,7 @@ impl SubgraphStoreInner {
         logger: &Logger,
         stores: Vec<(Shard, ConnectionPool, Vec<ConnectionPool>, Vec<usize>)>,
         placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
+        sender: Arc<NotificationSender>,
     ) -> Self {
         let primary = stores
             .iter()
@@ -289,6 +293,7 @@ impl SubgraphStoreInner {
             stores,
             sites,
             placer,
+            sender,
         }
     }
 
@@ -483,7 +488,7 @@ impl SubgraphStoreInner {
             let changes =
                 pconn.create_subgraph_version(name, &site, node_id, mode, exists_and_synced)?;
             let event = StoreEvent::new(changes);
-            pconn.send_store_event(&event)?;
+            pconn.send_store_event(&self.sender, &event)?;
             Ok(())
         })?;
         Ok(site.as_ref().into())
@@ -571,7 +576,7 @@ impl SubgraphStoreInner {
             // the copy
             let changes = pconn.assign_subgraph(dst.as_ref(), &node)?;
             let event = StoreEvent::new(changes);
-            pconn.send_store_event(&event)?;
+            pconn.send_store_event(&self.sender, &event)?;
             Ok(())
         })?;
         Ok(dst.as_ref().into())
@@ -605,7 +610,7 @@ impl SubgraphStoreInner {
 
     pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
         let conn = self.primary_conn()?;
-        conn.send_store_event(event)
+        conn.send_store_event(&self.sender, event)
     }
 
     /// Get a connection to the primary shard. Code must never hold one of these
@@ -928,7 +933,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         let pconn = self.primary_conn()?;
         pconn.transaction(|| -> Result<_, StoreError> {
             let changes = pconn.remove_subgraph(name)?;
-            pconn.send_store_event(&StoreEvent::new(changes))
+            pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })
     }
 
@@ -941,7 +946,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         let pconn = self.primary_conn()?;
         pconn.transaction(|| -> Result<_, StoreError> {
             let changes = pconn.reassign_subgraph(site.as_ref(), node_id)?;
-            pconn.send_store_event(&StoreEvent::new(changes))
+            pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })
     }
 
@@ -1160,7 +1165,7 @@ impl WritableStoreTrait for WritableStore {
         let pconn = self.store.primary_conn()?;
         pconn.transaction(|| -> Result<_, StoreError> {
             let changes = pconn.unassign_subgraph(self.site.as_ref())?;
-            pconn.send_store_event(&StoreEvent::new(changes))
+            pconn.send_store_event(&self.store.0.sender, &StoreEvent::new(changes))
         })
     }
 

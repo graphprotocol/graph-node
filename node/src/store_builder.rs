@@ -10,7 +10,8 @@ use graph::{
 use graph_store_postgres::connection_pool::{ConnectionPool, ForeignServer, PoolName};
 use graph_store_postgres::{
     BlockStore as DieselBlockStore, ChainHeadUpdateListener as PostgresChainHeadUpdateListener,
-    Shard as ShardName, Store as DieselStore, SubgraphStore, SubscriptionManager, PRIMARY_SHARD,
+    NotificationSender, Shard as ShardName, Store as DieselStore, SubgraphStore,
+    SubscriptionManager, PRIMARY_SHARD,
 };
 
 use crate::config::{Config, Shard};
@@ -33,7 +34,7 @@ impl StoreBuilder {
         logger: &Logger,
         node: &NodeId,
         config: &Config,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<impl MetricsRegistry>,
     ) -> Self {
         let primary_shard = config.primary_store().clone();
 
@@ -80,8 +81,10 @@ impl StoreBuilder {
         logger: &Logger,
         node: &NodeId,
         config: &Config,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<impl MetricsRegistry>,
     ) -> (Arc<SubgraphStore>, HashMap<ShardName, ConnectionPool>) {
+        let notification_sender = Arc::new(NotificationSender::new(registry.cheap_clone()));
+
         let servers = config
             .stores
             .iter()
@@ -129,21 +132,10 @@ impl StoreBuilder {
             logger,
             shards,
             Arc::new(config.deployment.clone()),
+            notification_sender,
         ));
 
         (store, pools)
-    }
-
-    // Somehow, rustc gets this wrong; the function is used in
-    // `manager::Context.subgraph_store`
-    #[allow(dead_code)]
-    pub fn make_subgraph_store(
-        logger: &Logger,
-        node: &NodeId,
-        config: &Config,
-        registry: Arc<dyn MetricsRegistry>,
-    ) -> Arc<SubgraphStore> {
-        Self::make_subgraph_store_and_pools(logger, node, config, registry).0
     }
 
     pub fn make_store(

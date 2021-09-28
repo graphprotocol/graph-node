@@ -66,6 +66,7 @@ pub use self::chain_head_listener::ChainHeadUpdateListener;
 pub use self::chain_store::ChainStore;
 pub use self::detail::DeploymentDetail;
 pub use self::jobs::register as register_jobs;
+pub use self::notification_listener::NotificationSender;
 pub use self::primary::UnusedDeployment;
 pub use self::store::Store;
 pub use self::store_events::SubscriptionManager;

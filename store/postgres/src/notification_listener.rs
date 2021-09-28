@@ -37,6 +37,14 @@ lazy_static! {
             .unwrap_or(Duration::from_secs(60));
 }
 
+#[cfg(debug_assertions)]
+lazy_static::lazy_static! {
+    /// Tests set this to true so that `send_store_event` will store a copy
+    /// of each event sent in `EVENT_TAP`
+    pub static ref EVENT_TAP_ENABLED: Mutex<bool> = Mutex::new(false);
+    pub static ref EVENT_TAP: Mutex<Vec<StoreEvent>> = Mutex::new(Vec::new());
+}
+
 #[derive(Clone)]
 /// This newtype exists to make it hard to misuse the `NotificationListener` API in a way that
 /// could impact security.
@@ -342,11 +350,30 @@ impl JsonNotification {
             _ => Err(anyhow!("JSON notifications must be numbers or objects"))?,
         }
     }
+}
 
-    pub fn send(
-        channel: &str,
-        data: &serde_json::Value,
+pub struct NotificationSender {
+    sent_counter: Box<CounterVec>,
+}
+
+impl NotificationSender {
+    pub fn new(registry: Arc<impl MetricsRegistry>) -> Self {
+        let sent_counter = registry
+            .new_counter_vec(
+                "notification_queue_sent",
+                "Number of messages sent through pg_notify()",
+                vec!["channel".to_string(), "network".to_string()],
+            )
+            .expect("we can create the notification_queue_sent gauge");
+        NotificationSender { sent_counter }
+    }
+
+    pub fn notify(
+        &self,
         conn: &PgConnection,
+        channel: &str,
+        network: Option<&str>,
+        data: &serde_json::Value,
     ) -> Result<(), StoreError> {
         use diesel::ExpressionMethods;
         use diesel::RunQueryDsl;
@@ -394,6 +421,9 @@ impl JsonNotification {
                 }
             }
         }
+        self.sent_counter
+            .with_label_values(&vec![channel, network.unwrap_or("none")])
+            .inc();
         Ok(())
     }
 }

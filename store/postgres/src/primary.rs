@@ -45,8 +45,8 @@ use std::{
 use crate::{
     block_range::UNVERSIONED_RANGE,
     detail::DeploymentDetail,
-    notification_listener::JsonNotification,
     subgraph_store::{unused, Shard},
+    NotificationSender,
 };
 
 #[cfg(debug_assertions)]
@@ -989,7 +989,11 @@ impl<'a> Connection<'a> {
             .collect()
     }
 
-    pub fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
+    pub fn send_store_event(
+        &self,
+        sender: &NotificationSender,
+        event: &StoreEvent,
+    ) -> Result<(), StoreError> {
         // Performance: Don't bog down the db with many empty changelists.
         if event.changes.is_empty() {
             return Ok(());
@@ -1001,7 +1005,7 @@ impl<'a> Connection<'a> {
                 EVENT_TAP.lock().unwrap().push(event.clone());
             }
         }
-        JsonNotification::send("store_events", &v, self.conn.as_ref())
+        sender.notify(&self.conn, "store_events", None, &v)
     }
 
     /// Return the name of the node that has the fewest assignments out of the
