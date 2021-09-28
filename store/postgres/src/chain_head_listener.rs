@@ -11,12 +11,12 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::{collections::BTreeMap, time::Duration};
 
-use diesel::RunQueryDsl;
 use lazy_static::lazy_static;
 
 use crate::{
     connection_pool::ConnectionPool,
     notification_listener::{JsonNotification, NotificationListener, SafeChannelName},
+    NotificationSender,
 };
 use graph::blockchain::ChainHeadUpdateListener as ChainHeadUpdateListenerTrait;
 use graph::prelude::serde::{Deserialize, Serialize};
@@ -96,6 +96,7 @@ pub struct ChainHeadUpdateListener {
 pub(crate) struct ChainHeadUpdateSender {
     pool: ConnectionPool,
     chain_name: String,
+    sender: Arc<NotificationSender>,
 }
 
 impl ChainHeadUpdateListener {
@@ -226,16 +227,19 @@ impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
 }
 
 impl ChainHeadUpdateSender {
-    pub fn new(pool: ConnectionPool, network_name: String) -> Self {
+    pub fn new(
+        pool: ConnectionPool,
+        network_name: String,
+        sender: Arc<NotificationSender>,
+    ) -> Self {
         Self {
             pool,
             chain_name: network_name,
+            sender,
         }
     }
 
     pub fn send(&self, hash: &str, number: i64) -> Result<(), StoreError> {
-        use crate::functions::pg_notify;
-
         let msg = json! ({
             "network_name": &self.chain_name,
             "head_block_hash": hash,
@@ -243,9 +247,7 @@ impl ChainHeadUpdateSender {
         });
 
         let conn = self.pool.get()?;
-        diesel::select(pg_notify(CHANNEL_NAME.as_str(), &msg.to_string()))
-            .execute(&conn)
-            .map_err(StoreError::from)
-            .map(|_| ())
+        self.sender
+            .notify(&conn, CHANNEL_NAME.as_str(), Some(&self.chain_name), &msg)
     }
 }

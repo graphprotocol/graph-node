@@ -219,6 +219,10 @@ impl SubgraphStore {
     ) -> DynTryFuture<'a, Option<[u8; 32]>> {
         self.inner.clone().get_proof_of_indexing(id, indexer, block)
     }
+
+    pub fn notification_sender(&self) -> Arc<NotificationSender> {
+        self.sender.clone()
+    }
 }
 
 impl std::ops::Deref for SubgraphStore {

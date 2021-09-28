@@ -16,6 +16,7 @@ use graph::{
 
 use crate::{
     chain_head_listener::ChainHeadUpdateSender, connection_pool::ConnectionPool, ChainStore,
+    NotificationSender,
 };
 use crate::{subgraph_store::PRIMARY_SHARD, Shard};
 
@@ -174,6 +175,7 @@ pub struct BlockStore {
     stores: RwLock<HashMap<String, Arc<ChainStore>>>,
     pools: HashMap<Shard, ConnectionPool>,
     primary: ConnectionPool,
+    sender: Arc<NotificationSender>,
 }
 
 impl BlockStore {
@@ -194,6 +196,7 @@ impl BlockStore {
         chains: Vec<(String, Vec<EthereumNetworkIdentifier>, Shard)>,
         // shard -> pool
         pools: HashMap<Shard, ConnectionPool>,
+        sender: Arc<NotificationSender>,
     ) -> Result<Self, StoreError> {
         let primary = pools
             .get(&PRIMARY_SHARD)
@@ -206,6 +209,7 @@ impl BlockStore {
             stores: RwLock::new(HashMap::new()),
             pools,
             primary,
+            sender,
         };
 
         fn reduce_idents(
@@ -338,7 +342,11 @@ impl BlockStore {
             .get(&chain.shard)
             .ok_or_else(|| constraint_violation!("there is no pool for shard {}", chain.shard))?
             .clone();
-        let sender = ChainHeadUpdateSender::new(self.primary.clone(), chain.name.clone());
+        let sender = ChainHeadUpdateSender::new(
+            self.primary.clone(),
+            chain.name.clone(),
+            self.sender.clone(),
+        );
         let ident = chain.network_identifier()?;
         let store = ChainStore::new(
             chain.name.clone(),
