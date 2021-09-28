@@ -1,6 +1,6 @@
-use crate::functions::pg_notify;
 use diesel::pg::PgConnection;
 use diesel::select;
+use diesel::sql_types::Text;
 use graph::prelude::tokio::sync::mpsc::error::SendTimeoutError;
 use lazy_static::lazy_static;
 use postgres::Notification;
@@ -378,6 +378,10 @@ impl NotificationSender {
         use diesel::ExpressionMethods;
         use diesel::RunQueryDsl;
         use public::large_notifications::dsl::*;
+
+        sql_function! {
+            fn pg_notify(channel: Text, msg: Text)
+        }
 
         let msg = data.to_string();
 
