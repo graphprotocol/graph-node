@@ -255,7 +255,7 @@ where
         // 2. No subgraph manifest and a set of feature validation errors.
         //
         // For this step we must collect whichever results we have into GraphQL `Value` types.
-        let (features, errors) = match subgraph_validation {
+        let (features, errors, network) = match subgraph_validation {
             Either::Left(subgraph_manifest) => {
                 let features = q::Value::List(
                     detect_features(&subgraph_manifest)
@@ -266,7 +266,8 @@ where
                         .collect(),
                 );
                 let errors = q::Value::List(vec![]);
-                (features, errors)
+                let network = Some(subgraph_manifest.network_name());
+                (features, errors, network)
             }
             Either::Right(errors) => {
                 let features = q::Value::List(vec![]);
@@ -277,7 +278,7 @@ where
                         .map(q::Value::String)
                         .collect(),
                 );
-                (features, errors)
+                (features, errors, None)
             }
         };
 
@@ -286,6 +287,9 @@ where
         let mut response: BTreeMap<String, q::Value> = BTreeMap::new();
         response.insert("features".to_string(), features);
         response.insert("errors".to_string(), errors);
+        if let Some(network_name) = network {
+            response.insert("network".to_string(), q::Value::String(network_name));
+        }
 
         Ok(q::Value::Object(response))
     }
