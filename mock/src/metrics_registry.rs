@@ -1,5 +1,6 @@
 use graph::components::metrics::{Collector, Counter, Gauge, Opts, PrometheusError};
 use graph::prelude::MetricsRegistry as MetricsRegistryTrait;
+use graph::prometheus::CounterVec;
 
 use std::collections::HashMap;
 
@@ -43,4 +44,15 @@ impl MetricsRegistryTrait for MockMetricsRegistry {
     }
 
     fn unregister(&self, _: Box<dyn Collector>) {}
+
+    fn global_counter_vec(
+        &self,
+        name: &str,
+        help: &str,
+        variable_labels: &[&str],
+    ) -> Result<CounterVec, PrometheusError> {
+        let opts = Opts::new(name, help);
+        let counters = CounterVec::new(opts, variable_labels)?;
+        Ok(counters)
+    }
 }

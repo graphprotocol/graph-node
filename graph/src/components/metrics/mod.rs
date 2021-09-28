@@ -47,6 +47,13 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         const_labels: HashMap<String, String>,
     ) -> Result<Counter, PrometheusError>;
 
+    fn global_counter_vec(
+        &self,
+        name: &str,
+        help: &str,
+        variable_labels: &[&str],
+    ) -> Result<CounterVec, PrometheusError>;
+
     fn global_deployment_counter(
         &self,
         name: &str,

@@ -15,6 +15,7 @@ pub struct MetricsRegistry {
     /// Global metrics are lazily initialized and identified by
     /// the `Desc.id` that hashes the name and const label values
     global_counters: Arc<RwLock<HashMap<u64, Counter>>>,
+    global_counter_vecs: Arc<RwLock<HashMap<u64, CounterVec>>>,
     global_gauges: Arc<RwLock<HashMap<u64, Gauge>>>,
 }
 
@@ -32,6 +33,7 @@ impl MetricsRegistry {
             unregister_errors,
             registered_metrics,
             global_counters: Arc::new(RwLock::new(HashMap::new())),
+            global_counter_vecs: Arc::new(RwLock::new(HashMap::new())),
             global_gauges: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -145,6 +147,28 @@ impl MetricsRegistryTrait for MetricsRegistry {
                 .unwrap()
                 .insert(id, counter.clone());
             Ok(counter)
+        }
+    }
+
+    fn global_counter_vec(
+        &self,
+        name: &str,
+        help: &str,
+        variable_labels: &[&str],
+    ) -> Result<CounterVec, PrometheusError> {
+        let opts = Opts::new(name, help);
+        let counters = CounterVec::new(opts, variable_labels)?;
+        let id = counters.desc().first().unwrap().id;
+        let maybe_counter = self.global_counter_vecs.read().unwrap().get(&id).cloned();
+        if let Some(counters) = maybe_counter {
+            Ok(counters)
+        } else {
+            self.register(name, Box::new(counters.clone()));
+            self.global_counter_vecs
+                .write()
+                .unwrap()
+                .insert(id, counters.clone());
+            Ok(counters)
         }
     }
 
