@@ -352,22 +352,29 @@ impl JsonNotification {
     }
 }
 
+/// Send notifications via `pg_notify`. All sending of notifications through
+/// Postgres should go through this struct as it maintains a Prometheus
+/// metric to track the amount of messages sent
 pub struct NotificationSender {
-    sent_counter: Box<CounterVec>,
+    sent_counter: CounterVec,
 }
 
 impl NotificationSender {
     pub fn new(registry: Arc<impl MetricsRegistry>) -> Self {
         let sent_counter = registry
-            .new_counter_vec(
+            .global_counter_vec(
                 "notification_queue_sent",
                 "Number of messages sent through pg_notify()",
-                vec!["channel".to_string(), "network".to_string()],
+                &["channel", "network"],
             )
             .expect("we can create the notification_queue_sent gauge");
         NotificationSender { sent_counter }
     }
 
+    /// Send `data` as a Postgres notification on the given `channel`. The
+    /// connection `conn` must be into the primary database as that's the
+    /// only place where listeners connect. The `network` is only used for
+    /// metrics gathering and does not affect how the notification is sent
     pub fn notify(
         &self,
         conn: &PgConnection,
@@ -426,7 +433,7 @@ impl NotificationSender {
             }
         }
         self.sent_counter
-            .with_label_values(&vec![channel, network.unwrap_or("none")])
+            .with_label_values(&[channel, network.unwrap_or("none")])
             .inc();
         Ok(())
     }
