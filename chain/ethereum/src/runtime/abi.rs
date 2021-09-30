@@ -156,6 +156,24 @@ impl AscIndexId for AscEthereumTransaction_0_0_2 {
 
 #[repr(C)]
 #[derive(AscType)]
+pub(crate) struct AscEthereumTransaction_0_0_6 {
+    pub hash: AscPtr<AscH256>,
+    pub index: AscPtr<AscBigInt>,
+    pub from: AscPtr<AscH160>,
+    pub to: AscPtr<AscH160>,
+    pub value: AscPtr<AscBigInt>,
+    pub gas_limit: AscPtr<AscBigInt>,
+    pub gas_price: AscPtr<AscBigInt>,
+    pub input: AscPtr<Uint8Array>,
+    pub nonce: AscPtr<BigInt>,
+}
+
+impl AscIndexId for AscEthereumTransaction_0_0_6 {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumTransaction;
+}
+
+#[repr(C)]
+#[derive(AscType)]
 pub(crate) struct AscEthereumEvent<T>
 where
     T: AscType,
