@@ -266,7 +266,8 @@ where
                         .collect(),
                 );
                 let errors = q::Value::List(vec![]);
-                let network = Some(subgraph_manifest.network_name());
+                let network = q::Value::String(subgraph_manifest.network_name());
+
                 (features, errors, network)
             }
             Either::Right(errors) => {
@@ -278,7 +279,8 @@ where
                         .map(q::Value::String)
                         .collect(),
                 );
-                (features, errors, None)
+                let network = q::Value::Null;
+                (features, errors, network)
             }
         };
 
@@ -287,9 +289,7 @@ where
         let mut response: BTreeMap<String, q::Value> = BTreeMap::new();
         response.insert("features".to_string(), features);
         response.insert("errors".to_string(), errors);
-        if let Some(network_name) = network {
-            response.insert("network".to_string(), q::Value::String(network_name));
-        }
+        response.insert("network".to_string(), network);
 
         Ok(q::Value::Object(response))
     }
