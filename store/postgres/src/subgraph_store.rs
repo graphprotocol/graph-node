@@ -1119,12 +1119,9 @@ impl WritableStore {
     /// return `Ok(())`
     fn try_send_store_event(&self, event: StoreEvent) -> Result<(), StoreError> {
         if *SEND_SUBSCRIPTION_NOTIFICATIONS {
-            self.store
-                .send_store_event(&event)
-                .map_err(
-                    |e| error!(self.logger, "Could not send store event"; "error" => e.to_string()),
-                )
-                .ok();
+            let _ = self.store.send_store_event(&event).map_err(
+                |e| error!(self.logger, "Could not send store event"; "error" => e.to_string()),
+            );
             Ok(())
         } else {
             Ok(())
