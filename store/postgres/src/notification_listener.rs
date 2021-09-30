@@ -85,7 +85,7 @@ impl NotificationListener {
     //
     /// The listener will handle dropping the database connection by
     /// indefinitely trying to reconnect to the database. Users of the
-    /// listener have now way to find out whether the connection had been
+    /// listener have no way to find out whether the connection had been
     /// dropped and was reestablished.
     pub fn new(
         logger: &Logger,
