@@ -24,6 +24,9 @@ pub mod runtime;
 
 pub mod firehose;
 
+/// Helpers for parsing environment variables.
+pub mod env;
+
 /// Module with mocks for different parts of the system.
 pub mod mock {
     pub use crate::components::store::MockStore;
