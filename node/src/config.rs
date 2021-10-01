@@ -36,6 +36,7 @@ pub struct Opt {
     pub ethereum_rpc: Vec<String>,
     pub ethereum_ws: Vec<String>,
     pub ethereum_ipc: Vec<String>,
+    pub unsafe_config: bool,
 }
 
 impl Default for Opt {
@@ -51,6 +52,7 @@ impl Default for Opt {
             ethereum_rpc: vec![],
             ethereum_ws: vec![],
             ethereum_ipc: vec![],
+            unsafe_config: false,
         }
     }
 }

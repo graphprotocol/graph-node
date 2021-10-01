@@ -104,9 +104,7 @@ lazy_static! {
     /// with the default. This means that we do not support indexing against a Geth node with
     /// `RPCGasCap` set below 50 million.
     // See also f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
-    static ref ETH_CALL_GAS: u32 = std::env::var("GRAPH_ETH_CALL_GAS")
-                                    .map(|s| s.parse::<u32>().expect("invalid GRAPH_ETH_CALL_GAS env var"))
-                                    .unwrap_or(50_000_000);
+    static ref ETH_CALL_GAS: u32 = graph::env::unsafe_env_var("GRAPH_ETH_CALL_GAS", 50_000_000);
 
     /// Additional deterministic errors that have not yet been hardcoded. Separated by `;`.
     static ref GETH_ETH_CALL_ERRORS_ENV: Vec<String> = {
