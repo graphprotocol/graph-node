@@ -69,11 +69,3 @@ impl NearBlockExt for NearBlock {
         BlockPtr::from((self.hash, self.number))
     }
 }
-
-// FIXME (NEAR): Schedule for deletion, already provided elsewhere, should the other location be moved
-//               out to a more chain agnostic location?
-// impl ToEntityKey for BlockPtr {
-//     fn to_entity_key(&self, subgraph: DeploymentHash) -> EntityKey {
-//         EntityKey::data(subgraph, "Block".into(), self.hash_hex())
-//     }
-// }

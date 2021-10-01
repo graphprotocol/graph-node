@@ -1,13 +1,14 @@
-use anyhow::Error;
 use graph::components::near::NearBlockExt;
 use graph::components::store::StoredDynamicDataSource;
 use graph::data::subgraph::{DataSourceContext, Source};
 use graph::{
+    anyhow,
     blockchain::{self, Blockchain},
     prelude::{
-        async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, Link,
-        LinkResolver, Logger,
+        async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, Error,
+        Link, LinkResolver, Logger,
     },
+    semver,
 };
 use std::collections::BTreeMap;
 use std::{convert::TryFrom, sync::Arc};

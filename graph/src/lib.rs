@@ -35,6 +35,7 @@ pub use task_spawn::{
     block_on, spawn, spawn_allow_panic, spawn_blocking, spawn_blocking_allow_panic, spawn_thread,
 };
 
+pub use anyhow;
 pub use bytes;
 pub use mockall;
 pub use parking_lot;

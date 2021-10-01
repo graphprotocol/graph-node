@@ -178,13 +178,6 @@ impl Chain {
         _metrics: Arc<BlockStreamMetrics>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        if start_blocks.len() != 0 && start_blocks.len() != 1 {
-            return Err(anyhow::format_err!(
-                "accepting start_blocks lenght of 0 or 1, got {}",
-                start_blocks.len()
-            ));
-        }
-
         let firehose_endpoint = match self.firehose_endpoints.random() {
             Some(e) => e.clone(),
             None => return Err(anyhow::format_err!("no firehose endpoint available",)),
@@ -202,7 +195,6 @@ impl Chain {
             firehose_endpoint,
             firehose_cursor,
             firehose_mapper,
-            self.node_id.clone(),
             deployment.hash,
             adapter,
             filter,

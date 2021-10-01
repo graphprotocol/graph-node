@@ -17,7 +17,6 @@ where
 {
     cursor: Option<String>,
     mapper: Arc<F>,
-    node_id: NodeId,
     subgraph_id: DeploymentHash,
     adapter: Arc<C::TriggersAdapter>,
     filter: Arc<C::TriggerFilter>,
@@ -30,7 +29,6 @@ impl<C: Blockchain, F: FirehoseMapper<C>> Clone for FirehoseBlockStreamContext<C
         Self {
             cursor: self.cursor.clone(),
             mapper: self.mapper.clone(),
-            node_id: self.node_id.clone(),
             subgraph_id: self.subgraph_id.clone(),
             adapter: self.adapter.clone(),
             filter: self.filter.clone(),
@@ -70,7 +68,6 @@ where
         endpoint: Arc<FirehoseEndpoint>,
         cursor: Option<String>,
         mapper: Arc<F>,
-        node_id: NodeId,
         subgraph_id: DeploymentHash,
         adapter: Arc<C::TriggersAdapter>,
         filter: Arc<C::TriggerFilter>,
@@ -83,7 +80,6 @@ where
             ctx: FirehoseBlockStreamContext {
                 cursor,
                 mapper,
-                node_id,
                 subgraph_id,
                 logger,
                 adapter,
@@ -112,9 +108,9 @@ impl<C: Blockchain, F: FirehoseMapper<C>> Stream for FirehoseBlockStream<C, F> {
                     let start_block_num: BlockNumber = self
                         .ctx
                         .start_blocks
-                        .clone()
-                        .into_iter()
+                        .iter()
                         .min()
+                        .map(|x| *x)
                         // Firehose knows where to start the stream for the specific chain, 0 here means
                         // start at Genesis block.
                         .unwrap_or(0);

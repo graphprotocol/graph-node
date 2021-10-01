@@ -52,8 +52,6 @@ pub const SPEC_VERSION_0_0_4: Version = Version::new(0, 0, 4);
 
 pub const MIN_SPEC_VERSION: Version = Version::new(0, 0, 2);
 
-pub const SPEC_VERSION_0_0_1: Version = Version::new(0, 0, 1);
-
 lazy_static! {
     static ref DISABLE_GRAFTS: bool = std::env::var("GRAPH_DISABLE_GRAFTS")
         .ok()

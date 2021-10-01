@@ -1,18 +1,15 @@
-use anyhow::Error;
-use graph::impl_slog_value;
+use graph::{anyhow::Error, impl_slog_value};
 use std::cmp::{Ordering, PartialOrd};
 use std::fmt;
 use std::str::FromStr;
 
 use crate::DataSource;
 
-// FIXME (NEAR): Hard-coded all stuff related to capabilities, what capabilities means for a NEAR support?
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NodeCapabilities {}
 
 impl PartialOrd for NodeCapabilities {
     fn partial_cmp(&self, _other: &Self) -> Option<Ordering> {
-        // FIXME (NEAR): Does a None ordering makes sense?
         None
     }
 }

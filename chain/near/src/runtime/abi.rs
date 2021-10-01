@@ -2,9 +2,10 @@ use crate::trigger::NearBlockData;
 use graph::prelude::BigInt;
 use graph::runtime::{asc_new, AscPtr, DeterministicHostError, ToAscObj};
 use graph::runtime::{AscHeap, AscIndexId, AscType, IndexForAscTypeId};
+use graph::semver;
+use graph::{anyhow, semver::Version};
 use graph_runtime_derive::AscType;
 use graph_runtime_wasm::asc_abi::class::{AscBigInt, Uint8Array};
-use semver::Version;
 use std::mem::size_of;
 
 type AscH256 = Uint8Array;

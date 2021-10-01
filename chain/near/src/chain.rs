@@ -1,11 +1,11 @@
-use anyhow::Error;
 use graph::blockchain::BlockchainKind;
 use graph::components::near::NearBlock;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::endpoints::FirehoseNetworkEndpoints;
 use graph::prelude::web3::types::H256;
-use graph::prelude::{NodeId, StopwatchMetrics};
+use graph::prelude::StopwatchMetrics;
 use graph::{
+    anyhow,
     blockchain::{
         block_stream::{
             BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers, FirehoseError,
@@ -17,7 +17,9 @@ use graph::{
     components::store::DeploymentLocator,
     firehose::bstream,
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
-    prelude::{async_trait, o, BlockNumber, ChainStore, Logger, LoggerFactory, SubgraphStore},
+    prelude::{
+        async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory, SubgraphStore,
+    },
 };
 use prost::Message;
 use std::sync::Arc;
@@ -112,13 +114,6 @@ impl Blockchain for Chain {
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        if start_blocks.len() != 0 && start_blocks.len() != 1 {
-            return Err(anyhow::format_err!(
-                "accepting start_blocks length of 0 or 1, got {}",
-                start_blocks.len()
-            ));
-        }
-
         let adapter = self
             .triggers_adapter(
                 &deployment,
@@ -145,8 +140,6 @@ impl Blockchain for Chain {
             firehose_endpoint,
             firehose_cursor,
             firehose_mapper,
-            // FIXME (NEAR): Hard-coded NodeId, this is actually not required for other chain ...
-            NodeId::new("near").unwrap(),
             deployment.hash,
             adapter,
             filter,
