@@ -103,6 +103,9 @@ where
             ["subgraph-version", version] => self.handle_subgraph_version(version),
             ["subgraph-repo", version] => self.handle_subgraph_repo(version),
             ["entity-count", deployment] => self.handle_entity_count(logger, deployment),
+            ["deployments-for-subgraph", subgraph_id] => {
+                self.handle_deployments_for_subgraph(subgraph_id)
+            }
             _ => handle_not_found(),
         }
     }
@@ -229,6 +232,25 @@ where
                 Ok(vi)
             }
         }
+    }
+
+    fn handle_deployments_for_subgraph(
+        &self,
+        subgraph_id: &str,
+    ) -> Result<Response<Body>, GraphQLServerError> {
+        let name_version_pairs: Vec<q::Value> = self
+            .store
+            .deployments_for_subgraph_id(subgraph_id)?
+            .into_iter()
+            .map(|(name, version)| {
+                object! {
+                    name: name,
+                    version: version
+                }
+            })
+            .collect();
+        let payload = q::Value::List(name_version_pairs);
+        Ok(as_http_response(&payload))
     }
 }
 
