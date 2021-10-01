@@ -125,14 +125,8 @@ const GETH_ETH_CALL_ERRORS: &[&str] = &[
     "invalid opcode",
     // Ethereum says 1024 is the stack sizes limit, so this is deterministic.
     "stack limit reached 1024",
-    // "out of gas" is commented out because Erigon has not yet bumped the default gas limit to 50
-    // million. It can be added through `GETH_ETH_CALL_ERRORS_ENV` if not using Erigon. Once
-    // https://github.com/ledgerwatch/erigon/pull/2572 has been released and indexers have updated,
-    // this can be uncommented.
-    //
     // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61 for why the gas limit is considered deterministic.
-
-    // "out of gas",
+    "out of gas",
 ];
 
 impl CheapClone for EthereumAdapter {
@@ -521,6 +515,9 @@ impl EthereumAdapter {
                         const PARITY_BAD_JUMP_PREFIX: &str = "Bad jump";
                         const PARITY_STACK_LIMIT_PREFIX: &str = "Out of stack";
 
+                        // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
+                        const PARITY_OUT_OF_GAS: &str = "Out of gas";
+
                         const GANACHE_VM_EXECUTION_ERROR: i64 = -32000;
                         const GANACHE_REVERT_MESSAGE: &str =
                             "VM Exception while processing transaction: revert";
@@ -569,7 +566,8 @@ impl EthereumAdapter {
                                             || data.starts_with(PARITY_BAD_JUMP_PREFIX)
                                             || data.starts_with(PARITY_STACK_LIMIT_PREFIX)
                                             || data == PARITY_BAD_INSTRUCTION_FE
-                                            || data == PARITY_BAD_INSTRUCTION_FD =>
+                                            || data == PARITY_BAD_INSTRUCTION_FD
+                                            || data == PARITY_OUT_OF_GAS =>
                                     {
                                         let reason = if data == PARITY_BAD_INSTRUCTION_FE {
                                             PARITY_BAD_INSTRUCTION_FE.to_owned()
