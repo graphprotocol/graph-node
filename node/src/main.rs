@@ -25,6 +25,7 @@ use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
 use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{self as ethereum, network_indexer, EthereumAdapterTrait, Transport};
 use graph_chain_near::{self as near};
+use graph_chain_tendermint::{self as tendermint};
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -840,7 +841,52 @@ fn ethereum_networks_as_chains(
     HashMap::from_iter(chains)
 }
 
-/// Return the hashmap of NEAR chains and also add them to `blockchain_map`.
+fn tendermint_networks_as_chains(
+    blockchain_map: &mut BlockchainMap,
+    logger: &Logger,
+    firehose_networks: &FirehoseNetworks,
+    store: &Store,
+    logger_factory: &LoggerFactory,
+) -> HashMap<String, Arc<tendermint::Chain>> {
+    let chains: Vec<_> = firehose_networks
+        .networks
+        .iter()
+        .filter_map(|(network_name, firehose_endpoints)| {
+            store
+                .block_store()
+                .chain_store(network_name)
+                .map(|chain_store| (network_name, chain_store, firehose_endpoints))
+                .or_else(|| {
+                    error!(
+                        logger,
+                        "No store configured for Tendermint chain {}; ignoring this chain", network_name
+                    );
+                    None
+                })
+        })
+        .map(|(network_name, chain_store, firehose_endpoints)| {
+            (
+                network_name.clone(),
+                Arc::new(tendermint::Chain::new(
+                    logger_factory.clone(),
+                    network_name.clone(),
+                    chain_store,
+                    store.subgraph_store(),
+                    firehose_endpoints.clone(),
+                )),
+            )
+        })
+        .collect();
+
+    for (network_name, chain) in chains.iter().cloned() {
+        blockchain_map.insert::<graph_chain_tendermint::Chain>(network_name, chain)
+    }
+
+    HashMap::from_iter(chains)
+}
+
+
+/// Return the hashmap of ethereum chains and also add them to `blockchain_map`.
 fn near_networks_as_chains(
     blockchain_map: &mut BlockchainMap,
     logger: &Logger,
@@ -890,6 +936,7 @@ fn near_networks_as_chains(
         }
     }
 }
+
 
 fn start_block_ingestor(
     logger: &Logger,

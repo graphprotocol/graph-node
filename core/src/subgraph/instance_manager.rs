@@ -194,10 +194,14 @@ where
                         .start_subgraph_inner::<graph_chain_ethereum::Chain>(logger, loc, manifest)
                         .await
                 }
-
                 BlockchainKind::Near => {
                     instance_manager
                         .start_subgraph_inner::<graph_chain_near::Chain>(logger, loc, manifest)
+                        .await
+                }
+                BlockchainKind::Tendermint => {
+                    instance_manager
+                        .start_subgraph_inner::<graph_chain_tendermint::Chain>(logger, loc, manifest)
                         .await
                 }
             }

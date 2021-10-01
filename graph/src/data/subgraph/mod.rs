@@ -639,6 +639,8 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             .0
             .data_sources
             .iter()
+            // FIXME (NEAR): Once more refactoring is merged in, this should go away as validation has been pushed to a chain specific check now
+            .filter(|d| d.kind().eq("ethereum/contract") || d.kind().eq("near/blocks") || d.kind().eq("tendermint/data"))
             .filter_map(|d| d.network().map(|n| n.to_string()))
             .collect::<Vec<String>>();
         networks.sort();
@@ -719,6 +721,9 @@ impl<C: Blockchain> SubgraphManifest<C> {
         // Assume the manifest has been validated, ensuring network names are homogenous
         self.data_sources
             .iter()
+            // FIXME (NEAR): Once more refactoring is merged in, this should go away as validation has been pushed to a chain specific check now
+            .filter(|d| d.kind() == "ethereum/contract" || d.kind() == "near/blocks" || d.kind() == "tendermint/data")
+            .filter(|d| d.kind() == "ethereum/contract" )
             .filter_map(|d| d.network().map(|n| n.to_string()))
             .next()
             .expect("Validated manifest does not have a network defined on any datasource")

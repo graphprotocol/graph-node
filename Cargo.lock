@@ -1607,6 +1607,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-chain-tendermint"
+version = "0.0.1"
+
+[[package]]
 name = "graph-core"
 version = "0.24.2"
 dependencies = [
@@ -1620,6 +1624,7 @@ dependencies = [
  "graph",
  "graph-chain-ethereum",
  "graph-chain-near",
+ "graph-chain-tendermint",
  "graph-mock",
  "graph-runtime-wasm",
  "graphql-parser",
@@ -1678,6 +1683,7 @@ dependencies = [
  "graph",
  "graph-chain-ethereum",
  "graph-chain-near",
+ "graph-chain-tendermint",
  "graph-core",
  "graph-graphql",
  "graph-runtime-wasm",
@@ -1770,6 +1776,7 @@ dependencies = [
  "graph",
  "graph-chain-ethereum",
  "graph-chain-near",
+ "graph-chain-tendermint",
  "graph-graphql",
  "graphql-parser",
  "http 0.2.4",

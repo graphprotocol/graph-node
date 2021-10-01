@@ -41,6 +41,12 @@ pub mod subgraph;
 /// Components dealing with Ethereum.
 pub mod ethereum;
 
+/// Components dealing with NEAR.
+pub mod near;
+
+/// Components dealing with Tendermint.
+pub mod tendermint;
+
 /// Components dealing with processing GraphQL.
 pub mod graphql;
 
