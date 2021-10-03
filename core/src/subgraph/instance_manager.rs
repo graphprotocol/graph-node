@@ -714,6 +714,9 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
         None
     };
 
+    // There are currently no other causality regions since offchain data is not supported.
+    let causality_region = CausalityRegion::from_network(ctx.state.instance.network());
+
     // Process events one after the other, passing in entity operations
     // collected previously to every new event being processed
     let mut block_state = match process_triggers(
@@ -727,6 +730,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
         &ctx.state.instance,
         &block,
         triggers,
+        &causality_region,
     )
     .await
     {
@@ -806,20 +810,9 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
             data_sources,
         );
 
-        // There are currently no other causality regions since offchain data is not supported.
-        let causality_region = CausalityRegion::from_network(ctx.state.instance.network());
-
         // Process the triggers in each host in the same order the
         // corresponding data sources have been created.
         for trigger in triggers {
-            let error_count = block_state.deterministic_errors.len();
-
-            if let Some(proof_of_indexing) = &proof_of_indexing {
-                proof_of_indexing
-                    .borrow_mut()
-                    .start_handler(&causality_region);
-            }
-
             block_state = SubgraphInstance::<C, T>::process_trigger_in_runtime_hosts(
                 &logger,
                 &runtime_hosts,
@@ -827,6 +820,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
                 &trigger,
                 block_state,
                 proof_of_indexing.cheap_clone(),
+                &causality_region,
             )
             .await
             .map_err(|e| {
@@ -840,18 +834,6 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
                     }
                 }
             })?;
-
-            if let Some(proof_of_indexing) = &proof_of_indexing {
-                if block_state.deterministic_errors.len() != error_count {
-                    assert!(block_state.deterministic_errors.len() == error_count + 1);
-
-                    // If a deterministic error has happened, write a new
-                    // ProofOfIndexingEvent::DeterministicError to the SharedProofOfIndexing.
-                    proof_of_indexing
-                        .borrow_mut()
-                        .write_deterministic_error(&logger, &causality_region);
-                }
-            }
         }
     }
 
@@ -1038,6 +1020,7 @@ async fn process_triggers<C: Blockchain>(
     instance: &SubgraphInstance<C, impl RuntimeHostBuilder<C>>,
     block: &Arc<C::Block>,
     triggers: Vec<C::TriggerData>,
+    causality_region: &str,
 ) -> Result<BlockState<C>, MappingError> {
     use graph::blockchain::TriggerData;
 
@@ -1050,6 +1033,7 @@ async fn process_triggers<C: Blockchain>(
                 &trigger,
                 block_state,
                 proof_of_indexing.cheap_clone(),
+                causality_region,
             )
             .await
             .map_err(move |mut e| {
