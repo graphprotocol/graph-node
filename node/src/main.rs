@@ -241,15 +241,13 @@ async fn main() {
             &logger_factory,
         );
 
-        let near_chains = near_networks_as_chains(
+        near_networks_as_chains(
             &mut blockchain_map,
             &logger,
             &firehose_networks,
             network_store.as_ref(),
             &logger_factory,
         );
-
-        let chain_count = ethereum_chains.len() + near_chains.len();
 
         let blockchain_map = Arc::new(blockchain_map);
 
@@ -325,17 +323,15 @@ async fn main() {
                 start_block_ingestor(&logger, block_polling_interval, ethereum_chains);
             }
 
-            if chain_count > 0 {
-                // Start a task runner
-                let mut job_runner = graph::util::jobs::Runner::new(&logger);
-                register_store_jobs(
-                    &mut job_runner,
-                    network_store.clone(),
-                    primary_pool,
-                    metrics_registry.clone(),
-                );
-                graph::spawn_blocking(job_runner.start());
-            }
+            // Start a task runner
+            let mut job_runner = graph::util::jobs::Runner::new(&logger);
+            register_store_jobs(
+                &mut job_runner,
+                network_store.clone(),
+                primary_pool,
+                metrics_registry.clone(),
+            );
+            graph::spawn_blocking(job_runner.start());
         }
 
         let subgraph_instance_manager = SubgraphInstanceManager::new(
