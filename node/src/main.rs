@@ -224,12 +224,12 @@ async fn main() {
         let near_idents =
             compute_near_network_identifiers(firehose_networks_by_kind.get(&BlockchainKind::Near));
 
-        let network_identifiers = dbg!(ethereum_idents)
+        let network_identifiers = ethereum_idents
             .into_iter()
             .chain(near_idents.into_iter())
             .collect();
 
-        let network_store = store_builder.network_store(dbg!(network_identifiers));
+        let network_store = store_builder.network_store(network_identifiers);
 
         let ethereum_chains = ethereum_networks_as_chains(
             &mut blockchain_map,
