@@ -1196,6 +1196,34 @@ impl<'a> Connection<'a> {
             .unwrap_or((None, None)))
     }
 
+    /// Returns all (subgraph_name, version) pairs for a given deployment hash.
+    pub fn subgraphs_by_deployment_hash(
+        &self,
+        deployment_hash: &str,
+    ) -> Result<Vec<(String, String)>, StoreError> {
+        use subgraph as s;
+        use subgraph_version as v;
+        v::table
+            .inner_join(
+                s::table.on(v::id
+                    .nullable()
+                    .eq(s::current_version)
+                    .or(v::id.nullable().eq(s::pending_version))),
+            )
+            .filter(v::deployment.eq(&deployment_hash))
+            .select((
+                s::name,
+                sql::<Text>(
+                    "(case when subgraphs.subgraph.pending_version = subgraphs.subgraph_version.id then 'pending'
+                           when subgraphs.subgraph.current_version = subgraphs.subgraph_version.id then 'current'
+                           else 'unused'
+                     end) as version",
+                ),
+            ))
+            .get_results(self.conn.as_ref())
+            .map_err(Into::into)
+    }
+
     /// Find all deployments that are not in use and add them to the
     /// `unused_deployments` table. Only values that are available in the
     /// primary will be filled in `unused_deployments`

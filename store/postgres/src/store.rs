@@ -108,6 +108,14 @@ impl StatusStore for Store {
         self.subgraph_store.versions_for_subgraph_id(subgraph_id)
     }
 
+    fn subgraphs_for_deployment_hash(
+        &self,
+        deployment_hash: &str,
+    ) -> Result<Vec<(String, String)>, StoreError> {
+        self.subgraph_store
+            .subgraphs_for_deployment_hash(deployment_hash)
+    }
+
     fn get_proof_of_indexing<'a>(
         self: Arc<Self>,
         subgraph_id: &'a DeploymentHash,
