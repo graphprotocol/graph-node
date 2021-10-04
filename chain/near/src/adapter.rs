@@ -32,7 +32,6 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct NearBlockFilter {
-    pub contract_addresses: HashSet<(BlockNumber, Address)>,
     pub trigger_every_block: bool,
 }
 
@@ -41,35 +40,8 @@ impl NearBlockFilter {
         iter.into_iter()
             .filter(|data_source| data_source.source.address.is_some())
             .fold(Self::default(), |mut filter_opt, data_source| {
-                let has_block_handler_with_call_filter = data_source
-                    .mapping
-                    .block_handlers
-                    .clone()
-                    .into_iter()
-                    .any(|block_handler| match block_handler.filter {
-                        Some(ref filter) if *filter == BlockHandlerFilter::Call => return true,
-                        _ => return false,
-                    });
-
-                let has_block_handler_without_filter = data_source
-                    .mapping
-                    .block_handlers
-                    .clone()
-                    .into_iter()
-                    .any(|block_handler| block_handler.filter.is_none());
-
                 filter_opt.extend(Self {
-                    trigger_every_block: has_block_handler_without_filter,
-                    contract_addresses: if has_block_handler_with_call_filter {
-                        vec![(
-                            data_source.source.start_block,
-                            data_source.source.address.unwrap().to_owned(),
-                        )]
-                        .into_iter()
-                        .collect()
-                    } else {
-                        HashSet::default()
-                    },
+                    trigger_every_block: true,
                 });
                 filter_opt
             })
@@ -77,25 +49,6 @@ impl NearBlockFilter {
 
     pub fn extend(&mut self, other: NearBlockFilter) {
         self.trigger_every_block = self.trigger_every_block || other.trigger_every_block;
-        self.contract_addresses = self.contract_addresses.iter().cloned().fold(
-            HashSet::new(),
-            |mut addresses, (start_block, address)| {
-                match other
-                    .contract_addresses
-                    .iter()
-                    .cloned()
-                    .find(|(_, other_address)| &address == other_address)
-                {
-                    Some((other_start_block, address)) => {
-                        addresses.insert((cmp::min(other_start_block, start_block), address));
-                    }
-                    None => {
-                        addresses.insert((start_block, address));
-                    }
-                }
-                addresses
-            },
-        );
     }
 }
 

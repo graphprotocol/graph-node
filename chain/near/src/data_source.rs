@@ -7,15 +7,12 @@ use std::{convert::TryFrom, sync::Arc};
 use graph::{
     blockchain::{self, Blockchain, DataSource as _},
     prelude::{
-        async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize,
+        async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, Link,
         LinkResolver, Logger,
     },
 };
 
-use graph::data::subgraph::{
-    BlockHandlerFilter, DataSourceContext, Mapping, MappingBlockHandler, Source, TemplateSource,
-    UnresolvedMapping,
-};
+use graph::data::subgraph::{DataSourceContext, Source};
 
 use crate::chain::Chain;
 use crate::trigger::{NearBlockTriggerType, NearTrigger};
@@ -66,32 +63,6 @@ impl blockchain::DataSource<Chain> for DataSource {
         }
     }
 
-    fn mapping(&self) -> &Mapping {
-        &self.mapping
-    }
-
-    fn from_manifest(
-        kind: String,
-        network: Option<String>,
-        name: String,
-        source: Source,
-        mapping: Mapping,
-        context: Option<DataSourceContext>,
-    ) -> Result<Self, Error> {
-        // Data sources in the manifest are created "before genesis" so they have no creation block.
-        let creation_block = None;
-
-        Ok(DataSource {
-            kind,
-            network,
-            name,
-            source,
-            mapping,
-            context: Arc::new(context),
-            creation_block,
-        })
-    }
-
     fn name(&self) -> &str {
         &self.name
     }
@@ -133,14 +104,12 @@ impl blockchain::DataSource<Chain> for DataSource {
             && network == &other.network
             && name == &other.name
             && source == &other.source
-            && mapping.abis == other.mapping.abis
-            && mapping.event_handlers == other.mapping.event_handlers
-            && mapping.call_handlers == other.mapping.call_handlers
             && mapping.block_handlers == other.mapping.block_handlers
             && context == &other.context
     }
 
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
+        // FIXME (NEAR): Implement me!
         todo!()
     }
 
@@ -148,73 +117,56 @@ impl blockchain::DataSource<Chain> for DataSource {
         templates: &BTreeMap<&str, &DataSourceTemplate>,
         stored: StoredDynamicDataSource,
     ) -> Result<Self, Error> {
+        // FIXME (NEAR): Implement me correctly
         todo!()
     }
 
-    // FIXME (NEAR): Commented out for now, re-added `todo!()`
-    // fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
-    //     StoredDynamicDataSource {
-    //         name: self.name.to_owned(),
-    //         source: self.source.clone(),
-    //         context: self
-    //             .context
-    //             .as_ref()
-    //             .as_ref()
-    //             .map(|ctx| serde_json::to_string(&ctx).unwrap()),
-    //         creation_block: self.creation_block,
-    //     }
-    // }
+    fn validate(&self) -> Vec<graph::prelude::SubgraphManifestValidationError> {
+        // FIXME (NEAR): Implement me correctly
+        vec![]
+    }
 
-    // fn from_stored_dynamic_data_source(
-    //     templates: &BTreeMap<&str, &DataSourceTemplate>,
-    //     stored: StoredDynamicDataSource,
-    // ) -> Result<Self, Error> {
-    //     let StoredDynamicDataSource {
-    //         name,
-    //         source,
-    //         context,
-    //         creation_block,
-    //     } = stored;
-    //     let template = templates
-    //         .get(name.as_str())
-    //         .ok_or_else(|| anyhow!("no template named `{}` was found", name))?;
-    //     let context = context
-    //         .map(|ctx| serde_json::from_str::<Entity>(&ctx))
-    //         .transpose()?;
+    fn api_version(&self) -> semver::Version {
+        self.mapping.api_version.clone()
+    }
 
-    //     let contract_abi = template.mapping.find_abi(&template.source.abi)?;
-
-    //     Ok(DataSource {
-    //         kind: template.kind.to_string(),
-    //         network: template.network.as_ref().map(|s| s.to_string()),
-    //         name,
-    //         source,
-    //         mapping: template.mapping.clone(),
-    //         context: Arc::new(context),
-    //         creation_block,
-    //         contract_abi,
-    //     })
-    // }
+    fn runtime(&self) -> &[u8] {
+        self.mapping.runtime.as_ref()
+    }
 }
 
 impl DataSource {
+    fn from_manifest(
+        kind: String,
+        network: Option<String>,
+        name: String,
+        source: Source,
+        mapping: Mapping,
+        context: Option<DataSourceContext>,
+    ) -> Result<Self, Error> {
+        // Data sources in the manifest are created "before genesis" so they have no creation block.
+        let creation_block = None;
+
+        Ok(DataSource {
+            kind,
+            network,
+            name,
+            source,
+            mapping,
+            context: Arc::new(context),
+            creation_block,
+        })
+    }
+
     fn handler_for_block(
         &self,
         trigger_type: &NearBlockTriggerType,
     ) -> Option<MappingBlockHandler> {
         match trigger_type {
-            NearBlockTriggerType::Every => self
-                .mapping
-                .block_handlers
-                .iter()
-                .find(move |handler| handler.filter == None)
-                .cloned(),
-            NearBlockTriggerType::WithCallTo(_address) => self
-                .mapping
-                .block_handlers
-                .iter()
-                .find(move |handler| handler.filter == Some(BlockHandlerFilter::Call))
-                .cloned(),
+            NearBlockTriggerType::Every => {
+                // FIXME (NEAR): We need to decide how to deal with multi block handlers, allow only 1?
+                self.mapping.block_handlers.first().map(|v| v.clone())
+            }
         }
     }
 }
@@ -264,30 +216,6 @@ impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
             creation_block,
         } = info;
 
-        // FIXME (NEAR): Commented code
-        // Obtain the address from the parameters
-        // let string = params
-        //     .get(0)
-        //     .with_context(|| {
-        //         format!(
-        //             "Failed to create data source from template `{}`: address parameter is missing",
-        //             template.name
-        //         )
-        //     })?
-        //     .trim_start_matches("0x");
-
-        // let address = Address::from_str(string).with_context(|| {
-        //     format!(
-        //         "Failed to create data source from template `{}`, invalid address provided",
-        //         template.name
-        //     )
-        // })?;
-
-        // let contract_abi = template
-        //     .mapping
-        //     .find_abi(&template.source.abi)
-        //     .with_context(|| format!("template `{}`", template.name))?;
-
         Ok(DataSource {
             kind: template.kind,
             network: template.network,
@@ -310,7 +238,6 @@ pub struct BaseDataSourceTemplate<M> {
     pub kind: String,
     pub network: Option<String>,
     pub name: String,
-    pub source: TemplateSource,
     pub mapping: M,
 }
 
@@ -328,7 +255,6 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
             kind,
             network,
             name,
-            source,
             mapping,
         } = self;
 
@@ -338,18 +264,92 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
             kind,
             network,
             name,
-            source,
             mapping: mapping.resolve(resolver, logger).await?,
         })
     }
 }
 
 impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
-    fn mapping(&self) -> &Mapping {
-        &self.mapping
-    }
-
     fn name(&self) -> &str {
         &self.name
     }
+
+    fn api_version(&self) -> semver::Version {
+        self.mapping.api_version.clone()
+    }
+
+    fn runtime(&self) -> &[u8] {
+        self.mapping.runtime.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnresolvedMapping {
+    pub kind: String,
+    pub api_version: String,
+    pub language: String,
+    pub entities: Vec<String>,
+    #[serde(default)]
+    pub block_handlers: Vec<MappingBlockHandler>,
+    pub file: Link,
+}
+
+impl UnresolvedMapping {
+    pub async fn resolve(
+        self,
+        resolver: &impl LinkResolver,
+        logger: &Logger,
+    ) -> Result<Mapping, anyhow::Error> {
+        let UnresolvedMapping {
+            kind,
+            api_version,
+            language,
+            entities,
+            block_handlers,
+            file: link,
+        } = self;
+
+        let api_version = semver::Version::parse(&api_version)?;
+
+        // FIXME (NEAR): MAX_API_VERSION is mostly tied to Ethereum, we would need a min/max version per
+        //               blockchain.
+        // ensure!(
+        //     semver::VersionReq::parse(&format!("<= {}", *MAX_API_VERSION))
+        //         .unwrap()
+        //         .matches(&api_version),
+        //     "The maximum supported mapping API version of this indexer is {}, but `{}` was found",
+        //     *MAX_API_VERSION,
+        //     api_version
+        // );
+
+        info!(logger, "Resolve mapping"; "link" => &link.link);
+        let module_bytes = resolver.cat(logger, &link).await?;
+
+        Ok(Mapping {
+            kind,
+            api_version,
+            language,
+            entities,
+            block_handlers: block_handlers.clone(),
+            runtime: Arc::new(module_bytes),
+            link,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Mapping {
+    pub kind: String,
+    pub api_version: semver::Version,
+    pub language: String,
+    pub entities: Vec<String>,
+    pub block_handlers: Vec<MappingBlockHandler>,
+    pub runtime: Arc<Vec<u8>>,
+    pub link: Link,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub struct MappingBlockHandler {
+    pub handler: String,
 }

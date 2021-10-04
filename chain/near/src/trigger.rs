@@ -1,3 +1,4 @@
+use crate::data_source::MappingBlockHandler;
 use graph::blockchain;
 use graph::blockchain::TriggerData;
 use graph::components::near::NearBlock;
@@ -6,7 +7,6 @@ use graph::prelude::web3::types::H256;
 use graph::prelude::web3::types::U64;
 use graph::prelude::BlockNumber;
 use graph::prelude::BlockPtr;
-use graph::prelude::MappingBlockHandler;
 use graph::runtime::asc_new;
 use graph::runtime::AscHeap;
 use graph::runtime::AscPtr;
@@ -82,7 +82,6 @@ impl Eq for NearTrigger {}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NearBlockTriggerType {
     Every,
-    WithCallTo(Address),
 }
 
 impl NearTrigger {

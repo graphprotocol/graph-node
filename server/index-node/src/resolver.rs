@@ -1,5 +1,5 @@
 use either::Either;
-use graph::blockchain::{Blockchain, BlockchainKind};
+use graph::blockchain::BlockchainKind;
 use std::collections::{BTreeMap, HashMap};
 
 use graph::data::subgraph::features::detect_features;

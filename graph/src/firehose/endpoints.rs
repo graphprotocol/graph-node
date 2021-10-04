@@ -48,9 +48,9 @@ impl FirehoseEndpoint {
         };
 
         let uri = endpoint.uri().to_string();
-        let channel = endpoint.connect().await.with_context(|| {
+        let channel = endpoint.connect_lazy().with_context(|| {
             format!(
-                "unable to connect to firehose provider {} (at {})",
+                "unable to lazily connect to firehose provider {} (at {})",
                 provider.as_ref(),
                 url.as_ref()
             )
