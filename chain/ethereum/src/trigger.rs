@@ -28,6 +28,7 @@ use crate::runtime::abi::AscEthereumCall_0_0_3;
 use crate::runtime::abi::AscEthereumEvent;
 use crate::runtime::abi::AscEthereumTransaction_0_0_1;
 use crate::runtime::abi::AscEthereumTransaction_0_0_2;
+use crate::runtime::abi::AscEthereumTransaction_0_0_6;
 
 // ETHDEP: This should be defined in only one place.
 type LightEthereumBlock = Block<Transaction>;
@@ -145,7 +146,21 @@ impl blockchain::MappingTrigger for MappingTrigger {
                 params,
                 handler: _,
             } => {
-                if heap.api_version() >= Version::new(0, 0, 2) {
+                if heap.api_version() >= Version::new(0, 0, 6) {
+                    asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_6>, _, _>(
+                        heap,
+                        &EthereumEventData {
+                            block: EthereumBlockData::from(block.as_ref()),
+                            transaction: EthereumTransactionData::from(transaction.deref()),
+                            address: log.address,
+                            log_index: log.log_index.unwrap_or(U256::zero()),
+                            transaction_log_index: log.log_index.unwrap_or(U256::zero()),
+                            log_type: log.log_type.clone(),
+                            params,
+                        },
+                    )?
+                    .erase()
+                } else if heap.api_version() >= Version::new(0, 0, 2) {
                     asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_2>, _, _>(
                         heap,
                         &EthereumEventData {
@@ -373,6 +388,7 @@ pub struct EthereumTransactionData {
     pub gas_limit: U256,
     pub gas_price: U256,
     pub input: Bytes,
+    pub nonce: U256,
 }
 
 impl From<&'_ Transaction> for EthereumTransactionData {
@@ -386,6 +402,7 @@ impl From<&'_ Transaction> for EthereumTransactionData {
             gas_limit: tx.gas,
             gas_price: tx.gas_price,
             input: tx.input.clone(),
+            nonce: tx.nonce.clone(),
         }
     }
 }

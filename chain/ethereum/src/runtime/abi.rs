@@ -165,7 +165,7 @@ pub(crate) struct AscEthereumTransaction_0_0_6 {
     pub gas_limit: AscPtr<AscBigInt>,
     pub gas_price: AscPtr<AscBigInt>,
     pub input: AscPtr<Uint8Array>,
-    pub nonce: AscPtr<BigInt>,
+    pub nonce: AscPtr<AscBigInt>,
 }
 
 impl AscIndexId for AscEthereumTransaction_0_0_6 {
@@ -192,6 +192,10 @@ impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_1> {
 }
 
 impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_2> {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
+}
+
+impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_6> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
 }
 
@@ -299,6 +303,28 @@ impl ToAscObj<AscEthereumTransaction_0_0_2> for EthereumTransactionData {
             gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit))?,
             gas_price: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_price))?,
             input: asc_new(heap, &*self.input.0)?,
+        })
+    }
+}
+
+impl ToAscObj<AscEthereumTransaction_0_0_6> for EthereumTransactionData {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscEthereumTransaction_0_0_6, DeterministicHostError> {
+        Ok(AscEthereumTransaction_0_0_6 {
+            hash: asc_new(heap, &self.hash)?,
+            index: asc_new(heap, &BigInt::from(self.index))?,
+            from: asc_new(heap, &self.from)?,
+            to: self
+                .to
+                .map(|to| asc_new(heap, &to))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            value: asc_new(heap, &BigInt::from_unsigned_u256(&self.value))?,
+            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit))?,
+            gas_price: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_price))?,
+            input: asc_new(heap, &*self.input.0)?,
+            nonce: asc_new(heap, &BigInt::from_unsigned_u256(&self.nonce))?,
         })
     }
 }
