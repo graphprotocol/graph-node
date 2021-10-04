@@ -222,6 +222,7 @@ where
                         unvalidated_subgraph_manifest,
                     )?
                 }
+
                 BlockchainKind::Tendermint => {
                     let unvalidated_subgraph_manifest =
                         UnvalidatedSubgraphManifest::<graph_chain_tendermint::Chain>::resolve(
@@ -263,7 +264,6 @@ where
         let mut response: BTreeMap<String, r::Value> = BTreeMap::new();
         response.insert("features".to_string(), features);
         response.insert("errors".to_string(), errors);
-        response.insert("network".to_string(), network);
 
         Ok(r::Value::Object(response))
     }

@@ -3,6 +3,7 @@ use graph::prelude::BigInt;
 use graph::runtime::{asc_new, AscPtr, DeterministicHostError, ToAscObj};
 use graph::runtime::{AscHeap, AscIndexId, AscType, IndexForAscTypeId};
 use graph::semver;
+use graph::{semver::Version};
 use graph_runtime_derive::AscType;
 use graph_runtime_wasm::asc_abi::class::{AscBigInt, Uint8Array};
 use std::mem::size_of;
