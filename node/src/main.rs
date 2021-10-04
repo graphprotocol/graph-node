@@ -259,6 +259,14 @@ async fn main() {
             &logger_factory,
         );
 
+        tendermint_networks_as_chains(
+            &mut blockchain_map,
+            &logger,
+            &firehose_networks,
+            network_store.as_ref(),
+            &logger_factory,
+        );
+
         let blockchain_map = Arc::new(blockchain_map);
 
         let load_manager = Arc::new(LoadManager::new(
