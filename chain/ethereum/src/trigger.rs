@@ -146,46 +146,32 @@ impl blockchain::MappingTrigger for MappingTrigger {
                 params,
                 handler: _,
             } => {
-                if heap.api_version() >= Version::new(0, 0, 6) {
+                let ethereum_data = EthereumEventData {
+                    block: EthereumBlockData::from(block.as_ref()),
+                    transaction: EthereumTransactionData::from(transaction.deref()),
+                    address: log.address,
+                    log_index: log.log_index.unwrap_or(U256::zero()),
+                    transaction_log_index: log.log_index.unwrap_or(U256::zero()),
+                    log_type: log.log_type.clone(),
+                    params,
+                };
+                let api_version = heap.api_version();
+                if api_version >= Version::new(0, 0, 6) {
                     asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_6>, _, _>(
                         heap,
-                        &EthereumEventData {
-                            block: EthereumBlockData::from(block.as_ref()),
-                            transaction: EthereumTransactionData::from(transaction.deref()),
-                            address: log.address,
-                            log_index: log.log_index.unwrap_or(U256::zero()),
-                            transaction_log_index: log.log_index.unwrap_or(U256::zero()),
-                            log_type: log.log_type.clone(),
-                            params,
-                        },
+                        &ethereum_data,
                     )?
                     .erase()
-                } else if heap.api_version() >= Version::new(0, 0, 2) {
+                } else if api_version >= Version::new(0, 0, 2) {
                     asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_2>, _, _>(
                         heap,
-                        &EthereumEventData {
-                            block: EthereumBlockData::from(block.as_ref()),
-                            transaction: EthereumTransactionData::from(transaction.deref()),
-                            address: log.address,
-                            log_index: log.log_index.unwrap_or(U256::zero()),
-                            transaction_log_index: log.log_index.unwrap_or(U256::zero()),
-                            log_type: log.log_type.clone(),
-                            params,
-                        },
+                        &ethereum_data,
                     )?
                     .erase()
                 } else {
                     asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_1>, _, _>(
                         heap,
-                        &EthereumEventData {
-                            block: EthereumBlockData::from(block.as_ref()),
-                            transaction: EthereumTransactionData::from(transaction.deref()),
-                            address: log.address,
-                            log_index: log.log_index.unwrap_or(U256::zero()),
-                            transaction_log_index: log.log_index.unwrap_or(U256::zero()),
-                            log_type: log.log_type.clone(),
-                            params,
-                        },
+                        &ethereum_data,
                     )?
                     .erase()
                 }
