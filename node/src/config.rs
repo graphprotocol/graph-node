@@ -1,5 +1,5 @@
 use graph::{
-    blockchain::block_ingestor::CLEANUP_BLOCKS,
+    blockchain::{block_ingestor::CLEANUP_BLOCKS, BlockchainKind},
     prelude::{
         anyhow::{anyhow, bail, Context, Result},
         info, serde_json, Logger, NodeId,
@@ -456,6 +456,7 @@ impl ChainSection {
                 };
                 let entry = chains.entry(name.to_string()).or_insert_with(|| Chain {
                     shard: PRIMARY_SHARD.to_string(),
+                    kind: BlockchainKind::Ethereum,
                     providers: vec![],
                 });
                 entry.providers.push(provider);
@@ -468,8 +469,14 @@ impl ChainSection {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Chain {
     pub shard: String,
+    #[serde(default = "default_blockchain_kind")]
+    pub kind: BlockchainKind,
     #[serde(rename = "provider")]
     pub providers: Vec<Provider>,
+}
+
+fn default_blockchain_kind() -> BlockchainKind {
+    BlockchainKind::Ethereum
 }
 
 impl Chain {
