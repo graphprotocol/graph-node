@@ -30,5 +30,5 @@ walkdir = "2.3.2"
 test-store = { path = "../store/test-store" }
 hex = "0.4.3"
 graphql-parser = "0.3"
-pretty_assertions = "0.7.2"
+pretty_assertions = "1.0.0"
 anyhow = "1.0"
