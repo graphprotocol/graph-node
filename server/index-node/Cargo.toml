@@ -8,6 +8,7 @@ futures = "0.3.4"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
+graph-chain-near = { path = "../../chain/near" }
 graphql-parser = "0.3"
 http = "0.2"
 hyper = "0.14"

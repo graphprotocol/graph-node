@@ -1588,6 +1588,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-chain-near"
+version = "0.24.1"
+dependencies = [
+ "diesel",
+ "graph",
+ "graph-core",
+ "graph-runtime-derive",
+ "graph-runtime-wasm",
+ "graph-store-postgres",
+ "mockall 0.9.1",
+ "pretty_assertions",
+ "prost",
+ "prost-types",
+ "serde",
+ "test-store",
+ "tonic-build",
+]
+
+[[package]]
 name = "graph-core"
 version = "0.24.1"
 dependencies = [
@@ -1600,6 +1619,7 @@ dependencies = [
  "futures 0.3.16",
  "graph",
  "graph-chain-ethereum",
+ "graph-chain-near",
  "graph-mock",
  "graph-runtime-wasm",
  "graphql-parser",
@@ -1662,6 +1682,7 @@ dependencies = [
  "git-testament",
  "graph",
  "graph-chain-ethereum",
+ "graph-chain-near",
  "graph-core",
  "graph-graphql",
  "graph-runtime-wasm",
@@ -1753,6 +1774,7 @@ dependencies = [
  "futures 0.3.16",
  "graph",
  "graph-chain-ethereum",
+ "graph-chain-near",
  "graph-graphql",
  "graphql-parser",
  "http 0.2.4",

@@ -1,6 +1,6 @@
 use crate::cheap_clone::CheapClone;
 use anyhow::Context;
-use http::uri::Uri;
+use http::uri::{Scheme, Uri};
 use rand::prelude::IteratorRandom;
 use slog::Logger;
 use std::{collections::HashMap, fmt::Display, sync::Arc};
@@ -14,10 +14,10 @@ use super::bstream;
 
 #[derive(Clone)]
 pub struct FirehoseEndpoint {
-    provider: String,
-    uri: String,
+    pub provider: String,
+    pub uri: String,
+    pub token: Option<String>,
     channel: Channel,
-    token: Option<String>,
     logger: Logger,
 }
 
@@ -39,7 +39,7 @@ impl FirehoseEndpoint {
             .parse::<Uri>()
             .expect("the url should have been validated by now, so it is a valid Uri");
 
-        let endpoint = match uri.scheme().unwrap().as_str() {
+        let endpoint = match uri.scheme().unwrap_or_else(|| &Scheme::HTTP).as_str() {
             "http" => Channel::builder(uri),
             "https" => Channel::builder(uri)
                 .tls_config(ClientTlsConfig::new())
@@ -48,7 +48,13 @@ impl FirehoseEndpoint {
         };
 
         let uri = endpoint.uri().to_string();
-        let channel = endpoint.connect().await?;
+        let channel = endpoint.connect_lazy().with_context(|| {
+            format!(
+                "unable to lazily connect to firehose provider {} (at {})",
+                provider.as_ref(),
+                url.as_ref()
+            )
+        })?;
 
         Ok(FirehoseEndpoint {
             provider: provider.as_ref().to_string(),
@@ -63,14 +69,14 @@ impl FirehoseEndpoint {
         self: Arc<Self>,
         request: bstream::BlocksRequestV2,
     ) -> Result<tonic::Streaming<bstream::BlockResponseV2>, anyhow::Error> {
-        let token_metadata_opt = match self.token.clone() {
+        let token_metadata = match self.token.clone() {
             Some(token) => Some(MetadataValue::from_str(token.as_str())?),
             None => None,
         };
 
         let mut client = bstream::block_stream_v2_client::BlockStreamV2Client::with_interceptor(
             self.channel.cheap_clone(),
-            move |mut r: Request<()>| match token_metadata_opt.clone() {
+            move |mut r: Request<()>| match token_metadata.as_ref() {
                 Some(t) => {
                     r.metadata_mut().insert("authorization", t.clone());
                     Ok(r)
@@ -150,5 +156,19 @@ impl FirehoseNetworks {
         if let Some(endpoints) = self.networks.get_mut(name) {
             endpoints.remove(provider);
         }
+    }
+
+    pub fn flatten(&self) -> Vec<(String, Arc<FirehoseEndpoint>)> {
+        self.networks
+            .iter()
+            .flat_map(|(network_name, firehose_endpoints)| {
+                firehose_endpoints
+                    .endpoints
+                    .iter()
+                    .map(move |firehose_endpoint| {
+                        (network_name.clone(), firehose_endpoint.endpoint.clone())
+                    })
+            })
+            .collect()
     }
 }

@@ -312,12 +312,16 @@ pub trait NodeCapabilities<C: Blockchain> {
 pub enum BlockchainKind {
     /// Ethereum itself or chains that are compatible.
     Ethereum,
+
+    /// NEAR chains (Mainnet, Testnet) or chains that are compatible
+    Near,
 }
 
 impl fmt::Display for BlockchainKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let value = match self {
             BlockchainKind::Ethereum => "ethereum",
+            BlockchainKind::Near => "near",
         };
         write!(f, "{}", value)
     }
@@ -329,6 +333,7 @@ impl FromStr for BlockchainKind {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "ethereum" => Ok(BlockchainKind::Ethereum),
+            "near" => Ok(BlockchainKind::Near),
             _ => Err(anyhow!("unknown blockchain kind {}", s)),
         }
     }

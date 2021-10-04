@@ -1,5 +1,5 @@
 use either::Either;
-use graph::blockchain::BlockchainKind;
+use graph::blockchain::{Blockchain, BlockchainKind};
 use std::collections::{BTreeMap, HashMap};
 
 use graph::data::subgraph::features::detect_features;
@@ -188,7 +188,11 @@ where
             QueryExecutionError::SubgraphDeploymentIdError(invalid_qm_hash)
         })?;
 
-        let unvalidated_subgraph_manifest = {
+        let ValidationPostProcessResult {
+            features,
+            errors,
+            network,
+        } = {
             let raw: serde_yaml::Mapping = {
                 let file_bytes = self
                     .link_resolver
@@ -204,83 +208,38 @@ where
                 .map_err(SubgraphManifestResolveError::ResolveError)?;
             match kind {
                 BlockchainKind::Ethereum => {
-                    UnvalidatedSubgraphManifest::<graph_chain_ethereum::Chain>::resolve(
-                        deployment_hash,
-                        raw,
-                        self.link_resolver.clone(),
-                        &self.logger,
-                        MAX_SPEC_VERSION.clone(),
-                    )
-                    .await?
+                    let unvalidated_subgraph_manifest =
+                        UnvalidatedSubgraphManifest::<graph_chain_ethereum::Chain>::resolve(
+                            deployment_hash,
+                            raw,
+                            self.link_resolver.clone(),
+                            &self.logger,
+                            MAX_SPEC_VERSION.clone(),
+                        )
+                        .await?;
+
+                    validate_and_extract_features(
+                        &self.subgraph_store,
+                        unvalidated_subgraph_manifest,
+                    )?
                 }
-            }
-        };
 
-        // Then validate the subgraph we've just obtained.
-        //
-        // Note that feature valiadation errors will be inside the error variant vector (because
-        // `validate` also validates subgraph features), so we must filter them out to build our
-        // response.
-        let subgraph_validation: Either<_, _> =
-            match unvalidated_subgraph_manifest.validate(self.subgraph_store.clone(), false) {
-                Ok(subgraph_manifest) => Either::Left(subgraph_manifest),
-                Err(validation_errors) => {
-                    // We must ensure that all the errors are of the `FeatureValidationError`
-                    // variant and that there is at least one error of that kind.
-                    let feature_validation_errors: Vec<_> = validation_errors
-                        .into_iter()
-                        .filter(|error| {
-                            matches!(
-                                error,
-                                SubgraphManifestValidationError::FeatureValidationError(_)
-                            )
-                        })
-                        .collect();
+                BlockchainKind::Near => {
+                    let unvalidated_subgraph_manifest =
+                        UnvalidatedSubgraphManifest::<graph_chain_near::Chain>::resolve(
+                            deployment_hash,
+                            raw,
+                            self.link_resolver.clone(),
+                            &self.logger,
+                            MAX_SPEC_VERSION.clone(),
+                        )
+                        .await?;
 
-                    if !feature_validation_errors.is_empty() {
-                        Either::Right(feature_validation_errors)
-                    } else {
-                        // If other error variants are present or there are no feature validation
-                        // errors, we must return early with an error.
-                        //
-                        // It might be useful to return a more thoughtful error, but that is not the
-                        // purpose of this endpoint.
-                        return Err(QueryExecutionError::InvalidSubgraphManifest);
-                    }
+                    validate_and_extract_features(
+                        &self.subgraph_store,
+                        unvalidated_subgraph_manifest,
+                    )?
                 }
-            };
-
-        // At this point, we have either:
-        // 1. A valid subgraph manifest with no errors.
-        // 2. No subgraph manifest and a set of feature validation errors.
-        //
-        // For this step we must collect whichever results we have into GraphQL `Value` types.
-        let (features, errors, network) = match subgraph_validation {
-            Either::Left(subgraph_manifest) => {
-                let features = q::Value::List(
-                    detect_features(&subgraph_manifest)
-                        .map_err(|_| QueryExecutionError::InvalidSubgraphManifest)?
-                        .iter()
-                        .map(ToString::to_string)
-                        .map(q::Value::String)
-                        .collect(),
-                );
-                let errors = q::Value::List(vec![]);
-                let network = q::Value::String(subgraph_manifest.network_name());
-
-                (features, errors, network)
-            }
-            Either::Right(errors) => {
-                let features = q::Value::List(vec![]);
-                let errors = q::Value::List(
-                    errors
-                        .iter()
-                        .map(ToString::to_string)
-                        .map(q::Value::String)
-                        .collect(),
-                );
-                let network = q::Value::Null;
-                (features, errors, network)
             }
         };
 
@@ -292,6 +251,97 @@ where
         response.insert("network".to_string(), network);
 
         Ok(q::Value::Object(response))
+    }
+}
+
+struct ValidationPostProcessResult {
+    features: q::Value,
+    errors: q::Value,
+    network: q::Value,
+}
+
+fn validate_and_extract_features<C, St>(
+    subgraph_store: &Arc<St>,
+    unvalidated_subgraph_manifest: UnvalidatedSubgraphManifest<C>,
+) -> Result<ValidationPostProcessResult, QueryExecutionError>
+where
+    C: Blockchain,
+    St: SubgraphStore,
+{
+    // Validate the subgraph we've just obtained.
+    //
+    // Note that feature valiadation errors will be inside the error variant vector (because
+    // `validate` also validates subgraph features), so we must filter them out to build our
+    // response.
+    let subgraph_validation: Either<_, _> =
+        match unvalidated_subgraph_manifest.validate(subgraph_store.clone(), false) {
+            Ok(subgraph_manifest) => Either::Left(subgraph_manifest),
+            Err(validation_errors) => {
+                // We must ensure that all the errors are of the `FeatureValidationError`
+                // variant and that there is at least one error of that kind.
+                let feature_validation_errors: Vec<_> = validation_errors
+                    .into_iter()
+                    .filter(|error| {
+                        matches!(
+                            error,
+                            SubgraphManifestValidationError::FeatureValidationError(_)
+                        )
+                    })
+                    .collect();
+
+                if !feature_validation_errors.is_empty() {
+                    Either::Right(feature_validation_errors)
+                } else {
+                    // If other error variants are present or there are no feature validation
+                    // errors, we must return early with an error.
+                    //
+                    // It might be useful to return a more thoughtful error, but that is not the
+                    // purpose of this endpoint.
+                    return Err(QueryExecutionError::InvalidSubgraphManifest);
+                }
+            }
+        };
+
+    // At this point, we have either:
+    // 1. A valid subgraph manifest with no errors.
+    // 2. No subgraph manifest and a set of feature validation errors.
+    //
+    // For this step we must collect whichever results we have into GraphQL `Value` types.
+    match subgraph_validation {
+        Either::Left(subgraph_manifest) => {
+            let features = q::Value::List(
+                detect_features(&subgraph_manifest)
+                    .map_err(|_| QueryExecutionError::InvalidSubgraphManifest)?
+                    .iter()
+                    .map(ToString::to_string)
+                    .map(q::Value::String)
+                    .collect(),
+            );
+            let errors = q::Value::List(vec![]);
+            let network = q::Value::String(subgraph_manifest.network_name());
+
+            Ok(ValidationPostProcessResult {
+                features,
+                errors,
+                network,
+            })
+        }
+        Either::Right(errors) => {
+            let features = q::Value::List(vec![]);
+            let errors = q::Value::List(
+                errors
+                    .iter()
+                    .map(ToString::to_string)
+                    .map(q::Value::String)
+                    .collect(),
+            );
+            let network = q::Value::Null;
+            Ok(ValidationPostProcessResult {
+                features,
+                errors,
+                network,
+            })
+        }
     }
 }
 
