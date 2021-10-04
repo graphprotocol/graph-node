@@ -433,13 +433,14 @@ impl Context {
         let store = self.store();
 
         let subscription_manager = Arc::new(PanicSubscriptionManager);
-        let load_manager = Arc::new(LoadManager::new(&logger, vec![], registry));
+        let load_manager = Arc::new(LoadManager::new(&logger, vec![], registry.clone()));
 
         Arc::new(GraphQlRunner::new(
             &logger,
             store,
             subscription_manager,
             load_manager,
+            registry,
         ))
     }
 }

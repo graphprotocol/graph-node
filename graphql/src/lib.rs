@@ -40,5 +40,6 @@ pub mod prelude {
 
 #[cfg(debug_assertions)]
 pub mod test_support {
+    pub use super::runner::ResultSizeMetrics;
     pub use super::runner::INITIAL_DEPLOYMENT_STATE_FOR_TESTS;
 }

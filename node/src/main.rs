@@ -261,6 +261,7 @@ async fn main() {
             network_store.clone(),
             subscription_manager.clone(),
             load_manager,
+            metrics_registry.clone(),
         ));
         let mut graphql_server = GraphQLQueryServer::new(
             &logger_factory,

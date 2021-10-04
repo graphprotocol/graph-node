@@ -30,8 +30,9 @@ use graph::{
 use graph_graphql::{prelude::*, subscription::execute_subscription};
 use test_store::{
     deployment_state, execute_subgraph_query_with_complexity, execute_subgraph_query_with_deadline,
-    revert_block, run_test_sequentially, transact_entity_operations, transact_errors, Store,
-    BLOCK_ONE, GENESIS_PTR, LOAD_MANAGER, LOGGER, STORE, SUBSCRIPTION_MANAGER,
+    result_size_metrics, revert_block, run_test_sequentially, transact_entity_operations,
+    transact_errors, Store, BLOCK_ONE, GENESIS_PTR, LOAD_MANAGER, LOGGER, METRICS_REGISTRY, STORE,
+    SUBSCRIPTION_MANAGER,
 };
 
 const NETWORK_NAME: &str = "fake_network";
@@ -258,6 +259,7 @@ async fn execute_query_document_with_variables(
         STORE.clone(),
         SUBSCRIPTION_MANAGER.clone(),
         LOAD_MANAGER.clone(),
+        METRICS_REGISTRY.clone(),
     ));
     let target = QueryTarget::Deployment(id.clone());
     let query = Query::new(query, variables);
@@ -885,6 +887,7 @@ fn query_complexity_subscriptions() {
             max_depth: 100,
             max_first: std::u32::MAX,
             max_skip: std::u32::MAX,
+            result_size: result_size_metrics(),
         };
         let schema = STORE.subgraph_store().api_schema(&deployment.hash).unwrap();
 
@@ -933,6 +936,7 @@ fn query_complexity_subscriptions() {
             max_depth: 100,
             max_first: std::u32::MAX,
             max_skip: std::u32::MAX,
+            result_size: result_size_metrics(),
         };
 
         // The extra introspection causes the complexity to go over.
@@ -1311,6 +1315,7 @@ fn subscription_gets_result_even_without_events() {
             max_depth: 100,
             max_first: std::u32::MAX,
             max_skip: std::u32::MAX,
+            result_size: result_size_metrics(),
         };
         // Execute the subscription and expect at least one result to be
         // available in the result stream
