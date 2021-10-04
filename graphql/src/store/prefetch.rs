@@ -3,6 +3,7 @@
 
 use anyhow::{anyhow, Error};
 use graph::prelude::CacheWeight;
+use graph::slog::warn;
 use graph::util::cache_weight::btree_node_size;
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
@@ -35,6 +36,14 @@ lazy_static! {
     /// by Specific Attributes".
     static ref DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES: bool =
         !std::env::var("GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES").is_ok();
+
+    static ref RESULT_SIZE_WARN: usize = std::env::var("GRAPH_GRAPHQL_WARN_RESULT_SIZE")
+        .map(|s| s.parse::<usize>().expect("`GRAPH_GRAPHQL_WARN_RESULT_SIZE` is a number"))
+        .unwrap_or(std::usize::MAX);
+
+    static ref RESULT_SIZE_ERROR: usize = std::env::var("GRAPH_GRAPHQL_ERROR_RESULT_SIZE")
+        .map(|s| s.parse::<usize>().expect("`GRAPH_GRAPHQL_ERROR_RESULT_SIZE` is a number"))
+        .unwrap_or(std::usize::MAX);
 }
 
 type GroupedFieldSet<'a> = IndexMap<&'a str, CollectedResponseKey<'a>>;
@@ -199,10 +208,7 @@ impl Node {
     fn set_children(&mut self, response_key: String, nodes: Vec<Rc<Node>>) {
         fn nodes_weight(nodes: &Vec<Rc<Node>>) -> usize {
             let vec_weight = nodes.capacity() * std::mem::size_of::<Rc<Node>>();
-            let children_weight = nodes
-                .iter()
-                .map(|node| node.precalc_weight())
-                .sum::<usize>();
+            let children_weight = nodes.iter().map(|node| node.weight()).sum::<usize>();
             vec_weight + children_weight
         }
 
@@ -213,10 +219,6 @@ impl Node {
         if let Some(old) = old {
             self.children_weight -= nodes_weight(&old) + key_weight;
         }
-    }
-
-    fn precalc_weight(&self) -> usize {
-        std::mem::size_of_val(&self) + self.children_weight + btree_node_size(&self.children)
     }
 }
 
@@ -522,6 +524,16 @@ fn execute_root_selection_set(
     execute_selection_set(resolver, ctx, make_root_node(), grouped_field_set)
 }
 
+fn check_result_size(logger: &Logger, size: usize) -> Result<(), QueryExecutionError> {
+    if size > *RESULT_SIZE_ERROR {
+        return Err(QueryExecutionError::ResultTooBig(size, *RESULT_SIZE_ERROR));
+    }
+    if size > *RESULT_SIZE_WARN {
+        warn!(logger, "Large query result"; "size" => size);
+    }
+    Ok(())
+}
+
 fn execute_selection_set<'a>(
     resolver: &StoreResolver,
     ctx: &'a ExecutionContext<impl Resolver>,
@@ -599,6 +611,9 @@ fn execute_selection_set<'a>(
                     match execute_selection_set(resolver, ctx, children, grouped_field_set) {
                         Ok(children) => {
                             Join::perform(&mut parents, children, response_key);
+                            let weight =
+                                parents.iter().map(|parent| parent.weight()).sum::<usize>();
+                            check_result_size(&ctx.logger, weight)?;
                         }
                         Err(mut e) => errors.append(&mut e),
                     }
