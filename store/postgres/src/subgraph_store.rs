@@ -850,12 +850,12 @@ impl SubgraphStoreInner {
         primary.versions_for_subgraph_id(subgraph_id)
     }
 
-    pub(crate) fn deployments_for_subgraph_id(
+    pub(crate) fn subgraphs_for_deployment_hash(
         &self,
-        subgraph_id: &str,
+        deployment_hash: &str,
     ) -> Result<Vec<(String, String)>, StoreError> {
         let primary = self.primary_conn()?;
-        primary.deployments_for_subgraph_id(subgraph_id)
+        primary.subgraphs_by_deployment_hash(deployment_hash)
     }
 
     #[cfg(debug_assertions)]

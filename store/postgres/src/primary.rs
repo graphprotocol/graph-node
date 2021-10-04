@@ -1196,10 +1196,10 @@ impl<'a> Connection<'a> {
             .unwrap_or((None, None)))
     }
 
-    /// Returns all (deployment_name, version) pairs for a given subgraph id.
-    pub fn deployments_for_subgraph_id(
+    /// Returns all (subgraph_name, version) pairs for a given deployment hash.
+    pub fn subgraphs_by_deployment_hash(
         &self,
-        subgraph_id: &str,
+        deployment_hash: &str,
     ) -> Result<Vec<(String, String)>, StoreError> {
         use subgraph as s;
         use subgraph_version as v;
@@ -1210,7 +1210,7 @@ impl<'a> Connection<'a> {
                     .eq(s::current_version)
                     .or(v::id.nullable().eq(s::pending_version))),
             )
-            .filter(v::deployment.eq(&subgraph_id))
+            .filter(v::deployment.eq(&deployment_hash))
             .select((
                 s::name,
                 sql::<Text>(

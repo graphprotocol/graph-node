@@ -103,8 +103,8 @@ where
             ["subgraph-version", version] => self.handle_subgraph_version(version),
             ["subgraph-repo", version] => self.handle_subgraph_repo(version),
             ["entity-count", deployment] => self.handle_entity_count(logger, deployment),
-            ["deployments-for-subgraph", subgraph_id] => {
-                self.handle_deployments_for_subgraph(subgraph_id)
+            ["subgraphs-for-deployment", deployment_hash] => {
+                self.handle_subgraphs_for_deployment(deployment_hash)
             }
             _ => handle_not_found(),
         }
@@ -234,13 +234,13 @@ where
         }
     }
 
-    fn handle_deployments_for_subgraph(
+    fn handle_subgraphs_for_deployment(
         &self,
-        subgraph_id: &str,
+        deployment_hash: &str,
     ) -> Result<Response<Body>, GraphQLServerError> {
         let name_version_pairs: Vec<q::Value> = self
             .store
-            .deployments_for_subgraph_id(subgraph_id)?
+            .subgraphs_for_deployment_hash(deployment_hash)?
             .into_iter()
             .map(|(name, version)| {
                 object! {

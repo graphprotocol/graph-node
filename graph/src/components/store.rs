@@ -1398,10 +1398,10 @@ pub trait StatusStore: Send + Sync + 'static {
     ) -> Result<(Option<String>, Option<String>), StoreError>;
 
     /// Support for the explorer-specific API. Returns a vector of (name, version) of all
-    /// deployments for a given subgraph hash.
-    fn deployments_for_subgraph_id(
+    /// subgraphs for a given deployment hash.
+    fn subgraphs_for_deployment_hash(
         &self,
-        subgraph_id: &str,
+        deployment_hash: &str,
     ) -> Result<Vec<(String, String)>, StoreError>;
 
     /// A value of None indicates that the table is not available. Re-deploying
