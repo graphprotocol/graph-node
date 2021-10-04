@@ -24,6 +24,7 @@ use graph::{
 
 use crate::execution::{ExecutionContext, Resolver};
 use crate::query::ast as qast;
+use crate::runner::ResultSizeMetrics;
 use crate::schema::ast as sast;
 use crate::store::{build_query, StoreResolver};
 
@@ -497,8 +498,10 @@ pub fn run(
     resolver: &StoreResolver,
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
+    result_size: &ResultSizeMetrics,
 ) -> Result<q::Value, Vec<QueryExecutionError>> {
     execute_root_selection_set(resolver, ctx, selection_set).map(|nodes| {
+        result_size.observe(nodes.weight());
         let map = BTreeMap::default();
         q::Value::Object(nodes.into_iter().fold(map, |mut map, node| {
             // For root nodes, we only care about the children
