@@ -1609,6 +1609,21 @@ dependencies = [
 [[package]]
 name = "graph-chain-tendermint"
 version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "graph",
+ "graph-core",
+ "graph-runtime-derive",
+ "graph-runtime-wasm",
+ "mockall 0.9.1",
+ "pretty_assertions",
+ "prost",
+ "prost-types",
+ "semver 1.0.4",
+ "serde",
+ "test-store",
+ "tonic-build",
+]
 
 [[package]]
 name = "graph-core"
