@@ -967,10 +967,10 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// code that is part of indexing a subgraph should ever use this. The
     /// `logger` will be used to log important messages related to the
     /// subgraph
-    fn writable(
-        &self,
+    async fn writable(
+        self: Arc<Self>,
         logger: Logger,
-        deployment: &DeploymentLocator,
+        deployment: DeploymentId,
     ) -> Result<Arc<dyn WritableStore>, StoreError>;
 
     /// The network indexer does not follow the normal flow of how subgraphs
@@ -1148,10 +1148,10 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
-    fn writable(
-        &self,
+    async fn writable(
+        self: Arc<Self>,
         _: Logger,
-        _: &DeploymentLocator,
+        _: DeploymentId,
     ) -> Result<Arc<dyn WritableStore>, StoreError> {
         Ok(Arc::new(MockStore::new()))
     }

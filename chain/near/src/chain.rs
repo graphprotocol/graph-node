@@ -1,4 +1,5 @@
 use graph::blockchain::BlockchainKind;
+use graph::cheap_clone::CheapClone;
 use graph::components::near::NearBlock;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::endpoints::FirehoseNetworkEndpoints;
@@ -136,7 +137,9 @@ impl Blockchain for Chain {
         let firehose_mapper = Arc::new(FirehoseMapper {});
         let firehose_cursor = self
             .subgraph_store
-            .writable(logger.clone(), &deployment)?
+            .cheap_clone()
+            .writable(logger.clone(), deployment.id)
+            .await?
             .block_cursor()?;
 
         Ok(Box::new(FirehoseBlockStream::new(

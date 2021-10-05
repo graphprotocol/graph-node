@@ -1,3 +1,4 @@
+use graph::prelude::SubgraphStore;
 use lazy_static::lazy_static;
 use slog::{o, Logger};
 use std::collections::BTreeMap;
@@ -6,9 +7,7 @@ use std::sync::Arc;
 use graph::{components::store::EntityType, mock::MockStore};
 use graph::{
     components::store::{DeploymentId, DeploymentLocator},
-    prelude::{
-        DeploymentHash, Entity, EntityCache, EntityKey, EntityModification, SubgraphStore, Value,
-    },
+    prelude::{DeploymentHash, Entity, EntityCache, EntityKey, EntityModification, Value},
 };
 
 lazy_static! {
@@ -29,10 +28,13 @@ fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModificati
     mods
 }
 
-#[test]
-fn empty_cache_modifications() {
+#[tokio::test]
+async fn empty_cache_modifications() {
     let logger = Logger::root(slog::Discard, o!());
-    let store = MockStore::new().writable(logger, &*DEPLOYMENT).unwrap();
+    let store = Arc::new(MockStore::new())
+        .writable(logger, DEPLOYMENT.id)
+        .await
+        .unwrap();
     let cache = EntityCache::new(store.clone());
     let result = cache.as_modifications();
     assert_eq!(result.unwrap().modifications, vec![]);

@@ -1,7 +1,10 @@
 use mockall::predicate::*;
 use mockall::*;
 
-use graph::{components::store::DeploymentLocator, prelude::*};
+use graph::{
+    components::store::{DeploymentId, DeploymentLocator},
+    prelude::*,
+};
 use web3::types::H256;
 
 mock! {
@@ -98,10 +101,10 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
-    fn writable(
-        &self,
+    async fn writable(
+        self: Arc<Self>,
         _: Logger,
-        _: &DeploymentLocator,
+        _: DeploymentId,
     ) -> Result<Arc<dyn graph::components::store::WritableStore>, StoreError> {
         todo!()
     }

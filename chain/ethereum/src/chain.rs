@@ -136,8 +136,10 @@ impl Chain {
         let chain_store = self.chain_store().clone();
         let writable = self
             .subgraph_store
-            .writable(logger.clone(), &deployment)
-            .expect(&format!("no store for deployment `{}`", deployment.hash));
+            .cheap_clone()
+            .writable(logger.clone(), deployment.id)
+            .await
+            .with_context(|| format!("no store for deployment `{}`", deployment.hash))?;
         let chain_head_update_stream = self
             .chain_head_update_listener
             .subscribe(self.name.clone(), logger.clone());
@@ -192,7 +194,9 @@ impl Chain {
         let firehose_mapper = Arc::new(FirehoseMapper {});
         let firehose_cursor = self
             .subgraph_store
-            .writable(logger.clone(), &deployment)?
+            .cheap_clone()
+            .writable(logger.clone(), deployment.id)
+            .await?
             .block_cursor()?;
 
         Ok(Box::new(FirehoseBlockStream::new(

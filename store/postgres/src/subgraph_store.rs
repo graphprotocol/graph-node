@@ -990,13 +990,24 @@ impl SubgraphStoreTrait for SubgraphStore {
         Ok(info.api)
     }
 
-    fn writable(
-        &self,
+    async fn writable(
+        self: Arc<Self>,
         logger: Logger,
-        deployment: &DeploymentLocator,
+        deployment: graph::components::store::DeploymentId,
     ) -> Result<Arc<dyn store::WritableStore>, StoreError> {
-        let site = self.find_site(deployment.id.into())?;
-        Ok(Arc::new(WritableStore::new(self.clone(), logger, site)?))
+        // Ideally the lower level functions would be asyncified.
+        let this = self.clone();
+        let site = graph::spawn_blocking_allow_panic(move || -> Result<_, StoreError> {
+            this.find_site(deployment.into())
+        })
+        .await
+        .unwrap()?; // Propagate panics, there shouldn't be any.
+
+        Ok(Arc::new(WritableStore::new(
+            self.as_ref().clone(),
+            logger,
+            site,
+        )?))
     }
 
     fn writable_for_network_indexer(
