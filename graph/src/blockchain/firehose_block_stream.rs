@@ -144,6 +144,8 @@ impl<C: Blockchain, F: FirehoseMapper<C>> Stream for FirehoseBlockStream<C, F> {
 
                         Poll::Ready(Err(e)) => {
                             error!(self.ctx.logger, "Unable to connect to endpoint {}", e);
+                            self.state = BlockStreamState::Disconneted;
+
                             return self.schedule_error_retry(cx);
                         }
 
@@ -170,6 +172,8 @@ impl<C: Blockchain, F: FirehoseMapper<C>> Stream for FirehoseBlockStream<C, F> {
 
                         Poll::Ready(Err(e)) => {
                             error!(self.ctx.logger, "Unable to connect to endpoint {}", e);
+                            self.state = BlockStreamState::Disconneted;
+
                             return self.schedule_error_retry(cx);
                         }
 
@@ -178,7 +182,6 @@ impl<C: Blockchain, F: FirehoseMapper<C>> Stream for FirehoseBlockStream<C, F> {
                                 self.ctx.logger,
                                 "Connection is still pending when being wake up"
                             );
-
                             return Poll::Pending;
                         }
                     }
