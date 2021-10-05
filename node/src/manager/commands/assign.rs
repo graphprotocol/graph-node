@@ -8,7 +8,7 @@ use graph_store_postgres::SubgraphStore;
 
 use crate::manager::deployment::locate;
 
-pub fn unassign(
+pub async fn unassign(
     logger: Logger,
     store: Arc<SubgraphStore>,
     hash: String,
@@ -17,7 +17,10 @@ pub fn unassign(
     let deployment = locate(store.as_ref(), hash, shard)?;
 
     println!("unassigning {}", deployment);
-    store.writable(logger, &deployment)?.unassign_subgraph()?;
+    store
+        .writable(logger, deployment.id)
+        .await?
+        .unassign_subgraph()?;
 
     Ok(())
 }

@@ -100,7 +100,7 @@ pub fn mock_context(
             api_version,
         )),
         state: BlockState::new(
-            store.writable(LOGGER.clone(), &deployment).unwrap(),
+            futures03::executor::block_on(store.writable(LOGGER.clone(), deployment.id)).unwrap(),
             Default::default(),
         ),
         proof_of_indexing: None,

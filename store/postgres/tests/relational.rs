@@ -2,9 +2,9 @@
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
 use graph::prelude::{
-    o, slog, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter, EntityKey,
-    EntityOrder, EntityQuery, EntityRange, Logger, Schema, StopwatchMetrics, Value, ValueType,
-    BLOCK_NUMBER_MAX,
+    o, slog, tokio, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter,
+    EntityKey, EntityOrder, EntityQuery, EntityRange, Logger, Schema, StopwatchMetrics, Value,
+    ValueType, BLOCK_NUMBER_MAX,
 };
 use graph_mock::MockMetricsRegistry;
 use graph_store_postgres::layout_for_tests::set_account_like;
@@ -784,8 +784,8 @@ fn insert_many_and_delete_many() {
     });
 }
 
-#[test]
-fn layout_cache() {
+#[tokio::test]
+async fn layout_cache() {
     run_test_with_conn(|conn| {
         let id = DeploymentHash::new("primaryLayoutCache").unwrap();
         let _loc = create_test_subgraph(&id, THINGS_GQL);

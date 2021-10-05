@@ -534,7 +534,7 @@ async fn main() {
         Remove { name } => commands::remove::run(ctx.subgraph_store(), name),
         Create { name } => commands::create::run(ctx.subgraph_store(), name),
         Unassign { id, shard } => {
-            commands::assign::unassign(logger.clone(), ctx.subgraph_store(), id, shard)
+            commands::assign::unassign(logger.clone(), ctx.subgraph_store(), id, shard).await
         }
         Reassign { id, node, shard } => {
             commands::assign::reassign(ctx.subgraph_store(), id, node, shard)

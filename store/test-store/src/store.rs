@@ -180,9 +180,12 @@ pub fn create_subgraph(
         NETWORK_NAME.to_string(),
         SubgraphVersionSwitchingMode::Instant,
     )?;
-    SUBGRAPH_STORE
-        .writable(LOGGER.clone(), &deployment)?
-        .start_subgraph_deployment(&*LOGGER)?;
+    futures03::executor::block_on(
+        SUBGRAPH_STORE
+            .cheap_clone()
+            .writable(LOGGER.clone(), deployment.id),
+    )?
+    .start_subgraph_deployment(&*LOGGER)?;
     Ok(deployment)
 }
 
@@ -202,7 +205,7 @@ pub fn remove_subgraph(id: &DeploymentHash) {
     }
 }
 
-pub fn transact_errors(
+pub async fn transact_errors(
     store: &Arc<Store>,
     deployment: &DeploymentLocator,
     block_ptr_to: BlockPtr,
@@ -216,7 +219,8 @@ pub fn transact_errors(
     );
     store
         .subgraph_store()
-        .writable(LOGGER.clone(), &deployment)?
+        .writable(LOGGER.clone(), deployment.id.clone())
+        .await?
         .transact_block_operations(
             block_ptr_to,
             None,
@@ -244,7 +248,8 @@ pub fn transact_entities_and_dynamic_data_sources(
     data_sources: Vec<StoredDynamicDataSource>,
     ops: Vec<EntityOperation>,
 ) -> Result<(), StoreError> {
-    let store = store.writable(LOGGER.clone(), &deployment)?;
+    let store =
+        futures03::executor::block_on(store.cheap_clone().writable(LOGGER.clone(), deployment.id))?;
     let mut entity_cache = EntityCache::new(store.clone());
     entity_cache.append(ops);
     let mods = entity_cache
@@ -267,10 +272,11 @@ pub fn transact_entities_and_dynamic_data_sources(
     )
 }
 
-pub fn revert_block(store: &Arc<Store>, deployment: &DeploymentLocator, ptr: &BlockPtr) {
+pub async fn revert_block(store: &Arc<Store>, deployment: &DeploymentLocator, ptr: &BlockPtr) {
     store
         .subgraph_store()
-        .writable(LOGGER.clone(), deployment)
+        .writable(LOGGER.clone(), deployment.id)
+        .await
         .expect("can get writable")
         .revert_block_operations(ptr.clone())
         .unwrap();
@@ -334,24 +340,24 @@ where
 }
 
 /// Run a GraphQL query against the `STORE`
-pub fn execute_subgraph_query(query: Query, target: QueryTarget) -> QueryResults {
-    execute_subgraph_query_with_complexity(query, target, None)
+pub async fn execute_subgraph_query(query: Query, target: QueryTarget) -> QueryResults {
+    execute_subgraph_query_with_complexity(query, target, None).await
 }
 
-pub fn execute_subgraph_query_with_complexity(
+pub async fn execute_subgraph_query_with_complexity(
     query: Query,
     target: QueryTarget,
     max_complexity: Option<u64>,
 ) -> QueryResults {
-    execute_subgraph_query_internal(query, target, max_complexity, None)
+    execute_subgraph_query_internal(query, target, max_complexity, None).await
 }
 
-pub fn execute_subgraph_query_with_deadline(
+pub async fn execute_subgraph_query_with_deadline(
     query: Query,
     target: QueryTarget,
     deadline: Option<Instant>,
 ) -> QueryResults {
-    execute_subgraph_query_internal(query, target, None, deadline)
+    execute_subgraph_query_internal(query, target, None, deadline).await
 }
 
 /// Like `try!`, but we return the contents of an `Err`, not the
@@ -370,17 +376,12 @@ pub fn result_size_metrics() -> Arc<ResultSizeMetrics> {
     Arc::new(ResultSizeMetrics::make(METRICS_REGISTRY.clone()))
 }
 
-fn execute_subgraph_query_internal(
+async fn execute_subgraph_query_internal(
     query: Query,
     target: QueryTarget,
     max_complexity: Option<u64>,
     deadline: Option<Instant>,
 ) -> QueryResults {
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_io()
-        .enable_time()
-        .build()
-        .unwrap();
     let logger = Logger::root(slog::Discard, o!());
     let id = match target {
         QueryTarget::Deployment(id) => id,
@@ -403,32 +404,40 @@ fn execute_subgraph_query_internal(
     ));
     let mut result = QueryResults::empty();
     let deployment = query.schema.id().clone();
-    let store = rt
-        .block_on(STORE.clone().query_store(deployment.into(), false))
+    let store = STORE
+        .clone()
+        .query_store(deployment.into(), false)
+        .await
         .unwrap();
     for (bc, (selection_set, error_policy)) in return_err!(query.block_constraint()) {
         let logger = logger.clone();
-        let resolver = return_err!(rt.block_on(StoreResolver::at_block(
-            &logger,
-            store.clone(),
-            SUBSCRIPTION_MANAGER.clone(),
-            bc,
-            error_policy,
-            query.schema.id().clone(),
-            result_size_metrics()
-        )));
-        result.append(rt.block_on(execute_query(
-            query.clone(),
-            Some(selection_set),
-            None,
-            QueryExecutionOptions {
-                resolver,
-                deadline,
-                load_manager: LOAD_MANAGER.clone(),
-                max_first: std::u32::MAX,
-                max_skip: std::u32::MAX,
-            },
-        )))
+        let resolver = return_err!(
+            StoreResolver::at_block(
+                &logger,
+                store.clone(),
+                SUBSCRIPTION_MANAGER.clone(),
+                bc,
+                error_policy,
+                query.schema.id().clone(),
+                result_size_metrics()
+            )
+            .await
+        );
+        result.append(
+            execute_query(
+                query.clone(),
+                Some(selection_set),
+                None,
+                QueryExecutionOptions {
+                    resolver,
+                    deadline,
+                    load_manager: LOAD_MANAGER.clone(),
+                    max_first: std::u32::MAX,
+                    max_skip: std::u32::MAX,
+                },
+            )
+            .await,
+        )
     }
     result
 }
