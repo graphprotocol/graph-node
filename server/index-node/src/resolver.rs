@@ -232,7 +232,7 @@ where
                             &self.logger,
                             MAX_SPEC_VERSION.clone(),
                         )
-                        .await?
+                        .await?;
 
                     validate_and_extract_features(
                         &self.subgraph_store,

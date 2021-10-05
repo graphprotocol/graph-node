@@ -1,11 +1,11 @@
-use anyhow::Error;
 use graph::blockchain::BlockchainKind;
 use graph::components::tendermint::TendermintBlock;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::endpoints::FirehoseNetworkEndpoints;
 use graph::prelude::web3::types::H256;
-use graph::prelude::{NodeId, StopwatchMetrics};
+use graph::prelude::StopwatchMetrics;
 use graph::{
+    anyhow,
     blockchain::{
         block_stream::{
             BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers, FirehoseError,
@@ -17,7 +17,9 @@ use graph::{
     components::store::DeploymentLocator,
     firehose::bstream,
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
-    prelude::{async_trait, o, BlockNumber, ChainStore, Logger, LoggerFactory, SubgraphStore},
+    prelude::{
+        async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory, SubgraphStore,
+    },
 };
 use prost::Message;
 use std::sync::Arc;
@@ -138,15 +140,16 @@ impl Blockchain for Chain {
             .subgraph_logger(&deployment)
             .new(o!("component" => "FirehoseBlockStream"));
 
-        let firehose_mapper = Arc::new(FirehoseMapper {});
-        let firehose_cursor = self.subgraph_store.writable(&deployment)?.block_cursor()?;
+            let firehose_mapper = Arc::new(FirehoseMapper {});
+            let firehose_cursor = self
+                .subgraph_store
+                .writable(logger.clone(), &deployment)?
+                .block_cursor()?;
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,
             firehose_cursor,
             firehose_mapper,
-            // FIXME (NEAR): Hard-coded NodeId, this is actually not required for other chain ...
-            NodeId::new("tendermint").unwrap(),
             deployment.hash,
             adapter,
             filter,
