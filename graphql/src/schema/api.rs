@@ -426,21 +426,19 @@ fn field_enum_filter_input_values(
     field: &Field,
     field_type: &EnumType,
 ) -> Vec<InputValue> {
-    vec![
-        Some(input_value(
-            &field.name,
-            "",
-            Type::NamedType(field_type.name.to_owned()),
-        )),
-        Some(input_value(
-            &field.name,
-            "not",
-            Type::NamedType(field_type.name.to_owned()),
-        )),
-    ]
-    .into_iter()
-    .filter_map(|value_opt| value_opt)
-    .collect()
+    vec!["", "not", "in", "not_in"]
+        .into_iter()
+        .map(|filter_type| {
+            let field_type = Type::NamedType(field_type.name.to_owned());
+            let value_type = match filter_type {
+                "in" | "not_in" => {
+                    Type::ListType(Box::new(Type::NonNullType(Box::new(field_type))))
+                }
+                _ => field_type,
+            };
+            input_value(&field.name, filter_type, value_type)
+        })
+        .collect()
 }
 
 /// Generates `*_filter` input values for the given list field.
@@ -946,6 +944,12 @@ mod tests {
     fn api_schema_contains_object_type_filter_enum() {
         let input_schema = parse_schema(
             r#"
+              enum FurType {
+                  NONE
+                  FLUFFY
+                  BRISTLY
+              }
+
               type Pet {
                   id: ID!
                   name: String!
@@ -958,6 +962,7 @@ mod tests {
                   name: String!
                   favoritePetNames: [String!]
                   pets: [Pet!]!
+                  favoriteFurType: FurType!
                   favoritePet: Pet!
                   leastFavoritePet: Pet @derivedFrom(field: "mostHatedBy")
                   mostFavoritePets: [Pet!] @derivedFrom(field: "mostLovedBy")
@@ -1015,6 +1020,10 @@ mod tests {
                 "pets_not",
                 "pets_contains",
                 "pets_not_contains",
+                "favoriteFurType",
+                "favoriteFurType_not",
+                "favoriteFurType_in",
+                "favoriteFurType_not_in",
                 "favoritePet",
                 "favoritePet_not",
                 "favoritePet_gt",
