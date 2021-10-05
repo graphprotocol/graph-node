@@ -182,6 +182,8 @@ impl ChainHeadUpdateListener {
 
 impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
     fn subscribe(&self, network_name: String, logger: Logger) -> ChainHeadUpdateStream {
+        debug!(logger, "subscribing to chain head updates");
+
         let update_receiver = {
             let existing = {
                 let watchers = self.watchers.read();
