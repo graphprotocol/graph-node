@@ -997,19 +997,31 @@ mod data {
                         .on_conflict_do_nothing()
                         .execute(conn)?;
 
-                    let accessed_at = meta::accessed_at.eq(sql("CURRENT_DATE"));
-                    insert_into(meta::table)
-                        .values((
-                            meta::contract_address.eq(contract_address.as_ref()),
-                            accessed_at.clone(),
-                        ))
-                        .on_conflict(meta::contract_address)
-                        .do_update()
-                        .set(accessed_at)
-                        // TODO: Add a where clause similar to the Private
-                        // branch to avoid unnecessary updates (not entirely
-                        // trivial with diesel)
-                        .execute(conn)
+                    // See comment in the Private branch for why the
+                    // raciness of this check is ok
+                    let update_meta = meta::table
+                        .filter(meta::contract_address.eq(contract_address))
+                        .select(sql("accessed_at < current_date"))
+                        .first::<bool>(conn)
+                        .optional()?
+                        .unwrap_or(true);
+                    if update_meta {
+                        let accessed_at = meta::accessed_at.eq(sql("CURRENT_DATE"));
+                        insert_into(meta::table)
+                            .values((
+                                meta::contract_address.eq(contract_address),
+                                accessed_at.clone(),
+                            ))
+                            .on_conflict(meta::contract_address)
+                            .do_update()
+                            .set(accessed_at)
+                            // TODO: Add a where clause similar to the Private
+                            // branch to avoid unnecessary updates (not entirely
+                            // trivial with diesel)
+                            .execute(conn)
+                    } else {
+                        Ok(0)
+                    }
                 }
                 Storage::Private(Schema {
                     call_cache,
@@ -1028,17 +1040,35 @@ mod data {
                         .bind::<Bytea, _>(return_value)
                         .execute(conn)?;
 
-                    let query = format!(
-                        "insert into {}(contract_address, accessed_at) \
+                    // Check whether we need to update `call_meta`. The
+                    // check is racy, since an update can happen between the
+                    // check and the insert below, but that's fine. We can
+                    // tolerate a small number of redundant updates, but
+                    // will still catch the majority of cases where an
+                    // update is not needed
+                    let update_meta = call_meta
+                        .table()
+                        .filter(call_meta.contract_address().eq(contract_address))
+                        .select(sql("accessed_at < current_date"))
+                        .first::<bool>(conn)
+                        .optional()?
+                        .unwrap_or(true);
+
+                    if update_meta {
+                        let query = format!(
+                            "insert into {}(contract_address, accessed_at) \
                          values ($1, CURRENT_DATE) \
                          on conflict(contract_address)
                          do update set accessed_at = CURRENT_DATE \
                                  where excluded.accessed_at < CURRENT_DATE",
-                        call_meta.qname
-                    );
-                    sql_query(query)
-                        .bind::<Bytea, _>(contract_address)
-                        .execute(conn)
+                            call_meta.qname
+                        );
+                        sql_query(query)
+                            .bind::<Bytea, _>(contract_address)
+                            .execute(conn)
+                    } else {
+                        Ok(0)
+                    }
                 }
             };
             result.map(|_| ()).map_err(Error::from)
