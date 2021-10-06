@@ -146,7 +146,7 @@ impl blockchain::MappingTrigger for MappingTrigger {
                 params,
                 handler: _,
             } => {
-                let ethereum_data = EthereumEventData {
+                let ethereum_event_data = EthereumEventData {
                     block: EthereumBlockData::from(block.as_ref()),
                     transaction: EthereumTransactionData::from(transaction.deref()),
                     address: log.address,
@@ -159,19 +159,19 @@ impl blockchain::MappingTrigger for MappingTrigger {
                 if api_version >= Version::new(0, 0, 6) {
                     asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_6>, _, _>(
                         heap,
-                        &ethereum_data,
+                        &ethereum_event_data,
                     )?
                     .erase()
                 } else if api_version >= Version::new(0, 0, 2) {
                     asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_2>, _, _>(
                         heap,
-                        &ethereum_data,
+                        &ethereum_event_data,
                     )?
                     .erase()
                 } else {
                     asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_1>, _, _>(
                         heap,
-                        &ethereum_data,
+                        &ethereum_event_data,
                     )?
                     .erase()
                 }
