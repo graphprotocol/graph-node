@@ -4,7 +4,7 @@
 # by running something like the following
 #   docker build --target STAGE -f docker/Dockerfile .
 
-FROM rust:latest as graph-node-build
+FROM rust:buster as graph-node-build
 
 ARG COMMIT_SHA=unknown
 ARG REPO_NAME=unknown
@@ -14,6 +14,7 @@ ARG TAG_NAME=unknown
 ADD . /graph-node
 
 RUN cd /graph-node \
+    && rustup component add rustfmt \
     && RUSTFLAGS="-g" cargo install --locked --path node \
     && cargo clean \
     && objcopy --only-keep-debug /usr/local/cargo/bin/graph-node /usr/local/cargo/bin/graph-node.debug \
