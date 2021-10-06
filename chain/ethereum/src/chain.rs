@@ -283,7 +283,7 @@ impl Blockchain for Chain {
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        let mut requirements = filter.node_capabilities();
+        let requirements = filter.node_capabilities();
         let adapter = self
             .triggers_adapter(
                 &deployment,
