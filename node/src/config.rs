@@ -456,7 +456,7 @@ impl ChainSection {
                 };
                 let entry = chains.entry(name.to_string()).or_insert_with(|| Chain {
                     shard: PRIMARY_SHARD.to_string(),
-                    kind: BlockchainKind::Ethereum,
+                    protocol: BlockchainKind::Ethereum,
                     providers: vec![],
                 });
                 entry.providers.push(provider);
@@ -466,11 +466,11 @@ impl ChainSection {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Chain {
     pub shard: String,
     #[serde(default = "default_blockchain_kind")]
-    pub kind: BlockchainKind,
+    pub protocol: BlockchainKind,
     #[serde(rename = "provider")]
     pub providers: Vec<Provider>,
 }
@@ -941,7 +941,10 @@ fn one() -> usize {
 #[cfg(test)]
 mod tests {
 
-    use super::{Config, FirehoseProvider, Provider, ProviderDetails, Transport, Web3Provider};
+    use super::{
+        Chain, Config, FirehoseProvider, Provider, ProviderDetails, Transport, Web3Provider,
+    };
+    use graph::blockchain::BlockchainKind;
     use http::{HeaderMap, HeaderValue};
     use std::collections::BTreeSet;
     use std::fs::read_to_string;
@@ -961,6 +964,47 @@ mod tests {
         assert_eq!(4, actual.chains.chains.len());
         assert_eq!(2, actual.stores.len());
         assert_eq!(3, actual.deployment.rules.len());
+    }
+
+    #[test]
+    fn it_works_on_chain_without_protocol() {
+        let actual = toml::from_str(
+            r#"
+            shard = "primary"
+            provider = []
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            Chain {
+                shard: "primary".to_string(),
+                protocol: BlockchainKind::Ethereum,
+                providers: vec![],
+            },
+            actual
+        );
+    }
+
+    #[test]
+    fn it_works_on_chain_with_protocol() {
+        let actual = toml::from_str(
+            r#"
+            shard = "primary"
+            protocol = "near"
+            provider = []
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            Chain {
+                shard: "primary".to_string(),
+                protocol: BlockchainKind::Near,
+                providers: vec![],
+            },
+            actual
+        );
     }
 
     #[test]

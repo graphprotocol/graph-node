@@ -491,7 +491,7 @@ async fn create_ethereum_networks(
     let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));
     let mut parsed_networks = EthereumNetworks::new();
     for (name, chain) in config.chains.chains {
-        if chain.kind != BlockchainKind::Ethereum {
+        if chain.protocol != BlockchainKind::Ethereum {
             continue;
         }
 
@@ -576,7 +576,7 @@ async fn create_firehose_networks(
                 .await?;
 
                 let parsed_networks = networks_by_kind
-                    .entry(chain.kind)
+                    .entry(chain.protocol)
                     .or_insert_with(|| FirehoseNetworks::new());
                 parsed_networks.insert(name.to_string(), Arc::new(endpoint));
             }

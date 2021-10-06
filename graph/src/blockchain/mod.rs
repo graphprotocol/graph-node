@@ -310,6 +310,7 @@ pub trait NodeCapabilities<C: Blockchain> {
 
 /// Blockchain technologies supported by Graph Node.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum BlockchainKind {
     /// Ethereum itself or chains that are compatible.
     Ethereum,
