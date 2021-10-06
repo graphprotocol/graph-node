@@ -723,7 +723,6 @@ impl<C: Blockchain> SubgraphManifest<C> {
             .iter()
             // FIXME (NEAR): Once more refactoring is merged in, this should go away as validation has been pushed to a chain specific check now
             .filter(|d| d.kind() == "ethereum/contract" || d.kind() == "near/blocks" || d.kind() == "tendermint/data")
-            .filter(|d| d.kind() == "ethereum/contract" )
             .filter_map(|d| d.network().map(|n| n.to_string()))
             .next()
             .expect("Validated manifest does not have a network defined on any datasource")
