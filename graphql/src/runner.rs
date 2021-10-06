@@ -31,8 +31,8 @@ pub struct ResultSizeMetrics {
 
 impl ResultSizeMetrics {
     fn new(registry: Arc<impl MetricsRegistry>) -> Self {
-        // Divide the Histogram into exponentially sized buckets between 1k and 32G
-        let bins = (10..26).map(|n| 2u64.pow(n) as f64).collect::<Vec<_>>();
+        // Divide the Histogram into exponentially sized buckets between 1k and 4G
+        let bins = (10..32).map(|n| 2u64.pow(n) as f64).collect::<Vec<_>>();
         let histogram = registry
             .new_histogram(
                 "query_result_size",
