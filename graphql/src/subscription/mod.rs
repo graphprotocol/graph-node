@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use graph::{components::store::SubscriptionManager, prelude::*};
 
+use crate::runner::ResultSizeMetrics;
 use crate::{
     execution::*,
     prelude::{BlockConstraint, StoreResolver},
@@ -35,6 +36,8 @@ pub struct SubscriptionExecutionOptions {
 
     /// Maximum value for the `skip` argument.
     pub max_skip: u32,
+
+    pub result_size: Arc<ResultSizeMetrics>,
 }
 
 pub async fn execute_subscription(
@@ -83,6 +86,7 @@ async fn create_source_event_stream(
         query.schema.id().clone(),
         options.store.clone(),
         options.subscription_manager.cheap_clone(),
+        options.result_size.cheap_clone(),
     );
     let ctx = ExecutionContext {
         logger: options.logger.cheap_clone(),
@@ -158,6 +162,7 @@ fn map_source_to_response_stream(
         max_depth: _,
         max_first,
         max_skip,
+        result_size,
     } = options;
 
     Box::new(
@@ -177,6 +182,7 @@ fn map_source_to_response_stream(
                     timeout,
                     max_first,
                     max_skip,
+                    result_size.cheap_clone(),
                 )
                 .boxed(),
             }),
@@ -192,6 +198,7 @@ async fn execute_subscription_event(
     timeout: Option<Duration>,
     max_first: u32,
     max_skip: u32,
+    result_size: Arc<ResultSizeMetrics>,
 ) -> Arc<QueryResult> {
     debug!(logger, "Execute subscription event"; "event" => format!("{:?}", event));
 
@@ -202,6 +209,7 @@ async fn execute_subscription_event(
         BlockConstraint::Latest,
         ErrorPolicy::Deny,
         query.schema.id().clone(),
+        result_size,
     )
     .await
     {

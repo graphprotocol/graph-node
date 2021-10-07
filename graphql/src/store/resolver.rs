@@ -10,6 +10,7 @@ use graph::prelude::*;
 use graph::{components::store::*, data::schema::BLOCK_FIELD_TYPE};
 
 use crate::query::ext::BlockConstraint;
+use crate::runner::ResultSizeMetrics;
 use crate::schema::ast as sast;
 use crate::{prelude::*, schema::api::ErrorPolicy};
 
@@ -25,6 +26,7 @@ pub struct StoreResolver {
     deployment: DeploymentHash,
     has_non_fatal_errors: bool,
     error_policy: ErrorPolicy,
+    result_size: Arc<ResultSizeMetrics>,
 }
 
 impl CheapClone for StoreResolver {}
@@ -39,6 +41,7 @@ impl StoreResolver {
         deployment: DeploymentHash,
         store: Arc<dyn QueryStore>,
         subscription_manager: Arc<dyn SubscriptionManager>,
+        result_size: Arc<ResultSizeMetrics>,
     ) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
@@ -50,6 +53,7 @@ impl StoreResolver {
             // Checking for non-fatal errors does not work with subscriptions.
             has_non_fatal_errors: false,
             error_policy: ErrorPolicy::Deny,
+            result_size,
         }
     }
 
@@ -65,6 +69,7 @@ impl StoreResolver {
         bc: BlockConstraint,
         error_policy: ErrorPolicy,
         deployment: DeploymentHash,
+        result_size: Arc<ResultSizeMetrics>,
     ) -> Result<Self, QueryExecutionError> {
         let store_clone = store.cheap_clone();
         let deployment2 = deployment.clone();
@@ -87,6 +92,7 @@ impl StoreResolver {
             deployment,
             has_non_fatal_errors,
             error_policy,
+            result_size,
         };
         Ok(resolver)
     }
@@ -221,7 +227,7 @@ impl Resolver for StoreResolver {
         ctx: &ExecutionContext<Self>,
         selection_set: &q::SelectionSet,
     ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
-        super::prefetch::run(self, ctx, selection_set).map(Some)
+        super::prefetch::run(self, ctx, selection_set, &self.result_size).map(Some)
     }
 
     fn resolve_objects(

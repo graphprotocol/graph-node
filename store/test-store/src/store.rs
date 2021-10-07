@@ -14,6 +14,7 @@ use graph::{
 use graph_graphql::prelude::{
     execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
 };
+use graph_graphql::test_support::ResultSizeMetrics;
 use graph_mock::MockMetricsRegistry;
 use graph_node::config::{Config, Opt};
 use graph_node::store_builder::StoreBuilder;
@@ -47,10 +48,12 @@ lazy_static! {
     static ref SEQ_LOCK: Mutex<()> = Mutex::new(());
     pub static ref STORE_RUNTIME: Runtime =
         Builder::new_multi_thread().enable_all().build().unwrap();
+    pub static ref METRICS_REGISTRY: Arc<MockMetricsRegistry> =
+        Arc::new(MockMetricsRegistry::new());
     pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(LoadManager::new(
         &*LOGGER,
         Vec::new(),
-        Arc::new(MockMetricsRegistry::new()),
+        METRICS_REGISTRY.clone(),
     ));
     static ref STORE_POOL_CONFIG: (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager>) =
         build_store();
@@ -363,6 +366,10 @@ macro_rules! return_err {
     };
 }
 
+pub fn result_size_metrics() -> Arc<ResultSizeMetrics> {
+    Arc::new(ResultSizeMetrics::make(METRICS_REGISTRY.clone()))
+}
+
 fn execute_subgraph_query_internal(
     query: Query,
     target: QueryTarget,
@@ -407,7 +414,8 @@ fn execute_subgraph_query_internal(
             SUBSCRIPTION_MANAGER.clone(),
             bc,
             error_policy,
-            query.schema.id().clone()
+            query.schema.id().clone(),
+            result_size_metrics()
         )));
         result.append(rt.block_on(execute_query(
             query.clone(),

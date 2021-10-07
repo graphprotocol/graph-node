@@ -141,9 +141,9 @@ dependencies = [
 
 [[package]]
 name = "atomic_refcell"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "681b971236e0f76b20fcafca0236b8718c9186ee778d67cd78bd5f28fd85427f"
+checksum = "73b5e5f48b927f04e952dedc932f31995a65a0bf65ec971c74436e51bf6e970d"
 
 [[package]]
 name = "atty"
@@ -1575,7 +1575,7 @@ dependencies = [
  "jsonrpc-core",
  "lazy_static",
  "mockall 0.9.1",
- "pretty_assertions",
+ "pretty_assertions 1.0.0",
  "prost",
  "prost-types",
  "semver 1.0.4",
@@ -1598,7 +1598,7 @@ dependencies = [
  "graph-runtime-wasm",
  "graph-store-postgres",
  "mockall 0.9.1",
- "pretty_assertions",
+ "pretty_assertions 0.7.2",
  "prost",
  "prost-types",
  "serde",
@@ -1626,7 +1626,7 @@ dependencies = [
  "hex",
  "lazy_static",
  "lru_time_cache",
- "pretty_assertions",
+ "pretty_assertions 1.0.0",
  "semver 1.0.4",
  "serde",
  "serde_json",
@@ -1651,7 +1651,7 @@ dependencies = [
  "lazy_static",
  "once_cell",
  "parking_lot 0.11.2",
- "pretty_assertions",
+ "pretty_assertions 1.0.0",
  "stable-hash",
  "test-store",
 ]
@@ -3217,6 +3217,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "pretty_assertions"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec0cfe1b2403f172ba0f234e500906ee0a3e493fb81092dac23ebefe129301cc"
+dependencies = [
+ "ansi_term 0.12.1",
+ "ctor",
+ "diff",
+ "output_vt100",
+]
+
+[[package]]
 name = "primitive-types"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3295,9 +3307,9 @@ dependencies = [
 
 [[package]]
 name = "prometheus"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5986aa8d62380092d2f50f8b1cdba9cb9b6731ffd4b25b51fd126b6c3e05b99c"
+checksum = "b7f64969ffd5dd8f39bd57a68ac53c163a095ed9d0fb707146da1b27025a3504"
 dependencies = [
  "cfg-if 1.0.0",
  "fnv",
