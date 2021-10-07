@@ -112,6 +112,7 @@ where
         trigger: &C::TriggerData,
         state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
+        causality_region: &str,
     ) -> Result<BlockState<C>, MappingError> {
         Self::process_trigger_in_runtime_hosts(
             logger,
@@ -120,6 +121,7 @@ where
             trigger,
             state,
             proof_of_indexing,
+            causality_region,
         )
         .await
     }
@@ -131,7 +133,16 @@ where
         trigger: &C::TriggerData,
         mut state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
+        causality_region: &str,
     ) -> Result<BlockState<C>, MappingError> {
+        let error_count = state.deterministic_errors.len();
+
+        if let Some(proof_of_indexing) = &proof_of_indexing {
+            proof_of_indexing
+                .borrow_mut()
+                .start_handler(causality_region);
+        }
+
         for host in hosts {
             let mapping_trigger =
                 match host.match_and_decode(trigger, block.cheap_clone(), logger)? {
@@ -151,6 +162,18 @@ where
                     proof_of_indexing.cheap_clone(),
                 )
                 .await?;
+        }
+
+        if let Some(proof_of_indexing) = &proof_of_indexing {
+            if state.deterministic_errors.len() != error_count {
+                assert!(state.deterministic_errors.len() == error_count + 1);
+
+                // If a deterministic error has happened, write a new
+                // ProofOfIndexingEvent::DeterministicError to the SharedProofOfIndexing.
+                proof_of_indexing
+                    .borrow_mut()
+                    .write_deterministic_error(&logger, causality_region);
+            }
         }
 
         Ok(state)
@@ -202,5 +225,9 @@ where
         {
             self.hosts.pop();
         }
+    }
+
+    pub(crate) fn network(&self) -> &str {
+        &self.network
     }
 }
