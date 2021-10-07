@@ -16,7 +16,7 @@ use graph::{
         anyhow::{self, anyhow, bail},
         crit, debug, error, info, o,
         tokio::sync::Semaphore,
-        warn, CancelGuard, CancelHandle, CancelToken as _, CancelableError, Counter, Gauge, Logger,
+        CancelGuard, CancelHandle, CancelToken as _, CancelableError, Counter, Gauge, Logger,
         MetricsRegistry, MovingStats, PoolWaitStats, StoreError,
     },
     util::security::SafeDisplay,
@@ -975,11 +975,6 @@ impl PoolInner {
             die(&pool.logger, "failed to release migration lock", &err);
         });
         result.unwrap_or_else(|err| die(&pool.logger, "migrations failed", &err));
-        pool.mirror_primary_tables().unwrap_or_else(|e| {
-            warn!(&pool.logger,
-                  "reconciling primary tables failed, continuing regardless";
-                  "error" => e.to_string())
-        });
         Ok(())
     }
 
