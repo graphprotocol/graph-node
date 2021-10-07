@@ -21,6 +21,7 @@ use web3::types::{Address, Block, Log, Transaction, H256};
 
 use crate::runtime::abi::AscEthereumCall;
 use crate::runtime::abi::AscEthereumCall_0_0_3;
+use crate::runtime::abi::AscEthereumCall_0_0_6;
 use crate::runtime::abi::AscEthereumEvent;
 use crate::runtime::abi::AscEthereumTransaction_0_0_1;
 use crate::runtime::abi::AscEthereumTransaction_0_0_2;
