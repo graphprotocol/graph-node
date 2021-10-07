@@ -6,11 +6,19 @@ use graph::prelude::*;
 use graph_chain_ethereum::{
     Chain, DataSource, DataSourceTemplate, Mapping, MappingABI, TemplateSource,
 };
+use std::env;
+use graph::log;
 use graph_runtime_wasm::{HostExports, MappingContext};
 use semver::Version;
 use std::str::FromStr;
-use test_store::LOGGER;
 use web3::types::Address;
+
+lazy_static! {
+    pub static ref LOGGER: Logger = match env::var_os("GRAPH_LOG") {
+        Some(_) => log::logger(false),
+        None => Logger::root(slog::Discard, o!()),
+    };
+}
 
 fn mock_host_exports(
     subgraph_id: DeploymentHash,
