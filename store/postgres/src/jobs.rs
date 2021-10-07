@@ -31,7 +31,7 @@ pub fn register(
 
     runner.register(
         Arc::new(MirrorPrimary::new(store.subgraph_store())),
-        Duration::from_secs(300),
+        Duration::from_secs(15 * 60),
     );
 }
 
