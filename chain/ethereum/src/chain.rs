@@ -5,6 +5,7 @@ use graph::firehose::endpoints::FirehoseNetworkEndpoints;
 use graph::prelude::{
     EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, StopwatchMetrics,
 };
+use graph::slog::debug;
 use graph::{
     blockchain::{
         block_stream::{
@@ -242,11 +243,25 @@ impl Blockchain for Chain {
         unified_api_version: UnifiedMappingApiVersion,
         stopwatch_metrics: StopwatchMetrics,
     ) -> Result<Arc<Self::TriggersAdapter>, Error> {
-        let eth_adapter = self.eth_adapters.cheapest_with(capabilities)?.clone();
         let logger = self
             .logger_factory
             .subgraph_logger(&loc)
             .new(o!("component" => "BlockStream"));
+
+        let eth_adapter = if capabilities.traces && self.firehose_endpoints.len() > 0 {
+            debug!(logger, "Removing 'traces' capability requirement for adapter as FirehoseBlockStream will provide the traces");
+            let adjusted_capabilities = crate::capabilities::NodeCapabilities {
+                archive: capabilities.archive,
+                traces: false,
+            };
+
+            self.eth_adapters
+                .cheapest_with(&adjusted_capabilities)?
+                .clone()
+        } else {
+            self.eth_adapters.cheapest_with(capabilities)?.clone()
+        };
+
         let ethrpc_metrics = Arc::new(SubgraphEthRpcMetrics::new(self.registry.clone(), &loc.hash));
 
         let adapter = TriggersAdapter {

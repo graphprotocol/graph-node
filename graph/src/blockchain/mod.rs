@@ -29,6 +29,7 @@ use crate::{
 use anyhow::{anyhow, Context, Error};
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use slog::Logger;
 use slog::{self, SendSyncRefUnwindSafeKV};
 use std::{
@@ -308,7 +309,8 @@ pub trait NodeCapabilities<C: Blockchain> {
 }
 
 /// Blockchain technologies supported by Graph Node.
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum BlockchainKind {
     /// Ethereum itself or chains that are compatible.
     Ethereum,
