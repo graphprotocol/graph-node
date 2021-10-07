@@ -85,10 +85,7 @@ impl FirehoseEndpoint {
             },
         );
 
-        let response_stream = client
-            .blocks(request)
-            .await
-            .context("unable to fetch blocks from server")?;
+        let response_stream = client.blocks(request).await?;
         let block_stream = response_stream.into_inner();
 
         Ok(block_stream)
