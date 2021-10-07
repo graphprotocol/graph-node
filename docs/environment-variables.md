@@ -100,7 +100,7 @@ those.
   argument in GraphQL queries. The default value for
   `GRAPH_GRAPHQL_MAX_SKIP` is unlimited.
 - `GRAPH_GRAPHQL_WARN_RESULT_SIZE` and `GRAPH_GRAPHQL_ERROR_RESULT_SIZE`:
-  if a GraphQL result is larger than these sizes, log a warning
+  if a GraphQL result is larger than these sizes in bytes, log a warning
   respectively abort query execution and return an error. The size of the
   result is checked while the response is being constructed, so that
   execution does not take more memory than what is configured. The default

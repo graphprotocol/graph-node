@@ -1252,6 +1252,88 @@ fn enums() {
 }
 
 #[test]
+fn enum_list_filters() {
+    use graphql_parser::query::Value::Enum;
+    let subgraph_id = "enum_list_filters";
+    let schema = r#"
+       enum Direction {
+         NORTH
+         EAST
+         SOUTH
+         WEST
+       }
+
+       type Trajectory @entity {
+         id: ID!
+         direction: Direction!
+         meters: Int!
+       }"#;
+
+    let entities = vec![
+        (
+            Entity::from(vec![
+                ("id", Value::from("1")),
+                ("direction", Value::from("EAST")),
+                ("meters", Value::from(10)),
+            ]),
+            "Trajectory",
+        ),
+        (
+            Entity::from(vec![
+                ("id", Value::from("2")),
+                ("direction", Value::from("NORTH")),
+                ("meters", Value::from(15)),
+            ]),
+            "Trajectory",
+        ),
+        (
+            Entity::from(vec![
+                ("id", Value::from("3")),
+                ("direction", Value::from("WEST")),
+                ("meters", Value::from(20)),
+            ]),
+            "Trajectory",
+        ),
+    ];
+
+    let query = "query { trajectories(where: { direction_in: [NORTH, EAST] }) { id, direction } }";
+    let res = insert_and_query(subgraph_id, schema, entities, query).unwrap();
+    let data = extract_data!(res).unwrap();
+    assert_eq!(
+        data,
+        object! {
+        trajectories: vec![
+            object!{
+                id: "1",
+                direction: Enum("EAST".to_string()),
+            },
+            object!{
+                id: "2",
+                direction: Enum("NORTH".to_string()),
+            },
+        ]}
+    );
+
+    let query = "query { trajectories(where: { direction_not_in: [EAST] }) { id, direction } }";
+    let res = insert_and_query(subgraph_id, schema, vec![], query).unwrap();
+    let data = extract_data!(res).unwrap();
+    assert_eq!(
+        data,
+        object! {
+        trajectories: vec![
+            object!{
+                id: "2",
+                direction: Enum("NORTH".to_string()),
+            },
+            object!{
+                id: "3",
+                direction: Enum("WEST".to_string()),
+            },
+        ]}
+    );
+}
+
+#[test]
 fn recursive_fragment() {
     let subgraph_id = "RecursiveFragment";
     let schema = "

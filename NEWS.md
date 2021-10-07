@@ -1,5 +1,22 @@
 # NEWS
 
+## 0.24.2
+
+This release only adds a fix for an issue where certain GraphQL queries
+could lead to `graph-node` running out of memory even on very large
+systems. This release adds code that checks the size of GraphQL responses
+as they are assembled, and can warn about large responses in the logs
+resp. abort query execution based on the values of the two new environment
+variables `GRAPH_GRAPHQL_WARN_RESULT_SIZE` and
+`GRAPH_GRAPHQL_ERROR_RESULT_SIZE`. It also adds Prometheus metrics
+`query_result_size` and `query_result_max` to track the memory consumption
+of successful GraphQL queries. The unit for the two environment variables
+is bytes, based on an estimate of the memory used by the result; it is best
+to set them after observing the Prometheus metrics for a while to establish
+what constitutes a reasonable limit for them.
+
+We strongly recommend updating to this version as quickly as possible.
+
 ## 0.24.1
 
 ### Feature Management
