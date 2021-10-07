@@ -123,6 +123,30 @@ impl AscIndexId for AscEthereumBlock {
 
 #[repr(C)]
 #[derive(AscType)]
+pub(crate) struct AscEthereumBlock_0_0_6 {
+    pub hash: AscPtr<AscH256>,
+    pub parent_hash: AscPtr<AscH256>,
+    pub uncles_hash: AscPtr<AscH256>,
+    pub author: AscPtr<AscH160>,
+    pub state_root: AscPtr<AscH256>,
+    pub transactions_root: AscPtr<AscH256>,
+    pub receipts_root: AscPtr<AscH256>,
+    pub number: AscPtr<AscBigInt>,
+    pub gas_used: AscPtr<AscBigInt>,
+    pub gas_limit: AscPtr<AscBigInt>,
+    pub timestamp: AscPtr<AscBigInt>,
+    pub difficulty: AscPtr<AscBigInt>,
+    pub total_difficulty: AscPtr<AscBigInt>,
+    pub size: AscPtr<AscBigInt>,
+    pub base_fee_per_block: AscPtr<AscBigInt>,
+}
+
+impl AscIndexId for AscEthereumBlock_0_0_6 {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumBlock;
+}
+
+#[repr(C)]
+#[derive(AscType)]
 pub(crate) struct AscEthereumTransaction_0_0_1 {
     pub hash: AscPtr<AscH256>,
     pub index: AscPtr<AscBigInt>,
@@ -174,28 +198,29 @@ impl AscIndexId for AscEthereumTransaction_0_0_6 {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscEthereumEvent<T>
+pub(crate) struct AscEthereumEvent<T, B>
 where
     T: AscType,
+    B: AscType,
 {
     pub address: AscPtr<AscAddress>,
     pub log_index: AscPtr<AscBigInt>,
     pub transaction_log_index: AscPtr<AscBigInt>,
     pub log_type: AscPtr<AscString>,
-    pub block: AscPtr<AscEthereumBlock>,
+    pub block: AscPtr<B>,
     pub transaction: AscPtr<T>,
     pub params: AscPtr<AscLogParamArray>,
 }
 
-impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_1> {
+impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_1, AscEthereumBlock> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
 }
 
-impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_2> {
+impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_2, AscEthereumBlock> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
 }
 
-impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_6> {
+impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_6, AscEthereumBlock_0_0_6> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
 }
 
@@ -272,6 +297,37 @@ impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
     }
 }
 
+impl ToAscObj<AscEthereumBlock_0_0_6> for EthereumBlockData {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscEthereumBlock_0_0_6, DeterministicHostError> {
+        Ok(AscEthereumBlock_0_0_6 {
+            hash: asc_new(heap, &self.hash)?,
+            parent_hash: asc_new(heap, &self.parent_hash)?,
+            uncles_hash: asc_new(heap, &self.uncles_hash)?,
+            author: asc_new(heap, &self.author)?,
+            state_root: asc_new(heap, &self.state_root)?,
+            transactions_root: asc_new(heap, &self.transactions_root)?,
+            receipts_root: asc_new(heap, &self.receipts_root)?,
+            number: asc_new(heap, &BigInt::from(self.number))?,
+            gas_used: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_used))?,
+            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit))?,
+            timestamp: asc_new(heap, &BigInt::from_unsigned_u256(&self.timestamp))?,
+            difficulty: asc_new(heap, &BigInt::from_unsigned_u256(&self.difficulty))?,
+            total_difficulty: asc_new(heap, &BigInt::from_unsigned_u256(&self.total_difficulty))?,
+            size: self
+                .size
+                .map(|size| asc_new(heap, &BigInt::from_unsigned_u256(&size)))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            base_fee_per_block: self
+                .base_fee_per_gas
+                .map(|base_fee| asc_new(heap, &BigInt::from_unsigned_u256(&base_fee)))
+                .unwrap_or(Ok(AscPtr::null()))?,
+        })
+    }
+}
+
 impl ToAscObj<AscEthereumTransaction_0_0_1> for EthereumTransactionData {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
@@ -335,14 +391,17 @@ impl ToAscObj<AscEthereumTransaction_0_0_6> for EthereumTransactionData {
     }
 }
 
-impl<T: AscType + AscIndexId> ToAscObj<AscEthereumEvent<T>> for EthereumEventData
+impl<T, B> ToAscObj<AscEthereumEvent<T, B>> for EthereumEventData
 where
+    T: AscType + AscIndexId,
+    B: AscType + AscIndexId,
     EthereumTransactionData: ToAscObj<T>,
+    EthereumBlockData: ToAscObj<B>,
 {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
-    ) -> Result<AscEthereumEvent<T>, DeterministicHostError> {
+    ) -> Result<AscEthereumEvent<T, B>, DeterministicHostError> {
         Ok(AscEthereumEvent {
             address: asc_new(heap, &self.address)?,
             log_index: asc_new(heap, &BigInt::from_unsigned_u256(&self.log_index))?,
@@ -355,7 +414,7 @@ where
                 .clone()
                 .map(|log_type| asc_new(heap, &log_type))
                 .unwrap_or(Ok(AscPtr::null()))?,
-            block: asc_new(heap, &self.block)?,
+            block: asc_new::<B, EthereumBlockData, _>(heap, &self.block)?,
             transaction: asc_new::<T, EthereumTransactionData, _>(heap, &self.transaction)?,
             params: asc_new(heap, &self.params)?,
         })
