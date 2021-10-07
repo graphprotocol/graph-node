@@ -138,6 +138,6 @@ impl Job for MirrorPrimary {
     }
 
     async fn run(&self, logger: &Logger) {
-        self.store.mirror_primary_tables(logger);
+        self.store.mirror_primary_tables(logger).await;
     }
 }

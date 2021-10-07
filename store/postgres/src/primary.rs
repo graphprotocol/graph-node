@@ -22,7 +22,10 @@ use diesel::{
     },
     Connection as _,
 };
-use graph::components::store::DeploymentId as GraphDeploymentId;
+use graph::{
+    components::store::DeploymentId as GraphDeploymentId,
+    prelude::{CancelHandle, CancelToken},
+};
 use graph::{
     components::store::DeploymentLocator,
     constraint_violation,
@@ -1482,7 +1485,10 @@ impl Mirror {
 
     /// Refresh the contents of mirrored tables from the primary (through
     /// the fdw mapping that `ForeignServer` establishes)
-    pub(crate) fn refresh_tables(conn: &PgConnection) -> Result<(), StoreError> {
+    pub(crate) fn refresh_tables(
+        conn: &PgConnection,
+        handle: &CancelHandle,
+    ) -> Result<(), StoreError> {
         // `chains` needs to be mirrored before `deployment_schemas` because
         // of the fk constraint on `deployment_schemas.network`. We don't
         // care much about mirroring `active_copies` but it has a fk
@@ -1510,6 +1516,14 @@ impl Mirror {
             conn.batch_execute(&query).map_err(StoreError::from)
         }
 
+        let check_cancel = || {
+            if handle.is_canceled() {
+                Err(StoreError::Canceled)
+            } else {
+                Ok(())
+            }
+        };
+
         // Truncate all tables at once, otherwise truncation can fail
         // because of foreign key constraints
         let tables = PUBLIC_TABLES
@@ -1524,6 +1538,7 @@ impl Mirror {
             .join(", ");
         let query = format!("truncate table {};", tables);
         conn.batch_execute(&query)?;
+        check_cancel()?;
 
         for table_name in PUBLIC_TABLES {
             copy_table(
@@ -1532,6 +1547,7 @@ impl Mirror {
                 NAMESPACE_PUBLIC,
                 table_name,
             )?;
+            check_cancel()?;
         }
         for table_name in SUBGRAPHS_TABLES {
             copy_table(
@@ -1540,6 +1556,7 @@ impl Mirror {
                 NAMESPACE_SUBGRAPHS,
                 table_name,
             )?;
+            check_cancel()?;
         }
         Ok(())
     }

@@ -525,9 +525,9 @@ impl ConnectionPool {
     /// table on the primary. Once we drop support for PG 9.6, we can
     /// simplify all this and achieve the same result with logical
     /// replication.
-    pub(crate) fn mirror_primary_tables(&self) -> Result<(), StoreError> {
+    pub(crate) async fn mirror_primary_tables(&self) -> Result<(), StoreError> {
         let pool = self.get_ready()?;
-        pool.mirror_primary_tables()
+        pool.mirror_primary_tables().await
     }
 }
 
@@ -1018,12 +1018,16 @@ impl PoolInner {
 
     /// Copy the data from key tables in the primary into our local schema
     /// so it can be used as a fallback when the primary goes down
-    pub fn mirror_primary_tables(&self) -> Result<(), StoreError> {
+    pub async fn mirror_primary_tables(&self) -> Result<(), StoreError> {
         if &self.shard == &*PRIMARY_SHARD {
             return Ok(());
         }
-        let conn = self.get()?;
-        conn.transaction(|| primary::Mirror::refresh_tables(&conn))
+        self.with_conn(|conn, handle| {
+            conn.transaction(|| {
+                primary::Mirror::refresh_tables(&conn, handle).map_err(CancelableError::from)
+            })
+        })
+        .await
     }
 
     // Map some tables from the `subgraphs` metadata schema from foreign

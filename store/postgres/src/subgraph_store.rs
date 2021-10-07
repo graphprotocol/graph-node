@@ -903,10 +903,13 @@ impl SubgraphStoreInner {
             .map(|site| site.into()))
     }
 
-    pub fn mirror_primary_tables(&self, logger: &Logger) {
-        for store in self.stores.values() {
-            store.mirror_primary_tables(logger);
-        }
+    pub async fn mirror_primary_tables(&self, logger: &Logger) {
+        join_all(
+            self.stores
+                .values()
+                .map(|store| store.mirror_primary_tables(logger)),
+        )
+        .await;
     }
 }
 

@@ -1179,8 +1179,8 @@ impl DeploymentStore {
         deployment::error_count(&conn, id)
     }
 
-    pub(crate) fn mirror_primary_tables(&self, logger: &Logger) {
-        self.pool.mirror_primary_tables().unwrap_or_else(|e| {
+    pub(crate) async fn mirror_primary_tables(&self, logger: &Logger) {
+        self.pool.mirror_primary_tables().await.unwrap_or_else(|e| {
             warn!(logger, "Mirroring primary tables failed. We will try again in a few minutes";
                   "error" => e.to_string(),
                   "shard" => self.pool.shard.as_str())
