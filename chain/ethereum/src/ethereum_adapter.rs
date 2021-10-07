@@ -53,6 +53,7 @@ use crate::{
 pub struct EthereumAdapter {
     logger: Logger,
     url_hostname: Arc<String>,
+    /// The label for the provider from the configuration
     provider: String,
     web3: Arc<Web3<Transport>>,
     metrics: Arc<ProviderEthRpcMetrics>,
@@ -210,6 +211,7 @@ impl EthereumAdapter {
                 let start = Instant::now();
                 let subgraph_metrics = subgraph_metrics.clone();
                 let provider_metrics = eth.metrics.clone();
+                let provider = self.provider.clone();
                 eth.web3
                     .trace()
                     .filter(trace_filter)
@@ -237,11 +239,11 @@ impl EthereumAdapter {
                     .from_err()
                     .then(move |result| {
                         let elapsed = start.elapsed().as_secs_f64();
-                        provider_metrics.observe_request(elapsed, "trace_filter");
-                        subgraph_metrics.observe_request(elapsed, "trace_filter");
+                        provider_metrics.observe_request(elapsed, "trace_filter", &provider);
+                        subgraph_metrics.observe_request(elapsed, "trace_filter", &provider);
                         if result.is_err() {
-                            provider_metrics.add_error("trace_filter");
-                            subgraph_metrics.add_error("trace_filter");
+                            provider_metrics.add_error("trace_filter", &provider);
+                            subgraph_metrics.add_error("trace_filter", &provider);
                             debug!(
                                 logger_for_error,
                                 "Error querying traces error = {:?} from = {:?} to = {:?}",
@@ -301,17 +303,18 @@ impl EthereumAdapter {
                     .build();
 
                 // Request logs from client
+                let provider = eth_adapter.provider.clone();
                 eth_adapter
                     .web3
                     .eth()
                     .logs(log_filter)
                     .then(move |result| {
                         let elapsed = start.elapsed().as_secs_f64();
-                        provider_metrics.observe_request(elapsed, "eth_getLogs");
-                        subgraph_metrics.observe_request(elapsed, "eth_getLogs");
+                        provider_metrics.observe_request(elapsed, "eth_getLogs", &provider);
+                        subgraph_metrics.observe_request(elapsed, "eth_getLogs", &provider);
                         if result.is_err() {
-                            provider_metrics.add_error("eth_getLogs");
-                            subgraph_metrics.add_error("eth_getLogs");
+                            provider_metrics.add_error("eth_getLogs", &provider);
+                            subgraph_metrics.add_error("eth_getLogs", &provider);
                         }
                         result
                     })

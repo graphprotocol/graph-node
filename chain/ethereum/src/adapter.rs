@@ -471,15 +471,15 @@ impl ProviderEthRpcMetrics {
             .new_histogram_vec(
                 "eth_rpc_request_duration",
                 "Measures eth rpc request duration",
-                vec![String::from("method")],
-                vec![0.05, 0.2, 0.5, 1.0, 3.0, 5.0],
+                vec![String::from("method"), String::from("provider")],
+                vec![0.05, 0.1, 0.2, 0.4, 0.8, 1.6, 3.2, 6.4, 12.8, 25.6],
             )
             .unwrap();
         let errors = registry
             .new_counter_vec(
                 "eth_rpc_errors",
                 "Counts eth rpc request errors",
-                vec![String::from("method")],
+                vec![String::from("method"), String::from("provider")],
             )
             .unwrap();
         Self {
@@ -488,14 +488,14 @@ impl ProviderEthRpcMetrics {
         }
     }
 
-    pub fn observe_request(&self, duration: f64, method: &str) {
+    pub fn observe_request(&self, duration: f64, method: &str, provider: &str) {
         self.request_duration
-            .with_label_values(vec![method].as_slice())
+            .with_label_values(&[method, provider])
             .observe(duration);
     }
 
-    pub fn add_error(&self, method: &str) {
-        self.errors.with_label_values(vec![method].as_slice()).inc();
+    pub fn add_error(&self, method: &str, provider: &str) {
+        self.errors.with_label_values(&[method, provider]).inc();
     }
 }
 
@@ -512,7 +512,7 @@ impl SubgraphEthRpcMetrics {
                 "deployment_eth_rpc_request_duration",
                 "Measures eth rpc request duration for a subgraph deployment",
                 &subgraph_hash,
-                vec![String::from("method")],
+                vec![String::from("method"), String::from("provider")],
             )
             .unwrap();
         let errors = registry
@@ -520,7 +520,7 @@ impl SubgraphEthRpcMetrics {
                 "deployment_eth_rpc_errors",
                 "Counts eth rpc request errors for a subgraph deployment",
                 &subgraph_hash,
-                vec![String::from("method")],
+                vec![String::from("method"), String::from("provider")],
             )
             .unwrap();
         Self {
@@ -529,14 +529,14 @@ impl SubgraphEthRpcMetrics {
         }
     }
 
-    pub fn observe_request(&self, duration: f64, method: &str) {
+    pub fn observe_request(&self, duration: f64, method: &str, provider: &str) {
         self.request_duration
-            .with_label_values(vec![method].as_slice())
+            .with_label_values(&[method, provider])
             .set(duration);
     }
 
-    pub fn add_error(&self, method: &str) {
-        self.errors.with_label_values(vec![method].as_slice()).inc();
+    pub fn add_error(&self, method: &str, provider: &str) {
+        self.errors.with_label_values(&[method, provider]).inc();
     }
 }
 
