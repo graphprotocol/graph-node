@@ -2,9 +2,9 @@ use std::{
     collections::{HashMap, HashSet},
     iter::FromIterator,
     sync::{Arc, RwLock},
+    time::Duration,
 };
 
-use graph::prelude::{tokio, StoreError};
 use graph::{
     components::store::BlockStore as BlockStoreTrait,
     prelude::{error, warn, BlockNumber, BlockPtr, EthereumNetworkIdentifier, Logger},
@@ -12,6 +12,10 @@ use graph::{
 use graph::{
     constraint_violation,
     prelude::{anyhow, CheapClone},
+};
+use graph::{
+    prelude::{tokio, StoreError},
+    util::timed_cache::TimedCache,
 };
 
 use crate::{
@@ -174,6 +178,7 @@ pub struct BlockStore {
     pools: HashMap<Shard, ConnectionPool>,
     sender: Arc<NotificationSender>,
     mirror: PrimaryMirror,
+    chain_head_cache: TimedCache<String, HashMap<String, BlockPtr>>,
 }
 
 impl BlockStore {
@@ -196,8 +201,13 @@ impl BlockStore {
         pools: HashMap<Shard, ConnectionPool>,
         sender: Arc<NotificationSender>,
     ) -> Result<Self, StoreError> {
+        // Cache chain head pointers for this long when returning
+        // information from `chain_head_pointers`
+        const CHAIN_HEAD_CACHE_TTL: Duration = Duration::from_secs(2);
+
         let mirror = PrimaryMirror::new(&pools);
         let existing_chains = mirror.read(|conn| primary::load_chains(conn))?;
+        let chain_head_cache = TimedCache::new(CHAIN_HEAD_CACHE_TTL);
 
         let block_store = Self {
             logger,
@@ -205,6 +215,7 @@ impl BlockStore {
             pools,
             sender,
             mirror,
+            chain_head_cache,
         };
 
         fn reduce_idents(
@@ -366,17 +377,30 @@ impl BlockStore {
         Ok(store)
     }
 
+    /// Return a map from network name to the network's chain head pointer.
+    /// The information is cached briefly since this method is used heavily
+    /// by the indexing status API
     pub fn chain_head_pointers(&self) -> Result<HashMap<String, BlockPtr>, StoreError> {
         let mut map = HashMap::new();
-        let stores = self
-            .stores
-            .read()
-            .unwrap()
-            .values()
-            .cloned()
-            .collect::<Vec<_>>();
-        for store in stores {
-            map.extend(store.chain_head_pointers()?);
+        for (shard, pool) in &self.pools {
+            let cached = match self.chain_head_cache.get(shard.as_str()) {
+                Some(cached) => cached,
+                None => {
+                    let conn = match pool.get() {
+                        Ok(conn) => conn,
+                        Err(StoreError::DatabaseUnavailable) => continue,
+                        Err(e) => return Err(e),
+                    };
+                    let heads = Arc::new(ChainStore::chain_head_pointers(&conn)?);
+                    self.chain_head_cache.set(shard.to_string(), heads.clone());
+                    heads
+                }
+            };
+            map.extend(
+                cached
+                    .iter()
+                    .map(|(chain, ptr)| (chain.clone(), ptr.clone())),
+            );
         }
         Ok(map)
     }

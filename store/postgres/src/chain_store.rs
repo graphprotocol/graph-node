@@ -1255,12 +1255,14 @@ impl ChainStore {
         })
     }
 
-    pub fn chain_head_pointers(&self) -> Result<HashMap<String, BlockPtr>, StoreError> {
+    pub fn chain_head_pointers(
+        conn: &PgConnection,
+    ) -> Result<HashMap<String, BlockPtr>, StoreError> {
         use public::ethereum_networks as n;
 
         let pointers: Vec<(String, BlockPtr)> = n::table
             .select((n::name, n::head_block_hash, n::head_block_number))
-            .load::<(String, Option<String>, Option<i64>)>(&self.get_conn()?)?
+            .load::<(String, Option<String>, Option<i64>)>(conn)?
             .into_iter()
             .filter_map(|(name, hash, number)| match (hash, number) {
                 (Some(hash), Some(number)) => Some((name, hash, number)),
