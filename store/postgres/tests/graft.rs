@@ -51,7 +51,9 @@ type User @entity {
     name: String,
     email: String,
     age: Int,
-    favorite_color: Color
+    favorite_color: Color,
+    # A column in the dst schema that does not exist in the src schema
+    added: String,
 }
 ";
 

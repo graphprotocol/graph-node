@@ -2772,8 +2772,6 @@ impl<'a> CopyEntityBatchQuery<'a> {
                     dcol.field
                 )
                 .into());
-            } else {
-                columns.push(dcol);
             }
         }
 
