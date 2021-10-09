@@ -179,7 +179,7 @@ impl CopyState {
             ))
             .execute(conn)?;
 
-        let tables: Vec<_> = dst
+        let mut tables: Vec<_> = dst
             .tables
             .values()
             .filter_map(|dst_table| {
@@ -196,6 +196,7 @@ impl CopyState {
                     })
             })
             .collect::<Result<_, _>>()?;
+        tables.sort_by_key(|table| table.dst.object.to_string());
 
         let values = tables
             .iter()
@@ -350,6 +351,7 @@ impl TableState {
                 cts::batch_size,
                 cts::duration_ms,
             ))
+            .order_by(cts::entity_type)
             .load::<(i32, String, i64, i64, i64, i64)>(conn)?
             .into_iter()
             .map(
