@@ -310,17 +310,6 @@ impl UnresolvedMapping {
 
         let api_version = semver::Version::parse(&api_version)?;
 
-        // FIXME (NEAR): MAX_API_VERSION is mostly tied to Ethereum, we would need a min/max version per
-        //               blockchain.
-        // ensure!(
-        //     semver::VersionReq::parse(&format!("<= {}", *MAX_API_VERSION))
-        //         .unwrap()
-        //         .matches(&api_version),
-        //     "The maximum supported mapping API version of this indexer is {}, but `{}` was found",
-        //     *MAX_API_VERSION,
-        //     api_version
-        // );
-
         info!(logger, "Resolve mapping"; "link" => &link.link);
         let module_bytes = resolver.cat(logger, &link).await?;
 
