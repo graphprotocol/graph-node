@@ -1,734 +1,438 @@
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct BlockWrapper {
-    /// repeated IndexerShard shards = 2;
-    /// repeated StateChangeWithCause state_changes = 3;
+pub struct StreamPiece {
+    #[prost(message, optional, tag = "1")]
+    pub eventdatanewblock: ::core::option::Option<EventDataNewBlock>,
+    #[prost(message, optional, tag = "2")]
+    pub eventdatanewblockheader: ::core::option::Option<EventDataNewBlockHeader>,
+    #[prost(message, optional, tag = "3")]
+    pub eventdatanewevidence: ::core::option::Option<EventDataNewEvidence>,
+    #[prost(message, optional, tag = "4")]
+    pub eventdatatx: ::core::option::Option<EventDataTx>,
+    #[prost(message, optional, tag = "5")]
+    pub eventdatavote: ::core::option::Option<EventDataVote>,
+    #[prost(message, optional, tag = "6")]
+    pub eventdataroundstate: ::core::option::Option<EventDataRoundState>,
+    #[prost(message, optional, tag = "7")]
+    pub eventdatanewround: ::core::option::Option<EventDataNewRound>,
+    #[prost(message, optional, tag = "8")]
+    pub eventdatacompleteproposal: ::core::option::Option<EventDataCompleteProposal>,
+    #[prost(message, optional, tag = "9")]
+    pub eventdatavalidatorsetupdates: ::core::option::Option<EventDataValidatorSetUpdates>,
+    #[prost(message, optional, tag = "10")]
+    pub eventdatastring: ::core::option::Option<EventDataString>,
+    #[prost(message, optional, tag = "11")]
+    pub eventdatablocksyncstatus: ::core::option::Option<EventDataBlockSyncStatus>,
+    #[prost(message, optional, tag = "12")]
+    pub eventdatastatesyncstatus: ::core::option::Option<EventDataStateSyncStatus>,
+}
+/// EventDataNewBlock
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EventDataNewBlock {
     #[prost(message, optional, tag = "1")]
     pub block: ::core::option::Option<Block>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StateChangeWithCause {
-    #[prost(message, optional, tag = "1")]
-    pub cause: ::core::option::Option<StateChangeCause>,
+    /// not present in v0.34.13
     #[prost(message, optional, tag = "2")]
-    pub value: ::core::option::Option<StateChangeValue>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StateChangeCause {
-    #[prost(oneof = "state_change_cause::Cause", tags = "1")]
-    pub cause: ::core::option::Option<state_change_cause::Cause>,
-}
-/// Nested message and enum types in `StateChangeCause`.
-pub mod state_change_cause {
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Cause {
-        ///    NotWritableToDisk not_writable_to_disk = 1;
-        ///InitialState initial_state = 2;
-        ///TransactionProcessing  transaction_processing = 3;
-        ///ActionReceiptProcessingStarted action_receipt_processing_started = 4;
-        ///ActionReceiptGasReward action_receipt_gas_reward = 5;
-        ///ReceiptProcessing receipt_processing = 6;
-        ///PostponedReceipt postponed_receipt = 7;
-        ///UpdatedDelayedReceipts updated_delayed_receipts = 8;
-        ///ValidatorAccountsUpdate validator_accounts_update = 9;
-        ///Migration migration = 10;
-        #[prost(message, tag = "1")]
-        TransactionProcessing(super::TransactionProcessing),
-    }
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct NotWritableToDisk {}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct InitialState {}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct TransactionProcessing {
-    #[prost(message, optional, tag = "1")]
-    pub tx_hash: ::core::option::Option<CryptoHash>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ActionReceiptProcessingStarted {
-    #[prost(message, optional, tag = "1")]
-    pub receipt_hash: ::core::option::Option<CryptoHash>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ActionReceiptGasReward {
-    #[prost(message, optional, tag = "1")]
-    pub tx_hash: ::core::option::Option<CryptoHash>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ReceiptProcessing {
-    #[prost(message, optional, tag = "1")]
-    pub tx_hash: ::core::option::Option<CryptoHash>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PostponedReceipt {
-    #[prost(message, optional, tag = "1")]
-    pub tx_hash: ::core::option::Option<CryptoHash>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct UpdatedDelayedReceipts {}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ValidatorAccountsUpdate {}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Migration {}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StateChangeValue {
-    #[prost(oneof = "state_change_value::Value", tags = "1")]
-    pub value: ::core::option::Option<state_change_value::Value>,
-}
-/// Nested message and enum types in `StateChangeValue`.
-pub mod state_change_value {
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Value {
-        #[prost(message, tag = "1")]
-        AccountUpdate(super::DataUpdate),
-    }
-}
-///
-///message AccountUpdate {string account_id = 1; Account account = 2;}
-///message AccountDeletion {string account_id = 1;}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct AccessKeyUpdate {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "2")]
-    pub public_key: ::core::option::Option<PublicKey>,
+    pub block_id: ::core::option::Option<BlockId>,
     #[prost(message, optional, tag = "3")]
-    pub access_key: ::core::option::Option<AccessKey>,
+    pub result_begin_block: ::core::option::Option<ResponseBeginBlock>,
+    #[prost(message, optional, tag = "4")]
+    pub result_end_block: ::core::option::Option<ResponseEndBlock>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct AccessKeyDeletion {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
+pub struct ResponseBeginBlock {
+    #[prost(message, repeated, tag = "1")]
+    pub events: ::prost::alloc::vec::Vec<Event>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ResponseEndBlock {
+    #[prost(message, repeated, tag = "1")]
+    pub validator_updates: ::prost::alloc::vec::Vec<Validator>,
     #[prost(message, optional, tag = "2")]
-    pub public_key: ::core::option::Option<PublicKey>,
+    pub consensus_param_updates: ::core::option::Option<ConsensusParams>,
+    #[prost(message, repeated, tag = "3")]
+    pub events: ::prost::alloc::vec::Vec<Event>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct DataUpdate {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
-    #[prost(bytes = "vec", tag = "2")]
-    pub key: ::prost::alloc::vec::Vec<u8>,
-    #[prost(bytes = "vec", tag = "3")]
-    pub value: ::prost::alloc::vec::Vec<u8>,
+pub struct ConsensusParams {
+    #[prost(message, optional, tag = "1")]
+    pub block: ::core::option::Option<Block>,
+    #[prost(message, optional, tag = "2")]
+    pub evidence: ::core::option::Option<EventDataNewEvidence>,
+    #[prost(message, optional, tag = "3")]
+    pub validator: ::core::option::Option<Validator>,
+    #[prost(message, optional, tag = "4")]
+    pub version: ::core::option::Option<Version>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct DataDeletion {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
-    #[prost(bytes = "vec", tag = "2")]
-    pub key: ::prost::alloc::vec::Vec<u8>,
+pub struct Version {
+    #[prost(int64, tag = "1")]
+    pub app_version: i64,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ContractCodeUpdate {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
-    #[prost(bytes = "vec", tag = "2")]
-    pub code: ::prost::alloc::vec::Vec<u8>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ContractCodeDeletion {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
-}
-//
-//message Account {
-//BigInt amount = 1;
-//BigInt locked = 2;
-//CryptoHash code_hash = 3;
-//uint64 storage_usage = 4;
-//}
-
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Block {
-    #[prost(string, tag = "1")]
-    pub author: ::prost::alloc::string::String,
-    /// repeated ChunkHeader chunks = 3;
+    #[prost(message, optional, tag = "1")]
+    pub header: ::core::option::Option<Header>,
     #[prost(message, optional, tag = "2")]
-    pub header: ::core::option::Option<BlockHeader>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct BlockHeader {
-    #[prost(uint64, tag = "1")]
-    pub height: u64,
-    #[prost(uint64, tag = "2")]
-    pub prev_height: u64,
+    pub data: ::core::option::Option<Data>,
     #[prost(message, optional, tag = "3")]
-    pub hash: ::core::option::Option<CryptoHash>,
-    ///
-    ///CryptoHash epoch_id = 3;
-    ///CryptoHash next_epoch_id = 4;
-    ///CryptoHash hash = 5;
-    ///CryptoHash prev_hash = 6;
-    ///CryptoHash prev_state_root = 7;
-    ///CryptoHash chunk_receipts_root = 8;
-    ///CryptoHash chunk_headers_root = 9;
-    ///CryptoHash chunk_tx_root = 10;
-    ///CryptoHash outcome_root = 11;
-    ///uint64 chunks_included = 12;
-    ///CryptoHash challenges_root = 13;
-    ///uint64 timestamp = 14;
-    ///uint64 timestamp_nanosec = 15;
-    ///CryptoHash random_value = 16;
-    ///repeated ValidatorStake validator_proposals = 17;
-    ///repeated bool chunk_mask = 18;
-    ///BigInt gas_price = 19;
-    ///uint64 block_ordinal = 20;
-    ///BigInt validator_reward = 21;
-    ///BigInt total_supply = 22;
-    ///repeated SlashedValidator challenges_result = 23;
-    ///CryptoHash last_final_block = 24;
-    ///CryptoHash last_ds_final_block = 25;
-    ///CryptoHash next_bp_hash = 26;
-    ///CryptoHash block_merkle_root = 27;
-    ///bytes epoch_sync_data_hash = 28;
-    ///repeated Signature approvals = 29;
-    ///Signature signature = 30;
-    ///uint32 latest_protocol_version = 31;
+    pub evidence: ::core::option::Option<EvidenceList>,
     #[prost(message, optional, tag = "4")]
-    pub prev_hash: ::core::option::Option<CryptoHash>,
-}
-//
-//message BlockHeader {
-//uint64 height = 1;
-//uint64 prev_height = 2;
-//CryptoHash epoch_id = 3;
-//CryptoHash next_epoch_id = 4;
-//CryptoHash hash = 5;
-//CryptoHash prev_hash = 6;
-//CryptoHash prev_state_root = 7;
-//CryptoHash chunk_receipts_root = 8;
-//CryptoHash chunk_headers_root = 9;
-//CryptoHash chunk_tx_root = 10;
-//CryptoHash outcome_root = 11;
-//uint64 chunks_included = 12;
-//CryptoHash challenges_root = 13;
-//uint64 timestamp = 14;
-//uint64 timestamp_nanosec = 15;
-//CryptoHash random_value = 16;
-//repeated ValidatorStake validator_proposals = 17;
-//repeated bool chunk_mask = 18;
-//BigInt gas_price = 19;
-//uint64 block_ordinal = 20;
-//BigInt validator_reward = 21;
-//BigInt total_supply = 22;
-//repeated SlashedValidator challenges_result = 23;
-//CryptoHash last_final_block = 24;
-//CryptoHash last_ds_final_block = 25;
-//CryptoHash next_bp_hash = 26;
-//CryptoHash block_merkle_root = 27;
-//bytes epoch_sync_data_hash = 28;
-//repeated Signature approvals = 29;
-//Signature signature = 30;
-//uint32 latest_protocol_version = 31;
-//}
-
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct BigInt {
-    #[prost(bytes = "vec", tag = "1")]
-    pub bytes: ::prost::alloc::vec::Vec<u8>,
+    pub last_commit: ::core::option::Option<Commit>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct CryptoHash {
-    #[prost(bytes = "vec", tag = "1")]
-    pub bytes: ::prost::alloc::vec::Vec<u8>,
+pub struct Commit {
+    #[prost(int64, tag = "1")]
+    pub height: i64,
+    #[prost(int32, tag = "2")]
+    pub round: i32,
+    #[prost(message, optional, tag = "3")]
+    pub block_id: ::core::option::Option<BlockId>,
+    #[prost(message, repeated, tag = "4")]
+    pub signatures: ::prost::alloc::vec::Vec<CommitSig>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Signature {
-    #[prost(enumeration = "SignatureType", tag = "1")]
-    pub r#type: i32,
+pub struct CommitSig {
+    #[prost(enumeration = "BlockIdFlag", tag = "1")]
+    pub block_id_flag: i32,
     #[prost(bytes = "vec", tag = "2")]
-    pub bytes: ::prost::alloc::vec::Vec<u8>,
+    pub validator_address: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag = "3")]
+    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    #[prost(bytes = "vec", tag = "4")]
+    pub signature: ::prost::alloc::vec::Vec<u8>,
+}
+/// EventDataNewBlockHeader
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EventDataNewBlockHeader {
+    #[prost(message, optional, tag = "1")]
+    pub header: ::core::option::Option<Header>,
+    #[prost(int64, tag = "2")]
+    pub num_txs: i64,
+    #[prost(message, optional, tag = "3")]
+    pub result_begin_block: ::core::option::Option<ResponseBeginBlock>,
+    #[prost(message, optional, tag = "4")]
+    pub result_end_block: ::core::option::Option<ResponseEndBlock>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Header {
+    #[prost(message, optional, tag = "1")]
+    pub version: ::core::option::Option<Consensus>,
+    #[prost(string, tag = "2")]
+    pub chain_id: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "3")]
+    pub height: u64,
+    #[prost(message, optional, tag = "4")]
+    pub time: ::core::option::Option<::prost_types::Timestamp>,
+    #[prost(message, optional, tag = "5")]
+    pub last_block_id: ::core::option::Option<BlockId>,
+    #[prost(bytes = "vec", tag = "6")]
+    pub last_commit_hash: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "7")]
+    pub data_hash: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "8")]
+    pub validators_hash: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "9")]
+    pub next_validators_hash: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "10")]
+    pub consensus_hash: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "11")]
+    pub app_hash: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "12")]
+    pub last_results_hash: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "13")]
+    pub evidence_hash: ::prost::alloc::vec::Vec<u8>,
+    #[prost(bytes = "vec", tag = "14")]
+    pub proposer_address: ::prost::alloc::vec::Vec<u8>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Consensus {
+    #[prost(uint64, tag = "1")]
+    pub block: u64,
+    #[prost(uint64, tag = "2")]
+    pub app: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockId {
+    #[prost(bytes = "vec", tag = "1")]
+    pub hash: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag = "2")]
+    pub part_set_header: ::core::option::Option<PartSetHeader>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PartSetHeader {
+    #[prost(uint32, tag = "1")]
+    pub total: u32,
+    #[prost(bytes = "vec", tag = "2")]
+    pub hash: ::prost::alloc::vec::Vec<u8>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Data {
+    #[prost(bytes = "vec", repeated, tag = "1")]
+    pub txs: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+}
+/// EventDataNewEvidence
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EventDataNewEvidence {
+    #[prost(oneof = "event_data_new_evidence::Sum", tags = "1, 2")]
+    pub sum: ::core::option::Option<event_data_new_evidence::Sum>,
+}
+/// Nested message and enum types in `EventDataNewEvidence`.
+pub mod event_data_new_evidence {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Sum {
+        #[prost(message, tag = "1")]
+        DuplicateVoteEvidence(super::DuplicateVoteEvidence),
+        #[prost(message, tag = "2")]
+        LightClientAttackEvidence(super::LightClientAttackEvidence),
+    }
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DuplicateVoteEvidence {
+    #[prost(message, optional, tag = "1")]
+    pub vote_a: ::core::option::Option<EventDataVote>,
+    #[prost(message, optional, tag = "2")]
+    pub vote_b: ::core::option::Option<EventDataVote>,
+    #[prost(int64, tag = "3")]
+    pub total_voting_power: i64,
+    #[prost(int64, tag = "4")]
+    pub validator_power: i64,
+    #[prost(message, optional, tag = "5")]
+    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+}
+/// EventDataTx
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EventDataTx {
+    #[prost(message, optional, tag = "1")]
+    pub tx_result: ::core::option::Option<TxResult>,
+}
+/// EventDataVote
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EventDataVote {
+    #[prost(enumeration = "SignedMsgType", tag = "1")]
+    pub r#type: i32,
+    #[prost(int64, tag = "2")]
+    pub height: i64,
+    #[prost(int32, tag = "3")]
+    pub round: i32,
+    #[prost(message, optional, tag = "4")]
+    pub block_id: ::core::option::Option<BlockId>,
+    #[prost(message, optional, tag = "5")]
+    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    #[prost(bytes = "vec", tag = "6")]
+    pub validator_address: ::prost::alloc::vec::Vec<u8>,
+    #[prost(int32, tag = "7")]
+    pub validator_index: i32,
+    #[prost(bytes = "vec", tag = "8")]
+    pub signature: ::prost::alloc::vec::Vec<u8>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LightClientAttackEvidence {
+    #[prost(message, optional, tag = "1")]
+    pub conflicting_block: ::core::option::Option<LightBlock>,
+    #[prost(int64, tag = "2")]
+    pub common_height: i64,
+    #[prost(message, repeated, tag = "3")]
+    pub byzantine_validators: ::prost::alloc::vec::Vec<Validator>,
+    #[prost(int64, tag = "4")]
+    pub total_voting_power: i64,
+    #[prost(message, optional, tag = "5")]
+    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LightBlock {
+    #[prost(message, optional, tag = "1")]
+    pub signed_header: ::core::option::Option<SignedHeader>,
+    #[prost(message, optional, tag = "2")]
+    pub validator_set: ::core::option::Option<ValidatorSet>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ValidatorSet {
+    #[prost(message, repeated, tag = "1")]
+    pub validators: ::prost::alloc::vec::Vec<Validator>,
+    #[prost(message, optional, tag = "2")]
+    pub proposer: ::core::option::Option<Validator>,
+    #[prost(int64, tag = "3")]
+    pub total_voting_power: i64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SignedHeader {
+    #[prost(message, optional, tag = "1")]
+    pub header: ::core::option::Option<Header>,
+    #[prost(message, optional, tag = "2")]
+    pub commit: ::core::option::Option<Commit>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EvidenceList {
+    #[prost(message, repeated, tag = "1")]
+    pub evidence: ::prost::alloc::vec::Vec<EventDataNewEvidence>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Validator {
+    #[prost(bytes = "vec", tag = "1")]
+    pub address: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag = "2")]
+    pub pub_key: ::core::option::Option<PublicKey>,
+    #[prost(int64, tag = "3")]
+    pub voting_power: i64,
+    #[prost(int64, tag = "4")]
+    pub proposer_priority: i64,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PublicKey {
-    #[prost(bytes = "vec", tag = "1")]
-    pub bytes: ::prost::alloc::vec::Vec<u8>,
+    #[prost(oneof = "public_key::Sum", tags = "1, 2, 3")]
+    pub sum: ::core::option::Option<public_key::Sum>,
 }
-//
-//message ChunkHeader {
-//bytes chunk_hash = 1;
-//bytes prev_block_hash = 2;
-//bytes outcome_root = 3;
-//bytes prev_state_root = 4;
-//bytes encoded_merkle_root = 5;
-//uint64 encoded_length = 6;
-//uint64 height_created = 7;
-//uint64 height_included = 8;
-//uint64 shard_id = 9;
-//uint64 gas_used = 10;
-//uint64 gas_limit = 11;
-//BigInt validator_reward = 12;
-//BigInt balance_burnt = 13;
-//bytes outgoing_receipts_root = 14;
-//bytes tx_root = 15;
-//repeated ValidatorStake validator_proposals = 16;
-//Signature signature = 17;
-//}
-
-//
-//message IndexerShard {
-//uint64 shard_id = 1;
-//IndexerChunk chunk = 2;
-//repeated IndexerExecutionOutcomeWithReceipt receipt_execution_outcomes = 3;
-//}
-//
-//message IndexerExecutionOutcomeWithReceipt {
-//ExecutionOutcomeWithIdView execution_outcome = 1;
-//Receipt receipt = 2;
-//}
-
-//
-//message IndexerChunk {
-//string author = 1;
-//ChunkHeader header = 2;
-//repeated IndexerTransactionWithOutcome transactions = 3;
-//repeated Receipt receipts = 4;
-//}
-
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct IndexerTransactionWithOutcome {
-    #[prost(message, optional, tag = "1")]
-    pub transaction: ::core::option::Option<SignedTransaction>,
-    #[prost(message, optional, tag = "2")]
-    pub outcome: ::core::option::Option<IndexerExecutionOutcomeWithOptionalReceipt>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SignedTransaction {
-    #[prost(string, tag = "1")]
-    pub signer_id: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "2")]
-    pub public_key: ::core::option::Option<PublicKey>,
-    #[prost(uint64, tag = "3")]
-    pub nonce: u64,
-    #[prost(string, tag = "4")]
-    pub receiver_id: ::prost::alloc::string::String,
-    #[prost(message, repeated, tag = "5")]
-    pub actions: ::prost::alloc::vec::Vec<Action>,
-    #[prost(message, optional, tag = "6")]
-    pub signature: ::core::option::Option<Signature>,
-    #[prost(message, optional, tag = "7")]
-    pub hash: ::core::option::Option<CryptoHash>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct IndexerExecutionOutcomeWithOptionalReceipt {
-    #[prost(message, optional, tag = "1")]
-    pub execution_outcome: ::core::option::Option<ExecutionOutcomeWithIdView>,
-    #[prost(message, optional, tag = "2")]
-    pub receipt: ::core::option::Option<Receipt>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Receipt {
-    #[prost(string, tag = "1")]
-    pub predecessor_id: ::prost::alloc::string::String,
-    #[prost(string, tag = "2")]
-    pub receiver_id: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "3")]
-    pub receipt_id: ::core::option::Option<CryptoHash>,
-    #[prost(oneof = "receipt::Receipt", tags = "10, 11")]
-    pub receipt: ::core::option::Option<receipt::Receipt>,
-}
-/// Nested message and enum types in `Receipt`.
-pub mod receipt {
+/// Nested message and enum types in `PublicKey`.
+pub mod public_key {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Receipt {
-        #[prost(message, tag = "10")]
-        Action(super::ReceiptAction),
-        #[prost(message, tag = "11")]
-        Data(super::ReceiptData),
+    pub enum Sum {
+        #[prost(bytes, tag = "1")]
+        Ed25519(::prost::alloc::vec::Vec<u8>),
+        #[prost(bytes, tag = "2")]
+        Secp256k1(::prost::alloc::vec::Vec<u8>),
+        #[prost(bytes, tag = "3")]
+        Sr25519(::prost::alloc::vec::Vec<u8>),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ReceiptData {
-    #[prost(message, optional, tag = "1")]
-    pub data_id: ::core::option::Option<CryptoHash>,
+pub struct TxResult {
+    #[prost(int64, tag = "1")]
+    pub height: i64,
+    #[prost(int32, tag = "2")]
+    pub index: i32,
+    #[prost(bytes = "vec", tag = "3")]
+    pub tx: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag = "4")]
+    pub result: ::core::option::Option<ResponseDeliverTx>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ResponseDeliverTx {
+    #[prost(uint32, tag = "1")]
+    pub code: u32,
     #[prost(bytes = "vec", tag = "2")]
     pub data: ::prost::alloc::vec::Vec<u8>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ReceiptAction {
-    #[prost(string, tag = "1")]
-    pub signer_id: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "2")]
-    pub signer_public_key: ::core::option::Option<PublicKey>,
-    #[prost(message, optional, tag = "3")]
-    pub gas_price: ::core::option::Option<BigInt>,
-    #[prost(message, repeated, tag = "4")]
-    pub output_data_receivers: ::prost::alloc::vec::Vec<DataReceiver>,
-    #[prost(message, repeated, tag = "5")]
-    pub input_data_ids: ::prost::alloc::vec::Vec<CryptoHash>,
-    #[prost(message, repeated, tag = "6")]
-    pub actions: ::prost::alloc::vec::Vec<Action>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct DataReceiver {
-    #[prost(message, optional, tag = "1")]
-    pub data_id: ::core::option::Option<CryptoHash>,
-    #[prost(string, tag = "2")]
-    pub receiver_id: ::prost::alloc::string::String,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ExecutionOutcomeWithIdView {
-    #[prost(message, optional, tag = "1")]
-    pub proof: ::core::option::Option<MerklePath>,
-    #[prost(message, optional, tag = "2")]
-    pub block_hash: ::core::option::Option<CryptoHash>,
-    #[prost(message, optional, tag = "3")]
-    pub id: ::core::option::Option<CryptoHash>,
-    #[prost(message, optional, tag = "4")]
-    pub outcome: ::core::option::Option<ExecutionOutcome>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ExecutionOutcome {
-    #[prost(string, repeated, tag = "1")]
-    pub logs: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-    #[prost(message, repeated, tag = "2")]
-    pub receipt_ids: ::prost::alloc::vec::Vec<CryptoHash>,
-    #[prost(uint64, tag = "3")]
-    pub gas_burnt: u64,
-    #[prost(message, optional, tag = "4")]
-    pub tokens_burnt: ::core::option::Option<BigInt>,
-    #[prost(string, tag = "5")]
-    pub executor_id: ::prost::alloc::string::String,
-    #[prost(oneof = "execution_outcome::Status", tags = "20, 21, 22, 23")]
-    pub status: ::core::option::Option<execution_outcome::Status>,
-}
-/// Nested message and enum types in `ExecutionOutcome`.
-pub mod execution_outcome {
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Status {
-        #[prost(message, tag = "20")]
-        Unknown(super::UnknownExecutionStatus),
-        #[prost(message, tag = "21")]
-        Failure(super::FailureExecutionStatus),
-        #[prost(message, tag = "22")]
-        SuccessValue(super::SuccessValueExecutionStatus),
-        #[prost(message, tag = "23")]
-        SuccessReceiptId(super::SuccessReceiptIdExecutionStatus),
-    }
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SuccessValueExecutionStatus {
-    #[prost(string, tag = "1")]
-    pub value: ::prost::alloc::string::String,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SuccessReceiptIdExecutionStatus {
-    #[prost(message, optional, tag = "1")]
-    pub id: ::core::option::Option<CryptoHash>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct UnknownExecutionStatus {}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct FailureExecutionStatus {
-    #[prost(oneof = "failure_execution_status::Failure", tags = "1, 2")]
-    pub failure: ::core::option::Option<failure_execution_status::Failure>,
-}
-/// Nested message and enum types in `FailureExecutionStatus`.
-pub mod failure_execution_status {
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Failure {
-        #[prost(message, tag = "1")]
-        ActionError(super::ActionError),
-        #[prost(enumeration = "super::InvalidTxError", tag = "2")]
-        InvalidTxError(i32),
-    }
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ActionError {
-    #[prost(uint64, tag = "1")]
-    pub index: u64,
-    #[prost(
-        oneof = "action_error::Kind",
-        tags = "21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36"
-    )]
-    pub kind: ::core::option::Option<action_error::Kind>,
-}
-/// Nested message and enum types in `ActionError`.
-pub mod action_error {
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Kind {
-        #[prost(message, tag = "21")]
-        AccountAlreadyExist(super::AccountAlreadyExistsErrorKind),
-        #[prost(message, tag = "22")]
-        AccountDoesNotExist(super::AccountDoesNotExistErrorKind),
-        #[prost(message, tag = "23")]
-        CreateAccountOnlyByRegistrar(super::CreateAccountOnlyByRegistrarErrorKind),
-        #[prost(message, tag = "24")]
-        CreateAccountNotAllowed(super::CreateAccountNotAllowedErrorKind),
-        #[prost(message, tag = "25")]
-        ActorNoPermission(super::ActorNoPermissionErrorKind),
-        #[prost(message, tag = "26")]
-        DeleteKeyDoesNotExist(super::DeleteKeyDoesNotExistErrorKind),
-        #[prost(message, tag = "27")]
-        AddKeyAlreadyExists(super::AddKeyAlreadyExistsErrorKind),
-        #[prost(message, tag = "28")]
-        DeleteAccountStaking(super::DeleteAccountStakingErrorKind),
-        #[prost(message, tag = "29")]
-        LackBalanceForState(super::LackBalanceForStateErrorKind),
-        #[prost(message, tag = "30")]
-        TriesToUnstake(super::TriesToUnstakeErrorKind),
-        #[prost(message, tag = "31")]
-        TriesToStake(super::TriesToStakeErrorKind),
-        #[prost(message, tag = "32")]
-        InsufficientStake(super::InsufficientStakeErrorKind),
-        ///todo: uncompleted
-        #[prost(message, tag = "33")]
-        FunctionCall(super::FunctionCallErrorKind),
-        ///todo: uncompleted
-        #[prost(message, tag = "34")]
-        NewReceiptValidation(super::NewReceiptValidationErrorKind),
-        #[prost(message, tag = "35")]
-        OnlyImplicitAccountCreationAllowed(super::OnlyImplicitAccountCreationAllowedErrorKind),
-        #[prost(message, tag = "36")]
-        DeleteAccountWithLargeState(super::DeleteAccountWithLargeStateErrorKind),
-    }
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct AccountAlreadyExistsErrorKind {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct AccountDoesNotExistErrorKind {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
-}
-//// A top-level account ID can only be created by registrar.
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct CreateAccountOnlyByRegistrarErrorKind {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
-    #[prost(string, tag = "2")]
-    pub registrar_account_id: ::prost::alloc::string::String,
     #[prost(string, tag = "3")]
-    pub predecessor_id: ::prost::alloc::string::String,
+    pub log: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub info: ::prost::alloc::string::String,
+    #[prost(int64, tag = "5")]
+    pub gas_wanted: i64,
+    #[prost(int64, tag = "6")]
+    pub gas_used: i64,
+    #[prost(message, repeated, tag = "7")]
+    pub events: ::prost::alloc::vec::Vec<Event>,
+    #[prost(string, tag = "8")]
+    pub codespace: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct CreateAccountNotAllowedErrorKind {
+pub struct Event {
     #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
+    pub r#type: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "2")]
+    pub attributes: ::core::option::Option<EventAttribute>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EventAttribute {
+    #[prost(string, tag = "1")]
+    pub key: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
-    pub predecessor_id: ::prost::alloc::string::String,
+    pub value: ::prost::alloc::string::String,
+    #[prost(bool, tag = "3")]
+    pub index: bool,
 }
+/// EventDataRoundState
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ActorNoPermissionErrorKind {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
-    #[prost(string, tag = "2")]
-    pub actor_id: ::prost::alloc::string::String,
+pub struct EventDataRoundState {
+    #[prost(int64, tag = "1")]
+    pub height: i64,
+    #[prost(int32, tag = "2")]
+    pub round: i32,
+    #[prost(string, tag = "3")]
+    pub step: ::prost::alloc::string::String,
 }
+/// EventDataNewRound
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct DeleteKeyDoesNotExistErrorKind {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "2")]
-    pub public_key: ::core::option::Option<PublicKey>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct AddKeyAlreadyExistsErrorKind {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "2")]
-    pub public_key: ::core::option::Option<PublicKey>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct DeleteAccountStakingErrorKind {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct LackBalanceForStateErrorKind {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "2")]
-    pub balance: ::core::option::Option<BigInt>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct TriesToUnstakeErrorKind {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct TriesToStakeErrorKind {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "2")]
-    pub stake: ::core::option::Option<BigInt>,
-    #[prost(message, optional, tag = "3")]
-    pub locked: ::core::option::Option<BigInt>,
+pub struct EventDataNewRound {
+    #[prost(int64, tag = "1")]
+    pub height: i64,
+    #[prost(int32, tag = "2")]
+    pub round: i32,
+    #[prost(string, tag = "3")]
+    pub step: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "4")]
-    pub balance: ::core::option::Option<BigInt>,
+    pub proposer: ::core::option::Option<ValidatorInfo>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct InsufficientStakeErrorKind {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "2")]
-    pub stake: ::core::option::Option<BigInt>,
-    #[prost(message, optional, tag = "3")]
-    pub minimum_stake: ::core::option::Option<BigInt>,
+pub struct ValidatorInfo {
+    #[prost(message, optional, tag = "1")]
+    pub address: ::core::option::Option<Address>,
+    #[prost(int32, tag = "2")]
+    pub index: i32,
 }
+/// Unsure about this piece, needs confirming
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct FunctionCallErrorKind {}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct NewReceiptValidationErrorKind {}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct OnlyImplicitAccountCreationAllowedErrorKind {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
+pub struct Address {
+    #[prost(bytes = "vec", tag = "1")]
+    pub address: ::prost::alloc::vec::Vec<u8>,
 }
+/// EventDataCompleteProposal
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct DeleteAccountWithLargeStateErrorKind {
-    #[prost(string, tag = "1")]
-    pub account_id: ::prost::alloc::string::String,
+pub struct EventDataCompleteProposal {
+    #[prost(int64, tag = "1")]
+    pub height: i64,
+    #[prost(int32, tag = "2")]
+    pub round: i32,
+    #[prost(string, tag = "3")]
+    pub step: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "4")]
+    pub block_id: ::core::option::Option<BlockId>,
 }
+/// EventDataValidatorSetUpdates - this may not be accurate but I can't confirm
+/// as the original struct was ValidatorUpdates []*Validator
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct MerklePath {
+pub struct EventDataValidatorSetUpdates {
     #[prost(message, repeated, tag = "1")]
-    pub path: ::prost::alloc::vec::Vec<MerklePathItem>,
+    pub validator_updates: ::prost::alloc::vec::Vec<Validator>,
 }
+/// EventDataString is just a string and not a struct, unsure how we make a message for this one
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct MerklePathItem {
-    #[prost(message, optional, tag = "1")]
-    pub hash: ::core::option::Option<CryptoHash>,
-    #[prost(enumeration = "Direction", tag = "2")]
-    pub direction: i32,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Action {
-    #[prost(oneof = "action::Action", tags = "1, 2, 3, 4, 5, 6, 7, 8")]
-    pub action: ::core::option::Option<action::Action>,
-}
-/// Nested message and enum types in `Action`.
-pub mod action {
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Action {
-        #[prost(message, tag = "1")]
-        CreateAccount(super::CreateAccountAction),
-        #[prost(message, tag = "2")]
-        DeployContract(super::DeployContractAction),
-        #[prost(message, tag = "3")]
-        FunctionCall(super::FunctionCallAction),
-        #[prost(message, tag = "4")]
-        Transfer(super::TransferAction),
-        #[prost(message, tag = "5")]
-        Stake(super::StakeAction),
-        #[prost(message, tag = "6")]
-        AddKey(super::AddKeyAction),
-        #[prost(message, tag = "7")]
-        DeleteKey(super::DeleteKeyAction),
-        #[prost(message, tag = "8")]
-        DeleteAccount(super::DeleteAccountAction),
-    }
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct CreateAccountAction {}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct DeployContractAction {
+pub struct EventDataString {
     #[prost(string, tag = "1")]
-    pub code: ::prost::alloc::string::String,
+    pub event_data_string: ::prost::alloc::string::String,
 }
+/// EventDataBlockSyncStatus
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct FunctionCallAction {
-    #[prost(string, tag = "1")]
-    pub method_name: ::prost::alloc::string::String,
-    #[prost(string, tag = "2")]
-    pub args: ::prost::alloc::string::String,
-    #[prost(uint64, tag = "3")]
-    pub gas: u64,
-    #[prost(message, optional, tag = "4")]
-    pub deposit: ::core::option::Option<BigInt>,
+pub struct EventDataBlockSyncStatus {
+    #[prost(bool, tag = "1")]
+    pub complete: bool,
+    #[prost(int64, tag = "2")]
+    pub height: i64,
 }
+/// EventDataStateSyncStatus
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct TransferAction {
-    #[prost(message, optional, tag = "1")]
-    pub deposit: ::core::option::Option<BigInt>,
+pub struct EventDataStateSyncStatus {
+    #[prost(bool, tag = "1")]
+    pub complete: bool,
+    #[prost(int64, tag = "2")]
+    pub height: i64,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StakeAction {
-    #[prost(message, optional, tag = "1")]
-    pub stake: ::core::option::Option<BigInt>,
-    #[prost(message, optional, tag = "2")]
-    pub public_key: ::core::option::Option<PublicKey>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct AddKeyAction {
-    #[prost(message, optional, tag = "1")]
-    pub public_key: ::core::option::Option<PublicKey>,
-    #[prost(message, optional, tag = "2")]
-    pub access_key: ::core::option::Option<AccessKey>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct DeleteKeyAction {
-    #[prost(message, optional, tag = "1")]
-    pub public_key: ::core::option::Option<PublicKey>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct DeleteAccountAction {
-    #[prost(string, tag = "1")]
-    pub beneficiary_id: ::prost::alloc::string::String,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct AccessKey {
-    #[prost(uint64, tag = "1")]
-    pub nonce: u64,
-    #[prost(message, optional, tag = "2")]
-    pub permission: ::core::option::Option<AccessKeyPermission>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct AccessKeyPermission {
-    #[prost(oneof = "access_key_permission::Permission", tags = "1, 2")]
-    pub permission: ::core::option::Option<access_key_permission::Permission>,
-}
-/// Nested message and enum types in `AccessKeyPermission`.
-pub mod access_key_permission {
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Permission {
-        #[prost(message, tag = "1")]
-        FunctionCall(super::FunctionCallPermission),
-        #[prost(message, tag = "2")]
-        FullAccess(super::FullAccessPermission),
-    }
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct FunctionCallPermission {
-    #[prost(message, optional, tag = "1")]
-    pub allowance: ::core::option::Option<BigInt>,
-    #[prost(string, tag = "2")]
-    pub receiver_id: ::prost::alloc::string::String,
-    #[prost(string, repeated, tag = "3")]
-    pub method_names: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct FullAccessPermission {}
+/// used in Vote
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
-pub enum SignatureType {
-    Ed25519 = 0,
-    Secp256k1 = 1,
+pub enum SignedMsgType {
+    Unknown = 0,
+    /// Votes
+    Prevote = 1,
+    Precommit = 2,
+    /// Proposals
+    Proposal = 32,
 }
-///todo: half baked
+/// BlockIdFlag indicates which BlockID the signature is for
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
-pub enum InvalidTxError {
-    InvalidAccessKeyError = 0,
-    InvalidSignerId = 1,
-    SignerDoesNotExist = 2,
-    InvalidNonce = 3,
-    NonceTooLarge = 4,
-    InvalidReceiverId = 5,
-    InvalidSignature = 6,
-    NotEnoughBalance = 7,
-    LackBalanceForState = 8,
-    CostOverflow = 9,
-    InvalidChain = 10,
-    Expired = 11,
-    ActionsValidation = 12,
-    TransactionSizeExceeded = 13,
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum Direction {
-    Left = 0,
-    Right = 1,
+pub enum BlockIdFlag {
+    Unknown = 0,
+    Absent = 1,
+    Commit = 2,
+    Nil = 3,
 }

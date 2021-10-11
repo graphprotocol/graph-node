@@ -8,13 +8,13 @@ use graph_runtime_derive::AscType;
 use graph_runtime_wasm::asc_abi::class::{AscBigInt, Uint8Array};
 use std::mem::size_of;
 
-type AscH256 = Uint8Array;
+type AscHash = Uint8Array;
 
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscTendermintBlock {
-    pub hash: AscPtr<AscH256>,
-    pub parent_hash: AscPtr<AscH256>,
+    pub hash: AscPtr<AscHash>,
+    pub parent_hash: AscPtr<AscHash>,
     pub number: AscPtr<AscBigInt>,
     pub timestamp: AscPtr<AscBigInt>,
 }
@@ -29,7 +29,7 @@ impl ToAscObj<AscTendermintBlock> for TendermintBlockData {
         heap: &mut H,
     ) -> Result<AscTendermintBlock, DeterministicHostError> {
         Ok(AscTendermintBlock {
-            hash: asc_new(heap, &self.hash)?,
+            hash: asc_new(heap, &self.hash.as_bytes())?,
             number: asc_new(heap, &BigInt::from(self.number))?,
             timestamp: asc_new(heap, &BigInt::from(self.timestamp))?,
             parent_hash: self

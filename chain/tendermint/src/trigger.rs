@@ -1,9 +1,8 @@
 use crate::data_source::MappingBlockHandler;
 use graph::blockchain;
 use graph::blockchain::TriggerData;
-use graph::components::tendermint::TendermintBlock;
-use graph::prelude::web3::types::H256;
-use graph::prelude::web3::types::U64;
+use graph::components::tendermint::hash::Hash;
+use graph::components::tendermint::{TendermintBlock, TendermintBlockHeader, TendermintBlockTxData};
 use graph::prelude::BlockNumber;
 use graph::prelude::BlockPtr;
 use graph::runtime::asc_new;
@@ -90,11 +89,12 @@ impl TendermintTrigger {
         }
     }
 
-    pub fn block_hash(&self) -> H256 {
+    //pub fn block_hash(&self) -> H256 {
+  /*   pub fn block_hash(&self) -> Vec<u8> {
         match self {
-            TendermintTrigger::Block(block_ptr, _) => block_ptr.hash_as_h256(),
+            TendermintTrigger::Block(block_ptr, _) => block_ptr; // .hash_as_h256(),
         }
-    }
+    }*/
 }
 
 impl Ord for TendermintTrigger {
@@ -116,7 +116,7 @@ impl TriggerData for TendermintTrigger {
     fn error_context(&self) -> std::string::String {
         match self {
             TendermintTrigger::Block(..) => {
-                format!("block #{} ({})", self.block_number(), self.block_hash(),)
+                format!("block #{}", self.block_number() ) //, self.block_hash(),)
             }
         }
     }
@@ -124,20 +124,28 @@ impl TriggerData for TendermintTrigger {
 
 #[derive(Clone, Debug, Default)]
 pub struct TendermintBlockData {
-    pub hash: H256,
-    pub parent_hash: Option<H256>,
-    pub number: U64,
-    pub timestamp: U64,
+    pub hash: Hash,
+    pub parent_hash:  Option<Hash>,
+    pub number: u64,
+    pub timestamp: u64,
+
+
+    pub header: TendermintBlockHeader,
+    pub data: TendermintBlockTxData,
 }
 
 impl<'a> From<&'a TendermintBlock> for TendermintBlockData {
     fn from(block: &'a TendermintBlock) -> TendermintBlockData {
+        let t = block.header.time.as_ref().unwrap();
+
         TendermintBlockData {
-            hash: block.hash.clone(),
+            hash: block.hash,
             parent_hash: block.parent_hash.clone(),
-            number: U64::from(block.number),
-            // FIXME (NEAR): Fix timestamp
-            timestamp: U64::from(0),
+            number: block.number,
+            timestamp: t.timestamp() as u64,
+            header: block.header,
+            data: block.data,
         }
     }
 }
+

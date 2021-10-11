@@ -1,9 +1,9 @@
 use graph::blockchain::BlockchainKind;
-use graph::components::tendermint::TendermintBlock;
+use graph::components::tendermint::{TendermintBlock, TendermintBlockHeader, TendermintBlockTxData, TendermintConsensus, TendermintBlockId, TendermintPartSetHeader};
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::endpoints::FirehoseNetworkEndpoints;
-use graph::prelude::web3::types::H256;
 use graph::prelude::StopwatchMetrics;
+use graph::prelude::chrono::{NaiveDateTime};
 use graph::{
     anyhow,
     blockchain::{
@@ -14,6 +14,7 @@ use graph::{
         firehose_block_stream::FirehoseBlockStream,
         BlockHash, BlockPtr, Blockchain, IngestorAdapter as IngestorAdapterTrait, IngestorError,
     },
+    components::tendermint::hash::Hash,
     components::store::DeploymentLocator,
     firehose::bstream,
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
@@ -22,6 +23,7 @@ use graph::{
     },
 };
 use prost::Message;
+use std::convert::TryFrom;
 use std::sync::Arc;
 
 use crate::capabilities::NodeCapabilities;
@@ -280,23 +282,25 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         //
         // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
         // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
-        let block = codec::BlockWrapper::decode(any_block.value.as_ref())?;
+        let sp = codec::StreamPiece::decode(any_block.value.as_ref())?;
 
         match step {
             bstream::ForkStep::StepNew => Ok(BlockStreamEvent::ProcessBlock(
-                self.firehose_triggers_in_block(&block, filter)?,
+                self.firehose_triggers_in_block(&sp, filter)?,
                 Some(response.cursor.clone()),
             )),
 
             bstream::ForkStep::StepUndo => {
-                let block = block.block.as_ref().unwrap();
+                let piece = sp.eventdatanewblock.as_ref().unwrap();
+                let block = piece.block.as_ref().unwrap();
                 let header = block.header.as_ref().unwrap();
+
 
                 Ok(BlockStreamEvent::Revert(
                     BlockPtr {
                         hash: BlockHash::from(
-                            // FIXME (NEAR): Are we able to avoid the clone? I kind of doubt but worth checking deeper
-                            header.hash.as_ref().unwrap().bytes.clone(),
+                            // FIXME (TENDERMINT): this has to be hash of the block, and not the data inside
+                            header.data_hash.clone(),
                         ),
                         number: header.height as i32,
                     },
@@ -322,19 +326,56 @@ impl FirehoseMapper {
     //        removed and TriggersAdapter::triggers_in_block should be use straight.
     fn firehose_triggers_in_block(
         &self,
-        block: &codec::BlockWrapper,
+        sp: &codec::StreamPiece,
         _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, FirehoseError> {
-        let block = block.block.as_ref().unwrap();
+        let b = sp.eventdatanewblock.as_ref().unwrap();
+        let block = b.block.as_ref().unwrap();
         let header = block.header.as_ref().unwrap();
+
+        let version = header.version.as_ref().unwrap();
+        let bid = header.last_block_id.as_ref().unwrap();
+        let partH = bid.part_set_header.as_ref().unwrap();
+        let bTime = header.time.as_ref().unwrap();
+
         let tendermint_block = TendermintBlock {
-            hash: H256::from_slice(&header.hash.as_ref().unwrap().bytes.clone()),
+            // FIXME (TENDERMINT): this has to be hash of the block, and not the data inside
+            hash:  Hash::try_from(header.data_hash).ok().unwrap(),
             number: header.height,
             parent_hash: header
-                .prev_hash
+                .last_block_id
                 .as_ref()
-                .map(|v| H256::from_slice(&v.bytes.clone())),
-            parent_number: header.prev_hash.as_ref().map(|_| header.prev_height),
+                .map(|v|  Hash::try_from(v.hash).ok().unwrap(),),
+            parent_number: Some(header.height-1),
+            header: TendermintBlockHeader{
+                version: Some(TendermintConsensus{
+                    block: version.block,
+                    app: version.app,
+                }) ,
+                chain_id: header.chain_id,
+                height: header.height,
+                time:  Some( NaiveDateTime::from_timestamp( bTime.seconds,  bTime.nanos as u32 ) ),
+                last_block_id: Some(
+                    TendermintBlockId{
+                        hash:  Hash::try_from(bid.hash).ok().unwrap(),
+                        part_set_header: Some(TendermintPartSetHeader{
+                            total: partH.total.clone(),
+                            hash:  Hash::try_from(partH.hash).ok().unwrap(),
+                        }),
+                    }),
+                last_commit_hash:  Hash::try_from(header.last_commit_hash).ok().unwrap(),
+                data_hash:  Hash::try_from(header.data_hash).ok().unwrap(),
+                validators_hash:  Hash::try_from(header.validators_hash).ok().unwrap(),
+                next_validators_hash:  Hash::try_from(header.next_validators_hash).ok().unwrap(),
+                consensus_hash:   Hash::try_from(header.consensus_hash).ok().unwrap(),
+                app_hash:   Hash::try_from(header.app_hash).ok().unwrap(),
+                last_results_hash:   Hash::try_from(header.last_results_hash).ok().unwrap(),
+                evidence_hash:   Hash::try_from(header.evidence_hash).ok().unwrap(),
+                proposer_address:  Hash::try_from( header.proposer_address).ok().unwrap(),
+            },
+            data: TendermintBlockTxData{
+                txs: block.data.as_ref().unwrap().txs.clone()
+            },
         };
         let block_ptr = BlockPtr::from(&tendermint_block);
 
