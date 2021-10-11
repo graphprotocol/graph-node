@@ -285,6 +285,8 @@ pub struct UnresolvedMapping {
     pub entities: Vec<String>,
     #[serde(default)]
     pub block_handlers: Vec<MappingBlockHandler>,
+    #[serde(default)]
+    pub receipt_handlers: Vec<ReceiptHandler>,
     pub file: Link,
 }
 
@@ -300,6 +302,7 @@ impl UnresolvedMapping {
             language,
             entities,
             block_handlers,
+            receipt_handlers,
             file: link,
         } = self;
 
@@ -313,7 +316,8 @@ impl UnresolvedMapping {
             api_version,
             language,
             entities,
-            block_handlers: block_handlers.clone(),
+            block_handlers,
+            receipt_handlers,
             runtime: Arc::new(module_bytes),
             link,
         })
@@ -327,6 +331,7 @@ pub struct Mapping {
     pub language: String,
     pub entities: Vec<String>,
     pub block_handlers: Vec<MappingBlockHandler>,
+    pub receipt_handlers: Vec<ReceiptHandler>,
     pub runtime: Arc<Vec<u8>>,
     pub link: Link,
 }
@@ -334,4 +339,9 @@ pub struct Mapping {
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct MappingBlockHandler {
     pub handler: String,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub struct ReceiptHandler {
+    handler: String,
 }
