@@ -143,8 +143,8 @@ impl<'a> From<&'a TendermintBlock> for TendermintBlockData {
             parent_hash: block.parent_hash.clone(),
             number: block.number,
             timestamp: t.timestamp() as u64,
-            header: block.header,
-            data: block.data,
+            header: block.header.clone(),
+            data: block.data.clone(),
         }
     }
 }

@@ -29,12 +29,12 @@ impl ToAscObj<AscTendermintBlock> for TendermintBlockData {
         heap: &mut H,
     ) -> Result<AscTendermintBlock, DeterministicHostError> {
         Ok(AscTendermintBlock {
-            hash: asc_new(heap, &self.hash.as_bytes())?,
+            hash: asc_new(heap, self.hash.as_bytes())?,
             number: asc_new(heap, &BigInt::from(self.number))?,
             timestamp: asc_new(heap, &BigInt::from(self.timestamp))?,
             parent_hash: self
                 .parent_hash
-                .map(|parent_hash| asc_new(heap, &parent_hash))
+                .map(|parent_hash| asc_new(heap, parent_hash.as_bytes()))
                 .unwrap_or(Ok(AscPtr::null()))?,
         })
     }

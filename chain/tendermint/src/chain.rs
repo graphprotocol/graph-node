@@ -335,43 +335,43 @@ impl FirehoseMapper {
 
         let version = header.version.as_ref().unwrap();
         let bid = header.last_block_id.as_ref().unwrap();
-        let partH = bid.part_set_header.as_ref().unwrap();
-        let bTime = header.time.as_ref().unwrap();
+        let part_header = bid.part_set_header.as_ref().unwrap();
+        let block_time = header.time.as_ref().unwrap();
 
         let tendermint_block = TendermintBlock {
             // FIXME (TENDERMINT): this has to be hash of the block, and not the data inside
-            hash:  Hash::try_from(header.data_hash).ok().unwrap(),
+            hash:  Hash::try_from(header.data_hash.clone()).ok().unwrap(),
             number: header.height,
             parent_hash: header
                 .last_block_id
                 .as_ref()
-                .map(|v|  Hash::try_from(v.hash).ok().unwrap(),),
+                .map(|v|  Hash::try_from(v.hash.clone()).ok().unwrap(),),
             parent_number: Some(header.height-1),
             header: TendermintBlockHeader{
                 version: Some(TendermintConsensus{
                     block: version.block,
                     app: version.app,
                 }) ,
-                chain_id: header.chain_id,
+                chain_id: header.chain_id.clone(),
                 height: header.height,
-                time:  Some( NaiveDateTime::from_timestamp( bTime.seconds,  bTime.nanos as u32 ) ),
+                time:  Some( NaiveDateTime::from_timestamp( block_time.seconds,  block_time.nanos as u32 ) ),
                 last_block_id: Some(
                     TendermintBlockId{
-                        hash:  Hash::try_from(bid.hash).ok().unwrap(),
+                        hash:  Hash::try_from(bid.hash.clone()).ok().unwrap(),
                         part_set_header: Some(TendermintPartSetHeader{
-                            total: partH.total.clone(),
-                            hash:  Hash::try_from(partH.hash).ok().unwrap(),
+                            total: part_header.total.clone(),
+                            hash:  Hash::try_from(part_header.hash.clone()).ok().unwrap(),
                         }),
                     }),
-                last_commit_hash:  Hash::try_from(header.last_commit_hash).ok().unwrap(),
-                data_hash:  Hash::try_from(header.data_hash).ok().unwrap(),
-                validators_hash:  Hash::try_from(header.validators_hash).ok().unwrap(),
-                next_validators_hash:  Hash::try_from(header.next_validators_hash).ok().unwrap(),
-                consensus_hash:   Hash::try_from(header.consensus_hash).ok().unwrap(),
-                app_hash:   Hash::try_from(header.app_hash).ok().unwrap(),
-                last_results_hash:   Hash::try_from(header.last_results_hash).ok().unwrap(),
-                evidence_hash:   Hash::try_from(header.evidence_hash).ok().unwrap(),
-                proposer_address:  Hash::try_from( header.proposer_address).ok().unwrap(),
+                last_commit_hash:  Hash::try_from(header.last_commit_hash.clone()).ok().unwrap(),
+                data_hash:  Hash::try_from(header.data_hash.clone()).ok().unwrap(),
+                validators_hash:  Hash::try_from(header.validators_hash.clone()).ok().unwrap(),
+                next_validators_hash:  Hash::try_from(header.next_validators_hash.clone()).ok().unwrap(),
+                consensus_hash:   Hash::try_from(header.consensus_hash.clone()).ok().unwrap(),
+                app_hash:   Hash::try_from(header.app_hash.clone()).ok().unwrap(),
+                last_results_hash:   Hash::try_from(header.last_results_hash.clone()).ok().unwrap(),
+                evidence_hash:   Hash::try_from(header.evidence_hash.clone()).ok().unwrap(),
+                proposer_address:  Hash::try_from( header.proposer_address.clone()).ok().unwrap(),
             },
             data: TendermintBlockTxData{
                 txs: block.data.as_ref().unwrap().txs.clone()
