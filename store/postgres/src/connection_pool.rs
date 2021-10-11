@@ -769,7 +769,7 @@ impl PoolInner {
         let semaphore_wait_gauge = registry
             .new_gauge(
                 "query_semaphore_wait_ms",
-                "Moving average of time spent running queries",
+                "Moving average of time spent on waiting for postgres query semaphore",
                 const_labels,
             )
             .expect("failed to create `query_effort_ms` counter");
