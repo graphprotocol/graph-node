@@ -20,6 +20,8 @@ type _Block_ {
   hash: Bytes
   "The block number"
   number: Int!
+  "The minimum block number"
+  number_gte: Int!
 }
 
 enum _SubgraphErrorPolicy_ {
