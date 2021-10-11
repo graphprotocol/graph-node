@@ -3,7 +3,7 @@ use anyhow::Context;
 use http::uri::{Scheme, Uri};
 use rand::prelude::IteratorRandom;
 use slog::Logger;
-use std::{collections::HashMap, fmt::Display, sync::Arc};
+use std::{collections::BTreeMap, fmt::Display, sync::Arc};
 use tonic::{
     metadata::MetadataValue,
     transport::{Channel, ClientTlsConfig},
@@ -12,7 +12,7 @@ use tonic::{
 
 use super::bstream;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FirehoseEndpoint {
     pub provider: String,
     pub uri: String,
@@ -92,12 +92,12 @@ impl FirehoseEndpoint {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FirehoseNetworkEndpoint {
     endpoint: Arc<FirehoseEndpoint>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FirehoseNetworkEndpoints {
     pub endpoints: Vec<FirehoseNetworkEndpoint>,
 }
@@ -127,15 +127,15 @@ impl FirehoseNetworkEndpoints {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FirehoseNetworks {
-    pub networks: HashMap<String, FirehoseNetworkEndpoints>,
+    pub networks: BTreeMap<String, FirehoseNetworkEndpoints>,
 }
 
 impl FirehoseNetworks {
     pub fn new() -> FirehoseNetworks {
         FirehoseNetworks {
-            networks: HashMap::new(),
+            networks: BTreeMap::new(),
         }
     }
 
