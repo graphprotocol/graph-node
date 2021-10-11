@@ -16,7 +16,8 @@ pub(crate) struct AscTendermintBlock {
     pub hash: AscPtr<AscHash>,
     pub parent_hash: AscPtr<AscHash>,
     pub number: AscPtr<AscBigInt>,
-    pub timestamp: AscPtr<AscBigInt>,
+    pub time_sec: AscPtr<AscBigInt>,
+    pub time_nano: AscPtr<AscBigInt>,
 }
 
 impl AscIndexId for AscTendermintBlock {
@@ -31,7 +32,8 @@ impl ToAscObj<AscTendermintBlock> for TendermintBlockData {
         Ok(AscTendermintBlock {
             hash: asc_new(heap, self.hash.as_bytes())?,
             number: asc_new(heap, &BigInt::from(self.number))?,
-            timestamp: asc_new(heap, &BigInt::from(self.timestamp))?,
+            time_sec: asc_new(heap, &BigInt::from(self.time_sec))?,
+            time_nano: asc_new(heap, &BigInt::from(self.time_nano))?,
             parent_hash: self
                 .parent_hash
                 .map(|parent_hash| asc_new(heap, parent_hash.as_bytes()))

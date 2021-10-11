@@ -127,7 +127,8 @@ pub struct TendermintBlockData {
     pub hash: Hash,
     pub parent_hash:  Option<Hash>,
     pub number: u64,
-    pub timestamp: u64,
+    pub time_sec: i64,
+    pub time_nano: i32,
 
 
     pub header: TendermintBlockHeader,
@@ -136,13 +137,14 @@ pub struct TendermintBlockData {
 
 impl<'a> From<&'a TendermintBlock> for TendermintBlockData {
     fn from(block: &'a TendermintBlock) -> TendermintBlockData {
-        let t = block.header.time.as_ref().unwrap();
+        //let t = block.header.time.as_ref().unwrap();
 
         TendermintBlockData {
             hash: block.hash,
             parent_hash: block.parent_hash.clone(),
             number: block.number,
-            timestamp: t.timestamp() as u64,
+            time_sec: block.header.time_sec,
+            time_nano: block.header.time_nano,
             header: block.header.clone(),
             data: block.data.clone(),
         }

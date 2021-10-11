@@ -4,7 +4,6 @@ use graph::components::tendermint::{TendermintBlock, TendermintBlockHeader, Tend
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::endpoints::FirehoseNetworkEndpoints;
 use graph::prelude::StopwatchMetrics;
-use graph::prelude::chrono::{NaiveDateTime};
 use graph::{
     anyhow,
     blockchain::{
@@ -350,7 +349,8 @@ impl FirehoseMapper {
                 }) ,
                 chain_id: header.chain_id.clone(),
                 height: header.height,
-                time:  Some( NaiveDateTime::from_timestamp( block_time.seconds,  block_time.nanos as u32 ) ),
+                time_sec: block_time.seconds,
+                time_nano:  block_time.nanos,
                 last_block_id: Some(
                     TendermintBlockId{
                         hash:  Hash::try_from(bid.hash.clone()).ok().unwrap(),
