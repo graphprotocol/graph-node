@@ -103,8 +103,8 @@ where
             .expect("Valid blockNumber required")
             .try_into()
             .unwrap();
-
-        let block_hash = argument_values
+        // TODO(Tendermint): check this type
+        let block_hash: H256 = argument_values
             .get_required::<H256>("blockHash")
             .expect("Valid blockHash required")
             .try_into()

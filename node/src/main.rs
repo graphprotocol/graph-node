@@ -262,7 +262,7 @@ async fn main() {
         tendermint_networks_as_chains(
             &mut blockchain_map,
             &logger,
-            &firehose_networks,
+            firehose_networks_by_kind.get(&BlockchainKind::Tendermint),
             network_store.as_ref(),
             &logger_factory,
         );
@@ -852,45 +852,50 @@ fn ethereum_networks_as_chains(
 fn tendermint_networks_as_chains(
     blockchain_map: &mut BlockchainMap,
     logger: &Logger,
-    firehose_networks: &FirehoseNetworks,
+    firehose_networks: Option<&FirehoseNetworks>,
     store: &Store,
     logger_factory: &LoggerFactory,
 ) -> HashMap<String, Arc<tendermint::Chain>> {
-    let chains: Vec<_> = firehose_networks
-        .networks
-        .iter()
-        .filter_map(|(network_name, firehose_endpoints)| {
-            store
-                .block_store()
-                .chain_store(network_name)
-                .map(|chain_store| (network_name, chain_store, firehose_endpoints))
-                .or_else(|| {
-                    error!(
-                        logger,
-                        "No store configured for Tendermint chain {}; ignoring this chain", network_name
-                    );
-                    None
+    match firehose_networks {
+        None => HashMap::new(),
+        Some(v) => {
+            let chains: Vec<_> = v
+                .networks
+                .iter()
+                .filter_map(|(network_name, firehose_endpoints)| {
+                    store
+                        .block_store()
+                        .chain_store(network_name)
+                        .map(|chain_store| (network_name, chain_store, firehose_endpoints))
+                        .or_else(|| {
+                            error!(
+                                logger,
+                                "No store configured for Tendermint chain {}; ignoring this chain",
+                                network_name
+                            );
+                            None
+                        })
                 })
-        })
-        .map(|(network_name, chain_store, firehose_endpoints)| {
-            (
-                network_name.clone(),
-                Arc::new(tendermint::Chain::new(
-                    logger_factory.clone(),
-                    network_name.clone(),
-                    chain_store,
-                    store.subgraph_store(),
-                    firehose_endpoints.clone(),
-                )),
-            )
-        })
-        .collect();
+                .map(|(network_name, chain_store, firehose_endpoints)| {
+                    (
+                        network_name.clone(),
+                        Arc::new(tendermint::Chain::new(
+                            logger_factory.clone(),
+                            network_name.clone(),
+                            chain_store,
+                            store.subgraph_store(),
+                            firehose_endpoints.clone(),
+                        )),
+                    )
+                })
+                .collect();
 
-    for (network_name, chain) in chains.iter().cloned() {
-        blockchain_map.insert::<graph_chain_tendermint::Chain>(network_name, chain)
+            for (network_name, chain) in chains.iter().cloned() {
+                blockchain_map.insert::<graph_chain_tendermint::Chain>(network_name, chain)
+            }
+            HashMap::from_iter(chains)
+        }
     }
-
-    HashMap::from_iter(chains)
 }
 
 

@@ -1,4 +1,5 @@
 use graph::blockchain::BlockchainKind;
+use graph::cheap_clone::CheapClone;
 use graph::components::tendermint::{TendermintBlock, TendermintBlockHeader, TendermintBlockTxData, TendermintConsensus, TendermintBlockId, TendermintPartSetHeader};
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::endpoints::FirehoseNetworkEndpoints;
@@ -116,13 +117,6 @@ impl Blockchain for Chain {
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        if start_blocks.len() != 0 && start_blocks.len() != 1 {
-            return Err(anyhow::format_err!(
-                "accepting start_blocks length of 0 or 1, got {}",
-                start_blocks.len()
-            ));
-        }
-
         let adapter = self
             .triggers_adapter(
                 &deployment,
@@ -145,7 +139,9 @@ impl Blockchain for Chain {
             let firehose_mapper = Arc::new(FirehoseMapper {});
             let firehose_cursor = self
                 .subgraph_store
-                .writable(logger.clone(), &deployment)?
+                .cheap_clone()
+                .writable(logger.clone(), deployment.id)
+                .await?
                 .block_cursor()?;
 
         Ok(Box::new(FirehoseBlockStream::new(
