@@ -279,9 +279,6 @@ impl EthereumCallFilter {
         // Calls returned by Firehose actually contains pure transfers and smart
         // contract calls. If the input is less than 4 bytes, we assume it's a pure transfer
         // and discards those.
-        //
-        // The previous code path assumed input would also be at least 4 bytes long which indicates
-        // most propably that only smart contract calls were extracted from `traces`.
         if call.input.0.len() < 4 {
             return false;
         }
