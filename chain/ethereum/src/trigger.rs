@@ -19,9 +19,12 @@ use web3::types::U256;
 use web3::types::U64;
 use web3::types::{Address, Block, Log, Transaction, H256};
 
+use crate::data_source::MappingBlockHandler;
+use crate::data_source::MappingCallHandler;
+use crate::data_source::MappingEventHandler;
+use crate::runtime::abi::AscEthereumBlock;
 use crate::runtime::abi::AscEthereumCall;
 use crate::runtime::abi::AscEthereumCall_0_0_3;
-use crate::runtime::abi::AscEthereumCall_0_0_6;
 use crate::runtime::abi::AscEthereumEvent;
 use crate::runtime::abi::AscEthereumTransaction_0_0_1;
 use crate::runtime::abi::AscEthereumTransaction_0_0_2;
@@ -153,14 +156,18 @@ impl blockchain::MappingTrigger for MappingTrigger {
                     outputs,
                 };
                 if heap.api_version() >= Version::new(0, 0, 6) {
-                    asc_new::<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_6>, _, _>(
-                        heap, &call,
-                    )?
+                    asc_new::<
+                        AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_6, AscEthereumBlock>,
+                        _,
+                        _,
+                    >(heap, &call)?
                     .erase()
                 } else if heap.api_version() >= Version::new(0, 0, 3) {
-                    asc_new::<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_2>, _, _>(
-                        heap, &call,
-                    )?
+                    asc_new::<
+                        AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_2, AscEthereumBlock>,
+                        _,
+                        _,
+                    >(heap, &call)?
                     .erase()
                 } else {
                     asc_new::<AscEthereumCall, _, _>(heap, &call)?.erase()
