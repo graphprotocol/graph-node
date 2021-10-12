@@ -452,22 +452,6 @@ impl ToAscObj<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_2>> for EthereumC
     }
 }
 
-impl ToAscObj<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_6>> for EthereumCallData {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_6>, DeterministicHostError> {
-        Ok(AscEthereumCall_0_0_3 {
-            to: asc_new(heap, &self.to)?,
-            from: asc_new(heap, &self.from)?,
-            block: asc_new(heap, &self.block)?,
-            transaction: asc_new(heap, &self.transaction)?,
-            inputs: asc_new(heap, &self.inputs)?,
-            outputs: asc_new(heap, &self.outputs)?,
-        })
-    }
-}
-
 impl ToAscObj<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_6, AscEthereumBlock_0_0_6>>
     for EthereumCallData
 {
