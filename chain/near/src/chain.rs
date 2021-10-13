@@ -211,16 +211,12 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     async fn triggers_in_block(
         &self,
         _logger: &Logger,
-        block: NearBlock,
+        _block: NearBlock,
         _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
-        let block_ptr = BlockPtr::from(&block);
-
-        // FIXME (NEAR): Share implementation with FirehoseMapper::triggers_in_block version
-        Ok(BlockWithTriggers {
-            block,
-            trigger_data: vec![NearTrigger::Block(block_ptr, NearBlockTriggerType::Every)],
-        })
+        // FIXME (NEAR): Share implementation with FirehoseMapper::firehose_triggers_in_block version.
+        // This is currently unreachable since Near does not yet support dynamic data sources.
+        todo!()
     }
 
     async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
