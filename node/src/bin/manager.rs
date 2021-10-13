@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, sync::Arc};
+use std::{collections::HashMap, env, num::ParseIntError, sync::Arc, time::Duration};
 
 use config::PoolSize;
 use git_testament::{git_testament, render_testament};
@@ -125,12 +125,24 @@ pub enum Command {
     },
     /// Rewind a subgraph to a specific block
     Rewind {
-        /// The hash of the deployment to rewind
-        id: String,
+        /// Force rewinding even if the block hash is not found in the local
+        /// database
+        #[structopt(long, short)]
+        force: bool,
+        /// Sleep for this many seconds after pausing subgraphs
+        #[structopt(
+            long,
+            short,
+            default_value = "10",
+            parse(try_from_str = parse_duration_in_secs)
+        )]
+        sleep: Duration,
         /// The block hash of the target block
         block_hash: String,
         /// The block number of the target block
         block_number: i32,
+        /// The deployments to rewind
+        names: Vec<String>,
     },
     /// Check and interrogate the configuration
     ///
@@ -545,10 +557,23 @@ async fn main() {
             commands::assign::reassign(ctx.subgraph_store(), id, node, shard)
         }
         Rewind {
-            id,
+            force,
+            sleep,
             block_hash,
             block_number,
-        } => commands::rewind::run(ctx.subgraph_store(), id, block_hash, block_number),
+            names,
+        } => {
+            let (store, primary) = ctx.store_and_primary();
+            commands::rewind::run(
+                primary,
+                store,
+                names,
+                block_hash,
+                block_number,
+                force,
+                sleep,
+            )
+        }
         Listen(cmd) => {
             use ListenCommand::*;
             match cmd {
@@ -618,4 +643,8 @@ async fn main() {
     if let Err(e) = result {
         die!("error: {}", e)
     }
+}
+
+fn parse_duration_in_secs(s: &str) -> Result<Duration, ParseIntError> {
+    Ok(Duration::from_secs(s.parse()?))
 }
