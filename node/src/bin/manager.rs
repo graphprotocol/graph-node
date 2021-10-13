@@ -419,6 +419,12 @@ impl Context {
         (store, pools)
     }
 
+    fn store_and_primary(self) -> (Arc<Store>, ConnectionPool) {
+        let (store, pools) = self.store_and_pools();
+        let primary = pools.get(&*PRIMARY_SHARD).expect("there is a primary pool");
+        (store, primary.clone())
+    }
+
     fn block_store_and_primary_pool(self) -> (Arc<BlockStore>, ConnectionPool) {
         let (store, pools) = self.store_and_pools();
 
@@ -498,14 +504,13 @@ async fn main() {
             status,
             used,
         } => {
-            let (pool, store) = if status {
-                let (store, pools) = ctx.store_and_pools();
-                let primary = pools.get(&*PRIMARY_SHARD).expect("there is a primary pool");
+            let (primary, store) = if status {
+                let (store, primary) = ctx.store_and_primary();
                 (primary.clone(), Some(store))
             } else {
                 (ctx.primary_pool(), None)
             };
-            commands::info::run(pool, store, name, current, pending, used)
+            commands::info::run(primary, store, name, current, pending, used)
         }
         Unused(cmd) => {
             let store = ctx.subgraph_store();
