@@ -282,10 +282,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 
                 Ok(BlockStreamEvent::Revert(
                     BlockPtr {
-                        hash: BlockHash::from(
-                            // FIXME (NEAR): Are we able to avoid the clone? I kind of doubt but worth checking deeper
-                            header.hash.as_ref().unwrap().bytes.clone(),
-                        ),
+                        hash: BlockHash::from(header.hash.as_ref().unwrap().bytes.clone()),
                         number: header.height as i32,
                     },
                     Some(response.cursor.clone()),

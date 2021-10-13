@@ -3,7 +3,6 @@ use graph::blockchain::Block;
 use graph::blockchain::TriggerData;
 use graph::cheap_clone::CheapClone;
 use graph::prelude::web3::types::H256;
-use graph::prelude::web3::types::U64;
 use graph::prelude::BlockNumber;
 use graph::runtime::asc_new;
 use graph::runtime::AscHeap;
@@ -32,10 +31,7 @@ impl std::fmt::Debug for NearTrigger {
 impl blockchain::MappingTrigger for NearTrigger {
     fn to_asc_ptr<H: AscHeap>(self, heap: &mut H) -> Result<AscPtr<()>, DeterministicHostError> {
         Ok(match self {
-            NearTrigger::Block(block) => {
-                let block = NearBlockData::from(block.as_ref());
-                asc_new(heap, &block)?.erase()
-            }
+            NearTrigger::Block(block) => asc_new(heap, block.as_ref())?.erase(),
         })
     }
 }
@@ -96,31 +92,8 @@ impl TriggerData for NearTrigger {
     fn error_context(&self) -> std::string::String {
         match self {
             NearTrigger::Block(..) => {
-                format!("block #{} ({})", self.block_number(), self.block_hash(),)
+                format!("Block #{} ({})", self.block_number(), self.block_hash())
             }
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct NearBlockData {
-    pub hash: H256,
-    pub parent_hash: Option<H256>,
-    pub number: U64,
-    pub timestamp: U64,
-}
-
-impl<'a> From<&'a codec::BlockWrapper> for NearBlockData {
-    fn from(block: &'a codec::BlockWrapper) -> NearBlockData {
-        let block = block.block.as_ref().unwrap();
-        let header = block.header.as_ref().unwrap();
-
-        NearBlockData {
-            hash: header.hash.as_ref().unwrap().into(),
-            parent_hash: header.prev_hash.as_ref().map(Into::into),
-            number: U64::from(header.height),
-            // FIXME (NEAR): Fix timestamp
-            timestamp: U64::from(0),
         }
     }
 }
