@@ -1,41 +1,243 @@
-use crate::trigger::NearBlockData;
-use graph::prelude::BigInt;
-use graph::runtime::{asc_new, AscPtr, DeterministicHostError, ToAscObj};
-use graph::runtime::{AscHeap, AscIndexId, AscType, IndexForAscTypeId};
-use graph::semver;
-use graph::{anyhow, semver::Version};
-use graph_runtime_derive::AscType;
-use graph_runtime_wasm::asc_abi::class::{AscBigInt, Uint8Array};
-use std::mem::size_of;
+use crate::codec;
+use graph::anyhow;
+use graph::runtime::{asc_new, DeterministicHostError, ToAscObj};
+use graph::runtime::{AscHeap, AscPtr};
+use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, EnumPayload, Uint8Array};
 
-type AscH256 = Uint8Array;
+pub(crate) use super::generated::*;
 
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscNearBlock {
-    pub hash: AscPtr<AscH256>,
-    pub parent_hash: AscPtr<AscH256>,
-    pub number: AscPtr<AscBigInt>,
-    pub timestamp: AscPtr<AscBigInt>,
-}
-
-impl AscIndexId for AscNearBlock {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumBlock;
-}
-
-impl ToAscObj<AscNearBlock> for NearBlockData {
+impl ToAscObj<AscBlock> for codec::BlockWrapper {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
-    ) -> Result<AscNearBlock, DeterministicHostError> {
-        Ok(AscNearBlock {
-            hash: asc_new(heap, &self.hash)?,
-            number: asc_new(heap, &BigInt::from(self.number))?,
-            timestamp: asc_new(heap, &BigInt::from(self.timestamp))?,
-            parent_hash: self
-                .parent_hash
-                .map(|parent_hash| asc_new(heap, &parent_hash))
-                .unwrap_or(Ok(AscPtr::null()))?,
+    ) -> Result<AscBlock, DeterministicHostError> {
+        let block = self.block();
+
+        Ok(AscBlock {
+            author: asc_new(heap, block.author.as_str())?,
+            header: asc_new(heap, self.header())?,
+            chunks: asc_new(heap, &block.chunks)?,
         })
+    }
+}
+
+impl ToAscObj<AscBlockHeader> for codec::BlockHeader {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscBlockHeader, DeterministicHostError> {
+        Ok(AscBlockHeader {
+            height: self.height,
+            prev_height: self.prev_height,
+            epoch_id: asc_new(heap, self.epoch_id.as_ref().unwrap())?,
+            next_epoch_id: asc_new(heap, self.next_epoch_id.as_ref().unwrap())?,
+            hash: asc_new(heap, self.hash.as_ref().unwrap())?,
+            prev_hash: asc_new(heap, self.prev_hash.as_ref().unwrap())?,
+            prev_state_root: asc_new(heap, self.prev_state_root.as_ref().unwrap())?,
+            chunk_receipts_root: asc_new(heap, self.chunk_receipts_root.as_ref().unwrap())?,
+            chunk_headers_root: asc_new(heap, self.chunk_headers_root.as_ref().unwrap())?,
+            chunk_tx_root: asc_new(heap, self.chunk_tx_root.as_ref().unwrap())?,
+            outcome_root: asc_new(heap, self.outcome_root.as_ref().unwrap())?,
+            chunks_included: self.chunks_included,
+            challenges_root: asc_new(heap, self.challenges_root.as_ref().unwrap())?,
+            timestamp_nanosec: self.timestamp_nanosec,
+            random_value: asc_new(heap, self.random_value.as_ref().unwrap())?,
+            validator_proposals: asc_new(heap, &self.validator_proposals)?,
+            chunk_mask: AscPtr::alloc_obj(Array::new(self.chunk_mask.as_ref(), heap)?, heap)?,
+            gas_price: asc_new(heap, self.gas_price.as_ref().unwrap())?,
+            block_ordinal: self.block_ordinal,
+            total_supply: asc_new(heap, self.total_supply.as_ref().unwrap())?,
+            challenges_result: asc_new(heap, &self.challenges_result)?,
+            last_final_block: asc_new(heap, self.last_final_block.as_ref().unwrap())?,
+            last_ds_final_block: asc_new(heap, self.last_ds_final_block.as_ref().unwrap())?,
+            next_bp_hash: asc_new(heap, self.next_bp_hash.as_ref().unwrap())?,
+            block_merkle_root: asc_new(heap, self.block_merkle_root.as_ref().unwrap())?,
+            epoch_sync_data_hash: asc_new(heap, &Bytes(&self.epoch_sync_data_hash))?,
+            approvals: asc_new(heap, &self.approvals)?,
+            // FIXME: Right now near-dm-indexer does not populate this field properly ...
+            signature: AscPtr::null(),
+            latest_protocol_version: self.latest_protocol_version,
+        })
+    }
+}
+
+impl ToAscObj<AscChunkHeader> for codec::ChunkHeader {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscChunkHeader, DeterministicHostError> {
+        Ok(AscChunkHeader {
+            chunk_hash: asc_new(heap, &Bytes(&self.chunk_hash))?,
+            signature: asc_new(heap, self.signature.as_ref().unwrap())?,
+            prev_block_hash: asc_new(heap, &Bytes(&self.prev_block_hash))?,
+            prev_state_root: asc_new(heap, &Bytes(&self.prev_state_root))?,
+            encoded_merkle_root: asc_new(heap, &Bytes(&self.encoded_merkle_root))?,
+            encoded_length: self.encoded_length,
+            height_created: self.height_created,
+            height_included: self.height_included,
+            shard_id: self.shard_id,
+            gas_used: self.gas_used,
+            gas_limit: self.gas_limit,
+            balance_burnt: asc_new(heap, self.balance_burnt.as_ref().unwrap())?,
+            outgoing_receipts_root: asc_new(heap, &Bytes(&self.outgoing_receipts_root))?,
+            tx_root: asc_new(heap, &Bytes(&self.tx_root))?,
+            validator_proposals: asc_new(heap, &self.validator_proposals)?,
+        })
+    }
+}
+
+impl ToAscObj<AscSignature> for codec::Signature {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscSignature, DeterministicHostError> {
+        Ok(AscSignature {
+            kind: asc_new(heap, &CurveKind(self.r#type))?,
+            bytes: asc_new(heap, &Bytes(&self.bytes))?,
+        })
+    }
+}
+
+impl ToAscObj<AscSignatureArray> for Vec<codec::Signature> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscSignatureArray, DeterministicHostError> {
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x)).collect();
+        let content = content?;
+        Ok(AscSignatureArray(Array::new(&*content, heap)?))
+    }
+}
+
+impl ToAscObj<AscPublicKey> for codec::PublicKey {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscPublicKey, DeterministicHostError> {
+        Ok(AscPublicKey {
+            // FIXME: Right now proto-near definitions is wrong since it's missing the `type` field.
+            //        When `proto-near` has been adjusted, we will uncomment this line and remove the
+            //        one below.
+            // kind: asc_new(heap, &CurveKind(self.r#type))?,
+            kind: asc_new(heap, &CurveKind(0))?,
+            bytes: asc_new(heap, &Bytes(&self.bytes))?,
+        })
+    }
+}
+
+impl ToAscObj<AscChunkHeaderArray> for Vec<codec::ChunkHeader> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscChunkHeaderArray, DeterministicHostError> {
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x)).collect();
+        let content = content?;
+        Ok(AscChunkHeaderArray(Array::new(&*content, heap)?))
+    }
+}
+
+impl ToAscObj<AscValidatorStake> for codec::ValidatorStake {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscValidatorStake, DeterministicHostError> {
+        Ok(AscValidatorStake {
+            account_id: asc_new(heap, &self.account_id)?,
+            public_key: asc_new(heap, self.public_key.as_ref().unwrap())?,
+            stake: asc_new(heap, self.stake.as_ref().unwrap())?,
+        })
+    }
+}
+
+impl ToAscObj<AscValidatorStakeArray> for Vec<codec::ValidatorStake> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscValidatorStakeArray, DeterministicHostError> {
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x)).collect();
+        let content = content?;
+        Ok(AscValidatorStakeArray(Array::new(&*content, heap)?))
+    }
+}
+
+impl ToAscObj<AscSlashedValidator> for codec::SlashedValidator {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscSlashedValidator, DeterministicHostError> {
+        Ok(AscSlashedValidator {
+            account_id: asc_new(heap, &self.account_id)?,
+            is_double_sign: self.is_double_sign,
+        })
+    }
+}
+
+impl ToAscObj<AscSlashedValidatorArray> for Vec<codec::SlashedValidator> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscSlashedValidatorArray, DeterministicHostError> {
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x)).collect();
+        let content = content?;
+        Ok(AscSlashedValidatorArray(Array::new(&*content, heap)?))
+    }
+}
+
+impl ToAscObj<Uint8Array> for codec::CryptoHash {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscCryptoHash, DeterministicHostError> {
+        self.bytes.to_asc_obj(heap)
+    }
+}
+
+impl ToAscObj<Uint8Array> for codec::BigInt {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscCryptoHash, DeterministicHostError> {
+        // FIXME (NEAR): Hopefully the bytes here fits the BigInt format expected in `graph-node`,
+        //               will need to validate that in the subgraph directly.
+        self.bytes.to_asc_obj(heap)
+    }
+}
+
+// FIXME: Would like to get rid of this type wrapper. I do not understand why a `Vec<u8>` cannot be turned
+//        into the proper object.
+struct Bytes<'a>(&'a Vec<u8>);
+
+impl ToAscObj<Uint8Array> for Bytes<'_> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscCryptoHash, DeterministicHostError> {
+        self.0.to_asc_obj(heap)
+    }
+}
+
+struct CurveKind(i32);
+
+impl ToAscObj<AscCurveKindEnum> for CurveKind {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        _heap: &mut H,
+    ) -> Result<AscCurveKindEnum, DeterministicHostError> {
+        let value = match self.0 {
+            0 => AscCurveKind::Ed25519,
+            1 => AscCurveKind::Secp256K1,
+            _ => {
+                return Err(DeterministicHostError(anyhow::format_err!(
+                    "Invalid signature type value {}",
+                    self.0
+                )))
+            }
+        };
+
+        Ok(AscCurveKindEnum(AscEnum {
+            _padding: 0,
+            kind: value,
+            payload: EnumPayload(self.0 as u64),
+        }))
     }
 }
