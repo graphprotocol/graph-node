@@ -652,6 +652,8 @@ fn block_argument() -> InputValue {
              Can either be a `{ hash: Bytes }` value containing a block hash, \
              a `{ number: Int }` containing the block number, \
              or a `{ number_gte: Int }` containing the minimum block number. \
+             In the case of `number_gte`, the query will be executed on the latest block only if \
+             the the subgraph has progressed to or past the minimum block number. \
              Defaults to the latest block when omitted."
                 .to_owned(),
         ),

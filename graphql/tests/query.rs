@@ -1583,6 +1583,7 @@ fn query_at_block_with_vars() {
         musicians_at_nr(&deployment, 0, Ok(vec!["m1", "m2"]), "n0").await;
         musicians_at_nr(&deployment, 1, Ok(vec!["m1", "m2", "m3", "m4"]), "n1").await;
 
+        musicians_at_nr_gte(&deployment, 7000, Err(BLOCK_NOT_INDEXED), "ngte7000").await;
         musicians_at_nr_gte(&deployment, 0, Ok(vec!["m1", "m2", "m3", "m4"]), "ngte0").await;
         musicians_at_nr_gte(&deployment, 1, Ok(vec!["m1", "m2", "m3", "m4"]), "ngte1").await;
 

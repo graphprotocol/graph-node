@@ -58,6 +58,8 @@ impl ValueExt for q::Value {
 pub enum BlockConstraint {
     Hash(H256),
     Number(BlockNumber),
+    /// Execute the query on the latest block only if the the subgraph has progressed to or past the
+    /// given block number.
     Min(BlockNumber),
     Latest,
 }
