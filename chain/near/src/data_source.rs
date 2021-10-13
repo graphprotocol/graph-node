@@ -1,5 +1,4 @@
 use graph::blockchain::TriggerWithHandler;
-use graph::components::near::NearBlockExt;
 use graph::components::store::StoredDynamicDataSource;
 use graph::data::subgraph::{DataSourceContext, Source};
 use graph::{
@@ -15,6 +14,7 @@ use std::collections::BTreeMap;
 use std::{convert::TryFrom, sync::Arc};
 
 use crate::chain::Chain;
+use crate::codec::NearBlockExt;
 use crate::trigger::NearTrigger;
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
