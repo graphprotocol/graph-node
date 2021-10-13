@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use crate::capabilities::NodeCapabilities;
 use crate::data_source::{DataSourceTemplate, UnresolvedDataSourceTemplate};
-use crate::trigger::{NearBlockTriggerType, NearTrigger};
+use crate::trigger::NearTrigger;
 use crate::RuntimeAdapter;
 use crate::{
     codec,
@@ -86,7 +86,7 @@ impl Blockchain for Chain {
 
     type TriggerData = crate::trigger::NearTrigger;
 
-    type MappingTrigger = crate::trigger::MappingTrigger;
+    type MappingTrigger = crate::trigger::NearTrigger;
 
     type TriggerFilter = crate::adapter::TriggerFilter;
 
@@ -328,11 +328,11 @@ impl FirehoseMapper {
                 .map(|v| H256::from_slice(&v.bytes.clone())),
             parent_number: header.prev_hash.as_ref().map(|_| header.prev_height),
         };
-        let block_ptr = BlockPtr::from(&near_block);
 
         Ok(BlockWithTriggers {
-            block: near_block,
-            trigger_data: vec![NearTrigger::Block(block_ptr, NearBlockTriggerType::Every)],
+            // TODO: Find the best place to introduce an `Arc` and avoid this clone.
+            block: near_block.clone(),
+            trigger_data: vec![NearTrigger::Block(Arc::new(near_block))],
         })
     }
 }

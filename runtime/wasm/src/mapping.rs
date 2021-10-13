@@ -1,7 +1,7 @@
 use crate::module::{ExperimentalFeatures, WasmInstance};
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
-use graph::blockchain::{Blockchain, HostFn};
+use graph::blockchain::{Blockchain, HostFn, TriggerWithHandler};
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::prelude::*;
 use std::collections::BTreeMap;
@@ -97,7 +97,7 @@ pub fn spawn_module<C: Blockchain>(
 
 pub struct MappingRequest<C: Blockchain> {
     pub(crate) ctx: MappingContext<C>,
-    pub(crate) trigger: C::MappingTrigger,
+    pub(crate) trigger: TriggerWithHandler<C>,
     pub(crate) result_sender: Sender<Result<BlockState<C>, MappingError>>,
 }
 
