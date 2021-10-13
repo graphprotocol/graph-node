@@ -303,7 +303,7 @@ impl ToSql<Integer, Pg> for DeploymentId {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 /// Details about a deployment and the shard in which it is stored. We need
 /// the database namespace for the deployment as that information is only
 /// stored in the primary database.

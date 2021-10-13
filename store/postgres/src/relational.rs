@@ -801,9 +801,13 @@ impl Layout {
     }
 
     /// Update the layout with the latest information from the database; for
-    /// now, an update only changes the `is_account_like` flag for tables.
-    /// If no update is needed, just return `self`.
-    pub fn refresh(self: Arc<Self>, conn: &PgConnection) -> Result<Arc<Self>, StoreError> {
+    /// now, an update only changes the `is_account_like` flag for tables or
+    /// the layout's site. If no update is needed, just return `self`.
+    pub fn refresh(
+        self: Arc<Self>,
+        conn: &PgConnection,
+        site: Arc<Site>,
+    ) -> Result<Arc<Self>, StoreError> {
         let account_like = crate::catalog::account_like(conn, &self.site)?;
         let is_account_like = {
             |table: &Table| {
@@ -817,7 +821,7 @@ impl Layout {
             .values()
             .filter(|table| table.is_account_like != is_account_like(table.as_ref()))
             .collect();
-        if changed_tables.is_empty() {
+        if changed_tables.is_empty() && site == self.site {
             return Ok(self);
         }
         let mut layout = (*self).clone();
@@ -826,6 +830,7 @@ impl Layout {
             table.is_account_like = is_account_like(&table);
             layout.tables.insert(table.object.clone(), Arc::new(table));
         }
+        layout.site = site;
         Ok(Arc::new(layout))
     }
 }
@@ -1386,7 +1391,7 @@ impl LayoutCache {
             catalog,
             has_poi,
         )?);
-        layout.refresh(conn)
+        layout.refresh(conn, site)
     }
 
     fn cache(&self, layout: Arc<Layout>) {
@@ -1438,7 +1443,7 @@ impl LayoutCache {
                     if let Err(_) = refresh {
                         return Ok(value.clone());
                     }
-                    match value.cheap_clone().refresh(conn) {
+                    match value.cheap_clone().refresh(conn, site) {
                         Err(e) => {
                             warn!(
                                 logger,
