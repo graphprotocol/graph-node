@@ -1,3 +1,4 @@
+use graph::blockchain::TriggerWithHandler;
 use graph::components::near::NearBlockExt;
 use graph::components::store::StoredDynamicDataSource;
 use graph::data::subgraph::{DataSourceContext, Source};
@@ -14,8 +15,7 @@ use std::collections::BTreeMap;
 use std::{convert::TryFrom, sync::Arc};
 
 use crate::chain::Chain;
-use crate::trigger::{NearBlockTriggerType, NearTrigger};
-use crate::MappingTrigger;
+use crate::trigger::NearTrigger;
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
 // of thousands of data sources in memory at once.
@@ -44,19 +44,22 @@ impl blockchain::DataSource<Chain> for DataSource {
         trigger: &<Chain as Blockchain>::TriggerData,
         block: Arc<<Chain as Blockchain>::Block>,
         _logger: &Logger,
-    ) -> Result<Option<<Chain as Blockchain>::MappingTrigger>, Error> {
+    ) -> Result<Option<TriggerWithHandler<Chain>>, Error> {
         if self.source.start_block > block.number() {
             return Ok(None);
         }
 
         match trigger {
-            NearTrigger::Block(_, trigger_type) => {
-                let handler = match self.handler_for_block(&trigger_type) {
+            NearTrigger::Block(_) => {
+                let handler = match self.handler_for_block() {
                     Some(handler) => handler,
                     None => return Ok(None),
                 };
 
-                Ok(Some(MappingTrigger::Block { block, handler }))
+                Ok(Some(TriggerWithHandler::new(
+                    trigger.cheap_clone(),
+                    handler.handler,
+                )))
             }
         }
     }
@@ -156,16 +159,9 @@ impl DataSource {
         })
     }
 
-    fn handler_for_block(
-        &self,
-        trigger_type: &NearBlockTriggerType,
-    ) -> Option<MappingBlockHandler> {
-        match trigger_type {
-            NearBlockTriggerType::Every => {
-                // FIXME (NEAR): We need to decide how to deal with multi block handlers, allow only 1?
-                self.mapping.block_handlers.first().map(|v| v.clone())
-            }
-        }
+    fn handler_for_block(&self) -> Option<MappingBlockHandler> {
+        // FIXME (NEAR): We need to decide how to deal with multi block handlers, allow only 1?
+        self.mapping.block_handlers.first().map(|v| v.clone())
     }
 }
 

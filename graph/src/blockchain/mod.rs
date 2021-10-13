@@ -84,6 +84,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     type TriggerData: TriggerData + Ord;
 
     /// Decoded trigger ready to be processed by the mapping.
+    /// New implementations should have this be the same as `TriggerData`.
     type MappingTrigger: MappingTrigger + Debug;
 
     /// Trigger filter used as input to the triggers adapter.
@@ -215,7 +216,7 @@ pub trait DataSource<C: Blockchain>:
         trigger: &C::TriggerData,
         block: Arc<C::Block>,
         logger: &Logger,
-    ) -> Result<Option<C::MappingTrigger>, Error>;
+    ) -> Result<Option<TriggerWithHandler<C>>, Error>;
 
     fn is_duplicate_of(&self, other: &Self) -> bool;
 
@@ -265,16 +266,9 @@ pub trait TriggerData {
 }
 
 pub trait MappingTrigger: Send + Sync {
-    fn handler_name(&self) -> &str;
-
     /// A flexible interface for writing a type to AS memory, any pointer can be returned.
     /// Use `AscPtr::erased` to convert `AscPtr<T>` into `AscPtr<()>`.
     fn to_asc_ptr<H: AscHeap>(self, heap: &mut H) -> Result<AscPtr<()>, DeterministicHostError>;
-
-    /// Additional key-value pairs to be logged with the "Done processing trigger" message.
-    fn logging_extras(&self) -> Box<dyn SendSyncRefUnwindSafeKV> {
-        Box::new(slog::o! {})
-    }
 }
 
 pub struct HostFnCtx<'a> {
@@ -381,5 +375,58 @@ impl BlockchainMap {
             .cheap_clone()
             .downcast()
             .map_err(|_| anyhow!("unable to downcast, wrong type for blockchain {}", C::KIND))
+    }
+}
+
+pub struct TriggerWithHandler<C: Blockchain> {
+    trigger: C::MappingTrigger,
+    handler: String,
+    logging_extras: Arc<dyn SendSyncRefUnwindSafeKV>,
+}
+
+impl<C: Blockchain> fmt::Debug for TriggerWithHandler<C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut builder = f.debug_struct("TriggerWithHandler");
+        builder.field("trigger", &self.trigger);
+        builder.field("handler", &self.handler);
+        builder.finish()
+    }
+}
+
+impl<C: Blockchain> TriggerWithHandler<C> {
+    pub fn new(trigger: C::MappingTrigger, handler: String) -> Self {
+        TriggerWithHandler {
+            trigger,
+            handler,
+            logging_extras: Arc::new(slog::o! {}),
+        }
+    }
+
+    pub fn new_with_logging_extras(
+        trigger: C::MappingTrigger,
+        handler: String,
+        logging_extras: Arc<dyn SendSyncRefUnwindSafeKV>,
+    ) -> Self {
+        TriggerWithHandler {
+            trigger,
+            handler,
+            logging_extras,
+        }
+    }
+
+    /// Additional key-value pairs to be logged with the "Done processing trigger" message.
+    pub fn logging_extras(&self) -> Arc<dyn SendSyncRefUnwindSafeKV> {
+        self.logging_extras.cheap_clone()
+    }
+
+    pub fn handler_name(&self) -> &str {
+        &self.handler
+    }
+
+    pub fn to_asc_ptr<H: AscHeap>(
+        self,
+        heap: &mut H,
+    ) -> Result<AscPtr<()>, DeterministicHostError> {
+        self.trigger.to_asc_ptr(heap)
     }
 }

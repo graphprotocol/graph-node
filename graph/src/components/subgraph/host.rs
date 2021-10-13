@@ -6,6 +6,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use futures::sync::mpsc;
 
+use crate::blockchain::TriggerWithHandler;
 use crate::prelude::*;
 use crate::{blockchain::Blockchain, components::subgraph::SharedProofOfIndexing};
 use crate::{components::metrics::HistogramVec, runtime::DeterministicHostError};
@@ -47,13 +48,13 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
         trigger: &C::TriggerData,
         block: Arc<C::Block>,
         logger: &Logger,
-    ) -> Result<Option<C::MappingTrigger>, Error>;
+    ) -> Result<Option<TriggerWithHandler<C>>, Error>;
 
     async fn process_mapping_trigger(
         &self,
         logger: &Logger,
         block_ptr: BlockPtr,
-        trigger: C::MappingTrigger,
+        trigger: TriggerWithHandler<C>,
         state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState<C>, MappingError>;
