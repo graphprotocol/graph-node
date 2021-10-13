@@ -100,11 +100,6 @@ impl<C: Blockchain, F: FirehoseMapper<C>> Stream for FirehoseBlockStream<C, F> {
         loop {
             match &mut self.state {
                 BlockStreamState::Disconnected => {
-                    info!(
-                        self.ctx.logger,
-                        "Blockstream disconnected, (re-)connecting"; "endpoint uri" => format_args!("{}", self.endpoint),
-                    );
-
                     let start_block_num: BlockNumber = self
                         .ctx
                         .start_blocks
@@ -114,6 +109,17 @@ impl<C: Blockchain, F: FirehoseMapper<C>> Stream for FirehoseBlockStream<C, F> {
                         // Firehose knows where to start the stream for the specific chain, 0 here means
                         // start at Genesis block.
                         .unwrap_or(0);
+
+                    info!(
+                        self.ctx.logger,
+                        "Blockstream disconnected, connecting";
+                        "endpoint_uri" => format_args!("{}", self.endpoint),
+                        "start_block" => start_block_num,
+                        "cursor" => match &self.ctx.cursor {
+                            Some(v) => v.clone(),
+                            None => "<None>".to_string(),
+                        },
+                    );
 
                     let future = self
                         .endpoint
@@ -227,7 +233,7 @@ impl<C: Blockchain, F: FirehoseMapper<C>> Stream for FirehoseBlockStream<C, F> {
                     Poll::Pending => {
                         trace!(
                             self.ctx.logger,
-                            "Stream is pending, no item available yet will being wake up"
+                            "Stream is pending, no item available yet, going to be wake up later to check again"
                         );
 
                         return Poll::Pending;

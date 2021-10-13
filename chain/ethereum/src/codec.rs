@@ -41,8 +41,8 @@ impl<'a> Into<EthereumCall> for CallAt<'a> {
                 .as_ref()
                 .map_or_else(|| U256::from(0), |v| v.into()),
             gas_used: U256::from(self.call.gas_consumed),
-            input: Bytes::from(self.call.input.clone()),
-            output: Bytes::from(self.call.return_data.clone()),
+            input: Bytes(self.call.input.clone()),
+            output: Bytes(self.call.return_data.clone()),
             block_hash: H256::from_slice(&self.block.hash),
             block_number: self.block.number as i32,
             transaction_hash: Some(H256::from_slice(&self.trace.hash)),
@@ -121,12 +121,19 @@ impl<'a> Into<web3::types::Log> for LogAt<'a> {
 
 impl Into<web3::types::U64> for TransactionTraceStatus {
     fn into(self) -> web3::types::U64 {
-        web3::types::U64::from(match self {
-            Self::Unknown => 0,
-            Self::Succeeded => 1,
-            Self::Failed => 0,
-            Self::Reverted => 0,
-        })
+        let status: Option<web3::types::U64> = self.into();
+        status.unwrap_or_else(|| web3::types::U64::from(0))
+    }
+}
+
+impl Into<Option<web3::types::U64>> for TransactionTraceStatus {
+    fn into(self) -> Option<web3::types::U64> {
+        match self {
+            Self::Unknown => None,
+            Self::Succeeded => Some(web3::types::U64::from(1)),
+            Self::Failed => Some(web3::types::U64::from(0)),
+            Self::Reverted => Some(web3::types::U64::from(0)),
+        }
     }
 }
 
@@ -257,11 +264,7 @@ impl Into<EthereumBlockWithCalls> for &Block {
                                 .iter()
                                 .map(|l| LogAt::new(l, &self, t).into())
                                 .collect(),
-                            status: Some(
-                                TransactionTraceStatus::from_i32(t.status)
-                                    .expect("TransactionTraceStatus enum invalid")
-                                    .into(),
-                            ),
+                            status: TransactionTraceStatus::from_i32(t.status).unwrap().into(),
                             root: match r.state_root.len() {
                                 0 => None, // FIXME (SF): should this instead map to [0;32]?
                                 // FIXME (SF): if len < 32, what do we do?
@@ -272,7 +275,18 @@ impl Into<EthereumBlockWithCalls> for &Block {
                     })
                     .collect(),
             },
-            calls: Some(vec![]),
+            calls: Some(
+                self.transaction_traces
+                    .iter()
+                    .flat_map(|trace| {
+                        trace
+                            .calls
+                            .iter()
+                            .map(|call| CallAt::new(call, self, trace).into())
+                            .collect::<Vec<EthereumCall>>()
+                    })
+                    .collect(),
+            ),
         }
     }
 }
