@@ -1,5 +1,4 @@
-use graph::blockchain::TriggerWithHandler;
-use graph::components::near::NearBlockExt;
+use graph::blockchain::{Block, TriggerWithHandler};
 use graph::components::store::StoredDynamicDataSource;
 use graph::data::subgraph::{DataSourceContext, Source};
 use graph::{

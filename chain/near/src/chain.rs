@@ -1,9 +1,7 @@
 use graph::blockchain::BlockchainKind;
 use graph::cheap_clone::CheapClone;
-use graph::components::near::NearBlock;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::endpoints::FirehoseNetworkEndpoints;
-use graph::prelude::web3::types::H256;
 use graph::prelude::StopwatchMetrics;
 use graph::{
     anyhow,
@@ -72,7 +70,7 @@ impl Chain {
 impl Blockchain for Chain {
     const KIND: BlockchainKind = BlockchainKind::Near;
 
-    type Block = NearBlock;
+    type Block = codec::BlockWrapper;
 
     type DataSource = DataSource;
 
@@ -211,7 +209,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     async fn triggers_in_block(
         &self,
         _logger: &Logger,
-        _block: NearBlock,
+        _block: codec::BlockWrapper,
         _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         // FIXME (NEAR): Share implementation with FirehoseMapper::firehose_triggers_in_block version.
@@ -228,7 +226,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         _ptr: BlockPtr,
         _offset: BlockNumber,
-    ) -> Result<Option<NearBlock>, Error> {
+    ) -> Result<Option<codec::BlockWrapper>, Error> {
         // FIXME (NEAR):  Might not be necessary for NEAR support for now
         Ok(None)
     }
@@ -317,22 +315,10 @@ impl FirehoseMapper {
         block: &codec::BlockWrapper,
         _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, FirehoseError> {
-        let block = block.block.as_ref().unwrap();
-        let header = block.header.as_ref().unwrap();
-        let near_block = NearBlock {
-            hash: H256::from_slice(&header.hash.as_ref().unwrap().bytes.clone()),
-            number: header.height,
-            parent_hash: header
-                .prev_hash
-                .as_ref()
-                .map(|v| H256::from_slice(&v.bytes.clone())),
-            parent_number: header.prev_hash.as_ref().map(|_| header.prev_height),
-        };
-
         Ok(BlockWithTriggers {
-            // TODO: Find the best place to introduce an `Arc` and avoid this clone.
-            block: near_block.clone(),
-            trigger_data: vec![NearTrigger::Block(Arc::new(near_block))],
+            // TODO: Find the best place to introduce an `Arc` and avoid these clones.
+            block: block.clone(),
+            trigger_data: vec![NearTrigger::Block(Arc::new(block.clone()))],
         })
     }
 }

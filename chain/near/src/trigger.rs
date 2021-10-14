@@ -2,7 +2,6 @@ use graph::blockchain;
 use graph::blockchain::Block;
 use graph::blockchain::TriggerData;
 use graph::cheap_clone::CheapClone;
-use graph::components::near::NearBlock;
 use graph::prelude::web3::types::H256;
 use graph::prelude::web3::types::U64;
 use graph::prelude::BlockNumber;
@@ -11,6 +10,8 @@ use graph::runtime::AscHeap;
 use graph::runtime::AscPtr;
 use graph::runtime::DeterministicHostError;
 use std::{cmp::Ordering, sync::Arc};
+
+use crate::codec;
 
 // Logging the block is too verbose, so this strips the block from the trigger for Debug.
 impl std::fmt::Debug for NearTrigger {
@@ -41,7 +42,7 @@ impl blockchain::MappingTrigger for NearTrigger {
 
 #[derive(Clone)]
 pub enum NearTrigger {
-    Block(Arc<NearBlock>),
+    Block(Arc<codec::BlockWrapper>),
 }
 
 impl CheapClone for NearTrigger {
@@ -109,12 +110,15 @@ pub struct NearBlockData {
     pub timestamp: U64,
 }
 
-impl<'a> From<&'a NearBlock> for NearBlockData {
-    fn from(block: &'a NearBlock) -> NearBlockData {
+impl<'a> From<&'a codec::BlockWrapper> for NearBlockData {
+    fn from(block: &'a codec::BlockWrapper) -> NearBlockData {
+        let block = block.block.as_ref().unwrap();
+        let header = block.header.as_ref().unwrap();
+
         NearBlockData {
-            hash: block.hash.clone(),
-            parent_hash: block.parent_hash.clone(),
-            number: U64::from(block.number),
+            hash: header.hash.as_ref().unwrap().into(),
+            parent_hash: header.prev_hash.as_ref().map(Into::into),
+            number: U64::from(header.height),
             // FIXME (NEAR): Fix timestamp
             timestamp: U64::from(0),
         }
