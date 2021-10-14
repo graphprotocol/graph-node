@@ -24,8 +24,16 @@ impl LowerHex for &CryptoHash {
 }
 
 impl BlockWrapper {
-    fn parent_ptr(&self) -> Option<BlockPtr> {
-        let header = self.block.as_ref().unwrap().header.as_ref().unwrap();
+    pub fn block(&self) -> &pbcodec::Block {
+        self.block.as_ref().unwrap()
+    }
+
+    pub fn header(&self) -> &BlockHeader {
+        self.block().header.as_ref().unwrap()
+    }
+
+    pub fn parent_ptr(&self) -> Option<BlockPtr> {
+        let header = self.header();
 
         match (header.prev_hash.as_ref(), header.prev_height) {
             (Some(hash), number) => Some(BlockPtr::from((hash.into(), number))),
@@ -36,16 +44,13 @@ impl BlockWrapper {
 
 impl From<BlockWrapper> for BlockPtr {
     fn from(b: BlockWrapper) -> BlockPtr {
-        let header = b.block.as_ref().unwrap().header.as_ref().unwrap();
-        let hash: H256 = header.hash.as_ref().unwrap().into();
-
-        BlockPtr::from((hash, header.height))
+        (&b).into()
     }
 }
 
 impl<'a> From<&'a BlockWrapper> for BlockPtr {
     fn from(b: &'a BlockWrapper) -> BlockPtr {
-        let header = b.block.as_ref().unwrap().header.as_ref().unwrap();
+        let header = b.header();
         let hash: H256 = header.hash.as_ref().unwrap().into();
 
         BlockPtr::from((hash, header.height))
@@ -53,40 +58,15 @@ impl<'a> From<&'a BlockWrapper> for BlockPtr {
 }
 
 impl Block for BlockWrapper {
+    fn number(&self) -> i32 {
+        BlockNumber::try_from(self.header().height).unwrap()
+    }
+
     fn ptr(&self) -> BlockPtr {
         self.into()
     }
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
         self.parent_ptr()
-    }
-}
-
-pub trait NearBlockExt {
-    fn number(&self) -> BlockNumber;
-    fn parent_ptr(&self) -> Option<BlockPtr>;
-    fn format(&self) -> String;
-    fn block_ptr(&self) -> BlockPtr;
-}
-
-impl NearBlockExt for BlockWrapper {
-    fn number(&self) -> BlockNumber {
-        let header = self.block.as_ref().unwrap().header.as_ref().unwrap();
-
-        BlockNumber::try_from(header.height).unwrap()
-    }
-
-    fn parent_ptr(&self) -> Option<BlockPtr> {
-        self.parent_ptr()
-    }
-
-    fn format(&self) -> String {
-        let header = self.block.as_ref().unwrap().header.as_ref().unwrap();
-
-        format!("#{} ({:x})", header.height, header.hash.as_ref().unwrap())
-    }
-
-    fn block_ptr(&self) -> BlockPtr {
-        self.into()
     }
 }
