@@ -86,6 +86,75 @@ impl ToAscObj<AscChunkHeader> for codec::ChunkHeader {
     }
 }
 
+// impl ToAscObj<AscReceiptWithOutcome> for codec::BlockHeader {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         heap: &mut H,
+//     ) -> Result<AscReceiptWithOutcome, DeterministicHostError> {
+//         Ok(AscReceiptWithOutcome {
+//             outcome: todo!(),
+//             receipt: todo!(),
+//             block: todo!(),
+//         })
+//     }
+// }
+
+// impl ToAscObj<AscExecutionOutcome> for codec::ExecutionOutcomeWithIdView {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         heap: &mut H,
+//     ) -> Result<AscExecutionOutcome, DeterministicHostError> {
+//         let outcome = self.outcome.as_ref().unwrap();
+
+//         Ok(AscExecutionOutcome {
+//             proof: asc_new(heap, &self.proof.as_ref().unwrap().path)?,
+//             block_hash: asc_new(heap, self.block_hash.as_ref().unwrap())?,
+//             id: asc_new(heap, self.id.as_ref().unwrap())?,
+//             logs: AscPtr::alloc_obj(Array::new(outcome.logs.as_ref(), heap)?, heap)?,
+//             receipt_ids: asc_new(heap, &outcome.receipt_ids)?,
+//             gas_burnt: outcome.gas_burnt,
+//             tokens_burnt: asc_new(heap, outcome.tokens_burnt.as_ref().unwrap())?,
+//             executor_id: asc_new(heap, &outcome.executor_id)?,
+//             status: asc_new(heap, &SuccessStatusKin(outcome.status.as_ref().unwrap()))?,
+//         })
+//     }
+// }
+
+// impl ToAscObj<AscSuccessStatus> for codec::execution_outcome::Status {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         heap: &mut H,
+//     ) -> Result<AscSuccessStatus, DeterministicHostError> {
+//         Ok(AscSuccessStatus {
+//             kind: asc_new(heap, &SuccessStatusKind(self.status)),
+//             data: todo!(),
+//         })
+//     }
+// }
+
+impl ToAscObj<AscMerklePathItem> for codec::MerklePathItem {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscMerklePathItem, DeterministicHostError> {
+        Ok(AscMerklePathItem {
+            hash: asc_new(heap, self.hash.as_ref().unwrap())?,
+            direction: asc_new(heap, &DirectionKind(self.direction))?,
+        })
+    }
+}
+
+impl ToAscObj<AscMerklePathItemArray> for Vec<codec::MerklePathItem> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscMerklePathItemArray, DeterministicHostError> {
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x)).collect();
+        let content = content?;
+        Ok(AscMerklePathItemArray(Array::new(&*content, heap)?))
+    }
+}
+
 impl ToAscObj<AscSignature> for codec::Signature {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
@@ -192,6 +261,17 @@ impl ToAscObj<Uint8Array> for codec::CryptoHash {
     }
 }
 
+impl ToAscObj<AscCryptoHashArray> for Vec<codec::CryptoHash> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscCryptoHashArray, DeterministicHostError> {
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x)).collect();
+        let content = content?;
+        Ok(AscCryptoHashArray(Array::new(&*content, heap)?))
+    }
+}
+
 impl ToAscObj<Uint8Array> for codec::BigInt {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
@@ -216,6 +296,31 @@ impl ToAscObj<Uint8Array> for Bytes<'_> {
     }
 }
 
+struct DirectionKind(i32);
+
+impl ToAscObj<AscDirectionEnum> for DirectionKind {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        _heap: &mut H,
+    ) -> Result<AscDirectionEnum, DeterministicHostError> {
+        let value = match self.0 {
+            0 => AscDirection::Left,
+            1 => AscDirection::Right,
+            _ => {
+                return Err(DeterministicHostError(anyhow::format_err!(
+                    "Invalid direction value {}",
+                    self.0
+                )))
+            }
+        };
+
+        Ok(AscDirectionEnum(AscEnum {
+            _padding: 0,
+            kind: value,
+            payload: EnumPayload(self.0 as u64),
+        }))
+    }
+}
 struct CurveKind(i32);
 
 impl ToAscObj<AscCurveKindEnum> for CurveKind {
@@ -241,3 +346,36 @@ impl ToAscObj<AscCurveKindEnum> for CurveKind {
         }))
     }
 }
+
+// struct SuccessStatusKind(codec::execution_outcome::Status);
+
+// impl ToAscObj<AscSuccessStatusKindEnum> for SuccessStatusKind {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         _heap: &mut H,
+//     ) -> Result<AscSuccessStatusKindEnum, DeterministicHostError> {
+//         let value = match self.0 {
+//             codec::execution_outcome::Status::Failure(_) => todo!(),
+//             codec::execution_outcome::Status::SuccessValue(_) => todo!(),
+//             codec::execution_outcome::Status::SuccessReceiptId(_) => todo!(),
+//             codec::execution_outcome::Status::Unknown(_) => {
+//                 return Err(DeterministicHostError(anyhow::format_err!(
+//                     "Invalid success status unknown",
+//                 )))
+//             } // 0 => AscSuccessStatusKind::Value,
+//               // 1 => AscSuccessStatusKind::ReceiptId,
+//               // _ => {
+//               //     return Err(DeterministicHostError(anyhow::format_err!(
+//               //         "Invalid success status type value {}",
+//               //         self.0
+//               //     )))
+//               // }
+//         };
+
+//         Ok(AscSuccessStatusKindEnum(AscEnum {
+//             _padding: 0,
+//             kind: value,
+//             payload: EnumPayload(self.0 as u64),
+//         }))
+//     }
+// }

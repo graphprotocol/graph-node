@@ -73,6 +73,25 @@ impl AscIndexId for AscActionValueArray {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearArrayActionValue;
 }
 
+pub struct AscMerklePathItemArray(pub(crate) Array<AscPtr<AscMerklePathItem>>);
+
+impl AscType for AscMerklePathItemArray {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        self.0.to_asc_bytes()
+    }
+
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
+        Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
+    }
+}
+
+impl AscIndexId for AscMerklePathItemArray {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearArrayMerklePathItem;
+}
+
 pub struct AscValidatorStakeArray(pub(crate) Array<AscPtr<AscValidatorStake>>);
 
 impl AscType for AscValidatorStakeArray {
@@ -536,16 +555,8 @@ impl AscIndexId for AscMerklePathItem {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscMerklePath {}
-
-impl AscIndexId for AscMerklePath {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearMerklePath;
-}
-
-#[repr(C)]
-#[derive(AscType)]
 pub(crate) struct AscExecutionOutcome {
-    pub proof: AscPtr<AscMerklePath>,
+    pub proof: AscPtr<AscMerklePathItemArray>,
     pub block_hash: AscPtr<AscCryptoHash>,
     pub id: AscPtr<AscCryptoHash>,
     pub logs: AscPtr<Array<AscPtr<AscString>>>,
