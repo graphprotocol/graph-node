@@ -27,6 +27,9 @@ use graph::data::subgraph::{calls_host_fn, DataSourceContext, Source};
 use crate::chain::Chain;
 use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger, MappingTrigger};
 
+// The recommended kind is `ethereum`, `ethereum/contract` is accepted for backwards compatibility.
+const ETHEREUM_KINDS: &[&str] = &["ethereum/contract", "ethereum"];
+
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
 // of thousands of data sources in memory at once.
@@ -154,15 +157,22 @@ impl blockchain::DataSource<Chain> for DataSource {
         })
     }
 
-    fn validate(&self) -> Vec<graph::prelude::SubgraphManifestValidationError> {
+    fn validate(&self) -> Vec<Error> {
         let mut errors = vec![];
+
+        if !ETHEREUM_KINDS.contains(&self.kind.as_str()) {
+            errors.push(anyhow!(
+                "data source has invalid `kind`, expected `ethereum` but found {}",
+                self.kind
+            ))
+        }
 
         // Validate that there is a `source` address if there are call or block handlers
         let no_source_address = self.address().is_none();
         let has_call_handlers = !self.mapping.call_handlers.is_empty();
         let has_block_handlers = !self.mapping.block_handlers.is_empty();
         if no_source_address && (has_call_handlers || has_block_handlers) {
-            errors.push(SubgraphManifestValidationError::SourceAddressRequired);
+            errors.push(SubgraphManifestValidationError::SourceAddressRequired.into());
         };
 
         // Validate that there are no more than one of each type of block_handler
@@ -182,7 +192,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             non_filtered_block_handler_count > 1 || call_filtered_block_handler_count > 1
         };
         if has_too_many_block_handlers {
-            errors.push(SubgraphManifestValidationError::DataSourceBlockHandlerLimitExceeded);
+            errors.push(anyhow!("data source has duplicated block handlers"));
         }
 
         errors

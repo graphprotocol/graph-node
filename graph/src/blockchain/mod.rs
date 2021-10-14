@@ -16,7 +16,7 @@ use crate::{
         store::{DeploymentLocator, StoredDynamicDataSource},
     },
     data::subgraph::UnifiedMappingApiVersion,
-    prelude::{DataSourceContext, SubgraphManifestValidationError},
+    prelude::DataSourceContext,
     runtime::{AscHeap, AscPtr, DeterministicHostError, HostExportError},
 };
 use crate::{
@@ -228,7 +228,7 @@ pub trait DataSource<C: Blockchain>:
     ) -> Result<Self, Error>;
 
     /// Used as part of manifest validation. If there are no errors, return an empty vector.
-    fn validate(&self) -> Vec<SubgraphManifestValidationError>;
+    fn validate(&self) -> Vec<Error>;
 }
 
 #[async_trait]
