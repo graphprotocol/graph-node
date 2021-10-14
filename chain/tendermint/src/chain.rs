@@ -19,7 +19,7 @@ use graph::{
     firehose::bstream,
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
-        async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory, SubgraphStore,
+        info, async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory, SubgraphStore,
     },
 };
 use prost::Message;
@@ -259,17 +259,23 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         _adapter: &TriggersAdapter,
         filter: &TriggerFilter,
     ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
+        //println!("tender");
+
+        info!(_logger, "Tendermint s1");
+
         let step = bstream::ForkStep::from_i32(response.step).unwrap_or_else(|| {
             panic!(
                 "unknown step i32 value {}, maybe you forgot update & re-regenerate the protobuf definitions?",
                 response.step
             )
         });
+        info!(_logger, "Tendermint s2");
         let any_block = response
             .block
             .as_ref()
             .expect("block payload information should always be present");
 
+        info!(_logger, "Tendermint s3"; "type" => response.block.as_ref().unwrap().type_url.clone() );
         // Right now, this is done in all cases but in reality, with how the BlockStreamEvent::Revert
         // is defined right now, only block hash and block number is necessary. However, this information
         // is not part of the actual bstream::BlockResponseV2 payload. As such, we need to decode the full
@@ -277,7 +283,12 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         //
         // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
         // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
-        let sp = codec::StreamPiece::decode(any_block.value.as_ref())?;
+
+        info!(_logger, "Tendermint s4");
+
+        let sp = codec::EventList::decode(any_block.value.as_ref())?;
+
+        info!(_logger, "Tendermint s5");
 
         match step {
             bstream::ForkStep::StepNew => Ok(BlockStreamEvent::ProcessBlock(
@@ -286,7 +297,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             )),
 
             bstream::ForkStep::StepUndo => {
-                let piece = sp.eventdatanewblock.as_ref().unwrap();
+                let piece = sp.newblock.as_ref().unwrap();
                 let block = piece.block.as_ref().unwrap();
                 let header = block.header.as_ref().unwrap();
 
@@ -321,10 +332,10 @@ impl FirehoseMapper {
     //        removed and TriggersAdapter::triggers_in_block should be use straight.
     fn firehose_triggers_in_block(
         &self,
-        sp: &codec::StreamPiece,
+        sp: &codec::EventList,
         _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, FirehoseError> {
-        let b = sp.eventdatanewblock.as_ref().unwrap();
+        let b = sp.newblock.as_ref().unwrap();
         let block = b.block.as_ref().unwrap();
         let header = block.header.as_ref().unwrap();
 
@@ -367,7 +378,8 @@ impl FirehoseMapper {
                 app_hash:   Hash::try_from(header.app_hash.clone()).ok().unwrap(),
                 last_results_hash:   Hash::try_from(header.last_results_hash.clone()).ok().unwrap(),
                 evidence_hash:   Hash::try_from(header.evidence_hash.clone()).ok().unwrap(),
-                proposer_address:  Hash::try_from( header.proposer_address.clone()).ok().unwrap(),
+                proposer_address: Hash::None,
+        //        proposer_address:  Hash::try_from(header.proposer_address.clone()).ok().unwrap(),
             },
             data: TendermintBlockTxData{
                 txs: block.data.as_ref().unwrap().txs.clone()

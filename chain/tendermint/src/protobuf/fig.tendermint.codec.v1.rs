@@ -1,36 +1,34 @@
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StreamPiece {
+pub struct EventList {
     #[prost(message, optional, tag = "1")]
-    pub eventdatanewblock: ::core::option::Option<EventDataNewBlock>,
+    pub newblock: ::core::option::Option<EventDataNewBlock>,
     #[prost(message, optional, tag = "2")]
-    pub eventdatanewblockheader: ::core::option::Option<EventDataNewBlockHeader>,
-    #[prost(message, optional, tag = "3")]
-    pub eventdatanewevidence: ::core::option::Option<EventDataNewEvidence>,
+    pub evidence: ::core::option::Option<EventDataNewEvidence>,
+    #[prost(message, repeated, tag = "3")]
+    pub transaction: ::prost::alloc::vec::Vec<EventDataTx>,
     #[prost(message, optional, tag = "4")]
-    pub eventdatatx: ::core::option::Option<EventDataTx>,
+    pub vote: ::core::option::Option<EventDataVote>,
     #[prost(message, optional, tag = "5")]
-    pub eventdatavote: ::core::option::Option<EventDataVote>,
+    pub roundstate: ::core::option::Option<EventDataRoundState>,
     #[prost(message, optional, tag = "6")]
-    pub eventdataroundstate: ::core::option::Option<EventDataRoundState>,
+    pub newround: ::core::option::Option<EventDataNewRound>,
     #[prost(message, optional, tag = "7")]
-    pub eventdatanewround: ::core::option::Option<EventDataNewRound>,
+    pub completeproposal: ::core::option::Option<EventDataCompleteProposal>,
     #[prost(message, optional, tag = "8")]
-    pub eventdatacompleteproposal: ::core::option::Option<EventDataCompleteProposal>,
+    pub validatorsetupdates: ::core::option::Option<EventDataValidatorSetUpdates>,
     #[prost(message, optional, tag = "9")]
-    pub eventdatavalidatorsetupdates: ::core::option::Option<EventDataValidatorSetUpdates>,
+    pub string: ::core::option::Option<EventDataString>,
     #[prost(message, optional, tag = "10")]
-    pub eventdatastring: ::core::option::Option<EventDataString>,
+    pub blocksyncstatus: ::core::option::Option<EventDataBlockSyncStatus>,
     #[prost(message, optional, tag = "11")]
-    pub eventdatablocksyncstatus: ::core::option::Option<EventDataBlockSyncStatus>,
-    #[prost(message, optional, tag = "12")]
-    pub eventdatastatesyncstatus: ::core::option::Option<EventDataStateSyncStatus>,
+    pub statesyncstatus: ::core::option::Option<EventDataStateSyncStatus>,
 }
 /// EventDataNewBlock
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventDataNewBlock {
     #[prost(message, optional, tag = "1")]
     pub block: ::core::option::Option<Block>,
-    /// not present in v0.34.13
+    /// not present in v0.34.13 - hash256 32 bytes
     #[prost(message, optional, tag = "2")]
     pub block_id: ::core::option::Option<BlockId>,
     #[prost(message, optional, tag = "3")]
@@ -65,8 +63,8 @@ pub struct ConsensusParams {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Version {
-    #[prost(int64, tag = "1")]
-    pub app_version: i64,
+    #[prost(uint64, tag = "1")]
+    pub app_version: u64,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Block {
@@ -81,27 +79,33 @@ pub struct Block {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Commit {
-    #[prost(int64, tag = "1")]
-    pub height: i64,
+    /// must be > 0
+    #[prost(uint64, tag = "1")]
+    pub height: u64,
+    /// must be > 0
     #[prost(int32, tag = "2")]
     pub round: i32,
     #[prost(message, optional, tag = "3")]
     pub block_id: ::core::option::Option<BlockId>,
+    /// must be > 0
     #[prost(message, repeated, tag = "4")]
     pub signatures: ::prost::alloc::vec::Vec<CommitSig>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CommitSig {
+    /// must match those in the enum above
     #[prost(enumeration = "BlockIdFlag", tag = "1")]
     pub block_id_flag: i32,
+    /// hash 256 20 bytes - this is the first 20 characters of a 32-byte -
     #[prost(bytes = "vec", tag = "2")]
     pub validator_address: ::prost::alloc::vec::Vec<u8>,
+    /// key - SHA256(pubkey)[:20]
     #[prost(message, optional, tag = "3")]
     pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    /// length should be > 0 and < 64
     #[prost(bytes = "vec", tag = "4")]
     pub signature: ::prost::alloc::vec::Vec<u8>,
 }
-/// EventDataNewBlockHeader
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventDataNewBlockHeader {
     #[prost(message, optional, tag = "1")]
@@ -125,22 +129,31 @@ pub struct Header {
     pub time: ::core::option::Option<::prost_types::Timestamp>,
     #[prost(message, optional, tag = "5")]
     pub last_block_id: ::core::option::Option<BlockId>,
+    /// hash 256 32 bytes
     #[prost(bytes = "vec", tag = "6")]
     pub last_commit_hash: ::prost::alloc::vec::Vec<u8>,
+    /// hash 256 32 bytes
     #[prost(bytes = "vec", tag = "7")]
     pub data_hash: ::prost::alloc::vec::Vec<u8>,
+    /// hash 256 32 bytes
     #[prost(bytes = "vec", tag = "8")]
     pub validators_hash: ::prost::alloc::vec::Vec<u8>,
+    /// hash 256 32 bytes
     #[prost(bytes = "vec", tag = "9")]
     pub next_validators_hash: ::prost::alloc::vec::Vec<u8>,
+    /// hash 256 32 bytes
     #[prost(bytes = "vec", tag = "10")]
     pub consensus_hash: ::prost::alloc::vec::Vec<u8>,
+    /// determined by application, not a fixed length
     #[prost(bytes = "vec", tag = "11")]
     pub app_hash: ::prost::alloc::vec::Vec<u8>,
+    /// hash 256 32 bytes - first block will be results of an empty hash
     #[prost(bytes = "vec", tag = "12")]
     pub last_results_hash: ::prost::alloc::vec::Vec<u8>,
+    /// hash sha256 32 bytes
     #[prost(bytes = "vec", tag = "13")]
     pub evidence_hash: ::prost::alloc::vec::Vec<u8>,
+    /// hash 256 20 bytes - this is the first 20 characters of a 32-byte
     #[prost(bytes = "vec", tag = "14")]
     pub proposer_address: ::prost::alloc::vec::Vec<u8>,
 }
@@ -162,11 +175,13 @@ pub struct BlockId {
 pub struct PartSetHeader {
     #[prost(uint32, tag = "1")]
     pub total: u32,
+    /// hash 256 32 bytes
     #[prost(bytes = "vec", tag = "2")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Data {
+    /// No validation is done by tendermint on this,
     #[prost(bytes = "vec", repeated, tag = "1")]
     pub txs: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
@@ -208,20 +223,25 @@ pub struct EventDataTx {
 /// EventDataVote
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventDataVote {
+    /// should be present in the enum at the top of this file
     #[prost(enumeration = "SignedMsgType", tag = "1")]
     pub r#type: i32,
-    #[prost(int64, tag = "2")]
-    pub height: i64,
+    /// must be > 0
+    #[prost(uint64, tag = "2")]
+    pub height: u64,
+    /// must be > 0
     #[prost(int32, tag = "3")]
     pub round: i32,
     #[prost(message, optional, tag = "4")]
     pub block_id: ::core::option::Option<BlockId>,
     #[prost(message, optional, tag = "5")]
     pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    /// hash with a length of 20
     #[prost(bytes = "vec", tag = "6")]
     pub validator_address: ::prost::alloc::vec::Vec<u8>,
     #[prost(int32, tag = "7")]
     pub validator_index: i32,
+    /// hash length should be >0 and <64
     #[prost(bytes = "vec", tag = "8")]
     pub signature: ::prost::alloc::vec::Vec<u8>,
 }
@@ -240,15 +260,19 @@ pub struct LightClientAttackEvidence {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct LightBlock {
+    /// cannot be nil
     #[prost(message, optional, tag = "1")]
     pub signed_header: ::core::option::Option<SignedHeader>,
+    /// cannot be nil
     #[prost(message, optional, tag = "2")]
     pub validator_set: ::core::option::Option<ValidatorSet>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ValidatorSet {
+    /// cannot be empty of nil
     #[prost(message, repeated, tag = "1")]
     pub validators: ::prost::alloc::vec::Vec<Validator>,
+    /// cannot be nil
     #[prost(message, optional, tag = "2")]
     pub proposer: ::core::option::Option<Validator>,
     #[prost(int64, tag = "3")]
@@ -270,6 +294,7 @@ pub struct EvidenceList {
 pub struct Validator {
     #[prost(bytes = "vec", tag = "1")]
     pub address: ::prost::alloc::vec::Vec<u8>,
+    /// must be >0
     #[prost(message, optional, tag = "2")]
     pub pub_key: ::core::option::Option<PublicKey>,
     #[prost(int64, tag = "3")]
@@ -296,8 +321,8 @@ pub mod public_key {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TxResult {
-    #[prost(int64, tag = "1")]
-    pub height: i64,
+    #[prost(uint64, tag = "1")]
+    pub height: u64,
     #[prost(int32, tag = "2")]
     pub index: i32,
     #[prost(bytes = "vec", tag = "3")]
@@ -343,8 +368,8 @@ pub struct EventAttribute {
 /// EventDataRoundState
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventDataRoundState {
-    #[prost(int64, tag = "1")]
-    pub height: i64,
+    #[prost(uint64, tag = "1")]
+    pub height: u64,
     #[prost(int32, tag = "2")]
     pub round: i32,
     #[prost(string, tag = "3")]
@@ -353,8 +378,8 @@ pub struct EventDataRoundState {
 /// EventDataNewRound
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventDataNewRound {
-    #[prost(int64, tag = "1")]
-    pub height: i64,
+    #[prost(uint64, tag = "1")]
+    pub height: u64,
     #[prost(int32, tag = "2")]
     pub round: i32,
     #[prost(string, tag = "3")]
@@ -378,8 +403,8 @@ pub struct Address {
 /// EventDataCompleteProposal
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventDataCompleteProposal {
-    #[prost(int64, tag = "1")]
-    pub height: i64,
+    #[prost(uint64, tag = "1")]
+    pub height: u64,
     #[prost(int32, tag = "2")]
     pub round: i32,
     #[prost(string, tag = "3")]
@@ -387,14 +412,14 @@ pub struct EventDataCompleteProposal {
     #[prost(message, optional, tag = "4")]
     pub block_id: ::core::option::Option<BlockId>,
 }
-/// EventDataValidatorSetUpdates - this may not be accurate but I can't confirm
-/// as the original struct was ValidatorUpdates []*Validator
+/// EventDataValidatorSetUpdates
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventDataValidatorSetUpdates {
     #[prost(message, repeated, tag = "1")]
     pub validator_updates: ::prost::alloc::vec::Vec<Validator>,
 }
-/// EventDataString is just a string and not a struct, unsure how we make a message for this one
+/// EventDataString is just a string and not a struct, unsure how we make a
+/// message for this one
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventDataString {
     #[prost(string, tag = "1")]
@@ -405,16 +430,16 @@ pub struct EventDataString {
 pub struct EventDataBlockSyncStatus {
     #[prost(bool, tag = "1")]
     pub complete: bool,
-    #[prost(int64, tag = "2")]
-    pub height: i64,
+    #[prost(uint64, tag = "2")]
+    pub height: u64,
 }
 /// EventDataStateSyncStatus
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventDataStateSyncStatus {
     #[prost(bool, tag = "1")]
     pub complete: bool,
-    #[prost(int64, tag = "2")]
-    pub height: i64,
+    #[prost(uint64, tag = "2")]
+    pub height: u64,
 }
 /// used in Vote
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]

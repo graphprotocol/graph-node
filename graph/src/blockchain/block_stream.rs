@@ -91,7 +91,7 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
 #[derive(Error, Debug)]
 pub enum FirehoseError {
     /// We were unable to decode the received block payload into the chain specific Block struct (e.g. chain_ethereum::pb::Block)
-    #[error("received gRPC block payload cannot be decoded")]
+    #[error("received gRPC block payload cannot be decoded: {0}")]
     DecodingError(#[from] prost::DecodeError),
 
     /// Some unknown error occured
