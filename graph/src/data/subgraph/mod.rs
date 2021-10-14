@@ -363,8 +363,6 @@ pub enum SubgraphManifestValidationError {
     MultipleEthereumNetworks,
     #[error("subgraph must have at least one Ethereum network data source")]
     EthereumNetworkRequired,
-    #[error("subgraph data source has too many similar block handlers")]
-    DataSourceBlockHandlerLimitExceeded,
     #[error("the specified block must exist on the Ethereum network")]
     BlockNotFound(String),
     #[error("imported schema(s) are invalid: {0:?}")]
@@ -377,6 +375,8 @@ pub enum SubgraphManifestValidationError {
     DifferentApiVersions(BTreeSet<Version>),
     #[error(transparent)]
     FeatureValidationError(#[from] SubgraphFeatureValidationError),
+    #[error("data source {0} is invalid: {1}")]
+    DataSourceValidation(String, Error),
 }
 
 #[derive(Error, Debug)]
@@ -625,7 +625,9 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         }
 
         for ds in &self.0.data_sources {
-            errors.extend(ds.validate());
+            errors.extend(ds.validate().into_iter().map(|e| {
+                SubgraphManifestValidationError::DataSourceValidation(ds.name().to_owned(), e)
+            }));
         }
 
         // For API versions newer than 0.0.5, validate that all mappings uses the same api_version
@@ -637,8 +639,6 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             .0
             .data_sources
             .iter()
-            // FIXME (NEAR): Once more refactoring is merged in, this should go away as validation has been pushed to a chain specific check now
-            .filter(|d| d.kind().eq("ethereum/contract") || d.kind().eq("near/blocks"))
             .filter_map(|d| d.network().map(|n| n.to_string()))
             .collect::<Vec<String>>();
         networks.sort();
@@ -719,8 +719,6 @@ impl<C: Blockchain> SubgraphManifest<C> {
         // Assume the manifest has been validated, ensuring network names are homogenous
         self.data_sources
             .iter()
-            // FIXME (NEAR): Once more refactoring is merged in, this should go away as validation has been pushed to a chain specific check now
-            .filter(|d| d.kind() == "ethereum/contract" || d.kind() == "near/blocks")
             .filter_map(|d| d.network().map(|n| n.to_string()))
             .next()
             .expect("Validated manifest does not have a network defined on any datasource")
