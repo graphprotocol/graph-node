@@ -618,7 +618,7 @@ impl EthereumAdapter {
         &self,
         logger: Logger,
         ids: Vec<H256>,
-    ) -> impl Stream<Item = LightEthereumBlock, Error = Error> + Send {
+    ) -> impl Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send {
         let web3 = self.web3.clone();
 
         stream::iter_ok::<_, Error>(ids.into_iter().map(move |hash| {
@@ -631,7 +631,7 @@ impl EthereumAdapter {
                         .block_with_txs(BlockId::Hash(hash))
                         .from_err::<Error>()
                         .and_then(move |block| {
-                            block.ok_or_else(|| {
+                            block.map(|block| Arc::new(block)).ok_or_else(|| {
                                 anyhow::anyhow!("Ethereum node did not find block {:?}", hash)
                             })
                         })
@@ -1359,7 +1359,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: Logger,
         chain_store: Arc<dyn ChainStore>,
         block_hashes: HashSet<H256>,
-    ) -> Box<dyn Stream<Item = LightEthereumBlock, Error = Error> + Send> {
+    ) -> Box<dyn Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send> {
         let block_hashes: Vec<_> = block_hashes.iter().cloned().collect();
         // Search for the block in the store first then use json-rpc as a backup.
         let mut blocks = chain_store
@@ -1376,7 +1376,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         // Return a stream that lazily loads batches of blocks.
         debug!(logger, "Requesting {} block(s)", missing_blocks.len());
         Box::new(
-            self.load_blocks_rpc(logger.clone(), missing_blocks.into_iter().collect())
+            self.load_blocks_rpc(logger.clone(), missing_blocks)
                 .collect()
                 .map(move |new_blocks| {
                     if let Err(e) = chain_store.upsert_light_blocks(new_blocks.clone()) {
@@ -1522,7 +1522,7 @@ pub(crate) async fn blocks_with_triggers(
         .and_then(
             move |block| match triggers_by_block.remove(&(block.number() as BlockNumber)) {
                 Some(triggers) => Ok(BlockWithTriggers::new(
-                    BlockFinality::Final(Arc::new(block)),
+                    BlockFinality::Final(block),
                     triggers,
                 )),
                 None => Err(anyhow!(

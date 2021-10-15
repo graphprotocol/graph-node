@@ -582,7 +582,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: Logger,
         chain_store: Arc<dyn ChainStore>,
         block_hashes: HashSet<H256>,
-    ) -> Box<dyn Stream<Item = LightEthereumBlock, Error = Error> + Send>;
+    ) -> Box<dyn Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send>;
 
     /// Find a block by its hash.
     fn block_by_hash(

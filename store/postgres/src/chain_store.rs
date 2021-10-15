@@ -462,13 +462,13 @@ mod data {
             &self,
             conn: &PgConnection,
             chain: &str,
-            block: LightEthereumBlock,
+            block: Arc<LightEthereumBlock>,
         ) -> Result<(), Error> {
             let hash = block.hash.unwrap();
             let parent_hash = block.parent_hash;
             let number = block.number.unwrap().as_u64() as i64;
             let data = serde_json::to_value(&EthereumBlock {
-                block: Arc::new(block),
+                block,
                 transaction_receipts: Vec::new(),
             })
             .expect("Failed to serialize block");
@@ -516,7 +516,7 @@ mod data {
             conn: &PgConnection,
             chain: &str,
             hashes: &[H256],
-        ) -> Result<Vec<LightEthereumBlock>, Error> {
+        ) -> Result<Vec<Arc<LightEthereumBlock>>, Error> {
             use diesel::dsl::any;
 
             let hashes = match self {
@@ -1326,7 +1326,7 @@ impl ChainStoreTrait for ChainStore {
         .map_err(Error::from)
     }
 
-    fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error> {
+    fn upsert_light_blocks(&self, blocks: Vec<Arc<LightEthereumBlock>>) -> Result<(), Error> {
         let conn = self.pool.get()?;
         for block in blocks {
             self.storage.upsert_light_block(&conn, &self.chain, block)?;
@@ -1414,7 +1414,7 @@ impl ChainStoreTrait for ChainStore {
             .map_err(Error::from)
     }
 
-    fn blocks(&self, hashes: &[H256]) -> Result<Vec<LightEthereumBlock>, Error> {
+    fn blocks(&self, hashes: &[H256]) -> Result<Vec<Arc<LightEthereumBlock>>, Error> {
         let conn = self.get_conn()?;
         self.storage.blocks(&conn, &self.chain, hashes)
     }
