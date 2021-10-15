@@ -335,7 +335,7 @@ impl FirehoseMapper {
 
         let tendermint_block = TendermintBlock {
             // FIXME (TENDERMINT): this has to be hash of the block, and not the data inside
-            hash:  Hash::from_bytes(&header.data_hash).unwrap(),
+            hash:  Hash::from_bytes(&header.data_hash)?,
             number: header.height,
             parent_hash: header
                 .last_block_id
@@ -353,21 +353,21 @@ impl FirehoseMapper {
                 time_nano:  block_time.nanos,
                 last_block_id: Some(
                     TendermintBlockId{
-                        hash:  Hash::from_bytes(&bid.hash).unwrap(),
+                        hash:  Hash::from_bytes(&bid.hash)?,
                         part_set_header: Some(TendermintPartSetHeader{
                             total: part_header.total.clone(),
-                            hash:  Hash::from_bytes(&part_header.hash).unwrap(),
+                            hash:  Hash::from_bytes(&part_header.hash)?,
                         }),
                     }),
-                last_commit_hash:  Hash::from_bytes(&header.last_commit_hash).unwrap(),
-                data_hash:  Hash::from_bytes(&header.data_hash).unwrap(),
-                validators_hash:  Hash::from_bytes(&header.validators_hash).unwrap(),
-                next_validators_hash:  Hash::from_bytes(&header.next_validators_hash).unwrap(),
-                consensus_hash:   Hash::from_bytes(&header.consensus_hash).unwrap(),
-                app_hash:   Hash::from_bytes(&header.app_hash).unwrap(),
-                last_results_hash:   Hash::from_bytes(&header.last_results_hash).unwrap(),
-                evidence_hash:   Hash::from_bytes(&header.evidence_hash).unwrap(),
-                proposer_address: Hash::from_bytes(&header.evidence_hash).unwrap(),
+                last_commit_hash:  Hash::from_bytes(&header.last_commit_hash)?,
+                data_hash:  Hash::from_bytes(&header.data_hash)?,
+                validators_hash:  Hash::from_bytes(&header.validators_hash)?,
+                next_validators_hash:  Hash::from_bytes(&header.next_validators_hash)?,
+                consensus_hash:   Hash::from_bytes(&header.consensus_hash)?,
+                app_hash:   Hash::from_bytes(&header.app_hash)?,
+                last_results_hash:   Hash::from_bytes(&header.last_results_hash)?,
+                evidence_hash:   Hash::from_bytes(&header.evidence_hash)?,
+                proposer_address: Hash::from_bytes(&header.evidence_hash)?,
             },
             data: TendermintBlockTxData{
                 txs: block.data.as_ref().unwrap().txs.clone()
