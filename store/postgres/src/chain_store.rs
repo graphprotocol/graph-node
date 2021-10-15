@@ -1039,7 +1039,7 @@ mod data {
             conn: &PgConnection,
             chain_name: &str,
             genesis_hash: &str,
-            chain: super::test_support::Chain,
+            chain: Vec<&dyn Block>,
         ) {
             use public::ethereum_networks as n;
 
@@ -1252,6 +1252,17 @@ impl ChainStore {
                 )
             },
         )
+    }
+
+    /// Store the given chain as the blocks for the `network` set the
+    /// network's genesis block to `genesis_hash`, and head block to
+    /// `null`
+    #[cfg(debug_assertions)]
+    pub fn set_chain(&self, genesis_hash: &str, chain: Vec<&dyn Block>) {
+        let conn = self.pool.get().expect("can get a database connection");
+
+        self.storage
+            .set_chain(&conn, &self.chain, genesis_hash, chain);
     }
 }
 
@@ -1552,109 +1563,4 @@ fn contract_call_id(
     hash.update(contract_address.as_ref());
     hash.update(block.hash_slice());
     *hash.finalize().as_bytes()
-}
-
-/// Support for tests
-#[cfg(debug_assertions)]
-pub mod test_support {
-    use std::{convert::TryFrom, str::FromStr, sync::Arc};
-
-    use graph::{
-        blockchain::Block,
-        prelude::{
-            serde_json, web3::types::H256, BlockNumber, BlockPtr, EthereumBlock, LightEthereumBlock,
-        },
-    };
-
-    // Hash indicating 'no parent'
-    pub const NO_PARENT: &str = "0000000000000000000000000000000000000000000000000000000000000000";
-    /// The parts of an Ethereum block that are interesting for these tests:
-    /// the block number, hash, and the hash of the parent block
-    #[derive(Clone, Debug, PartialEq)]
-    pub struct FakeBlock {
-        pub number: BlockNumber,
-        pub hash: String,
-        pub parent_hash: String,
-    }
-
-    impl FakeBlock {
-        pub fn make_child(&self, hash: &str) -> Self {
-            FakeBlock {
-                number: self.number + 1,
-                hash: hash.to_owned(),
-                parent_hash: self.hash.clone(),
-            }
-        }
-
-        pub fn make_no_parent(number: BlockNumber, hash: &str) -> Self {
-            FakeBlock {
-                number,
-                hash: hash.to_owned(),
-                parent_hash: NO_PARENT.to_string(),
-            }
-        }
-
-        pub fn block_hash(&self) -> H256 {
-            H256::from_str(self.hash.as_str()).expect("invalid block hash")
-        }
-
-        pub fn block_ptr(&self) -> BlockPtr {
-            BlockPtr::from((self.block_hash(), self.number))
-        }
-
-        pub fn as_ethereum_block(&self) -> EthereumBlock {
-            let parent_hash =
-                H256::from_str(self.parent_hash.as_str()).expect("invalid parent hash");
-
-            let mut block = LightEthereumBlock::default();
-            block.number = Some(self.number.into());
-            block.parent_hash = parent_hash;
-            block.hash = Some(self.block_hash());
-
-            EthereumBlock {
-                block: Arc::new(block),
-                transaction_receipts: Vec::new(),
-            }
-        }
-    }
-
-    impl Block for FakeBlock {
-        fn ptr(&self) -> BlockPtr {
-            self.block_ptr()
-        }
-
-        fn parent_ptr(&self) -> Option<BlockPtr> {
-            if self.number > 0 {
-                Some(
-                    BlockPtr::try_from((self.parent_hash.as_str(), (self.number - 1) as i64))
-                        .expect("can construct parent ptr"),
-                )
-            } else {
-                None
-            }
-        }
-
-        fn data(&self) -> Result<serde_json::Value, serde_json::Error> {
-            serde_json::to_value(self.as_ethereum_block())
-        }
-    }
-
-    pub type Chain = Vec<&'static FakeBlock>;
-
-    /// Store the given chain as the blocks for the `network` set the
-    /// network's genesis block to `genesis_hash`, and head block to
-    /// `null`
-    pub trait SettableChainStore {
-        fn set_chain(&self, genesis_hash: &str, chain: Chain);
-    }
-}
-
-#[cfg(debug_assertions)]
-impl test_support::SettableChainStore for ChainStore {
-    fn set_chain(&self, genesis_hash: &str, chain: test_support::Chain) {
-        let conn = self.pool.get().expect("can get a database connection");
-
-        self.storage
-            .set_chain(&conn, &self.chain, genesis_hash, chain);
-    }
 }

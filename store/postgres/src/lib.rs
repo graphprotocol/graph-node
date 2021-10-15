@@ -54,7 +54,6 @@ pub mod layout_for_tests {
     pub use crate::block_range::*;
     pub use crate::block_store::FAKE_NETWORK_SHARED;
     pub use crate::catalog::set_account_like;
-    pub use crate::chain_store::test_support as chain_support;
     pub use crate::primary::{
         make_dummy_site, Connection, Mirror, Namespace, EVENT_TAP, EVENT_TAP_ENABLED,
     };
