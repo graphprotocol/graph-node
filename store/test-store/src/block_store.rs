@@ -107,12 +107,12 @@ impl Block for FakeBlock {
     }
 }
 
-pub type Chain<'a> = Vec<&'static FakeBlock>;
+pub type FakeBlockList<'a> = Vec<&'static FakeBlock>;
 
 /// Store the given chain as the blocks for the `network` set the
 /// network's genesis block to `genesis_hash`, and head block to
 /// `null`
-pub fn set_chain(chain: Chain, network: &str) {
+pub fn set_chain(chain: FakeBlockList, network: &str) {
     let store = crate::store::STORE
         .block_store()
         .chain_store(network)

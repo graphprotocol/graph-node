@@ -15,8 +15,9 @@ use graph_store_postgres::Store as DieselStore;
 use graph_store_postgres::{layout_for_tests::FAKE_NETWORK_SHARED, ChainStore as DieselChainStore};
 
 use test_store::block_store::{
-    Chain, FakeBlock, BLOCK_FIVE, BLOCK_FOUR, BLOCK_ONE, BLOCK_ONE_NO_PARENT, BLOCK_ONE_SIBLING,
-    BLOCK_THREE, BLOCK_THREE_NO_PARENT, BLOCK_TWO, BLOCK_TWO_NO_PARENT, GENESIS_BLOCK, NO_PARENT,
+    FakeBlock, FakeBlockList, BLOCK_FIVE, BLOCK_FOUR, BLOCK_ONE, BLOCK_ONE_NO_PARENT,
+    BLOCK_ONE_SIBLING, BLOCK_THREE, BLOCK_THREE_NO_PARENT, BLOCK_TWO, BLOCK_TWO_NO_PARENT,
+    GENESIS_BLOCK, NO_PARENT,
 };
 use test_store::*;
 
@@ -25,7 +26,7 @@ use test_store::*;
 const ANCESTOR_COUNT: BlockNumber = 3;
 
 /// Test harness for running database integration tests.
-fn run_test<F>(chain: Chain, test: F)
+fn run_test<F>(chain: FakeBlockList, test: F)
 where
     F: Fn(Arc<DieselChainStore>, Arc<DieselStore>) -> Result<(), Error> + Send + 'static,
 {
@@ -42,7 +43,7 @@ where
     });
 }
 
-fn run_test_async<R, F>(chain: Chain, test: F)
+fn run_test_async<R, F>(chain: FakeBlockList, test: F)
 where
     F: Fn(Arc<DieselChainStore>, Arc<DieselStore>) -> R + Send + Sync + 'static,
     R: Future<Output = ()> + Send + 'static,
@@ -65,7 +66,7 @@ where
 /// is the one indicated in `head_exp`. If `missing` is not `None`, check that
 /// `attempt_chain_head_update` reports that block as missing
 fn check_chain_head_update(
-    chain: Chain,
+    chain: FakeBlockList,
     head_exp: Option<&'static FakeBlock>,
     missing: Option<&'static str>,
 ) {
