@@ -1660,12 +1660,7 @@ dependencies = [
 name = "graph-mock"
 version = "0.24.2"
 dependencies = [
- "futures 0.1.31",
  "graph",
- "graph-graphql",
- "graphql-parser",
- "mockall 0.8.3",
- "rand 0.6.5",
 ]
 
 [[package]]
