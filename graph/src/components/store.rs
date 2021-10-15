@@ -1266,7 +1266,6 @@ pub trait BlockStore: Send + Sync + 'static {
 }
 
 /// Common trait for blockchain store implementations.
-#[automock]
 #[async_trait]
 pub trait ChainStore: Send + Sync + 'static {
     /// Get a pointer to this blockchain's genesis block.
