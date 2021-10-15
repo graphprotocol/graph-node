@@ -12,7 +12,6 @@ pub use self::runtime::RuntimeAdapter;
 
 // ETHDEP: These concrete types should probably not be exposed.
 pub use data_source::{DataSource, DataSourceTemplate};
-pub use trigger::MappingTrigger;
 
 pub use crate::adapter::{TendermintAdapter as TendermintAdapterTrait, TriggerFilter};
 pub use crate::chain::Chain;

@@ -1,11 +1,12 @@
 use anyhow::Error;
-use graph::components::tendermint::TendermintBlockExt;
+use graph::blockchain::{Block, TriggerWithHandler};
 use graph::components::store::StoredDynamicDataSource;
 use graph::data::subgraph::{DataSourceContext, Source};
+use graph::prelude::SubgraphManifestValidationError;
 use graph::{
     blockchain::{self, Blockchain},
     prelude::{
-        async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, Link,
+        anyhow, async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, Link,
         LinkResolver, Logger,
     },
 };
@@ -13,8 +14,10 @@ use std::collections::BTreeMap;
 use std::{convert::TryFrom, sync::Arc};
 
 use crate::chain::Chain;
-use crate::trigger::{TendermintBlockTriggerType, TendermintTrigger};
-use crate::MappingTrigger;
+use crate::trigger::TendermintTrigger;
+
+pub const TENDERMINT_KIND: &str = "tendermint";
+
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
 // of thousands of data sources in memory at once.
@@ -43,19 +46,22 @@ impl blockchain::DataSource<Chain> for DataSource {
         trigger: &<Chain as Blockchain>::TriggerData,
         block: Arc<<Chain as Blockchain>::Block>,
         _logger: &Logger,
-    ) -> Result<Option<<Chain as Blockchain>::MappingTrigger>, Error> {
+    ) -> Result<Option<TriggerWithHandler<Chain>>, Error> {
         if self.source.start_block > block.number() {
             return Ok(None);
         }
 
         match trigger {
-            TendermintTrigger::Block(_, trigger_type) => {
-                let handler = match self.handler_for_block(&trigger_type) {
+            TendermintTrigger::Block(_) => {
+                let handler = match self.handler_for_block() {
                     Some(handler) => handler,
                     None => return Ok(None),
                 };
 
-                Ok(Some(MappingTrigger::Block { block, handler }))
+                Ok(Some(TriggerWithHandler::new(
+                    trigger.cheap_clone(),
+                    handler.handler,
+                )))
             }
         }
     }
@@ -118,9 +124,34 @@ impl blockchain::DataSource<Chain> for DataSource {
         todo!()
     }
 
-    fn validate(&self) -> Vec<graph::prelude::SubgraphManifestValidationError> {
-        // FIXME (NEAR): Implement me correctly
-        vec![]
+
+    fn validate(&self) -> Vec<Error> {
+        let mut errors = Vec::new();
+
+        if self.kind != TENDERMINT_KIND {
+            errors.push(anyhow!(
+                "data source has invalid `kind`, expected {} but found {}",
+                TENDERMINT_KIND,
+                self.kind
+            ))
+        }
+
+        // Validate that there is a `source` address if there are receipt handlers
+        let no_source_address = self.address().is_none();
+    //    let has_receipt_handlers = !self.mapping.receipt_handlers.is_empty();
+     //   if no_source_address && has_receipt_handlers {
+       //     errors.push(SubgraphManifestValidationError::SourceAddressRequired.into());
+        //};
+
+        // Validate that there are no more than one of both block handlers and receipt handlers
+ /*        if self.mapping.block_handlers.len() > 1 {
+            errors.push(anyhow!("data source has duplicated block handlers"));
+        }
+        if self.mapping.receipt_handlers.len() > 1 {
+            errors.push(anyhow!("data source has duplicated receipt handlers"));
+        }
+*/
+        errors
     }
 
     fn api_version(&self) -> semver::Version {
@@ -155,16 +186,9 @@ impl DataSource {
         })
     }
 
-    fn handler_for_block(
-        &self,
-        trigger_type: &TendermintBlockTriggerType,
-    ) -> Option<MappingBlockHandler> {
-        match trigger_type {
-            TendermintBlockTriggerType::Every => {
-                // FIXME (NEAR): We need to decide how to deal with multi block handlers, allow only 1?
-                self.mapping.block_handlers.first().map(|v| v.clone())
-            }
-        }
+    fn handler_for_block(&self) -> Option<MappingBlockHandler> {
+        // FIXME (NEAR): We need to decide how to deal with multi block handlers, allow only 1?
+        self.mapping.block_handlers.first().map(|v| v.clone())
     }
 }
 
@@ -308,17 +332,6 @@ impl UnresolvedMapping {
         } = self;
 
         let api_version = semver::Version::parse(&api_version)?;
-
-        // FIXME (NEAR): MAX_API_VERSION is mostly tied to Ethereum, we would need a min/max version per
-        //               blockchain.
-        // ensure!(
-        //     semver::VersionReq::parse(&format!("<= {}", *MAX_API_VERSION))
-        //         .unwrap()
-        //         .matches(&api_version),
-        //     "The maximum supported mapping API version of this indexer is {}, but `{}` was found",
-        //     *MAX_API_VERSION,
-        //     api_version
-        // );
 
         info!(logger, "Resolve mapping"; "link" => &link.link);
         let module_bytes = resolver.cat(logger, &link).await?;

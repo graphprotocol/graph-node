@@ -1,4 +1,3 @@
-use crate::trigger::TendermintBlockData;
 use graph::prelude::BigInt;
 use graph::runtime::{asc_new, AscPtr, DeterministicHostError, ToAscObj};
 use graph::runtime::{AscHeap, AscIndexId, AscType, IndexForAscTypeId};

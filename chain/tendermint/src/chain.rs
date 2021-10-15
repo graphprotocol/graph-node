@@ -1,6 +1,7 @@
 use graph::blockchain::BlockchainKind;
 use graph::cheap_clone::CheapClone;
-use graph::components::tendermint::{TendermintBlock, TendermintBlockHeader, TendermintBlockTxData, TendermintConsensus, TendermintBlockId, TendermintPartSetHeader};
+// components::tendermint::hash::Hash,
+// use graph::components::tendermint::{TendermintBlock, TendermintBlockHeader, TendermintBlockTxData, TendermintConsensus, TendermintBlockId, TendermintPartSetHeader};
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::endpoints::FirehoseNetworkEndpoints;
 use graph::prelude::StopwatchMetrics;
@@ -14,7 +15,6 @@ use graph::{
         firehose_block_stream::FirehoseBlockStream,
         BlockHash, BlockPtr, Blockchain, IngestorAdapter as IngestorAdapterTrait, IngestorError,
     },
-    components::tendermint::hash::Hash,
     components::store::DeploymentLocator,
     firehose::bstream,
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
@@ -28,7 +28,7 @@ use std::sync::Arc;
 
 use crate::capabilities::NodeCapabilities;
 use crate::data_source::{DataSourceTemplate, UnresolvedDataSourceTemplate};
-use crate::trigger::{TendermintBlockTriggerType, TendermintTrigger};
+use crate::trigger::TendermintTrigger;
 use crate::RuntimeAdapter;
 use crate::{
     codec,
@@ -73,7 +73,7 @@ impl Chain {
 impl Blockchain for Chain {
     const KIND: BlockchainKind = BlockchainKind::Tendermint;
 
-    type Block = TendermintBlock;
+    type Block = codec::EventList;
 
     type DataSource = DataSource;
 
@@ -87,7 +87,7 @@ impl Blockchain for Chain {
 
     type TriggerData = crate::trigger::TendermintTrigger;
 
-    type MappingTrigger = crate::trigger::MappingTrigger;
+    type MappingTrigger = crate::trigger::TendermintTrigger;
 
     type TriggerFilter = crate::adapter::TriggerFilter;
 
@@ -193,7 +193,6 @@ impl Blockchain for Chain {
     }
 }
 
-pub struct DummyDataSourceTemplate;
 
 pub struct TriggersAdapter {}
 
@@ -212,16 +211,16 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     async fn triggers_in_block(
         &self,
         _logger: &Logger,
-        block: TendermintBlock,
+        block: codec::EventList,
         _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
-        let block_ptr = BlockPtr::from(&block);
-
+      //  let block_ptr = BlockPtr::from(&block);
+        todo!()
         // FIXME (NEAR): Share implementation with FirehoseMapper::triggers_in_block version
-        Ok(BlockWithTriggers {
-            block,
-            trigger_data: vec![TendermintTrigger::Block(block_ptr, TendermintBlockTriggerType::Every)],
-        })
+    //    Ok(BlockWithTriggers {
+    //        block,
+    //        trigger_data: vec![TendermintTrigger::Block(block_ptr, TendermintBlockTriggerType::Every)],
+    //    })
     }
 
     async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
@@ -233,7 +232,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         _ptr: BlockPtr,
         _offset: BlockNumber,
-    ) -> Result<Option<TendermintBlock>, Error> {
+    ) -> Result<Option<codec::EventList>, Error> {
         // FIXME (NEAR):  Might not be necessary for NEAR support for now
         Ok(None)
     }
@@ -314,6 +313,30 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
     }
 }
 
+
+
+
+
+impl FirehoseMapper {
+    // FIXME: This should be replaced by using the `TriggersAdapter` struct directly. However, the TriggersAdapter trait
+    //        is async. It's actual async usage is done inside a manual `poll` implementation in `firehose_block_stream#poll_next`
+    //        value. An upcoming improvement will be to remove this `poll_next`. Once the refactor occurs, this should be
+    //        removed and TriggersAdapter::triggers_in_block should be use straight.
+    fn firehose_triggers_in_block(
+        &self,
+        el: &codec::EventList,
+        _filter: &TriggerFilter,
+    ) -> Result<BlockWithTriggers<Chain>, FirehoseError> {
+        Ok(BlockWithTriggers {
+            // TODO: Find the best place to introduce an `Arc` and avoid these clones.
+            block: el.clone(),
+            trigger_data: vec![TendermintTrigger::Block(Arc::new(el.clone()))],
+        })
+    }
+}
+/*
+
+
 impl FirehoseMapper {
     // FIXME: This should be replaced by using the `TriggersAdapter` struct directly. However, the TriggersAdapter trait
     //        is async. It's actual async usage is done inside a manual `poll` implementation in `firehose_block_stream#poll_next`
@@ -381,6 +404,7 @@ impl FirehoseMapper {
         })
     }
 }
+*/
 
 pub struct IngestorAdapter {
     logger: Logger,
