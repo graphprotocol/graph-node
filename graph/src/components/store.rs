@@ -18,7 +18,7 @@ use std::time::Duration;
 use thiserror::Error;
 use web3::types::{Address, H256};
 
-use crate::blockchain::Blockchain;
+use crate::blockchain::{Block, Blockchain};
 use crate::components::server::index_node::VersionInfo;
 use crate::components::transaction_receipt;
 use crate::data::subgraph::status;
@@ -1272,7 +1272,7 @@ pub trait ChainStore: Send + Sync + 'static {
     fn genesis_block_ptr(&self) -> Result<BlockPtr, Error>;
 
     /// Insert a block into the store (or update if they are already present).
-    async fn upsert_block(&self, block: EthereumBlock) -> Result<(), Error>;
+    async fn upsert_block(&self, block: Arc<dyn Block>) -> Result<(), Error>;
 
     fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error>;
 

@@ -3,7 +3,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
-use graph::blockchain::ChainIdentifier;
+use graph::blockchain::{Block, ChainIdentifier};
 use graph::prelude::web3::types::H256;
 use graph::{
     constraint_violation,
@@ -65,6 +65,7 @@ mod data {
         update,
     };
     use diesel_dynamic_schema as dds;
+    use graph::blockchain::{Block, BlockHash};
     use graph::{
         constraint_violation,
         prelude::{transaction_receipt::LightTransactionReceipt, StoreError},
@@ -401,21 +402,29 @@ mod data {
             &self,
             conn: &PgConnection,
             chain: &str,
-            block: EthereumBlock,
+            block: &dyn Block,
         ) -> Result<(), StoreError> {
-            let number = block.block.number.unwrap().as_u64() as i64;
-            let data = serde_json::to_value(&block).expect("Failed to serialize block");
+            // Hash indicating 'no parent'. It seems to be customary at
+            // least on EVM-compatible chains to fill the parent hash of the
+            // genesis block with this value
+            const NO_PARENT: &str =
+                "0000000000000000000000000000000000000000000000000000000000000000";
+
+            let number = block.number() as i64;
+            let data = block.data().expect("Failed to serialize block");
+            let hash = block.hash();
+            let parent_hash = block.parent_hash().unwrap_or_else(|| {
+                BlockHash::try_from(NO_PARENT).expect("NO_PARENT is a valid hash")
+            });
 
             match self {
                 Storage::Shared => {
                     use public::ethereum_blocks as b;
 
-                    let parent_hash = format!("{:x}", block.block.parent_hash);
-                    let hash = format!("{:x}", block.block.hash.unwrap());
                     let values = (
-                        b::hash.eq(hash),
+                        b::hash.eq(hash.hash_hex()),
                         b::number.eq(number),
-                        b::parent_hash.eq(parent_hash),
+                        b::parent_hash.eq(parent_hash.hash_hex()),
                         b::network_name.eq(chain),
                         b::data.eq(data),
                     );
@@ -435,12 +444,10 @@ mod data {
                          do update set number = $2, parent_hash = $3, data = $4",
                         blocks.qname,
                     );
-                    let parent_hash = block.block.parent_hash;
-                    let hash = block.block.hash.unwrap();
                     sql_query(query)
-                        .bind::<Bytea, _>(hash.as_bytes())
+                        .bind::<Bytea, _>(hash.as_slice())
                         .bind::<BigInt, _>(number)
-                        .bind::<Bytea, _>(parent_hash.as_bytes())
+                        .bind::<Bytea, _>(parent_hash.as_slice())
                         .bind::<Jsonb, _>(data)
                         .execute(conn)?;
                 }
@@ -1116,8 +1123,7 @@ mod data {
             }
 
             for block in &chain {
-                self.upsert_block(conn, chain_name, block.as_ethereum_block())
-                    .unwrap();
+                self.upsert_block(conn, chain_name, *block).unwrap();
             }
 
             diesel::update(n::table.filter(n::name.eq(chain_name)))
@@ -1305,14 +1311,14 @@ impl ChainStoreTrait for ChainStore {
         Ok(self.genesis_block_ptr.clone())
     }
 
-    async fn upsert_block(&self, block: EthereumBlock) -> Result<(), Error> {
+    async fn upsert_block(&self, block: Arc<dyn Block>) -> Result<(), Error> {
         let pool = self.pool.clone();
         let network = self.chain.clone();
         let storage = self.storage.clone();
         pool.with_conn(move |conn, _| {
             conn.transaction(|| {
                 storage
-                    .upsert_block(&conn, &network, block)
+                    .upsert_block(&conn, &network, block.as_ref())
                     .map_err(CancelableError::from)
             })
         })
@@ -1600,10 +1606,13 @@ fn contract_call_id(
 /// Support for tests
 #[cfg(debug_assertions)]
 pub mod test_support {
-    use std::{str::FromStr, sync::Arc};
+    use std::{convert::TryFrom, str::FromStr, sync::Arc};
 
-    use graph::prelude::{
-        web3::types::H256, BlockNumber, BlockPtr, EthereumBlock, LightEthereumBlock,
+    use graph::{
+        blockchain::Block,
+        prelude::{
+            serde_json, web3::types::H256, BlockNumber, BlockPtr, EthereumBlock, LightEthereumBlock,
+        },
     };
 
     // Hash indicating 'no parent'
@@ -1655,6 +1664,27 @@ pub mod test_support {
                 block: Arc::new(block),
                 transaction_receipts: Vec::new(),
             }
+        }
+    }
+
+    impl Block for FakeBlock {
+        fn ptr(&self) -> BlockPtr {
+            self.block_ptr()
+        }
+
+        fn parent_ptr(&self) -> Option<BlockPtr> {
+            if self.number > 0 {
+                Some(
+                    BlockPtr::try_from((self.parent_hash.as_str(), (self.number - 1) as i64))
+                        .expect("can construct parent ptr"),
+                )
+            } else {
+                None
+            }
+        }
+
+        fn data(&self) -> Result<serde_json::Value, serde_json::Error> {
+            serde_json::to_value(self.as_ethereum_block())
         }
     }
 

@@ -668,14 +668,23 @@ impl IngestorAdapterTrait<Chain> for IngestorAdapter {
             .compat()
             .await?
             .ok_or_else(|| IngestorError::BlockUnavailable(block_hash))?;
-        let block = self
+        let ethereum_block = self
             .eth_adapter
             .load_full_block(&self.logger, block)
             .compat()
             .await?;
 
+        // We need something that implements `Block` to store the block; the
+        // store does not care whether the block is final or not
+        let ethereum_block = BlockFinality::NonFinal(EthereumBlockWithCalls {
+            ethereum_block,
+            calls: None,
+        });
+
         // Store it in the database and try to advance the chain head pointer
-        self.chain_store.upsert_block(block).await?;
+        self.chain_store
+            .upsert_block(Arc::new(ethereum_block))
+            .await?;
 
         self.chain_store
             .cheap_clone()
