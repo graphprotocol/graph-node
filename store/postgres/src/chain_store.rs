@@ -397,12 +397,14 @@ mod data {
 
         /// Insert a block. If the table already contains a block with the
         /// same hash, then overwrite that block since it may be adding
-        /// transaction receipts.
+        /// transaction receipts. If `overwrite` is `true`, overwrite a
+        /// possibly existing entry. If it is `false`, keep the old entry.
         pub(super) fn upsert_block(
             &self,
             conn: &PgConnection,
             chain: &str,
             block: &dyn Block,
+            overwrite: bool,
         ) -> Result<(), StoreError> {
             // Hash indicating 'no parent'. It seems to be customary at
             // least on EVM-compatible chains to fill the parent hash of the
@@ -429,21 +431,38 @@ mod data {
                         b::data.eq(data),
                     );
 
-                    insert_into(b::table)
-                        .values(values.clone())
-                        .on_conflict(b::hash)
-                        .do_update()
-                        .set(values)
-                        .execute(conn)?;
+                    if overwrite {
+                        insert_into(b::table)
+                            .values(values.clone())
+                            .on_conflict(b::hash)
+                            .do_update()
+                            .set(values)
+                            .execute(conn)?;
+                    } else {
+                        insert_into(b::table)
+                            .values(values.clone())
+                            .on_conflict(b::hash)
+                            .do_nothing()
+                            .execute(conn)?;
+                    }
                 }
                 Storage::Private(Schema { blocks, .. }) => {
-                    let query = format!(
-                        "insert into {}(hash, number, parent_hash, data) \
-                     values ($1, $2, $3, $4) \
-                         on conflict(hash) \
-                         do update set number = $2, parent_hash = $3, data = $4",
-                        blocks.qname,
-                    );
+                    let query = if overwrite {
+                        format!(
+                            "insert into {}(hash, number, parent_hash, data) \
+                             values ($1, $2, $3, $4) \
+                                 on conflict(hash) \
+                                 do update set number = $2, parent_hash = $3, data = $4",
+                            blocks.qname,
+                        )
+                    } else {
+                        format!(
+                            "insert into {}(hash, number, parent_hash, data) \
+                             values ($1, $2, $3, $4) \
+                                 on conflict(hash) do nothing",
+                            blocks.qname
+                        )
+                    };
                     sql_query(query)
                         .bind::<Bytea, _>(hash.as_slice())
                         .bind::<BigInt, _>(number)
@@ -453,62 +472,6 @@ mod data {
                 }
             };
             Ok(())
-        }
-
-        /// Insert a light block. On conflict do nothing, since we
-        /// do not want to erase transaction receipts that might already
-        /// be there
-        pub(super) fn upsert_light_block(
-            &self,
-            conn: &PgConnection,
-            chain: &str,
-            block: Arc<LightEthereumBlock>,
-        ) -> Result<(), Error> {
-            let hash = block.hash.unwrap();
-            let parent_hash = block.parent_hash;
-            let number = block.number.unwrap().as_u64() as i64;
-            let data = serde_json::to_value(&EthereumBlock {
-                block,
-                transaction_receipts: Vec::new(),
-            })
-            .expect("Failed to serialize block");
-
-            let result = match self {
-                Storage::Shared => {
-                    use public::ethereum_blocks as b;
-
-                    let hash = format!("{:x}", hash);
-                    let parent_hash = format!("{:x}", parent_hash);
-                    let values = (
-                        b::hash.eq(hash),
-                        b::number.eq(number),
-                        b::parent_hash.eq(parent_hash),
-                        b::network_name.eq(chain),
-                        b::data.eq(data),
-                    );
-
-                    insert_into(b::table)
-                        .values(values.clone())
-                        .on_conflict(b::hash)
-                        .do_nothing()
-                        .execute(conn)
-                }
-                Storage::Private(Schema { blocks, .. }) => {
-                    let query = format!(
-                        "insert into {}(hash, number, parent_hash, data) \
-                         values ($1, $2, $3, $4) \
-                             on conflict(hash) do nothing",
-                        blocks.qname
-                    );
-                    sql_query(query)
-                        .bind::<Bytea, _>(hash.as_bytes())
-                        .bind::<BigInt, _>(number)
-                        .bind::<Bytea, _>(parent_hash.as_bytes())
-                        .bind::<Jsonb, _>(data)
-                        .execute(conn)
-                }
-            };
-            result.map(|_| ()).map_err(Error::from)
         }
 
         pub(super) fn blocks(
@@ -1123,7 +1086,7 @@ mod data {
             }
 
             for block in &chain {
-                self.upsert_block(conn, chain_name, *block).unwrap();
+                self.upsert_block(conn, chain_name, *block, true).unwrap();
             }
 
             diesel::update(n::table.filter(n::name.eq(chain_name)))
@@ -1318,7 +1281,7 @@ impl ChainStoreTrait for ChainStore {
         pool.with_conn(move |conn, _| {
             conn.transaction(|| {
                 storage
-                    .upsert_block(&conn, &network, block.as_ref())
+                    .upsert_block(&conn, &network, block.as_ref(), true)
                     .map_err(CancelableError::from)
             })
         })
@@ -1326,10 +1289,11 @@ impl ChainStoreTrait for ChainStore {
         .map_err(Error::from)
     }
 
-    fn upsert_light_blocks(&self, blocks: Vec<Arc<LightEthereumBlock>>) -> Result<(), Error> {
+    fn upsert_light_blocks(&self, blocks: &[&dyn Block]) -> Result<(), Error> {
         let conn = self.pool.get()?;
         for block in blocks {
-            self.storage.upsert_light_block(&conn, &self.chain, block)?;
+            self.storage
+                .upsert_block(&conn, &self.chain, *block, false)?;
         }
         Ok(())
     }

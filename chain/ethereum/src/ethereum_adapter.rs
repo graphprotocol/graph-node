@@ -1379,7 +1379,15 @@ impl EthereumAdapterTrait for EthereumAdapter {
             self.load_blocks_rpc(logger.clone(), missing_blocks)
                 .collect()
                 .map(move |new_blocks| {
-                    if let Err(e) = chain_store.upsert_light_blocks(new_blocks.clone()) {
+                    let upsert_blocks: Vec<_> = new_blocks
+                        .iter()
+                        .map(|block| BlockFinality::Final(block.clone()))
+                        .collect();
+                    let block_refs: Vec<_> = upsert_blocks
+                        .iter()
+                        .map(|block| block as &dyn graph::blockchain::Block)
+                        .collect();
+                    if let Err(e) = chain_store.upsert_light_blocks(block_refs.as_slice()) {
                         error!(logger, "Error writing to block cache {}", e);
                     }
                     blocks.extend(new_blocks);
