@@ -1,14 +1,13 @@
-use anyhow::anyhow;
 use graph::blockchain::{Block, TriggerWithHandler};
 use graph::components::store::StoredDynamicDataSource;
-use graph::data::subgraph::{DataSourceContext, Source};
+use graph::data::subgraph::DataSourceContext;
 use graph::prelude::SubgraphManifestValidationError;
 use graph::{
-    anyhow,
+    anyhow::{anyhow, Error},
     blockchain::{self, Blockchain},
     prelude::{
-        async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, Error,
-        Link, LinkResolver, Logger,
+        async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, Link,
+        LinkResolver, Logger,
     },
     semver,
 };
@@ -21,14 +20,12 @@ use crate::trigger::NearTrigger;
 pub const NEAR_KIND: &str = "near";
 
 /// Runtime representation of a data source.
-// Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
-// of thousands of data sources in memory at once.
 #[derive(Clone, Debug)]
 pub struct DataSource {
     pub kind: String,
     pub network: Option<String>,
     pub name: String,
-    pub source: Source,
+    pub(crate) source: Source,
     pub mapping: Mapping,
     pub context: Arc<Option<DataSourceContext>>,
     pub creation_block: Option<BlockNumber>,
@@ -36,7 +33,7 @@ pub struct DataSource {
 
 impl blockchain::DataSource<Chain> for DataSource {
     fn address(&self) -> Option<&[u8]> {
-        self.source.address.as_ref().map(|x| x.as_bytes())
+        self.source.account.as_ref().map(String::as_bytes)
     }
 
     fn start_block(&self) -> BlockNumber {
@@ -198,7 +195,7 @@ pub struct UnresolvedDataSource {
     pub kind: String,
     pub network: Option<String>,
     pub name: String,
-    pub source: Source,
+    pub(crate) source: Source,
     pub mapping: UnresolvedMapping,
     pub context: Option<DataSourceContext>,
 }
@@ -209,7 +206,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
         self,
         resolver: &impl LinkResolver,
         logger: &Logger,
-    ) -> Result<DataSource, anyhow::Error> {
+    ) -> Result<DataSource, Error> {
         let UnresolvedDataSource {
             kind,
             network,
@@ -228,30 +225,41 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
 }
 
 impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
-    type Error = anyhow::Error;
+    type Error = Error;
 
-    fn try_from(info: DataSourceTemplateInfo<Chain>) -> Result<Self, anyhow::Error> {
-        let DataSourceTemplateInfo {
-            template,
-            params: _,
-            context,
-            creation_block,
-        } = info;
+    fn try_from(_info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
+        Err(anyhow!("Near subgraphs do not support templates"))
 
-        Ok(DataSource {
-            kind: template.kind,
-            network: template.network,
-            name: template.name,
-            source: Source {
-                // FIXME (NEAR): Made those element dummy elements
-                address: None,
-                abi: "".to_string(),
-                start_block: 0,
-            },
-            mapping: template.mapping,
-            context: Arc::new(context),
-            creation_block: Some(creation_block),
-        })
+        // How this might be implemented if/when Near gets support for templates:
+        // let DataSourceTemplateInfo {
+        //     template,
+        //     params,
+        //     context,
+        //     creation_block,
+        // } = info;
+
+        // let account = params
+        //     .get(0)
+        //     .with_context(|| {
+        //         format!(
+        //             "Failed to create data source from template `{}`: account parameter is missing",
+        //             template.name
+        //         )
+        //     })?
+        //     .clone();
+
+        // Ok(DataSource {
+        //     kind: template.kind,
+        //     network: template.network,
+        //     name: template.name,
+        //     source: Source {
+        //         account,
+        //         start_block: 0,
+        //     },
+        //     mapping: template.mapping,
+        //     context: Arc::new(context),
+        //     creation_block: Some(creation_block),
+        // })
     }
 }
 
@@ -272,7 +280,7 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
         self,
         resolver: &impl LinkResolver,
         logger: &Logger,
-    ) -> Result<DataSourceTemplate, anyhow::Error> {
+    ) -> Result<DataSourceTemplate, Error> {
         let UnresolvedDataSourceTemplate {
             kind,
             network,
@@ -324,7 +332,7 @@ impl UnresolvedMapping {
         self,
         resolver: &impl LinkResolver,
         logger: &Logger,
-    ) -> Result<Mapping, anyhow::Error> {
+    ) -> Result<Mapping, Error> {
         let UnresolvedMapping {
             kind,
             api_version,
@@ -373,4 +381,12 @@ pub struct MappingBlockHandler {
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct ReceiptHandler {
     handler: String,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub(crate) struct Source {
+    // A data source that does not have an account can only have block handlers.
+    pub(crate) account: Option<String>,
+    #[serde(rename = "startBlock", default)]
+    pub(crate) start_block: BlockNumber,
 }

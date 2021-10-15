@@ -1,4 +1,4 @@
-use crate::{Chain, DataSource};
+use crate::{data_source::DataSource, Chain};
 use blockchain::HostFn;
 use graph::{anyhow::Error, blockchain};
 

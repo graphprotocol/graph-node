@@ -3,7 +3,7 @@ use std::cmp::{Ordering, PartialOrd};
 use std::fmt;
 use std::str::FromStr;
 
-use crate::DataSource;
+use crate::data_source::DataSource;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NodeCapabilities {}

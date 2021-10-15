@@ -8,7 +8,6 @@ tonic-build = "0.5.1"
 
 [dependencies]
 graph = { path = "../../graph" }
-mockall = "0.9.1"
 prost = "0.8.0"
 prost-types = "0.8.0"
 serde = "1.0"
