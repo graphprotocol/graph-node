@@ -23,14 +23,14 @@ use graph::{
 use prost::Message;
 use std::sync::Arc;
 
+use crate::adapter::TriggerFilter;
 use crate::capabilities::NodeCapabilities;
 use crate::data_source::{DataSourceTemplate, UnresolvedDataSourceTemplate};
+use crate::runtime::RuntimeAdapter;
 use crate::trigger::NearTrigger;
-use crate::RuntimeAdapter;
 use crate::{
     codec,
     data_source::{DataSource, UnresolvedDataSource},
-    TriggerFilter,
 };
 use graph::blockchain::block_stream::BlockStream;
 
@@ -189,8 +189,6 @@ impl Blockchain for Chain {
         Arc::new(RuntimeAdapter {})
     }
 }
-
-pub struct DummyDataSourceTemplate;
 
 pub struct TriggersAdapter {}
 

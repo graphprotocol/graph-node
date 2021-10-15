@@ -1597,7 +1597,6 @@ dependencies = [
  "graph-runtime-derive",
  "graph-runtime-wasm",
  "graph-store-postgres",
- "mockall 0.9.1",
  "pretty_assertions 0.7.2",
  "prost",
  "prost-types",

@@ -2,8 +2,6 @@ use crate::capabilities::NodeCapabilities;
 use crate::{data_source::DataSource, Chain};
 use graph::blockchain as bc;
 use graph::prelude::*;
-use mockall::automock;
-use mockall::predicate::*;
 
 #[derive(Clone, Debug, Default)]
 pub struct TriggerFilter {
@@ -29,7 +27,7 @@ pub(crate) struct NearBlockFilter {
 impl NearBlockFilter {
     pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
         iter.into_iter()
-            .filter(|data_source| data_source.source.address.is_some())
+            .filter(|data_source| data_source.source.account.is_some())
             .fold(Self::default(), |mut filter_opt, _data_source| {
                 filter_opt.extend(Self {
                     trigger_every_block: true,
@@ -41,11 +39,4 @@ impl NearBlockFilter {
     pub fn extend(&mut self, other: NearBlockFilter) {
         self.trigger_every_block = self.trigger_every_block || other.trigger_every_block;
     }
-}
-
-#[automock]
-#[async_trait]
-pub trait NearAdapter: Send + Sync + 'static {
-    /// The `provider.label` from the adapter's configuration
-    fn provider(&self) -> &str;
 }
