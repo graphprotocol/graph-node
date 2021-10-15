@@ -1,5 +1,17 @@
 # NEWS
 
+## Next
+
+### Ethereum
+
+- 'Out of gas' errors on contract calls are now considered deterministic errors,
+  so they can be handled by `try_` calls. The gas limit is 50 million.
+
+### Environment Variables
+
+- The `GRAPH_ETH_CALL_GAS` environment is removed to prevent misuse, its value
+  is now hardcoded to 50 million.
+
 ## 0.24.2
 
 This release only adds a fix for an issue where certain GraphQL queries

@@ -6,6 +6,7 @@ use std::{
 
 pub static UNSAFE_CONFIG: AtomicBool = AtomicBool::new(false);
 
+// This is currently unusued but is kept as a potentially useful mechanism.
 /// Panics if:
 /// - The value is not UTF8.
 /// - The value cannot be parsed as T.
