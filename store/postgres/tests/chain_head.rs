@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use graph::prelude::web3::types::H256;
 use graph::prelude::{anyhow::anyhow, anyhow::Error};
+use graph::prelude::{serde_json as json, EthereumBlock};
 use graph::prelude::{BlockNumber, QueryStoreManager};
 use graph::{cheap_clone::CheapClone, prelude::web3::types::H160};
 use graph::{components::store::BlockStore as _, prelude::DeploymentHash};
@@ -249,6 +250,8 @@ fn check_ancestor(
 ) -> Result<(), Error> {
     let act = store
         .ancestor_block(child.block_ptr(), offset)?
+        .map(json::from_value::<EthereumBlock>)
+        .transpose()?
         .ok_or_else(|| anyhow!("block {} has no ancestor at offset {}", child.hash, offset))?;
     let act_hash = format!("{:x}", act.block.hash.unwrap());
     let exp_hash = &exp.hash;

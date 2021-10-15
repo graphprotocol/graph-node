@@ -23,7 +23,6 @@ use std::{
 
 use graph::prelude::{
     serde_json as json, transaction_receipt::LightTransactionReceipt, BlockNumber, BlockPtr, Error,
-    EthereumBlock,
 };
 
 use crate::{
@@ -75,9 +74,7 @@ mod data {
     use std::iter::FromIterator;
     use std::{convert::TryFrom, io::Write};
 
-    use graph::prelude::{
-        serde_json as json, web3::types::H256, BlockNumber, BlockPtr, Error, EthereumBlock,
-    };
+    use graph::prelude::{serde_json as json, web3::types::H256, BlockNumber, BlockPtr, Error};
 
     use crate::transaction_receipt::RawTransactionReceipt;
 
@@ -759,7 +756,7 @@ mod data {
             conn: &PgConnection,
             block_ptr: BlockPtr,
             offset: BlockNumber,
-        ) -> Result<Option<EthereumBlock>, Error> {
+        ) -> Result<Option<json::Value>, Error> {
             let data = match self {
                 Storage::Shared => {
                     const ANCESTOR_SQL: &str = "
@@ -829,12 +826,7 @@ mod data {
                 }
             };
 
-            let block = data
-                .map(|data| json::from_value::<EthereumBlock>(data))
-                .transpose()
-                .expect("Failed to deserialize block from database");
-
-            Ok(block)
+            Ok(data)
         }
 
         pub(super) fn delete_blocks_before(
@@ -1382,7 +1374,7 @@ impl ChainStoreTrait for ChainStore {
         &self,
         block_ptr: BlockPtr,
         offset: BlockNumber,
-    ) -> Result<Option<EthereumBlock>, Error> {
+    ) -> Result<Option<json::Value>, Error> {
         ensure!(
             block_ptr.number >= offset,
             "block offset {} for block `{}` points to before genesis block",

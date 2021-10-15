@@ -3,7 +3,7 @@ use graph::blockchain::BlockchainKind;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::endpoints::FirehoseNetworkEndpoints;
 use graph::prelude::{
-    EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, StopwatchMetrics,
+    EthereumBlock, EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, StopwatchMetrics,
 };
 use graph::slog::debug;
 use graph::{
@@ -516,7 +516,11 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         ptr: BlockPtr,
         offset: BlockNumber,
     ) -> Result<Option<BlockFinality>, Error> {
-        let block = self.chain_store.ancestor_block(ptr, offset)?;
+        let block: Option<EthereumBlock> = self
+            .chain_store
+            .ancestor_block(ptr, offset)?
+            .map(json::from_value)
+            .transpose()?;
         Ok(block.map(|block| {
             BlockFinality::NonFinal(EthereumBlockWithCalls {
                 ethereum_block: block,
