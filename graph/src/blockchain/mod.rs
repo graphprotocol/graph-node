@@ -62,6 +62,8 @@ pub trait Block: Send + Sync {
     fn parent_hash(&self) -> Option<BlockHash> {
         self.parent_ptr().map(|ptr| ptr.hash)
     }
+
+    fn data(&self) -> Result<serde_json::Value, serde_json::Error>;
 }
 
 #[async_trait]

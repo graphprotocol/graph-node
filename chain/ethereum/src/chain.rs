@@ -22,9 +22,9 @@ use graph::{
     firehose::bstream,
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
-        async_trait, error, lazy_static, o, web3::types::H256, BlockNumber, ChainStore,
-        EthereumBlockWithCalls, Future01CompatExt, Logger, LoggerFactory, MetricsRegistry, NodeId,
-        SubgraphStore,
+        async_trait, error, lazy_static, o, serde_json as json, web3::types::H256, BlockNumber,
+        ChainStore, EthereumBlockWithCalls, Future01CompatExt, Logger, LoggerFactory,
+        MetricsRegistry, NodeId, SubgraphStore,
     },
 };
 use prost::Message;
@@ -415,6 +415,13 @@ impl Block for BlockFinality {
         match self {
             BlockFinality::Final(block) => block.parent_ptr(),
             BlockFinality::NonFinal(block) => block.ethereum_block.block.parent_ptr(),
+        }
+    }
+
+    fn data(&self) -> Result<json::Value, json::Error> {
+        match self {
+            BlockFinality::Final(block) => json::to_value(block),
+            BlockFinality::NonFinal(block) => json::to_value(&block.ethereum_block),
         }
     }
 }
