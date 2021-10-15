@@ -251,21 +251,23 @@ impl AscIndexId for AscEthereumCall {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscEthereumCall_0_0_3<T>
+pub(crate) struct AscEthereumCall_0_0_3<T, B>
 where
     T: AscType,
+    B: AscType,
 {
     pub to: AscPtr<AscAddress>,
     pub from: AscPtr<AscAddress>,
-    pub block: AscPtr<AscEthereumBlock>,
+    pub block: AscPtr<B>,
     pub transaction: AscPtr<T>,
     pub inputs: AscPtr<AscLogParamArray>,
     pub outputs: AscPtr<AscLogParamArray>,
 }
 
-impl<T> AscIndexId for AscEthereumCall_0_0_3<T>
+impl<T, B> AscIndexId for AscEthereumCall_0_0_3<T, B>
 where
     T: AscType,
+    B: AscType,
 {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumCall;
 }
@@ -436,11 +438,16 @@ impl ToAscObj<AscEthereumCall> for EthereumCallData {
     }
 }
 
-impl ToAscObj<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_2>> for EthereumCallData {
+impl ToAscObj<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_2, AscEthereumBlock>>
+    for EthereumCallData
+{
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
-    ) -> Result<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_2>, DeterministicHostError> {
+    ) -> Result<
+        AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_2, AscEthereumBlock>,
+        DeterministicHostError,
+    > {
         Ok(AscEthereumCall_0_0_3 {
             to: asc_new(heap, &self.to)?,
             from: asc_new(heap, &self.from)?,
