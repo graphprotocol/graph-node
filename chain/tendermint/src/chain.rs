@@ -19,7 +19,7 @@ use graph::{
     firehose::bstream,
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
-        info, async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory, SubgraphStore,
+        async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory, SubgraphStore,
     },
 };
 use prost::Message;
@@ -259,9 +259,6 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         _adapter: &TriggersAdapter,
         filter: &TriggerFilter,
     ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
-        //println!("tender");
-
-        info!(_logger, "Tendermint s1");
 
         let step = bstream::ForkStep::from_i32(response.step).unwrap_or_else(|| {
             panic!(
@@ -269,13 +266,10 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 response.step
             )
         });
-        info!(_logger, "Tendermint s2");
         let any_block = response
             .block
             .as_ref()
             .expect("block payload information should always be present");
-
-        info!(_logger, "Tendermint s3"; "type" => response.block.as_ref().unwrap().type_url.clone() );
         // Right now, this is done in all cases but in reality, with how the BlockStreamEvent::Revert
         // is defined right now, only block hash and block number is necessary. However, this information
         // is not part of the actual bstream::BlockResponseV2 payload. As such, we need to decode the full
@@ -283,12 +277,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         //
         // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
         // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
-
-        info!(_logger, "Tendermint s4");
-
         let sp = codec::EventList::decode(any_block.value.as_ref())?;
-
-        info!(_logger, "Tendermint s5");
 
         match step {
             bstream::ForkStep::StepNew => Ok(BlockStreamEvent::ProcessBlock(
@@ -346,12 +335,12 @@ impl FirehoseMapper {
 
         let tendermint_block = TendermintBlock {
             // FIXME (TENDERMINT): this has to be hash of the block, and not the data inside
-            hash:  Hash::try_from(header.data_hash.clone()).ok().unwrap(),
+            hash:  Hash::from_bytes(&header.data_hash).unwrap(),
             number: header.height,
             parent_hash: header
                 .last_block_id
                 .as_ref()
-                .map(|v|  Hash::try_from(v.hash.clone()).ok().unwrap(),),
+                .map(|v|  Hash::from_bytes(&v.hash).unwrap(),),
             parent_number: Some(header.height-1),
             header: TendermintBlockHeader{
                 version: Some(TendermintConsensus{
@@ -364,22 +353,21 @@ impl FirehoseMapper {
                 time_nano:  block_time.nanos,
                 last_block_id: Some(
                     TendermintBlockId{
-                        hash:  Hash::try_from(bid.hash.clone()).ok().unwrap(),
+                        hash:  Hash::from_bytes(&bid.hash).unwrap(),
                         part_set_header: Some(TendermintPartSetHeader{
                             total: part_header.total.clone(),
-                            hash:  Hash::try_from(part_header.hash.clone()).ok().unwrap(),
+                            hash:  Hash::from_bytes(&part_header.hash).unwrap(),
                         }),
                     }),
-                last_commit_hash:  Hash::try_from(header.last_commit_hash.clone()).ok().unwrap(),
-                data_hash:  Hash::try_from(header.data_hash.clone()).ok().unwrap(),
-                validators_hash:  Hash::try_from(header.validators_hash.clone()).ok().unwrap(),
-                next_validators_hash:  Hash::try_from(header.next_validators_hash.clone()).ok().unwrap(),
-                consensus_hash:   Hash::try_from(header.consensus_hash.clone()).ok().unwrap(),
-                app_hash:   Hash::try_from(header.app_hash.clone()).ok().unwrap(),
-                last_results_hash:   Hash::try_from(header.last_results_hash.clone()).ok().unwrap(),
-                evidence_hash:   Hash::try_from(header.evidence_hash.clone()).ok().unwrap(),
-                proposer_address: Hash::None,
-        //        proposer_address:  Hash::try_from(header.proposer_address.clone()).ok().unwrap(),
+                last_commit_hash:  Hash::from_bytes(&header.last_commit_hash).unwrap(),
+                data_hash:  Hash::from_bytes(&header.data_hash).unwrap(),
+                validators_hash:  Hash::from_bytes(&header.validators_hash).unwrap(),
+                next_validators_hash:  Hash::from_bytes(&header.next_validators_hash).unwrap(),
+                consensus_hash:   Hash::from_bytes(&header.consensus_hash).unwrap(),
+                app_hash:   Hash::from_bytes(&header.app_hash).unwrap(),
+                last_results_hash:   Hash::from_bytes(&header.last_results_hash).unwrap(),
+                evidence_hash:   Hash::from_bytes(&header.evidence_hash).unwrap(),
+                proposer_address: Hash::from_bytes(&header.evidence_hash).unwrap(),
             },
             data: TendermintBlockTxData{
                 txs: block.data.as_ref().unwrap().txs.clone()
@@ -387,7 +375,7 @@ impl FirehoseMapper {
         };
         let block_ptr = BlockPtr::from(&tendermint_block);
 
-        Ok(BlockWithTriggers {
+        Ok(BlockWithTriggers{
             block: tendermint_block,
             trigger_data: vec![TendermintTrigger::Block(block_ptr, TendermintBlockTriggerType::Every)],
         })

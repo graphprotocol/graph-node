@@ -11,97 +11,80 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 
-
 #[derive(Copy, Clone, Hash, Eq, PartialEq, PartialOrd, Ord)]
-pub enum Hash {
-    Sha256([u8; 32]),
-    None,
-}
+pub struct Hash([u8; 32]);
 
 impl TryFrom<Vec<u8>> for Hash {
     type Error = Error;
 
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
-        if value.is_empty() {
-            return Ok(Hash::None);
-        }
         Hash::from_bytes(&value)
     }
 }
 
 impl From<Hash> for Vec<u8> {
     fn from(value: Hash) -> Self {
-        match value {
-            Hash::Sha256(s) => s.to_vec(),
-            Hash::None => vec![],
-        }
+       return Vec::from(value.to_owned())
     }
 }
 
 impl Hash {
     pub fn from_bytes(bytes: &[u8]) -> Result<Hash, Error> {
         if bytes.is_empty() {
-            return Ok(Hash::None);
+            return Ok(Hash([0u8; 32]));
         }
 
         if bytes.len() != 32 {
            return Err(anyhow!("Hash is not 32 byte long"))
-
         }
 
         let mut h = [0u8; 32];
         h.copy_from_slice(bytes);
-        return Ok(Hash::Sha256(h))
+        return Ok(Hash(h))
     }
 
-    pub fn from_hex( s: &str) -> Result<Hash, Error> {
+    pub fn from_hex(s: &str) -> Result<Hash, Error> {
         if s.is_empty() {
-            return Ok(Hash::None);
+            return Ok(Hash([0u8; 32]));
         }
 
         let mut h = [0u8; 32];
         Hex::upper_case()
             .decode_to_slice(s.as_bytes(), &mut h)
             .map_err( Error::new)?;
-        return Ok(Hash::Sha256(h))
-    }
-
-    pub fn as_bytes(&self) -> &[u8] {
-        match self {
-            Hash::Sha256(ref h) => h.as_ref(),
-            Hash::None => &[],
-        }
+        return Ok(Hash(h))
     }
 
     pub fn as_vec(&self) -> Vec<u8> {
-        match self {
-            Hash::Sha256(ref h) => h.to_vec(),
-            Hash::None => Vec::new(),
-        }
+       Vec::from(self.to_owned())
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
     }
 }
 
 impl Debug for Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Hash::Sha256(_) => write!(f, "Hash::Sha256({})", self),
-            Hash::None => write!(f, "Hash::None"),
-        }
+        write!(f, "Hash::Sha256({})", self)
     }
 }
 
 impl Default for Hash {
     fn default() -> Self {
-        Hash::None
+        Hash([0u8; 32])
     }
 }
 
 impl Display for Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let hex = match self {
-            Hash::Sha256(ref h) => Hex::upper_case().encode_to_string(h).unwrap(),
-            Hash::None => String::new(),
-        };
+
+        let hex = Hex::upper_case().encode_to_string(self.0).unwrap();
+        //Hash::Sha256(ref h) =>
+    //    let hex = match self {
+      //      Hash::Sha256(ref h) => Hex::upper_case().encode_to_string(h).unwrap(),
+//            Hash::None => String::new(),
+  //      };
 
         write!(f, "{}", hex)
     }
