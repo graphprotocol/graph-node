@@ -6,8 +6,9 @@ use std::{
 };
 
 use graph::{
+    blockchain::ChainIdentifier,
     components::store::BlockStore as BlockStoreTrait,
-    prelude::{error, warn, BlockNumber, BlockPtr, EthereumNetworkIdentifier, Logger},
+    prelude::{error, warn, BlockNumber, BlockPtr, Logger},
 };
 use graph::{
     constraint_violation,
@@ -35,15 +36,16 @@ pub enum ChainStatus {
 }
 
 pub mod primary {
-    use std::str::FromStr;
+    use std::convert::TryFrom;
 
     use diesel::{
         delete, insert_into, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
         RunQueryDsl,
     };
     use graph::{
+        blockchain::{BlockHash, ChainIdentifier},
         constraint_violation,
-        prelude::{web3::types::H256, EthereumNetworkIdentifier, StoreError},
+        prelude::StoreError,
     };
 
     use crate::chain_store::Storage;
@@ -74,17 +76,19 @@ pub mod primary {
     }
 
     impl Chain {
-        pub fn network_identifier(&self) -> Result<EthereumNetworkIdentifier, StoreError> {
-            Ok(EthereumNetworkIdentifier {
+        pub fn network_identifier(&self) -> Result<ChainIdentifier, StoreError> {
+            Ok(ChainIdentifier {
                 net_version: self.net_version.clone(),
-                genesis_block_hash: H256::from_str(&self.genesis_block).map_err(|e| {
-                    constraint_violation!(
-                        "the genesis block hash `{}` for chain `{}` is not a valid hash: {}",
-                        self.genesis_block,
-                        self.name,
-                        e
-                    )
-                })?,
+                genesis_block_hash: BlockHash::try_from(self.genesis_block.as_str()).map_err(
+                    |e| {
+                        constraint_violation!(
+                            "the genesis block hash `{}` for chain `{}` is not a valid hash: {}",
+                            self.genesis_block,
+                            self.name,
+                            e
+                        )
+                    },
+                )?,
             })
         }
     }
@@ -103,7 +107,7 @@ pub mod primary {
     pub fn add_chain(
         pool: &ConnectionPool,
         name: &str,
-        ident: &EthereumNetworkIdentifier,
+        ident: &ChainIdentifier,
         shard: &Shard,
     ) -> Result<Chain, StoreError> {
         let conn = pool.get()?;
@@ -117,7 +121,7 @@ pub mod primary {
                     chains::name.eq(name),
                     chains::namespace.eq("public"),
                     chains::net_version.eq(&ident.net_version),
-                    chains::genesis_block_hash.eq(format!("{:x}", &ident.genesis_block_hash)),
+                    chains::genesis_block_hash.eq(ident.genesis_block_hash.hash_hex()),
                     chains::shard.eq(shard.as_str()),
                 ))
                 .returning(chains::namespace)
@@ -130,7 +134,7 @@ pub mod primary {
             .values((
                 chains::name.eq(name),
                 chains::net_version.eq(&ident.net_version),
-                chains::genesis_block_hash.eq(format!("{:x}", &ident.genesis_block_hash)),
+                chains::genesis_block_hash.eq(ident.genesis_block_hash.hash_hex()),
                 chains::shard.eq(shard.as_str()),
             ))
             .returning(chains::namespace)
@@ -196,7 +200,7 @@ impl BlockStore {
     pub fn new(
         logger: Logger,
         // (network, ident, shard)
-        chains: Vec<(String, Vec<EthereumNetworkIdentifier>, Shard)>,
+        chains: Vec<(String, Vec<ChainIdentifier>, Shard)>,
         // shard -> pool
         pools: HashMap<Shard, ConnectionPool>,
         sender: Arc<NotificationSender>,
@@ -220,10 +224,9 @@ impl BlockStore {
 
         fn reduce_idents(
             chain_name: &str,
-            idents: Vec<EthereumNetworkIdentifier>,
-        ) -> Result<Option<EthereumNetworkIdentifier>, StoreError> {
-            let mut idents: HashSet<EthereumNetworkIdentifier> =
-                HashSet::from_iter(idents.into_iter());
+            idents: Vec<ChainIdentifier>,
+        ) -> Result<Option<ChainIdentifier>, StoreError> {
+            let mut idents: HashSet<ChainIdentifier> = HashSet::from_iter(idents.into_iter());
             match idents.len() {
                 0 => Ok(None),
                 1 => Ok(idents.drain().next()),
@@ -242,7 +245,7 @@ impl BlockStore {
             logger: &Logger,
             chain: &primary::Chain,
             shard: &Shard,
-            ident: &Option<EthereumNetworkIdentifier>,
+            ident: &Option<ChainIdentifier>,
         ) -> bool {
             if &chain.shard != shard {
                 error!(
@@ -265,9 +268,9 @@ impl BlockStore {
                     );
                         return false;
                     }
-                    if &chain.genesis_block != &format!("{:x}", ident.genesis_block_hash) {
+                    if &chain.genesis_block != &ident.genesis_block_hash.hash_hex() {
                         error!(logger,
-                        "the genesis block hash for chain {} has changed from {} to {:x} since the last time we ran",
+                        "the genesis block hash for chain {} has changed from {} to {} since the last time we ran",
                         chain.name,
                         chain.genesis_block,
                         ident.genesis_block_hash

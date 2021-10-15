@@ -2,9 +2,10 @@ use std::iter::FromIterator;
 use std::{collections::HashMap, sync::Arc};
 
 use futures::future::join_all;
+use graph::blockchain::ChainIdentifier;
 use graph::prelude::{o, MetricsRegistry, NodeId};
 use graph::{
-    prelude::{info, CheapClone, EthereumNetworkIdentifier, Logger},
+    prelude::{info, CheapClone, Logger},
     util::security::SafeDisplay,
 };
 use graph_store_postgres::connection_pool::{ConnectionPool, ForeignServer, PoolName};
@@ -144,7 +145,7 @@ impl StoreBuilder {
         pools: HashMap<ShardName, ConnectionPool>,
         subgraph_store: Arc<SubgraphStore>,
         chains: HashMap<String, ShardName>,
-        networks: Vec<(String, Vec<EthereumNetworkIdentifier>)>,
+        networks: Vec<(String, Vec<ChainIdentifier>)>,
     ) -> Arc<DieselStore> {
         let networks = networks
             .into_iter()
@@ -254,10 +255,7 @@ impl StoreBuilder {
 
     /// Return a store that combines both a `Store` for subgraph data
     /// and a `BlockStore` for all chain related data
-    pub fn network_store(
-        self,
-        networks: Vec<(String, Vec<EthereumNetworkIdentifier>)>,
-    ) -> Arc<DieselStore> {
+    pub fn network_store(self, networks: Vec<(String, Vec<ChainIdentifier>)>) -> Arc<DieselStore> {
         Self::make_store(
             &self.logger,
             self.pools,

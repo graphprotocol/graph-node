@@ -2,7 +2,6 @@ use ethereum::{EthereumNetworks, NodeCapabilities, ProviderEthRpcMetrics};
 use futures::future::join_all;
 use git_testament::{git_testament, render_testament};
 use graph::firehose::endpoints::{FirehoseEndpoint, FirehoseNetworkEndpoints, FirehoseNetworks};
-use graph::prelude::web3::types::H256;
 use graph::{ipfs_client::IpfsClient, prometheus::Registry};
 use lazy_static::lazy_static;
 use std::collections::BTreeMap;
@@ -16,7 +15,9 @@ use structopt::StructOpt;
 use tokio::sync::mpsc;
 
 use graph::blockchain::block_ingestor::BlockIngestor;
-use graph::blockchain::{Blockchain as _, BlockchainKind, BlockchainMap};
+use graph::blockchain::{
+    BlockHash, Blockchain as _, BlockchainKind, BlockchainMap, ChainIdentifier,
+};
 use graph::components::store::BlockStore;
 use graph::data::graphql::effort::LoadManager;
 use graph::log::logger;
@@ -604,10 +605,7 @@ async fn create_firehose_networks(
 async fn connect_networks(
     logger: &Logger,
     mut eth_networks: EthereumNetworks,
-) -> (
-    EthereumNetworks,
-    Vec<(String, Vec<EthereumNetworkIdentifier>)>,
-) {
+) -> (EthereumNetworks, Vec<(String, Vec<ChainIdentifier>)>) {
     // The status of a provider that we learned from connecting to it
     #[derive(PartialEq)]
     enum Status {
@@ -617,7 +615,7 @@ async fn connect_networks(
         },
         Version {
             network: String,
-            ident: EthereumNetworkIdentifier,
+            ident: ChainIdentifier,
         },
     }
 
@@ -665,7 +663,7 @@ async fn connect_networks(
     .await;
 
     // Group identifiers by network name
-    let idents: HashMap<String, Vec<EthereumNetworkIdentifier>> =
+    let idents: HashMap<String, Vec<ChainIdentifier>> =
         statuses
             .into_iter()
             .fold(HashMap::new(), |mut networks, status| {
@@ -683,11 +681,11 @@ async fn connect_networks(
     (eth_networks, idents)
 }
 
-// FIXME (NEAR): This is quite wrong, will need a refactor to remove the need to have a `EthereumNetworkIdentifier`
+// FIXME (NEAR): This is quite wrong, will need a refactor to remove the need to have a `ChainIdentifier`
 //               to create an actual `NetworkStore` (see `store_builder.network_store`).
 fn compute_near_network_identifiers(
     firehose_networks: Option<&FirehoseNetworks>,
-) -> Vec<(String, Vec<EthereumNetworkIdentifier>)> {
+) -> Vec<(String, Vec<ChainIdentifier>)> {
     match firehose_networks {
         None => vec![],
         Some(v) => v
@@ -696,14 +694,14 @@ fn compute_near_network_identifiers(
             .map(|(name, endpoint)| {
                 (
                     name,
-                    EthereumNetworkIdentifier {
-                        genesis_block_hash: H256::from([0x00; 32]),
+                    ChainIdentifier {
+                        genesis_block_hash: BlockHash::from(vec![]),
                         net_version: endpoint.provider.clone(),
                     },
                 )
             })
             .fold(
-                HashMap::<String, Vec<EthereumNetworkIdentifier>>::new(),
+                HashMap::<String, Vec<ChainIdentifier>>::new(),
                 |mut networks, (name, endpoint)| {
                     networks.entry(name.to_string()).or_default().push(endpoint);
                     networks

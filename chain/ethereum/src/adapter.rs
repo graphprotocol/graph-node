@@ -1,6 +1,7 @@
 use anyhow::Error;
 use ethabi::{Error as ABIError, Function, ParamType, Token};
 use futures::Future;
+use graph::blockchain::ChainIdentifier;
 use mockall::automock;
 use mockall::predicate::*;
 use std::cmp;
@@ -11,12 +12,12 @@ use thiserror::Error;
 use tiny_keccak::keccak256;
 use web3::types::{Address, Block, Log, H256};
 
+use graph::prelude::*;
 use graph::{
     blockchain as bc,
     components::metrics::{CounterVec, GaugeVec, HistogramVec},
     petgraph::{self, graphmap::GraphMap},
 };
-use graph::{components::ethereum::EthereumNetworkIdentifier, prelude::*};
 
 use crate::capabilities::NodeCapabilities;
 use crate::data_source::BlockHandlerFilter;
@@ -554,7 +555,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
 
     /// Ask the Ethereum node for some identifying information about the Ethereum network it is
     /// connected to.
-    async fn net_identifiers(&self) -> Result<EthereumNetworkIdentifier, Error>;
+    async fn net_identifiers(&self) -> Result<ChainIdentifier, Error>;
 
     /// Get the latest block, including full transactions.
     fn latest_block(

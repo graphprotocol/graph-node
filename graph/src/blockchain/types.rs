@@ -16,6 +16,18 @@ impl BlockHash {
     pub fn as_slice(&self) -> &[u8] {
         &self.0
     }
+
+    /// Encodes the block hash into a hexadecimal string **without** a "0x"
+    /// prefix. Hashes are stored in the database in this format when the
+    /// schema uses `text` columns, which is a legacy and such columns
+    /// should be changed to use `bytea`
+    pub fn hash_hex(&self) -> String {
+        let mut s = String::with_capacity(self.0.len() * 2);
+        for b in self.0.iter() {
+            write!(s, "{:02x}", b).unwrap();
+        }
+        s
+    }
 }
 
 impl fmt::Display for BlockHash {
@@ -44,6 +56,18 @@ impl From<Vec<u8>> for BlockHash {
     }
 }
 
+impl TryFrom<&str> for BlockHash {
+    type Error = anyhow::Error;
+
+    fn try_from(hash: &str) -> Result<Self, Self::Error> {
+        let hash = hash.trim_start_matches("0x");
+        let hash = hex::decode(hash)
+            .map_err(|e| anyhow!("Cannot parse H256 value from string `{}`: {}", hash, e))?;
+
+        Ok(BlockHash(hash.as_slice().into()))
+    }
+}
+
 /// A block hash and block number from a specific Ethereum block.
 ///
 /// Block numbers are signed 32 bit integers
@@ -63,14 +87,14 @@ impl StableHash for BlockPtr {
 }
 
 impl BlockPtr {
+    pub fn new(hash: BlockHash, number: BlockNumber) -> Self {
+        Self { hash, number }
+    }
+
     /// Encodes the block hash into a hexadecimal string **without** a "0x" prefix.
     /// Hashes are stored in the database in this format.
     pub fn hash_hex(&self) -> String {
-        let mut s = String::with_capacity(self.hash.0.len() * 2);
-        for b in self.hash.0.iter() {
-            write!(s, "{:02x}", b).unwrap();
-        }
-        s
+        self.hash.hash_hex()
     }
 
     /// Block number to be passed into the store. Panics if it does not fit in an i32.
@@ -184,4 +208,11 @@ impl From<BlockPtr> for BlockNumber {
     fn from(ptr: BlockPtr) -> Self {
         ptr.number
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+/// A collection of attributes that (kind of) uniquely identify a blockchain.
+pub struct ChainIdentifier {
+    pub net_version: String,
+    pub genesis_block_hash: BlockHash,
 }

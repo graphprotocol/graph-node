@@ -43,7 +43,7 @@ use std::{
 use web3::types::H256;
 
 pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
-pub use types::{BlockHash, BlockPtr};
+pub use types::{BlockHash, BlockPtr, ChainIdentifier};
 
 use self::block_stream::{BlockStream, BlockStreamMetrics};
 

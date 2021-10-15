@@ -2,6 +2,8 @@ use ethabi::ParamType;
 use ethabi::Token;
 use futures::future;
 use futures::prelude::*;
+use graph::blockchain::BlockHash;
+use graph::blockchain::ChainIdentifier;
 use graph::components::transaction_receipt::LightTransactionReceipt;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::prelude::StopwatchMetrics;
@@ -855,7 +857,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         &self.provider
     }
 
-    async fn net_identifiers(&self) -> Result<EthereumNetworkIdentifier, Error> {
+    async fn net_identifiers(&self) -> Result<ChainIdentifier, Error> {
         let logger = self.logger.clone();
 
         let web3 = self.web3.clone();
@@ -877,7 +879,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     .and_then(|gen_block_opt| {
                         future::result(
                             gen_block_opt
-                                .and_then(|gen_block| gen_block.hash)
+                                .and_then(|gen_block| gen_block.hash.map(BlockHash::from))
                                 .ok_or_else(|| {
                                     anyhow!("Ethereum node could not find genesis block")
                                 }),
@@ -892,12 +894,10 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .join(gen_block_hash_future)
             .compat()
             .await
-            .map(
-                |(net_version, genesis_block_hash)| EthereumNetworkIdentifier {
-                    net_version,
-                    genesis_block_hash,
-                },
-            )
+            .map(|(net_version, genesis_block_hash)| ChainIdentifier {
+                net_version,
+                genesis_block_hash,
+            })
             .map_err(|e| {
                 e.into_inner().unwrap_or_else(|| {
                     anyhow!("Ethereum node took too long to read network identifiers")

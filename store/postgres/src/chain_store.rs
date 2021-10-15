@@ -3,6 +3,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
+use graph::blockchain::ChainIdentifier;
 use graph::prelude::web3::types::H256;
 use graph::{
     constraint_violation,
@@ -22,7 +23,7 @@ use std::{
 
 use graph::prelude::{
     transaction_receipt::LightTransactionReceipt, BlockNumber, BlockPtr, Error, EthereumBlock,
-    EthereumNetworkIdentifier, LightEthereumBlock,
+    LightEthereumBlock,
 };
 
 use crate::{
@@ -1194,7 +1195,7 @@ impl ChainStore {
     pub(crate) fn new(
         chain: String,
         storage: data::Storage,
-        net_identifier: &EthereumNetworkIdentifier,
+        net_identifier: &ChainIdentifier,
         status: ChainStatus,
         chain_head_update_sender: ChainHeadUpdateSender,
         pool: ConnectionPool,
@@ -1203,7 +1204,7 @@ impl ChainStore {
             pool,
             chain,
             storage,
-            genesis_block_ptr: (net_identifier.genesis_block_hash, 0 as u64).into(),
+            genesis_block_ptr: BlockPtr::new(net_identifier.genesis_block_hash.clone(), 0),
             status,
             chain_head_update_sender,
         };
@@ -1219,7 +1220,7 @@ impl ChainStore {
         self.pool.get().map_err(Error::from)
     }
 
-    pub(crate) fn create(&self, ident: &EthereumNetworkIdentifier) -> Result<(), Error> {
+    pub(crate) fn create(&self, ident: &ChainIdentifier) -> Result<(), Error> {
         use public::ethereum_networks::dsl::*;
 
         let conn = self.get_conn()?;
@@ -1231,7 +1232,7 @@ impl ChainStore {
                     head_block_hash.eq::<Option<String>>(None),
                     head_block_number.eq::<Option<i64>>(None),
                     net_version.eq(&ident.net_version),
-                    genesis_block_hash.eq(format!("{:x}", ident.genesis_block_hash)),
+                    genesis_block_hash.eq(ident.genesis_block_hash.hash_hex()),
                 ))
                 .on_conflict(name)
                 .do_nothing()

@@ -7,9 +7,9 @@ use graph::log;
 use graph::prelude::{QueryStoreManager as _, SubgraphStore as _, *};
 use graph::semver::Version;
 use graph::{
-    components::store::DeploymentLocator, components::store::EntityType,
-    components::store::StatusStore, components::store::StoredDynamicDataSource,
-    data::subgraph::status, prelude::NodeId,
+    blockchain::ChainIdentifier, components::store::DeploymentLocator,
+    components::store::EntityType, components::store::StatusStore,
+    components::store::StoredDynamicDataSource, data::subgraph::status, prelude::NodeId,
 };
 use graph_graphql::prelude::{
     execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
@@ -492,9 +492,9 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
             let subscription_manager = builder.subscription_manager();
             let primary_pool = builder.primary_pool();
 
-            let ident = EthereumNetworkIdentifier {
+            let ident = ChainIdentifier {
                 net_version: NETWORK_VERSION.to_owned(),
-                genesis_block_hash: GENESIS_PTR.hash_as_h256(),
+                genesis_block_hash: GENESIS_PTR.hash.clone(),
             };
 
             (
