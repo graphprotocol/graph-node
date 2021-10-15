@@ -96,16 +96,6 @@ lazy_static! {
             .parse::<usize>()
             .expect("invalid GRAPH_ETHEREUM_REQUEST_RETRIES env var");
 
-    /// Gas limit for `eth_call`. The value of 50_000_000 is a protocol-wide parameter so this
-    /// should be changed only for debugging purposes and never on an indexer in the network. This
-    /// value was chosen because it is the Geth default
-    /// https://github.com/ethereum/go-ethereum/blob/e4b687cf462870538743b3218906940ae590e7fd/eth/ethconfig/config.go#L91.
-    /// It is not safe to set something higher because Geth will silently override the gas limit
-    /// with the default. This means that we do not support indexing against a Geth node with
-    /// `RPCGasCap` set below 50 million.
-    // See also f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
-    static ref ETH_CALL_GAS: u32 = graph::env::unsafe_env_var("GRAPH_ETH_CALL_GAS", 50_000_000);
-
     /// Additional deterministic errors that have not yet been hardcoded. Separated by `;`.
     static ref GETH_ETH_CALL_ERRORS_ENV: Vec<String> = {
         std::env::var("GRAPH_GETH_ETH_CALL_ERRORS")
@@ -113,6 +103,16 @@ lazy_static! {
         .unwrap_or(Vec::new())
     };
 }
+
+/// Gas limit for `eth_call`. The value of 50_000_000 is a protocol-wide parameter so this
+/// should be changed only for debugging purposes and never on an indexer in the network. This
+/// value was chosen because it is the Geth default
+/// https://github.com/ethereum/go-ethereum/blob/e4b687cf462870538743b3218906940ae590e7fd/eth/ethconfig/config.go#L91.
+/// It is not safe to set something higher because Geth will silently override the gas limit
+/// with the default. This means that we do not support indexing against a Geth node with
+/// `RPCGasCap` set below 50 million.
+// See also f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
+const ETH_CALL_GAS: u32 = 50_000_000;
 
 // Deterministic Geth eth_call execution errors. We might need to expand this as
 // subgraphs come across other errors. See
@@ -490,7 +490,7 @@ impl EthereumAdapter {
                 let req = CallRequest {
                     from: None,
                     to: contract_address,
-                    gas: Some(web3::types::U256::from(*ETH_CALL_GAS)),
+                    gas: Some(web3::types::U256::from(ETH_CALL_GAS)),
                     gas_price: None,
                     value: None,
                     data: Some(call_data.clone()),
