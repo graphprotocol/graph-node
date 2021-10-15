@@ -1305,7 +1305,7 @@ pub trait ChainStore: Send + Sync + 'static {
     fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 
     /// Returns the blocks present in the store.
-    fn blocks(&self, hashes: &[H256]) -> Result<Vec<Arc<LightEthereumBlock>>, Error>;
+    fn blocks(&self, hashes: &[H256]) -> Result<Vec<serde_json::Value>, Error>;
 
     /// Get the `offset`th ancestor of `block_hash`, where offset=0 means the block matching
     /// `block_hash` and offset=1 means its parent. Returns None if unable to complete due to

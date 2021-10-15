@@ -13,7 +13,7 @@ use graph::{
         anyhow::{self, anyhow, bail},
         async_trait, debug, error, ethabi,
         futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
-        hex, info, retry, stream, tiny_keccak, trace, warn,
+        hex, info, retry, serde_json as json, stream, tiny_keccak, trace, warn,
         web3::{
             self,
             types::{
@@ -1362,10 +1362,14 @@ impl EthereumAdapterTrait for EthereumAdapter {
     ) -> Box<dyn Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send> {
         let block_hashes: Vec<_> = block_hashes.iter().cloned().collect();
         // Search for the block in the store first then use json-rpc as a backup.
-        let mut blocks = chain_store
+        let mut blocks: Vec<Arc<LightEthereumBlock>> = chain_store
             .blocks(&block_hashes)
             .map_err(|e| error!(&logger, "Error accessing block cache {}", e))
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|value| json::from_value(value).ok())
+            .map(Arc::new)
+            .collect();
 
         let missing_blocks = Vec::from_iter(
             block_hashes

@@ -22,8 +22,8 @@ use std::{
 };
 
 use graph::prelude::{
-    transaction_receipt::LightTransactionReceipt, BlockNumber, BlockPtr, Error, EthereumBlock,
-    LightEthereumBlock,
+    serde_json as json, transaction_receipt::LightTransactionReceipt, BlockNumber, BlockPtr, Error,
+    EthereumBlock,
 };
 
 use crate::{
@@ -73,12 +73,10 @@ mod data {
 
     use std::fmt;
     use std::iter::FromIterator;
-    use std::sync::Arc;
     use std::{convert::TryFrom, io::Write};
 
     use graph::prelude::{
-        serde_json, web3::types::H256, BlockNumber, BlockPtr, Error, EthereumBlock,
-        LightEthereumBlock,
+        serde_json as json, web3::types::H256, BlockNumber, BlockPtr, Error, EthereumBlock,
     };
 
     use crate::transaction_receipt::RawTransactionReceipt;
@@ -479,10 +477,10 @@ mod data {
             conn: &PgConnection,
             chain: &str,
             hashes: &[H256],
-        ) -> Result<Vec<Arc<LightEthereumBlock>>, Error> {
+        ) -> Result<Vec<json::Value>, Error> {
             use diesel::dsl::any;
 
-            let hashes = match self {
+            match self {
                 Storage::Shared => {
                     use public::ethereum_blocks as b;
 
@@ -492,7 +490,7 @@ mod data {
                         .filter(b::hash.eq(any(Vec::from_iter(
                             hashes.into_iter().map(|h| format!("{:x}", h)),
                         ))))
-                        .load::<serde_json::Value>(conn)?
+                        .load::<json::Value>(conn)
                 }
                 Storage::Private(Schema { blocks, .. }) => blocks
                     .table()
@@ -502,12 +500,9 @@ mod data {
                             .hash()
                             .eq(any(Vec::from_iter(hashes.iter().map(|h| h.as_bytes())))),
                     )
-                    .load::<serde_json::Value>(conn)?,
-            };
-            hashes
-                .into_iter()
-                .map(|block| serde_json::from_value(block).map_err(Into::into))
-                .collect()
+                    .load::<json::Value>(conn),
+            }
+            .map_err(Into::into)
         }
 
         pub(super) fn block_hashes_by_block_number(
@@ -794,7 +789,7 @@ mod data {
                             b::table
                                 .filter(b::hash.eq(hash.hash))
                                 .select(b::data)
-                                .first::<serde_json::Value>(conn)?,
+                                .first::<json::Value>(conn)?,
                         ),
                     }
                 }
@@ -828,14 +823,14 @@ mod data {
                                 .table()
                                 .filter(blocks.hash().eq(hash.hash))
                                 .select(blocks.data())
-                                .first::<serde_json::Value>(conn)?,
+                                .first::<json::Value>(conn)?,
                         ),
                     }
                 }
             };
 
             let block = data
-                .map(|data| serde_json::from_value::<EthereumBlock>(data))
+                .map(|data| json::from_value::<EthereumBlock>(data))
                 .transpose()
                 .expect("Failed to deserialize block from database");
 
@@ -1378,7 +1373,7 @@ impl ChainStoreTrait for ChainStore {
             .map_err(Error::from)
     }
 
-    fn blocks(&self, hashes: &[H256]) -> Result<Vec<Arc<LightEthereumBlock>>, Error> {
+    fn blocks(&self, hashes: &[H256]) -> Result<Vec<json::Value>, Error> {
         let conn = self.get_conn()?;
         self.storage.blocks(&conn, &self.chain, hashes)
     }
