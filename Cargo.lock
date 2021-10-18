@@ -1591,6 +1591,7 @@ dependencies = [
 name = "graph-chain-near"
 version = "0.24.1"
 dependencies = [
+ "base64 0.13.0",
  "diesel",
  "graph",
  "graph-core",

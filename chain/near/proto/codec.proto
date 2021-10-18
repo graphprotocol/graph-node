@@ -184,6 +184,7 @@ message ChunkHeader {
 
 message IndexerShard {
   uint64 shard_id = 1;
+  // Chunk is a real nullable field
   IndexerChunk chunk = 2;
   repeated IndexerExecutionOutcomeWithReceipt receipt_execution_outcomes = 3;
 
@@ -476,6 +477,7 @@ message AccessKeyPermission {
 }
 
 message FunctionCallPermission {
+  // Allowance is a real nullable field
   BigInt allowance = 1;
   string receiver_id = 2;
   repeated  string method_names = 3;
