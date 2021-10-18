@@ -97,3 +97,10 @@ impl TriggerData for NearTrigger {
         }
     }
 }
+
+pub struct ReceiptWithOutcome {
+    // REVIEW: Do we want to actually also have those two below behind an `Arc` wrapper?
+    pub outcome: codec::ExecutionOutcomeWithIdView,
+    pub receipt: codec::Receipt,
+    pub block: Arc<codec::BlockWrapper>,
+}

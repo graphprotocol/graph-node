@@ -330,6 +330,7 @@ pub struct ChunkHeader {
 pub struct IndexerShard {
     #[prost(uint64, tag = "1")]
     pub shard_id: u64,
+    /// Chunk is a real nullable field
     #[prost(message, optional, tag = "2")]
     pub chunk: ::core::option::Option<IndexerChunk>,
     #[prost(message, repeated, tag = "3")]
@@ -760,6 +761,7 @@ pub mod access_key_permission {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct FunctionCallPermission {
+    /// Allowance is a real nullable field
     #[prost(message, optional, tag = "1")]
     pub allowance: ::core::option::Option<BigInt>,
     #[prost(string, tag = "2")]
