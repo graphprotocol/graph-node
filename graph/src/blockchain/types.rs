@@ -1,8 +1,7 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use stable_hash::prelude::*;
 use stable_hash::utils::AsBytes;
 use std::convert::TryFrom;
-use std::fmt::Write;
 use std::{fmt, str::FromStr};
 use web3::types::{Block, H256};
 
@@ -22,11 +21,7 @@ impl BlockHash {
     /// schema uses `text` columns, which is a legacy and such columns
     /// should be changed to use `bytea`
     pub fn hash_hex(&self) -> String {
-        let mut s = String::with_capacity(self.0.len() * 2);
-        for b in self.0.iter() {
-            write!(s, "{:02x}", b).unwrap();
-        }
-        s
+        hex::encode(&self.0)
     }
 }
 
@@ -62,7 +57,7 @@ impl TryFrom<&str> for BlockHash {
     fn try_from(hash: &str) -> Result<Self, Self::Error> {
         let hash = hash.trim_start_matches("0x");
         let hash = hex::decode(hash)
-            .map_err(|e| anyhow!("Cannot parse H256 value from string `{}`: {}", hash, e))?;
+            .with_context(|| format!("Cannot parse H256 value from string `{}`", hash))?;
 
         Ok(BlockHash(hash.as_slice().into()))
     }
