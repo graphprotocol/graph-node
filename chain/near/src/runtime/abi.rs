@@ -55,7 +55,7 @@ impl ToAscObj<AscBlockHeader> for codec::BlockHeader {
             last_ds_final_block: asc_new(heap, self.last_ds_final_block.as_ref().unwrap())?,
             next_bp_hash: asc_new(heap, self.next_bp_hash.as_ref().unwrap())?,
             block_merkle_root: asc_new(heap, self.block_merkle_root.as_ref().unwrap())?,
-            epoch_sync_data_hash: asc_new(heap, &Bytes(&self.epoch_sync_data_hash))?,
+            epoch_sync_data_hash: asc_new(heap, self.epoch_sync_data_hash.as_slice())?,
             approvals: asc_new(heap, &self.approvals)?,
             // FIXME: Right now near-dm-indexer does not populate this field properly ...
             signature: AscPtr::null(),
@@ -70,12 +70,12 @@ impl ToAscObj<AscChunkHeader> for codec::ChunkHeader {
         heap: &mut H,
     ) -> Result<AscChunkHeader, DeterministicHostError> {
         Ok(AscChunkHeader {
-            chunk_hash: asc_new(heap, &Bytes(&self.chunk_hash))?,
+            chunk_hash: asc_new(heap, self.chunk_hash.as_slice())?,
             // FIXME: Right now near-dm-indexer does not populate this field properly ...
             signature: AscPtr::null(),
-            prev_block_hash: asc_new(heap, &Bytes(&self.prev_block_hash))?,
-            prev_state_root: asc_new(heap, &Bytes(&self.prev_state_root))?,
-            encoded_merkle_root: asc_new(heap, &Bytes(&self.encoded_merkle_root))?,
+            prev_block_hash: asc_new(heap, self.prev_block_hash.as_slice())?,
+            prev_state_root: asc_new(heap, self.prev_state_root.as_slice())?,
+            encoded_merkle_root: asc_new(heap, self.encoded_merkle_root.as_slice())?,
             encoded_length: self.encoded_length,
             height_created: self.height_created,
             height_included: self.height_included,
@@ -83,8 +83,8 @@ impl ToAscObj<AscChunkHeader> for codec::ChunkHeader {
             gas_used: self.gas_used,
             gas_limit: self.gas_limit,
             balance_burnt: asc_new(heap, self.balance_burnt.as_ref().unwrap())?,
-            outgoing_receipts_root: asc_new(heap, &Bytes(&self.outgoing_receipts_root))?,
-            tx_root: asc_new(heap, &Bytes(&self.tx_root))?,
+            outgoing_receipts_root: asc_new(heap, self.outgoing_receipts_root.as_slice())?,
+            tx_root: asc_new(heap, self.tx_root.as_slice())?,
             validator_proposals: asc_new(heap, &self.validator_proposals)?,
         })
     }
@@ -129,8 +129,7 @@ impl ToAscObj<AscActionReceipt> for codec::Receipt {
         };
 
         Ok(AscActionReceipt {
-            // FIXME: Where does this `id` comes from exactly?
-            id: AscPtr::null(),
+            id: asc_new(heap, &self.receipt_id.as_ref().unwrap())?,
             predecessor_id: asc_new(heap, &self.predecessor_id)?,
             receiver_id: asc_new(heap, &self.receiver_id)?,
             signer_id: asc_new(heap, &action.signer_id)?,
@@ -223,7 +222,7 @@ impl ToAscObj<AscDeployContractAction> for codec::DeployContractAction {
         };
 
         Ok(AscDeployContractAction {
-            code: asc_new(heap, &Bytes(&code_hash))?,
+            code: asc_new(heap, code_hash.as_slice())?,
         })
     }
 }
@@ -243,7 +242,7 @@ impl ToAscObj<AscFunctionCallAction> for codec::FunctionCallAction {
 
         Ok(AscFunctionCallAction {
             method_name: asc_new(heap, &self.method_name)?,
-            args: asc_new(heap, &Bytes(&args))?,
+            args: asc_new(heap, args.as_slice())?,
             gas: self.gas,
             deposit: asc_new(heap, self.deposit.as_ref().unwrap())?,
         })
@@ -427,7 +426,7 @@ impl ToAscObj<AscSuccessStatusEnum> for codec::execution_outcome::Status {
 
                 (
                     AscSuccessStatusKind::Value,
-                    asc_new(heap, &Bytes(&value))?.to_payload(),
+                    asc_new(heap, value.as_slice())?.to_payload(),
                 )
             }
             codec::execution_outcome::Status::SuccessReceiptId(receipt_id) => (
@@ -502,7 +501,7 @@ impl ToAscObj<AscSignature> for codec::Signature {
                     )))
                 }
             },
-            bytes: asc_new(heap, &Bytes(&self.bytes))?,
+            bytes: asc_new(heap, self.bytes.as_slice())?,
         })
     }
 }
@@ -538,7 +537,7 @@ impl ToAscObj<AscPublicKey> for codec::PublicKey {
                     )))
                 }
             },
-            bytes: asc_new(heap, &Bytes(&self.bytes))?,
+            bytes: asc_new(heap, self.bytes.as_slice())?,
         })
     }
 }
@@ -618,18 +617,5 @@ impl ToAscObj<Uint8Array> for codec::BigInt {
         // FIXME (NEAR): Hopefully the bytes here fits the BigInt format expected in `graph-node`,
         //               will need to validate that in the subgraph directly.
         self.bytes.to_asc_obj(heap)
-    }
-}
-
-// FIXME: Would like to get rid of this type wrapper. I do not understand why a `Vec<u8>` cannot be turned
-//        into the proper object.
-struct Bytes<'a>(&'a Vec<u8>);
-
-impl ToAscObj<Uint8Array> for Bytes<'_> {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscCryptoHash, DeterministicHostError> {
-        self.0.to_asc_obj(heap)
     }
 }
