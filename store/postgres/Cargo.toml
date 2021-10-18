@@ -34,11 +34,11 @@ anyhow = "1.0.44"
 git-testament = "0.2.0"
 itertools = "0.10.1"
 pin-utils = "0.1"
+hex = "0.4.3"
 
 [dev-dependencies]
 clap = "2.33.3"
 graphql-parser = "0.3"
-hex = "0.4.3"
 test-store = { path = "../test-store" }
 hex-literal = "0.3"
 graph-mock = { path = "../../mock" }

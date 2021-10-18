@@ -1185,8 +1185,18 @@ impl WritableStoreTrait for WritableStore {
         })
     }
 
-    fn unfail(&self) -> Result<(), StoreError> {
-        self.retry("unfail", || self.writable.unfail(self.site.clone()))
+    fn unfail(
+        &self,
+        current_ptr: Option<BlockPtr>,
+        parent_ptr: Option<BlockPtr>,
+    ) -> Result<(), StoreError> {
+        self.retry("unfail", || {
+            let current_ptr = current_ptr.as_ref();
+            let parent_ptr = parent_ptr.as_ref();
+
+            self.writable
+                .unfail(self.site.clone(), current_ptr, parent_ptr)
+        })
     }
 
     async fn fail_subgraph(&self, error: SubgraphError) -> Result<(), StoreError> {

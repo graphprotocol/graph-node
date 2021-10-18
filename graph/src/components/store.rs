@@ -1016,7 +1016,11 @@ pub trait WritableStore: Send + Sync + 'static {
     fn revert_block_operations(&self, block_ptr_to: BlockPtr) -> Result<(), StoreError>;
 
     /// Remove the fatal error from a subgraph and check if it is healthy or unhealthy.
-    fn unfail(&self) -> Result<(), StoreError>;
+    fn unfail(
+        &self,
+        current_ptr: Option<BlockPtr>,
+        parent_ptr: Option<BlockPtr>,
+    ) -> Result<(), StoreError>;
 
     /// Set subgraph status to failed with the given error as the cause.
     async fn fail_subgraph(&self, error: SubgraphError) -> Result<(), StoreError>;
@@ -1196,7 +1200,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn unfail(&self) -> Result<(), StoreError> {
+    fn unfail(&self, _: Option<BlockPtr>, _: Option<BlockPtr>) -> Result<(), StoreError> {
         unimplemented!()
     }
 

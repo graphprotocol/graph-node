@@ -231,12 +231,12 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
 
     /// Panics if `block` is genesis.
     /// But that's ok since this is only called when reverting `block`.
-    async fn parent_ptr(&self, _block: &BlockPtr) -> Result<BlockPtr, Error> {
+    async fn parent_ptr(&self, _block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
         // FIXME (NEAR):  Might not be necessary for NEAR support for now
-        Ok(BlockPtr {
+        Ok(Some(BlockPtr {
             hash: BlockHash::from(vec![0xff; 32]),
             number: 0,
-        })
+        }))
     }
 }
 

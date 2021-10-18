@@ -491,16 +491,10 @@ pub fn fail(
     id: &DeploymentHash,
     error: &SubgraphError,
 ) -> Result<(), StoreError> {
-    use subgraph_deployment as d;
-
     let error_id = insert_subgraph_error(conn, error)?;
-    update(d::table.filter(d::deployment.eq(id.as_str())))
-        .set((
-            d::failed.eq(true),
-            d::health.eq(SubgraphHealth::Failed),
-            d::fatal_error.eq(Some(error_id)),
-        ))
-        .execute(conn)?;
+
+    update_deployment_status(conn, id, true, SubgraphHealth::Failed, Some(error_id))?;
+
     Ok(())
 }
 
@@ -541,43 +535,48 @@ pub(crate) fn has_non_fatal_errors(
     .map_err(|e| e.into())
 }
 
-/// Clear the `SubgraphHealth::Failed` status of a subgraph and mark it as
-/// healthy or unhealthy depending on whether it also had non-fatal errors
-pub fn unfail(conn: &PgConnection, id: &DeploymentHash) -> Result<(), StoreError> {
+pub fn get_fatal_error_id(
+    conn: &PgConnection,
+    deployment_id: &DeploymentHash,
+) -> Result<Option<String>, StoreError> {
     use subgraph_deployment as d;
-    use subgraph_error as e;
-    use SubgraphHealth::*;
-
-    let prev_health = if has_non_fatal_errors(conn, id, None)? {
-        Unhealthy
-    } else {
-        Healthy
-    };
-
-    let fatal_error_id = match d::table
-        .filter(d::deployment.eq(id.as_str()))
+    d::table
+        .filter(d::deployment.eq(deployment_id.as_str()))
         .select(d::fatal_error)
-        .get_result::<Option<String>>(conn)?
-    {
-        Some(fatal_error_id) => fatal_error_id,
+        .get_result(conn)
+        .map_err(StoreError::from)
+}
 
-        // If the subgraph is not failed then there is nothing to do.
-        None => return Ok(()),
-    };
+pub fn get_error_block_hash(
+    conn: &PgConnection,
+    error_id: &str,
+) -> Result<Option<Vec<u8>>, StoreError> {
+    use subgraph_error as e;
+    e::table
+        .filter(e::id.eq(error_id))
+        .select(e::block_hash)
+        .get_result(conn)
+        .map_err(StoreError::from)
+}
 
-    // Unfail the deployment.
-    update(d::table.filter(d::deployment.eq(id.as_str())))
+pub fn update_deployment_status(
+    conn: &PgConnection,
+    deployment_id: &DeploymentHash,
+    failed: bool,
+    health: SubgraphHealth,
+    fatal_error: Option<String>,
+) -> Result<(), StoreError> {
+    use subgraph_deployment as d;
+
+    update(d::table.filter(d::deployment.eq(deployment_id.as_str())))
         .set((
-            d::failed.eq(false),
-            d::health.eq(prev_health),
-            d::fatal_error.eq::<Option<String>>(None),
+            d::failed.eq(failed),
+            d::health.eq(health),
+            d::fatal_error.eq::<Option<String>>(fatal_error),
         ))
-        .execute(conn)?;
-
-    // Delete the fatal error.
-    delete(e::table.filter(e::id.eq(fatal_error_id))).execute(conn)?;
-
-    Ok(())
+        .execute(conn)
+        .map(|_| ())
+        .map_err(StoreError::from)
 }
 
 /// Insert the errors and check if the subgraph needs to be set as unhealthy.
