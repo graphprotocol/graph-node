@@ -23,7 +23,7 @@ use graph::{
 };
 
 use crate::execution::{ExecutionContext, Resolver};
-use crate::query::ast as qast;
+use crate::query::ast::{self as qast, get_argument_value};
 use crate::runner::ResultSizeMetrics;
 use crate::schema::ast as sast;
 use crate::store::{build_query, StoreResolver};
@@ -48,6 +48,7 @@ lazy_static! {
 }
 
 type GroupedFieldSet<'a> = IndexMap<&'a str, CollectedResponseKey<'a>>;
+type ComplementaryFields<'a> = Vec<(ObjectOrInterface<'a>, String)>;
 
 /// An `ObjectType` with `Hash` and `Eq` derived from the name.
 #[derive(Clone, Debug)]
@@ -555,10 +556,17 @@ fn execute_root_selection_set(
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     // Obtain the root Query type and fail if there isn't one
     let query_type = ctx.query.schema.query_type.as_ref().into();
-    let grouped_field_set = collect_fields(ctx, query_type, once(selection_set));
+    let (grouped_field_set, _complementary_fields) =
+        collect_fields(ctx, query_type, once(selection_set));
 
     // Execute the root selection set against the root query type
-    execute_selection_set(resolver, ctx, make_root_node(), grouped_field_set)
+    execute_selection_set(
+        resolver,
+        ctx,
+        make_root_node(),
+        grouped_field_set,
+        ComplementaryFields::new(),
+    )
 }
 
 fn check_result_size(logger: &Logger, size: usize) -> Result<(), QueryExecutionError> {
@@ -576,6 +584,7 @@ fn execute_selection_set<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     mut parents: Vec<Node>,
     grouped_field_set: GroupedFieldSet<'a>,
+    complementary_fields: ComplementaryFields,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     let schema = &ctx.query.schema;
     let mut errors: Vec<QueryExecutionError> = Vec::new();
@@ -619,7 +628,7 @@ fn execute_selection_set<'a>(
                 &field.name,
             );
             // Group fields with the same response key, so we can execute them together
-            let mut grouped_field_set =
+            let (mut grouped_field_set, new_complementary_fields) =
                 collect_fields(ctx, child_type, fields.iter().map(|f| &f.selection_set));
 
             // "Select by Specific Attribute Names" is an experimental feature and can be disabled completely.
@@ -630,8 +639,11 @@ fn execute_selection_set<'a>(
                 if *DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES {
                     BTreeMap::new()
                 } else {
-                    CollectedAttributeNames::consolidate_column_names(&mut grouped_field_set)
-                        .resolve_interfaces(&ctx.query.schema.types_for_interface())
+                    let mut collected =
+                        CollectedAttributeNames::consolidate_column_names(&mut grouped_field_set);
+                    collected.populate_complementary_fields(&complementary_fields);
+                    collected.resolve_interfaces(&ctx.query.schema.types_for_interface())
+                    // )
                 };
 
             match execute_field(
@@ -645,7 +657,13 @@ fn execute_selection_set<'a>(
                 collected_columns,
             ) {
                 Ok(children) => {
-                    match execute_selection_set(resolver, ctx, children, grouped_field_set) {
+                    match execute_selection_set(
+                        resolver,
+                        ctx,
+                        children,
+                        grouped_field_set,
+                        new_complementary_fields,
+                    ) {
                         Ok(children) => {
                             Join::perform(&mut parents, children, response_key);
                             let weight =
@@ -722,7 +740,7 @@ impl<'a> CollectedResponseKey<'a> {
         // collect the column name if field exists in schema
         if schema_field.is_some() {
             self.collected_column_names
-                .update(object_or_interface, &field)
+                .update(object_or_interface, &field);
         }
     }
 }
@@ -755,8 +773,9 @@ fn collect_fields<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     parent_ty: ObjectOrInterface<'a>,
     selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
-) -> GroupedFieldSet<'a> {
+) -> (GroupedFieldSet<'a>, ComplementaryFields<'a>) {
     let mut grouped_fields = IndexMap::new();
+    let mut complementary_fields = ComplementaryFields::new();
 
     for selection_set in selection_sets {
         collect_fields_inner(
@@ -765,6 +784,7 @@ fn collect_fields<'a>(
             selection_set,
             &mut HashSet::new(),
             &mut grouped_fields,
+            &mut complementary_fields,
         );
     }
 
@@ -778,7 +798,7 @@ fn collect_fields<'a>(
         }
     }
 
-    grouped_fields
+    (grouped_fields, complementary_fields)
 }
 
 // When querying an object type, `type_condition` will always be that object type, even if it passes
@@ -792,6 +812,7 @@ fn collect_fields_inner<'a>(
     selection_set: &'a q::SelectionSet,
     visited_fragments: &mut HashSet<&'a str>,
     output: &mut GroupedFieldSet<'a>,
+    complementary_fields: &mut ComplementaryFields<'a>,
 ) {
     fn collect_fragment<'a>(
         ctx: &'a ExecutionContext<impl Resolver>,
@@ -800,6 +821,7 @@ fn collect_fields_inner<'a>(
         frag_selection_set: &'a q::SelectionSet,
         visited_fragments: &mut HashSet<&'a str>,
         output: &mut GroupedFieldSet<'a>,
+        complementary_fields: &mut ComplementaryFields<'a>,
     ) {
         let schema = &ctx.query.schema.document();
         let fragment_ty = match frag_ty_condition {
@@ -820,6 +842,7 @@ fn collect_fields_inner<'a>(
                 &frag_selection_set,
                 visited_fragments,
                 output,
+                complementary_fields,
             );
         } else {
             // This is an interface fragment in the root selection for an interface.
@@ -842,6 +865,7 @@ fn collect_fields_inner<'a>(
                     &frag_selection_set,
                     visited_fragments,
                     output,
+                    complementary_fields,
                 );
             }
         }
@@ -863,6 +887,32 @@ fn collect_fields_inner<'a>(
                     type_condition,
                     field,
                 );
+                if let Some(arguments) = get_argument_value(&field.arguments, "orderBy") {
+                    let schema_field = type_condition.field(&field.name).expect(&format!(
+                        "the field {:?} to exist in {:?}",
+                        &field.name,
+                        &type_condition.name()
+                    ));
+                    let field_name = sast::get_field_name(&schema_field.field_type);
+                    let object_or_interface_for_field = ctx
+                        .query
+                        .schema
+                        .document()
+                        .object_or_interface(&field_name)
+                        .expect(&format!(
+                            "The field {:?} to exist in the Document",
+                            field_name
+                        ));
+                    match arguments {
+                        graphql_parser::schema::Value::Enum(complementary_field_name) => {
+                            complementary_fields.push((
+                                object_or_interface_for_field,
+                                complementary_field_name.clone(),
+                            ));
+                        }
+                        _ => unimplemented!("unsure on what to do about other variants"),
+                    }
+                }
             }
 
             q::Selection::FragmentSpread(spread) => {
@@ -878,6 +928,7 @@ fn collect_fields_inner<'a>(
                         &fragment.selection_set,
                         visited_fragments,
                         output,
+                        complementary_fields,
                     );
                 }
             }
@@ -890,6 +941,7 @@ fn collect_fields_inner<'a>(
                     &fragment.selection_set,
                     visited_fragments,
                     output,
+                    complementary_fields,
                 );
             }
         }
@@ -1000,6 +1052,29 @@ impl<'a> CollectedAttributeNames<'a> {
             .entry(object_or_interface)
             .or_insert(AttributeNames::All)
             .update(field);
+    }
+
+    fn populate_complementary_fields(&mut self, complementary_fields: &ComplementaryFields) {
+        for (parent_field, complementary_field_name) in complementary_fields.iter() {
+            let mut matched = false;
+            dbg!(&parent_field, &complementary_field_name); // "tokens", "price"
+            for (object_or_interface, selected_attributes) in self.0.iter_mut() {
+                dbg!(object_or_interface.name()); // "Token"
+
+                // ALRIGHT, at this moment we have the following:
+                // "Token" waiting to receive new fields
+                // "tokens" signaling the new field "price"
+
+                if object_or_interface == parent_field {
+                    matched = true;
+                    selected_attributes.update_str(&complementary_field_name)
+                }
+            }
+            assert!(
+                matched,
+                "Some complementary field did not found its way to its parent field"
+            );
+        }
     }
 
     /// Consume this instance and transform it into a mapping from

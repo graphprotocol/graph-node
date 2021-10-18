@@ -1806,6 +1806,14 @@ impl AttributeNames {
         self.insert(&field.name)
     }
 
+    pub fn update_str(&mut self, field_name: &str) {
+        // ignore "meta" field names
+        if field_name.starts_with("__") {
+            return;
+        }
+        self.insert(field_name);
+    }
+
     pub fn extend(&mut self, other: Self) {
         use AttributeNames::*;
         match (self, other) {
