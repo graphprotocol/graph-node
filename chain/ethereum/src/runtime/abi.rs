@@ -156,6 +156,24 @@ impl AscIndexId for AscEthereumTransaction_0_0_2 {
 
 #[repr(C)]
 #[derive(AscType)]
+pub(crate) struct AscEthereumTransaction_0_0_6 {
+    pub hash: AscPtr<AscH256>,
+    pub index: AscPtr<AscBigInt>,
+    pub from: AscPtr<AscH160>,
+    pub to: AscPtr<AscH160>,
+    pub value: AscPtr<AscBigInt>,
+    pub gas_limit: AscPtr<AscBigInt>,
+    pub gas_price: AscPtr<AscBigInt>,
+    pub input: AscPtr<Uint8Array>,
+    pub nonce: AscPtr<AscBigInt>,
+}
+
+impl AscIndexId for AscEthereumTransaction_0_0_6 {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumTransaction;
+}
+
+#[repr(C)]
+#[derive(AscType)]
 pub(crate) struct AscEthereumEvent<T>
 where
     T: AscType,
@@ -174,6 +192,10 @@ impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_1> {
 }
 
 impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_2> {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
+}
+
+impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_6> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
 }
 
@@ -204,16 +226,22 @@ impl AscIndexId for AscEthereumCall {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscEthereumCall_0_0_3 {
+pub(crate) struct AscEthereumCall_0_0_3<T>
+where
+    T: AscType,
+{
     pub to: AscPtr<AscAddress>,
     pub from: AscPtr<AscAddress>,
     pub block: AscPtr<AscEthereumBlock>,
-    pub transaction: AscPtr<AscEthereumTransaction_0_0_2>,
+    pub transaction: AscPtr<T>,
     pub inputs: AscPtr<AscLogParamArray>,
     pub outputs: AscPtr<AscLogParamArray>,
 }
 
-impl AscIndexId for AscEthereumCall_0_0_3 {
+impl<T> AscIndexId for AscEthereumCall_0_0_3<T>
+where
+    T: AscType,
+{
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumCall;
 }
 
@@ -285,6 +313,28 @@ impl ToAscObj<AscEthereumTransaction_0_0_2> for EthereumTransactionData {
     }
 }
 
+impl ToAscObj<AscEthereumTransaction_0_0_6> for EthereumTransactionData {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscEthereumTransaction_0_0_6, DeterministicHostError> {
+        Ok(AscEthereumTransaction_0_0_6 {
+            hash: asc_new(heap, &self.hash)?,
+            index: asc_new(heap, &BigInt::from(self.index))?,
+            from: asc_new(heap, &self.from)?,
+            to: self
+                .to
+                .map(|to| asc_new(heap, &to))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            value: asc_new(heap, &BigInt::from_unsigned_u256(&self.value))?,
+            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit))?,
+            gas_price: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_price))?,
+            input: asc_new(heap, &*self.input.0)?,
+            nonce: asc_new(heap, &BigInt::from_unsigned_u256(&self.nonce))?,
+        })
+    }
+}
+
 impl<T: AscType + AscIndexId> ToAscObj<AscEthereumEvent<T>> for EthereumEventData
 where
     EthereumTransactionData: ToAscObj<T>,
@@ -327,11 +377,27 @@ impl ToAscObj<AscEthereumCall> for EthereumCallData {
     }
 }
 
-impl ToAscObj<AscEthereumCall_0_0_3> for EthereumCallData {
+impl ToAscObj<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_2>> for EthereumCallData {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
-    ) -> Result<AscEthereumCall_0_0_3, DeterministicHostError> {
+    ) -> Result<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_2>, DeterministicHostError> {
+        Ok(AscEthereumCall_0_0_3 {
+            to: asc_new(heap, &self.to)?,
+            from: asc_new(heap, &self.from)?,
+            block: asc_new(heap, &self.block)?,
+            transaction: asc_new(heap, &self.transaction)?,
+            inputs: asc_new(heap, &self.inputs)?,
+            outputs: asc_new(heap, &self.outputs)?,
+        })
+    }
+}
+
+impl ToAscObj<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_6>> for EthereumCallData {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_6>, DeterministicHostError> {
         Ok(AscEthereumCall_0_0_3 {
             to: asc_new(heap, &self.to)?,
             from: asc_new(heap, &self.from)?,
