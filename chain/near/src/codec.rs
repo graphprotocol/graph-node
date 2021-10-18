@@ -70,3 +70,13 @@ impl Block for BlockWrapper {
         self.parent_ptr()
     }
 }
+
+impl execution_outcome::Status {
+    pub fn is_success(&self) -> bool {
+        use execution_outcome::Status::*;
+        match self {
+            Unknown(_) | Failure(_) => false,
+            SuccessValue(_) | SuccessReceiptId(_) => true,
+        }
+    }
+}
