@@ -36,7 +36,7 @@ impl BlockWrapper {
         let header = self.header();
 
         match (header.prev_hash.as_ref(), header.prev_height) {
-            (Some(hash), number) => Some(BlockPtr::from((hash.into(), number))),
+         //   (Some(hash), number) => Some(BlockPtr::from((hash.into(), number))),
             _ => None,
         }
     }

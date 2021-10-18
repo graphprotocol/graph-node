@@ -13,6 +13,7 @@ pub(crate) type AscGas = u64;
 pub(crate) type AscShardId = u64;
 pub(crate) type AscNumBlocks = u64;
 pub(crate) type AscProtocolVersion = u32;
+pub(crate) type AscPayload = u64;
 
 pub struct AscDataReceiverArray(pub(crate) Array<AscPtr<AscDataReceiver>>);
 
@@ -52,9 +53,9 @@ impl AscIndexId for AscCryptoHashArray {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearArrayCryptoHash;
 }
 
-pub struct AscActionEnumArray(pub(crate) Array<AscPtr<AscActionEnum>>);
+pub struct AscActionValueArray(pub(crate) Array<AscPtr<AscActionValue>>);
 
-impl AscType for AscActionEnumArray {
+impl AscType for AscActionValueArray {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
         self.0.to_asc_bytes()
     }
@@ -67,8 +68,8 @@ impl AscType for AscActionEnumArray {
     }
 }
 
-impl AscIndexId for AscActionEnumArray {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearArrayActionEnum;
+impl AscIndexId for AscActionValueArray {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearArrayActionValue;
 }
 
 pub struct AscMerklePathItemArray(pub(crate) Array<AscPtr<AscMerklePathItem>>);
@@ -166,9 +167,9 @@ impl AscIndexId for AscChunkHeaderArray {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearArrayChunkHeader;
 }
 
-pub struct AscAccessKeyPermissionEnum(pub(crate) AscEnum<AscAccessKeyPermissionKind>);
+pub struct AscCurveKindEnum(pub(crate) AscEnum<AscCurveKind>);
 
-impl AscType for AscAccessKeyPermissionEnum {
+impl AscType for AscCurveKindEnum {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
         self.0.to_asc_bytes()
     }
@@ -181,13 +182,13 @@ impl AscType for AscAccessKeyPermissionEnum {
     }
 }
 
-impl AscIndexId for AscAccessKeyPermissionEnum {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearAccessKeyPermissionEnum;
+impl AscIndexId for AscCurveKindEnum {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearCurveKindEnum;
 }
 
-pub struct AscActionEnum(pub(crate) AscEnum<AscActionKind>);
+pub struct AscAccessKeyPermissionKindEnum(pub(crate) AscEnum<AscAccessKeyPermissionKind>);
 
-impl AscType for AscActionEnum {
+impl AscType for AscAccessKeyPermissionKindEnum {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
         self.0.to_asc_bytes()
     }
@@ -200,30 +201,102 @@ impl AscType for AscActionEnum {
     }
 }
 
-impl AscIndexId for AscActionEnum {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearActionEnum;
+impl AscIndexId for AscAccessKeyPermissionKindEnum {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearAccessKeyPermissionKindEnum;
 }
 
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscPublicKey {
-    pub kind: u32,
-    pub bytes: AscPtr<Uint8Array>,
+pub struct AscActionKindEnum(pub(crate) AscEnum<AscActionKind>);
+
+impl AscType for AscActionKindEnum {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        self.0.to_asc_bytes()
+    }
+
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
+        Ok(Self(AscEnum::from_asc_bytes(asc_obj, api_version)?))
+    }
 }
 
-impl AscIndexId for AscPublicKey {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearPublicKey;
+impl AscIndexId for AscActionKindEnum {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearActionKindEnum;
+}
+
+pub struct AscSuccessStatusKindEnum(pub(crate) AscEnum<AscSuccessStatusKind>);
+
+impl AscType for AscSuccessStatusKindEnum {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        self.0.to_asc_bytes()
+    }
+
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
+        Ok(Self(AscEnum::from_asc_bytes(asc_obj, api_version)?))
+    }
+}
+
+impl AscIndexId for AscSuccessStatusKindEnum {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearSuccessStatusKindEnum;
+}
+
+pub struct AscDirectionEnum(pub(crate) AscEnum<AscDirection>);
+
+impl AscType for AscDirectionEnum {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        self.0.to_asc_bytes()
+    }
+
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
+        Ok(Self(AscEnum::from_asc_bytes(asc_obj, api_version)?))
+    }
+}
+
+impl AscIndexId for AscDirectionEnum {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearDirectionEnum;
+}
+
+#[repr(u32)]
+#[derive(AscType, Copy, Clone)]
+pub(crate) enum AscCurveKind {
+    Ed25519,
+    Secp256K1,
+}
+
+impl AscValue for AscCurveKind {}
+
+impl Default for AscCurveKind {
+    fn default() -> Self {
+        Self::Ed25519
+    }
 }
 
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscSignature {
-    pub kind: u32,
+    pub kind: AscPtr<AscCurveKindEnum>,
     pub bytes: AscPtr<Uint8Array>,
 }
 
 impl AscIndexId for AscSignature {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearSignature;
+}
+
+#[repr(C)]
+#[derive(AscType)]
+pub(crate) struct AscPublicKey {
+    pub kind: AscPtr<AscCurveKindEnum>,
+    pub bytes: AscPtr<Uint8Array>,
+}
+
+impl AscIndexId for AscPublicKey {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearPublicKey;
 }
 
 #[repr(u32)]
@@ -263,18 +336,20 @@ impl AscIndexId for AscFullAccessPermission {
 
 #[repr(C)]
 #[derive(AscType)]
+pub(crate) struct AscAccessKeyPermissionValue {
+    pub kind: AscPtr<AscAccessKeyPermissionKindEnum>,
+    pub data: AscPayload,
+}
+
+impl AscIndexId for AscAccessKeyPermissionValue {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearAccessKeyPermissionValue;
+}
+
+#[repr(C)]
+#[derive(AscType)]
 pub(crate) struct AscAccessKey {
     pub nonce: u64,
-    pub permission: AscPtr<AscAccessKeyPermissionEnum>,
-
-    // It seems that is impossible to correctly order fields in this struct
-    // so that Rust packs it tighly without padding. So we add 4 bytes of padding
-    // ourself.
-    //
-    // This is a bit problematic because AssemblyScript actually is ok with 12 bytes
-    // and is fully packed. Seems like a differences between alignment for `repr(C)` and
-    // AssemblyScript.
-    pub(crate) _padding: u32,
+    pub permission: AscPtr<AscAccessKeyPermissionValue>,
 }
 
 impl AscIndexId for AscAccessKey {
@@ -324,7 +399,7 @@ impl AscIndexId for AscCreateAccountAction {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscDeployContractAction {
-    pub code: AscPtr<Uint8Array>,
+    pub code: AscPtr<AscString>,
 }
 
 impl AscIndexId for AscDeployContractAction {
@@ -335,7 +410,7 @@ impl AscIndexId for AscDeployContractAction {
 #[derive(AscType)]
 pub(crate) struct AscFunctionCallAction {
     pub method_name: AscPtr<AscString>,
-    pub args: AscPtr<Uint8Array>,
+    pub args: AscPtr<AscString>,
     pub gas: u64,
     pub deposit: AscPtr<AscBigInt>,
 
@@ -407,6 +482,17 @@ impl AscIndexId for AscDeleteAccountAction {
 
 #[repr(C)]
 #[derive(AscType)]
+pub(crate) struct AscActionValue {
+    pub kind: AscPtr<AscActionKindEnum>,
+    pub data: AscPayload,
+}
+
+impl AscIndexId for AscActionValue {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearActionValue;
+}
+
+#[repr(C)]
+#[derive(AscType)]
 pub(crate) struct AscActionReceipt {
     pub predecessor_id: AscPtr<AscString>,
     pub receiver_id: AscPtr<AscString>,
@@ -416,7 +502,7 @@ pub(crate) struct AscActionReceipt {
     pub gas_price: AscPtr<AscBigInt>,
     pub output_data_receivers: AscPtr<AscDataReceiverArray>,
     pub input_data_ids: AscPtr<AscCryptoHashArray>,
-    pub actions: AscPtr<AscActionEnumArray>,
+    pub actions: AscPtr<AscActionValueArray>,
 }
 
 impl AscIndexId for AscActionReceipt {
@@ -438,23 +524,15 @@ impl Default for AscSuccessStatusKind {
     }
 }
 
-pub struct AscSuccessStatusEnum(pub(crate) AscEnum<AscSuccessStatusKind>);
-
-impl AscType for AscSuccessStatusEnum {
-    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
-        self.0.to_asc_bytes()
-    }
-
-    fn from_asc_bytes(
-        asc_obj: &[u8],
-        api_version: &Version,
-    ) -> Result<Self, DeterministicHostError> {
-        Ok(Self(AscEnum::from_asc_bytes(asc_obj, api_version)?))
-    }
+#[repr(C)]
+#[derive(AscType)]
+pub(crate) struct AscSuccessStatus {
+    pub kind: AscPtr<AscSuccessStatusKindEnum>,
+    pub data: AscPayload,
 }
 
-impl AscIndexId for AscSuccessStatusEnum {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearSuccessStatusEnum;
+impl AscIndexId for AscSuccessStatus {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::NearSuccessStatus;
 }
 
 #[repr(u32)]
@@ -476,7 +554,7 @@ impl Default for AscDirection {
 #[derive(AscType)]
 pub(crate) struct AscMerklePathItem {
     pub hash: AscPtr<AscCryptoHash>,
-    pub direction: AscDirection,
+    pub direction: AscPtr<AscDirectionEnum>,
 }
 
 impl AscIndexId for AscMerklePathItem {
@@ -494,7 +572,7 @@ pub(crate) struct AscExecutionOutcome {
     pub receipt_ids: AscPtr<AscCryptoHashArray>,
     pub tokens_burnt: AscPtr<AscBigInt>,
     pub executor_id: AscPtr<AscString>,
-    pub status: AscPtr<AscSuccessStatusEnum>,
+    pub status: AscPtr<AscSuccessStatus>,
 }
 
 impl AscIndexId for AscExecutionOutcome {
