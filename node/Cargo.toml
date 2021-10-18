@@ -36,7 +36,7 @@ graph-store-postgres = { path = "../store/postgres" }
 regex = "1.5.4"
 serde = { version = "1.0.126", features = ["derive", "rc"] }
 serde_regex = "1.1.0"
-structopt = { version = "0.3.23", features = ["wrap_help"] }
+structopt = { version = "0.3.25", features = ["wrap_help"] }
 toml = "0.5.7"
 shellexpand = "2.1.0"
 diesel = "1.4.8"
