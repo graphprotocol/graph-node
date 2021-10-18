@@ -19,9 +19,6 @@ use web3::types::U256;
 use web3::types::U64;
 use web3::types::{Address, Block, Log, Transaction, H256};
 
-use crate::data_source::MappingBlockHandler;
-use crate::data_source::MappingCallHandler;
-use crate::data_source::MappingEventHandler;
 use crate::runtime::abi::AscEthereumBlock;
 use crate::runtime::abi::AscEthereumBlock_0_0_6;
 use crate::runtime::abi::AscEthereumCall;
