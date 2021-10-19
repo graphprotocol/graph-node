@@ -569,8 +569,10 @@ where
             let start = Instant::now();
             let deployment_failed = ctx.block_stream_metrics.deployment_failed.clone();
 
-            // Unfail the subgraph if it was previously failed (and revert block operations to the
-            // parent block if needed).
+            // If the subgraph is failed, unfail it and revert the block on which
+            // it failed so that it is reprocessed. This gives the subgraph a chance
+            // to move past errors.
+            //
             // As an optimization we check this only on the first run.
             if first_run {
                 first_run = false;

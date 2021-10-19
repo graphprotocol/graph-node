@@ -1168,9 +1168,11 @@ impl DeploymentStore {
         Ok(())
     }
 
-    /// This should be called before processing blocks.
+    /// This should be called once per subgraph on `graph-node` initialization,
+    /// before processing the first block on start.
+    ///
     /// It will change the Deployment status accordingly to the Errors found (healthy/unhealthy).
-    /// It does nothing if the Deployment is healthy.
+    /// It does nothing if the Deployment is healthy or if the blocks received are `None`.
     /// It will revert all block operations of a block (returning to the parent)
     /// if the errors found are in the same block as the current Deployment head.
     pub(crate) fn unfail(
@@ -1179,16 +1181,16 @@ impl DeploymentStore {
         current_ptr: Option<&BlockPtr>,
         parent_ptr: Option<&BlockPtr>,
     ) -> Result<(), StoreError> {
+        let current_ptr = match current_ptr {
+            Some(current_ptr) => current_ptr,
+            // No current head pointer, nothing to do
+            None => return Ok(()),
+        };
+
         let conn = &self.get_conn()?;
 
         conn.transaction(|| {
             let deployment_id = &site.deployment;
-
-            let current_ptr = match current_ptr {
-                Some(current_ptr) => current_ptr,
-                // No current head pointer, nothing to do
-                None => return Ok(()),
-            };
 
             let fatal_error_id = match deployment::get_fatal_error_id(conn, deployment_id)? {
                 Some(fatal_error_id) => fatal_error_id,
@@ -1204,7 +1206,7 @@ impl DeploymentStore {
                     if let Some(parent_ptr) = parent_ptr {
                         info!(
                             self.logger,
-                            "Reverting errored block";
+                            "Reverting erroed block";
                             "from_block_number" => format!("{}", current_ptr.number),
                             "from_block_hash" => format!("{}", current_ptr.hash),
                             "to_block_number" => format!("{}", parent_ptr.number),
@@ -1216,6 +1218,9 @@ impl DeploymentStore {
                 },
                 // Found error, but not for deployment head, we don't need to
                 // revert the block operations.
+                //
+                // If you find this warning in the logs, something is wrong, this
+                // shoudn't happen.
                 Some(hash_bytes) => {
                     warn!(self.logger, "Subgraph error does not have same block hash as deployment head";
                         "error_id" => fatal_error_id,
@@ -1223,6 +1228,8 @@ impl DeploymentStore {
                         "deployment_head" => format!("{}", current_ptr.hash)
                     );
                 },
+                // Same as branch above, if you find this warning in the logs,
+                // something is wrong, this shoudn't happen.
                 None => {
                     warn!(self.logger, "Subgraph error should have block hash";
                         "error_id" => fatal_error_id);
@@ -1237,7 +1244,7 @@ impl DeploymentStore {
             };
 
             // Unfail the deployment.
-            deployment::update_deployment_status(conn, deployment_id, false, prev_health, None)?;
+            deployment::update_deployment_status(conn, deployment_id, prev_health, None)?;
 
             Ok(())
 

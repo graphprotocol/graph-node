@@ -535,7 +535,6 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             .await?;
         assert_eq!(blocks.len(), 1);
 
-        // Expect: This is only called when reverting and therefore never for genesis.
         Ok(blocks[0].parent_ptr())
     }
 }

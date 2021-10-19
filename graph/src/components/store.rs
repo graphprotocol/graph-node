@@ -1015,7 +1015,9 @@ pub trait WritableStore: Send + Sync + 'static {
     /// `block_ptr_to` must point to the parent block of the subgraph block pointer.
     fn revert_block_operations(&self, block_ptr_to: BlockPtr) -> Result<(), StoreError>;
 
-    /// Remove the fatal error from a subgraph and check if it is healthy or unhealthy.
+    /// This method:
+    /// - Sets the SubgraphDeployment status accordingly to it's SubgraphErrors
+    /// - Reverts block operations to the parent block if necessary
     fn unfail(
         &self,
         current_ptr: Option<BlockPtr>,
