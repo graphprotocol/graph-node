@@ -63,7 +63,10 @@ pub trait Block: Send + Sync {
         self.parent_ptr().map(|ptr| ptr.hash)
     }
 
-    fn data(&self) -> Result<serde_json::Value, serde_json::Error>;
+    /// The data that should be stored for this block in the `ChainStore`
+    fn data(&self) -> Result<serde_json::Value, serde_json::Error> {
+        Ok(serde_json::Value::Null)
+    }
 }
 
 #[async_trait]
