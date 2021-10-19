@@ -178,7 +178,6 @@ impl EthereumAdapter {
         addresses: Vec<H160>,
     ) -> Result<Vec<Trace>, Error> {
         let eth = self.clone();
-        let logger = logger.to_owned();
 
         retry("trace_filter RPC call", &logger)
             .limit(*REQUEST_RETRIES)
@@ -196,54 +195,59 @@ impl EthereumAdapter {
                         .build(),
                 };
 
+                let eth = eth.cheap_clone();
                 let logger_for_triggers = logger.clone();
                 let logger_for_error = logger.clone();
                 let start = Instant::now();
                 let subgraph_metrics = subgraph_metrics.clone();
                 let provider_metrics = eth.metrics.clone();
                 let provider = self.provider.clone();
-                Box::pin(eth.web3.trace().filter(trace_filter))
-                    .compat()
-                    .map(move |traces| {
-                        if traces.len() > 0 {
-                            if to == from {
-                                debug!(
-                                    logger_for_triggers,
-                                    "Received {} traces for block {}",
-                                    traces.len(),
-                                    to
-                                );
-                            } else {
-                                debug!(
-                                    logger_for_triggers,
-                                    "Received {} traces for blocks [{}, {}]",
-                                    traces.len(),
-                                    from,
-                                    to
-                                );
+
+                async move {
+                    let result = eth
+                        .web3
+                        .trace()
+                        .filter(trace_filter)
+                        .await
+                        .map(move |traces| {
+                            if traces.len() > 0 {
+                                if to == from {
+                                    debug!(
+                                        logger_for_triggers,
+                                        "Received {} traces for block {}",
+                                        traces.len(),
+                                        to
+                                    );
+                                } else {
+                                    debug!(
+                                        logger_for_triggers,
+                                        "Received {} traces for blocks [{}, {}]",
+                                        traces.len(),
+                                        from,
+                                        to
+                                    );
+                                }
                             }
-                        }
-                        traces
-                    })
-                    .from_err()
-                    .then(move |result| {
-                        let elapsed = start.elapsed().as_secs_f64();
-                        provider_metrics.observe_request(elapsed, "trace_filter", &provider);
-                        subgraph_metrics.observe_request(elapsed, "trace_filter", &provider);
-                        if result.is_err() {
-                            provider_metrics.add_error("trace_filter", &provider);
-                            subgraph_metrics.add_error("trace_filter", &provider);
-                            debug!(
-                                logger_for_error,
-                                "Error querying traces error = {:?} from = {:?} to = {:?}",
-                                result,
-                                from,
-                                to
-                            );
-                        }
-                        result
-                    })
-                    .compat()
+                            traces
+                        })
+                        .map_err(Error::from);
+
+                    let elapsed = start.elapsed().as_secs_f64();
+                    provider_metrics.observe_request(elapsed, "trace_filter", &provider);
+                    subgraph_metrics.observe_request(elapsed, "trace_filter", &provider);
+                    if result.is_err() {
+                        provider_metrics.add_error("trace_filter", &provider);
+                        subgraph_metrics.add_error("trace_filter", &provider);
+                        debug!(
+                            logger_for_error,
+                            "Error querying traces error = {:?} from = {:?} to = {:?}",
+                            result,
+                            from,
+                            to
+                        );
+                    }
+                    result
+                }
             })
             .map_err(move |e| {
                 e.into_inner().unwrap_or_else(move || {
