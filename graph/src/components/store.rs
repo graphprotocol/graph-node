@@ -1799,19 +1799,22 @@ impl AttributeNames {
     }
 
     pub fn update(&mut self, field: &q::Field) {
-        // ignore "meta" field names
-        if field.name.starts_with("__") {
+        if Self::is_meta_field(&field.name) {
             return;
         }
         self.insert(&field.name)
     }
 
     pub fn update_str(&mut self, field_name: &str) {
-        // ignore "meta" field names
-        if field_name.starts_with("__") {
+        if Self::is_meta_field(field_name) {
             return;
         }
         self.insert(field_name);
+    }
+
+    /// Returns `true` for meta field names, `false` otherwise.
+    fn is_meta_field(field_name: &str) -> bool {
+        field_name.starts_with("__")
     }
 
     pub fn extend(&mut self, other: Self) {
