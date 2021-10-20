@@ -646,7 +646,6 @@ fn execute_selection_set<'a>(
                         CollectedAttributeNames::consolidate_column_names(&mut grouped_field_set);
                     collected.populate_complementary_fields(&mut complementary_fields);
                     collected.resolve_interfaces(&ctx.query.schema.types_for_interface())
-                    // )
                 };
 
             match execute_field(
@@ -682,6 +681,17 @@ fn execute_selection_set<'a>(
             };
         }
     }
+
+    // Confidence check: all complementary fields must be used, otherwise constructed SQL queries
+    // will be malformed.
+    complementary_fields
+        .into_iter()
+        .for_each(|(parent, complementary_field)| {
+            errors.push(QueryExecutionError::UnusedComplementaryField(
+                parent.name().to_string(),
+                complementary_field,
+            ))
+        });
 
     if errors.is_empty() {
         Ok(parents)
@@ -1059,9 +1069,6 @@ impl<'a> CollectedAttributeNames<'a> {
 
     /// Injects complementary fields (collected in upper hierarchical levels of the query) into
     /// self.
-    ///
-    /// All complementary fields must be used, otherwise future SQL queries will be malformed.
-    /// TODO: make this function return a Result value.
     fn populate_complementary_fields(
         &mut self,
         complementary_fields: &mut ComplementaryFields<'a>,
@@ -1073,11 +1080,6 @@ impl<'a> CollectedAttributeNames<'a> {
                 selected_attributes.update_str(&complementary_field_name)
             }
         }
-
-        assert!(
-            complementary_fields.is_empty(),
-            "Some complementary field did not found its way to its parent field"
-        );
     }
 
     /// Consume this instance and transform it into a mapping from
