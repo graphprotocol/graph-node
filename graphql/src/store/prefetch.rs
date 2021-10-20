@@ -48,7 +48,7 @@ lazy_static! {
 }
 
 type GroupedFieldSet<'a> = IndexMap<&'a str, CollectedResponseKey<'a>>;
-type ComplementaryFields<'a> = Vec<(ObjectOrInterface<'a>, String)>;
+type ComplementaryFields<'a> = BTreeMap<ObjectOrInterface<'a>, String>;
 
 /// An `ObjectType` with `Hash` and `Eq` derived from the name.
 #[derive(Clone, Debug)]
@@ -905,10 +905,10 @@ fn collect_fields_inner<'a>(
                         ));
                     match arguments {
                         graphql_parser::schema::Value::Enum(complementary_field_name) => {
-                            complementary_fields.push((
+                            complementary_fields.insert(
                                 object_or_interface_for_field,
                                 complementary_field_name.clone(),
-                            ));
+                            );
                         }
                         _ => unimplemented!("unsure on what to do about other variants"),
                     }
