@@ -684,14 +684,16 @@ fn execute_selection_set<'a>(
 
     // Confidence check: all complementary fields must be used, otherwise constructed SQL queries
     // will be malformed.
-    complementary_fields
-        .into_iter()
-        .for_each(|(parent, complementary_field)| {
-            errors.push(QueryExecutionError::UnusedComplementaryField(
-                parent.name().to_string(),
-                complementary_field,
-            ))
-        });
+    if !*DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES {
+        complementary_fields
+            .into_iter()
+            .for_each(|(parent, complementary_field)| {
+                errors.push(QueryExecutionError::UnusedComplementaryField(
+                    parent.name().to_string(),
+                    complementary_field,
+                ))
+            });
+    }
 
     if errors.is_empty() {
         Ok(parents)
