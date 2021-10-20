@@ -202,6 +202,7 @@ pub fn manifest_info(
         .map(|schema| (schema, description, repository))
 }
 
+#[allow(dead_code)]
 pub fn features(conn: &PgConnection, site: &Site) -> Result<BTreeSet<SubgraphFeature>, StoreError> {
     use subgraph_manifest as sm;
 

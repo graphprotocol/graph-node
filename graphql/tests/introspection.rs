@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate pretty_assertions;
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use graph::data::graphql::{object, object_value, ObjectOrInterface};
@@ -1136,7 +1136,7 @@ async fn successfully_runs_introspection_query_against_complex_schema() {
         DeploymentHash::new("complexschema").unwrap(),
     )
     .unwrap();
-    schema.document = api_schema(&schema.document, &BTreeSet::new()).unwrap();
+    schema.document = api_schema(&schema.document).unwrap();
 
     let result = introspection_query(
         schema.clone(),
@@ -1246,7 +1246,7 @@ async fn introspection_possible_types() {
         DeploymentHash::new("complexschema").unwrap(),
     )
     .unwrap();
-    schema.document = api_schema(&schema.document, &BTreeSet::new()).unwrap();
+    schema.document = api_schema(&schema.document).unwrap();
 
     // Test "possibleTypes" introspection in interfaces
     let response = introspection_query(

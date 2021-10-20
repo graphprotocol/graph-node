@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, str::FromStr};
+use std::str::FromStr;
 
 use graphql_parser::Pos;
 use inflector::Inflector;
@@ -9,7 +9,6 @@ use crate::schema::ast;
 use graph::data::{
     graphql::ext::{DirectiveExt, DocumentExt, ValueExt},
     schema::{META_FIELD_NAME, META_FIELD_TYPE, SCHEMA_TYPE_NAME},
-    subgraph::SubgraphFeature,
 };
 use graph::prelude::s::{Value, *};
 use graph::prelude::*;
@@ -65,10 +64,7 @@ impl TryFrom<&q::Value> for ErrorPolicy {
 /// and must not include a root Query type. This Query type is derived,
 /// with all its fields and their input arguments, based on the existing
 /// types.
-pub fn api_schema(
-    input_schema: &Document,
-    features: &BTreeSet<SubgraphFeature>,
-) -> Result<Document, APISchemaError> {
+pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
     // Refactor: Take `input_schema` by value.
     let object_types = input_schema.get_object_type_definitions();
     let interface_types = input_schema.get_interface_type_definitions();
@@ -83,8 +79,8 @@ pub fn api_schema(
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
     add_field_arguments(&mut schema, input_schema)?;
-    add_query_type(&mut schema, &object_types, &interface_types, features)?;
-    add_subscription_type(&mut schema, &object_types, &interface_types, features)?;
+    add_query_type(&mut schema, &object_types, &interface_types)?;
+    add_subscription_type(&mut schema, &object_types, &interface_types)?;
 
     // Remove the `_Schema_` type from the generated schema.
     schema.definitions.retain(|d| match d {
@@ -503,7 +499,6 @@ fn add_query_type(
     schema: &mut Document,
     object_types: &[&ObjectType],
     interface_types: &[&InterfaceType],
-    features: &BTreeSet<SubgraphFeature>,
 ) -> Result<(), APISchemaError> {
     let type_name = String::from("Query");
 
@@ -516,13 +511,13 @@ fn add_query_type(
         .map(|t| &t.name)
         .filter(|name| !name.eq(&SCHEMA_TYPE_NAME))
         .chain(interface_types.iter().map(|t| &t.name))
-        .flat_map(|name| query_fields_for_type(name, features))
+        .flat_map(|name| query_fields_for_type(name))
         .collect::<Vec<Field>>();
     let mut fulltext_fields = schema
         .get_fulltext_directives()
         .map_err(|_| APISchemaError::FulltextSearchNonDeterministic)?
         .iter()
-        .filter_map(|fulltext| query_field_for_fulltext(fulltext, features))
+        .filter_map(|fulltext| query_field_for_fulltext(fulltext))
         .collect();
     fields.append(&mut fulltext_fields);
     fields.push(meta_field());
@@ -540,10 +535,7 @@ fn add_query_type(
     Ok(())
 }
 
-fn query_field_for_fulltext(
-    fulltext: &Directive,
-    features: &BTreeSet<SubgraphFeature>,
-) -> Option<Field> {
+fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
     let name = fulltext.argument("name").unwrap().as_str().unwrap().into();
 
     let includes = fulltext.argument("include").unwrap().as_list().unwrap();
@@ -584,9 +576,7 @@ fn query_field_for_fulltext(
         block_argument(),
     ];
 
-    if features.contains(&SubgraphFeature::NonFatalErrors) {
-        arguments.push(subgraph_error_argument())
-    }
+    arguments.push(subgraph_error_argument());
 
     Some(Field {
         position: Pos::default(),
@@ -605,7 +595,6 @@ fn add_subscription_type(
     schema: &mut Document,
     object_types: &[&ObjectType],
     interface_types: &[&InterfaceType],
-    features: &BTreeSet<SubgraphFeature>,
 ) -> Result<(), APISchemaError> {
     let type_name = String::from("Subscription");
 
@@ -618,7 +607,7 @@ fn add_subscription_type(
         .map(|t| &t.name)
         .filter(|name| !name.eq(&SCHEMA_TYPE_NAME))
         .chain(interface_types.iter().map(|t| &t.name))
-        .flat_map(|name| query_fields_for_type(name, features))
+        .flat_map(|name| query_fields_for_type(name))
         .collect();
     fields.push(meta_field());
 
@@ -667,7 +656,7 @@ fn subgraph_error_argument() -> InputValue {
 }
 
 /// Generates `Query` fields for the given type name (e.g. `users` and `user`).
-fn query_fields_for_type(type_name: &str, features: &BTreeSet<SubgraphFeature>) -> Vec<Field> {
+fn query_fields_for_type(type_name: &str) -> Vec<Field> {
     let mut collection_arguments = collection_arguments_for_named_type(type_name);
     collection_arguments.push(block_argument());
 
@@ -683,10 +672,8 @@ fn query_fields_for_type(type_name: &str, features: &BTreeSet<SubgraphFeature>) 
         block_argument(),
     ];
 
-    if features.contains(&SubgraphFeature::NonFatalErrors) {
-        collection_arguments.push(subgraph_error_argument());
-        by_id_arguments.push(subgraph_error_argument());
-    }
+    collection_arguments.push(subgraph_error_argument());
+    by_id_arguments.push(subgraph_error_argument());
 
     vec![
         Field {
@@ -843,11 +830,7 @@ fn add_field_arguments(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-    use std::iter::FromIterator;
-
     use graph::data::graphql::DocumentExt;
-    use graph::data::subgraph::SubgraphFeature;
     use graphql_parser::schema::*;
 
     use super::api_schema;
@@ -857,8 +840,7 @@ mod tests {
     fn api_schema_contains_built_in_scalar_types() {
         let input_schema =
             parse_schema("type User { id: ID! }").expect("Failed to parse input schema");
-        let schema =
-            api_schema(&input_schema, &BTreeSet::new()).expect("Failed to derive API schema");
+        let schema = api_schema(&input_schema).expect("Failed to derive API schema");
 
         schema
             .get_named_type("Boolean")
@@ -881,8 +863,7 @@ mod tests {
     fn api_schema_contains_order_direction_enum() {
         let input_schema = parse_schema("type User { id: ID!, name: String! }")
             .expect("Failed to parse input schema");
-        let schema =
-            api_schema(&input_schema, &BTreeSet::new()).expect("Failed to derived API schema");
+        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
 
         let order_direction = schema
             .get_named_type("OrderDirection")
@@ -905,8 +886,7 @@ mod tests {
     fn api_schema_contains_query_type() {
         let input_schema =
             parse_schema("type User { id: ID! }").expect("Failed to parse input schema");
-        let schema =
-            api_schema(&input_schema, &BTreeSet::new()).expect("Failed to derive API schema");
+        let schema = api_schema(&input_schema).expect("Failed to derive API schema");
         schema
             .get_named_type("Query")
             .expect("Root Query type is missing in API schema");
@@ -916,11 +896,7 @@ mod tests {
     fn api_schema_contains_field_order_by_enum() {
         let input_schema = parse_schema("type User { id: ID!, name: String! }")
             .expect("Failed to parse input schema");
-        let schema = api_schema(
-            &input_schema,
-            &BTreeSet::from_iter(Some(SubgraphFeature::NonFatalErrors)),
-        )
-        .expect("Failed to derived API schema");
+        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
 
         let user_order_by = schema
             .get_named_type("User_orderBy")
@@ -970,8 +946,7 @@ mod tests {
             "#,
         )
         .expect("Failed to parse input schema");
-        let schema =
-            api_schema(&input_schema, &BTreeSet::new()).expect("Failed to derived API schema");
+        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
 
         let user_filter = schema
             .get_named_type("User_filter")
@@ -1051,8 +1026,7 @@ mod tests {
             "type User { id: ID!, name: String! } type UserProfile { id: ID!, title: String! }",
         )
         .expect("Failed to parse input schema");
-        let schema =
-            api_schema(&input_schema, &BTreeSet::new()).expect("Failed to derive API schema");
+        let schema = api_schema(&input_schema).expect("Failed to derive API schema");
 
         let query_type = schema
             .get_named_type("Query")
@@ -1075,7 +1049,11 @@ mod tests {
                 .iter()
                 .map(|input_value| input_value.name.to_owned())
                 .collect::<Vec<String>>(),
-            vec!["id".to_string(), "block".to_string()],
+            vec![
+                "id".to_string(),
+                "block".to_string(),
+                "subgraphError".to_string()
+            ],
         );
 
         let user_plural_field = match query_type {
@@ -1103,7 +1081,8 @@ mod tests {
                 "orderBy",
                 "orderDirection",
                 "where",
-                "block"
+                "block",
+                "subgraphError",
             ]
             .iter()
             .map(ToString::to_string)
@@ -1144,11 +1123,7 @@ mod tests {
             ",
         )
         .expect("Failed to parse input schema");
-        let schema = api_schema(
-            &input_schema,
-            &BTreeSet::from_iter(Some(SubgraphFeature::NonFatalErrors)),
-        )
-        .expect("Failed to derived API schema");
+        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
 
         let query_type = schema
             .get_named_type("Query")
@@ -1237,8 +1212,7 @@ type Gravatar @entity {
 }
 "#;
         let input_schema = parse_schema(SCHEMA).expect("Failed to parse input schema");
-        let schema =
-            api_schema(&input_schema, &BTreeSet::new()).expect("Failed to derive API schema");
+        let schema = api_schema(&input_schema).expect("Failed to derive API schema");
 
         let query_type = schema
             .get_named_type("Query")
