@@ -48,6 +48,9 @@ lazy_static! {
 }
 
 type GroupedFieldSet<'a> = IndexMap<&'a str, CollectedResponseKey<'a>>;
+
+/// Used for associating objects or interfaces and the field names used in `orderBy` query field
+/// attributes.
 type ComplementaryFields<'a> = BTreeMap<ObjectOrInterface<'a>, String>;
 
 /// An `ObjectType` with `Hash` and `Eq` derived from the name.
@@ -584,7 +587,7 @@ fn execute_selection_set<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     mut parents: Vec<Node>,
     grouped_field_set: GroupedFieldSet<'a>,
-    complementary_fields: ComplementaryFields,
+    mut complementary_fields: ComplementaryFields<'a>,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     let schema = &ctx.query.schema;
     let mut errors: Vec<QueryExecutionError> = Vec::new();
@@ -641,7 +644,7 @@ fn execute_selection_set<'a>(
                 } else {
                     let mut collected =
                         CollectedAttributeNames::consolidate_column_names(&mut grouped_field_set);
-                    collected.populate_complementary_fields(&complementary_fields);
+                    collected.populate_complementary_fields(&mut complementary_fields);
                     collected.resolve_interfaces(&ctx.query.schema.types_for_interface())
                     // )
                 };
@@ -1054,27 +1057,27 @@ impl<'a> CollectedAttributeNames<'a> {
             .update(field);
     }
 
-    fn populate_complementary_fields(&mut self, complementary_fields: &ComplementaryFields) {
-        for (parent_field, complementary_field_name) in complementary_fields.iter() {
-            let mut matched = false;
-            dbg!(&parent_field, &complementary_field_name); // "tokens", "price"
-            for (object_or_interface, selected_attributes) in self.0.iter_mut() {
-                dbg!(object_or_interface.name()); // "Token"
-
-                // ALRIGHT, at this moment we have the following:
-                // "Token" waiting to receive new fields
-                // "tokens" signaling the new field "price"
-
-                if object_or_interface == parent_field {
-                    matched = true;
-                    selected_attributes.update_str(&complementary_field_name)
-                }
+    /// Injects complementary fields (collected in upper hierarchical levels of the query) into
+    /// self.
+    ///
+    /// All complementary fields must be used, otherwise future SQL queries will be malformed.
+    /// TODO: make this function return a Result value.
+    fn populate_complementary_fields(
+        &mut self,
+        complementary_fields: &mut ComplementaryFields<'a>,
+    ) {
+        for (object_or_interface, selected_attributes) in self.0.iter_mut() {
+            if let Some(complementary_field_name) =
+                complementary_fields.remove(&object_or_interface)
+            {
+                selected_attributes.update_str(&complementary_field_name)
             }
-            assert!(
-                matched,
-                "Some complementary field did not found its way to its parent field"
-            );
         }
+
+        assert!(
+            complementary_fields.is_empty(),
+            "Some complementary field did not found its way to its parent field"
+        );
     }
 
     /// Consume this instance and transform it into a mapping from
