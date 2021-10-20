@@ -74,7 +74,7 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
     async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error>;
 
     /// Get pointer to parent of `block`. This is called when reverting `block`.
-    async fn parent_ptr(&self, block: &BlockPtr) -> Result<BlockPtr, Error>;
+    async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error>;
 }
 
 pub trait FirehoseMapper<C: Blockchain>: Send + Sync {

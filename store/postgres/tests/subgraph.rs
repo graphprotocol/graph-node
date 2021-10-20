@@ -564,6 +564,30 @@ fn fail_unfail() {
             .await
             .unwrap();
 
+        // Process the first block.
+        transact_entity_operations(
+            &store.subgraph_store(),
+            &deployment,
+            BLOCKS[0].clone(),
+            vec![],
+        )
+        .unwrap();
+
+        // We don't have any errors.
+        assert!(!query_store.has_non_fatal_errors(None).await.unwrap());
+
+        // Process the second block.
+        transact_entity_operations(
+            &store.subgraph_store(),
+            &deployment,
+            BLOCKS[1].clone(),
+            vec![],
+        )
+        .unwrap();
+
+        // Still no fatal errors.
+        assert!(!query_store.has_non_fatal_errors(None).await.unwrap());
+
         let error = SubgraphError {
             subgraph_id: deployment.hash.clone(),
             message: "test".to_string(),
@@ -579,21 +603,15 @@ fn fail_unfail() {
             .expect("can get writable");
         writable.fail_subgraph(error).await.unwrap();
 
-        assert!(!query_store.has_non_fatal_errors(None).await.unwrap());
+        // We now have a fatal error because the subgraph failed.
+        assert!(query_store.has_non_fatal_errors(None).await.unwrap());
 
         // This will unfail the subgraph and delete the fatal error.
-        writable.unfail().unwrap();
+        writable
+            .unfail(Some(BLOCKS[1].clone()), Some(BLOCKS[0].clone()))
+            .unwrap();
 
-        // Advance the block ptr to the block of the deleted error.
-        transact_entity_operations(
-            &store.subgraph_store(),
-            &deployment,
-            BLOCKS[1].clone(),
-            vec![],
-        )
-        .unwrap();
-
-        // We still have no fatal errors.
+        // We don't have fatal errors anymore.
         assert!(!query_store.has_non_fatal_errors(None).await.unwrap());
 
         test_store::remove_subgraphs();

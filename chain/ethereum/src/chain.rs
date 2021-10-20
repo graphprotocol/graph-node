@@ -519,9 +519,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         }))
     }
 
-    /// Panics if `block` is genesis.
-    /// But that's ok since this is only called when reverting `block`.
-    async fn parent_ptr(&self, block: &BlockPtr) -> Result<BlockPtr, Error> {
+    async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
         use futures::stream::Stream;
         use graph::prelude::LightEthereumBlockExt;
 
@@ -537,10 +535,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             .await?;
         assert_eq!(blocks.len(), 1);
 
-        // Expect: This is only called when reverting and therefore never for genesis.
-        Ok(blocks[0]
-            .parent_ptr()
-            .expect("genesis block cannot be reverted"))
+        Ok(blocks[0].parent_ptr())
     }
 }
 

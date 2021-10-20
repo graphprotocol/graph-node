@@ -1,7 +1,7 @@
 use graphql_parser::parse_schema;
+use std::env;
 use std::fs;
 use std::process::exit;
-use std::{collections::BTreeSet, env};
 
 use graph_graphql::schema::api::api_schema;
 
@@ -34,10 +34,7 @@ pub fn main() {
         parse_schema(&schema).map(|v| v.into_static()),
         "Failed to parse schema",
     );
-    let schema = ensure(
-        api_schema(&schema, &BTreeSet::new()),
-        "Failed to convert to API schema",
-    );
+    let schema = ensure(api_schema(&schema), "Failed to convert to API schema");
 
     println!("{}", schema);
 }
