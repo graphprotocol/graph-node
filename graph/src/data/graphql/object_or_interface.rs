@@ -2,6 +2,7 @@ use crate::prelude::Schema;
 use crate::{components::store::EntityType, prelude::s};
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
+use std::mem;
 
 use super::ObjectTypeExt;
 
@@ -26,6 +27,7 @@ impl<'a> Eq for ObjectOrInterface<'a> {}
 
 impl<'a> Hash for ObjectOrInterface<'a> {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        mem::discriminant(self).hash(state);
         self.name().hash(state)
     }
 }
