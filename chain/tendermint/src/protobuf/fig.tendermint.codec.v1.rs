@@ -101,7 +101,7 @@ pub struct CommitSig {
     pub validator_address: ::prost::alloc::vec::Vec<u8>,
     /// key - SHA256(pubkey)[:20]
     #[prost(message, optional, tag = "3")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: ::core::option::Option<Timestamp>,
     /// length should be > 0 and < 64
     #[prost(bytes = "vec", tag = "4")]
     pub signature: ::prost::alloc::vec::Vec<u8>,
@@ -126,7 +126,7 @@ pub struct Header {
     #[prost(uint64, tag = "3")]
     pub height: u64,
     #[prost(message, optional, tag = "4")]
-    pub time: ::core::option::Option<::prost_types::Timestamp>,
+    pub time: ::core::option::Option<Timestamp>,
     #[prost(message, optional, tag = "5")]
     pub last_block_id: ::core::option::Option<BlockId>,
     /// hash 256 32 bytes
@@ -212,7 +212,7 @@ pub struct DuplicateVoteEvidence {
     #[prost(int64, tag = "4")]
     pub validator_power: i64,
     #[prost(message, optional, tag = "5")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: ::core::option::Option<Timestamp>,
 }
 /// EventDataTx
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -235,7 +235,7 @@ pub struct EventDataVote {
     #[prost(message, optional, tag = "4")]
     pub block_id: ::core::option::Option<BlockId>,
     #[prost(message, optional, tag = "5")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: ::core::option::Option<Timestamp>,
     /// hash with a length of 20
     #[prost(bytes = "vec", tag = "6")]
     pub validator_address: ::prost::alloc::vec::Vec<u8>,
@@ -256,7 +256,7 @@ pub struct LightClientAttackEvidence {
     #[prost(int64, tag = "4")]
     pub total_voting_power: i64,
     #[prost(message, optional, tag = "5")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: ::core::option::Option<Timestamp>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct LightBlock {
@@ -441,6 +441,15 @@ pub struct EventDataStateSyncStatus {
     #[prost(uint64, tag = "2")]
     pub height: u64,
 }
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Timestamp {
+    #[prost(uint64, tag = "1")]
+    pub seconds: u64,
+    #[prost(int32, tag = "2")]
+    pub nanos: i32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Fig {}
 /// used in Vote
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -450,7 +459,7 @@ pub enum SignedMsgType {
     Prevote = 1,
     Precommit = 2,
     /// Proposals
-    Proposal = 32,
+    Proposal = 3,
 }
 /// BlockIdFlag indicates which BlockID the signature is for
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]

@@ -1,6 +1,8 @@
 #[path = "protobuf/fig.tendermint.codec.v1.rs"]
 mod pbcodec;
 
+pub use pbcodec::*;
+
 use graph::{
     blockchain::Block,
     blockchain::BlockPtr,
@@ -9,7 +11,6 @@ use graph::{
 use std::convert::TryFrom;
 use std::fmt::LowerHex;
 
-pub use pbcodec::*;
 /*
 impl From<&CryptoHash> for H256 {
     fn from(input: &CryptoHash) -> Self {
@@ -71,3 +72,6 @@ impl Block for EventList {
         self.parent_ptr()
     }
 }
+
+
+
