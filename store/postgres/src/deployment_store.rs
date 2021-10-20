@@ -861,7 +861,10 @@ impl DeploymentStore {
             );
         }
 
-        let conn = self.get_conn()?;
+        let conn = {
+            let _section = stopwatch.start_section("transact_blocks_get_conn");
+            self.get_conn()?
+        };
 
         let event = conn.transaction(|| -> Result<_, StoreError> {
             // Emit a store event for the changes we are about to make. We
