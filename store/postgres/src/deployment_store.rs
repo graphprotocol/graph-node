@@ -1204,7 +1204,7 @@ impl DeploymentStore {
                     if let Some(parent_ptr) = parent_ptr {
                         info!(
                             self.logger,
-                            "Reverting erroed block";
+                            "Reverting errored block";
                             "deployment" => deployment_id,
                             "from_block_number" => format!("{}", current_ptr.number),
                             "from_block_hash" => format!("{}", current_ptr.hash),
