@@ -570,9 +570,29 @@ impl std::fmt::Debug for ErrorHandler {
 
 impl r2d2::HandleError<r2d2::Error> for ErrorHandler {
     fn handle_error(&self, error: r2d2::Error) {
+        let msg = brief_error_msg(&error);
+
+        // Don't count canceling statements for timeouts etc. as a
+        // connection error. Unfortunately, we only have the textual error
+        // and need to infer whether the error indicates that the database
+        // is down or if something else happened. When querying a replica,
+        // these messages indicate that a query was canceled because it
+        // conflicted with replication, but does not indicate that there is
+        // a problem with the database itself.
+        //
+        // This check will break if users run Postgres (or even graph-node)
+        // in a locale other than English. In that case, their database will
+        // be marked as unavailable even though it is perfectly fine.
+        if msg.contains("canceling statement")
+            || msg.contains("no connection to the server")
+            || msg.contains("terminating connection due to conflict with recovery")
+        {
+            return;
+        }
+
         self.counter.inc();
         if self.state_tracker.is_available() {
-            error!(self.logger, "Postgres connection error"; "error" => brief_error_msg(&error));
+            error!(self.logger, "Postgres connection error"; "error" => msg);
         }
         self.state_tracker.mark_unavailable();
     }
