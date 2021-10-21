@@ -2,7 +2,7 @@
 mod pbcodec;
 
 use graph::{
-    blockchain::Block,
+    blockchain::Block as Blockchainblock,
     blockchain::BlockPtr,
     prelude::{hex, web3::types::H256, BlockNumber},
 };
@@ -24,7 +24,7 @@ impl LowerHex for &CryptoHash {
 }
 
 impl BlockWrapper {
-    pub fn block(&self) -> &pbcodec::Block {
+    pub fn block(&self) -> &Block {
         self.block.as_ref().unwrap()
     }
 
@@ -57,7 +57,7 @@ impl<'a> From<&'a BlockWrapper> for BlockPtr {
     }
 }
 
-impl Block for BlockWrapper {
+impl Blockchainblock for BlockWrapper {
     fn number(&self) -> i32 {
         BlockNumber::try_from(self.header().height).unwrap()
     }
