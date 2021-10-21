@@ -755,7 +755,7 @@ impl<'a> CollectedResponseKey<'a> {
         // collect the column name if field exists in schema
         if schema_field.is_some() {
             self.collected_column_names
-                .update(object_or_interface, &field);
+                .update(object_or_interface, &field)
         }
     }
 }
