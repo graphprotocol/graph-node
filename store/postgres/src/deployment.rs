@@ -569,8 +569,8 @@ pub fn update_deployment_status(
     use subgraph_deployment as d;
 
     let failed = match health {
-        SubgraphHealth::Healthy => true,
-        SubgraphHealth::Unhealthy | SubgraphHealth::Failed => false,
+        SubgraphHealth::Healthy => false,
+        SubgraphHealth::Unhealthy | SubgraphHealth::Failed => true,
     };
 
     update(d::table.filter(d::deployment.eq(deployment_id.as_str())))
