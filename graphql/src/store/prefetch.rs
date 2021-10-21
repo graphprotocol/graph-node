@@ -902,6 +902,8 @@ fn collect_fields_inner<'a>(
                     type_condition,
                     field,
                 );
+
+                // Collect complementary fields used in the `orderBy` query attribute, if present.
                 if let Some(arguments) = get_argument_value(&field.arguments, "orderBy") {
                     let schema_field = type_condition.field(&field.name).expect(&format!(
                         "the field {:?} to exist in {:?}",
@@ -1069,8 +1071,8 @@ impl<'a> CollectedAttributeNames<'a> {
             .update(field);
     }
 
-    /// Injects complementary fields (collected in upper hierarchical levels of the query) into
-    /// self.
+    /// Injects complementary fields that were collected priviously in upper hierarchical levels of
+    /// the query into `self`.
     fn populate_complementary_fields(
         &mut self,
         complementary_fields: &mut ComplementaryFields<'a>,
