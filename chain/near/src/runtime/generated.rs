@@ -1,10 +1,9 @@
 use graph::runtime::{
     AscIndexId, AscPtr, AscType, AscValue, DeterministicHostError, IndexForAscTypeId,
 };
-use graph::{anyhow, semver, semver::Version};
+use graph::semver::Version;
 use graph_runtime_derive::AscType;
 use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEnum, AscString, Uint8Array};
-use std::mem::size_of;
 
 pub(crate) type AscCryptoHash = Uint8Array;
 pub(crate) type AscAccountId = AscString;
