@@ -27,7 +27,7 @@ use crate::adapter::TriggerFilter;
 use crate::capabilities::NodeCapabilities;
 use crate::data_source::{DataSourceTemplate, UnresolvedDataSourceTemplate};
 use crate::runtime::RuntimeAdapter;
-use crate::trigger::NearTrigger;
+use crate::trigger::{self, NearTrigger};
 use crate::{
     codec,
     data_source::{DataSource, UnresolvedDataSource},
@@ -310,11 +310,49 @@ impl FirehoseMapper {
         block: &codec::BlockWrapper,
         _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, FirehoseError> {
-        Ok(BlockWithTriggers {
-            // TODO: Find the best place to introduce an `Arc` and avoid these clones.
-            block: block.clone(),
-            trigger_data: vec![NearTrigger::Block(Arc::new(block.clone()))],
-        })
+        // TODO: Find the best place to introduce an `Arc` and avoid this clone.
+        let block = Arc::new(block.clone());
+
+        // Filter non-successful or non-action receipts.
+        let receipts = block.shards.iter().flat_map(|shard| {
+            shard
+                .receipt_execution_outcomes
+                .clone()
+                .into_iter()
+                .filter_map(|outcome| {
+                    if !outcome
+                        .execution_outcome
+                        .as_ref()?
+                        .outcome
+                        .as_ref()?
+                        .status
+                        .as_ref()?
+                        .is_success()
+                    {
+                        return None;
+                    }
+                    if !matches!(
+                        outcome.receipt.as_ref()?.receipt,
+                        Some(codec::receipt::Receipt::Action(_))
+                    ) {
+                        return None;
+                    }
+                    Some(trigger::ReceiptWithOutcome {
+                        outcome: outcome.execution_outcome?,
+                        receipt: outcome.receipt?,
+                        block: block.cheap_clone(),
+                    })
+                })
+        });
+
+        let mut trigger_data: Vec<_> = receipts
+            .map(|r| NearTrigger::Receipt(Arc::new(r)))
+            .collect();
+
+        trigger_data.push(NearTrigger::Block(block.cheap_clone()));
+
+        // TODO: `block` should probably be an `Arc` in `BlockWithTriggers` to avoid this clone.
+        Ok(BlockWithTriggers::new(block.as_ref().clone(), trigger_data))
     }
 }
 

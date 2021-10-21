@@ -50,19 +50,31 @@ impl blockchain::DataSource<Chain> for DataSource {
             return Ok(None);
         }
 
-        match trigger {
-            NearTrigger::Block(_) => {
-                let handler = match self.handler_for_block() {
-                    Some(handler) => handler,
-                    None => return Ok(None),
-                };
+        let handler = match trigger {
+            // A block trigger matches if a block handler is present.
+            NearTrigger::Block(_) => match self.handler_for_block() {
+                Some(handler) => &handler.handler,
+                None => return Ok(None),
+            },
 
-                Ok(Some(TriggerWithHandler::new(
-                    trigger.cheap_clone(),
-                    handler.handler,
-                )))
+            // A receipt trigger matches if the receiver matches `source.account` and a receipt
+            // handler is present.
+            NearTrigger::Receipt(receipt) => {
+                if Some(&receipt.receipt.receiver_id) != self.source.account.as_ref() {
+                    return Ok(None);
+                }
+
+                match self.handler_for_receipt() {
+                    Some(handler) => &handler.handler,
+                    None => return Ok(None),
+                }
             }
-        }
+        };
+
+        Ok(Some(TriggerWithHandler::new(
+            trigger.cheap_clone(),
+            handler.to_owned(),
+        )))
     }
 
     fn name(&self) -> &str {
@@ -184,9 +196,12 @@ impl DataSource {
         })
     }
 
-    fn handler_for_block(&self) -> Option<MappingBlockHandler> {
-        // FIXME (NEAR): We need to decide how to deal with multi block handlers, allow only 1?
-        self.mapping.block_handlers.first().map(|v| v.clone())
+    fn handler_for_block(&self) -> Option<&MappingBlockHandler> {
+        self.mapping.block_handlers.first()
+    }
+
+    fn handler_for_receipt(&self) -> Option<&ReceiptHandler> {
+        self.mapping.receipt_handlers.first()
     }
 }
 
