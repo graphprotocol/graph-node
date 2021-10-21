@@ -494,7 +494,7 @@ pub fn fail(
 ) -> Result<(), StoreError> {
     let error_id = insert_subgraph_error(conn, error)?;
 
-    update_deployment_status(conn, id, SubgraphHealth::Failed, Some(error_id))?;
+    update_deployment_status(conn, id, true, SubgraphHealth::Failed, Some(error_id))?;
 
     Ok(())
 }
@@ -563,15 +563,11 @@ pub fn get_error_block_hash(
 pub fn update_deployment_status(
     conn: &PgConnection,
     deployment_id: &DeploymentHash,
+    failed: bool,
     health: SubgraphHealth,
     fatal_error: Option<String>,
 ) -> Result<(), StoreError> {
     use subgraph_deployment as d;
-
-    let failed = match health {
-        SubgraphHealth::Healthy => false,
-        SubgraphHealth::Unhealthy | SubgraphHealth::Failed => true,
-    };
 
     update(d::table.filter(d::deployment.eq(deployment_id.as_str())))
         .set((
