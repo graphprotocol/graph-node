@@ -311,6 +311,7 @@ fn load_parent_block_from_store(context: &Context, block_ptr: BlockPtr) -> Block
         .and_then(move |block| {
             future::result(
                 block
+                    .data
                     .get("parent")
                     .ok_or_else(move || {
                         anyhow!("block {} has no parent", block_ptr_for_missing_parent,)

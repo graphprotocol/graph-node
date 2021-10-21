@@ -8,7 +8,6 @@ use itertools::Itertools;
 use serde::de;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
-use std::convert::TryFrom;
 use std::fmt;
 use std::iter::FromIterator;
 use std::str::FromStr;
@@ -16,6 +15,7 @@ use std::{
     borrow::Cow,
     collections::{BTreeMap, HashMap},
 };
+use std::{convert::TryFrom, num::NonZeroU64};
 use strum::AsStaticRef as _;
 use strum_macros::AsStaticStr;
 
@@ -619,6 +619,33 @@ impl<'a> From<Vec<(&'a str, Value)>> for Entity {
 impl CacheWeight for Entity {
     fn indirect_weight(&self) -> usize {
         self.0.indirect_weight()
+    }
+}
+
+pub type Vid = Option<NonZeroU64>;
+
+#[derive(Default, Debug)]
+pub struct EntityVersion {
+    pub data: Entity,
+    /// The `vid` of the entity if it exists in the store
+    pub vid: Vid,
+}
+
+impl EntityVersion {
+    pub fn new(data: Entity, vid: Vid) -> Self {
+        EntityVersion { data, vid }
+    }
+}
+
+impl From<EntityVersion> for Entity {
+    fn from(ev: EntityVersion) -> Self {
+        ev.data
+    }
+}
+
+impl From<Entity> for EntityVersion {
+    fn from(data: Entity) -> Self {
+        Self { data, vid: None }
     }
 }
 

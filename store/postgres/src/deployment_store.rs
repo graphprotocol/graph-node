@@ -4,6 +4,7 @@ use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use graph::components::store::{EntityType, StoredDynamicDataSource};
+use graph::data::store::EntityVersion;
 use graph::data::subgraph::status;
 use graph::prelude::{
     tokio, CancelHandle, CancelToken, CancelableError, PoolWaitStats, SubgraphDeploymentEntity,
@@ -801,7 +802,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
         key: &EntityKey,
-    ) -> Result<Option<Entity>, StoreError> {
+    ) -> Result<Option<EntityVersion>, StoreError> {
         let conn = self.get_conn()?;
         let layout = self.layout(&conn, site)?;
 

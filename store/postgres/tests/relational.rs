@@ -437,7 +437,7 @@ macro_rules! assert_entity_eq {
         let mut pass = true;
 
         for (key, left_value) in left.clone().sorted() {
-            match right.get(&key) {
+            match right.data.get(&key) {
                 None => {
                     pass = false;
                     println!("key '{}' missing from right", key);
@@ -453,7 +453,7 @@ macro_rules! assert_entity_eq {
                 }
             }
         }
-        for (key, _) in right.clone().sorted() {
+        for (key, _) in right.data.clone().sorted() {
             if left.get(&key).is_none() {
                 pass = false;
                 println!("key '{}' missing from left", key);
@@ -619,6 +619,7 @@ fn update_many() {
                     .find(conn, &*SCALAR, id, BLOCK_NUMBER_MAX)
                     .expect(&format!("Failed to read Scalar[{}]", id))
                     .unwrap()
+                    .data
             })
             .collect();
         let new_one = &updated[0];

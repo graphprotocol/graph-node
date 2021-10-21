@@ -32,7 +32,7 @@ use crate::{
 use graph::components::store::EntityType;
 use graph::data::graphql::ext::{DirectiveFinder, DocumentExt, ObjectTypeExt};
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
-use graph::data::store::BYTES_SCALAR;
+use graph::data::store::{EntityVersion, BYTES_SCALAR};
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{
     anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityCollection,
@@ -522,7 +522,7 @@ impl Layout {
         entity: &EntityType,
         id: &str,
         block: BlockNumber,
-    ) -> Result<Option<Entity>, StoreError> {
+    ) -> Result<Option<EntityVersion>, StoreError> {
         let table = self.table_for_entity(entity)?;
         FindQuery::new(table.as_ref(), id, block)
             .get_result::<EntityData>(conn)

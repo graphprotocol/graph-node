@@ -335,7 +335,7 @@ fn delete_entity() {
 fn get_entity_1() {
     run_test(|_, writable, deployment| async move {
         let key = EntityKey::data(deployment.hash.clone(), USER.to_owned(), "1".to_owned());
-        let result = writable.get(&key).unwrap();
+        let result = writable.get(&key).unwrap().map(|ev| ev.data);
 
         let mut expected_entity = Entity::new();
 
@@ -366,7 +366,7 @@ fn get_entity_1() {
 fn get_entity_3() {
     run_test(|_, writable, deployment| async move {
         let key = EntityKey::data(deployment.hash.clone(), USER.to_owned(), "3".to_owned());
-        let result = writable.get(&key).unwrap();
+        let result = writable.get(&key).unwrap().map(|ev| ev.data);
 
         let mut expected_entity = Entity::new();
 
@@ -442,7 +442,7 @@ fn update_existing() {
         };
 
         // Verify that the entity before updating is different from what we expect afterwards
-        assert_ne!(writable.get(&entity_key).unwrap().unwrap(), new_data);
+        assert_ne!(writable.get(&entity_key).unwrap().unwrap().data, new_data);
 
         // Set test entity; as the entity already exists an update should be performed
         let count = get_entity_count(store.clone(), &deployment.hash);
@@ -463,7 +463,8 @@ fn update_existing() {
 
         new_data.insert("__typename".to_owned(), USER.into());
         new_data.insert("bin_name".to_owned(), Value::Bytes(bin_name));
-        assert_eq!(writable.get(&entity_key).unwrap(), Some(new_data));
+        let actual = writable.get(&entity_key).unwrap().map(|ev| ev.data);
+        assert_eq!(actual, Some(new_data));
     })
 }
 
@@ -481,7 +482,8 @@ fn partially_update_existing() {
         let original_entity = writable
             .get(&entity_key)
             .unwrap()
-            .expect("entity not found");
+            .expect("entity not found")
+            .data;
 
         // Set test entity; as the entity already exists an update should be performed
         transact_entity_operations(
@@ -499,7 +501,8 @@ fn partially_update_existing() {
         let updated_entity = writable
             .get(&entity_key)
             .unwrap()
-            .expect("entity not found");
+            .expect("entity not found")
+            .data;
 
         // Verify that the values of all attributes we have set were either unset
         // (in the case of Value::Null) or updated to the new values
@@ -1097,7 +1100,11 @@ fn revert_block_with_partial_update() {
             ("email", Value::Null),
         ]);
 
-        let original_entity = writable.get(&entity_key).unwrap().expect("missing entity");
+        let original_entity = writable
+            .get(&entity_key)
+            .unwrap()
+            .expect("missing entity")
+            .data;
 
         // Set test entity; as the entity already exists an update should be performed
         transact_entity_operations(
@@ -1119,7 +1126,11 @@ fn revert_block_with_partial_update() {
         assert_eq!(count, get_entity_count(store.clone(), &deployment.hash));
 
         // Obtain the reverted entity from the store
-        let reverted_entity = writable.get(&entity_key).unwrap().expect("missing entity");
+        let reverted_entity = writable
+            .get(&entity_key)
+            .unwrap()
+            .expect("missing entity")
+            .data;
 
         // Verify that the entity has been returned to its original state
         assert_eq!(reverted_entity, original_entity);
@@ -1218,8 +1229,12 @@ fn revert_block_with_dynamic_data_source_operations() {
 
         // Verify that the user is no longer the original
         assert_ne!(
-            writable.get(&user_key).unwrap().expect("missing entity"),
-            original_user
+            writable
+                .get(&user_key)
+                .unwrap()
+                .expect("missing entity")
+                .data,
+            original_user.data
         );
 
         // Verify that the dynamic data source exists afterwards
@@ -1234,8 +1249,12 @@ fn revert_block_with_dynamic_data_source_operations() {
 
         // Verify that the user is the original again
         assert_eq!(
-            writable.get(&user_key).unwrap().expect("missing entity"),
-            original_user
+            writable
+                .get(&user_key)
+                .unwrap()
+                .expect("missing entity")
+                .data,
+            original_user.data
         );
 
         // Verify that the dynamic data source is gone after the reversion
