@@ -1225,7 +1225,7 @@ impl DeploymentStore {
                         "deployment" => deployment_id,
                         "error_id" => fatal_error_id,
                         "error_block_hash" => format!("0x{}", hex::encode(&hash_bytes)),
-                        "deployment_head" => format!("{}", current_ptr.hash)
+                        "deployment_head" => format!("{}", current_ptr.hash),
                     );
                 },
                 // Same as branch above, if you find this warning in the logs,
@@ -1233,7 +1233,8 @@ impl DeploymentStore {
                 None => {
                     warn!(self.logger, "Subgraph error should have block hash";
                         "deployment" => deployment_id,
-                        "error_id" => fatal_error_id);
+                        "error_id" => fatal_error_id,
+                    );
                 },
             };
 
