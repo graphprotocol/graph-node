@@ -1273,7 +1273,7 @@ impl<'a> Connection<'a> {
         // Deployment is assigned
         let assigned = a::table.filter(a::id.eq(ds::id));
         // Deployment is current or pending version
-        let active = v::table
+        let current_or_pending = v::table
             .inner_join(
                 s::table.on(v::id
                     .nullable()
@@ -1291,9 +1291,15 @@ impl<'a> Connection<'a> {
             .select(sql::<Array<Text>>("array_agg(distinct name)"))
             .single_value();
 
+        // A deployment is unused if it fulfills all of these criteria:
+        // 1. It is not assigned to a node
+        // 2. It is either not marked as active or is neither the current or
+        //    pending version of a subgraph. The rest of the system makes
+        //    sure that there is always one active copy of a deployment
+        // 3. It is not the source of a currently running copy operation
         let unused = ds::table
             .filter(not(exists(assigned)))
-            .filter(not(exists(active)))
+            .filter(not(ds::active).or(not(exists(current_or_pending))))
             .filter(not(exists(copy_src)))
             .select((
                 ds::id,

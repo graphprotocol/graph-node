@@ -742,17 +742,20 @@ impl SubgraphStoreInner {
             None => { /* ok */ }
         }
 
-        // Check that it is not current/pending for any subgraph
-        let versions = self
-            .primary_conn()?
-            .subgraphs_using_deployment(site.as_ref())?;
-        if versions.len() > 0 {
-            return Err(constraint_violation!(
-                "deployment {} can not be removed \
+        // Check that it is not current/pending for any subgraph if it is
+        // the active deployment of that subgraph
+        if site.active {
+            let versions = self
+                .primary_conn()?
+                .subgraphs_using_deployment(site.as_ref())?;
+            if versions.len() > 0 {
+                return Err(constraint_violation!(
+                    "deployment {} can not be removed \
                 since it is the current or pending version for the subgraph(s) {}",
-                site.deployment.as_str(),
-                versions.join(", "),
-            ));
+                    site.deployment.as_str(),
+                    versions.join(", "),
+                ));
+            }
         }
 
         store.drop_deployment(&site)?;
