@@ -249,7 +249,7 @@ impl AscIndexId for AscConsensusParams {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscVersion {
-    pub app_version: i64,
+    pub app_version: u64,
 }
 
 impl AscIndexId for AscVersion {
@@ -274,7 +274,7 @@ impl AscIndexId for AscBlock {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscCommit {
-    pub height: i64,
+    pub height: u64,
     pub round: i32,
     pub block_id: AscPtr<AscBlockID>,
     pub signatures: AscPtr<AscCommitSigArray>,
@@ -401,8 +401,8 @@ impl AscIndexId for AscEventDataNewEvidence {
 pub(crate) struct AscDuplicateVoteEvidence {
     pub vote_a: AscPtr<AscEventDataVote>,
     pub vote_b: AscPtr<AscEventDataVote>,
-    pub total_voting_power: u64,
-    pub validator_power: u64,
+    pub total_voting_power: i64,
+    pub validator_power: i64,
     pub timestamp: AscPtr<AscTimestamp>,
 }
 
@@ -426,7 +426,7 @@ impl AscIndexId for AscEventDataTx {
 #[derive(AscType)]
 pub(crate) struct AscEventDataVote {
     pub messagetype: AscPtr<AscSignedMsgTypeEnum>,
-    pub height: i64,
+    pub height: u64,
     pub round: i32,
     pub block_id: AscPtr<AscBlockID>,
     pub timestamp: AscPtr<AscTimestamp>,
@@ -508,8 +508,8 @@ impl AscIndexId for AscEvidenceList {
 pub(crate) struct AscValidator {
     pub address: AscPtr<Uint8Array>,
     pub pub_key: AscPtr<AscPublicKey>,
-    pub voting_power: u64,
-    pub proposer_priority: u64,
+    pub voting_power: i64,
+    pub proposer_priority: i64,
 }
 
 impl AscIndexId for AscValidator {
@@ -533,7 +533,7 @@ impl AscIndexId for AscPublicKey {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscTxResult {
-    pub height: i64,
+    pub height: u64,
     pub index: i32,
     pub tx: AscPtr<Uint8Array>,
     pub result: AscPtr<AscResponseDeliverTx>,
@@ -551,8 +551,8 @@ pub(crate) struct AscResponseDeliverTx {
     pub data: AscPtr<Uint8Array>,
     pub log: AscPtr<AscString>,
     pub info: AscPtr<AscString>,
-    pub gas_wanted: u64,
-    pub gas_used: u64,
+    pub gas_wanted: i64,
+    pub gas_used: i64,
     pub events: AscPtr<AscEventArray>,
     pub codespace: AscPtr<AscString>,
 }
@@ -700,7 +700,7 @@ impl AscIndexId for AscEventDataStateSyncStatus {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscTimestamp {
-    pub seconds: u64,
+    pub seconds: i64,
     pub nanos: i32,
 }
 

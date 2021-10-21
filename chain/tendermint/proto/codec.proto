@@ -176,7 +176,7 @@ message EventDataTx {
 
 // EventDataVote
 message EventDataVote {
-  SignedMsgType type = 1; // should be present in the enum at the top of this file
+  SignedMsgType eventtype = 1; // should be present in the enum at the top of this file
   uint64 height = 2; // must be > 0
   int32 round = 3;   // must be > 0
   BlockID block_id = 4 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
@@ -250,7 +250,7 @@ message ResponseDeliverTx {
 }
 
 message Event {
-  string type = 1;
+  string eventtype = 1;
   EventAttribute attributes = 2;
 }
 

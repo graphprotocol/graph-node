@@ -4,10 +4,13 @@ mod pbcodec;
 pub use pbcodec::*;
 
 use graph::{
-    blockchain::Block,
     blockchain::BlockPtr,
     prelude::{hex, web3::types::H256, BlockNumber},
 };
+
+
+use graph::blockchain::Block as BBlock;
+
 use std::convert::TryFrom;
 use std::fmt::LowerHex;
 
@@ -59,7 +62,7 @@ impl<'a> From<&'a EventList> for BlockPtr {
     }
 }
 
-impl Block for EventList {
+impl BBlock for EventList {
     fn number(&self) -> i32 {
         BlockNumber::try_from(self.header().height).unwrap()
     }
@@ -72,6 +75,4 @@ impl Block for EventList {
         self.parent_ptr()
     }
 }
-
-
 

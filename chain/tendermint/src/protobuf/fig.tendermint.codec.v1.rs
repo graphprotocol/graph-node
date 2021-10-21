@@ -225,7 +225,7 @@ pub struct EventDataTx {
 pub struct EventDataVote {
     /// should be present in the enum at the top of this file
     #[prost(enumeration = "SignedMsgType", tag = "1")]
-    pub r#type: i32,
+    pub eventtype: i32,
     /// must be > 0
     #[prost(uint64, tag = "2")]
     pub height: u64,
@@ -352,7 +352,7 @@ pub struct ResponseDeliverTx {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Event {
     #[prost(string, tag = "1")]
-    pub r#type: ::prost::alloc::string::String,
+    pub eventtype: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "2")]
     pub attributes: ::core::option::Option<EventAttribute>,
 }
@@ -443,8 +443,8 @@ pub struct EventDataStateSyncStatus {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Timestamp {
-    #[prost(uint64, tag = "1")]
-    pub seconds: u64,
+    #[prost(int64, tag = "1")]
+    pub seconds: i64,
     #[prost(int32, tag = "2")]
     pub nanos: i32,
 }
