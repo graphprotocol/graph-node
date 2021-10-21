@@ -69,11 +69,12 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
     TokenStream::from(quote! {
         impl#impl_generics AscType for #struct_name#ty_generics #where_clause {
             fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
-               let mut bytes = Vec::new();
+                let in_memory_byte_count = std::mem::size_of::<Self>();
+                let mut bytes = Vec::with_capacity(in_memory_byte_count);
                 #(bytes.extend_from_slice(&self.#field_names.to_asc_bytes()?);)*
 
                 // Assert that the struct has no padding.
-                assert_eq!(bytes.len(), std::mem::size_of::<Self>());
+                assert_eq!(bytes.len(), in_memory_byte_count);
                 Ok(bytes)
             }
 
