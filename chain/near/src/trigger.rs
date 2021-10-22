@@ -138,3 +138,248 @@ pub struct ReceiptWithOutcome {
     pub receipt: codec::Receipt,
     pub block: Arc<codec::BlockWrapper>,
 }
+
+#[cfg(test)]
+mod tests {
+    use std::convert::TryFrom;
+
+    use super::*;
+
+    use graph::{
+        anyhow::anyhow,
+        data::subgraph::API_VERSION_0_0_5,
+        prelude::{hex, BigInt},
+    };
+
+    #[test]
+    fn block_trigger_to_asc_ptr() {
+        let mut heap = BytesHeap::new(API_VERSION_0_0_5);
+        let trigger = NearTrigger::Block(Arc::new(block()));
+
+        let result = blockchain::MappingTrigger::to_asc_ptr(trigger, &mut heap);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn receipt_trigger_to_asc_ptr() {
+        let mut heap = BytesHeap::new(API_VERSION_0_0_5);
+        let trigger = NearTrigger::Receipt(Arc::new(ReceiptWithOutcome {
+            block: Arc::new(block()),
+            outcome: codec::ExecutionOutcomeWithIdView {
+                proof: Some(codec::MerklePath { path: vec![] }),
+                block_hash: hash("aa"),
+                id: hash("beef"),
+                outcome: Some(codec::ExecutionOutcome {
+                    logs: vec!["string".to_string()],
+                    receipt_ids: vec![],
+                    gas_burnt: 1,
+                    tokens_burnt: big_int(2),
+                    executor_id: "near".to_string(),
+                    status: Some(codec::execution_outcome::Status::SuccessValue(
+                        codec::SuccessValueExecutionStatus {
+                            value: "/6q7zA==".to_string(),
+                        },
+                    )),
+                }),
+            },
+            receipt: codec::Receipt {
+                predecessor_id: "genesis.near".to_string(),
+                receiver_id: "near".to_string(),
+                receipt_id: hash("dead"),
+                receipt: Some(codec::receipt::Receipt::Action(codec::ReceiptAction {
+                    signer_id: "near".to_string(),
+                    signer_public_key: Some(codec::PublicKey { bytes: vec![] }),
+                    gas_price: big_int(2),
+                    output_data_receivers: vec![],
+                    input_data_ids: vec![],
+                    actions: vec![
+                        codec::Action {
+                            action: Some(codec::action::Action::CreateAccount(
+                                codec::CreateAccountAction {},
+                            )),
+                        },
+                        codec::Action {
+                            action: Some(codec::action::Action::DeployContract(
+                                codec::DeployContractAction {
+                                    code: "/6q7zA==".to_string(),
+                                },
+                            )),
+                        },
+                        codec::Action {
+                            action: Some(codec::action::Action::FunctionCall(
+                                codec::FunctionCallAction {
+                                    method_name: "func".to_string(),
+                                    args: "e30=".to_string(),
+                                    gas: 1000,
+                                    deposit: big_int(100),
+                                },
+                            )),
+                        },
+                        codec::Action {
+                            action: Some(codec::action::Action::Transfer(codec::TransferAction {
+                                deposit: big_int(100),
+                            })),
+                        },
+                        codec::Action {
+                            action: Some(codec::action::Action::Stake(codec::StakeAction {
+                                stake: big_int(100),
+                                public_key: Some(codec::PublicKey { bytes: vec![] }),
+                            })),
+                        },
+                        codec::Action {
+                            action: Some(codec::action::Action::AddKey(codec::AddKeyAction {
+                                public_key: Some(codec::PublicKey { bytes: vec![] }),
+                                access_key: Some(codec::AccessKey {
+                                    nonce: 1,
+                                    permission: Some(codec::AccessKeyPermission {
+                                        permission: Some(
+                                            codec::access_key_permission::Permission::FullAccess(
+                                                codec::FullAccessPermission {},
+                                            ),
+                                        ),
+                                    }),
+                                }),
+                            })),
+                        },
+                        codec::Action {
+                            action: Some(codec::action::Action::DeleteKey(
+                                codec::DeleteKeyAction {
+                                    public_key: Some(codec::PublicKey { bytes: vec![] }),
+                                },
+                            )),
+                        },
+                        codec::Action {
+                            action: Some(codec::action::Action::DeleteAccount(
+                                codec::DeleteAccountAction {
+                                    beneficiary_id: "suicided.near".to_string(),
+                                },
+                            )),
+                        },
+                    ],
+                })),
+            },
+        }));
+
+        let result = blockchain::MappingTrigger::to_asc_ptr(trigger, &mut heap);
+        assert!(result.is_ok());
+    }
+
+    fn block() -> codec::BlockWrapper {
+        codec::BlockWrapper {
+            block: Some(codec::Block {
+                author: "test".to_string(),
+                header: Some(codec::BlockHeader {
+                    height: 2,
+                    prev_height: 1,
+                    epoch_id: hash("01"),
+                    next_epoch_id: hash("02"),
+                    hash: hash("01"),
+                    prev_hash: hash("00"),
+                    prev_state_root: hash("bb00010203"),
+                    chunk_receipts_root: hash("bb00010203"),
+                    chunk_headers_root: hash("bb00010203"),
+                    chunk_tx_root: hash("bb00010203"),
+                    outcome_root: hash("cc00010203"),
+                    chunks_included: 1,
+                    challenges_root: hash("aa"),
+                    timestamp: 100,
+                    timestamp_nanosec: 0,
+                    random_value: hash("010203"),
+                    validator_proposals: vec![],
+                    chunk_mask: vec![],
+                    gas_price: big_int(10),
+                    block_ordinal: 0,
+                    validator_reward: big_int(100),
+                    total_supply: big_int(1_000),
+                    challenges_result: vec![],
+                    last_final_block: hash("00"),
+                    last_ds_final_block: hash("00"),
+                    next_bp_hash: hash("bb"),
+                    block_merkle_root: hash("aa"),
+                    epoch_sync_data_hash: vec![0x00, 0x01],
+                    approvals: vec![],
+                    signature: None,
+                    latest_protocol_version: 0,
+                }),
+                chunks: vec![],
+            }),
+            shards: vec![],
+            state_changes: vec![],
+        }
+    }
+
+    fn big_int(input: u64) -> Option<codec::BigInt> {
+        let value =
+            BigInt::try_from(input).expect(format!("Invalid BigInt value {}", input).as_ref());
+        let bytes = value.to_signed_bytes_le();
+
+        Some(codec::BigInt { bytes })
+    }
+
+    fn hash(input: &str) -> Option<codec::CryptoHash> {
+        Some(codec::CryptoHash {
+            bytes: hex::decode(input).expect(format!("Invalid hash value {}", input).as_ref()),
+        })
+    }
+
+    struct BytesHeap {
+        api_version: graph::semver::Version,
+        memory: Vec<u8>,
+    }
+
+    impl BytesHeap {
+        fn new(api_version: graph::semver::Version) -> Self {
+            Self {
+                api_version,
+                memory: vec![],
+            }
+        }
+    }
+
+    impl AscHeap for BytesHeap {
+        fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, DeterministicHostError> {
+            self.memory.extend_from_slice(bytes);
+            Ok((self.memory.len() - bytes.len()) as u32)
+        }
+
+        fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, DeterministicHostError> {
+            let memory_byte_count = self.memory.len();
+            if memory_byte_count == 0 {
+                return Err(DeterministicHostError(anyhow!("No memory is allocated")));
+            }
+
+            let start_offset = offset as usize;
+            let end_offset_exclusive = start_offset + size as usize;
+
+            if start_offset >= memory_byte_count {
+                return Err(DeterministicHostError(anyhow!(
+                    "Start offset {} is outside of allocated memory, max offset is {}",
+                    start_offset,
+                    memory_byte_count - 1
+                )));
+            }
+
+            if end_offset_exclusive > memory_byte_count {
+                return Err(DeterministicHostError(anyhow!(
+                    "End of offset {} is outside of allocated memory, max offset is {}",
+                    end_offset_exclusive,
+                    memory_byte_count - 1
+                )));
+            }
+
+            return Ok(Vec::from(&self.memory[start_offset..end_offset_exclusive]));
+        }
+
+        fn api_version(&self) -> graph::semver::Version {
+            self.api_version.clone()
+        }
+
+        fn asc_type_id(
+            &mut self,
+            type_id_index: graph::runtime::IndexForAscTypeId,
+        ) -> Result<u32, DeterministicHostError> {
+            // Not totally clear what is the purpose of this method, why not a default implementation here?
+            Ok(type_id_index as u32)
+        }
+    }
+}

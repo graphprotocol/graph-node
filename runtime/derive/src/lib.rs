@@ -73,8 +73,20 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
                 let mut bytes = Vec::with_capacity(in_memory_byte_count);
                 #(bytes.extend_from_slice(&self.#field_names.to_asc_bytes()?);)*
 
-                // Assert that the struct has no padding.
-                assert_eq!(bytes.len(), in_memory_byte_count);
+                // Right now we do not properly implement the alignment rules dicted by
+                // AssemblyScript. As such, we here enforce that the structure is tighly
+                // packed and that no implicit padding has been added.
+                //
+                // **Important** AssemblyScript and `repr(C)` in Rust does not follow exactly
+                // the same rules always. One caveats is that some struct are packed in AssemblyScript
+                // but padded for alignment in `repr(C)` like a struct `{ one: AscPtr, two: AscPtr, three: AscPtr, four: u64 }`,
+                // it appears this struct is always padded in `repr(C)` by Rust whatever order is tried.
+                // However, it's possible to packed completely this struct in AssemblyScript and avoid
+                // any padding.
+                //
+                // To overcome those cases where re-ordering never work, you will need to add an explicit
+                // _padding field to account for missing padding and pass this check.
+                assert_eq!(bytes.len(), in_memory_byte_count, "Alignment mismatch for {}, re-order fields or explicitely add a _padding field", stringify!(#struct_name));
                 Ok(bytes)
             }
 

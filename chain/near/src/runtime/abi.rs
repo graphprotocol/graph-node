@@ -245,6 +245,7 @@ impl ToAscObj<AscFunctionCallAction> for codec::FunctionCallAction {
             args: asc_new(heap, args.as_slice())?,
             gas: self.gas,
             deposit: asc_new(heap, self.deposit.as_ref().unwrap())?,
+            _padding: 0,
         })
     }
 }
@@ -292,6 +293,7 @@ impl ToAscObj<AscAccessKey> for codec::AccessKey {
         Ok(AscAccessKey {
             nonce: self.nonce,
             permission: asc_new(heap, self.permission.as_ref().unwrap())?,
+            _padding: 0,
         })
     }
 }
