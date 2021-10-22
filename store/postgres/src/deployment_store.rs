@@ -1214,7 +1214,7 @@ impl DeploymentStore {
                         info!(
                             self.logger,
                             "Reverting errored block";
-                            "deployment" => deployment_id,
+                            "subgraph_id" => deployment_id,
                             "from_block_number" => format!("{}", current_ptr.number),
                             "from_block_hash" => format!("{}", current_ptr.hash),
                             "to_block_number" => format!("{}", parent_ptr.number),
@@ -1234,7 +1234,7 @@ impl DeploymentStore {
                 // shoudn't happen.
                 Some(hash_bytes) => {
                     warn!(self.logger, "Subgraph error does not have same block hash as deployment head";
-                        "deployment" => deployment_id,
+                        "subgraph_id" => deployment_id,
                         "error_id" => fatal_error_id,
                         "error_block_hash" => format!("0x{}", hex::encode(&hash_bytes)),
                         "deployment_head" => format!("{}", current_ptr.hash),
@@ -1244,7 +1244,7 @@ impl DeploymentStore {
                 // something is wrong, this shoudn't happen.
                 None => {
                     warn!(self.logger, "Subgraph error should have block hash";
-                        "deployment" => deployment_id,
+                        "subgraph_id" => deployment_id,
                         "error_id" => fatal_error_id,
                     );
                 },
