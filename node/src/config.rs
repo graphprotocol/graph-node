@@ -570,7 +570,7 @@ impl Provider {
 
                 // A Firehose url must be a valid Uri since gRPC library we use (Tonic)
                 // works with Uri.
-                let label = self.label.clone();
+                let label = &self.label;
                 firehose.url.parse::<Uri>().map_err(|e| {
                     anyhow!(
                         "the url `{}` for firehose provider {} is not a legal URI: {}",
