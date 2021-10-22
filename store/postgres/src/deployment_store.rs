@@ -1196,6 +1196,14 @@ impl DeploymentStore {
                 None => return Ok(()),
             };
 
+            use deployment::SubgraphHealth::*;
+            // Decide status based of if there are any errors for the previous/parent block
+            let prev_health = if deployment::has_non_fatal_errors(conn, deployment_id, parent_ptr.map(|ptr| ptr.number))? {
+                Unhealthy
+            } else {
+                Healthy
+            };
+
             match deployment::get_error_block_hash(conn, &fatal_error_id)? {
                 // The error happened for the current deployment head.
                 // We should revert everything (deployment head, subgraph errors, etc)
@@ -1236,13 +1244,6 @@ impl DeploymentStore {
                         "error_id" => fatal_error_id,
                     );
                 },
-            };
-
-            use deployment::SubgraphHealth::*;
-            let prev_health = if deployment::has_non_fatal_errors(conn, deployment_id, None)? {
-                Unhealthy
-            } else {
-                Healthy
             };
 
             // Unfail the deployment.
