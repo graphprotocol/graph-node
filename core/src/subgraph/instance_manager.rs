@@ -855,8 +855,6 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
         }
     }
 
-    // The triggers were processed but some were skipped due to deterministic errors, if the
-    // `nonFatalErrors` feature is not present, return early with an error.
     let has_errors = block_state.has_errors();
     let is_non_fatal_errors_active = ctx
         .inputs
@@ -953,7 +951,11 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
         deterministic_errors,
     ) {
         Ok(_) => {
-            // If a deterministic error has happened, make the subgraph fail.
+            // For subgraphs with `nonFatalErrors` feature disabled, we consider
+            // any error as fatal.
+            //
+            // So we do an early return to make the subgraph stop processing blocks.
+            //
             // In this scenario the only entity that is stored/transacted is the PoI,
             // all of the others are discarded.
             if has_errors && !is_non_fatal_errors_active {

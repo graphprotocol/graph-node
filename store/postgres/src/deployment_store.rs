@@ -1193,10 +1193,19 @@ impl DeploymentStore {
         conn.transaction(|| {
             let deployment_id = &site.deployment;
 
+            // We'll only unfail subgraphs that had fatal errors
             let fatal_error_id = match deployment::get_fatal_error_id(conn, deployment_id)? {
                 Some(fatal_error_id) => fatal_error_id,
                 // If the subgraph is not failed then there is nothing to do.
                 None => return Ok(()),
+            };
+
+            use deployment::SubgraphHealth::*;
+            // Decide status based on if there are any errors for the previous/parent block
+            let prev_health = if deployment::has_non_fatal_errors(conn, deployment_id, parent_ptr.map(|ptr| ptr.number))? {
+                Unhealthy
+            } else {
+                Healthy
             };
 
             match deployment::get_error_block_hash(conn, &fatal_error_id)? {
@@ -1207,7 +1216,8 @@ impl DeploymentStore {
                     if let Some(parent_ptr) = parent_ptr {
                         info!(
                             self.logger,
-                            "Reverting erroed block";
+                            "Reverting errored block";
+                            "subgraph_id" => deployment_id,
                             "from_block_number" => format!("{}", current_ptr.number),
                             "from_block_hash" => format!("{}", current_ptr.hash),
                             "to_block_number" => format!("{}", parent_ptr.number),
@@ -1215,6 +1225,9 @@ impl DeploymentStore {
                         );
 
                         let _ = self.revert_block_operations(site.clone(), parent_ptr.clone())?;
+
+                        // Unfail the deployment.
+                        deployment::update_deployment_status(conn, deployment_id, prev_health, None)?;
                     }
                 },
                 // Found error, but not for deployment head, we don't need to
@@ -1224,31 +1237,23 @@ impl DeploymentStore {
                 // shoudn't happen.
                 Some(hash_bytes) => {
                     warn!(self.logger, "Subgraph error does not have same block hash as deployment head";
+                        "subgraph_id" => deployment_id,
                         "error_id" => fatal_error_id,
                         "error_block_hash" => format!("0x{}", hex::encode(&hash_bytes)),
-                        "deployment_head" => format!("{}", current_ptr.hash)
+                        "deployment_head" => format!("{}", current_ptr.hash),
                     );
                 },
                 // Same as branch above, if you find this warning in the logs,
                 // something is wrong, this shoudn't happen.
                 None => {
                     warn!(self.logger, "Subgraph error should have block hash";
-                        "error_id" => fatal_error_id);
+                        "subgraph_id" => deployment_id,
+                        "error_id" => fatal_error_id,
+                    );
                 },
             };
 
-            use deployment::SubgraphHealth::*;
-            let prev_health = if deployment::has_non_fatal_errors(conn, deployment_id, None)? {
-                Unhealthy
-            } else {
-                Healthy
-            };
-
-            // Unfail the deployment.
-            deployment::update_deployment_status(conn, deployment_id, prev_health, None)?;
-
             Ok(())
-
         })
     }
 
