@@ -86,6 +86,8 @@ impl ToAscObj<AscChunkHeader> for codec::ChunkHeader {
             outgoing_receipts_root: asc_new(heap, self.outgoing_receipts_root.as_slice())?,
             tx_root: asc_new(heap, self.tx_root.as_slice())?,
             validator_proposals: asc_new(heap, &self.validator_proposals)?,
+
+            _padding: 0,
         })
     }
 }
@@ -245,6 +247,7 @@ impl ToAscObj<AscFunctionCallAction> for codec::FunctionCallAction {
             args: asc_new(heap, args.as_slice())?,
             gas: self.gas,
             deposit: asc_new(heap, self.deposit.as_ref().unwrap())?,
+            _padding: 0,
         })
     }
 }
@@ -292,6 +295,7 @@ impl ToAscObj<AscAccessKey> for codec::AccessKey {
         Ok(AscAccessKey {
             nonce: self.nonce,
             permission: asc_new(heap, self.permission.as_ref().unwrap())?,
+            _padding: 0,
         })
     }
 }
