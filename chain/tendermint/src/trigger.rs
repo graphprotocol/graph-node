@@ -32,8 +32,9 @@ impl blockchain::MappingTrigger for TendermintTrigger {
     fn to_asc_ptr<H: AscHeap>(self, heap: &mut H) -> Result<AscPtr<()>, DeterministicHostError> {
         Ok(match self {
             TendermintTrigger::Block(block) => {
-               // let block = TendermintBlockData::from(block.as_ref());
-                asc_new(heap, &block)?.erase()
+                //let block = TendermintBlockData::from(block.as_ref());
+               //b.header()
+                asc_new(heap, block.as_ref() )?.erase()
             }
         })
     }

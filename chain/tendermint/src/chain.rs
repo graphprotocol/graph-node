@@ -23,7 +23,6 @@ use graph::{
     },
 };
 use prost::Message;
-use std::convert::TryFrom;
 use std::sync::Arc;
 
 use crate::capabilities::NodeCapabilities;

@@ -3,16 +3,10 @@ mod pbcodec;
 
 pub use pbcodec::*;
 
-use graph::{
-    blockchain::BlockPtr,
-    prelude::{hex, web3::types::H256, BlockNumber},
-};
-
-
+use graph::{blockchain::BlockPtr, prelude::BlockNumber};
 use graph::blockchain::Block as BBlock;
 
 use std::convert::TryFrom;
-use std::fmt::LowerHex;
 
 /*
 impl From<&CryptoHash> for H256 {
@@ -38,10 +32,10 @@ impl EventList {
     }
 
     pub fn parent_ptr(&self) -> Option<BlockPtr> {
-        let header = self.header();
+        let lastBlockID = self.header().last_block_id.as_ref().unwrap();
 
-        match (header.prev_hash.as_ref(), header.prev_height) {
-            (Some(hash), number) => Some(BlockPtr::from((hash.into(), number))),
+        match (lastBlockID.hash, self.header().height -1) {
+            (hash, number) => Some(BlockPtr::from((hash, number))),
             _ => None,
         }
     }
@@ -55,10 +49,7 @@ impl From<EventList> for BlockPtr {
 
 impl<'a> From<&'a EventList> for BlockPtr {
     fn from(b: &'a EventList) -> BlockPtr {
-        let header = b.header();
-        let hash: H256 = header.hash.as_ref().unwrap().into();
-
-        BlockPtr::from((hash, header.height))
+        BlockPtr::from((b.header().data_hash, b.header().height))
     }
 }
 

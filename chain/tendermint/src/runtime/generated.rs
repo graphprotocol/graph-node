@@ -590,7 +590,7 @@ impl AscIndexId for AscEventAttribute {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEventDataRoundState {
-    pub height: i64,
+    pub height: u64,
     pub round: i32,
     pub step: AscPtr<AscString>,
 }
@@ -603,7 +603,7 @@ impl AscIndexId for AscEventDataRoundState {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEventDataNewRound {
-    pub height: i64,
+    pub height: u64,
     pub round: i32,
     pub step: AscPtr<AscString>,
     pub proposer: AscPtr<AscValidatorInfo>,
@@ -640,7 +640,7 @@ impl AscIndexId for AscAddress {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEventDataCompleteProposal {
-    pub height: i64,
+    pub height: u64,
     pub round: i32,
     pub step: AscPtr<AscString>,
     pub block_id: AscPtr<AscBlockID>,
@@ -677,7 +677,7 @@ impl AscIndexId for AscEventDataString {
 #[derive(AscType)]
 pub(crate) struct AscEventDataBlockSyncStatus {
     pub complete: bool,
-    pub height: i64,
+    pub height: u64,
 }
 
 impl AscIndexId for AscEventDataBlockSyncStatus {
@@ -689,7 +689,7 @@ impl AscIndexId for AscEventDataBlockSyncStatus {
 #[derive(AscType)]
 pub(crate) struct AscEventDataStateSyncStatus {
     pub complete: bool,
-    pub height: i64,
+    pub height: u64,
 }
 
 impl AscIndexId for AscEventDataStateSyncStatus {
