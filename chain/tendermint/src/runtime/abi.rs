@@ -157,10 +157,22 @@ impl ToAscObj<AscData> for codec::Data {
         heap: &mut H,
     ) -> Result<AscData, DeterministicHostError> {
         Ok(AscData {
-            txs: asc_new(heap, self.txs.as_ref().unwrap())?,
+            txs: asc_new(heap, &self.txs)?,
         })
     }
 }
+impl ToAscObj<AscBytesArray> for Vec<Vec<u8>> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscBytesArray, DeterministicHostError> {
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap,&Uint8Array::new(&x, heap).unwrap())).collect();
+        let content = content?;
+        Ok(AscBytesArray(Array::new(&*content, heap)?))
+    }
+}
+
+
 
 impl ToAscObj<AscEvidenceList> for codec::EvidenceList {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -207,6 +219,8 @@ impl ToAscObj<AscEventArray> for Vec<codec::Event> {
         Ok(AscEventArray(Array::new(&*content, heap)?))
     }
 }
+
+
 
 
 impl ToAscObj<AscEventAttribute> for codec::EventAttribute {
