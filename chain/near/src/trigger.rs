@@ -165,99 +165,8 @@ mod tests {
         let mut heap = BytesHeap::new(API_VERSION_0_0_5);
         let trigger = NearTrigger::Receipt(Arc::new(ReceiptWithOutcome {
             block: Arc::new(block()),
-            outcome: codec::ExecutionOutcomeWithIdView {
-                proof: Some(codec::MerklePath { path: vec![] }),
-                block_hash: hash("aa"),
-                id: hash("beef"),
-                outcome: Some(codec::ExecutionOutcome {
-                    logs: vec!["string".to_string()],
-                    receipt_ids: vec![],
-                    gas_burnt: 1,
-                    tokens_burnt: big_int(2),
-                    executor_id: "near".to_string(),
-                    status: Some(codec::execution_outcome::Status::SuccessValue(
-                        codec::SuccessValueExecutionStatus {
-                            value: "/6q7zA==".to_string(),
-                        },
-                    )),
-                }),
-            },
-            receipt: codec::Receipt {
-                predecessor_id: "genesis.near".to_string(),
-                receiver_id: "near".to_string(),
-                receipt_id: hash("dead"),
-                receipt: Some(codec::receipt::Receipt::Action(codec::ReceiptAction {
-                    signer_id: "near".to_string(),
-                    signer_public_key: Some(codec::PublicKey { bytes: vec![] }),
-                    gas_price: big_int(2),
-                    output_data_receivers: vec![],
-                    input_data_ids: vec![],
-                    actions: vec![
-                        codec::Action {
-                            action: Some(codec::action::Action::CreateAccount(
-                                codec::CreateAccountAction {},
-                            )),
-                        },
-                        codec::Action {
-                            action: Some(codec::action::Action::DeployContract(
-                                codec::DeployContractAction {
-                                    code: "/6q7zA==".to_string(),
-                                },
-                            )),
-                        },
-                        codec::Action {
-                            action: Some(codec::action::Action::FunctionCall(
-                                codec::FunctionCallAction {
-                                    method_name: "func".to_string(),
-                                    args: "e30=".to_string(),
-                                    gas: 1000,
-                                    deposit: big_int(100),
-                                },
-                            )),
-                        },
-                        codec::Action {
-                            action: Some(codec::action::Action::Transfer(codec::TransferAction {
-                                deposit: big_int(100),
-                            })),
-                        },
-                        codec::Action {
-                            action: Some(codec::action::Action::Stake(codec::StakeAction {
-                                stake: big_int(100),
-                                public_key: Some(codec::PublicKey { bytes: vec![] }),
-                            })),
-                        },
-                        codec::Action {
-                            action: Some(codec::action::Action::AddKey(codec::AddKeyAction {
-                                public_key: Some(codec::PublicKey { bytes: vec![] }),
-                                access_key: Some(codec::AccessKey {
-                                    nonce: 1,
-                                    permission: Some(codec::AccessKeyPermission {
-                                        permission: Some(
-                                            codec::access_key_permission::Permission::FullAccess(
-                                                codec::FullAccessPermission {},
-                                            ),
-                                        ),
-                                    }),
-                                }),
-                            })),
-                        },
-                        codec::Action {
-                            action: Some(codec::action::Action::DeleteKey(
-                                codec::DeleteKeyAction {
-                                    public_key: Some(codec::PublicKey { bytes: vec![] }),
-                                },
-                            )),
-                        },
-                        codec::Action {
-                            action: Some(codec::action::Action::DeleteAccount(
-                                codec::DeleteAccountAction {
-                                    beneficiary_id: "suicided.near".to_string(),
-                                },
-                            )),
-                        },
-                    ],
-                })),
-            },
+            outcome: execution_outcome_with_id().unwrap(),
+            receipt: receipt().unwrap(),
         }));
 
         let result = blockchain::MappingTrigger::to_asc_ptr(trigger, &mut heap);
@@ -301,11 +210,170 @@ mod tests {
                     signature: None,
                     latest_protocol_version: 0,
                 }),
-                chunks: vec![],
+                chunks: vec![chunk_header().unwrap()],
             }),
-            shards: vec![],
+            shards: vec![codec::IndexerShard {
+                shard_id: 0,
+                chunk: Some(codec::IndexerChunk {
+                    author: "near".to_string(),
+                    header: chunk_header(),
+                    transactions: vec![codec::IndexerTransactionWithOutcome {
+                        transaction: Some(codec::SignedTransaction {
+                            signer_id: "signer".to_string(),
+                            public_key: Some(codec::PublicKey { bytes: vec![] }),
+                            nonce: 1,
+                            receiver_id: "receiver".to_string(),
+                            actions: vec![],
+                            signature: Some(codec::Signature {
+                                r#type: 1,
+                                bytes: vec![],
+                            }),
+                            hash: hash("bb"),
+                        }),
+                        outcome: Some(codec::IndexerExecutionOutcomeWithOptionalReceipt {
+                            execution_outcome: execution_outcome_with_id(),
+                            receipt: receipt(),
+                        }),
+                    }],
+                    receipts: vec![receipt().unwrap()],
+                }),
+                receipt_execution_outcomes: vec![codec::IndexerExecutionOutcomeWithReceipt {
+                    execution_outcome: execution_outcome_with_id(),
+                    receipt: receipt(),
+                }],
+            }],
             state_changes: vec![],
         }
+    }
+
+    fn receipt() -> Option<codec::Receipt> {
+        Some(codec::Receipt {
+            predecessor_id: "genesis.near".to_string(),
+            receiver_id: "near".to_string(),
+            receipt_id: hash("dead"),
+            receipt: Some(codec::receipt::Receipt::Action(codec::ReceiptAction {
+                signer_id: "near".to_string(),
+                signer_public_key: Some(codec::PublicKey { bytes: vec![] }),
+                gas_price: big_int(2),
+                output_data_receivers: vec![],
+                input_data_ids: vec![],
+                actions: vec![
+                    codec::Action {
+                        action: Some(codec::action::Action::CreateAccount(
+                            codec::CreateAccountAction {},
+                        )),
+                    },
+                    codec::Action {
+                        action: Some(codec::action::Action::DeployContract(
+                            codec::DeployContractAction {
+                                code: "/6q7zA==".to_string(),
+                            },
+                        )),
+                    },
+                    codec::Action {
+                        action: Some(codec::action::Action::FunctionCall(
+                            codec::FunctionCallAction {
+                                method_name: "func".to_string(),
+                                args: "e30=".to_string(),
+                                gas: 1000,
+                                deposit: big_int(100),
+                            },
+                        )),
+                    },
+                    codec::Action {
+                        action: Some(codec::action::Action::Transfer(codec::TransferAction {
+                            deposit: big_int(100),
+                        })),
+                    },
+                    codec::Action {
+                        action: Some(codec::action::Action::Stake(codec::StakeAction {
+                            stake: big_int(100),
+                            public_key: Some(codec::PublicKey { bytes: vec![] }),
+                        })),
+                    },
+                    codec::Action {
+                        action: Some(codec::action::Action::AddKey(codec::AddKeyAction {
+                            public_key: Some(codec::PublicKey { bytes: vec![] }),
+                            access_key: Some(codec::AccessKey {
+                                nonce: 1,
+                                permission: Some(codec::AccessKeyPermission {
+                                    permission: Some(
+                                        codec::access_key_permission::Permission::FullAccess(
+                                            codec::FullAccessPermission {},
+                                        ),
+                                    ),
+                                }),
+                            }),
+                        })),
+                    },
+                    codec::Action {
+                        action: Some(codec::action::Action::DeleteKey(codec::DeleteKeyAction {
+                            public_key: Some(codec::PublicKey { bytes: vec![] }),
+                        })),
+                    },
+                    codec::Action {
+                        action: Some(codec::action::Action::DeleteAccount(
+                            codec::DeleteAccountAction {
+                                beneficiary_id: "suicided.near".to_string(),
+                            },
+                        )),
+                    },
+                ],
+            })),
+        })
+    }
+
+    fn chunk_header() -> Option<codec::ChunkHeader> {
+        Some(codec::ChunkHeader {
+            chunk_hash: vec![0x00],
+            prev_block_hash: vec![0x01],
+            outcome_root: vec![0x02],
+            prev_state_root: vec![0x03],
+            encoded_merkle_root: vec![0x04],
+            encoded_length: 1,
+            height_created: 2,
+            height_included: 3,
+            shard_id: 4,
+            gas_used: 5,
+            gas_limit: 6,
+            validator_reward: big_int(7),
+            balance_burnt: big_int(7),
+            outgoing_receipts_root: vec![0x07],
+            tx_root: vec![0x08],
+            validator_proposals: vec![codec::ValidatorStake {
+                account_id: "account".to_string(),
+                public_key: public_key("aa"),
+                stake: big_int(10),
+            }],
+            signature: Some(codec::Signature {
+                r#type: 0,
+                bytes: vec![],
+            }),
+        })
+    }
+
+    fn execution_outcome_with_id() -> Option<codec::ExecutionOutcomeWithIdView> {
+        Some(codec::ExecutionOutcomeWithIdView {
+            proof: Some(codec::MerklePath { path: vec![] }),
+            block_hash: hash("aa"),
+            id: hash("beef"),
+            outcome: execution_outcome(),
+        })
+    }
+
+    fn execution_outcome() -> Option<codec::ExecutionOutcome> {
+        Some(codec::ExecutionOutcome {
+            logs: vec!["string".to_string()],
+            receipt_ids: vec![],
+            gas_burnt: 1,
+            tokens_burnt: big_int(2),
+            executor_id: "near".to_string(),
+            status: Some(codec::execution_outcome::Status::SuccessValue(
+                codec::SuccessValueExecutionStatus {
+                    value: "/6q7zA==".to_string(),
+                },
+            )),
+        })
     }
 
     fn big_int(input: u64) -> Option<codec::BigInt> {
@@ -319,6 +387,12 @@ mod tests {
     fn hash(input: &str) -> Option<codec::CryptoHash> {
         Some(codec::CryptoHash {
             bytes: hex::decode(input).expect(format!("Invalid hash value {}", input).as_ref()),
+        })
+    }
+
+    fn public_key(input: &str) -> Option<codec::PublicKey> {
+        Some(codec::PublicKey {
+            bytes: hex::decode(input).expect(format!("Invalid PublicKey value {}", input).as_ref()),
         })
     }
 

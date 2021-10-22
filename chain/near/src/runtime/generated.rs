@@ -581,6 +581,15 @@ pub(crate) struct AscChunkHeader {
     pub outgoing_receipts_root: AscPtr<AscCryptoHash>,
     pub tx_root: AscPtr<AscCryptoHash>,
     pub validator_proposals: AscPtr<AscValidatorStakeArray>,
+
+    // It seems that is impossible to correctly order fields in this struct
+    // so that Rust packs it tighly without padding. So we add 4 bytes of padding
+    // ourself.
+    //
+    // This is a bit problematic because AssemblyScript actually is ok with 84 bytes
+    // and is fully packed. Seems like a differences between alignment for `repr(C)` and
+    // AssemblyScript.
+    pub(crate) _padding: u32,
 }
 
 impl AscIndexId for AscChunkHeader {

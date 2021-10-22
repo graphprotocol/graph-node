@@ -86,6 +86,8 @@ impl ToAscObj<AscChunkHeader> for codec::ChunkHeader {
             outgoing_receipts_root: asc_new(heap, self.outgoing_receipts_root.as_slice())?,
             tx_root: asc_new(heap, self.tx_root.as_slice())?,
             validator_proposals: asc_new(heap, &self.validator_proposals)?,
+
+            _padding: 0,
         })
     }
 }
