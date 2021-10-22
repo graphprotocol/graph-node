@@ -34,6 +34,15 @@ pub enum SubgraphHealth {
     Unhealthy,
 }
 
+impl SubgraphHealth {
+    fn is_failed(&self) -> bool {
+        match self {
+            Self::Failed => true,
+            Self::Healthy | Self::Unhealthy => false,
+        }
+    }
+}
+
 impl From<SubgraphHealth> for graph::data::subgraph::schema::SubgraphHealth {
     fn from(health: SubgraphHealth) -> Self {
         use graph::data::subgraph::schema::SubgraphHealth as H;
@@ -494,7 +503,7 @@ pub fn fail(
 ) -> Result<(), StoreError> {
     let error_id = insert_subgraph_error(conn, error)?;
 
-    update_deployment_status(conn, id, true, SubgraphHealth::Failed, Some(error_id))?;
+    update_deployment_status(conn, id, SubgraphHealth::Failed, Some(error_id))?;
 
     Ok(())
 }
@@ -563,7 +572,6 @@ pub fn get_error_block_hash(
 pub fn update_deployment_status(
     conn: &PgConnection,
     deployment_id: &DeploymentHash,
-    failed: bool,
     health: SubgraphHealth,
     fatal_error: Option<String>,
 ) -> Result<(), StoreError> {
@@ -571,7 +579,7 @@ pub fn update_deployment_status(
 
     update(d::table.filter(d::deployment.eq(deployment_id.as_str())))
         .set((
-            d::failed.eq(failed),
+            d::failed.eq(health.is_failed()),
             d::health.eq(health),
             d::fatal_error.eq::<Option<String>>(fatal_error),
         ))
