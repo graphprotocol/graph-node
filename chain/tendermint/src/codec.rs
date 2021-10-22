@@ -34,7 +34,7 @@ impl EventList {
     pub fn parent_ptr(&self) -> Option<BlockPtr> {
         let lastBlockID = self.header().last_block_id.as_ref().unwrap();
 
-        match (lastBlockID.hash, self.header().height -1) {
+        match (lastBlockID.hash.clone(), self.header().height -1) {
             (hash, number) => Some(BlockPtr::from((hash, number))),
             _ => None,
         }
@@ -49,7 +49,7 @@ impl From<EventList> for BlockPtr {
 
 impl<'a> From<&'a EventList> for BlockPtr {
     fn from(b: &'a EventList) -> BlockPtr {
-        BlockPtr::from((b.header().data_hash, b.header().height))
+        BlockPtr::from((b.header().data_hash.clone(), b.header().height))
     }
 }
 

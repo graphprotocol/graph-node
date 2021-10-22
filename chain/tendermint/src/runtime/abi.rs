@@ -166,7 +166,7 @@ impl ToAscObj<AscBytesArray> for Vec<Vec<u8>> {
         &self,
         heap: &mut H,
     ) -> Result<AscBytesArray, DeterministicHostError> {
-        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap,&Uint8Array::new(&x, heap).unwrap())).collect();
+        let content: Result<Vec<_>, _> = self.iter().map(|x|  asc_new(heap, &Bytes(&x))  ).collect();
         let content = content?;
         Ok(AscBytesArray(Array::new(&*content, heap)?))
     }
