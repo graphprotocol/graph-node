@@ -6,7 +6,6 @@ use graph_runtime_wasm::asc_abi::class::{
     Array, AscAddress, AscBigInt, AscEnum, AscH160, AscString, EthereumValueKind, Uint8Array,
 };
 use semver::Version;
-use std::mem::size_of;
 
 use crate::trigger::{
     EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,

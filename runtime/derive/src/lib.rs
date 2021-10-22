@@ -25,7 +25,7 @@ pub fn asc_type_derive(input: TokenStream) -> TokenStream {
 // }
 //
 // Example output:
-// impl<K, V> AscType for AscTypedMapEntry<K, V> {
+// impl<K, V> graph::runtime::AscType for AscTypedMapEntry<K, V> {
 //     fn to_asc_bytes(&self) -> Vec<u8> {
 //         let mut bytes = Vec::new();
 //         bytes.extend_from_slice(&self.key.to_asc_bytes());
@@ -35,15 +35,15 @@ pub fn asc_type_derive(input: TokenStream) -> TokenStream {
 //     }
 
 //     #[allow(unused_variables)]
-//     fn from_asc_bytes(asc_obj: &[u8], api_version: semver::Version) -> Self {
+//     fn from_asc_bytes(asc_obj: &[u8], api_version: graph::semver::Version) -> Self {
 //         assert_eq!(&asc_obj.len(), &size_of::<Self>());
 //         let mut offset = 0;
 //         let field_size = std::mem::size_of::<AscPtr<K>>();
-//         let key = AscType::from_asc_bytes(&asc_obj[offset..(offset + field_size)],
+//         let key = graph::runtime::AscType::from_asc_bytes(&asc_obj[offset..(offset + field_size)],
 //         api_version.clone());
 //         offset += field_size;
 //         let field_size = std::mem::size_of::<AscPtr<V>>();
-//         let value = AscType::from_asc_bytes(&asc_obj[offset..(offset + field_size)], api_version);
+//         let value = graph::runtime::AscType::from_asc_bytes(&asc_obj[offset..(offset + field_size)], api_version);
 //         offset += field_size;
 //         Self { key, value }
 //     }
@@ -67,8 +67,8 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
     };
 
     TokenStream::from(quote! {
-        impl#impl_generics AscType for #struct_name#ty_generics #where_clause {
-            fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        impl#impl_generics graph::runtime::AscType for #struct_name#ty_generics #where_clause {
+            fn to_asc_bytes(&self) -> Result<Vec<u8>, graph::runtime::DeterministicHostError> {
                 let in_memory_byte_count = std::mem::size_of::<Self>();
                 let mut bytes = Vec::with_capacity(in_memory_byte_count);
                 #(bytes.extend_from_slice(&self.#field_names.to_asc_bytes()?);)*
@@ -79,10 +79,10 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
             }
 
             #[allow(unused_variables)]
-            fn from_asc_bytes(asc_obj: &[u8], api_version: &semver::Version) -> Result<Self, DeterministicHostError> {
+            fn from_asc_bytes(asc_obj: &[u8], api_version: &graph::semver::Version) -> Result<Self, graph::runtime::DeterministicHostError> {
                 // Sanity check
                 match api_version {
-                    api_version if *api_version <= Version::new(0, 0, 4) => {
+                    api_version if *api_version <= graph::semver::Version::new(0, 0, 4) => {
                         // This was using an double equal sign before instead of less than.
                         // This happened because of the new apiVersion support.
                         // Since some structures need different implementations for each
@@ -90,15 +90,15 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
                         // that contains both versions (each in a variant), and that increased
                         // the memory size, so that's why we use less than.
                         if asc_obj.len() < std::mem::size_of::<Self>() {
-                            return Err(DeterministicHostError(anyhow::anyhow!("Size does not match")));
+                            return Err(graph::runtime::DeterministicHostError(graph::prelude::anyhow::anyhow!("Size does not match")));
                         }
                     }
                     _ => {
-                        let content_size = size_of::<Self>();
+                        let content_size = std::mem::size_of::<Self>();
                         let aligned_size = graph::runtime::padding_to_16(content_size);
 
                         if graph::runtime::HEADER_SIZE + asc_obj.len() == aligned_size + content_size {
-                            return Err(DeterministicHostError(anyhow::anyhow!("Size does not match")));
+                            return Err(graph::runtime::DeterministicHostError(graph::prelude::anyhow::anyhow!("Size does not match")));
                         }
                     },
                 };
@@ -108,9 +108,9 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
                 #(
                 let field_size = std::mem::size_of::<#field_types>();
                 let field_data = asc_obj.get(offset..(offset + field_size)).ok_or_else(|| {
-                    DeterministicHostError(anyhow::anyhow!("Attempted to read past end of array"))
+                    graph::runtime::DeterministicHostError(graph::prelude::anyhow::anyhow!("Attempted to read past end of array"))
                 })?;
-                let #field_names2 = AscType::from_asc_bytes(&field_data, api_version)?;
+                let #field_names2 = graph::runtime::AscType::from_asc_bytes(&field_data, api_version)?;
                 offset += field_size;
                 )*
 
@@ -135,8 +135,8 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
 // }
 //
 // Example output:
-// impl AscType for JsonValueKind {
-//     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+// impl graph::runtime::AscType for JsonValueKind {
+//     fn to_asc_bytes(&self) -> Result<Vec<u8>, graph::runtime::DeterministicHostError> {
 //         let discriminant: u32 = match *self {
 //             JsonValueKind::Null => 0u32,
 //             JsonValueKind::Bool => 1u32,
@@ -148,10 +148,10 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
 //         Ok(discriminant.to_asc_bytes())
 //     }
 //
-//     fn from_asc_bytes(asc_obj: &[u8], _api_version: semver::Version) -> Result<Self, DeterministicHostError> {
+//     fn from_asc_bytes(asc_obj: &[u8], _api_version: graph::semver::Version) -> Result<Self, graph::runtime::DeterministicHostError> {
 //         let mut u32_bytes: [u8; size_of::<u32>()] = [0; size_of::<u32>()];
 //         if std::mem::size_of_val(&u32_bytes) != std::mem::size_of_val(&asc_obj) {
-//             return Err(DeterministicHostError(anyhow::anyhow!("Invalid asc bytes size")));
+//             return Err(graph::runtime::DeterministicHostError(graph::prelude::anyhow::anyhow!("Invalid asc bytes size")));
 //         }
 //         u32_bytes.copy_from_slice(&asc_obj);
 //         let discr = u32::from_le_bytes(u32_bytes);
@@ -162,7 +162,7 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
 //             3u32 => JsonValueKind::String,
 //             4u32 => JsonValueKind::Array,
 //             5u32 => JsonValueKind::Object,
-//             _ => Err(DeterministicHostError(anyhow::anyhow!("value {} is out of range for {}", discr, "JsonValueKind"))),
+//             _ => Err(graph::runtime::DeterministicHostError(graph::prelude::anyhow::anyhow!("value {} is out of range for {}", discr, "JsonValueKind"))),
 //         }
 //     }
 // }
@@ -184,21 +184,21 @@ fn asc_type_derive_enum(item_enum: ItemEnum) -> TokenStream {
     let variant_discriminant2 = variant_discriminant.clone();
 
     TokenStream::from(quote! {
-        impl#impl_generics AscType for #enum_name#ty_generics #where_clause {
-            fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        impl#impl_generics graph::runtime::AscType for #enum_name#ty_generics #where_clause {
+            fn to_asc_bytes(&self) -> Result<Vec<u8>, graph::runtime::DeterministicHostError> {
                 let discriminant: u32 = match self {
                     #(#enum_name_iter::#variant_paths => #variant_discriminant,)*
                 };
                 discriminant.to_asc_bytes()
             }
 
-            fn from_asc_bytes(asc_obj: &[u8], _api_version: &semver::Version) -> Result<Self, DeterministicHostError> {
+            fn from_asc_bytes(asc_obj: &[u8], _api_version: &graph::semver::Version) -> Result<Self, graph::runtime::DeterministicHostError> {
                 let u32_bytes = ::std::convert::TryFrom::try_from(asc_obj)
-                    .map_err(|_| DeterministicHostError(anyhow::anyhow!("Invalid asc bytes size")))?;
+                    .map_err(|_| graph::runtime::DeterministicHostError(graph::prelude::anyhow::anyhow!("Invalid asc bytes size")))?;
                 let discr = u32::from_le_bytes(u32_bytes);
                 match discr {
                     #(#variant_discriminant2 => Ok(#enum_name_iter2::#variant_paths2),)*
-                    _ => Err(DeterministicHostError(anyhow::anyhow!("value {} is out of range for {}", discr, stringify!(#enum_name))))
+                    _ => Err(graph::runtime::DeterministicHostError(graph::prelude::anyhow::anyhow!("value {} is out of range for {}", discr, stringify!(#enum_name))))
                 }
             }
         }
