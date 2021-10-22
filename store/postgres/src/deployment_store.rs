@@ -1190,6 +1190,7 @@ impl DeploymentStore {
         conn.transaction(|| {
             let deployment_id = &site.deployment;
 
+            // We'll only unfail subgraphs that had fatal errors
             let fatal_error_id = match deployment::get_fatal_error_id(conn, deployment_id)? {
                 Some(fatal_error_id) => fatal_error_id,
                 // If the subgraph is not failed then there is nothing to do.
