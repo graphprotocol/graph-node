@@ -565,17 +565,24 @@ impl Provider {
         validate_name(&self.label).context("illegal provider name")?;
 
         match self.details {
-            ProviderDetails::Firehose(ref firehose) => {
+            ProviderDetails::Firehose(ref mut firehose) => {
+                firehose.url = shellexpand::env(&firehose.url)?.into_owned();
+
                 // A Firehose url must be a valid Uri since gRPC library we use (Tonic)
                 // works with Uri.
+                let label = self.label.clone();
                 firehose.url.parse::<Uri>().map_err(|e| {
                     anyhow!(
                         "the url `{}` for firehose provider {} is not a legal URI: {}",
                         firehose.url,
-                        self.label,
+                        label,
                         e
                     )
                 })?;
+
+                if let Some(token) = &firehose.token {
+                    firehose.token = Some(shellexpand::env(token)?.into_owned());
+                }
             }
 
             ProviderDetails::Web3(ref mut web3) => {
