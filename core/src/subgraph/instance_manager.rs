@@ -621,11 +621,7 @@ where
                     }
                 }
                 Err(BlockProcessingError::Canceled) => {
-                    debug!(
-                        &logger,
-                        "Subgraph block stream shut down cleanly";
-                        "id" => id_for_err.to_string(),
-                    );
+                    debug!(&logger, "Subgraph block stream shut down cleanly");
                     return Ok(());
                 }
 
@@ -707,11 +703,11 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
     ));
 
     if triggers.len() == 1 {
-        info!(&logger, "1 trigger found in this block for this subgraph");
+        debug!(&logger, "1 candidate trigger in this block");
     } else if triggers.len() > 1 {
-        info!(
+        debug!(
             &logger,
-            "{} triggers found in this block for this subgraph",
+            "{} candidate triggers in this block",
             triggers.len()
         );
     }
@@ -758,10 +754,9 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
         // Some form of unknown or non-deterministic error ocurred.
         Err(MappingError::Unknown(e)) => return Err(BlockProcessingError::Unknown(e)),
         Err(MappingError::PossibleReorg(e)) => {
-            info!(ctx.state.logger,
+            info!(logger,
                     "Possible reorg detected, retrying";
                     "error" => format!("{:#}", e),
-                    "id" => ctx.inputs.deployment.hash.to_string(),
             );
 
             // In case of a possible reorg, we want this function to do nothing and restart the
