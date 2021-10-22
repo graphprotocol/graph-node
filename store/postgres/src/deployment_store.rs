@@ -1221,6 +1221,9 @@ impl DeploymentStore {
                         );
 
                         let _ = self.revert_block_operations(site.clone(), parent_ptr.clone())?;
+
+                        // Unfail the deployment.
+                        deployment::update_deployment_status(conn, deployment_id, false, prev_health, None)?;
                     }
                 },
                 // Found error, but not for deployment head, we don't need to
@@ -1246,11 +1249,7 @@ impl DeploymentStore {
                 },
             };
 
-            // Unfail the deployment.
-            deployment::update_deployment_status(conn, deployment_id, false, prev_health, None)?;
-
             Ok(())
-
         })
     }
 
