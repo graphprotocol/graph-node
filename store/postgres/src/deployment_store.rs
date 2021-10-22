@@ -818,7 +818,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
         ids_for_type: &BTreeMap<&EntityType, Vec<&str>>,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+    ) -> Result<BTreeMap<EntityType, Vec<EntityVersion>>, StoreError> {
         if ids_for_type.is_empty() {
             return Ok(BTreeMap::new());
         }

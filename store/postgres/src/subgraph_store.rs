@@ -22,8 +22,8 @@ use graph::{
     prelude::SubgraphDeploymentEntity,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        BlockPtr, DeploymentHash, Entity, EntityKey, EntityModification, Error, Logger, NodeId,
-        Schema, StopwatchMetrics, StoreError, SubgraphName, SubgraphStore as SubgraphStoreTrait,
+        BlockPtr, DeploymentHash, EntityKey, EntityModification, Error, Logger, NodeId, Schema,
+        StopwatchMetrics, StoreError, SubgraphName, SubgraphStore as SubgraphStoreTrait,
         SubgraphVersionSwitchingMode,
     },
     slog::{error, warn},
@@ -889,7 +889,7 @@ impl SubgraphStoreInner {
     pub fn find(
         &self,
         query: graph::prelude::EntityQuery,
-    ) -> Result<Vec<Entity>, graph::prelude::QueryExecutionError> {
+    ) -> Result<Vec<graph::prelude::Entity>, graph::prelude::QueryExecutionError> {
         let (store, site) = self.store(&query.subgraph_id)?;
         store.find(site, query)
     }
@@ -1264,7 +1264,7 @@ impl WritableStoreTrait for WritableStore {
     fn get_many(
         &self,
         ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+    ) -> Result<BTreeMap<EntityType, Vec<EntityVersion>>, StoreError> {
         self.retry("get_many", || {
             self.writable
                 .get_many(self.site.cheap_clone(), &ids_for_type)

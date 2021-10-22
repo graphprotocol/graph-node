@@ -266,7 +266,7 @@ fn find_many() {
             .get(&*THING)
             .expect("We got some things")
             .iter()
-            .map(|thing| thing.id().unwrap())
+            .map(|thing| thing.data.id().unwrap())
             .collect::<Vec<_>>();
 
         assert_eq!(2, ids.len());

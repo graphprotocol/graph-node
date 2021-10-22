@@ -4,6 +4,7 @@ use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
 use graph::blockchain::{BlockchainKind, DataSource};
 use graph::data::store::scalar::Bytes;
+use graph::data::store::EntityVersion;
 use graph::data::subgraph::{UnifiedMappingApiVersion, MAX_SPEC_VERSION};
 use graph::prelude::TryStreamExt;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
@@ -62,7 +63,7 @@ struct IndexingState<T: RuntimeHostBuilder<C>, C: Blockchain> {
     instance: SubgraphInstance<C, T>,
     instances: SharedInstanceKeepAliveMap,
     filter: C::TriggerFilter,
-    entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
+    entity_lfu_cache: LfuCache<EntityKey, Option<EntityVersion>>,
 }
 
 struct IndexingContext<T: RuntimeHostBuilder<C>, C: Blockchain> {

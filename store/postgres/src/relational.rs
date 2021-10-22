@@ -536,7 +536,7 @@ impl Layout {
         conn: &PgConnection,
         ids_for_type: &BTreeMap<&EntityType, Vec<&str>>,
         block: BlockNumber,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+    ) -> Result<BTreeMap<EntityType, Vec<EntityVersion>>, StoreError> {
         if ids_for_type.is_empty() {
             return Ok(BTreeMap::new());
         }
@@ -551,7 +551,7 @@ impl Layout {
             tables,
             block,
         };
-        let mut entities_for_type: BTreeMap<EntityType, Vec<Entity>> = BTreeMap::new();
+        let mut entities_for_type: BTreeMap<EntityType, Vec<EntityVersion>> = BTreeMap::new();
         for data in query.load::<EntityData>(conn)? {
             entities_for_type
                 .entry(data.entity_type())

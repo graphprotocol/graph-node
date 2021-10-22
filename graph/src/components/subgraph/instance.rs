@@ -1,4 +1,5 @@
 use crate::blockchain::Blockchain;
+use crate::data::store::EntityVersion;
 use crate::prelude::*;
 use crate::util::lfu_cache::LfuCache;
 use crate::{components::store::WritableStore, data::subgraph::schema::SubgraphError};
@@ -27,7 +28,7 @@ pub struct BlockState<C: Blockchain> {
 impl<C: Blockchain> BlockState<C> {
     pub fn new(
         store: Arc<dyn WritableStore>,
-        lfu_cache: LfuCache<EntityKey, Option<Entity>>,
+        lfu_cache: LfuCache<EntityKey, Option<EntityVersion>>,
     ) -> Self {
         BlockState {
             entity_cache: EntityCache::with_current(store, lfu_cache),
