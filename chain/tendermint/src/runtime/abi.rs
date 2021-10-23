@@ -30,14 +30,13 @@ impl ToAscObj<AscEventList> for codec::EventList {
     ) -> Result<AscEventList, DeterministicHostError> {
         Ok(AscEventList {
             newblock: asc_new(heap, self.newblock.as_ref().unwrap())?,
-            evidence: asc_new(heap, self.evidence.as_ref().unwrap())?,
             transaction: asc_new(heap, &self.transaction)?,
             vote: asc_new(heap, self.vote.as_ref().unwrap())?,
             roundstate: asc_new(heap, self.roundstate.as_ref().unwrap())?,
             newround: asc_new(heap, self.newround.as_ref().unwrap())?,
             completeproposal: asc_new(heap, self.completeproposal.as_ref().unwrap())?,
             validatorsetupdates: asc_new(heap, self.validatorsetupdates.as_ref().unwrap())?,
-            string: asc_new(heap, self.string.as_ref().unwrap())?,
+            eventdatastring: asc_new(heap, self.eventdatastring.as_ref().unwrap())?,
             blocksyncstatus: asc_new(heap, self.blocksyncstatus.as_ref().unwrap())?,
             statesyncstatus: asc_new(heap, self.statesyncstatus.as_ref().unwrap())?,
         })
@@ -96,7 +95,7 @@ impl ToAscObj<AscHeader> for codec::Header {
             app_hash: asc_new(heap, &Bytes(&self.app_hash))?,
             last_results_hash: asc_new(heap, &Bytes(&self.last_results_hash))?,
             evidence_hash: asc_new(heap, &Bytes(&self.evidence_hash))?,
-            proposer_address: asc_new(heap, &Bytes(&self.proposer_address))?, // TODO(lukanus): make sure it's right
+            proposer_address: asc_new(heap,  self.proposer_address.as_ref().unwrap())?,
         })
     }
 }
@@ -204,7 +203,7 @@ impl ToAscObj<AscEvent> for codec::Event {
     ) -> Result<AscEvent, DeterministicHostError> {
         Ok(AscEvent {
             eventtype: asc_new(heap, &self.eventtype)?,
-            attributes: asc_new(heap,self.attributes.as_ref().unwrap())?,
+            attributes: asc_new(heap,&self.attributes)?,
         })
     }
 }
@@ -233,6 +232,18 @@ impl ToAscObj<AscEventAttribute> for codec::EventAttribute {
             value: asc_new(heap,&self.value)?,
             index: self.index,
         })
+    }
+}
+
+
+impl ToAscObj<AscEventAttributeArray> for Vec<codec::EventAttribute> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscEventAttributeArray, DeterministicHostError> {
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x)).collect();
+        let content = content?;
+        Ok(AscEventAttributeArray(Array::new(&*content, heap)?))
     }
 }
 
@@ -301,7 +312,7 @@ impl ToAscObj<AscCommitSig> for codec::CommitSig {
     ) -> Result<AscCommitSig, DeterministicHostError> {
         Ok(AscCommitSig {
             block_id_flag: asc_new(heap, &BlockIDKind(self.block_id_flag))?,
-            validator_address: asc_new(heap, &Bytes(&self.validator_address))?,
+            validator_address: asc_new(heap,  self.validator_address.as_ref().unwrap())?,
             timestamp: asc_new(heap, self.timestamp.as_ref().unwrap())?,
             signature: asc_new(heap, &Bytes(&self.signature))?,
         })
@@ -362,15 +373,15 @@ impl ToAscObj<AscValidator> for codec::Validator {
 }
 
 
-impl ToAscObj<AscEventDataNewEvidence> for codec::EventDataNewEvidence {
+impl ToAscObj<AscEvidence> for codec::Evidence {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
-    ) -> Result<AscEventDataNewEvidence, DeterministicHostError> {
+    ) -> Result<AscEvidence, DeterministicHostError> {
 
         let ev = self.sum.as_ref().unwrap();
 
-        Ok(AscEventDataNewEvidence {
+        Ok(AscEvidence {
             duplicate_vote_evidence: AscPtr::null(),//asc_new(heap,self.sum.as_ref().unwrap().duplicate_vote_evidence.as_ref().unwrap())?,
             light_client_attack_evidence: AscPtr::null(),// asc_new(heap,self.sum.unwrap().light_client_attack_evidence.as_ref().unwrap())?,
         })
@@ -419,30 +430,29 @@ impl ToAscObj<AscEventDataVote> for codec::EventDataVote {
         heap: &mut H,
     ) -> Result<AscEventDataVote, DeterministicHostError> {
         Ok(AscEventDataVote {
-            messagetype: asc_new(heap, &SignedMessageTypeKind(self.eventtype))?,
             height: self.height,
             round: self.round,
             block_id: asc_new(heap, self.block_id.as_ref().unwrap())?,
             timestamp: asc_new(heap, self.timestamp.as_ref().unwrap())?,
-            validator_address: asc_new(heap, &Bytes(&self.validator_address))?,
+            validator_address: asc_new(heap,  self.validator_address.as_ref().unwrap())?,
             validator_index: self.validator_index,
             signature: asc_new(heap, &Bytes(&self.signature))?,
+            eventvotetype: asc_new(heap, &SignedMessageTypeKind(self.eventvotetype))?,
         })
     }
 }
 
 
-impl ToAscObj<AscEventDataNewEvidenceArray> for Vec<codec::EventDataNewEvidence> {
+impl ToAscObj<AscEvidenceArray> for Vec<codec::Evidence> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
-    ) -> Result<AscEventDataNewEvidenceArray, DeterministicHostError> {
+    ) -> Result<AscEvidenceArray, DeterministicHostError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x)).collect();
         let content = content?;
-        Ok(AscEventDataNewEvidenceArray(Array::new(&*content, heap)?))
+        Ok(AscEvidenceArray(Array::new(&*content, heap)?))
     }
 }
-
 
 impl ToAscObj<AscEventDataTxArray> for Vec<codec::EventDataTx> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -583,7 +593,7 @@ impl ToAscObj<AscEventDataString> for codec::EventDataString {
         heap: &mut H,
     ) -> Result<AscEventDataString, DeterministicHostError> {
         Ok(AscEventDataString{
-            event_data_string: asc_new(heap, &self.event_data_string)?,
+            eventdatastring: asc_new(heap, &self.eventdatastring)?,
         })
     }
 }

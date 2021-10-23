@@ -2,28 +2,22 @@ syntax = "proto3";
 
 package fig.tendermint.codec.v1;
 
-option go_package = "fig.tendermint.codecs";
+option go_package = "github.com/figment-networks/tendermint-protobuf-def/codec";
 
-import "google/protobuf/descriptor.proto";
 import "gogo.proto";
-// import "google/protobuf/timestamp.proto";
+import "google/protobuf/descriptor.proto";
 
 // used in Vote
 enum SignedMsgType {
   option (gogoproto.goproto_enum_stringer) = true;
   option (gogoproto.goproto_enum_prefix) = false;
 
-  SIGNED_MSG_TYPE_UNKNOWN = 0
-      [(gogoproto.enumvalue_customname) = "UnknownType"];
+  SIGNED_MSG_TYPE_UNKNOWN = 0 [(gogoproto.enumvalue_customname) = "UnknownType"];
   // Votes
-  SIGNED_MSG_TYPE_PREVOTE = 1
-      [(gogoproto.enumvalue_customname) = "PrevoteType"];
-  SIGNED_MSG_TYPE_PRECOMMIT = 2
-      [(gogoproto.enumvalue_customname) = "PrecommitType"];
-
+  SIGNED_MSG_TYPE_PREVOTE = 1 [(gogoproto.enumvalue_customname) = "PrevoteType"];
+  SIGNED_MSG_TYPE_PRECOMMIT = 2 [(gogoproto.enumvalue_customname) = "PrecommitType"];
   // Proposals
-  SIGNED_MSG_TYPE_PROPOSAL = 3
-      [(gogoproto.enumvalue_customname) = "ProposalType"];
+  SIGNED_MSG_TYPE_PROPOSAL = 3 [(gogoproto.enumvalue_customname) = "ProposalType"];
 }
 
 // BlockIdFlag indicates which BlockID the signature is for
@@ -31,33 +25,29 @@ enum BlockIDFlag {
   option (gogoproto.goproto_enum_stringer) = true;
   option (gogoproto.goproto_enum_prefix) = false;
 
-  BLOCK_ID_FLAG_UNKNOWN = 0
-      [(gogoproto.enumvalue_customname) = "BlockIDFlagUnknown"];
-  BLOCK_ID_FLAG_ABSENT = 1
-      [(gogoproto.enumvalue_customname) = "BlockIDFlagAbsent"];
-  BLOCK_ID_FLAG_COMMIT = 2
-      [(gogoproto.enumvalue_customname) = "BlockIDFlagCommit"];
+  BLOCK_ID_FLAG_UNKNOWN = 0 [(gogoproto.enumvalue_customname) = "BlockIDFlagUnknown"];
+  BLOCK_ID_FLAG_ABSENT = 1 [(gogoproto.enumvalue_customname) = "BlockIDFlagAbsent"];
+  BLOCK_ID_FLAG_COMMIT = 2 [(gogoproto.enumvalue_customname) = "BlockIDFlagCommit"];
   BLOCK_ID_FLAG_NIL = 3 [(gogoproto.enumvalue_customname) = "BlockIDFlagNil"];
 }
 
 message EventList {
   EventDataNewBlock newblock = 1;
-  EventDataNewEvidence evidence = 2;
-  repeated EventDataTx transaction = 3;
-  EventDataVote vote = 4;
-  EventDataRoundState roundstate = 5;
-  EventDataNewRound newround = 6;
-  EventDataCompleteProposal completeproposal = 7;
-  EventDataValidatorSetUpdates validatorsetupdates = 8;
-  EventDataString string = 9;
-  EventDataBlockSyncStatus blocksyncstatus = 10;
-  EventDataStateSyncStatus statesyncstatus = 11;
+  repeated EventDataTx transaction = 2;
+  EventDataVote vote = 3;
+  EventDataRoundState roundstate = 4;
+  EventDataNewRound newround = 5;
+  EventDataCompleteProposal completeproposal = 6;
+  EventDataValidatorSetUpdates validatorsetupdates = 7;
+  EventDataString eventdatastring = 8;
+  EventDataBlockSyncStatus blocksyncstatus = 9;
+  EventDataStateSyncStatus statesyncstatus = 10;
 }
 
 // EventDataNewBlock
 message EventDataNewBlock {
   Block block = 1;
-  BlockID block_id = 2;  // not present in v0.34.13 - hash256 32 bytes
+  BlockID block_id = 2;  // not present in v0.34.13
   ResponseBeginBlock result_begin_block = 3;
   ResponseEndBlock result_end_block = 4;
 }
@@ -74,7 +64,7 @@ message ResponseEndBlock {
 
 message ConsensusParams {
   Block block = 1;
-  EventDataNewEvidence evidence = 2;
+  Evidence evidence = 2;
   Validator validator = 3;
   Version version = 4;
 }
@@ -99,11 +89,10 @@ message Commit {
 
 message CommitSig {
   BlockIDFlag block_id_flag = 1;  // must match those in the enum above
-  bytes validator_address = 2;  // hash 256 20 bytes - this is the first 20 characters of a 32-byte -
-          // key - SHA256(pubkey)[:20]
-  Timestamp timestamp = 3
-      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-  bytes signature = 4; // length should be > 0 and < 64
+  Address validator_address =  2;  // hash 256 20 bytes - this is the first 20 characters of a 32-byte -
+                                // key - SHA256(pubkey)[:20]
+  Timestamp timestamp = 3 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  bytes signature = 4;  // length should be > 0 and < 64
 }
 
 message EventDataNewBlockHeader {
@@ -119,16 +108,16 @@ message Header {
   uint64 height = 3;
   Timestamp time = 4 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
   BlockID last_block_id = 5 [(gogoproto.nullable) = false];
-  bytes last_commit_hash = 6     [(fig.bytetype) = "Hash"];  // hash 256 32 bytes
-  bytes data_hash = 7         [(fig.bytetype) = "Hash"];     // hash 256 32 bytes
-  bytes validators_hash = 8      [(fig.bytetype) = "Hash"];  // hash 256 32 bytes
-  bytes next_validators_hash = 9  [(fig.bytetype) = "Hash"]; // hash 256 32 bytes
-  bytes consensus_hash = 10     [(fig.bytetype) = "Hash"];   // hash 256 32 bytes
-  bytes app_hash = 11   [(fig.bytetype) = "Hash"];// determined by application, not a fixed length
-  bytes last_results_hash = 12  [(fig.bytetype) = "Hash"]; // hash 256 32 bytes - first block will be results of an empty hash
-  bytes evidence_hash = 13  [(fig.bytetype) = "Hash"]; // hash sha256 32 bytes
-  bytes proposer_address = 14  [(fig.bytetype) = "AddressHash"]; // hash 256 20 bytes - this is the first 20 characters of a 32-byte
-                                // key - SHA256(pubkey)[:20]
+  bytes last_commit_hash = 6 [(fig.bytetype) = "Hash"];     // hash 256 32 bytes
+  bytes data_hash = 7 [(fig.bytetype) = "Hash"];            // hash 256 32 bytes
+  bytes validators_hash = 8 [(fig.bytetype) = "Hash"];      // hash 256 32 bytes
+  bytes next_validators_hash = 9 [(fig.bytetype) = "Hash"]; // hash 256 32 bytes
+  bytes consensus_hash = 10 [(fig.bytetype) = "Hash"];      // hash 256 32 bytes
+  bytes app_hash = 11 [(fig.bytetype) ="Hash"];  // determined by application, not a fixed length
+  bytes last_results_hash = 12 [(fig.bytetype) = "Hash"];  // hash 256 32 bytes - first block will be results of an empty hash
+  bytes evidence_hash = 13 [(fig.bytetype) = "Hash"];  // hash sha256 32 bytes
+  Address proposer_address = 14;  // hash 256 20 bytes - this is the first 20 characters
+                        // of a 32-byte key - SHA256(pubkey)[:20]
 }
 
 message Consensus {
@@ -138,22 +127,20 @@ message Consensus {
 }
 
 message BlockID {
-  bytes hash = 1  [(fig.bytetype) = "AddressHash"];
+  bytes hash = 1 [(fig.bytetype) = "Hash"];
   PartSetHeader part_set_header = 2 [(gogoproto.nullable) = false];
 }
 
 message PartSetHeader {
   uint32 total = 1;
-  bytes hash = 2  [(fig.bytetype) = "AddressHash"];  // hash 256 32 bytes
+  bytes hash = 2 [(fig.bytetype) = "Hash"];  // hash 256 32 bytes
 }
 
 message Data {
-  repeated bytes txs = 1;  // No validation is done by tendermint on this,
-                           // Matrix of bytes ([][]bytes)
+  repeated bytes txs = 1;
 }
 
-// EventDataNewEvidence
-message EventDataNewEvidence {
+message Evidence {
   oneof sum {
     DuplicateVoteEvidence duplicate_vote_evidence = 1;
     LightClientAttackEvidence light_client_attack_evidence = 2;
@@ -176,14 +163,14 @@ message EventDataTx {
 
 // EventDataVote
 message EventDataVote {
-  SignedMsgType eventtype = 1; // should be present in the enum at the top of this file
-  uint64 height = 2; // must be > 0
-  int32 round = 3;   // must be > 0
+  SignedMsgType eventvotetype = 1 [json_name = "type"];   // should be present in the enum at the top of this file
+  uint64 height = 2;  // must be > 0
+  int32 round = 3;    // must be > 0
   BlockID block_id = 4 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
   Timestamp timestamp = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-  bytes validator_address = 6  [(fig.bytetype) = "AddressHash"]; // hash with a length of 20
+  Address validator_address = 6;  // hash with a length of 20
   int32 validator_index = 7;
-  bytes signature = 8   [(fig.bytetype) = "Hash"]; // hash length should be >0 and <64
+  bytes signature = 8;  // hash length should be >0 and <64
 }
 
 message LightClientAttackEvidence {
@@ -195,13 +182,13 @@ message LightClientAttackEvidence {
 }
 
 message LightBlock {
-  SignedHeader signed_header = 1; // cannot be nil
-  ValidatorSet validator_set = 2; // cannot be nil
+  SignedHeader signed_header = 1;  // cannot be nil
+  ValidatorSet validator_set = 2;  // cannot be nil
 }
 
 message ValidatorSet {
-  repeated Validator validators = 1; // cannot be empty of nil
-  Validator proposer = 2; // cannot be nil
+  repeated Validator validators = 1;  // cannot be empty of nil
+  Validator proposer = 2;             // cannot be nil
   int64 total_voting_power = 3;
 }
 
@@ -211,12 +198,12 @@ message SignedHeader {
 }
 
 message EvidenceList {
-  repeated EventDataNewEvidence evidence = 1 [(gogoproto.nullable) = false];
+  repeated Evidence evidence = 1 [(gogoproto.nullable) = false];
 }
 
 message Validator {
   bytes address = 1;
-  PublicKey pub_key = 2 [(gogoproto.nullable) = false]; // must be >0
+  PublicKey pub_key = 2 [(gogoproto.nullable) = false];  // must be >0
   int64 voting_power = 3;
   int64 proposer_priority = 4;
 }
@@ -233,7 +220,7 @@ message PublicKey {
 
 message TxResult {
   uint64 height = 1;
-  int32 index = 2;
+  uint32 index = 2;
   bytes tx = 3;
   ResponseDeliverTx result = 4;
 }
@@ -250,8 +237,8 @@ message ResponseDeliverTx {
 }
 
 message Event {
-  string eventtype = 1;
-  EventAttribute attributes = 2;
+  string eventtype = 1 [json_name = "type"];
+  repeated EventAttribute attributes = 2;
 }
 
 message EventAttribute {
@@ -301,7 +288,7 @@ message EventDataValidatorSetUpdates {
 // EventDataString is just a string and not a struct, unsure how we make a
 // message for this one
 message EventDataString {
-  string EventDataString = 1;
+  string eventdatastring = 1;
 }
 
 // EventDataBlockSyncStatus
@@ -323,6 +310,6 @@ message Timestamp {
 
 message fig {
   extend google.protobuf.FieldOptions {
-     string bytetype = 50003;
- }
+    string bytetype = 50003;
+  }
 }
