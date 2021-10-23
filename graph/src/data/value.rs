@@ -91,6 +91,12 @@ impl GasSizeOf for Word {
     }
 }
 
+impl AsRef<str> for Word {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct Entry {
     key: Option<Word>,
