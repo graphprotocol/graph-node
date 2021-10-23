@@ -106,7 +106,7 @@ message Header {
   Consensus version = 1 [(gogoproto.nullable) = false];
   string chain_id = 2 [(gogoproto.customname) = "ChainID"];
   uint64 height = 3;
-  Timestamp time = 4 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  Timestamp time = 4 [(gogoproto.nullable) = false];
   BlockID last_block_id = 5 [(gogoproto.nullable) = false];
   bytes last_commit_hash = 6 [(fig.bytetype) = "Hash"];     // hash 256 32 bytes
   bytes data_hash = 7 [(fig.bytetype) = "Hash"];            // hash 256 32 bytes

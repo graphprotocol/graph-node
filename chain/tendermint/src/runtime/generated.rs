@@ -2,7 +2,7 @@ use graph_runtime_derive::AscType;
 use graph::runtime::{AscType, AscIndexId, DeterministicHostError, IndexForAscTypeId, AscPtr, AscValue};
 use graph::{semver, anyhow, semver::Version};
 use std::mem::size_of;
-use graph_runtime_wasm::asc_abi::class::{Uint8Array, AscEnum, Array, AscString};
+use graph_runtime_wasm::asc_abi::class::{Uint8Array, AscEnum, Array, AscString, AscBigInt};
 
 pub(crate) type AscHash = Uint8Array;
 
@@ -263,7 +263,7 @@ impl AscIndexId for AscConsensusParams {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscVersion {
-    pub app_version: u64,
+    pub app_version: AscPtr<AscBigInt>,
 }
 
 impl AscIndexId for AscVersion {
@@ -288,7 +288,7 @@ impl AscIndexId for AscBlock {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscCommit {
-    pub height: u64,
+    pub height: AscPtr<AscBigInt>,
     pub round: i32,
     pub block_id: AscPtr<AscBlockID>,
     pub signatures: AscPtr<AscCommitSigArray>,
@@ -332,7 +332,7 @@ impl AscIndexId for AscEventDataNewBlockHeader {
 pub(crate) struct AscHeader {
     pub version: AscPtr<AscConsensus>,
     pub chain_id: AscPtr<AscString>,
-    pub height: u64,
+    pub height:  AscPtr<AscBigInt>,
     pub time: AscPtr<AscTimestamp>,
     pub last_block_id: AscPtr<AscBlockID>,
     pub last_commit_hash: AscPtr<AscHash>,
@@ -354,8 +354,8 @@ impl AscIndexId for AscHeader {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscConsensus {
-    pub block: u64,
-    pub app: u64,
+    pub block:  AscPtr<AscBigInt>,
+    pub app: AscPtr<AscBigInt>,
 }
 
 impl AscIndexId for AscConsensus {
@@ -440,7 +440,7 @@ impl AscIndexId for AscEventDataTx {
 #[derive(AscType)]
 pub(crate) struct AscEventDataVote {
     pub eventvotetype: AscPtr<AscSignedMsgTypeEnum>,
-    pub height: u64,
+    pub height: AscPtr<AscBigInt>,
     pub round: i32,
     pub block_id: AscPtr<AscBlockID>,
     pub timestamp: AscPtr<AscTimestamp>,
@@ -547,7 +547,7 @@ impl AscIndexId for AscPublicKey {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscTxResult {
-    pub height: u64,
+    pub height: AscPtr<AscBigInt>,
     pub index: u32,
     pub tx: AscPtr<Uint8Array>,
     pub result: AscPtr<AscResponseDeliverTx>,
@@ -565,8 +565,8 @@ pub(crate) struct AscResponseDeliverTx {
     pub data: AscPtr<Uint8Array>,
     pub log: AscPtr<AscString>,
     pub info: AscPtr<AscString>,
-    pub gas_wanted: i64,
-    pub gas_used: i64,
+    pub gas_wanted: AscPtr<AscBigInt>,
+    pub gas_used: AscPtr<AscBigInt>,
     pub events: AscPtr<AscEventArray>,
     pub codespace: AscPtr<AscString>,
 }
@@ -593,7 +593,7 @@ impl AscIndexId for AscEvent {
 pub(crate) struct AscEventAttribute {
     pub key: AscPtr<AscString>,
     pub value: AscPtr<AscString>,
-    pub index: bool,
+    //pub index: bool,
 }
 
 impl AscIndexId for AscEventAttribute {
@@ -604,7 +604,7 @@ impl AscIndexId for AscEventAttribute {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEventDataRoundState {
-    pub height: u64,
+    pub height: AscPtr<AscBigInt>,
     pub round: i32,
     pub step: AscPtr<AscString>,
 }
@@ -617,7 +617,7 @@ impl AscIndexId for AscEventDataRoundState {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEventDataNewRound {
-    pub height: u64,
+    pub height: AscPtr<AscBigInt>,
     pub round: i32,
     pub step: AscPtr<AscString>,
     pub proposer: AscPtr<AscValidatorInfo>,
@@ -654,7 +654,7 @@ impl AscIndexId for AscAddress {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEventDataCompleteProposal {
-    pub height: u64,
+    pub height: AscPtr<AscBigInt>,
     pub round: i32,
     pub step: AscPtr<AscString>,
     pub block_id: AscPtr<AscBlockID>,
@@ -691,7 +691,7 @@ impl AscIndexId for AscEventDataString {
 #[derive(AscType)]
 pub(crate) struct AscEventDataBlockSyncStatus {
     pub complete: bool,
-    pub height: u64,
+    pub height: AscPtr<AscBigInt>,
 }
 
 impl AscIndexId for AscEventDataBlockSyncStatus {
@@ -703,7 +703,7 @@ impl AscIndexId for AscEventDataBlockSyncStatus {
 #[derive(AscType)]
 pub(crate) struct AscEventDataStateSyncStatus {
     pub complete: bool,
-    pub height: u64,
+    pub height: AscPtr<AscBigInt>,
 }
 
 impl AscIndexId for AscEventDataStateSyncStatus {
@@ -714,8 +714,8 @@ impl AscIndexId for AscEventDataStateSyncStatus {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscTimestamp {
-    pub seconds: i64,
-    pub nanos: i32,
+    pub seconds:  AscPtr<AscBigInt>,
+    pub nanos:  i32,
 }
 
 impl AscIndexId for AscTimestamp {
