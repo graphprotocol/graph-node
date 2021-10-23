@@ -1,7 +1,7 @@
 //! Test mapping of GraphQL schema to a relational schema
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
-use graph::data::store::Vid;
+use graph::data::store::{EntityVersion, Vid};
 use graph::prelude::{
     o, slog, tokio, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter,
     EntityKey, EntityOrder, EntityQuery, EntityRange, Logger, Schema, StopwatchMetrics, Value,
@@ -743,7 +743,7 @@ fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
     ]);
     let collection = EntityCollection::All(vec![(SCALAR.to_owned(), AttributeNames::All)]);
     layout
-        .query::<Entity>(
+        .query::<EntityVersion>(
             &*LOGGER,
             &conn,
             collection,
@@ -941,7 +941,7 @@ impl<'a> QueryChecker<'a> {
         let unordered = matches!(query.order, EntityOrder::Unordered);
         let entities = self
             .layout
-            .query::<Entity>(
+            .query::<EntityVersion>(
                 &*LOGGER,
                 self.conn,
                 query.collection,
@@ -955,7 +955,7 @@ impl<'a> QueryChecker<'a> {
 
         let mut entity_ids: Vec<_> = entities
             .into_iter()
-            .map(|entity| match entity.get("id") {
+            .map(|ev| match ev.data.get("id") {
                 Some(Value::String(id)) => id.to_owned(),
                 Some(_) => panic!("layout.query returned entity with non-string ID attribute"),
                 None => panic!("layout.query returned entity with no ID attribute"),
@@ -1536,7 +1536,7 @@ fn text_find(expected_entity_ids: Vec<&str>, filter: EntityFilter) {
         let query = query(vec!["Ferret"]).filter(filter).asc("id");
 
         let entities = layout
-            .query::<Entity>(
+            .query::<EntityVersion>(
                 &*LOGGER,
                 conn,
                 query.collection,
@@ -1550,7 +1550,7 @@ fn text_find(expected_entity_ids: Vec<&str>, filter: EntityFilter) {
 
         let entity_ids: Vec<_> = entities
             .into_iter()
-            .map(|entity| match entity.get("id") {
+            .map(|ev| match ev.data.get("id") {
                 Some(Value::String(id)) => id.to_owned(),
                 Some(_) => panic!("layout.query returned entity with non-string ID attribute"),
                 None => panic!("layout.query returned entity with no ID attribute"),

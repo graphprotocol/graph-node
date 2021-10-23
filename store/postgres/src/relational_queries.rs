@@ -279,18 +279,6 @@ pub trait FromEntityData: Default {
     fn set_vid(&mut self, vid: Vid);
 }
 
-impl FromEntityData for Entity {
-    type Value = graph::prelude::Value;
-
-    fn insert_entity_data(&mut self, key: String, v: Self::Value) {
-        self.insert(key, v);
-    }
-
-    fn set_vid(&mut self, _vid: Vid) {
-        /* ignore */
-    }
-}
-
 impl FromEntityData for BTreeMap<String, r::Value> {
     type Value = r::Value;
 

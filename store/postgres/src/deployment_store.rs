@@ -769,9 +769,12 @@ impl DeploymentStore {
                             AttributeNames::All,
                         )]),
                     );
-                    let entities = store
-                        .execute_query::<Entity>(conn, site4, query)
-                        .map_err(anyhow::Error::from)?;
+                    let entities: Vec<_> = store
+                        .execute_query::<EntityVersion>(conn, site4, query)
+                        .map_err(anyhow::Error::from)?
+                        .into_iter()
+                        .map(|ev| ev.data)
+                        .collect();
 
                     Ok(Some(entities))
                 })
@@ -847,7 +850,8 @@ impl DeploymentStore {
         query: EntityQuery,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         let conn = self.get_conn()?;
-        self.execute_query(&conn, site, query)
+        self.execute_query::<EntityVersion>(&conn, site, query)
+            .map(|evs| evs.into_iter().map(|ev| ev.data).collect())
     }
 
     pub(crate) fn transact_block_operations(

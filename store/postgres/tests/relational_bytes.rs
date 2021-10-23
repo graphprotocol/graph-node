@@ -1,7 +1,7 @@
 //! Test relational schemas that use `Bytes` to store ids
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
-use graph::data::store::Vid;
+use graph::data::store::{EntityVersion, Vid};
 use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
 use lazy_static::lazy_static;
@@ -416,7 +416,7 @@ fn make_thing_tree(conn: &PgConnection, layout: &Layout) -> (Entity, Entity, Ent
 fn query() {
     fn fetch(conn: &PgConnection, layout: &Layout, coll: EntityCollection) -> Vec<String> {
         layout
-            .query::<Entity>(
+            .query::<EntityVersion>(
                 &*LOGGER,
                 conn,
                 coll,
@@ -428,7 +428,7 @@ fn query() {
             )
             .expect("the query succeeds")
             .into_iter()
-            .map(|e| e.id().expect("entities have an id"))
+            .map(|ev| ev.data.id().expect("entities have an id"))
             .collect::<Vec<_>>()
     }
 
