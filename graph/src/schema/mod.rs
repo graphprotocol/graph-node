@@ -37,14 +37,6 @@ pub use api::{ApiSchema, ErrorPolicy};
 pub use fulltext::{FulltextAlgorithm, FulltextConfig, FulltextDefinition, FulltextLanguage};
 pub use input_schema::InputSchema;
 
-/// Placeholder type until we are ready to use a real intern::AtomPool
-#[derive(Clone, Debug, PartialEq)]
-pub struct AtomPool;
-
-impl AtomPool {
-    pub fn intern(&mut self, _s: &str) {}
-}
-
 pub const SCHEMA_TYPE_NAME: &str = "_Schema_";
 
 pub const META_FIELD_TYPE: &str = "_Meta_";

@@ -13,9 +13,10 @@ use crate::data::store::{self, scalar, IntoEntityIterator, TryIntoEntityIterator
 use crate::prelude::q::Value;
 use crate::prelude::{s, DeploymentHash};
 use crate::schema::api_schema;
+use crate::util::intern::AtomPool;
 
 use super::fulltext::FulltextDefinition;
-use super::{ApiSchema, AtomPool, Schema, SchemaValidationError};
+use super::{ApiSchema, Schema, SchemaValidationError};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct InputSchema {
@@ -26,7 +27,7 @@ pub struct InputSchema {
 pub struct Inner {
     schema: Schema,
     immutable_types: HashSet<EntityType>,
-    pool: AtomPool,
+    pool: Arc<AtomPool>,
 }
 
 impl std::ops::Deref for InputSchema {
@@ -55,7 +56,9 @@ impl InputSchema {
                 .filter(|obj_type| obj_type.is_immutable())
                 .map(Into::into),
         );
-        let pool = AtomPool;
+
+        let pool = Arc::new(atom_pool(&schema.document));
+
         Self {
             inner: Arc::new(Inner {
                 schema,
@@ -64,6 +67,7 @@ impl InputSchema {
             }),
         }
     }
+
     pub fn new(id: DeploymentHash, document: s::Document) -> Result<Self, SchemaValidationError> {
         let schema = Schema::new(id, document)?;
         Ok(Self::create(schema))
@@ -235,9 +239,14 @@ impl Inner {
         &self,
         entity: &str,
     ) -> Result<Vec<FulltextDefinition>, anyhow::Error> {
-        Ok(self
-            .schema
-            .document
+        Self::fulltext_definitions(&self.schema.document, entity)
+    }
+
+    fn fulltext_definitions(
+        document: &s::Document,
+        entity: &str,
+    ) -> Result<Vec<FulltextDefinition>, anyhow::Error> {
+        Ok(document
             .get_fulltext_directives()?
             .into_iter()
             .filter(|directive| match directive.argument("include") {
@@ -281,4 +290,62 @@ impl Inner {
     pub fn try_make_entity<E, I: TryIntoEntityIterator<E>>(&self, iter: I) -> Result<Entity, E> {
         Entity::try_make(self.pool.clone(), iter)
     }
+}
+
+/// Create a new pool that contains the names of all the types defined
+/// in the document and the names of all their fields
+fn atom_pool(document: &s::Document) -> AtomPool {
+    let mut pool = AtomPool::new();
+    // These two entries are always required
+    pool.intern("g$parent_id"); // Used by queries
+    pool.intern("__typename"); // Mandated by GraphQL
+    pool.intern("digest"); // Attribute of PoI object
+    for definition in &document.definitions {
+        match definition {
+            s::Definition::TypeDefinition(typedef) => match typedef {
+                s::TypeDefinition::Object(t) => {
+                    pool.intern(&t.name);
+                    for field in &t.fields {
+                        pool.intern(&field.name);
+                    }
+                }
+                s::TypeDefinition::Enum(t) => {
+                    pool.intern(&t.name);
+                }
+                s::TypeDefinition::Interface(t) => {
+                    pool.intern(&t.name);
+                    for field in &t.fields {
+                        pool.intern(&field.name);
+                    }
+                }
+                s::TypeDefinition::InputObject(input_object) => {
+                    pool.intern(&input_object.name);
+                    for field in &input_object.fields {
+                        pool.intern(&field.name);
+                    }
+                }
+                s::TypeDefinition::Scalar(scalar_type) => {
+                    pool.intern(&scalar_type.name);
+                }
+                s::TypeDefinition::Union(union_type) => {
+                    pool.intern(&union_type.name);
+                    for typ in &union_type.types {
+                        pool.intern(typ);
+                    }
+                }
+            },
+            s::Definition::SchemaDefinition(_)
+            | s::Definition::TypeExtension(_)
+            | s::Definition::DirectiveDefinition(_) => { /* ignore, these only happen for introspection schemas */
+            }
+        }
+    }
+
+    for object_type in document.get_object_type_definitions() {
+        for defn in Inner::fulltext_definitions(&document, &object_type.name).unwrap() {
+            pool.intern(defn.name.as_str());
+        }
+    }
+
+    pool
 }

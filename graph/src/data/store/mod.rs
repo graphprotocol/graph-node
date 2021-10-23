@@ -3,7 +3,8 @@ use crate::{
     data::graphql::ObjectTypeExt,
     prelude::{anyhow::Context, q, r, s, CacheWeight, QueryExecutionError},
     runtime::gas::{Gas, GasSizeOf},
-    schema::{AtomPool, InputSchema},
+    schema::InputSchema,
+    util::intern::AtomPool,
 };
 use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
 use anyhow::{anyhow, Error};
@@ -11,11 +12,11 @@ use itertools::Itertools;
 use serde::de;
 use serde::{Deserialize, Serialize};
 use stable_hash::{FieldAddress, StableHash, StableHasher};
-use std::convert::TryFrom;
 use std::fmt;
 use std::iter::FromIterator;
 use std::str::FromStr;
 use std::{borrow::Cow, collections::HashMap};
+use std::{convert::TryFrom, sync::Arc};
 use strum::AsStaticRef as _;
 use strum_macros::AsStaticStr;
 
@@ -636,19 +637,19 @@ macro_rules! entity {
     () => {
         {
             let pairs = Vec::new();
-            let pool = $crate::schema::AtomPool;
-            Entity::make(pool, pairs)
+            let pool = $crate::util::intern::AtomPool::new();
+            Entity::make(std::sync::Arc::new(pool), pairs)
         }
     };
     ($($name:ident: $value:expr,)*) => {
         {
             let mut pairs = Vec::new();
-            let mut pool = $crate::schema::AtomPool;
+            let mut pool = $crate::util::intern::AtomPool::new();
             $(
                 pool.intern(stringify!($name));
                 pairs.push(($crate::data::value::Word::from(stringify!($name)), $crate::data::store::Value::from($value)));
             )*
-            $crate::data::store::Entity::make(pool, pairs)
+            $crate::data::store::Entity::make(std::sync::Arc::new(pool), pairs)
         }
     };
     ($($name:ident: $value:expr),*) => {
@@ -657,7 +658,7 @@ macro_rules! entity {
     ($($name:ident: $value:expr,)*; $($extra:ident,)*) => {
         {
             let mut pairs = Vec::new();
-            let mut pool = $crate::schema::AtomPool;
+            let mut pool = $crate::util::intern::AtomPool::new();
             $(
                 pool.intern(stringify!($name));
                 pairs.push(($crate::data::value::Word::from(stringify!($name)), $crate::data::store::Value::from($value)));
@@ -665,7 +666,7 @@ macro_rules! entity {
             $(
                 pool.intern(stringify!($extra));
             )*
-            $crate::data::store::Entity::make(pool, pairs)
+            $crate::data::store::Entity::make(std::sync::Arc::new(pool), pairs)
         }
     };
     ($($name:ident: $value:expr),*; $($extra:ident),*) => {
@@ -703,11 +704,14 @@ macro_rules! entity {
 }
 
 impl Entity {
-    pub fn make<I: IntoEntityIterator>(_pool: AtomPool, iter: I) -> Entity {
+    pub fn make<I: IntoEntityIterator>(_pool: Arc<AtomPool>, iter: I) -> Entity {
         Entity(HashMap::from_iter(iter))
     }
 
-    pub fn try_make<E, I: TryIntoEntityIterator<E>>(_pool: AtomPool, iter: I) -> Result<Entity, E> {
+    pub fn try_make<E, I: TryIntoEntityIterator<E>>(
+        _pool: Arc<AtomPool>,
+        iter: I,
+    ) -> Result<Entity, E> {
         let map: HashMap<_, _> = iter.into_iter().collect::<Result<_, E>>()?;
         Ok(Entity(map))
     }
