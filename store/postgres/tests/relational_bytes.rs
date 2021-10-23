@@ -1,10 +1,12 @@
 //! Test relational schemas that use `Bytes` to store ids
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
+use graph::data::store::Vid;
 use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::borrow::Cow;
+use std::num::NonZeroU64;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::prelude::{
@@ -83,7 +85,7 @@ fn remove_test_data(conn: &PgConnection) {
         .expect("Failed to drop test schema");
 }
 
-fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
+fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) -> Vid {
     let key = EntityKey::data(
         THINGS_SUBGRAPH_ID.clone(),
         entity_type.to_owned(),
@@ -102,6 +104,11 @@ fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity
             &MOCK_STOPWATCH,
         )
         .expect(&errmsg);
+    layout
+        .find(conn, &entity_type, &entity.id().unwrap(), 0)
+        .unwrap()
+        .map(|ev| ev.vid)
+        .flatten()
 }
 
 fn insert_thing(conn: &PgConnection, layout: &Layout, id: &str, name: &str) {
@@ -278,7 +285,7 @@ fn find_many() {
 #[test]
 fn update() {
     run_test(|conn, layout| {
-        insert_entity(&conn, &layout, "Thing", BEEF_ENTITY.clone());
+        let vid = insert_entity(&conn, &layout, "Thing", BEEF_ENTITY.clone());
 
         // Update the entity
         let mut entity = BEEF_ENTITY.clone();
@@ -292,8 +299,16 @@ fn update() {
         let entity_id = entity.id().unwrap().clone();
         let entity_type = key.entity_type.clone();
         let mut entities = vec![(&key, Cow::from(&entity))];
+        let vids = vec![vid];
         layout
-            .update(&conn, &entity_type, &mut entities, 1, &MOCK_STOPWATCH)
+            .update(
+                &conn,
+                &entity_type,
+                &mut entities,
+                &vids,
+                1,
+                &MOCK_STOPWATCH,
+            )
             .expect("Failed to update");
 
         let actual = layout
@@ -310,7 +325,7 @@ fn delete() {
     run_test(|conn, layout| {
         const TWO_ID: &str = "deadbeef02";
 
-        insert_entity(&conn, &layout, "Thing", BEEF_ENTITY.clone());
+        let vid = insert_entity(&conn, &layout, "Thing", BEEF_ENTITY.clone());
         let mut two = BEEF_ENTITY.clone();
         two.set("id", TWO_ID);
         insert_entity(&conn, &layout, "Thing", two);
@@ -323,8 +338,9 @@ fn delete() {
         );
         let entity_type = key.entity_type.clone();
         let mut entity_keys = vec![key.entity_id.as_str()];
+        let vids = vec![NonZeroU64::new(712)];
         let count = layout
-            .delete(&conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
+            .delete(&conn, &entity_type, vids.as_slice(), 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(0, count);
 
@@ -333,8 +349,9 @@ fn delete() {
             .get_mut(0)
             .map(|key| *key = TWO_ID)
             .expect("Failed to update entity types");
+        let vids = vec![vid];
         let count = layout
-            .delete(&conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
+            .delete(&conn, &entity_type, vids.as_slice(), 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(1, count);
     });

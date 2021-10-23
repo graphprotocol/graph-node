@@ -144,18 +144,22 @@ fn overwrite_modifications() {
     cache.set(sigurros_key.clone(), sigurros_data.clone());
 
     let result = cache.as_modifications();
+    let one = NonZeroU64::new(1);
+    let two = NonZeroU64::new(2);
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
-        sort_by_entity_key(vec![
+        vec![
             EntityModification::Overwrite {
                 key: mogwai_key,
                 data: mogwai_data,
+                prev_vid: one,
             },
             EntityModification::Overwrite {
                 key: sigurros_key,
                 data: sigurros_data,
+                prev_vid: two,
             }
-        ])
+        ]
     );
 }
 
@@ -205,15 +209,17 @@ fn consecutive_modifications() {
     // We expect a single overwrite modification for the above that leaves "id"
     // and "name" untouched, sets "founded" and removes the "label" field.
     let result = cache.as_modifications();
+    let one = NonZeroU64::new(1);
     assert_eq!(
-        sort_by_entity_key(result.unwrap().modifications),
-        sort_by_entity_key(vec![EntityModification::Overwrite {
+        result.unwrap().modifications,
+        vec![EntityModification::Overwrite {
             key: update_key,
             data: Entity::from(vec![
                 ("id", "mogwai".into()),
                 ("name", "Mogwai".into()),
                 ("founded", 1995.into()),
             ]),
-        },])
+            prev_vid: one
+        },]
     );
 }

@@ -4,7 +4,7 @@ use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use graph::components::store::{EntityType, StoredDynamicDataSource};
-use graph::data::store::EntityVersion;
+use graph::data::store::{EntityVersion, Vid};
 use graph::data::subgraph::status;
 use graph::prelude::{
     tokio, CancelHandle, CancelToken, CancelableError, PoolWaitStats, SubgraphDeploymentEntity,
@@ -327,17 +327,23 @@ impl DeploymentStore {
                         .or_insert_with(Vec::new)
                         .push((key, Cow::from(data)));
                 }
-                Overwrite { key, data } => {
-                    overwrites
+                Overwrite {
+                    key,
+                    data,
+                    prev_vid,
+                } => {
+                    let (entities, vids) = overwrites
                         .entry(key.entity_type.clone())
-                        .or_insert_with(Vec::new)
-                        .push((key, Cow::from(data)));
+                        .or_insert_with(|| (Vec::new(), Vec::new()));
+
+                    entities.push((key, Cow::from(data)));
+                    vids.push(*prev_vid);
                 }
-                Remove { key } => {
+                Remove { key, prev_vid } => {
                     removals
                         .entry(key.entity_type.clone())
                         .or_insert_with(Vec::new)
-                        .push(key.entity_id.as_str());
+                        .push(*prev_vid);
                 }
             }
         }
@@ -351,21 +357,24 @@ impl DeploymentStore {
         }
 
         // Overwrites:
-        for (entity_type, mut entities) in overwrites.into_iter() {
+        for (entity_type, (mut entities, vids)) in overwrites.into_iter() {
             // we do not update the count since the number of entities remains the same
-            self.overwrite_entities(&entity_type, &mut entities, conn, layout, ptr, &stopwatch)?;
-        }
-
-        // Removals
-        for (entity_type, entity_keys) in removals.into_iter() {
-            count -= self.remove_entities(
+            self.overwrite_entities(
                 &entity_type,
-                entity_keys.as_slice(),
+                &mut entities,
+                vids.as_slice(),
                 conn,
                 layout,
                 ptr,
                 &stopwatch,
-            )? as i32;
+            )?;
+        }
+
+        // Removals
+        for (entity_type, vids) in removals.into_iter() {
+            count -=
+                self.remove_entities(&entity_type, vids.as_slice(), conn, layout, ptr, &stopwatch)?
+                    as i32;
         }
         Ok(count)
     }
@@ -394,6 +403,7 @@ impl DeploymentStore {
         &'a self,
         entity_type: &'a EntityType,
         data: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
+        vids: &'a [Vid],
         conn: &PgConnection,
         layout: &'a Layout,
         ptr: &BlockPtr,
@@ -407,13 +417,13 @@ impl DeploymentStore {
         section.end();
 
         let _section = stopwatch.start_section("apply_entity_modifications_update");
-        layout.update(conn, &entity_type, data, block_number(ptr), stopwatch)
+        layout.update(conn, &entity_type, data, vids, block_number(ptr), stopwatch)
     }
 
     fn remove_entities(
         &self,
         entity_type: &EntityType,
-        entity_keys: &[&str],
+        vids: &[Vid],
         conn: &PgConnection,
         layout: &Layout,
         ptr: &BlockPtr,
@@ -421,14 +431,15 @@ impl DeploymentStore {
     ) -> Result<usize, StoreError> {
         let _section = stopwatch.start_section("apply_entity_modifications_delete");
         layout
-            .delete(
-                conn,
-                entity_type,
-                &entity_keys,
-                block_number(ptr),
-                stopwatch,
-            )
-            .map_err(|_error| anyhow!("Failed to remove entities: {:?}", entity_keys).into())
+            .delete(conn, entity_type, vids, block_number(ptr), stopwatch)
+            .map_err(|_error| {
+                anyhow!(
+                    "Failed to remove entities for type {}: {:?}",
+                    entity_type,
+                    vids
+                )
+                .into()
+            })
     }
 
     /// Execute a closure with a connection to the database.

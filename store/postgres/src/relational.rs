@@ -32,7 +32,7 @@ use crate::{
 use graph::components::store::EntityType;
 use graph::data::graphql::ext::{DirectiveFinder, DocumentExt, ObjectTypeExt};
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
-use graph::data::store::{EntityVersion, BYTES_SCALAR};
+use graph::data::store::{EntityVersion, Vid, BYTES_SCALAR};
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{
     anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityCollection,
@@ -681,17 +681,14 @@ impl Layout {
         conn: &PgConnection,
         entity_type: &'a EntityType,
         entities: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
+        vids: &'a [Vid],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&entity_type)?;
-        let entity_keys: Vec<&str> = entities
-            .iter()
-            .map(|(key, _)| key.entity_id.as_str())
-            .collect();
 
         let section = stopwatch.start_section("update_modification_clamp_range_query");
-        ClampRangeQuery::new(table, &entity_type, &entity_keys, block).execute(conn)?;
+        ClampRangeQuery::new(table, &vids, block)?.execute(conn)?;
         section.end();
 
         let _section = stopwatch.start_section("update_modification_insert_query");
@@ -712,15 +709,15 @@ impl Layout {
         &self,
         conn: &PgConnection,
         entity_type: &EntityType,
-        entity_ids: &[&str],
+        vids: &[Vid],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&entity_type)?;
         let _section = stopwatch.start_section("delete_modification_clamp_range_query");
         let mut count = 0;
-        for chunk in entity_ids.chunks(DELETE_OPERATION_CHUNK_SIZE) {
-            count += ClampRangeQuery::new(table, &entity_type, chunk, block).execute(conn)?
+        for chunk in vids.chunks(DELETE_OPERATION_CHUNK_SIZE) {
+            count += ClampRangeQuery::new(table, chunk, block)?.execute(conn)?
         }
         Ok(count)
     }
