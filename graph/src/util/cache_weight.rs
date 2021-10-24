@@ -9,7 +9,7 @@ use std::{collections::BTreeMap, mem};
 pub trait CacheWeight {
     /// Total weight of the value.
     fn weight(&self) -> usize {
-        mem::size_of_val(&self) + self.indirect_weight()
+        mem::size_of_val(self) + self.indirect_weight()
     }
 
     /// The weight of values pointed to by this value but logically owned by it, which is not
