@@ -1048,7 +1048,7 @@ pub trait WritableStore: Send + Sync + 'static {
         stopwatch: StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
-    ) -> Result<(), StoreError>;
+    ) -> Result<Vec<(EntityKey, Vid)>, StoreError>;
 
     /// Look up multiple entities as of the latest block. Returns a map of
     /// entities by type.
@@ -1234,7 +1234,7 @@ impl WritableStore for MockStore {
         _: StopwatchMetrics,
         _: Vec<StoredDynamicDataSource>,
         _: Vec<SubgraphError>,
-    ) -> Result<(), StoreError> {
+    ) -> Result<Vec<(EntityKey, Vid)>, StoreError> {
         unimplemented!()
     }
 
@@ -1799,6 +1799,19 @@ impl LfuCache<EntityKey, Option<EntityVersion>> {
                 Ok(entity)
             }
             Some(data) => Ok(data.to_owned()),
+        }
+    }
+
+    /// Update the `vid` of cached entities to reflect changes made in the
+    /// database. When entities stay cached across insert/update operations,
+    /// their vid in the database changes as a result of these operations
+    /// and needs to be updated
+    pub fn update_vids(&mut self, vid_map: Vec<(EntityKey, Vid)>) {
+        for (key, vid) in vid_map {
+            assert!(vid.is_some());
+            if let Some(Some(x)) = self.get_mut(key) {
+                x.vid = vid;
+            }
         }
     }
 }

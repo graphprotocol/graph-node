@@ -229,6 +229,7 @@ pub async fn transact_errors(
             Vec::new(),
             errs,
         )
+        .map(|_| ())
 }
 
 /// Convenience to transact EntityOperation instead of EntityModification
@@ -262,14 +263,16 @@ pub fn transact_entities_and_dynamic_data_sources(
         deployment.hash.clone(),
         metrics_registry.clone(),
     );
-    store.transact_block_operations(
-        block_ptr_to,
-        None,
-        mods,
-        stopwatch_metrics,
-        data_sources,
-        Vec::new(),
-    )
+    store
+        .transact_block_operations(
+            block_ptr_to,
+            None,
+            mods,
+            stopwatch_metrics,
+            data_sources,
+            Vec::new(),
+        )
+        .map(|_| ())
 }
 
 pub async fn revert_block(store: &Arc<Store>, deployment: &DeploymentLocator, ptr: &BlockPtr) {

@@ -87,7 +87,7 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
     /// Updates and bumps freceny if already present.
     pub fn insert(&mut self, key: K, value: V) {
         let weight = CacheEntry::weight(&key, &value);
-        match self.get_mut(key.clone()) {
+        match self.get_mut_entry(key.clone()) {
             None => {
                 self.total_weight += weight;
                 self.queue.push(
@@ -119,7 +119,7 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
             .unwrap_or(0)
     }
 
-    fn get_mut(&mut self, key: K) -> Option<&mut CacheEntry<K, V>> {
+    fn get_mut_entry(&mut self, key: K) -> Option<&mut CacheEntry<K, V>> {
         // Increment the frequency by 1
         let key_entry = CacheEntry::cache_key(key);
         self.queue
@@ -130,8 +130,12 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
         })
     }
 
+    pub fn get_mut(&mut self, key: K) -> Option<&mut V> {
+        self.get_mut_entry(key).map(|x| &mut x.value)
+    }
+
     pub fn get(&mut self, key: &K) -> Option<&V> {
-        self.get_mut(key.clone()).map(|x| &x.value)
+        self.get_mut_entry(key.clone()).map(|x| &x.value)
     }
 
     pub fn remove(&mut self, key: &K) -> Option<V> {

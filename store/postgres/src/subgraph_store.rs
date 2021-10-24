@@ -17,7 +17,10 @@ use graph::{
     constraint_violation,
     data::query::QueryTarget,
     data::subgraph::schema::SubgraphError,
-    data::{store::EntityVersion, subgraph::status},
+    data::{
+        store::{EntityVersion, Vid},
+        subgraph::status,
+    },
     prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
     prelude::{
@@ -1240,13 +1243,13 @@ impl WritableStoreTrait for WritableStore {
         stopwatch: StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
-    ) -> Result<(), StoreError> {
+    ) -> Result<Vec<(EntityKey, Vid)>, StoreError> {
         assert!(
             same_subgraph(&mods, &self.site.deployment),
             "can only transact operations within one shard"
         );
         self.retry("transact_block_operations", move || {
-            let event = self.writable.transact_block_operations(
+            let (event, vid_map) = self.writable.transact_block_operations(
                 self.site.clone(),
                 &block_ptr_to,
                 firehose_cursor.as_deref(),
@@ -1257,7 +1260,8 @@ impl WritableStoreTrait for WritableStore {
             )?;
 
             let _section = stopwatch.start_section("send_store_event");
-            self.try_send_store_event(event)
+            self.try_send_store_event(event)?;
+            Ok(vid_map)
         })
     }
 
