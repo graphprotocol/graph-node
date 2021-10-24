@@ -3,7 +3,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 
-use graph::prelude::q;
+use graph::components::store::EntityType;
+use graph::prelude::{q, DeploymentHash, EntityKey};
 use rand::{thread_rng, Rng};
 use structopt::StructOpt;
 
@@ -48,7 +49,7 @@ trait Template<T>: CacheWeight + Default {
     // Return a sample of this test object of the given `size`. There's no
     // fixed definition of 'size', other than that smaller sizes will
     // take less memory than larger ones
-    fn sample(&self, size: usize) -> Self::Item;
+    fn sample(&self, size: usize) -> Box<Self::Item>;
 }
 
 /// Template for testing caching of `String`
@@ -62,8 +63,8 @@ impl Template<String> for String {
         }
         s
     }
-    fn sample(&self, size: usize) -> Self::Item {
-        self[0..size].into()
+    fn sample(&self, size: usize) -> Box<Self::Item> {
+        Box::new(self[0..size].into())
     }
 }
 
@@ -74,8 +75,8 @@ impl Template<Vec<usize>> for Vec<usize> {
     fn create(size: usize) -> Self {
         Vec::from_iter(0..size)
     }
-    fn sample(&self, size: usize) -> Self::Item {
-        self[0..size].into()
+    fn sample(&self, size: usize) -> Box<Self::Item> {
+        Box::new(self[0..size].into())
     }
 }
 
@@ -91,12 +92,12 @@ impl Template<HashMap<String, String>> for HashMap<String, String> {
         map
     }
 
-    fn sample(&self, size: usize) -> Self::Item {
-        HashMap::from_iter(
+    fn sample(&self, size: usize) -> Box<Self::Item> {
+        Box::new(HashMap::from_iter(
             self.iter()
                 .take(size)
                 .map(|(k, v)| (k.to_owned(), v.to_owned())),
-        )
+        ))
     }
 }
 
@@ -135,12 +136,12 @@ impl Template<ValueMap> for ValueMap {
         map
     }
 
-    fn sample(&self, size: usize) -> Self::Item {
-        BTreeMap::from_iter(
+    fn sample(&self, size: usize) -> Box<Self::Item> {
+        Box::new(BTreeMap::from_iter(
             self.iter()
                 .take(size)
                 .map(|(k, v)| (k.to_owned(), v.to_owned())),
-        )
+        ))
     }
 }
 
@@ -158,7 +159,7 @@ impl<T: Template<T>> Cacheable<T> {
         }
     }
 
-    fn sample(&self, size: usize) -> T::Item {
+    fn sample(&self, size: usize) -> Box<T::Item> {
         self.template.sample(size)
     }
 
@@ -234,7 +235,7 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
                 ALLOCATED.load(SeqCst) - before,
             );
         }
-        cacheable.cache.insert(key, cacheable.sample(size));
+        cacheable.cache.insert(key, *cacheable.sample(size));
     }
 }
 
