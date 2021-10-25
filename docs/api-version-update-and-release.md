@@ -1,17 +1,17 @@
 # `apiVersion` Upgrade and Release Guide
 
-This document explains how to coordenate an `apiVersion` upgrade
+This document explains how to coordinate an `apiVersion` upgrade
 across all impacted projects:
 
 1.  [`graph-node`](https:github.com/graphprotocol/graph-node)
 2.  [`graph-ts`](https:github.com/graphprotocol/graph-ts)
 3.  [`graph-cli`](https:github.com/graphprotocol/graph-cli)
-4.  [`graph-docs`](https:github.com/graphprotocol/graph-docs)
+4.  `graph-docs`
 
 ## Steps
 
 Those steps should be taken after all relevant `graph-node` changes
-have been rolled out to production:
+have been rolled out to production (hosted-service):
 
 1.  Update the default value of `MAX_API_VERSION` constant located in
     the `graph/src/data/subgraph/mod.rs` file. If the
@@ -26,8 +26,8 @@ have been rolled out to production:
 
     1.  Write migrations for the new `apiVersion`.
     2.  Update the version restriction on the `build` and `deploy`
-        commands to match the new `gaph-ts` and `apiVersion` versions.
-    3.  Update the `graph-ts` version in `package.json`.
+        commands to match the new `graph-ts` and `apiVersion` versions.
+    3.  Update the `graph-cli` version in `package.json`.
     4.  Update the `graph-ts` version on scaffolded code and examples.
     5.  Recompile all the examples by running `=$ nmp install` inside
         each example directory.
