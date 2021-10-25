@@ -13,10 +13,10 @@ across all impacted projects:
 Those steps should be taken after all relevant `graph-node` changes
 have been rolled out to production (hosted-service):
 
-1.  Update the default value of `MAX_API_VERSION` constant located in
-    the `graph/src/data/subgraph/mod.rs` file. If the
-    `GRAPH_MAX_API_VERSION` environment variable is being used, update
-    it to the same version as well.
+1. Update the default value of the `GRAPH_MAX_API_VERSION` environment
+   variable, currently located at this file: `graph/src/data/subgraph/mod.rs`.
+   If you're setting it up somewhere manually, you should change there
+   as well, or just remove it.
 
 2.  Update `graph-node` minor version and create a new release.
 
@@ -28,7 +28,7 @@ have been rolled out to production (hosted-service):
     2.  Update the version restriction on the `build` and `deploy`
         commands to match the new `graph-ts` and `apiVersion` versions.
     3.  Update the `graph-cli` version in `package.json`.
-    4.  Update the `graph-ts` version on scaffolded code and examples.
+    4.  Update `graph-ts` and `graph-cli` version numbers on scaffolded code and examples.
     5.  Recompile all the examples by running `=$ nmp install` inside
         each example directory.
     6.  Update `graph-cli`\'s version and create a new release.
