@@ -317,8 +317,7 @@ impl FirehoseMapper {
         let receipts = block.shards.iter().flat_map(|shard| {
             shard
                 .receipt_execution_outcomes
-                .clone()
-                .into_iter()
+                .iter()
                 .filter_map(|outcome| {
                     if !outcome
                         .execution_outcome
@@ -337,9 +336,10 @@ impl FirehoseMapper {
                     ) {
                         return None;
                     }
+
                     Some(trigger::ReceiptWithOutcome {
-                        outcome: outcome.execution_outcome?,
-                        receipt: outcome.receipt?,
+                        outcome: outcome.execution_outcome.as_ref()?.clone(),
+                        receipt: outcome.receipt.as_ref()?.clone(),
                         block: block.cheap_clone(),
                     })
                 })
