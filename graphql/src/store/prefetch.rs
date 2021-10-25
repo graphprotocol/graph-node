@@ -1174,7 +1174,7 @@ fn filter_derived_fields(
                         None // field does not exist
                     }
                 })
-                .for_each(|col| filtered.insert(&col));
+                .for_each(|col| filtered.update_str(&col));
             filtered
         }
     }
