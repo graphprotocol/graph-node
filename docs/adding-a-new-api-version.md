@@ -1,4 +1,4 @@
-# `apiVersion` Upgrade and Release Guide
+# Adding a new `apiVersion`
 
 This document explains how to coordinate an `apiVersion` upgrade
 across all impacted projects:
