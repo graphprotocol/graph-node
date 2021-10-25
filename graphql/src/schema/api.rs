@@ -58,6 +58,18 @@ impl TryFrom<&q::Value> for ErrorPolicy {
     }
 }
 
+impl TryFrom<&r::Value> for ErrorPolicy {
+    type Error = anyhow::Error;
+
+    /// `value` should be the output of input value coercion.
+    fn try_from(value: &r::Value) -> Result<Self, Self::Error> {
+        match value {
+            r::Value::Enum(s) => ErrorPolicy::from_str(s),
+            _ => Err(anyhow::anyhow!("invalid `ErrorPolicy`")),
+        }
+    }
+}
+
 /// Derives a full-fledged GraphQL API schema from an input schema.
 ///
 /// The input schema should only have type/enum/interface/union definitions

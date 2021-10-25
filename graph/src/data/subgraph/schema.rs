@@ -82,10 +82,16 @@ impl From<SubgraphHealth> for q::Value {
     }
 }
 
+impl From<SubgraphHealth> for r::Value {
+    fn from(health: SubgraphHealth) -> r::Value {
+        r::Value::Enum(health.into())
+    }
+}
+
 impl TryFromValue for SubgraphHealth {
-    fn try_from_value(value: &q::Value) -> Result<SubgraphHealth, Error> {
+    fn try_from_value(value: &r::Value) -> Result<SubgraphHealth, Error> {
         match value {
-            q::Value::Enum(health) => SubgraphHealth::from_str(health),
+            r::Value::Enum(health) => SubgraphHealth::from_str(health),
             _ => Err(anyhow!(
                 "cannot parse value as SubgraphHealth: `{:?}`",
                 value

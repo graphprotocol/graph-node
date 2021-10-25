@@ -15,3 +15,6 @@ pub mod subscription;
 
 /// Data types for dealing with GraphQL values.
 pub mod graphql;
+
+/// Our representation of values for query results and the like
+pub mod value;

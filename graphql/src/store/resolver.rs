@@ -161,9 +161,9 @@ impl StoreResolver {
 
     fn handle_meta(
         &self,
-        prefetched_object: Option<q::Value>,
+        prefetched_object: Option<r::Value>,
         object_type: &ObjectOrInterface<'_>,
-    ) -> Result<(Option<q::Value>, Option<q::Value>), QueryExecutionError> {
+    ) -> Result<(Option<r::Value>, Option<r::Value>), QueryExecutionError> {
         // Pretend that the whole `_meta` field was loaded by prefetch. Eager
         // loading this is ok until we add more information to this field
         // that would force us to query the database; when that happens, we
@@ -180,35 +180,35 @@ impl StoreResolver {
                     if hash_h256 == web3::types::H256::zero() {
                         None
                     } else {
-                        Some(q::Value::String(format!("0x{:x}", hash_h256)))
+                        Some(r::Value::String(format!("0x{:x}", hash_h256)))
                     }
                 })
-                .unwrap_or(q::Value::Null);
+                .unwrap_or(r::Value::Null);
             let number = self
                 .block_ptr
                 .as_ref()
-                .map(|ptr| q::Value::Int((ptr.number as i32).into()))
-                .unwrap_or(q::Value::Null);
+                .map(|ptr| r::Value::Int((ptr.number as i32).into()))
+                .unwrap_or(r::Value::Null);
             let mut map = BTreeMap::new();
             let block = object! {
                 hash: hash,
                 number: number,
                 __typename: BLOCK_FIELD_TYPE
             };
-            map.insert("prefetch:block".to_string(), q::Value::List(vec![block]));
+            map.insert("prefetch:block".to_string(), r::Value::List(vec![block]));
             map.insert(
                 "deployment".to_string(),
-                q::Value::String(self.deployment.to_string()),
+                r::Value::String(self.deployment.to_string()),
             );
             map.insert(
                 "hasIndexingErrors".to_string(),
-                q::Value::Boolean(self.has_non_fatal_errors),
+                r::Value::Boolean(self.has_non_fatal_errors),
             );
             map.insert(
                 "__typename".to_string(),
-                q::Value::String(META_FIELD_TYPE.to_string()),
+                r::Value::String(META_FIELD_TYPE.to_string()),
             );
-            return Ok((None, Some(q::Value::Object(map))));
+            return Ok((None, Some(r::Value::Object(map))));
         }
         Ok((prefetched_object, None))
     }
@@ -226,18 +226,18 @@ impl Resolver for StoreResolver {
         &self,
         ctx: &ExecutionContext<Self>,
         selection_set: &q::SelectionSet,
-    ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
+    ) -> Result<Option<r::Value>, Vec<QueryExecutionError>> {
         super::prefetch::run(self, ctx, selection_set, &self.result_size).map(Some)
     }
 
     fn resolve_objects(
         &self,
-        prefetched_objects: Option<q::Value>,
+        prefetched_objects: Option<r::Value>,
         field: &q::Field,
         _field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&str, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        _arguments: &HashMap<&str, r::Value>,
+    ) -> Result<r::Value, QueryExecutionError> {
         if let Some(child) = prefetched_objects {
             Ok(child)
         } else {
@@ -252,17 +252,17 @@ impl Resolver for StoreResolver {
 
     fn resolve_object(
         &self,
-        prefetched_object: Option<q::Value>,
+        prefetched_object: Option<r::Value>,
         field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&str, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        _arguments: &HashMap<&str, r::Value>,
+    ) -> Result<r::Value, QueryExecutionError> {
         let (prefetched_object, meta) = self.handle_meta(prefetched_object, &object_type)?;
         if let Some(meta) = meta {
             return Ok(meta);
         }
-        if let Some(q::Value::List(children)) = prefetched_object {
+        if let Some(r::Value::List(children)) = prefetched_object {
             if children.len() > 1 {
                 let derived_from_field =
                     sast::get_derived_from_field(object_type, field_definition)
@@ -275,7 +275,7 @@ impl Resolver for StoreResolver {
                     derived_from_field.name.to_owned(),
                 ));
             } else {
-                Ok(children.into_iter().next().unwrap_or(q::Value::Null))
+                Ok(children.into_iter().next().unwrap_or(r::Value::Null))
             }
         } else {
             return Err(QueryExecutionError::ResolveEntitiesError(format!(

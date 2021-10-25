@@ -14,7 +14,7 @@ use diesel::Connection;
 use lazy_static::lazy_static;
 
 use graph::prelude::{
-    anyhow, q, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
+    anyhow, r, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
     EntityFilter, EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink,
     QueryExecutionError, StoreError, Value,
 };
@@ -270,7 +270,7 @@ impl ForeignKeyClauses for Column {
     }
 }
 
-pub trait FromEntityData: Default + From<Entity> {
+pub trait FromEntityData: Default {
     type Value: FromColumnValue;
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value);
@@ -284,8 +284,8 @@ impl FromEntityData for Entity {
     }
 }
 
-impl FromEntityData for BTreeMap<String, q::Value> {
-    type Value = q::Value;
+impl FromEntityData for BTreeMap<String, r::Value> {
+    type Value = r::Value;
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value) {
         self.insert(key, v);
@@ -373,9 +373,9 @@ pub trait FromColumnValue: Sized {
     }
 }
 
-impl FromColumnValue for q::Value {
+impl FromColumnValue for r::Value {
     fn is_null(&self) -> bool {
-        self == &q::Value::Null
+        matches!(self, r::Value::Null)
     }
 
     fn null() -> Self {
@@ -383,31 +383,31 @@ impl FromColumnValue for q::Value {
     }
 
     fn from_string(s: String) -> Self {
-        q::Value::String(s)
+        r::Value::String(s)
     }
 
     fn from_bool(b: bool) -> Self {
-        q::Value::Boolean(b)
+        r::Value::Boolean(b)
     }
 
     fn from_i32(i: i32) -> Self {
-        q::Value::Int(i.into())
+        r::Value::Int(i.into())
     }
 
     fn from_big_decimal(d: scalar::BigDecimal) -> Self {
-        q::Value::String(d.to_string())
+        r::Value::String(d.to_string())
     }
 
     fn from_big_int(i: serde_json::Number) -> Result<Self, StoreError> {
-        Ok(q::Value::String(i.to_string()))
+        Ok(r::Value::String(i.to_string()))
     }
 
     fn from_bytes(b: &str) -> Result<Self, StoreError> {
-        Ok(q::Value::String(format!("0x{}", b)))
+        Ok(r::Value::String(format!("0x{}", b)))
     }
 
     fn from_vec(v: Vec<Self>) -> Self {
-        q::Value::List(v)
+        r::Value::List(v)
     }
 }
 

@@ -44,15 +44,15 @@ where
 
     fn resolve_indexing_statuses(
         &self,
-        arguments: &HashMap<&str, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        arguments: &HashMap<&str, r::Value>,
+    ) -> Result<r::Value, QueryExecutionError> {
         let deployments = arguments
             .get("subgraphs")
             .map(|value| match value {
-                q::Value::List(ids) => ids
+                r::Value::List(ids) => ids
                     .into_iter()
                     .map(|id| match id {
-                        s::Value::String(s) => s.clone(),
+                        r::Value::String(s) => s.clone(),
                         _ => unreachable!(),
                     })
                     .collect(),
@@ -68,8 +68,8 @@ where
 
     fn resolve_indexing_statuses_for_subgraph_name(
         &self,
-        arguments: &HashMap<&str, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        arguments: &HashMap<&str, r::Value>,
+    ) -> Result<r::Value, QueryExecutionError> {
         // Get the subgraph name from the arguments; we can safely use `expect` here
         // because the argument will already have been validated prior to the resolver
         // being called
@@ -92,8 +92,8 @@ where
 
     fn resolve_proof_of_indexing(
         &self,
-        argument_values: &HashMap<&str, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        argument_values: &HashMap<&str, r::Value>,
+    ) -> Result<r::Value, QueryExecutionError> {
         let deployment_id = argument_values
             .get_required::<DeploymentHash>("subgraph")
             .expect("Valid subgraphId required");
@@ -120,8 +120,8 @@ where
             .store
             .get_proof_of_indexing(&deployment_id, &indexer, block.clone());
         let poi = match futures::executor::block_on(poi_fut) {
-            Ok(Some(poi)) => q::Value::String(format!("0x{}", hex::encode(&poi))),
-            Ok(None) => q::Value::Null,
+            Ok(Some(poi)) => r::Value::String(format!("0x{}", hex::encode(&poi))),
+            Ok(None) => r::Value::Null,
             Err(e) => {
                 error!(
                     self.logger,
@@ -130,7 +130,7 @@ where
                     "block" => format!("{}", block),
                     "error" => format!("{:?}", e)
                 );
-                q::Value::Null
+                r::Value::Null
             }
         };
 
@@ -139,11 +139,11 @@ where
 
     fn resolve_indexing_status_for_version(
         &self,
-        arguments: &HashMap<&str, q::Value>,
+        arguments: &HashMap<&str, r::Value>,
 
         // If `true` return the current version, if `false` return the pending version.
         current_version: bool,
-    ) -> Result<q::Value, QueryExecutionError> {
+    ) -> Result<r::Value, QueryExecutionError> {
         // We can safely unwrap because the argument is non-nullable and has been validated.
         let subgraph_name = arguments.get_required::<String>("subgraphName").unwrap();
 
@@ -163,13 +163,13 @@ where
             .into_iter()
             .next()
             .map(|info| info.into_value())
-            .unwrap_or(q::Value::Null))
+            .unwrap_or(r::Value::Null))
     }
 
     async fn resolve_subgraph_features(
         &self,
-        arguments: &HashMap<&str, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        arguments: &HashMap<&str, r::Value>,
+    ) -> Result<r::Value, QueryExecutionError> {
         // We can safely unwrap because the argument is non-nullable and has been validated.
         let subgraph_id = arguments.get_required::<String>("subgraphId").unwrap();
 
@@ -244,19 +244,19 @@ where
 
         // We then bulid a GraphqQL `Object` value that contains the feature detection and
         // validation results and send it back as a response.
-        let mut response: BTreeMap<String, q::Value> = BTreeMap::new();
+        let mut response: BTreeMap<String, r::Value> = BTreeMap::new();
         response.insert("features".to_string(), features);
         response.insert("errors".to_string(), errors);
         response.insert("network".to_string(), network);
 
-        Ok(q::Value::Object(response))
+        Ok(r::Value::Object(response))
     }
 }
 
 struct ValidationPostProcessResult {
-    features: q::Value,
-    errors: q::Value,
-    network: q::Value,
+    features: r::Value,
+    errors: r::Value,
+    network: r::Value,
 }
 
 fn validate_and_extract_features<C, St>(
@@ -308,16 +308,16 @@ where
     // For this step we must collect whichever results we have into GraphQL `Value` types.
     match subgraph_validation {
         Either::Left(subgraph_manifest) => {
-            let features = q::Value::List(
+            let features = r::Value::List(
                 detect_features(&subgraph_manifest)
                     .map_err(|_| QueryExecutionError::InvalidSubgraphManifest)?
                     .iter()
                     .map(ToString::to_string)
-                    .map(q::Value::String)
+                    .map(r::Value::String)
                     .collect(),
             );
-            let errors = q::Value::List(vec![]);
-            let network = q::Value::String(subgraph_manifest.network_name());
+            let errors = r::Value::List(vec![]);
+            let network = r::Value::String(subgraph_manifest.network_name());
 
             Ok(ValidationPostProcessResult {
                 features,
@@ -326,15 +326,15 @@ where
             })
         }
         Either::Right(errors) => {
-            let features = q::Value::List(vec![]);
-            let errors = q::Value::List(
+            let features = r::Value::List(vec![]);
+            let errors = r::Value::List(
                 errors
                     .iter()
                     .map(ToString::to_string)
-                    .map(q::Value::String)
+                    .map(r::Value::String)
                     .collect(),
             );
-            let network = q::Value::Null;
+            let network = r::Value::Null;
             Ok(ValidationPostProcessResult {
                 features,
                 errors,
@@ -377,7 +377,7 @@ where
         &self,
         _: &ExecutionContext<Self>,
         _: &q::SelectionSet,
-    ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
+    ) -> Result<Option<r::Value>, Vec<QueryExecutionError>> {
         Ok(None)
     }
 
@@ -387,9 +387,9 @@ where
         parent_object_type: &s::ObjectType,
         field: &q::Field,
         scalar_type: &s::ScalarType,
-        value: Option<q::Value>,
-        argument_values: &HashMap<&str, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        value: Option<r::Value>,
+        argument_values: &HashMap<&str, r::Value>,
+    ) -> Result<r::Value, QueryExecutionError> {
         // Check if we are resolving the proofOfIndexing bytes
         if &parent_object_type.name == "Query"
             && &field.name == "proofOfIndexing"
@@ -402,17 +402,17 @@ where
         // is no way to call back into the default implementation for the trait.
         // So, note that this is duplicated.
         // See also c2112309-44fd-4a84-92a0-5a651e6ed548
-        Ok(value.unwrap_or(q::Value::Null))
+        Ok(value.unwrap_or(r::Value::Null))
     }
 
     fn resolve_objects(
         &self,
-        prefetched_objects: Option<q::Value>,
+        prefetched_objects: Option<r::Value>,
         field: &q::Field,
         _field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
-        arguments: &HashMap<&str, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        arguments: &HashMap<&str, r::Value>,
+    ) -> Result<r::Value, QueryExecutionError> {
         match (prefetched_objects, object_type.name(), field.name.as_str()) {
             // The top-level `indexingStatuses` field
             (None, "SubgraphIndexingStatus", "indexingStatuses") => {
@@ -425,18 +425,18 @@ where
             }
 
             // Resolve fields of `Object` values (e.g. the `chains` field of `ChainIndexingStatus`)
-            (value, _, _) => Ok(value.unwrap_or(q::Value::Null)),
+            (value, _, _) => Ok(value.unwrap_or(r::Value::Null)),
         }
     }
 
     fn resolve_object(
         &self,
-        prefetched_object: Option<q::Value>,
+        prefetched_object: Option<r::Value>,
         field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        arguments: &HashMap<&str, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        arguments: &HashMap<&str, r::Value>,
+    ) -> Result<r::Value, QueryExecutionError> {
         match (prefetched_object, field.name.as_str()) {
             // The top-level `indexingStatusForCurrentVersion` field
             (None, "indexingStatusForCurrentVersion") => {
@@ -454,7 +454,7 @@ where
             }
 
             // Resolve fields of `Object` values (e.g. the `latestBlock` field of `EthereumBlock`)
-            (value, _) => Ok(value.unwrap_or(q::Value::Null)),
+            (value, _) => Ok(value.unwrap_or(r::Value::Null)),
         }
     }
 }

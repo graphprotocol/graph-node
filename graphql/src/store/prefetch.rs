@@ -2,7 +2,7 @@
 //! final result
 
 use anyhow::{anyhow, Error};
-use graph::prelude::CacheWeight;
+use graph::prelude::{r, CacheWeight};
 use graph::slog::warn;
 use graph::util::cache_weight::btree_node_size;
 use indexmap::IndexMap;
@@ -95,7 +95,7 @@ struct Node {
     /// the keys and values of the `children` map, but not of the map itself
     children_weight: usize,
 
-    entity: BTreeMap<String, q::Value>,
+    entity: BTreeMap<String, r::Value>,
     /// We are using an `Rc` here for two reasons: it allows us to defer
     /// copying objects until the end, when converting to `q::Value` forces
     /// us to copy any child that is referenced by multiple parents. It also
@@ -139,8 +139,8 @@ struct Node {
     children: BTreeMap<String, Vec<Rc<Node>>>,
 }
 
-impl From<BTreeMap<String, q::Value>> for Node {
-    fn from(entity: BTreeMap<String, q::Value>) -> Self {
+impl From<BTreeMap<String, r::Value>> for Node {
+    fn from(entity: BTreeMap<String, r::Value>) -> Self {
         Node {
             children_weight: entity.weight(),
             entity,
@@ -157,8 +157,8 @@ impl CacheWeight for Node {
 
 /// Convert a list of nodes into a `q::Value::List` where each node has also
 /// been converted to a `q::Value`
-fn node_list_as_value(nodes: Vec<Rc<Node>>) -> q::Value {
-    q::Value::List(
+fn node_list_as_value(nodes: Vec<Rc<Node>>) -> r::Value {
+    r::Value::List(
         nodes
             .into_iter()
             .map(|node| Rc::try_unwrap(node).unwrap_or_else(|rc| rc.as_ref().clone()))
@@ -197,13 +197,13 @@ fn make_root_node() -> Vec<Node> {
 /// always a `q::Value::Object`. The entity's associations are mapped to
 /// entries `r:{response_key}` as that name is guaranteed to not conflict
 /// with any field of the entity.
-impl From<Node> for q::Value {
+impl From<Node> for r::Value {
     fn from(node: Node) -> Self {
         let mut map = node.entity;
         for (key, nodes) in node.children.into_iter() {
             map.insert(format!("prefetch:{}", key), node_list_as_value(nodes));
         }
-        q::Value::Object(map)
+        r::Value::Object(map)
     }
 }
 
@@ -211,10 +211,10 @@ trait ValueExt {
     fn as_str(&self) -> Option<&str>;
 }
 
-impl ValueExt for q::Value {
+impl ValueExt for r::Value {
     fn as_str(&self) -> Option<&str> {
         match self {
-            q::Value::String(s) => Some(s),
+            r::Value::String(s) => Some(s),
             _ => None,
         }
     }
@@ -224,12 +224,12 @@ impl Node {
     fn id(&self) -> Result<String, Error> {
         match self.get("id") {
             None => Err(anyhow!("Entity is missing an `id` attribute")),
-            Some(q::Value::String(s)) => Ok(s.to_owned()),
+            Some(r::Value::String(s)) => Ok(s.to_owned()),
             _ => Err(anyhow!("Entity has non-string `id` attribute")),
         }
     }
 
-    fn get(&self, key: &str) -> Option<&q::Value> {
+    fn get(&self, key: &str) -> Option<&r::Value> {
         self.entity.get(key)
     }
 
@@ -364,7 +364,7 @@ impl<'a> JoinCond<'a> {
                             .filter_map(|(id, node)| {
                                 node.get(*child_field)
                                     .and_then(|value| match value {
-                                        q::Value::List(values) => {
+                                        r::Value::List(values) => {
                                             let values: Vec<_> = values
                                                 .iter()
                                                 .filter_map(|value| {
@@ -455,7 +455,7 @@ impl<'a> Join<'a> {
                 .get("g$parent_id")
                 .expect("the query that produces 'child' ensures there is always a g$parent_id")
             {
-                q::Value::String(key) => grouped.entry(&key).or_default().push(child.clone()),
+                r::Value::String(key) => grouped.entry(&key).or_default().push(child.clone()),
                 _ => unreachable!("the parent_id returned by the query is always a string"),
             }
         }
@@ -533,11 +533,11 @@ pub fn run(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
     result_size: &ResultSizeMetrics,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
+) -> Result<r::Value, Vec<QueryExecutionError>> {
     execute_root_selection_set(resolver, ctx, selection_set).map(|nodes| {
         result_size.observe(nodes.weight());
         let map = BTreeMap::default();
-        q::Value::Object(nodes.into_iter().fold(map, |mut map, node| {
+        r::Value::Object(nodes.into_iter().fold(map, |mut map, node| {
             // For root nodes, we only care about the children
             for (key, nodes) in node.children.into_iter() {
                 map.insert(format!("prefetch:{}", key), node_list_as_value(nodes));
@@ -939,7 +939,7 @@ fn fetch(
     store: &(impl QueryStore + ?Sized),
     parents: &Vec<&mut Node>,
     join: &Join<'_>,
-    arguments: HashMap<&str, q::Value>,
+    arguments: HashMap<&str, r::Value>,
     multiplicity: ChildMultiplicity,
     types_for_interface: &BTreeMap<EntityType, Vec<s::ObjectType>>,
     block: BlockNumber,
@@ -966,7 +966,7 @@ fn fetch(
     }
 
     query.logger = Some(logger);
-    if let Some(q::Value::String(id)) = arguments.get(ARG_ID.as_str()) {
+    if let Some(r::Value::String(id)) = arguments.get(ARG_ID.as_str()) {
         query.filter = Some(
             EntityFilter::Equal(ARG_ID.to_owned(), StoreValue::from(id.to_owned()))
                 .and_maybe(query.filter),

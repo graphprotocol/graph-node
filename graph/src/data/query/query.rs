@@ -1,12 +1,13 @@
 use serde::de::Deserializer;
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
+use std::convert::TryFrom;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 use crate::{
     data::graphql::shape_hash::shape_hash,
-    prelude::{q, DeploymentHash, SubgraphName},
+    prelude::{q, r, DeploymentHash, SubgraphName},
 };
 
 fn deserialize_number<'de, D>(deserializer: D) -> Result<q::Number, D::Error>
@@ -54,29 +55,34 @@ enum GraphQLValue {
 #[derive(Clone, Debug, Deserialize)]
 pub struct DeserializableGraphQlValue(#[serde(with = "GraphQLValue")] q::Value);
 
-fn deserialize_variables<'de, D>(deserializer: D) -> Result<HashMap<String, q::Value>, D::Error>
+fn deserialize_variables<'de, D>(deserializer: D) -> Result<HashMap<String, r::Value>, D::Error>
 where
     D: Deserializer<'de>,
 {
+    use serde::de::Error;
     let pairs: BTreeMap<String, DeserializableGraphQlValue> =
         Deserialize::deserialize(deserializer)?;
-    Ok(pairs.into_iter().map(|(k, v)| (k, v.0)).collect())
+    pairs
+        .into_iter()
+        .map(|(k, DeserializableGraphQlValue(v))| r::Value::try_from(v).map(|v| (k, v)))
+        .collect::<Result<_, _>>()
+        .map_err(|v| D::Error::custom(format!("failed to convert to r::Value: {:?}", v)))
 }
 
 /// Variable values for a GraphQL query.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct QueryVariables(
-    #[serde(deserialize_with = "deserialize_variables")] HashMap<String, q::Value>,
+    #[serde(deserialize_with = "deserialize_variables")] HashMap<String, r::Value>,
 );
 
 impl QueryVariables {
-    pub fn new(variables: HashMap<String, q::Value>) -> Self {
+    pub fn new(variables: HashMap<String, r::Value>) -> Self {
         QueryVariables(variables)
     }
 }
 
 impl Deref for QueryVariables {
-    type Target = HashMap<String, q::Value>;
+    type Target = HashMap<String, r::Value>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -84,7 +90,7 @@ impl Deref for QueryVariables {
 }
 
 impl DerefMut for QueryVariables {
-    fn deref_mut(&mut self) -> &mut HashMap<String, q::Value> {
+    fn deref_mut(&mut self) -> &mut HashMap<String, r::Value> {
         &mut self.0
     }
 }
@@ -94,12 +100,11 @@ impl serde::ser::Serialize for QueryVariables {
     where
         S: serde::ser::Serializer,
     {
-        use crate::data::graphql::SerializableValue;
         use serde::ser::SerializeMap;
 
         let mut map = serializer.serialize_map(Some(self.0.len()))?;
         for (k, v) in &self.0 {
-            map.serialize_entry(k, &SerializableValue(v))?;
+            map.serialize_entry(k, &v)?;
         }
         map.end()
     }

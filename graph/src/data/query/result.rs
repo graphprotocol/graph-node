@@ -1,8 +1,5 @@
 use super::error::{QueryError, QueryExecutionError};
-use crate::{
-    data::graphql::SerializableValue,
-    prelude::{q, CacheWeight, DeploymentHash},
-};
+use crate::prelude::{r, CacheWeight, DeploymentHash};
 use http::header::{
     ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
     CONTENT_TYPE,
@@ -21,7 +18,7 @@ where
 
     // Unwrap: data is only serialized if it is `Some`.
     for (k, v) in data.as_ref().unwrap() {
-        ser.serialize_entry(k, &SerializableValue(v))?;
+        ser.serialize_entry(k, v)?;
     }
     ser.end()
 }
@@ -36,13 +33,13 @@ where
     let mut ser = serializer.serialize_map(None)?;
     for map in data {
         for (k, v) in map {
-            ser.serialize_entry(k, &SerializableValue(v))?;
+            ser.serialize_entry(k, v)?;
         }
     }
     ser.end()
 }
 
-pub type Data = BTreeMap<String, q::Value>;
+pub type Data = BTreeMap<String, r::Value>;
 
 #[derive(Debug)]
 /// A collection of query results that is serialized as a single result.
@@ -214,11 +211,11 @@ impl QueryResult {
         self.data.is_some()
     }
 
-    pub fn to_result(self) -> Result<Option<q::Value>, Vec<QueryError>> {
+    pub fn to_result(self) -> Result<Option<r::Value>, Vec<QueryError>> {
         if self.has_errors() {
             Err(self.errors)
         } else {
-            Ok(self.data.map(q::Value::Object))
+            Ok(self.data.map(r::Value::Object))
         }
     }
 
@@ -271,12 +268,12 @@ impl From<Data> for QueryResult {
     }
 }
 
-impl TryFrom<q::Value> for QueryResult {
+impl TryFrom<r::Value> for QueryResult {
     type Error = &'static str;
 
-    fn try_from(value: q::Value) -> Result<Self, Self::Error> {
+    fn try_from(value: r::Value) -> Result<Self, Self::Error> {
         match value {
-            q::Value::Object(map) => Ok(QueryResult::from(map)),
+            r::Value::Object(map) => Ok(QueryResult::from(map)),
             _ => Err("only objects can be turned into a QueryResult"),
         }
     }
@@ -305,7 +302,7 @@ fn multiple_data_items() {
 
     fn make_obj(key: &str, value: &str) -> Arc<QueryResult> {
         let mut map = BTreeMap::new();
-        map.insert(key.to_owned(), q::Value::String(value.to_owned()));
+        map.insert(key.to_owned(), r::Value::String(value.to_owned()));
         Arc::new(map.into())
     }
 

@@ -197,4 +197,8 @@ pub mod prelude {
         EnumType, Type, Document, ScalarType, InputValue, DirectiveDefinition,
         UnionType, InputObjectType, EnumValue,
     });
+
+    pub mod r {
+        pub use crate::data::value::Value;
+    }
 }

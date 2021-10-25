@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use graph::data::graphql::{object, object_value, ObjectOrInterface};
 use graph::prelude::{
-    async_trait, o, q, s, slog, tokio, ApiSchema, DeploymentHash, Logger, Query,
+    async_trait, o, q, r, s, slog, tokio, ApiSchema, DeploymentHash, Logger, Query,
     QueryExecutionError, QueryResult, Schema,
 };
 use graph_graphql::prelude::{
@@ -27,30 +27,30 @@ impl Resolver for MockResolver {
         &self,
         _: &ExecutionContext<Self>,
         _: &q::SelectionSet,
-    ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
+    ) -> Result<Option<r::Value>, Vec<QueryExecutionError>> {
         Ok(None)
     }
 
     fn resolve_objects<'a>(
         &self,
-        _: Option<q::Value>,
+        _: Option<r::Value>,
         _field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&str, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
-        Ok(q::Value::Null)
+        _arguments: &HashMap<&str, r::Value>,
+    ) -> Result<r::Value, QueryExecutionError> {
+        Ok(r::Value::Null)
     }
 
     fn resolve_object(
         &self,
-        __: Option<q::Value>,
+        __: Option<r::Value>,
         _field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&str, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
-        Ok(q::Value::Null)
+        _arguments: &HashMap<&str, r::Value>,
+    ) -> Result<r::Value, QueryExecutionError> {
+        Ok(r::Value::Null)
     }
 
     async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
@@ -113,313 +113,313 @@ fn mock_schema() -> Schema {
 
 /// Builds the expected result for GraphiQL's introspection query that we are
 /// using for testing.
-fn expected_mock_schema_introspection() -> q::Value {
+fn expected_mock_schema_introspection() -> r::Value {
     let string_type = object! {
-        kind: q::Value::Enum("SCALAR".to_string()),
+        kind: r::Value::Enum("SCALAR".to_string()),
         name: "String",
-        description: q::Value::Null,
-        fields: q::Value::Null,
-        inputFields: q::Value::Null,
-        enumValues: q::Value::Null,
-        interfaces: q::Value::Null,
-        possibleTypes: q::Value::Null,
+        description: r::Value::Null,
+        fields: r::Value::Null,
+        inputFields: r::Value::Null,
+        enumValues: r::Value::Null,
+        interfaces: r::Value::Null,
+        possibleTypes: r::Value::Null,
     };
 
     let id_type = object! {
-        kind: q::Value::Enum("SCALAR".to_string()),
+        kind: r::Value::Enum("SCALAR".to_string()),
         name: "ID",
-        description: q::Value::Null,
-        fields: q::Value::Null,
-        inputFields: q::Value::Null,
-        enumValues: q::Value::Null,
-        interfaces: q::Value::Null,
-        possibleTypes: q::Value::Null,
+        description: r::Value::Null,
+        fields: r::Value::Null,
+        inputFields: r::Value::Null,
+        enumValues: r::Value::Null,
+        interfaces: r::Value::Null,
+        possibleTypes: r::Value::Null,
     };
 
     let int_type = object! {
-        kind: q::Value::Enum("SCALAR".to_string()),
+        kind: r::Value::Enum("SCALAR".to_string()),
         name: "Int",
-        description: q::Value::Null,
-        fields: q::Value::Null,
-        inputFields: q::Value::Null,
-        enumValues: q::Value::Null,
-        interfaces: q::Value::Null,
-        possibleTypes: q::Value::Null,
+        description: r::Value::Null,
+        fields: r::Value::Null,
+        inputFields: r::Value::Null,
+        enumValues: r::Value::Null,
+        interfaces: r::Value::Null,
+        possibleTypes: r::Value::Null,
     };
 
     let boolean_type = object! {
-        kind: q::Value::Enum("SCALAR".to_string()),
+        kind: r::Value::Enum("SCALAR".to_string()),
         name: "Boolean",
-        description: q::Value::Null,
-        fields: q::Value::Null,
-        inputFields: q::Value::Null,
-        enumValues: q::Value::Null,
-        interfaces: q::Value::Null,
-        possibleTypes: q::Value::Null,
+        description: r::Value::Null,
+        fields: r::Value::Null,
+        inputFields: r::Value::Null,
+        enumValues: r::Value::Null,
+        interfaces: r::Value::Null,
+        possibleTypes: r::Value::Null,
     };
 
     let role_type = object! {
-        kind: q::Value::Enum("ENUM".to_string()),
+        kind: r::Value::Enum("ENUM".to_string()),
         name: "Role",
-        description: q::Value::Null,
-        fields: q::Value::Null,
-        inputFields: q::Value::Null,
+        description: r::Value::Null,
+        fields: r::Value::Null,
+        inputFields: r::Value::Null,
         enumValues:
-            q::Value::List(vec![
+            r::Value::List(vec![
                 object! {
                     name: "USER",
-                    description: q::Value::Null,
-                    isDeprecated: q::Value::Boolean(false),
-                    deprecationReason: q::Value::Null,
+                    description: r::Value::Null,
+                    isDeprecated: r::Value::Boolean(false),
+                    deprecationReason: r::Value::Null,
                 },
                 object! {
                     name: "ADMIN",
-                    description: q::Value::Null,
+                    description: r::Value::Null,
                     isDeprecated: false,
-                    deprecationReason: q::Value::Null,
+                    deprecationReason: r::Value::Null,
                 },
             ]),
-        interfaces: q::Value::Null,
-        possibleTypes: q::Value::Null,
+        interfaces: r::Value::Null,
+        possibleTypes: r::Value::Null,
     };
 
     let node_type = object_value(vec![
-        ("kind", q::Value::Enum("INTERFACE".to_string())),
-        ("name", q::Value::String("Node".to_string())),
-        ("description", q::Value::Null),
+        ("kind", r::Value::Enum("INTERFACE".to_string())),
+        ("name", r::Value::String("Node".to_string())),
+        ("description", r::Value::Null),
         (
             "fields",
-            q::Value::List(vec![object_value(vec![
-                ("name", q::Value::String("id".to_string())),
-                ("description", q::Value::Null),
+            r::Value::List(vec![object_value(vec![
+                ("name", r::Value::String("id".to_string())),
+                ("description", r::Value::Null),
                 (
                     "type",
                     object_value(vec![
-                        ("kind", q::Value::Enum("NON_NULL".to_string())),
-                        ("name", q::Value::Null),
+                        ("kind", r::Value::Enum("NON_NULL".to_string())),
+                        ("name", r::Value::Null),
                         (
                             "ofType",
                             object_value(vec![
-                                ("kind", q::Value::Enum("SCALAR".to_string())),
-                                ("name", q::Value::String("ID".to_string())),
-                                ("ofType", q::Value::Null),
+                                ("kind", r::Value::Enum("SCALAR".to_string())),
+                                ("name", r::Value::String("ID".to_string())),
+                                ("ofType", r::Value::Null),
                             ]),
                         ),
                     ]),
                 ),
-                ("args", q::Value::List(vec![])),
-                ("deprecationReason", q::Value::Null),
-                ("isDeprecated", q::Value::Boolean(false)),
+                ("args", r::Value::List(vec![])),
+                ("deprecationReason", r::Value::Null),
+                ("isDeprecated", r::Value::Boolean(false)),
             ])]),
         ),
-        ("inputFields", q::Value::Null),
-        ("enumValues", q::Value::Null),
-        ("interfaces", q::Value::Null),
+        ("inputFields", r::Value::Null),
+        ("enumValues", r::Value::Null),
+        ("interfaces", r::Value::Null),
         (
             "possibleTypes",
-            q::Value::List(vec![object_value(vec![
-                ("kind", q::Value::Enum("OBJECT".to_string())),
-                ("name", q::Value::String("User".to_string())),
-                ("ofType", q::Value::Null),
+            r::Value::List(vec![object_value(vec![
+                ("kind", r::Value::Enum("OBJECT".to_string())),
+                ("name", r::Value::String("User".to_string())),
+                ("ofType", r::Value::Null),
             ])]),
         ),
     ]);
 
     let user_orderby_type = object_value(vec![
-        ("kind", q::Value::Enum("ENUM".to_string())),
-        ("name", q::Value::String("User_orderBy".to_string())),
-        ("description", q::Value::Null),
-        ("fields", q::Value::Null),
-        ("inputFields", q::Value::Null),
+        ("kind", r::Value::Enum("ENUM".to_string())),
+        ("name", r::Value::String("User_orderBy".to_string())),
+        ("description", r::Value::Null),
+        ("fields", r::Value::Null),
+        ("inputFields", r::Value::Null),
         (
             "enumValues",
-            q::Value::List(vec![
+            r::Value::List(vec![
                 object_value(vec![
-                    ("name", q::Value::String("id".to_string())),
-                    ("description", q::Value::Null),
-                    ("isDeprecated", q::Value::Boolean(false)),
-                    ("deprecationReason", q::Value::Null),
+                    ("name", r::Value::String("id".to_string())),
+                    ("description", r::Value::Null),
+                    ("isDeprecated", r::Value::Boolean(false)),
+                    ("deprecationReason", r::Value::Null),
                 ]),
                 object_value(vec![
-                    ("name", q::Value::String("name".to_string())),
-                    ("description", q::Value::Null),
-                    ("isDeprecated", q::Value::Boolean(false)),
-                    ("deprecationReason", q::Value::Null),
+                    ("name", r::Value::String("name".to_string())),
+                    ("description", r::Value::Null),
+                    ("isDeprecated", r::Value::Boolean(false)),
+                    ("deprecationReason", r::Value::Null),
                 ]),
             ]),
         ),
-        ("interfaces", q::Value::Null),
-        ("possibleTypes", q::Value::Null),
+        ("interfaces", r::Value::Null),
+        ("possibleTypes", r::Value::Null),
     ]);
 
     let user_filter_type = object_value(vec![
-        ("kind", q::Value::Enum("INPUT_OBJECT".to_string())),
-        ("name", q::Value::String("User_filter".to_string())),
-        ("description", q::Value::Null),
-        ("fields", q::Value::Null),
+        ("kind", r::Value::Enum("INPUT_OBJECT".to_string())),
+        ("name", r::Value::String("User_filter".to_string())),
+        ("description", r::Value::Null),
+        ("fields", r::Value::Null),
         (
             "inputFields",
-            q::Value::List(vec![
+            r::Value::List(vec![
                 object_value(vec![
-                    ("name", q::Value::String("name_eq".to_string())),
-                    ("description", q::Value::Null),
+                    ("name", r::Value::String("name_eq".to_string())),
+                    ("description", r::Value::Null),
                     (
                         "defaultValue",
-                        q::Value::String("\"default name\"".to_string()),
+                        r::Value::String("\"default name\"".to_string()),
                     ),
                     (
                         "type",
                         object_value(vec![
-                            ("kind", q::Value::Enum("SCALAR".to_string())),
-                            ("name", q::Value::String("String".to_string())),
-                            ("ofType", q::Value::Null),
+                            ("kind", r::Value::Enum("SCALAR".to_string())),
+                            ("name", r::Value::String("String".to_string())),
+                            ("ofType", r::Value::Null),
                         ]),
                     ),
                 ]),
                 object_value(vec![
-                    ("name", q::Value::String("name_not".to_string())),
-                    ("description", q::Value::Null),
-                    ("defaultValue", q::Value::Null),
+                    ("name", r::Value::String("name_not".to_string())),
+                    ("description", r::Value::Null),
+                    ("defaultValue", r::Value::Null),
                     (
                         "type",
                         object_value(vec![
-                            ("kind", q::Value::Enum("SCALAR".to_string())),
-                            ("name", q::Value::String("String".to_string())),
-                            ("ofType", q::Value::Null),
+                            ("kind", r::Value::Enum("SCALAR".to_string())),
+                            ("name", r::Value::String("String".to_string())),
+                            ("ofType", r::Value::Null),
                         ]),
                     ),
                 ]),
             ]),
         ),
-        ("enumValues", q::Value::Null),
-        ("interfaces", q::Value::Null),
-        ("possibleTypes", q::Value::Null),
+        ("enumValues", r::Value::Null),
+        ("interfaces", r::Value::Null),
+        ("possibleTypes", r::Value::Null),
     ]);
 
     let user_type = object_value(vec![
-        ("kind", q::Value::Enum("OBJECT".to_string())),
-        ("name", q::Value::String("User".to_string())),
-        ("description", q::Value::Null),
+        ("kind", r::Value::Enum("OBJECT".to_string())),
+        ("name", r::Value::String("User".to_string())),
+        ("description", r::Value::Null),
         (
             "fields",
-            q::Value::List(vec![
+            r::Value::List(vec![
                 object_value(vec![
-                    ("name", q::Value::String("id".to_string())),
-                    ("description", q::Value::Null),
-                    ("args", q::Value::List(vec![])),
+                    ("name", r::Value::String("id".to_string())),
+                    ("description", r::Value::Null),
+                    ("args", r::Value::List(vec![])),
                     (
                         "type",
                         object_value(vec![
-                            ("kind", q::Value::Enum("NON_NULL".to_string())),
-                            ("name", q::Value::Null),
+                            ("kind", r::Value::Enum("NON_NULL".to_string())),
+                            ("name", r::Value::Null),
                             (
                                 "ofType",
                                 object_value(vec![
-                                    ("kind", q::Value::Enum("SCALAR".to_string())),
-                                    ("name", q::Value::String("ID".to_string())),
-                                    ("ofType", q::Value::Null),
+                                    ("kind", r::Value::Enum("SCALAR".to_string())),
+                                    ("name", r::Value::String("ID".to_string())),
+                                    ("ofType", r::Value::Null),
                                 ]),
                             ),
                         ]),
                     ),
-                    ("isDeprecated", q::Value::Boolean(false)),
-                    ("deprecationReason", q::Value::Null),
+                    ("isDeprecated", r::Value::Boolean(false)),
+                    ("deprecationReason", r::Value::Null),
                 ]),
                 object_value(vec![
-                    ("name", q::Value::String("name".to_string())),
-                    ("description", q::Value::Null),
-                    ("args", q::Value::List(vec![])),
+                    ("name", r::Value::String("name".to_string())),
+                    ("description", r::Value::Null),
+                    ("args", r::Value::List(vec![])),
                     (
                         "type",
                         object_value(vec![
-                            ("kind", q::Value::Enum("NON_NULL".to_string())),
-                            ("name", q::Value::Null),
+                            ("kind", r::Value::Enum("NON_NULL".to_string())),
+                            ("name", r::Value::Null),
                             (
                                 "ofType",
                                 object_value(vec![
-                                    ("kind", q::Value::Enum("SCALAR".to_string())),
-                                    ("name", q::Value::String("String".to_string())),
-                                    ("ofType", q::Value::Null),
+                                    ("kind", r::Value::Enum("SCALAR".to_string())),
+                                    ("name", r::Value::String("String".to_string())),
+                                    ("ofType", r::Value::Null),
                                 ]),
                             ),
                         ]),
                     ),
-                    ("isDeprecated", q::Value::Boolean(false)),
-                    ("deprecationReason", q::Value::Null),
+                    ("isDeprecated", r::Value::Boolean(false)),
+                    ("deprecationReason", r::Value::Null),
                 ]),
                 object_value(vec![
-                    ("name", q::Value::String("role".to_string())),
-                    ("description", q::Value::Null),
-                    ("args", q::Value::List(vec![])),
+                    ("name", r::Value::String("role".to_string())),
+                    ("description", r::Value::Null),
+                    ("args", r::Value::List(vec![])),
                     (
                         "type",
                         object_value(vec![
-                            ("kind", q::Value::Enum("NON_NULL".to_string())),
-                            ("name", q::Value::Null),
+                            ("kind", r::Value::Enum("NON_NULL".to_string())),
+                            ("name", r::Value::Null),
                             (
                                 "ofType",
                                 object_value(vec![
-                                    ("kind", q::Value::Enum("ENUM".to_string())),
-                                    ("name", q::Value::String("Role".to_string())),
-                                    ("ofType", q::Value::Null),
+                                    ("kind", r::Value::Enum("ENUM".to_string())),
+                                    ("name", r::Value::String("Role".to_string())),
+                                    ("ofType", r::Value::Null),
                                 ]),
                             ),
                         ]),
                     ),
-                    ("isDeprecated", q::Value::Boolean(false)),
-                    ("deprecationReason", q::Value::Null),
+                    ("isDeprecated", r::Value::Boolean(false)),
+                    ("deprecationReason", r::Value::Null),
                 ]),
             ]),
         ),
-        ("inputFields", q::Value::Null),
-        ("enumValues", q::Value::Null),
+        ("inputFields", r::Value::Null),
+        ("enumValues", r::Value::Null),
         (
             "interfaces",
-            q::Value::List(vec![object_value(vec![
-                ("kind", q::Value::Enum("INTERFACE".to_string())),
-                ("name", q::Value::String("Node".to_string())),
-                ("ofType", q::Value::Null),
+            r::Value::List(vec![object_value(vec![
+                ("kind", r::Value::Enum("INTERFACE".to_string())),
+                ("name", r::Value::String("Node".to_string())),
+                ("ofType", r::Value::Null),
             ])]),
         ),
-        ("possibleTypes", q::Value::Null),
+        ("possibleTypes", r::Value::Null),
     ]);
 
     let query_type = object_value(vec![
-        ("kind", q::Value::Enum("OBJECT".to_string())),
-        ("name", q::Value::String("Query".to_string())),
-        ("description", q::Value::Null),
+        ("kind", r::Value::Enum("OBJECT".to_string())),
+        ("name", r::Value::String("Query".to_string())),
+        ("description", r::Value::Null),
         (
             "fields",
-            q::Value::List(vec![
+            r::Value::List(vec![
                 object_value(vec![
-                    ("name", q::Value::String("allUsers".to_string())),
-                    ("description", q::Value::Null),
+                    ("name", r::Value::String("allUsers".to_string())),
+                    ("description", r::Value::Null),
                     (
                         "args",
-                        q::Value::List(vec![
+                        r::Value::List(vec![
                             object_value(vec![
-                                ("defaultValue", q::Value::Null),
-                                ("description", q::Value::Null),
-                                ("name", q::Value::String("orderBy".to_string())),
+                                ("defaultValue", r::Value::Null),
+                                ("description", r::Value::Null),
+                                ("name", r::Value::String("orderBy".to_string())),
                                 (
                                     "type",
                                     object_value(vec![
-                                        ("kind", q::Value::Enum("ENUM".to_string())),
-                                        ("name", q::Value::String("User_orderBy".to_string())),
-                                        ("ofType", q::Value::Null),
+                                        ("kind", r::Value::Enum("ENUM".to_string())),
+                                        ("name", r::Value::String("User_orderBy".to_string())),
+                                        ("ofType", r::Value::Null),
                                     ]),
                                 ),
                             ]),
                             object_value(vec![
-                                ("defaultValue", q::Value::Null),
-                                ("description", q::Value::Null),
-                                ("name", q::Value::String("filter".to_string())),
+                                ("defaultValue", r::Value::Null),
+                                ("description", r::Value::Null),
+                                ("name", r::Value::String("filter".to_string())),
                                 (
                                     "type",
                                     object_value(vec![
-                                        ("kind", q::Value::Enum("INPUT_OBJECT".to_string())),
-                                        ("name", q::Value::String("User_filter".to_string())),
-                                        ("ofType", q::Value::Null),
+                                        ("kind", r::Value::Enum("INPUT_OBJECT".to_string())),
+                                        ("name", r::Value::String("User_filter".to_string())),
+                                        ("ofType", r::Value::Null),
                                     ]),
                                 ),
                             ]),
@@ -428,43 +428,43 @@ fn expected_mock_schema_introspection() -> q::Value {
                     (
                         "type",
                         object_value(vec![
-                            ("kind", q::Value::Enum("LIST".to_string())),
-                            ("name", q::Value::Null),
+                            ("kind", r::Value::Enum("LIST".to_string())),
+                            ("name", r::Value::Null),
                             (
                                 "ofType",
                                 object_value(vec![
-                                    ("kind", q::Value::Enum("NON_NULL".to_string())),
-                                    ("name", q::Value::Null),
+                                    ("kind", r::Value::Enum("NON_NULL".to_string())),
+                                    ("name", r::Value::Null),
                                     (
                                         "ofType",
                                         object_value(vec![
-                                            ("kind", q::Value::Enum("OBJECT".to_string())),
-                                            ("name", q::Value::String("User".to_string())),
-                                            ("ofType", q::Value::Null),
+                                            ("kind", r::Value::Enum("OBJECT".to_string())),
+                                            ("name", r::Value::String("User".to_string())),
+                                            ("ofType", r::Value::Null),
                                         ]),
                                     ),
                                 ]),
                             ),
                         ]),
                     ),
-                    ("isDeprecated", q::Value::Boolean(false)),
-                    ("deprecationReason", q::Value::Null),
+                    ("isDeprecated", r::Value::Boolean(false)),
+                    ("deprecationReason", r::Value::Null),
                 ]),
                 object_value(vec![
-                    ("name", q::Value::String("anyUserWithAge".to_string())),
-                    ("description", q::Value::Null),
+                    ("name", r::Value::String("anyUserWithAge".to_string())),
+                    ("description", r::Value::Null),
                     (
                         "args",
-                        q::Value::List(vec![object_value(vec![
-                            ("defaultValue", q::Value::String("99".to_string())),
-                            ("description", q::Value::Null),
-                            ("name", q::Value::String("age".to_string())),
+                        r::Value::List(vec![object_value(vec![
+                            ("defaultValue", r::Value::String("99".to_string())),
+                            ("description", r::Value::Null),
+                            ("name", r::Value::String("age".to_string())),
                             (
                                 "type",
                                 object_value(vec![
-                                    ("kind", q::Value::Enum("SCALAR".to_string())),
-                                    ("name", q::Value::String("Int".to_string())),
-                                    ("ofType", q::Value::Null),
+                                    ("kind", r::Value::Enum("SCALAR".to_string())),
+                                    ("name", r::Value::String("Int".to_string())),
+                                    ("ofType", r::Value::Null),
                                 ]),
                             ),
                         ])]),
@@ -472,38 +472,38 @@ fn expected_mock_schema_introspection() -> q::Value {
                     (
                         "type",
                         object_value(vec![
-                            ("kind", q::Value::Enum("OBJECT".to_string())),
-                            ("name", q::Value::String("User".to_string())),
-                            ("ofType", q::Value::Null),
+                            ("kind", r::Value::Enum("OBJECT".to_string())),
+                            ("name", r::Value::String("User".to_string())),
+                            ("ofType", r::Value::Null),
                         ]),
                     ),
-                    ("isDeprecated", q::Value::Boolean(false)),
-                    ("deprecationReason", q::Value::Null),
+                    ("isDeprecated", r::Value::Boolean(false)),
+                    ("deprecationReason", r::Value::Null),
                 ]),
                 object_value(vec![
-                    ("name", q::Value::String("User".to_string())),
-                    ("description", q::Value::Null),
-                    ("args", q::Value::List(vec![])),
+                    ("name", r::Value::String("User".to_string())),
+                    ("description", r::Value::Null),
+                    ("args", r::Value::List(vec![])),
                     (
                         "type",
                         object_value(vec![
-                            ("kind", q::Value::Enum("OBJECT".to_string())),
-                            ("name", q::Value::String("User".to_string())),
-                            ("ofType", q::Value::Null),
+                            ("kind", r::Value::Enum("OBJECT".to_string())),
+                            ("name", r::Value::String("User".to_string())),
+                            ("ofType", r::Value::Null),
                         ]),
                     ),
-                    ("isDeprecated", q::Value::Boolean(false)),
-                    ("deprecationReason", q::Value::Null),
+                    ("isDeprecated", r::Value::Boolean(false)),
+                    ("deprecationReason", r::Value::Null),
                 ]),
             ]),
         ),
-        ("inputFields", q::Value::Null),
-        ("enumValues", q::Value::Null),
-        ("interfaces", q::Value::List(vec![])),
-        ("possibleTypes", q::Value::Null),
+        ("inputFields", r::Value::Null),
+        ("enumValues", r::Value::Null),
+        ("interfaces", r::Value::List(vec![])),
+        ("possibleTypes", r::Value::Null),
     ]);
 
-    let expected_types = q::Value::List(vec![
+    let expected_types = r::Value::List(vec![
         boolean_type,
         id_type,
         int_type,
@@ -516,25 +516,25 @@ fn expected_mock_schema_introspection() -> q::Value {
         user_orderby_type,
     ]);
 
-    let expected_directives = q::Value::List(vec![object_value(vec![
-        ("name", q::Value::String("language".to_string())),
-        ("description", q::Value::Null),
+    let expected_directives = r::Value::List(vec![object_value(vec![
+        ("name", r::Value::String("language".to_string())),
+        ("description", r::Value::Null),
         (
             "locations",
-            q::Value::List(vec![q::Value::Enum(String::from("FIELD_DEFINITION"))]),
+            r::Value::List(vec![r::Value::Enum(String::from("FIELD_DEFINITION"))]),
         ),
         (
             "args",
-            q::Value::List(vec![object_value(vec![
-                ("name", q::Value::String("language".to_string())),
-                ("description", q::Value::Null),
-                ("defaultValue", q::Value::String("\"English\"".to_string())),
+            r::Value::List(vec![object_value(vec![
+                ("name", r::Value::String("language".to_string())),
+                ("description", r::Value::Null),
+                ("defaultValue", r::Value::String("\"English\"".to_string())),
                 (
                     "type",
                     object_value(vec![
-                        ("kind", q::Value::Enum("SCALAR".to_string())),
-                        ("name", q::Value::String("String".to_string())),
-                        ("ofType", q::Value::Null),
+                        ("kind", r::Value::Enum("SCALAR".to_string())),
+                        ("name", r::Value::String("String".to_string())),
+                        ("ofType", r::Value::Null),
                     ]),
                 ),
             ])]),
@@ -544,10 +544,10 @@ fn expected_mock_schema_introspection() -> q::Value {
     let schema_type = object_value(vec![
         (
             "queryType",
-            object_value(vec![("name", q::Value::String("Query".to_string()))]),
+            object_value(vec![("name", r::Value::String("Query".to_string()))]),
         ),
-        ("mutationType", q::Value::Null),
-        ("subscriptionType", q::Value::Null),
+        ("mutationType", r::Value::Null),
+        ("subscriptionType", r::Value::Null),
         ("types", expected_types),
         ("directives", expected_directives),
     ]);
@@ -1270,12 +1270,12 @@ async fn introspection_possible_types() {
         object_value(vec![(
             "__type",
             object_value(vec![
-                ("name", q::Value::String("RegEntry".to_string())),
+                ("name", r::Value::String("RegEntry".to_string())),
                 (
                     "possibleTypes",
-                    q::Value::List(vec![
-                        object_value(vec![("name", q::Value::String("Meme".to_owned()))]),
-                        object_value(vec![("name", q::Value::String("ParamChange".to_owned()))])
+                    r::Value::List(vec![
+                        object_value(vec![("name", r::Value::String("Meme".to_owned()))]),
+                        object_value(vec![("name", r::Value::String("ParamChange".to_owned()))])
                     ])
                 )
             ])

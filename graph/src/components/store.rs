@@ -1370,7 +1370,7 @@ pub trait QueryStore: Send + Sync {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<Vec<BTreeMap<String, q::Value>>, QueryExecutionError>;
+    ) -> Result<Vec<BTreeMap<String, r::Value>>, QueryExecutionError>;
 
     async fn is_deployment_synced(&self) -> Result<bool, Error>;
 

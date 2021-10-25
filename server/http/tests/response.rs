@@ -1,7 +1,6 @@
 use graph::data::{graphql::object, query::QueryResults};
 use graph::prelude::*;
 use graph_server_http::test_utils;
-use graphql_parser;
 use std::collections::BTreeMap;
 
 #[test]
@@ -30,10 +29,10 @@ fn canonical_serialization() {
                 // get amended if q::Value ever gets more variants
                 // The order of the variants should be the same as the
                 // order of the tests below
-                use graphql_parser::query::Value::*;
+                use r::Value::*;
                 let _ = match $obj {
-                    Variable(_) | Object(_) | List(_) | Enum(_) | Null | Int(_) | Float(_)
-                    | String(_) | Boolean(_) => (),
+                    Object(_) | List(_) | Enum(_) | Null | Int(_) | Float(_) | String(_)
+                    | Boolean(_) => (),
                 };
             }
             let res = QueryResult::try_from($obj).unwrap();
@@ -55,13 +54,13 @@ fn canonical_serialization() {
     // Value::Enum
     assert_resp!(
         r#"{"data":{"enum_field":"enum"}}"#,
-        object! { enum_field:  q::Value::Enum("enum".to_owned())}
+        object! { enum_field:  r::Value::Enum("enum".to_owned())}
     );
 
     // Value::Null
     assert_resp!(
         r#"{"data":{"nothing":null}}"#,
-        object! { nothing:  q::Value::Null}
+        object! { nothing:  r::Value::Null}
     );
 
     // Value::Int

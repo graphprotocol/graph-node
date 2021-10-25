@@ -12,7 +12,7 @@ use graph::data::graphql::{
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::ApiSchema;
 use graph::prelude::{
-    info, o, q, s, BlockNumber, CheapClone, Logger, QueryExecutionError, TryFromValue,
+    info, o, q, r, s, BlockNumber, CheapClone, Logger, QueryExecutionError, TryFromValue,
 };
 
 use crate::introspection::introspection_schema;
@@ -79,7 +79,7 @@ pub struct Query {
     /// The schema against which to execute the query
     pub schema: Arc<ApiSchema>,
     /// The variables for the query, coerced into proper values
-    pub variables: HashMap<String, q::Value>,
+    pub variables: HashMap<String, r::Value>,
     /// The root selection set of the query
     pub selection_set: Arc<q::SelectionSet>,
     /// The ShapeHash of the original query
@@ -215,7 +215,7 @@ impl Query {
                     vec![QueryExecutionError::InvalidArgumentError(
                         Pos::default(),
                         "block".to_string(),
-                        bc.clone(),
+                        bc.clone().into(),
                     )]
                 })?,
                 None => BlockConstraint::Latest,
@@ -226,7 +226,7 @@ impl Query {
                     vec![QueryExecutionError::InvalidArgumentError(
                         Pos::default(),
                         "subgraphError".to_string(),
-                        value.clone(),
+                        value.clone().into(),
                     )]
                 })?,
                 None => ErrorPolicy::Deny,
@@ -576,7 +576,7 @@ pub fn coerce_variables(
     schema: &ApiSchema,
     operation: &q::OperationDefinition,
     mut variables: Option<QueryVariables>,
-) -> Result<HashMap<String, q::Value>, Vec<QueryExecutionError>> {
+) -> Result<HashMap<String, r::Value>, Vec<QueryExecutionError>> {
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
 
@@ -597,7 +597,14 @@ pub fn coerce_variables(
             .as_mut()
             .and_then(|vars| vars.remove(&variable_def.name));
 
-        let value = match value.or_else(|| variable_def.default_value.clone()) {
+        let value = match value.or_else(|| {
+            variable_def
+                .default_value
+                .clone()
+                .map(r::Value::try_from)
+                .transpose()
+                .unwrap()
+        }) {
             // No variable value provided and no default for non-null type, fail
             None => {
                 if sast::is_non_null_type(&variable_def.var_type) {
@@ -615,7 +622,7 @@ pub fn coerce_variables(
         // of the variable definition
         coerced_values.insert(
             variable_def.name.to_owned(),
-            coerce_variable(schema, variable_def, value)?,
+            coerce_variable(schema, variable_def, value.into())?,
         );
     }
 
@@ -630,7 +637,7 @@ fn coerce_variable(
     schema: &ApiSchema,
     variable_def: &q::VariableDefinition,
     value: q::Value,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
+) -> Result<r::Value, Vec<QueryExecutionError>> {
     use crate::values::coercion::coerce_value;
 
     let resolver = |name: &str| schema.document().get_named_type(name);
