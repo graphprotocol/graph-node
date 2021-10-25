@@ -682,8 +682,8 @@ fn execute_selection_set<'a>(
         }
     }
 
-    // Confidence check: all complementary fields must be used, otherwise constructed SQL queries
-    // will be malformed.
+    // Confidence check: all complementary fields must be consumed, otherwise constructed SQL
+    // queries will be malformed.
     if !*DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES {
         complementary_fields
             .into_iter()
