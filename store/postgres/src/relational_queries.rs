@@ -1609,6 +1609,14 @@ impl<'a> FilterWindow<'a> {
             column_names,
         } = window;
         let table = layout.table_for_entity(&child_type).map(|rc| rc.as_ref())?;
+
+        // Confidence check: ensure that all selected column names exist in the table
+        if let AttributeNames::Select(ref selected_field_names) = column_names {
+            for field in selected_field_names {
+                let _ = table.column_for_field(&field)?;
+            }
+        }
+
         let query_filter = query_filter
             .map(|filter| QueryFilter::new(filter, table))
             .transpose()?;
@@ -2927,9 +2935,8 @@ fn iter_column_names<'a, 'b>(
     attribute_names
         .iter()
         .map(|attribute_name| {
-            table
-                .column_for_field(attribute_name.as_str())
-                .expect("a column for this field")
+            // Unwrapping: We have already checked that all attribute names exist in table
+            table.column_for_field(attribute_name).unwrap()
         })
         .map(|column| column.name.as_str())
         .chain(BASE_SQL_COLUMNS.iter().copied())
