@@ -587,6 +587,12 @@ impl StoreEvent {
         self.changes.extend(other.changes);
         self
     }
+
+    pub fn matches(&self, filters: &Vec<SubscriptionFilter>) -> bool {
+        self.changes
+            .iter()
+            .any(|change| filters.iter().any(|filter| filter.matches(change)))
+    }
 }
 
 impl fmt::Display for StoreEvent {
@@ -642,12 +648,7 @@ where
     /// at least one change to one of the given (subgraph, entity) combinations
     /// will be delivered by the filtered stream.
     pub fn filter_by_entities(self, filters: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
-        let source = self.source.filter(move |event| {
-            event
-                .changes
-                .iter()
-                .any(|change| filters.iter().any(|filter| filter.matches(change)))
-        });
+        let source = self.source.filter(move |event| event.matches(&filters));
 
         StoreEventStream::new(Box::new(source))
     }
