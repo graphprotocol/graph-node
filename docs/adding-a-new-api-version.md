@@ -29,7 +29,7 @@ have been rolled out to production (hosted-service):
         commands to match the new `graph-ts` and `apiVersion` versions.
     3.  Update the `graph-cli` version in `package.json`.
     4.  Update `graph-ts` and `graph-cli` version numbers on scaffolded code and examples.
-    5.  Recompile all the examples by running `=$ nmp install` inside
+    5.  Recompile all the examples by running `=$ npm install` inside
         each example directory.
     6.  Update `graph-cli`\'s version and create a new release.
     7.  Release in NPM
