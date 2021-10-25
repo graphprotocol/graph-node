@@ -2,6 +2,7 @@
 //! final result
 
 use anyhow::{anyhow, Error};
+use graph::constraint_violation;
 use graph::prelude::{r, CacheWeight};
 use graph::slog::warn;
 use graph::util::cache_weight::btree_node_size;
@@ -18,7 +19,7 @@ use graph::{
     prelude::{
         q, s, ApiSchema, AttributeNames, BlockNumber, ChildMultiplicity, EntityCollection,
         EntityFilter, EntityLink, EntityOrder, EntityWindow, Logger, ParentLink,
-        QueryExecutionError, QueryStore, Value as StoreValue, WindowAttribute,
+        QueryExecutionError, QueryStore, StoreError, Value as StoreValue, WindowAttribute,
     },
 };
 
@@ -688,10 +689,14 @@ fn execute_selection_set<'a>(
         complementary_fields
             .into_iter()
             .for_each(|(parent, complementary_field)| {
-                errors.push(QueryExecutionError::UnusedComplementaryField(
-                    parent.name().to_string(),
-                    complementary_field,
-                ))
+                errors.push(
+                    constraint_violation!(
+                        "Complementary field \"{}\" was not prefetched by its parent: {}",
+                        complementary_field,
+                        parent.name().to_string(),
+                    )
+                    .into(),
+                )
             });
     }
 

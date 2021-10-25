@@ -81,7 +81,6 @@ pub enum QueryExecutionError {
     SubgraphManifestResolveError(Arc<SubgraphManifestResolveError>),
     InvalidSubgraphManifest,
     ResultTooBig(usize, usize),
-    UnusedComplementaryField(String, String),
 }
 
 impl QueryExecutionError {
@@ -280,7 +279,6 @@ impl fmt::Display for QueryExecutionError {
             SubgraphManifestResolveError(e) => write!(f, "failed to resolve subgraph manifest: {}", e),
             InvalidSubgraphManifest => write!(f, "invalid subgraph manifest file"),
             ResultTooBig(actual, limit) => write!(f, "the result size of {} is larger than the allowed limit of {}", actual, limit),
-            UnusedComplementaryField(parent, field) => write!(f, "Complementary field \"{}\" was not prefetched by its parent: {}",field, parent),
         }
     }
 }
