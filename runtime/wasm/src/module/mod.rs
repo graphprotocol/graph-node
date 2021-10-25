@@ -537,8 +537,7 @@ impl<C: Blockchain> WasmInstance<C> {
                     .get_func("_start")
                     .context("`_start` function not found")?
                     .typed::<(), ()>()?
-                    .call(())
-                    .unwrap();
+                    .call(())?;
             }
         }
 
