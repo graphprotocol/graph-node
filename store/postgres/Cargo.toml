@@ -5,7 +5,7 @@ edition = "2018"
 
 [dependencies]
 async-trait = "0.1.50"
-blake3 = "0.3.8"
+blake3 = "1.1.0"
 derive_more = { version = "0.99.14" }
 diesel = { version = "1.4.8", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 # We use diesel-dynamic-schema straight from git as the project has not
