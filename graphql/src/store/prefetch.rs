@@ -1068,7 +1068,7 @@ impl<'a> CollectedAttributeNames<'a> {
         self.0
             .entry(object_or_interface)
             .or_insert(AttributeNames::All)
-            .update(field);
+            .add(field);
     }
 
     /// Injects complementary fields that were collected priviously in upper hierarchical levels of
@@ -1081,7 +1081,7 @@ impl<'a> CollectedAttributeNames<'a> {
             if let Some(complementary_field_name) =
                 complementary_fields.remove(&object_or_interface)
             {
-                selected_attributes.update_str(&complementary_field_name)
+                selected_attributes.add_str(&complementary_field_name)
             }
         }
     }
@@ -1174,7 +1174,7 @@ fn filter_derived_fields(
                         None // field does not exist
                     }
                 })
-                .for_each(|col| filtered.update_str(&col));
+                .for_each(|col| filtered.add_str(&col));
             filtered
         }
     }
