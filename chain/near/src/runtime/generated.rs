@@ -334,9 +334,9 @@ impl AscIndexId for AscDeployContractAction {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscFunctionCallAction {
-    pub gas: u64,
     pub method_name: AscPtr<AscString>,
     pub args: AscPtr<Uint8Array>,
+    pub gas: u64,
     pub deposit: AscPtr<AscBigInt>,
 
     // It seems that is impossible to correctly order fields in this struct

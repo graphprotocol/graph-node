@@ -182,8 +182,8 @@ impl ToAscObj<AscActionEnum> for codec::Action {
         };
 
         Ok(AscActionEnum(AscEnum {
-            _padding: 0,
             kind,
+            _padding: 0,
             payload: EnumPayload(payload),
         }))
     }
