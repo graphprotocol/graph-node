@@ -86,7 +86,8 @@ impl StoreEventListener {
 /// Manage subscriptions to the `StoreEvent` stream. Keep a list of
 /// currently active subscribers and forward new events to each of them
 pub struct SubscriptionManager {
-    subscriptions: Arc<RwLock<HashMap<String, Sender<Arc<StoreEvent>>>>>,
+    subscriptions:
+        Arc<RwLock<HashMap<String, (Arc<Vec<SubscriptionFilter>>, Sender<Arc<StoreEvent>>)>>>,
 
     /// Keep the notification listener alive
     listener: StoreEventListener,
@@ -129,10 +130,13 @@ impl SubscriptionManager {
 
                 // Write change to all matching subscription streams; remove subscriptions
                 // whose receiving end has been dropped
-                for (id, sender) in senders {
+                for (id, (_, sender)) in senders
+                    .iter()
+                    .filter(|(_, (filter, _))| event.matches(filter))
+                {
                     if sender.send(event.cheap_clone()).await.is_err() {
                         // Receiver was dropped
-                        subscriptions.write().unwrap().remove(&id);
+                        subscriptions.write().unwrap().remove(id);
                     }
                 }
             }
@@ -152,7 +156,7 @@ impl SubscriptionManager {
                 // Obtain IDs of subscriptions whose receiving end has gone
                 let stale_ids = subscriptions
                     .iter_mut()
-                    .filter_map(|(id, sender)| match sender.is_closed() {
+                    .filter_map(|(id, (_, sender))| match sender.is_closed() {
                         true => Some(id.clone()),
                         false => None,
                     })
@@ -175,7 +179,10 @@ impl SubscriptionManagerTrait for SubscriptionManager {
         let (sender, receiver) = channel(100);
 
         // Add the new subscription
-        self.subscriptions.write().unwrap().insert(id, sender);
+        self.subscriptions
+            .write()
+            .unwrap()
+            .insert(id, (Arc::new(entities.clone()), sender));
 
         // Return the subscription ID and entity change stream
         StoreEventStream::new(Box::new(ReceiverStream::new(receiver).map(Ok).compat()))
