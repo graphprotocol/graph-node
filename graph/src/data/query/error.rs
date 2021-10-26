@@ -8,7 +8,6 @@ use std::fmt;
 use std::string::FromUtf8Error;
 use std::sync::Arc;
 
-use crate::data::graphql::SerializableValue;
 use crate::data::subgraph::*;
 use crate::prelude::q;
 use crate::{components::store::StoreError, prelude::CacheWeight};
@@ -73,8 +72,6 @@ pub enum QueryExecutionError {
     TooExpensive,
     Throttled,
     UndefinedFragment(String),
-    // Using slow and prefetch query resolution yield different results
-    IncorrectPrefetchResult { slow: q::Value, prefetch: q::Value },
     Panic(String),
     EventStreamError,
     FulltextQueryRequiresFilter,
@@ -131,7 +128,6 @@ impl QueryExecutionError {
             | AmbiguousDerivedFromResult(_, _, _, _)
             | TooComplex(_, _)
             | TooDeep(_)
-            | IncorrectPrefetchResult { .. }
             | Panic(_)
             | EventStreamError
             | TooExpensive
@@ -275,10 +271,6 @@ impl fmt::Display for QueryExecutionError {
             TooDeep(max_depth) => write!(f, "query has a depth that exceeds the limit of `{}`", max_depth),
             CyclicalFragment(name) =>write!(f, "query has fragment cycle including `{}`", name),
             UndefinedFragment(frag_name) => write!(f, "fragment `{}` is not defined", frag_name),
-            IncorrectPrefetchResult{ .. } => write!(f, "Running query with prefetch \
-                           and slow query resolution yielded different results. \
-                           This is a bug. Please open an issue at \
-                           https://github.com/graphprotocol/graph-node"),
             Panic(msg) => write!(f, "panic processing query: {}", msg),
             EventStreamError => write!(f, "error in the subscription event stream"),
             FulltextQueryRequiresFilter => write!(f, "fulltext search queries can only use EntityFilter::Equal"),
@@ -400,16 +392,7 @@ impl Serialize for QueryError {
     {
         use self::QueryExecutionError::*;
 
-        let entry_count =
-            if let QueryError::ExecutionError(QueryExecutionError::IncorrectPrefetchResult {
-                ..
-            }) = self
-            {
-                3
-            } else {
-                1
-            };
-        let mut map = serializer.serialize_map(Some(entry_count))?;
+        let mut map = serializer.serialize_map(Some(1))?;
 
         let msg = match self {
             // Serialize parse errors with their location (line, column) to make it easier
@@ -463,12 +446,6 @@ impl Serialize for QueryError {
                 location.insert("line", pos.line);
                 location.insert("column", pos.column);
                 map.serialize_entry("locations", &vec![location])?;
-                format!("{}", self)
-            }
-            QueryError::ExecutionError(IncorrectPrefetchResult { slow, prefetch }) => {
-                map.serialize_entry("incorrectPrefetch", &true)?;
-                map.serialize_entry("single", &SerializableValue(slow))?;
-                map.serialize_entry("prefetch", &SerializableValue(prefetch))?;
                 format!("{}", self)
             }
             _ => format!("{}", self),
