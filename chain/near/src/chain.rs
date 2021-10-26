@@ -144,7 +144,6 @@ impl Blockchain for Chain {
             firehose_endpoint,
             firehose_cursor,
             firehose_mapper,
-            deployment.hash,
             adapter,
             filter,
             start_blocks,

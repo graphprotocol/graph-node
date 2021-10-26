@@ -15,27 +15,13 @@ where
     C: Blockchain,
     F: FirehoseMapper<C>,
 {
-    cursor: Option<String>,
+    active_cursor: Option<String>,
+    last_seen_cursor: Option<String>,
     mapper: Arc<F>,
-    subgraph_id: DeploymentHash,
     adapter: Arc<C::TriggersAdapter>,
     filter: Arc<C::TriggerFilter>,
     start_blocks: Vec<BlockNumber>,
     logger: Logger,
-}
-
-impl<C: Blockchain, F: FirehoseMapper<C>> Clone for FirehoseBlockStreamContext<C, F> {
-    fn clone(&self) -> Self {
-        Self {
-            cursor: self.cursor.clone(),
-            mapper: self.mapper.clone(),
-            subgraph_id: self.subgraph_id.clone(),
-            adapter: self.adapter.clone(),
-            filter: self.filter.clone(),
-            start_blocks: self.start_blocks.clone(),
-            logger: self.logger.clone(),
-        }
-    }
 }
 
 enum BlockStreamState {
@@ -68,7 +54,6 @@ where
         endpoint: Arc<FirehoseEndpoint>,
         cursor: Option<String>,
         mapper: Arc<F>,
-        subgraph_id: DeploymentHash,
         adapter: Arc<C::TriggersAdapter>,
         filter: Arc<C::TriggerFilter>,
         start_blocks: Vec<BlockNumber>,
@@ -78,9 +63,9 @@ where
             endpoint,
             state: BlockStreamState::Disconnected,
             ctx: FirehoseBlockStreamContext {
-                cursor,
+                active_cursor: cursor,
+                last_seen_cursor: None,
                 mapper,
-                subgraph_id,
                 logger,
                 adapter,
                 filter,
@@ -91,7 +76,21 @@ where
     }
 }
 
-impl<C: Blockchain, F: FirehoseMapper<C>> BlockStream<C> for FirehoseBlockStream<C, F> {}
+impl<C: Blockchain, F: FirehoseMapper<C>> BlockStream<C> for FirehoseBlockStream<C, F> {
+    fn notify_block_consumed(&mut self) {
+        if self.ctx.last_seen_cursor.is_none() {
+            info!(
+                self.ctx.logger,
+                "Received block consumed notification without a last seen cursor present, skipping"
+            );
+            return;
+        }
+
+        // Last seen cursor becomes active by swapping it with active
+        std::mem::swap(&mut self.ctx.active_cursor, &mut self.ctx.last_seen_cursor);
+        self.ctx.last_seen_cursor = None;
+    }
+}
 
 impl<C: Blockchain, F: FirehoseMapper<C>> Stream for FirehoseBlockStream<C, F> {
     type Item = Result<BlockStreamEvent<C>, Error>;
@@ -115,7 +114,7 @@ impl<C: Blockchain, F: FirehoseMapper<C>> Stream for FirehoseBlockStream<C, F> {
                         "Blockstream disconnected, connecting";
                         "endpoint_uri" => format_args!("{}", self.endpoint),
                         "start_block" => start_block_num,
-                        "cursor" => match &self.ctx.cursor {
+                        "cursor" => match &self.ctx.active_cursor {
                             Some(v) => v.clone(),
                             None => "<None>".to_string(),
                         },
@@ -126,7 +125,7 @@ impl<C: Blockchain, F: FirehoseMapper<C>> Stream for FirehoseBlockStream<C, F> {
                         .clone()
                         .stream_blocks(bstream::BlocksRequestV2 {
                             start_block_num: start_block_num as i64,
-                            start_cursor: match &self.ctx.cursor {
+                            start_cursor: match &self.ctx.active_cursor {
                                 Some(c) => c.clone(),
                                 None => "".to_string(),
                             },
@@ -202,6 +201,7 @@ impl<C: Blockchain, F: FirehoseMapper<C>> Stream for FirehoseBlockStream<C, F> {
                             &self.ctx.filter,
                         ) {
                             Ok(event) => {
+                                self.ctx.last_seen_cursor = Some(response.cursor);
                                 return Poll::Ready(Some(Ok(event)));
                             }
                             Err(e) => {
