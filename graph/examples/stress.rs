@@ -145,6 +145,29 @@ impl Template<ValueMap> for ValueMap {
     }
 }
 
+type UsizeMap = BTreeMap<usize, usize>;
+
+/// Template for testing roughly a GraphQL response, i.e., a `BTreeMap<String, Value>`
+impl Template<UsizeMap> for UsizeMap {
+    type Item = UsizeMap;
+
+    fn create(size: usize) -> Self {
+        let mut map = BTreeMap::new();
+        for i in 0..size {
+            map.insert(i * 2, i * 3);
+        }
+        map
+    }
+
+    fn sample(&self, size: usize) -> Box<Self::Item> {
+        Box::new(BTreeMap::from_iter(
+            self.iter()
+                .take(size)
+                .map(|(k, v)| (k.to_owned(), v.to_owned())),
+        ))
+    }
+}
+
 /// Helper to deal with different template objects
 struct Cacheable<T> {
     cache: LfuCache<usize, T>,
@@ -172,10 +195,14 @@ impl<T: Template<T>> Cacheable<T> {
 #[derive(StructOpt)]
 #[structopt(name = "stress", about = "Stress test for the LFU Cache")]
 struct Opt {
+    /// Number of cache evictions and insertions
     #[structopt(short, long, default_value = "1000")]
     niter: usize,
+    /// Print this many intermediate messages
     #[structopt(short, long, default_value = "10")]
     print_count: usize,
+    /// Use objects of size 0 up to this size, chosen unifromly randomly
+    /// unless `--fixed` is given
     #[structopt(short, long, default_value = "1024")]
     obj_size: usize,
     #[structopt(short, long, default_value = "1000000")]
@@ -184,6 +211,7 @@ struct Opt {
     template: String,
     #[structopt(short, long)]
     samples: bool,
+    /// Always use objects of size `--obj-size`
     #[structopt(short, long)]
     fixed: bool,
 }
@@ -288,6 +316,8 @@ pub fn main() {
         stress::<ValueMap>(&opt);
     } else if opt.template == "string" {
         stress::<String>(&opt);
+    } else if opt.template == "usizemap" {
+        stress::<UsizeMap>(&opt)
     } else {
         println!("unknown value for --template")
     }
