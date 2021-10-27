@@ -4,7 +4,7 @@ use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 
 use graph::prelude::{lazy_static, q};
-use rand::{rngs::SmallRng, thread_rng, Rng};
+use rand::{rngs::SmallRng, Rng};
 use rand::{FromEntropy, SeedableRng};
 use structopt::StructOpt;
 
@@ -187,26 +187,26 @@ trait Template<T>: CacheWeight + Default {
     type Item;
 
     // Create a new test object
-    fn create(size: usize) -> Self;
+    fn create(size: usize, rng: Option<&mut SmallRng>) -> Self;
 
     // Return a sample of this test object of the given `size`. There's no
     // fixed definition of 'size', other than that smaller sizes will
     // take less memory than larger ones
-    fn sample(&self, size: usize) -> Box<Self::Item>;
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self::Item>;
 }
 
 /// Template for testing caching of `String`
 impl Template<String> for String {
     type Item = String;
 
-    fn create(size: usize) -> Self {
+    fn create(size: usize, _rng: Option<&mut SmallRng>) -> Self {
         let mut s = String::with_capacity(size);
         for _ in 0..size {
             s.push('x');
         }
         s
     }
-    fn sample(&self, size: usize) -> Box<Self::Item> {
+    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self::Item> {
         Box::new(self[0..size].into())
     }
 }
@@ -215,10 +215,10 @@ impl Template<String> for String {
 impl Template<Vec<usize>> for Vec<usize> {
     type Item = Vec<usize>;
 
-    fn create(size: usize) -> Self {
+    fn create(size: usize, _rng: Option<&mut SmallRng>) -> Self {
         Vec::from_iter(0..size)
     }
-    fn sample(&self, size: usize) -> Box<Self::Item> {
+    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self::Item> {
         Box::new(self[0..size].into())
     }
 }
@@ -227,7 +227,7 @@ impl Template<Vec<usize>> for Vec<usize> {
 impl Template<HashMap<String, String>> for HashMap<String, String> {
     type Item = Self;
 
-    fn create(size: usize) -> Self {
+    fn create(size: usize, _rng: Option<&mut SmallRng>) -> Self {
         let mut map = HashMap::new();
         for i in 0..size {
             map.insert(format!("key{}", i), format!("value{}", i));
@@ -235,7 +235,7 @@ impl Template<HashMap<String, String>> for HashMap<String, String> {
         map
     }
 
-    fn sample(&self, size: usize) -> Box<Self::Item> {
+    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self::Item> {
         Box::new(HashMap::from_iter(
             self.iter()
                 .take(size)
@@ -246,16 +246,18 @@ impl Template<HashMap<String, String>> for HashMap<String, String> {
 
 type ValueMap = MapMeasure<String, q::Value>;
 
-/// Template for testing roughly a GraphQL response, i.e., a `BTreeMap<String, Value>`
-impl Template<ValueMap> for ValueMap {
-    type Item = ValueMap;
-
-    fn create(size: usize) -> Self {
+impl ValueMap {
+    fn make_map(size: usize, mut rng: Option<&mut SmallRng>) -> Self {
         let mut map = BTreeMap::new();
         let modulus = if *NESTED_MAP { 9 } else { 8 };
 
         for i in 0..size {
-            let value = match i % modulus {
+            let kind = rng
+                .as_deref_mut()
+                .map(|rng| rng.gen_range(0, modulus))
+                .unwrap_or(i % modulus);
+
+            let value = match kind {
                 0 => q::Value::Boolean(i % 11 > 5),
                 1 => q::Value::Int((i as i32).into()),
                 2 => q::Value::Null,
@@ -276,42 +278,72 @@ impl Template<ValueMap> for ValueMap {
                 }
                 _ => unreachable!(),
             };
-            map.insert(format!("val{}", i), value);
+
+            let key = rng.as_deref_mut().map(|rng| rng.gen()).unwrap_or(i) % modulus;
+            map.insert(format!("val{}", key), value);
         }
         MapMeasure(map)
     }
+}
 
-    fn sample(&self, size: usize) -> Box<Self::Item> {
-        Box::new(MapMeasure(BTreeMap::from_iter(
-            self.0
-                .iter()
-                .take(size)
-                .map(|(k, v)| (k.to_owned(), v.to_owned())),
-        )))
+/// Template for testing roughly a GraphQL response, i.e., a `BTreeMap<String, Value>`
+impl Template<ValueMap> for ValueMap {
+    type Item = ValueMap;
+
+    fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
+        Self::make_map(size, rng)
+    }
+
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self::Item> {
+        // If the user specified '--fixed', don't build a new map every call
+        // since that can be slow
+        if rng.is_none() {
+            Box::new(MapMeasure(BTreeMap::from_iter(
+                self.0
+                    .iter()
+                    .take(size)
+                    .map(|(k, v)| (k.to_owned(), v.to_owned())),
+            )))
+        } else {
+            Box::new(Self::make_map(size, rng))
+        }
     }
 }
 
 type UsizeMap = MapMeasure<usize, usize>;
 
+impl UsizeMap {
+    fn make_map(size: usize, mut rng: Option<&mut SmallRng>) -> Self {
+        let mut map = BTreeMap::new();
+        for i in 0..size {
+            let key = rng.as_deref_mut().map(|rng| rng.gen()).unwrap_or(2 * i);
+            map.insert(key, i * 3);
+        }
+        MapMeasure(map)
+    }
+}
+
 /// Template for testing roughly a GraphQL response, i.e., a `BTreeMap<String, Value>`
 impl Template<UsizeMap> for UsizeMap {
     type Item = UsizeMap;
 
-    fn create(size: usize) -> Self {
-        let mut map = BTreeMap::new();
-        for i in 0..size {
-            map.insert(i * 2, i * 3);
-        }
-        MapMeasure(map)
+    fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
+        Self::make_map(size, rng)
     }
 
-    fn sample(&self, size: usize) -> Box<Self::Item> {
-        Box::new(MapMeasure(BTreeMap::from_iter(
-            self.0
-                .iter()
-                .take(size)
-                .map(|(k, v)| (k.to_owned(), v.to_owned())),
-        )))
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self::Item> {
+        // If the user specified '--fixed', don't build a new map every call
+        // since that can be slow
+        if rng.is_none() {
+            Box::new(MapMeasure(BTreeMap::from_iter(
+                self.0
+                    .iter()
+                    .take(size)
+                    .map(|(k, v)| (k.to_owned(), v.to_owned())),
+            )))
+        } else {
+            Box::new(Self::make_map(size, rng))
+        }
     }
 }
 
@@ -322,15 +354,15 @@ struct Cacheable<T> {
 }
 
 impl<T: Template<T>> Cacheable<T> {
-    fn new(size: usize) -> Self {
+    fn new(size: usize, rng: Option<&mut SmallRng>) -> Self {
         Cacheable {
             cache: LfuCache::new(),
-            template: T::create(size),
+            template: T::create(size, rng),
         }
     }
 
-    fn sample(&self, size: usize) -> Box<T::Item> {
-        self.template.sample(size)
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<T::Item> {
+        self.template.sample(size, rng)
     }
 
     fn name(&self) -> &'static str {
@@ -361,13 +393,28 @@ struct Opt {
     /// Always use objects of size `--obj-size`
     #[structopt(short, long)]
     fixed: bool,
-    /// The seed of the random number generator
+    /// The seed of the random number generator. A seed of 0 means that all
+    /// samples are taken from the same template object, and only differ in
+    /// size
     #[structopt(long)]
     seed: Option<u64>,
 }
 
+fn maybe_rng<'a>(opt: &'a Opt, rng: &'a mut SmallRng) -> Option<&'a mut SmallRng> {
+    if opt.seed == Some(0) {
+        None
+    } else {
+        Some(rng)
+    }
+}
+
 fn stress<T: Template<T, Item = T>>(opt: &Opt) {
-    let mut cacheable: Cacheable<T> = Cacheable::new(opt.obj_size);
+    let mut rng = match opt.seed {
+        None => SmallRng::from_entropy(),
+        Some(seed) => SmallRng::seed_from_u64(seed),
+    };
+
+    let mut cacheable: Cacheable<T> = Cacheable::new(opt.obj_size, maybe_rng(opt, &mut rng));
 
     println!("type: {}", cacheable.name());
     println!(
@@ -376,11 +423,6 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
         opt.niter,
         opt.cache_size
     );
-
-    let mut rng = match opt.seed {
-        None => SmallRng::from_entropy(),
-        Some(seed) => SmallRng::seed_from_u64(seed),
-    };
 
     let base_mem = ALLOCATED.load(SeqCst);
     let print_mod = opt.niter / opt.print_count + 1;
@@ -416,7 +458,7 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
             rng.gen_range(0, opt.obj_size)
         };
         let before = ALLOCATED.load(SeqCst);
-        let sample = cacheable.sample(size);
+        let sample = cacheable.sample(size, maybe_rng(opt, &mut rng));
         let weight = sample.weight();
         let alloc = ALLOCATED.load(SeqCst) - before;
         sample_weight += weight;
@@ -424,7 +466,7 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
         if opt.samples {
             println!("sample: weight {:6} alloc {:6}", weight, alloc,);
         }
-        cacheable.cache.insert(key, *cacheable.sample(size));
+        cacheable.cache.insert(key, *sample);
     }
     if sample_alloc == sample_weight {
         println!(
