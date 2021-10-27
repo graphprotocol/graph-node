@@ -1309,6 +1309,12 @@ impl DeploymentStore {
             (Bound::Included(error_block_number), _)
                 if current_ptr.number >= error_block_number =>
             {
+                info!(
+                    self.logger,
+                    "Unfailing the deployment status";
+                    "subgraph_id" => deployment_id,
+                );
+
                 // Unfail the deployment.
                 deployment::update_deployment_status(
                     conn,
@@ -1321,7 +1327,19 @@ impl DeploymentStore {
                 deployment::delete_error(conn, &subgraph_error.id)
             }
             // NOOP, the deployment head is still before where non-deterministic error happened.
-            _ => Ok(()),
+            block_range => {
+                info!(
+                    self.logger,
+                    "Subgraph error is still ahead of deployment head, nothing to unfail";
+                    "subgraph_id" => deployment_id,
+                    "block_number" => format!("{}", current_ptr.number),
+                    "block_hash" => format!("{}", current_ptr.hash),
+                    "error_block_range" => format!("{:?}", block_range),
+                    "error_block_hash" => subgraph_error.block_hash.as_ref().map(|hash| format!("0x{}", hex::encode(hash))),
+                );
+
+                Ok(())
+            }
         }
     }
 
