@@ -557,18 +557,6 @@ pub fn get_fatal_error_id(
         .map_err(StoreError::from)
 }
 
-pub fn get_error_block_hash(
-    conn: &PgConnection,
-    error_id: &str,
-) -> Result<Option<Vec<u8>>, StoreError> {
-    use subgraph_error as e;
-    e::table
-        .filter(e::id.eq(error_id))
-        .select(e::block_hash)
-        .get_result(conn)
-        .map_err(StoreError::from)
-}
-
 pub fn update_deployment_status(
     conn: &PgConnection,
     deployment_id: &DeploymentHash,
