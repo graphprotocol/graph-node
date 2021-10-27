@@ -4,7 +4,8 @@ use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 
 use graph::prelude::{lazy_static, q};
-use rand::{thread_rng, Rng};
+use rand::{rngs::SmallRng, thread_rng, Rng};
+use rand::{FromEntropy, SeedableRng};
 use structopt::StructOpt;
 
 use graph::util::cache_weight::CacheWeight;
@@ -360,6 +361,9 @@ struct Opt {
     /// Always use objects of size `--obj-size`
     #[structopt(short, long)]
     fixed: bool,
+    /// The seed of the random number generator
+    #[structopt(long)]
+    seed: Option<u64>,
 }
 
 fn stress<T: Template<T, Item = T>>(opt: &Opt) {
@@ -373,7 +377,11 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
         opt.cache_size
     );
 
-    let mut rng = thread_rng();
+    let mut rng = match opt.seed {
+        None => SmallRng::from_entropy(),
+        Some(seed) => SmallRng::seed_from_u64(seed),
+    };
+
     let base_mem = ALLOCATED.load(SeqCst);
     let print_mod = opt.niter / opt.print_count + 1;
     let mut should_print = true;
