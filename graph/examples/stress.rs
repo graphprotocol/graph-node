@@ -3,8 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 
-use graph::components::store::EntityType;
-use graph::prelude::{q, DeploymentHash, EntityKey};
+use graph::prelude::{lazy_static, q};
 use rand::{thread_rng, Rng};
 use structopt::StructOpt;
 
@@ -17,6 +16,149 @@ use graph::util::lfu_cache::LfuCache;
 struct Counter;
 
 static ALLOCATED: AtomicUsize = AtomicUsize::new(0);
+
+lazy_static! {
+    // Set 'MAP_MEASURE' to something to use the `CacheWeight` defined here
+    // in the `btree` module for `BTreeMap`. If this is not set, use the
+    // estimate from `graph::util::cache_weight`
+    static ref MAP_MEASURE: bool = std::env::var("MAP_MEASURE").ok().is_some();
+
+    // When running the `valuemap` test for BTreeMap, put maps into the
+    // values of the generated maps
+    static ref NESTED_MAP: bool =  std::env::var("NESTED_MAP").ok().is_some();
+}
+// Yes, a global variable. It gets set at the beginning of `main`
+static mut PRINT_SAMPLES: bool = false;
+
+/// Helpers to estimate the size of a `BTreeMap`. Everything in this module,
+/// except for `node_size()` is copied from `std::collections::btree`.
+///
+/// It is not possible to know how many nodes a BTree has, as
+/// `BTreeMap` does not expose its depth or any other detail about
+/// the true size of the BTree. We estimate that size, assuming the
+/// average case, i.e., a BTree where every node has the average
+/// between the minimum and maximum number of entries per node, i.e.,
+/// the average of (B-1) and (2*B-1) entries, which we call
+/// `NODE_FILL`. The number of leaf nodes in the tree is then the
+/// number of entries divided by `NODE_FILL`, and the number of
+/// interior nodes can be determined by dividing the number of nodes
+/// at the child level by `NODE_FILL`
+
+/// The other difficulty is that the structs with which `BTreeMap`
+/// represents internal and leaf nodes are not public, so we can't
+/// get their size with `std::mem::size_of`; instead, we base our
+/// estimates of their size on the current `std` code, assuming that
+/// these structs will not change
+
+mod btree {
+    use std::mem;
+    use std::{mem::MaybeUninit, ptr::NonNull};
+
+    const B: usize = 6;
+    const CAPACITY: usize = 2 * B - 1;
+
+    /// Assume BTree nodes are this full (average of minimum and maximum fill)
+    const NODE_FILL: usize = ((B - 1) + (2 * B - 1)) / 2;
+
+    type BoxedNode<K, V> = NonNull<LeafNode<K, V>>;
+
+    struct InternalNode<K, V> {
+        _data: LeafNode<K, V>,
+
+        /// The pointers to the children of this node. `len + 1` of these are considered
+        /// initialized and valid, except that near the end, while the tree is held
+        /// through borrow type `Dying`, some of these pointers are dangling.
+        _edges: [MaybeUninit<BoxedNode<K, V>>; 2 * B],
+    }
+
+    struct LeafNode<K, V> {
+        /// We want to be covariant in `K` and `V`.
+        _parent: Option<NonNull<InternalNode<K, V>>>,
+
+        /// This node's index into the parent node's `edges` array.
+        /// `*node.parent.edges[node.parent_idx]` should be the same thing as `node`.
+        /// This is only guaranteed to be initialized when `parent` is non-null.
+        _parent_idx: MaybeUninit<u16>,
+
+        /// The number of keys and values this node stores.
+        _len: u16,
+
+        /// The arrays storing the actual data of the node. Only the first `len` elements of each
+        /// array are initialized and valid.
+        _keys: [MaybeUninit<K>; CAPACITY],
+        _vals: [MaybeUninit<V>; CAPACITY],
+    }
+
+    pub fn node_size<K, V>(map: &std::collections::BTreeMap<K, V>) -> usize {
+        // Measure the size of internal and leaf nodes directly - that's why
+        // we copied all this code from `std`
+        let ln_sz = mem::size_of::<LeafNode<K, V>>();
+        let in_sz = mem::size_of::<InternalNode<K, V>>();
+
+        // Estimate the number of internal and leaf nodes based on the only
+        // thing we can measure about a BTreeMap, the number of entries in
+        // it, and use our `NODE_FILL` assumption to estimate how the tree
+        // is structured. We try to be very good for small maps, since
+        // that's what we use most often in our code. This estimate is only
+        // for the indirect weight of the `BTreeMap`
+        let (leaves, int_nodes) = if map.is_empty() {
+            // An empty tree has no indirect weight
+            (0, 0)
+        } else if map.len() <= CAPACITY {
+            // We only have the root node
+            (1, 0)
+        } else {
+            // Estimate based on our `NODE_FILL` assumption
+            let leaves = map.len() / NODE_FILL + 1;
+            let mut prev_level = leaves / NODE_FILL + 1;
+            let mut int_nodes = prev_level;
+            while prev_level > 1 {
+                int_nodes += prev_level;
+                prev_level = prev_level / NODE_FILL + 1;
+            }
+            (leaves, int_nodes)
+        };
+
+        let sz = leaves * ln_sz + int_nodes * in_sz;
+
+        if unsafe { super::PRINT_SAMPLES } {
+            println!(
+                " btree: leaves={} internal={} sz={} ln_sz={} in_sz={} len={}",
+                leaves,
+                int_nodes,
+                sz,
+                ln_sz,
+                in_sz,
+                map.len()
+            );
+        }
+        sz
+    }
+}
+
+struct MapMeasure<K, V>(BTreeMap<K, V>);
+
+impl<K, V> Default for MapMeasure<K, V> {
+    fn default() -> MapMeasure<K, V> {
+        MapMeasure(BTreeMap::new())
+    }
+}
+
+impl<K: CacheWeight, V: CacheWeight> CacheWeight for MapMeasure<K, V> {
+    fn indirect_weight(&self) -> usize {
+        if *MAP_MEASURE {
+            let kv_sz = self
+                .0
+                .iter()
+                .map(|(key, value)| key.indirect_weight() + value.indirect_weight())
+                .sum::<usize>();
+            let node_sz = btree::node_size(&self.0);
+            kv_sz + node_sz
+        } else {
+            self.0.indirect_weight()
+        }
+    }
+}
 
 unsafe impl GlobalAlloc for Counter {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -101,7 +243,7 @@ impl Template<HashMap<String, String>> for HashMap<String, String> {
     }
 }
 
-type ValueMap = BTreeMap<String, q::Value>;
+type ValueMap = MapMeasure<String, q::Value>;
 
 /// Template for testing roughly a GraphQL response, i.e., a `BTreeMap<String, Value>`
 impl Template<ValueMap> for ValueMap {
@@ -109,8 +251,10 @@ impl Template<ValueMap> for ValueMap {
 
     fn create(size: usize) -> Self {
         let mut map = BTreeMap::new();
+        let modulus = if *NESTED_MAP { 9 } else { 8 };
+
         for i in 0..size {
-            let value = match i % 9 {
+            let value = match i % modulus {
                 0 => q::Value::Boolean(i % 11 > 5),
                 1 => q::Value::Int((i as i32).into()),
                 2 => q::Value::Null,
@@ -129,23 +273,24 @@ impl Template<ValueMap> for ValueMap {
                     }
                     q::Value::Object(map)
                 }
-                _ => q::Value::String(format!("other{}", i)),
+                _ => unreachable!(),
             };
             map.insert(format!("val{}", i), value);
         }
-        map
+        MapMeasure(map)
     }
 
     fn sample(&self, size: usize) -> Box<Self::Item> {
-        Box::new(BTreeMap::from_iter(
-            self.iter()
+        Box::new(MapMeasure(BTreeMap::from_iter(
+            self.0
+                .iter()
                 .take(size)
                 .map(|(k, v)| (k.to_owned(), v.to_owned())),
-        ))
+        )))
     }
 }
 
-type UsizeMap = BTreeMap<usize, usize>;
+type UsizeMap = MapMeasure<usize, usize>;
 
 /// Template for testing roughly a GraphQL response, i.e., a `BTreeMap<String, Value>`
 impl Template<UsizeMap> for UsizeMap {
@@ -156,15 +301,16 @@ impl Template<UsizeMap> for UsizeMap {
         for i in 0..size {
             map.insert(i * 2, i * 3);
         }
-        map
+        MapMeasure(map)
     }
 
     fn sample(&self, size: usize) -> Box<Self::Item> {
-        Box::new(BTreeMap::from_iter(
-            self.iter()
+        Box::new(MapMeasure(BTreeMap::from_iter(
+            self.0
+                .iter()
                 .take(size)
                 .map(|(k, v)| (k.to_owned(), v.to_owned())),
-        ))
+        )))
     }
 }
 
@@ -221,23 +367,28 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
 
     println!("type: {}", cacheable.name());
     println!(
-        "obj: {} iterations: {} cache_size: {}",
+        "obj: {} iterations: {} cache_size: {}\n",
         cacheable.template.weight(),
         opt.niter,
         opt.cache_size
     );
-    println!("heap_factor is heap_size / cache_size");
 
     let mut rng = thread_rng();
     let base_mem = ALLOCATED.load(SeqCst);
     let print_mod = opt.niter / opt.print_count + 1;
     let mut should_print = true;
+    let mut print_header = true;
     for key in 0..opt.niter {
         should_print = should_print || key % print_mod == 0;
         let before_mem = ALLOCATED.load(SeqCst);
         if let Some((evicted, _, new_weight)) = cacheable.cache.evict(opt.cache_size) {
             let after_mem = ALLOCATED.load(SeqCst);
             if should_print {
+                if print_header {
+                    println!("heap_factor is heap_size / cache_size");
+                    print_header = false;
+                }
+
                 let heap_factor = (after_mem - base_mem) as f64 / opt.cache_size as f64;
                 println!(
                     "evicted: {:6}  dropped: {:6} new_weight: {:8} heap_factor: {:0.2}  ",
@@ -279,6 +430,7 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
 /// the target `cache_size`
 pub fn main() {
     let opt = Opt::from_args();
+    unsafe { PRINT_SAMPLES = opt.samples }
 
     // Use different Cacheables to see how the cache manages memory with
     // different types of cache entries. Uncomment one of the 'let mut cacheable'

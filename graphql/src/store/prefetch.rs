@@ -5,7 +5,7 @@ use anyhow::{anyhow, Error};
 use graph::constraint_violation;
 use graph::prelude::{r, CacheWeight};
 use graph::slog::warn;
-use graph::util::cache_weight::btree_node_size;
+use graph::util::cache_weight;
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -156,7 +156,7 @@ impl From<BTreeMap<String, r::Value>> for Node {
 
 impl CacheWeight for Node {
     fn indirect_weight(&self) -> usize {
-        self.children_weight + btree_node_size(&self.children)
+        self.children_weight + cache_weight::btree::node_size(&self.children)
     }
 }
 
