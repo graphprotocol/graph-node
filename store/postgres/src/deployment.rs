@@ -649,6 +649,14 @@ pub(crate) fn revert_subgraph_errors(
     check_health(conn, id, reverted_block - 1)
 }
 
+pub(crate) fn delete_error(conn: &PgConnection, error_id: &str) -> Result<(), StoreError> {
+    use subgraph_error as e;
+    delete(e::table.filter(e::id.eq(error_id)))
+        .execute(conn)
+        .map(|_| ())
+        .map_err(StoreError::from)
+}
+
 /// Copy the dynamic data sources for `src` to `dst`. All data sources that
 /// were created up to and including `target_block` will be copied.
 pub(crate) fn copy_errors(

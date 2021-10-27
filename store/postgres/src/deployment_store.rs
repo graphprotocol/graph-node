@@ -16,6 +16,7 @@ use std::convert::Into;
 use std::convert::TryInto;
 use std::env;
 use std::iter::FromIterator;
+use std::ops::Bound;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::{atomic::AtomicUsize, Arc, Mutex};
@@ -1208,7 +1209,9 @@ impl DeploymentStore {
                     parent_ptr,
                     &subgraph_error,
                 ),
-                false => self.unfail_non_deterministic_error(&subgraph_error),
+                false => {
+                    self.unfail_non_deterministic_error(conn, site, current_ptr, &subgraph_error)
+                }
             }
         })
     }
@@ -1288,9 +1291,30 @@ impl DeploymentStore {
 
     fn unfail_non_deterministic_error(
         &self,
-        _subgraph_error: &ErrorDetail,
+        conn: &PgConnection,
+        site: Arc<Site>,
+        current_ptr: &BlockPtr,
+        subgraph_error: &ErrorDetail,
     ) -> Result<(), StoreError> {
-        Ok(())
+        match subgraph_error.block_range {
+            // Deployment head (current_ptr) advanced more than the error.
+            (Bound::Included(error_block_number), _)
+                if current_ptr.number >= error_block_number =>
+            {
+                // Unfail the deployment.
+                deployment::update_deployment_status(
+                    conn,
+                    &site.deployment,
+                    deployment::SubgraphHealth::Healthy,
+                    None,
+                )?;
+
+                // Delete the fatal error.
+                deployment::delete_error(conn, &subgraph_error.id)
+            }
+            // NOOP, still before where non-deterministic error happened.
+            _ => Ok(()),
+        }
     }
 
     #[cfg(debug_assertions)]

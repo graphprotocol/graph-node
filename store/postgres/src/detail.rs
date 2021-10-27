@@ -77,7 +77,7 @@ pub(crate) struct ErrorDetail {
     pub block_hash: Option<Bytes>,
     handler: Option<String>,
     pub deterministic: bool,
-    block_range: (Bound<i32>, Bound<i32>),
+    pub block_range: (Bound<i32>, Bound<i32>),
 }
 
 pub(crate) fn error(conn: &PgConnection, error_id: &str) -> Result<ErrorDetail, StoreError> {
