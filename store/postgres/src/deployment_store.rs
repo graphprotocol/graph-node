@@ -1191,8 +1191,10 @@ impl DeploymentStore {
         let conn = &self.get_conn()?;
 
         conn.transaction(|| {
+            let deployment_id = &site.deployment;
+
             // We'll only unfail subgraphs that had fatal errors
-            let fatal_error_id = match deployment::get_fatal_error_id(conn, &site.deployment)? {
+            let fatal_error_id = match deployment::get_fatal_error_id(conn, deployment_id)? {
                 Some(fatal_error_id) => fatal_error_id,
                 // If the subgraph is not failed then there is nothing to do.
                 None => return Ok(()),
@@ -1208,9 +1210,12 @@ impl DeploymentStore {
                     parent_ptr,
                     &subgraph_error,
                 ),
-                false => {
-                    self.unfail_non_deterministic_error(conn, site, current_ptr, &subgraph_error)
-                }
+                false => self.unfail_non_deterministic_error(
+                    conn,
+                    deployment_id,
+                    current_ptr,
+                    &subgraph_error,
+                ),
             }
         })
     }
@@ -1225,11 +1230,13 @@ impl DeploymentStore {
         parent_ptr: Option<&BlockPtr>,
         subgraph_error: &ErrorDetail,
     ) -> Result<(), StoreError> {
+        let deployment_id = &site.deployment;
+
         use deployment::SubgraphHealth::*;
         // Decide status based on if there are any errors for the previous/parent block
         let prev_health = if deployment::has_non_fatal_errors(
             conn,
-            &site.deployment,
+            deployment_id,
             parent_ptr.map(|ptr| ptr.number),
         )? {
             Unhealthy
@@ -1246,7 +1253,7 @@ impl DeploymentStore {
                     info!(
                         self.logger,
                         "Reverting errored block";
-                        "subgraph_id" => &site.deployment,
+                        "subgraph_id" => deployment_id,
                         "from_block_number" => format!("{}", current_ptr.number),
                         "from_block_hash" => format!("{}", current_ptr.hash),
                         "to_block_number" => format!("{}", parent_ptr.number),
@@ -1256,12 +1263,7 @@ impl DeploymentStore {
                     let _ = self.revert_block_operations(site.clone(), parent_ptr.clone())?;
 
                     // Unfail the deployment.
-                    deployment::update_deployment_status(
-                        conn,
-                        &site.deployment,
-                        prev_health,
-                        None,
-                    )?;
+                    deployment::update_deployment_status(conn, deployment_id, prev_health, None)?;
                 }
             }
             // Found error, but not for deployment head, we don't need to
@@ -1271,7 +1273,7 @@ impl DeploymentStore {
             // shoudn't happen.
             Some(hash_bytes) => {
                 warn!(self.logger, "Subgraph error does not have same block hash as deployment head";
-                    "subgraph_id" => &site.deployment,
+                    "subgraph_id" => deployment_id,
                     "error_id" => &subgraph_error.id,
                     "error_block_hash" => format!("0x{}", hex::encode(&hash_bytes)),
                     "deployment_head" => format!("{}", current_ptr.hash),
@@ -1281,7 +1283,7 @@ impl DeploymentStore {
             // something is wrong, this shouldn't happen.
             None => {
                 warn!(self.logger, "Subgraph error should have block hash";
-                    "subgraph_id" => &site.deployment,
+                    "subgraph_id" => deployment_id,
                     "error_id" => &subgraph_error.id,
                 );
             }
@@ -1296,7 +1298,7 @@ impl DeploymentStore {
     fn unfail_non_deterministic_error(
         &self,
         conn: &PgConnection,
-        site: Arc<Site>,
+        deployment_id: &DeploymentHash,
         current_ptr: &BlockPtr,
         subgraph_error: &ErrorDetail,
     ) -> Result<(), StoreError> {
@@ -1310,7 +1312,7 @@ impl DeploymentStore {
                 // Unfail the deployment.
                 deployment::update_deployment_status(
                     conn,
-                    &site.deployment,
+                    deployment_id,
                     deployment::SubgraphHealth::Healthy,
                     None,
                 )?;
