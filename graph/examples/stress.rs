@@ -500,35 +500,32 @@ pub fn main() {
     // different types of cache entries. Uncomment one of the 'let mut cacheable'
     // lines
     if opt.template == "vec" {
-        // With Vec<usize> we stay within between opt.cache_size and 3*opt.cache_size
-        // Larger heap factors for very small arrays
+        // The weight of Vec<usize> is precise. The additional memory that
+        // the cache uses must be solely due to the memory for the cache
+        // itself
+        //
         // obj_size  |  heap factor
-        //   10      |     4.02
-        //   20      |     2.39
-        //   30      |     2.40
-        //   50      |     1.76
-        //  100      |     1.38
-        // 1000      |     1.05
+        //   10      |     2.5
+        //   20      |     1.9
+        //   30      |     1.8
+        //   50      |     1.3
+        //  100      |     1.3
+        // 1000      |     1.1
         stress::<Vec<usize>>(&opt);
     } else if opt.template == "hashmap" {
-        // Cache HashMap<String, String>
-        // The heap factor ranges between 2.23 (size 3) and 1.06 (size 100)
-        //let mut cacheable: Cacheable<HashMap<String, String>> = Cacheable::new(opt.obj_size);
+        // The heap factor ranges between 1.9 (size 3) and 1.06 (size 100)
         stress::<HashMap<String, String>>(&opt);
     } else if opt.template == "valuemap" {
         // Cache BTreeMap<String, Value>
         // obj_size  |  heap factor
-        //    3      |     16.51
-        //    5      |     12.07
-        //   10      |      4.64
-        //   50      |      3.07
-        //  100      |      2.94
+        //    3      |      1.3
+        //    5      |      1.5
+        //   10      |      1.5
+        //   50      |      1.2
+        //  100      |      0.9
         //
-        // The above is for a weight calculation that does not take the
-        // allocated, unused space in the BTree into account. With a guess
-        // at those, the above heap factors range from 1.14 to 0.88, with the
-        // exception of obj_size 0 where we get a factor of 2.88, but that
-        // must be caused by some other effect
+        // For small maps (say, up to about 20 entries), the weight is an
+        // accurate estimation of the map's allocation
         stress::<ValueMap>(&opt);
     } else if opt.template == "string" {
         stress::<String>(&opt);
