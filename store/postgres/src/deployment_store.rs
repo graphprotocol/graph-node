@@ -1173,10 +1173,9 @@ impl DeploymentStore {
     /// This should be called once per subgraph on `graph-node` initialization,
     /// before processing the first block on start.
     ///
-    /// It will change the Deployment status accordingly to the Errors found (healthy/unhealthy).
-    /// It does nothing if the Deployment is healthy or if the blocks received are `None`.
-    /// It will revert all block operations of a block (returning to the parent)
-    /// if the errors found are in the same block as the current Deployment head.
+    /// It does nothing if there's no fatal error for a subgraph, or the blocks received are `None`.
+    /// It branches behavior based of if the fatal error is deterministic or not, read the specific
+    /// functions down below.
     pub(crate) fn unfail(
         &self,
         site: Arc<Site>,
@@ -1216,6 +1215,8 @@ impl DeploymentStore {
         })
     }
 
+    // If the current block of the deployment is the same as the fatal error,
+    // we revert all block operations to it's parent/previous block.
     fn unfail_deterministic_error(
         &self,
         conn: &PgConnection,
@@ -1289,6 +1290,9 @@ impl DeploymentStore {
         Ok(())
     }
 
+    // If a non-deterministic error happens and the deployment head advances,
+    // we should unfail the subgraph (status: Healthy, failed: false) and delete
+    // the error itself.
     fn unfail_non_deterministic_error(
         &self,
         conn: &PgConnection,
@@ -1298,6 +1302,8 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         match subgraph_error.block_range {
             // Deployment head (current_ptr) advanced more than the error.
+            // That means it's healthy, and the non-deterministic error got
+            // solved (didn't happen on another try).
             (Bound::Included(error_block_number), _)
                 if current_ptr.number >= error_block_number =>
             {
@@ -1312,7 +1318,7 @@ impl DeploymentStore {
                 // Delete the fatal error.
                 deployment::delete_error(conn, &subgraph_error.id)
             }
-            // NOOP, still before where non-deterministic error happened.
+            // NOOP, the deployment head is still before where non-deterministic error happened.
             _ => Ok(()),
         }
     }
