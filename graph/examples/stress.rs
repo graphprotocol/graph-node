@@ -378,6 +378,8 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
     let print_mod = opt.niter / opt.print_count + 1;
     let mut should_print = true;
     let mut print_header = true;
+    let mut sample_weight: usize = 0;
+    let mut sample_alloc: usize = 0;
     for key in 0..opt.niter {
         should_print = should_print || key % print_mod == 0;
         let before_mem = ALLOCATED.load(SeqCst);
@@ -407,14 +409,26 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
         };
         let before = ALLOCATED.load(SeqCst);
         let sample = cacheable.sample(size);
+        let weight = sample.weight();
+        let alloc = ALLOCATED.load(SeqCst) - before;
+        sample_weight += weight;
+        sample_alloc += alloc;
         if opt.samples {
-            println!(
-                "sample: weight {:6} alloc {:6}",
-                sample.weight(),
-                ALLOCATED.load(SeqCst) - before,
-            );
+            println!("sample: weight {:6} alloc {:6}", weight, alloc,);
         }
         cacheable.cache.insert(key, *cacheable.sample(size));
+    }
+    if sample_alloc == sample_weight {
+        println!(
+            "samples: weight {} alloc {} weight/alloc precise",
+            sample_weight, sample_alloc
+        );
+    } else {
+        let heap_factor = sample_alloc as f64 / sample_weight as f64;
+        println!(
+            "samples: weight {} alloc {} weight/alloc {:0.2}",
+            sample_weight, sample_alloc, heap_factor
+        );
     }
 }
 
