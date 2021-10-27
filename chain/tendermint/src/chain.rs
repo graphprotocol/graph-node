@@ -313,9 +313,6 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 }
 
 
-
-
-
 impl FirehoseMapper {
     // FIXME: This should be replaced by using the `TriggersAdapter` struct directly. However, the TriggersAdapter trait
     //        is async. It's actual async usage is done inside a manual `poll` implementation in `firehose_block_stream#poll_next`
@@ -333,77 +330,6 @@ impl FirehoseMapper {
         })
     }
 }
-/*
-
-
-impl FirehoseMapper {
-    // FIXME: This should be replaced by using the `TriggersAdapter` struct directly. However, the TriggersAdapter trait
-    //        is async. It's actual async usage is done inside a manual `poll` implementation in `firehose_block_stream#poll_next`
-    //        value. An upcoming improvement will be to remove this `poll_next`. Once the refactor occurs, this should be
-    //        removed and TriggersAdapter::triggers_in_block should be use straight.
-    fn firehose_triggers_in_block(
-        &self,
-        sp: &codec::EventList,
-        _filter: &TriggerFilter,
-    ) -> Result<BlockWithTriggers<Chain>, FirehoseError> {
-        let b = sp.newblock.as_ref().unwrap();
-        let block = b.block.as_ref().unwrap();
-        let header = block.header.as_ref().unwrap();
-
-        let version = header.version.as_ref().unwrap();
-        let bid = header.last_block_id.as_ref().unwrap();
-        let part_header = bid.part_set_header.as_ref().unwrap();
-        let block_time = header.time.as_ref().unwrap();
-
-        let tendermint_block = TendermintBlock {
-            // FIXME (TENDERMINT): this has to be hash of the block, and not the data inside
-            hash:  Hash::from_bytes(&header.data_hash)?,
-            number: header.height,
-            parent_hash: header
-                .last_block_id
-                .as_ref()
-                .map(|v|  Hash::from_bytes(&v.hash).unwrap(),),
-            parent_number: Some(header.height-1),
-            header: TendermintBlockHeader{
-                version: Some(TendermintConsensus{
-                    block: version.block,
-                    app: version.app,
-                }) ,
-                chain_id: header.chain_id.clone(),
-                height: header.height,
-                time_sec: block_time.seconds,
-                time_nano:  block_time.nanos,
-                last_block_id: Some(
-                    TendermintBlockId{
-                        hash:  Hash::from_bytes(&bid.hash)?,
-                        part_set_header: Some(TendermintPartSetHeader{
-                            total: part_header.total.clone(),
-                            hash:  Hash::from_bytes(&part_header.hash)?,
-                        }),
-                    }),
-                last_commit_hash:  Hash::from_bytes(&header.last_commit_hash)?,
-                data_hash:  Hash::from_bytes(&header.data_hash)?,
-                validators_hash:  Hash::from_bytes(&header.validators_hash)?,
-                next_validators_hash:  Hash::from_bytes(&header.next_validators_hash)?,
-                consensus_hash:   Hash::from_bytes(&header.consensus_hash)?,
-                app_hash:   Hash::from_bytes(&header.app_hash)?,
-                last_results_hash:   Hash::from_bytes(&header.last_results_hash)?,
-                evidence_hash:   Hash::from_bytes(&header.evidence_hash)?,
-                proposer_address: Hash::from_bytes(&header.evidence_hash)?,
-            },
-            data: TendermintBlockTxData{
-                txs: block.data.as_ref().unwrap().txs.clone()
-            },
-        };
-        let block_ptr = BlockPtr::from(&tendermint_block);
-
-        Ok(BlockWithTriggers{
-            block: tendermint_block,
-            trigger_data: vec![TendermintTrigger::Block(block_ptr, TendermintBlockTriggerType::Every)],
-        })
-    }
-}
-*/
 
 pub struct IngestorAdapter {
     logger: Logger,

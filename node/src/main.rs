@@ -232,9 +232,14 @@ async fn main() {
         let near_idents =
             compute_near_network_identifiers(firehose_networks_by_kind.get(&BlockchainKind::Near));
 
+        let tendermint_idents =
+            compute_tendermint_network_identifiers(firehose_networks_by_kind.get(&BlockchainKind::Tendermint));
+
+
         let network_identifiers = ethereum_idents
             .into_iter()
             .chain(near_idents.into_iter())
+            .chain(tendermint_idents.into_iter())
             .collect();
 
         let network_store = store_builder.network_store(network_identifiers);
@@ -720,6 +725,38 @@ fn compute_near_network_identifiers(
             .collect(),
     }
 }
+
+// FIXME (NEAR): This is quite wrong, will need a refactor to remove the need to have a `EthereumNetworkIdentifier`
+//               to create an actual `NetworkStore` (see `store_builder.network_store`).
+fn compute_tendermint_network_identifiers(
+    firehose_networks: Option<&FirehoseNetworks>,
+) -> Vec<(String, Vec<EthereumNetworkIdentifier>)> {
+    match firehose_networks {
+        None => vec![],
+        Some(v) => v
+            .flatten()
+            .into_iter()
+            .map(|(name, endpoint)| {
+                (
+                    name,
+                    EthereumNetworkIdentifier {
+                        genesis_block_hash: H256::from([0x00; 32]),
+                        net_version: endpoint.provider.clone(),
+                    },
+                )
+            })
+            .fold(
+                HashMap::<String, Vec<EthereumNetworkIdentifier>>::new(),
+                |mut networks, (name, endpoint)| {
+                    networks.entry(name.to_string()).or_default().push(endpoint);
+                    networks
+                },
+            )
+            .into_iter()
+            .collect(),
+    }
+}
+
 
 fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<IpfsClient> {
     // Parse the IPFS URL from the `--ipfs` command line argument

@@ -16,7 +16,7 @@ use std::{convert::TryFrom, sync::Arc};
 use crate::chain::Chain;
 use crate::trigger::TendermintTrigger;
 
-pub const TENDERMINT_KIND: &str = "tendermint";
+pub const TENDERMINT_KIND: &str = "tendermint/data";
 
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens

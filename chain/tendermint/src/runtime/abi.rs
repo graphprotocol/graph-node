@@ -521,12 +521,12 @@ impl ToAscObj<AscResponseDeliverTx> for codec::ResponseDeliverTx {
         Ok(AscResponseDeliverTx {
             code: self.code,
             data:  asc_new(heap, &Bytes(&self.data))?,
-            log: asc_new(heap, &self.log)?,
-            info:  asc_new(heap, &self.info)?,
+            log: asc_new(heap, &self.log.clone())?,
+            info:  asc_new(heap, &self.info.clone())?,
             gas_wanted: asc_new(heap, &BigInt::from(self.gas_wanted))?,
             gas_used: asc_new(heap, &BigInt::from(self.gas_used))?,
             events:  asc_new(heap, &self.events)?,
-            codespace: asc_new(heap, &self.codespace)?,
+            codespace: asc_new(heap, &self.codespace.clone())?,
         })
     }
 }
