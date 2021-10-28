@@ -3,6 +3,7 @@
 
 use anyhow::{anyhow, Error};
 use graph::constraint_violation;
+use graph::data::value::Object;
 use graph::prelude::{r, CacheWeight};
 use graph::slog::warn;
 use graph::util::cache_weight;
@@ -208,7 +209,7 @@ impl From<Node> for r::Value {
         for (key, nodes) in node.children.into_iter() {
             map.insert(format!("prefetch:{}", key), node_list_as_value(nodes));
         }
-        r::Value::Object(map)
+        r::Value::object(map)
     }
 }
 
@@ -541,8 +542,7 @@ pub fn run(
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     execute_root_selection_set(resolver, ctx, selection_set).map(|nodes| {
         result_size.observe(nodes.weight());
-        let map = BTreeMap::default();
-        r::Value::Object(nodes.into_iter().fold(map, |mut map, node| {
+        r::Value::Object(nodes.into_iter().fold(Object::default(), |mut map, node| {
             // For root nodes, we only care about the children
             for (key, nodes) in node.children.into_iter() {
                 map.insert(format!("prefetch:{}", key), node_list_as_value(nodes));

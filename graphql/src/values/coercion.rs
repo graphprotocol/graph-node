@@ -89,7 +89,7 @@ fn coerce_to_definition<'a>(
                         },
                     );
                 }
-                Ok(r::Value::Object(coerced_object))
+                Ok(r::Value::object(coerced_object))
             }
             _ => Err(value),
         },

@@ -1,13 +1,14 @@
 #[macro_use]
 extern crate pretty_assertions;
 
+use graph::data::value::Object;
 use graphql_parser::Pos;
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap},
     marker::PhantomData,
 };
 
@@ -1538,7 +1539,7 @@ fn query_at_block_with_vars() {
             check_musicians_at(&deployment.hash, query, var, expected.clone(), qid).await;
 
             let query = "query by_nr($block: Block_height!) { musicians(block: $block) { id } }";
-            let mut map = BTreeMap::new();
+            let mut map = Object::new();
             map.insert("number".to_owned(), number);
             let block = r::Value::Object(map);
             let var = Some(("block", block));
