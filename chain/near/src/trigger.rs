@@ -207,7 +207,7 @@ mod tests {
                 block_merkle_root: hash("aa"),
                 epoch_sync_data_hash: vec![0x00, 0x01],
                 approvals: vec![],
-                signature: None,
+                signature: signature("00"),
                 latest_protocol_version: 0,
             }),
             chunk_headers: vec![chunk_header().unwrap()],
@@ -223,10 +223,7 @@ mod tests {
                             nonce: 1,
                             receiver_id: "receiver".to_string(),
                             actions: vec![],
-                            signature: Some(codec::Signature {
-                                r#type: 1,
-                                bytes: vec![],
-                            }),
+                            signature: signature("ff"),
                             hash: hash("bb"),
                         }),
                         outcome: Some(codec::IndexerExecutionOutcomeWithOptionalReceipt {
@@ -265,7 +262,7 @@ mod tests {
                     codec::Action {
                         action: Some(codec::action::Action::DeployContract(
                             codec::DeployContractAction {
-                                code: "/6q7zA==".to_string(),
+                                code: vec![0x01, 0x02],
                             },
                         )),
                     },
@@ -273,7 +270,7 @@ mod tests {
                         action: Some(codec::action::Action::FunctionCall(
                             codec::FunctionCallAction {
                                 method_name: "func".to_string(),
-                                args: "e30=".to_string(),
+                                args: vec![0x01, 0x02],
                                 gas: 1000,
                                 deposit: big_int(100),
                             },
@@ -288,6 +285,26 @@ mod tests {
                         action: Some(codec::action::Action::Stake(codec::StakeAction {
                             stake: big_int(100),
                             public_key: public_key("aa"),
+                        })),
+                    },
+                    codec::Action {
+                        action: Some(codec::action::Action::AddKey(codec::AddKeyAction {
+                            public_key: public_key("aa"),
+                            access_key: Some(codec::AccessKey {
+                                nonce: 1,
+                                permission: Some(codec::AccessKeyPermission {
+                                    permission: Some(
+                                        codec::access_key_permission::Permission::FunctionCall(
+                                            codec::FunctionCallPermission {
+                                                // allowance can be None, so let's test this out here
+                                                allowance: None,
+                                                receiver_id: "receiver".to_string(),
+                                                method_names: vec!["sayGm".to_string()],
+                                            },
+                                        ),
+                                    ),
+                                }),
+                            }),
                         })),
                     },
                     codec::Action {
@@ -344,10 +361,7 @@ mod tests {
                 public_key: public_key("aa"),
                 stake: big_int(10),
             }],
-            signature: Some(codec::Signature {
-                r#type: 0,
-                bytes: vec![],
-            }),
+            signature: signature("ff"),
         })
     }
 
@@ -369,9 +383,7 @@ mod tests {
             executor_id: "near".to_string(),
             metadata: 0,
             status: Some(codec::execution_outcome::Status::SuccessValue(
-                codec::SuccessValueExecutionStatus {
-                    value: "/6q7zA==".to_string(),
-                },
+                codec::SuccessValueExecutionStatus { value: vec![0x00] },
             )),
         })
     }
@@ -392,8 +404,15 @@ mod tests {
 
     fn public_key(input: &str) -> Option<codec::PublicKey> {
         Some(codec::PublicKey {
-            r#type: 1,
+            r#type: 0,
             bytes: hex::decode(input).expect(format!("Invalid PublicKey value {}", input).as_ref()),
+        })
+    }
+
+    fn signature(input: &str) -> Option<codec::Signature> {
+        Some(codec::Signature {
+            r#type: 0,
+            bytes: hex::decode(input).expect(format!("Invalid Signature value {}", input).as_ref()),
         })
     }
 

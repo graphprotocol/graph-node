@@ -308,8 +308,11 @@ impl ToAscObj<AscFunctionCallPermission> for codec::FunctionCallPermission {
         heap: &mut H,
     ) -> Result<AscFunctionCallPermission, DeterministicHostError> {
         Ok(AscFunctionCallPermission {
-            // allowance is one of the few
-            allowance: asc_new(heap, self.allowance.as_ref().unwrap())?,
+            // The `allowance` field is one of the few fields that can actually be None for real
+            allowance: match self.allowance.as_ref() {
+                Some(allowance) => asc_new(heap, allowance)?,
+                None => AscPtr::null(),
+            },
             receiver_id: asc_new(heap, &self.receiver_id)?,
             method_names: asc_new(heap, &self.method_names)?,
         })
