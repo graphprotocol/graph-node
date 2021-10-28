@@ -1,4 +1,4 @@
-query MyQuery ($id: String) {
+query Query ($id: String) {
     gravatars(where: {id: $id}, subgraphError: allow) {
         id
         owner

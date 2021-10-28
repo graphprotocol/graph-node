@@ -1,11 +1,14 @@
-use crate::asc_abi::class;
-use anyhow::anyhow;
-use graph::runtime::{AscHeap, AscPtr, AscType, AscValue, DeterministicHostError};
-use graph_runtime_derive::AscType;
-use semver::Version;
 use std::convert::TryInto as _;
 use std::marker::PhantomData;
 use std::mem::{size_of, size_of_val};
+
+use anyhow::anyhow;
+use semver::Version;
+
+use graph::runtime::{AscHeap, AscPtr, AscType, AscValue, DeterministicHostError};
+use graph_runtime_derive::AscType;
+
+use crate::asc_abi::class;
 
 /// Module related to AssemblyScript version v0.6.
 

@@ -4,40 +4,38 @@ use std::convert::TryFrom;
 use std::rc::Rc;
 use std::time::Instant;
 
-use graph::blockchain::{Blockchain, HostFnCtx, TriggerWithHandler};
-use graph::runtime::HostExportError;
-use graph::data::store::scalar::Bytes;
+use anyhow::anyhow;
+use anyhow::Error;
+use anyhow::Result as AnyhowResult;
+use graphql_client::{GraphQLQuery, Response};
 use never::Never;
 use semver::Version;
+use serde_derive::{Deserialize, Serialize};
 use wasmtime::{Memory, Trap};
 
-use crate::error::DeterminismLevel;
-pub use crate::host_exports;
-use crate::mapping::MappingContext;
-use anyhow::Error;
+use graph::blockchain::{Blockchain, HostFnCtx, TriggerWithHandler};
 use graph::data::store;
+use graph::data::store::scalar::Bytes;
 use graph::prelude::*;
+use graph::runtime::HostExportError;
 use graph::runtime::{AscHeap, IndexForAscTypeId};
 use graph::{components::subgraph::MappingError, runtime::AscPtr};
 use graph::{
     data::subgraph::schema::SubgraphError,
     runtime::{asc_get, asc_new, try_asc_get, DeterministicHostError},
 };
-
-use anyhow::anyhow;
-use anyhow::Result as AnyhowResult;
-use graphql_client::{GraphQLQuery, Response};
-use serde_derive::{Deserialize, Serialize};
+pub use into_wasm_ret::IntoWasmRet;
+pub use stopwatch::TimeoutStopwatch;
 
 use crate::asc_abi::class::*;
+use crate::error::DeterminismLevel;
+pub use crate::host_exports;
 use crate::host_exports::HostExports;
+use crate::mapping::MappingContext;
 use crate::mapping::ValidModule;
 
 mod into_wasm_ret;
 pub mod stopwatch;
-
-pub use into_wasm_ret::IntoWasmRet;
-pub use stopwatch::TimeoutStopwatch;
 
 pub const TRAP_TIMEOUT: &str = "trap: interrupt";
 
@@ -51,27 +49,25 @@ struct Gravatar {
 
 #[derive(GraphQLQuery)]
 #[graphql(
-schema_path = "src/module/schema.json",
-query_path = "src/module/query.graphql",
-response_derives = "Debug, Serialize, Deserialize"
+    schema_path = "src/module/schema.json",
+    query_path = "src/module/query.graphql",
+    response_derives = "Debug, Serialize, Deserialize"
 )]
-pub struct MyQuery;
+pub struct Query;
 
-fn perform_my_query(
-    variables: my_query::Variables,
-) -> Result<Response<my_query::ResponseData>, Error> {
-    let request_body = MyQuery::build_query(variables);
+fn perform_query(variables: query::Variables) -> Result<Response<query::ResponseData>, Error> {
+    let request_body = Query::build_query(variables);
 
     let client = reqwest::blocking::Client::new();
     let res = client
         .post(
-            "https://api.thegraph.com/subgraphs/id/QmUVwyxpWVF2LiSH7wzkJvLMohoeksrD2ywGxsmjcv5LPJ",
+            "https://api.thegraph.com/subgraphs/id/QmbQWhYWLHSDrtoMuYgoN2tpxiLxXyh1hYsopw24cnNVLm",
         )
         .json(&request_body)
         .send()
         .unwrap();
 
-    let response_body: Response<my_query::ResponseData> = res.json().unwrap();
+    let response_body: Response<query::ResponseData> = res.json().unwrap();
 
     Ok(response_body)
 }
@@ -430,7 +426,7 @@ impl<C: Blockchain> WasmInstance<C> {
                                 "{} is not allowed in global variables",
                                 host_fn.name
                             )
-                            .into())
+                            .into());
                         }
                     };
 
@@ -864,38 +860,38 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     ) -> Result<AscPtr<AscEntity>, HostExportError> {
         let id: String = asc_get(self, id_ptr)?;
 
-        let variables = my_query::Variables {
+        let variables = query::Variables {
             id: Some(id.clone()),
         };
-        let orders_list = perform_my_query(variables)
+        let gravatar = perform_query(variables)
             .unwrap()
             .data
             .ok_or(anyhow!("Query failed"))?
-            .gravatars;
+            .gravatars
+            .first();
 
-        println!("{:?}", orders_list);
-        panic!("debugging {:?}", id);
+        println!("{:?}", gravatar);
 
         let _timer = self
             .host_metrics
             .cheap_clone()
             .time_host_fn_execution_region("store_get");
-        let entity_ptr = asc_get(self, entity_ptr)?;
+
         let id_ptr = asc_get(self, id_ptr)?;
-        let entity_option =
-            self.ctx
-                .host_exports
-                .store_get(&mut self.ctx.state, entity_ptr, id_ptr)?;
+
+        // TODO: get entity_option
+        // Tip: gravatar needs to be converted to a HashMap so that we can derive an Entity object from it
+        let entity_option = Entity::from(serde_json::to_string(&gravatar).unwrap());
 
         let ret = match entity_option {
-            Some(entity) => {
+            Ok(entity) => {
                 let _section = self
                     .host_metrics
                     .stopwatch
                     .start_section("store_get_asc_new");
                 asc_new(self, &entity.sorted())?
             }
-            None => AscPtr::null(),
+            Err(_) => AscPtr::null(),
         };
 
         Ok(ret)

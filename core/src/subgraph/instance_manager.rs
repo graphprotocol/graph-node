@@ -1,12 +1,12 @@
 use super::loader::load_dynamic_data_sources;
 use super::SubgraphInstance;
+use crate::subgraph::mock_writable_store::MockWritableStore;
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
 use graph::blockchain::{BlockchainKind, DataSource};
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::{UnifiedMappingApiVersion, MAX_SPEC_VERSION};
 use graph::prelude::TryStreamExt;
-use crate::subgraph::mock_writable_store::MockWritableStore;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::util::lfu_cache::LfuCache;
 use graph::{blockchain::block_stream::BlockStreamMetrics, components::store::WritableStore};

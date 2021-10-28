@@ -1,28 +1,29 @@
-use crate::{error::DeterminismLevel, module::IntoTrap};
+use std::collections::HashMap;
+use std::ops::Deref;
+use std::str::FromStr;
+use std::time::{Duration, Instant};
+
 use ethabi::param_type::Reader;
 use ethabi::{decode, encode, Token};
+use never::Never;
+use semver::Version;
+use wasmtime::Trap;
+use web3::types::H160;
+
 use graph::blockchain::DataSource;
 use graph::blockchain::{Blockchain, DataSourceTemplate as _};
 use graph::components::store::EntityKey;
 use graph::components::store::EntityType;
 use graph::components::subgraph::{CausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::data::store;
+use graph::ensure;
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
 pub use graph::runtime::{DeterministicHostError, HostExportError};
-use never::Never;
-use semver::Version;
-use std::collections::HashMap;
-use std::ops::Deref;
-use std::str::FromStr;
-use std::time::{Duration, Instant};
-use web3::types::H160;
-
-use graph::ensure;
 use graph_graphql::prelude::validate_entity;
-use wasmtime::Trap;
 
 use crate::module::{WasmInstance, WasmInstanceContext};
+use crate::{error::DeterminismLevel, module::IntoTrap};
 
 fn write_poi_event(
     proof_of_indexing: &SharedProofOfIndexing,
@@ -677,7 +678,7 @@ fn bytes_to_string_is_lossy() {
         "Downcoin WETH-USDT",
         bytes_to_string(
             &graph::log::logger(true),
-            vec![68, 111, 119, 110, 99, 111, 105, 110, 32, 87, 69, 84, 72, 45, 85, 83, 68, 84]
+            vec![68, 111, 119, 110, 99, 111, 105, 110, 32, 87, 69, 84, 72, 45, 85, 83, 68, 84],
         )
     );
 
@@ -688,7 +689,7 @@ fn bytes_to_string_is_lossy() {
             vec![
                 68, 111, 119, 110, 99, 111, 105, 110, 32, 87, 69, 84, 72, 45, 85, 83, 68, 84, 160,
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-            ]
+            ],
         )
     )
 }

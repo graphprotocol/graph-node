@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
+
 use graph::blockchain::RuntimeAdapter;
 use graph::blockchain::{Blockchain, DataSource};
 use graph::blockchain::{HostFn, TriggerWithHandler};

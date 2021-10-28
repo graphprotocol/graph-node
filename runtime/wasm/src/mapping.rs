@@ -1,12 +1,15 @@
-use crate::module::{ExperimentalFeatures, WasmInstance};
-use futures::sync::mpsc;
-use futures03::channel::oneshot::Sender;
-use graph::blockchain::{Blockchain, HostFn, TriggerWithHandler};
-use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
-use graph::prelude::*;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::thread;
+
+use futures::sync::mpsc;
+use futures03::channel::oneshot::Sender;
+
+use graph::blockchain::{Blockchain, HostFn, TriggerWithHandler};
+use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
+use graph::prelude::*;
+
+use crate::module::{ExperimentalFeatures, WasmInstance};
 
 const ONE_MIB: usize = 1 << 20; // 1_048_576
 

@@ -1,10 +1,13 @@
-use crate::asc_abi::class;
-use anyhow::anyhow;
-use graph::runtime::{AscHeap, AscPtr, AscType, AscValue, DeterministicHostError, HEADER_SIZE};
-use graph_runtime_derive::AscType;
-use semver::Version;
 use std::marker::PhantomData;
 use std::mem::{size_of, size_of_val};
+
+use anyhow::anyhow;
+use semver::Version;
+
+use graph::runtime::{AscHeap, AscPtr, AscType, AscValue, DeterministicHostError, HEADER_SIZE};
+use graph_runtime_derive::AscType;
+
+use crate::asc_abi::class;
 
 /// Module related to AssemblyScript version >=v0.19.2.
 /// All `to_asc_bytes`/`from_asc_bytes` only consider the #data/content/payload
