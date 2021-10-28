@@ -11,7 +11,6 @@ futures = "0.1.21"
 hex = "0.4.3"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
-graph-chain-ethereum = { path = "../../chain/ethereum" }
 bs58 = "0.4.0"
 graph-runtime-derive = { path = "../derive" }
 semver = "1.0.3"
