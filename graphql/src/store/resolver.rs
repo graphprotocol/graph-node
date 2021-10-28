@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::result;
 use std::sync::Arc;
 
+use graph::data::value::Object;
 use graph::data::{
     graphql::{object, ObjectOrInterface},
     schema::META_FIELD_TYPE,
@@ -220,7 +221,7 @@ impl StoreResolver {
                 "__typename".to_string(),
                 r::Value::String(META_FIELD_TYPE.to_string()),
             );
-            return Ok((None, Some(r::Value::Object(map))));
+            return Ok((None, Some(r::Value::object(map))));
         }
         Ok((prefetched_object, None))
     }
@@ -328,8 +329,9 @@ impl Resolver for StoreResolver {
             // or a different field queried under the response key `_meta`.
             ErrorPolicy::Deny => {
                 let data = result.take_data();
-                let meta = data.and_then(|mut d| d.remove_entry("_meta"));
-                result.set_data(meta.map(|m| BTreeMap::from_iter(Some(m))));
+                let meta =
+                    data.and_then(|d| d.get("_meta").map(|m| ("_meta".to_string(), m.clone())));
+                result.set_data(meta.map(|m| Object::from_iter(Some(m))));
             }
             ErrorPolicy::Allow => (),
         }

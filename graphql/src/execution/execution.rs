@@ -1,7 +1,7 @@
 use super::cache::{QueryBlockCache, QueryCache};
 use crossbeam::atomic::AtomicCell;
 use graph::{
-    data::schema::META_FIELD_NAME,
+    data::{schema::META_FIELD_NAME, value::Object},
     prelude::{s, CheapClone},
     util::timed_rw_lock::TimedMutex,
 };
@@ -11,7 +11,7 @@ use stable_hash::crypto::SetHasher;
 use stable_hash::prelude::*;
 use stable_hash::utils::stable_hash;
 use std::borrow::ToOwned;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::iter;
 use std::time::Instant;
 
@@ -128,7 +128,7 @@ impl CacheWeight for WeightedResult {
 impl Default for WeightedResult {
     fn default() -> Self {
         WeightedResult {
-            result: Arc::new(QueryResult::new(BTreeMap::default())),
+            result: Arc::new(QueryResult::new(Object::default())),
             weight: 0,
         }
     }
@@ -290,7 +290,7 @@ pub fn execute_root_selection_set_uncached(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
     root_type: &s::ObjectType,
-) -> Result<BTreeMap<String, r::Value>, Vec<QueryExecutionError>> {
+) -> Result<Object, Vec<QueryExecutionError>> {
     // Split the top-level fields into introspection fields and
     // regular data fields
     let mut data_set = q::SelectionSet {
@@ -320,7 +320,7 @@ pub fn execute_root_selection_set_uncached(
 
     // If we are getting regular data, prefetch it from the database
     let mut values = if data_set.items.is_empty() && meta_items.is_empty() {
-        BTreeMap::default()
+        Object::default()
     } else {
         let initial_data = ctx.resolver.prefetch(&ctx, &data_set)?;
         data_set.items.extend(meta_items);
@@ -506,14 +506,14 @@ fn execute_selection_set_to_map<'a>(
     selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
     object_type: &s::ObjectType,
     prefetched_value: Option<r::Value>,
-) -> Result<BTreeMap<String, r::Value>, Vec<QueryExecutionError>> {
+) -> Result<Object, Vec<QueryExecutionError>> {
     let mut prefetched_object = match prefetched_value {
         Some(r::Value::Object(object)) => Some(object),
         Some(_) => unreachable!(),
         None => None,
     };
     let mut errors: Vec<QueryExecutionError> = Vec::new();
-    let mut result_map: BTreeMap<String, r::Value> = BTreeMap::new();
+    let mut result_map = Object::new();
 
     // Group fields with the same response key, so we can execute them together
     let grouped_field_set = collect_fields(ctx, object_type, selection_sets);
@@ -1063,7 +1063,7 @@ pub fn coerce_argument_values<'a>(
                 if argument_def.name == "text".to_string() {
                     coerced_values.insert(
                         argument_def.name.as_str(),
-                        r::Value::Object(BTreeMap::from_iter(vec![(field.name.clone(), value)])),
+                        r::Value::Object(Object::from_iter(vec![(field.name.clone(), value)])),
                     );
                 } else {
                     coerced_values.insert(&argument_def.name, value);

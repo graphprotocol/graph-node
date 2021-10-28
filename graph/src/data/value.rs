@@ -3,6 +3,78 @@ use serde::ser::{SerializeMap, SerializeSeq, Serializer};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
+use std::iter::FromIterator;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Object(BTreeMap<String, Value>);
+
+impl Object {
+    pub fn new() -> Self {
+        Self(BTreeMap::default())
+    }
+
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        self.0.get(key)
+    }
+
+    pub fn remove(&mut self, key: &str) -> Option<Value> {
+        self.0.remove(key)
+    }
+
+    pub fn iter(&self) -> std::collections::btree_map::Iter<String, Value> {
+        self.into_iter()
+    }
+
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn extend(&mut self, other: Object) {
+        self.0.extend(other.0)
+    }
+
+    pub fn insert(&mut self, key: String, value: Value) -> Option<Value> {
+        self.0.insert(key, value)
+    }
+}
+
+impl FromIterator<(String, Value)> for Object {
+    fn from_iter<T: IntoIterator<Item = (String, Value)>>(iter: T) -> Self {
+        Object(BTreeMap::from_iter(iter))
+    }
+}
+
+impl IntoIterator for Object {
+    type Item = (String, Value);
+
+    type IntoIter = std::collections::btree_map::IntoIter<String, Value>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a Object {
+    type Item = (&'a String, &'a Value);
+
+    type IntoIter = std::collections::btree_map::Iter<'a, String, Value>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl CacheWeight for Object {
+    fn indirect_weight(&self) -> usize {
+        self.0.indirect_weight()
+    }
+}
+
+impl Default for Object {
+    fn default() -> Self {
+        Self(BTreeMap::default())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -13,10 +85,14 @@ pub enum Value {
     Null,
     Enum(String),
     List(Vec<Value>),
-    Object(BTreeMap<String, Value>),
+    Object(Object),
 }
 
 impl Value {
+    pub fn object(map: BTreeMap<String, Value>) -> Self {
+        Value::Object(Object(map))
+    }
+
     pub fn is_null(&self) -> bool {
         matches!(self, Value::Null)
     }
@@ -164,7 +240,7 @@ impl TryFrom<q::Value> for Value {
                     let value = Value::try_from(value)?;
                     rmap.insert(key, value);
                 }
-                Ok(Value::Object(rmap))
+                Ok(Value::object(rmap))
             }
         }
     }
