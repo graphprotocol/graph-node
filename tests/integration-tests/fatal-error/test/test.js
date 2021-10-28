@@ -30,6 +30,7 @@ const waitForSubgraphToFailWithError = async (blockNumber) =>
           query: `{
             indexingStatusForCurrentVersion(subgraphName: "test/fatal-error") {
               health
+              entityCount
               fatalError {
                 block {
                   number
@@ -65,6 +66,8 @@ const waitForSubgraphToFailWithError = async (blockNumber) =>
                   status.fatalError.block.number
               )
             );
+          } else if (status.entityCount != 1) {
+            return reject(new Error("There should be only one entity saved in the database, the Proof of Indexing"));
           } else {
             resolve();
           }

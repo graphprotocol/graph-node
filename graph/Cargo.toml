@@ -1,15 +1,15 @@
 [package]
 name = "graph"
-version = "0.24.1"
+version = "0.24.2"
 edition = "2018"
 
 [dependencies]
 anyhow = "1.0"
 async-trait = "0.1.50"
-atomic_refcell = "0.1.7"
+atomic_refcell = "0.1.8"
 bigdecimal = { version = "0.1.0", features = ["serde"] }
 bytes = "1.0.1"
-diesel = { version = "1.4.7", features = ["postgres", "serde_json", "numeric", "r2d2", "chrono"] }
+diesel = { version = "1.4.8", features = ["postgres", "serde_json", "numeric", "r2d2", "chrono"] }
 diesel_derives = "1.4"
 chrono = "0.4.19"
 Inflector = "0.11.3"
@@ -47,12 +47,15 @@ slog-envlogger = "2.1.0"
 slog-term = "2.7.0"
 petgraph = "0.6.0"
 tiny-keccak = "1.5.0"
-tokio = { version = "1.11.0", features = ["time", "sync", "macros", "test-util", "rt-multi-thread", "parking_lot"] }
+tokio = { version = "1.12.0", features = ["time", "sync", "macros", "test-util", "rt-multi-thread", "parking_lot"] }
 tokio-stream = { version = "0.1.7", features = ["sync"] }
 tokio-retry = "0.3.0"
 url = "2.2.1"
-prometheus = "0.12.0"
+prometheus = "0.13.0"
 priority-queue = "0.7.0"
+tonic = { version = "0.5.1", features = ["tls-roots"] }
+prost = "0.8.0"
+prost-types = "0.8.0"
 futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
 wasmparser = "0.78.2"
 thiserror = "1.0.25"
@@ -67,3 +70,6 @@ serde_plain = "1.0.0"
 test-store = { path = "../store/test-store" }
 maplit = "1.0.2"
 structopt = { version = "0.3" }
+
+[build-dependencies]
+tonic-build = "0.5.1"

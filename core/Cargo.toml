@@ -1,11 +1,11 @@
 [package]
 name = "graph-core"
-version = "0.24.1"
+version = "0.24.2"
 edition = "2018"
 
 [dependencies]
 async-trait = "0.1.50"
-atomic_refcell = "0.1.7"
+atomic_refcell = "0.1.8"
 bytes = "0.5"
 futures01 = { package="futures", version="0.1.31" }
 futures = { version="0.3.4", features=["compat"] }
@@ -13,6 +13,7 @@ graph = { path = "../graph" }
 # This dependency is temporary. The multiblockchain refactoring is not
 # finished as long as this dependency exists
 graph-chain-ethereum = { path = "../chain/ethereum" }
+graph-chain-near = { path = "../chain/near" }
 lazy_static = "1.2.0"
 lru_time_cache = "0.11"
 semver = "1.0.3"
@@ -29,5 +30,5 @@ walkdir = "2.3.2"
 test-store = { path = "../store/test-store" }
 hex = "0.4.3"
 graphql-parser = "0.3"
-pretty_assertions = "0.7.2"
+pretty_assertions = "1.0.0"
 anyhow = "1.0"

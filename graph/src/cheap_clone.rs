@@ -2,6 +2,7 @@ use slog::Logger;
 use std::future::Future;
 use std::rc::Rc;
 use std::sync::Arc;
+use tonic::transport::Channel;
 
 /// Things that are fast to clone in the context of an application such as Graph Node
 ///
@@ -33,3 +34,5 @@ impl CheapClone for Logger {}
 impl<M: diesel::r2d2::ManageConnection> CheapClone for diesel::r2d2::Pool<M> {}
 
 impl<F: Future> CheapClone for futures03::future::Shared<F> {}
+
+impl CheapClone for Channel {}

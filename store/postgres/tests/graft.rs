@@ -51,7 +51,9 @@ type User @entity {
     name: String,
     email: String,
     age: Int,
-    favorite_color: Color
+    favorite_color: Color,
+    # A column in the dst schema that does not exist in the src schema
+    added: String,
 }
 ";
 
@@ -257,7 +259,7 @@ fn create_grafted_subgraph(
     test_store::create_subgraph(subgraph_id, schema, base)
 }
 
-fn check_graft(
+async fn check_graft(
     store: Arc<DieselSubgraphStore>,
     deployment: DeploymentLocator,
 ) -> Result<(), StoreError> {
@@ -296,12 +298,15 @@ fn check_graft(
     transact_entity_operations(&store, &deployment, BLOCKS[2].clone(), vec![op]).unwrap();
 
     store
-        .writable(&deployment)?
+        .cheap_clone()
+        .writable(LOGGER.clone(), deployment.id)
+        .await?
         .revert_block_operations(BLOCKS[1].clone())
         .expect("We can revert a block we just created");
 
     let err = store
-        .writable(&deployment)?
+        .writable(LOGGER.clone(), deployment.id)
+        .await?
         .revert_block_operations(BLOCKS[0].clone())
         .expect_err("Reverting past graft point is not allowed");
 
@@ -325,7 +330,7 @@ fn graft() {
         )
         .expect("can create grafted subgraph");
 
-        check_graft(store, deployment)
+        check_graft(store, deployment).await
     })
 }
 
@@ -352,11 +357,13 @@ fn copy() {
             store.copy_deployment(&src, dst_shard, NODE_ID.clone(), BLOCKS[1].clone())?;
 
         store
-            .writable(&deployment)?
+            .cheap_clone()
+            .writable(LOGGER.clone(), deployment.id)
+            .await?
             .start_subgraph_deployment(&*LOGGER)?;
 
         store.activate(&deployment)?;
 
-        check_graft(store, deployment)
+        check_graft(store, deployment).await
     })
 }

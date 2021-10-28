@@ -1,6 +1,7 @@
 use anyhow::Error;
 use ethabi::{Error as ABIError, Function, ParamType, Token};
 use futures::Future;
+use graph::blockchain::ChainIdentifier;
 use mockall::automock;
 use mockall::predicate::*;
 use std::cmp;
@@ -11,12 +12,12 @@ use thiserror::Error;
 use tiny_keccak::keccak256;
 use web3::types::{Address, Block, Log, H256};
 
+use graph::prelude::*;
 use graph::{
     blockchain as bc,
     components::metrics::{CounterVec, GaugeVec, HistogramVec},
     petgraph::{self, graphmap::GraphMap},
 };
-use graph::{components::ethereum::EthereumNetworkIdentifier, prelude::*};
 
 use crate::capabilities::NodeCapabilities;
 use crate::data_source::BlockHandlerFilter;
@@ -105,12 +106,6 @@ impl TriggerFilter {
 }
 
 impl bc::TriggerFilter<Chain> for TriggerFilter {
-    fn from_data_sources<'a>(data_sources: impl Iterator<Item = &'a DataSource> + Clone) -> Self {
-        let mut this = Self::default();
-        this.extend(data_sources);
-        this
-    }
-
     fn extend<'a>(&mut self, data_sources: impl Iterator<Item = &'a DataSource> + Clone) {
         self.log
             .extend(EthereumLogFilter::from_data_sources(data_sources.clone()));
@@ -150,7 +145,7 @@ impl EthereumLogFilter {
                 // The `Log` matches the filter either if the filter contains
                 // a (contract address, event signature) pair that matches the
                 // `Log`, or if the filter contains wildcard event that matches.
-                let contract = LogFilterNode::Contract(log.address.clone());
+                let contract = LogFilterNode::Contract(log.address);
                 let event = LogFilterNode::Event(*sig);
                 self.contracts_and_events_graph
                     .all_edges()
@@ -276,32 +271,32 @@ pub(crate) struct EthereumCallFilter {
 
 impl EthereumCallFilter {
     pub fn matches(&self, call: &EthereumCall) -> bool {
-        // Ensure the call is to a contract the filter expressed an interest in
-        if !self
-            .contract_addresses_function_signatures
-            .contains_key(&call.to)
-        {
+        // Calls returned by Firehose actually contains pure transfers and smart
+        // contract calls. If the input is less than 4 bytes, we assume it's a pure transfer
+        // and discards those.
+        if call.input.0.len() < 4 {
             return false;
         }
-        // If the call is to a contract with no specified functions, keep the call
-        if self
-            .contract_addresses_function_signatures
-            .get(&call.to)
-            .unwrap()
-            .1
-            .is_empty()
-        {
-            // Allow the ability to match on calls to a contract generally
-            // If you want to match on a generic call to contract this limits you
-            // from matching with a specific call to a contract
-            return true;
+
+        // Ensure the call is to a contract the filter expressed an interest in
+        match self.contract_addresses_function_signatures.get(&call.to) {
+            None => false,
+            Some(v) => {
+                let signature = &v.1;
+
+                // If the call is to a contract with no specified functions, keep the call
+                //
+                // Allows the ability to genericly match on all calls to a contract.
+                // Caveat is this catch all clause limits you from matching with a specific call
+                // on the same address
+                if signature.is_empty() {
+                    true
+                } else {
+                    // Ensure the call is to run a function the filter expressed an interest in
+                    signature.contains(&call.input.0[..4])
+                }
+            }
         }
-        // Ensure the call is to run a function the filter expressed an interest in
-        self.contract_addresses_function_signatures
-            .get(&call.to)
-            .unwrap()
-            .1
-            .contains(&call.input.0[..4])
     }
 
     pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
@@ -334,8 +329,7 @@ impl EthereumCallFilter {
                 .get_mut(&address)
             {
                 Some((existing_start_block, existing_sigs)) => {
-                    *existing_start_block =
-                        cmp::min(proposed_start_block, existing_start_block.clone());
+                    *existing_start_block = cmp::min(proposed_start_block, *existing_start_block);
                     existing_sigs.extend(new_sigs);
                 }
                 None => {
@@ -410,8 +404,8 @@ impl EthereumBlockFilter {
                     .clone()
                     .into_iter()
                     .any(|block_handler| match block_handler.filter {
-                        Some(ref filter) if *filter == BlockHandlerFilter::Call => return true,
-                        _ => return false,
+                        Some(ref filter) if *filter == BlockHandlerFilter::Call => true,
+                        _ => false,
                     });
 
                 let has_block_handler_without_filter = data_source
@@ -478,15 +472,15 @@ impl ProviderEthRpcMetrics {
             .new_histogram_vec(
                 "eth_rpc_request_duration",
                 "Measures eth rpc request duration",
-                vec![String::from("method")],
-                vec![0.05, 0.2, 0.5, 1.0, 3.0, 5.0],
+                vec![String::from("method"), String::from("provider")],
+                vec![0.05, 0.1, 0.2, 0.4, 0.8, 1.6, 3.2, 6.4, 12.8, 25.6],
             )
             .unwrap();
         let errors = registry
             .new_counter_vec(
                 "eth_rpc_errors",
                 "Counts eth rpc request errors",
-                vec![String::from("method")],
+                vec![String::from("method"), String::from("provider")],
             )
             .unwrap();
         Self {
@@ -495,14 +489,14 @@ impl ProviderEthRpcMetrics {
         }
     }
 
-    pub fn observe_request(&self, duration: f64, method: &str) {
+    pub fn observe_request(&self, duration: f64, method: &str, provider: &str) {
         self.request_duration
-            .with_label_values(vec![method].as_slice())
+            .with_label_values(&[method, provider])
             .observe(duration);
     }
 
-    pub fn add_error(&self, method: &str) {
-        self.errors.with_label_values(vec![method].as_slice()).inc();
+    pub fn add_error(&self, method: &str, provider: &str) {
+        self.errors.with_label_values(&[method, provider]).inc();
     }
 }
 
@@ -519,7 +513,7 @@ impl SubgraphEthRpcMetrics {
                 "deployment_eth_rpc_request_duration",
                 "Measures eth rpc request duration for a subgraph deployment",
                 &subgraph_hash,
-                vec![String::from("method")],
+                vec![String::from("method"), String::from("provider")],
             )
             .unwrap();
         let errors = registry
@@ -527,7 +521,7 @@ impl SubgraphEthRpcMetrics {
                 "deployment_eth_rpc_errors",
                 "Counts eth rpc request errors for a subgraph deployment",
                 &subgraph_hash,
-                vec![String::from("method")],
+                vec![String::from("method"), String::from("provider")],
             )
             .unwrap();
         Self {
@@ -536,14 +530,14 @@ impl SubgraphEthRpcMetrics {
         }
     }
 
-    pub fn observe_request(&self, duration: f64, method: &str) {
+    pub fn observe_request(&self, duration: f64, method: &str, provider: &str) {
         self.request_duration
-            .with_label_values(vec![method].as_slice())
+            .with_label_values(&[method, provider])
             .set(duration);
     }
 
-    pub fn add_error(&self, method: &str) {
-        self.errors.with_label_values(vec![method].as_slice()).inc();
+    pub fn add_error(&self, method: &str, provider: &str) {
+        self.errors.with_label_values(&[method, provider]).inc();
     }
 }
 
@@ -561,7 +555,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
 
     /// Ask the Ethereum node for some identifying information about the Ethereum network it is
     /// connected to.
-    async fn net_identifiers(&self) -> Result<EthereumNetworkIdentifier, Error>;
+    async fn net_identifiers(&self) -> Result<ChainIdentifier, Error>;
 
     /// Get the latest block, including full transactions.
     fn latest_block(
@@ -588,7 +582,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: Logger,
         chain_store: Arc<dyn ChainStore>,
         block_hashes: HashSet<H256>,
-    ) -> Box<dyn Stream<Item = LightEthereumBlock, Error = Error> + Send>;
+    ) -> Box<dyn Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send>;
 
     /// Find a block by its hash.
     fn block_by_hash(
@@ -653,9 +647,54 @@ mod tests {
     use super::EthereumCallFilter;
 
     use graph::prelude::web3::types::Address;
+    use graph::prelude::EthereumCall;
+    use web3::types::Bytes;
 
     use std::collections::{HashMap, HashSet};
     use std::iter::FromIterator;
+
+    #[test]
+    fn matching_ethereum_call_filter() {
+        let address = |id: u64| Address::from_low_u64_be(id);
+        let bytes = |value: Vec<u8>| Bytes::from(value);
+        let call = |to: Address, input: Vec<u8>| EthereumCall {
+            to,
+            input: bytes(input),
+            ..Default::default()
+        };
+
+        let filter = EthereumCallFilter {
+            contract_addresses_function_signatures: HashMap::from_iter(vec![
+                (address(0), (0, HashSet::from_iter(vec![[0u8; 4]]))),
+                (address(1), (1, HashSet::from_iter(vec![[1u8; 4]]))),
+                (address(2), (2, HashSet::new())),
+            ]),
+        };
+
+        assert_eq!(
+            false,
+            filter.matches(&call(address(2), vec![])),
+            "call with empty bytes are always ignore, whatever the condition"
+        );
+
+        assert_eq!(
+            false,
+            filter.matches(&call(address(4), vec![1; 36])),
+            "call with incorrect address should be ignored"
+        );
+
+        assert_eq!(
+            true,
+            filter.matches(&call(address(1), vec![1; 36])),
+            "call with correct address & signature should match"
+        );
+
+        assert_eq!(
+            false,
+            filter.matches(&call(address(1), vec![4u8; 36])),
+            "call with correct address but incorrect signature for a specific contract filter (i.e. matches some signatures) should be ignored"
+        );
+    }
 
     #[test]
     fn extending_ethereum_call_filter() {

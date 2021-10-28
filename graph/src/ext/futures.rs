@@ -17,6 +17,12 @@ pub struct Cancelable<T, C> {
     on_cancel: C,
 }
 
+impl<T, C> Cancelable<T, C> {
+    pub fn get_mut(&mut self) -> &mut T {
+        &mut self.inner
+    }
+}
+
 /// It's not viable to use `select` directly, so we do a custom implementation.
 impl<S: Stream + Unpin, C: Fn() -> S::Item + Unpin> Stream for Cancelable<S, C> {
     type Item = S::Item;

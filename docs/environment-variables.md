@@ -99,6 +99,12 @@ those.
 - `GRAPH_GRAPHQL_MAX_SKIP`: maximum value that can be used for the `skip`
   argument in GraphQL queries. The default value for
   `GRAPH_GRAPHQL_MAX_SKIP` is unlimited.
+- `GRAPH_GRAPHQL_WARN_RESULT_SIZE` and `GRAPH_GRAPHQL_ERROR_RESULT_SIZE`:
+  if a GraphQL result is larger than these sizes in bytes, log a warning
+  respectively abort query execution and return an error. The size of the
+  result is checked while the response is being constructed, so that
+  execution does not take more memory than what is configured. The default
+  value for both is unlimited.
 - `GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION`: maximum number of GraphQL
   operations per WebSocket connection. Any operation created after the limit
   will return an error to the client. Default: unlimited.

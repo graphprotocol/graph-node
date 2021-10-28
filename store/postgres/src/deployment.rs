@@ -34,6 +34,15 @@ pub enum SubgraphHealth {
     Unhealthy,
 }
 
+impl SubgraphHealth {
+    fn is_failed(&self) -> bool {
+        match self {
+            Self::Failed => true,
+            Self::Healthy | Self::Unhealthy => false,
+        }
+    }
+}
+
 impl From<SubgraphHealth> for graph::data::subgraph::schema::SubgraphHealth {
     fn from(health: SubgraphHealth) -> Self {
         use graph::data::subgraph::schema::SubgraphHealth as H;
@@ -69,6 +78,7 @@ table! {
         reorg_count -> Integer,
         current_reorg_depth -> Integer,
         max_reorg_depth -> Integer,
+        firehose_cursor -> Nullable<Text>,
     }
 }
 
@@ -201,6 +211,7 @@ pub fn manifest_info(
         .map(|schema| (schema, description, repository))
 }
 
+#[allow(dead_code)]
 pub fn features(conn: &PgConnection, site: &Site) -> Result<BTreeSet<SubgraphFeature>, StoreError> {
     use subgraph_manifest as sm;
 
@@ -218,7 +229,7 @@ pub fn features(conn: &PgConnection, site: &Site) -> Result<BTreeSet<SubgraphFea
 pub fn forward_block_ptr(
     conn: &PgConnection,
     id: &DeploymentHash,
-    ptr: BlockPtr,
+    ptr: &BlockPtr,
 ) -> Result<(), StoreError> {
     use crate::diesel::BoolExpressionMethods;
     use subgraph_deployment as d;
@@ -262,6 +273,34 @@ pub fn forward_block_ptr(
             "duplicate deployments in shard".to_owned(),
         )),
     }
+}
+
+pub fn get_subgraph_firehose_cursor(
+    conn: &PgConnection,
+    deployment_hash: &DeploymentHash,
+) -> Result<Option<String>, StoreError> {
+    use subgraph_deployment as d;
+
+    let res = d::table
+        .filter(d::deployment.eq(deployment_hash.as_str()))
+        .select(d::firehose_cursor)
+        .first::<Option<String>>(conn)
+        .map_err(|e| StoreError::from(e));
+    res
+}
+
+pub fn update_firehose_cursor(
+    conn: &PgConnection,
+    id: &DeploymentHash,
+    cursor: &str,
+) -> Result<(), StoreError> {
+    use subgraph_deployment as d;
+
+    update(d::table.filter(d::deployment.eq(id.as_str())))
+        .set((d::firehose_cursor.eq(cursor),))
+        .execute(conn)
+        .map(|_| ())
+        .map_err(|e| e.into())
 }
 
 pub fn revert_block_ptr(
@@ -421,7 +460,7 @@ pub fn exists_and_synced(conn: &PgConnection, id: &str) -> Result<bool, StoreErr
 }
 
 // Does nothing if the error already exists. Returns the error id.
-fn insert_subgraph_error(conn: &PgConnection, error: SubgraphError) -> anyhow::Result<String> {
+fn insert_subgraph_error(conn: &PgConnection, error: &SubgraphError) -> anyhow::Result<String> {
     use subgraph_error as e;
 
     let error_id = hex::encode(&stable_hash::utils::stable_hash::<SetHasher, _>(&error));
@@ -435,7 +474,7 @@ fn insert_subgraph_error(conn: &PgConnection, error: SubgraphError) -> anyhow::R
 
     let block_num = match &block_ptr {
         None => {
-            assert_eq!(deterministic, false);
+            assert_eq!(*deterministic, false);
             crate::block_range::BLOCK_UNVERSIONED
         }
         Some(block) => crate::block_range::block_number(block),
@@ -460,18 +499,12 @@ fn insert_subgraph_error(conn: &PgConnection, error: SubgraphError) -> anyhow::R
 pub fn fail(
     conn: &PgConnection,
     id: &DeploymentHash,
-    error: SubgraphError,
+    error: &SubgraphError,
 ) -> Result<(), StoreError> {
-    use subgraph_deployment as d;
-
     let error_id = insert_subgraph_error(conn, error)?;
-    update(d::table.filter(d::deployment.eq(id.as_str())))
-        .set((
-            d::failed.eq(true),
-            d::health.eq(SubgraphHealth::Failed),
-            d::fatal_error.eq(Some(error_id)),
-        ))
-        .execute(conn)?;
+
+    update_deployment_status(conn, id, SubgraphHealth::Failed, Some(error_id))?;
+
     Ok(())
 }
 
@@ -512,50 +545,54 @@ pub(crate) fn has_non_fatal_errors(
     .map_err(|e| e.into())
 }
 
-/// Clear the `SubgraphHealth::Failed` status of a subgraph and mark it as
-/// healthy or unhealthy depending on whether it also had non-fatal errors
-pub fn unfail(conn: &PgConnection, id: &DeploymentHash) -> Result<(), StoreError> {
+pub fn get_fatal_error_id(
+    conn: &PgConnection,
+    deployment_id: &DeploymentHash,
+) -> Result<Option<String>, StoreError> {
     use subgraph_deployment as d;
-    use subgraph_error as e;
-    use SubgraphHealth::*;
-
-    let prev_health = if has_non_fatal_errors(conn, id, None)? {
-        Unhealthy
-    } else {
-        Healthy
-    };
-
-    let fatal_error_id = match d::table
-        .filter(d::deployment.eq(id.as_str()))
+    d::table
+        .filter(d::deployment.eq(deployment_id.as_str()))
         .select(d::fatal_error)
-        .get_result::<Option<String>>(conn)?
-    {
-        Some(fatal_error_id) => fatal_error_id,
+        .get_result(conn)
+        .map_err(StoreError::from)
+}
 
-        // If the subgraph is not failed then there is nothing to do.
-        None => return Ok(()),
-    };
+pub fn get_error_block_hash(
+    conn: &PgConnection,
+    error_id: &str,
+) -> Result<Option<Vec<u8>>, StoreError> {
+    use subgraph_error as e;
+    e::table
+        .filter(e::id.eq(error_id))
+        .select(e::block_hash)
+        .get_result(conn)
+        .map_err(StoreError::from)
+}
 
-    // Unfail the deployment.
-    update(d::table.filter(d::deployment.eq(id.as_str())))
+pub fn update_deployment_status(
+    conn: &PgConnection,
+    deployment_id: &DeploymentHash,
+    health: SubgraphHealth,
+    fatal_error: Option<String>,
+) -> Result<(), StoreError> {
+    use subgraph_deployment as d;
+
+    update(d::table.filter(d::deployment.eq(deployment_id.as_str())))
         .set((
-            d::failed.eq(false),
-            d::health.eq(prev_health),
-            d::fatal_error.eq::<Option<String>>(None),
+            d::failed.eq(health.is_failed()),
+            d::health.eq(health),
+            d::fatal_error.eq::<Option<String>>(fatal_error),
         ))
-        .execute(conn)?;
-
-    // Delete the fatal error.
-    delete(e::table.filter(e::id.eq(fatal_error_id))).execute(conn)?;
-
-    Ok(())
+        .execute(conn)
+        .map(|_| ())
+        .map_err(StoreError::from)
 }
 
 /// Insert the errors and check if the subgraph needs to be set as unhealthy.
 pub(crate) fn insert_subgraph_errors(
     conn: &PgConnection,
     id: &DeploymentHash,
-    deterministic_errors: Vec<SubgraphError>,
+    deterministic_errors: &[SubgraphError],
     block: BlockNumber,
 ) -> Result<(), StoreError> {
     for error in deterministic_errors {
@@ -678,14 +715,22 @@ pub(crate) fn copy_errors(
         .execute(conn)?)
 }
 
-/// Drop the schema `namespace`. This deletes all data for the subgraph,
-/// and can not be reversed. It does not remove any of the metadata
-/// in the `subgraphs` schema for the deployment
+/// Drop the schema `namespace`. This deletes all data for the subgraph, and
+/// can not be reversed. It does not remove any of the metadata in the
+/// `subgraphs` schema for the deployment.
+///
+/// Since long-running operations, like a vacuum on one of the tables in the
+/// schema, could block dropping the schema indefinitely, this operation
+/// will wait at most 2s to aquire all necessary locks, and fail if that is
+/// not possible.
 pub fn drop_schema(
     conn: &diesel::pg::PgConnection,
     namespace: &crate::primary::Namespace,
 ) -> Result<(), StoreError> {
-    let query = format!("drop schema if exists {} cascade", namespace);
+    let query = format!(
+        "set local lock_timeout=2000; drop schema if exists {} cascade",
+        namespace
+    );
     Ok(conn.batch_execute(&*query)?)
 }
 

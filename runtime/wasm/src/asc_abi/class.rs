@@ -8,7 +8,6 @@ use graph::{prelude::serde_json, runtime::DeterministicHostError};
 use graph::{prelude::slog, runtime::AscPtr};
 use graph_runtime_derive::AscType;
 use semver::Version;
-use std::mem::size_of;
 
 ///! Rust types that have with a direct correspondence to an Asc class,
 ///! with their `AscType` implementations.
@@ -44,11 +43,11 @@ impl AscType for ArrayBuffer {
 
     fn from_asc_bytes(
         asc_obj: &[u8],
-        api_version: Version,
+        api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
-        match &api_version {
+        match api_version {
             version if *version <= Version::new(0, 0, 4) => Ok(Self::ApiVersion0_0_4(
-                v0_0_4::ArrayBuffer::from_asc_bytes(asc_obj, api_version.clone())?,
+                v0_0_4::ArrayBuffer::from_asc_bytes(asc_obj, api_version)?,
             )),
             _ => Ok(Self::ApiVersion0_0_5(v0_0_5::ArrayBuffer::from_asc_bytes(
                 asc_obj,
@@ -119,11 +118,11 @@ impl<T> AscType for TypedArray<T> {
 
     fn from_asc_bytes(
         asc_obj: &[u8],
-        api_version: Version,
+        api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
-        match &api_version {
+        match api_version {
             version if *version <= Version::new(0, 0, 4) => Ok(Self::ApiVersion0_0_4(
-                v0_0_4::TypedArray::from_asc_bytes(asc_obj, api_version.clone())?,
+                v0_0_4::TypedArray::from_asc_bytes(asc_obj, api_version)?,
             )),
             _ => Ok(Self::ApiVersion0_0_5(v0_0_5::TypedArray::from_asc_bytes(
                 asc_obj,
@@ -214,11 +213,11 @@ impl AscType for AscString {
 
     fn from_asc_bytes(
         asc_obj: &[u8],
-        api_version: Version,
+        api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
-        match &api_version {
+        match api_version {
             version if *version <= Version::new(0, 0, 4) => Ok(Self::ApiVersion0_0_4(
-                v0_0_4::AscString::from_asc_bytes(asc_obj, api_version.clone())?,
+                v0_0_4::AscString::from_asc_bytes(asc_obj, api_version)?,
             )),
             _ => Ok(Self::ApiVersion0_0_5(v0_0_5::AscString::from_asc_bytes(
                 asc_obj,
@@ -283,11 +282,11 @@ impl<T> AscType for Array<T> {
 
     fn from_asc_bytes(
         asc_obj: &[u8],
-        api_version: Version,
+        api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
-        match &api_version {
+        match api_version {
             version if *version <= Version::new(0, 0, 4) => Ok(Self::ApiVersion0_0_4(
-                v0_0_4::Array::from_asc_bytes(asc_obj, api_version.clone())?,
+                v0_0_4::Array::from_asc_bytes(asc_obj, api_version)?,
             )),
             _ => Ok(Self::ApiVersion0_0_5(v0_0_5::Array::from_asc_bytes(
                 asc_obj,
@@ -387,7 +386,7 @@ impl AscType for EnumPayload {
 
     fn from_asc_bytes(
         asc_obj: &[u8],
-        api_version: Version,
+        api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
         Ok(EnumPayload(u64::from_asc_bytes(asc_obj, api_version)?))
     }

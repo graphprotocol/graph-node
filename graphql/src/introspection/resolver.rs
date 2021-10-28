@@ -7,7 +7,7 @@ use graph::prelude::*;
 use crate::prelude::*;
 use crate::schema::ast as sast;
 
-type TypeObjectsMap = BTreeMap<String, q::Value>;
+type TypeObjectsMap = BTreeMap<String, r::Value>;
 
 fn schema_type_objects(schema: &Schema) -> TypeObjectsMap {
     sast::get_type_definitions(&schema.document).iter().fold(
@@ -23,10 +23,10 @@ fn schema_type_objects(schema: &Schema) -> TypeObjectsMap {
     )
 }
 
-fn type_object(schema: &Schema, type_objects: &mut TypeObjectsMap, t: &s::Type) -> q::Value {
+fn type_object(schema: &Schema, type_objects: &mut TypeObjectsMap, t: &s::Type) -> r::Value {
     match t {
         // We store the name of the named type here to be able to resolve it dynamically later
-        s::Type::NamedType(s) => q::Value::String(s.to_owned()),
+        s::Type::NamedType(s) => r::Value::String(s.to_owned()),
         s::Type::ListType(ref inner) => list_type_object(schema, type_objects, inner),
         s::Type::NonNullType(ref inner) => non_null_type_object(schema, type_objects, inner),
     }
@@ -36,9 +36,9 @@ fn list_type_object(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
     inner_type: &s::Type,
-) -> q::Value {
+) -> r::Value {
     object! {
-        kind: q::Value::Enum(String::from("LIST")),
+        kind: r::Value::Enum(String::from("LIST")),
         ofType: type_object(schema, type_objects, inner_type),
     }
 }
@@ -47,9 +47,9 @@ fn non_null_type_object(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
     inner_type: &s::Type,
-) -> q::Value {
+) -> r::Value {
     object! {
-        kind: q::Value::Enum(String::from("NON_NULL")),
+        kind: r::Value::Enum(String::from("NON_NULL")),
         ofType: type_object(schema, type_objects, inner_type),
     }
 }
@@ -58,7 +58,7 @@ fn type_definition_object(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
     typedef: &s::TypeDefinition,
-) -> q::Value {
+) -> r::Value {
     let type_name = sast::get_type_name(typedef);
 
     type_objects.get(type_name).cloned().unwrap_or_else(|| {
@@ -82,25 +82,25 @@ fn type_definition_object(
     })
 }
 
-fn enum_type_object(enum_type: &s::EnumType) -> q::Value {
+fn enum_type_object(enum_type: &s::EnumType) -> r::Value {
     object! {
-        kind: q::Value::Enum(String::from("ENUM")),
+        kind: r::Value::Enum(String::from("ENUM")),
         name: enum_type.name.to_owned(),
         description: enum_type.description.clone(),
         enumValues: enum_values(enum_type),
     }
 }
 
-fn enum_values(enum_type: &s::EnumType) -> q::Value {
-    q::Value::List(enum_type.values.iter().map(enum_value).collect())
+fn enum_values(enum_type: &s::EnumType) -> r::Value {
+    r::Value::List(enum_type.values.iter().map(enum_value).collect())
 }
 
-fn enum_value(enum_value: &s::EnumValue) -> q::Value {
+fn enum_value(enum_value: &s::EnumValue) -> r::Value {
     object! {
         name: enum_value.name.to_owned(),
         description: enum_value.description.clone(),
         isDeprecated: false,
-        deprecationReason: q::Value::Null,
+        deprecationReason: r::Value::Null,
     }
 }
 
@@ -108,11 +108,11 @@ fn input_object_type_object(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
     input_object_type: &s::InputObjectType,
-) -> q::Value {
+) -> r::Value {
     let input_values = input_values(schema, type_objects, &input_object_type.fields);
     object! {
         name: input_object_type.name.to_owned(),
-        kind: q::Value::Enum(String::from("INPUT_OBJECT")),
+        kind: r::Value::Enum(String::from("INPUT_OBJECT")),
         description: input_object_type.description.clone(),
         inputFields: input_values,
     }
@@ -122,16 +122,16 @@ fn interface_type_object(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
     interface_type: &s::InterfaceType,
-) -> q::Value {
+) -> r::Value {
     object! {
         name: interface_type.name.to_owned(),
-        kind: q::Value::Enum(String::from("INTERFACE")),
+        kind: r::Value::Enum(String::from("INTERFACE")),
         description: interface_type.description.clone(),
         fields:
             field_objects(schema, type_objects, &interface_type.fields),
         possibleTypes: schema.types_for_interface()[&interface_type.into()]
             .iter()
-            .map(|object_type| q::Value::String(object_type.name.to_owned()))
+            .map(|object_type| r::Value::String(object_type.name.to_owned()))
             .collect::<Vec<_>>(),
     }
 }
@@ -140,13 +140,13 @@ fn object_type_object(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
     object_type: &s::ObjectType,
-) -> q::Value {
+) -> r::Value {
     type_objects
         .get(&object_type.name)
         .cloned()
         .unwrap_or_else(|| {
             let type_object = object! {
-                kind: q::Value::Enum(String::from("OBJECT")),
+                kind: r::Value::Enum(String::from("OBJECT")),
                 name: object_type.name.to_owned(),
                 description: object_type.description.clone(),
                 fields: field_objects(schema, type_objects, &object_type.fields),
@@ -162,8 +162,8 @@ fn field_objects(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
     fields: &[s::Field],
-) -> q::Value {
-    q::Value::List(
+) -> r::Value {
+    r::Value::List(
         fields
             .iter()
             .map(|field| field_object(schema, type_objects, field))
@@ -171,14 +171,14 @@ fn field_objects(
     )
 }
 
-fn field_object(schema: &Schema, type_objects: &mut TypeObjectsMap, field: &s::Field) -> q::Value {
+fn field_object(schema: &Schema, type_objects: &mut TypeObjectsMap, field: &s::Field) -> r::Value {
     object! {
         name: field.name.to_owned(),
         description: field.description.clone(),
         args: input_values(schema, type_objects, &field.arguments),
         type: type_object(schema, type_objects, &field.field_type),
         isDeprecated: false,
-        deprecationReason: q::Value::Null,
+        deprecationReason: r::Value::Null,
     }
 }
 
@@ -186,8 +186,8 @@ fn object_interfaces(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
     object_type: &s::ObjectType,
-) -> q::Value {
-    q::Value::List(
+) -> r::Value {
+    r::Value::List(
         schema
             .interfaces_for_type(&object_type.into())
             .unwrap_or(&vec![])
@@ -197,20 +197,20 @@ fn object_interfaces(
     )
 }
 
-fn scalar_type_object(scalar_type: &s::ScalarType) -> q::Value {
+fn scalar_type_object(scalar_type: &s::ScalarType) -> r::Value {
     object! {
         name: scalar_type.name.to_owned(),
-        kind: q::Value::Enum(String::from("SCALAR")),
+        kind: r::Value::Enum(String::from("SCALAR")),
         description: scalar_type.description.clone(),
         isDeprecated: false,
-        deprecationReason: q::Value::Null,
+        deprecationReason: r::Value::Null,
     }
 }
 
-fn union_type_object(schema: &Schema, union_type: &s::UnionType) -> q::Value {
+fn union_type_object(schema: &Schema, union_type: &s::UnionType) -> r::Value {
     object! {
         name: union_type.name.to_owned(),
-        kind: q::Value::Enum(String::from("UNION")),
+        kind: r::Value::Enum(String::from("UNION")),
         description: union_type.description.clone(),
         possibleTypes:
             schema.document.get_object_type_definitions()
@@ -221,13 +221,13 @@ fn union_type_object(schema: &Schema, union_type: &s::UnionType) -> q::Value {
                         .iter()
                         .any(|implemented_name| implemented_name == &union_type.name)
                 })
-                .map(|object_type| q::Value::String(object_type.name.to_owned()))
+                .map(|object_type| r::Value::String(object_type.name.to_owned()))
                 .collect::<Vec<_>>(),
     }
 }
 
-fn schema_directive_objects(schema: &Schema, type_objects: &mut TypeObjectsMap) -> q::Value {
-    q::Value::List(
+fn schema_directive_objects(schema: &Schema, type_objects: &mut TypeObjectsMap) -> r::Value {
+    r::Value::List(
         schema
             .document
             .definitions
@@ -245,7 +245,7 @@ fn directive_object(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
     directive: &s::DirectiveDefinition,
-) -> q::Value {
+) -> r::Value {
     object! {
         name: directive.name.to_owned(),
         description: directive.description.clone(),
@@ -254,13 +254,13 @@ fn directive_object(
     }
 }
 
-fn directive_locations(directive: &s::DirectiveDefinition) -> q::Value {
-    q::Value::List(
+fn directive_locations(directive: &s::DirectiveDefinition) -> r::Value {
+    r::Value::List(
         directive
             .locations
             .iter()
             .map(|location| location.as_str())
-            .map(|name| q::Value::Enum(name.to_owned()))
+            .map(|name| r::Value::Enum(name.to_owned()))
             .collect(),
     )
 }
@@ -269,7 +269,7 @@ fn input_values(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
     input_values: &[s::InputValue],
-) -> Vec<q::Value> {
+) -> Vec<r::Value> {
     input_values
         .iter()
         .map(|value| input_value(schema, type_objects, value))
@@ -280,7 +280,7 @@ fn input_value(
     schema: &Schema,
     type_objects: &mut TypeObjectsMap,
     input_value: &s::InputValue,
-) -> q::Value {
+) -> r::Value {
     object! {
         name: input_value.name.to_owned(),
         description: input_value.description.clone(),
@@ -289,8 +289,8 @@ fn input_value(
             input_value
                 .default_value
                 .as_ref()
-                .map_or(q::Value::Null, |value| {
-                    q::Value::String(format!("{}", value))
+                .map_or(r::Value::Null, |value| {
+                    r::Value::String(format!("{}", value))
                 }),
     }
 }
@@ -299,7 +299,7 @@ fn input_value(
 pub struct IntrospectionResolver {
     logger: Logger,
     type_objects: TypeObjectsMap,
-    directives: q::Value,
+    directives: r::Value,
 }
 
 impl IntrospectionResolver {
@@ -319,7 +319,7 @@ impl IntrospectionResolver {
         }
     }
 
-    fn schema_object(&self) -> q::Value {
+    fn schema_object(&self) -> r::Value {
         object! {
             queryType:
                 self.type_objects
@@ -329,19 +329,19 @@ impl IntrospectionResolver {
                 self.type_objects
                     .get(&String::from("Subscription"))
                     .cloned(),
-            mutationType: q::Value::Null,
+            mutationType: r::Value::Null,
             types: self.type_objects.values().cloned().collect::<Vec<_>>(),
             directives: self.directives.clone(),
         }
     }
 
-    fn type_object(&self, name: &q::Value) -> q::Value {
+    fn type_object(&self, name: &r::Value) -> r::Value {
         match name {
-            q::Value::String(s) => Some(s),
+            r::Value::String(s) => Some(s),
             _ => None,
         }
         .and_then(|name| self.type_objects.get(name).cloned())
-        .unwrap_or(q::Value::Null)
+        .unwrap_or(r::Value::Null)
     }
 }
 
@@ -360,53 +360,60 @@ impl Resolver for IntrospectionResolver {
         &self,
         _: &ExecutionContext<Self>,
         _: &q::SelectionSet,
-    ) -> Result<Option<q::Value>, Vec<QueryExecutionError>> {
+    ) -> Result<Option<r::Value>, Vec<QueryExecutionError>> {
         Ok(None)
     }
 
     fn resolve_objects(
         &self,
-        prefetched_objects: Option<q::Value>,
+        prefetched_objects: Option<r::Value>,
         field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&str, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        _arguments: &HashMap<&str, r::Value>,
+    ) -> Result<r::Value, QueryExecutionError> {
         match field.name.as_str() {
             "possibleTypes" => {
                 let type_names = match prefetched_objects {
-                    Some(q::Value::List(type_names)) => Some(type_names),
+                    Some(r::Value::List(type_names)) => Some(type_names),
                     _ => None,
                 }
                 .unwrap_or_default();
 
                 if !type_names.is_empty() {
-                    Ok(q::Value::List(
+                    Ok(r::Value::List(
                         type_names
                             .iter()
                             .filter_map(|type_name| match type_name {
-                                q::Value::String(ref type_name) => Some(type_name),
+                                r::Value::String(ref type_name) => Some(type_name),
                                 _ => None,
                             })
                             .filter_map(|type_name| self.type_objects.get(type_name).cloned())
-                            .collect(),
+                            .map(|v| r::Value::try_from(v))
+                            .collect::<Result<_, _>>()
+                            .map_err(|v| {
+                                QueryExecutionError::ValueParseError(
+                                    "internal error resolving type name".to_string(),
+                                    v.to_string(),
+                                )
+                            })?,
                     ))
                 } else {
-                    Ok(q::Value::Null)
+                    Ok(r::Value::Null)
                 }
             }
-            _ => Ok(prefetched_objects.unwrap_or(q::Value::Null)),
+            _ => Ok(prefetched_objects.unwrap_or(r::Value::Null)),
         }
     }
 
     fn resolve_object(
         &self,
-        prefetched_object: Option<q::Value>,
+        prefetched_object: Option<r::Value>,
         field: &q::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        arguments: &HashMap<&str, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        arguments: &HashMap<&str, r::Value>,
+    ) -> Result<r::Value, QueryExecutionError> {
         let object = match field.name.as_str() {
             "__schema" => self.schema_object(),
             "__type" => {
@@ -419,15 +426,15 @@ impl Resolver for IntrospectionResolver {
                 self.type_object(name)
             }
             "type" | "ofType" => match prefetched_object {
-                Some(q::Value::String(type_name)) => self
+                Some(r::Value::String(type_name)) => self
                     .type_objects
                     .get(&type_name)
                     .cloned()
-                    .unwrap_or(q::Value::Null),
+                    .unwrap_or(r::Value::Null),
                 Some(v) => v,
-                None => q::Value::Null,
+                None => r::Value::Null,
             },
-            _ => prefetched_object.unwrap_or(q::Value::Null),
+            _ => prefetched_object.unwrap_or(r::Value::Null),
         };
         Ok(object)
     }

@@ -43,7 +43,6 @@ pub enum QueryExecutionError {
     MissingArgumentError(Pos, String),
     InvalidVariableTypeError(Pos, String),
     MissingVariableError(Pos, String),
-    ResolveEntityError(DeploymentHash, String, String, String),
     ResolveEntitiesError(String),
     OrderByNotSupportedError(String, String),
     OrderByNotSupportedForType(String),
@@ -81,6 +80,7 @@ pub enum QueryExecutionError {
     DeploymentReverted,
     SubgraphManifestResolveError(Arc<SubgraphManifestResolveError>),
     InvalidSubgraphManifest,
+    ResultTooBig(usize, usize),
 }
 
 impl Error for QueryExecutionError {
@@ -129,9 +129,6 @@ impl fmt::Display for QueryExecutionError {
             }
             MissingVariableError(_, s) => {
                 write!(f, "No value provided for required variable `{}`", s)
-            }
-            ResolveEntityError(_, entity, id, e) => {
-                write!(f, "Failed to get `{}` entity with ID `{}` from store: {}", entity, id, e)
             }
             ResolveEntitiesError(e) => {
                 write!(f, "Failed to get entities from store: {}", e)
@@ -224,6 +221,7 @@ impl fmt::Display for QueryExecutionError {
             DeploymentReverted => write!(f, "the chain was reorganized while executing the query"),
             SubgraphManifestResolveError(e) => write!(f, "failed to resolve subgraph manifest: {}", e),
             InvalidSubgraphManifest => write!(f, "invalid subgraph manifest file"),
+            ResultTooBig(actual, limit) => write!(f, "the result size of {} is larger than the allowed limit of {}", actual, limit),
         }
     }
 }

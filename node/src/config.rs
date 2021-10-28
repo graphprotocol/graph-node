@@ -1,5 +1,5 @@
 use graph::{
-    blockchain::block_ingestor::CLEANUP_BLOCKS,
+    blockchain::{block_ingestor::CLEANUP_BLOCKS, BlockchainKind},
     prelude::{
         anyhow::{anyhow, bail, Context, Result},
         info, serde_json, Logger, NodeId,
@@ -36,6 +36,7 @@ pub struct Opt {
     pub ethereum_rpc: Vec<String>,
     pub ethereum_ws: Vec<String>,
     pub ethereum_ipc: Vec<String>,
+    pub unsafe_config: bool,
 }
 
 impl Default for Opt {
@@ -51,6 +52,7 @@ impl Default for Opt {
             ethereum_rpc: vec![],
             ethereum_ws: vec![],
             ethereum_ipc: vec![],
+            unsafe_config: false,
         }
     }
 }
@@ -294,7 +296,7 @@ impl PoolSize {
 
         let pool_size = match self {
             None => bail!("missing pool size for {}", connection),
-            Fixed(s) => s.clone(),
+            Fixed(s) => *s,
             Rule(rules) => rules.iter().map(|rule| rule.size).min().unwrap_or(0u32),
         };
 
@@ -313,7 +315,7 @@ impl PoolSize {
         use PoolSize::*;
         match self {
             None => unreachable!("validation ensures we have a pool size"),
-            Fixed(s) => Ok(s.clone()),
+            Fixed(s) => Ok(*s),
             Rule(rules) => rules
                 .iter()
                 .find(|rule| rule.matches(node.as_str()))
@@ -431,7 +433,7 @@ impl ChainSection {
                     return Err(anyhow!("Ethereum node URL cannot be an empty string"));
                 }
 
-                let colon = rest.find(":").ok_or_else(|| {
+                let colon = rest.find(':').ok_or_else(|| {
                     return anyhow!(
                         "A network name must be provided alongside the \
                          Ethereum node location. Try e.g. 'mainnet:URL'."
@@ -456,6 +458,7 @@ impl ChainSection {
                 };
                 let entry = chains.entry(name.to_string()).or_insert_with(|| Chain {
                     shard: PRIMARY_SHARD.to_string(),
+                    protocol: BlockchainKind::Ethereum,
                     providers: vec![],
                 });
                 entry.providers.push(provider);
@@ -465,11 +468,17 @@ impl ChainSection {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Chain {
     pub shard: String,
+    #[serde(default = "default_blockchain_kind")]
+    pub protocol: BlockchainKind,
     #[serde(rename = "provider")]
     pub providers: Vec<Provider>,
+}
+
+fn default_blockchain_kind() -> BlockchainKind {
+    BlockchainKind::Ethereum
 }
 
 impl Chain {
@@ -520,6 +529,7 @@ pub enum ProviderDetails {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct FirehoseProvider {
     pub url: String,
+    pub token: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -555,17 +565,24 @@ impl Provider {
         validate_name(&self.label).context("illegal provider name")?;
 
         match self.details {
-            ProviderDetails::Firehose(ref firehose) => {
+            ProviderDetails::Firehose(ref mut firehose) => {
+                firehose.url = shellexpand::env(&firehose.url)?.into_owned();
+
                 // A Firehose url must be a valid Uri since gRPC library we use (Tonic)
                 // works with Uri.
+                let label = &self.label;
                 firehose.url.parse::<Uri>().map_err(|e| {
                     anyhow!(
                         "the url `{}` for firehose provider {} is not a legal URI: {}",
                         firehose.url,
-                        self.label,
+                        label,
                         e
                     )
                 })?;
+
+                if let Some(token) = &firehose.token {
+                    firehose.token = Some(shellexpand::env(token)?.into_owned());
+                }
             }
 
             ProviderDetails::Web3(ref mut web3) => {
@@ -933,7 +950,10 @@ fn one() -> usize {
 #[cfg(test)]
 mod tests {
 
-    use super::{Config, FirehoseProvider, Provider, ProviderDetails, Transport, Web3Provider};
+    use super::{
+        Chain, Config, FirehoseProvider, Provider, ProviderDetails, Transport, Web3Provider,
+    };
+    use graph::blockchain::BlockchainKind;
     use http::{HeaderMap, HeaderValue};
     use std::collections::BTreeSet;
     use std::fs::read_to_string;
@@ -953,6 +973,47 @@ mod tests {
         assert_eq!(4, actual.chains.chains.len());
         assert_eq!(2, actual.stores.len());
         assert_eq!(3, actual.deployment.rules.len());
+    }
+
+    #[test]
+    fn it_works_on_chain_without_protocol() {
+        let actual = toml::from_str(
+            r#"
+            shard = "primary"
+            provider = []
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            Chain {
+                shard: "primary".to_string(),
+                protocol: BlockchainKind::Ethereum,
+                providers: vec![],
+            },
+            actual
+        );
+    }
+
+    #[test]
+    fn it_works_on_chain_with_protocol() {
+        let actual = toml::from_str(
+            r#"
+            shard = "primary"
+            protocol = "near"
+            provider = []
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            Chain {
+                shard: "primary".to_string(),
+                protocol: BlockchainKind::Near,
+                providers: vec![],
+            },
+            actual
+        );
     }
 
     #[test]
@@ -1123,6 +1184,7 @@ mod tests {
                 label: "firehose".to_owned(),
                 details: ProviderDetails::Firehose(FirehoseProvider {
                     url: "http://localhost:9000".to_owned(),
+                    token: None,
                 }),
             },
             actual

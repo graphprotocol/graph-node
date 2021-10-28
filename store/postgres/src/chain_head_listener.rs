@@ -5,18 +5,18 @@ use graph::{
         futures03::{self, FutureExt},
         tokio, StoreError,
     },
-    prometheus::GaugeVec,
+    prometheus::{CounterVec, GaugeVec},
 };
 use std::str::FromStr;
 use std::sync::Arc;
 use std::{collections::BTreeMap, time::Duration};
 
-use diesel::RunQueryDsl;
 use lazy_static::lazy_static;
 
 use crate::{
     connection_pool::ConnectionPool,
     notification_listener::{JsonNotification, NotificationListener, SafeChannelName},
+    NotificationSender,
 };
 use graph::blockchain::ChainHeadUpdateListener as ChainHeadUpdateListenerTrait;
 use graph::prelude::serde::{Deserialize, Serialize};
@@ -96,13 +96,20 @@ pub struct ChainHeadUpdateListener {
 pub(crate) struct ChainHeadUpdateSender {
     pool: ConnectionPool,
     chain_name: String,
+    sender: Arc<NotificationSender>,
 }
 
 impl ChainHeadUpdateListener {
     pub fn new(logger: &Logger, registry: Arc<dyn MetricsRegistry>, postgres_url: String) -> Self {
         let logger = logger.new(o!("component" => "ChainHeadUpdateListener"));
         let ingestor_metrics = Arc::new(BlockIngestorMetrics::new(registry.clone()));
-
+        let counter = registry
+            .global_counter_vec(
+                "notification_queue_recvd",
+                "Number of messages received through Postgres LISTEN",
+                vec!["channel", "network"].as_slice(),
+            )
+            .unwrap();
         // Create a Postgres notification listener for chain head updates
         let (mut listener, receiver) =
             NotificationListener::new(&logger, postgres_url, CHANNEL_NAME.clone());
@@ -114,6 +121,7 @@ impl ChainHeadUpdateListener {
             &mut listener,
             receiver,
             watchers.cheap_clone(),
+            counter,
         );
 
         ChainHeadUpdateListener {
@@ -132,14 +140,19 @@ impl ChainHeadUpdateListener {
         listener: &mut NotificationListener,
         mut receiver: Receiver<JsonNotification>,
         watchers: Arc<RwLock<BTreeMap<String, Watcher>>>,
+        counter: CounterVec,
     ) {
         // Process chain head updates in a dedicated task
         graph::spawn(async move {
             while let Some(notification) = receiver.recv().await {
                 // Create ChainHeadUpdate from JSON
                 let update: ChainHeadUpdate =
-                    match serde_json::from_value(notification.payload.clone()) {
-                        Ok(update) => update,
+                    match serde_json::from_value::<ChainHeadUpdate>(notification.payload.clone()) {
+                        Ok(update) => {
+                            let labels = [CHANNEL_NAME.as_str(), &update.network_name];
+                            counter.with_label_values(&labels).inc();
+                            update
+                        }
                         Err(e) => {
                             crit!(
                                 logger,
@@ -169,6 +182,8 @@ impl ChainHeadUpdateListener {
 
 impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
     fn subscribe(&self, network_name: String, logger: Logger) -> ChainHeadUpdateStream {
+        debug!(logger, "subscribing to chain head updates");
+
         let update_receiver = {
             let existing = {
                 let watchers = self.watchers.read();
@@ -226,16 +241,19 @@ impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
 }
 
 impl ChainHeadUpdateSender {
-    pub fn new(pool: ConnectionPool, network_name: String) -> Self {
+    pub fn new(
+        pool: ConnectionPool,
+        network_name: String,
+        sender: Arc<NotificationSender>,
+    ) -> Self {
         Self {
             pool,
             chain_name: network_name,
+            sender,
         }
     }
 
     pub fn send(&self, hash: &str, number: i64) -> Result<(), StoreError> {
-        use crate::functions::pg_notify;
-
         let msg = json! ({
             "network_name": &self.chain_name,
             "head_block_hash": hash,
@@ -243,9 +261,7 @@ impl ChainHeadUpdateSender {
         });
 
         let conn = self.pool.get()?;
-        diesel::select(pg_notify(CHANNEL_NAME.as_str(), &msg.to_string()))
-            .execute(&conn)
-            .map_err(StoreError::from)
-            .map(|_| ())
+        self.sender
+            .notify(&conn, CHANNEL_NAME.as_str(), Some(&self.chain_name), &msg)
     }
 }

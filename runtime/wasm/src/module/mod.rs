@@ -4,7 +4,7 @@ use std::convert::TryFrom;
 use std::rc::Rc;
 use std::time::Instant;
 
-use graph::blockchain::{Blockchain, HostFnCtx, MappingTrigger};
+use graph::blockchain::{Blockchain, HostFnCtx, TriggerWithHandler};
 use graph::runtime::HostExportError;
 use never::Never;
 use semver::Version;
@@ -109,7 +109,7 @@ impl<C: Blockchain> WasmInstance<C> {
 
     pub(crate) fn handle_trigger(
         mut self,
-        trigger: C::MappingTrigger,
+        trigger: TriggerWithHandler<C>,
     ) -> Result<BlockState<C>, MappingError> {
         let handler_name = trigger.handler_name().to_owned();
         let asc_trigger = trigger.to_asc_ptr(&mut self)?;
@@ -537,8 +537,7 @@ impl<C: Blockchain> WasmInstance<C> {
                     .get_func("_start")
                     .context("`_start` function not found")?
                     .typed::<(), ()>()?
-                    .call(())
-                    .unwrap();
+                    .call(())?;
             }
         }
 

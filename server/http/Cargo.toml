@@ -1,6 +1,6 @@
 [package]
 name = "graph-server-http"
-version = "0.24.1"
+version = "0.24.2"
 edition = "2018"
 
 [dependencies]

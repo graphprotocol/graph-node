@@ -10,7 +10,6 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: full
   THEGRAPH_STORE_POSTGRES_DIESEL_URL: "postgresql://postgres:postgres@localhost:5432/graph_node_test"
-  GRAPH_MAX_SPEC_VERSION: "0.0.4"
 
 jobs:
   unit-tests:
@@ -117,7 +116,7 @@ jobs:
         env:
           RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
           N_CONCURRENT_TESTS: "1"
-          TESTS_GANACHE_HARD_WAIT_SECONDS: "15"
+          TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
         with:
           command: test
           args: --verbose --package graph-tests -- --nocapture
@@ -129,7 +128,7 @@ jobs:
         env:
           RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
           N_CONCURRENT_TESTS: "1"
-          TESTS_GANACHE_HARD_WAIT_SECONDS: "15"
+          TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
         with:
           command: test
           args: --verbose --package graph-tests -- --nocapture

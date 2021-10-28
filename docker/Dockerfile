@@ -14,6 +14,7 @@ ARG TAG_NAME=unknown
 ADD . /graph-node
 
 RUN cd /graph-node \
+    && rustup component add rustfmt \
     && RUSTFLAGS="-g" cargo install --locked --path node \
     && cargo clean \
     && objcopy --only-keep-debug /usr/local/cargo/bin/graph-node /usr/local/cargo/bin/graph-node.debug \

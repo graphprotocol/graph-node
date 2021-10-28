@@ -86,6 +86,7 @@ enum Health {
 type SubgraphFeatures {
   features: [Feature!]!
   errors: [String!]!
+  network: String
 }
 
 enum Feature {

@@ -2,6 +2,8 @@ use ethabi::ParamType;
 use ethabi::Token;
 use futures::future;
 use futures::prelude::*;
+use graph::blockchain::BlockHash;
+use graph::blockchain::ChainIdentifier;
 use graph::components::transaction_receipt::LightTransactionReceipt;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::prelude::StopwatchMetrics;
@@ -11,7 +13,7 @@ use graph::{
         anyhow::{self, anyhow, bail},
         async_trait, debug, error, ethabi,
         futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
-        hex, info, retry, stream, tiny_keccak, trace, warn,
+        hex, info, retry, serde_json as json, stream, tiny_keccak, trace, warn,
         web3::{
             self,
             types::{
@@ -53,6 +55,7 @@ use crate::{
 pub struct EthereumAdapter {
     logger: Logger,
     url_hostname: Arc<String>,
+    /// The label for the provider from the configuration
     provider: String,
     web3: Arc<Web3<Transport>>,
     metrics: Arc<ProviderEthRpcMetrics>,
@@ -96,18 +99,6 @@ lazy_static! {
             .parse::<usize>()
             .expect("invalid GRAPH_ETHEREUM_REQUEST_RETRIES env var");
 
-    /// Gas limit for `eth_call`. The value of 50_000_000 is a protocol-wide parameter so this
-    /// should be changed only for debugging purposes and never on an indexer in the network. This
-    /// value was chosen because it is the Geth default
-    /// https://github.com/ethereum/go-ethereum/blob/e4b687cf462870538743b3218906940ae590e7fd/eth/ethconfig/config.go#L91.
-    /// It is not safe to set something higher because Geth will silently override the gas limit
-    /// with the default. This means that we do not support indexing against a Geth node with
-    /// `RPCGasCap` set below 50 million.
-    // See also f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
-    static ref ETH_CALL_GAS: u32 = std::env::var("GRAPH_ETH_CALL_GAS")
-                                    .map(|s| s.parse::<u32>().expect("invalid GRAPH_ETH_CALL_GAS env var"))
-                                    .unwrap_or(50_000_000);
-
     /// Additional deterministic errors that have not yet been hardcoded. Separated by `;`.
     static ref GETH_ETH_CALL_ERRORS_ENV: Vec<String> = {
         std::env::var("GRAPH_GETH_ETH_CALL_ERRORS")
@@ -115,6 +106,16 @@ lazy_static! {
         .unwrap_or(Vec::new())
     };
 }
+
+/// Gas limit for `eth_call`. The value of 50_000_000 is a protocol-wide parameter so this
+/// should be changed only for debugging purposes and never on an indexer in the network. This
+/// value was chosen because it is the Geth default
+/// https://github.com/ethereum/go-ethereum/blob/e4b687cf462870538743b3218906940ae590e7fd/eth/ethconfig/config.go#L91.
+/// It is not safe to set something higher because Geth will silently override the gas limit
+/// with the default. This means that we do not support indexing against a Geth node with
+/// `RPCGasCap` set below 50 million.
+// See also f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
+const ETH_CALL_GAS: u32 = 50_000_000;
 
 // Deterministic Geth eth_call execution errors. We might need to expand this as
 // subgraphs come across other errors. See
@@ -125,14 +126,8 @@ const GETH_ETH_CALL_ERRORS: &[&str] = &[
     "invalid opcode",
     // Ethereum says 1024 is the stack sizes limit, so this is deterministic.
     "stack limit reached 1024",
-    // "out of gas" is commented out because Erigon has not yet bumped the default gas limit to 50
-    // million. It can be added through `GETH_ETH_CALL_ERRORS_ENV` if not using Erigon. Once
-    // https://github.com/ledgerwatch/erigon/pull/2572 has been released and indexers have updated,
-    // this can be uncommented.
-    //
     // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61 for why the gas limit is considered deterministic.
-
-    // "out of gas",
+    "out of gas",
 ];
 
 impl CheapClone for EthereumAdapter {
@@ -218,6 +213,7 @@ impl EthereumAdapter {
                 let start = Instant::now();
                 let subgraph_metrics = subgraph_metrics.clone();
                 let provider_metrics = eth.metrics.clone();
+                let provider = self.provider.clone();
                 eth.web3
                     .trace()
                     .filter(trace_filter)
@@ -245,11 +241,11 @@ impl EthereumAdapter {
                     .from_err()
                     .then(move |result| {
                         let elapsed = start.elapsed().as_secs_f64();
-                        provider_metrics.observe_request(elapsed, "trace_filter");
-                        subgraph_metrics.observe_request(elapsed, "trace_filter");
+                        provider_metrics.observe_request(elapsed, "trace_filter", &provider);
+                        subgraph_metrics.observe_request(elapsed, "trace_filter", &provider);
                         if result.is_err() {
-                            provider_metrics.add_error("trace_filter");
-                            subgraph_metrics.add_error("trace_filter");
+                            provider_metrics.add_error("trace_filter", &provider);
+                            subgraph_metrics.add_error("trace_filter", &provider);
                             debug!(
                                 logger_for_error,
                                 "Error querying traces error = {:?} from = {:?} to = {:?}",
@@ -309,17 +305,18 @@ impl EthereumAdapter {
                     .build();
 
                 // Request logs from client
+                let provider = eth_adapter.provider.clone();
                 eth_adapter
                     .web3
                     .eth()
                     .logs(log_filter)
                     .then(move |result| {
                         let elapsed = start.elapsed().as_secs_f64();
-                        provider_metrics.observe_request(elapsed, "eth_getLogs");
-                        subgraph_metrics.observe_request(elapsed, "eth_getLogs");
+                        provider_metrics.observe_request(elapsed, "eth_getLogs", &provider);
+                        subgraph_metrics.observe_request(elapsed, "eth_getLogs", &provider);
                         if result.is_err() {
-                            provider_metrics.add_error("eth_getLogs");
-                            subgraph_metrics.add_error("eth_getLogs");
+                            provider_metrics.add_error("eth_getLogs", &provider);
+                            subgraph_metrics.add_error("eth_getLogs", &provider);
                         }
                         result
                     })
@@ -498,7 +495,7 @@ impl EthereumAdapter {
                 let req = CallRequest {
                     from: None,
                     to: contract_address,
-                    gas: Some(web3::types::U256::from(*ETH_CALL_GAS)),
+                    gas: Some(web3::types::U256::from(ETH_CALL_GAS)),
                     gas_price: None,
                     value: None,
                     data: Some(call_data.clone()),
@@ -520,6 +517,9 @@ impl EthereumAdapter {
 
                         const PARITY_BAD_JUMP_PREFIX: &str = "Bad jump";
                         const PARITY_STACK_LIMIT_PREFIX: &str = "Out of stack";
+
+                        // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
+                        const PARITY_OUT_OF_GAS: &str = "Out of gas";
 
                         const GANACHE_VM_EXECUTION_ERROR: i64 = -32000;
                         const GANACHE_REVERT_MESSAGE: &str =
@@ -569,7 +569,8 @@ impl EthereumAdapter {
                                             || data.starts_with(PARITY_BAD_JUMP_PREFIX)
                                             || data.starts_with(PARITY_STACK_LIMIT_PREFIX)
                                             || data == PARITY_BAD_INSTRUCTION_FE
-                                            || data == PARITY_BAD_INSTRUCTION_FD =>
+                                            || data == PARITY_BAD_INSTRUCTION_FD
+                                            || data == PARITY_OUT_OF_GAS =>
                                     {
                                         let reason = if data == PARITY_BAD_INSTRUCTION_FE {
                                             PARITY_BAD_INSTRUCTION_FE.to_owned()
@@ -617,7 +618,7 @@ impl EthereumAdapter {
         &self,
         logger: Logger,
         ids: Vec<H256>,
-    ) -> impl Stream<Item = LightEthereumBlock, Error = Error> + Send {
+    ) -> impl Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send {
         let web3 = self.web3.clone();
 
         stream::iter_ok::<_, Error>(ids.into_iter().map(move |hash| {
@@ -630,7 +631,7 @@ impl EthereumAdapter {
                         .block_with_txs(BlockId::Hash(hash))
                         .from_err::<Error>()
                         .and_then(move |block| {
-                            block.ok_or_else(|| {
+                            block.map(|block| Arc::new(block)).ok_or_else(|| {
                                 anyhow::anyhow!("Ethereum node did not find block {:?}", hash)
                             })
                         })
@@ -856,7 +857,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         &self.provider
     }
 
-    async fn net_identifiers(&self) -> Result<EthereumNetworkIdentifier, Error> {
+    async fn net_identifiers(&self) -> Result<ChainIdentifier, Error> {
         let logger = self.logger.clone();
 
         let web3 = self.web3.clone();
@@ -878,7 +879,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     .and_then(|gen_block_opt| {
                         future::result(
                             gen_block_opt
-                                .and_then(|gen_block| gen_block.hash)
+                                .and_then(|gen_block| gen_block.hash.map(BlockHash::from))
                                 .ok_or_else(|| {
                                     anyhow!("Ethereum node could not find genesis block")
                                 }),
@@ -893,12 +894,10 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .join(gen_block_hash_future)
             .compat()
             .await
-            .map(
-                |(net_version, genesis_block_hash)| EthereumNetworkIdentifier {
-                    net_version,
-                    genesis_block_hash,
-                },
-            )
+            .map(|(net_version, genesis_block_hash)| ChainIdentifier {
+                net_version,
+                genesis_block_hash,
+            })
             .map_err(|e| {
                 e.into_inner().unwrap_or_else(|| {
                     anyhow!("Ethereum node took too long to read network identifiers")
@@ -1243,7 +1242,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     .timeout_secs(60)
                     .run(move || {
                         web3.eth()
-                            .uncle(block_hash.clone().into(), index.into())
+                            .uncle(block_hash.into(), index.into())
                             .map_err(move |e| {
                                 anyhow!(
                                     "could not get uncle {} for block {:?} ({} uncles): {}",
@@ -1360,12 +1359,17 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: Logger,
         chain_store: Arc<dyn ChainStore>,
         block_hashes: HashSet<H256>,
-    ) -> Box<dyn Stream<Item = LightEthereumBlock, Error = Error> + Send> {
+    ) -> Box<dyn Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send> {
+        let block_hashes: Vec<_> = block_hashes.iter().cloned().collect();
         // Search for the block in the store first then use json-rpc as a backup.
-        let mut blocks = chain_store
-            .blocks(block_hashes.iter().cloned().collect())
+        let mut blocks: Vec<Arc<LightEthereumBlock>> = chain_store
+            .blocks(&block_hashes)
             .map_err(|e| error!(&logger, "Error accessing block cache {}", e))
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|value| json::from_value(value).ok())
+            .map(Arc::new)
+            .collect();
 
         let missing_blocks = Vec::from_iter(
             block_hashes
@@ -1376,10 +1380,18 @@ impl EthereumAdapterTrait for EthereumAdapter {
         // Return a stream that lazily loads batches of blocks.
         debug!(logger, "Requesting {} block(s)", missing_blocks.len());
         Box::new(
-            self.load_blocks_rpc(logger.clone(), missing_blocks.into_iter().collect())
+            self.load_blocks_rpc(logger.clone(), missing_blocks)
                 .collect()
                 .map(move |new_blocks| {
-                    if let Err(e) = chain_store.upsert_light_blocks(new_blocks.clone()) {
+                    let upsert_blocks: Vec<_> = new_blocks
+                        .iter()
+                        .map(|block| BlockFinality::Final(block.clone()))
+                        .collect();
+                    let block_refs: Vec<_> = upsert_blocks
+                        .iter()
+                        .map(|block| block as &dyn graph::blockchain::Block)
+                        .collect();
+                    if let Err(e) = chain_store.upsert_light_blocks(block_refs.as_slice()) {
                         error!(logger, "Error writing to block cache {}", e);
                     }
                     blocks.extend(new_blocks);
@@ -1522,7 +1534,7 @@ pub(crate) async fn blocks_with_triggers(
         .and_then(
             move |block| match triggers_by_block.remove(&(block.number() as BlockNumber)) {
                 Some(triggers) => Ok(BlockWithTriggers::new(
-                    BlockFinality::Final(Arc::new(block)),
+                    BlockFinality::Final(block),
                     triggers,
                 )),
                 None => Err(anyhow!(
@@ -1760,7 +1772,7 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
         .transaction_receipts_in_block(&block.ptr().hash_as_h256())
         .await?
         .into_iter()
-        .map(|receipt| (receipt.transaction_hash.clone(), receipt))
+        .map(|receipt| (receipt.transaction_hash, receipt))
         .collect::<BTreeMap<H256, LightTransactionReceipt>>();
 
     // Do we have a receipt for each transaction under analysis?

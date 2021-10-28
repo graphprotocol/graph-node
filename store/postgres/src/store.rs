@@ -108,14 +108,23 @@ impl StatusStore for Store {
         self.subgraph_store.versions_for_subgraph_id(subgraph_id)
     }
 
-    fn get_proof_of_indexing<'a>(
-        self: Arc<Self>,
-        subgraph_id: &'a DeploymentHash,
-        indexer: &'a Option<Address>,
+    fn subgraphs_for_deployment_hash(
+        &self,
+        deployment_hash: &str,
+    ) -> Result<Vec<(String, String)>, StoreError> {
+        self.subgraph_store
+            .subgraphs_for_deployment_hash(deployment_hash)
+    }
+
+    async fn get_proof_of_indexing(
+        &self,
+        subgraph_id: &DeploymentHash,
+        indexer: &Option<Address>,
         block: BlockPtr,
-    ) -> graph::prelude::DynTryFuture<'a, Option<[u8; 32]>> {
+    ) -> Result<Option<[u8; 32]>, StoreError> {
         self.subgraph_store
             .get_proof_of_indexing(subgraph_id, indexer, block)
+            .await
     }
 
     async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, sync::Arc};
+use std::{collections::HashMap, env, num::ParseIntError, sync::Arc, time::Duration};
 
 use config::PoolSize;
 use git_testament::{git_testament, render_testament};
@@ -125,12 +125,24 @@ pub enum Command {
     },
     /// Rewind a subgraph to a specific block
     Rewind {
-        /// The hash of the deployment to rewind
-        id: String,
+        /// Force rewinding even if the block hash is not found in the local
+        /// database
+        #[structopt(long, short)]
+        force: bool,
+        /// Sleep for this many seconds after pausing subgraphs
+        #[structopt(
+            long,
+            short,
+            default_value = "10",
+            parse(try_from_str = parse_duration_in_secs)
+        )]
+        sleep: Duration,
         /// The block hash of the target block
         block_hash: String,
         /// The block number of the target block
         block_number: i32,
+        /// The deployments to rewind
+        names: Vec<String>,
     },
     /// Check and interrogate the configuration
     ///
@@ -382,6 +394,7 @@ impl Context {
         Arc::new(SubscriptionManager::new(
             self.logger.clone(),
             primary.connection.to_owned(),
+            self.registry.clone(),
         ))
     }
 
@@ -418,6 +431,12 @@ impl Context {
         (store, pools)
     }
 
+    fn store_and_primary(self) -> (Arc<Store>, ConnectionPool) {
+        let (store, pools) = self.store_and_pools();
+        let primary = pools.get(&*PRIMARY_SHARD).expect("there is a primary pool");
+        (store, primary.clone())
+    }
+
     fn block_store_and_primary_pool(self) -> (Arc<BlockStore>, ConnectionPool) {
         let (store, pools) = self.store_and_pools();
 
@@ -432,13 +451,14 @@ impl Context {
         let store = self.store();
 
         let subscription_manager = Arc::new(PanicSubscriptionManager);
-        let load_manager = Arc::new(LoadManager::new(&logger, vec![], registry));
+        let load_manager = Arc::new(LoadManager::new(&logger, vec![], registry.clone()));
 
         Arc::new(GraphQlRunner::new(
             &logger,
             store,
             subscription_manager,
             load_manager,
+            registry,
         ))
     }
 }
@@ -484,7 +504,7 @@ async fn main() {
         }
         Ok(node) => node,
     };
-    let ctx = Context::new(logger, node, config);
+    let ctx = Context::new(logger.clone(), node, config);
 
     use Command::*;
     let result = match opt.cmd {
@@ -496,14 +516,13 @@ async fn main() {
             status,
             used,
         } => {
-            let (pool, store) = if status {
-                let (store, pools) = ctx.store_and_pools();
-                let primary = pools.get(&*PRIMARY_SHARD).expect("there is a primary pool");
+            let (primary, store) = if status {
+                let (store, primary) = ctx.store_and_primary();
                 (primary.clone(), Some(store))
             } else {
                 (ctx.primary_pool(), None)
             };
-            commands::info::run(pool, store, name, current, pending, used)
+            commands::info::run(primary, store, name, current, pending, used)
         }
         Unused(cmd) => {
             let store = ctx.subgraph_store();
@@ -531,15 +550,30 @@ async fn main() {
         }
         Remove { name } => commands::remove::run(ctx.subgraph_store(), name),
         Create { name } => commands::create::run(ctx.subgraph_store(), name),
-        Unassign { id, shard } => commands::assign::unassign(ctx.subgraph_store(), id, shard),
+        Unassign { id, shard } => {
+            commands::assign::unassign(logger.clone(), ctx.subgraph_store(), id, shard).await
+        }
         Reassign { id, node, shard } => {
             commands::assign::reassign(ctx.subgraph_store(), id, node, shard)
         }
         Rewind {
-            id,
+            force,
+            sleep,
             block_hash,
             block_number,
-        } => commands::rewind::run(ctx.subgraph_store(), id, block_hash, block_number),
+            names,
+        } => {
+            let (store, primary) = ctx.store_and_primary();
+            commands::rewind::run(
+                primary,
+                store,
+                names,
+                block_hash,
+                block_number,
+                force,
+                sleep,
+            )
+        }
         Listen(cmd) => {
             use ListenCommand::*;
             match cmd {
@@ -609,4 +643,8 @@ async fn main() {
     if let Err(e) = result {
         die!("error: {}", e)
     }
+}
+
+fn parse_duration_in_secs(s: &str) -> Result<Duration, ParseIntError> {
+    Ok(Duration::from_secs(s.parse()?))
 }

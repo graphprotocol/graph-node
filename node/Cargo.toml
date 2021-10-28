@@ -1,6 +1,6 @@
 [package]
 name = "graph-node"
-version = "0.24.1"
+version = "0.24.2"
 edition = "2018"
 default-run = "graph-node"
 
@@ -24,6 +24,7 @@ crossbeam-channel = "0.5.1"
 graph = { path = "../graph" }
 graph-core = { path = "../core" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
+graph-chain-near = { path = "../chain/near" }
 graph-graphql = { path = "../graphql" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 graph-server-http = { path = "../server/http" }
@@ -35,10 +36,10 @@ graph-store-postgres = { path = "../store/postgres" }
 regex = "1.5.4"
 serde = { version = "1.0.126", features = ["derive", "rc"] }
 serde_regex = "1.1.0"
-structopt = { version = "0.3.23", features = ["wrap_help"] }
+structopt = { version = "0.3.25", features = ["wrap_help"] }
 toml = "0.5.7"
 shellexpand = "2.1.0"
-diesel = "1.4.7"
+diesel = "1.4.8"
 fail = "0.4"
 http = "0.1.21" # must be compatible with the version rust-web3 uses
 

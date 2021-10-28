@@ -22,6 +22,11 @@ pub mod blockchain;
 
 pub mod runtime;
 
+pub mod firehose;
+
+/// Helpers for parsing environment variables.
+pub mod env;
+
 /// Module with mocks for different parts of the system.
 pub mod mock {
     pub use crate::components::store::MockStore;
@@ -33,6 +38,7 @@ pub use task_spawn::{
     block_on, spawn, spawn_allow_panic, spawn_blocking, spawn_blocking_allow_panic, spawn_thread,
 };
 
+pub use anyhow;
 pub use bytes;
 pub use mockall;
 pub use parking_lot;
@@ -69,6 +75,7 @@ pub mod prelude {
     pub use futures03::stream::{StreamExt as _, TryStreamExt};
     pub use hex;
     pub use lazy_static::lazy_static;
+    pub use prost;
     pub use rand;
     pub use reqwest;
     pub use serde;
@@ -85,6 +92,7 @@ pub mod prelude {
     pub use thiserror;
     pub use tiny_keccak;
     pub use tokio;
+    pub use tonic;
     pub use web3;
 
     pub type DynTryFuture<'a, Ok = (), Err = Error> =
@@ -93,8 +101,8 @@ pub mod prelude {
     pub use crate::blockchain::BlockPtr;
 
     pub use crate::components::ethereum::{
-        EthereumBlock, EthereumBlockWithCalls, EthereumCall, EthereumNetworkIdentifier,
-        LightEthereumBlock, LightEthereumBlockExt,
+        EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock,
+        LightEthereumBlockExt,
     };
     pub use crate::components::graphql::{
         GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,
@@ -189,4 +197,8 @@ pub mod prelude {
         EnumType, Type, Document, ScalarType, InputValue, DirectiveDefinition,
         UnionType, InputObjectType, EnumValue,
     });
+
+    pub mod r {
+        pub use crate::data::value::Value;
+    }
 }

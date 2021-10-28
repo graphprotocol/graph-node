@@ -1,6 +1,6 @@
 [package]
 name = "test-store"
-version = "0.24.1"
+version = "0.24.2"
 authors = ["Leonardo Yvens <leoyvens@gmail.com>"]
 edition = "2018"
 description = "Provides static store instance for tests."
@@ -14,5 +14,5 @@ graph = { path = "../../graph" }
 graph-store-postgres = { path = "../postgres" }
 lazy_static = "1.1"
 hex-literal = "0.3"
-diesel = { version = "1.4.7", features = ["postgres", "serde_json", "numeric", "r2d2"] }
+diesel = { version = "1.4.8", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 graph-chain-ethereum = { path = "../../chain/ethereum" }

@@ -1,4 +1,4 @@
-use graph::prelude::q::*;
+use graph::prelude::{q::*, r};
 use std::collections::HashMap;
 use std::ops::Deref;
 
@@ -64,7 +64,7 @@ pub fn get_argument_value<'a>(arguments: &'a [(String, Value)], name: &str) -> O
 }
 
 /// Returns true if a selection should be skipped (as per the `@skip` directive).
-pub fn skip_selection(selection: &Selection, variables: &HashMap<String, Value>) -> bool {
+pub fn skip_selection(selection: &Selection, variables: &HashMap<String, r::Value>) -> bool {
     match get_directive(selection, "skip".to_string()) {
         Some(directive) => match get_argument_value(&directive.arguments, "if") {
             Some(val) => match val {
@@ -73,7 +73,7 @@ pub fn skip_selection(selection: &Selection, variables: &HashMap<String, Value>)
 
                 // Also skip if @skip(if: $variable) where $variable is true
                 Value::Variable(name) => variables.get(name).map_or(false, |var| match var {
-                    Value::Boolean(v) => v.to_owned(),
+                    r::Value::Boolean(v) => v.to_owned(),
                     _ => false,
                 }),
 
@@ -86,7 +86,7 @@ pub fn skip_selection(selection: &Selection, variables: &HashMap<String, Value>)
 }
 
 /// Returns true if a selection should be included (as per the `@include` directive).
-pub fn include_selection(selection: &Selection, variables: &HashMap<String, Value>) -> bool {
+pub fn include_selection(selection: &Selection, variables: &HashMap<String, r::Value>) -> bool {
     match get_directive(selection, "include".to_string()) {
         Some(directive) => match get_argument_value(&directive.arguments, "if") {
             Some(val) => match val {
@@ -95,7 +95,7 @@ pub fn include_selection(selection: &Selection, variables: &HashMap<String, Valu
 
                 // Also include if @include(if: $variable) where $variable is true
                 Value::Variable(name) => variables.get(name).map_or(false, |var| match var {
-                    Value::Boolean(v) => v.to_owned(),
+                    r::Value::Boolean(v) => v.to_owned(),
                     _ => false,
                 }),
 

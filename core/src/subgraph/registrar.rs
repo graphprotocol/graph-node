@@ -212,6 +212,7 @@ where
     fn start_assigned_subgraphs(&self) -> impl Future<Item = (), Error = Error> {
         let provider = self.provider.clone();
         let logger = self.logger.clone();
+        let node_id = self.node_id.clone();
 
         future::result(self.store.assignments(&self.node_id))
             .map_err(|e| anyhow!("Error querying subgraph assignments: {}", e))
@@ -221,6 +222,7 @@ where
                 // each a `sender` and waiting for all of them to be dropped, so
                 // the receiver terminates without receiving anything.
                 let deployments = HashSet::<DeploymentLocator>::from_iter(deployments);
+                let deployments_len = deployments.len();
                 let (sender, receiver) = futures01::sync::mpsc::channel::<()>(1);
                 for id in deployments {
                     let sender = sender.clone();
@@ -232,7 +234,8 @@ where
                 }
                 drop(sender);
                 receiver.collect().then(move |_| {
-                    info!(logger, "Started all subgraphs");
+                    info!(logger, "Started all assigned subgraphs";
+                                  "count" => deployments_len, "node_id" => &node_id);
                     future::ok(())
                 })
             })
@@ -293,6 +296,21 @@ where
         match kind {
             BlockchainKind::Ethereum => {
                 create_subgraph_version::<graph_chain_ethereum::Chain, _, _>(
+                    &logger,
+                    self.store.clone(),
+                    self.chains.cheap_clone(),
+                    name.clone(),
+                    hash.cheap_clone(),
+                    raw,
+                    node_id,
+                    self.version_switching_mode,
+                    self.resolver.cheap_clone(),
+                )
+                .await?
+            }
+
+            BlockchainKind::Near => {
+                create_subgraph_version::<graph_chain_near::Chain, _, _>(
                     &logger,
                     self.store.clone(),
                     self.chains.cheap_clone(),
@@ -489,7 +507,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolve
     .await?;
 
     let manifest = unvalidated
-        .validate(store.cheap_clone())
+        .validate(store.cheap_clone(), true)
         .map_err(SubgraphRegistrarError::ManifestValidationError)?;
 
     let network_name = manifest.network_name();
@@ -518,8 +536,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolve
     info!(
         logger,
         "Set subgraph start block";
-        "block_number" => format!("{:?}", start_block.as_ref().map(|block| block.number)),
-        "block_hash" => format!("{:?}", start_block.as_ref().map(|block| &block.hash)),
+        "block" => format!("{:?}", start_block),
     );
 
     info!(

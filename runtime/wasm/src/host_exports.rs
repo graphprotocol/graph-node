@@ -5,7 +5,7 @@ use graph::blockchain::DataSource;
 use graph::blockchain::{Blockchain, DataSourceTemplate as _};
 use graph::components::store::EntityKey;
 use graph::components::store::EntityType;
-use graph::components::subgraph::{ProofOfIndexingEvent, SharedProofOfIndexing};
+use graph::components::subgraph::{CausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::data::store;
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
@@ -23,6 +23,18 @@ use graph_graphql::prelude::validate_entity;
 use wasmtime::Trap;
 
 use crate::module::{WasmInstance, WasmInstanceContext};
+
+fn write_poi_event(
+    proof_of_indexing: &SharedProofOfIndexing,
+    poi_event: &ProofOfIndexingEvent,
+    causality_region: &str,
+    logger: &Logger,
+) {
+    if let Some(proof_of_indexing) = proof_of_indexing {
+        let mut proof_of_indexing = proof_of_indexing.deref().borrow_mut();
+        proof_of_indexing.write(logger, causality_region, poi_event);
+    }
+}
 
 impl IntoTrap for HostExportError {
     fn determinism_level(&self) -> DeterminismLevel {
@@ -67,16 +79,14 @@ impl<C: Blockchain> HostExports<C> {
         link_resolver: Arc<dyn LinkResolver>,
         store: Arc<dyn SubgraphStore>,
     ) -> Self {
-        let causality_region = format!("ethereum/{}", data_source_network);
-
         Self {
             subgraph_id,
             api_version: data_source.api_version(),
             data_source_name: data_source.name().to_owned(),
             data_source_address: data_source.address().unwrap_or_default().to_owned(),
-            data_source_network,
             data_source_context: data_source.context().cheap_clone(),
-            causality_region,
+            causality_region: CausalityRegion::from_network(&data_source_network),
+            data_source_network,
             templates,
             link_resolver,
             store,
@@ -123,18 +133,16 @@ impl<C: Blockchain> HostExports<C> {
         stopwatch: &StopwatchMetrics,
     ) -> Result<(), anyhow::Error> {
         let poi_section = stopwatch.start_section("host_export_store_set__proof_of_indexing");
-        if let Some(proof_of_indexing) = proof_of_indexing {
-            let mut proof_of_indexing = proof_of_indexing.deref().borrow_mut();
-            proof_of_indexing.write(
-                logger,
-                &self.causality_region,
-                &ProofOfIndexingEvent::SetEntity {
-                    entity_type: &entity_type,
-                    id: &entity_id,
-                    data: &data,
-                },
-            );
-        }
+        write_poi_event(
+            proof_of_indexing,
+            &ProofOfIndexingEvent::SetEntity {
+                entity_type: &entity_type,
+                id: &entity_id,
+                data: &data,
+            },
+            &self.causality_region,
+            logger,
+        );
         poi_section.end();
 
         let id_insert_section = stopwatch.start_section("host_export_store_set__insert_id");
@@ -187,17 +195,15 @@ impl<C: Blockchain> HostExports<C> {
         entity_type: String,
         entity_id: String,
     ) -> Result<(), HostExportError> {
-        if let Some(proof_of_indexing) = proof_of_indexing {
-            let mut proof_of_indexing = proof_of_indexing.deref().borrow_mut();
-            proof_of_indexing.write(
-                logger,
-                &self.causality_region,
-                &ProofOfIndexingEvent::RemoveEntity {
-                    entity_type: &entity_type,
-                    id: &entity_id,
-                },
-            );
-        }
+        write_poi_event(
+            proof_of_indexing,
+            &ProofOfIndexingEvent::RemoveEntity {
+                entity_type: &entity_type,
+                id: &entity_id,
+            },
+            &self.causality_region,
+            logger,
+        );
         let key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
             entity_type: EntityType::new(entity_type),
@@ -290,7 +296,7 @@ impl<C: Blockchain> HostExports<C> {
                     ctx.derive_with_empty_block_state(),
                     host_metrics.clone(),
                     module.timeout,
-                    module.experimental_features.clone(),
+                    module.experimental_features,
                 )?;
                 let result = module.handle_json_callback(&callback, &sv.value, &user_data)?;
                 // Log progress every 15s

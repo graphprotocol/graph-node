@@ -14,7 +14,7 @@ use diesel::Connection;
 use lazy_static::lazy_static;
 
 use graph::prelude::{
-    anyhow, q, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
+    anyhow, r, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
     EntityFilter, EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink,
     QueryExecutionError, StoreError, Value,
 };
@@ -23,6 +23,7 @@ use graph::{
     data::{schema::FulltextAlgorithm, store::scalar},
 };
 use itertools::Itertools;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::env;
@@ -50,6 +51,18 @@ lazy_static! {
             .map(|s| {
                 usize::from_str(&s)
                     .unwrap_or_else(|_| panic!("TYPE_BATCH_SIZE must be a number, but is `{}`", s))
+            })
+            .unwrap_or(150)
+    };
+    /// Include a constraint on the child ids as a set in child_type_d
+    /// queries if the size of the set is below this threshold. Set this to
+    /// 0 to turn off this optimization
+    static ref TYPED_CHILDREN_SET_SIZE: usize = {
+        env::var("TYPED_CHILDREN_SET_SIZE")
+            .ok()
+            .map(|s| {
+                usize::from_str(&s)
+                    .unwrap_or_else(|_| panic!("TYPED_CHILDREN_SET_SIZE must be a number, but is `{}`", s))
             })
             .unwrap_or(150)
     };
@@ -257,7 +270,7 @@ impl ForeignKeyClauses for Column {
     }
 }
 
-pub trait FromEntityData: Default + From<Entity> {
+pub trait FromEntityData: Default {
     type Value: FromColumnValue;
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value);
@@ -271,8 +284,8 @@ impl FromEntityData for Entity {
     }
 }
 
-impl FromEntityData for BTreeMap<String, q::Value> {
-    type Value = q::Value;
+impl FromEntityData for BTreeMap<String, r::Value> {
+    type Value = r::Value;
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value) {
         self.insert(key, v);
@@ -360,9 +373,9 @@ pub trait FromColumnValue: Sized {
     }
 }
 
-impl FromColumnValue for q::Value {
+impl FromColumnValue for r::Value {
     fn is_null(&self) -> bool {
-        self == &q::Value::Null
+        matches!(self, r::Value::Null)
     }
 
     fn null() -> Self {
@@ -370,31 +383,31 @@ impl FromColumnValue for q::Value {
     }
 
     fn from_string(s: String) -> Self {
-        q::Value::String(s)
+        r::Value::String(s)
     }
 
     fn from_bool(b: bool) -> Self {
-        q::Value::Boolean(b)
+        r::Value::Boolean(b)
     }
 
     fn from_i32(i: i32) -> Self {
-        q::Value::Int(i.into())
+        r::Value::Int(i.into())
     }
 
     fn from_big_decimal(d: scalar::BigDecimal) -> Self {
-        q::Value::String(d.to_string())
+        r::Value::String(d.to_string())
     }
 
     fn from_big_int(i: serde_json::Number) -> Result<Self, StoreError> {
-        Ok(q::Value::String(i.to_string()))
+        Ok(r::Value::String(i.to_string()))
     }
 
     fn from_bytes(b: &str) -> Result<Self, StoreError> {
-        Ok(q::Value::String(format!("0x{}", b)))
+        Ok(r::Value::String(format!("0x{}", b)))
     }
 
     fn from_vec(v: Vec<Self>) -> Self {
-        q::Value::List(v)
+        r::Value::List(v)
     }
 }
 
@@ -1187,7 +1200,7 @@ pub struct FindManyQuery<'a> {
     pub(crate) tables: Vec<&'a Table>,
 
     // Maps object name to ids.
-    pub(crate) ids_for_type: BTreeMap<&'a EntityType, Vec<&'a str>>,
+    pub(crate) ids_for_type: &'a BTreeMap<&'a EntityType, Vec<&'a str>>,
     pub(crate) block: BlockNumber,
 }
 
@@ -1240,7 +1253,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 #[derive(Debug)]
 pub struct InsertQuery<'a> {
     table: &'a Table,
-    entities: &'a [(EntityKey, Entity)],
+    entities: &'a [(&'a EntityKey, Cow<'a, Entity>)],
     unique_columns: Vec<&'a Column>,
     block: BlockNumber,
 }
@@ -1248,7 +1261,7 @@ pub struct InsertQuery<'a> {
 impl<'a> InsertQuery<'a> {
     pub fn new(
         table: &'a Table,
-        entities: &'a mut [(EntityKey, Entity)],
+        entities: &'a mut [(&'a EntityKey, Cow<Entity>)],
         block: BlockNumber,
     ) -> Result<InsertQuery<'a>, StoreError> {
         for (entity_key, entity) in entities.iter_mut() {
@@ -1261,7 +1274,7 @@ impl<'a> InsertQuery<'a> {
                             .cloned()
                             .collect::<Vec<Value>>();
                         if !fulltext_field_values.is_empty() {
-                            entity.insert(
+                            entity.to_mut().insert(
                                 column.field.to_string(),
                                 Value::List(fulltext_field_values),
                             );
@@ -1290,7 +1303,10 @@ impl<'a> InsertQuery<'a> {
     }
 
     /// Build the column name list using the subset of all keys among present entities.
-    fn unique_columns(table: &'a Table, entities: &'a [(EntityKey, Entity)]) -> Vec<&'a Column> {
+    fn unique_columns(
+        table: &'a Table,
+        entities: &'a [(&'a EntityKey, Cow<'a, Entity>)],
+    ) -> Vec<&'a Column> {
         let mut hashmap = HashMap::new();
         for (_key, entity) in entities.iter() {
             for column in &table.columns {
@@ -1821,6 +1837,17 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" c where ");
         BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
         limit.filter(out);
+        if *TYPED_CHILDREN_SET_SIZE > 0 {
+            let mut child_set: Vec<&str> = child_ids.iter().map(|id| id.as_str()).collect();
+            child_set.sort();
+            child_set.dedup();
+
+            if child_set.len() <= *TYPED_CHILDREN_SET_SIZE {
+                out.push_sql(" and c.id = any(");
+                self.table.primary_key().bind_ids(&child_set, out)?;
+                out.push_sql(")");
+            }
+        }
         out.push_sql(" and ");
         out.push_sql("c.id = p.child_id");
         self.and_filter(out.reborrow())?;
@@ -2732,54 +2759,6 @@ fn block_number_max_is_i32_max() {
     assert_eq!(2147483647, graph::prelude::BLOCK_NUMBER_MAX);
 }
 
-/// Remove all entities from the given table whose id has a prefix that
-/// matches one of the given prefixes. This query is mostly useful to
-/// delete subgraph metadata that belongs to a certain dynamic data source
-#[derive(Debug, Clone, Constructor)]
-pub struct DeleteByPrefixQuery<'a> {
-    table: &'a Table,
-    prefixes: &'a Vec<String>,
-    prefix_len: i32,
-}
-
-impl<'a> QueryFragment<Pg> for DeleteByPrefixQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
-        out.unsafe_to_cache_prepared();
-
-        // Construct a query
-        //   delete from {table}
-        //    where left(id, {prefix_len}) = any({prefixes})
-        //   returning id
-        out.push_sql("delete from ");
-        out.push_sql(self.table.qualified_name.as_str());
-        out.push_sql("\n where left(");
-        out.push_sql(PRIMARY_KEY_COLUMN);
-        out.push_sql(",");
-        out.push_bind_param::<Integer, _>(&self.prefix_len)?;
-        out.push_sql(") = any(");
-        out.push_bind_param::<Array<Text>, _>(&self.prefixes)?;
-        out.push_sql(")\nreturning ");
-        out.push_sql(PRIMARY_KEY_COLUMN);
-        out.push_sql("::text");
-        Ok(())
-    }
-}
-
-impl<'a> QueryId for DeleteByPrefixQuery<'a> {
-    type QueryId = ();
-
-    const HAS_STATIC_QUERY_ID: bool = false;
-}
-
-impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for DeleteByPrefixQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
-        conn.query_by_name(&self)
-            .map(|data| ReturnedEntityData::bytes_as_str(&self.table, data))
-    }
-}
-
-impl<'a, Conn> RunQueryDsl<Conn> for DeleteByPrefixQuery<'a> {}
-
 /// Copy the data of one table to another table. All rows whose `vid` is in
 /// the range `[first_vid, last_vid]` will be copied
 #[derive(Debug, Clone)]
@@ -2816,8 +2795,6 @@ impl<'a> CopyEntityBatchQuery<'a> {
                     dcol.field
                 )
                 .into());
-            } else {
-                columns.push(dcol);
             }
         }
 

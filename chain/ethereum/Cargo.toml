@@ -1,6 +1,6 @@
 [package]
 name = "graph-chain-ethereum"
-version = "0.24.1"
+version = "0.24.2"
 edition = "2018"
 
 [dependencies]
@@ -13,6 +13,8 @@ lazy_static = "1.2.0"
 mockall = "0.9.1"
 state_machine_future = "0.2"
 serde = "1.0"
+prost = "0.8"
+prost-types = "0.8"
 dirs-next = "2.0"
 anyhow = "1.0"
 tiny-keccak = "1.5.0"
@@ -34,8 +36,11 @@ graph-runtime-wasm = { path = "../../runtime/wasm" }
 graph-runtime-derive = { path = "../../runtime/derive" }
 
 [dev-dependencies]
-diesel = { version = "1.4.7", features = ["postgres", "serde_json", "numeric", "r2d2"] }
+diesel = { version = "1.4.8", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 graph-core = { path = "../../core" }
 graph-store-postgres = { path = "../../store/postgres" }
-pretty_assertions = "0.7.2"
+pretty_assertions = "1.0.0"
 test-store = { path = "../../store/test-store" }
+
+[build-dependencies]
+tonic-build = "0.5.1"

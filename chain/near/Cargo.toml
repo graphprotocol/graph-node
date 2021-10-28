@@ -1,0 +1,25 @@
+[package]
+name = "graph-chain-near"
+version = "0.24.1"
+edition = "2018"
+
+[build-dependencies]
+tonic-build = "0.5.1"
+
+[dependencies]
+base64 = "0.13"
+graph = { path = "../../graph" }
+prost = "0.8.0"
+prost-types = "0.8.0"
+serde = "1.0"
+
+graph-runtime-wasm = { path = "../../runtime/wasm" }
+graph-runtime-derive = { path = "../../runtime/derive" }
+
+[dev-dependencies]
+diesel = { version = "1.4.7", features = ["postgres", "serde_json", "numeric", "r2d2"] }
+graph-core = { path = "../../core" }
+graph-store-postgres = { path = "../../store/postgres" }
+pretty_assertions = "0.7.2"
+test-store = { path = "../../store/test-store" }
+

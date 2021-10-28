@@ -2,14 +2,23 @@ use ethabi::Contract;
 use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::*;
 use graph::ipfs_client::IpfsClient;
+use graph::log;
 use graph::prelude::*;
 use graph_chain_ethereum::{
     Chain, DataSource, DataSourceTemplate, Mapping, MappingABI, TemplateSource,
 };
 use graph_runtime_wasm::{HostExports, MappingContext};
 use semver::Version;
+use std::env;
 use std::str::FromStr;
 use web3::types::Address;
+
+lazy_static! {
+    pub static ref LOGGER: Logger = match env::var_os("GRAPH_LOG") {
+        Some(_) => log::logger(false),
+        None => Logger::root(slog::Discard, o!()),
+    };
+}
 
 fn mock_host_exports(
     subgraph_id: DeploymentHash,
@@ -90,7 +99,10 @@ pub fn mock_context(
             store.clone(),
             api_version,
         )),
-        state: BlockState::new(store.writable(&deployment).unwrap(), Default::default()),
+        state: BlockState::new(
+            futures03::executor::block_on(store.writable(LOGGER.clone(), deployment.id)).unwrap(),
+            Default::default(),
+        ),
         proof_of_indexing: None,
         host_fns: Arc::new(Vec::new()),
     }

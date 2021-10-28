@@ -207,8 +207,8 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: i32) -> Result<(), Err
     }
 
     fn duration(start: &UtcDateTime, end: &Option<UtcDateTime>) -> String {
-        let start = start.clone();
-        let end = end.clone();
+        let start = *start;
+        let end = *end;
 
         let end = end.unwrap_or(UtcDateTime::from(SystemTime::now()));
         let duration = end - start;

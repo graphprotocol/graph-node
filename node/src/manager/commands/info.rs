@@ -12,11 +12,10 @@ fn find(
     pending: bool,
     used: bool,
 ) -> Result<Vec<Deployment>, anyhow::Error> {
-    let conn = pool.get()?;
     let current = current || used;
     let pending = pending || used;
 
-    let deployments = Deployment::lookup(&conn, name)?;
+    let deployments = Deployment::lookup(&pool, name)?;
     // Filter by status; if neither `current` or `pending` are set, list
     // all deployments
     let deployments: Vec<_> = deployments

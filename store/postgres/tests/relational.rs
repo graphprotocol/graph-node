@@ -2,9 +2,9 @@
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
 use graph::prelude::{
-    o, slog, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter, EntityKey,
-    EntityOrder, EntityQuery, EntityRange, Logger, Schema, StopwatchMetrics, Value, ValueType,
-    BLOCK_NUMBER_MAX,
+    o, slog, tokio, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter,
+    EntityKey, EntityOrder, EntityQuery, EntityRange, Logger, Schema, StopwatchMetrics, Value,
+    ValueType, BLOCK_NUMBER_MAX,
 };
 use graph_mock::MockMetricsRegistry;
 use graph_store_postgres::layout_for_tests::set_account_like;
@@ -12,6 +12,7 @@ use graph_store_postgres::layout_for_tests::LayoutCache;
 use graph_store_postgres::layout_for_tests::SqlName;
 use hex_literal::hex;
 use lazy_static::lazy_static;
+use std::borrow::Cow;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::thread::sleep;
@@ -161,7 +162,7 @@ lazy_static! {
         );
         entity.set("string", "scalar");
         entity.set("strings", strings);
-        entity.set("bytes", (*BYTES_VALUE).clone());
+        entity.set("bytes", *BYTES_VALUE);
         entity.set("byteArray", byte_array);
         let big_int = (*LARGE_INT).clone();
         entity.set("bigInt", big_int.clone());
@@ -202,7 +203,7 @@ fn insert_entity(
     entity_type: &str,
     mut entities: Vec<Entity>,
 ) {
-    let mut entities_with_keys = entities
+    let entities_with_keys_owned = entities
         .drain(..)
         .map(|entity| {
             let key = EntityKey::data(
@@ -213,6 +214,10 @@ fn insert_entity(
             (key, entity)
         })
         .collect::<Vec<(EntityKey, Entity)>>();
+    let mut entities_with_keys: Vec<_> = entities_with_keys_owned
+        .iter()
+        .map(|(key, entity)| (key, Cow::from(entity)))
+        .collect();
     let entity_type = EntityType::from(entity_type);
     let errmsg = format!(
         "Failed to insert entities {}[{:?}]",
@@ -227,7 +232,7 @@ fn insert_entity(
             &MOCK_STOPWATCH,
         )
         .expect(&errmsg);
-    assert_eq!(inserted, entities_with_keys.len());
+    assert_eq!(inserted, entities_with_keys_owned.len());
 }
 
 fn update_entity(
@@ -236,7 +241,7 @@ fn update_entity(
     entity_type: &str,
     mut entities: Vec<Entity>,
 ) {
-    let mut entities_with_keys: Vec<(EntityKey, Entity)> = entities
+    let entities_with_keys_owned: Vec<(EntityKey, Entity)> = entities
         .drain(..)
         .map(|entity| {
             let key = EntityKey::data(
@@ -246,6 +251,10 @@ fn update_entity(
             );
             (key, entity)
         })
+        .collect();
+    let mut entities_with_keys: Vec<_> = entities_with_keys_owned
+        .iter()
+        .map(|(key, entity)| (key, Cow::from(entity)))
         .collect();
 
     let entity_type = EntityType::from(entity_type);
@@ -263,7 +272,7 @@ fn update_entity(
             &MOCK_STOPWATCH,
         )
         .expect(&errmsg);
-    assert_eq!(updated, entities_with_keys.len());
+    assert_eq!(updated, entities_with_keys_owned.len());
 }
 
 fn insert_user_entity(
@@ -537,21 +546,16 @@ fn update() {
         );
 
         let entity_type = EntityType::from("Scalar");
-        let mut entities = vec![(key, entity)];
+        let mut entities = vec![(&key, Cow::from(&entity))];
         layout
             .update(&conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
             .expect("Failed to update");
-
-        // The missing 'strings' will show up as Value::Null in the
-        // loaded entity
-        let entity_again = &mut entities.get_mut(0).unwrap().1;
-        entity_again.set("strings", Value::Null);
 
         let actual = layout
             .find(conn, &*SCALAR, "one", BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[one]")
             .unwrap();
-        assert_entity_eq!(scrub(&entity_again), actual);
+        assert_entity_eq!(scrub(&entity), actual);
     });
 }
 
@@ -597,9 +601,10 @@ fn update_many() {
             })
             .collect();
 
-        let mut entities: Vec<(EntityKey, Entity)> = keys
-            .into_iter()
-            .zip(vec![one, two, three].into_iter())
+        let entities_vec = vec![one, two, three];
+        let mut entities: Vec<(&EntityKey, Cow<'_, Entity>)> = keys
+            .iter()
+            .zip(entities_vec.iter().map(|e| Cow::Borrowed(e)))
             .collect();
 
         layout
@@ -669,9 +674,15 @@ fn serialize_bigdecimal() {
                 entity.id().unwrap().clone(),
             );
             let entity_type = EntityType::from("Scalar");
-            let mut entities = vec![(key, entity.clone())];
+            let mut entities = vec![(&key, Cow::Borrowed(&entity))];
             layout
-                .update(&conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
+                .update(
+                    &conn,
+                    &entity_type,
+                    entities.as_mut_slice(),
+                    0,
+                    &MOCK_STOPWATCH,
+                )
                 .expect("Failed to update");
 
             let actual = layout
@@ -722,7 +733,7 @@ fn delete() {
             "no such entity".to_owned(),
         );
         let entity_type = EntityType::from("Scalar");
-        let mut entity_keys = vec![key.entity_id];
+        let mut entity_keys = vec![key.entity_id.as_str()];
         let count = layout
             .delete(
                 &conn,
@@ -738,7 +749,7 @@ fn delete() {
         // Delete entity two
         entity_keys
             .get_mut(0)
-            .map(|key| *key = "two".to_owned())
+            .map(|key| *key = "two")
             .expect("Failed to update key");
 
         let count = layout
@@ -764,7 +775,7 @@ fn insert_many_and_delete_many() {
 
         // Delete entities with ids equal to "two" and "three"
         let entity_type = EntityType::from("Scalar");
-        let entity_keys = vec!["two".to_string(), "three".to_string()];
+        let entity_keys = vec!["two", "three"];
         let num_removed = layout
             .delete(&conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
@@ -773,12 +784,12 @@ fn insert_many_and_delete_many() {
     });
 }
 
-#[test]
-fn layout_cache() {
+#[tokio::test]
+async fn layout_cache() {
     run_test_with_conn(|conn| {
         let id = DeploymentHash::new("primaryLayoutCache").unwrap();
         let _loc = create_test_subgraph(&id, THINGS_GQL);
-        let site = Arc::new(primary_connection().find_active_site(&id).unwrap().unwrap());
+        let site = Arc::new(primary_mirror().find_active_site(&id).unwrap().unwrap());
         let table_name = SqlName::verbatim("scalar".to_string());
 
         let cache = LayoutCache::new(Duration::from_millis(10));

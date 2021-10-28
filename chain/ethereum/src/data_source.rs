@@ -1,11 +1,12 @@
 use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
 use ethabi::{Address, Contract, Event, Function, LogParam, ParamType, RawLog};
+use graph::blockchain::TriggerWithHandler;
 use graph::components::store::StoredDynamicDataSource;
 use graph::prelude::futures03::future::try_join;
 use graph::prelude::futures03::stream::FuturesOrdered;
 use graph::prelude::{Entity, Link, SubgraphManifestValidationError};
-use graph::slog::trace;
+use graph::slog::{o, trace};
 use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::{convert::TryFrom, sync::Arc};
@@ -25,6 +26,9 @@ use graph::data::subgraph::{calls_host_fn, DataSourceContext, Source};
 
 use crate::chain::Chain;
 use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger, MappingTrigger};
+
+// The recommended kind is `ethereum`, `ethereum/contract` is accepted for backwards compatibility.
+const ETHEREUM_KINDS: &[&str] = &["ethereum/contract", "ethereum"];
 
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
@@ -55,7 +59,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         trigger: &<Chain as Blockchain>::TriggerData,
         block: Arc<<Chain as Blockchain>::Block>,
         logger: &Logger,
-    ) -> Result<Option<<Chain as Blockchain>::MappingTrigger>, Error> {
+    ) -> Result<Option<TriggerWithHandler<Chain>>, Error> {
         let block = block.light_block();
         self.match_and_decode(trigger, block, logger)
     }
@@ -153,15 +157,22 @@ impl blockchain::DataSource<Chain> for DataSource {
         })
     }
 
-    fn validate(&self) -> Vec<graph::prelude::SubgraphManifestValidationError> {
+    fn validate(&self) -> Vec<Error> {
         let mut errors = vec![];
+
+        if !ETHEREUM_KINDS.contains(&self.kind.as_str()) {
+            errors.push(anyhow!(
+                "data source has invalid `kind`, expected `ethereum` but found {}",
+                self.kind
+            ))
+        }
 
         // Validate that there is a `source` address if there are call or block handlers
         let no_source_address = self.address().is_none();
         let has_call_handlers = !self.mapping.call_handlers.is_empty();
         let has_block_handlers = !self.mapping.block_handlers.is_empty();
         if no_source_address && (has_call_handlers || has_block_handlers) {
-            errors.push(SubgraphManifestValidationError::SourceAddressRequired);
+            errors.push(SubgraphManifestValidationError::SourceAddressRequired.into());
         };
 
         // Validate that there are no more than one of each type of block_handler
@@ -181,7 +192,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             non_filtered_block_handler_count > 1 || call_filtered_block_handler_count > 1
         };
         if has_too_many_block_handlers {
-            errors.push(SubgraphManifestValidationError::DataSourceBlockHandlerLimitExceeded);
+            errors.push(anyhow!("data source has duplicated block handlers"));
         }
 
         errors
@@ -359,7 +370,7 @@ impl DataSource {
 
                 // Extract the event name; if there is no '(' in the signature,
                 // `event_name` will be empty and not match any events, so that's ok
-                let parens = signature.find("(").unwrap_or(0);
+                let parens = signature.find('(').unwrap_or(0);
                 let event_name = &signature[0..parens];
 
                 let matching_events = self
@@ -435,7 +446,7 @@ impl DataSource {
         trigger: &EthereumTrigger,
         block: Arc<LightEthereumBlock>,
         logger: &Logger,
-    ) -> Result<Option<MappingTrigger>, Error> {
+    ) -> Result<Option<TriggerWithHandler<Chain>>, Error> {
         if !self.matches_trigger_address(&trigger) {
             return Ok(None);
         }
@@ -450,7 +461,10 @@ impl DataSource {
                     Some(handler) => handler,
                     None => return Ok(None),
                 };
-                Ok(Some(MappingTrigger::Block { block, handler }))
+                Ok(Some(TriggerWithHandler::new(
+                    MappingTrigger::Block { block },
+                    handler.handler,
+                )))
             }
             EthereumTrigger::Log(log) => {
                 let potential_handlers = self.handlers_for_log(log)?;
@@ -541,13 +555,20 @@ impl DataSource {
                     }
                 };
 
-                Ok(Some(MappingTrigger::Log {
-                    block,
-                    transaction: Arc::new(transaction),
-                    log: log.cheap_clone(),
-                    params,
-                    handler: event_handler,
-                }))
+                let logging_extras = Arc::new(o! {
+                    "signature" => event_handler.event.to_string(),
+                    "address" => format!("{}", &log.address),
+                });
+                Ok(Some(TriggerWithHandler::new_with_logging_extras(
+                    MappingTrigger::Log {
+                        block,
+                        transaction: Arc::new(transaction),
+                        log: log.cheap_clone(),
+                        params,
+                    },
+                    event_handler.handler,
+                    logging_extras,
+                )))
             }
             EthereumTrigger::Call(call) => {
                 // Identify the call handler for this call
@@ -634,15 +655,21 @@ impl DataSource {
                         .transaction_for_call(&call)
                         .context("Found no transaction for call")?,
                 );
-
-                Ok(Some(MappingTrigger::Call {
-                    block,
-                    transaction,
-                    call: call.cheap_clone(),
-                    inputs,
-                    outputs,
-                    handler,
-                }))
+                let logging_extras = Arc::new(o! {
+                    "function" => handler.function.to_string(),
+                    "to" => format!("{}", &call.to),
+                });
+                Ok(Some(TriggerWithHandler::new_with_logging_extras(
+                    MappingTrigger::Call {
+                        block,
+                        transaction,
+                        call: call.cheap_clone(),
+                        inputs,
+                        outputs,
+                    },
+                    handler.handler,
+                    logging_extras,
+                )))
             }
         }
     }

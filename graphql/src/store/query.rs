@@ -19,7 +19,7 @@ enum OrderDirection {
 pub fn build_query<'a>(
     entity: impl Into<ObjectOrInterface<'a>>,
     block: BlockNumber,
-    arguments: &HashMap<&str, q::Value>,
+    arguments: &HashMap<&str, r::Value>,
     types_for_interface: &'a BTreeMap<EntityType, Vec<s::ObjectType>>,
     max_first: u32,
     max_skip: u32,
@@ -67,13 +67,13 @@ pub fn build_query<'a>(
 
 /// Parses GraphQL arguments into a EntityRange, if present.
 fn build_range(
-    arguments: &HashMap<&str, q::Value>,
+    arguments: &HashMap<&str, r::Value>,
     max_first: u32,
     max_skip: u32,
 ) -> Result<EntityRange, QueryExecutionError> {
     let first = match arguments.get("first") {
-        Some(q::Value::Int(n)) => {
-            let n = n.as_i64().expect("first is Int");
+        Some(r::Value::Int(n)) => {
+            let n = *n;
             if n > 0 && n <= (max_first as i64) {
                 n as u32
             } else {
@@ -82,13 +82,13 @@ fn build_range(
                 ));
             }
         }
-        Some(q::Value::Null) | None => 100,
+        Some(r::Value::Null) | None => 100,
         _ => unreachable!("first is an Int with a default value"),
     };
 
     let skip = match arguments.get("skip") {
-        Some(q::Value::Int(n)) => {
-            let n = n.as_i64().expect("skip is Int");
+        Some(r::Value::Int(n)) => {
+            let n = *n;
             if n >= 0 && n <= (max_skip as i64) {
                 n as u32
             } else {
@@ -97,7 +97,7 @@ fn build_range(
                 ));
             }
         }
-        Some(q::Value::Null) | None => 0,
+        Some(r::Value::Null) | None => 0,
         _ => unreachable!("skip is an Int with a default value"),
     };
 
@@ -110,13 +110,13 @@ fn build_range(
 /// Parses GraphQL arguments into an EntityFilter, if present.
 fn build_filter(
     entity: ObjectOrInterface,
-    arguments: &HashMap<&str, q::Value>,
+    arguments: &HashMap<&str, r::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     match arguments.get("where") {
-        Some(q::Value::Object(object)) => build_filter_from_object(entity, object),
-        Some(q::Value::Null) => Ok(None),
+        Some(r::Value::Object(object)) => build_filter_from_object(entity, object),
+        Some(r::Value::Null) => Ok(None),
         None => match arguments.get("text") {
-            Some(q::Value::Object(filter)) => build_fulltext_filter_from_object(filter),
+            Some(r::Value::Object(filter)) => build_fulltext_filter_from_object(filter),
             None => Ok(None),
             _ => Err(QueryExecutionError::InvalidFilterError),
         },
@@ -125,12 +125,12 @@ fn build_filter(
 }
 
 fn build_fulltext_filter_from_object(
-    object: &BTreeMap<String, q::Value>,
+    object: &BTreeMap<String, r::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     object.iter().next().map_or(
         Err(QueryExecutionError::FulltextQueryRequiresFilter),
         |(key, value)| {
-            if let q::Value::String(s) = value {
+            if let r::Value::String(s) = value {
                 Ok(Some(EntityFilter::Equal(
                     key.clone(),
                     Value::String(s.clone()),
@@ -145,7 +145,7 @@ fn build_fulltext_filter_from_object(
 /// Parses a GraphQL input object into an EntityFilter, if present.
 fn build_filter_from_object(
     entity: ObjectOrInterface,
-    object: &BTreeMap<String, q::Value>,
+    object: &BTreeMap<String, r::Value>,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     Ok(Some(EntityFilter::And({
         object
@@ -217,10 +217,10 @@ fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecu
 /// Parses GraphQL arguments into an field name to order by, if present.
 fn build_order_by(
     entity: ObjectOrInterface,
-    arguments: &HashMap<&str, q::Value>,
+    arguments: &HashMap<&str, r::Value>,
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
     match arguments.get("orderBy") {
-        Some(q::Value::Enum(name)) => {
+        Some(r::Value::Enum(name)) => {
             let field = sast::get_field(entity, name).ok_or_else(|| {
                 QueryExecutionError::EntityFieldError(entity.name().to_owned(), name.clone())
             })?;
@@ -234,7 +234,7 @@ fn build_order_by(
                 })
         }
         _ => match arguments.get("text") {
-            Some(q::Value::Object(filter)) => build_fulltext_order_by_from_object(filter),
+            Some(r::Value::Object(filter)) => build_fulltext_order_by_from_object(filter),
             None => Ok(None),
             _ => Err(QueryExecutionError::InvalidFilterError),
         },
@@ -242,12 +242,12 @@ fn build_order_by(
 }
 
 fn build_fulltext_order_by_from_object(
-    object: &BTreeMap<String, q::Value>,
+    object: &BTreeMap<String, r::Value>,
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
     object.iter().next().map_or(
         Err(QueryExecutionError::FulltextQueryRequiresFilter),
         |(key, value)| {
-            if let q::Value::String(_) = value {
+            if let r::Value::String(_) = value {
                 Ok(Some((key.clone(), ValueType::String)))
             } else {
                 Err(QueryExecutionError::FulltextQueryRequiresFilter)
@@ -258,13 +258,13 @@ fn build_fulltext_order_by_from_object(
 
 /// Parses GraphQL arguments into a EntityOrder, if present.
 fn build_order_direction(
-    arguments: &HashMap<&str, q::Value>,
+    arguments: &HashMap<&str, r::Value>,
 ) -> Result<OrderDirection, QueryExecutionError> {
     Ok(arguments
         .get("orderDirection")
         .map(|value| match value {
-            q::Value::Enum(name) if name == "asc" => OrderDirection::Ascending,
-            q::Value::Enum(name) if name == "desc" => OrderDirection::Descending,
+            r::Value::Enum(name) if name == "asc" => OrderDirection::Ascending,
+            r::Value::Enum(name) if name == "desc" => OrderDirection::Descending,
             _ => OrderDirection::Ascending,
         })
         .unwrap_or(OrderDirection::Ascending))
@@ -417,12 +417,12 @@ mod tests {
         }
     }
 
-    fn default_arguments<'a>() -> HashMap<&'a str, q::Value> {
+    fn default_arguments<'a>() -> HashMap<&'a str, r::Value> {
         let mut map = HashMap::new();
         let first = "first";
         let skip = "skip";
-        map.insert(first, q::Value::Int(100.into()));
-        map.insert(skip, q::Value::Int(0.into()));
+        map.insert(first, r::Value::Int(100.into()));
+        map.insert(skip, r::Value::Int(0.into()));
         map
     }
 
@@ -480,7 +480,7 @@ mod tests {
     fn build_query_parses_order_by_from_enum_values_correctly() {
         let order_by = "orderBy".to_string();
         let mut args = default_arguments();
-        args.insert(&order_by, q::Value::Enum("name".to_string()));
+        args.insert(&order_by, r::Value::Enum("name".to_string()));
         assert_eq!(
             build_query(
                 &default_object(),
@@ -497,7 +497,7 @@ mod tests {
         );
 
         let mut args = default_arguments();
-        args.insert(&order_by, q::Value::Enum("email".to_string()));
+        args.insert(&order_by, r::Value::Enum("email".to_string()));
         assert_eq!(
             build_query(
                 &default_object(),
@@ -518,7 +518,7 @@ mod tests {
     fn build_query_ignores_order_by_from_non_enum_values() {
         let order_by = "orderBy".to_string();
         let mut args = default_arguments();
-        args.insert(&order_by, q::Value::String("name".to_string()));
+        args.insert(&order_by, r::Value::String("name".to_string()));
         assert_eq!(
             build_query(
                 &default_object(),
@@ -535,7 +535,7 @@ mod tests {
         );
 
         let mut args = default_arguments();
-        args.insert(&order_by, q::Value::String("email".to_string()));
+        args.insert(&order_by, r::Value::String("email".to_string()));
         assert_eq!(
             build_query(
                 &default_object(),
@@ -557,8 +557,8 @@ mod tests {
         let order_by = "orderBy".to_string();
         let order_direction = "orderDirection".to_string();
         let mut args = default_arguments();
-        args.insert(&order_by, q::Value::Enum("name".to_string()));
-        args.insert(&order_direction, q::Value::Enum("asc".to_string()));
+        args.insert(&order_by, r::Value::Enum("name".to_string()));
+        args.insert(&order_direction, r::Value::Enum("asc".to_string()));
         assert_eq!(
             build_query(
                 &default_object(),
@@ -575,8 +575,8 @@ mod tests {
         );
 
         let mut args = default_arguments();
-        args.insert(&order_by, q::Value::Enum("name".to_string()));
-        args.insert(&order_direction, q::Value::Enum("desc".to_string()));
+        args.insert(&order_by, r::Value::Enum("name".to_string()));
+        args.insert(&order_direction, r::Value::Enum("desc".to_string()));
         assert_eq!(
             build_query(
                 &default_object(),
@@ -593,10 +593,10 @@ mod tests {
         );
 
         let mut args = default_arguments();
-        args.insert(&order_by, q::Value::Enum("name".to_string()));
+        args.insert(&order_by, r::Value::Enum("name".to_string()));
         args.insert(
             &order_direction,
-            q::Value::Enum("descending...".to_string()),
+            r::Value::Enum("descending...".to_string()),
         );
         assert_eq!(
             build_query(
@@ -617,7 +617,7 @@ mod tests {
         let mut args = default_arguments();
         args.insert(
             &order_direction,
-            q::Value::Enum("descending...".to_string()),
+            r::Value::Enum("descending...".to_string()),
         );
         assert_eq!(
             build_query(
@@ -640,8 +640,8 @@ mod tests {
         let order_by = "orderBy".to_string();
         let order_direction = "orderDirection".to_string();
         let mut args = default_arguments();
-        args.insert(&order_by, q::Value::Enum("name".to_string()));
-        args.insert(&order_direction, q::Value::String("asc".to_string()));
+        args.insert(&order_by, r::Value::Enum("name".to_string()));
+        args.insert(&order_direction, r::Value::String("asc".to_string()));
         assert_eq!(
             build_query(
                 &default_object(),
@@ -658,8 +658,8 @@ mod tests {
         );
 
         let mut args = default_arguments();
-        args.insert(&order_by, q::Value::Enum("name".to_string()));
-        args.insert(&order_direction, q::Value::String("desc".to_string()));
+        args.insert(&order_by, r::Value::Enum("name".to_string()));
+        args.insert(&order_direction, r::Value::String("desc".to_string()));
         assert_eq!(
             build_query(
                 &default_object(),
@@ -698,7 +698,7 @@ mod tests {
     fn build_query_yields_default_first_if_only_skip_is_present() {
         let skip = "skip".to_string();
         let mut args = default_arguments();
-        args.insert(&skip, q::Value::Int(q::Number::from(50)));
+        args.insert(&skip, r::Value::Int(50));
         assert_eq!(
             build_query(
                 &default_object(),
@@ -724,9 +724,9 @@ mod tests {
         let mut args = default_arguments();
         args.insert(
             &whre,
-            q::Value::Object(BTreeMap::from_iter(vec![(
+            r::Value::Object(BTreeMap::from_iter(vec![(
                 "name_ends_with".to_string(),
-                q::Value::String("ello".to_string()),
+                r::Value::String("ello".to_string()),
             )])),
         );
         assert_eq!(

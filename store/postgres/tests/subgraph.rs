@@ -6,11 +6,11 @@ use graph::{
     prelude::EntityChangeOperation,
     prelude::QueryStoreManager,
     prelude::Schema,
-    prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
     prelude::SubgraphManifest,
     prelude::SubgraphName,
     prelude::SubgraphVersionSwitchingMode,
+    prelude::{futures03, StoreEvent},
     prelude::{CheapClone, DeploymentHash, NodeId, SubgraphStore as _},
     semver::Version,
 };
@@ -156,8 +156,7 @@ fn create_subgraph() {
     }
 
     fn deployment_synced(store: &Arc<SubgraphStore>, deployment: &DeploymentLocator) {
-        store
-            .writable(deployment)
+        futures03::executor::block_on(store.cheap_clone().writable(LOGGER.clone(), deployment.id))
             .expect("can get writable")
             .deployment_synced()
             .unwrap();
@@ -384,7 +383,8 @@ fn status() {
 
         store
             .subgraph_store()
-            .writable(&deployment)
+            .writable(LOGGER.clone(), deployment.id)
+            .await
             .expect("can get writable")
             .fail_subgraph(error)
             .await
@@ -471,7 +471,9 @@ fn subgraph_error() {
 
         assert!(count() == 0);
 
-        transact_errors(&store, &deployment, BLOCKS[1].clone(), vec![error]).unwrap();
+        transact_errors(&store, &deployment, BLOCKS[1].clone(), vec![error])
+            .await
+            .unwrap();
         assert!(count() == 1);
 
         let error = SubgraphError {
@@ -483,7 +485,9 @@ fn subgraph_error() {
         };
 
         // Inserting the same error is allowed but ignored.
-        transact_errors(&store, &deployment, BLOCKS[2].clone(), vec![error]).unwrap();
+        transact_errors(&store, &deployment, BLOCKS[2].clone(), vec![error])
+            .await
+            .unwrap();
         assert!(count() == 1);
 
         let error2 = SubgraphError {
@@ -494,7 +498,9 @@ fn subgraph_error() {
             deterministic: false,
         };
 
-        transact_errors(&store, &deployment, BLOCKS[3].clone(), vec![error2]).unwrap();
+        transact_errors(&store, &deployment, BLOCKS[3].clone(), vec![error2])
+            .await
+            .unwrap();
         assert!(count() == 2);
 
         test_store::remove_subgraph(&subgraph_id);
@@ -526,7 +532,8 @@ fn fatal_vs_non_fatal() {
 
         store
             .subgraph_store()
-            .writable(&deployment)
+            .writable(LOGGER.clone(), deployment.id)
+            .await
             .expect("can get writable")
             .fail_subgraph(error())
             .await
@@ -534,7 +541,9 @@ fn fatal_vs_non_fatal() {
 
         assert!(!query_store.has_non_fatal_errors(None).await.unwrap());
 
-        transact_errors(&store, &deployment, BLOCKS[1].clone(), vec![error()]).unwrap();
+        transact_errors(&store, &deployment, BLOCKS[1].clone(), vec![error()])
+            .await
+            .unwrap();
 
         assert!(query_store.has_non_fatal_errors(None).await.unwrap());
     })
@@ -555,6 +564,30 @@ fn fail_unfail() {
             .await
             .unwrap();
 
+        // Process the first block.
+        transact_entity_operations(
+            &store.subgraph_store(),
+            &deployment,
+            BLOCKS[0].clone(),
+            vec![],
+        )
+        .unwrap();
+
+        // We don't have any errors.
+        assert!(!query_store.has_non_fatal_errors(None).await.unwrap());
+
+        // Process the second block.
+        transact_entity_operations(
+            &store.subgraph_store(),
+            &deployment,
+            BLOCKS[1].clone(),
+            vec![],
+        )
+        .unwrap();
+
+        // Still no fatal errors.
+        assert!(!query_store.has_non_fatal_errors(None).await.unwrap());
+
         let error = SubgraphError {
             subgraph_id: deployment.hash.clone(),
             message: "test".to_string(),
@@ -565,25 +598,20 @@ fn fail_unfail() {
 
         let writable = store
             .subgraph_store()
-            .writable(&deployment)
+            .writable(LOGGER.clone(), deployment.id)
+            .await
             .expect("can get writable");
         writable.fail_subgraph(error).await.unwrap();
 
-        assert!(!query_store.has_non_fatal_errors(None).await.unwrap());
+        // We now have a fatal error because the subgraph failed.
+        assert!(query_store.has_non_fatal_errors(None).await.unwrap());
 
         // This will unfail the subgraph and delete the fatal error.
-        writable.unfail().unwrap();
+        writable
+            .unfail(Some(BLOCKS[1].clone()), Some(BLOCKS[0].clone()))
+            .unwrap();
 
-        // Advance the block ptr to the block of the deleted error.
-        transact_entity_operations(
-            &store.subgraph_store(),
-            &deployment,
-            BLOCKS[1].clone(),
-            vec![],
-        )
-        .unwrap();
-
-        // We still have no fatal errors.
+        // We don't have fatal errors anymore.
         assert!(!query_store.has_non_fatal_errors(None).await.unwrap());
 
         test_store::remove_subgraphs();

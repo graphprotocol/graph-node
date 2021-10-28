@@ -1,6 +1,8 @@
-use crate::functions::pg_notify;
 use diesel::pg::PgConnection;
 use diesel::select;
+use diesel::sql_types::Text;
+use graph::prelude::tokio::sync::mpsc::error::SendTimeoutError;
+use graph::util::backoff::ExponentialBackoff;
 use lazy_static::lazy_static;
 use postgres::Notification;
 use postgres::{fallible_iterator::FallibleIterator, Client, NoTls};
@@ -25,6 +27,23 @@ lazy_static! {
                 )))
             )
             .unwrap_or(Duration::from_secs(300));
+    static ref NOTIFICATION_BROADCAST_TIMEOUT: Duration =
+        env::var("GRAPH_NOTIFICATION_BROADCAST_TIMEOUT")
+            .ok()
+            .map(
+                |s| Duration::from_secs(u64::from_str(&s).unwrap_or_else(|_| panic!(
+                    "failed to parse env var GRAPH_NOTIFICATION_BROADCAST_TIMEOUT"
+                )))
+            )
+            .unwrap_or(Duration::from_secs(60));
+}
+
+#[cfg(debug_assertions)]
+lazy_static::lazy_static! {
+    /// Tests set this to true so that `send_store_event` will store a copy
+    /// of each event sent in `EVENT_TAP`
+    pub static ref EVENT_TAP_ENABLED: Mutex<bool> = Mutex::new(false);
+    pub static ref EVENT_TAP: Mutex<Vec<StoreEvent>> = Mutex::new(Vec::new());
 }
 
 #[derive(Clone)]
@@ -63,6 +82,11 @@ impl NotificationListener {
     /// channel.
     ///
     /// Must call `.start()` to begin receiving notifications on the returned receiver.
+    //
+    /// The listener will handle dropping the database connection by
+    /// indefinitely trying to reconnect to the database. Users of the
+    /// listener have no way to find out whether the connection had been
+    /// dropped and was reestablished.
     pub fn new(
         logger: &Logger,
         postgres_url: String,
@@ -102,6 +126,43 @@ impl NotificationListener {
         Arc<AtomicBool>,
         Arc<Barrier>,
     ) {
+        /// Connect to the database at `postgres_url` and do a `LISTEN
+        /// {channel_name}`. If that fails, retry with exponential backoff
+        /// with a delay between 1s and 32s
+        ///
+        /// If `barrier` is given, call `barrier.wait()` after the first
+        /// attempt to connect. When the database is up, we make sure that
+        /// we listen before other work that depends on receiving all
+        /// notifications progresses, and when the database is down, that we
+        /// do not unduly block everything.
+        fn connect_and_listen(
+            logger: &Logger,
+            postgres_url: &str,
+            channel_name: &str,
+            barrier: Option<&Barrier>,
+        ) -> Client {
+            let mut backoff =
+                ExponentialBackoff::new(Duration::from_secs(1), Duration::from_secs(30));
+            loop {
+                let res = Client::connect(postgres_url, NoTls).and_then(|mut conn| {
+                    conn.execute(format!("LISTEN {}", channel_name).as_str(), &[])?;
+                    Ok(conn)
+                });
+                barrier.map(|barrier| barrier.wait());
+                match res {
+                    Err(e) => {
+                        error!(logger, "Failed to connect notification listener: {}", e;
+                                       "attempt" => backoff.attempt,
+                                       "retry_delay_s" => backoff.delay().as_secs());
+                        backoff.sleep();
+                    }
+                    Ok(conn) => {
+                        return conn;
+                    }
+                }
+            }
+        }
+
         let logger = logger.new(o!(
             "component" => "NotificationListener",
             "channel" => channel_name.0.clone()
@@ -123,24 +184,32 @@ impl NotificationListener {
         // Create a channel for notifications
         let (sender, receiver) = channel(100);
 
-        let worker_handle = thread::spawn(move || {
+        let worker_handle = graph::spawn_thread("notification_listener", move || {
             // We exit the process on panic so unwind safety is irrelevant.
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-                // Connect to Postgres
-                let mut conn = Client::connect(postgres_url.as_str(), NoTls)
-                    .expect("failed to connect notification listener to Postgres");
-
-                // Subscribe to the notification channel in Postgres
-                conn.execute(format!("LISTEN {}", channel_name.0).as_str(), &[])
-                    .expect("failed to listen to Postgres notifications");
-
-                // Wait until the listener has been started
-                barrier.wait();
+                let mut connected = true;
+                let mut conn = connect_and_listen(
+                    &logger,
+                    postgres_url.as_str(),
+                    &channel_name.0,
+                    Some(barrier.as_ref()),
+                );
 
                 let mut max_queue_size_seen = 0;
 
                 // Read notifications until the thread is to be terminated
                 while !terminate.load(Ordering::SeqCst) {
+                    if !connected {
+                        conn = connect_and_listen(
+                            &logger,
+                            postgres_url.as_str(),
+                            &channel_name.0,
+                            None,
+                        );
+                        debug!(logger, "Reconnected notification listener");
+                        connected = true;
+                    }
+
                     let queue_size = conn.notifications().len();
                     if queue_size > 1000 && queue_size > max_queue_size_seen {
                         debug!(logger, "Large notification queue to process";
@@ -158,27 +227,28 @@ impl NotificationListener {
                     //
                     // We batch notifications such that we do not wait for
                     // longer than 500ms for new notifications to arrive,
-                    // but limit the size of each batch to 64 to guarantee
+                    // but limit the size of each batch to 128 to guarantee
                     // progress on a busy system
                     let notifications: Vec<_> = conn
                         .notifications()
                         .timeout_iter(Duration::from_millis(500))
                         .iterator()
+                        .take(128)
                         .filter_map(|item| match item {
                             Ok(msg) => Some(msg),
                             Err(e) => {
-                                let msg = format!("{}", e);
-                                crit!(logger, "Error receiving message"; "error" => &msg);
-                                eprintln!(
-                                    "Connection to Postgres lost while listening for events. \
-                             Aborting to avoid inconsistent state. ({})",
-                                    msg
-                                );
-                                std::process::abort();
+                                // When there's an error, process whatever
+                                // notifications we've picked up so far, and
+                                // cause the start of the loop to reconnect
+                                if connected {
+                                    let msg = format!("{}", e);
+                                    crit!(logger, "Error receiving message"; "error" => &msg);
+                                }
+                                connected = false;
+                                None
                             }
                         })
                         .filter(|notification| notification.channel() == channel_name.0)
-                        .take(64)
                         .collect();
 
                     // Read notifications until there hasn't been one for 500ms
@@ -190,11 +260,32 @@ impl NotificationListener {
 
                         match JsonNotification::parse(&notification, &mut conn) {
                             Ok(json_notification) => {
-                                // We'll assume here that if sending fails, this means that the
-                                // listener has already been dropped, the receiving
-                                // end is gone and we should terminate the listener loop
-                                if sender.clone().blocking_send(json_notification).is_err() {
-                                    break;
+                                let timeout = *NOTIFICATION_BROADCAST_TIMEOUT;
+                                match graph::block_on(
+                                    sender.send_timeout(json_notification, timeout),
+                                ) {
+                                    // on error or timeout, continue
+                                    Ok(()) => (),
+                                    Err(SendTimeoutError::Timeout(_)) => {
+                                        crit!(
+                                            logger,
+                                            "Timeout broadcasting DB notification, skipping it";
+                                            "timeout_secs" => timeout.as_secs().to_string(),
+                                            "channel" => &channel_name.0,
+                                            "notification" => format!("{:?}", notification),
+                                        );
+                                    }
+
+                                    // If sending fails, this means that the receiver has been
+                                    // dropped and we should terminate the listener loop.
+                                    Err(SendTimeoutError::Closed(_)) => {
+                                        debug!(
+                                            logger,
+                                            "DB notification listener closed";
+                                            "channel" => &channel_name.0,
+                                        );
+                                        break;
+                                    }
                                 }
                             }
                             Err(e) => {
@@ -311,15 +402,45 @@ impl JsonNotification {
             _ => Err(anyhow!("JSON notifications must be numbers or objects"))?,
         }
     }
+}
 
-    pub fn send(
-        channel: &str,
-        data: &serde_json::Value,
+/// Send notifications via `pg_notify`. All sending of notifications through
+/// Postgres should go through this struct as it maintains a Prometheus
+/// metric to track the amount of messages sent
+pub struct NotificationSender {
+    sent_counter: CounterVec,
+}
+
+impl NotificationSender {
+    pub fn new(registry: Arc<impl MetricsRegistry>) -> Self {
+        let sent_counter = registry
+            .global_counter_vec(
+                "notification_queue_sent",
+                "Number of messages sent through pg_notify()",
+                &["channel", "network"],
+            )
+            .expect("we can create the notification_queue_sent gauge");
+        NotificationSender { sent_counter }
+    }
+
+    /// Send `data` as a Postgres notification on the given `channel`. The
+    /// connection `conn` must be into the primary database as that's the
+    /// only place where listeners connect. The `network` is only used for
+    /// metrics gathering and does not affect how the notification is sent
+    pub fn notify(
+        &self,
         conn: &PgConnection,
+        channel: &str,
+        network: Option<&str>,
+        data: &serde_json::Value,
     ) -> Result<(), StoreError> {
         use diesel::ExpressionMethods;
         use diesel::RunQueryDsl;
         use public::large_notifications::dsl::*;
+
+        sql_function! {
+            fn pg_notify(channel: Text, msg: Text)
+        }
 
         let msg = data.to_string();
 
@@ -363,6 +484,9 @@ impl JsonNotification {
                 }
             }
         }
+        self.sent_counter
+            .with_label_values(&[channel, network.unwrap_or("none")])
+            .inc();
         Ok(())
     }
 }
