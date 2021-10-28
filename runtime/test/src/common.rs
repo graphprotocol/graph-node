@@ -20,7 +20,7 @@ lazy_static! {
     };
 }
 
-fn mock_host_exports(
+pub fn mock_host_exports(
     subgraph_id: DeploymentHash,
     data_source: DataSource,
     store: Arc<impl SubgraphStore>,
