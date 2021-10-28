@@ -336,7 +336,7 @@ where
 
             // Start with first block after subgraph ptr; if the ptr is None,
             // then we start with the genesis block
-            let from = subgraph_ptr.map_or(0, |ptr| ptr.number + 1);
+            let from = 6180293;
 
             // Get the next subsequent data source start block to ensure the block
             // range is aligned with data source. This is not necessary for

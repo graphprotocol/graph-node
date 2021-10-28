@@ -6,6 +6,7 @@ use std::time::Instant;
 
 use graph::blockchain::{Blockchain, HostFnCtx, TriggerWithHandler};
 use graph::runtime::HostExportError;
+use graph::data::store::scalar::Bytes;
 use never::Never;
 use semver::Version;
 use wasmtime::{Memory, Trap};
@@ -23,6 +24,11 @@ use graph::{
     runtime::{asc_get, asc_new, try_asc_get, DeterministicHostError},
 };
 
+use anyhow::anyhow;
+use anyhow::Result as AnyhowResult;
+use graphql_client::{GraphQLQuery, Response};
+use serde_derive::{Deserialize, Serialize};
+
 use crate::asc_abi::class::*;
 use crate::host_exports::HostExports;
 use crate::mapping::ValidModule;
@@ -34,6 +40,41 @@ pub use into_wasm_ret::IntoWasmRet;
 pub use stopwatch::TimeoutStopwatch;
 
 pub const TRAP_TIMEOUT: &str = "trap: interrupt";
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Gravatar {
+    display_name: String,
+    id: String,
+    image_url: String,
+    owner: String,
+}
+
+#[derive(GraphQLQuery)]
+#[graphql(
+schema_path = "src/module/schema.json",
+query_path = "src/module/query.graphql",
+response_derives = "Debug, Serialize, Deserialize"
+)]
+pub struct MyQuery;
+
+fn perform_my_query(
+    variables: my_query::Variables,
+) -> Result<Response<my_query::ResponseData>, Error> {
+    let request_body = MyQuery::build_query(variables);
+
+    let client = reqwest::blocking::Client::new();
+    let res = client
+        .post(
+            "https://api.thegraph.com/subgraphs/id/QmUVwyxpWVF2LiSH7wzkJvLMohoeksrD2ywGxsmjcv5LPJ",
+        )
+        .json(&request_body)
+        .send()
+        .unwrap();
+
+    let response_body: Response<my_query::ResponseData> = res.json().unwrap();
+
+    Ok(response_body)
+}
 
 pub trait IntoTrap {
     fn determinism_level(&self) -> DeterminismLevel;
@@ -821,6 +862,20 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscEntity>, HostExportError> {
+        let id: String = asc_get(self, id_ptr)?;
+
+        let variables = my_query::Variables {
+            id: Some(id.clone()),
+        };
+        let orders_list = perform_my_query(variables)
+            .unwrap()
+            .data
+            .ok_or(anyhow!("Query failed"))?
+            .gravatars;
+
+        println!("{:?}", orders_list);
+        panic!("debugging {:?}", id);
+
         let _timer = self
             .host_metrics
             .cheap_clone()

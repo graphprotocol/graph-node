@@ -991,6 +991,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "doc-comment"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
+
+[[package]]
 name = "downcast"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1508,7 +1514,7 @@ dependencies = [
  "fail",
  "futures 0.1.31",
  "futures 0.3.16",
- "graphql-parser",
+ "graphql-parser 0.3.0",
  "hex",
  "http 0.2.4",
  "isatty",
@@ -1622,7 +1628,7 @@ dependencies = [
  "graph-chain-near",
  "graph-mock",
  "graph-runtime-wasm",
- "graphql-parser",
+ "graphql-parser 0.3.0",
  "hex",
  "lazy_static",
  "lru_time_cache",
@@ -1646,7 +1652,7 @@ dependencies = [
  "futures 0.1.31",
  "graph",
  "graph-chain-ethereum",
- "graphql-parser",
+ "graphql-parser 0.3.0",
  "indexmap",
  "lazy_static",
  "once_cell",
@@ -1687,7 +1693,7 @@ dependencies = [
  "graph-server-metrics",
  "graph-server-websocket",
  "graph-store-postgres",
- "graphql-parser",
+ "graphql-parser 0.3.0",
  "http 0.1.21",
  "lazy_static",
  "regex",
@@ -1737,10 +1743,14 @@ dependencies = [
  "graph",
  "graph-graphql",
  "graph-runtime-derive",
+ "graphql_client",
  "hex",
  "lazy_static",
  "never",
  "semver 1.0.4",
+ "serde",
+ "serde_derive",
+ "serde_json",
  "strum",
  "strum_macros",
  "uuid 0.8.2",
@@ -1755,7 +1765,7 @@ dependencies = [
  "graph",
  "graph-graphql",
  "graph-mock",
- "graphql-parser",
+ "graphql-parser 0.3.0",
  "http 0.2.4",
  "hyper 0.14.11",
  "serde",
@@ -1771,7 +1781,7 @@ dependencies = [
  "graph-chain-ethereum",
  "graph-chain-near",
  "graph-graphql",
- "graphql-parser",
+ "graphql-parser 0.3.0",
  "http 0.2.4",
  "hyper 0.14.11",
  "serde",
@@ -1806,7 +1816,7 @@ dependencies = [
  "anyhow",
  "futures 0.1.31",
  "graph",
- "graphql-parser",
+ "graphql-parser 0.3.0",
  "http 0.2.4",
  "lazy_static",
  "serde",
@@ -1838,7 +1848,7 @@ dependencies = [
  "graph-chain-ethereum",
  "graph-graphql",
  "graph-mock",
- "graphql-parser",
+ "graphql-parser 0.3.0",
  "hex",
  "hex-literal",
  "itertools",
@@ -1868,12 +1878,73 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphql-introspection-query"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "610aac641dbd2a457ad4cef34aa2827dae3f035fd214cb38c2d62d8543f3973f"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "graphql-parser"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5613c31f18676f164112732202124f373bb2103ff017b3b85ca954ea6a66ada"
+dependencies = [
+ "combine",
+ "failure",
+]
+
+[[package]]
 name = "graphql-parser"
 version = "0.3.0"
 source = "git+https://github.com/graphql-rust/graphql-parser?rev=45167b53e9533c331298683577ba8df7e43480ac#45167b53e9533c331298683577ba8df7e43480ac"
 dependencies = [
  "combine",
  "thiserror",
+]
+
+[[package]]
+name = "graphql_client"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0bb4f09181e4f80018d01c612125b07e0156f3753bfac37055fe2a25e031ca8"
+dependencies = [
+ "doc-comment",
+ "graphql_query_derive",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "graphql_client_codegen"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e304c223c809b3bff4614018f8e6d9edb176b31d64ed9ea48b6ae8b1a03abb9"
+dependencies = [
+ "failure",
+ "graphql-introspection-query",
+ "graphql-parser 0.2.3",
+ "heck",
+ "lazy_static",
+ "proc-macro2 1.0.28",
+ "quote 1.0.9",
+ "serde",
+ "serde_json",
+ "syn 1.0.74",
+]
+
+[[package]]
+name = "graphql_query_derive"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1f6b14d5ce549227aa9e649cd9d36d008b91021275a8e0a67d71cef815adc2f"
+dependencies = [
+ "failure",
+ "graphql_client_codegen",
+ "proc-macro2 1.0.28",
+ "syn 1.0.74",
 ]
 
 [[package]]
@@ -4529,7 +4600,7 @@ dependencies = [
  "graph-mock",
  "graph-node",
  "graph-store-postgres",
- "graphql-parser",
+ "graphql-parser 0.3.0",
  "hex-literal",
  "lazy_static",
 ]

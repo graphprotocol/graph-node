@@ -6,6 +6,7 @@ use graph::blockchain::{BlockchainKind, DataSource};
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::{UnifiedMappingApiVersion, MAX_SPEC_VERSION};
 use graph::prelude::TryStreamExt;
+use crate::subgraph::mock_writable_store::MockWritableStore;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::util::lfu_cache::LfuCache;
 use graph::{blockchain::block_stream::BlockStreamMetrics, components::store::WritableStore};
@@ -278,7 +279,7 @@ where
         // do the copying and dynamic data sources won't show up until after
         // that is done
         {
-            let store = store.clone();
+            let store = Arc::new(MockWritableStore {});
             let logger = logger.clone();
 
             // `start_subgraph_deployment` is blocking.
