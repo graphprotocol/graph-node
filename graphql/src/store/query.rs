@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::mem::discriminant;
 
+use graph::data::value::Object;
 use graph::prelude::*;
 use graph::{components::store::EntityType, data::graphql::ObjectOrInterface};
 
@@ -125,7 +126,7 @@ fn build_filter(
 }
 
 fn build_fulltext_filter_from_object(
-    object: &BTreeMap<String, r::Value>,
+    object: &Object,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     object.iter().next().map_or(
         Err(QueryExecutionError::FulltextQueryRequiresFilter),
@@ -145,7 +146,7 @@ fn build_fulltext_filter_from_object(
 /// Parses a GraphQL input object into an EntityFilter, if present.
 fn build_filter_from_object(
     entity: ObjectOrInterface,
-    object: &BTreeMap<String, r::Value>,
+    object: &Object,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     Ok(Some(EntityFilter::And({
         object
@@ -242,7 +243,7 @@ fn build_order_by(
 }
 
 fn build_fulltext_order_by_from_object(
-    object: &BTreeMap<String, r::Value>,
+    object: &Object,
 ) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
     object.iter().next().map_or(
         Err(QueryExecutionError::FulltextQueryRequiresFilter),
@@ -345,6 +346,7 @@ pub fn collect_entities_from_query_field(
 mod tests {
     use graph::{
         components::store::EntityType,
+        data::value::Object,
         prelude::s::{Directive, Field, InputValue, ObjectType, Type, Value as SchemaValue},
     };
     use graphql_parser::Pos;
@@ -724,7 +726,7 @@ mod tests {
         let mut args = default_arguments();
         args.insert(
             &whre,
-            r::Value::Object(BTreeMap::from_iter(vec![(
+            r::Value::Object(Object::from_iter(vec![(
                 "name_ends_with".to_string(),
                 r::Value::String("ello".to_string()),
             )])),

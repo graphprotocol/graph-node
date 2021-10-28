@@ -1,6 +1,7 @@
 use either::Either;
 use graph::blockchain::{Blockchain, BlockchainKind};
-use std::collections::{BTreeMap, HashMap};
+use graph::data::value::Object;
+use std::collections::HashMap;
 
 use graph::data::subgraph::features::detect_features;
 use graph::data::subgraph::{status, MAX_SPEC_VERSION};
@@ -244,7 +245,7 @@ where
 
         // We then bulid a GraphqQL `Object` value that contains the feature detection and
         // validation results and send it back as a response.
-        let mut response: BTreeMap<String, r::Value> = BTreeMap::new();
+        let mut response = Object::new();
         response.insert("features".to_string(), features);
         response.insert("errors".to_string(), errors);
         response.insert("network".to_string(), network);

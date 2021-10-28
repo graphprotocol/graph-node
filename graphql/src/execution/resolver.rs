@@ -95,7 +95,7 @@ pub trait Resolver: Sized + Send + Sync + 'static {
     ) -> Option<&'a s::ObjectType> {
         let concrete_type_name = match object_value {
             // All objects contain `__typename`
-            r::Value::Object(data) => match &data["__typename"] {
+            r::Value::Object(data) => match &data.get("__typename").unwrap() {
                 r::Value::String(name) => name.clone(),
                 _ => unreachable!("__typename must be a string"),
             },
