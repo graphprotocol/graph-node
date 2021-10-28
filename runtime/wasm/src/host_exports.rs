@@ -65,7 +65,7 @@ pub struct HostExports<C: Blockchain> {
     /// and merge the results later. Right now, this is just the ethereum
     /// networks but will be expanded for ipfs and the availability chain.
     causality_region: String,
-    pub templates: Arc<Vec<C::DataSourceTemplate>>,
+    pub templates: Arc<graph_chain_ethereum::data_source::BaseDataSourceTemplate<graph_chain_ethereum::Mapping>>,
     pub(crate) link_resolver: Arc<dyn LinkResolver>,
     store: Arc<dyn SubgraphStore>,
 }
