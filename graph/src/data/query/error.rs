@@ -87,7 +87,43 @@ impl QueryExecutionError {
     pub fn is_attestable(&self) -> bool {
         use self::QueryExecutionError::*;
         match self {
+            OperationNameRequired
+            | OperationNotFound(_)
+            | NotSupported(_)
+            | NoRootSubscriptionObjectType
+            | NonNullError(_, _)
+            | ListValueError(_, _)
+            | NamedTypeError(_)
+            | AbstractTypeError(_)
+            | InvalidArgumentError(_, _, _)
+            | MissingArgumentError(_, _)
+            | InvalidVariableTypeError(_, _)
+            | MissingVariableError(_, _)
+            | OrderByNotSupportedError(_, _)
+            | OrderByNotSupportedForType(_)
+            | FilterNotSupportedError(_, _)
+            | UnknownField(_, _, _)
+            | EmptyQuery
+            | MultipleSubscriptionFields
+            | SubgraphDeploymentIdError(_)
+            | RangeArgumentsError(_, _, _)
+            | InvalidFilterError
+            | EntityFieldError(_, _)
+            | ListTypesError(_, _)
+            | ListFilterError(_)
+            | ValueParseError(_, _)
+            | AttributeTypeError(_, _)
+            | EntityParseError(_)
+            | EmptySelectionSet(_)
+            | AmbiguousDerivedFromResult(_, _, _, _)
+            | Unimplemented(_)
+            | EnumCoercionError(_, _, _, _, _)
+            | ScalarCoercionError(_, _, _, _)
+            | CyclicalFragment(_)
+            | UndefinedFragment(_)
+            | FulltextQueryRequiresFilter => true,
             ResolveEntitiesError(_)
+            | StoreError(_)
             | Timeout
             | TooComplex(_, _)
             | TooDeep(_)
@@ -100,7 +136,6 @@ impl QueryExecutionError {
             | SubgraphManifestResolveError(_)
             | InvalidSubgraphManifest
             | ResultTooBig(_, _) => false,
-            _ => true,
         }
     }
 }
