@@ -1262,6 +1262,7 @@ impl DeploymentStore {
                     "to_block_hash" => format!("{}", parent_ptr.hash),
                 );
 
+                // We ignore the StoreEvent that's being returned, we'll not use it.
                 let _ = self.revert_block_operations(site.clone(), parent_ptr.clone())?;
 
                 // Unfail the deployment.
