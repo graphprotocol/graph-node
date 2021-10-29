@@ -1230,41 +1230,42 @@ impl DeploymentStore {
         parent_ptr: Option<&BlockPtr>,
         subgraph_error: &ErrorDetail,
     ) -> Result<(), StoreError> {
+        let parent_ptr = match parent_ptr {
+            Some(parent_ptr) => parent_ptr,
+            // At first block of chain (no parent), nothing to revert
+            None => return Ok(()),
+        };
+
         let deployment_id = &site.deployment;
 
         use deployment::SubgraphHealth::*;
         // Decide status based on if there are any errors for the previous/parent block
-        let prev_health = if deployment::has_non_fatal_errors(
-            conn,
-            deployment_id,
-            parent_ptr.map(|ptr| ptr.number),
-        )? {
-            Unhealthy
-        } else {
-            Healthy
-        };
+        let prev_health =
+            if deployment::has_non_fatal_errors(conn, deployment_id, Some(parent_ptr.number))? {
+                Unhealthy
+            } else {
+                Healthy
+            };
 
         match &subgraph_error.block_hash {
             // The error happened for the current deployment head.
             // We should revert everything (deployment head, subgraph errors, etc)
             // to the previous/parent hash/block.
             Some(bytes) if bytes == current_ptr.hash.as_slice() => {
-                if let Some(parent_ptr) = parent_ptr {
-                    info!(
-                        self.logger,
-                        "Reverting errored block";
-                        "subgraph_id" => deployment_id,
-                        "from_block_number" => format!("{}", current_ptr.number),
-                        "from_block_hash" => format!("{}", current_ptr.hash),
-                        "to_block_number" => format!("{}", parent_ptr.number),
-                        "to_block_hash" => format!("{}", parent_ptr.hash),
-                    );
+                info!(
+                    self.logger,
+                    "Reverting errored block";
+                    "subgraph_id" => deployment_id,
+                    "from_block_number" => format!("{}", current_ptr.number),
+                    "from_block_hash" => format!("{}", current_ptr.hash),
+                    "to_block_number" => format!("{}", parent_ptr.number),
+                    "to_block_hash" => format!("{}", parent_ptr.hash),
+                );
 
-                    let _ = self.revert_block_operations(site.clone(), parent_ptr.clone())?;
+                let _ = self.revert_block_operations(site.clone(), parent_ptr.clone())?;
 
-                    // Unfail the deployment.
-                    deployment::update_deployment_status(conn, deployment_id, prev_health, None)?;
-                }
+                // Unfail the deployment.
+                deployment::update_deployment_status(conn, deployment_id, prev_health, None)?;
             }
             // Found error, but not for deployment head, we don't need to
             // revert the block operations.
