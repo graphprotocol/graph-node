@@ -895,8 +895,8 @@ fn collect_fields_inner<'a>(
     let selections = selection_set
         .items
         .iter()
-        .filter(|selection| !qast::skip_selection(selection, &ctx.query.variables))
-        .filter(|selection| qast::include_selection(selection, &ctx.query.variables));
+        .filter(|selection| !qast::skip_selection(selection))
+        .filter(|selection| qast::include_selection(selection));
 
     for selection in selections {
         match selection {

@@ -1,5 +1,4 @@
-use graph::prelude::{q::*, r};
-use std::collections::HashMap;
+use graph::prelude::q::*;
 use std::ops::Deref;
 
 use graph::prelude::QueryExecutionError;
@@ -64,18 +63,14 @@ pub fn get_argument_value<'a>(arguments: &'a [(String, Value)], name: &str) -> O
 }
 
 /// Returns true if a selection should be skipped (as per the `@skip` directive).
-pub fn skip_selection(selection: &Selection, variables: &HashMap<String, r::Value>) -> bool {
+pub fn skip_selection(selection: &Selection) -> bool {
     match get_directive(selection, "skip".to_string()) {
         Some(directive) => match get_argument_value(&directive.arguments, "if") {
             Some(val) => match val {
                 // Skip if @skip(if: true)
                 Value::Boolean(skip_if) => *skip_if,
 
-                // Also skip if @skip(if: $variable) where $variable is true
-                Value::Variable(name) => variables.get(name).map_or(false, |var| match var {
-                    r::Value::Boolean(v) => v.to_owned(),
-                    _ => false,
-                }),
+                Value::Variable(_) => unreachable!("variables have already been resolved"),
 
                 _ => false,
             },
@@ -86,18 +81,14 @@ pub fn skip_selection(selection: &Selection, variables: &HashMap<String, r::Valu
 }
 
 /// Returns true if a selection should be included (as per the `@include` directive).
-pub fn include_selection(selection: &Selection, variables: &HashMap<String, r::Value>) -> bool {
+pub fn include_selection(selection: &Selection) -> bool {
     match get_directive(selection, "include".to_string()) {
         Some(directive) => match get_argument_value(&directive.arguments, "if") {
             Some(val) => match val {
                 // Include if @include(if: true)
                 Value::Boolean(include) => *include,
 
-                // Also include if @include(if: $variable) where $variable is true
-                Value::Variable(name) => variables.get(name).map_or(false, |var| match var {
-                    r::Value::Boolean(v) => v.to_owned(),
-                    _ => false,
-                }),
+                Value::Variable(_) => unreachable!("variables have already been resolved"),
 
                 _ => false,
             },

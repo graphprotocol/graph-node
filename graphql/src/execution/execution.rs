@@ -136,7 +136,6 @@ impl Default for WeightedResult {
 
 struct HashableQuery<'a> {
     query_schema_id: &'a DeploymentHash,
-    query_variables: &'a HashMap<String, r::Value>,
     query_fragments: &'a HashMap<String, q::FragmentDefinition>,
     selection_set: &'a q::SelectionSet,
     block_ptr: &'a BlockPtr,
@@ -161,13 +160,6 @@ struct HashableQuery<'a> {
 impl StableHash for HashableQuery<'_> {
     fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
         self.query_schema_id
-            .stable_hash(sequence_number.next_child(), state);
-
-        // Not stable! Uses to_string()
-        self.query_variables
-            .iter()
-            .map(|(k, v)| (k, v.to_string()))
-            .collect::<HashMap<_, _>>()
             .stable_hash(sequence_number.next_child(), state);
 
         // Not stable! Uses to_string()
@@ -197,7 +189,6 @@ fn cache_key(
     // Otherwise, incorrect results may be returned.
     let query = HashableQuery {
         query_schema_id: ctx.query.schema.id(),
-        query_variables: &ctx.query.variables,
         query_fragments: &ctx.query.fragments,
         selection_set,
         block_ptr,
@@ -608,8 +599,8 @@ pub fn collect_fields_inner<'a>(
         let selections = selection_set
             .items
             .iter()
-            .filter(|selection| !qast::skip_selection(selection, &ctx.query.variables))
-            .filter(|selection| qast::include_selection(selection, &ctx.query.variables));
+            .filter(|selection| !qast::skip_selection(selection))
+            .filter(|selection| qast::include_selection(selection));
 
         for selection in selections {
             match selection {
@@ -1058,7 +1049,7 @@ pub fn coerce_argument_values<'a>(
         .flatten()
     {
         let value = qast::get_argument_value(&field.arguments, &argument_def.name).cloned();
-        match coercion::coerce_input_value(value, &argument_def, &resolver, &query.variables) {
+        match coercion::coerce_input_value(value, &argument_def, &resolver) {
             Ok(Some(value)) => {
                 if argument_def.name == "text".to_string() {
                     coerced_values.insert(
