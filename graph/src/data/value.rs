@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Object(BTreeMap<String, Value>);
 
 impl Object {
@@ -73,6 +73,12 @@ impl CacheWeight for Object {
 impl Default for Object {
     fn default() -> Self {
         Self(BTreeMap::default())
+    }
+}
+
+impl std::fmt::Debug for Object {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 
