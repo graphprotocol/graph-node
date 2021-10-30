@@ -16,7 +16,6 @@ use graph::prelude::{
 };
 
 use crate::introspection::introspection_schema;
-use crate::query::ext::ValueExt;
 use crate::query::{ast as qast, ext::BlockConstraint};
 use crate::schema::ast as sast;
 use crate::{
@@ -79,9 +78,7 @@ impl<'a> std::fmt::Display for SelectedFields<'a> {
 pub struct Query {
     /// The schema against which to execute the query
     pub schema: Arc<ApiSchema>,
-    /// The variables for the query, coerced into proper values
-    pub variables: HashMap<String, r::Value>,
-    /// The root selection set of the query
+    /// The root selection set of the query. All variable references have already been resolved
     pub selection_set: Arc<q::SelectionSet>,
     /// The ShapeHash of the original query
     pub shape_hash: u64,
@@ -179,7 +176,6 @@ impl Query {
 
         let query = Self {
             schema: raw_query.schema,
-            variables: raw_query.variables,
             fragments: raw_query.fragments,
             selection_set: Arc::new(raw_query.selection_set),
             shape_hash: query.shape_hash,
@@ -272,7 +268,6 @@ impl Query {
 
         Arc::new(Self {
             schema: Arc::new(introspection_schema),
-            variables: self.variables.clone(),
             fragments: self.fragments.clone(),
             selection_set: self.selection_set.clone(),
             shape_hash: self.shape_hash,
@@ -417,7 +412,7 @@ fn coerce_variable(
 
     let resolver = |name: &str| schema.document().get_named_type(name);
 
-    coerce_value(value, &variable_def.var_type, &resolver, &HashMap::new()).map_err(|value| {
+    coerce_value(value, &variable_def.var_type, &resolver).map_err(|value| {
         vec![QueryExecutionError::InvalidArgumentError(
             variable_def.position,
             variable_def.name.to_owned(),
