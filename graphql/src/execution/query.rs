@@ -16,6 +16,7 @@ use graph::prelude::{
 };
 
 use crate::introspection::introspection_schema;
+use crate::query::ext::ValueExt;
 use crate::query::{ast as qast, ext::BlockConstraint};
 use crate::schema::ast as sast;
 use crate::{
@@ -162,7 +163,7 @@ impl Query {
         let start = Instant::now();
         // Use an intermediate struct so we can modify the query before
         // enclosing it in an Arc
-        let raw_query = RawQuery {
+        let mut raw_query = RawQuery {
             schema,
             variables,
             selection_set,
@@ -174,6 +175,7 @@ impl Query {
         // overflow from invalid queries.
         let complexity = raw_query.check_complexity(max_complexity, max_depth)?;
         raw_query.validate_fields()?;
+        raw_query.expand_variables()?;
 
         let query = Self {
             schema: raw_query.schema,
@@ -673,5 +675,98 @@ impl RawQuery {
                 }
                 errors
             })
+    }
+
+    fn expand_variables(&mut self) -> Result<(), QueryExecutionError> {
+        fn expand_field(
+            field: &mut q::Field,
+            vars: &HashMap<String, r::Value>,
+        ) -> Result<(), QueryExecutionError> {
+            expand_arguments(&mut field.arguments, &field.position, vars)?;
+            expand_directives(&mut field.directives, vars)?;
+            expand_selection_set(&mut field.selection_set, vars)
+        }
+
+        fn expand_selection_set(
+            set: &mut q::SelectionSet,
+            vars: &HashMap<String, r::Value>,
+        ) -> Result<(), QueryExecutionError> {
+            for sel in &mut set.items {
+                match sel {
+                    q::Selection::Field(field) => expand_field(field, vars)?,
+                    q::Selection::FragmentSpread(spread) => {
+                        expand_directives(&mut spread.directives, vars)?;
+                    }
+                    q::Selection::InlineFragment(frag) => {
+                        expand_directives(&mut frag.directives, vars)?;
+                        expand_selection_set(&mut frag.selection_set, vars)?;
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        fn expand_directives(
+            dirs: &mut Vec<q::Directive>,
+            vars: &HashMap<String, r::Value>,
+        ) -> Result<(), QueryExecutionError> {
+            for dir in dirs {
+                expand_arguments(&mut dir.arguments, &dir.position, vars)?;
+            }
+            Ok(())
+        }
+
+        fn expand_arguments(
+            args: &mut Vec<(String, q::Value)>,
+            pos: &Pos,
+            vars: &HashMap<String, r::Value>,
+        ) -> Result<(), QueryExecutionError> {
+            for arg in args {
+                expand_value(&mut arg.1, pos, vars)?;
+            }
+            Ok(())
+        }
+
+        fn expand_value(
+            val: &mut q::Value,
+            pos: &Pos,
+            vars: &HashMap<String, r::Value>,
+        ) -> Result<(), QueryExecutionError> {
+            match val {
+                q::Value::Variable(ref var) => {
+                    let newval = match vars.get(var) {
+                        Some(val) => q::Value::from(val.clone()),
+                        None => {
+                            return Err(QueryExecutionError::MissingVariableError(
+                                pos.clone(),
+                                var.to_string(),
+                            ))
+                        }
+                    };
+                    *val = newval;
+                    Ok(())
+                }
+                q::Value::Int(_)
+                | q::Value::Float(_)
+                | q::Value::String(_)
+                | q::Value::Boolean(_)
+                | q::Value::Null
+                | q::Value::Enum(_) => Ok(()),
+                q::Value::List(ref mut vals) => {
+                    for mut val in vals.iter_mut() {
+                        expand_value(&mut val, pos, vars)?;
+                    }
+                    Ok(())
+                }
+                q::Value::Object(obj) => {
+                    for mut val in obj.values_mut() {
+                        expand_value(&mut val, pos, vars)?;
+                    }
+                    Ok(())
+                }
+            }
+        }
+
+        expand_selection_set(&mut self.selection_set, &self.variables)
     }
 }
