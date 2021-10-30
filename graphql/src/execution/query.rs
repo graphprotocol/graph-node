@@ -159,26 +159,37 @@ impl Query {
             "query_id" => query_id.clone()
         ));
 
-        let mut query = Self {
+        let start = Instant::now();
+        // Use an intermediate struct so we can modify the query before
+        // enclosing it in an Arc
+        let raw_query = RawQuery {
             schema,
             variables,
-            fragments,
-            selection_set: Arc::new(selection_set),
-            shape_hash: query.shape_hash,
-            kind,
-            network,
+            selection_set,
             logger,
-            start: Instant::now(),
-            query_text: query.query_text.cheap_clone(),
-            variables_text: query.variables_text.cheap_clone(),
-            query_id,
-            complexity: 0,
+            fragments,
         };
 
         // It's important to check complexity first, so `validate_fields` doesn't risk a stack
         // overflow from invalid queries.
-        query.check_complexity(max_complexity, max_depth)?;
-        query.validate_fields()?;
+        let complexity = raw_query.check_complexity(max_complexity, max_depth)?;
+        raw_query.validate_fields()?;
+
+        let query = Self {
+            schema: raw_query.schema,
+            variables: raw_query.variables,
+            fragments: raw_query.fragments,
+            selection_set: Arc::new(raw_query.selection_set),
+            shape_hash: query.shape_hash,
+            kind,
+            network,
+            logger: raw_query.logger,
+            start,
+            query_text: query.query_text.cheap_clone(),
+            variables_text: query.variables_text.cheap_clone(),
+            query_id,
+            complexity,
+        };
 
         Ok(Arc::new(query))
     }
@@ -331,12 +342,107 @@ impl Query {
             );
         }
     }
+}
 
+/// Coerces variable values for an operation.
+pub fn coerce_variables(
+    schema: &ApiSchema,
+    operation: &q::OperationDefinition,
+    mut variables: Option<QueryVariables>,
+) -> Result<HashMap<String, r::Value>, Vec<QueryExecutionError>> {
+    let mut coerced_values = HashMap::new();
+    let mut errors = vec![];
+
+    for variable_def in qast::get_variable_definitions(operation)
+        .into_iter()
+        .flatten()
+    {
+        // Skip variable if it has an invalid type
+        if !sast::is_input_type(schema.document(), &variable_def.var_type) {
+            errors.push(QueryExecutionError::InvalidVariableTypeError(
+                variable_def.position,
+                variable_def.name.to_owned(),
+            ));
+            continue;
+        }
+
+        let value = variables
+            .as_mut()
+            .and_then(|vars| vars.remove(&variable_def.name));
+
+        let value = match value.or_else(|| {
+            variable_def
+                .default_value
+                .clone()
+                .map(r::Value::try_from)
+                .transpose()
+                .unwrap()
+        }) {
+            // No variable value provided and no default for non-null type, fail
+            None => {
+                if sast::is_non_null_type(&variable_def.var_type) {
+                    errors.push(QueryExecutionError::MissingVariableError(
+                        variable_def.position,
+                        variable_def.name.to_owned(),
+                    ));
+                };
+                continue;
+            }
+            Some(value) => value,
+        };
+
+        // We have a variable value, attempt to coerce it to the value type
+        // of the variable definition
+        coerced_values.insert(
+            variable_def.name.to_owned(),
+            coerce_variable(schema, variable_def, value.into())?,
+        );
+    }
+
+    if errors.is_empty() {
+        Ok(coerced_values)
+    } else {
+        Err(errors)
+    }
+}
+
+fn coerce_variable(
+    schema: &ApiSchema,
+    variable_def: &q::VariableDefinition,
+    value: q::Value,
+) -> Result<r::Value, Vec<QueryExecutionError>> {
+    use crate::values::coercion::coerce_value;
+
+    let resolver = |name: &str| schema.document().get_named_type(name);
+
+    coerce_value(value, &variable_def.var_type, &resolver, &HashMap::new()).map_err(|value| {
+        vec![QueryExecutionError::InvalidArgumentError(
+            variable_def.position,
+            variable_def.name.to_owned(),
+            value.clone(),
+        )]
+    })
+}
+
+struct RawQuery {
+    /// The schema against which to execute the query
+    schema: Arc<ApiSchema>,
+    /// The variables for the query, coerced into proper values
+    variables: HashMap<String, r::Value>,
+    /// The root selection set of the query
+    selection_set: q::SelectionSet,
+
+    pub logger: Logger,
+
+    fragments: HashMap<String, q::FragmentDefinition>,
+}
+
+impl RawQuery {
     fn check_complexity(
-        &mut self,
+        &self,
         max_complexity: Option<u64>,
         max_depth: u8,
-    ) -> Result<(), Vec<QueryExecutionError>> {
+    ) -> Result<u64, Vec<QueryExecutionError>> {
         let complexity = self.complexity(max_depth).map_err(|e| vec![e])?;
         if let Some(max_complexity) = max_complexity {
             if complexity > max_complexity {
@@ -346,8 +452,113 @@ impl Query {
                 )]);
             }
         }
-        self.complexity = complexity;
-        Ok(())
+        Ok(complexity)
+    }
+
+    fn complexity_inner<'a>(
+        &'a self,
+        ty: &s::TypeDefinition,
+        selection_set: &'a q::SelectionSet,
+        max_depth: u8,
+        depth: u8,
+        visited_fragments: &'a HashSet<&'a str>,
+    ) -> Result<u64, ComplexityError> {
+        use ComplexityError::*;
+
+        if depth >= max_depth {
+            return Err(TooDeep);
+        }
+
+        selection_set
+            .items
+            .iter()
+            .try_fold(0, |total_complexity, selection| {
+                let schema = self.schema.document();
+                match selection {
+                    q::Selection::Field(field) => {
+                        // Empty selection sets are the base case.
+                        if field.selection_set.items.is_empty() {
+                            return Ok(total_complexity);
+                        }
+
+                        // Get field type to determine if this is a collection query.
+                        let s_field = match ty {
+                            s::TypeDefinition::Object(t) => get_field(t, &field.name),
+                            s::TypeDefinition::Interface(t) => get_field(t, &field.name),
+
+                            // `Scalar` and `Enum` cannot have selection sets.
+                            // `InputObject` can't appear in a selection.
+                            // `Union` is not yet supported.
+                            s::TypeDefinition::Scalar(_)
+                            | s::TypeDefinition::Enum(_)
+                            | s::TypeDefinition::InputObject(_)
+                            | s::TypeDefinition::Union(_) => None,
+                        }
+                        .ok_or(Invalid)?;
+
+                        let field_complexity = self.complexity_inner(
+                            &get_named_type(schema, s_field.field_type.get_base_type())
+                                .ok_or(Invalid)?,
+                            &field.selection_set,
+                            max_depth,
+                            depth + 1,
+                            visited_fragments,
+                        )?;
+
+                        // Non-collection queries pass through.
+                        if !sast::is_list_or_non_null_list_field(&s_field) {
+                            return Ok(total_complexity + field_complexity);
+                        }
+
+                        // For collection queries, check the `first` argument.
+                        let max_entities = qast::get_argument_value(&field.arguments, "first")
+                            .and_then(|arg| match arg {
+                                q::Value::Int(n) => Some(n.as_i64()? as u64),
+                                _ => None,
+                            })
+                            .unwrap_or(100);
+                        max_entities
+                            .checked_add(
+                                max_entities.checked_mul(field_complexity).ok_or(Overflow)?,
+                            )
+                            .ok_or(Overflow)
+                    }
+                    q::Selection::FragmentSpread(fragment) => {
+                        let def = self.fragments.get(&fragment.fragment_name).unwrap();
+                        let q::TypeCondition::On(type_name) = &def.type_condition;
+                        let ty = get_named_type(schema, &type_name).ok_or(Invalid)?;
+
+                        // Copy `visited_fragments` on write.
+                        let mut visited_fragments = visited_fragments.clone();
+                        if !visited_fragments.insert(&fragment.fragment_name) {
+                            return Err(CyclicalFragment(fragment.fragment_name.clone()));
+                        }
+                        self.complexity_inner(
+                            &ty,
+                            &def.selection_set,
+                            max_depth,
+                            depth + 1,
+                            &visited_fragments,
+                        )
+                    }
+                    q::Selection::InlineFragment(fragment) => {
+                        let ty = match &fragment.type_condition {
+                            Some(q::TypeCondition::On(type_name)) => {
+                                get_named_type(schema, &type_name).ok_or(Invalid)?
+                            }
+                            _ => ty.clone(),
+                        };
+                        self.complexity_inner(
+                            &ty,
+                            &fragment.selection_set,
+                            max_depth,
+                            depth + 1,
+                            visited_fragments,
+                        )
+                    }
+                }
+                .and_then(|complexity| total_complexity.checked_add(complexity).ok_or(Overflow))
+            })
     }
 
     /// See https://developer.github.com/v4/guides/resource-limitations/.
@@ -463,190 +674,4 @@ impl Query {
                 errors
             })
     }
-
-    fn complexity_inner<'a>(
-        &'a self,
-        ty: &s::TypeDefinition,
-        selection_set: &'a q::SelectionSet,
-        max_depth: u8,
-        depth: u8,
-        visited_fragments: &'a HashSet<&'a str>,
-    ) -> Result<u64, ComplexityError> {
-        use ComplexityError::*;
-
-        if depth >= max_depth {
-            return Err(TooDeep);
-        }
-
-        selection_set
-            .items
-            .iter()
-            .try_fold(0, |total_complexity, selection| {
-                let schema = self.schema.document();
-                match selection {
-                    q::Selection::Field(field) => {
-                        // Empty selection sets are the base case.
-                        if field.selection_set.items.is_empty() {
-                            return Ok(total_complexity);
-                        }
-
-                        // Get field type to determine if this is a collection query.
-                        let s_field = match ty {
-                            s::TypeDefinition::Object(t) => get_field(t, &field.name),
-                            s::TypeDefinition::Interface(t) => get_field(t, &field.name),
-
-                            // `Scalar` and `Enum` cannot have selection sets.
-                            // `InputObject` can't appear in a selection.
-                            // `Union` is not yet supported.
-                            s::TypeDefinition::Scalar(_)
-                            | s::TypeDefinition::Enum(_)
-                            | s::TypeDefinition::InputObject(_)
-                            | s::TypeDefinition::Union(_) => None,
-                        }
-                        .ok_or(Invalid)?;
-
-                        let field_complexity = self.complexity_inner(
-                            &get_named_type(schema, s_field.field_type.get_base_type())
-                                .ok_or(Invalid)?,
-                            &field.selection_set,
-                            max_depth,
-                            depth + 1,
-                            visited_fragments,
-                        )?;
-
-                        // Non-collection queries pass through.
-                        if !sast::is_list_or_non_null_list_field(&s_field) {
-                            return Ok(total_complexity + field_complexity);
-                        }
-
-                        // For collection queries, check the `first` argument.
-                        let max_entities = qast::get_argument_value(&field.arguments, "first")
-                            .and_then(|arg| match arg {
-                                q::Value::Int(n) => Some(n.as_i64()? as u64),
-                                _ => None,
-                            })
-                            .unwrap_or(100);
-                        max_entities
-                            .checked_add(
-                                max_entities.checked_mul(field_complexity).ok_or(Overflow)?,
-                            )
-                            .ok_or(Overflow)
-                    }
-                    q::Selection::FragmentSpread(fragment) => {
-                        let def = self.get_fragment(&fragment.fragment_name);
-                        let q::TypeCondition::On(type_name) = &def.type_condition;
-                        let ty = get_named_type(schema, &type_name).ok_or(Invalid)?;
-
-                        // Copy `visited_fragments` on write.
-                        let mut visited_fragments = visited_fragments.clone();
-                        if !visited_fragments.insert(&fragment.fragment_name) {
-                            return Err(CyclicalFragment(fragment.fragment_name.clone()));
-                        }
-                        self.complexity_inner(
-                            &ty,
-                            &def.selection_set,
-                            max_depth,
-                            depth + 1,
-                            &visited_fragments,
-                        )
-                    }
-                    q::Selection::InlineFragment(fragment) => {
-                        let ty = match &fragment.type_condition {
-                            Some(q::TypeCondition::On(type_name)) => {
-                                get_named_type(schema, &type_name).ok_or(Invalid)?
-                            }
-                            _ => ty.clone(),
-                        };
-                        self.complexity_inner(
-                            &ty,
-                            &fragment.selection_set,
-                            max_depth,
-                            depth + 1,
-                            visited_fragments,
-                        )
-                    }
-                }
-                .and_then(|complexity| total_complexity.checked_add(complexity).ok_or(Overflow))
-            })
-    }
-}
-
-/// Coerces variable values for an operation.
-pub fn coerce_variables(
-    schema: &ApiSchema,
-    operation: &q::OperationDefinition,
-    mut variables: Option<QueryVariables>,
-) -> Result<HashMap<String, r::Value>, Vec<QueryExecutionError>> {
-    let mut coerced_values = HashMap::new();
-    let mut errors = vec![];
-
-    for variable_def in qast::get_variable_definitions(operation)
-        .into_iter()
-        .flatten()
-    {
-        // Skip variable if it has an invalid type
-        if !sast::is_input_type(schema.document(), &variable_def.var_type) {
-            errors.push(QueryExecutionError::InvalidVariableTypeError(
-                variable_def.position,
-                variable_def.name.to_owned(),
-            ));
-            continue;
-        }
-
-        let value = variables
-            .as_mut()
-            .and_then(|vars| vars.remove(&variable_def.name));
-
-        let value = match value.or_else(|| {
-            variable_def
-                .default_value
-                .clone()
-                .map(r::Value::try_from)
-                .transpose()
-                .unwrap()
-        }) {
-            // No variable value provided and no default for non-null type, fail
-            None => {
-                if sast::is_non_null_type(&variable_def.var_type) {
-                    errors.push(QueryExecutionError::MissingVariableError(
-                        variable_def.position,
-                        variable_def.name.to_owned(),
-                    ));
-                };
-                continue;
-            }
-            Some(value) => value,
-        };
-
-        // We have a variable value, attempt to coerce it to the value type
-        // of the variable definition
-        coerced_values.insert(
-            variable_def.name.to_owned(),
-            coerce_variable(schema, variable_def, value.into())?,
-        );
-    }
-
-    if errors.is_empty() {
-        Ok(coerced_values)
-    } else {
-        Err(errors)
-    }
-}
-
-fn coerce_variable(
-    schema: &ApiSchema,
-    variable_def: &q::VariableDefinition,
-    value: q::Value,
-) -> Result<r::Value, Vec<QueryExecutionError>> {
-    use crate::values::coercion::coerce_value;
-
-    let resolver = |name: &str| schema.document().get_named_type(name);
-
-    coerce_value(value, &variable_def.var_type, &resolver, &HashMap::new()).map_err(|value| {
-        vec![QueryExecutionError::InvalidArgumentError(
-            variable_def.position,
-            variable_def.name.to_owned(),
-            value.clone(),
-        )]
-    })
 }
