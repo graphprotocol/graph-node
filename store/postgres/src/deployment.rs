@@ -557,18 +557,6 @@ pub fn get_fatal_error_id(
         .map_err(StoreError::from)
 }
 
-pub fn get_error_block_hash(
-    conn: &PgConnection,
-    error_id: &str,
-) -> Result<Option<Vec<u8>>, StoreError> {
-    use subgraph_error as e;
-    e::table
-        .filter(e::id.eq(error_id))
-        .select(e::block_hash)
-        .get_result(conn)
-        .map_err(StoreError::from)
-}
-
 pub fn update_deployment_status(
     conn: &PgConnection,
     deployment_id: &DeploymentHash,
@@ -659,6 +647,14 @@ pub(crate) fn revert_subgraph_errors(
     // `reverted_block` were just deleted, but semantically we care about `reverted_block - 1` which
     // is the block being reverted to.
     check_health(conn, id, reverted_block - 1)
+}
+
+pub(crate) fn delete_error(conn: &PgConnection, error_id: &str) -> Result<(), StoreError> {
+    use subgraph_error as e;
+    delete(e::table.filter(e::id.eq(error_id)))
+        .execute(conn)
+        .map(|_| ())
+        .map_err(StoreError::from)
 }
 
 /// Copy the dynamic data sources for `src` to `dst`. All data sources that
