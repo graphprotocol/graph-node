@@ -288,7 +288,7 @@ dependencies = [
  "futures-util",
  "hex",
  "http 0.2.4",
- "hyper 0.14.11",
+ "hyper 0.14.14",
  "hyper-unix-connector",
  "log 0.4.14",
  "pin-project",
@@ -1523,7 +1523,7 @@ dependencies = [
  "petgraph 0.6.0",
  "priority-queue",
  "prometheus",
- "prost",
+ "prost 0.8.0",
  "prost-types",
  "rand 0.6.5",
  "reqwest",
@@ -1576,7 +1576,7 @@ dependencies = [
  "lazy_static",
  "mockall 0.9.1",
  "pretty_assertions 1.0.0",
- "prost",
+ "prost 0.8.0",
  "prost-types",
  "semver 1.0.4",
  "serde",
@@ -1599,7 +1599,7 @@ dependencies = [
  "graph-runtime-wasm",
  "graph-store-postgres",
  "pretty_assertions 0.7.2",
- "prost",
+ "prost 0.8.0",
  "prost-types",
  "serde",
  "test-store",
@@ -1757,7 +1757,7 @@ dependencies = [
  "graph-mock",
  "graphql-parser",
  "http 0.2.4",
- "hyper 0.14.11",
+ "hyper 0.14.14",
  "serde",
 ]
 
@@ -1773,7 +1773,7 @@ dependencies = [
  "graph-graphql",
  "graphql-parser",
  "http 0.2.4",
- "hyper 0.14.11",
+ "hyper 0.14.14",
  "serde",
 ]
 
@@ -1794,7 +1794,7 @@ dependencies = [
  "futures 0.1.31",
  "graph",
  "http 0.2.4",
- "hyper 0.14.11",
+ "hyper 0.14.14",
  "lazy_static",
  "serde",
 ]
@@ -2006,9 +2006,9 @@ dependencies = [
 
 [[package]]
 name = "http-body"
-version = "0.4.3"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "399c583b2979440c60be0821a6199eca73bc3c8dcd9d070d75ac726e2c6186e5"
+checksum = "1ff4f84919677303da5f147645dbea6b1881f368d03ac84e1dc09031ebd7b2c6"
 dependencies = [
  "bytes 1.0.1",
  "http 0.2.4",
@@ -2017,9 +2017,9 @@ dependencies = [
 
 [[package]]
 name = "httparse"
-version = "1.4.1"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3a87b616e37e93c22fb19bcd386f02f3af5ea98a25670ad0fce773de23c5e68"
+checksum = "acd94fdbe1d4ff688b67b04eee2e17bd50995534a61539e45adfefb45e5e5503"
 
 [[package]]
 name = "httpdate"
@@ -2093,9 +2093,9 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "0.14.11"
+version = "0.14.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b61cf2d1aebcf6e6352c97b81dc2244ca29194be1b276f5d8ad5c6330fffb11"
+checksum = "2b91bb1f221b6ea1f1e4371216b70f40748774c2fb5971b450c07773fb92d26b"
 dependencies = [
  "bytes 1.0.1",
  "futures-channel",
@@ -2103,7 +2103,7 @@ dependencies = [
  "futures-util",
  "h2 0.3.3",
  "http 0.2.4",
- "http-body 0.4.3",
+ "http-body 0.4.4",
  "httparse",
  "httpdate",
  "itoa",
@@ -2121,7 +2121,7 @@ version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbb958482e8c7be4bc3cf272a766a2b0bf1a6755e7a6ae777f017a31d11b13b1"
 dependencies = [
- "hyper 0.14.11",
+ "hyper 0.14.14",
  "pin-project-lite",
  "tokio 1.12.0",
  "tokio-io-timeout",
@@ -2147,7 +2147,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6183ddfa99b85da61a140bea0efc93fdf56ceaa041b37d553518030827f9905"
 dependencies = [
  "bytes 1.0.1",
- "hyper 0.14.11",
+ "hyper 0.14.14",
  "native-tls",
  "tokio 1.12.0",
  "tokio-native-tls",
@@ -2161,7 +2161,7 @@ checksum = "24ef1fd95d34b4ff007d3f0590727b5cf33572cace09b42032fc817dc8b16557"
 dependencies = [
  "anyhow",
  "hex",
- "hyper 0.14.11",
+ "hyper 0.14.14",
  "pin-project",
  "tokio 1.12.0",
 ]
@@ -3322,7 +3322,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "de5e2533f59d08fcf364fd374ebda0692a70bd6d7e66ef97f306f45c6c5d8020"
 dependencies = [
  "bytes 1.0.1",
- "prost-derive",
+ "prost-derive 0.8.0",
+]
+
+[[package]]
+name = "prost"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "444879275cb4fd84958b1a1d5420d15e6fcf7c235fe47f053c9c2a80aceb6001"
+dependencies = [
+ "bytes 1.0.1",
+ "prost-derive 0.9.0",
 ]
 
 [[package]]
@@ -3337,7 +3347,7 @@ dependencies = [
  "log 0.4.14",
  "multimap",
  "petgraph 0.5.1",
- "prost",
+ "prost 0.8.0",
  "prost-types",
  "tempfile",
  "which",
@@ -3357,13 +3367,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "prost-derive"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9cc1a3263e07e0bf68e96268f37665207b49560d98739662cdfaae215c720fe"
+dependencies = [
+ "anyhow",
+ "itertools",
+ "proc-macro2 1.0.28",
+ "quote 1.0.9",
+ "syn 1.0.74",
+]
+
+[[package]]
 name = "prost-types"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "603bbd6394701d13f3f25aada59c7de9d35a6a5887cfc156181234a44002771b"
 dependencies = [
  "bytes 1.0.1",
- "prost",
+ "prost 0.8.0",
 ]
 
 [[package]]
@@ -3749,8 +3772,8 @@ dependencies = [
  "futures-core",
  "futures-util",
  "http 0.2.4",
- "http-body 0.4.3",
- "hyper 0.14.11",
+ "http-body 0.4.4",
+ "hyper 0.14.14",
  "hyper-tls 0.5.0",
  "ipnet",
  "js-sys",
@@ -5013,9 +5036,9 @@ dependencies = [
 
 [[package]]
 name = "tonic"
-version = "0.5.2"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "796c5e1cd49905e65dd8e700d4cb1dffcbfdb4fc9d017de08c1a537afd83627c"
+checksum = "24203b79cf2d68909da91178db3026e77054effba0c5d93deb870d3ca7b35afa"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -5025,13 +5048,13 @@ dependencies = [
  "futures-util",
  "h2 0.3.3",
  "http 0.2.4",
- "http-body 0.4.3",
- "hyper 0.14.11",
+ "http-body 0.4.4",
+ "hyper 0.14.14",
  "hyper-timeout",
  "percent-encoding 2.1.0",
  "pin-project",
- "prost",
- "prost-derive",
+ "prost 0.9.0",
+ "prost-derive 0.9.0",
  "rustls-native-certs",
  "tokio 1.12.0",
  "tokio-rustls",
