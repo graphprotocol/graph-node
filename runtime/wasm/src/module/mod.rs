@@ -2,6 +2,7 @@ use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::rc::Rc;
+use std::sync::Mutex;
 use std::time::Instant;
 
 use anyhow::anyhow;
@@ -33,11 +34,17 @@ pub use crate::host_exports;
 use crate::host_exports::HostExports;
 use crate::mapping::MappingContext;
 use crate::mapping::ValidModule;
+use lazy_static::lazy_static;
 
 mod into_wasm_ret;
 pub mod stopwatch;
 
 pub const TRAP_TIMEOUT: &str = "trap: interrupt";
+
+lazy_static! {
+    pub static ref STORE: Mutex<HashMap<String, HashMap<String, HashMap<String, Value>>>> =
+        Mutex::new(HashMap::new());
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Gravatar {
@@ -823,15 +830,16 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let id = asc_get(self, id_ptr)?;
         let data = try_asc_get(self, data_ptr)?;
 
-        self.ctx.host_exports.store_set(
-            &self.ctx.logger,
-            &mut self.ctx.state,
-            &self.ctx.proof_of_indexing,
-            entity,
-            id,
-            data,
-            stopwatch,
-        )?;
+        let store = &mut STORE.lock().unwrap();
+        let mut entity_type_store = if store.contains_key(&entity) {
+            store.get(&entity).unwrap().clone()
+        } else {
+            HashMap::new()
+        };
+
+        entity_type_store.insert(id, data);
+        store.insert(entity, entity_type_store);
+
         Ok(())
     }
 
@@ -855,20 +863,20 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     /// function store.get(entity: string, id: string): Entity | null
     pub fn store_get(
         &mut self,
-        entity_ptr: AscPtr<AscString>,
+        _entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscEntity>, HostExportError> {
         let id: String = asc_get(self, id_ptr)?;
 
-        let variables = query::Variables {
-            id: Some(id.clone()),
-        };
-        let gravatar = perform_query(variables)
-            .unwrap()
+        let variables = query::Variables { id: Some(id) };
+        let res = perform_query(variables).unwrap();
+        let gravatar = res
             .data
-            .ok_or(anyhow!("Query failed"))?
+            .as_ref()
+            .ok_or_else(|| anyhow!("Query failed"))?
             .gravatars
-            .first();
+            .first()
+            .unwrap();
 
         println!("{:?}", gravatar);
 
@@ -877,21 +885,16 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             .cheap_clone()
             .time_host_fn_execution_region("store_get");
 
-        let id_ptr = asc_get(self, id_ptr)?;
+        let map: HashMap<String, graph::prelude::Value> =
+            serde_json::from_str(&serde_json::to_string(gravatar).unwrap()).unwrap();
+        let entity = Entity::from(map);
 
-        // TODO: get entity_option
-        // Tip: gravatar needs to be converted to a HashMap so that we can derive an Entity object from it
-        let entity_option = Entity::from(serde_json::to_string(&gravatar).unwrap());
-
-        let ret = match entity_option {
-            Ok(entity) => {
-                let _section = self
-                    .host_metrics
-                    .stopwatch
-                    .start_section("store_get_asc_new");
-                asc_new(self, &entity.sorted())?
-            }
-            Err(_) => AscPtr::null(),
+        let ret = {
+            let _section = self
+                .host_metrics
+                .stopwatch
+                .start_section("store_get_asc_new");
+            asc_new(self, &entity.sorted())?
         };
 
         Ok(ret)
