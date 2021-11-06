@@ -49,9 +49,10 @@ pub use data::Storage;
 /// Encapuslate access to the blocks table for a chain.
 mod data {
 
+    use diesel::dsl::exists;
     use diesel::sql_types::Binary;
     use diesel::{connection::SimpleConnection, insert_into};
-    use diesel::{delete, prelude::*, sql_query};
+    use diesel::{delete, prelude::*, select, sql_query};
     use diesel::{dsl::sql, pg::PgConnection};
     use diesel::{
         pg::Pg,
@@ -940,43 +941,55 @@ mod data {
             block_number: i32,
             return_value: &[u8],
         ) -> Result<(), Error> {
+            // This code checks before inserting into `call_cache` and
+            // `call_meta` whether the insert is even needed to reduce lock
+            // contention around the locks that the insert statements take.
+            // The check is racy, but that's ok as the inserts will be
+            // correct even without the checks, and we solely want to reduce
+            // the number of unnecessary inserts that we issue.
             let result = match self {
                 Storage::Shared => {
                     use public::eth_call_cache as cache;
                     use public::eth_call_meta as meta;
 
-                    insert_into(cache::table)
-                        .values((
-                            cache::id.eq(id),
-                            cache::contract_address.eq(contract_address),
-                            cache::block_number.eq(block_number),
-                            cache::return_value.eq(return_value),
-                        ))
-                        .on_conflict_do_nothing()
-                        .execute(conn)?;
-
-                    // See comment in the Private branch for why the
-                    // raciness of this check is ok
-                    let update_meta = meta::table
-                        .filter(meta::contract_address.eq(contract_address))
-                        .select(sql("accessed_at < current_date"))
-                        .first::<bool>(conn)
-                        .optional()?
-                        .unwrap_or(true);
-                    if update_meta {
-                        let accessed_at = meta::accessed_at.eq(sql("CURRENT_DATE"));
-                        insert_into(meta::table)
+                    let update_cache = select(exists(
+                        cache::table.filter(cache::id.eq(id)).select(cache::id),
+                    ))
+                    .get_result::<bool>(conn)?;
+                    if update_cache {
+                        insert_into(cache::table)
                             .values((
-                                meta::contract_address.eq(contract_address),
-                                accessed_at.clone(),
+                                cache::id.eq(id),
+                                cache::contract_address.eq(contract_address),
+                                cache::block_number.eq(block_number),
+                                cache::return_value.eq(return_value),
                             ))
-                            .on_conflict(meta::contract_address)
-                            .do_update()
-                            .set(accessed_at)
-                            // TODO: Add a where clause similar to the Private
-                            // branch to avoid unnecessary updates (not entirely
-                            // trivial with diesel)
-                            .execute(conn)
+                            .on_conflict_do_nothing()
+                            .execute(conn)?;
+
+                        let update_meta = meta::table
+                            .filter(meta::contract_address.eq(contract_address))
+                            .select(sql("accessed_at < current_date"))
+                            .first::<bool>(conn)
+                            .optional()?
+                            .unwrap_or(true);
+                        if update_meta {
+                            let accessed_at = meta::accessed_at.eq(sql("CURRENT_DATE"));
+                            insert_into(meta::table)
+                                .values((
+                                    meta::contract_address.eq(contract_address),
+                                    accessed_at.clone(),
+                                ))
+                                .on_conflict(meta::contract_address)
+                                .do_update()
+                                .set(accessed_at)
+                                // TODO: Add a where clause similar to the Private
+                                // branch to avoid unnecessary updates (not entirely
+                                // trivial with diesel)
+                                .execute(conn)
+                        } else {
+                            Ok(0)
+                        }
                     } else {
                         Ok(0)
                     }
@@ -986,44 +999,49 @@ mod data {
                     call_meta,
                     ..
                 }) => {
-                    let query = format!(
-                        "insert into {}(id, contract_address, block_number, return_value) \
-                         values ($1, $2, $3, $4) on conflict do nothing",
-                        call_cache.qname
-                    );
-                    sql_query(query)
-                        .bind::<Bytea, _>(id)
-                        .bind::<Bytea, _>(contract_address)
-                        .bind::<Integer, _>(block_number)
-                        .bind::<Bytea, _>(return_value)
-                        .execute(conn)?;
-
-                    // Check whether we need to update `call_meta`. The
-                    // check is racy, since an update can happen between the
-                    // check and the insert below, but that's fine. We can
-                    // tolerate a small number of redundant updates, but
-                    // will still catch the majority of cases where an
-                    // update is not needed
-                    let update_meta = call_meta
-                        .table()
-                        .filter(call_meta.contract_address().eq(contract_address))
-                        .select(sql("accessed_at < current_date"))
-                        .first::<bool>(conn)
-                        .optional()?
-                        .unwrap_or(true);
-
-                    if update_meta {
+                    let update_cache = select(exists(
+                        call_cache
+                            .table()
+                            .filter(call_cache.id().eq(id))
+                            .select(call_cache.id()),
+                    ))
+                    .get_result::<bool>(conn)?;
+                    if update_cache {
                         let query = format!(
-                            "insert into {}(contract_address, accessed_at) \
+                            "insert into {}(id, contract_address, block_number, return_value) \
+                         values ($1, $2, $3, $4) on conflict do nothing",
+                            call_cache.qname
+                        );
+                        sql_query(query)
+                            .bind::<Bytea, _>(id)
+                            .bind::<Bytea, _>(contract_address)
+                            .bind::<Integer, _>(block_number)
+                            .bind::<Bytea, _>(return_value)
+                            .execute(conn)?;
+
+                        let update_meta = call_meta
+                            .table()
+                            .filter(call_meta.contract_address().eq(contract_address))
+                            .select(sql("accessed_at < current_date"))
+                            .first::<bool>(conn)
+                            .optional()?
+                            .unwrap_or(true);
+
+                        if update_meta {
+                            let query = format!(
+                                "insert into {}(contract_address, accessed_at) \
                          values ($1, CURRENT_DATE) \
                          on conflict(contract_address)
                          do update set accessed_at = CURRENT_DATE \
                                  where excluded.accessed_at < CURRENT_DATE",
-                            call_meta.qname
-                        );
-                        sql_query(query)
-                            .bind::<Bytea, _>(contract_address)
-                            .execute(conn)
+                                call_meta.qname
+                            );
+                            sql_query(query)
+                                .bind::<Bytea, _>(contract_address)
+                                .execute(conn)
+                        } else {
+                            Ok(0)
+                        }
                     } else {
                         Ok(0)
                     }
