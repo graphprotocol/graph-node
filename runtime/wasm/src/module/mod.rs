@@ -68,7 +68,7 @@ fn perform_query(variables: query::Variables) -> Result<Response<query::Response
     let client = reqwest::blocking::Client::new();
     let res = client
         .post(
-            "https://api.thegraph.com/subgraphs/id/QmbQWhYWLHSDrtoMuYgoN2tpxiLxXyh1hYsopw24cnNVLm",
+            "https://api.thegraph.com/subgraphs/id/QmfEiYDc9ZvueQrvezFQy4EBQDcqbu74EY3oLWYmA7aAZq",
         )
         .json(&request_body)
         .send()
@@ -830,7 +830,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let id = asc_get(self, id_ptr)?;
         let data = try_asc_get(self, data_ptr)?;
 
-        let store = &mut STORE.lock().unwrap();
+        let mut store = STORE.lock().unwrap();
         let mut entity_type_store = if store.contains_key(&entity) {
             store.get(&entity).unwrap().clone()
         } else {
@@ -863,10 +863,23 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     /// function store.get(entity: string, id: string): Entity | null
     pub fn store_get(
         &mut self,
-        _entity_ptr: AscPtr<AscString>,
+        entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscEntity>, HostExportError> {
+        let entity_type: String = asc_get(self, entity_ptr)?;
         let id: String = asc_get(self, id_ptr)?;
+
+        let store = STORE.lock().unwrap();
+        println!("{:?}", store);
+        if store.contains_key(&entity_type) && store.get(&entity_type).unwrap().contains_key(&id) {
+            println!("in if");
+            let entities = store.get(&entity_type).unwrap();
+            let entity = entities.get(&id).unwrap().clone();
+            let entity = Entity::from(entity);
+
+            let res = asc_new(self, &entity.sorted())?;
+            return Ok(res);
+        }
 
         let variables = query::Variables { id: Some(id) };
         let res = perform_query(variables).unwrap();
@@ -885,8 +898,26 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             .cheap_clone()
             .time_host_fn_execution_region("store_get");
 
-        let map: HashMap<String, graph::prelude::Value> =
-            serde_json::from_str(&serde_json::to_string(gravatar).unwrap()).unwrap();
+        let map: HashMap<String, graph::prelude::Value> = {
+            let mut map = HashMap::new();
+            map.insert(
+                "id".into(),
+                graph::prelude::Value::String(gravatar.id.clone()),
+            );
+            map.insert(
+                "display_name".into(),
+                graph::prelude::Value::String(gravatar.display_name.clone()),
+            );
+            map.insert(
+                "owner".into(),
+                graph::prelude::Value::Bytes(gravatar.owner.clone()),
+            );
+            map.insert(
+                "image_url".into(),
+                graph::prelude::Value::String(gravatar.image_url.clone()),
+            );
+            map
+        };
         let entity = Entity::from(map);
 
         let ret = {
