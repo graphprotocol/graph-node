@@ -240,6 +240,21 @@ pub enum IndexForAscTypeId {
     NearChunkHeader = 84,
     NearBlock = 85,
     NearReceiptWithOutcome = 86,
+    SolanaBlock = 87,
+    SolanaInstruction = 88,
+    SolanaInstructionWithBlock = 89,
+    SolanaTransaction = 90,
+    SolanaMessageHeader = 91,
+    SolanaTransactionError = 92,
+    SolanaInstructionError = 93,
+    SolanaArrayTransaction = 94,
+    SolanaArrayInstruction = 95,
+    SolanaArrayHash = 96,
+    SolanaArrayString = 97,
+    SolanaBalanceChange = 98,
+    SolanaBalanceChangeArray = 99,
+    SolanaAccountChange = 100,
+    SolanaAccountChangeArray = 101,
 }
 
 impl ToAscObj<u32> for IndexForAscTypeId {

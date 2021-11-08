@@ -92,10 +92,12 @@ impl FirehoseEndpoint {
             },
         );
 
-        debug!(logger, "Connecting to firehose to retrieve genesis block");
+        debug!(logger, "Connecting to firehose to retrieve genesis block, start block 118081400, stop block 119081400");
+
         let response_stream = client
             .blocks(firehose::Request {
-                start_block_num: 0,
+                start_block_num: 118081400,
+                stop_block_num: 119081400,
                 fork_steps: vec![ForkStep::StepIrreversible as i32],
                 ..Default::default()
             })

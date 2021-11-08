@@ -2,6 +2,8 @@
 members = [
     "core",
     "chain/ethereum",
+    "chain/near",
+    "chain/solana",
     "graphql",
     "mock",
     "node",

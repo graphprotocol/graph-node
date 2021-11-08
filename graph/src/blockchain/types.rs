@@ -170,9 +170,17 @@ impl TryFrom<(&str, i64)> for BlockPtr {
     type Error = anyhow::Error;
 
     fn try_from((hash, number): (&str, i64)) -> Result<Self, Self::Error> {
+        BlockPtr::try_from((hash, number as u64))
+    }
+}
+
+impl TryFrom<(&str, u64)> for BlockPtr {
+    type Error = anyhow::Error;
+
+    fn try_from((hash, number): (&str, u64)) -> Result<Self, Self::Error> {
         let hash = hash.trim_start_matches("0x");
         let hash = H256::from_str(hash)
-            .map_err(|e| anyhow!("Cannot parse H256 value from string `{}`: {}", hash, e))?;
+            .context(anyhow!("Cannot parse H256 value from string `{}`", hash))?;
 
         Ok(BlockPtr::from((hash, number)))
     }

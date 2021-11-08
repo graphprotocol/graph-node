@@ -301,6 +301,9 @@ pub enum BlockchainKind {
 
     /// NEAR chains (Mainnet, Testnet) or chains that are compatible
     Near,
+
+    /// Solana chains (Mainnet, Testnet) or chains that are compatible
+    Solana,
 }
 
 impl fmt::Display for BlockchainKind {
@@ -308,6 +311,7 @@ impl fmt::Display for BlockchainKind {
         let value = match self {
             BlockchainKind::Ethereum => "ethereum",
             BlockchainKind::Near => "near",
+            BlockchainKind::Solana => "solana",
         };
         write!(f, "{}", value)
     }
@@ -320,6 +324,7 @@ impl FromStr for BlockchainKind {
         match s {
             "ethereum" => Ok(BlockchainKind::Ethereum),
             "near" => Ok(BlockchainKind::Near),
+            "solana" => Ok(BlockchainKind::Solana),
             _ => Err(anyhow!("unknown blockchain kind {}", s)),
         }
     }

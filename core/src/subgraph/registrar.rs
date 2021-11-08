@@ -323,6 +323,20 @@ where
                 )
                 .await?
             }
+            BlockchainKind::Solana => {
+                create_subgraph_version::<graph_chain_solana::Chain, _, _>(
+                    &logger,
+                    self.store.clone(),
+                    self.chains.cheap_clone(),
+                    name.clone(),
+                    hash.cheap_clone(),
+                    raw,
+                    node_id,
+                    self.version_switching_mode,
+                    self.resolver.cheap_clone(),
+                )
+                .await?
+            }
         };
 
         debug!(

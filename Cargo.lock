@@ -192,6 +192,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "base58"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6107fe1be6682a68940da878d9e9f5e90ca5745b3dec9fd1bb393c8777d4f581"
+
+[[package]]
 name = "base64"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1523,6 +1529,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-chain-solana"
+version = "0.24.1"
+dependencies = [
+ "base58",
+ "base64 0.13.0",
+ "diesel",
+ "graph",
+ "graph-core",
+ "graph-runtime-derive",
+ "graph-runtime-wasm",
+ "graph-store-postgres",
+ "pretty_assertions 0.7.2",
+ "prost",
+ "prost-types",
+ "serde",
+ "test-store",
+ "tonic-build",
+]
+
+[[package]]
 name = "graph-core"
 version = "0.25.0"
 dependencies = [
@@ -1537,6 +1563,7 @@ dependencies = [
  "graph",
  "graph-chain-ethereum",
  "graph-chain-near",
+ "graph-chain-solana",
  "graph-mock",
  "graph-runtime-wasm",
  "graphql-parser",
@@ -1596,6 +1623,7 @@ dependencies = [
  "graph",
  "graph-chain-ethereum",
  "graph-chain-near",
+ "graph-chain-solana",
  "graph-core",
  "graph-graphql",
  "graph-runtime-wasm",
@@ -1690,6 +1718,7 @@ dependencies = [
  "graph",
  "graph-chain-ethereum",
  "graph-chain-near",
+ "graph-chain-solana",
  "graph-graphql",
  "graphql-parser",
  "http 0.2.5",

@@ -9,6 +9,7 @@ graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
 graph-chain-near = { path = "../../chain/near" }
+graph-chain-solana = { path = "../../chain/solana" }
 graphql-parser = "0.4.0"
 http = "0.2"
 hyper = "0.14"

@@ -1,0 +1,142 @@
+syntax = "proto3";
+
+package sf.solana.codec.v1;
+
+option go_package = "github.com/streamingfast/sf-solana/pb/sf/solana/codec/v1;pbcodec";
+
+import "google/protobuf/any.proto";
+
+message Block {
+  bytes id = 1;  // corresponds to the Slot id (or hash)
+  uint64 number = 2; // corresponds to the Slot number for this block
+  uint32 version = 3;
+  bytes previous_id = 4; // corresponds to the previous_blockhash, might skip some slots, so beware
+  uint64 previous_block = 5;
+  uint64 genesis_unix_timestamp = 6;
+  uint64 clock_unix_timestamp = 7;
+  uint64 root_num = 8;
+
+  bytes last_entry_hash = 9;
+
+  repeated Transaction transactions = 10;
+  uint32 transaction_count = 11;
+
+  bool has_split_account_changes = 12;
+  string account_changes_file_ref = 13;
+}
+
+message Batch {
+  repeated Transaction transactions = 1;
+}
+
+// Bundled in separate files, referenced by `account_changes_file_ref`
+message AccountChangesBundle {
+  // Maps to the index of the `repeated` field for Block::transactions
+  repeated AccountChangesPerTrxIndex transactions = 1;
+}
+
+message AccountChangesPerTrxIndex {
+  bytes TrxId = 1;
+
+  // Maps to the index within the `repeated` field of the proto for
+  // Transaction::instructions
+  repeated AccountChangesPerInstruction instructions = 2;
+}
+
+message AccountChangesPerInstruction {
+  // Data to be put in Instruction::account_changes
+  repeated AccountChange changes = 1;
+}
+
+message Transaction {
+  // The transaction ID corresponds to the _first_
+  // signature. Additional signatures are in `additional_signatures`.
+  bytes id = 1;
+
+  // Index from within a single Slot, deterministically ordered to the
+  // best of our ability using the transaction ID as a sort key for
+  // the batch of transactions executed in parallel.
+  uint64 index = 2;
+
+  repeated bytes additional_signatures = 3;
+
+  MessageHeader header = 4;
+  // From the original Message object
+  repeated bytes account_keys = 5;
+  // From the original Message object
+  bytes recent_blockhash = 6;
+
+  // What follows Once executed these can be set:
+  repeated string log_messages = 7;
+  // Instructions, containing both top-level and nested transactions
+  repeated Instruction instructions = 8;
+
+  bool failed = 9;
+  TransactionError error = 10;
+}
+
+message MessageHeader  {
+  uint32 num_required_signatures = 1;
+  uint32 num_readonly_signed_accounts = 2;
+  uint32 num_readonly_unsigned_accounts = 3;
+}
+
+
+/**
+- instr1 (id=1, parent=0)
+- instr2 (id=2, parent=0) (pubkey1 is writable)
+  - instr3 (id=3, parent=2) (pubkey1 is writable)
+     - instr4 (id=4, parent=3) (pubkey1 is writable)
+        - instr5 (id=5, parent=4) (pubkey1 is writable, mutates pubkey1)
+       collect delta of pubkey1
+     collect delta of pubkey1 ONLY IF CHANGED AGAIN, from last time we took a snapshot of it.
+  collect delta of pubkey1
+- instr6 (id=6, parent=0)
+ */
+
+message Instruction {
+  bytes program_id = 3;
+  repeated bytes account_keys = 4;
+  bytes data = 5;
+
+  // What follows is execution trace data, could be empty for un-executed transactions.
+
+  uint32 ordinal = 6;
+  uint32 parent_ordinal = 7;
+  uint32 depth = 8;
+
+  repeated BalanceChange balance_changes = 9;
+  repeated AccountChange account_changes = 10;
+
+  bool failed = 15;
+  InstructionError error = 16;
+}
+
+message BalanceChange {
+  bytes pubkey = 1;
+  uint64 prev_lamports = 2;
+  uint64 new_lamports = 3;
+}
+
+message AccountChange {
+  bytes pubkey = 1;
+  bytes prev_data = 2;
+  bytes new_data = 3;
+  uint64 new_data_length = 4;
+}
+
+message TransactionError {
+  string error = 2;
+}
+
+message TransactionInstructionError {
+  string error = 2;
+}
+
+message InstructionError {
+  string error = 2;
+}
+
+message InstructionErrorCustom {
+  string error = 2;
+}

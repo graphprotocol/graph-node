@@ -207,6 +207,13 @@ where
                         )
                         .await
                 }
+                BlockchainKind::Solana => {
+                    instance_manager
+                        .start_subgraph_inner::<graph_chain_solana::Chain>(
+                            logger, loc, manifest, stop_block,
+                        )
+                        .await
+                }
             }
         };
         // Perform the actual work of starting the subgraph in a separate

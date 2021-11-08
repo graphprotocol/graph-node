@@ -10,6 +10,7 @@ use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
 use graph::prometheus::Registry;
 use graph_chain_ethereum as ethereum;
 use graph_chain_near::{self as near, HeaderOnlyBlock as NearFirehoseHeaderOnlyBlock};
+use graph_chain_solana::{self as solana, Block as SolanaFirehoseBlock};
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -199,6 +200,7 @@ async fn main() {
 
         let (eth_networks, ethereum_idents) =
             connect_ethereum_networks(&logger, eth_networks).await;
+
         let (near_networks, near_idents) =
             connect_firehose_networks::<NearFirehoseHeaderOnlyBlock>(
                 &logger,
@@ -208,7 +210,19 @@ async fn main() {
             )
             .await;
 
-        let network_identifiers = ethereum_idents.into_iter().chain(near_idents).collect();
+        let (solana_networks, solana_idents) = connect_firehose_networks::<SolanaFirehoseBlock>(
+            &logger,
+            firehose_networks_by_kind
+                .remove(&BlockchainKind::Solana)
+                .unwrap_or_else(|| FirehoseNetworks::new()),
+        )
+        .await;
+
+        let network_identifiers = ethereum_idents
+            .into_iter()
+            .chain(near_idents.into_iter())
+            .chain(solana_idents.into_iter())
+            .collect();
         let network_store = store_builder.network_store(network_identifiers);
 
         let ethereum_chains = ethereum_networks_as_chains(
@@ -227,6 +241,14 @@ async fn main() {
             &mut blockchain_map,
             &logger,
             &near_networks,
+            network_store.as_ref(),
+            &logger_factory,
+        );
+
+        let solana_chains = solana_networks_as_chains(
+            &mut blockchain_map,
+            &logger,
+            &solana_networks,
             network_store.as_ref(),
             &logger_factory,
         );
@@ -278,6 +300,11 @@ async fn main() {
                 &logger,
                 &network_store,
                 near_chains,
+            );
+            start_firehose_block_ingestor::<_, SolanaFirehoseBlock>(
+                &logger,
+                &network_store,
+                solana_chains,
             );
 
             // Start a task runner
@@ -539,6 +566,54 @@ fn near_networks_as_chains(
     for (chain_id, firehose_chain) in chains.iter() {
         blockchain_map
             .insert::<graph_chain_near::Chain>(chain_id.clone(), firehose_chain.chain.clone())
+    }
+
+    HashMap::from_iter(chains)
+}
+
+/// Return the hashmap of SOLANA chains and also add them to `blockchain_map`.
+fn solana_networks_as_chains(
+    blockchain_map: &mut BlockchainMap,
+    logger: &Logger,
+    firehose_networks: &FirehoseNetworks,
+    store: &Store,
+    logger_factory: &LoggerFactory,
+) -> HashMap<String, FirehoseChain<solana::Chain>> {
+    let chains: Vec<_> = firehose_networks
+        .networks
+        .iter()
+        .filter_map(|(chain_id, endpoints)| {
+            store
+                .block_store()
+                .chain_store(chain_id)
+                .map(|chain_store| (chain_id, chain_store, endpoints))
+                .or_else(|| {
+                    error!(
+                        logger,
+                        "No store configured for SOLANA chain {}; ignoring this chain", chain_id
+                    );
+                    None
+                })
+        })
+        .map(|(chain_id, chain_store, endpoints)| {
+            (
+                chain_id.clone(),
+                FirehoseChain {
+                    chain: Arc::new(solana::Chain::new(
+                        logger_factory.clone(),
+                        chain_id.clone(),
+                        chain_store,
+                        endpoints.clone(),
+                    )),
+                    firehose_endpoints: endpoints.clone(),
+                },
+            )
+        })
+        .collect();
+
+    for (chain_id, firehose_chain) in chains.iter() {
+        blockchain_map
+            .insert::<graph_chain_solana::Chain>(chain_id.clone(), firehose_chain.chain.clone())
     }
 
     HashMap::from_iter(chains)
