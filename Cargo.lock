@@ -88,6 +88,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
 
 [[package]]
+name = "arrayvec"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8da52d66c7071e2e3fa2a1e5c6d088fec47b593032b254f5e980de8ea54454d6"
+
+[[package]]
 name = "ascii"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -255,11 +261,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b64485778c4f16a6a5a9d335e80d449ac6c70cdd6a06d2af18a6f6f775a125b3"
 dependencies = [
  "arrayref",
- "arrayvec",
+ "arrayvec 0.5.2",
  "cc",
  "cfg-if 0.1.10",
  "constant_time_eq",
  "crypto-mac 0.8.0",
+ "digest",
+]
+
+[[package]]
+name = "blake3"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "526c210b4520e416420759af363083471656e819a75e831b8d2c9d5a584f2413"
+dependencies = [
+ "arrayref",
+ "arrayvec 0.7.2",
+ "cc",
+ "cfg-if 1.0.0",
+ "constant_time_eq",
  "digest",
 ]
 
@@ -1823,7 +1843,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "backtrace",
- "blake3",
+ "blake3 1.2.0",
  "clap",
  "derive_more",
  "diesel",
@@ -2912,7 +2932,7 @@ version = "1.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4b26b16c7687c3075982af47719e481815df30bc544f7a6690763a25ca16e9d"
 dependencies = [
- "arrayvec",
+ "arrayvec 0.5.2",
  "bitvec",
  "byte-slice-cast",
  "serde",
@@ -4318,7 +4338,7 @@ name = "stable-hash"
 version = "0.3.1"
 source = "git+https://github.com/graphprotocol/stable-hash#752463958b369506845e89da8b831430146c61d1"
 dependencies = [
- "blake3",
+ "blake3 0.3.8",
  "firestorm",
  "ibig",
  "lazy_static",
@@ -5753,7 +5773,7 @@ name = "web3"
 version = "0.10.0-graph"
 source = "git+https://github.com/graphprotocol/rust-web3?branch=master#585c9db21576fd9aace40607b764ec870a5faebb"
 dependencies = [
- "arrayvec",
+ "arrayvec 0.5.2",
  "base64 0.12.3",
  "derive_more",
  "ethabi 12.0.0",
