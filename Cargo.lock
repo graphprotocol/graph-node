@@ -1138,13 +1138,13 @@ dependencies = [
 
 [[package]]
 name = "fail"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3be3c61c59fdc91f5dbc3ea31ee8623122ce80057058be560654c5d410d181a6"
+checksum = "ec3245a0ca564e7f3c797d20d833a6870f57a728ac967d5225b3ffdef4465011"
 dependencies = [
  "lazy_static",
  "log 0.4.14",
- "rand 0.7.3",
+ "rand 0.8.4",
 ]
 
 [[package]]
