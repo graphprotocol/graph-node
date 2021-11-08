@@ -618,8 +618,9 @@ impl ToAscObj<Uint8Array> for codec::BigInt {
         &self,
         heap: &mut H,
     ) -> Result<Uint8Array, DeterministicHostError> {
-        // FIXME (NEAR): Hopefully the bytes here fits the BigInt format expected in `graph-node`,
-        //               will need to validate that in the subgraph directly.
-        self.bytes.to_asc_obj(heap)
+        // Bytes are reversed to align with BigInt bytes endianess
+        let reversed: Vec<u8> = self.bytes.iter().rev().map(|x| *x).collect();
+
+        reversed.to_asc_obj(heap)
     }
 }
