@@ -170,7 +170,7 @@ impl StoreBuilder {
         Arc::new(DieselStore::new(subgraph_store, block_store))
     }
 
-    /// Create a connection pool for the main database of hte primary shard
+    /// Create a connection pool for the main database of the primary shard
     /// without connecting to all the other configured databases
     pub fn main_pool(
         logger: &Logger,
