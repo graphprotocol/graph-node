@@ -1,4 +1,3 @@
-use anyhow::Context;
 use futures::future;
 use futures::prelude::*;
 use graph::blockchain::BlockHash;
@@ -510,6 +509,9 @@ impl EthereumAdapter {
                     const PARITY_BAD_JUMP_PREFIX: &str = "Bad jump";
                     const PARITY_STACK_LIMIT_PREFIX: &str = "Out of stack";
 
+                    // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
+                    const PARITY_OUT_OF_GAS: &str = "Out of gas";
+
                     const PARITY_VM_EXECUTION_ERROR: i64 = -32015;
                     const PARITY_REVERT_PREFIX: &str = "Reverted 0x";
 
@@ -549,7 +551,7 @@ impl EthereumAdapter {
                         Err(web3::Error::Rpc(rpc_error))
                             if GETH_EXECUTION_ERRORS
                                 .iter()
-                                .any(|e| rpc_error.message.contains(e)) =>
+                                .any(|e| rpc_error.message.to_lowercase().contains(e)) =>
                         {
                             Err(EthereumContractCallError::Revert(rpc_error.message))
                         }
@@ -564,7 +566,8 @@ impl EthereumAdapter {
                                         || data.starts_with(PARITY_BAD_JUMP_PREFIX)
                                         || data.starts_with(PARITY_STACK_LIMIT_PREFIX)
                                         || data == PARITY_BAD_INSTRUCTION_FE
-                                        || data == PARITY_BAD_INSTRUCTION_FD =>
+                                        || data == PARITY_BAD_INSTRUCTION_FD
+                                        || data == PARITY_OUT_OF_GAS =>
                                 {
                                     let reason = if data == PARITY_BAD_INSTRUCTION_FE {
                                         PARITY_BAD_INSTRUCTION_FE.to_owned()
@@ -829,11 +832,7 @@ impl EthereumAdapter {
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     let web3 = web3.cheap_clone();
-                    async move {
-                        {
-                            web3.eth().chain_id().await
-                        }
-                    }
+                    async move { web3.eth().chain_id().await }
                 })
                 .await?,
         )
@@ -860,7 +859,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .timeout_secs(20)
             .run(move || {
                 let web3 = web3.cheap_clone();
-                async move { web3.net().version().await.with_context(|| "boom") }
+                async move { web3.net().version().await.map_err(Into::into) }
             })
             .boxed();
 

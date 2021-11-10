@@ -363,10 +363,9 @@ pub struct EthereumTransactionData {
 
 impl From<&'_ Transaction> for EthereumTransactionData {
     fn from(tx: &Transaction) -> EthereumTransactionData {
-        // Old versions of web3 (before commit 11277e07) always had a value
-        // for `from`; newer versions make this an option, but it's not
-        // clear what the value should be if this is ever `None`
-        let from = tx.from.expect("tx.from must have a value");
+        // unwrap: this is always `Some` for txns that have been mined
+        //         (see https://github.com/tomusdrw/rust-web3/pull/407)
+        let from = tx.from.unwrap();
         EthereumTransactionData {
             hash: tx.hash,
             index: tx.transaction_index.unwrap().as_u64().into(),
