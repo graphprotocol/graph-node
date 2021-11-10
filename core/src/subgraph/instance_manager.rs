@@ -549,6 +549,11 @@ where
                 // Log and drop the errors from the block_stream
                 // The block stream will continue attempting to produce blocks
                 Some(Err(e)) => {
+                    if block_stream_cancel_handle.is_canceled() {
+                        debug!(&logger, "Subgraph block stream shut down cleanly");
+                        return Ok(());
+                    }
+
                     debug!(
                         &logger,
                         "Block stream produced a non-fatal error";

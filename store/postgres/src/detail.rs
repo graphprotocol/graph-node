@@ -69,15 +69,23 @@ pub struct DeploymentDetail {
 // We map all fields to make loading `Detail` with diesel easier, but we
 // don't need all the fields
 #[allow(dead_code)]
-struct ErrorDetail {
+pub(crate) struct ErrorDetail {
     vid: i64,
-    id: String,
+    pub id: String,
     subgraph_id: String,
     message: String,
-    block_hash: Option<Bytes>,
+    pub block_hash: Option<Bytes>,
     handler: Option<String>,
-    deterministic: bool,
-    block_range: (Bound<i32>, Bound<i32>),
+    pub deterministic: bool,
+    pub block_range: (Bound<i32>, Bound<i32>),
+}
+
+pub(crate) fn error(conn: &PgConnection, error_id: &str) -> Result<ErrorDetail, StoreError> {
+    use subgraph_error as e;
+    e::table
+        .filter(e::id.eq(error_id))
+        .get_result(conn)
+        .map_err(StoreError::from)
 }
 
 struct DetailAndError<'a>(DeploymentDetail, Option<ErrorDetail>, &'a Vec<Arc<Site>>);
