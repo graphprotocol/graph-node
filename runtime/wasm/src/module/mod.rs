@@ -7,8 +7,6 @@ use std::time::Instant;
 
 use anyhow::anyhow;
 use anyhow::Error;
-use anyhow::Result as AnyhowResult;
-use graphql_client::{GraphQLQuery, Response};
 use never::Never;
 use semver::Version;
 use serde_derive::{Deserialize, Serialize};
@@ -36,6 +34,7 @@ use crate::mapping::MappingContext;
 use crate::mapping::ValidModule;
 use lazy_static::lazy_static;
 
+mod debug_tool;
 mod into_wasm_ret;
 pub mod stopwatch;
 
@@ -52,31 +51,6 @@ struct Gravatar {
     id: String,
     image_url: String,
     owner: String,
-}
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "src/module/schema.json",
-    query_path = "src/module/query.graphql",
-    response_derives = "Debug, Serialize, Deserialize"
-)]
-pub struct Query;
-
-fn perform_query(variables: query::Variables) -> Result<Response<query::ResponseData>, Error> {
-    let request_body = Query::build_query(variables);
-
-    let client = reqwest::blocking::Client::new();
-    let res = client
-        .post(
-            "https://api.thegraph.com/subgraphs/id/QmfEiYDc9ZvueQrvezFQy4EBQDcqbu74EY3oLWYmA7aAZq",
-        )
-        .json(&request_body)
-        .send()
-        .unwrap();
-
-    let response_body: Response<query::ResponseData> = res.json().unwrap();
-
-    Ok(response_body)
 }
 
 pub trait IntoTrap {
@@ -869,8 +843,16 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let entity_type: String = asc_get(self, entity_ptr)?;
         let id: String = asc_get(self, id_ptr)?;
 
+        // let schema = self.ctx.host_exports.store.input_schema(
+        //     &self.ctx.host_exports.subgraph_id,
+        // ).expect("store_get: Failed to fetch the subgraph from the store.");
+        //
+        // println!("{}", "=".repeat(100));
+        // println!("{:?}", schema.document);
+        // println!("{}", "=".repeat(100));
+
         let store = STORE.lock().unwrap();
-        println!("{:?}", store);
+        // println!("{:?}", store);
         if store.contains_key(&entity_type) && store.get(&entity_type).unwrap().contains_key(&id) {
             println!("in if");
             let entities = store.get(&entity_type).unwrap();
@@ -881,44 +863,52 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             return Ok(res);
         }
 
-        let variables = query::Variables { id: Some(id) };
-        let res = perform_query(variables).unwrap();
-        let gravatar = res
-            .data
-            .as_ref()
-            .ok_or_else(|| anyhow!("Query failed"))?
-            .gravatars
-            .first()
-            .unwrap();
+        let query: &'static str = "query Query ($id: String) {\n    gravatars(where: {id: $id}, subgraphError: allow) {\n        id\n        owner\n        displayName\n        imageUrl\n    }\n}";
+        let variables = debug_tool::QueryVariables { id: Some(id) };
+        let res = debug_tool::perform_query(query, variables)?;
 
-        println!("{:?}", gravatar);
+        let (begin, end) = (res.find("[").unwrap() + 1, res.find("]").unwrap());
+        let entity = &res[begin..end];
+        println!("{}", entity);
+
+        // TODO: This should be generated dynamically with a proc macro.
+        #[derive(Serialize, Deserialize)]
+        struct Gravatar {
+            id: String,
+            owner: Bytes,
+            displayName: String,
+            imageUrl: String,
+        }
+
+        let entity: Gravatar = serde_json::from_str(entity).unwrap();
+        let map: HashMap<String, graph::prelude::Value> = {
+            let mut map = HashMap::new();
+            map.insert(
+                "id".into(),
+                graph::prelude::Value::String(entity.id.clone()),
+            );
+            map.insert(
+                "display_name".into(),
+                graph::prelude::Value::String(entity.displayName.clone()),
+            );
+            map.insert(
+                "owner".into(),
+                graph::prelude::Value::Bytes(entity.owner.clone()),
+            );
+            map.insert(
+                "image_url".into(),
+                graph::prelude::Value::String(entity.imageUrl.clone()),
+            );
+            map
+        };
+        let entity = Entity::from(map);
+        println!("{:?}", entity);
+        let entity = Entity::from(entity);
 
         let _timer = self
             .host_metrics
             .cheap_clone()
             .time_host_fn_execution_region("store_get");
-
-        let map: HashMap<String, graph::prelude::Value> = {
-            let mut map = HashMap::new();
-            map.insert(
-                "id".into(),
-                graph::prelude::Value::String(gravatar.id.clone()),
-            );
-            map.insert(
-                "display_name".into(),
-                graph::prelude::Value::String(gravatar.display_name.clone()),
-            );
-            map.insert(
-                "owner".into(),
-                graph::prelude::Value::Bytes(gravatar.owner.clone()),
-            );
-            map.insert(
-                "image_url".into(),
-                graph::prelude::Value::String(gravatar.image_url.clone()),
-            );
-            map
-        };
-        let entity = Entity::from(map);
 
         let ret = {
             let _section = self
