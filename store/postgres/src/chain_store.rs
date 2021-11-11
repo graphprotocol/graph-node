@@ -393,7 +393,7 @@ mod data {
         pub(super) fn truncate_block_cache(&self, conn: &PgConnection) -> Result<(), StoreError> {
             let table_name = match &self {
                 Storage::Shared => ETHEREUM_BLOCKS_TABLE_NAME,
-                Storage::Private(Schema { name, .. }) => name,
+                Storage::Private(Schema { blocks, .. }) => &blocks.qname,
             };
             conn.batch_execute(&format!("truncate table {} restart identity", table_name))?;
             Ok(())

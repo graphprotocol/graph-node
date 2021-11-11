@@ -469,6 +469,21 @@ impl BlockStore {
         }
         Ok(())
     }
+
+    pub fn update_db_version(&self) -> Result<(), StoreError> {
+        use crate::primary::db_version as dbv;
+        use diesel::prelude::*;
+
+        let connection = self.mirror.primary().get()?;
+        let version: i64 = dbv::table.select(dbv::version).get_result(&connection)?;
+        if version < 3 {
+            self.truncate_block_caches()?;
+            diesel::update(dbv::table)
+                .set(dbv::version.eq(3))
+                .execute(&connection)?;
+        };
+        Ok(())
+    }
 }
 
 impl BlockStoreTrait for BlockStore {

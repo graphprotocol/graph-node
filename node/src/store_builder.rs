@@ -166,6 +166,9 @@ impl StoreBuilder {
             )
             .expect("Creating the BlockStore works"),
         );
+        block_store
+            .update_db_version()
+            .expect("Updating `db_version` works");
 
         Arc::new(DieselStore::new(subgraph_store, block_store))
     }
