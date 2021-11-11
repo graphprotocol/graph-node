@@ -462,6 +462,13 @@ impl BlockStore {
 
         Ok(())
     }
+
+    pub fn truncate_block_caches(&self) -> Result<(), StoreError> {
+        for (_chain, store) in &*self.stores.read().unwrap() {
+            store.truncate_block_cache()?
+        }
+        Ok(())
+    }
 }
 
 impl BlockStoreTrait for BlockStore {
