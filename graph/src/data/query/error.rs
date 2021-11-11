@@ -91,8 +91,6 @@ impl QueryExecutionError {
             | OperationNotFound(_)
             | NotSupported(_)
             | NoRootSubscriptionObjectType
-            | NonNullError(_, _)
-            | ListValueError(_, _)
             | NamedTypeError(_)
             | AbstractTypeError(_)
             | InvalidArgumentError(_, _, _)
@@ -106,25 +104,27 @@ impl QueryExecutionError {
             | EmptyQuery
             | MultipleSubscriptionFields
             | SubgraphDeploymentIdError(_)
-            | RangeArgumentsError(_, _, _)
             | InvalidFilterError
             | EntityFieldError(_, _)
             | ListTypesError(_, _)
             | ListFilterError(_)
-            | ValueParseError(_, _)
             | AttributeTypeError(_, _)
-            | EntityParseError(_)
             | EmptySelectionSet(_)
-            | AmbiguousDerivedFromResult(_, _, _, _)
             | Unimplemented(_)
-            | EnumCoercionError(_, _, _, _, _)
-            | ScalarCoercionError(_, _, _, _)
             | CyclicalFragment(_)
             | UndefinedFragment(_)
             | FulltextQueryRequiresFilter => true,
-            ResolveEntitiesError(_)
+            NonNullError(_, _)
+            | ListValueError(_, _)
+            | ResolveEntitiesError(_)
+            | RangeArgumentsError(_, _, _)
+            | ValueParseError(_, _)
+            | EntityParseError(_)
             | StoreError(_)
             | Timeout
+            | EnumCoercionError(_, _, _, _, _)
+            | ScalarCoercionError(_, _, _, _)
+            | AmbiguousDerivedFromResult(_, _, _, _)
             | TooComplex(_, _)
             | TooDeep(_)
             | IncorrectPrefetchResult { .. }
