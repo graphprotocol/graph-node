@@ -21,7 +21,7 @@ use graph::{
 
 use crate::{
     chain_head_listener::ChainHeadUpdateSender, connection_pool::ConnectionPool,
-    primary::Mirror as PrimaryMirror, ChainStore, NotificationSender, Shard,
+    primary::Mirror as PrimaryMirror, ChainStore, NotificationSender, Shard, PRIMARY_SHARD,
 };
 
 #[cfg(debug_assertions)]
@@ -474,7 +474,8 @@ impl BlockStore {
         use crate::primary::db_version as dbv;
         use diesel::prelude::*;
 
-        let connection = self.mirror.primary().get()?;
+        let primary_pool = self.pools.get(&*PRIMARY_SHARD).unwrap();
+        let connection = primary_pool.get()?;
         let version: i64 = dbv::table.select(dbv::version).get_result(&connection)?;
         if version < 3 {
             self.truncate_block_caches()?;
