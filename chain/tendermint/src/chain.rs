@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use graph::blockchain::BlockchainKind;
 use graph::cheap_clone::CheapClone;
 // components::tendermint::hash::Hash,
@@ -9,7 +11,7 @@ use graph::{
     anyhow,
     blockchain::{
         block_stream::{
-            BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers, FirehoseError,
+            BlockStream, BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers, FirehoseError,
             FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
         },
         firehose_block_stream::FirehoseBlockStream,
@@ -23,18 +25,14 @@ use graph::{
     },
 };
 use prost::Message;
-use std::sync::Arc;
 
 use crate::capabilities::NodeCapabilities;
-use crate::data_source::{DataSourceTemplate, UnresolvedDataSourceTemplate};
+use crate::data_source::{
+    DataSource, DataSourceTemplate, UnresolvedDataSource, UnresolvedDataSourceTemplate,
+};
 use crate::trigger::TendermintTrigger;
 use crate::RuntimeAdapter;
-use crate::{
-    codec,
-    data_source::{DataSource, UnresolvedDataSource},
-    TriggerFilter,
-};
-use graph::blockchain::block_stream::BlockStream;
+use crate::{codec, TriggerFilter};
 
 pub struct Chain {
     logger_factory: LoggerFactory,
@@ -122,7 +120,7 @@ impl Blockchain for Chain {
                 unified_api_version.clone(),
                 metrics.stopwatch.clone(),
             )
-            .expect(&format!("no adapter for network {}", self.name,));
+            .expect(&format!("no adapter for network {}", self.name));
 
         let firehose_endpoint = match self.firehose_endpoints.random() {
             Some(e) => e.clone(),
@@ -207,7 +205,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     async fn triggers_in_block(
         &self,
         _logger: &Logger,
-        block: codec::EventList,
+        _block: codec::EventList,
         _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         //  let block_ptr = BlockPtr::from(&block);

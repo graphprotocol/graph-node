@@ -1,8 +1,9 @@
-use anyhow::Error;
-use graph::impl_slog_value;
 use std::cmp::{Ordering, PartialOrd};
 use std::fmt;
 use std::str::FromStr;
+
+use anyhow::Error;
+use graph::impl_slog_value;
 
 use crate::DataSource;
 

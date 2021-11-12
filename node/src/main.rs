@@ -25,7 +25,7 @@ use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
 use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{self as ethereum, network_indexer, EthereumAdapterTrait, Transport};
 use graph_chain_near::{self as near};
-use graph_chain_tendermint::{self as tendermint};
+use graph_chain_tendermint as tendermint;
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -232,9 +232,9 @@ async fn main() {
         let near_idents =
             compute_near_network_identifiers(firehose_networks_by_kind.get(&BlockchainKind::Near));
 
-        let tendermint_idents =
-            compute_tendermint_network_identifiers(firehose_networks_by_kind.get(&BlockchainKind::Tendermint));
-
+        let tendermint_idents = compute_tendermint_network_identifiers(
+            firehose_networks_by_kind.get(&BlockchainKind::Tendermint),
+        );
 
         let network_identifiers = ethereum_idents
             .into_iter()
@@ -754,8 +754,6 @@ fn compute_tendermint_network_identifiers(
     }
 }
 
-
-
 fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<IpfsClient> {
     // Parse the IPFS URL from the `--ipfs` command line argument
     let ipfs_addresses: Vec<_> = ipfs_addresses
@@ -926,13 +924,12 @@ fn tendermint_networks_as_chains(
                 .collect();
 
             for (network_name, chain) in chains.iter().cloned() {
-                blockchain_map.insert::<graph_chain_tendermint::Chain>(network_name, chain)
+                blockchain_map.insert(network_name, chain)
             }
             HashMap::from_iter(chains)
         }
     }
 }
-
 
 /// Return the hashmap of ethereum chains and also add them to `blockchain_map`.
 fn near_networks_as_chains(
@@ -984,7 +981,6 @@ fn near_networks_as_chains(
         }
     }
 }
-
 
 fn start_block_ingestor(
     logger: &Logger,

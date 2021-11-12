@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+use std::{convert::TryFrom, sync::Arc};
+
 use anyhow::Error;
 use graph::blockchain::{Block, TriggerWithHandler};
 use graph::components::store::StoredDynamicDataSource;
@@ -10,8 +13,6 @@ use graph::{
         Link, LinkResolver, Logger,
     },
 };
-use std::collections::BTreeMap;
-use std::{convert::TryFrom, sync::Arc};
 
 use crate::chain::Chain;
 use crate::trigger::TendermintTrigger;

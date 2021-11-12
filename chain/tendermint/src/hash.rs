@@ -1,15 +1,13 @@
-use std::{convert::TryFrom};
-use subtle_encoding::{Encoding, Hex};
-use anyhow::{anyhow, Error};
+use std::convert::TryFrom;
 use std::{
-    fmt::{self, Debug, Display},
+    fmt::{self, Display},
     str::FromStr,
 };
 
-
+use anyhow::{anyhow, Error};
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
+use subtle_encoding::{Encoding, Hex};
 
 #[derive(Copy, Clone, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Hash([u8; 32]);
@@ -24,7 +22,7 @@ impl TryFrom<Vec<u8>> for Hash {
 
 impl From<Hash> for Vec<u8> {
     fn from(value: Hash) -> Self {
-       return Vec::from(value.to_owned())
+        return Vec::from(value.to_owned());
     }
 }
 
@@ -35,12 +33,12 @@ impl Hash {
         }
 
         if bytes.len() != 32 {
-           return Err(anyhow!("Hash is not 32 byte long"))
+            return Err(anyhow!("Hash is not 32 byte long"));
         }
 
         let mut h = [0u8; 32];
         h.copy_from_slice(bytes);
-        return Ok(Hash(h))
+        return Ok(Hash(h));
     }
 
     pub fn from_hex(s: &str) -> Result<Hash, Error> {
@@ -51,12 +49,12 @@ impl Hash {
         let mut h = [0u8; 32];
         Hex::upper_case()
             .decode_to_slice(s.as_bytes(), &mut h)
-            .map_err( Error::new)?;
-        return Ok(Hash(h))
+            .map_err(Error::new)?;
+        return Ok(Hash(h));
     }
 
     pub fn as_vec(&self) -> Vec<u8> {
-       Vec::from(self.to_owned())
+        Vec::from(self.to_owned())
     }
 
     pub fn as_bytes(&self) -> &[u8] {
@@ -78,13 +76,12 @@ impl Default for Hash {
 
 impl Display for Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-
         let hex = Hex::upper_case().encode_to_string(self.0).unwrap();
         //Hash::Sha256(ref h) =>
-    //    let hex = match self {
-      //      Hash::Sha256(ref h) => Hex::upper_case().encode_to_string(h).unwrap(),
-//            Hash::None => String::new(),
-  //      };
+        // let hex = match self {
+        //     Hash::Sha256(ref h) => Hex::upper_case().encode_to_string(h).unwrap(),
+        //     Hash::None => String::new(),
+        // };
 
         write!(f, "{}", hex)
     }
@@ -97,7 +94,6 @@ impl FromStr for Hash {
         Self::from_hex(s)
     }
 }
-
 
 // Serialization is used in light-client config
 impl<'de> Deserialize<'de> for Hash {
@@ -117,4 +113,3 @@ impl Serialize for Hash {
         self.to_string().serialize(serializer)
     }
 }
-

@@ -1,3 +1,5 @@
+use std::{cmp::Ordering, sync::Arc};
+
 use graph::blockchain;
 use graph::blockchain::Block;
 use graph::blockchain::TriggerData;
@@ -7,7 +9,6 @@ use graph::runtime::asc_new;
 use graph::runtime::AscHeap;
 use graph::runtime::AscPtr;
 use graph::runtime::DeterministicHostError;
-use std::{cmp::Ordering, sync::Arc};
 
 use crate::codec;
 

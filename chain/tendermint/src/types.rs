@@ -1,5 +1,6 @@
-use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
+
+use serde::{Deserialize, Serialize};
 
 use crate::{
     blockchain::{Block, BlockPtr},
@@ -106,7 +107,7 @@ pub struct TendermintBlockId {
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct TendermintPartSetHeader {
     pub total: u32,
-    pub hash: Hash
+    pub hash: Hash,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
