@@ -6,8 +6,8 @@ use graph::prelude::SubgraphManifestValidationError;
 use graph::{
     blockchain::{self, Blockchain},
     prelude::{
-        anyhow, async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, Link,
-        LinkResolver, Logger,
+        anyhow, async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize,
+        Link, LinkResolver, Logger,
     },
 };
 use std::collections::BTreeMap;
@@ -124,7 +124,6 @@ impl blockchain::DataSource<Chain> for DataSource {
         todo!()
     }
 
-
     fn validate(&self) -> Vec<Error> {
         let mut errors = Vec::new();
 
@@ -138,19 +137,20 @@ impl blockchain::DataSource<Chain> for DataSource {
 
         // Validate that there is a `source` address if there are receipt handlers
         let no_source_address = self.address().is_none();
-    //    let has_receipt_handlers = !self.mapping.receipt_handlers.is_empty();
-     //   if no_source_address && has_receipt_handlers {
-       //     errors.push(SubgraphManifestValidationError::SourceAddressRequired.into());
-        //};
+        // let has_receipt_handlers = !self.mapping.receipt_handlers.is_empty();
+        // if no_source_address && has_receipt_handlers {
+        //    errors.push(SubgraphManifestValidationError::SourceAddressRequired.into());
+        // };
 
         // Validate that there are no more than one of both block handlers and receipt handlers
- /*        if self.mapping.block_handlers.len() > 1 {
+        /*
+        if self.mapping.block_handlers.len() > 1 {
             errors.push(anyhow!("data source has duplicated block handlers"));
         }
         if self.mapping.receipt_handlers.len() > 1 {
             errors.push(anyhow!("data source has duplicated receipt handlers"));
         }
-*/
+        */
         errors
     }
 

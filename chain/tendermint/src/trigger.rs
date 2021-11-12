@@ -9,7 +9,6 @@ use graph::runtime::AscPtr;
 use graph::runtime::DeterministicHostError;
 use std::{cmp::Ordering, sync::Arc};
 
-
 use crate::codec;
 
 // Logging the block is too verbose, so this strips the block from the trigger for Debug.
@@ -21,7 +20,7 @@ impl std::fmt::Debug for TendermintTrigger {
         }
 
         let trigger_without_block = match self {
-            TendermintTrigger::Block ( _ ) => MappingTriggerWithoutBlock::Block
+            TendermintTrigger::Block(_) => MappingTriggerWithoutBlock::Block,
         };
 
         write!(f, "{:?}", trigger_without_block)
@@ -33,8 +32,8 @@ impl blockchain::MappingTrigger for TendermintTrigger {
         Ok(match self {
             TendermintTrigger::Block(block) => {
                 //let block = TendermintBlockData::from(block.as_ref());
-               //b.header()
-                asc_new(heap, block.as_ref() )?.erase()
+                //b.header()
+                asc_new(heap, block.as_ref())?.erase()
             }
         })
     }
@@ -42,9 +41,8 @@ impl blockchain::MappingTrigger for TendermintTrigger {
 
 #[derive(Clone)]
 pub enum TendermintTrigger {
-    Block(Arc<codec::EventList>)
+    Block(Arc<codec::EventList>),
 }
-
 
 impl CheapClone for TendermintTrigger {
     fn cheap_clone(&self) -> TendermintTrigger {
@@ -70,11 +68,11 @@ impl TendermintTrigger {
         }
     }
 
-    //pub fn block_hash(&self) -> H256 {
-  /*   pub fn block_hash(&self) -> Vec<u8> {
-        match self {
-            TendermintTrigger::Block(block_ptr, _) => block_ptr; // .hash_as_h256(),
-        }
+    // pub fn block_hash(&self) -> H256 {
+    /* pub fn block_hash(&self) -> Vec<u8> {
+           match self {
+               TendermintTrigger::Block(block_ptr, _) => block_ptr; // .hash_as_h256(),
+           }
     }*/
 }
 
@@ -97,7 +95,7 @@ impl TriggerData for TendermintTrigger {
     fn error_context(&self) -> std::string::String {
         match self {
             TendermintTrigger::Block(..) => {
-                format!("block #{}", self.block_number() ) //, self.block_hash(),)
+                format!("block #{}", self.block_number()) //, self.block_hash(),)
             }
         }
     }

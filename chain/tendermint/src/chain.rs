@@ -134,13 +134,13 @@ impl Blockchain for Chain {
             .subgraph_logger(&deployment)
             .new(o!("component" => "FirehoseBlockStream"));
 
-            let firehose_mapper = Arc::new(FirehoseMapper {});
-            let firehose_cursor = self
-                .subgraph_store
-                .cheap_clone()
-                .writable(logger.clone(), deployment.id)
-                .await?
-                .block_cursor()?;
+        let firehose_mapper = Arc::new(FirehoseMapper {});
+        let firehose_cursor = self
+            .subgraph_store
+            .cheap_clone()
+            .writable(logger.clone(), deployment.id)
+            .await?
+            .block_cursor()?;
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,
@@ -191,7 +191,6 @@ impl Blockchain for Chain {
     }
 }
 
-
 pub struct TriggersAdapter {}
 
 #[async_trait]
@@ -211,13 +210,13 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         block: codec::EventList,
         _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
-      //  let block_ptr = BlockPtr::from(&block);
+        //  let block_ptr = BlockPtr::from(&block);
         todo!()
         // FIXME (NEAR): Share implementation with FirehoseMapper::triggers_in_block version
-    //    Ok(BlockWithTriggers {
-    //        block,
-    //        trigger_data: vec![TendermintTrigger::Block(block_ptr, TendermintBlockTriggerType::Every)],
-    //    })
+        // Ok(BlockWithTriggers {
+        //     block,
+        //     trigger_data: vec![TendermintTrigger::Block(block_ptr, TendermintBlockTriggerType::Every)],
+        // })
     }
 
     async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
@@ -284,7 +283,6 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 let block = piece.block.as_ref().unwrap();
                 let header = block.header.as_ref().unwrap();
 
-
                 Ok(BlockStreamEvent::Revert(
                     BlockPtr {
                         hash: BlockHash::from(
@@ -307,7 +305,6 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         }
     }
 }
-
 
 impl FirehoseMapper {
     // FIXME: This should be replaced by using the `TriggersAdapter` struct directly. However, the TriggersAdapter trait

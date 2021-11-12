@@ -3,8 +3,8 @@ mod pbcodec;
 
 pub use pbcodec::*;
 
-use graph::{blockchain::BlockPtr, prelude::BlockNumber};
 use graph::blockchain::Block as BBlock;
+use graph::{blockchain::BlockPtr, prelude::BlockNumber};
 
 use std::convert::TryFrom;
 
@@ -14,13 +14,19 @@ impl EventList {
     }
 
     pub fn header(&self) -> &Header {
-        self.block().block.as_ref().unwrap().header.as_ref().unwrap()
+        self.block()
+            .block
+            .as_ref()
+            .unwrap()
+            .header
+            .as_ref()
+            .unwrap()
     }
 
     pub fn parent_ptr(&self) -> Option<BlockPtr> {
         let last_block_ID = self.header().last_block_id.as_ref().unwrap();
 
-        match (last_block_ID.hash.clone(), self.header().height -1) {
+        match (last_block_ID.hash.clone(), self.header().height - 1) {
             (hash, number) => Some(BlockPtr::from((hash, number))),
             _ => None,
         }
@@ -52,4 +58,3 @@ impl BBlock for EventList {
         self.parent_ptr()
     }
 }
-
