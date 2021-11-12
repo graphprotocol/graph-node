@@ -725,12 +725,9 @@ fn compute_near_network_identifiers(
             .collect(),
     }
 }
-
-// FIXME (NEAR): This is quite wrong, will need a refactor to remove the need to have a `EthereumNetworkIdentifier`
-//               to create an actual `NetworkStore` (see `store_builder.network_store`).
 fn compute_tendermint_network_identifiers(
     firehose_networks: Option<&FirehoseNetworks>,
-) -> Vec<(String, Vec<EthereumNetworkIdentifier>)> {
+) -> Vec<(String, Vec<ChainIdentifier>)> {
     match firehose_networks {
         None => vec![],
         Some(v) => v
@@ -739,14 +736,14 @@ fn compute_tendermint_network_identifiers(
             .map(|(name, endpoint)| {
                 (
                     name,
-                    EthereumNetworkIdentifier {
-                        genesis_block_hash: H256::from([0x00; 32]),
+                    ChainIdentifier {
+                        genesis_block_hash: BlockHash::from(vec![]),
                         net_version: endpoint.provider.clone(),
                     },
                 )
             })
             .fold(
-                HashMap::<String, Vec<EthereumNetworkIdentifier>>::new(),
+                HashMap::<String, Vec<ChainIdentifier>>::new(),
                 |mut networks, (name, endpoint)| {
                     networks.entry(name.to_string()).or_default().push(endpoint);
                     networks
@@ -756,6 +753,7 @@ fn compute_tendermint_network_identifiers(
             .collect(),
     }
 }
+
 
 
 fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<IpfsClient> {

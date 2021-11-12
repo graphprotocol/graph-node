@@ -139,20 +139,20 @@ impl From<(Vec<u8>, i32)> for BlockPtr {
     }
 }
 
-impl From<(Vec<u8>, u64)> for BlockPtr {
-    fn from((bytes, number): (Vec<u8>, u64)) -> Self {
-        let number = i32::try_from(number).unwrap();
+impl From<(H256, i32)> for BlockPtr {
+    fn from((hash, number): (H256, i32)) -> BlockPtr {
         BlockPtr {
-            hash: BlockHash::from(bytes),
+            hash: hash.into(),
             number,
         }
     }
 }
 
-impl From<(H256, i32)> for BlockPtr {
-    fn from((hash, number): (H256, i32)) -> BlockPtr {
+impl From<(Vec<u8>, u64)> for BlockPtr {
+    fn from((bytes, number): (Vec<u8>, u64)) -> Self {
+        let number = i32::try_from(number).unwrap();
         BlockPtr {
-            hash: hash.into(),
+            hash: BlockHash::from(bytes),
             number,
         }
     }
