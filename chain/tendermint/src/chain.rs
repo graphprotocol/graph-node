@@ -202,7 +202,6 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         _to: BlockNumber,
         _filter: &TriggerFilter,
     ) -> Result<Vec<BlockWithTriggers<Chain>>, Error> {
-        // FIXME (NEAR): Scanning triggers makes little sense in Firehose approach, let's see
         Ok(vec![])
     }
 
@@ -231,17 +230,15 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         _ptr: BlockPtr,
         _offset: BlockNumber,
     ) -> Result<Option<codec::EventList>, Error> {
-        // FIXME (NEAR):  Might not be necessary for NEAR support for now
         Ok(None)
     }
 
     /// Panics if `block` is genesis.
     /// But that's ok since this is only called when reverting `block`.
-    async fn parent_ptr(&self, _block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
-        // FIXME (NEAR):  Might not be necessary for NEAR support for now
+    async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
         Ok(Some(BlockPtr {
             hash: BlockHash::from(vec![0xff; 32]),
-            number: 0,
+            number: block.number.saturating_sub(1),
         }))
     }
 }
@@ -256,7 +253,6 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         _adapter: &TriggersAdapter,
         filter: &TriggerFilter,
     ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
-
         let step = bstream::ForkStep::from_i32(response.step).unwrap_or_else(|| {
             panic!(
                 "unknown step i32 value {}, maybe you forgot update & re-regenerate the protobuf definitions?",
@@ -267,6 +263,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             .block
             .as_ref()
             .expect("block payload information should always be present");
+
         // Right now, this is done in all cases but in reality, with how the BlockStreamEvent::Revert
         // is defined right now, only block hash and block number is necessary. However, this information
         // is not part of the actual bstream::BlockResponseV2 payload. As such, we need to decode the full

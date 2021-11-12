@@ -78,7 +78,7 @@ pub struct TendermintBlockHeader {
     pub version: Option<TendermintConsensus>,
     pub chain_id: String,
     pub height: u64,
-    pub time_sec: i64,//Option<NaiveDateTime>,
+    pub time_sec: i64,
     pub time_nano: i32,
     pub last_block_id: Option<TendermintBlockId>,
     pub last_commit_hash: Hash,
