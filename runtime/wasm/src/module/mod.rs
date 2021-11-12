@@ -14,7 +14,6 @@ use wasmtime::{Memory, Trap};
 
 use graph::blockchain::{Blockchain, HostFnCtx, TriggerWithHandler};
 use graph::data::store;
-use graph::data::store::scalar::Bytes;
 use graph::prelude::*;
 use graph::runtime::HostExportError;
 use graph::runtime::{AscHeap, IndexForAscTypeId};
@@ -871,39 +870,29 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let entity = &res[begin..end];
         println!("{}", entity);
 
-        // TODO: This should be generated dynamically with a proc macro.
-        #[derive(Serialize, Deserialize)]
-        struct Gravatar {
-            id: String,
-            owner: Bytes,
-            displayName: String,
-            imageUrl: String,
-        }
-
-        let entity: Gravatar = serde_json::from_str(entity).unwrap();
-        let map: HashMap<String, graph::prelude::Value> = {
+        let entity: serde_json::Value = serde_json::from_str(entity).unwrap();
+        let map: HashMap<Attribute, Value> = {
             let mut map = HashMap::new();
             map.insert(
                 "id".into(),
-                graph::prelude::Value::String(entity.id.clone()),
+                Value::String(entity["id"].as_str().unwrap().to_string()),
             );
             map.insert(
                 "display_name".into(),
-                graph::prelude::Value::String(entity.displayName.clone()),
+                Value::String(entity["displayName"].as_str().unwrap().to_string()),
             );
             map.insert(
                 "owner".into(),
-                graph::prelude::Value::Bytes(entity.owner.clone()),
+                Value::String(entity["owner"].as_str().unwrap().to_string()),
             );
             map.insert(
                 "image_url".into(),
-                graph::prelude::Value::String(entity.imageUrl.clone()),
+                Value::String(entity["imageUrl"].as_str().unwrap().to_string()),
             );
             map
         };
         let entity = Entity::from(map);
         println!("{:?}", entity);
-        let entity = Entity::from(entity);
 
         let _timer = self
             .host_metrics
