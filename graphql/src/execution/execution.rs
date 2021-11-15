@@ -293,25 +293,25 @@ pub fn execute_root_selection_set_uncached(
         // non-existent fields; those will cause an error later when we execute
         // the data_set SelectionSet
         if is_introspection_field(&name) {
-            intro_set.items.extend(selections)
+            intro_set.extend(selections)
         } else if &name == META_FIELD_NAME {
             meta_items.extend(selections)
         } else {
-            data_set.items.extend(selections)
+            data_set.extend(selections)
         }
     }
 
     // If we are getting regular data, prefetch it from the database
-    let mut values = if data_set.items.is_empty() && meta_items.is_empty() {
+    let mut values = if data_set.is_empty() && meta_items.is_empty() {
         Object::default()
     } else {
         let initial_data = ctx.resolver.prefetch(&ctx, &data_set)?;
-        data_set.items.extend(meta_items);
+        data_set.extend(meta_items);
         execute_selection_set_to_map(&ctx, iter::once(&data_set), root_type, initial_data)?
     };
 
     // Resolve introspection fields, if there are any
-    if !intro_set.items.is_empty() {
+    if !intro_set.is_empty() {
         let ictx = ctx.as_introspection_context();
 
         values.extend(execute_selection_set_to_map(
@@ -588,13 +588,7 @@ pub fn collect_fields_inner<'a>(
 ) {
     for selection_set in selection_sets {
         // Only consider selections that are not skipped and should be included
-        let selections = selection_set
-            .items
-            .iter()
-            .filter(|selection| !selection.skip())
-            .filter(|selection| selection.include());
-
-        for selection in selections {
+        for selection in selection_set.included() {
             match selection {
                 a::Selection::Field(ref field) => {
                     let response_key = field.response_key();

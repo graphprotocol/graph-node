@@ -327,7 +327,7 @@ pub fn collect_entities_from_query_field(
 
                     // If the query field has a non-empty selection set, this means we
                     // need to recursively process it
-                    for selection in field.selection_set.items.iter() {
+                    for selection in field.selection_set.selections() {
                         if let a::Selection::Field(sub_field) = selection {
                             queue.push_back((object_type, sub_field))
                         }
