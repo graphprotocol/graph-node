@@ -83,6 +83,63 @@ pub enum QueryExecutionError {
     ResultTooBig(usize, usize),
 }
 
+impl QueryExecutionError {
+    pub fn is_attestable(&self) -> bool {
+        use self::QueryExecutionError::*;
+        match self {
+            OperationNameRequired
+            | OperationNotFound(_)
+            | NotSupported(_)
+            | NoRootSubscriptionObjectType
+            | NamedTypeError(_)
+            | AbstractTypeError(_)
+            | InvalidArgumentError(_, _, _)
+            | MissingArgumentError(_, _)
+            | InvalidVariableTypeError(_, _)
+            | MissingVariableError(_, _)
+            | OrderByNotSupportedError(_, _)
+            | OrderByNotSupportedForType(_)
+            | FilterNotSupportedError(_, _)
+            | UnknownField(_, _, _)
+            | EmptyQuery
+            | MultipleSubscriptionFields
+            | SubgraphDeploymentIdError(_)
+            | InvalidFilterError
+            | EntityFieldError(_, _)
+            | ListTypesError(_, _)
+            | ListFilterError(_)
+            | AttributeTypeError(_, _)
+            | EmptySelectionSet(_)
+            | Unimplemented(_)
+            | CyclicalFragment(_)
+            | UndefinedFragment(_)
+            | FulltextQueryRequiresFilter => true,
+            NonNullError(_, _)
+            | ListValueError(_, _)
+            | ResolveEntitiesError(_)
+            | RangeArgumentsError(_, _, _)
+            | ValueParseError(_, _)
+            | EntityParseError(_)
+            | StoreError(_)
+            | Timeout
+            | EnumCoercionError(_, _, _, _, _)
+            | ScalarCoercionError(_, _, _, _)
+            | AmbiguousDerivedFromResult(_, _, _, _)
+            | TooComplex(_, _)
+            | TooDeep(_)
+            | IncorrectPrefetchResult { .. }
+            | Panic(_)
+            | EventStreamError
+            | TooExpensive
+            | Throttled
+            | DeploymentReverted
+            | SubgraphManifestResolveError(_)
+            | InvalidSubgraphManifest
+            | ResultTooBig(_, _) => false,
+        }
+    }
+}
+
 impl Error for QueryExecutionError {
     fn description(&self) -> &str {
         "Query execution error"
@@ -217,7 +274,7 @@ impl fmt::Display for QueryExecutionError {
             EventStreamError => write!(f, "error in the subscription event stream"),
             FulltextQueryRequiresFilter => write!(f, "fulltext search queries can only use EntityFilter::Equal"),
             TooExpensive => write!(f, "query is too expensive"),
-            Throttled=> write!(f, "service is overloaded and can not run the query right now. Please try again in a few minutes"),
+            Throttled => write!(f, "service is overloaded and can not run the query right now. Please try again in a few minutes"),
             DeploymentReverted => write!(f, "the chain was reorganized while executing the query"),
             SubgraphManifestResolveError(e) => write!(f, "failed to resolve subgraph manifest: {}", e),
             InvalidSubgraphManifest => write!(f, "invalid subgraph manifest file"),
@@ -269,6 +326,16 @@ pub enum QueryError {
     ParseError(Arc<anyhow::Error>),
     ExecutionError(QueryExecutionError),
     IndexingError,
+}
+
+impl QueryError {
+    pub fn is_attestable(&self) -> bool {
+        match self {
+            QueryError::EncodingError(_) | QueryError::ParseError(_) => true,
+            QueryError::ExecutionError(err) => err.is_attestable(),
+            QueryError::IndexingError => false,
+        }
+    }
 }
 
 impl From<FromUtf8Error> for QueryError {
