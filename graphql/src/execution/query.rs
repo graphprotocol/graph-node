@@ -49,7 +49,7 @@ struct SelectedFields<'a>(&'a a::SelectionSet);
 impl<'a> std::fmt::Display for SelectedFields<'a> {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         let mut first = true;
-        for item in &self.0.items {
+        for item in self.0.selections() {
             match item {
                 a::Selection::Field(field) => {
                     if !first {
@@ -206,7 +206,7 @@ impl Query {
         let mut bcs = HashMap::new();
         let mut errors = Vec::new();
 
-        for field in self.selection_set.items.iter().filter_map(|sel| match sel {
+        for field in self.selection_set.selections().filter_map(|sel| match sel {
             Field(f) => Some(f),
             _ => None,
         }) {
@@ -247,7 +247,7 @@ impl Query {
                     field_error_policy,
                 )
             });
-            selection_set.items.push(Field(field.clone()));
+            selection_set.push(field.clone());
             if field_error_policy == ErrorPolicy::Deny {
                 *error_policy = ErrorPolicy::Deny;
             }
