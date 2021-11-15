@@ -282,14 +282,8 @@ pub fn execute_root_selection_set_uncached(
 ) -> Result<Object, Vec<QueryExecutionError>> {
     // Split the top-level fields into introspection fields and
     // regular data fields
-    let mut data_set = a::SelectionSet {
-        span: selection_set.span,
-        items: Vec::new(),
-    };
-    let mut intro_set = a::SelectionSet {
-        span: selection_set.span,
-        items: Vec::new(),
-    };
+    let mut data_set = a::SelectionSet::empty_from(selection_set);
+    let mut intro_set = a::SelectionSet::empty_from(selection_set);
     let mut meta_items = Vec::new();
 
     for (_, fields) in collect_fields(ctx, root_type, iter::once(selection_set)) {
