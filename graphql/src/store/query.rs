@@ -5,6 +5,7 @@ use graph::data::value::Object;
 use graph::prelude::*;
 use graph::{components::store::EntityType, data::graphql::ObjectOrInterface};
 
+use crate::execution::ast as a;
 use crate::schema::ast as sast;
 use crate::store::prefetch::ObjectCondition;
 
@@ -295,7 +296,7 @@ pub fn parse_subgraph_id<'a>(
 pub fn collect_entities_from_query_field(
     schema: &s::Document,
     object_type: &s::ObjectType,
-    field: &q::Field,
+    field: &a::Field,
 ) -> BTreeSet<SubscriptionFilter> {
     // Output entities
     let mut entities = HashSet::new();
@@ -327,7 +328,7 @@ pub fn collect_entities_from_query_field(
                     // If the query field has a non-empty selection set, this means we
                     // need to recursively process it
                     for selection in field.selection_set.items.iter() {
-                        if let q::Selection::Field(sub_field) = selection {
+                        if let a::Selection::Field(sub_field) = selection {
                             queue.push_back((object_type, sub_field))
                         }
                     }

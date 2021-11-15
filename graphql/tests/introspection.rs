@@ -6,11 +6,11 @@ use std::sync::Arc;
 
 use graph::data::graphql::{object, object_value, ObjectOrInterface};
 use graph::prelude::{
-    async_trait, o, q, r, s, slog, tokio, ApiSchema, DeploymentHash, Logger, Query,
+    async_trait, o, r, s, slog, tokio, ApiSchema, DeploymentHash, Logger, Query,
     QueryExecutionError, QueryResult, Schema,
 };
 use graph_graphql::prelude::{
-    api_schema, execute_query, ExecutionContext, Query as PreparedQuery, QueryExecutionOptions,
+    a, api_schema, execute_query, ExecutionContext, Query as PreparedQuery, QueryExecutionOptions,
     Resolver,
 };
 use test_store::LOAD_MANAGER;
@@ -26,7 +26,7 @@ impl Resolver for MockResolver {
     fn prefetch(
         &self,
         _: &ExecutionContext<Self>,
-        _: &q::SelectionSet,
+        _: &a::SelectionSet,
     ) -> Result<Option<r::Value>, Vec<QueryExecutionError>> {
         Ok(None)
     }
@@ -34,7 +34,7 @@ impl Resolver for MockResolver {
     fn resolve_objects<'a>(
         &self,
         _: Option<r::Value>,
-        _field: &q::Field,
+        _field: &a::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&str, r::Value>,
@@ -45,7 +45,7 @@ impl Resolver for MockResolver {
     fn resolve_object(
         &self,
         __: Option<r::Value>,
-        _field: &q::Field,
+        _field: &a::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&str, r::Value>,

@@ -1,10 +1,10 @@
-use graph::prelude::{q, BlockPtr, CheapClone, QueryExecutionError, QueryResult};
+use graph::prelude::{BlockPtr, CheapClone, QueryExecutionError, QueryResult};
 use std::sync::Arc;
 use std::time::Instant;
 
 use graph::data::graphql::effort::LoadManager;
 
-use crate::execution::*;
+use crate::execution::{ast as a, *};
 
 /// Utilities for working with GraphQL query ASTs.
 pub mod ast;
@@ -33,7 +33,7 @@ pub struct QueryExecutionOptions<R> {
 /// If the query is not cacheable, the `Arc` may be unwrapped.
 pub async fn execute_query<R>(
     query: Arc<Query>,
-    selection_set: Option<q::SelectionSet>,
+    selection_set: Option<a::SelectionSet>,
     block_ptr: Option<BlockPtr>,
     options: QueryExecutionOptions<R>,
 ) -> Arc<QueryResult>

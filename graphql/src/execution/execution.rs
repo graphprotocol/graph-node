@@ -21,11 +21,11 @@ use graph::prelude::*;
 use graph::util::lfu_cache::LfuCache;
 
 use super::QueryHash;
+use crate::execution::ast as a;
 use crate::introspection::{
     is_introspection_field, INTROSPECTION_DOCUMENT, INTROSPECTION_QUERY_TYPE,
 };
 use crate::prelude::*;
-use crate::query::ast as qast;
 use crate::schema::ast as sast;
 use crate::values::coercion;
 
@@ -136,8 +136,8 @@ impl Default for WeightedResult {
 
 struct HashableQuery<'a> {
     query_schema_id: &'a DeploymentHash,
-    query_fragments: &'a HashMap<String, q::FragmentDefinition>,
-    selection_set: &'a q::SelectionSet,
+    query_fragments: &'a HashMap<String, a::FragmentDefinition>,
+    selection_set: &'a a::SelectionSet,
     block_ptr: &'a BlockPtr,
 }
 
@@ -165,14 +165,12 @@ impl StableHash for HashableQuery<'_> {
         // Not stable! Uses to_string()
         self.query_fragments
             .iter()
-            .map(|(k, v)| (k, v.to_string()))
+            .map(|(k, v)| (k, format!("{:?}", v)))
             .collect::<HashMap<_, _>>()
             .stable_hash(sequence_number.next_child(), state);
 
         // Not stable! Uses to_string
-        self.selection_set
-            .to_string()
-            .stable_hash(sequence_number.next_child(), state);
+        format!("{:?}", self.selection_set).stable_hash(sequence_number.next_child(), state);
 
         self.block_ptr
             .stable_hash(sequence_number.next_child(), state);
@@ -182,7 +180,7 @@ impl StableHash for HashableQuery<'_> {
 // The key is: subgraph id + selection set + variables + fragment definitions
 fn cache_key(
     ctx: &ExecutionContext<impl Resolver>,
-    selection_set: &q::SelectionSet,
+    selection_set: &a::SelectionSet,
     block_ptr: &BlockPtr,
 ) -> QueryHash {
     // It is very important that all data used for the query is included.
@@ -279,16 +277,16 @@ where
 
 pub fn execute_root_selection_set_uncached(
     ctx: &ExecutionContext<impl Resolver>,
-    selection_set: &q::SelectionSet,
+    selection_set: &a::SelectionSet,
     root_type: &s::ObjectType,
 ) -> Result<Object, Vec<QueryExecutionError>> {
     // Split the top-level fields into introspection fields and
     // regular data fields
-    let mut data_set = q::SelectionSet {
+    let mut data_set = a::SelectionSet {
         span: selection_set.span,
         items: Vec::new(),
     };
-    let mut intro_set = q::SelectionSet {
+    let mut intro_set = a::SelectionSet {
         span: selection_set.span,
         items: Vec::new(),
     };
@@ -296,7 +294,7 @@ pub fn execute_root_selection_set_uncached(
 
     for (_, fields) in collect_fields(ctx, root_type, iter::once(selection_set)) {
         let name = fields[0].name.clone();
-        let selections = fields.into_iter().map(|f| q::Selection::Field(f.clone()));
+        let selections = fields.into_iter().map(|f| a::Selection::Field(f.clone()));
         // See if this is an introspection or data field. We don't worry about
         // non-existent fields; those will cause an error later when we execute
         // the data_set SelectionSet
@@ -336,7 +334,7 @@ pub fn execute_root_selection_set_uncached(
 /// Executes the root selection set of a query.
 pub async fn execute_root_selection_set<R: Resolver>(
     ctx: Arc<ExecutionContext<R>>,
-    selection_set: Arc<q::SelectionSet>,
+    selection_set: Arc<a::SelectionSet>,
     root_type: Arc<s::ObjectType>,
     block_ptr: Option<BlockPtr>,
 ) -> Arc<QueryResult> {
@@ -480,7 +478,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
 /// Allows passing in a parent value during recursive processing of objects and their fields.
 fn execute_selection_set<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
-    selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
+    selection_sets: impl Iterator<Item = &'a a::SelectionSet>,
     object_type: &s::ObjectType,
     prefetched_value: Option<r::Value>,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
@@ -494,7 +492,7 @@ fn execute_selection_set<'a>(
 
 fn execute_selection_set_to_map<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
-    selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
+    selection_sets: impl Iterator<Item = &'a a::SelectionSet>,
     object_type: &s::ObjectType,
     prefetched_value: Option<r::Value>,
 ) -> Result<Object, Vec<QueryExecutionError>> {
@@ -574,8 +572,8 @@ fn execute_selection_set_to_map<'a>(
 pub fn collect_fields<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
-    selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
-) -> IndexMap<&'a str, Vec<&'a q::Field>> {
+    selection_sets: impl Iterator<Item = &'a a::SelectionSet>,
+) -> IndexMap<&'a str, Vec<&'a a::Field>> {
     let mut grouped_fields = IndexMap::new();
     collect_fields_inner(
         ctx,
@@ -590,26 +588,26 @@ pub fn collect_fields<'a>(
 pub fn collect_fields_inner<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
-    selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
+    selection_sets: impl Iterator<Item = &'a a::SelectionSet>,
     visited_fragments: &mut HashSet<&'a str>,
-    output: &mut IndexMap<&'a str, Vec<&'a q::Field>>,
+    output: &mut IndexMap<&'a str, Vec<&'a a::Field>>,
 ) {
     for selection_set in selection_sets {
         // Only consider selections that are not skipped and should be included
         let selections = selection_set
             .items
             .iter()
-            .filter(|selection| !qast::skip_selection(selection))
-            .filter(|selection| qast::include_selection(selection));
+            .filter(|selection| !selection.skip())
+            .filter(|selection| selection.include());
 
         for selection in selections {
             match selection {
-                q::Selection::Field(ref field) => {
-                    let response_key = qast::get_response_key(field);
+                a::Selection::Field(ref field) => {
+                    let response_key = field.response_key();
                     output.entry(response_key).or_default().push(field);
                 }
 
-                q::Selection::FragmentSpread(spread) => {
+                a::Selection::FragmentSpread(spread) => {
                     // Only consider the fragment if it hasn't already been included,
                     // as would be the case if the same fragment spread ...Foo appeared
                     // twice in the same selection set.
@@ -632,7 +630,7 @@ pub fn collect_fields_inner<'a>(
                     }
                 }
 
-                q::Selection::InlineFragment(fragment) => {
+                a::Selection::InlineFragment(fragment) => {
                     let applies = match &fragment.type_condition {
                         Some(cond) => does_fragment_type_apply(ctx, object_type, &cond),
                         None => true,
@@ -657,10 +655,10 @@ pub fn collect_fields_inner<'a>(
 fn does_fragment_type_apply(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
-    fragment_type: &q::TypeCondition,
+    fragment_type: &a::TypeCondition,
 ) -> bool {
     // This is safe to do, as TypeCondition only has a single `On` variant.
-    let q::TypeCondition::On(ref name) = fragment_type;
+    let a::TypeCondition::On(ref name) = fragment_type;
 
     // Resolve the type the fragment applies to based on its name
     let named_type = ctx.query.schema.document().get_named_type(name);
@@ -689,9 +687,9 @@ fn execute_field(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     field_value: Option<r::Value>,
-    field: &q::Field,
+    field: &a::Field,
     field_definition: &s::Field,
-    fields: Vec<&q::Field>,
+    fields: Vec<&a::Field>,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     coerce_argument_values(&ctx.query, object_type, field)
         .and_then(|argument_values| {
@@ -713,7 +711,7 @@ fn resolve_field_value(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     field_value: Option<r::Value>,
-    field: &q::Field,
+    field: &a::Field,
     field_definition: &s::Field,
     field_type: &s::Type,
     argument_values: &HashMap<&str, r::Value>,
@@ -756,7 +754,7 @@ fn resolve_field_value_for_named_type(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     field_value: Option<r::Value>,
-    field: &q::Field,
+    field: &a::Field,
     field_definition: &s::Field,
     type_name: &str,
     argument_values: &HashMap<&str, r::Value>,
@@ -809,7 +807,7 @@ fn resolve_field_value_for_list_type(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     field_value: Option<r::Value>,
-    field: &q::Field,
+    field: &a::Field,
     field_definition: &s::Field,
     inner_type: &s::Type,
     argument_values: &HashMap<&str, r::Value>,
@@ -890,9 +888,9 @@ fn resolve_field_value_for_list_type(
 /// Ensures that a value matches the expected return type.
 fn complete_value(
     ctx: &ExecutionContext<impl Resolver>,
-    field: &q::Field,
+    field: &a::Field,
     field_type: &s::Type,
-    fields: &Vec<&q::Field>,
+    fields: &Vec<&a::Field>,
     resolved_value: r::Value,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     match field_type {
@@ -1037,7 +1035,7 @@ fn resolve_abstract_type<'a>(
 pub fn coerce_argument_values<'a>(
     query: &crate::execution::Query,
     ty: impl Into<ObjectOrInterface<'a>>,
-    field: &q::Field,
+    field: &a::Field,
 ) -> Result<HashMap<&'a str, r::Value>, Vec<QueryExecutionError>> {
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
@@ -1048,7 +1046,7 @@ pub fn coerce_argument_values<'a>(
         .into_iter()
         .flatten()
     {
-        let value = qast::get_argument_value(&field.arguments, &argument_def.name).cloned();
+        let value = field.argument_value(&argument_def.name).cloned();
         match coercion::coerce_input_value(value, &argument_def, &resolver) {
             Ok(Some(value)) => {
                 if argument_def.name == "text".to_string() {

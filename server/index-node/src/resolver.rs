@@ -10,7 +10,7 @@ use graph::{
     components::store::StatusStore,
     data::graphql::{IntoValue, ObjectOrInterface, ValueMap},
 };
-use graph_graphql::prelude::{ExecutionContext, Resolver};
+use graph_graphql::prelude::{a, ExecutionContext, Resolver};
 use std::convert::TryInto;
 use web3::types::{Address, H256};
 
@@ -377,7 +377,7 @@ where
     fn prefetch(
         &self,
         _: &ExecutionContext<Self>,
-        _: &q::SelectionSet,
+        _: &a::SelectionSet,
     ) -> Result<Option<r::Value>, Vec<QueryExecutionError>> {
         Ok(None)
     }
@@ -386,7 +386,7 @@ where
     fn resolve_scalar_value(
         &self,
         parent_object_type: &s::ObjectType,
-        field: &q::Field,
+        field: &a::Field,
         scalar_type: &s::ScalarType,
         value: Option<r::Value>,
         argument_values: &HashMap<&str, r::Value>,
@@ -409,7 +409,7 @@ where
     fn resolve_objects(
         &self,
         prefetched_objects: Option<r::Value>,
-        field: &q::Field,
+        field: &a::Field,
         _field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&str, r::Value>,
@@ -433,7 +433,7 @@ where
     fn resolve_object(
         &self,
         prefetched_object: Option<r::Value>,
-        field: &q::Field,
+        field: &a::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&str, r::Value>,
