@@ -1,11 +1,11 @@
 use graph::{
     blockchain::ChainHeadUpdateStream,
-    parking_lot::RwLock,
     prelude::{
         futures03::{self, FutureExt},
         tokio, StoreError,
     },
     prometheus::{CounterVec, GaugeVec},
+    util::timed_rw_lock::TimedRwLock,
 };
 use std::str::FromStr;
 use std::sync::Arc;
@@ -87,7 +87,7 @@ struct ChainHeadUpdate {
 
 pub struct ChainHeadUpdateListener {
     /// Update watchers keyed by network.
-    watchers: Arc<RwLock<BTreeMap<String, Watcher>>>,
+    watchers: Arc<TimedRwLock<BTreeMap<String, Watcher>>>,
     _listener: NotificationListener,
 }
 
@@ -113,7 +113,10 @@ impl ChainHeadUpdateListener {
         // Create a Postgres notification listener for chain head updates
         let (mut listener, receiver) =
             NotificationListener::new(&logger, postgres_url, CHANNEL_NAME.clone());
-        let watchers = Arc::new(RwLock::new(BTreeMap::new()));
+        let watchers = Arc::new(TimedRwLock::new(
+            BTreeMap::new(),
+            "chain_head_listener_watchers",
+        ));
 
         Self::listen(
             logger,
@@ -139,7 +142,7 @@ impl ChainHeadUpdateListener {
         metrics: Arc<BlockIngestorMetrics>,
         listener: &mut NotificationListener,
         mut receiver: Receiver<JsonNotification>,
-        watchers: Arc<RwLock<BTreeMap<String, Watcher>>>,
+        watchers: Arc<TimedRwLock<BTreeMap<String, Watcher>>>,
         counter: CounterVec,
     ) {
         // Process chain head updates in a dedicated task
@@ -169,8 +172,10 @@ impl ChainHeadUpdateListener {
                     .set_chain_head_number(&update.network_name, *&update.head_block_number as i64);
 
                 // If there are subscriptions for this network, notify them.
-                if let Some(watcher) = watchers.read().get(&update.network_name) {
-                    watcher.send()
+                if let Some(watcher) = watchers.read(&logger).get(&update.network_name) {
+                    debug!(logger, "sending chain head update"; "network" => &update.network_name);
+                    watcher.send();
+                    debug!(logger, "chain head update sent"; "network" => &update.network_name);
                 }
             }
         });
@@ -186,7 +191,7 @@ impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
 
         let update_receiver = {
             let existing = {
-                let watchers = self.watchers.read();
+                let watchers = self.watchers.read(&logger);
                 watchers.get(&network_name).map(|w| w.receiver.clone())
             };
 
@@ -199,7 +204,7 @@ impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
                 // Race condition: Another task could have simoultaneously entered this branch and
                 // inserted a writer, so we should check the entry again after acquiring the lock.
                 self.watchers
-                    .write()
+                    .write(&logger)
                     .entry(network_name)
                     .or_insert_with(|| Watcher::new())
                     .receiver
