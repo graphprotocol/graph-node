@@ -2,7 +2,6 @@ use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::rc::Rc;
-use std::sync::Mutex;
 use std::time::Instant;
 
 use anyhow::anyhow;
@@ -30,18 +29,12 @@ pub use crate::host_exports;
 use crate::host_exports::HostExports;
 use crate::mapping::MappingContext;
 use crate::mapping::ValidModule;
-use lazy_static::lazy_static;
 
 mod debug_tool;
 mod into_wasm_ret;
 pub mod stopwatch;
 
 pub const TRAP_TIMEOUT: &str = "trap: interrupt";
-
-lazy_static! {
-    pub static ref STORE: Mutex<HashMap<String, HashMap<String, HashMap<String, Value>>>> =
-        Mutex::new(HashMap::new());
-}
 
 pub trait IntoTrap {
     fn determinism_level(&self) -> DeterminismLevel;
@@ -794,15 +787,15 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let id = asc_get(self, id_ptr)?;
         let data = try_asc_get(self, data_ptr)?;
 
-        let mut store = STORE.lock().unwrap();
-        let mut entity_type_store = if store.contains_key(&entity) {
-            store.get(&entity).unwrap().clone()
-        } else {
-            HashMap::new()
-        };
-
-        entity_type_store.insert(id, data);
-        store.insert(entity, entity_type_store);
+        self.ctx.host_exports.store_set(
+            &self.ctx.logger,
+            &mut self.ctx.state,
+            &self.ctx.proof_of_indexing,
+            entity,
+            id,
+            data,
+            stopwatch,
+        )?;
 
         Ok(())
     }
@@ -830,19 +823,25 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscEntity>, HostExportError> {
+        let _timer = self
+            .host_metrics
+            .cheap_clone()
+            .time_host_fn_execution_region("store_get");
+
         let entity_type: String = asc_get(self, entity_ptr)?;
         let id: String = asc_get(self, id_ptr)?;
+        let entity_option = self.ctx.host_exports.store_get(
+            &mut self.ctx.state,
+            entity_type.clone(),
+            id.clone(),
+        )?;
 
-        let store = STORE.lock().unwrap();
-        // println!("{:?}", store);
-        if store.contains_key(&entity_type) && store.get(&entity_type).unwrap().contains_key(&id) {
-            println!("in if");
-            let entities = store.get(&entity_type).unwrap();
-            let entity = entities.get(&id).unwrap().clone();
-            let entity = Entity::from(entity);
-
-            let res = asc_new(self, &entity.sorted())?;
-            return Ok(res);
+        if let Some(entity) = entity_option {
+            let _section = self
+                .host_metrics
+                .stopwatch
+                .start_section("store_get_asc_new");
+            return Ok(asc_new(self, &entity.sorted())?);
         }
 
         let schema = self
@@ -854,6 +853,9 @@ impl<C: Blockchain> WasmInstanceContext<C> {
 
         let (query, fields) = debug_tool::infer_query(schema, &entity_type, &id);
         let res = debug_tool::perform_query(query)?;
+        if !res.contains("data") {
+            return Ok(AscPtr::null());
+        }
         println!("RESPONSE");
         println!("{:?}", res);
 
@@ -885,11 +887,6 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let entity = Entity::from(map);
         println!("{:?}", entity);
 
-        let _timer = self
-            .host_metrics
-            .cheap_clone()
-            .time_host_fn_execution_region("store_get");
-
         let ret = {
             let _section = self
                 .host_metrics
@@ -897,7 +894,6 @@ impl<C: Blockchain> WasmInstanceContext<C> {
                 .start_section("store_get_asc_new");
             asc_new(self, &entity.sorted())?
         };
-
         Ok(ret)
     }
 

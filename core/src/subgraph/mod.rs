@@ -1,7 +1,6 @@
 mod instance;
 mod instance_manager;
 mod loader;
-mod mock_writable_store;
 mod provider;
 mod registrar;
 

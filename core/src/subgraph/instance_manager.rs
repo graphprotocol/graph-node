@@ -279,7 +279,7 @@ where
         // do the copying and dynamic data sources won't show up until after
         // that is done
         {
-            let store = Arc::new(MockWritableStore {});
+            let store = store.clone();
             let logger = logger.clone();
 
             // `start_subgraph_deployment` is blocking.
