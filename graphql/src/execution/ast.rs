@@ -14,8 +14,21 @@ pub struct FragmentDefinition {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SelectionSet {
-    pub span: (Pos, Pos),
+    span: (Pos, Pos),
     pub items: Vec<Selection>,
+}
+
+impl SelectionSet {
+    pub fn new(span: (Pos, Pos), items: Vec<Selection>) -> Self {
+        SelectionSet { span, items }
+    }
+
+    pub fn empty_from(other: &SelectionSet) -> Self {
+        SelectionSet {
+            span: other.span.clone(),
+            items: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

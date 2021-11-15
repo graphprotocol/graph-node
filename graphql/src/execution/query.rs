@@ -295,10 +295,7 @@ impl Query {
 
             let (selection_set, error_policy) = bcs.entry(bc).or_insert_with(|| {
                 (
-                    a::SelectionSet {
-                        span: self.selection_set.span,
-                        items: vec![],
-                    },
+                    a::SelectionSet::empty_from(&self.selection_set),
                     field_error_policy,
                 )
             });
@@ -800,7 +797,7 @@ impl RawQuery {
                     }
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(a::SelectionSet { span, items })
+            Ok(a::SelectionSet::new(span, items))
         }
 
         fn expand_directives(
