@@ -890,14 +890,7 @@ fn collect_fields_inner<'a>(
         }
     }
 
-    // Only consider selections that are not skipped and should be included
-    let selections = selection_set
-        .items
-        .iter()
-        .filter(|selection| !selection.skip())
-        .filter(|selection| selection.include());
-
-    for selection in selections {
+    for selection in selection_set.included() {
         match selection {
             a::Selection::Field(ref field) => {
                 let response_key = field.response_key();

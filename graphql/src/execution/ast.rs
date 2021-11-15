@@ -15,7 +15,7 @@ pub struct FragmentDefinition {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SelectionSet {
     span: (Pos, Pos),
-    pub items: Vec<Selection>,
+    items: Vec<Selection>,
 }
 
 impl SelectionSet {
@@ -28,6 +28,28 @@ impl SelectionSet {
             span: other.span.clone(),
             items: Vec::new(),
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
+    pub fn included(&self) -> impl Iterator<Item = &Selection> {
+        self.items.iter().filter(|selection| selection.selected())
+    }
+
+    pub fn selections(&self) -> impl Iterator<Item = &Selection> {
+        self.items.iter()
+    }
+
+    pub fn push(&mut self, field: Field) {
+        self.items.push(Selection::Field(field))
+    }
+}
+
+impl Extend<Selection> for SelectionSet {
+    fn extend<T: IntoIterator<Item = Selection>>(&mut self, iter: T) {
+        self.items.extend(iter)
     }
 }
 
@@ -51,7 +73,7 @@ impl Selection {
     }
 
     /// Returns true if a selection should be skipped (as per the `@skip` directive).
-    pub fn skip(&self) -> bool {
+    fn skip(&self) -> bool {
         match self.get_directive("skip") {
             Some(directive) => match directive.argument_value("if") {
                 Some(val) => match val {
@@ -66,7 +88,7 @@ impl Selection {
     }
 
     /// Returns true if a selection should be included (as per the `@include` directive).
-    pub fn include(&self) -> bool {
+    fn include(&self) -> bool {
         match self.get_directive("include") {
             Some(directive) => match directive.argument_value("if") {
                 Some(val) => match val {
@@ -78,6 +100,10 @@ impl Selection {
             },
             None => true,
         }
+    }
+
+    fn selected(&self) -> bool {
+        !self.skip() && self.include()
     }
 }
 
