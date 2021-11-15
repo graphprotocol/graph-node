@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use graph::data::graphql::{object, DocumentExt, ObjectOrInterface};
 use graph::prelude::*;
 
+use crate::execution::ast as a;
 use crate::prelude::*;
 use crate::schema::ast as sast;
 
@@ -359,7 +360,7 @@ impl Resolver for IntrospectionResolver {
     fn prefetch(
         &self,
         _: &ExecutionContext<Self>,
-        _: &q::SelectionSet,
+        _: &a::SelectionSet,
     ) -> Result<Option<r::Value>, Vec<QueryExecutionError>> {
         Ok(None)
     }
@@ -367,7 +368,7 @@ impl Resolver for IntrospectionResolver {
     fn resolve_objects(
         &self,
         prefetched_objects: Option<r::Value>,
-        field: &q::Field,
+        field: &a::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
         _arguments: &HashMap<&str, r::Value>,
@@ -409,7 +410,7 @@ impl Resolver for IntrospectionResolver {
     fn resolve_object(
         &self,
         prefetched_object: Option<r::Value>,
-        field: &q::Field,
+        field: &a::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
         arguments: &HashMap<&str, r::Value>,
