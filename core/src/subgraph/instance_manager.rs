@@ -1,6 +1,5 @@
 use super::loader::load_dynamic_data_sources;
 use super::SubgraphInstance;
-use crate::subgraph::mock_writable_store::MockWritableStore;
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
 use graph::blockchain::{BlockchainKind, DataSource};

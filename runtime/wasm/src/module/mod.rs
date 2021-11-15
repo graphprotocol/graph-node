@@ -852,39 +852,12 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             .expect("store_get: Failed to fetch the subgraph from the store.");
 
         let (query, fields) = debug_tool::infer_query(schema, &entity_type, &id);
-        let res = debug_tool::perform_query(query)?;
+        let endpoint = "https://api.thegraph.com/subgraphs/id/QmfEiYDc9ZvueQrvezFQy4EBQDcqbu74EY3oLWYmA7aAZq";
+        let res = debug_tool::perform_query(query, endpoint)?;
         if !res.contains("data") {
             return Ok(AscPtr::null());
         }
-        println!("RESPONSE");
-        println!("{:?}", res);
-
-        let res: serde_json::Value = serde_json::from_str(&res).unwrap();
-        let entity = &res["data"][&entity_type.to_lowercase()];
-        let map: HashMap<Attribute, Value> = {
-            let mut map = HashMap::new();
-            for f in fields {
-                let value = entity.get(&f).unwrap();
-                let value = match value {
-                    serde_json::Value::String(s) => Value::String(s.clone()),
-                    serde_json::Value::Number(n) => {
-                        if n.is_f64() {
-                            Value::BigDecimal(BigDecimal::from(n.as_f64().unwrap()))
-                        } else if n.is_i64() {
-                            Value::BigInt(BigInt::from(n.as_i64().unwrap()))
-                        } else {
-                            Value::BigInt(BigInt::from(n.as_u64().unwrap()))
-                        }
-                    }
-                    serde_json::Value::Bool(b) => Value::Bool(*b),
-                    serde_json::Value::Null => Value::Null,
-                    _ => panic!("store_get: Unsupported value type."),
-                };
-                map.insert(f, value);
-            }
-            map
-        };
-        let entity = Entity::from(map);
+        let entity = debug_tool::extract_entity(res, entity_type, fields)?;
         println!("{:?}", entity);
 
         let ret = {

@@ -1,6 +1,6 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
-use graph::prelude::{reqwest, Schema};
+use graph::prelude::{reqwest, Attribute, BigDecimal, BigInt, Entity, Schema, Value};
 use graph_graphql::graphql_parser::schema;
 
 use serde::Serialize;
@@ -60,15 +60,43 @@ pub fn infer_query(schema: Arc<Schema>, entity_type: &str, id: &str) -> (Query, 
     return (query, fields);
 }
 
-pub fn perform_query(query: Query) -> Result<String, anyhow::Error> {
+pub fn perform_query(query: Query, endpoint: &str) -> Result<String, anyhow::Error> {
     let client = reqwest::blocking::Client::new();
-    let res = client
-        .post(
-            "https://api.thegraph.com/subgraphs/id/QmfEiYDc9ZvueQrvezFQy4EBQDcqbu74EY3oLWYmA7aAZq",
-        )
-        .json(&query)
-        .send()?;
-
-    let res = res.text()?;
+    let res = client.post(endpoint).json(&query).send()?.text()?;
     Ok(res)
+}
+
+pub fn extract_entity(
+    raw_json: String,
+    entity_type: String,
+    fields: Vec<String>,
+) -> Result<Entity, anyhow::Error> {
+    let json: serde_json::Value = serde_json::from_str(&raw_json).unwrap();
+    let entity = &json["data"][&entity_type.to_lowercase()];
+    let map: HashMap<Attribute, Value> = {
+        let mut map = HashMap::new();
+        for f in fields {
+            let value = entity.get(&f).unwrap();
+            let value = match value {
+                serde_json::Value::String(s) => Value::String(s.clone()),
+                serde_json::Value::Number(n) => {
+                    if n.is_f64() {
+                        Value::BigDecimal(BigDecimal::from(n.as_f64().unwrap()))
+                    } else if n.is_i64() {
+                        Value::BigInt(BigInt::from(n.as_i64().unwrap()))
+                    } else {
+                        Value::BigInt(BigInt::from(n.as_u64().unwrap()))
+                    }
+                }
+                serde_json::Value::Bool(b) => Value::Bool(*b),
+                serde_json::Value::Null => Value::Null,
+                _ => return Err(anyhow::anyhow!("store_get: Unsupported value type.")),
+            };
+            map.insert(f, value);
+        }
+        map
+    };
+
+    let entity = Entity::from(map);
+    return Ok(entity);
 }
