@@ -9,7 +9,6 @@ use anyhow::anyhow;
 use anyhow::Error;
 use never::Never;
 use semver::Version;
-use serde_derive::{Deserialize, Serialize};
 use wasmtime::{Memory, Trap};
 
 use graph::blockchain::{Blockchain, HostFnCtx, TriggerWithHandler};
@@ -42,14 +41,6 @@ pub const TRAP_TIMEOUT: &str = "trap: interrupt";
 lazy_static! {
     pub static ref STORE: Mutex<HashMap<String, HashMap<String, HashMap<String, Value>>>> =
         Mutex::new(HashMap::new());
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Gravatar {
-    display_name: String,
-    id: String,
-    image_url: String,
-    owner: String,
 }
 
 pub trait IntoTrap {
@@ -842,14 +833,6 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let entity_type: String = asc_get(self, entity_ptr)?;
         let id: String = asc_get(self, id_ptr)?;
 
-        // let schema = self.ctx.host_exports.store.input_schema(
-        //     &self.ctx.host_exports.subgraph_id,
-        // ).expect("store_get: Failed to fetch the subgraph from the store.");
-        //
-        // println!("{}", "=".repeat(100));
-        // println!("{:?}", schema.document);
-        // println!("{}", "=".repeat(100));
-
         let store = STORE.lock().unwrap();
         // println!("{:?}", store);
         if store.contains_key(&entity_type) && store.get(&entity_type).unwrap().contains_key(&id) {
@@ -862,33 +845,41 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             return Ok(res);
         }
 
-        let query: &'static str = "query Query ($id: String) {\n    gravatars(where: {id: $id}, subgraphError: allow) {\n        id\n        owner\n        displayName\n        imageUrl\n    }\n}";
-        let variables = debug_tool::QueryVariables { id: Some(id) };
-        let res = debug_tool::perform_query(query, variables)?;
+        let schema = self
+            .ctx
+            .host_exports
+            .store
+            .input_schema(&self.ctx.host_exports.subgraph_id)
+            .expect("store_get: Failed to fetch the subgraph from the store.");
 
-        let (begin, end) = (res.find("[").unwrap() + 1, res.find("]").unwrap());
-        let entity = &res[begin..end];
-        println!("{}", entity);
+        let (query, fields) = debug_tool::infer_query(schema, &entity_type, &id);
+        let res = debug_tool::perform_query(query)?;
+        println!("RESPONSE");
+        println!("{:?}", res);
 
-        let entity: serde_json::Value = serde_json::from_str(entity).unwrap();
+        let res: serde_json::Value = serde_json::from_str(&res).unwrap();
+        let entity = &res["data"][&entity_type.to_lowercase()];
         let map: HashMap<Attribute, Value> = {
             let mut map = HashMap::new();
-            map.insert(
-                "id".into(),
-                Value::String(entity["id"].as_str().unwrap().to_string()),
-            );
-            map.insert(
-                "display_name".into(),
-                Value::String(entity["displayName"].as_str().unwrap().to_string()),
-            );
-            map.insert(
-                "owner".into(),
-                Value::String(entity["owner"].as_str().unwrap().to_string()),
-            );
-            map.insert(
-                "image_url".into(),
-                Value::String(entity["imageUrl"].as_str().unwrap().to_string()),
-            );
+            for f in fields {
+                let value = entity.get(&f).unwrap();
+                let value = match value {
+                    serde_json::Value::String(s) => Value::String(s.clone()),
+                    serde_json::Value::Number(n) => {
+                        if n.is_f64() {
+                            Value::BigDecimal(BigDecimal::from(n.as_f64().unwrap()))
+                        } else if n.is_i64() {
+                            Value::BigInt(BigInt::from(n.as_i64().unwrap()))
+                        } else {
+                            Value::BigInt(BigInt::from(n.as_u64().unwrap()))
+                        }
+                    }
+                    serde_json::Value::Bool(b) => Value::Bool(*b),
+                    serde_json::Value::Null => Value::Null,
+                    _ => panic!("store_get: Unsupported value type."),
+                };
+                map.insert(f, value);
+            }
             map
         };
         let entity = Entity::from(map);
