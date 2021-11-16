@@ -93,6 +93,12 @@ impl<'a> From<ObjectCondition<'a>> for ObjectOrInterface<'a> {
     }
 }
 
+impl ObjectCondition<'_> {
+    pub fn name(&self) -> &str {
+        &self.0.name
+    }
+}
+
 pub fn get_root_query_type_def(schema: &Document) -> Option<&TypeDefinition> {
     schema.definitions.iter().find_map(|d| match d {
         Definition::TypeDefinition(def @ TypeDefinition::Object(_)) => match def {

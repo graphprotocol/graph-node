@@ -9,8 +9,7 @@ use graph::slog::warn;
 use graph::util::cache_weight;
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::iter::once;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -48,12 +47,6 @@ lazy_static! {
         .map(|s| s.parse::<usize>().expect("`GRAPH_GRAPHQL_ERROR_RESULT_SIZE` is a number"))
         .unwrap_or(std::usize::MAX);
 }
-
-type GroupedFieldSet<'a> = IndexMap<&'a str, CollectedResponseKey<'a>>;
-
-/// Used for associating objects or interfaces and the field names used in `orderBy` query field
-/// attributes.
-type ComplementaryFields<'a> = BTreeMap<ObjectOrInterface<'a>, String>;
 
 /// Intermediate data structure to hold the results of prefetching entities
 /// and their nested associations. For each association of `entity`, `children`
@@ -522,19 +515,8 @@ fn execute_root_selection_set(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &a::SelectionSet,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
-    // Obtain the root Query type and fail if there isn't one
-    let query_type = ctx.query.schema.query_type.as_ref().into();
-    let (grouped_field_set, _complementary_fields) =
-        collect_fields(ctx, query_type, once(selection_set));
-
     // Execute the root selection set against the root query type
-    execute_selection_set(
-        resolver,
-        ctx,
-        make_root_node(),
-        grouped_field_set,
-        ComplementaryFields::new(),
-    )
+    execute_selection_set(resolver, ctx, make_root_node(), selection_set)
 }
 
 fn check_result_size(logger: &Logger, size: usize) -> Result<(), QueryExecutionError> {
@@ -551,14 +533,13 @@ fn execute_selection_set<'a>(
     resolver: &StoreResolver,
     ctx: &'a ExecutionContext<impl Resolver>,
     mut parents: Vec<Node>,
-    grouped_field_set: GroupedFieldSet<'a>,
-    mut complementary_fields: ComplementaryFields<'a>,
+    selection_set: &a::SelectionSet,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     let schema = &ctx.query.schema;
     let mut errors: Vec<QueryExecutionError> = Vec::new();
 
     // Process all field groups in order
-    for (response_key, collected_fields) in grouped_field_set {
+    for (type_name, fields) in selection_set.interior_fields() {
         if let Some(deadline) = ctx.deadline {
             if deadline < Instant::now() {
                 errors.push(QueryExecutionError::Timeout);
@@ -566,38 +547,40 @@ fn execute_selection_set<'a>(
             }
         }
 
-        for (type_cond, fields) in collected_fields {
-            // Filter out parents that do not match the type condition.
-            let mut parents: Vec<&mut Node> = if is_root_node(parents.iter()) {
-                parents.iter_mut().collect()
-            } else {
-                parents
-                    .iter_mut()
-                    .filter(|p| type_cond.matches(p.typename(), schema.types_for_interface()))
-                    .collect()
-            };
+        // Filter out parents that do not match the type condition.
+        let mut parents: Vec<&mut Node> = if is_root_node(parents.iter()) {
+            parents.iter_mut().collect()
+        } else {
+            parents
+                .iter_mut()
+                .filter(|p| type_name == p.typename())
+                .collect()
+        };
 
-            if parents.is_empty() {
-                continue;
-            }
+        if parents.is_empty() {
+            continue;
+        }
 
-            // Unwrap: The query was validated to contain only valid fields,
-            // and `collect_fields` will skip introspection fields.
-            let field = type_cond.field(&fields[0].name).unwrap();
+        let object_type = schema
+            .document()
+            .get_object_type_definition(type_name)
+            .expect("selection sets only contain object type names");
+
+        for field in fields {
+            let field_type = object_type
+                .field(&field.name)
+                .expect("field names are valid");
             let child_type = schema
                 .document()
-                .object_or_interface(field.field_type.get_base_type())
+                .object_or_interface(field_type.field_type.get_base_type())
                 .expect("we only collect fields that are objects or interfaces");
 
             let join = Join::new(
                 ctx.query.schema.as_ref(),
-                type_cond,
+                object_type.into(),
                 child_type,
                 &field.name,
             );
-            // Group fields with the same response key, so we can execute them together
-            let (mut grouped_field_set, new_complementary_fields) =
-                collect_fields(ctx, child_type, fields.iter().map(|f| &f.selection_set));
 
             // "Select by Specific Attribute Names" is an experimental feature and can be disabled completely.
             // If this environment variable is set, the program will use an empty collection that,
@@ -607,32 +590,23 @@ fn execute_selection_set<'a>(
                 if *DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES {
                     BTreeMap::new()
                 } else {
-                    let mut collected =
-                        CollectedAttributeNames::consolidate_column_names(&mut grouped_field_set);
-                    collected.populate_complementary_fields(&mut complementary_fields);
-                    collected.resolve_interfaces(&ctx.query.schema.types_for_interface())
+                    CollectedAttributeNames::consolidate_column_names(schema, &field)?
                 };
 
             match execute_field(
                 resolver,
                 &ctx,
-                type_cond,
+                object_type.into(),
                 &parents,
                 &join,
-                &fields[0],
                 field,
+                field_type,
                 collected_columns,
             ) {
                 Ok(children) => {
-                    match execute_selection_set(
-                        resolver,
-                        ctx,
-                        children,
-                        grouped_field_set,
-                        new_complementary_fields,
-                    ) {
+                    match execute_selection_set(resolver, ctx, children, &field.selection_set) {
                         Ok(children) => {
-                            Join::perform(&mut parents, children, response_key);
+                            Join::perform(&mut parents, children, field.response_key());
                             let weight =
                                 parents.iter().map(|parent| parent.weight()).sum::<usize>();
                             check_result_size(&ctx.logger, weight)?;
@@ -645,23 +619,6 @@ fn execute_selection_set<'a>(
                 }
             };
         }
-    }
-
-    // Confidence check: all complementary fields must be consumed, otherwise constructed SQL
-    // queries will be malformed.
-    if !*DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES {
-        complementary_fields
-            .into_iter()
-            .for_each(|(parent, complementary_field)| {
-                errors.push(
-                    constraint_violation!(
-                        "Complementary field \"{}\" was not prefetched by its parent: {}",
-                        complementary_field,
-                        parent.name().to_string(),
-                    )
-                    .into(),
-                )
-            });
     }
 
     if errors.is_empty() {
@@ -686,46 +643,6 @@ struct CollectedResponseKey<'a> {
     collected_column_names: CollectedAttributeNames<'a>,
 }
 
-impl<'a> CollectedResponseKey<'a> {
-    fn collect_field(
-        &mut self,
-        document: &s::Document,
-        object_or_interface: ObjectOrInterface<'a>,
-        field: &'a a::Field,
-    ) {
-        let schema_field = object_or_interface.field(&field.name);
-        schema_field
-            .and_then(|field_def| sast::get_type_definition_from_field(document, field_def))
-            .map(|type_def| match type_def {
-                // Only consider fields that point to objects or interfaces, and ignore nonexistent fields.
-                s::TypeDefinition::Interface(_) | s::TypeDefinition::Object(_) => {
-                    match object_or_interface {
-                        ObjectOrInterface::Interface(i) => {
-                            // `collect_fields` will never call this with two different interfaces types.
-                            assert!(
-                                self.iface_cond.is_none()
-                                    || self.iface_cond.map(|x| &x.name) == Some(&i.name)
-                            );
-                            self.iface_cond = Some(i);
-                            self.iface_fields.push(field);
-                        }
-                        ObjectOrInterface::Object(o) => {
-                            self.obj_types.entry(o.into()).or_default().push(field);
-                        }
-                    }
-                }
-                s::TypeDefinition::Scalar(_) | s::TypeDefinition::Enum(_) => {}
-                s::TypeDefinition::Union(_) | s::TypeDefinition::InputObject(_) => {}
-            });
-
-        // collect the column name if field exists in schema
-        if schema_field.is_some() {
-            self.collected_column_names
-                .update(object_or_interface, &field)
-        }
-    }
-}
-
 impl<'a> IntoIterator for CollectedResponseKey<'a> {
     type Item = (ObjectOrInterface<'a>, Vec<&'a a::Field>);
     type IntoIter = Box<dyn Iterator<Item = Self::Item> + 'a>;
@@ -740,185 +657,6 @@ impl<'a> IntoIterator for CollectedResponseKey<'a> {
                 .into_iter()
                 .chain(self.obj_types.into_iter().map(|(c, f)| (c.into(), f))),
         )
-    }
-}
-
-/// Collects fields of a selection set. The resulting map indicates for each
-/// response key from which types to fetch what fields to express the effect
-/// of fragment spreads
-fn collect_fields<'a>(
-    ctx: &'a ExecutionContext<impl Resolver>,
-    parent_ty: ObjectOrInterface<'a>,
-    selection_sets: impl Iterator<Item = &'a a::SelectionSet>,
-) -> (GroupedFieldSet<'a>, ComplementaryFields<'a>) {
-    let mut grouped_fields = IndexMap::new();
-    let mut complementary_fields = ComplementaryFields::new();
-
-    for selection_set in selection_sets {
-        collect_fields_inner(
-            ctx,
-            parent_ty,
-            selection_set,
-            &mut HashSet::new(),
-            &mut grouped_fields,
-            &mut complementary_fields,
-        );
-    }
-
-    // For interfaces, if a response key occurs both under the interface and under concrete types,
-    // we want to add the fields selected at the interface level to the selections in the specific
-    // concrete types, effectively merging the selection sets.
-    // See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
-    for collected_response_key in grouped_fields.values_mut() {
-        for obj_type_fields in collected_response_key.obj_types.values_mut() {
-            obj_type_fields.extend_from_slice(&collected_response_key.iface_fields)
-        }
-    }
-
-    (grouped_fields, complementary_fields)
-}
-
-// When querying an object type, `type_condition` will always be that object type, even if it passes
-// through fragments for interfaces which that type implements.
-//
-// When querying an interface, `type_condition` will start as the interface itself at the root, and
-// change to an implementing object type if it passes to a fragment with a concrete type condition.
-fn collect_fields_inner<'a>(
-    ctx: &'a ExecutionContext<impl Resolver>,
-    type_condition: ObjectOrInterface<'a>,
-    selection_set: &'a a::SelectionSet,
-    visited_fragments: &mut HashSet<&'a str>,
-    output: &mut GroupedFieldSet<'a>,
-    complementary_fields: &mut ComplementaryFields<'a>,
-) {
-    fn collect_fragment<'a>(
-        ctx: &'a ExecutionContext<impl Resolver>,
-        outer_type_condition: ObjectOrInterface<'a>,
-        frag_ty_condition: Option<&'a a::TypeCondition>,
-        frag_selection_set: &'a a::SelectionSet,
-        visited_fragments: &mut HashSet<&'a str>,
-        output: &mut GroupedFieldSet<'a>,
-        complementary_fields: &mut ComplementaryFields<'a>,
-    ) {
-        let schema = &ctx.query.schema.document();
-        let fragment_ty = match frag_ty_condition {
-            // Unwrap: Validation ensures this interface exists.
-            Some(a::TypeCondition::On(ty_name)) if outer_type_condition.is_interface() => {
-                schema.object_or_interface(ty_name).unwrap()
-            }
-            _ => outer_type_condition,
-        };
-
-        // The check above makes any type condition on an outer object type redunant.
-        // A type condition on the same interface as the outer one is also redundant.
-        let redundant_condition = fragment_ty.name() == outer_type_condition.name();
-        if redundant_condition || fragment_ty.is_object() {
-            collect_fields_inner(
-                ctx,
-                fragment_ty,
-                &frag_selection_set,
-                visited_fragments,
-                output,
-                complementary_fields,
-            );
-        } else {
-            // This is an interface fragment in the root selection for an interface.
-            // We deal with this by expanding the fragment into one fragment for
-            // each type in the intersection between the root interface and the
-            // interface in the fragment type condition.
-            let types_for_interface = ctx.query.schema.types_for_interface();
-            let root_tys = &types_for_interface[&outer_type_condition.into()];
-            let fragment_tys = &types_for_interface[&fragment_ty.into()];
-            let intersection_tys = root_tys.iter().filter(|root_ty| {
-                fragment_tys
-                    .iter()
-                    .map(|t| &t.name)
-                    .any(|t| *t == root_ty.name)
-            });
-            for ty in intersection_tys {
-                collect_fields_inner(
-                    ctx,
-                    ty.into(),
-                    &frag_selection_set,
-                    visited_fragments,
-                    output,
-                    complementary_fields,
-                );
-            }
-        }
-    }
-
-    for selection in selection_set.included() {
-        match selection {
-            a::Selection::Field(ref field) => {
-                let response_key = field.response_key();
-                output.entry(response_key).or_default().collect_field(
-                    &ctx.query.schema.document(),
-                    type_condition,
-                    field,
-                );
-
-                // Collect complementary fields used in the `orderBy` query attribute, if present.
-                if !*DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES {
-                    if let Some(argument) = field.argument_value("orderBy") {
-                        let schema_field = type_condition.field(&field.name).expect(&format!(
-                            "the field {:?} to exist in {:?}",
-                            &field.name,
-                            &type_condition.name()
-                        ));
-                        let field_name = sast::get_field_name(&schema_field.field_type);
-                        let object_or_interface_for_field = ctx
-                            .query
-                            .schema
-                            .document()
-                            .object_or_interface(&field_name)
-                            .expect(&format!(
-                                "The field {:?} to exist in the Document",
-                                field_name
-                            ));
-                        match argument {
-                            r::Value::Enum(complementary_field_name) => {
-                                complementary_fields.insert(
-                                    object_or_interface_for_field,
-                                    complementary_field_name.clone(),
-                                );
-                            }
-                            _ => unreachable!("query processing should have coerced to an enum"),
-                        }
-                    }
-                }
-            }
-
-            a::Selection::FragmentSpread(spread) => {
-                // Only consider the fragment if it hasn't already been included,
-                // as would be the case if the same fragment spread ...Foo appeared
-                // twice in the same selection set
-                if visited_fragments.insert(&spread.fragment_name) {
-                    let fragment = ctx.query.get_fragment(&spread.fragment_name);
-                    collect_fragment(
-                        ctx,
-                        type_condition,
-                        Some(&fragment.type_condition),
-                        &fragment.selection_set,
-                        visited_fragments,
-                        output,
-                        complementary_fields,
-                    );
-                }
-            }
-
-            a::Selection::InlineFragment(fragment) => {
-                collect_fragment(
-                    ctx,
-                    type_condition,
-                    fragment.type_condition.as_ref(),
-                    &fragment.selection_set,
-                    visited_fragments,
-                    output,
-                    complementary_fields,
-                );
-            }
-        }
     }
 }
 
@@ -1021,91 +759,42 @@ type AttributeNamesByObjectType<'a> = BTreeMap<sast::ObjectCondition<'a>, Attrib
 struct CollectedAttributeNames<'a>(HashMap<ObjectOrInterface<'a>, AttributeNames>);
 
 impl<'a> CollectedAttributeNames<'a> {
-    fn update(&mut self, object_or_interface: ObjectOrInterface<'a>, field: &a::Field) {
-        self.0
-            .entry(object_or_interface)
-            .or_insert(AttributeNames::All)
-            .update(&field.name);
-    }
-
-    /// Injects complementary fields that were collected priviously in upper hierarchical levels of
-    /// the query into `self`.
-    fn populate_complementary_fields(
-        &mut self,
-        complementary_fields: &mut ComplementaryFields<'a>,
-    ) {
-        for (object_or_interface, selected_attributes) in self.0.iter_mut() {
-            if let Some(complementary_field_name) =
-                complementary_fields.remove(&object_or_interface)
-            {
-                selected_attributes.add_str(&complementary_field_name)
-            }
-        }
-    }
-
-    /// Consume this instance and transform it into a mapping from
-    /// `ObjectTypes` to `AttributeNames`, while resolving all interfaces
-    /// into the `ObjectType`s that implement them.
-    fn resolve_interfaces(
-        mut self,
-        types_for_interface: &'a BTreeMap<EntityType, Vec<s::ObjectType>>,
-    ) -> AttributeNamesByObjectType {
-        let mut map: AttributeNamesByObjectType = BTreeMap::new();
-        for (object_or_interface, column_names) in self.0.drain() {
-            match object_or_interface {
-                ObjectOrInterface::Object(object) => {
-                    CollectedAttributeNames::upsert(&mut map, object, column_names);
-                }
-                ObjectOrInterface::Interface(interface) => {
-                    for object in &types_for_interface[&EntityType::from(interface)] {
-                        CollectedAttributeNames::upsert(&mut map, object, column_names.clone());
-                    }
-                }
-            }
-        }
-        map
-    }
-
-    /// Helper function for handling insertion on the `AttributeNamesByObjectType` struct.
-    fn upsert(
-        map: &mut BTreeMap<sast::ObjectCondition<'a>, AttributeNames>,
-        object: &'a s::ObjectType,
-        column_names: AttributeNames,
-    ) {
-        use std::collections::btree_map::Entry;
-        let key = object.into();
-        let column_names = filter_derived_fields(column_names, object);
-        match map.entry(key) {
-            Entry::Occupied(mut entry) => {
-                entry.get_mut().extend(column_names);
-            }
-            Entry::Vacant(entry) => {
-                entry.insert(column_names);
-            }
-        }
-    }
-
     /// Creates a new, combined `CollectedAttributeNames` using drained values from `CollectedAttributeNames`
     /// scattered across different `CollectedResponseKey`s.
-    fn consolidate_column_names<'schema, 'collection>(
-        grouped_field_set: &'collection mut GroupedFieldSet<'schema>,
-    ) -> CollectedAttributeNames<'schema> {
-        let mut map: HashMap<ObjectOrInterface, AttributeNames> = HashMap::new();
-        for (_, collected_response_key) in grouped_field_set.into_iter() {
-            for (object_or_interface, column_names) in
-                collected_response_key.collected_column_names.0.drain()
-            {
-                match map.entry(object_or_interface) {
-                    std::collections::hash_map::Entry::Vacant(entry) => {
-                        entry.insert(column_names);
-                    }
-                    std::collections::hash_map::Entry::Occupied(mut entry) => {
-                        entry.get_mut().extend(column_names);
-                    }
+    fn consolidate_column_names<'schema>(
+        schema: &'schema ApiSchema,
+        field: &a::Field,
+    ) -> Result<AttributeNamesByObjectType<'schema>, Vec<QueryExecutionError>> {
+        let mut map: AttributeNamesByObjectType = BTreeMap::new();
+        for (type_name, fields) in field.selection_set.fields() {
+            let object_type = schema
+                .document()
+                .get_object_type_definition(type_name)
+                .expect("selection sets only contain valid object types");
+            let column_names =
+                AttributeNames::Select(fields.map(|field| field.name.clone()).collect());
+            let column_names = filter_derived_fields(column_names, object_type);
+            map.insert(object_type.into(), column_names);
+        }
+        // We need to also select the `orderBy` field if there is one.
+        // Because of how the API Schema is set up, `orderBy` can only have
+        // an enum value
+        match field.argument_value("orderBy") {
+            None => { /* nothing to do */ }
+            Some(r::Value::Enum(e)) => {
+                for columns in map.values_mut() {
+                    columns.add_str(e);
                 }
             }
+            Some(v) => {
+                return Err(vec![constraint_violation!(
+                    "'orderBy' attribute must be an enum but is {:?}",
+                    v
+                )
+                .into()]);
+            }
         }
-        CollectedAttributeNames(map)
+        Ok(map)
     }
 }
 

@@ -5,15 +5,13 @@ use graph::{
     prelude::{s, CheapClone},
     util::timed_rw_lock::TimedMutex,
 };
-use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use stable_hash::crypto::SetHasher;
 use stable_hash::prelude::*;
 use stable_hash::utils::stable_hash;
-use std::borrow::ToOwned;
-use std::collections::{HashMap, HashSet};
-use std::iter;
+use std::collections::HashMap;
 use std::time::Instant;
+use std::{borrow::ToOwned, collections::HashSet};
 
 use graph::data::graphql::*;
 use graph::data::query::CacheStatus;
@@ -136,7 +134,6 @@ impl Default for WeightedResult {
 
 struct HashableQuery<'a> {
     query_schema_id: &'a DeploymentHash,
-    query_fragments: &'a HashMap<String, a::FragmentDefinition>,
     selection_set: &'a a::SelectionSet,
     block_ptr: &'a BlockPtr,
 }
@@ -162,13 +159,6 @@ impl StableHash for HashableQuery<'_> {
         self.query_schema_id
             .stable_hash(sequence_number.next_child(), state);
 
-        // Not stable! Uses to_string()
-        self.query_fragments
-            .iter()
-            .map(|(k, v)| (k, format!("{:?}", v)))
-            .collect::<HashMap<_, _>>()
-            .stable_hash(sequence_number.next_child(), state);
-
         // Not stable! Uses to_string
         format!("{:?}", self.selection_set).stable_hash(sequence_number.next_child(), state);
 
@@ -187,7 +177,6 @@ fn cache_key(
     // Otherwise, incorrect results may be returned.
     let query = HashableQuery {
         query_schema_id: ctx.query.schema.id(),
-        query_fragments: &ctx.query.fragments,
         selection_set,
         block_ptr,
     };
@@ -275,7 +264,7 @@ where
     }
 }
 
-pub fn execute_root_selection_set_uncached(
+pub(crate) fn execute_root_selection_set_uncached(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &a::SelectionSet,
     root_type: &s::ObjectType,
@@ -286,18 +275,16 @@ pub fn execute_root_selection_set_uncached(
     let mut intro_set = a::SelectionSet::empty_from(selection_set);
     let mut meta_items = Vec::new();
 
-    for (_, fields) in collect_fields(ctx, root_type, iter::once(selection_set)) {
-        let name = fields[0].name.clone();
-        let selections = fields.into_iter().map(|f| a::Selection::Field(f.clone()));
+    for field in selection_set.fields_for(root_type) {
         // See if this is an introspection or data field. We don't worry about
         // non-existent fields; those will cause an error later when we execute
         // the data_set SelectionSet
-        if is_introspection_field(&name) {
-            intro_set.extend(selections)
-        } else if &name == META_FIELD_NAME {
-            meta_items.extend(selections)
+        if is_introspection_field(&field.name) {
+            intro_set.push(field)
+        } else if &field.name == META_FIELD_NAME {
+            meta_items.push(field)
         } else {
-            data_set.extend(selections)
+            data_set.push(field)
         }
     }
 
@@ -306,8 +293,8 @@ pub fn execute_root_selection_set_uncached(
         Object::default()
     } else {
         let initial_data = ctx.resolver.prefetch(&ctx, &data_set)?;
-        data_set.extend(meta_items);
-        execute_selection_set_to_map(&ctx, iter::once(&data_set), root_type, initial_data)?
+        data_set.push_fields(meta_items);
+        execute_selection_set_to_map(&ctx, &data_set, root_type, initial_data)?
     };
 
     // Resolve introspection fields, if there are any
@@ -316,7 +303,7 @@ pub fn execute_root_selection_set_uncached(
 
         values.extend(execute_selection_set_to_map(
             &ictx,
-            iter::once(&intro_set),
+            ctx.query.selection_set.as_ref(),
             &*INTROSPECTION_QUERY_TYPE,
             None,
         )?);
@@ -326,7 +313,7 @@ pub fn execute_root_selection_set_uncached(
 }
 
 /// Executes the root selection set of a query.
-pub async fn execute_root_selection_set<R: Resolver>(
+pub(crate) async fn execute_root_selection_set<R: Resolver>(
     ctx: Arc<ExecutionContext<R>>,
     selection_set: Arc<a::SelectionSet>,
     root_type: Arc<s::ObjectType>,
@@ -472,13 +459,13 @@ pub async fn execute_root_selection_set<R: Resolver>(
 /// Allows passing in a parent value during recursive processing of objects and their fields.
 fn execute_selection_set<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
-    selection_sets: impl Iterator<Item = &'a a::SelectionSet>,
+    selection_set: &'a a::SelectionSet,
     object_type: &s::ObjectType,
     prefetched_value: Option<r::Value>,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     Ok(r::Value::Object(execute_selection_set_to_map(
         ctx,
-        selection_sets,
+        selection_set,
         object_type,
         prefetched_value,
     )?))
@@ -486,7 +473,7 @@ fn execute_selection_set<'a>(
 
 fn execute_selection_set_to_map<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
-    selection_sets: impl Iterator<Item = &'a a::SelectionSet>,
+    selection_set: &'a a::SelectionSet,
     object_type: &s::ObjectType,
     prefetched_value: Option<r::Value>,
 ) -> Result<Object, Vec<QueryExecutionError>> {
@@ -498,14 +485,11 @@ fn execute_selection_set_to_map<'a>(
     let mut errors: Vec<QueryExecutionError> = Vec::new();
     let mut result_map = Object::new();
 
-    // Group fields with the same response key, so we can execute them together
-    let grouped_field_set = collect_fields(ctx, object_type, selection_sets);
-
     // Gather fields that appear more than once with the same response key.
     let multiple_response_keys = {
         let mut multiple_response_keys = HashSet::new();
         let mut fields = HashSet::new();
-        for field in grouped_field_set.iter().map(|(_, f)| f.iter()).flatten() {
+        for field in selection_set.fields_for(object_type) {
             if !fields.insert(field.name.as_str()) {
                 multiple_response_keys.insert(field.name.as_str());
             }
@@ -514,7 +498,7 @@ fn execute_selection_set_to_map<'a>(
     };
 
     // Process all field groups in order
-    for (response_key, fields) in grouped_field_set {
+    for field in selection_set.fields_for(object_type) {
         match ctx.deadline {
             Some(deadline) if deadline < Instant::now() => {
                 errors.push(QueryExecutionError::Timeout);
@@ -523,8 +507,10 @@ fn execute_selection_set_to_map<'a>(
             _ => (),
         }
 
+        let response_key = field.response_key();
+
         // Unwrap: The query was validated to contain only valid fields.
-        let field = sast::get_field(object_type, &fields[0].name).unwrap();
+        let field_type = sast::get_field(object_type, &field.name).unwrap();
 
         // Check if we have the value already.
         let field_value = prefetched_object
@@ -537,13 +523,13 @@ fn execute_selection_set_to_map<'a>(
 
                 // Scalars and scalar lists are associated to the field name.
                 // If the field has more than one response key, we have to clone.
-                match multiple_response_keys.contains(fields[0].name.as_str()) {
-                    false => o.remove(&fields[0].name),
-                    true => o.get(&fields[0].name).cloned(),
+                match multiple_response_keys.contains(field.name.as_str()) {
+                    false => o.remove(&field.name),
+                    true => o.get(&field.name).cloned(),
                 }
             })
             .flatten();
-        match execute_field(&ctx, object_type, field_value, &fields[0], field, fields) {
+        match execute_field(&ctx, object_type, field_value, field, field_type) {
             Ok(v) => {
                 result_map.insert(response_key.to_owned(), v);
             }
@@ -560,116 +546,6 @@ fn execute_selection_set_to_map<'a>(
     }
 }
 
-/// Collects fields from selection sets. Returns a map from response key to fields. There will
-/// typically be a single field for a response key. If there are multiple, the overall execution
-/// logic will effectively merged them into the output for the response key.
-pub fn collect_fields<'a>(
-    ctx: &'a ExecutionContext<impl Resolver>,
-    object_type: &s::ObjectType,
-    selection_sets: impl Iterator<Item = &'a a::SelectionSet>,
-) -> IndexMap<&'a str, Vec<&'a a::Field>> {
-    let mut grouped_fields = IndexMap::new();
-    collect_fields_inner(
-        ctx,
-        object_type,
-        selection_sets,
-        &mut HashSet::new(),
-        &mut grouped_fields,
-    );
-    grouped_fields
-}
-
-pub fn collect_fields_inner<'a>(
-    ctx: &'a ExecutionContext<impl Resolver>,
-    object_type: &s::ObjectType,
-    selection_sets: impl Iterator<Item = &'a a::SelectionSet>,
-    visited_fragments: &mut HashSet<&'a str>,
-    output: &mut IndexMap<&'a str, Vec<&'a a::Field>>,
-) {
-    for selection_set in selection_sets {
-        // Only consider selections that are not skipped and should be included
-        for selection in selection_set.included() {
-            match selection {
-                a::Selection::Field(ref field) => {
-                    let response_key = field.response_key();
-                    output.entry(response_key).or_default().push(field);
-                }
-
-                a::Selection::FragmentSpread(spread) => {
-                    // Only consider the fragment if it hasn't already been included,
-                    // as would be the case if the same fragment spread ...Foo appeared
-                    // twice in the same selection set.
-                    //
-                    // Note: This will skip both duplicate fragments and will break cycles,
-                    // so we support fragments even though the GraphQL spec prohibits them.
-                    if visited_fragments.insert(&spread.fragment_name) {
-                        let fragment = ctx.query.get_fragment(&spread.fragment_name);
-                        if does_fragment_type_apply(ctx, object_type, &fragment.type_condition) {
-                            // We have a fragment that applies to the current object type,
-                            // collect fields recursively
-                            collect_fields_inner(
-                                ctx,
-                                object_type,
-                                iter::once(&fragment.selection_set),
-                                visited_fragments,
-                                output,
-                            );
-                        }
-                    }
-                }
-
-                a::Selection::InlineFragment(fragment) => {
-                    let applies = match &fragment.type_condition {
-                        Some(cond) => does_fragment_type_apply(ctx, object_type, &cond),
-                        None => true,
-                    };
-
-                    if applies {
-                        collect_fields_inner(
-                            ctx,
-                            object_type,
-                            iter::once(&fragment.selection_set),
-                            visited_fragments,
-                            output,
-                        )
-                    }
-                }
-            };
-        }
-    }
-}
-
-/// Determines whether a fragment is applicable to the given object type.
-fn does_fragment_type_apply(
-    ctx: &ExecutionContext<impl Resolver>,
-    object_type: &s::ObjectType,
-    fragment_type: &a::TypeCondition,
-) -> bool {
-    // This is safe to do, as TypeCondition only has a single `On` variant.
-    let a::TypeCondition::On(ref name) = fragment_type;
-
-    // Resolve the type the fragment applies to based on its name
-    let named_type = ctx.query.schema.document().get_named_type(name);
-
-    match named_type {
-        // The fragment applies to the object type if its type is the same object type
-        Some(s::TypeDefinition::Object(ot)) => object_type == ot,
-
-        // The fragment also applies to the object type if its type is an interface
-        // that the object type implements
-        Some(s::TypeDefinition::Interface(it)) => {
-            object_type.implements_interfaces.contains(&it.name)
-        }
-
-        // The fragment also applies to an object type if its type is a union that
-        // the object type is one of the possible types for
-        Some(s::TypeDefinition::Union(ut)) => ut.types.contains(&object_type.name),
-
-        // In all other cases, the fragment does not apply
-        _ => false,
-    }
-}
-
 /// Executes a field.
 fn execute_field(
     ctx: &ExecutionContext<impl Resolver>,
@@ -677,7 +553,6 @@ fn execute_field(
     field_value: Option<r::Value>,
     field: &a::Field,
     field_definition: &s::Field,
-    fields: Vec<&a::Field>,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     coerce_argument_values(&ctx.query, object_type, field)
         .and_then(|argument_values| {
@@ -691,7 +566,7 @@ fn execute_field(
                 &argument_values,
             )
         })
-        .and_then(|value| complete_value(ctx, field, &field_definition.field_type, &fields, value))
+        .and_then(|value| complete_value(ctx, field, &field_definition.field_type, value))
 }
 
 /// Resolves the value of a field.
@@ -878,13 +753,12 @@ fn complete_value(
     ctx: &ExecutionContext<impl Resolver>,
     field: &a::Field,
     field_type: &s::Type,
-    fields: &Vec<&a::Field>,
     resolved_value: r::Value,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     match field_type {
         // Fail if the field type is non-null but the value is null
         s::Type::NonNullType(inner_type) => {
-            return match complete_value(ctx, field, inner_type, fields, resolved_value)? {
+            return match complete_value(ctx, field, inner_type, resolved_value)? {
                 r::Value::Null => Err(vec![QueryExecutionError::NonNullError(
                     field.position,
                     field.name.to_string(),
@@ -908,7 +782,7 @@ fn complete_value(
                     for value_place in &mut values {
                         // Put in a placeholder, complete the value, put the completed value back.
                         let value = std::mem::replace(value_place, r::Value::Null);
-                        match complete_value(ctx, field, inner_type, fields, value) {
+                        match complete_value(ctx, field, inner_type, value) {
                             Ok(value) => {
                                 *value_place = value;
                             }
@@ -965,7 +839,7 @@ fn complete_value(
                 // Complete object types recursively
                 s::TypeDefinition::Object(object_type) => execute_selection_set(
                     ctx,
-                    fields.iter().map(|f| &f.selection_set),
+                    &field.selection_set,
                     object_type,
                     Some(resolved_value),
                 ),
@@ -976,7 +850,7 @@ fn complete_value(
 
                     execute_selection_set(
                         ctx,
-                        fields.iter().map(|f| &f.selection_set),
+                        &field.selection_set,
                         object_type,
                         Some(resolved_value),
                     )
@@ -988,7 +862,7 @@ fn complete_value(
 
                     execute_selection_set(
                         ctx,
-                        fields.iter().map(|f| &f.selection_set),
+                        &field.selection_set,
                         object_type,
                         Some(resolved_value),
                     )
