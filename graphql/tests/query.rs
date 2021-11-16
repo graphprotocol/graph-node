@@ -1548,6 +1548,19 @@ fn query_at_block_with_vars() {
             check_musicians_at(&deployment.hash, query, var, expected, qid).await;
         }
 
+        async fn musicians_at_nr_gte(
+            deployment: &DeploymentLocator,
+            block: i32,
+            expected: Result<Vec<&str>, &str>,
+            qid: &str,
+        ) {
+            let query =
+                "query by_nr($block: Int!) { musicians(block: { number_gte: $block }) { id } }";
+            let var = Some(("block", r::Value::Int(block.into())));
+
+            check_musicians_at(&deployment.hash, query, var, expected, qid).await;
+        }
+
         async fn musicians_at_hash(
             deployment: &DeploymentLocator,
             block: &FakeBlock,
@@ -1569,6 +1582,10 @@ fn query_at_block_with_vars() {
         musicians_at_nr(&deployment, 7000, Err(BLOCK_NOT_INDEXED), "n7000").await;
         musicians_at_nr(&deployment, 0, Ok(vec!["m1", "m2"]), "n0").await;
         musicians_at_nr(&deployment, 1, Ok(vec!["m1", "m2", "m3", "m4"]), "n1").await;
+
+        musicians_at_nr_gte(&deployment, 7000, Err(BLOCK_NOT_INDEXED), "ngte7000").await;
+        musicians_at_nr_gte(&deployment, 0, Ok(vec!["m1", "m2", "m3", "m4"]), "ngte0").await;
+        musicians_at_nr_gte(&deployment, 1, Ok(vec!["m1", "m2", "m3", "m4"]), "ngte1").await;
 
         musicians_at_hash(&deployment, &GENESIS_BLOCK, Ok(vec!["m1", "m2"]), "h0").await;
         musicians_at_hash(

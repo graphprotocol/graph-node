@@ -109,31 +109,25 @@ impl StoreResolver {
         bc: BlockConstraint,
         subgraph: DeploymentHash,
     ) -> Result<BlockPtr, QueryExecutionError> {
+        fn check_ptr(
+            subgraph: DeploymentHash,
+            ptr: Option<BlockPtr>,
+            min: BlockNumber,
+        ) -> Result<BlockPtr, QueryExecutionError> {
+            let ptr = ptr.expect("we should have already checked that the subgraph exists");
+            if ptr.number < min {
+                return Err(QueryExecutionError::ValueParseError(
+                    "block.number".to_owned(),
+                    format!(
+                        "subgraph {} has only indexed up to block number {} \
+                            and data for block number {} is therefore not yet available",
+                        subgraph, ptr.number, min
+                    ),
+                ));
+            }
+            Ok(ptr)
+        }
         match bc {
-            BlockConstraint::Number(number) => store
-                .block_ptr()
-                .map_err(|e| StoreError::from(e).into())
-                .and_then(|ptr| {
-                    let ptr = ptr.expect("we should have already checked that the subgraph exists");
-                    if ptr.number < number {
-                        Err(QueryExecutionError::ValueParseError(
-                            "block.number".to_owned(),
-                            format!(
-                                "subgraph {} has only indexed up to block number {} \
-                                 and data for block number {} is therefore not yet available",
-                                subgraph, ptr.number, number
-                            ),
-                        ))
-                    } else {
-                        // We don't have a way here to look the block hash up from
-                        // the database, and even if we did, there is no guarantee
-                        // that we have the block in our cache. We therefore
-                        // always return an all zeroes hash when users specify
-                        // a block number
-                        // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
-                        Ok(BlockPtr::from((web3::types::H256::zero(), number as u64)))
-                    }
-                }),
             BlockConstraint::Hash(hash) => {
                 store
                     .block_number(hash)
@@ -149,6 +143,23 @@ impl StoreResolver {
                             .map(|number| BlockPtr::from((hash, number as u64)))
                     })
             }
+            BlockConstraint::Number(number) => store
+                .block_ptr()
+                .map_err(|e| StoreError::from(e).into())
+                .and_then(|ptr| {
+                    check_ptr(subgraph, ptr, number)?;
+                    // We don't have a way here to look the block hash up from
+                    // the database, and even if we did, there is no guarantee
+                    // that we have the block in our cache. We therefore
+                    // always return an all zeroes hash when users specify
+                    // a block number
+                    // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
+                    Ok(BlockPtr::from((web3::types::H256::zero(), number as u64)))
+                }),
+            BlockConstraint::Min(number) => store
+                .block_ptr()
+                .map_err(|e| StoreError::from(e).into())
+                .and_then(|ptr| check_ptr(subgraph, ptr, number)),
             BlockConstraint::Latest => store
                 .block_ptr()
                 .map_err(|e| StoreError::from(e).into())
