@@ -1556,7 +1556,7 @@ fn query_at_block_with_vars() {
         ) {
             let query =
                 "query by_nr($block: Int!) { musicians(block: { number_gte: $block }) { id } }";
-            let var = Some(("block", q::Value::Int(q::Number::from(block))));
+            let var = Some(("block", r::Value::Int(block.into())));
 
             check_musicians_at(&deployment.hash, query, var, expected, qid).await;
         }
