@@ -50,6 +50,48 @@ pub(crate) fn parse_field_as_filter(key: &str) -> (String, FilterOp) {
     (key.trim_end_matches(suffix).to_owned(), op)
 }
 
+/// An `ObjectType` with `Hash` and `Eq` derived from the name.
+#[derive(Clone, Debug)]
+pub(crate) struct ObjectCondition<'a>(&'a s::ObjectType);
+
+impl<'a> Ord for ObjectCondition<'a> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.name.cmp(&other.0.name)
+    }
+}
+
+impl<'a> PartialOrd for ObjectCondition<'a> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.0.name.cmp(&other.0.name))
+    }
+}
+
+impl std::hash::Hash for ObjectCondition<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.name.hash(state)
+    }
+}
+
+impl PartialEq for ObjectCondition<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.name.eq(&other.0.name)
+    }
+}
+
+impl Eq for ObjectCondition<'_> {}
+
+impl<'a> From<&'a s::ObjectType> for ObjectCondition<'a> {
+    fn from(object: &'a s::ObjectType) -> Self {
+        ObjectCondition(object)
+    }
+}
+
+impl<'a> From<ObjectCondition<'a>> for ObjectOrInterface<'a> {
+    fn from(cond: ObjectCondition<'a>) -> Self {
+        ObjectOrInterface::Object(cond.0)
+    }
+}
+
 pub fn get_root_query_type_def(schema: &Document) -> Option<&TypeDefinition> {
     schema.definitions.iter().find_map(|d| match d {
         Definition::TypeDefinition(def @ TypeDefinition::Object(_)) => match def {
