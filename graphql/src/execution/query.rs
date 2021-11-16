@@ -85,18 +85,15 @@ struct SelectedFields<'a>(&'a a::SelectionSet);
 impl<'a> std::fmt::Display for SelectedFields<'a> {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         let mut first = true;
-        for item in self.0.selections() {
-            match item {
-                a::Selection::Field(field) => {
-                    if !first {
-                        write!(fmt, ";")?;
-                    }
-                    first = false;
-                    write!(fmt, "{}", field.alias.as_ref().unwrap_or(&field.name))?
+        for (name, fields) in self.0.fields() {
+            write!(fmt, "{}:", name)?;
+            for field in fields {
+                if first {
+                    write!(fmt, "{}", field.response_key())?;
+                } else {
+                    write!(fmt, ";{}", field.response_key())?;
                 }
-                a::Selection::FragmentSpread(_) | a::Selection::InlineFragment(_) => {
-                    /* nothing */
-                }
+                first = false;
             }
         }
         if first {
@@ -126,7 +123,6 @@ pub struct Query {
 
     start: Instant,
 
-    pub(crate) fragments: HashMap<String, a::FragmentDefinition>,
     kind: Kind,
 
     /// Used only for logging; if logging is configured off, these will
@@ -209,6 +205,10 @@ impl Query {
         ));
 
         let start = Instant::now();
+        let root_type = match kind {
+            Kind::Query => schema.document().get_root_query_type().unwrap(),
+            Kind::Subscription => schema.document().get_root_subscription_type().unwrap(),
+        };
         // Use an intermediate struct so we can modify the query before
         // enclosing it in an Arc
         let raw_query = RawQuery {
@@ -216,6 +216,7 @@ impl Query {
             variables,
             selection_set,
             fragments,
+            root_type,
         };
 
         // It's important to check complexity first, so `validate_fields`
@@ -224,11 +225,10 @@ impl Query {
         // checks that `check_complexity` performs pass successfully
         let _ = raw_query.check_complexity(max_complexity, max_depth)?;
         raw_query.validate_fields()?;
-        let (selection_set, fragments) = raw_query.expand_variables()?;
+        let selection_set = raw_query.convert()?;
 
         let query = Self {
             schema,
-            fragments,
             selection_set: Arc::new(selection_set),
             shape_hash: query.shape_hash,
             kind,
@@ -252,17 +252,12 @@ impl Query {
         &self,
     ) -> Result<HashMap<BlockConstraint, (a::SelectionSet, ErrorPolicy)>, Vec<QueryExecutionError>>
     {
-        use a::Selection::Field;
-
         let mut bcs = HashMap::new();
         let mut errors = Vec::new();
 
-        for field in self.selection_set.selections().filter_map(|sel| match sel {
-            Field(f) => Some(f),
-            _ => None,
-        }) {
-            let query_ty = self.schema.query_type.as_ref();
-            let args = match crate::execution::coerce_argument_values(self, query_ty, field) {
+        let root_type = self.schema.query_type.as_ref();
+        for field in self.selection_set.fields_for(root_type) {
+            let args = match crate::execution::coerce_argument_values(self, root_type, field) {
                 Ok(args) => args,
                 Err(errs) => {
                     errors.extend(errs);
@@ -298,7 +293,7 @@ impl Query {
                     field_error_policy,
                 )
             });
-            selection_set.push(field.clone());
+            selection_set.push(field);
             if field_error_policy == ErrorPolicy::Deny {
                 *error_policy = ErrorPolicy::Deny;
             }
@@ -308,12 +303,6 @@ impl Query {
         } else {
             Ok(bcs)
         }
-    }
-
-    /// Should only be called for fragments that exist in the query, and therefore have been
-    /// validated to exist. Panics otherwise.
-    pub fn get_fragment(&self, name: &str) -> &a::FragmentDefinition {
-        self.fragments.get(name).unwrap()
     }
 
     /// Return `true` if this is a query, and not a subscription or
@@ -449,7 +438,7 @@ fn coerce_variable(
     })
 }
 
-struct RawQuery {
+struct RawQuery<'s> {
     /// The schema against which to execute the query
     schema: Arc<ApiSchema>,
     /// The variables for the query, coerced into proper values
@@ -458,9 +447,10 @@ struct RawQuery {
     selection_set: q::SelectionSet,
 
     fragments: HashMap<String, q::FragmentDefinition>,
+    root_type: &'s s::ObjectType,
 }
 
-impl RawQuery {
+impl<'s> RawQuery<'s> {
     fn check_complexity(
         &self,
         max_complexity: Option<u64>,
@@ -698,191 +688,251 @@ impl RawQuery {
             })
     }
 
-    fn expand_variables(
-        self,
-    ) -> Result<(a::SelectionSet, HashMap<String, a::FragmentDefinition>), QueryExecutionError>
-    {
-        fn expand_field(
-            field: q::Field,
-            vars: &HashMap<String, r::Value>,
-        ) -> Result<a::Field, QueryExecutionError> {
-            let q::Field {
-                position,
-                alias,
-                name,
-                arguments,
-                directives,
-                selection_set,
-            } = field;
-            let arguments = expand_arguments(arguments, &position, vars)?;
-            let directives = expand_directives(directives, vars)?;
-            let selection_set = expand_selection_set(selection_set, vars)?;
-            Ok(a::Field {
-                position,
-                alias,
-                name,
-                arguments,
-                directives,
-                selection_set,
-            })
-        }
+    fn convert(self) -> Result<a::SelectionSet, QueryExecutionError> {
+        let RawQuery {
+            schema,
+            variables,
+            selection_set,
+            fragments,
+            root_type,
+        } = self;
 
-        fn expand_selection_set(
-            set: q::SelectionSet,
-            vars: &HashMap<String, r::Value>,
-        ) -> Result<a::SelectionSet, QueryExecutionError> {
-            let q::SelectionSet { span, items } = set;
-            let items = items
-                .into_iter()
-                .map(|sel| match sel {
-                    q::Selection::Field(field) => {
-                        expand_field(field, vars).map(a::Selection::Field)
-                    }
-                    q::Selection::FragmentSpread(spread) => {
-                        let q::FragmentSpread {
-                            position,
-                            fragment_name,
-                            directives,
-                        } = spread;
-                        expand_directives(directives, vars).map(|directives| {
-                            a::Selection::FragmentSpread(a::FragmentSpread {
-                                position,
-                                fragment_name,
-                                directives,
-                            })
-                        })
-                    }
-                    q::Selection::InlineFragment(frag) => {
-                        let q::InlineFragment {
-                            position,
-                            type_condition,
-                            directives,
-                            selection_set,
-                        } = frag;
-                        expand_directives(directives, vars).and_then(|directives| {
-                            expand_selection_set(selection_set, vars).map(|selection_set| {
-                                let type_condition = type_condition.map(|type_condition| {
-                                    let q::TypeCondition::On(name) = type_condition;
-                                    a::TypeCondition::On(name)
-                                });
-                                a::Selection::InlineFragment(a::InlineFragment {
-                                    position,
-                                    type_condition,
-                                    directives,
-                                    selection_set,
-                                })
-                            })
-                        })
-                    }
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(a::SelectionSet::new(span, items))
-        }
+        let transform = Transform {
+            schema,
+            variables,
+            fragments,
+        };
+        transform.expand_selection_set(selection_set, &a::ObjectTypeSet::Any, root_type.into())
+    }
+}
 
-        fn expand_directives(
-            dirs: Vec<q::Directive>,
-            vars: &HashMap<String, r::Value>,
-        ) -> Result<Vec<a::Directive>, QueryExecutionError> {
-            dirs.into_iter()
-                .map(|dir| {
-                    let q::Directive {
-                        name,
-                        position,
-                        arguments,
-                    } = dir;
-                    expand_arguments(arguments, &position, vars).map(|arguments| a::Directive {
+struct Transform {
+    schema: Arc<ApiSchema>,
+    variables: HashMap<String, r::Value>,
+    fragments: HashMap<String, q::FragmentDefinition>,
+}
+
+impl Transform {
+    fn variable(&self, name: &str, pos: &Pos) -> Result<r::Value, QueryExecutionError> {
+        self.variables
+            .get(name)
+            .map(|value| value.clone())
+            .ok_or_else(|| QueryExecutionError::MissingVariableError(pos.clone(), name.to_string()))
+    }
+
+    /// Interpolate variable references in the arguments `args`
+    fn interpolate_arguments(
+        &self,
+        args: Vec<(String, q::Value)>,
+        pos: &Pos,
+    ) -> Result<Vec<(String, r::Value)>, QueryExecutionError> {
+        args.into_iter()
+            .map(|(name, val)| self.interpolate_value(val, pos).map(|val| (name, val)))
+            .collect()
+    }
+
+    /// Turn `value` into an `r::Value` by resolving variable references
+    fn interpolate_value(
+        &self,
+        value: q::Value,
+        pos: &Pos,
+    ) -> Result<r::Value, QueryExecutionError> {
+        match value {
+            q::Value::Variable(var) => self.variable(&var, pos),
+            q::Value::Int(ref num) => Ok(r::Value::Int(
+                num.as_i64().expect("q::Value::Int contains an i64"),
+            )),
+            q::Value::Float(f) => Ok(r::Value::Float(f)),
+            q::Value::String(s) => Ok(r::Value::String(s)),
+            q::Value::Boolean(b) => Ok(r::Value::Boolean(b)),
+            q::Value::Null => Ok(r::Value::Null),
+            q::Value::Enum(s) => Ok(r::Value::Enum(s)),
+            q::Value::List(vals) => {
+                let vals: Vec<_> = vals
+                    .into_iter()
+                    .map(|val| self.interpolate_value(val, pos))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(r::Value::List(vals))
+            }
+            q::Value::Object(map) => {
+                let mut rmap = BTreeMap::new();
+                for (key, value) in map.into_iter() {
+                    let value = self.interpolate_value(value, pos)?;
+                    rmap.insert(key, value);
+                }
+                Ok(r::Value::object(rmap))
+            }
+        }
+    }
+
+    /// Interpolate variable references in directives. Return the directives
+    /// and a boolean indicating whether the element these directives are
+    /// attached to should be skipped
+    fn interpolate_directives(
+        &self,
+        dirs: Vec<q::Directive>,
+    ) -> Result<(Vec<a::Directive>, bool), QueryExecutionError> {
+        let dirs = dirs
+            .into_iter()
+            .map(|dir| {
+                let q::Directive {
+                    name,
+                    position,
+                    arguments,
+                } = dir;
+                self.interpolate_arguments(arguments, &position)
+                    .map(|arguments| a::Directive {
                         name,
                         position,
                         arguments,
                     })
-                })
-                .collect()
-        }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let skip = dirs.iter().any(|dir| dir.skip());
+        Ok((dirs, skip))
+    }
 
-        fn expand_arguments(
-            args: Vec<(String, q::Value)>,
-            pos: &Pos,
-            vars: &HashMap<String, r::Value>,
-        ) -> Result<Vec<(String, r::Value)>, QueryExecutionError> {
-            args.into_iter()
-                .map(|(name, val)| expand_value(val, pos, vars).map(|val| (name, val)))
-                .collect()
-        }
-
-        fn expand_value(
-            value: q::Value,
-            pos: &Pos,
-            vars: &HashMap<String, r::Value>,
-        ) -> Result<r::Value, QueryExecutionError> {
-            match value {
-                q::Value::Variable(var) => match vars.get(&var) {
-                    Some(val) => Ok(val.clone()),
-                    None => Err(QueryExecutionError::MissingVariableError(
-                        pos.clone(),
-                        var.to_string(),
-                    )),
-                },
-                q::Value::Int(ref num) => Ok(r::Value::Int(
-                    num.as_i64().expect("q::Value::Int contains an i64"),
-                )),
-                q::Value::Float(f) => Ok(r::Value::Float(f)),
-                q::Value::String(s) => Ok(r::Value::String(s)),
-                q::Value::Boolean(b) => Ok(r::Value::Boolean(b)),
-                q::Value::Null => Ok(r::Value::Null),
-                q::Value::Enum(s) => Ok(r::Value::Enum(s)),
-                q::Value::List(vals) => {
-                    let vals: Vec<_> = vals
-                        .into_iter()
-                        .map(|val| expand_value(val, pos, vars))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    Ok(r::Value::List(vals))
-                }
-                q::Value::Object(map) => {
-                    let mut rmap = BTreeMap::new();
-                    for (key, value) in map.into_iter() {
-                        let value = expand_value(value, pos, vars)?;
-                        rmap.insert(key, value);
-                    }
-                    Ok(r::Value::object(rmap))
-                }
-            }
-        }
-
-        fn expand_fragments(
-            fragments: HashMap<String, q::FragmentDefinition>,
-            vars: &HashMap<String, r::Value>,
-        ) -> Result<HashMap<String, a::FragmentDefinition>, QueryExecutionError> {
-            let mut new_fragments = HashMap::new();
-            for (type_name, def) in fragments {
-                let q::FragmentDefinition {
-                    position,
-                    name,
-                    type_condition,
-                    directives,
-                    selection_set,
-                } = def;
-                let directives = expand_directives(directives, vars)?;
-                let selection_set = expand_selection_set(selection_set, vars)?;
-                let def = a::FragmentDefinition {
-                    position,
-                    name,
-                    type_condition: type_condition.into(),
-                    directives,
-                    selection_set,
-                };
-                new_fragments.insert(type_name, def);
-            }
-            Ok(new_fragments)
-        }
-
-        let RawQuery {
-            schema: _,
-            variables,
+    /// Expand fragments and interpolate variables in a field. Return `None`
+    /// if the field should be skipped
+    fn expand_field(
+        &self,
+        field: q::Field,
+        parent_type: ObjectOrInterface<'_>,
+    ) -> Result<Option<a::Field>, QueryExecutionError> {
+        let q::Field {
+            position,
+            alias,
+            name,
+            arguments,
+            directives,
             selection_set,
-            fragments,
-        } = self;
-        expand_selection_set(selection_set, &variables).and_then(|selection_set| {
-            expand_fragments(fragments, &variables).map(|fragments| (selection_set, fragments))
-        })
+        } = field;
+
+        let (directives, skip) = self.interpolate_directives(directives)?;
+        if skip {
+            return Ok(None);
+        }
+
+        let arguments = self.interpolate_arguments(arguments, &position)?;
+        let selection_set = if selection_set.items.is_empty() {
+            a::SelectionSet::new(vec![])
+        } else {
+            let field_type = parent_type.field(&name).expect("field names are valid");
+            let ty = field_type.field_type.get_base_type();
+            let type_set = a::ObjectTypeSet::from_name(&self.schema.schema, ty)?;
+            let ty = self.schema.document().object_or_interface(ty).unwrap();
+            self.expand_selection_set(selection_set, &type_set, ty)?
+        };
+
+        Ok(Some(a::Field {
+            position,
+            alias,
+            name,
+            arguments,
+            directives,
+            selection_set,
+        }))
+    }
+
+    /// Expand fragments and interpolate variables in a selection set
+    fn expand_selection_set(
+        &self,
+        set: q::SelectionSet,
+        type_set: &a::ObjectTypeSet,
+        ty: ObjectOrInterface<'_>,
+    ) -> Result<a::SelectionSet, QueryExecutionError> {
+        let q::SelectionSet { span: _, items } = set;
+        // check_complexity already checked for cycles in fragment
+        // expansion, i.e. situations where a named fragment includs itself
+        // recursively. We still want to guard against spreading the same
+        // fragment twice at the same level in the query
+        let mut visited_fragments = HashSet::new();
+
+        // All the types that could possibly be returned by this selection set
+        let types = type_set.type_names(&self.schema.schema, ty)?;
+        let mut newset = a::SelectionSet::new(types);
+
+        for sel in items {
+            match sel {
+                q::Selection::Field(field) => {
+                    if let Some(field) = self.expand_field(field, ty)? {
+                        newset.push(&field);
+                    }
+                }
+                q::Selection::FragmentSpread(spread) => {
+                    // TODO: we ignore the directives here (and so did the
+                    // old implementation), but that seems wrong
+                    let q::FragmentSpread {
+                        position: _,
+                        fragment_name,
+                        directives: _,
+                    } = spread;
+                    let frag = self.fragments.get(&fragment_name).unwrap();
+                    if visited_fragments.insert(fragment_name) {
+                        let q::FragmentDefinition {
+                            position: _,
+                            name: _,
+                            type_condition,
+                            directives,
+                            selection_set,
+                        } = frag;
+                        self.expand_fragment(
+                            directives.clone(),
+                            Some(type_condition),
+                            type_set,
+                            selection_set.clone(),
+                            ty,
+                            &mut newset,
+                        )?;
+                    }
+                }
+                q::Selection::InlineFragment(frag) => {
+                    let q::InlineFragment {
+                        position: _,
+                        type_condition,
+                        directives,
+                        selection_set,
+                    } = frag;
+                    self.expand_fragment(
+                        directives,
+                        type_condition.as_ref(),
+                        type_set,
+                        selection_set,
+                        ty,
+                        &mut newset,
+                    )?;
+                }
+            }
+        }
+        Ok(newset)
+    }
+
+    fn expand_fragment(
+        &self,
+        directives: Vec<q::Directive>,
+        frag_cond: Option<&q::TypeCondition>,
+        type_set: &a::ObjectTypeSet,
+        selection_set: q::SelectionSet,
+        ty: ObjectOrInterface,
+        newset: &mut a::SelectionSet,
+    ) -> Result<(), QueryExecutionError> {
+        let (directives, skip) = self.interpolate_directives(directives)?;
+        // Field names in fragment spreads refer to this type, which will
+        // usually be different from the outer type
+        let ty = match frag_cond {
+            Some(q::TypeCondition::On(name)) => self
+                .schema
+                .document()
+                .object_or_interface(name)
+                .expect("type names on fragment spreads are valid"),
+            None => ty,
+        };
+        if !skip {
+            let type_set =
+                a::ObjectTypeSet::convert(&self.schema.schema, frag_cond)?.intersect(type_set);
+            let selection_set = self.expand_selection_set(selection_set, &type_set, ty)?;
+            newset.merge(selection_set, directives);
+        }
+        Ok(())
     }
 }
