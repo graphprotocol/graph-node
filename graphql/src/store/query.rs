@@ -7,7 +7,7 @@ use graph::{components::store::EntityType, data::graphql::ObjectOrInterface};
 
 use crate::execution::ast as a;
 use crate::schema::ast as sast;
-use crate::store::prefetch::ObjectCondition;
+use crate::schema::ast::ObjectCondition;
 
 #[derive(Debug)]
 enum OrderDirection {
@@ -18,7 +18,7 @@ enum OrderDirection {
 /// Builds a EntityQuery from GraphQL arguments.
 ///
 /// Panics if `entity` is not present in `schema`.
-pub fn build_query<'a>(
+pub(crate) fn build_query<'a>(
     entity: impl Into<ObjectOrInterface<'a>>,
     block: BlockNumber,
     arguments: &HashMap<&str, r::Value>,

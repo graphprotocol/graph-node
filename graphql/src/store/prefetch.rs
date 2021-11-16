@@ -27,7 +27,8 @@ use graph::{
 use crate::execution::{ast as a, ExecutionContext, Resolver};
 use crate::runner::ResultSizeMetrics;
 use crate::schema::ast as sast;
-use crate::store::{build_query, StoreResolver};
+use crate::store::query::build_query;
+use crate::store::StoreResolver;
 
 lazy_static! {
     static ref ARG_FIRST: String = String::from("first");
@@ -53,42 +54,6 @@ type GroupedFieldSet<'a> = IndexMap<&'a str, CollectedResponseKey<'a>>;
 /// Used for associating objects or interfaces and the field names used in `orderBy` query field
 /// attributes.
 type ComplementaryFields<'a> = BTreeMap<ObjectOrInterface<'a>, String>;
-
-/// An `ObjectType` with `Hash` and `Eq` derived from the name.
-#[derive(Clone, Debug)]
-pub struct ObjectCondition<'a>(&'a s::ObjectType);
-
-impl<'a> Ord for ObjectCondition<'a> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.name.cmp(&other.0.name)
-    }
-}
-
-impl<'a> PartialOrd for ObjectCondition<'a> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.0.name.cmp(&other.0.name))
-    }
-}
-
-impl std::hash::Hash for ObjectCondition<'_> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.name.hash(state)
-    }
-}
-
-impl PartialEq for ObjectCondition<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.name.eq(&other.0.name)
-    }
-}
-
-impl Eq for ObjectCondition<'_> {}
-
-impl<'a> From<&'a s::ObjectType> for ObjectCondition<'a> {
-    fn from(object: &'a s::ObjectType) -> Self {
-        ObjectCondition(object)
-    }
-}
 
 /// Intermediate data structure to hold the results of prefetching entities
 /// and their nested associations. For each association of `entity`, `children`
@@ -717,7 +682,7 @@ fn execute_selection_set<'a>(
 struct CollectedResponseKey<'a> {
     iface_cond: Option<&'a s::InterfaceType>,
     iface_fields: Vec<&'a a::Field>,
-    obj_types: IndexMap<ObjectCondition<'a>, Vec<&'a a::Field>>,
+    obj_types: IndexMap<sast::ObjectCondition<'a>, Vec<&'a a::Field>>,
     collected_column_names: CollectedAttributeNames<'a>,
 }
 
@@ -745,10 +710,7 @@ impl<'a> CollectedResponseKey<'a> {
                             self.iface_fields.push(field);
                         }
                         ObjectOrInterface::Object(o) => {
-                            self.obj_types
-                                .entry(ObjectCondition(o))
-                                .or_default()
-                                .push(field);
+                            self.obj_types.entry(o.into()).or_default().push(field);
                         }
                     }
                 }
@@ -776,11 +738,7 @@ impl<'a> IntoIterator for CollectedResponseKey<'a> {
             self.iface_cond
                 .map(|cond| (ObjectOrInterface::Interface(cond), iface_fields))
                 .into_iter()
-                .chain(
-                    self.obj_types
-                        .into_iter()
-                        .map(|(c, f)| (ObjectOrInterface::Object(c.0), f)),
-                ),
+                .chain(self.obj_types.into_iter().map(|(c, f)| (c.into(), f))),
         )
     }
 }
@@ -1057,7 +1015,7 @@ fn fetch(
 
 /// Represents a finished column collection operation, mapping each object type to the final set of
 /// selected SQL columns.
-type AttributeNamesByObjectType<'a> = BTreeMap<ObjectCondition<'a>, AttributeNames>;
+type AttributeNamesByObjectType<'a> = BTreeMap<sast::ObjectCondition<'a>, AttributeNames>;
 
 #[derive(Debug, Default, Clone)]
 struct CollectedAttributeNames<'a>(HashMap<ObjectOrInterface<'a>, AttributeNames>);
@@ -1110,12 +1068,12 @@ impl<'a> CollectedAttributeNames<'a> {
 
     /// Helper function for handling insertion on the `AttributeNamesByObjectType` struct.
     fn upsert(
-        map: &mut BTreeMap<ObjectCondition<'a>, AttributeNames>,
+        map: &mut BTreeMap<sast::ObjectCondition<'a>, AttributeNames>,
         object: &'a s::ObjectType,
         column_names: AttributeNames,
     ) {
         use std::collections::btree_map::Entry;
-        let key = ObjectCondition(object);
+        let key = object.into();
         let column_names = filter_derived_fields(column_names, object);
         match map.entry(key) {
             Entry::Occupied(mut entry) => {
