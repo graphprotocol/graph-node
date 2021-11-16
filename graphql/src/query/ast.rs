@@ -62,63 +62,6 @@ pub fn get_argument_value<'a>(arguments: &'a [(String, Value)], name: &str) -> O
     arguments.iter().find(|(n, _)| n == name).map(|(_, v)| v)
 }
 
-/// Returns true if a selection should be skipped (as per the `@skip` directive).
-pub fn skip_selection(selection: &Selection) -> bool {
-    match get_directive(selection, "skip".to_string()) {
-        Some(directive) => match get_argument_value(&directive.arguments, "if") {
-            Some(val) => match val {
-                // Skip if @skip(if: true)
-                Value::Boolean(skip_if) => *skip_if,
-
-                Value::Variable(_) => unreachable!("variables have already been resolved"),
-
-                _ => false,
-            },
-            None => true,
-        },
-        None => false,
-    }
-}
-
-/// Returns true if a selection should be included (as per the `@include` directive).
-pub fn include_selection(selection: &Selection) -> bool {
-    match get_directive(selection, "include".to_string()) {
-        Some(directive) => match get_argument_value(&directive.arguments, "if") {
-            Some(val) => match val {
-                // Include if @include(if: true)
-                Value::Boolean(include) => *include,
-
-                Value::Variable(_) => unreachable!("variables have already been resolved"),
-
-                _ => false,
-            },
-            None => true,
-        },
-        None => true,
-    }
-}
-
-/// Returns the response key of a field, which is either its name or its alias (if there is one).
-pub fn get_response_key(field: &Field) -> &str {
-    field
-        .alias
-        .as_ref()
-        .map(Deref::deref)
-        .unwrap_or(field.name.as_str())
-}
-
-/// Returns up the fragment with the given name, if it exists.
-pub fn get_fragment<'a>(document: &'a Document, name: &String) -> Option<&'a FragmentDefinition> {
-    document
-        .definitions
-        .iter()
-        .filter_map(|d| match d {
-            Definition::Fragment(fd) => Some(fd),
-            _ => None,
-        })
-        .find(|fd| &fd.name == name)
-}
-
 /// Returns the variable definitions for an operation.
 pub fn get_variable_definitions(
     operation: &OperationDefinition,
