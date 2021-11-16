@@ -11,6 +11,12 @@ lazy_static::lazy_static! {
         .unwrap_or("5".into())
         .parse::<u64>()
         .expect("invalid GRAPH_ELASTIC_SEARCH_FLUSH_INTERVAL_SECS"));
+
+    static ref ES_MAX_RETRIES: usize =
+        std::env::var("GRAPH_ELASTIC_SEARCH_MAX_RETRIES")
+        .unwrap_or("5".into())
+        .parse::<usize>()
+        .expect("invalid GRAPH_ELASTIC_SEARCH_MAX_RETRIES");
 }
 
 /// Configuration for component-specific logging to Elasticsearch.
@@ -73,6 +79,7 @@ impl LoggerFactory {
                                     custom_id_key: String::from("componentId"),
                                     custom_id_value: component.to_string(),
                                     flush_interval: *ES_FLUSH_INTERVAL,
+                                    max_retries: *ES_MAX_RETRIES,
                                 },
                                 term_logger.clone(),
                             ),
@@ -102,6 +109,7 @@ impl LoggerFactory {
                             custom_id_key: String::from("subgraphId"),
                             custom_id_value: loc.hash.to_string(),
                             flush_interval: *ES_FLUSH_INTERVAL,
+                            max_retries: *ES_MAX_RETRIES,
                         },
                         term_logger.clone(),
                     ),
