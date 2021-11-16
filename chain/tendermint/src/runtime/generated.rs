@@ -2,13 +2,13 @@ use graph_runtime_derive::AscType;
 use graph::runtime::{AscType, AscIndexId, DeterministicHostError, IndexForAscTypeId, AscPtr, AscValue};
 use graph::{semver, anyhow, semver::Version};
 use std::mem::size_of;
-use graph_runtime_wasm::asc_abi::class::{Uint8Array, AscEnum, Array, AscString, AscBigInt};
+use graph_runtime_wasm::asc_abi::class::{Uint8Array, AscEnum, Array, AscBigInt, AscString};
 
 pub(crate) type AscHash = Uint8Array;
 
-pub struct AscEventDataTxArray(pub(crate) Array<AscPtr<AscEventDataTx>>);
+pub struct AscEventTxArray(pub(crate) Array<AscPtr<AscEventTx>>);
 
-impl AscType for AscEventDataTxArray {
+impl AscType for AscEventTxArray {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
         self.0.to_asc_bytes()
     }
@@ -18,8 +18,8 @@ impl AscType for AscEventDataTxArray {
     }
 }
 
-impl AscIndexId for AscEventDataTxArray {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintArrayEventDataTx;
+impl AscIndexId for AscEventTxArray {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintArrayEventTx;
 }
 
 pub struct AscEventArray(pub(crate) Array<AscPtr<AscEvent>>);
@@ -191,16 +191,9 @@ impl Default for AscBlockIDFlag {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEventList {
-    pub newblock: AscPtr<AscEventDataNewBlock>,
-    pub transaction: AscPtr<AscEventDataTxArray>,
-    pub vote: AscPtr<AscEventDataVote>,
-    pub roundstate: AscPtr<AscEventDataRoundState>,
-    pub newround: AscPtr<AscEventDataNewRound>,
-    pub completeproposal: AscPtr<AscEventDataCompleteProposal>,
-    pub validatorsetupdates: AscPtr<AscEventDataValidatorSetUpdates>,
-    pub eventdatastring: AscPtr<AscEventDataString>,
-    pub blocksyncstatus: AscPtr<AscEventDataBlockSyncStatus>,
-    pub statesyncstatus: AscPtr<AscEventDataStateSyncStatus>,
+    pub newblock: AscPtr<AscEventBlock>,
+    pub transaction: AscPtr<AscEventTxArray>,
+    pub validatorsetupdates: AscPtr<AscEventValidatorSetUpdates>,
 }
 
 impl AscIndexId for AscEventList {
@@ -210,15 +203,15 @@ impl AscIndexId for AscEventList {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscEventDataNewBlock {
+pub(crate) struct AscEventBlock {
     pub block: AscPtr<AscBlock>,
     pub block_id: AscPtr<AscBlockID>,
     pub result_begin_block: AscPtr<AscResponseBeginBlock>,
     pub result_end_block: AscPtr<AscResponseEndBlock>,
 }
 
-impl AscIndexId for AscEventDataNewBlock {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventDataNewBlock;
+impl AscIndexId for AscEventBlock {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventBlock;
 }
 
 
@@ -315,15 +308,15 @@ impl AscIndexId for AscCommitSig {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscEventDataNewBlockHeader {
+pub(crate) struct AscEventBlockHeader {
     pub header: AscPtr<AscHeader>,
     pub num_txs: i64,
     pub result_begin_block: AscPtr<AscResponseBeginBlock>,
     pub result_end_block: AscPtr<AscResponseEndBlock>,
 }
 
-impl AscIndexId for AscEventDataNewBlockHeader {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventDataNewBlockHeader;
+impl AscIndexId for AscEventBlockHeader {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventBlockHeader;
 }
 
 
@@ -332,7 +325,7 @@ impl AscIndexId for AscEventDataNewBlockHeader {
 pub(crate) struct AscHeader {
     pub version: AscPtr<AscConsensus>,
     pub chain_id: AscPtr<AscString>,
-    pub height:  AscPtr<AscBigInt>,
+    pub height: AscPtr<AscBigInt>,
     pub time: AscPtr<AscTimestamp>,
     pub last_block_id: AscPtr<AscBlockID>,
     pub last_commit_hash: AscPtr<AscHash>,
@@ -354,7 +347,7 @@ impl AscIndexId for AscHeader {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscConsensus {
-    pub block:  AscPtr<AscBigInt>,
+    pub block: AscPtr<AscBigInt>,
     pub app: AscPtr<AscBigInt>,
 }
 
@@ -413,8 +406,8 @@ impl AscIndexId for AscEvidence {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscDuplicateVoteEvidence {
-    pub vote_a: AscPtr<AscEventDataVote>,
-    pub vote_b: AscPtr<AscEventDataVote>,
+    pub vote_a: AscPtr<AscEventVote>,
+    pub vote_b: AscPtr<AscEventVote>,
     pub total_voting_power: i64,
     pub validator_power: i64,
     pub timestamp: AscPtr<AscTimestamp>,
@@ -427,18 +420,18 @@ impl AscIndexId for AscDuplicateVoteEvidence {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscEventDataTx {
+pub(crate) struct AscEventTx {
     pub tx_result: AscPtr<AscTxResult>,
 }
 
-impl AscIndexId for AscEventDataTx {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventDataTx;
+impl AscIndexId for AscEventTx {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventTx;
 }
 
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscEventDataVote {
+pub(crate) struct AscEventVote {
     pub eventvotetype: AscPtr<AscSignedMsgTypeEnum>,
     pub height: AscPtr<AscBigInt>,
     pub round: i32,
@@ -449,8 +442,8 @@ pub(crate) struct AscEventDataVote {
     pub signature: AscPtr<Uint8Array>,
 }
 
-impl AscIndexId for AscEventDataVote {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventDataVote;
+impl AscIndexId for AscEventVote {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventVote;
 }
 
 
@@ -565,8 +558,8 @@ pub(crate) struct AscResponseDeliverTx {
     pub data: AscPtr<Uint8Array>,
     pub log: AscPtr<AscString>,
     pub info: AscPtr<AscString>,
-    pub gas_wanted: AscPtr<AscBigInt>,
-    pub gas_used: AscPtr<AscBigInt>,
+    pub gas_wanted: i64,
+    pub gas_used: i64,
     pub events: AscPtr<AscEventArray>,
     pub codespace: AscPtr<AscString>,
 }
@@ -593,50 +586,11 @@ impl AscIndexId for AscEvent {
 pub(crate) struct AscEventAttribute {
     pub key: AscPtr<AscString>,
     pub value: AscPtr<AscString>,
-    //pub index: bool,
+    pub index: bool,
 }
 
 impl AscIndexId for AscEventAttribute {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventAttribute;
-}
-
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEventDataRoundState {
-    pub height: AscPtr<AscBigInt>,
-    pub round: i32,
-    pub step: AscPtr<AscString>,
-}
-
-impl AscIndexId for AscEventDataRoundState {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventDataRoundState;
-}
-
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEventDataNewRound {
-    pub height: AscPtr<AscBigInt>,
-    pub round: i32,
-    pub step: AscPtr<AscString>,
-    pub proposer: AscPtr<AscValidatorInfo>,
-}
-
-impl AscIndexId for AscEventDataNewRound {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventDataNewRound;
-}
-
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscValidatorInfo {
-    pub address: AscPtr<AscAddress>,
-    pub index: i32,
-}
-
-impl AscIndexId for AscValidatorInfo {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintValidatorInfo;
 }
 
 
@@ -653,69 +607,20 @@ impl AscIndexId for AscAddress {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscEventDataCompleteProposal {
-    pub height: AscPtr<AscBigInt>,
-    pub round: i32,
-    pub step: AscPtr<AscString>,
-    pub block_id: AscPtr<AscBlockID>,
-}
-
-impl AscIndexId for AscEventDataCompleteProposal {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventDataCompleteProposal;
-}
-
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEventDataValidatorSetUpdates {
+pub(crate) struct AscEventValidatorSetUpdates {
     pub validator_updates: AscPtr<AscValidatorArray>,
 }
 
-impl AscIndexId for AscEventDataValidatorSetUpdates {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventDataValidatorSetUpdates;
-}
-
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEventDataString {
-    pub eventdatastring: AscPtr<AscString>,
-}
-
-impl AscIndexId for AscEventDataString {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventDataString;
-}
-
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEventDataBlockSyncStatus {
-    pub complete: bool,
-    pub height: AscPtr<AscBigInt>,
-}
-
-impl AscIndexId for AscEventDataBlockSyncStatus {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventDataBlockSyncStatus;
-}
-
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEventDataStateSyncStatus {
-    pub complete: bool,
-    pub height: AscPtr<AscBigInt>,
-}
-
-impl AscIndexId for AscEventDataStateSyncStatus {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventDataStateSyncStatus;
+impl AscIndexId for AscEventValidatorSetUpdates {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventValidatorSetUpdates;
 }
 
 
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscTimestamp {
-    pub seconds:  AscPtr<AscBigInt>,
-    pub nanos:  i32,
+    pub seconds: i64,
+    pub nanos: i32,
 }
 
 impl AscIndexId for AscTimestamp {

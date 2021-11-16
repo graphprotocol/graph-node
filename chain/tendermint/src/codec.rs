@@ -9,7 +9,7 @@ use graph::{blockchain::BlockPtr, prelude::BlockNumber};
 use std::convert::TryFrom;
 
 impl EventList {
-    pub fn block(&self) -> &pbcodec::EventDataNewBlock {
+    pub fn block(&self) -> &pbcodec::EventBlock {
         self.newblock.as_ref().unwrap()
     }
 

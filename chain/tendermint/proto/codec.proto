@@ -32,20 +32,13 @@ enum BlockIDFlag {
 }
 
 message EventList {
-  EventDataNewBlock newblock = 1;
-  repeated EventDataTx transaction = 2;
-  EventDataVote vote = 3;
-  EventDataRoundState roundstate = 4;
-  EventDataNewRound newround = 5;
-  EventDataCompleteProposal completeproposal = 6;
-  EventDataValidatorSetUpdates validatorsetupdates = 7;
-  EventDataString eventdatastring = 8;
-  EventDataBlockSyncStatus blocksyncstatus = 9;
-  EventDataStateSyncStatus statesyncstatus = 10;
+  EventBlock newblock = 1;
+  repeated EventTx transaction = 2;
+  EventValidatorSetUpdates validatorsetupdates = 3;
 }
 
-// EventDataNewBlock
-message EventDataNewBlock {
+// EventBlock
+message EventBlock {
   Block block = 1;
   BlockID block_id = 2;  // not present in v0.34.13
   ResponseBeginBlock result_begin_block = 3;
@@ -81,21 +74,20 @@ message Block {
 }
 
 message Commit {
-  uint64 height = 1;  // must be > 0
-  int32 round = 2;    // must be > 0
+  uint64 height = 1; // must be > 0
+  int32 round = 2; // must be > 0
   BlockID block_id = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
-  repeated CommitSig signatures = 4 [(gogoproto.nullable) = false];  // must be > 0
+  repeated CommitSig signatures = 4 [(gogoproto.nullable) = false]; // must be > 0
 }
 
 message CommitSig {
   BlockIDFlag block_id_flag = 1;  // must match those in the enum above
-  Address validator_address =  2;  // hash 256 20 bytes - this is the first 20 characters of a 32-byte -
-                                // key - SHA256(pubkey)[:20]
+  Address validator_address = 2;  // hash 256 20 bytes - this is the first 20 characters of a 32-byte key - SHA256(pubkey)[:20]
   Timestamp timestamp = 3 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
   bytes signature = 4;  // length should be > 0 and < 64
 }
 
-message EventDataNewBlockHeader {
+message EventBlockHeader {
   Header header = 1;
   int64 num_txs = 2;
   ResponseBeginBlock result_begin_block = 3;
@@ -106,18 +98,17 @@ message Header {
   Consensus version = 1 [(gogoproto.nullable) = false];
   string chain_id = 2 [(gogoproto.customname) = "ChainID"];
   uint64 height = 3;
-  Timestamp time = 4 [(gogoproto.nullable) = false];
+  Timestamp time = 4 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
   BlockID last_block_id = 5 [(gogoproto.nullable) = false];
-  bytes last_commit_hash = 6 [(fig.bytetype) = "Hash"];     // hash 256 32 bytes
-  bytes data_hash = 7 [(fig.bytetype) = "Hash"];            // hash 256 32 bytes
-  bytes validators_hash = 8 [(fig.bytetype) = "Hash"];      // hash 256 32 bytes
-  bytes next_validators_hash = 9 [(fig.bytetype) = "Hash"]; // hash 256 32 bytes
-  bytes consensus_hash = 10 [(fig.bytetype) = "Hash"];      // hash 256 32 bytes
-  bytes app_hash = 11 [(fig.bytetype) ="Hash"];  // determined by application, not a fixed length
+  bytes last_commit_hash = 6 [(fig.bytetype) = "Hash"];  // hash 256 32 bytes
+  bytes data_hash = 7 [(fig.bytetype) = "Hash"];         // hash 256 32 bytes
+  bytes validators_hash = 8 [(fig.bytetype) = "Hash"];   // hash 256 32 bytes
+  bytes next_validators_hash = 9 [(fig.bytetype) = "Hash"];                        // hash 256 32 bytes
+  bytes consensus_hash = 10 [(fig.bytetype) = "Hash"];  // hash 256 32 bytes
+  bytes app_hash = 11 [(fig.bytetype) = "Hash"];  // determined by application, not a fixed length
   bytes last_results_hash = 12 [(fig.bytetype) = "Hash"];  // hash 256 32 bytes - first block will be results of an empty hash
   bytes evidence_hash = 13 [(fig.bytetype) = "Hash"];  // hash sha256 32 bytes
-  Address proposer_address = 14;  // hash 256 20 bytes - this is the first 20 characters
-                        // of a 32-byte key - SHA256(pubkey)[:20]
+  Address proposer_address = 14; // hash 256 20 bytes - this is the first 20 characters of a 32-byte key - SHA256(pubkey)[:20]
 }
 
 message Consensus {
@@ -133,7 +124,7 @@ message BlockID {
 
 message PartSetHeader {
   uint32 total = 1;
-  bytes hash = 2 [(fig.bytetype) = "Hash"];  // hash 256 32 bytes
+  bytes hash = 2 [(fig.bytetype) = "Hash"]; // hash 256 32 bytes
 }
 
 message Data {
@@ -148,22 +139,21 @@ message Evidence {
 }
 
 message DuplicateVoteEvidence {
-  EventDataVote vote_a = 1;
-  EventDataVote vote_b = 2;
+  EventVote vote_a = 1;
+  EventVote vote_b = 2;
   int64 total_voting_power = 3;
   int64 validator_power = 4;
-  Timestamp timestamp = 5
-      [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  Timestamp timestamp = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
 }
 
-// EventDataTx
-message EventDataTx {
+// EventTx
+message EventTx {
   TxResult TxResult = 1;
 }
 
-// EventDataVote
-message EventDataVote {
-  SignedMsgType eventvotetype = 1 [json_name = "type"];   // should be present in the enum at the top of this file
+// EventVote
+message EventVote {
+  SignedMsgType eventvotetype = 1 [json_name = "type"]; // should be present in the enum at the top of this file
   uint64 height = 2;  // must be > 0
   int32 round = 3;    // must be > 0
   BlockID block_id = 4 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
@@ -247,60 +237,13 @@ message EventAttribute {
   bool index = 3;
 }
 
-// EventDataRoundState
-message EventDataRoundState {
-  uint64 height = 1;
-  int32 round = 2;
-  string step = 3;
-}
-
-// EventDataNewRound
-message EventDataNewRound {
-  uint64 height = 1;
-  int32 round = 2;
-  string step = 3;
-  ValidatorInfo proposer = 4;
-}
-
-message ValidatorInfo {
-  Address address = 1;
-  int32 index = 2;
-}
-
-// Unsure about this piece, needs confirming
 message Address {
   bytes address = 1;
 }
 
-// EventDataCompleteProposal
-message EventDataCompleteProposal {
-  uint64 height = 1;
-  int32 round = 2;
-  string step = 3;
-  BlockID block_id = 4;
-}
-
-// EventDataValidatorSetUpdates
-message EventDataValidatorSetUpdates {
+// EventValidatorSetUpdates
+message EventValidatorSetUpdates {
   repeated Validator validator_updates = 1;
-}
-
-// EventDataString is just a string and not a struct, unsure how we make a
-// message for this one
-message EventDataString {
-  string eventdatastring = 1;
-}
-
-// EventDataBlockSyncStatus
-message EventDataBlockSyncStatus {
-  bool complete = 1;
-  uint64 height = 2;
-}
-
-// EventDataStateSyncStatus
-message EventDataStateSyncStatus {
-  bool complete = 1;
-  uint64 height = 2;
 }
 
 message Timestamp {

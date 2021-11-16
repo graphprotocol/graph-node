@@ -244,12 +244,12 @@ pub enum IndexForAscTypeId {
     // Generated with the following shell script:
     //
     // ```
-    // cat chain/tendermint/src/runtime/generated.rs | grep IndexForAscTypeId::Tendermint | grep -Eo "Tendermint[a-zA-Z0-9]+" | awk '{for(x=1;x<=NF;x++)sub(/$/,"="++i+90",")}1' | sed 's/=/ = /'
+    // cat chain/tendermint/src/runtime/generated.rs | grep IndexForAscTypeId::Tendermint | grep -Eo "Tendermint[a-zA-Z0-9]+" | awk '{for(x=1;x<=NF;x++)sub(/$/,"="++i+86",")}1' | sed 's/=/ = /'
     // ```
     //
-    // The `90` literal at the end in the `awk` should be replaced with the last element
+    // The `86` literal at the end in the `awk` should be replaced with the last element
     // value in the list above.
-    TendermintArrayEventDataTx = 87,
+    TendermintArrayEventTx = 87,
     TendermintArrayEvent = 88,
     TendermintArrayValidator = 89,
     TendermintArrayCommitSig = 90,
@@ -259,7 +259,7 @@ pub enum IndexForAscTypeId {
     TendermintBlockIDFlagEnum = 94,
     TendermintSignedMsgTypeEnum = 95,
     TendermintEventList = 96,
-    TendermintEventDataNewBlock = 97,
+    TendermintEventBlock = 97,
     TendermintResponseBeginBlock = 98,
     TendermintResponseEndBlock = 99,
     TendermintConsensusParams = 100,
@@ -267,7 +267,7 @@ pub enum IndexForAscTypeId {
     TendermintBlock = 102,
     TendermintCommit = 103,
     TendermintCommitSig = 104,
-    TendermintEventDataNewBlockHeader = 105,
+    TendermintEventBlockHeader = 105,
     TendermintHeader = 106,
     TendermintConsensus = 107,
     TendermintBlockID = 108,
@@ -275,8 +275,8 @@ pub enum IndexForAscTypeId {
     TendermintData = 110,
     TendermintEvidence = 111,
     TendermintDuplicateVoteEvidence = 112,
-    TendermintEventDataTx = 113,
-    TendermintEventDataVote = 114,
+    TendermintEventTx = 113,
+    TendermintEventVote = 114,
     TendermintLightClientAttackEvidence = 115,
     TendermintLightBlock = 116,
     TendermintValidatorSet = 117,
@@ -288,17 +288,10 @@ pub enum IndexForAscTypeId {
     TendermintResponseDeliverTx = 123,
     TendermintEvent = 124,
     TendermintEventAttribute = 125,
-    TendermintEventDataRoundState = 126,
-    TendermintEventDataNewRound = 127,
-    TendermintValidatorInfo = 128,
-    TendermintAddress = 129,
-    TendermintEventDataCompleteProposal = 130,
-    TendermintEventDataValidatorSetUpdates = 131,
-    TendermintEventDataString = 132,
-    TendermintEventDataBlockSyncStatus = 133,
-    TendermintEventDataStateSyncStatus = 134,
-    TendermintTimestamp = 135,
-    Tendermintfig = 136,
+    TendermintAddress = 126,
+    TendermintEventValidatorSetUpdates = 127,
+    TendermintTimestamp = 128,
+    Tendermintfig = 129,
 }
 
 impl ToAscObj<u32> for IndexForAscTypeId {

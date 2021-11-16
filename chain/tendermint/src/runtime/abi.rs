@@ -5,7 +5,7 @@ use crate::codec::{self};
 use graph::prelude::BigInt;
 use graph::runtime::{asc_new, DeterministicHostError, ToAscObj};
 use graph::runtime::{AscHeap, AscPtr};
-use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, EnumPayload, Uint8Array};
+use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, AscBigInt, EnumPayload, Uint8Array};
 
 pub(crate) use super::generated::*;
 
@@ -17,43 +17,8 @@ impl ToAscObj<AscEventList> for codec::EventList {
         Ok(AscEventList {
             newblock: asc_new(heap, self.newblock.as_ref().unwrap())?,
             transaction: asc_new(heap, &self.transaction)?,
-            vote: self
-                .vote
-                .clone()
-                .map(|d| asc_new(heap, &d))
-                .unwrap_or(Ok(AscPtr::null()))?,
-            roundstate: self
-                .roundstate
-                .clone()
-                .map(|d| asc_new(heap, &d))
-                .unwrap_or(Ok(AscPtr::null()))?,
-            newround: self
-                .newround
-                .clone()
-                .map(|d| asc_new(heap, &d))
-                .unwrap_or(Ok(AscPtr::null()))?,
-            completeproposal: self
-                .completeproposal
-                .clone()
-                .map(|d| asc_new(heap, &d))
-                .unwrap_or(Ok(AscPtr::null()))?,
             validatorsetupdates: self
                 .validatorsetupdates
-                .clone()
-                .map(|d| asc_new(heap, &d))
-                .unwrap_or(Ok(AscPtr::null()))?,
-            eventdatastring: self
-                .eventdatastring
-                .clone()
-                .map(|d| asc_new(heap, &d))
-                .unwrap_or(Ok(AscPtr::null()))?,
-            blocksyncstatus: self
-                .blocksyncstatus
-                .clone()
-                .map(|d| asc_new(heap, &d))
-                .unwrap_or(Ok(AscPtr::null()))?,
-            statesyncstatus: self
-                .statesyncstatus
                 .clone()
                 .map(|d| asc_new(heap, &d))
                 .unwrap_or(Ok(AscPtr::null()))?,
@@ -61,12 +26,12 @@ impl ToAscObj<AscEventList> for codec::EventList {
     }
 }
 
-impl ToAscObj<AscEventDataNewBlock> for codec::EventDataNewBlock {
+impl ToAscObj<AscEventBlock> for codec::EventBlock {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
-    ) -> Result<AscEventDataNewBlock, DeterministicHostError> {
-        Ok(AscEventDataNewBlock {
+    ) -> Result<AscEventBlock, DeterministicHostError> {
+        Ok(AscEventBlock {
             block: asc_new(heap, self.block.as_ref().unwrap())?,
             block_id: asc_new(heap, self.block_id.as_ref().unwrap())?,
             result_begin_block: self
@@ -113,7 +78,7 @@ impl ToAscObj<AscHeader> for codec::Header {
         Ok(AscHeader {
             version: asc_new(heap, self.version.as_ref().unwrap())?,
             chain_id: asc_new(heap, &self.chain_id)?,
-            height: asc_new(heap, &BigInt::from(self.height))?,
+            height:  asc_new(heap, &BigInt::from(self.height))?,
             time: asc_new(heap, self.time.as_ref().unwrap())?,
             last_block_id: asc_new(heap, self.last_block_id.as_ref().unwrap())?,
             last_commit_hash: asc_new(heap, &Bytes(&self.last_commit_hash))?,
@@ -135,7 +100,7 @@ impl ToAscObj<AscTimestamp> for codec::Timestamp {
         heap: &mut H,
     ) -> Result<AscTimestamp, DeterministicHostError> {
         Ok(AscTimestamp {
-            seconds: asc_new(heap, &BigInt::from(self.seconds))?,
+            seconds:  self.seconds,
             nanos: self.nanos,
         })
     }
@@ -175,8 +140,8 @@ impl ToAscObj<AscConsensus> for codec::Consensus {
         heap: &mut H,
     ) -> Result<AscConsensus, DeterministicHostError> {
         Ok(AscConsensus {
-            block: asc_new(heap, &BigInt::from(self.block))?,
-            app: asc_new(heap, &BigInt::from(self.app))?,
+            block:   asc_new(heap, &BigInt::from(self.block))?,
+            app:   asc_new(heap, &BigInt::from(self.app))?,
         })
     }
 }
@@ -255,7 +220,7 @@ impl ToAscObj<AscEventAttribute> for codec::EventAttribute {
         Ok(AscEventAttribute {
             key: asc_new(heap, &self.key)?,
             value: asc_new(heap, &self.value)?,
-            // index:  self.index.clone(),  TODO(l): seems broken ?
+            index:  self.index.clone(), // TODO(l): seems broken ?
         })
     }
 }
@@ -320,7 +285,7 @@ impl ToAscObj<AscVersion> for codec::Version {
         heap: &mut H,
     ) -> Result<AscVersion, DeterministicHostError> {
         Ok(AscVersion {
-            app_version: asc_new(heap, &BigInt::from(self.app_version))?,
+            app_version:  asc_new(heap, &BigInt::from(self.app_version))?,
         })
     }
 }
@@ -331,7 +296,7 @@ impl ToAscObj<AscCommit> for codec::Commit {
         heap: &mut H,
     ) -> Result<AscCommit, DeterministicHostError> {
         Ok(AscCommit {
-            height: asc_new(heap, &BigInt::from(self.height))?,
+            height:  asc_new(heap, &BigInt::from(self.height))?,
             round: self.round,
             block_id: asc_new(heap, self.block_id.as_ref().unwrap())?,
             signatures: asc_new(heap, &self.signatures)?,
@@ -444,13 +409,13 @@ impl ToAscObj<AscDuplicateVoteEvidence> for codec::DuplicateVoteEvidence {
     }
 }
 
-impl ToAscObj<AscEventDataVote> for codec::EventDataVote {
+impl ToAscObj<AscEventVote> for codec::EventVote {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
-    ) -> Result<AscEventDataVote, DeterministicHostError> {
-        Ok(AscEventDataVote {
-            height: asc_new(heap, &BigInt::from(self.height))?,
+    ) -> Result<AscEventVote, DeterministicHostError> {
+        Ok(AscEventVote {
+            height:  asc_new(heap, &BigInt::from(self.height))?,
             round: self.round,
             block_id: asc_new(heap, self.block_id.as_ref().unwrap())?,
             timestamp: asc_new(heap, self.timestamp.as_ref().unwrap())?,
@@ -473,23 +438,23 @@ impl ToAscObj<AscEvidenceArray> for Vec<codec::Evidence> {
     }
 }
 
-impl ToAscObj<AscEventDataTxArray> for Vec<codec::EventDataTx> {
+impl ToAscObj<AscEventTxArray> for Vec<codec::EventTx> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
-    ) -> Result<AscEventDataTxArray, DeterministicHostError> {
+    ) -> Result<AscEventTxArray, DeterministicHostError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x)).collect();
         let content = content?;
-        Ok(AscEventDataTxArray(Array::new(&*content, heap)?))
+        Ok(AscEventTxArray(Array::new(&*content, heap)?))
     }
 }
 
-impl ToAscObj<AscEventDataTx> for codec::EventDataTx {
+impl ToAscObj<AscEventTx> for codec::EventTx {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
-    ) -> Result<AscEventDataTx, DeterministicHostError> {
-        Ok(AscEventDataTx {
+    ) -> Result<AscEventTx, DeterministicHostError> {
+        Ok(AscEventTx {
             tx_result: asc_new(heap, self.tx_result.as_ref().unwrap())?,
         })
     }
@@ -519,49 +484,10 @@ impl ToAscObj<AscResponseDeliverTx> for codec::ResponseDeliverTx {
             data: asc_new(heap, &Bytes(&self.data))?,
             log: asc_new(heap, &self.log.clone())?,
             info: asc_new(heap, &self.info.clone())?,
-            gas_wanted: asc_new(heap, &BigInt::from(self.gas_wanted))?,
-            gas_used: asc_new(heap, &BigInt::from(self.gas_used))?,
+            gas_wanted:  self.gas_wanted,
+            gas_used: self.gas_used,
             events: asc_new(heap, &self.events)?,
             codespace: asc_new(heap, &self.codespace.clone())?,
-        })
-    }
-}
-
-impl ToAscObj<AscEventDataRoundState> for codec::EventDataRoundState {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscEventDataRoundState, DeterministicHostError> {
-        Ok(AscEventDataRoundState {
-            height: asc_new(heap, &BigInt::from(self.height))?,
-            round: self.round,
-            step: asc_new(heap, &self.step)?,
-        })
-    }
-}
-
-impl ToAscObj<AscEventDataNewRound> for codec::EventDataNewRound {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscEventDataNewRound, DeterministicHostError> {
-        Ok(AscEventDataNewRound {
-            height: asc_new(heap, &BigInt::from(self.height))?,
-            round: self.round,
-            step: asc_new(heap, &self.step)?,
-            proposer: asc_new(heap, self.proposer.as_ref().unwrap())?,
-        })
-    }
-}
-
-impl ToAscObj<AscValidatorInfo> for codec::ValidatorInfo {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscValidatorInfo, DeterministicHostError> {
-        Ok(AscValidatorInfo {
-            address: asc_new(heap, self.address.as_ref().unwrap())?,
-            index: self.index,
         })
     }
 }
@@ -576,63 +502,13 @@ impl ToAscObj<AscAddress> for codec::Address {
         })
     }
 }
-
-impl ToAscObj<AscEventDataCompleteProposal> for codec::EventDataCompleteProposal {
+impl ToAscObj<AscEventValidatorSetUpdates> for codec::EventValidatorSetUpdates {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
-    ) -> Result<AscEventDataCompleteProposal, DeterministicHostError> {
-        Ok(AscEventDataCompleteProposal {
-            height: asc_new(heap, &BigInt::from(self.height))?,
-            round: self.round,
-            step: asc_new(heap, &self.step)?,
-            block_id: asc_new(heap, self.block_id.as_ref().unwrap())?,
-        })
-    }
-}
-
-impl ToAscObj<AscEventDataValidatorSetUpdates> for codec::EventDataValidatorSetUpdates {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscEventDataValidatorSetUpdates, DeterministicHostError> {
-        Ok(AscEventDataValidatorSetUpdates {
+    ) -> Result<AscEventValidatorSetUpdates, DeterministicHostError> {
+        Ok(AscEventValidatorSetUpdates {
             validator_updates: asc_new(heap, &self.validator_updates)?,
-        })
-    }
-}
-
-impl ToAscObj<AscEventDataString> for codec::EventDataString {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscEventDataString, DeterministicHostError> {
-        Ok(AscEventDataString {
-            eventdatastring: asc_new(heap, &self.eventdatastring)?,
-        })
-    }
-}
-
-impl ToAscObj<AscEventDataBlockSyncStatus> for codec::EventDataBlockSyncStatus {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscEventDataBlockSyncStatus, DeterministicHostError> {
-        Ok(AscEventDataBlockSyncStatus {
-            complete: self.complete,
-            height: asc_new(heap, &BigInt::from(self.height))?,
-        })
-    }
-}
-
-impl ToAscObj<AscEventDataStateSyncStatus> for codec::EventDataStateSyncStatus {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscEventDataStateSyncStatus, DeterministicHostError> {
-        Ok(AscEventDataStateSyncStatus {
-            complete: self.complete,
-            height: asc_new(heap, &BigInt::from(self.height))?,
         })
     }
 }
@@ -648,7 +524,7 @@ impl ToAscObj<AscBlockIDFlagEnum> for BlockIDKind {
             0 => AscBlockIDFlag::BlockIdFlagUnknown,
             1 => AscBlockIDFlag::BlockIdFlagAbsent,
             2 => AscBlockIDFlag::BlockIdFlagCommit,
-            2 => AscBlockIDFlag::BlockIdFlagNil,
+            3 => AscBlockIDFlag::BlockIdFlagNil,
             _ => {
                 return Err(DeterministicHostError(anyhow::format_err!(
                     "Invalid direction value {}",
