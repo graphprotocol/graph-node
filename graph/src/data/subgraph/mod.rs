@@ -207,8 +207,8 @@ impl SubgraphName {
 
         // Parse into components and validate each
         for part in s.split('/') {
-            // Each part must be non-empty and not too long
-            if part.is_empty() || part.len() > 32 {
+            // Each part must be non-empty
+            if part.is_empty() {
                 return Err(());
             }
 
@@ -890,7 +890,7 @@ fn test_subgraph_name_validation() {
     assert!(SubgraphName::new("aaaa+aaaaa").is_err());
     assert!(SubgraphName::new("a/graphql").is_err());
     assert!(SubgraphName::new("graphql/a").is_err());
-    assert!(SubgraphName::new("this-component-is-longer-than-the-length-limit").is_err());
+    assert!(SubgraphName::new("this-component-is-very-long-but-we-dont-care").is_ok());
 }
 
 #[test]
