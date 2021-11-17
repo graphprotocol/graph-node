@@ -546,6 +546,7 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
                             break Poll::Ready(Some(Ok(BlockStreamEvent::Revert(
                                 block,
                                 FirehoseCursor::None,
+                                None,
                             ))));
                         }
                         Poll::Pending => {
