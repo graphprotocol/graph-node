@@ -493,7 +493,7 @@ where
         loop {
             let (block, cursor) = match block_stream.next().await {
                 Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => (block, cursor),
-                Some(Ok(BlockStreamEvent::Revert(subgraph_ptr, _))) => {
+                Some(Ok(BlockStreamEvent::Revert(subgraph_ptr, _, optional_parent_ptr))) => {
                     info!(
                         logger,
                         "Reverting block to get back to main chain";
@@ -502,31 +502,49 @@ where
                     );
 
                     // We would like to revert the DB state to the parent of the current block.
-                    // First, load the block in order to get the parent hash.
-                    if let Err(e) = ctx
-                        .inputs
-                        .triggers_adapter
-                        .parent_ptr(&subgraph_ptr)
-                        .await
-                        .map(|parent_ptr| parent_ptr.expect("genesis block cannot be reverted"))
-                        .and_then(|parent_ptr| {
-                            // Revert entity changes from this block, and update subgraph ptr.
-                            ctx.inputs
-                                .store
-                                .revert_block_operations(parent_ptr)
-                                .map_err(Into::into)
-                        })
-                    {
-                        error!(
-                            &logger,
-                            "Could not revert block. \
-                            The likely cause is the block not being found due to a deep reorg. \
-                            Retrying";
-                            "block_number" => format!("{}", subgraph_ptr.number),
-                            "block_hash" => format!("{}", subgraph_ptr.hash),
-                            "error" => e.to_string(),
-                        );
-                        continue;
+                    match optional_parent_ptr {
+                        Some(parent_ptr) => {
+                            if let Err(e) = ctx.inputs.store.revert_block_operations(parent_ptr) {
+                                error!(
+                                    &logger,
+                                    "Could not revert block. Retrying";
+                                    "block_number" => format!("{}", subgraph_ptr.number),
+                                    "block_hash" => format!("{}", subgraph_ptr.hash),
+                                    "error" => e.to_string(),
+                                );
+                                continue;
+                            }
+                        }
+                        None => {
+                            // First, load the block in order to get the parent hash.
+                            if let Err(e) = ctx
+                                .inputs
+                                .triggers_adapter
+                                .parent_ptr(&subgraph_ptr)
+                                .await
+                                .map(|parent_ptr| {
+                                    parent_ptr.expect("genesis block cannot be reverted")
+                                })
+                                .and_then(|parent_ptr| {
+                                    // Revert entity changes from this block, and update subgraph ptr.
+                                    ctx.inputs
+                                        .store
+                                        .revert_block_operations(parent_ptr)
+                                        .map_err(Into::into)
+                                })
+                            {
+                                error!(
+                                    &logger,
+                                    "Could not revert block. \
+                                    The likely cause is the block not being found due to a deep reorg. \
+                                    Retrying";
+                                    "block_number" => format!("{}", subgraph_ptr.number),
+                                    "block_hash" => format!("{}", subgraph_ptr.hash),
+                                    "error" => e.to_string(),
+                                );
+                                continue;
+                            }
+                        }
                     }
 
                     ctx.block_stream_metrics
