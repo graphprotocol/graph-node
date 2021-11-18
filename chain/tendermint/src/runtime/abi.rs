@@ -18,11 +18,7 @@ impl ToAscObj<AscEventList> for codec::EventList {
         Ok(AscEventList {
             newblock: asc_new(heap, self.newblock.as_ref().unwrap())?,
             transaction: asc_new(heap, &self.transaction)?,
-            validatorsetupdates: self
-                .validatorsetupdates
-                .clone()
-                .map(|d| asc_new(heap, &d))
-                .unwrap_or(Ok(AscPtr::null()))?,
+            validatorsetupdates: asc_new_or_null(heap, &self.validatorsetupdates)?,
         })
     }
 }
@@ -35,16 +31,8 @@ impl ToAscObj<AscEventBlock> for codec::EventBlock {
         Ok(AscEventBlock {
             block: asc_new(heap, self.block.as_ref().unwrap())?,
             block_id: asc_new(heap, self.block_id.as_ref().unwrap())?,
-            result_begin_block: self
-                .result_begin_block
-                .clone()
-                .map(|d| asc_new(heap, &d))
-                .unwrap_or(Ok(AscPtr::null()))?,
-            result_end_block: self
-                .result_end_block
-                .clone()
-                .map(|d| asc_new(heap, &d))
-                .unwrap_or(Ok(AscPtr::null()))?,
+            result_begin_block: asc_new_or_null(heap, &self.result_begin_block)?,
+            result_end_block: asc_new_or_null(heap, &self.result_end_block)?,
         })
     }
 }
