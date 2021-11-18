@@ -24,12 +24,9 @@ impl EventList {
     }
 
     pub fn parent_ptr(&self) -> Option<BlockPtr> {
-        let last_block_ID = self.header().last_block_id.as_ref().unwrap();
-
-        match (last_block_ID.hash.clone(), self.header().height - 1) {
-            (hash, number) => Some(BlockPtr::from((hash, number))),
-            _ => None,
-        }
+        self.header().last_block_id.as_ref().map(|last_block_id| {
+            BlockPtr::from((last_block_id.hash.clone(), self.header().height - 1))
+        })
     }
 }
 
