@@ -1,11 +1,12 @@
 #[path = "../protobuf/fig.tendermint.codec.v1.rs"]
 mod pbcodec;
 
-use crate::codec::{self};
+use crate::codec;
 use graph::prelude::BigInt;
-use graph::runtime::{asc_new, DeterministicHostError, ToAscObj};
-use graph::runtime::{AscHeap, AscPtr};
-use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, AscBigInt, EnumPayload, Uint8Array};
+use graph::runtime::{
+    asc_new, AscHeap, AscIndexId, AscPtr, AscType, DeterministicHostError, ToAscObj,
+};
+use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEnum, EnumPayload, Uint8Array};
 
 pub(crate) use super::generated::*;
 
@@ -78,7 +79,7 @@ impl ToAscObj<AscHeader> for codec::Header {
         Ok(AscHeader {
             version: asc_new(heap, self.version.as_ref().unwrap())?,
             chain_id: asc_new(heap, &self.chain_id)?,
-            height:  asc_new(heap, &BigInt::from(self.height))?,
+            height: asc_new(heap, &BigInt::from(self.height))?,
             time: asc_new(heap, self.time.as_ref().unwrap())?,
             last_block_id: asc_new(heap, self.last_block_id.as_ref().unwrap())?,
             last_commit_hash: asc_new(heap, &Bytes(&self.last_commit_hash))?,
@@ -100,7 +101,7 @@ impl ToAscObj<AscTimestamp> for codec::Timestamp {
         heap: &mut H,
     ) -> Result<AscTimestamp, DeterministicHostError> {
         Ok(AscTimestamp {
-            seconds:  self.seconds,
+            seconds: self.seconds,
             nanos: self.nanos,
         })
     }
@@ -140,8 +141,8 @@ impl ToAscObj<AscConsensus> for codec::Consensus {
         heap: &mut H,
     ) -> Result<AscConsensus, DeterministicHostError> {
         Ok(AscConsensus {
-            block:   asc_new(heap, &BigInt::from(self.block))?,
-            app:   asc_new(heap, &BigInt::from(self.app))?,
+            block: asc_new(heap, &BigInt::from(self.block))?,
+            app: asc_new(heap, &BigInt::from(self.app))?,
         })
     }
 }
@@ -220,7 +221,7 @@ impl ToAscObj<AscEventAttribute> for codec::EventAttribute {
         Ok(AscEventAttribute {
             key: asc_new(heap, &self.key)?,
             value: asc_new(heap, &self.value)?,
-            index:  self.index.clone(), // TODO(l): seems broken ?
+            index: self.index.clone(), // TODO(l): seems broken ?
         })
     }
 }
@@ -285,7 +286,7 @@ impl ToAscObj<AscVersion> for codec::Version {
         heap: &mut H,
     ) -> Result<AscVersion, DeterministicHostError> {
         Ok(AscVersion {
-            app_version:  asc_new(heap, &BigInt::from(self.app_version))?,
+            app_version: asc_new(heap, &BigInt::from(self.app_version))?,
         })
     }
 }
@@ -296,7 +297,7 @@ impl ToAscObj<AscCommit> for codec::Commit {
         heap: &mut H,
     ) -> Result<AscCommit, DeterministicHostError> {
         Ok(AscCommit {
-            height:  asc_new(heap, &BigInt::from(self.height))?,
+            height: asc_new(heap, &BigInt::from(self.height))?,
             round: self.round,
             block_id: asc_new(heap, self.block_id.as_ref().unwrap())?,
             signatures: asc_new(heap, &self.signatures)?,
@@ -372,11 +373,23 @@ impl ToAscObj<AscEvidence> for codec::Evidence {
         &self,
         heap: &mut H,
     ) -> Result<AscEvidence, DeterministicHostError> {
-        let ev = self.sum.as_ref().unwrap();
+        use codec::evidence::Sum;
+
+        let sum = self
+            .sum
+            .as_ref()
+            .ok_or(DeterministicHostError(anyhow::anyhow!(
+                "Evidence has no sum"
+            )))?;
+
+        let (duplicate_vote_evidence, light_client_attack_evidence) = match sum {
+            Sum::DuplicateVoteEvidence(d) => (asc_new(heap, d)?, AscPtr::null()),
+            Sum::LightClientAttackEvidence(l) => (AscPtr::null(), asc_new(heap, l)?),
+        };
 
         Ok(AscEvidence {
-            duplicate_vote_evidence: AscPtr::null(), //asc_new(heap,self.sum.as_ref().unwrap().duplicate_vote_evidence.as_ref().unwrap())?,
-            light_client_attack_evidence: AscPtr::null(), // asc_new(heap,self.sum.unwrap().light_client_attack_evidence.as_ref().unwrap())?,
+            duplicate_vote_evidence,
+            light_client_attack_evidence,
         })
     }
 }
@@ -386,10 +399,25 @@ impl ToAscObj<AscPublicKey> for codec::PublicKey {
         &self,
         heap: &mut H,
     ) -> Result<AscPublicKey, DeterministicHostError> {
+        use codec::public_key::Sum;
+
+        let sum = self
+            .sum
+            .as_ref()
+            .ok_or(DeterministicHostError(anyhow::anyhow!(
+                "PublicKey has no sum"
+            )))?;
+
+        let (ed25519, secp256k1, sr25519) = match sum {
+            Sum::Ed25519(e) => (asc_new(heap, &Bytes(&e))?, AscPtr::null(), AscPtr::null()),
+            Sum::Secp256k1(s) => (AscPtr::null(), asc_new(heap, &Bytes(&s))?, AscPtr::null()),
+            Sum::Sr25519(s) => (AscPtr::null(), AscPtr::null(), asc_new(heap, &Bytes(&s))?),
+        };
+
         Ok(AscPublicKey {
-            ed25519: AscPtr::null(),
-            secp256k1: AscPtr::null(),
-            sr25519: AscPtr::null(),
+            ed25519,
+            secp256k1,
+            sr25519,
         })
     }
 }
@@ -409,13 +437,65 @@ impl ToAscObj<AscDuplicateVoteEvidence> for codec::DuplicateVoteEvidence {
     }
 }
 
+impl ToAscObj<AscLightClientAttackEvidence> for codec::LightClientAttackEvidence {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscLightClientAttackEvidence, DeterministicHostError> {
+        Ok(AscLightClientAttackEvidence {
+            conflicting_block: asc_new_or_null(heap, &self.conflicting_block)?,
+            common_height: self.common_height,
+            byzantine_validators: asc_new(heap, &self.byzantine_validators)?,
+            total_voting_power: self.total_voting_power,
+            timestamp: asc_new_or_null(heap, &self.timestamp)?,
+        })
+    }
+}
+
+impl ToAscObj<AscLightBlock> for codec::LightBlock {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscLightBlock, DeterministicHostError> {
+        Ok(AscLightBlock {
+            signed_header: asc_new_or_null(heap, &self.signed_header)?,
+            validator_set: asc_new_or_null(heap, &self.validator_set)?,
+        })
+    }
+}
+
+impl ToAscObj<AscSignedHeader> for codec::SignedHeader {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscSignedHeader, DeterministicHostError> {
+        Ok(AscSignedHeader {
+            header: asc_new_or_null(heap, &self.header)?,
+            commit: asc_new_or_null(heap, &self.commit)?,
+        })
+    }
+}
+
+impl ToAscObj<AscValidatorSet> for codec::ValidatorSet {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscValidatorSet, DeterministicHostError> {
+        Ok(AscValidatorSet {
+            validators: asc_new(heap, &self.validators)?,
+            proposer: asc_new_or_null(heap, &self.proposer)?,
+            total_voting_power: self.total_voting_power,
+        })
+    }
+}
+
 impl ToAscObj<AscEventVote> for codec::EventVote {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
     ) -> Result<AscEventVote, DeterministicHostError> {
         Ok(AscEventVote {
-            height:  asc_new(heap, &BigInt::from(self.height))?,
+            height: asc_new(heap, &BigInt::from(self.height))?,
             round: self.round,
             block_id: asc_new(heap, self.block_id.as_ref().unwrap())?,
             timestamp: asc_new(heap, self.timestamp.as_ref().unwrap())?,
@@ -484,7 +564,7 @@ impl ToAscObj<AscResponseDeliverTx> for codec::ResponseDeliverTx {
             data: asc_new(heap, &Bytes(&self.data))?,
             log: asc_new(heap, &self.log.clone())?,
             info: asc_new(heap, &self.info.clone())?,
-            gas_wanted:  self.gas_wanted,
+            gas_wanted: self.gas_wanted,
             gas_used: self.gas_used,
             events: asc_new(heap, &self.events)?,
             codespace: asc_new(heap, &self.codespace.clone())?,
@@ -580,6 +660,21 @@ impl ToAscObj<Uint8Array> for Bytes<'_> {
     }
 }
 
+/// Map an optional object to its Asc equivalent if Some, otherwise return null.
+fn asc_new_or_null<H, O, A>(
+    heap: &mut H,
+    object: &Option<O>,
+) -> Result<AscPtr<A>, DeterministicHostError>
+where
+    H: AscHeap + ?Sized,
+    O: ToAscObj<A>,
+    A: AscType + AscIndexId,
+{
+    match object {
+        Some(o) => asc_new(heap, o),
+        None => Ok(AscPtr::null()),
+    }
+}
 /*
 impl ToAscObj<Uint8Array> for Bytes<codec::Address> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
