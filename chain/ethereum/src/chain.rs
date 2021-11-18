@@ -597,13 +597,10 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                     number: block.number as i32,
                 },
                 FirehoseCursor::Some(response.cursor.clone()),
-                match block.header {
-                    Some(header) => Some(BlockPtr {
-                        hash: BlockHash::from(header.parent_hash),
-                        number: (block.number as i32) - 1,
-                    }),
-                    None => None,
-                },
+                Some(BlockPtr {
+                    hash: BlockHash::from(block.header.unwrap().parent_hash),
+                    number: (block.number.checked_sub(1).unwrap() as i32), // Will never receive undo on blocknum 0
+                }),
             )),
 
             bstream::ForkStep::StepIrreversible => {
