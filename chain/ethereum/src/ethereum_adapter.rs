@@ -121,6 +121,11 @@ const ETH_CALL_GAS: u32 = 50_000_000;
 // subgraphs come across other errors. See
 // https://github.com/ethereum/go-ethereum/blob/dfeb2f7e8001aef1005a8d5e1605bae1de0b4f12/core/vm/errors.go#L25-L38
 const GETH_ETH_CALL_ERRORS: &[&str] = &[
+    // Hardhat format.
+    "error: transaction reverted",
+    // Ganache and Moonbeam format.
+    "vm exception while processing transaction: revert",
+    // Geth errors
     "execution reverted",
     "invalid jump destination",
     "invalid opcode",
@@ -477,7 +482,7 @@ impl EthereumAdapter {
         let web3 = self.web3.clone();
 
         // Ganache does not support calls by block hash.
-        // See https://github.com/trufflesuite/ganache-cli/issues/745
+        // See https://github.com/trufflesuite/ganache-cli/issues/973
         let block_id = if !self.supports_eip_1898 {
             BlockId::Number(block_ptr.number.into())
         } else {
@@ -504,8 +509,7 @@ impl EthereumAdapter {
                     .call(req, Some(block_id))
                     .then(|result| {
                         // Try to check if the call was reverted. The JSON-RPC response for reverts is
-                        // not standardized, so we have ad-hoc checks for each of Geth, Parity and
-                        // Ganache.
+                        // not standardized, so we have ad-hoc checks for each Ethereum client.
 
                         // 0xfe is the "designated bad instruction" of the EVM, and Solidity uses it for
                         // asserts.
@@ -521,9 +525,6 @@ impl EthereumAdapter {
                         // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
                         const PARITY_OUT_OF_GAS: &str = "Out of gas";
 
-                        const GANACHE_VM_EXECUTION_ERROR: i64 = -32000;
-                        const GANACHE_REVERT_MESSAGE: &str =
-                            "VM Exception while processing transaction: revert";
                         const PARITY_VM_EXECUTION_ERROR: i64 = -32015;
                         const PARITY_REVERT_PREFIX: &str = "Reverted 0x";
 
@@ -592,14 +593,6 @@ impl EthereumAdapter {
                                         web3::Error::Rpc(rpc_error.clone()),
                                     )),
                                 }
-                            }
-
-                            // Check for Ganache revert.
-                            Err(web3::Error::Rpc(ref rpc_error))
-                                if rpc_error.code.code() == GANACHE_VM_EXECUTION_ERROR
-                                    && rpc_error.message.starts_with(GANACHE_REVERT_MESSAGE) =>
-                            {
-                                Err(EthereumContractCallError::Revert(rpc_error.message.clone()))
                             }
 
                             // The error was not identified as a revert.
