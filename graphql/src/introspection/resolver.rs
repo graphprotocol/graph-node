@@ -1,3 +1,4 @@
+use graph::data::graphql::ext::{FieldExt, TypeDefinitionExt};
 use graphql_parser::Pos;
 use std::collections::{BTreeMap, HashMap};
 
@@ -10,18 +11,21 @@ use crate::schema::ast as sast;
 
 type TypeObjectsMap = BTreeMap<String, r::Value>;
 
+/// Our Schema has the introspection schema mixed in. When we build the
+/// `TypeObjectsMap`, suppress types and fields that belong to the
+/// introspection schema
 fn schema_type_objects(schema: &Schema) -> TypeObjectsMap {
-    sast::get_type_definitions(&schema.document).iter().fold(
-        BTreeMap::new(),
-        |mut type_objects, typedef| {
+    sast::get_type_definitions(&schema.document)
+        .iter()
+        .filter(|def| !def.is_introspection())
+        .fold(BTreeMap::new(), |mut type_objects, typedef| {
             let type_name = sast::get_type_name(typedef);
             if !type_objects.contains_key(type_name) {
                 let type_object = type_definition_object(schema, &mut type_objects, typedef);
                 type_objects.insert(type_name.to_owned(), type_object);
             }
             type_objects
-        },
-    )
+        })
 }
 
 fn type_object(schema: &Schema, type_objects: &mut TypeObjectsMap, t: &s::Type) -> r::Value {
@@ -167,6 +171,7 @@ fn field_objects(
     r::Value::List(
         fields
             .iter()
+            .filter(|field| !field.is_introspection())
             .map(|field| field_object(schema, type_objects, field))
             .collect(),
     )
