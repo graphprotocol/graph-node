@@ -366,25 +366,17 @@ impl<'a> Join<'a> {
     /// Construct a `Join` based on the parent field pointing to the child
     fn new(
         schema: &'a ApiSchema,
-        parent_type: ObjectOrInterface<'a>,
+        parent_type: &'a s::ObjectType,
         child_type: ObjectOrInterface<'a>,
         field_name: &str,
     ) -> Self {
-        let parent_types = parent_type
-            .object_types(schema.schema())
-            .expect("the name of the parent type is valid");
         let child_types = child_type
             .object_types(schema.schema())
             .expect("the name of the child type is valid");
 
-        let conds = parent_types
+        let conds = child_types
             .iter()
-            .flat_map::<Vec<_>, _>(|parent_type| {
-                child_types
-                    .iter()
-                    .map(|child_type| JoinCond::new(parent_type, child_type, field_name))
-                    .collect()
-            })
+            .map(|child_type| JoinCond::new(parent_type, child_type, field_name))
             .collect();
 
         Join { child_type, conds }
@@ -576,7 +568,7 @@ fn execute_selection_set<'a>(
 
             let join = Join::new(
                 ctx.query.schema.as_ref(),
-                object_type.into(),
+                object_type,
                 child_type,
                 &field.name,
             );
