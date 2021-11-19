@@ -264,7 +264,7 @@ where
         ExecutionContext {
             logger: self.logger.cheap_clone(),
             resolver: introspection_resolver,
-            query: self.query.as_introspection_query(),
+            query: self.query.cheap_clone(),
             deadline: self.deadline,
             max_first: std::u32::MAX,
             max_skip: std::u32::MAX,
