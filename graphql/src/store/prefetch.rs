@@ -588,9 +588,9 @@ fn execute_selection_set<'a>(
             // queries.
             let collected_columns =
                 if *DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES {
-                    BTreeMap::new()
+                    SelectedAttributes(BTreeMap::new())
                 } else {
-                    CollectedAttributeNames::consolidate_column_names(schema, &field)?
+                    SelectedAttributes::from_selection_set(schema, field)?
                 };
 
             match execute_field(
@@ -640,7 +640,7 @@ struct CollectedResponseKey<'a> {
     iface_cond: Option<&'a s::InterfaceType>,
     iface_fields: Vec<&'a a::Field>,
     obj_types: IndexMap<sast::ObjectType<'a>, Vec<&'a a::Field>>,
-    collected_column_names: CollectedAttributeNames<'a>,
+    collected_column_names: SelectedAttributes<'a>,
 }
 
 impl<'a> IntoIterator for CollectedResponseKey<'a> {
@@ -669,7 +669,7 @@ fn execute_field(
     join: &Join<'_>,
     field: &a::Field,
     field_definition: &s::Field,
-    collected_column_names: AttributeNamesByObjectType<'_>,
+    selected_attrs: SelectedAttributes<'_>,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     let argument_values = crate::execution::coerce_argument_values(&ctx.query, object_type, field)?;
     let multiplicity = if sast::is_list_or_non_null_list_field(field_definition) {
@@ -690,7 +690,7 @@ fn execute_field(
         ctx.max_first,
         ctx.max_skip,
         ctx.query.query_id.clone(),
-        collected_column_names,
+        selected_attrs,
     )
     .map_err(|e| vec![e])
 }
@@ -710,7 +710,7 @@ fn fetch(
     max_first: u32,
     max_skip: u32,
     query_id: String,
-    collected_column_names: AttributeNamesByObjectType<'_>,
+    selected_attrs: SelectedAttributes<'_>,
 ) -> Result<Vec<Node>, QueryExecutionError> {
     let mut query = build_query(
         join.child_type,
@@ -719,7 +719,7 @@ fn fetch(
         types_for_interface,
         max_first,
         max_skip,
-        collected_column_names,
+        selected_attrs.0,
     )?;
     query.query_id = Some(query_id);
 
@@ -751,30 +751,33 @@ fn fetch(
         .map(|entities| entities.into_iter().map(|entity| entity.into()).collect())
 }
 
-/// Represents a finished column collection operation, mapping each object type to the final set of
-/// selected SQL columns.
-type AttributeNamesByObjectType<'a> = BTreeMap<sast::ObjectType<'a>, AttributeNames>;
-
 #[derive(Debug, Default, Clone)]
-struct CollectedAttributeNames<'a>(HashMap<ObjectOrInterface<'a>, AttributeNames>);
+struct SelectedAttributes<'a>(BTreeMap<sast::ObjectType<'a>, AttributeNames>);
 
-impl<'a> CollectedAttributeNames<'a> {
-    /// Creates a new, combined `CollectedAttributeNames` using drained values from `CollectedAttributeNames`
-    /// scattered across different `CollectedResponseKey`s.
-    fn consolidate_column_names<'schema>(
-        schema: &'schema ApiSchema,
+impl<'a> SelectedAttributes<'a> {
+    /// Extract the attributes we should select from `selection_set`. In
+    /// particular, disregard derived fields since they are not stored
+    fn from_selection_set(
+        schema: &'a ApiSchema,
         field: &a::Field,
-    ) -> Result<AttributeNamesByObjectType<'schema>, Vec<QueryExecutionError>> {
-        let mut map: AttributeNamesByObjectType = BTreeMap::new();
+    ) -> Result<SelectedAttributes<'a>, Vec<QueryExecutionError>> {
+        let mut map = BTreeMap::new();
         for (type_name, fields) in field.selection_set.fields() {
             let object_type = schema
                 .document()
                 .get_object_type_definition(type_name)
                 .expect("selection sets only contain valid object types");
-            let column_names =
-                AttributeNames::Select(fields.map(|field| field.name.clone()).collect());
-            let column_names = filter_derived_fields(column_names, object_type);
-            map.insert(object_type.into(), column_names);
+            let column_names = fields
+                .filter(|field| {
+                    // Keep fields that are not derived and for which we
+                    // can find the field type
+                    sast::get_field(object_type, &field.name)
+                        .map(|field_type| !field_type.is_derived())
+                        .unwrap_or(false)
+                })
+                .map(|field| field.name.clone())
+                .collect();
+            map.insert(object_type.into(), AttributeNames::Select(column_names));
         }
         // We need to also select the `orderBy` field if there is one.
         // Because of how the API Schema is set up, `orderBy` can only have
@@ -794,34 +797,6 @@ impl<'a> CollectedAttributeNames<'a> {
                 .into()]);
             }
         }
-        Ok(map)
-    }
-}
-
-/// Removes all derived fields from a `AttributeNames` collection based on a referential `ObjectType`.
-fn filter_derived_fields(
-    column_names_type: AttributeNames,
-    object: &s::ObjectType,
-) -> AttributeNames {
-    match column_names_type {
-        AttributeNames::All => column_names_type,
-        AttributeNames::Select(sql_column_names) => {
-            let mut filtered = AttributeNames::All;
-            sql_column_names
-                .into_iter()
-                .filter_map(|column_name| {
-                    if let Some(schema_field) = sast::get_field(object, &column_name) {
-                        if !schema_field.is_derived() {
-                            Some(column_name) // field exists and is not derived
-                        } else {
-                            None // field exists and is derived
-                        }
-                    } else {
-                        None // field does not exist
-                    }
-                })
-                .for_each(|col| filtered.add_str(&col));
-            filtered
-        }
+        Ok(SelectedAttributes(map))
     }
 }
