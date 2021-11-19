@@ -5,7 +5,6 @@ use anyhow::Error;
 use graph::blockchain::{Block, TriggerWithHandler};
 use graph::components::store::StoredDynamicDataSource;
 use graph::data::subgraph::{DataSourceContext, Source};
-use graph::prelude::SubgraphManifestValidationError;
 use graph::{
     blockchain::{self, Blockchain},
     prelude::{

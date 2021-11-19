@@ -6,7 +6,7 @@ use graph::prelude::BigInt;
 use graph::runtime::{
     asc_new, AscHeap, AscIndexId, AscPtr, AscType, DeterministicHostError, ToAscObj,
 };
-use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEnum, EnumPayload, Uint8Array};
+use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, EnumPayload, Uint8Array};
 
 pub(crate) use super::generated::*;
 
