@@ -307,6 +307,41 @@ impl DirectiveFinder for Vec<Directive> {
     }
 }
 
+pub trait TypeDefinitionExt {
+    fn name(&self) -> &str;
+
+    // Return `true` if this is the definition of a type from the
+    // introspection schema
+    fn is_introspection(&self) -> bool {
+        self.name().starts_with("__")
+    }
+}
+
+impl TypeDefinitionExt for TypeDefinition {
+    fn name(&self) -> &str {
+        match self {
+            TypeDefinition::Scalar(t) => &t.name,
+            TypeDefinition::Object(t) => &t.name,
+            TypeDefinition::Interface(t) => &t.name,
+            TypeDefinition::Union(t) => &t.name,
+            TypeDefinition::Enum(t) => &t.name,
+            TypeDefinition::InputObject(t) => &t.name,
+        }
+    }
+}
+
+pub trait FieldExt {
+    // Return `true` if this is the name of one of the query fields from the
+    // introspection schema
+    fn is_introspection(&self) -> bool;
+}
+
+impl FieldExt for Field {
+    fn is_introspection(&self) -> bool {
+        &self.name == "__schema" || &self.name == "__type"
+    }
+}
+
 #[cfg(test)]
 mod directive_finder_tests {
     use graphql_parser::parse_schema;
