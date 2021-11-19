@@ -615,7 +615,7 @@ where
             let res = process_block(
                 &logger,
                 ctx.inputs.triggers_adapter.cheap_clone(),
-                ctx,
+                &mut ctx,
                 block_stream_cancel_handle.clone(),
                 block,
                 cursor.into(),
@@ -626,9 +626,7 @@ where
             subgraph_metrics.block_processing_duration.observe(elapsed);
 
             match res {
-                Ok((c, needs_restart)) => {
-                    ctx = c;
-
+                Ok(needs_restart) => {
                     deployment_failed.set(0.0);
 
                     // Notify the BlockStream implementation that a block was succesfully consumed
@@ -719,11 +717,11 @@ impl From<StoreError> for BlockProcessingError {
 async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
     logger: &Logger,
     triggers_adapter: Arc<C::TriggersAdapter>,
-    mut ctx: IndexingContext<T, C>,
+    ctx: &mut IndexingContext<T, C>,
     block_stream_cancel_handle: CancelHandle,
     block: BlockWithTriggers<C>,
     firehose_cursor: Option<String>,
-) -> Result<(IndexingContext<T, C>, bool), BlockProcessingError> {
+) -> Result<bool, BlockProcessingError> {
     let triggers = block.trigger_data;
     let block = Arc::new(block.block);
     let block_ptr = block.ptr();
@@ -797,7 +795,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
             // Losing the cache is a bit annoying but not an issue for correctness.
             //
             // See also b21fa73b-6453-4340-99fb-1a78ec62efb1.
-            return Ok((ctx, true));
+            return Ok(true);
         }
     };
 
@@ -818,7 +816,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
         // Instantiate dynamic data sources, removing them from the block state.
         let (data_sources, runtime_hosts) = create_dynamic_data_sources(
             logger.clone(),
-            &mut ctx,
+            ctx,
             host_metrics.clone(),
             block_state.drain_created_data_sources(),
         )?;
@@ -849,7 +847,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
         // and add runtimes for the data sources to the subgraph instance.
         persist_dynamic_data_sources(
             logger.clone(),
-            &mut ctx,
+            ctx,
             &mut block_state.entity_cache,
             data_sources,
         );
@@ -1004,7 +1002,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
                 return Err(BlockProcessingError::Canceled);
             }
 
-            Ok((ctx, needs_restart))
+            Ok(needs_restart)
         }
 
         Err(e) => Err(anyhow!("Error while processing block stream for a subgraph: {}", e).into()),
