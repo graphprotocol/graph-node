@@ -7,7 +7,7 @@ use graph::{components::store::EntityType, data::graphql::ObjectOrInterface};
 
 use crate::execution::ast as a;
 use crate::schema::ast as sast;
-use crate::schema::ast::ObjectCondition;
+use crate::schema::ast::ObjectType;
 
 #[derive(Debug)]
 enum OrderDirection {
@@ -25,7 +25,7 @@ pub(crate) fn build_query<'a>(
     types_for_interface: &'a BTreeMap<EntityType, Vec<s::ObjectType>>,
     max_first: u32,
     max_skip: u32,
-    mut column_names: BTreeMap<ObjectCondition<'a>, AttributeNames>,
+    mut column_names: BTreeMap<ObjectType<'a>, AttributeNames>,
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
     let entity_types = EntityCollection::All(match &entity {

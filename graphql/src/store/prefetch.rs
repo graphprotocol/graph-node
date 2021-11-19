@@ -639,7 +639,7 @@ fn execute_selection_set<'a>(
 struct CollectedResponseKey<'a> {
     iface_cond: Option<&'a s::InterfaceType>,
     iface_fields: Vec<&'a a::Field>,
-    obj_types: IndexMap<sast::ObjectCondition<'a>, Vec<&'a a::Field>>,
+    obj_types: IndexMap<sast::ObjectType<'a>, Vec<&'a a::Field>>,
     collected_column_names: CollectedAttributeNames<'a>,
 }
 
@@ -753,7 +753,7 @@ fn fetch(
 
 /// Represents a finished column collection operation, mapping each object type to the final set of
 /// selected SQL columns.
-type AttributeNamesByObjectType<'a> = BTreeMap<sast::ObjectCondition<'a>, AttributeNames>;
+type AttributeNamesByObjectType<'a> = BTreeMap<sast::ObjectType<'a>, AttributeNames>;
 
 #[derive(Debug, Default, Clone)]
 struct CollectedAttributeNames<'a>(HashMap<ObjectOrInterface<'a>, AttributeNames>);
