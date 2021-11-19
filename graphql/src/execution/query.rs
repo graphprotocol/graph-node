@@ -18,7 +18,6 @@ use graph::data::schema::ApiSchema;
 use graph::prelude::{info, o, q, r, s, BlockNumber, CheapClone, Logger, TryFromValue};
 
 use crate::execution::ast as a;
-use crate::introspection::introspection_schema;
 use crate::query::{ast as qast, ext::BlockConstraint};
 use crate::schema::ast as sast;
 use crate::{
@@ -135,7 +134,6 @@ pub struct Query {
     pub query_text: Arc<String>,
     pub variables_text: Arc<String>,
     pub query_id: String,
-    pub(crate) complexity: u64,
 }
 
 impl Query {
@@ -220,9 +218,11 @@ impl Query {
             fragments,
         };
 
-        // It's important to check complexity first, so `validate_fields` doesn't risk a stack
-        // overflow from invalid queries.
-        let complexity = raw_query.check_complexity(max_complexity, max_depth)?;
+        // It's important to check complexity first, so `validate_fields`
+        // doesn't risk a stack overflow from invalid queries. We don't
+        // really care about the resulting complexity, only that all the
+        // checks that `check_complexity` performs pass successfully
+        let _ = raw_query.check_complexity(max_complexity, max_depth)?;
         raw_query.validate_fields()?;
         let (selection_set, fragments) = raw_query.expand_variables()?;
 
@@ -238,7 +238,6 @@ impl Query {
             query_text: query.query_text.cheap_clone(),
             variables_text: query.variables_text.cheap_clone(),
             query_id,
-            complexity,
         };
 
         Ok(Arc::new(query))
@@ -309,26 +308,6 @@ impl Query {
         } else {
             Ok(bcs)
         }
-    }
-
-    /// Return this query, but use the introspection schema as its schema
-    pub fn as_introspection_query(&self) -> Arc<Self> {
-        let introspection_schema = introspection_schema(self.schema.id().clone());
-
-        Arc::new(Self {
-            schema: Arc::new(introspection_schema),
-            fragments: self.fragments.clone(),
-            selection_set: self.selection_set.clone(),
-            shape_hash: self.shape_hash,
-            kind: self.kind,
-            network: self.network.clone(),
-            logger: self.logger.clone(),
-            start: self.start,
-            query_text: self.query_text.clone(),
-            variables_text: self.variables_text.clone(),
-            query_id: self.query_id.clone(),
-            complexity: self.complexity,
-        })
     }
 
     /// Should only be called for fragments that exist in the query, and therefore have been
