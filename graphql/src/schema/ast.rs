@@ -53,47 +53,47 @@ pub(crate) fn parse_field_as_filter(key: &str) -> (String, FilterOp) {
 
 /// An `ObjectType` with `Hash` and `Eq` derived from the name.
 #[derive(Clone, Debug)]
-pub(crate) struct ObjectCondition<'a>(&'a s::ObjectType);
+pub(crate) struct ObjectType<'a>(&'a s::ObjectType);
 
-impl<'a> Ord for ObjectCondition<'a> {
+impl<'a> Ord for ObjectType<'a> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.0.name.cmp(&other.0.name)
     }
 }
 
-impl<'a> PartialOrd for ObjectCondition<'a> {
+impl<'a> PartialOrd for ObjectType<'a> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.0.name.cmp(&other.0.name))
     }
 }
 
-impl std::hash::Hash for ObjectCondition<'_> {
+impl std::hash::Hash for ObjectType<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.name.hash(state)
     }
 }
 
-impl PartialEq for ObjectCondition<'_> {
+impl PartialEq for ObjectType<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.0.name.eq(&other.0.name)
     }
 }
 
-impl Eq for ObjectCondition<'_> {}
+impl Eq for ObjectType<'_> {}
 
-impl<'a> From<&'a s::ObjectType> for ObjectCondition<'a> {
+impl<'a> From<&'a s::ObjectType> for ObjectType<'a> {
     fn from(object: &'a s::ObjectType) -> Self {
-        ObjectCondition(object)
+        ObjectType(object)
     }
 }
 
-impl<'a> From<ObjectCondition<'a>> for ObjectOrInterface<'a> {
-    fn from(cond: ObjectCondition<'a>) -> Self {
+impl<'a> From<ObjectType<'a>> for ObjectOrInterface<'a> {
+    fn from(cond: ObjectType<'a>) -> Self {
         ObjectOrInterface::Object(cond.0)
     }
 }
 
-impl ObjectCondition<'_> {
+impl ObjectType<'_> {
     pub fn name(&self) -> &str {
         &self.0.name
     }
