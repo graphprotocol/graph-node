@@ -7,7 +7,7 @@ use graph::{
 };
 use graphql_parser::Pos;
 
-use crate::schema::ast::ObjectCondition;
+use crate::schema::ast::ObjectType;
 
 /// A selection set is a table that maps object types to the fields that
 /// should be selected for objects of that type. The types are always
@@ -300,7 +300,7 @@ impl ObjectTypeSet {
 pub(crate) fn resolve_object_types<'a>(
     schema: &'a Schema,
     name: &str,
-) -> Result<HashSet<ObjectCondition<'a>>, QueryExecutionError> {
+) -> Result<HashSet<ObjectType<'a>>, QueryExecutionError> {
     let mut set = HashSet::new();
     match schema
         .document
