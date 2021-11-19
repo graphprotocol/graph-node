@@ -7,7 +7,6 @@ use graph::data::value::Object;
 use graph::prelude::{r, CacheWeight};
 use graph::slog::warn;
 use graph::util::cache_weight;
-use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
@@ -625,38 +624,6 @@ fn execute_selection_set<'a>(
         Ok(parents)
     } else {
         Err(errors)
-    }
-}
-
-/// If the top-level selection is on an object, there will be a single entry in `obj_types` with all
-/// the collected fields.
-///
-/// The interesting case is if the top-level selection is an interface. `iface_cond` will be the
-/// interface type and `iface_fields` the selected fields on the interface. `obj_types` are the
-/// fields selected on objects by fragments. In `collect_fields`, the `iface_fields` will then be
-/// merged into each entry in `obj_types`. See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
-#[derive(Default, Debug)]
-struct CollectedResponseKey<'a> {
-    iface_cond: Option<&'a s::InterfaceType>,
-    iface_fields: Vec<&'a a::Field>,
-    obj_types: IndexMap<sast::ObjectType<'a>, Vec<&'a a::Field>>,
-    collected_column_names: SelectedAttributes<'a>,
-}
-
-impl<'a> IntoIterator for CollectedResponseKey<'a> {
-    type Item = (ObjectOrInterface<'a>, Vec<&'a a::Field>);
-    type IntoIter = Box<dyn Iterator<Item = Self::Item> + 'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        // Make sure the interface fields are processed first.
-        // See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
-        let iface_fields = self.iface_fields;
-        Box::new(
-            self.iface_cond
-                .map(|cond| (ObjectOrInterface::Interface(cond), iface_fields))
-                .into_iter()
-                .chain(self.obj_types.into_iter().map(|(c, f)| (c.into(), f))),
-        )
     }
 }
 
