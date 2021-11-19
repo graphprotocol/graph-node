@@ -3,6 +3,7 @@ use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, Type
 use crate::data::store::ValueType;
 use crate::data::subgraph::{DeploymentHash, SubgraphName};
 use crate::prelude::{
+    lazy_static,
     q::Value,
     s::{self, Definition, InterfaceType, ObjectType, TypeDefinition, *},
 };
@@ -355,8 +356,15 @@ pub struct ApiSchema {
 }
 
 impl ApiSchema {
-    /// `api_schema` will typically come from `fn api_schema` in the graphql crate.
-    pub fn from_api_schema(api_schema: Schema) -> Result<Self, anyhow::Error> {
+    /// `api_schema` will typically come from `fn api_schema` in the graphql
+    /// crate.
+    ///
+    /// In addition, the API schema has an introspection schema mixed into
+    /// `api_schema`. In particular, the `Query` type has fields called
+    /// `__schema` and `__type`
+    pub fn from_api_schema(mut api_schema: Schema) -> Result<Self, anyhow::Error> {
+        add_introspection_schema(&mut api_schema.document);
+
         let query_type = api_schema
             .document
             .get_root_query_type()
@@ -395,6 +403,69 @@ impl ApiSchema {
     pub fn interfaces_for_type(&self, type_name: &EntityType) -> Option<&Vec<InterfaceType>> {
         self.schema.interfaces_for_type(type_name)
     }
+}
+
+fn add_introspection_schema(schema: &mut Document) {
+    lazy_static! {
+        static ref INTROSPECTION_SCHEMA: Document = {
+            let schema = include_str!("introspection.graphql");
+            parse_schema(schema).expect("the schema `introspection.graphql` is invalid")
+        };
+    }
+
+    fn introspection_fields() -> Vec<Field> {
+        // Generate fields for the root query fields in an introspection schema,
+        // the equivalent of the fields of the `Query` type:
+        //
+        // type Query {
+        //   __schema: __Schema!
+        //   __type(name: String!): __Type
+        // }
+
+        let type_args = vec![InputValue {
+            position: Pos::default(),
+            description: None,
+            name: "name".to_string(),
+            value_type: Type::NonNullType(Box::new(Type::NamedType("String".to_string()))),
+            default_value: None,
+            directives: vec![],
+        }];
+
+        vec![
+            Field {
+                position: Pos::default(),
+                description: None,
+                name: "__schema".to_string(),
+                arguments: vec![],
+                field_type: Type::NonNullType(Box::new(Type::NamedType("__Schema".to_string()))),
+                directives: vec![],
+            },
+            Field {
+                position: Pos::default(),
+                description: None,
+                name: "__type".to_string(),
+                arguments: type_args,
+                field_type: Type::NamedType("__Type".to_string()),
+                directives: vec![],
+            },
+        ]
+    }
+
+    schema
+        .definitions
+        .extend(INTROSPECTION_SCHEMA.definitions.iter().cloned());
+
+    let query_type = schema
+        .definitions
+        .iter_mut()
+        .filter_map(|d| match d {
+            Definition::TypeDefinition(TypeDefinition::Object(t)) if t.name == "Query" => Some(t),
+            _ => None,
+        })
+        .peekable()
+        .next()
+        .expect("no root `Query` in the schema");
+    query_type.fields.append(&mut introspection_fields());
 }
 
 /// A validated and preprocessed GraphQL schema for a subgraph.
