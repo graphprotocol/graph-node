@@ -32,29 +32,35 @@ impl<T> TimedRwLock<T> {
     }
 
     pub fn write(&self, logger: &Logger) -> parking_lot::RwLockWriteGuard<T> {
-        let start = Instant::now();
-        let guard = self.lock.write();
-        let elapsed = start.elapsed();
-        if elapsed > self.log_threshold {
-            warn!(logger, "Write lock took a long time to acquire";
-                          "id" => &self.id,
-                          "wait_ms" => elapsed.as_millis(),
-            );
+        loop {
+            let mut elapsed = Duration::from_secs(0);
+            match self.lock.try_write_for(self.log_threshold) {
+                Some(guard) => break guard,
+                None => {
+                    elapsed += self.log_threshold;
+                    warn!(logger, "Write lock taking a long time to acquire";
+                                  "id" => &self.id,
+                                  "wait_ms" => elapsed.as_millis(),
+                    );
+                }
+            }
         }
-        guard
     }
 
     pub fn read(&self, logger: &Logger) -> parking_lot::RwLockReadGuard<T> {
-        let start = Instant::now();
-        let guard = self.lock.read();
-        let elapsed = start.elapsed();
-        if elapsed > self.log_threshold {
-            warn!(logger, "Read lock took a long time to acquire";
-                          "id" => &self.id,
-                          "wait_ms" => elapsed.as_millis(),
-            );
+        loop {
+            let mut elapsed = Duration::from_secs(0);
+            match self.lock.try_read_for(self.log_threshold) {
+                Some(guard) => break guard,
+                None => {
+                    elapsed += self.log_threshold;
+                    warn!(logger, "Read lock taking a long time to acquire";
+                                  "id" => &self.id,
+                                  "wait_ms" => elapsed.as_millis(),
+                    );
+                }
+            }
         }
-        guard
     }
 }
 
