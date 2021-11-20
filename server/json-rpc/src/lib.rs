@@ -46,6 +46,7 @@ struct SubgraphDeployParams {
 struct SubgraphDebugParams {
     name: SubgraphName,
     endpoint: String,
+    block: BlockNumber,
     ipfs_hash: DeploymentHash,
     node_id: Option<NodeId>,
 }
@@ -102,7 +103,13 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
         let routes = subgraph_routes(&params.name, self.http_port, self.ws_port);
         match self
             .registrar
-            .create_subgraph_version(params.name.clone(), params.ipfs_hash.clone(), node_id, None)
+            .create_subgraph_version(
+                params.name.clone(),
+                params.ipfs_hash.clone(),
+                node_id,
+                None,
+                None,
+            )
             .await
         {
             Ok(_) => Ok(routes),
@@ -127,7 +134,13 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
         let routes = subgraph_routes(&params.name, self.http_port, self.ws_port);
         match self
             .registrar
-            .create_subgraph_version(params.name.clone(), params.ipfs_hash.clone(), node_id, Some(params.endpoint.clone()))
+            .create_subgraph_version(
+                params.name.clone(),
+                params.ipfs_hash.clone(),
+                node_id,
+                Some(params.endpoint.clone()),
+                Some(params.block),
+            )
             .await
         {
             Ok(_) => Ok(routes),

@@ -267,6 +267,7 @@ where
         hash: DeploymentHash,
         node_id: NodeId,
         debug_endpoint: Option<String>,
+        debug_block_number: Option<BlockNumber>,
     ) -> Result<(), SubgraphRegistrarError> {
         // We don't have a location for the subgraph yet; that will be
         // assigned when we deploy for real. For logging purposes, make up a
@@ -314,6 +315,7 @@ where
                     node_id,
                     self.version_switching_mode,
                     self.resolver.cheap_clone(),
+                    debug_block_number,
                 )
                 .await?
             }
@@ -329,6 +331,7 @@ where
                     node_id,
                     self.version_switching_mode,
                     self.resolver.cheap_clone(),
+                    debug_block_number,
                 )
                 .await?
             }
@@ -504,6 +507,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolve
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
     resolver: Arc<L>,
+    debug_block_number: Option<BlockNumber>,
 ) -> Result<(), SubgraphRegistrarError> {
     let unvalidated = UnvalidatedSubgraphManifest::<C>::resolve(
         deployment,
@@ -539,8 +543,16 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolve
         return Err(SubgraphRegistrarError::NameNotFound(name.to_string()));
     }
 
-    let (start_block, base_block) =
-        resolve_subgraph_chain_blocks(&manifest, chain, &logger.clone()).await?;
+    let (mut start_block, base_block) =
+        resolve_subgraph_chain_blocks(&manifest, chain.cheap_clone(), &logger.clone()).await?;
+
+    if let Some(number) = debug_block_number {
+        start_block = chain
+            .block_pointer_from_number(&logger, number-1)
+            .await
+            .map(Some)
+            .unwrap();
+    }
 
     info!(
         logger,
