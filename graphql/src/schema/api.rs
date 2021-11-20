@@ -227,6 +227,14 @@ fn add_block_height_type(schema: &mut Document) {
                 default_value: None,
                 directives: vec![],
             },
+            InputValue {
+                position: Pos::default(),
+                description: None,
+                name: "number_gte".to_owned(),
+                value_type: Type::NamedType("Int".to_owned()),
+                default_value: None,
+                directives: vec![],
+            },
         ],
     });
     let def = Definition::TypeDefinition(typedef);
@@ -641,9 +649,12 @@ fn block_argument() -> InputValue {
         position: Pos::default(),
         description: Some(
             "The block at which the query should be executed. \
-             Can either be an `{ number: Int }` containing the block number \
-             or a `{ hash: Bytes }` value containing a block hash. Defaults \
-             to the latest block when omitted."
+             Can either be a `{ hash: Bytes }` value containing a block hash, \
+             a `{ number: Int }` containing the block number, \
+             or a `{ number_gte: Int }` containing the minimum block number. \
+             In the case of `number_gte`, the query will be executed on the latest block only if \
+             the subgraph has progressed to or past the minimum block number. \
+             Defaults to the latest block when omitted."
                 .to_owned(),
         ),
         name: "block".to_string(),

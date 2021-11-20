@@ -58,6 +58,9 @@ impl ValueExt for q::Value {
 pub enum BlockConstraint {
     Hash(H256),
     Number(BlockNumber),
+    /// Execute the query on the latest block only if the the subgraph has progressed to or past the
+    /// given block number.
+    Min(BlockNumber),
     Latest,
 }
 
@@ -80,6 +83,10 @@ impl TryFromValue for BlockConstraint {
             Ok(BlockConstraint::Hash(TryFromValue::try_from_value(hash)?))
         } else if let Some(number_value) = map.get("number") {
             Ok(BlockConstraint::Number(BlockNumber::try_from_value(
+                number_value,
+            )?))
+        } else if let Some(number_value) = map.get("number_gte") {
+            Ok(BlockConstraint::Min(BlockNumber::try_from_value(
                 number_value,
             )?))
         } else {
