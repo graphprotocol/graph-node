@@ -565,6 +565,7 @@ pub struct BaseSubgraphManifest<C, S, D, T> {
     pub schema: S,
     pub data_sources: Vec<D>,
     pub graft: Option<Graft>,
+    pub debug_endpoint: Option<String>,
     #[serde(default)]
     pub templates: Vec<T>,
     #[serde(skip_serializing, default)]
@@ -774,6 +775,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             graft,
             templates,
             chain,
+            debug_endpoint,
         } = self;
 
         if !(MIN_SPEC_VERSION..=max_spec_version.clone()).contains(&spec_version) {
@@ -823,6 +825,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             graft,
             templates,
             chain,
+            debug_endpoint,
         })
     }
 }

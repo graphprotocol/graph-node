@@ -836,38 +836,37 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             id.clone(),
         )?;
 
+        let store = &self.ctx.host_exports.store;
+        let endpoint_option = store
+            .get_debug_endpoint(&self.ctx.host_exports.subgraph_id)
+            .expect("store_get: Failed to fetch the subgraph debug endpoint from the store");
+
         if let Some(entity) = entity_option {
             let _section = self
                 .host_metrics
                 .stopwatch
                 .start_section("store_get_asc_new");
-            return Ok(asc_new(self, &entity.sorted())?);
-        }
+            Ok(asc_new(self, &entity.sorted())?)
+        } else if let Some(endpoint) = endpoint_option {
+            let schema = store
+                .input_schema(&self.ctx.host_exports.subgraph_id)
+                .expect("store_get: Failed to fetch the subgraph input schema from the store");
 
-        let schema = self
-            .ctx
-            .host_exports
-            .store
-            .input_schema(&self.ctx.host_exports.subgraph_id)
-            .expect("store_get: Failed to fetch the subgraph from the store.");
+            let (query, fields) = debug_tool::infer_query(schema, &entity_type, &id);
+            let res = debug_tool::perform_query(query, &endpoint)?;
+            if !res.contains("data") {
+                return Ok(AscPtr::null());
+            }
+            let entity = debug_tool::extract_entity(res, entity_type, fields)?;
 
-        let (query, fields) = debug_tool::infer_query(schema, &entity_type, &id);
-        let endpoint = "https://api.thegraph.com/subgraphs/id/QmfEiYDc9ZvueQrvezFQy4EBQDcqbu74EY3oLWYmA7aAZq";
-        let res = debug_tool::perform_query(query, endpoint)?;
-        if !res.contains("data") {
-            return Ok(AscPtr::null());
-        }
-        let entity = debug_tool::extract_entity(res, entity_type, fields)?;
-        println!("{:?}", entity);
-
-        let ret = {
             let _section = self
                 .host_metrics
                 .stopwatch
                 .start_section("store_get_asc_new");
-            asc_new(self, &entity.sorted())?
-        };
-        Ok(ret)
+            Ok(asc_new(self, &entity.sorted())?)
+        } else {
+            Ok(AscPtr::null())
+        }
     }
 
     /// function typeConversion.bytesToString(bytes: Bytes): string

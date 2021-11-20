@@ -908,6 +908,9 @@ impl Display for DeploymentLocator {
 /// Common trait for store implementations.
 #[async_trait]
 pub trait SubgraphStore: Send + Sync + 'static {
+    /// Get the deployment's debug endipoint, if there is one.
+    fn get_debug_endpoint(&self, id: &DeploymentHash) -> Result<Option<String>, StoreError>;
+
     /// Find the reverse of keccak256 for `hash` through looking it up in the
     /// rainbow table.
     fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, StoreError>;
@@ -1107,6 +1110,10 @@ pub type PoolWaitStats = Arc<RwLock<MovingStats>>;
 // The store trait must be implemented manually because mockall does not support async_trait, nor borrowing from arguments.
 #[async_trait]
 impl SubgraphStore for MockStore {
+    fn get_debug_endpoint(&self, _: &DeploymentHash) -> Result<Option<String>, StoreError> {
+        unimplemented!()
+    }
+
     fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, StoreError> {
         unimplemented!()
     }

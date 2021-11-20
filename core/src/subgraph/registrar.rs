@@ -266,6 +266,7 @@ where
         name: SubgraphName,
         hash: DeploymentHash,
         node_id: NodeId,
+        debug_endpoint: Option<String>,
     ) -> Result<(), SubgraphRegistrarError> {
         // We don't have a location for the subgraph yet; that will be
         // assigned when we deploy for real. For logging purposes, make up a
@@ -274,7 +275,7 @@ where
             .logger_factory
             .subgraph_logger(&DeploymentLocator::new(DeploymentId(0), hash.clone()));
 
-        let raw: serde_yaml::Mapping = {
+        let mut raw: serde_yaml::Mapping = {
             let file_bytes = self
                 .resolver
                 .cat(&logger, &hash.to_ipfs_link())
@@ -288,6 +289,14 @@ where
             serde_yaml::from_slice(&file_bytes)
                 .map_err(|e| SubgraphRegistrarError::ResolveError(e.into()))?
         };
+
+        // Inject the debug endpoint into the definition.
+        if let Some(endpoint) = debug_endpoint {
+            raw.insert(
+                serde_yaml::Value::from("debug_endpoint"),
+                serde_yaml::Value::from(endpoint),
+            );
+        }
 
         let kind = BlockchainKind::from_manifest(&raw).map_err(|e| {
             SubgraphRegistrarError::ResolveError(SubgraphManifestResolveError::ResolveError(e))

@@ -159,6 +159,7 @@ pub struct SubgraphManifestEntity {
     pub repository: Option<String>,
     pub features: Vec<String>,
     pub schema: String,
+    pub debug_endpoint: Option<String>,
 }
 
 impl<'a, C: Blockchain> From<&'a super::SubgraphManifest<C>> for SubgraphManifestEntity {
@@ -169,6 +170,7 @@ impl<'a, C: Blockchain> From<&'a super::SubgraphManifest<C>> for SubgraphManifes
             repository: manifest.repository.clone(),
             features: manifest.features.iter().map(|f| f.to_string()).collect(),
             schema: manifest.schema.document.clone().to_string(),
+            debug_endpoint: manifest.debug_endpoint.clone(),
         }
     }
 }

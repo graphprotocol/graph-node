@@ -84,6 +84,7 @@ pub(crate) struct SubgraphInfo {
     pub(crate) graft_block: Option<BlockNumber>,
     pub(crate) description: Option<String>,
     pub(crate) repository: Option<String>,
+    pub(crate) debug_endpoint: Option<String>,
 }
 
 pub struct StoreInner {
@@ -559,7 +560,7 @@ impl DeploymentStore {
             return Ok(info.clone());
         }
 
-        let (input_schema, description, repository) = deployment::manifest_info(&conn, site)?;
+        let (input_schema, description, repository, debug_endpoint) = deployment::manifest_info(&conn, site)?;
 
         let graft_block =
             deployment::graft_point(&conn, &site.deployment)?.map(|(_, ptr)| ptr.number as i32);
@@ -577,6 +578,7 @@ impl DeploymentStore {
             graft_block,
             description,
             repository,
+            debug_endpoint,
         };
 
         // Insert the schema into the cache.

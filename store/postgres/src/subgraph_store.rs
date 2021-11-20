@@ -918,6 +918,12 @@ impl SubgraphStoreInner {
 
 #[async_trait::async_trait]
 impl SubgraphStoreTrait for SubgraphStore {
+    fn get_debug_endpoint(&self, id: &DeploymentHash) -> Result<Option<String>, StoreError> {
+        let (store, site) = self.store(&id)?;
+        let info = store.subgraph_info(site.as_ref())?;
+        Ok(info.debug_endpoint)
+    }
+
     fn find_ens_name(&self, hash: &str) -> Result<Option<String>, StoreError> {
         self.primary_conn()?.find_ens_name(hash)
     }

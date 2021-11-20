@@ -417,7 +417,7 @@ async fn main() {
                 async move {
                     subgraph_registrar.create_subgraph(name.clone()).await?;
                     subgraph_registrar
-                        .create_subgraph_version(name, subgraph_id, node_id)
+                        .create_subgraph_version(name, subgraph_id, node_id, None)
                         .await
                 }
                 .map_err(|e| panic!("Failed to deploy subgraph from `--subgraph` flag: {}", e)),
