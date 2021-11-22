@@ -529,7 +529,14 @@ impl EthereumAdapter {
                         "invalid opcode",
                         // Ethereum says 1024 is the stack sizes limit, so this is deterministic.
                         "stack limit reached 1024",
+                        // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61 for why the gas limit is considered deterministic.
+                        "out of gas",
                     ];
+
+                    let mut geth_execution_errors = GETH_EXECUTION_ERRORS
+                        .iter()
+                        .map(|s| *s)
+                        .chain(GETH_ETH_CALL_ERRORS_ENV.iter().map(|s| s.as_str()));
 
                     let as_solidity_revert_with_reason = |bytes: &[u8]| {
                         let solidity_revert_function_selector =
@@ -549,8 +556,7 @@ impl EthereumAdapter {
 
                         // Check for Geth revert.
                         Err(web3::Error::Rpc(rpc_error))
-                            if GETH_EXECUTION_ERRORS
-                                .iter()
+                            if geth_execution_errors
                                 .any(|e| rpc_error.message.to_lowercase().contains(e)) =>
                         {
                             Err(EthereumContractCallError::Revert(rpc_error.message))
