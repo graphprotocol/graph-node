@@ -166,11 +166,14 @@ impl StoreBuilder {
             )
             .expect("Creating the BlockStore works"),
         );
+        block_store
+            .update_db_version()
+            .expect("Updating `db_version` works");
 
         Arc::new(DieselStore::new(subgraph_store, block_store))
     }
 
-    /// Create a connection pool for the main database of hte primary shard
+    /// Create a connection pool for the main database of the primary shard
     /// without connecting to all the other configured databases
     pub fn main_pool(
         logger: &Logger,

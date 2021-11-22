@@ -171,6 +171,13 @@ table! {
     }
 }
 
+table! {
+    public.db_version(version) {
+        #[sql_name = "db_version"]
+        version -> BigInt,
+    }
+}
+
 allow_tables_to_appear_in_same_query!(
     subgraph,
     subgraph_version,

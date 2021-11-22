@@ -390,6 +390,15 @@ mod data {
             }
         }
 
+        pub(super) fn truncate_block_cache(&self, conn: &PgConnection) -> Result<(), StoreError> {
+            let table_name = match &self {
+                Storage::Shared => ETHEREUM_BLOCKS_TABLE_NAME,
+                Storage::Private(Schema { blocks, .. }) => &blocks.qname,
+            };
+            conn.batch_execute(&format!("truncate table {} restart identity", table_name))?;
+            Ok(())
+        }
+
         /// Insert a block. If the table already contains a block with the
         /// same hash, then overwrite that block since it may be adding
         /// transaction receipts. If `overwrite` is `true`, overwrite a
@@ -1263,6 +1272,12 @@ impl ChainStore {
 
         self.storage
             .set_chain(&conn, &self.chain, genesis_hash, chain);
+    }
+
+    pub fn truncate_block_cache(&self) -> Result<(), StoreError> {
+        let conn = self.get_conn()?;
+        self.storage.truncate_block_cache(&conn)?;
+        Ok(())
     }
 }
 
