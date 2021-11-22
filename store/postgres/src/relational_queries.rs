@@ -87,11 +87,10 @@ lazy_static! {
             })
             .unwrap_or(false)
     };
-
-    /// Those are columns that we always want to fetch from the database.
-    static ref BASE_SQL_COLUMNS: BTreeSet<String> =
-        ["id"].iter().map(ToString::to_string).collect();
 }
+
+/// Those are columns that we always want to fetch from the database.
+const BASE_SQL_COLUMNS: [&'static str; 2] = ["id", "vid"];
 
 #[derive(Debug)]
 pub(crate) struct UnsupportedFilter {
@@ -1610,6 +1609,14 @@ impl<'a> FilterWindow<'a> {
             column_names,
         } = window;
         let table = layout.table_for_entity(&child_type).map(|rc| rc.as_ref())?;
+
+        // Confidence check: ensure that all selected column names exist in the table
+        if let AttributeNames::Select(ref selected_field_names) = column_names {
+            for field in selected_field_names {
+                let _ = table.column_for_field(&field)?;
+            }
+        }
+
         let query_filter = query_filter
             .map(|filter| QueryFilter::new(filter, table))
             .transpose()?;
@@ -2873,18 +2880,9 @@ fn write_column_names(
     match column_names {
         AttributeNames::All => out.push_sql(" * "),
         AttributeNames::Select(column_names) => {
-            let mut iterator = column_names
-                .union(&BASE_SQL_COLUMNS)
-                .into_iter()
-                .map(|column_name| {
-                    &table
-                        .column_for_field(&column_name)
-                        .expect("failed to find column for field")
-                        .name
-                })
-                .peekable();
+            let mut iterator = iter_column_names(column_names, table).peekable();
             while let Some(column_name) = iterator.next() {
-                out.push_identifier(&column_name.as_str())?;
+                out.push_identifier(&column_name)?;
                 if iterator.peek().is_some() {
                     out.push_sql(", ");
                 }
@@ -2908,25 +2906,16 @@ fn jsonb_build_object(
         }
         AttributeNames::Select(column_names) => {
             out.push_sql("jsonb_build_object(");
-            let mut iterator = column_names
-                .union(&BASE_SQL_COLUMNS)
-                .into_iter()
-                .map(|column_name| {
-                    &table
-                        .column_for_field(&column_name)
-                        .expect("failed to find column for field")
-                        .name
-                })
-                .peekable();
+            let mut iterator = iter_column_names(column_names, table).peekable();
             while let Some(column_name) = iterator.next() {
                 // field name as json key
                 out.push_sql("'");
-                out.push_sql(column_name.as_str());
+                out.push_sql(column_name);
                 out.push_sql("', ");
                 // column identifier
                 out.push_sql(table_identifier);
                 out.push_sql(".");
-                out.push_identifier(column_name.as_str())?;
+                out.push_identifier(column_name)?;
                 if iterator.peek().is_some() {
                     out.push_sql(", ");
                 }
@@ -2935,4 +2924,22 @@ fn jsonb_build_object(
         }
     }
     Ok(())
+}
+
+/// Helper function to iterate over the merged fields of BASE_SQL_COLUMNS and the provided attribute
+/// names, yielding valid SQL names for the given table.
+fn iter_column_names<'a, 'b>(
+    attribute_names: &'a BTreeSet<String>,
+    table: &'b Table,
+) -> impl Iterator<Item = &'b str> {
+    attribute_names
+        .iter()
+        .map(|attribute_name| {
+            // Unwrapping: We have already checked that all attribute names exist in table
+            table.column_for_field(attribute_name).unwrap()
+        })
+        .map(|column| column.name.as_str())
+        .chain(BASE_SQL_COLUMNS.iter().copied())
+        .sorted()
+        .dedup()
 }

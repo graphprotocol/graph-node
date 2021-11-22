@@ -1785,7 +1785,7 @@ pub enum AttributeNames {
 }
 
 impl AttributeNames {
-    pub fn insert(&mut self, column_name: &str) {
+    fn insert(&mut self, column_name: &str) {
         match self {
             AttributeNames::All => {
                 let mut set = BTreeSet::new();
@@ -1798,12 +1798,25 @@ impl AttributeNames {
         }
     }
 
-    pub fn update(&mut self, field: &q::Field) {
-        // ignore "meta" field names
-        if field.name.starts_with("__") {
+    /// Adds a attribute name. Ignores meta fields.
+    pub fn add(&mut self, field: &q::Field) {
+        if Self::is_meta_field(&field.name) {
             return;
         }
         self.insert(&field.name)
+    }
+
+    /// Adds a attribute name. Ignores meta fields.
+    pub fn add_str(&mut self, field_name: &str) {
+        if Self::is_meta_field(field_name) {
+            return;
+        }
+        self.insert(field_name);
+    }
+
+    /// Returns `true` for meta field names, `false` otherwise.
+    fn is_meta_field(field_name: &str) -> bool {
+        field_name.starts_with("__")
     }
 
     pub fn extend(&mut self, other: Self) {
