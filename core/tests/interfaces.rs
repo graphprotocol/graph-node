@@ -67,7 +67,8 @@ async fn one_interface_zero_entities() {
         .unwrap();
 
     let data = extract_data!(res).unwrap();
-    assert_eq!(format!("{:?}", data), "Object({\"leggeds\": List([])})")
+    let exp = object! { leggeds: Vec::<r::Value>::new() };
+    assert_eq!(data, exp);
 }
 
 #[tokio::test]
@@ -87,10 +88,8 @@ async fn one_interface_one_entity() {
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
-    assert_eq!(
-        format!("{:?}", data),
-        "Object({\"leggeds\": List([Object({\"legs\": Int(3)})])})"
-    );
+    let exp = object! { leggeds: vec![ object!{ legs: 3 }]};
+    assert_eq!(data, exp);
 
     // Query by ID.
     let query = "query { legged(id: \"1\") { legs } }";
@@ -98,10 +97,8 @@ async fn one_interface_one_entity() {
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
-    assert_eq!(
-        format!("{:?}", data),
-        "Object({\"legged\": Object({\"legs\": Int(3)})})",
-    );
+    let exp = object! { legged: object! { legs: 3 }};
+    assert_eq!(data, exp);
 }
 
 #[tokio::test]
@@ -121,10 +118,8 @@ async fn one_interface_one_entity_typename() {
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
-    assert_eq!(
-        format!("{:?}", data),
-        "Object({\"leggeds\": List([Object({\"__typename\": String(\"Animal\")})])})"
-    )
+    let exp = object! { leggeds: vec![ object!{ __typename: "Animal" } ]};
+    assert_eq!(data, exp);
 }
 
 #[tokio::test]
@@ -150,10 +145,8 @@ async fn one_interface_multiple_entities() {
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
-    assert_eq!(
-        format!("{:?}", data),
-        "Object({\"leggeds\": List([Object({\"legs\": Int(3)}), Object({\"legs\": Int(4)})])})"
-    );
+    let exp = object! { leggeds: vec![ object! { legs: 3 }, object! { legs: 4 }]};
+    assert_eq!(data, exp);
 
     // Test for support issue #32.
     let query = "query { legged(id: \"2\") { legs } }";
@@ -161,10 +154,8 @@ async fn one_interface_multiple_entities() {
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
-    assert_eq!(
-        format!("{:?}", data),
-        "Object({\"legged\": Object({\"legs\": Int(4)})})",
-    );
+    let exp = object! { legged: object! { legs: 4 }};
+    assert_eq!(data, exp);
 }
 
 #[tokio::test]
@@ -187,10 +178,8 @@ async fn reference_interface() {
         .unwrap();
 
     let data = extract_data!(res).unwrap();
-    assert_eq!(
-        format!("{:?}", data),
-        "Object({\"leggeds\": List([Object({\"leg\": Object({\"id\": String(\"1\")})})])})"
-    )
+    let exp = object! { leggeds: vec![ object!{ leg: object! { id: "1" } }] };
+    assert_eq!(data, exp);
 }
 
 #[tokio::test]
@@ -253,13 +242,15 @@ async fn reference_interface_derived() {
         .unwrap();
 
     let data = extract_data!(res).unwrap();
-    assert_eq!(
-        format!("{:?}", data),
-        "Object({\"events\": List([\
-            Object({\"id\": String(\"buy\"), \"transaction\": Object({\"id\": String(\"txn\")})}), \
-            Object({\"id\": String(\"gift\"), \"transaction\": Object({\"id\": String(\"txn\")})}), \
-            Object({\"id\": String(\"sell1\"), \"transaction\": Object({\"id\": String(\"txn\")})}), \
-            Object({\"id\": String(\"sell2\"), \"transaction\": Object({\"id\": String(\"txn\")})})])})");
+    let exp = object! {
+        events: vec![
+            object! { id: "buy", transaction: object! { id: "txn" } },
+            object! { id: "gift", transaction: object! { id: "txn" } },
+            object! { id: "sell1", transaction: object! { id: "txn" } },
+            object! { id: "sell2", transaction: object! { id: "txn" } }
+        ]
+    };
+    assert_eq!(data, exp);
 }
 
 #[tokio::test]
@@ -321,10 +312,10 @@ async fn follow_interface_reference() {
         .unwrap();
 
     let data = extract_data!(res).unwrap();
-    assert_eq!(
-        format!("{:?}", data),
-        "Object({\"legged\": Object({\"parent\": Object({\"id\": String(\"parent\")})})})"
-    )
+    let exp = object! {
+        legged: object! { parent: object! { id: "parent" } }
+    };
+    assert_eq!(data, exp)
 }
 
 #[tokio::test]
@@ -424,11 +415,11 @@ async fn two_interfaces() {
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
-    assert_eq!(
-        format!("{:?}", data),
-        "Object({\"ibars\": List([Object({\"bar\": Int(100)}), Object({\"bar\": Int(200)})]), \
-                 \"ifoos\": List([Object({\"foo\": String(\"bla\")}), Object({\"foo\": String(\"ble\")})])})"
-    );
+    let exp = object! {
+        ibars: vec![ object! { bar: 100 }, object! { bar: 200 }],
+        ifoos: vec![ object! { foo: "bla" }, object! { foo: "ble" } ]
+    };
+    assert_eq!(data, exp);
 }
 
 #[tokio::test]
@@ -452,10 +443,8 @@ async fn interface_non_inline_fragment() {
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
-    assert_eq!(
-        format!("{:?}", data),
-        r#"Object({"leggeds": List([Object({"name": String("cow")})])})"#
-    );
+    let exp = object! { leggeds: vec![ object! { name: "cow" } ]};
+    assert_eq!(data, exp);
 
     // Query the fragment and something else.
     let query = "query { leggeds { legs, ...frag } } fragment frag on Animal { name }";
@@ -463,10 +452,8 @@ async fn interface_non_inline_fragment() {
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
-    assert_eq!(
-        format!("{:?}", data),
-        r#"Object({"leggeds": List([Object({"legs": Int(3), "name": String("cow")})])})"#,
-    );
+    let exp = object! { leggeds: vec![ object!{ legs: 3, name: "cow" } ]};
+    assert_eq!(data, exp);
 }
 
 #[tokio::test]
@@ -499,10 +486,8 @@ async fn interface_inline_fragment() {
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
-    assert_eq!(
-        format!("{:?}", data),
-        r#"Object({"leggeds": List([Object({"airspeed": Int(24)}), Object({"name": String("cow")})])})"#
-    );
+    let exp = object! { leggeds: vec![ object!{ airspeed: 24 }, object! { name: "cow" }]};
+    assert_eq!(data, exp);
 }
 
 #[tokio::test]
@@ -565,20 +550,11 @@ async fn interface_inline_fragment_with_subquery() {
     .await
     .unwrap();
     let data = extract_data!(res).unwrap();
-
-    assert_eq!(
-        format!("{:?}", data),
-        "Object({\
-         \"leggeds\": List([\
-         Object({\
-         \"airspeed\": Int(5), \
-         \"legs\": Int(2), \
-         \"parent\": Object({\"id\": String(\"mama_bird\")})\
-         }), \
-         Object({\"legs\": Int(4)})\
-         ])\
-         })"
-    );
+    let exp = object! {
+        leggeds: vec![ object!{ airspeed: 5, legs: 2, parent: object! { id: "mama_bird" } },
+                       object!{ legs: 4 }]
+    };
+    assert_eq!(data, exp);
 }
 
 #[tokio::test]
