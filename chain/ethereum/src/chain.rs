@@ -419,6 +419,23 @@ impl Block for BlockFinality {
     }
 
     fn data(&self) -> Result<json::Value, json::Error> {
+        // The serialization here very delicately depends on how the
+        // `ChainStore`'s `blocks` and `ancestor_block` return the data we
+        // store here. This should be fixed in a better way to ensure we
+        // serialize/deserialize appropriately.
+        //
+        // Commit #d62e9846 inadvertently introduced a variation in how
+        // chain stores store ethereum blocks in that they now sometimes
+        // store an `EthereumBlock` that has a `block` field with a
+        // `LightEthereumBlock`, and sometimes they just store the
+        // `LightEthereumBlock` directly. That causes issues because the
+        // code reading from the chain store always expects the JSON data to
+        // have the form of an `EthereumBlock`.
+        //
+        // The serialization here will subtly use different formats because
+        // it serializes objects of different types.
+        //
+        // see also 7736e440-4c6b-11ec-8c4d-b42e99f52061
         match self {
             BlockFinality::Final(block) => json::to_value(block),
             BlockFinality::NonFinal(block) => json::to_value(&block.ethereum_block),
