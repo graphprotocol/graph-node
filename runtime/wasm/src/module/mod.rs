@@ -863,15 +863,18 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             }
         }
 
-        if let Some(entity) = entity_option {
-            let _section = self
-                .host_metrics
-                .stopwatch
-                .start_section("store_get_asc_new");
-            Ok(asc_new(self, &entity.sorted())?)
-        } else {
-            Ok(AscPtr::null())
-        }
+        let ret = match entity_option {
+            Some(entity) => {
+                let _section = self
+                    .host_metrics
+                    .stopwatch
+                    .start_section("store_get_asc_new");
+                asc_new(self, &entity.sorted())?
+            }
+            None => AscPtr::null(),
+        };
+
+        Ok(ret)
     }
 
     /// function typeConversion.bytesToString(bytes: Bytes): string
