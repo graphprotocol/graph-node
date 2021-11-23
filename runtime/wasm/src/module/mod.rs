@@ -830,49 +830,40 @@ impl<C: Blockchain> WasmInstanceContext<C> {
 
         let entity_type: String = asc_get(self, entity_ptr)?;
         let id: String = asc_get(self, id_ptr)?;
-        let entity_option = self.ctx.host_exports.store_get(
+        let mut entity_option = self.ctx.host_exports.store_get(
             &mut self.ctx.state,
             entity_type.clone(),
             id.clone(),
         )?;
 
-        let store = &self.ctx.host_exports.store;
-        let endpoint_option = store
-            .get_debug_endpoint(&self.ctx.host_exports.subgraph_id)
-            .map_err(|e| {
-                HostExportError::Unknown(anyhow!(
-                    "store_get: Failed to fetch the subgraph debug endpoint for subgraph with id `{}` from the store: {:?}",
-                    self.ctx.host_exports.subgraph_id,
-                    e,
-                ))
-            })?;
-
-        if let Some(entity) = entity_option {
-            let _section = self
-                .host_metrics
-                .stopwatch
-                .start_section("store_get_asc_new");
-            Ok(asc_new(self, &entity.sorted())?)
-
-        // Debug tool case follows...
-        } else if let Some(endpoint) = endpoint_option {
-            let schema = store
-                .input_schema(&self.ctx.host_exports.subgraph_id)
+        // Resort to the debug endpoint only if the entity is not found in the local store.
+        if entity_option.is_none() {
+            let store = &self.ctx.host_exports.store;
+            let endpoint_option = store
+                .get_debug_endpoint(&self.ctx.host_exports.subgraph_id)
                 .map_err(|e| {
                     HostExportError::Unknown(anyhow!(
-                        "store_get: Failed to fetch the subgraph input schema for subgraph with id `{}` from the store: {:?}",
+                        "store_get: Failed to fetch the subgraph debug endpoint for subgraph with id `{}` from the store: {:?}",
                         self.ctx.host_exports.subgraph_id,
                         e,
                     ))
                 })?;
 
-            let (query, fields) = debug_tool::infer_query(schema, &entity_type, &id)?;
-            let res = debug_tool::send(query, &endpoint)?;
-            if !res.contains("data") {
-                return Ok(AscPtr::null());
+            if let Some(endpoint) = endpoint_option {
+                let schema = store
+                    .input_schema(&self.ctx.host_exports.subgraph_id)
+                    .map_err(|e| {
+                        HostExportError::Unknown(anyhow!(
+                            "store_get: Failed to fetch the subgraph input schema for subgraph with id `{}` from the store: {:?}",
+                            self.ctx.host_exports.subgraph_id,
+                            e,
+                        ))
+                    })?;
+                entity_option = debug_tool::fetch_entity(&schema, &endpoint, &entity_type, &id)?;
             }
-            let entity = debug_tool::extract_entity(res, entity_type, fields)?;
+        }
 
+        if let Some(entity) = entity_option {
             let _section = self
                 .host_metrics
                 .stopwatch

@@ -10,13 +10,13 @@ use graph::prelude::{
 };
 
 #[derive(Serialize)]
-pub struct Query {
+struct Query {
     query: String,
     variables: Variables,
 }
 
 #[derive(Serialize)]
-pub struct Variables {
+struct Variables {
     id: String,
 }
 
@@ -34,11 +34,7 @@ query Query ($id: String) {{
     )
 }
 
-pub fn infer_query(
-    schema: Arc<Schema>,
-    entity_type: &str,
-    id: &str,
-) -> Result<(Query, Vec<String>)> {
+fn infer_query(schema: &Arc<Schema>, entity_type: &str, id: &str) -> Result<(Query, Vec<String>)> {
     let entity: Option<&ObjectType> = schema.document.definitions.iter().find_map(|def| {
         if let Definition::TypeDefinition(TypeDefinition::Object(o)) = def {
             if o.name == entity_type {
@@ -72,19 +68,15 @@ pub fn infer_query(
     return Ok((query, fields));
 }
 
-pub fn send(query: Query, endpoint: &str) -> Result<String> {
+fn send(query: &Query, endpoint: &str) -> Result<String> {
     let client = reqwest::blocking::Client::new();
-    let res = client.post(endpoint).json(&query).send()?.text()?;
+    let res = client.post(endpoint).json(query).send()?.text()?;
     Ok(res)
 }
 
-pub fn extract_entity(
-    raw_json: String,
-    entity_type: String,
-    fields: Vec<String>,
-) -> Result<Entity> {
-    let json: serde_json::Value = serde_json::from_str(&raw_json).unwrap();
-    let entity = &json["data"][&entity_type.to_lowercase()];
+fn extract_entity(raw_json: &str, entity_type: &str, fields: Vec<String>) -> Result<Entity> {
+    let json: serde_json::Value = serde_json::from_str(raw_json).unwrap();
+    let entity = &json["data"][entity_type.to_lowercase()];
     let map: HashMap<Attribute, Value> = {
         let mut map = HashMap::new();
         for f in fields {
@@ -111,4 +103,19 @@ pub fn extract_entity(
 
     let entity = Entity::from(map);
     return Ok(entity);
+}
+
+pub fn fetch_entity(
+    schema: &Arc<Schema>,
+    endpoint: &str,
+    entity_type: &str,
+    id: &str,
+) -> Result<Option<Entity>> {
+    let (query, fields) = infer_query(schema, entity_type, id)?;
+    let raw_json = send(&query, endpoint)?;
+    if !raw_json.contains("data") {
+        return Ok(None);
+    }
+    let entity = extract_entity(&raw_json, entity_type, fields)?;
+    return Ok(Some(entity));
 }
