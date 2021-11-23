@@ -20,6 +20,9 @@ use crate::prelude::*;
 #[cfg(debug_assertions)]
 use fail::fail_point;
 
+// A high number here forces a slow start.
+const STARTING_PREVIOUS_TRIGGERS_PER_BLOCK: f64 = 1_000_000.0;
+
 enum BlockStreamState<C>
 where
     C: Blockchain,
@@ -178,9 +181,7 @@ where
                 filter,
                 start_blocks,
                 metrics,
-
-                // A high number here forces a slow start, with a range of 1.
-                previous_triggers_per_block: 1_000_000.0,
+                previous_triggers_per_block: STARTING_PREVIOUS_TRIGGERS_PER_BLOCK,
                 previous_block_range_size: 1,
                 max_block_range_size,
                 target_triggers_per_block_range,
@@ -555,7 +556,8 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
                         Poll::Ready(Err(e)) => {
                             // Reset the block range size in an attempt to recover from the error.
                             // See also: 018c6df4-132f-4acc-8697-a2d64e83a9f0
-                            self.ctx.previous_block_range_size = 1;
+                            self.ctx.previous_triggers_per_block =
+                                STARTING_PREVIOUS_TRIGGERS_PER_BLOCK;
                             self.consecutive_err_count += 1;
 
                             // Pause before trying again
