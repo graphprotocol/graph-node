@@ -1,6 +1,21 @@
 # NEWS
 
-## Next
+## 0.25.0
+
+### Api Version 0.0.6
+This release ships support for API version 0.0.6 in mappings:
+- Added `nonce` field for `Transaction` objects.
+- Added `baseFeePerGas` field for `Block` objects ([EIP-1559](https://eips.ethereum.org/EIPS/eip-1559)).
+
+#### Block Cache Invalidation and Reset
+
+All cached block data must be refetched to account for the new `Block` and `Trasaction`
+struct versions, so this release includes a `graph-node` startup check that will:
+1. Truncate all block cache tables.
+2. Bump the `db_version` value from `2` to `3`.
+
+_(Table truncation is a fast operation and no downtime will occur because of that.)_
+
 
 ### Ethereum
 
@@ -11,6 +26,26 @@
 
 - The `GRAPH_ETH_CALL_GAS` environment is removed to prevent misuse, its value
   is now hardcoded to 50 million.
+
+### Multiblockchain
+- Initial support for NEAR subgraphs.
+- Added `FirehoseBlockStream` implementation of `BlockStream` (#2716)
+
+### Misc
+- Rust docker image is now based on Debian Buster.
+- Optimizations to the PostgreSQL notification queue.
+- Improve PostgreSQL robustness in multi-sharded setups. (#2815)
+- Added 'networks' to the 'subgraphFeatures' endpoint. (#2826)
+- Check and limit the size of GraphQL query results. (#2845)
+- Allow `_in` and `_not_in` GraphQL filters. (#2841)
+- Add PoI for failed subgraphs. (#2748)
+- Make `graphman rewind` safer to use. (#2879)
+- Add `subgraphErrors` for all GraphQL schemas. (#2894)
+- Add `Graph-Attestable` response header. (#2946)
+- Add support for minimum block constraint in GraphQL queries (`number_gte`) (#2868).
+- Handle revert cases from Hardhat and Ganache (#2984)
+- Fix bug on experimental prefetching optimization feature (#2899)
+
 
 ## 0.24.2
 
@@ -95,7 +130,7 @@ Subraphs with any Spec Version can be queried that way.
 
 ### Api Version 0.0.5
 
-This release ships support for API version 0.0.5 in mappings. It contains a fix for call handlers
+This release ships support for API version 0.0.5 in mappings. hIt contains a fix for call handlers
 and the long awaited AssemblyScript version upgrade!
 
 - AssemblyScript upgrade: The mapping runtime is updated to support up-to-date versions of the
