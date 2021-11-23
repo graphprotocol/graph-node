@@ -554,7 +554,7 @@ fn execute_field(
     field: &a::Field,
     field_definition: &s::Field,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
-    coerce_argument_values(&ctx.query, object_type, field)
+    coerce_argument_values(&ctx.query.schema, object_type, field)
         .and_then(|argument_values| {
             resolve_field_value(
                 ctx,
@@ -895,14 +895,14 @@ fn resolve_abstract_type<'a>(
 
 /// Coerces argument values into GraphQL values.
 pub fn coerce_argument_values<'a>(
-    query: &crate::execution::Query,
+    schema: &ApiSchema,
     ty: impl Into<ObjectOrInterface<'a>>,
     field: &a::Field,
 ) -> Result<HashMap<&'a str, r::Value>, Vec<QueryExecutionError>> {
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
 
-    let resolver = |name: &str| query.schema.document().get_named_type(name);
+    let resolver = |name: &str| schema.document().get_named_type(name);
 
     for argument_def in sast::get_argument_definitions(ty, &field.name)
         .into_iter()

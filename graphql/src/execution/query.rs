@@ -257,13 +257,14 @@ impl Query {
 
         let root_type = self.schema.query_type.as_ref();
         for field in self.selection_set.fields_for(root_type) {
-            let args = match crate::execution::coerce_argument_values(self, root_type, field) {
-                Ok(args) => args,
-                Err(errs) => {
-                    errors.extend(errs);
-                    continue;
-                }
-            };
+            let args =
+                match crate::execution::coerce_argument_values(&self.schema, root_type, field) {
+                    Ok(args) => args,
+                    Err(errs) => {
+                        errors.extend(errs);
+                        continue;
+                    }
+                };
 
             let bc = match args.get("block") {
                 Some(bc) => BlockConstraint::try_from_value(bc).map_err(|_| {
