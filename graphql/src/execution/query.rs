@@ -1,9 +1,11 @@
+use graph::data::value::Object;
 use graphql_parser::Pos;
 use graphql_tools::validation::rules::*;
 use graphql_tools::validation::validate::{validate, ValidationPlan};
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
+use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::Instant;
 use std::{collections::hash_map::DefaultHasher, convert::TryFrom};
@@ -20,6 +22,7 @@ use graph::prelude::{info, o, q, r, s, BlockNumber, CheapClone, Logger, TryFromV
 use crate::execution::ast as a;
 use crate::query::{ast as qast, ext::BlockConstraint};
 use crate::schema::ast as sast;
+use crate::values::coercion;
 use crate::{
     execution::{get_field, get_named_type, object_or_interface},
     schema::api::ErrorPolicy,
@@ -253,20 +256,10 @@ impl Query {
     ) -> Result<HashMap<BlockConstraint, (a::SelectionSet, ErrorPolicy)>, Vec<QueryExecutionError>>
     {
         let mut bcs = HashMap::new();
-        let mut errors = Vec::new();
 
         let root_type = self.schema.query_type.as_ref();
         for field in self.selection_set.fields_for(root_type) {
-            let args =
-                match crate::execution::coerce_argument_values(&self.schema, root_type, field) {
-                    Ok(args) => args,
-                    Err(errs) => {
-                        errors.extend(errs);
-                        continue;
-                    }
-                };
-
-            let bc = match args.get("block") {
+            let bc = match field.argument_value("block") {
                 Some(bc) => BlockConstraint::try_from_value(bc).map_err(|_| {
                     vec![QueryExecutionError::InvalidArgumentError(
                         Pos::default(),
@@ -277,7 +270,7 @@ impl Query {
                 None => BlockConstraint::Latest,
             };
 
-            let field_error_policy = match args.get("subgraphError") {
+            let field_error_policy = match field.argument_value("subgraphError") {
                 Some(value) => ErrorPolicy::try_from(value).map_err(|_| {
                     vec![QueryExecutionError::InvalidArgumentError(
                         Pos::default(),
@@ -299,11 +292,7 @@ impl Query {
                 *error_policy = ErrorPolicy::Deny;
             }
         }
-        if !errors.is_empty() {
-            Err(errors)
-        } else {
-            Ok(bcs)
-        }
+        Ok(bcs)
     }
 
     /// Return `true` if this is a query, and not a subscription or
@@ -689,7 +678,7 @@ impl<'s> RawQuery<'s> {
             })
     }
 
-    fn convert(self) -> Result<a::SelectionSet, QueryExecutionError> {
+    fn convert(self) -> Result<a::SelectionSet, Vec<QueryExecutionError>> {
         let RawQuery {
             schema,
             variables,
@@ -793,13 +782,60 @@ impl Transform {
         Ok((dirs, skip))
     }
 
+    /// Coerces argument values into GraphQL values.
+    pub fn coerce_argument_values<'a>(
+        &self,
+        arguments: &mut Vec<(String, r::Value)>,
+        ty: ObjectOrInterface<'a>,
+        field_name: &str,
+    ) -> Result<(), Vec<QueryExecutionError>> {
+        let mut errors = vec![];
+
+        let resolver = |name: &str| self.schema.document().get_named_type(name);
+
+        for argument_def in sast::get_argument_definitions(ty, field_name)
+            .into_iter()
+            .flatten()
+        {
+            let arg_value = arguments
+                .iter_mut()
+                .find(|arg| &arg.0 == &argument_def.name)
+                .map(|arg| &mut arg.1);
+            match coercion::coerce_input_value(
+                arg_value.as_deref().cloned(),
+                &argument_def,
+                &resolver,
+            ) {
+                Ok(Some(value)) => {
+                    let value = if argument_def.name == "text".to_string() {
+                        r::Value::Object(Object::from_iter(vec![(field_name.to_string(), value)]))
+                    } else {
+                        value
+                    };
+                    match arg_value {
+                        Some(arg_value) => *arg_value = value,
+                        None => arguments.push((argument_def.name.clone(), value)),
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => errors.push(e),
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+
     /// Expand fragments and interpolate variables in a field. Return `None`
     /// if the field should be skipped
     fn expand_field(
         &self,
         field: q::Field,
         parent_type: ObjectOrInterface<'_>,
-    ) -> Result<Option<a::Field>, QueryExecutionError> {
+    ) -> Result<Option<a::Field>, Vec<QueryExecutionError>> {
         let q::Field {
             position,
             alias,
@@ -814,7 +850,8 @@ impl Transform {
             return Ok(None);
         }
 
-        let arguments = self.interpolate_arguments(arguments, &position)?;
+        let mut arguments = self.interpolate_arguments(arguments, &position)?;
+        self.coerce_argument_values(&mut arguments, parent_type, &name)?;
         let selection_set = if selection_set.items.is_empty() {
             a::SelectionSet::new(vec![])
         } else {
@@ -841,7 +878,7 @@ impl Transform {
         set: q::SelectionSet,
         type_set: &a::ObjectTypeSet,
         ty: ObjectOrInterface<'_>,
-    ) -> Result<a::SelectionSet, QueryExecutionError> {
+    ) -> Result<a::SelectionSet, Vec<QueryExecutionError>> {
         let q::SelectionSet { span: _, items } = set;
         // check_complexity already checked for cycles in fragment
         // expansion, i.e. situations where a named fragment includs itself
@@ -916,7 +953,7 @@ impl Transform {
         selection_set: q::SelectionSet,
         ty: ObjectOrInterface,
         newset: &mut a::SelectionSet,
-    ) -> Result<(), QueryExecutionError> {
+    ) -> Result<(), Vec<QueryExecutionError>> {
         let (directives, skip) = self.interpolate_directives(directives)?;
         // Field names in fragment spreads refer to this type, which will
         // usually be different from the outer type

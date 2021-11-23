@@ -1,6 +1,6 @@
 use graph::data::graphql::ext::{FieldExt, TypeDefinitionExt};
 use graphql_parser::Pos;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use graph::data::graphql::{object, DocumentExt, ObjectOrInterface};
 use graph::prelude::*;
@@ -376,7 +376,6 @@ impl Resolver for IntrospectionResolver {
         field: &a::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&str, r::Value>,
     ) -> Result<r::Value, QueryExecutionError> {
         match field.name.as_str() {
             "possibleTypes" => {
@@ -418,12 +417,11 @@ impl Resolver for IntrospectionResolver {
         field: &a::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        arguments: &HashMap<&str, r::Value>,
     ) -> Result<r::Value, QueryExecutionError> {
         let object = match field.name.as_str() {
             "__schema" => self.schema_object(),
             "__type" => {
-                let name = arguments.get("name").ok_or_else(|| {
+                let name = field.argument_value("name").ok_or_else(|| {
                     QueryExecutionError::MissingArgumentError(
                         Pos::default(),
                         "missing argument `name` in `__type(name: String!)`".to_owned(),

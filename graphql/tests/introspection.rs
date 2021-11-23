@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate pretty_assertions;
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use graph::data::graphql::{object, object_value, ObjectOrInterface};
@@ -37,7 +36,6 @@ impl Resolver for MockResolver {
         _field: &a::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&str, r::Value>,
     ) -> Result<r::Value, QueryExecutionError> {
         Ok(r::Value::Null)
     }
@@ -48,7 +46,6 @@ impl Resolver for MockResolver {
         _field: &a::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&str, r::Value>,
     ) -> Result<r::Value, QueryExecutionError> {
         Ok(r::Value::Null)
     }
