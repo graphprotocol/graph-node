@@ -630,7 +630,8 @@ fn execute_field(
     field_definition: &s::Field,
     selected_attrs: SelectedAttributes<'_>,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
-    let argument_values = crate::execution::coerce_argument_values(&ctx.query, object_type, field)?;
+    let argument_values =
+        crate::execution::coerce_argument_values(&ctx.query.schema, object_type, field)?;
     let multiplicity = if sast::is_list_or_non_null_list_field(field_definition) {
         ChildMultiplicity::Many
     } else {

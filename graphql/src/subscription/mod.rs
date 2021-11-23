@@ -119,7 +119,8 @@ fn create_source_event_stream(
         }
     };
 
-    let argument_values = coerce_argument_values(&ctx.query, subscription_type.as_ref(), field)?;
+    let argument_values =
+        coerce_argument_values(&ctx.query.schema, subscription_type.as_ref(), field)?;
 
     resolve_field_stream(&ctx, &subscription_type, field, argument_values)
 }
