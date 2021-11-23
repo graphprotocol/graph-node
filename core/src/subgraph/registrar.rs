@@ -549,7 +549,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolve
     // Overwrite the start block if the debug block number is set
     if let Some(number) = debug_block_number {
         start_block = chain
-            .block_pointer_from_number(&logger, number-1)
+            .block_pointer_from_number(&logger, number - 1)
             .await
             .map(Some)
             .map_err(move |_| {

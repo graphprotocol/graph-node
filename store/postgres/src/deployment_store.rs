@@ -560,7 +560,8 @@ impl DeploymentStore {
             return Ok(info.clone());
         }
 
-        let (input_schema, description, repository, debug_endpoint) = deployment::manifest_info(&conn, site)?;
+        let (input_schema, description, repository, debug_endpoint) =
+            deployment::manifest_info(&conn, site)?;
 
         let graft_block =
             deployment::graft_point(&conn, &site.deployment)?.map(|(_, ptr)| ptr.number as i32);
