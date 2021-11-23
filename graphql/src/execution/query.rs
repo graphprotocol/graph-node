@@ -194,18 +194,21 @@ impl Query {
         Ok(Arc::new(query))
     }
 
-    /// Return the block constraint for the toplevel query field(s), merging the selection sets of
-    /// fields that have the same block constraint.
+    /// Return the block constraint for the toplevel query field(s), merging
+    /// consecutive fields that have the same block constraint, while making
+    /// sure that the fields appear in the same order as they did in the
+    /// query
     ///
-    /// Also returns the combined error policy for those fields, which is `Deny` if any field is
-    /// `Deny` and `Allow` otherwise.
+    /// Also returns the combined error policy for those fields, which is
+    /// `Deny` if any field is `Deny` and `Allow` otherwise.
     pub fn block_constraint(
         &self,
-    ) -> Result<HashMap<BlockConstraint, (a::SelectionSet, ErrorPolicy)>, Vec<QueryExecutionError>>
+    ) -> Result<Vec<(BlockConstraint, (a::SelectionSet, ErrorPolicy))>, Vec<QueryExecutionError>>
     {
-        let mut bcs = HashMap::new();
+        let mut bcs: Vec<(BlockConstraint, (a::SelectionSet, ErrorPolicy))> = Vec::new();
 
         let root_type = self.schema.query_type.as_ref();
+        let mut prev_bc: Option<BlockConstraint> = None;
         for field in self.selection_set.fields_for(root_type) {
             let bc = match field.argument_value("block") {
                 Some(bc) => BlockConstraint::try_from_value(bc).map_err(|_| {
@@ -229,16 +232,19 @@ impl Query {
                 None => ErrorPolicy::Deny,
             };
 
-            let (selection_set, error_policy) = bcs.entry(bc).or_insert_with(|| {
-                (
-                    a::SelectionSet::empty_from(&self.selection_set),
-                    field_error_policy,
-                )
-            });
-            selection_set.push(field);
-            if field_error_policy == ErrorPolicy::Deny {
-                *error_policy = ErrorPolicy::Deny;
+            let next_bc = Some(bc.clone());
+            if prev_bc == next_bc {
+                let (selection_set, error_policy) = &mut bcs.last_mut().unwrap().1;
+                selection_set.push(field);
+                if field_error_policy == ErrorPolicy::Deny {
+                    *error_policy = ErrorPolicy::Deny;
+                }
+            } else {
+                let mut selection_set = a::SelectionSet::empty_from(&self.selection_set);
+                selection_set.push(field);
+                bcs.push((bc, (selection_set, field_error_policy)))
             }
+            prev_bc = next_bc;
         }
         Ok(bcs)
     }

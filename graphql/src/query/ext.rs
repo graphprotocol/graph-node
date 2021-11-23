@@ -54,7 +54,7 @@ impl ValueExt for q::Value {
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum BlockConstraint {
     Hash(H256),
     Number(BlockNumber),
