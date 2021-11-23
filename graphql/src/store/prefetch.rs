@@ -909,30 +909,32 @@ fn collect_fields_inner<'a>(
                 );
 
                 // Collect complementary fields used in the `orderBy` query attribute, if present.
-                if let Some(arguments) = get_argument_value(&field.arguments, "orderBy") {
-                    let schema_field = type_condition.field(&field.name).expect(&format!(
-                        "the field {:?} to exist in {:?}",
-                        &field.name,
-                        &type_condition.name()
-                    ));
-                    let field_name = sast::get_field_name(&schema_field.field_type);
-                    let object_or_interface_for_field = ctx
-                        .query
-                        .schema
-                        .document()
-                        .object_or_interface(&field_name)
-                        .expect(&format!(
-                            "The field {:?} to exist in the Document",
-                            field_name
+                if !*DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES {
+                    if let Some(arguments) = get_argument_value(&field.arguments, "orderBy") {
+                        let schema_field = type_condition.field(&field.name).expect(&format!(
+                            "the field {:?} to exist in {:?}",
+                            &field.name,
+                            &type_condition.name()
                         ));
-                    match arguments {
-                        graphql_parser::schema::Value::Enum(complementary_field_name) => {
-                            complementary_fields.insert(
-                                object_or_interface_for_field,
-                                complementary_field_name.clone(),
-                            );
+                        let field_name = sast::get_field_name(&schema_field.field_type);
+                        let object_or_interface_for_field = ctx
+                            .query
+                            .schema
+                            .document()
+                            .object_or_interface(&field_name)
+                            .expect(&format!(
+                                "The field {:?} to exist in the Document",
+                                field_name
+                            ));
+                        match arguments {
+                            graphql_parser::schema::Value::Enum(complementary_field_name) => {
+                                complementary_fields.insert(
+                                    object_or_interface_for_field,
+                                    complementary_field_name.clone(),
+                                );
+                            }
+                            _ => unimplemented!("unsure on what to do about other variants"),
                         }
-                        _ => unimplemented!("unsure on what to do about other variants"),
                     }
                 }
             }
