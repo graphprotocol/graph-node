@@ -432,12 +432,20 @@ impl Block for BlockFinality {
         // code reading from the chain store always expects the JSON data to
         // have the form of an `EthereumBlock`.
         //
-        // The serialization here will subtly use different formats because
-        // it serializes objects of different types.
+        // Even though this bug is fixed now and we always use the
+        // serialization of an `EthereumBlock`, there are still chain stores
+        // in existence that used the old serialization form, and we need to
+        // deal with that when deserializing
         //
         // see also 7736e440-4c6b-11ec-8c4d-b42e99f52061
         match self {
-            BlockFinality::Final(block) => json::to_value(block),
+            BlockFinality::Final(block) => {
+                let eth_block = EthereumBlock {
+                    block: block.clone(),
+                    transaction_receipts: vec![],
+                };
+                json::to_value(eth_block)
+            }
             BlockFinality::NonFinal(block) => json::to_value(&block.ethereum_block),
         }
     }
