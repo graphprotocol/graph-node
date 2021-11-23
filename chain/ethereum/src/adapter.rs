@@ -26,6 +26,8 @@ use crate::{data_source::DataSource, Chain};
 pub type EventSignature = H256;
 pub type FunctionSelector = [u8; 4];
 
+const ETH_GET_LOGS_MAX_CONTRACTS: usize = 1000;
+
 #[derive(Clone, Debug)]
 pub struct EthereumContractCall {
     pub address: Address,
@@ -68,6 +70,22 @@ enum LogFilterNode {
 pub struct EthGetLogsFilter {
     pub contracts: Vec<Address>,
     pub event_signatures: Vec<EventSignature>,
+}
+
+impl EthGetLogsFilter {
+    fn from_contract(address: Address) -> Self {
+        EthGetLogsFilter {
+            contracts: vec![address],
+            event_signatures: vec![],
+        }
+    }
+
+    fn from_event(event: EventSignature) -> Self {
+        EthGetLogsFilter {
+            contracts: vec![],
+            event_signatures: vec![event],
+        }
+    }
 }
 
 impl fmt::Display for EthGetLogsFilter {
@@ -209,10 +227,7 @@ impl EthereumLogFilter {
 
         // First add the wildcard event filters.
         for wildcard_event in self.wildcard_events {
-            filters.push(EthGetLogsFilter {
-                contracts: vec![],
-                event_signatures: vec![wildcard_event],
-            })
+            filters.push(EthGetLogsFilter::from_event(wildcard_event))
         }
 
         // The current algorithm is to repeatedly find the maximum cardinality vertex and turn all
@@ -230,31 +245,37 @@ impl EthereumLogFilter {
         // might cause the filter to become too broad, so at the moment it seems excessive.
         let mut g = self.contracts_and_events_graph;
         while g.edge_count() > 0 {
+            let mut push_filter = |filter: EthGetLogsFilter| {
+                // Sanity checks:
+                // - The filter is not a wildcard because all nodes have neighbors.
+                // - The graph is bipartite.
+                assert!(filter.contracts.len() > 0 && filter.event_signatures.len() > 0);
+                assert!(filter.contracts.len() == 1 || filter.event_signatures.len() == 1);
+                filters.push(filter);
+            };
+
             // If there are edges, there are vertexes.
             let max_vertex = g.nodes().max_by_key(|&n| g.neighbors(n).count()).unwrap();
             let mut filter = match max_vertex {
-                LogFilterNode::Contract(address) => EthGetLogsFilter {
-                    contracts: vec![address],
-                    event_signatures: vec![],
-                },
-                LogFilterNode::Event(event_sig) => EthGetLogsFilter {
-                    contracts: vec![],
-                    event_signatures: vec![event_sig],
-                },
+                LogFilterNode::Contract(address) => EthGetLogsFilter::from_contract(address),
+                LogFilterNode::Event(event_sig) => EthGetLogsFilter::from_event(event_sig),
             };
             for neighbor in g.neighbors(max_vertex) {
                 match neighbor {
-                    LogFilterNode::Contract(address) => filter.contracts.push(address),
+                    LogFilterNode::Contract(address) => {
+                        if filter.contracts.len() == ETH_GET_LOGS_MAX_CONTRACTS {
+                            // The batch size was reached, register the filter and start a new one.
+                            let event = filter.event_signatures[0];
+                            push_filter(filter);
+                            filter = EthGetLogsFilter::from_event(event);
+                        }
+                        filter.contracts.push(address);
+                    }
                     LogFilterNode::Event(event_sig) => filter.event_signatures.push(event_sig),
                 }
             }
 
-            // Sanity checks:
-            // - The filter is not a wildcard because all nodes have neighbors.
-            // - The graph is bipartite.
-            assert!(filter.contracts.len() > 0 && filter.event_signatures.len() > 0);
-            assert!(filter.contracts.len() == 1 || filter.event_signatures.len() == 1);
-            filters.push(filter);
+            push_filter(filter);
             g.remove_node(max_vertex);
         }
         filters.into_iter()
@@ -794,6 +815,11 @@ fn complete_log_filter() {
                     .collect::<BTreeSet<_>>(),
                 events
             );
+
+            // Assert that chunking works.
+            for filter in logs_filters {
+                assert!(filter.contracts.len() <= 1000);
+            }
         }
     }
 }
