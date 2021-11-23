@@ -8,7 +8,7 @@ use graph::prelude::{r, CacheWeight};
 use graph::slog::warn;
 use graph::util::cache_weight;
 use lazy_static::lazy_static;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -587,7 +587,6 @@ fn execute_selection_set<'a>(
             match execute_field(
                 resolver,
                 &ctx,
-                object_type.into(),
                 &parents,
                 &join,
                 field,
@@ -623,15 +622,12 @@ fn execute_selection_set<'a>(
 fn execute_field(
     resolver: &StoreResolver,
     ctx: &ExecutionContext<impl Resolver>,
-    object_type: ObjectOrInterface<'_>,
     parents: &Vec<&mut Node>,
     join: &Join<'_>,
     field: &a::Field,
     field_definition: &s::Field,
     selected_attrs: SelectedAttributes<'_>,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
-    let argument_values =
-        crate::execution::coerce_argument_values(&ctx.query.schema, object_type, field)?;
     let multiplicity = if sast::is_list_or_non_null_list_field(field_definition) {
         ChildMultiplicity::Many
     } else {
@@ -643,7 +639,7 @@ fn execute_field(
         resolver.store.as_ref(),
         parents,
         &join,
-        argument_values,
+        field,
         multiplicity,
         ctx.query.schema.types_for_interface(),
         resolver.block_number(),
@@ -663,7 +659,7 @@ fn fetch(
     store: &(impl QueryStore + ?Sized),
     parents: &Vec<&mut Node>,
     join: &Join<'_>,
-    arguments: HashMap<&str, r::Value>,
+    field: &a::Field,
     multiplicity: ChildMultiplicity,
     types_for_interface: &BTreeMap<EntityType, Vec<s::ObjectType>>,
     block: BlockNumber,
@@ -675,7 +671,7 @@ fn fetch(
     let mut query = build_query(
         join.child_type,
         block,
-        &arguments,
+        field,
         types_for_interface,
         max_first,
         max_skip,
@@ -690,7 +686,7 @@ fn fetch(
     }
 
     query.logger = Some(logger);
-    if let Some(r::Value::String(id)) = arguments.get(ARG_ID.as_str()) {
+    if let Some(r::Value::String(id)) = field.argument_value(ARG_ID.as_str()) {
         query.filter = Some(
             EntityFilter::Equal(ARG_ID.to_owned(), StoreValue::from(id.to_owned()))
                 .and_maybe(query.filter),

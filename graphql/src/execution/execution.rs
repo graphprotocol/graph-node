@@ -9,7 +9,6 @@ use lazy_static::lazy_static;
 use stable_hash::crypto::SetHasher;
 use stable_hash::prelude::*;
 use stable_hash::utils::stable_hash;
-use std::collections::HashMap;
 use std::time::Instant;
 use std::{borrow::ToOwned, collections::HashSet};
 
@@ -25,7 +24,6 @@ use crate::introspection::{
 };
 use crate::prelude::*;
 use crate::schema::ast as sast;
-use crate::values::coercion;
 
 lazy_static! {
     // Comma separated subgraph ids to cache queries for.
@@ -554,19 +552,15 @@ fn execute_field(
     field: &a::Field,
     field_definition: &s::Field,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
-    coerce_argument_values(&ctx.query.schema, object_type, field)
-        .and_then(|argument_values| {
-            resolve_field_value(
-                ctx,
-                object_type,
-                field_value,
-                field,
-                field_definition,
-                &field_definition.field_type,
-                &argument_values,
-            )
-        })
-        .and_then(|value| complete_value(ctx, field, &field_definition.field_type, value))
+    resolve_field_value(
+        ctx,
+        object_type,
+        field_value,
+        field,
+        field_definition,
+        &field_definition.field_type,
+    )
+    .and_then(|value| complete_value(ctx, field, &field_definition.field_type, value))
 }
 
 /// Resolves the value of a field.
@@ -577,7 +571,6 @@ fn resolve_field_value(
     field: &a::Field,
     field_definition: &s::Field,
     field_type: &s::Type,
-    argument_values: &HashMap<&str, r::Value>,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     match field_type {
         s::Type::NonNullType(inner_type) => resolve_field_value(
@@ -587,7 +580,6 @@ fn resolve_field_value(
             field,
             field_definition,
             inner_type.as_ref(),
-            argument_values,
         ),
 
         s::Type::NamedType(ref name) => resolve_field_value_for_named_type(
@@ -597,7 +589,6 @@ fn resolve_field_value(
             field,
             field_definition,
             name,
-            argument_values,
         ),
 
         s::Type::ListType(inner_type) => resolve_field_value_for_list_type(
@@ -607,7 +598,6 @@ fn resolve_field_value(
             field,
             field_definition,
             inner_type.as_ref(),
-            argument_values,
         ),
     }
 }
@@ -620,7 +610,6 @@ fn resolve_field_value_for_named_type(
     field: &a::Field,
     field_definition: &s::Field,
     type_name: &str,
-    argument_values: &HashMap<&str, r::Value>,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     // Try to resolve the type name into the actual type
     let named_type = ctx
@@ -631,13 +620,10 @@ fn resolve_field_value_for_named_type(
         .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
     match named_type {
         // Let the resolver decide how the field (with the given object type) is resolved
-        s::TypeDefinition::Object(t) => ctx.resolver.resolve_object(
-            field_value,
-            field,
-            field_definition,
-            t.into(),
-            argument_values,
-        ),
+        s::TypeDefinition::Object(t) => {
+            ctx.resolver
+                .resolve_object(field_value, field, field_definition, t.into())
+        }
 
         // Let the resolver decide how values in the resolved object value
         // map to values of GraphQL enums
@@ -647,16 +633,13 @@ fn resolve_field_value_for_named_type(
         // map to values of GraphQL scalars
         s::TypeDefinition::Scalar(t) => {
             ctx.resolver
-                .resolve_scalar_value(object_type, field, t, field_value, argument_values)
+                .resolve_scalar_value(object_type, field, t, field_value)
         }
 
-        s::TypeDefinition::Interface(i) => ctx.resolver.resolve_object(
-            field_value,
-            field,
-            field_definition,
-            i.into(),
-            argument_values,
-        ),
+        s::TypeDefinition::Interface(i) => {
+            ctx.resolver
+                .resolve_object(field_value, field, field_definition, i.into())
+        }
 
         s::TypeDefinition::Union(_) => Err(QueryExecutionError::Unimplemented("unions".to_owned())),
 
@@ -673,7 +656,6 @@ fn resolve_field_value_for_list_type(
     field: &a::Field,
     field_definition: &s::Field,
     inner_type: &s::Type,
-    argument_values: &HashMap<&str, r::Value>,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     match inner_type {
         s::Type::NonNullType(inner_type) => resolve_field_value_for_list_type(
@@ -683,7 +665,6 @@ fn resolve_field_value_for_list_type(
             field,
             field_definition,
             inner_type,
-            argument_values,
         ),
 
         s::Type::NamedType(ref type_name) => {
@@ -699,13 +680,7 @@ fn resolve_field_value_for_list_type(
                 // is resolved into a entities based on the (potential) parent object
                 s::TypeDefinition::Object(t) => ctx
                     .resolver
-                    .resolve_objects(
-                        field_value,
-                        field,
-                        field_definition,
-                        t.into(),
-                        argument_values,
-                    )
+                    .resolve_objects(field_value, field, field_definition, t.into())
                     .map_err(|e| vec![e]),
 
                 // Let the resolver decide how values in the resolved object value
@@ -722,13 +697,7 @@ fn resolve_field_value_for_list_type(
 
                 s::TypeDefinition::Interface(t) => ctx
                     .resolver
-                    .resolve_objects(
-                        field_value,
-                        field,
-                        field_definition,
-                        t.into(),
-                        argument_values,
-                    )
+                    .resolve_objects(field_value, field, field_definition, t.into())
                     .map_err(|e| vec![e]),
 
                 s::TypeDefinition::Union(_) => Err(vec![QueryExecutionError::Unimplemented(
@@ -891,43 +860,4 @@ fn resolve_abstract_type<'a>(
                 sast::get_type_name(abstract_type).to_string(),
             )]
         })
-}
-
-/// Coerces argument values into GraphQL values.
-pub fn coerce_argument_values<'a>(
-    schema: &ApiSchema,
-    ty: impl Into<ObjectOrInterface<'a>>,
-    field: &a::Field,
-) -> Result<HashMap<&'a str, r::Value>, Vec<QueryExecutionError>> {
-    let mut coerced_values = HashMap::new();
-    let mut errors = vec![];
-
-    let resolver = |name: &str| schema.document().get_named_type(name);
-
-    for argument_def in sast::get_argument_definitions(ty, &field.name)
-        .into_iter()
-        .flatten()
-    {
-        let value = field.argument_value(&argument_def.name).cloned();
-        match coercion::coerce_input_value(value, &argument_def, &resolver) {
-            Ok(Some(value)) => {
-                if argument_def.name == "text".to_string() {
-                    coerced_values.insert(
-                        argument_def.name.as_str(),
-                        r::Value::Object(Object::from_iter(vec![(field.name.clone(), value)])),
-                    );
-                } else {
-                    coerced_values.insert(&argument_def.name, value);
-                }
-            }
-            Ok(None) => {}
-            Err(e) => errors.push(e),
-        }
-    }
-
-    if errors.is_empty() {
-        Ok(coerced_values)
-    } else {
-        Err(errors)
-    }
 }

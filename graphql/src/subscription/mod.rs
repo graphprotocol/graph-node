@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::result::Result;
 use std::time::{Duration, Instant};
 
@@ -119,17 +118,13 @@ fn create_source_event_stream(
         }
     };
 
-    let argument_values =
-        coerce_argument_values(&ctx.query.schema, subscription_type.as_ref(), field)?;
-
-    resolve_field_stream(&ctx, &subscription_type, field, argument_values)
+    resolve_field_stream(&ctx, &subscription_type, field)
 }
 
 fn resolve_field_stream(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     field: &a::Field,
-    _argument_values: HashMap<&str, r::Value>,
 ) -> Result<UnitStream, SubscriptionError> {
     ctx.resolver
         .resolve_field_stream(&ctx.query.schema.document(), object_type, field)
