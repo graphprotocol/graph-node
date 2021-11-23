@@ -546,12 +546,17 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolve
     let (mut start_block, base_block) =
         resolve_subgraph_chain_blocks(&manifest, chain.cheap_clone(), &logger.clone()).await?;
 
+    // Overwrite the start block if the debug block number is set
     if let Some(number) = debug_block_number {
         start_block = chain
             .block_pointer_from_number(&logger, number-1)
             .await
             .map(Some)
-            .unwrap();
+            .map_err(move |_| {
+                SubgraphRegistrarError::ManifestValidationError(vec![
+                    SubgraphManifestValidationError::BlockNotFound(number.to_string()),
+                ])
+            })?;
     }
 
     info!(

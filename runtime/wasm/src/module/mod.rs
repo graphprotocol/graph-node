@@ -839,7 +839,13 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let store = &self.ctx.host_exports.store;
         let endpoint_option = store
             .get_debug_endpoint(&self.ctx.host_exports.subgraph_id)
-            .expect("store_get: Failed to fetch the subgraph debug endpoint from the store");
+            .map_err(|e| {
+                HostExportError::Unknown(anyhow!(
+                    "store_get: Failed to fetch the subgraph debug endpoint for subgraph with id `{}` from the store: {:?}",
+                    self.ctx.host_exports.subgraph_id,
+                    e,
+                ))
+            })?;
 
         if let Some(entity) = entity_option {
             let _section = self
@@ -847,13 +853,21 @@ impl<C: Blockchain> WasmInstanceContext<C> {
                 .stopwatch
                 .start_section("store_get_asc_new");
             Ok(asc_new(self, &entity.sorted())?)
+
+        // Debug tool case follows...
         } else if let Some(endpoint) = endpoint_option {
             let schema = store
                 .input_schema(&self.ctx.host_exports.subgraph_id)
-                .expect("store_get: Failed to fetch the subgraph input schema from the store");
+                .map_err(|e| {
+                    HostExportError::Unknown(anyhow!(
+                        "store_get: Failed to fetch the subgraph input schema for subgraph with id `{}` from the store: {:?}",
+                        self.ctx.host_exports.subgraph_id,
+                        e,
+                    ))
+                })?;
 
-            let (query, fields) = debug_tool::infer_query(schema, &entity_type, &id);
-            let res = debug_tool::perform_query(query, &endpoint)?;
+            let (query, fields) = debug_tool::infer_query(schema, &entity_type, &id)?;
+            let res = debug_tool::send(query, &endpoint)?;
             if !res.contains("data") {
                 return Ok(AscPtr::null());
             }

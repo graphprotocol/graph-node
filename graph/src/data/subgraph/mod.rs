@@ -773,9 +773,9 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             schema,
             data_sources,
             graft,
+            debug_endpoint,
             templates,
             chain,
-            debug_endpoint,
         } = self;
 
         if !(MIN_SPEC_VERSION..=max_spec_version.clone()).contains(&spec_version) {
@@ -823,9 +823,9 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             schema,
             data_sources,
             graft,
+            debug_endpoint,
             templates,
             chain,
-            debug_endpoint,
         })
     }
 }
