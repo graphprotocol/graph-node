@@ -3,7 +3,7 @@ use std::{collections::HashSet, ops::Deref};
 use graph::{
     components::store::EntityType,
     data::graphql::{DocumentExt, ObjectOrInterface},
-    prelude::{q, r, s, QueryExecutionError, Schema},
+    prelude::{anyhow, q, r, s, QueryExecutionError, Schema, ValueMap},
 };
 use graphql_parser::Pos;
 
@@ -228,6 +228,25 @@ impl Field {
 
     fn is_leaf(&self) -> bool {
         self.selection_set.is_empty()
+    }
+}
+
+impl ValueMap for Field {
+    fn get_required<T: graph::prelude::TryFromValue>(&self, key: &str) -> Result<T, anyhow::Error> {
+        self.argument_value(key)
+            .ok_or_else(|| anyhow!("Required field `{}` not set", key))
+            .and_then(|value| T::try_from_value(value).map_err(|e| e.into()))
+    }
+
+    fn get_optional<T: graph::prelude::TryFromValue>(
+        &self,
+        key: &str,
+    ) -> Result<Option<T>, anyhow::Error> {
+        self.argument_value(key)
+            .map_or(Ok(None), |value| match value {
+                r::Value::Null => Ok(None),
+                _ => T::try_from_value(value).map(Some).map_err(Into::into),
+            })
     }
 }
 
