@@ -741,3 +741,59 @@ mod tests {
         );
     }
 }
+
+// Tests `eth_get_logs_filters` in instances where all events are filtered on by all contracts.
+// This represents, for example, the relationship between dynamic data sources and their events.
+#[test]
+fn complete_log_filter() {
+    use std::collections::BTreeSet;
+
+    // Test a few combinations of complete graphs.
+    for i in [1, 2] {
+        let events: BTreeSet<_> = (0..i).map(H256::from_low_u64_le).collect();
+
+        for j in [1, 1000, 2000, 3000] {
+            let contracts: BTreeSet<_> = (0..j).map(Address::from_low_u64_le).collect();
+
+            // Construct the complete bipartite graph with i events and j contracts.
+            let mut contracts_and_events_graph = GraphMap::new();
+            for &contract in &contracts {
+                for &event in &events {
+                    contracts_and_events_graph.add_edge(
+                        LogFilterNode::Contract(contract),
+                        LogFilterNode::Event(event),
+                        (),
+                    );
+                }
+            }
+
+            // Run `eth_get_logs_filters`, which is what we want to test.
+            let logs_filters: Vec<_> = EthereumLogFilter {
+                contracts_and_events_graph,
+                wildcard_events: HashSet::new(),
+            }
+            .eth_get_logs_filters()
+            .collect();
+
+            // Assert that a contract or event is filtered on iff it was present in the graph.
+            assert_eq!(
+                logs_filters
+                    .iter()
+                    .map(|l| l.contracts.iter())
+                    .flatten()
+                    .copied()
+                    .collect::<BTreeSet<_>>(),
+                contracts
+            );
+            assert_eq!(
+                logs_filters
+                    .iter()
+                    .map(|l| l.event_signatures.iter())
+                    .flatten()
+                    .copied()
+                    .collect::<BTreeSet<_>>(),
+                events
+            );
+        }
+    }
+}
