@@ -43,10 +43,11 @@ fn canonical_serialization() {
 
     // Value::Variable: nothing to check, not used in a response
 
-    // Value::Object: Insertion order of keys does not matter
+    // Value::Object: Insertion order of keys matters
     let first_second = r#"{"data":{"first":"first","second":"second"}}"#;
+    let second_first = r#"{"data":{"second":"second","first":"first"}}"#;
     assert_resp!(first_second, object! { first: "first", second: "second" });
-    assert_resp!(first_second, object! { second: "second", first: "first" });
+    assert_resp!(second_first, object! { second: "second", first: "first" });
 
     // Value::List
     assert_resp!(r#"{"data":{"ary":[1,2]}}"#, object! { ary: vec![1,2] });
@@ -81,6 +82,6 @@ fn canonical_serialization() {
     // Value::Boolean
     assert_resp!(
         r#"{"data":{"no":false,"yes":true}}"#,
-        object! { yes: true, no: false }
+        object! { no: false, yes: true }
     );
 }

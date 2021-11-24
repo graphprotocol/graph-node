@@ -5,24 +5,41 @@ use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 
+const TOMBSTONE_KEY: &str = "*dead*";
+
+#[derive(Clone, Debug, PartialEq)]
+struct Entry {
+    key: String,
+    value: Value,
+}
+
 #[derive(Clone, PartialEq)]
-pub struct Object(BTreeMap<String, Value>);
+pub struct Object(Vec<Entry>);
 
 impl Object {
     pub fn new() -> Self {
-        Self(BTreeMap::default())
+        Self(Vec::new())
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {
-        self.0.get(key)
+        self.0
+            .iter()
+            .find(|entry| entry.key == key)
+            .map(|entry| &entry.value)
     }
 
     pub fn remove(&mut self, key: &str) -> Option<Value> {
-        self.0.remove(key)
+        self.0
+            .iter_mut()
+            .find(|entry| entry.key == key)
+            .map(|entry| {
+                entry.key = TOMBSTONE_KEY.to_string();
+                std::mem::replace(&mut entry.value, Value::Null)
+            })
     }
 
-    pub fn iter(&self) -> std::collections::btree_map::Iter<String, Value> {
-        self.into_iter()
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &Value)> {
+        ObjectIter::new(self)
     }
 
     fn len(&self) -> usize {
@@ -34,33 +51,92 @@ impl Object {
     }
 
     pub fn insert(&mut self, key: String, value: Value) -> Option<Value> {
-        self.0.insert(key, value)
+        match self.0.iter_mut().find(|entry| &entry.key == &key) {
+            Some(entry) => Some(std::mem::replace(&mut entry.value, value)),
+            None => {
+                self.0.push(Entry { key, value });
+                None
+            }
+        }
     }
 }
 
 impl FromIterator<(String, Value)> for Object {
     fn from_iter<T: IntoIterator<Item = (String, Value)>>(iter: T) -> Self {
-        Object(BTreeMap::from_iter(iter))
+        let mut items: Vec<_> = Vec::new();
+        for (key, value) in iter {
+            items.push(Entry { key, value })
+        }
+        Object(items)
+    }
+}
+
+pub struct ObjectOwningIter {
+    iter: std::vec::IntoIter<Entry>,
+}
+
+impl Iterator for ObjectOwningIter {
+    type Item = (String, Value);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(entry) = self.iter.next() {
+            if &entry.key != TOMBSTONE_KEY {
+                return Some((entry.key, entry.value));
+            }
+        }
+        None
     }
 }
 
 impl IntoIterator for Object {
     type Item = (String, Value);
 
-    type IntoIter = std::collections::btree_map::IntoIter<String, Value>;
+    type IntoIter = ObjectOwningIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+        ObjectOwningIter {
+            iter: self.0.into_iter(),
+        }
+    }
+}
+
+pub struct ObjectIter<'a> {
+    iter: std::slice::Iter<'a, Entry>,
+}
+
+impl<'a> ObjectIter<'a> {
+    fn new(object: &'a Object) -> Self {
+        Self {
+            iter: object.0.as_slice().iter(),
+        }
+    }
+}
+impl<'a> Iterator for ObjectIter<'a> {
+    type Item = (&'a String, &'a Value);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(entry) = self.iter.next() {
+            if &entry.key != TOMBSTONE_KEY {
+                return Some((&entry.key, &entry.value));
+            }
+        }
+        None
     }
 }
 
 impl<'a> IntoIterator for &'a Object {
-    type Item = (&'a String, &'a Value);
+    type Item = <ObjectIter<'a> as Iterator>::Item;
 
-    type IntoIter = std::collections::btree_map::Iter<'a, String, Value>;
+    type IntoIter = ObjectIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
+        ObjectIter::new(self)
+    }
+}
+
+impl CacheWeight for Entry {
+    fn indirect_weight(&self) -> usize {
+        self.key.indirect_weight() + self.value.indirect_weight()
     }
 }
 
@@ -72,7 +148,7 @@ impl CacheWeight for Object {
 
 impl Default for Object {
     fn default() -> Self {
-        Self(BTreeMap::default())
+        Self(Vec::default())
     }
 }
 
@@ -96,7 +172,11 @@ pub enum Value {
 
 impl Value {
     pub fn object(map: BTreeMap<String, Value>) -> Self {
-        Value::Object(Object(map))
+        let items = map
+            .into_iter()
+            .map(|(key, value)| Entry { key, value })
+            .collect();
+        Value::Object(Object(items))
     }
 
     pub fn is_null(&self) -> bool {
