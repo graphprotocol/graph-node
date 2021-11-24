@@ -127,7 +127,7 @@ fn resolve_field_stream(
     field: &a::Field,
 ) -> Result<UnitStream, SubscriptionError> {
     ctx.resolver
-        .resolve_field_stream(&ctx.query.schema.document(), object_type, field)
+        .resolve_field_stream(&ctx.query.schema, object_type, field)
         .map_err(SubscriptionError::from)
 }
 
@@ -219,7 +219,7 @@ async fn execute_subscription_event(
     execute_root_selection_set(
         ctx.cheap_clone(),
         ctx.query.selection_set.cheap_clone(),
-        subscription_type,
+        subscription_type.into(),
         block_ptr,
     )
     .await

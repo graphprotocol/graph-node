@@ -3,7 +3,7 @@ use std::{collections::HashSet, ops::Deref};
 use graph::{
     components::store::EntityType,
     data::graphql::{DocumentExt, ObjectOrInterface},
-    prelude::{anyhow, q, r, s, QueryExecutionError, Schema, ValueMap},
+    prelude::{anyhow, q, r, s, ApiSchema, QueryExecutionError, ValueMap},
 };
 use graphql_parser::Pos;
 
@@ -23,13 +23,16 @@ use crate::schema::ast::ObjectType;
 pub struct SelectionSet {
     // Map object types to the list of fields that should be selected for
     // them
-    items: Vec<(String, Vec<Field>)>,
+    items: Vec<(ObjectType, Vec<Field>)>,
 }
 
 impl SelectionSet {
     /// Create a new `SelectionSet` that can handle the given types
-    pub fn new(types: Vec<String>) -> Self {
-        let items = types.into_iter().map(|name| (name, Vec::new())).collect();
+    pub fn new(types: Vec<ObjectType>) -> Self {
+        let items = types
+            .into_iter()
+            .map(|obj_type| (obj_type, Vec::new()))
+            .collect();
         SelectionSet { items }
     }
 
@@ -76,29 +79,28 @@ impl SelectionSet {
     }
 
     /// Iterate over all types and the fields for those types
-    pub fn fields(&self) -> impl Iterator<Item = (&str, impl Iterator<Item = &Field>)> {
+    pub fn fields(&self) -> impl Iterator<Item = (&ObjectType, impl Iterator<Item = &Field>)> {
         self.items
             .iter()
-            .map(|(name, fields)| (name.as_str(), fields.iter()))
+            .map(|(obj_type, fields)| (obj_type, fields.iter()))
     }
 
     /// Iterate over all types and the fields that are not leaf fields, i.e.
     /// whose selection sets are not empty
-    pub fn interior_fields(&self) -> impl Iterator<Item = (&str, impl Iterator<Item = &Field>)> {
-        self.items.iter().map(|(name, fields)| {
-            (
-                name.as_str(),
-                fields.iter().filter(|field| !field.is_leaf()),
-            )
-        })
+    pub fn interior_fields(
+        &self,
+    ) -> impl Iterator<Item = (&ObjectType, impl Iterator<Item = &Field>)> {
+        self.items
+            .iter()
+            .map(|(obj_type, fields)| (obj_type, fields.iter().filter(|field| !field.is_leaf())))
     }
 
     /// Iterate over all fields for the given object type
-    pub fn fields_for(&self, obj_type: &s::ObjectType) -> impl Iterator<Item = &Field> {
+    pub fn fields_for(&self, obj_type: &ObjectType) -> impl Iterator<Item = &Field> {
         let item = self
             .items
             .iter()
-            .find(|(name, _)| name == &obj_type.name)
+            .find(|(our_type, _)| our_type == obj_type)
             .expect("there is an entry for the type");
         item.1.iter()
     }
@@ -254,14 +256,14 @@ impl ValueMap for Field {
 /// object types that implement them, and possibly narrowing further when
 /// expanding fragments with type conitions
 #[derive(Debug, Clone, PartialEq)]
-pub enum ObjectTypeSet {
+pub(crate) enum ObjectTypeSet {
     Any,
-    Only(HashSet<String>),
+    Only(HashSet<ObjectType>),
 }
 
 impl ObjectTypeSet {
     pub fn convert(
-        schema: &Schema,
+        schema: &ApiSchema,
         type_cond: Option<&q::TypeCondition>,
     ) -> Result<ObjectTypeSet, QueryExecutionError> {
         match type_cond {
@@ -270,29 +272,24 @@ impl ObjectTypeSet {
         }
     }
 
-    pub fn from_name(schema: &Schema, name: &str) -> Result<ObjectTypeSet, QueryExecutionError> {
-        let set = resolve_object_types(schema, name)?
-            .into_iter()
-            .map(|ty| ty.name().to_string())
-            .collect();
+    pub fn from_name(schema: &ApiSchema, name: &str) -> Result<ObjectTypeSet, QueryExecutionError> {
+        let set = resolve_object_types(schema, name)?;
         Ok(ObjectTypeSet::Only(set))
     }
 
-    fn matches_name(&self, name: &str) -> bool {
+    fn contains(&self, obj_type: &ObjectType) -> bool {
         match self {
             ObjectTypeSet::Any => true,
-            ObjectTypeSet::Only(set) => set.contains(name),
+            ObjectTypeSet::Only(set) => set.contains(obj_type),
         }
     }
 
     pub fn intersect(self, other: &ObjectTypeSet) -> ObjectTypeSet {
         match self {
             ObjectTypeSet::Any => other.clone(),
-            ObjectTypeSet::Only(set) => ObjectTypeSet::Only(
-                set.into_iter()
-                    .filter(|ty| other.matches_name(ty))
-                    .collect(),
-            ),
+            ObjectTypeSet::Only(set) => {
+                ObjectTypeSet::Only(set.into_iter().filter(|ty| other.contains(ty)).collect())
+            }
         }
     }
 
@@ -300,34 +297,35 @@ impl ObjectTypeSet {
     /// are also implementations of `current_type`
     pub fn type_names(
         &self,
-        schema: &Schema,
+        schema: &ApiSchema,
         current_type: ObjectOrInterface<'_>,
-    ) -> Result<Vec<String>, QueryExecutionError> {
+    ) -> Result<Vec<ObjectType>, QueryExecutionError> {
         Ok(resolve_object_types(schema, current_type.name())?
             .into_iter()
-            .map(|obj| obj.name().to_string())
-            .filter(|name| match self {
+            .filter(|obj_type| match self {
                 ObjectTypeSet::Any => true,
-                ObjectTypeSet::Only(set) => set.contains(name.as_str()),
+                ObjectTypeSet::Only(set) => set.contains(obj_type),
             })
-            .collect::<Vec<String>>())
+            .collect())
     }
 }
 
 /// Look up the type `name` from the schema and resolve interfaces
 /// and unions until we are left with a set of concrete object types
-pub(crate) fn resolve_object_types<'a>(
-    schema: &'a Schema,
+pub(crate) fn resolve_object_types(
+    schema: &ApiSchema,
     name: &str,
-) -> Result<HashSet<ObjectType<'a>>, QueryExecutionError> {
+) -> Result<HashSet<ObjectType>, QueryExecutionError> {
     let mut set = HashSet::new();
     match schema
+        .schema
         .document
         .get_named_type(name)
         .ok_or_else(|| QueryExecutionError::AbstractTypeError(name.to_string()))?
     {
         s::TypeDefinition::Interface(intf) => {
             for obj_ty in &schema.types_for_interface()[&EntityType::new(intf.name.to_string())] {
+                let obj_ty = schema.object_type(obj_ty);
                 set.insert(obj_ty.into());
             }
         }
@@ -337,6 +335,7 @@ pub(crate) fn resolve_object_types<'a>(
             }
         }
         s::TypeDefinition::Object(ty) => {
+            let ty = schema.object_type(ty);
             set.insert(ty.into());
         }
         s::TypeDefinition::Scalar(_)

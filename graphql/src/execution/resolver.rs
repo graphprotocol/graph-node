@@ -1,5 +1,5 @@
 use graph::components::store::UnitStream;
-use graph::prelude::{async_trait, s, tokio, Error, QueryExecutionError};
+use graph::prelude::{async_trait, s, tokio, ApiSchema, Error, QueryExecutionError};
 use graph::{
     data::graphql::{ext::DocumentExt, ObjectOrInterface},
     prelude::{r, QueryResult},
@@ -108,7 +108,7 @@ pub trait Resolver: Sized + Send + Sync + 'static {
     // Resolves a change stream for a given field.
     fn resolve_field_stream(
         &self,
-        _schema: &s::Document,
+        _schema: &ApiSchema,
         _object_type: &s::ObjectType,
         _field: &a::Field,
     ) -> Result<UnitStream, QueryExecutionError> {

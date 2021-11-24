@@ -88,8 +88,8 @@ struct SelectedFields<'a>(&'a a::SelectionSet);
 impl<'a> std::fmt::Display for SelectedFields<'a> {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         let mut first = true;
-        for (name, fields) in self.0.fields() {
-            write!(fmt, "{}:", name)?;
+        for (obj_type, fields) in self.0.fields() {
+            write!(fmt, "{}:", obj_type.name)?;
             for field in fields {
                 if first {
                     write!(fmt, "{}", field.response_key())?;
@@ -259,9 +259,9 @@ impl Query {
     {
         let mut bcs: Vec<(BlockConstraint, (a::SelectionSet, ErrorPolicy))> = Vec::new();
 
-        let root_type = self.schema.query_type.as_ref();
+        let root_type = sast::ObjectType::from(self.schema.query_type.cheap_clone());
         let mut prev_bc: Option<BlockConstraint> = None;
-        for field in self.selection_set.fields_for(root_type) {
+        for field in self.selection_set.fields_for(&root_type) {
             let bc = match field.argument_value("block") {
                 Some(bc) => BlockConstraint::try_from_value(bc).map_err(|_| {
                     vec![QueryExecutionError::InvalidArgumentError(
@@ -863,7 +863,7 @@ impl Transform {
         } else {
             let field_type = parent_type.field(&name).expect("field names are valid");
             let ty = field_type.field_type.get_base_type();
-            let type_set = a::ObjectTypeSet::from_name(&self.schema.schema, ty)?;
+            let type_set = a::ObjectTypeSet::from_name(&self.schema, ty)?;
             let ty = self.schema.document().object_or_interface(ty).unwrap();
             self.expand_selection_set(selection_set, &type_set, ty)?
         };
@@ -893,7 +893,7 @@ impl Transform {
         let mut visited_fragments = HashSet::new();
 
         // All the types that could possibly be returned by this selection set
-        let types = type_set.type_names(&self.schema.schema, ty)?;
+        let types = type_set.type_names(&self.schema, ty)?;
         let mut newset = a::SelectionSet::new(types);
 
         for sel in items {
@@ -972,8 +972,7 @@ impl Transform {
             None => ty,
         };
         if !skip {
-            let type_set =
-                a::ObjectTypeSet::convert(&self.schema.schema, frag_cond)?.intersect(type_set);
+            let type_set = a::ObjectTypeSet::convert(&self.schema, frag_cond)?.intersect(type_set);
             let selection_set = self.expand_selection_set(selection_set, &type_set, ty)?;
             newset.merge(selection_set, directives);
         }
