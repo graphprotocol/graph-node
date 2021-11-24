@@ -23,6 +23,8 @@ use std::iter::FromIterator;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use super::graphql::ObjectOrInterface;
+
 pub const SCHEMA_TYPE_NAME: &str = "_Schema_";
 
 pub const META_FIELD_TYPE: &str = "_Meta_";
@@ -349,7 +351,7 @@ impl SchemaReference {
 
 #[derive(Debug)]
 pub struct ApiSchema {
-    pub schema: Schema,
+    schema: Schema,
 
     // Root types for the api schema.
     pub query_type: Arc<ObjectType>,
@@ -425,16 +427,87 @@ impl ApiSchema {
             .expect("ApiSchema.object_type is only used with existing types")
             .cheap_clone()
     }
+
+    pub fn get_named_type(&self, name: &str) -> Option<&TypeDefinition> {
+        self.schema.document.get_named_type(name)
+    }
+
+    /// Returns true if the given type is an input type.
+    ///
+    /// Uses the algorithm outlined on
+    /// https://facebook.github.io/graphql/draft/#IsInputType().
+    pub fn is_input_type(&self, t: &s::Type) -> bool {
+        match t {
+            s::Type::NamedType(name) => {
+                let named_type = self.get_named_type(name);
+                named_type.map_or(false, |type_def| match type_def {
+                    s::TypeDefinition::Scalar(_)
+                    | s::TypeDefinition::Enum(_)
+                    | s::TypeDefinition::InputObject(_) => true,
+                    _ => false,
+                })
+            }
+            s::Type::ListType(inner) => self.is_input_type(inner),
+            s::Type::NonNullType(inner) => self.is_input_type(inner),
+        }
+    }
+
+    pub fn get_root_query_type_def(&self) -> Option<&s::TypeDefinition> {
+        self.schema
+            .document
+            .definitions
+            .iter()
+            .find_map(|d| match d {
+                s::Definition::TypeDefinition(def @ s::TypeDefinition::Object(_)) => match def {
+                    s::TypeDefinition::Object(t) if t.name == "Query" => Some(def),
+                    _ => None,
+                },
+                _ => None,
+            })
+    }
+
+    pub fn object_or_interface(&self, name: &str) -> Option<ObjectOrInterface<'_>> {
+        if name.starts_with("__") {
+            INTROSPECTION_SCHEMA.object_or_interface(name)
+        } else {
+            self.schema.document.object_or_interface(name)
+        }
+    }
+
+    /// Returns the type definition that a field type corresponds to.
+    pub fn get_type_definition_from_field<'a>(
+        &'a self,
+        field: &s::Field,
+    ) -> Option<&'a s::TypeDefinition> {
+        self.get_type_definition_from_type(&field.field_type)
+    }
+
+    /// Returns the type definition for a type.
+    pub fn get_type_definition_from_type<'a>(
+        &'a self,
+        t: &s::Type,
+    ) -> Option<&'a s::TypeDefinition> {
+        match t {
+            s::Type::NamedType(name) => self.get_named_type(name),
+            s::Type::ListType(inner) => self.get_type_definition_from_type(inner),
+            s::Type::NonNullType(inner) => self.get_type_definition_from_type(inner),
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn definitions(&self) -> impl Iterator<Item = &s::Definition<'static, String>> {
+        self.schema.document.definitions.iter()
+    }
+}
+
+lazy_static! {
+    static ref INTROSPECTION_SCHEMA: Document = {
+        let schema = include_str!("introspection.graphql");
+        parse_schema(schema).expect("the schema `introspection.graphql` is invalid")
+    };
 }
 
 fn add_introspection_schema(schema: &mut Document) {
-    lazy_static! {
-        static ref INTROSPECTION_SCHEMA: Document = {
-            let schema = include_str!("introspection.graphql");
-            parse_schema(schema).expect("the schema `introspection.graphql` is invalid")
-        };
-    }
-
     fn introspection_fields() -> Vec<Field> {
         // Generate fields for the root query fields in an introspection schema,
         // the equivalent of the fields of the `Query` type:

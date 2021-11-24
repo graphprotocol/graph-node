@@ -305,9 +305,7 @@ pub(crate) fn collect_entities_from_query_field(
         if let Some(field_type) = sast::get_field(&object_type, &field.name) {
             // Check if the field type corresponds to a type definition (in a valid schema,
             // this should always be the case)
-            if let Some(type_definition) =
-                sast::get_type_definition_from_field(schema.document(), field_type)
-            {
+            if let Some(type_definition) = schema.get_type_definition_from_field(field_type) {
                 // If the field's type definition is an object type, extract that type
                 if let s::TypeDefinition::Object(object_type) = type_definition {
                     // Only collect whether the field's type has an @entity directive

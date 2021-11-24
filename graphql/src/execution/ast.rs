@@ -2,7 +2,7 @@ use std::{collections::HashSet, ops::Deref};
 
 use graph::{
     components::store::EntityType,
-    data::graphql::{DocumentExt, ObjectOrInterface},
+    data::graphql::ObjectOrInterface,
     prelude::{anyhow, q, r, s, ApiSchema, QueryExecutionError, ValueMap},
 };
 use graphql_parser::Pos;
@@ -318,8 +318,6 @@ pub(crate) fn resolve_object_types(
 ) -> Result<HashSet<ObjectType>, QueryExecutionError> {
     let mut set = HashSet::new();
     match schema
-        .schema
-        .document
         .get_named_type(name)
         .ok_or_else(|| QueryExecutionError::AbstractTypeError(name.to_string()))?
     {
