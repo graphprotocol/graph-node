@@ -575,6 +575,30 @@ fn can_query_many_to_many_relationship() {
 }
 
 #[test]
+fn root_fragments_are_expanded() {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
+        let query = graphql_parser::parse_query(
+            r#"
+            fragment Musicians on Query {
+                musicians(first: 100, where: { name: "Tom" }) {
+                    name
+                }
+            }
+            query MyQuery {
+                ...Musicians
+            }"#,
+        )
+        .expect("invalid test query")
+        .into_static();
+
+        let result = execute_query_document_with_variables(&deployment.hash, query, None).await;
+        let exp = object! { musicians: vec![ object! { name: "Tom" }]};
+        assert_eq!(extract_data!(result), Some(exp));
+    })
+}
+
+#[test]
 fn query_variables_are_used() {
     run_test_sequentially(|store| async move {
         let deployment = setup(store.as_ref());
