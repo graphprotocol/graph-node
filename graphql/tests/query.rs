@@ -366,7 +366,6 @@ fn can_query_one_to_one_relationship() {
                     r::Value::List(vec![
                         object_value(vec![
                             ("id", r::Value::String(String::from("s1"))),
-                            ("played", r::Value::Int(10)),
                             (
                                 "song",
                                 object_value(vec![
@@ -374,10 +373,10 @@ fn can_query_one_to_one_relationship() {
                                     ("title", r::Value::String(String::from("Cheesy Tune")))
                                 ])
                             ),
+                            ("played", r::Value::Int(10)),
                         ]),
                         object_value(vec![
                             ("id", r::Value::String(String::from("s2"))),
-                            ("played", r::Value::Int(15)),
                             (
                                 "song",
                                 object_value(vec![
@@ -385,6 +384,7 @@ fn can_query_one_to_one_relationship() {
                                     ("title", r::Value::String(String::from("Rock Tune")))
                                 ])
                             ),
+                            ("played", r::Value::Int(15)),
                         ])
                     ])
                 )
@@ -1676,12 +1676,12 @@ fn can_query_meta() {
         let result = execute_query_document(&deployment.hash, query).await;
         let exp = object! {
             _meta: object! {
+                deployment: "graphqlTestsQuery",
                 block: object! {
                     hash: "0x8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
                     number: 1,
                     __typename: "_Block_"
                 },
-                deployment: "graphqlTestsQuery",
                 __typename: "_Meta_"
             },
         };
@@ -1696,11 +1696,11 @@ fn can_query_meta() {
         let result = execute_query_document(&deployment.hash, query).await;
         let exp = object! {
             _meta: object! {
+                deployment: "graphqlTestsQuery",
                 block: object! {
                     hash: r::Value::Null,
                     number: 0
                 },
-                deployment: "graphqlTestsQuery"
             },
         };
         assert_eq!(extract_data!(result), Some(exp));
@@ -1715,11 +1715,11 @@ fn can_query_meta() {
         let result = execute_query_document(&deployment.hash, query).await;
         let exp = object! {
             _meta: object! {
+                deployment: "graphqlTestsQuery",
                 block: object! {
                     hash: "0xbd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
                     number: 0
                 },
-                deployment: "graphqlTestsQuery"
             },
         };
         assert_eq!(extract_data!(result), Some(exp));

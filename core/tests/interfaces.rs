@@ -551,7 +551,7 @@ async fn interface_inline_fragment_with_subquery() {
     .unwrap();
     let data = extract_data!(res).unwrap();
     let exp = object! {
-        leggeds: vec![ object!{ airspeed: 5, legs: 2, parent: object! { id: "mama_bird" } },
+        leggeds: vec![ object!{ legs: 2, airspeed: 5, parent: object! { id: "mama_bird" } },
                        object!{ legs: 4 }]
     };
     assert_eq!(data, exp);
