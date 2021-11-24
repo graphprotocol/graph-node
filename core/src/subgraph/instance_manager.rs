@@ -458,7 +458,7 @@ where
     let store_for_err = ctx.inputs.store.cheap_clone();
     let logger = ctx.state.logger.cheap_clone();
     let id_for_err = ctx.inputs.deployment.hash.clone();
-    let mut first_run = true;
+    let mut should_try_unfail = true;
 
     loop {
         debug!(logger, "Starting or restarting subgraph");
@@ -597,8 +597,8 @@ where
             // to move past errors.
             //
             // As an optimization we check this only on the first run.
-            if first_run {
-                first_run = false;
+            if should_try_unfail {
+                should_try_unfail = false;
 
                 let (current_ptr, parent_ptr) = match ctx.inputs.store.block_ptr()? {
                     Some(current_ptr) => {
