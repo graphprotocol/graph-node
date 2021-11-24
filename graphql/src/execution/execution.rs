@@ -222,7 +222,7 @@ pub(crate) fn get_field<'a>(
     name: &str,
 ) -> Option<s::Field> {
     if name == "__schema" || name == "__type" {
-        let object_type = *INTROSPECTION_QUERY_TYPE;
+        let object_type = &*INTROSPECTION_QUERY_TYPE;
         sast::get_field(object_type, name).cloned()
     } else {
         sast::get_field(object_type, name).cloned()
@@ -265,7 +265,7 @@ where
 pub(crate) fn execute_root_selection_set_uncached(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &a::SelectionSet,
-    root_type: &s::ObjectType,
+    root_type: &sast::ObjectType,
 ) -> Result<Object, Vec<QueryExecutionError>> {
     // Split the top-level fields into introspection fields and
     // regular data fields
@@ -314,7 +314,7 @@ pub(crate) fn execute_root_selection_set_uncached(
 pub(crate) async fn execute_root_selection_set<R: Resolver>(
     ctx: Arc<ExecutionContext<R>>,
     selection_set: Arc<a::SelectionSet>,
-    root_type: Arc<s::ObjectType>,
+    root_type: sast::ObjectType,
     block_ptr: Option<BlockPtr>,
 ) -> Arc<QueryResult> {
     // Cache the cache key to not have to calculate it twice - once for lookup
@@ -458,7 +458,7 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
 fn execute_selection_set<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     selection_set: &'a a::SelectionSet,
-    object_type: &s::ObjectType,
+    object_type: &sast::ObjectType,
     prefetched_value: Option<r::Value>,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     Ok(r::Value::Object(execute_selection_set_to_map(
@@ -472,7 +472,7 @@ fn execute_selection_set<'a>(
 fn execute_selection_set_to_map<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     selection_set: &'a a::SelectionSet,
-    object_type: &s::ObjectType,
+    object_type: &sast::ObjectType,
     prefetched_value: Option<r::Value>,
 ) -> Result<Object, Vec<QueryExecutionError>> {
     let mut prefetched_object = match prefetched_value {
@@ -806,12 +806,15 @@ fn complete_value(
                 }
 
                 // Complete object types recursively
-                s::TypeDefinition::Object(object_type) => execute_selection_set(
-                    ctx,
-                    &field.selection_set,
-                    object_type,
-                    Some(resolved_value),
-                ),
+                s::TypeDefinition::Object(object_type) => {
+                    let object_type = ctx.query.schema.object_type(object_type).into();
+                    execute_selection_set(
+                        ctx,
+                        &field.selection_set,
+                        &object_type,
+                        Some(resolved_value),
+                    )
+                }
 
                 // Resolve interface types using the resolved value and complete the value recursively
                 s::TypeDefinition::Interface(_) => {
@@ -820,7 +823,7 @@ fn complete_value(
                     execute_selection_set(
                         ctx,
                         &field.selection_set,
-                        object_type,
+                        &object_type,
                         Some(resolved_value),
                     )
                 }
@@ -832,7 +835,7 @@ fn complete_value(
                     execute_selection_set(
                         ctx,
                         &field.selection_set,
-                        object_type,
+                        &object_type,
                         Some(resolved_value),
                     )
                 }
@@ -850,14 +853,16 @@ fn resolve_abstract_type<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     abstract_type: &s::TypeDefinition,
     object_value: &r::Value,
-) -> Result<&'a s::ObjectType, Vec<QueryExecutionError>> {
+) -> Result<sast::ObjectType, Vec<QueryExecutionError>> {
     // Let the resolver handle the type resolution, return an error if the resolution
     // yields nothing
-    ctx.resolver
+    let obj_type = ctx
+        .resolver
         .resolve_abstract_type(ctx.query.schema.document(), abstract_type, object_value)
         .ok_or_else(|| {
             vec![QueryExecutionError::AbstractTypeError(
                 sast::get_type_name(abstract_type).to_string(),
             )]
-        })
+        })?;
+    Ok(ctx.query.schema.object_type(obj_type).into())
 }

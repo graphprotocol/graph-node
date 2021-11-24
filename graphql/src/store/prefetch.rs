@@ -530,7 +530,7 @@ fn execute_selection_set<'a>(
     let mut errors: Vec<QueryExecutionError> = Vec::new();
 
     // Process all field groups in order
-    for (type_name, fields) in selection_set.interior_fields() {
+    for (object_type, fields) in selection_set.interior_fields() {
         if let Some(deadline) = ctx.deadline {
             if deadline < Instant::now() {
                 errors.push(QueryExecutionError::Timeout);
@@ -544,18 +544,13 @@ fn execute_selection_set<'a>(
         } else {
             parents
                 .iter_mut()
-                .filter(|p| type_name == p.typename())
+                .filter(|p| object_type.name == p.typename())
                 .collect()
         };
 
         if parents.is_empty() {
             continue;
         }
-
-        let object_type = schema
-            .document()
-            .get_object_type_definition(type_name)
-            .expect("selection sets only contain object type names");
 
         for field in fields {
             let field_type = object_type
@@ -581,7 +576,7 @@ fn execute_selection_set<'a>(
                 if *DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES {
                     SelectedAttributes(BTreeMap::new())
                 } else {
-                    SelectedAttributes::from_selection_set(schema, field)?
+                    SelectedAttributes::for_field(field)?
                 };
 
             match execute_field(
@@ -626,7 +621,7 @@ fn execute_field(
     join: &Join<'_>,
     field: &a::Field,
     field_definition: &s::Field,
-    selected_attrs: SelectedAttributes<'_>,
+    selected_attrs: SelectedAttributes,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     let multiplicity = if sast::is_list_or_non_null_list_field(field_definition) {
         ChildMultiplicity::Many
@@ -666,7 +661,7 @@ fn fetch(
     max_first: u32,
     max_skip: u32,
     query_id: String,
-    selected_attrs: SelectedAttributes<'_>,
+    selected_attrs: SelectedAttributes,
 ) -> Result<Vec<Node>, QueryExecutionError> {
     let mut query = build_query(
         join.child_type,
@@ -675,7 +670,7 @@ fn fetch(
         types_for_interface,
         max_first,
         max_skip,
-        selected_attrs.0,
+        selected_attrs,
     )?;
     query.query_id = Some(query_id);
 
@@ -708,21 +703,14 @@ fn fetch(
 }
 
 #[derive(Debug, Default, Clone)]
-struct SelectedAttributes<'a>(BTreeMap<sast::ObjectType<'a>, AttributeNames>);
+pub(crate) struct SelectedAttributes(BTreeMap<String, AttributeNames>);
 
-impl<'a> SelectedAttributes<'a> {
+impl SelectedAttributes {
     /// Extract the attributes we should select from `selection_set`. In
     /// particular, disregard derived fields since they are not stored
-    fn from_selection_set(
-        schema: &'a ApiSchema,
-        field: &a::Field,
-    ) -> Result<SelectedAttributes<'a>, Vec<QueryExecutionError>> {
+    fn for_field(field: &a::Field) -> Result<SelectedAttributes, Vec<QueryExecutionError>> {
         let mut map = BTreeMap::new();
-        for (type_name, fields) in field.selection_set.fields() {
-            let object_type = schema
-                .document()
-                .get_object_type_definition(type_name)
-                .expect("selection sets only contain valid object types");
+        for (object_type, fields) in field.selection_set.fields() {
             let column_names = fields
                 .filter(|field| {
                     // Keep fields that are not derived and for which we
@@ -733,7 +721,10 @@ impl<'a> SelectedAttributes<'a> {
                 })
                 .map(|field| field.name.clone())
                 .collect();
-            map.insert(object_type.into(), AttributeNames::Select(column_names));
+            map.insert(
+                object_type.name().to_string(),
+                AttributeNames::Select(column_names),
+            );
         }
         // We need to also select the `orderBy` field if there is one.
         // Because of how the API Schema is set up, `orderBy` can only have
@@ -754,5 +745,9 @@ impl<'a> SelectedAttributes<'a> {
             }
         }
         Ok(SelectedAttributes(map))
+    }
+
+    pub fn get(&mut self, obj_type: &s::ObjectType) -> AttributeNames {
+        self.0.remove(&obj_type.name).unwrap_or(AttributeNames::All)
     }
 }

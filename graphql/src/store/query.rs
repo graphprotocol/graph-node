@@ -7,7 +7,8 @@ use graph::{components::store::EntityType, data::graphql::ObjectOrInterface};
 
 use crate::execution::ast as a;
 use crate::schema::ast as sast;
-use crate::schema::ast::ObjectType;
+
+use super::prefetch::SelectedAttributes;
 
 #[derive(Debug)]
 enum OrderDirection {
@@ -25,23 +26,19 @@ pub(crate) fn build_query<'a>(
     types_for_interface: &'a BTreeMap<EntityType, Vec<s::ObjectType>>,
     max_first: u32,
     max_skip: u32,
-    mut column_names: BTreeMap<ObjectType<'a>, AttributeNames>,
+    mut column_names: SelectedAttributes,
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
     let entity_types = EntityCollection::All(match &entity {
         ObjectOrInterface::Object(object) => {
-            let selected_columns = column_names
-                .remove(&(*object).into())
-                .unwrap_or(AttributeNames::All);
+            let selected_columns = column_names.get(object);
             vec![((*object).into(), selected_columns)]
         }
         ObjectOrInterface::Interface(interface) => types_for_interface
             [&EntityType::from(*interface)]
             .iter()
             .map(|o| {
-                let selected_columns = column_names
-                    .remove(&o.into())
-                    .unwrap_or(AttributeNames::All);
+                let selected_columns = column_names.get(o);
                 (o.into(), selected_columns)
             })
             .collect(),
@@ -291,9 +288,9 @@ pub fn parse_subgraph_id<'a>(
 }
 
 /// Recursively collects entities involved in a query field as `(subgraph ID, name)` tuples.
-pub fn collect_entities_from_query_field(
-    schema: &s::Document,
-    object_type: &s::ObjectType,
+pub(crate) fn collect_entities_from_query_field(
+    schema: &ApiSchema,
+    object_type: sast::ObjectType,
     field: &a::Field,
 ) -> BTreeSet<SubscriptionFilter> {
     // Output entities
@@ -305,10 +302,11 @@ pub fn collect_entities_from_query_field(
 
     while let Some((object_type, field)) = queue.pop_front() {
         // Check if the field exists on the object type
-        if let Some(field_type) = sast::get_field(object_type, &field.name) {
+        if let Some(field_type) = sast::get_field(&object_type, &field.name) {
             // Check if the field type corresponds to a type definition (in a valid schema,
             // this should always be the case)
-            if let Some(type_definition) = sast::get_type_definition_from_field(schema, field_type)
+            if let Some(type_definition) =
+                sast::get_type_definition_from_field(schema.document(), field_type)
             {
                 // If the field's type definition is an object type, extract that type
                 if let s::TypeDefinition::Object(object_type) = type_definition {
@@ -325,8 +323,9 @@ pub fn collect_entities_from_query_field(
 
                     // If the query field has a non-empty selection set, this means we
                     // need to recursively process it
-                    for sub_field in field.selection_set.fields_for(object_type) {
-                        queue.push_back((object_type, sub_field))
+                    let object_type = schema.object_type(object_type).into();
+                    for sub_field in field.selection_set.fields_for(&object_type) {
+                        queue.push_back((object_type.cheap_clone(), sub_field))
                     }
                 }
             }
@@ -354,7 +353,7 @@ mod tests {
         },
     };
     use graphql_parser::Pos;
-    use std::{collections::BTreeMap, iter::FromIterator};
+    use std::{collections::BTreeMap, iter::FromIterator, sync::Arc};
 
     use super::{a, build_query};
 
@@ -426,13 +425,14 @@ mod tests {
             ("first".to_string(), r::Value::Int(100.into())),
             ("skip".to_string(), r::Value::Int(0.into())),
         ];
+        let obj_type = Arc::new(object("SomeType")).into();
         a::Field {
             position: Default::default(),
             alias: None,
             name: "aField".to_string(),
             arguments,
             directives: vec![],
-            selection_set: a::SelectionSet::new(vec!["SomeType".to_string()]),
+            selection_set: a::SelectionSet::new(vec![obj_type]),
         }
     }
 
