@@ -2,6 +2,7 @@ use anyhow::Error;
 use ethabi::{Error as ABIError, Function, ParamType, Token};
 use futures::Future;
 use graph::blockchain::ChainIdentifier;
+use graph::env::env_var;
 use mockall::automock;
 use mockall::predicate::*;
 use std::cmp;
@@ -26,7 +27,10 @@ use crate::{data_source::DataSource, Chain};
 pub type EventSignature = H256;
 pub type FunctionSelector = [u8; 4];
 
-const ETH_GET_LOGS_MAX_CONTRACTS: usize = 1000;
+lazy_static! {
+    static ref ETH_GET_LOGS_MAX_CONTRACTS: usize =
+        env_var("GRAPH_ETH_GET_LOGS_MAX_CONTRACTS", 2000);
+}
 
 #[derive(Clone, Debug)]
 pub struct EthereumContractCall {
@@ -263,7 +267,7 @@ impl EthereumLogFilter {
             for neighbor in g.neighbors(max_vertex) {
                 match neighbor {
                     LogFilterNode::Contract(address) => {
-                        if filter.contracts.len() == ETH_GET_LOGS_MAX_CONTRACTS {
+                        if filter.contracts.len() == *ETH_GET_LOGS_MAX_CONTRACTS {
                             // The batch size was reached, register the filter and start a new one.
                             let event = filter.event_signatures[0];
                             push_filter(filter);
@@ -818,7 +822,7 @@ fn complete_log_filter() {
 
             // Assert that chunking works.
             for filter in logs_filters {
-                assert!(filter.contracts.len() <= 1000);
+                assert!(filter.contracts.len() <= *ETH_GET_LOGS_MAX_CONTRACTS);
             }
         }
     }
