@@ -1016,14 +1016,17 @@ pub trait WritableStore: Send + Sync + 'static {
     /// `block_ptr_to` must point to the parent block of the subgraph block pointer.
     fn revert_block_operations(&self, block_ptr_to: BlockPtr) -> Result<(), StoreError>;
 
-    /// This method:
-    /// - Sets the SubgraphDeployment status accordingly to it's SubgraphErrors
-    /// - Reverts block operations to the parent block if necessary
-    fn unfail(
+    /// If a deterministic error happened, this function reverts the block operations from the
+    /// current block to the previous block.
+    fn unfail_deterministic_error(
         &self,
-        current_ptr: Option<BlockPtr>,
-        parent_ptr: Option<BlockPtr>,
+        current_ptr: &BlockPtr,
+        parent_ptr: &BlockPtr,
     ) -> Result<(), StoreError>;
+
+    /// If a non-deterministic error happened and the current deployment head is past the error
+    /// block range, this function unfails the subgraph and deletes the error.
+    fn unfail_non_deterministic_error(&self, current_ptr: &BlockPtr) -> Result<(), StoreError>;
 
     /// Set subgraph status to failed with the given error as the cause.
     async fn fail_subgraph(&self, error: SubgraphError) -> Result<(), StoreError>;
@@ -1203,7 +1206,11 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn unfail(&self, _: Option<BlockPtr>, _: Option<BlockPtr>) -> Result<(), StoreError> {
+    fn unfail_deterministic_error(&self, _: &BlockPtr, _: &BlockPtr) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn unfail_non_deterministic_error(&self, _: &BlockPtr) -> Result<(), StoreError> {
         unimplemented!()
     }
 

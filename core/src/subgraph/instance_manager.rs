@@ -458,7 +458,8 @@ where
     let store_for_err = ctx.inputs.store.cheap_clone();
     let logger = ctx.state.logger.cheap_clone();
     let id_for_err = ctx.inputs.deployment.hash.clone();
-    let mut should_try_unfail = true;
+    let mut should_try_unfail_deterministic = true;
+    let mut should_try_unfail_non_deterministic = true;
 
     loop {
         debug!(logger, "Starting or restarting subgraph");
@@ -592,24 +593,27 @@ where
             let start = Instant::now();
             let deployment_failed = ctx.block_stream_metrics.deployment_failed.clone();
 
-            // If the subgraph is failed, unfail it and revert the block on which
-            // it failed so that it is reprocessed. This gives the subgraph a chance
-            // to move past errors.
+            // If a subgraph failed for deterministic reasons, before processing a new block, we
+            // revert the deployment head. It should lead to the same result since the error was
+            // deterministic.
             //
             // As an optimization we check this only on the first run.
-            if should_try_unfail {
-                should_try_unfail = false;
+            if should_try_unfail_deterministic {
+                should_try_unfail_deterministic = false;
 
-                let (current_ptr, parent_ptr) = match ctx.inputs.store.block_ptr()? {
-                    Some(current_ptr) => {
-                        let parent_ptr =
-                            ctx.inputs.triggers_adapter.parent_ptr(&current_ptr).await?;
-                        (Some(current_ptr), parent_ptr)
+                if let Some(current_ptr) = ctx.inputs.store.block_ptr()? {
+                    if let Some(parent_ptr) =
+                        ctx.inputs.triggers_adapter.parent_ptr(&current_ptr).await?
+                    {
+                        // This reverts the deployment head to the parent_ptr if
+                        // deterministic errors happened.
+                        // There's no point in calling it if we have no current or parent block
+                        // pointers.
+                        ctx.inputs
+                            .store
+                            .unfail_deterministic_error(&current_ptr, &parent_ptr)?;
                     }
-                    None => (None, None),
-                };
-
-                ctx.inputs.store.unfail(current_ptr, parent_ptr)?;
+                }
             }
 
             let res = process_block(
@@ -627,6 +631,17 @@ where
 
             match res {
                 Ok(needs_restart) => {
+                    // Runs only once
+                    if should_try_unfail_non_deterministic {
+                        should_try_unfail_non_deterministic = false;
+
+                        // If the deployment head advanced, we can unfail
+                        // the non-deterministic error (if there's any).
+                        ctx.inputs
+                            .store
+                            .unfail_non_deterministic_error(&block_ptr)?;
+                    }
+
                     deployment_failed.set(0.0);
 
                     // Notify the BlockStream implementation that a block was succesfully consumed
