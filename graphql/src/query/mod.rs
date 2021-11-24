@@ -61,7 +61,7 @@ where
         .unwrap_or_else(|| query.selection_set.cheap_clone());
 
     // Execute top-level `query { ... }` and `{ ... }` expressions.
-    let query_type = ctx.query.schema.query_type.cheap_clone();
+    let query_type = ctx.query.schema.query_type.cheap_clone().into();
     let start = Instant::now();
     let result = execute_root_selection_set(
         ctx.cheap_clone(),

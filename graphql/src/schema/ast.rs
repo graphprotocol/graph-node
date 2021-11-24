@@ -1,7 +1,9 @@
+use graph::cheap_clone::CheapClone;
 use graphql_parser::Pos;
 use lazy_static::lazy_static;
 use std::ops::Deref;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use graph::data::graphql::ext::DirectiveFinder;
 use graph::data::graphql::{DocumentExt, ObjectOrInterface};
@@ -53,47 +55,57 @@ pub(crate) fn parse_field_as_filter(key: &str) -> (String, FilterOp) {
 
 /// An `ObjectType` with `Hash` and `Eq` derived from the name.
 #[derive(Clone, Debug)]
-pub(crate) struct ObjectType<'a>(&'a s::ObjectType);
+pub struct ObjectType(Arc<s::ObjectType>);
 
-impl<'a> Ord for ObjectType<'a> {
+impl Ord for ObjectType {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.0.name.cmp(&other.0.name)
     }
 }
 
-impl<'a> PartialOrd for ObjectType<'a> {
+impl PartialOrd for ObjectType {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.0.name.cmp(&other.0.name))
     }
 }
 
-impl std::hash::Hash for ObjectType<'_> {
+impl std::hash::Hash for ObjectType {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.name.hash(state)
     }
 }
 
-impl PartialEq for ObjectType<'_> {
+impl PartialEq for ObjectType {
     fn eq(&self, other: &Self) -> bool {
         self.0.name.eq(&other.0.name)
     }
 }
 
-impl Eq for ObjectType<'_> {}
+impl Eq for ObjectType {}
 
-impl<'a> From<&'a s::ObjectType> for ObjectType<'a> {
-    fn from(object: &'a s::ObjectType) -> Self {
+impl From<Arc<s::ObjectType>> for ObjectType {
+    fn from(object: Arc<s::ObjectType>) -> Self {
         ObjectType(object)
     }
 }
 
-impl<'a> From<ObjectType<'a>> for ObjectOrInterface<'a> {
-    fn from(cond: ObjectType<'a>) -> Self {
-        ObjectOrInterface::Object(cond.0)
+impl<'a> From<&'a ObjectType> for ObjectOrInterface<'a> {
+    fn from(cond: &'a ObjectType) -> Self {
+        ObjectOrInterface::Object(cond.0.as_ref())
     }
 }
 
-impl ObjectType<'_> {
+impl Deref for ObjectType {
+    type Target = s::ObjectType;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl CheapClone for ObjectType {}
+
+impl ObjectType {
     pub fn name(&self) -> &str {
         &self.0.name
     }

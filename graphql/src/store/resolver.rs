@@ -301,11 +301,12 @@ impl Resolver for StoreResolver {
 
     fn resolve_field_stream(
         &self,
-        schema: &s::Document,
+        schema: &ApiSchema,
         object_type: &s::ObjectType,
         field: &a::Field,
     ) -> result::Result<UnitStream, QueryExecutionError> {
         // Collect all entities involved in the query field
+        let object_type = schema.object_type(object_type).into();
         let entities = collect_entities_from_query_field(schema, object_type, field);
 
         // Subscribe to the store and return the entity change stream

@@ -1,3 +1,4 @@
+use crate::cheap_clone::CheapClone;
 use crate::components::store::{EntityType, SubgraphStore};
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
 use crate::data::store::ValueType;
@@ -353,6 +354,7 @@ pub struct ApiSchema {
     // Root types for the api schema.
     pub query_type: Arc<ObjectType>,
     pub subscription_type: Option<Arc<ObjectType>>,
+    object_types: HashMap<String, Arc<ObjectType>>,
 }
 
 impl ApiSchema {
@@ -376,10 +378,19 @@ impl ApiSchema {
             .cloned()
             .map(Arc::new);
 
+        let object_types = HashMap::from_iter(
+            api_schema
+                .document
+                .get_object_type_definitions()
+                .into_iter()
+                .map(|obj_type| (obj_type.name.clone(), Arc::new(obj_type.clone()))),
+        );
+
         Ok(Self {
             schema: api_schema,
             query_type: Arc::new(query_type),
             subscription_type,
+            object_types,
         })
     }
 
@@ -402,6 +413,17 @@ impl ApiSchema {
     /// Returns `None` if the type implements no interfaces.
     pub fn interfaces_for_type(&self, type_name: &EntityType) -> Option<&Vec<InterfaceType>> {
         self.schema.interfaces_for_type(type_name)
+    }
+
+    /// Return an `Arc` around the `ObjectType` from our internal cache
+    ///
+    /// # Panics
+    /// If `obj_type` is not part of this schema, this function panics
+    pub fn object_type(&self, obj_type: &ObjectType) -> Arc<ObjectType> {
+        self.object_types
+            .get(&obj_type.name)
+            .expect("ApiSchema.object_type is only used with existing types")
+            .cheap_clone()
     }
 }
 
