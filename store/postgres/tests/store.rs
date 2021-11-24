@@ -1475,9 +1475,7 @@ fn subgraph_schema_types_have_subgraph_id_directive() {
             .api_schema(&deployment.hash)
             .expect("test subgraph should have a schema");
         for typedef in schema
-            .document()
-            .definitions
-            .iter()
+            .definitions()
             .filter_map(|def| match def {
                 s::Definition::TypeDefinition(typedef) => Some(typedef),
                 _ => None,

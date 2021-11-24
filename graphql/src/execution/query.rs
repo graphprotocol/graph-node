@@ -7,10 +7,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use std::{collections::hash_map::DefaultHasher, convert::TryFrom};
 
-use graph::data::graphql::{
-    ext::{DocumentExt, TypeExt},
-    ObjectOrInterface,
-};
+use graph::data::graphql::{ext::TypeExt, ObjectOrInterface};
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::ApiSchema;
 use graph::prelude::{
@@ -21,10 +18,7 @@ use crate::execution::ast as a;
 use crate::query::{ast as qast, ext::BlockConstraint};
 use crate::schema::ast as sast;
 use crate::values::coercion;
-use crate::{
-    execution::{get_field, get_named_type, object_or_interface},
-    schema::api::ErrorPolicy,
-};
+use crate::{execution::get_field, schema::api::ErrorPolicy};
 
 #[derive(Clone, Debug)]
 pub enum ComplexityError {
@@ -157,8 +151,8 @@ impl Query {
 
         let start = Instant::now();
         let root_type = match kind {
-            Kind::Query => schema.document().get_root_query_type().unwrap(),
-            Kind::Subscription => schema.document().get_root_subscription_type().unwrap(),
+            Kind::Query => schema.query_type.as_ref(),
+            Kind::Subscription => schema.subscription_type.as_ref().unwrap(),
         };
         // Use an intermediate struct so we can modify the query before
         // enclosing it in an Arc
@@ -316,7 +310,7 @@ pub fn coerce_variables(
         .flatten()
     {
         // Skip variable if it has an invalid type
-        if !sast::is_input_type(schema.document(), &variable_def.var_type) {
+        if !schema.is_input_type(&variable_def.var_type) {
             errors.push(QueryExecutionError::InvalidVariableTypeError(
                 variable_def.position,
                 variable_def.name.to_owned(),
@@ -371,7 +365,7 @@ fn coerce_variable(
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     use crate::values::coercion::coerce_value;
 
-    let resolver = |name: &str| schema.document().get_named_type(name);
+    let resolver = |name: &str| schema.get_named_type(name);
 
     coerce_value(value, &variable_def.var_type, &resolver).map_err(|value| {
         vec![QueryExecutionError::InvalidArgumentError(
@@ -430,7 +424,6 @@ impl<'s> RawQuery<'s> {
             .items
             .iter()
             .try_fold(0, |total_complexity, selection| {
-                let schema = self.schema.document();
                 match selection {
                     q::Selection::Field(field) => {
                         // Empty selection sets are the base case.
@@ -454,7 +447,8 @@ impl<'s> RawQuery<'s> {
                         .ok_or(Invalid)?;
 
                         let field_complexity = self.complexity_inner(
-                            &get_named_type(schema, s_field.field_type.get_base_type())
+                            self.schema
+                                .get_named_type(s_field.field_type.get_base_type())
                                 .ok_or(Invalid)?,
                             &field.selection_set,
                             max_depth,
@@ -483,7 +477,7 @@ impl<'s> RawQuery<'s> {
                     q::Selection::FragmentSpread(fragment) => {
                         let def = self.fragments.get(&fragment.fragment_name).unwrap();
                         let q::TypeCondition::On(type_name) = &def.type_condition;
-                        let ty = get_named_type(schema, &type_name).ok_or(Invalid)?;
+                        let ty = self.schema.get_named_type(&type_name).ok_or(Invalid)?;
 
                         // Copy `visited_fragments` on write.
                         let mut visited_fragments = visited_fragments.clone();
@@ -501,12 +495,12 @@ impl<'s> RawQuery<'s> {
                     q::Selection::InlineFragment(fragment) => {
                         let ty = match &fragment.type_condition {
                             Some(q::TypeCondition::On(type_name)) => {
-                                get_named_type(schema, &type_name).ok_or(Invalid)?
+                                self.schema.get_named_type(type_name).ok_or(Invalid)?
                             }
-                            _ => ty.clone(),
+                            _ => ty,
                         };
                         self.complexity_inner(
-                            &ty,
+                            ty,
                             &fragment.selection_set,
                             max_depth,
                             depth + 1,
@@ -523,7 +517,7 @@ impl<'s> RawQuery<'s> {
     /// If the query is invalid, returns `Ok(0)` so that execution proceeds and
     /// gives a proper error.
     fn complexity(&self, max_depth: u8) -> Result<u64, QueryExecutionError> {
-        let root_type = sast::get_root_query_type_def(self.schema.document()).unwrap();
+        let root_type = self.schema.get_root_query_type_def().unwrap();
 
         match self.complexity_inner(
             root_type,
@@ -545,7 +539,7 @@ impl<'s> RawQuery<'s> {
     }
 
     fn validate_fields(&self) -> Result<(), Vec<QueryExecutionError>> {
-        let root_type = self.schema.document().get_root_query_type().unwrap();
+        let root_type = self.schema.query_type.as_ref();
 
         let errors =
             self.validate_fields_inner(&"Query".to_owned(), root_type.into(), &self.selection_set);
@@ -563,8 +557,6 @@ impl<'s> RawQuery<'s> {
         ty: ObjectOrInterface<'_>,
         selection_set: &q::SelectionSet,
     ) -> Vec<QueryExecutionError> {
-        let schema = self.schema.document();
-
         selection_set
             .items
             .iter()
@@ -573,9 +565,9 @@ impl<'s> RawQuery<'s> {
                     q::Selection::Field(field) => match get_field(ty, &field.name) {
                         Some(s_field) => {
                             let base_type = s_field.field_type.get_base_type();
-                            if get_named_type(schema, base_type).is_none() {
+                            if self.schema.get_named_type(base_type).is_none() {
                                 errors.push(QueryExecutionError::NamedTypeError(base_type.into()));
-                            } else if let Some(ty) = object_or_interface(schema, base_type) {
+                            } else if let Some(ty) = self.schema.object_or_interface(base_type) {
                                 errors.extend(self.validate_fields_inner(
                                     base_type,
                                     ty,
@@ -593,7 +585,7 @@ impl<'s> RawQuery<'s> {
                         match self.fragments.get(&fragment.fragment_name) {
                             Some(frag) => {
                                 let q::TypeCondition::On(type_name) = &frag.type_condition;
-                                match object_or_interface(schema, type_name) {
+                                match self.schema.object_or_interface(type_name) {
                                     Some(ty) => errors.extend(self.validate_fields_inner(
                                         type_name,
                                         ty,
@@ -611,7 +603,7 @@ impl<'s> RawQuery<'s> {
                     }
                     q::Selection::InlineFragment(fragment) => match &fragment.type_condition {
                         Some(q::TypeCondition::On(type_name)) => {
-                            match object_or_interface(schema, type_name) {
+                            match self.schema.object_or_interface(type_name) {
                                 Some(ty) => errors.extend(self.validate_fields_inner(
                                     type_name,
                                     ty,
@@ -745,7 +737,7 @@ impl Transform {
     ) -> Result<(), Vec<QueryExecutionError>> {
         let mut errors = vec![];
 
-        let resolver = |name: &str| self.schema.document().get_named_type(name);
+        let resolver = |name: &str| self.schema.get_named_type(name);
 
         for argument_def in sast::get_argument_definitions(ty, field_name)
             .into_iter()
@@ -812,7 +804,7 @@ impl Transform {
             let field_type = parent_type.field(&name).expect("field names are valid");
             let ty = field_type.field_type.get_base_type();
             let type_set = a::ObjectTypeSet::from_name(&self.schema, ty)?;
-            let ty = self.schema.document().object_or_interface(ty).unwrap();
+            let ty = self.schema.object_or_interface(ty).unwrap();
             self.expand_selection_set(selection_set, &type_set, ty)?
         };
 
@@ -914,7 +906,6 @@ impl Transform {
         let ty = match frag_cond {
             Some(q::TypeCondition::On(name)) => self
                 .schema
-                .document()
                 .object_or_interface(name)
                 .expect("type names on fragment spreads are valid"),
             None => ty,

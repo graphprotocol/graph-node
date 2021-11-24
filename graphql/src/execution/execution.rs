@@ -19,9 +19,7 @@ use graph::util::lfu_cache::LfuCache;
 
 use super::QueryHash;
 use crate::execution::ast as a;
-use crate::introspection::{
-    is_introspection_field, INTROSPECTION_DOCUMENT, INTROSPECTION_QUERY_TYPE,
-};
+use crate::introspection::{is_introspection_field, INTROSPECTION_QUERY_TYPE};
 use crate::prelude::*;
 use crate::schema::ast as sast;
 
@@ -208,15 +206,6 @@ where
     pub(crate) cache_status: AtomicCell<CacheStatus>,
 }
 
-// Helpers to look for types and fields on both the introspection and regular schemas.
-pub(crate) fn get_named_type(schema: &s::Document, name: &str) -> Option<s::TypeDefinition> {
-    if name.starts_with("__") {
-        INTROSPECTION_DOCUMENT.get_named_type(name).cloned()
-    } else {
-        schema.get_named_type(name).cloned()
-    }
-}
-
 pub(crate) fn get_field<'a>(
     object_type: impl Into<ObjectOrInterface<'a>>,
     name: &str,
@@ -226,17 +215,6 @@ pub(crate) fn get_field<'a>(
         sast::get_field(object_type, name).cloned()
     } else {
         sast::get_field(object_type, name).cloned()
-    }
-}
-
-pub(crate) fn object_or_interface<'a>(
-    schema: &'a s::Document,
-    name: &str,
-) -> Option<ObjectOrInterface<'a>> {
-    if name.starts_with("__") {
-        INTROSPECTION_DOCUMENT.object_or_interface(name)
-    } else {
-        schema.object_or_interface(name)
     }
 }
 
@@ -615,7 +593,6 @@ fn resolve_field_value_for_named_type(
     let named_type = ctx
         .query
         .schema
-        .document()
         .get_named_type(type_name)
         .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
     match named_type {
@@ -671,7 +648,6 @@ fn resolve_field_value_for_list_type(
             let named_type = ctx
                 .query
                 .schema
-                .document()
                 .get_named_type(type_name)
                 .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
 
@@ -773,7 +749,7 @@ fn complete_value(
         }
 
         s::Type::NamedType(name) => {
-            let named_type = ctx.query.schema.document().get_named_type(name).unwrap();
+            let named_type = ctx.query.schema.get_named_type(name).unwrap();
 
             match named_type {
                 // Complete scalar values
@@ -858,7 +834,7 @@ fn resolve_abstract_type<'a>(
     // yields nothing
     let obj_type = ctx
         .resolver
-        .resolve_abstract_type(ctx.query.schema.document(), abstract_type, object_value)
+        .resolve_abstract_type(&ctx.query.schema, abstract_type, object_value)
         .ok_or_else(|| {
             vec![QueryExecutionError::AbstractTypeError(
                 sast::get_type_name(abstract_type).to_string(),
