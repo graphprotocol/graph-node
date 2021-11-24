@@ -557,7 +557,6 @@ fn execute_selection_set<'a>(
                 .field(&field.name)
                 .expect("field names are valid");
             let child_type = schema
-                .document()
                 .object_or_interface(field_type.field_type.get_base_type())
                 .expect("we only collect fields that are objects or interfaces");
 
