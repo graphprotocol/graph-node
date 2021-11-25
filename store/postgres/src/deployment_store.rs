@@ -1,4 +1,4 @@
-use detail::{DeploymentDetail, ErrorDetail};
+use detail::DeploymentDetail;
 use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
@@ -1170,16 +1170,22 @@ impl DeploymentStore {
         Ok(())
     }
 
-    // Base for unfail logic, basically it early returns / does nothing if:
+    // If the current block of the deployment is the same as the fatal error,
+    // we revert all block operations to it's parent/previous block.
     //
-    // - There's no fatal error for a subgraph
-    // - The error's determinism isn't the same as the one requested
+    // This should be called once per subgraph on `graph-node` initialization,
+    // before processing the first block on start.
     //
-    // Otherwise it calls the provided closure/function with the subgraph error.
-    fn unfail_error<F>(&self, site: &Arc<Site>, deterministic: bool, f: F) -> Result<(), StoreError>
-    where
-        F: Fn(&PgConnection, &DeploymentHash, &ErrorDetail) -> Result<(), StoreError>,
-    {
+    // It will do nothing (early return) if:
+    //
+    // - There's no fatal error for the subgraph
+    // - The error is NOT deterministic
+    pub(crate) fn unfail_deterministic_error(
+        &self,
+        site: Arc<Site>,
+        current_ptr: &BlockPtr,
+        parent_ptr: &BlockPtr,
+    ) -> Result<(), StoreError> {
         let conn = &self.get_conn()?;
         let deployment_id = &site.deployment;
 
@@ -1194,26 +1200,10 @@ impl DeploymentStore {
             let subgraph_error = detail::error(conn, &fatal_error_id)?;
 
             // Confidence check
-            if subgraph_error.deterministic != deterministic {
+            if !subgraph_error.deterministic {
                 return Ok(()); // Nothing to do
             }
 
-            f(conn, deployment_id, &subgraph_error)
-        })
-    }
-
-    // If the current block of the deployment is the same as the fatal error,
-    // we revert all block operations to it's parent/previous block.
-    //
-    // This should be called once per subgraph on `graph-node` initialization,
-    // before processing the first block on start.
-    pub(crate) fn unfail_deterministic_error(
-        &self,
-        site: Arc<Site>,
-        current_ptr: &BlockPtr,
-        parent_ptr: &BlockPtr,
-    ) -> Result<(), StoreError> {
-        self.unfail_error(&site, true, |conn, deployment_id, subgraph_error| {
             use deployment::SubgraphHealth::*;
             // Decide status based on if there are any errors for the previous/parent block
             let prev_health =
@@ -1276,12 +1266,34 @@ impl DeploymentStore {
     // the error itself.
     //
     // This should be called after successfully processing a block for a subgraph.
+    //
+    // It will do nothing (early return) if:
+    //
+    // - There's no fatal error for the subgraph
+    // - The error IS deterministic
     pub(crate) fn unfail_non_deterministic_error(
         &self,
         site: Arc<Site>,
         current_ptr: &BlockPtr,
     ) -> Result<(), StoreError> {
-        self.unfail_error(&site, false, |conn, deployment_id, subgraph_error| {
+        let conn = &self.get_conn()?;
+        let deployment_id = &site.deployment;
+
+        conn.transaction(|| {
+            // We'll only unfail subgraphs that had fatal errors
+            let fatal_error_id = match deployment::get_fatal_error_id(conn, deployment_id)? {
+                Some(fatal_error_id) => fatal_error_id,
+                // If the subgraph is not failed then there is nothing to do.
+                None => return Ok(()),
+            };
+
+            let subgraph_error = detail::error(conn, &fatal_error_id)?;
+
+            // Confidence check
+            if subgraph_error.deterministic {
+                return Ok(()); // Nothing to do
+            }
+
             match subgraph_error.block_range {
                 // Deployment head (current_ptr) advanced more than the error.
                 // That means it's healthy, and the non-deterministic error got
