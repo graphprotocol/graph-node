@@ -1191,13 +1191,11 @@ impl DeploymentStore {
 
         conn.transaction(|| {
             // We'll only unfail subgraphs that had fatal errors
-            let fatal_error_id = match deployment::get_fatal_error_id(conn, deployment_id)? {
-                Some(fatal_error_id) => fatal_error_id,
+            let subgraph_error = match detail::fatal_error(conn, deployment_id)? {
+                Some(fatal_error) => fatal_error,
                 // If the subgraph is not failed then there is nothing to do.
                 None => return Ok(()),
             };
-
-            let subgraph_error = detail::error(conn, &fatal_error_id)?;
 
             // Confidence check
             if !subgraph_error.deterministic {
@@ -1281,13 +1279,11 @@ impl DeploymentStore {
 
         conn.transaction(|| {
             // We'll only unfail subgraphs that had fatal errors
-            let fatal_error_id = match deployment::get_fatal_error_id(conn, deployment_id)? {
-                Some(fatal_error_id) => fatal_error_id,
+            let subgraph_error = match detail::fatal_error(conn, deployment_id)? {
+                Some(fatal_error) => fatal_error,
                 // If the subgraph is not failed then there is nothing to do.
                 None => return Ok(()),
             };
-
-            let subgraph_error = detail::error(conn, &fatal_error_id)?;
 
             // Confidence check
             if subgraph_error.deterministic {
