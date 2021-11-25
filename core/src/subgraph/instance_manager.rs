@@ -607,8 +607,10 @@ where
                     {
                         // This reverts the deployment head to the parent_ptr if
                         // deterministic errors happened.
+                        //
                         // There's no point in calling it if we have no current or parent block
-                        // pointers.
+                        // pointers, because there would be: no block to revert to or to search
+                        // errors from (first execution).
                         ctx.inputs
                             .store
                             .unfail_deterministic_error(&current_ptr, &parent_ptr)?;
