@@ -1188,17 +1188,21 @@ impl WritableStoreTrait for WritableStore {
         })
     }
 
-    fn unfail(
+    fn unfail_deterministic_error(
         &self,
-        current_ptr: Option<BlockPtr>,
-        parent_ptr: Option<BlockPtr>,
+        current_ptr: &BlockPtr,
+        parent_ptr: &BlockPtr,
     ) -> Result<(), StoreError> {
-        self.retry("unfail", || {
-            let current_ptr = current_ptr.as_ref();
-            let parent_ptr = parent_ptr.as_ref();
-
+        self.retry("unfail_deterministic_error", || {
             self.writable
-                .unfail(self.site.clone(), current_ptr, parent_ptr)
+                .unfail_deterministic_error(self.site.clone(), current_ptr, parent_ptr)
+        })
+    }
+
+    fn unfail_non_deterministic_error(&self, current_ptr: &BlockPtr) -> Result<(), StoreError> {
+        self.retry("unfail_non_deterministic_error", || {
+            self.writable
+                .unfail_non_deterministic_error(self.site.clone(), current_ptr)
         })
     }
 
