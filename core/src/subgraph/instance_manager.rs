@@ -458,7 +458,8 @@ where
     let store_for_err = ctx.inputs.store.cheap_clone();
     let logger = ctx.state.logger.cheap_clone();
     let id_for_err = ctx.inputs.deployment.hash.clone();
-    let mut first_run = true;
+    let mut should_try_unfail_deterministic = true;
+    let mut should_try_unfail_non_deterministic = true;
 
     loop {
         debug!(logger, "Starting or restarting subgraph");
@@ -493,7 +494,7 @@ where
         loop {
             let (block, cursor) = match block_stream.next().await {
                 Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => (block, cursor),
-                Some(Ok(BlockStreamEvent::Revert(subgraph_ptr, _))) => {
+                Some(Ok(BlockStreamEvent::Revert(subgraph_ptr, _, optional_parent_ptr))) => {
                     info!(
                         logger,
                         "Reverting block to get back to main chain";
@@ -502,31 +503,49 @@ where
                     );
 
                     // We would like to revert the DB state to the parent of the current block.
-                    // First, load the block in order to get the parent hash.
-                    if let Err(e) = ctx
-                        .inputs
-                        .triggers_adapter
-                        .parent_ptr(&subgraph_ptr)
-                        .await
-                        .map(|parent_ptr| parent_ptr.expect("genesis block cannot be reverted"))
-                        .and_then(|parent_ptr| {
-                            // Revert entity changes from this block, and update subgraph ptr.
-                            ctx.inputs
-                                .store
-                                .revert_block_operations(parent_ptr)
-                                .map_err(Into::into)
-                        })
-                    {
-                        error!(
-                            &logger,
-                            "Could not revert block. \
-                            The likely cause is the block not being found due to a deep reorg. \
-                            Retrying";
-                            "block_number" => format!("{}", subgraph_ptr.number),
-                            "block_hash" => format!("{}", subgraph_ptr.hash),
-                            "error" => e.to_string(),
-                        );
-                        continue;
+                    match optional_parent_ptr {
+                        Some(parent_ptr) => {
+                            if let Err(e) = ctx.inputs.store.revert_block_operations(parent_ptr) {
+                                error!(
+                                    &logger,
+                                    "Could not revert block. Retrying";
+                                    "block_number" => format!("{}", subgraph_ptr.number),
+                                    "block_hash" => format!("{}", subgraph_ptr.hash),
+                                    "error" => e.to_string(),
+                                );
+                                continue;
+                            }
+                        }
+                        None => {
+                            // First, load the block in order to get the parent hash.
+                            if let Err(e) = ctx
+                                .inputs
+                                .triggers_adapter
+                                .parent_ptr(&subgraph_ptr)
+                                .await
+                                .map(|parent_ptr| {
+                                    parent_ptr.expect("genesis block cannot be reverted")
+                                })
+                                .and_then(|parent_ptr| {
+                                    // Revert entity changes from this block, and update subgraph ptr.
+                                    ctx.inputs
+                                        .store
+                                        .revert_block_operations(parent_ptr)
+                                        .map_err(Into::into)
+                                })
+                            {
+                                error!(
+                                    &logger,
+                                    "Could not revert block. \
+                                    The likely cause is the block not being found due to a deep reorg. \
+                                    Retrying";
+                                    "block_number" => format!("{}", subgraph_ptr.number),
+                                    "block_hash" => format!("{}", subgraph_ptr.hash),
+                                    "error" => e.to_string(),
+                                );
+                                continue;
+                            }
+                        }
                     }
 
                     ctx.block_stream_metrics
@@ -548,6 +567,11 @@ where
                 // Log and drop the errors from the block_stream
                 // The block stream will continue attempting to produce blocks
                 Some(Err(e)) => {
+                    if block_stream_cancel_handle.is_canceled() {
+                        debug!(&logger, "Subgraph block stream shut down cleanly");
+                        return Ok(());
+                    }
+
                     debug!(
                         &logger,
                         "Block stream produced a non-fatal error";
@@ -569,30 +593,35 @@ where
             let start = Instant::now();
             let deployment_failed = ctx.block_stream_metrics.deployment_failed.clone();
 
-            // If the subgraph is failed, unfail it and revert the block on which
-            // it failed so that it is reprocessed. This gives the subgraph a chance
-            // to move past errors.
+            // If a subgraph failed for deterministic reasons, before processing a new block, we
+            // revert the deployment head. It should lead to the same result since the error was
+            // deterministic.
             //
             // As an optimization we check this only on the first run.
-            if first_run {
-                first_run = false;
+            if should_try_unfail_deterministic {
+                should_try_unfail_deterministic = false;
 
-                let (current_ptr, parent_ptr) = match ctx.inputs.store.block_ptr()? {
-                    Some(current_ptr) => {
-                        let parent_ptr =
-                            ctx.inputs.triggers_adapter.parent_ptr(&current_ptr).await?;
-                        (Some(current_ptr), parent_ptr)
+                if let Some(current_ptr) = ctx.inputs.store.block_ptr()? {
+                    if let Some(parent_ptr) =
+                        ctx.inputs.triggers_adapter.parent_ptr(&current_ptr).await?
+                    {
+                        // This reverts the deployment head to the parent_ptr if
+                        // deterministic errors happened.
+                        //
+                        // There's no point in calling it if we have no current or parent block
+                        // pointers, because there would be: no block to revert to or to search
+                        // errors from (first execution).
+                        ctx.inputs
+                            .store
+                            .unfail_deterministic_error(&current_ptr, &parent_ptr)?;
                     }
-                    None => (None, None),
-                };
-
-                ctx.inputs.store.unfail(current_ptr, parent_ptr)?;
+                }
             }
 
             let res = process_block(
                 &logger,
                 ctx.inputs.triggers_adapter.cheap_clone(),
-                ctx,
+                &mut ctx,
                 block_stream_cancel_handle.clone(),
                 block,
                 cursor.into(),
@@ -603,8 +632,17 @@ where
             subgraph_metrics.block_processing_duration.observe(elapsed);
 
             match res {
-                Ok((c, needs_restart)) => {
-                    ctx = c;
+                Ok(needs_restart) => {
+                    // Runs only once
+                    if should_try_unfail_non_deterministic {
+                        should_try_unfail_non_deterministic = false;
+
+                        // If the deployment head advanced, we can unfail
+                        // the non-deterministic error (if there's any).
+                        ctx.inputs
+                            .store
+                            .unfail_non_deterministic_error(&block_ptr)?;
+                    }
 
                     deployment_failed.set(0.0);
 
@@ -696,11 +734,11 @@ impl From<StoreError> for BlockProcessingError {
 async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
     logger: &Logger,
     triggers_adapter: Arc<C::TriggersAdapter>,
-    mut ctx: IndexingContext<T, C>,
+    ctx: &mut IndexingContext<T, C>,
     block_stream_cancel_handle: CancelHandle,
     block: BlockWithTriggers<C>,
     firehose_cursor: Option<String>,
-) -> Result<(IndexingContext<T, C>, bool), BlockProcessingError> {
+) -> Result<bool, BlockProcessingError> {
     let triggers = block.trigger_data;
     let block = Arc::new(block.block);
     let block_ptr = block.ptr();
@@ -774,7 +812,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
             // Losing the cache is a bit annoying but not an issue for correctness.
             //
             // See also b21fa73b-6453-4340-99fb-1a78ec62efb1.
-            return Ok((ctx, true));
+            return Ok(true);
         }
     };
 
@@ -795,7 +833,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
         // Instantiate dynamic data sources, removing them from the block state.
         let (data_sources, runtime_hosts) = create_dynamic_data_sources(
             logger.clone(),
-            &mut ctx,
+            ctx,
             host_metrics.clone(),
             block_state.drain_created_data_sources(),
         )?;
@@ -826,7 +864,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
         // and add runtimes for the data sources to the subgraph instance.
         persist_dynamic_data_sources(
             logger.clone(),
-            &mut ctx,
+            ctx,
             &mut block_state.entity_cache,
             data_sources,
         );
@@ -981,7 +1019,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
                 return Err(BlockProcessingError::Canceled);
             }
 
-            Ok((ctx, needs_restart))
+            Ok(needs_restart)
         }
 
         Err(e) => Err(anyhow!("Error while processing block stream for a subgraph: {}", e).into()),

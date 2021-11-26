@@ -36,3 +36,20 @@ pub fn unsafe_env_var<E: std::error::Error + Send + Sync, T: FromStr<Err = E> + 
 
     value
 }
+
+/// Panics if:
+/// - The value is not UTF8.
+/// - The value cannot be parsed as T..
+pub fn env_var<E: std::error::Error + Send + Sync, T: FromStr<Err = E> + Eq>(
+    name: &'static str,
+    default_value: T,
+) -> T {
+    let var = match std::env::var(name) {
+        Ok(var) => var,
+        Err(VarError::NotPresent) => return default_value,
+        Err(VarError::NotUnicode(_)) => panic!("environment variable {} is not UTF8", name),
+    };
+
+    var.parse::<T>()
+        .unwrap_or_else(|e| panic!("failed to parse environment variable {}: {}", name, e))
+}

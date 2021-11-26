@@ -16,6 +16,7 @@ use std::convert::Into;
 use std::convert::TryInto;
 use std::env;
 use std::iter::FromIterator;
+use std::ops::Bound;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::{atomic::AtomicUsize, Arc, Mutex};
@@ -1169,67 +1170,68 @@ impl DeploymentStore {
         Ok(())
     }
 
-    /// This should be called once per subgraph on `graph-node` initialization,
-    /// before processing the first block on start.
-    ///
-    /// It will change the Deployment status accordingly to the Errors found (healthy/unhealthy).
-    /// It does nothing if the Deployment is healthy or if the blocks received are `None`.
-    /// It will revert all block operations of a block (returning to the parent)
-    /// if the errors found are in the same block as the current Deployment head.
-    pub(crate) fn unfail(
+    // If the current block of the deployment is the same as the fatal error,
+    // we revert all block operations to it's parent/previous block.
+    //
+    // This should be called once per subgraph on `graph-node` initialization,
+    // before processing the first block on start.
+    //
+    // It will do nothing (early return) if:
+    //
+    // - There's no fatal error for the subgraph
+    // - The error is NOT deterministic
+    pub(crate) fn unfail_deterministic_error(
         &self,
         site: Arc<Site>,
-        current_ptr: Option<&BlockPtr>,
-        parent_ptr: Option<&BlockPtr>,
+        current_ptr: &BlockPtr,
+        parent_ptr: &BlockPtr,
     ) -> Result<(), StoreError> {
-        let current_ptr = match current_ptr {
-            Some(current_ptr) => current_ptr,
-            // No current head pointer, nothing to do
-            None => return Ok(()),
-        };
-
         let conn = &self.get_conn()?;
+        let deployment_id = &site.deployment;
 
         conn.transaction(|| {
-            let deployment_id = &site.deployment;
-
             // We'll only unfail subgraphs that had fatal errors
-            let fatal_error_id = match deployment::get_fatal_error_id(conn, deployment_id)? {
-                Some(fatal_error_id) => fatal_error_id,
+            let subgraph_error = match detail::fatal_error(conn, deployment_id)? {
+                Some(fatal_error) => fatal_error,
                 // If the subgraph is not failed then there is nothing to do.
                 None => return Ok(()),
             };
 
+            // Confidence check
+            if !subgraph_error.deterministic {
+                return Ok(()); // Nothing to do
+            }
+
             use deployment::SubgraphHealth::*;
             // Decide status based on if there are any errors for the previous/parent block
-            let prev_health = if deployment::has_non_fatal_errors(conn, deployment_id, parent_ptr.map(|ptr| ptr.number))? {
-                Unhealthy
-            } else {
-                Healthy
-            };
+            let prev_health =
+                if deployment::has_non_fatal_errors(conn, deployment_id, Some(parent_ptr.number))? {
+                    Unhealthy
+                } else {
+                    Healthy
+                };
 
-            match deployment::get_error_block_hash(conn, &fatal_error_id)? {
+            match &subgraph_error.block_hash {
                 // The error happened for the current deployment head.
                 // We should revert everything (deployment head, subgraph errors, etc)
                 // to the previous/parent hash/block.
                 Some(bytes) if bytes == current_ptr.hash.as_slice() => {
-                    if let Some(parent_ptr) = parent_ptr {
-                        info!(
-                            self.logger,
-                            "Reverting errored block";
-                            "subgraph_id" => deployment_id,
-                            "from_block_number" => format!("{}", current_ptr.number),
-                            "from_block_hash" => format!("{}", current_ptr.hash),
-                            "to_block_number" => format!("{}", parent_ptr.number),
-                            "to_block_hash" => format!("{}", parent_ptr.hash),
-                        );
+                    info!(
+                        self.logger,
+                        "Reverting errored block";
+                        "subgraph_id" => deployment_id,
+                        "from_block_number" => format!("{}", current_ptr.number),
+                        "from_block_hash" => format!("{}", current_ptr.hash),
+                        "to_block_number" => format!("{}", parent_ptr.number),
+                        "to_block_hash" => format!("{}", parent_ptr.hash),
+                    );
 
-                        let _ = self.revert_block_operations(site.clone(), parent_ptr.clone())?;
+                    // We ignore the StoreEvent that's being returned, we'll not use it.
+                    let _ = self.revert_block_operations(site.clone(), parent_ptr.clone())?;
 
-                        // Unfail the deployment.
-                        deployment::update_deployment_status(conn, deployment_id, prev_health, None)?;
-                    }
-                },
+                    // Unfail the deployment.
+                    deployment::update_deployment_status(conn, deployment_id, prev_health, None)?;
+                }
                 // Found error, but not for deployment head, we don't need to
                 // revert the block operations.
                 //
@@ -1238,22 +1240,95 @@ impl DeploymentStore {
                 Some(hash_bytes) => {
                     warn!(self.logger, "Subgraph error does not have same block hash as deployment head";
                         "subgraph_id" => deployment_id,
-                        "error_id" => fatal_error_id,
+                        "error_id" => &subgraph_error.id,
                         "error_block_hash" => format!("0x{}", hex::encode(&hash_bytes)),
                         "deployment_head" => format!("{}", current_ptr.hash),
                     );
-                },
+                }
                 // Same as branch above, if you find this warning in the logs,
-                // something is wrong, this shoudn't happen.
+                // something is wrong, this shouldn't happen.
                 None => {
                     warn!(self.logger, "Subgraph error should have block hash";
                         "subgraph_id" => deployment_id,
-                        "error_id" => fatal_error_id,
+                        "error_id" => &subgraph_error.id,
                     );
-                },
+                }
             };
 
             Ok(())
+        })
+    }
+
+    // If a non-deterministic error happens and the deployment head advances,
+    // we should unfail the subgraph (status: Healthy, failed: false) and delete
+    // the error itself.
+    //
+    // This should be called after successfully processing a block for a subgraph.
+    //
+    // It will do nothing (early return) if:
+    //
+    // - There's no fatal error for the subgraph
+    // - The error IS deterministic
+    pub(crate) fn unfail_non_deterministic_error(
+        &self,
+        site: Arc<Site>,
+        current_ptr: &BlockPtr,
+    ) -> Result<(), StoreError> {
+        let conn = &self.get_conn()?;
+        let deployment_id = &site.deployment;
+
+        conn.transaction(|| {
+            // We'll only unfail subgraphs that had fatal errors
+            let subgraph_error = match detail::fatal_error(conn, deployment_id)? {
+                Some(fatal_error) => fatal_error,
+                // If the subgraph is not failed then there is nothing to do.
+                None => return Ok(()),
+            };
+
+            // Confidence check
+            if subgraph_error.deterministic {
+                return Ok(()); // Nothing to do
+            }
+
+            match subgraph_error.block_range {
+                // Deployment head (current_ptr) advanced more than the error.
+                // That means it's healthy, and the non-deterministic error got
+                // solved (didn't happen on another try).
+                (Bound::Included(error_block_number), _)
+                    if current_ptr.number >= error_block_number =>
+                    {
+                        info!(
+                            self.logger,
+                            "Unfailing the deployment status";
+                            "subgraph_id" => deployment_id,
+                        );
+
+                        // Unfail the deployment.
+                        deployment::update_deployment_status(
+                            conn,
+                            deployment_id,
+                            deployment::SubgraphHealth::Healthy,
+                            None,
+                        )?;
+
+                        // Delete the fatal error.
+                        deployment::delete_error(conn, &subgraph_error.id)
+                    }
+                // NOOP, the deployment head is still before where non-deterministic error happened.
+                block_range => {
+                    info!(
+                        self.logger,
+                        "Subgraph error is still ahead of deployment head, nothing to unfail";
+                        "subgraph_id" => deployment_id,
+                        "block_number" => format!("{}", current_ptr.number),
+                        "block_hash" => format!("{}", current_ptr.hash),
+                        "error_block_range" => format!("{:?}", block_range),
+                        "error_block_hash" => subgraph_error.block_hash.as_ref().map(|hash| format!("0x{}", hex::encode(hash))),
+                    );
+
+                    Ok(())
+                }
+            }
         })
     }
 

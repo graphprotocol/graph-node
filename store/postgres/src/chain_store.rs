@@ -390,6 +390,15 @@ mod data {
             }
         }
 
+        pub(super) fn truncate_block_cache(&self, conn: &PgConnection) -> Result<(), StoreError> {
+            let table_name = match &self {
+                Storage::Shared => ETHEREUM_BLOCKS_TABLE_NAME,
+                Storage::Private(Schema { blocks, .. }) => &blocks.qname,
+            };
+            conn.batch_execute(&format!("truncate table {} restart identity", table_name))?;
+            Ok(())
+        }
+
         /// Insert a block. If the table already contains a block with the
         /// same hash, then overwrite that block since it may be adding
         /// transaction receipts. If `overwrite` is `true`, overwrite a
@@ -477,12 +486,19 @@ mod data {
         ) -> Result<Vec<json::Value>, Error> {
             use diesel::dsl::any;
 
+            // We need to deal with chain stores where some entries have a
+            // toplevel 'block' field and others directly contain what would
+            // be in the 'block' field. Make sure we return the contents of
+            // the 'block' field if it exists, otherwise assume the whole
+            // Json object is what should be in 'block'
+            //
+            // see also 7736e440-4c6b-11ec-8c4d-b42e99f52061
             match self {
                 Storage::Shared => {
                     use public::ethereum_blocks as b;
 
                     b::table
-                        .select(sql::<Jsonb>("data -> 'block'"))
+                        .select(sql::<Jsonb>("coalesce(data -> 'block', data)"))
                         .filter(b::network_name.eq(chain))
                         .filter(b::hash.eq(any(Vec::from_iter(
                             hashes.into_iter().map(|h| format!("{:x}", h)),
@@ -491,7 +507,7 @@ mod data {
                 }
                 Storage::Private(Schema { blocks, .. }) => blocks
                     .table()
-                    .select(sql::<Jsonb>("data -> 'block'"))
+                    .select(sql::<Jsonb>("coalesce(data -> 'block', data)"))
                     .filter(
                         blocks
                             .hash()
@@ -826,6 +842,20 @@ mod data {
                 }
             };
 
+            // We need to deal with chain stores where some entries have a
+            // toplevel 'blocks' field and others directly contain what
+            // would be in the 'blocks' field. Make sure the value we return
+            // has a 'block' entry
+            //
+            // see also 7736e440-4c6b-11ec-8c4d-b42e99f52061
+            let data = {
+                use graph::prelude::serde_json::json;
+
+                data.map(|data| match data.get("block") {
+                    Some(_) => data,
+                    None => json!({ "block": data, "transaction_receipts": [] }),
+                })
+            };
             Ok(data)
         }
 
@@ -1263,6 +1293,12 @@ impl ChainStore {
 
         self.storage
             .set_chain(&conn, &self.chain, genesis_hash, chain);
+    }
+
+    pub fn truncate_block_cache(&self) -> Result<(), StoreError> {
+        let conn = self.get_conn()?;
+        self.storage.truncate_block_cache(&conn)?;
+        Ok(())
     }
 }
 
