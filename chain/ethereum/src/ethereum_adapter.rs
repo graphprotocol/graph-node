@@ -494,7 +494,7 @@ impl EthereumAdapter {
                 Ok(_) | Err(EthereumContractCallError::Revert(_)) => false,
                 Err(_) => true,
             })
-            .limit(10)
+            .limit(*REQUEST_RETRIES)
             .timeout_secs(*JSON_RPC_TIMEOUT)
             .run(move || {
                 let req = CallRequest {
@@ -1063,7 +1063,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         // transaction never made it back into the main chain.
         Box::new(
             retry("batch eth_getTransactionReceipt RPC call", &logger)
-                .limit(16)
+                .limit(*REQUEST_RETRIES)
                 .no_logging()
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
