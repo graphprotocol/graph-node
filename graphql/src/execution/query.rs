@@ -827,7 +827,7 @@ impl Transform {
     ) -> Result<a::SelectionSet, Vec<QueryExecutionError>> {
         let q::SelectionSet { span: _, items } = set;
         // check_complexity already checked for cycles in fragment
-        // expansion, i.e. situations where a named fragment includs itself
+        // expansion, i.e. situations where a named fragment includes itself
         // recursively. We still want to guard against spreading the same
         // fragment twice at the same level in the query
         let mut visited_fragments = HashSet::new();
