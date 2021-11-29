@@ -111,16 +111,6 @@ impl ObjectType {
     }
 }
 
-pub fn get_root_query_type_def(schema: &s::Document) -> Option<&s::TypeDefinition> {
-    schema.definitions.iter().find_map(|d| match d {
-        s::Definition::TypeDefinition(def @ s::TypeDefinition::Object(_)) => match def {
-            s::TypeDefinition::Object(t) if t.name == "Query" => Some(def),
-            _ => None,
-        },
-        _ => None,
-    })
-}
-
 /// Returns all type definitions in the schema.
 pub fn get_type_definitions(schema: &s::Document) -> Vec<&s::TypeDefinition> {
     schema
@@ -205,7 +195,7 @@ pub fn get_field_name(field_type: &s::Type) -> String {
 }
 
 /// Returns a mutable version of the type with the given name.
-pub fn get_named_type_definition_mut<'a>(
+fn get_named_type_definition_mut<'a>(
     schema: &'a mut s::Document,
     name: &str,
 ) -> Option<&'a mut s::TypeDefinition> {
@@ -238,18 +228,6 @@ pub fn get_type_name(t: &s::TypeDefinition) -> &str {
     }
 }
 
-/// Returns the description of a type.
-pub fn get_type_description(t: &s::TypeDefinition) -> &Option<String> {
-    match t {
-        s::TypeDefinition::Enum(t) => &t.description,
-        s::TypeDefinition::InputObject(t) => &t.description,
-        s::TypeDefinition::Interface(t) => &t.description,
-        s::TypeDefinition::Object(t) => &t.description,
-        s::TypeDefinition::Scalar(t) => &t.description,
-        s::TypeDefinition::Union(t) => &t.description,
-    }
-}
-
 /// Returns the argument definitions for a field of an object type.
 pub fn get_argument_definitions<'a>(
     object_type: impl Into<ObjectOrInterface<'a>>,
@@ -272,14 +250,6 @@ pub fn get_argument_definitions<'a>(
     } else {
         get_field(object_type, name).map(|field| &field.arguments)
     }
-}
-
-/// Returns the type definition that a field type corresponds to.
-pub fn get_type_definition_from_field<'a>(
-    schema: &'a s::Document,
-    field: &s::Field,
-) -> Option<&'a s::TypeDefinition> {
-    get_type_definition_from_type(schema, &field.field_type)
 }
 
 /// Returns the type definition for a type.
@@ -384,17 +354,6 @@ pub fn get_referenced_entity_type<'a>(
     field: &s::Field,
 ) -> Option<&'a s::TypeDefinition> {
     unpack_type(schema, &field.field_type).filter(|ty| is_entity_type_definition(ty))
-}
-
-pub fn get_input_object_definitions(schema: &s::Document) -> Vec<s::InputObjectType> {
-    schema
-        .definitions
-        .iter()
-        .filter_map(|d| match d {
-            s::Definition::TypeDefinition(s::TypeDefinition::InputObject(t)) => Some(t.clone()),
-            _ => None,
-        })
-        .collect()
 }
 
 /// If the field has a `@derivedFrom(field: "foo")` directive, obtain the
