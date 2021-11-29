@@ -22,7 +22,10 @@ use crate::schema::ast::ObjectType;
 #[derive(Debug, Clone, PartialEq)]
 pub struct SelectionSet {
     // Map object types to the list of fields that should be selected for
-    // them
+    // them. In most cases, this will have a single entry. If the
+    // `SelectionSet` is attached to a field with an interface or union
+    // type, it will have an entry for each object type implementing that
+    // interface or being part of the union
     items: Vec<(ObjectType, Vec<Field>)>,
 }
 
@@ -96,6 +99,10 @@ impl SelectionSet {
     }
 
     /// Iterate over all fields for the given object type
+    ///
+    /// # Panics
+    /// If this `SelectionSet` does not have an entry for `obj_type`, this
+    /// method will panic
     pub fn fields_for(&self, obj_type: &ObjectType) -> impl Iterator<Item = &Field> {
         let item = self
             .items
@@ -254,7 +261,7 @@ impl ValueMap for Field {
 
 /// A set of object types, generated from resolving interfaces into the
 /// object types that implement them, and possibly narrowing further when
-/// expanding fragments with type conitions
+/// expanding fragments with type conditions
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ObjectTypeSet {
     Any,
