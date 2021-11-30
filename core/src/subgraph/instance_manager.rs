@@ -14,7 +14,7 @@ use graph::{blockchain::block_stream::BlockWithTriggers, data::subgraph::Subgrap
 use graph::{
     blockchain::NodeCapabilities,
     blockchain::TriggersAdapter,
-    data::subgraph::schema::{SubgraphError, POI_OBJECT},
+    data::subgraph::schema::{SubgraphError, SubgraphHealth, POI_OBJECT},
 };
 use graph::{
     blockchain::{block_stream::BlockStreamEvent, Blockchain, TriggerFilter as _},
@@ -634,18 +634,28 @@ where
 
             match res {
                 Ok(needs_restart) => {
-                    // Runs only once
+                    // Keep trying to unfail subgraph for everytime it advances block(s) until it's
+                    // health is not Failed anymore.
                     if should_try_unfail_non_deterministic {
-                        should_try_unfail_non_deterministic = false;
-
                         // If the deployment head advanced, we can unfail
                         // the non-deterministic error (if there's any).
                         ctx.inputs
                             .store
                             .unfail_non_deterministic_error(&block_ptr)?;
-                    }
 
-                    deployment_failed.set(0.0);
+                        match ctx.inputs.store.health(&ctx.inputs.deployment.hash)? {
+                            SubgraphHealth::Failed => {
+                                // If the unfail call didn't change the subgraph health, we keep
+                                // `should_try_unfail_non_deterministic` as `true` until it's
+                                // actually unfailed.
+                            }
+                            SubgraphHealth::Healthy | SubgraphHealth::Unhealthy => {
+                                // Stop trying to unfail.
+                                should_try_unfail_non_deterministic = false;
+                                deployment_failed.set(0.0);
+                            }
+                        };
+                    }
 
                     // Notify the BlockStream implementation that a block was succesfully consumed
                     // and that its internal cursoring mechanism can be saved to memory.
