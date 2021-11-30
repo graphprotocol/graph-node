@@ -1571,7 +1571,7 @@ dependencies = [
 
 [[package]]
 name = "graph-chain-near"
-version = "0.24.1"
+version = "0.25.0"
 dependencies = [
  "base64 0.13.0",
  "diesel",
