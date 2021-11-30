@@ -554,6 +554,63 @@ fn can_query_many_to_many_relationship() {
 }
 
 #[test]
+fn can_query_with_child_filter_on_list_type_field() {
+    const QUERY: &str = "
+    query {
+        musicians(first: 100, orderBy: id, where: { bands_: { name: \"The Amateurs\" } }) {
+            name
+            bands(first: 100, orderBy: id) {
+                name
+            }
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        let the_musicians = object! {
+            name: "The Musicians",
+        };
+
+        let the_amateurs = object! {
+            name: "The Amateurs",
+        };
+
+        let exp = object! {
+            musicians: vec![
+                object! { name: "John", bands: vec![ the_musicians.clone(), the_amateurs.clone() ]},
+                object! { name: "Tom", bands: vec![ the_musicians.clone(), the_amateurs.clone() ] },
+            ]
+        };
+
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
+fn can_query_with_child_filter_on_named_type_field() {
+    const QUERY: &str = "
+    query {
+        musicians(first: 100, orderBy: id, where: { mainBand_: { name_contains: \"The Amateurs\" } }) {
+            name
+            mainBand {
+                id
+            }
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            musicians: vec![
+                object! { name: "Tom", mainBand: object! { id: "b2"} }
+            ]
+        };
+
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
 fn root_fragments_are_expanded() {
     const QUERY: &str = r#"
     fragment Musicians on Query {
