@@ -44,8 +44,8 @@ impl ToAscObj<AscBlock> for codec::Block {
     ) -> Result<AscBlock, DeterministicHostError> {
         Ok(AscBlock {
             header: asc_new_or_missing(heap, &self.header, "Block", "header")?,
-            data: asc_new_or_missing(heap, &self.data, "Block", "data")?,
-            evidence: asc_new_or_missing(heap, &self.evidence, "Block", "evidence")?,
+            // data: asc_new_or_missing(heap, &self.data, "Block", "data")?,
+            // evidence: asc_new_or_missing(heap, &self.evidence, "Block", "evidence")?,
             last_commit: asc_new_or_null(heap, &self.last_commit)?,
         })
     }
@@ -88,6 +88,7 @@ impl ToAscObj<AscTimestamp> for codec::Timestamp {
         Ok(AscTimestamp {
             seconds: self.seconds,
             nanos: self.nanos,
+            _padding: 0,
         })
     }
 }
@@ -208,6 +209,8 @@ impl ToAscObj<AscEventAttribute> for codec::EventAttribute {
             key: asc_new(heap, &self.key)?,
             value: asc_new(heap, &self.value)?,
             index: self.index, // TODO(l): seems broken ?
+            _padding: true,
+            _padding2: 0,
         })
     }
 }
@@ -243,7 +246,7 @@ impl ToAscObj<AscConsensusParams> for codec::ConsensusParams {
     ) -> Result<AscConsensusParams, DeterministicHostError> {
         Ok(AscConsensusParams {
             block: asc_new_or_null(heap, &self.block)?,
-            evidence: asc_new_or_null(heap, &self.evidence)?,
+            // evidence: asc_new_or_null(heap, &self.evidence)?,
             validator: asc_new_or_null(heap, &self.validator)?,
             version: asc_new_or_null(heap, &self.version)?,
         })
