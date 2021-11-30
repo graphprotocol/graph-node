@@ -2,6 +2,8 @@ use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::mem::discriminant;
 
 use graph::data::value::Object;
+use graph::data::value::Value as DataValue;
+use graph::prelude::s::Type;
 use graph::prelude::*;
 use graph::{components::store::EntityType, data::graphql::ObjectOrInterface};
 
@@ -27,6 +29,7 @@ pub(crate) fn build_query<'a>(
     max_first: u32,
     max_skip: u32,
     mut column_names: SelectedAttributes,
+    schema: &ApiSchema,
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
     let entity_types = EntityCollection::All(match &entity {
@@ -45,7 +48,7 @@ pub(crate) fn build_query<'a>(
     });
     let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types)
         .range(build_range(field, max_first, max_skip)?);
-    if let Some(filter) = build_filter(entity, field)? {
+    if let Some(filter) = build_filter(entity, field, schema)? {
         query = query.filter(filter);
     }
     let order = match (
@@ -110,9 +113,13 @@ fn build_range(
 fn build_filter(
     entity: ObjectOrInterface,
     field: &a::Field,
+    schema: &ApiSchema,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     match field.argument_value("where") {
-        Some(r::Value::Object(object)) => build_filter_from_object(entity, object),
+        Some(r::Value::Object(object)) => match build_filter_from_object(entity, object, schema) {
+            Ok(filter) => Ok(Some(filter)),
+            Err(e) => Err(e),
+        },
         Some(r::Value::Null) => Ok(None),
         None => match field.argument_value("text") {
             Some(r::Value::Object(filter)) => build_fulltext_filter_from_object(filter),
@@ -121,6 +128,100 @@ fn build_filter(
         },
         _ => Err(QueryExecutionError::InvalidFilterError),
     }
+}
+
+fn resolve_type_name(ty: &Type) -> &String {
+    match ty {
+        Type::ListType(inner) => resolve_type_name(inner),
+        Type::NonNullType(inner) => resolve_type_name(inner),
+        Type::NamedType(name) => name,
+    }
+}
+
+/// Parses a GraphQL input object into an EntityFilter, if present.
+fn build_filter_from_object(
+    entity: ObjectOrInterface,
+    object: &Object,
+    schema: &ApiSchema,
+) -> Result<EntityFilter, QueryExecutionError> {
+    Ok(EntityFilter::And({
+        object
+            .iter()
+            .map(|(key, value)| {
+                use self::sast::FilterOp::*;
+                let (field_name, op) = sast::parse_field_as_filter(key);
+
+                let field = sast::get_field(entity, &field_name).ok_or_else(|| {
+                    QueryExecutionError::EntityFieldError(
+                        entity.name().to_owned(),
+                        field_name.clone(),
+                    )
+                })?;
+
+                let ty = &field.field_type;
+
+                Ok(match op {
+                    Child => match value {
+                        DataValue::Object(obj) => {
+                            build_child_filter_from_object(entity, field_name, obj, schema)?
+                        }
+                        _ => {
+                            return Err(QueryExecutionError::AttributeTypeError(
+                                value.to_string(),
+                                ty.to_string(),
+                            ))
+                        }
+                    },
+                    _ => {
+                        let store_value = Value::from_query_value(value, ty)?;
+
+                        match op {
+                            Not => EntityFilter::Not(field_name, store_value),
+                            GreaterThan => EntityFilter::GreaterThan(field_name, store_value),
+                            LessThan => EntityFilter::LessThan(field_name, store_value),
+                            GreaterOrEqual => EntityFilter::GreaterOrEqual(field_name, store_value),
+                            LessOrEqual => EntityFilter::LessOrEqual(field_name, store_value),
+                            In => EntityFilter::In(field_name, list_values(store_value, "_in")?),
+                            NotIn => EntityFilter::NotIn(
+                                field_name,
+                                list_values(store_value, "_not_in")?,
+                            ),
+                            Contains => EntityFilter::Contains(field_name, store_value),
+                            NotContains => EntityFilter::NotContains(field_name, store_value),
+                            StartsWith => EntityFilter::StartsWith(field_name, store_value),
+                            NotStartsWith => EntityFilter::NotStartsWith(field_name, store_value),
+                            EndsWith => EntityFilter::EndsWith(field_name, store_value),
+                            NotEndsWith => EntityFilter::NotEndsWith(field_name, store_value),
+                            Equal => EntityFilter::Equal(field_name, store_value),
+                            _ => unreachable!(),
+                        }
+                    }
+                })
+            })
+            .collect::<Result<Vec<EntityFilter>, QueryExecutionError>>()?
+    }))
+}
+
+fn build_child_filter_from_object(
+    entity: ObjectOrInterface,
+    field_name: String,
+    object: &Object,
+    schema: &ApiSchema,
+) -> Result<EntityFilter, QueryExecutionError> {
+    let field = entity
+        .field(&field_name)
+        .ok_or(QueryExecutionError::InvalidFilterError)?;
+    let type_name = resolve_type_name(&field.field_type);
+    let child_entity = schema
+        .object_or_interface(type_name.as_str())
+        .ok_or(QueryExecutionError::InvalidFilterError)?;
+    let filter = build_filter_from_object(child_entity, object, schema)?;
+
+    Ok(EntityFilter::Child(
+        field_name,
+        EntityType::new(type_name.to_string()),
+        Box::new(filter),
+    ))
 }
 
 fn build_fulltext_filter_from_object(
@@ -139,50 +240,6 @@ fn build_fulltext_filter_from_object(
             }
         },
     )
-}
-
-/// Parses a GraphQL input object into an EntityFilter, if present.
-fn build_filter_from_object(
-    entity: ObjectOrInterface,
-    object: &Object,
-) -> Result<Option<EntityFilter>, QueryExecutionError> {
-    Ok(Some(EntityFilter::And({
-        object
-            .iter()
-            .map(|(key, value)| {
-                use self::sast::FilterOp::*;
-
-                let (field_name, op) = sast::parse_field_as_filter(key);
-
-                let field = sast::get_field(entity, &field_name).ok_or_else(|| {
-                    QueryExecutionError::EntityFieldError(
-                        entity.name().to_owned(),
-                        field_name.clone(),
-                    )
-                })?;
-
-                let ty = &field.field_type;
-                let store_value = Value::from_query_value(value, ty)?;
-
-                Ok(match op {
-                    Not => EntityFilter::Not(field_name, store_value),
-                    GreaterThan => EntityFilter::GreaterThan(field_name, store_value),
-                    LessThan => EntityFilter::LessThan(field_name, store_value),
-                    GreaterOrEqual => EntityFilter::GreaterOrEqual(field_name, store_value),
-                    LessOrEqual => EntityFilter::LessOrEqual(field_name, store_value),
-                    In => EntityFilter::In(field_name, list_values(store_value, "_in")?),
-                    NotIn => EntityFilter::NotIn(field_name, list_values(store_value, "_not_in")?),
-                    Contains => EntityFilter::Contains(field_name, store_value),
-                    NotContains => EntityFilter::NotContains(field_name, store_value),
-                    StartsWith => EntityFilter::StartsWith(field_name, store_value),
-                    NotStartsWith => EntityFilter::NotStartsWith(field_name, store_value),
-                    EndsWith => EntityFilter::EndsWith(field_name, store_value),
-                    NotEndsWith => EntityFilter::NotEndsWith(field_name, store_value),
-                    Equal => EntityFilter::Equal(field_name, store_value),
-                })
-            })
-            .collect::<Result<Vec<EntityFilter>, QueryExecutionError>>()?
-    })))
 }
 
 /// Parses a list of GraphQL values into a vector of entity field values.
@@ -342,8 +399,8 @@ mod tests {
         components::store::EntityType,
         data::value::Object,
         prelude::{
-            r, AttributeNames, EntityCollection, EntityFilter, EntityRange, Value, ValueType,
-            BLOCK_NUMBER_MAX,
+            r, ApiSchema, AttributeNames, DeploymentHash, EntityCollection, EntityFilter,
+            EntityRange, Schema, Value, ValueType, BLOCK_NUMBER_MAX,
         },
         prelude::{
             s::{self, Directive, Field, InputValue, ObjectType, Type, Value as SchemaValue},
@@ -448,8 +505,33 @@ mod tests {
         field
     }
 
+    fn build_schema(raw_schema: &str) -> ApiSchema {
+        let document = graphql_parser::parse_schema(raw_schema)
+            .expect("Failed to parse raw schema")
+            .into_static();
+
+        ApiSchema::from_api_schema(Schema::new(DeploymentHash::new("id").unwrap(), document))
+            .expect("Failed to build schema")
+    }
+
+    fn build_default_schema() -> ApiSchema {
+        build_schema(
+            r#"
+                type Query {
+                    aField(first: Int, skip: Int): [SomeType]
+                }
+
+                type SomeType @entity {
+                    id: ID!
+                    name: String!
+                }
+            "#,
+        )
+    }
+
     #[test]
     fn build_query_uses_the_entity_name() {
+        let schema = build_default_schema();
         assert_eq!(
             build_query(
                 &object("Entity1"),
@@ -458,7 +540,8 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default()
+                Default::default(),
+                &schema
             )
             .unwrap()
             .collection,
@@ -472,7 +555,8 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default()
+                Default::default(),
+                &schema,
             )
             .unwrap()
             .collection,
@@ -482,6 +566,7 @@ mod tests {
 
     #[test]
     fn build_query_yields_no_order_if_order_arguments_are_missing() {
+        let schema = build_default_schema();
         assert_eq!(
             build_query(
                 &default_object(),
@@ -490,7 +575,8 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default()
+                Default::default(),
+                &schema,
             )
             .unwrap()
             .order,
@@ -500,6 +586,7 @@ mod tests {
 
     #[test]
     fn build_query_parses_order_by_from_enum_values_correctly() {
+        let schema = build_default_schema();
         let field = default_field_with("orderBy", r::Value::Enum("name".to_string()));
         assert_eq!(
             build_query(
@@ -509,7 +596,8 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default()
+                Default::default(),
+                &schema,
             )
             .unwrap()
             .order,
@@ -525,7 +613,8 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default()
+                Default::default(),
+                &schema,
             )
             .unwrap()
             .order,
@@ -535,6 +624,7 @@ mod tests {
 
     #[test]
     fn build_query_ignores_order_by_from_non_enum_values() {
+        let schema = build_default_schema();
         let field = default_field_with("orderBy", r::Value::String("name".to_string()));
         assert_eq!(
             build_query(
@@ -544,7 +634,8 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default()
+                Default::default(),
+                &schema
             )
             .unwrap()
             .order,
@@ -560,7 +651,8 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default()
+                Default::default(),
+                &schema,
             )
             .unwrap()
             .order,
@@ -570,6 +662,7 @@ mod tests {
 
     #[test]
     fn build_query_parses_order_direction_from_enum_values_correctly() {
+        let schema = build_default_schema();
         let field = default_field_with_vec(vec![
             ("orderBy", r::Value::Enum("name".to_string())),
             ("orderDirection", r::Value::Enum("asc".to_string())),
@@ -582,7 +675,8 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default()
+                Default::default(),
+                &schema,
             )
             .unwrap()
             .order,
@@ -601,7 +695,8 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default()
+                Default::default(),
+                &schema,
             )
             .unwrap()
             .order,
@@ -623,7 +718,8 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default()
+                Default::default(),
+                &schema,
             )
             .unwrap()
             .order,
@@ -643,7 +739,8 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default()
+                Default::default(),
+                &schema
             )
             .unwrap()
             .order,
@@ -653,6 +750,7 @@ mod tests {
 
     #[test]
     fn build_query_yields_default_range_if_none_is_present() {
+        let schema = build_default_schema();
         assert_eq!(
             build_query(
                 &default_object(),
@@ -661,7 +759,8 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default()
+                Default::default(),
+                &schema
             )
             .unwrap()
             .range,
@@ -671,6 +770,7 @@ mod tests {
 
     #[test]
     fn build_query_yields_default_first_if_only_skip_is_present() {
+        let schema = build_default_schema();
         let mut field = default_field();
         field.arguments = vec![("skip".to_string(), r::Value::Int(50))];
 
@@ -682,7 +782,8 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default()
+                Default::default(),
+                &schema
             )
             .unwrap()
             .range,
@@ -695,6 +796,7 @@ mod tests {
 
     #[test]
     fn build_query_yields_filters() {
+        let schema = build_default_schema();
         let query_field = default_field_with(
             "where",
             r::Value::Object(Object::from_iter(vec![(
@@ -713,7 +815,8 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default()
+                Default::default(),
+                &schema
             )
             .unwrap()
             .filter,

@@ -28,6 +28,7 @@ pub(crate) enum FilterOp {
     EndsWith,
     NotEndsWith,
     Equal,
+    Child,
 }
 
 /// Split a "name_eq" style name into an attribute ("name") and a filter op (`Equal`).
@@ -46,6 +47,7 @@ pub(crate) fn parse_field_as_filter(key: &str) -> (String, FilterOp) {
         k if k.ends_with("_not_ends_with") => ("_not_ends_with", FilterOp::NotEndsWith),
         k if k.ends_with("_starts_with") => ("_starts_with", FilterOp::StartsWith),
         k if k.ends_with("_ends_with") => ("_ends_with", FilterOp::EndsWith),
+        k if k.ends_with("_") => ("_", FilterOp::Child),
         _ => ("", FilterOp::Equal),
     };
 

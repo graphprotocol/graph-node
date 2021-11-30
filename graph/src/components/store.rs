@@ -177,27 +177,11 @@ pub enum EntityFilter {
     NotStartsWith(Attribute, Value),
     EndsWith(Attribute, Value),
     NotEndsWith(Attribute, Value),
+    Child(String, EntityType, Box<EntityFilter>),
 }
 
 // Define some convenience methods
 impl EntityFilter {
-    pub fn new_equal(
-        attribute_name: impl Into<Attribute>,
-        attribute_value: impl Into<Value>,
-    ) -> Self {
-        EntityFilter::Equal(attribute_name.into(), attribute_value.into())
-    }
-
-    pub fn new_in(
-        attribute_name: impl Into<Attribute>,
-        attribute_values: Vec<impl Into<Value>>,
-    ) -> Self {
-        EntityFilter::In(
-            attribute_name.into(),
-            attribute_values.into_iter().map(Into::into).collect(),
-        )
-    }
-
     pub fn and_maybe(self, other: Option<Self>) -> Self {
         use EntityFilter as f;
         match other {

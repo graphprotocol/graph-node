@@ -779,6 +779,165 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct TableJoin<'a> {
+    parent: &'a Table,
+    child: &'a Table,
+    parent_prefix: String,
+    child_prefix: String,
+    parent_column: &'a Column,
+    child_column: &'a Column,
+}
+
+#[derive(Debug, Clone)]
+pub struct TableJoinCollection<'a> {
+    joins: Vec<TableJoin<'a>>,
+    prefixes: HashMap<String, String>,
+}
+
+impl<'a> TableJoinCollection<'a> {
+    pub fn new(root_prefix: &'a str, root_table: &'a Table) -> Self {
+        let mut prefixes = HashMap::new();
+
+        prefixes.insert(root_table.name.to_string(), root_prefix.to_string());
+
+        Self {
+            prefixes,
+            joins: Vec::new(),
+        }
+    }
+
+    pub fn extend_with_filter(
+        &mut self,
+        filter: &'a EntityFilter,
+        parent_table: &'a Table,
+        layout: &'a Layout,
+    ) -> Result<(), StoreError> {
+        use EntityFilter::*;
+        match filter {
+            And(filters) | Or(filters) => {
+                for filter in filters {
+                    self.extend_with_filter(filter, parent_table, layout)?;
+                }
+            }
+            Child(field_name, entity, child_filter) => {
+                let child_table = layout.table_for_entity(entity)?;
+
+                self.join(parent_table, child_table, field_name)?;
+                self.extend_with_filter(child_filter, child_table, layout)?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn find(&self, parent_table: &'a Table, child_table: &'a Table) -> Option<&TableJoin> {
+        self.joins
+            .iter()
+            .filter_map(|join| {
+                if join.parent.name == parent_table.name && join.child.name == child_table.name {
+                    Some(join)
+                } else {
+                    None
+                }
+            })
+            .next()
+    }
+
+    fn get_or_add_prefix(&mut self, table: &'a Table) -> String {
+        return match self.prefixes.get(table.name.as_str()) {
+            Some(prefix) => prefix.to_string(),
+            None => {
+                let prefix = format!("c{}", self.prefixes.len());
+                self.prefixes.insert(table.name.to_string(), prefix.clone());
+                prefix
+            }
+        };
+    }
+
+    pub fn get_prefix(&self, table: &'a Table) -> String {
+        self.prefixes
+            .get(table.name.as_str())
+            .expect("table prefix not found")
+            .to_string()
+    }
+
+    fn join(
+        &mut self,
+        parent_table: &'a Table,
+        child_table: &'a Table,
+        field_name: &String,
+    ) -> Result<(), StoreError> {
+        Ok(match self.find(parent_table, child_table) {
+            None => {
+                let parent_prefix = self.get_or_add_prefix(parent_table);
+                let child_prefix = self.get_or_add_prefix(child_table);
+
+                self.joins.push(TableJoin {
+                    parent: parent_table,
+                    child: child_table,
+                    parent_prefix,
+                    child_prefix,
+                    parent_column: parent_table.column_for_field(field_name)?,
+                    child_column: child_table.primary_key(),
+                });
+            }
+            Some(_) => {}
+        })
+    }
+}
+
+impl<'a> QueryFragment<Pg> for TableJoinCollection<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        fn push_column_with_prefix(
+            mut out: AstPass<Pg>,
+            column: &str,
+            prefix: &String,
+        ) -> QueryResult<()> {
+            out.push_sql(format!("{}.", prefix).as_str());
+            out.push_identifier(column)?;
+
+            Ok(())
+        }
+
+        for table_join in &self.joins {
+            out.push_sql("\n");
+
+            out.push_sql("left join ");
+            out.push_sql(table_join.child.qualified_name.as_str());
+            out.push_sql(format!(" {}", table_join.child_prefix,).as_str());
+
+            out.push_sql(" on (");
+
+            // Join by ID
+            push_column_with_prefix(
+                out.reborrow(),
+                table_join.child_column.name.as_str(),
+                &table_join.child_prefix,
+            )?;
+            out.push_sql(" = ");
+            push_column_with_prefix(
+                out.reborrow(),
+                table_join.parent_column.name.as_str(),
+                &table_join.parent_prefix,
+            )?;
+
+            out.push_sql(" AND ");
+
+            // Match versions
+            push_column_with_prefix(out.reborrow(), "vid", &table_join.child_prefix)?;
+            out.push_sql(" = ");
+            push_column_with_prefix(out.reborrow(), "vid", &table_join.parent_prefix)?;
+
+            out.push_sql(" )");
+        }
+
+        Ok(())
+    }
+}
+
 /// A `QueryFilter` adds the conditions represented by the `filter` to
 /// the `where` clause of a SQL query. The attributes mentioned in
 /// the `filter` must all come from the given `table`, which is used to
@@ -787,24 +946,46 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
 #[derive(Debug, Clone)]
 pub struct QueryFilter<'a> {
     filter: &'a EntityFilter,
+    layout: &'a Layout,
     table: &'a Table,
+    table_join_collection: TableJoinCollection<'a>,
 }
 
 impl<'a> QueryFilter<'a> {
-    pub fn new(filter: &'a EntityFilter, table: &'a Table) -> Result<Self, StoreError> {
-        Self::valid_attributes(filter, table)?;
-        Ok(QueryFilter { filter, table })
+    pub fn new(
+        filter: &'a EntityFilter,
+        table: &'a Table,
+        layout: &'a Layout,
+    ) -> Result<Self, StoreError> {
+        Self::valid_attributes(filter, table, layout)?;
+
+        let mut table_join_collection = TableJoinCollection::new("c", table);
+
+        table_join_collection.extend_with_filter(filter, table, layout)?;
+
+        Ok(QueryFilter {
+            filter,
+            table,
+            layout,
+            table_join_collection,
+        })
     }
 
-    fn valid_attributes(filter: &'a EntityFilter, table: &'a Table) -> Result<(), StoreError> {
+    fn valid_attributes(
+        filter: &'a EntityFilter,
+        table: &'a Table,
+        layout: &'a Layout,
+    ) -> Result<(), StoreError> {
         use EntityFilter::*;
         match filter {
             And(filters) | Or(filters) => {
                 for filter in filters {
-                    Self::valid_attributes(filter, table)?;
+                    Self::valid_attributes(filter, table, layout)?;
                 }
             }
-
+            Child(_, entity, child_filter) => {
+                Self::valid_attributes(child_filter, layout.table_for_entity(entity)?, layout)?;
+            }
             Contains(attr, _)
             | NotContains(attr, _)
             | Equal(attr, _)
@@ -829,7 +1010,34 @@ impl<'a> QueryFilter<'a> {
         QueryFilter {
             filter,
             table: self.table,
+            layout: self.layout,
+            table_join_collection: self.table_join_collection.clone(),
         }
+    }
+
+    fn child(
+        &self,
+        entity_type: &'a EntityType,
+        filter: &'a EntityFilter,
+        out: AstPass<Pg>,
+    ) -> QueryResult<()> {
+        let table = self
+            .layout
+            .table_for_entity(entity_type)
+            .expect("Table for child entity not found");
+
+        let query_filter = QueryFilter {
+            filter,
+            table,
+            layout: self.layout,
+            table_join_collection: self.table_join_collection.clone(),
+        };
+
+        query_filter.walk_ast(out)
+    }
+
+    fn prefix(&self) -> String {
+        return format!("{}.", self.table_join_collection.get_prefix(self.table));
     }
 
     fn column(&self, attribute: &Attribute) -> &'a Column {
@@ -868,9 +1076,11 @@ impl<'a> QueryFilter<'a> {
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
         let column = self.column(attribute);
+        let table_prefix = self.prefix();
 
         match value {
             Value::String(s) => {
+                out.push_sql(&table_prefix);
                 out.push_identifier(column.name.as_str())?;
                 if negated {
                     out.push_sql(" not like ");
@@ -888,6 +1098,7 @@ impl<'a> QueryFilter<'a> {
                 out.push_sql("position(");
                 out.push_bind_param::<Binary, _>(&b.as_slice())?;
                 out.push_sql(" in ");
+                out.push_sql(&table_prefix);
                 out.push_identifier(column.name.as_str())?;
                 if negated {
                     out.push_sql(") = 0")
@@ -898,9 +1109,11 @@ impl<'a> QueryFilter<'a> {
             Value::List(_) => {
                 if negated {
                     out.push_sql(" not ");
+                    out.push_sql(&table_prefix);
                     out.push_identifier(column.name.as_str())?;
                     out.push_sql(" && ");
                 } else {
+                    out.push_sql(&table_prefix);
                     out.push_identifier(column.name.as_str())?;
                     out.push_sql(" @> ");
                 }
@@ -933,14 +1146,17 @@ impl<'a> QueryFilter<'a> {
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
         let column = self.column(attribute);
+        let table_prefix = self.prefix();
 
         if column.is_text() && value.is_string() {
             PrefixComparison::new(op, column, value).walk_ast(out.reborrow())?;
         } else if column.is_fulltext() {
+            out.push_sql(&table_prefix);
             out.push_identifier(column.name.as_str())?;
             out.push_sql(Comparison::Match.as_str());
             QueryValue(value, &column.column_type).walk_ast(out)?;
         } else {
+            out.push_sql(&table_prefix);
             out.push_identifier(column.name.as_str())?;
 
             match value {
@@ -975,10 +1191,12 @@ impl<'a> QueryFilter<'a> {
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
         let column = self.column(attribute);
+        let table_prefix = self.prefix();
 
         if column.is_text() && value.is_string() {
             PrefixComparison::new(op, column, value).walk_ast(out.reborrow())?;
         } else {
+            out.push_sql(&table_prefix);
             out.push_identifier(column.name.as_str())?;
             out.push_sql(op.as_str());
             match value {
@@ -1031,7 +1249,10 @@ impl<'a> QueryFilter<'a> {
             out.push_sql("(");
         }
 
+        let table_prefix = self.prefix();
+
         if have_nulls {
+            out.push_sql(&table_prefix);
             out.push_identifier(column.name.as_str())?;
             if negated {
                 out.push_sql(" is not null");
@@ -1059,6 +1280,7 @@ impl<'a> QueryFilter<'a> {
                 // is happening here
                 PrefixComparison::push_column_prefix(&column, out.reborrow())?;
             } else {
+                out.push_sql(&table_prefix);
                 out.push_identifier(column.name.as_str())?;
             }
             if negated {
@@ -1094,7 +1316,9 @@ impl<'a> QueryFilter<'a> {
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
         let column = self.column(attribute);
+        let table_prefix = self.prefix();
 
+        out.push_sql(&table_prefix);
         out.push_identifier(column.name.as_str())?;
         out.push_sql(op);
         match value {
@@ -1158,6 +1382,8 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
             NotEndsWith(attr, value) => {
                 self.starts_or_ends_with(attr, value, " not like ", false, out)?
             }
+
+            Child(_, entity_type, child_filter) => self.child(entity_type, child_filter, out)?,
         }
         Ok(())
     }
@@ -1565,7 +1791,7 @@ impl<'a> ParentLimit<'a> {
     fn restrict(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         if let ParentLimit::Ranked(sort_key, range) = self {
             out.push_sql(" ");
-            sort_key.order_by(out)?;
+            sort_key.order_by(out, None)?;
             range.walk_ast(out.reborrow())?;
         }
         Ok(())
@@ -1610,7 +1836,7 @@ impl<'a> FilterWindow<'a> {
     fn new(
         layout: &'a Layout,
         window: EntityWindow,
-        query_filter: Option<&'a EntityFilter>,
+        entity_filter: Option<&'a EntityFilter>,
     ) -> Result<Self, QueryExecutionError> {
         let EntityWindow {
             child_type,
@@ -1627,8 +1853,8 @@ impl<'a> FilterWindow<'a> {
             }
         }
 
-        let query_filter = query_filter
-            .map(|filter| QueryFilter::new(filter, table))
+        let query_filter = entity_filter
+            .map(|filter| QueryFilter::new(&filter, table, layout))
             .transpose()?;
         let link = TableLink::new(table, link)?;
         Ok(FilterWindow {
@@ -1962,7 +2188,7 @@ impl<'a> FilterCollection<'a> {
                             .map(|rc| rc.as_ref())
                             .and_then(|table| {
                                 filter
-                                    .map(|filter| QueryFilter::new(filter, table))
+                                    .map(|filter| QueryFilter::new(filter, table, layout))
                                     .transpose()
                                     .map(|filter| (table, filter, column_names.clone()))
                             })
@@ -2106,24 +2332,30 @@ impl<'a> SortKey<'a> {
 
     /// Generate
     ///   order by [name direction], id
-    fn order_by(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn order_by(&self, out: &mut AstPass<Pg>, prefix: Option<&str>) -> QueryResult<()> {
+        let prefix = prefix.unwrap_or("");
+
         match self {
             SortKey::None => Ok(()),
             SortKey::IdAsc => {
                 out.push_sql("order by ");
+                out.push_sql(prefix);
                 out.push_identifier(PRIMARY_KEY_COLUMN)?;
                 if *ORDER_BY_BLOCK_RANGE {
                     out.push_sql(", ");
+                    out.push_sql(prefix);
                     out.push_sql(BLOCK_RANGE_COLUMN);
                 }
                 Ok(())
             }
             SortKey::IdDesc => {
                 out.push_sql("order by ");
+                out.push_sql(prefix);
                 out.push_identifier(PRIMARY_KEY_COLUMN)?;
                 out.push_sql(" desc");
                 if *ORDER_BY_BLOCK_RANGE {
                     out.push_sql(", ");
+                    out.push_sql(prefix);
                     out.push_sql(BLOCK_RANGE_COLUMN);
                     out.push_sql(" desc");
                 }
@@ -2293,6 +2525,11 @@ impl<'a> FilterQuery<'a> {
         out.push_sql("\n  from ");
         out.push_sql(table.qualified_name.as_str());
         out.push_sql(" c");
+
+        if let Some(filter) = table_filter {
+            filter.table_join_collection.walk_ast(out.reborrow())?;
+        }
+
         out.push_sql("\n where ");
         BlockRangeContainsClause::new(&table, "c.", self.block).walk_ast(out.reborrow())?;
         if let Some(filter) = table_filter {
@@ -2333,7 +2570,7 @@ impl<'a> FilterQuery<'a> {
         write_column_names(&column_names, &table, &mut out)?;
         self.filtered_rows(table, filter, out.reborrow())?;
         out.push_sql("\n ");
-        self.sort_key.order_by(&mut out)?;
+        self.sort_key.order_by(&mut out, Some("c."))?;
         self.range.walk_ast(out.reborrow())?;
         out.push_sql(") c");
         Ok(())
@@ -2412,7 +2649,7 @@ impl<'a> FilterQuery<'a> {
             self.filtered_rows(table, filter, out.reborrow())?;
         }
         out.push_sql("\n ");
-        self.sort_key.order_by(&mut out)?;
+        self.sort_key.order_by(&mut out, None)?;
         self.range.walk_ast(out.reborrow())?;
 
         out.push_sql(")\n");
@@ -2434,7 +2671,7 @@ impl<'a> FilterQuery<'a> {
             out.push_bind_param::<Text, _>(&table.object.as_str())?;
         }
         out.push_sql("\n ");
-        self.sort_key.order_by(&mut out)?;
+        self.sort_key.order_by(&mut out, None)?;
         Ok(())
     }
 
@@ -2484,7 +2721,7 @@ impl<'a> FilterQuery<'a> {
             window.children_uniform(&self.sort_key, self.block, out.reborrow())?;
         }
         out.push_sql("\n");
-        self.sort_key.order_by(&mut out)?;
+        self.sort_key.order_by(&mut out, None)?;
         self.range.walk_ast(out.reborrow())?;
         out.push_sql(") c)\n");
 
