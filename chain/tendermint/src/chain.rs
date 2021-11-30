@@ -27,7 +27,7 @@ use crate::capabilities::NodeCapabilities;
 use crate::data_source::{
     DataSource, DataSourceTemplate, UnresolvedDataSource, UnresolvedDataSourceTemplate,
 };
-use crate::trigger::TendermintTrigger;
+use crate::trigger::{self, TendermintTrigger};
 use crate::RuntimeAdapter;
 use crate::{codec, TriggerFilter};
 
@@ -309,11 +309,29 @@ impl FirehoseMapper {
         el: &codec::EventList,
         _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, FirehoseError> {
-        Ok(BlockWithTriggers {
-            // TODO: Find the best place to introduce an `Arc` and avoid these clones.
-            block: el.clone(),
-            trigger_data: vec![TendermintTrigger::Block(Arc::new(el.clone()))],
-        })
+        // TODO: Find the best place to introduce an `Arc` and avoid this clone.
+        let el = Arc::new(el.clone());
+
+        let events = el
+            .newblock.as_ref().unwrap()
+            .result_begin_block.as_ref().unwrap()
+            .events
+            .iter()
+            .map(|event| {
+                trigger::EventData {
+                    event: event.clone(),
+                    block: el.cheap_clone(),
+                }
+            });
+
+        let mut trigger_data: Vec<_> = events
+            .map(|e| TendermintTrigger::Event(Arc::new(e)))
+            .collect();
+
+        trigger_data.push(TendermintTrigger::Block(el.cheap_clone()));
+
+        // TODO: `block` should probably be an `Arc` in `BlockWithTriggers` to avoid this clone.
+        Ok(BlockWithTriggers::new(el.as_ref().clone(), trigger_data))
     }
 }
 

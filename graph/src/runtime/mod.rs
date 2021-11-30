@@ -292,6 +292,7 @@ pub enum IndexForAscTypeId {
     TendermintEventValidatorSetUpdates = 127,
     TendermintTimestamp = 128,
     Tendermintfig = 129,
+    TendermintEventData = 130,
 }
 
 impl ToAscObj<u32> for IndexForAscTypeId {

@@ -2,6 +2,7 @@
 mod pbcodec;
 
 use crate::codec;
+use crate::trigger::EventData;
 use graph::prelude::BigInt;
 use graph::runtime::{
     asc_new, AscHeap, AscIndexId, AscPtr, AscType, DeterministicHostError, ToAscObj,
@@ -9,6 +10,18 @@ use graph::runtime::{
 use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, EnumPayload, Uint8Array};
 
 pub(crate) use super::generated::*;
+
+impl ToAscObj<AscEventData> for EventData {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscEventData, DeterministicHostError> {
+        Ok(AscEventData {
+            event: asc_new(heap, &self.event)?,
+            block: asc_new(heap, self.block.as_ref())?,
+        })
+    }
+}
 
 impl ToAscObj<AscEventList> for codec::EventList {
     fn to_asc_obj<H: AscHeap + ?Sized>(

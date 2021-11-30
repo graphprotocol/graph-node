@@ -640,3 +640,13 @@ impl AscIndexId for Ascfig {
 }
 
 
+#[repr(C)]
+#[derive(AscType)]
+pub(crate) struct AscEventData {
+    pub event: AscPtr<AscEvent>,
+    pub block: AscPtr<AscEventList>,
+}
+
+impl AscIndexId for AscEventData {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventData;
+}

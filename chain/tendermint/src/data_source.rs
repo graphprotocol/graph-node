@@ -13,6 +13,7 @@ use graph::{
 };
 
 use crate::chain::Chain;
+use crate::codec;
 use crate::trigger::TendermintTrigger;
 
 pub const TENDERMINT_KIND: &str = "tendermint/data";
@@ -50,19 +51,22 @@ impl blockchain::DataSource<Chain> for DataSource {
             return Ok(None);
         }
 
-        match trigger {
-            TendermintTrigger::Block(_) => {
-                let handler = match self.handler_for_block() {
-                    Some(handler) => handler,
-                    None => return Ok(None),
-                };
-
-                Ok(Some(TriggerWithHandler::new(
-                    trigger.cheap_clone(),
-                    handler.handler,
-                )))
+        let handler = match trigger {
+            TendermintTrigger::Block(_) => match self.handler_for_block() {
+                Some(handler) => handler.handler,
+                None => return Ok(None),
             }
-        }
+
+            TendermintTrigger::Event(data) => match self.handler_for_event(&data.event) {
+                Some(handler) => handler.handler,
+                None => return Ok(None),
+            }
+        };
+
+        Ok(Some(TriggerWithHandler::new(
+            trigger.cheap_clone(),
+            handler.to_owned(),
+        )))
     }
 
     fn name(&self) -> &str {
@@ -107,6 +111,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             && name == &other.name
             && source == &other.source
             && mapping.block_handlers == other.mapping.block_handlers
+            && mapping.event_handlers == other.mapping.event_handlers
             && context == &other.context
     }
 
@@ -139,22 +144,13 @@ impl blockchain::DataSource<Chain> for DataSource {
             ))
         }
 
-        // Validate that there is a `source` address if there are receipt handlers
-        let no_source_address = self.address().is_none();
-        // let has_receipt_handlers = !self.mapping.receipt_handlers.is_empty();
-        // if no_source_address && has_receipt_handlers {
-        //    errors.push(SubgraphManifestValidationError::SourceAddressRequired.into());
-        // };
-
-        // Validate that there are no more than one of both block handlers and receipt handlers
-        /*
+        // Ensure there is only one block handler
         if self.mapping.block_handlers.len() > 1 {
             errors.push(anyhow!("data source has duplicated block handlers"));
         }
-        if self.mapping.receipt_handlers.len() > 1 {
-            errors.push(anyhow!("data source has duplicated receipt handlers"));
-        }
-        */
+
+        // TODO: Ensure there is only one event handler for each event type
+
         errors
     }
 
@@ -191,8 +187,16 @@ impl DataSource {
     }
 
     fn handler_for_block(&self) -> Option<MappingBlockHandler> {
-        // FIXME (NEAR): We need to decide how to deal with multi block handlers, allow only 1?
-        self.mapping.block_handlers.first().map(|v| v.clone())
+        self.mapping.block_handlers.first().cloned()
+    }
+
+    fn handler_for_event(&self, event: &codec::Event) -> Option<MappingEventHandler> {
+        self
+            .mapping
+            .event_handlers
+            .iter()
+            .find(|handler| event.eventtype == handler.event)
+            .cloned()
     }
 }
 
@@ -313,6 +317,8 @@ pub struct UnresolvedMapping {
     pub entities: Vec<String>,
     #[serde(default)]
     pub block_handlers: Vec<MappingBlockHandler>,
+    #[serde(default)]
+    pub event_handlers: Vec<MappingEventHandler>,
     pub file: Link,
 }
 
@@ -324,6 +330,7 @@ impl UnresolvedMapping {
             language,
             entities,
             block_handlers,
+            event_handlers,
             file: link,
         } = self;
 
@@ -338,6 +345,7 @@ impl UnresolvedMapping {
             language,
             entities,
             block_handlers: block_handlers.clone(),
+            event_handlers: event_handlers.clone(),
             runtime: Arc::new(module_bytes),
             link,
         })
@@ -351,11 +359,18 @@ pub struct Mapping {
     pub language: String,
     pub entities: Vec<String>,
     pub block_handlers: Vec<MappingBlockHandler>,
+    pub event_handlers: Vec<MappingEventHandler>,
     pub runtime: Arc<Vec<u8>>,
     pub link: Link,
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct MappingBlockHandler {
+    pub handler: String,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub struct MappingEventHandler {
+    pub event: String,
     pub handler: String,
 }
