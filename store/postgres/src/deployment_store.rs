@@ -1379,4 +1379,12 @@ impl DeploymentStore {
                   "shard" => self.pool.shard.as_str())
         });
     }
+
+    pub(crate) fn health(
+        &self,
+        id: &DeploymentHash,
+    ) -> Result<deployment::SubgraphHealth, StoreError> {
+        let conn = self.get_conn()?;
+        deployment::health(&conn, id)
+    }
 }

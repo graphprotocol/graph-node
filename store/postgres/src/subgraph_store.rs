@@ -16,7 +16,7 @@ use graph::{
     },
     constraint_violation,
     data::query::QueryTarget,
-    data::subgraph::schema::SubgraphError,
+    data::subgraph::schema::{self, SubgraphError},
     data::{
         store::{EntityVersion, Vid},
         subgraph::status,
@@ -1324,6 +1324,10 @@ impl WritableStoreTrait for WritableStore {
 
     fn shard(&self) -> &str {
         self.site.shard.as_str()
+    }
+
+    fn health(&self, id: &DeploymentHash) -> Result<schema::SubgraphHealth, StoreError> {
+        self.retry("health", || self.writable.health(id).map(Into::into))
     }
 }
 

@@ -626,6 +626,19 @@ fn check_health(
     .map_err(|e| e.into())
 }
 
+pub(crate) fn health(
+    conn: &PgConnection,
+    id: &DeploymentHash,
+) -> Result<SubgraphHealth, StoreError> {
+    use subgraph_deployment as d;
+
+    d::table
+        .filter(d::deployment.eq(id.as_str()))
+        .select(d::health)
+        .get_result(conn)
+        .map_err(|e| e.into())
+}
+
 /// Reverts the errors and updates the subgraph health if necessary.
 pub(crate) fn revert_subgraph_errors(
     conn: &PgConnection,
