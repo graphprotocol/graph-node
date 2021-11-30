@@ -36,10 +36,9 @@ pub enum SubgraphHealth {
 
 impl SubgraphHealth {
     fn is_failed(&self) -> bool {
-        match self {
-            Self::Failed => true,
-            Self::Healthy | Self::Unhealthy => false,
-        }
+        use graph::data::subgraph::schema::SubgraphHealth as H;
+
+        H::from(*self).is_failed()
     }
 }
 
