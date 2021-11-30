@@ -1,7 +1,6 @@
 use graph_runtime_derive::AscType;
 use graph::runtime::{AscType, AscIndexId, DeterministicHostError, IndexForAscTypeId, AscPtr, AscValue};
-use graph::{semver, anyhow, semver::Version};
-use std::mem::size_of;
+use graph::{semver::Version};
 use graph_runtime_wasm::asc_abi::class::{Uint8Array, AscEnum, Array, AscBigInt, AscString};
 
 pub(crate) type AscHash = Uint8Array;
