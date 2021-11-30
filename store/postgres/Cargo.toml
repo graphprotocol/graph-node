@@ -17,7 +17,7 @@ fallible-iterator = "0.2.0"
 futures = "0.1.21"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
-graphql-parser = "0.3"
+graphql-parser = "0.4.0"
 Inflector = "0.11.3"
 lazy_static = "1.1"
 lru_time_cache = "0.11"
@@ -37,7 +37,7 @@ hex = "0.4.3"
 
 [dev-dependencies]
 clap = "2.33.3"
-graphql-parser = "0.3"
+graphql-parser = "0.4.0"
 test-store = { path = "../test-store" }
 hex-literal = "0.3"
 graph-chain-ethereum = { path = "../../chain/ethereum" }
