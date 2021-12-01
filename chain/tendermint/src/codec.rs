@@ -24,13 +24,11 @@ impl EventList {
     }
 
     pub fn events(&self) -> Vec<Event> {
-        let mut events = vec!();
-
-        events.extend(self.begin_block_events());
-        events.extend(self.tx_events());
-        events.extend(self.end_block_events());
-
-        events.clone()
+        self.begin_block_events()
+            .into_iter()
+            .chain(self.tx_events().into_iter())
+            .chain(self.end_block_events().into_iter())
+            .collect()
     }
 
     pub fn begin_block_events(&self) -> Vec<Event> {
@@ -53,8 +51,7 @@ impl EventList {
                     .as_ref()
                     .unwrap()
                     .events
-                    .iter()
-                    .cloned()
+                    .clone()
             })
             .collect::<Vec<_>>()
     }
