@@ -166,3 +166,9 @@ those.
   decisions. Set to `true` to turn simulation on, defaults to `false`
 - `GRAPH_STORE_CONNECTION_TIMEOUT`: How long to wait to connect to a
   database before assuming the database is down in ms. Defaults to 5000ms.
+- `GRAPH_REMOVE_UNUSED_INTERVAL`: How long to wait before removing an
+  unused deployment. The system periodically checks and marks deployments
+  that are not used by any subgraphs any longer. Once a deployment has been
+  identified as unused, `graph-node` will wait at least this long before
+  actually deleting the data (value is in minutes, defaults to 360, i.e. 6
+  hours)
