@@ -125,11 +125,16 @@ pub trait DeploymentPlacer {
 
 /// Tools for managing unused deployments
 pub mod unused {
+    use graph::prelude::chrono::Duration;
+
     pub enum Filter {
         /// List all unused deployments
         All,
         /// List only deployments that are unused but have not been removed yet
         New,
+        /// List only deployments that were recorded as unused at least this
+        /// long ago but have not been removed at
+        UnusedLongerThan(Duration),
     }
 }
 
