@@ -29,7 +29,7 @@ pub fn mock_host_exports(
     let templates = vec![DataSourceTemplate {
         kind: String::from("ethereum/contract"),
         name: String::from("GraphTokenLockWallet"),
-        network: Some(String::from("mainnet")),
+        network: Some(String::from("test")),
         source: TemplateSource {
             abi: String::from("foo"),
         },
