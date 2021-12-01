@@ -1724,7 +1724,6 @@ dependencies = [
  "never",
  "semver 1.0.4",
  "serde",
- "serde_json",
  "strum",
  "strum_macros",
  "uuid 0.8.2",

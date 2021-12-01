@@ -1,12 +1,14 @@
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::{anyhow, Result};
-use serde::Serialize;
 
-use graph::prelude::{
-    reqwest,
-    s::{Definition, ObjectType, TypeDefinition},
-    Attribute, BigDecimal, BigInt, Entity, Schema, Value,
+use graph::{
+    block_on,
+    prelude::{
+        reqwest,
+        s::{Definition, ObjectType, TypeDefinition},
+        serde_json, Attribute, BigDecimal, BigInt, Entity, Schema, Serialize, Value,
+    },
 };
 
 #[derive(Serialize)]
@@ -20,7 +22,7 @@ struct Variables {
     id: String,
 }
 
-fn get_query_string(entity_type: &str, fields: &Vec<String>) -> String {
+fn get_query_string(entity_type: &str, fields: &[String]) -> String {
     format!(
         "\
 query Query ($id: String) {{
@@ -35,17 +37,17 @@ query Query ($id: String) {{
 }
 
 fn infer_query(schema: &Arc<Schema>, entity_type: &str, id: &str) -> Result<(Query, Vec<String>)> {
-    let entity: Option<&ObjectType> = schema.document.definitions.iter().find_map(|def| {
-        if let Definition::TypeDefinition(TypeDefinition::Object(o)) = def {
-            if o.name == entity_type {
-                Some(o)
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    });
+    let entity: Option<&ObjectType> =
+        schema
+            .document
+            .definitions
+            .iter()
+            .find_map(|def| match def {
+                Definition::TypeDefinition(TypeDefinition::Object(o)) if o.name == entity_type => {
+                    Some(o)
+                }
+                _ => None,
+            });
 
     if let None = entity {
         return Err(anyhow!(
@@ -68,9 +70,15 @@ fn infer_query(schema: &Arc<Schema>, entity_type: &str, id: &str) -> Result<(Que
     return Ok((query, fields));
 }
 
-fn send(query: &Query, endpoint: &str) -> Result<String> {
-    let client = reqwest::blocking::Client::new();
-    let res = client.post(endpoint).json(query).send()?.text()?;
+async fn send(query: &Query, endpoint: &str) -> Result<String> {
+    let client = reqwest::Client::new();
+    let res = client
+        .post(endpoint)
+        .json(query)
+        .send()
+        .await?
+        .text()
+        .await?;
     Ok(res)
 }
 
@@ -94,7 +102,7 @@ fn extract_entity(raw_json: &str, entity_type: &str, fields: Vec<String>) -> Res
                 }
                 serde_json::Value::Bool(b) => Value::Bool(*b),
                 serde_json::Value::Null => Value::Null,
-                _ => return Err(anyhow!("store_get: Unsupported value type.")),
+                _ => return Err(anyhow!("extract_entity: Unsupported value type.")),
             };
             map.insert(f, value);
         }
@@ -110,12 +118,12 @@ pub fn fetch_entity(
     endpoint: &str,
     entity_type: &str,
     id: &str,
-) -> Result<Option<Entity>> {
+) -> Result<Entity> {
     let (query, fields) = infer_query(schema, entity_type, id)?;
-    let raw_json = send(&query, endpoint)?;
+    let raw_json = block_on(send(&query, endpoint))?;
     if !raw_json.contains("data") {
-        return Ok(None);
+        return Err(anyhow!("fetch_entity: GraphQL query failed: {}", raw_json));
     }
     let entity = extract_entity(&raw_json, entity_type, fields)?;
-    return Ok(Some(entity));
+    return Ok(entity);
 }

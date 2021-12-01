@@ -908,7 +908,7 @@ impl Display for DeploymentLocator {
 /// Common trait for store implementations.
 #[async_trait]
 pub trait SubgraphStore: Send + Sync + 'static {
-    /// Get the deployment's debug endipoint used by the debug tool.
+    /// Get the deployment's debug endpoint used by the debug tool.
     fn get_debug_endpoint(&self, id: &DeploymentHash) -> Result<Option<String>, StoreError>;
 
     /// Find the reverse of keccak256 for `hash` through looking it up in the

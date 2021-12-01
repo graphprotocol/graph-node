@@ -455,8 +455,7 @@ impl<C> From<AscPtr<C>> for EnumPayload {
 #[derive(AscType)]
 pub struct AscEnum<D: AscValue> {
     pub kind: D,
-    pub _padding: u32,
-    // Make padding explicit.
+    pub _padding: u32, // Make padding explicit.
     pub payload: EnumPayload,
 }
 
