@@ -39,6 +39,7 @@ use std::convert::TryFrom;
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::Instant;
+use web3::api::Web3;
 
 use crate::chain::BlockFinality;
 use crate::{
@@ -1077,7 +1078,6 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
                     let block = block.clone();
-                    let batching_web3 = Web3::new(Batch::new(web3.transport().clone()));
 
                     let receipt_futures = block
                         .transactions
@@ -1086,8 +1086,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
                             let logger = logger.clone();
                             let tx_hash = tx.hash;
 
-                            Box::pin(batching_web3.eth().transaction_receipt(tx_hash))
-                                .compat()
+                            web3.eth()
+                                .transaction_receipt(tx_hash)
                                 .from_err()
                                 .map_err(IngestorError::Unknown)
                                 .and_then(move |receipt_opt| {
@@ -1135,17 +1135,11 @@ impl EthereumAdapterTrait for EthereumAdapter {
                         })
                         .collect::<Vec<_>>();
 
-                    Box::pin(batching_web3.transport().submit_batch())
-                        .compat()
-                        .from_err()
-                        .map_err(IngestorError::Unknown)
-                        .and_then(move |_| {
-                            stream::futures_ordered(receipt_futures).collect().map(
-                                move |transaction_receipts| EthereumBlock {
-                                    block: Arc::new(block),
-                                    transaction_receipts,
-                                },
-                            )
+                    stream::futures_ordered(receipt_futures)
+                        .collect()
+                        .map(move |transaction_receipts| EthereumBlock {
+                            block: Arc::new(block),
+                            transaction_receipts,
                         })
                         .compat()
                 })
