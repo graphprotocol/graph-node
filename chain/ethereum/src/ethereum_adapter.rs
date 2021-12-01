@@ -1069,62 +1069,58 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
         // A receipt might be missing because the block was uncled, and the
         // transaction never made it back into the main chain.
-        let receipt_futures = block
-            .transactions
-            .iter()
-            .map(|tx| {
-                let logger = logger.clone();
-                let tx_hash = tx.hash;
+        let receipt_futures = block.transactions.iter().map(|tx| {
+            let logger = logger.clone();
+            let tx_hash = tx.hash;
 
-                self.web3
-                    .eth()
-                    .transaction_receipt(tx_hash)
-                    .from_err()
-                    .map_err(IngestorError::Unknown)
-                    .and_then(move |receipt_opt| {
-                        receipt_opt.ok_or_else(move || {
-                            // No receipt was returned.
-                            //
-                            // This can be because the Ethereum node no longer
-                            // considers this block to be part of the main chain,
-                            // and so the transaction is no longer in the main
-                            // chain.  Nothing we can do from here except give up
-                            // trying to ingest this block.
-                            //
-                            // This could also be because the receipt is simply not
-                            // available yet. For that case, we should retry until
-                            // it becomes available.
-                            IngestorError::ReceiptUnavailable(block_hash, tx_hash)
-                        })
+            self.web3
+                .eth()
+                .transaction_receipt(tx_hash)
+                .from_err()
+                .map_err(IngestorError::Unknown)
+                .and_then(move |receipt_opt| {
+                    receipt_opt.ok_or_else(move || {
+                        // No receipt was returned.
+                        //
+                        // This can be because the Ethereum node no longer
+                        // considers this block to be part of the main chain,
+                        // and so the transaction is no longer in the main
+                        // chain.  Nothing we can do from here except give up
+                        // trying to ingest this block.
+                        //
+                        // This could also be because the receipt is simply not
+                        // available yet. For that case, we should retry until
+                        // it becomes available.
+                        IngestorError::ReceiptUnavailable(block_hash, tx_hash)
                     })
-                    .and_then(move |receipt| {
-                        // Check if the receipt has a block hash and is for the right
-                        // block. Parity nodes seem to return receipts with no block
-                        // hash when a transaction is no longer in the main chain, so
-                        // treat that case the same as a receipt being absent entirely.
-                        if receipt.block_hash != Some(block_hash) {
-                            info!(
-                                logger, "receipt block mismatch";
-                                "receipt_block_hash" =>
-                                receipt.block_hash.unwrap_or_default().to_string(),
-                                "block_hash" =>
-                                    block_hash.to_string(),
-                                "tx_hash" => tx_hash.to_string(),
-                            );
+                })
+                .and_then(move |receipt| {
+                    // Check if the receipt has a block hash and is for the right
+                    // block. Parity nodes seem to return receipts with no block
+                    // hash when a transaction is no longer in the main chain, so
+                    // treat that case the same as a receipt being absent entirely.
+                    if receipt.block_hash != Some(block_hash) {
+                        info!(
+                            logger, "receipt block mismatch";
+                            "receipt_block_hash" =>
+                            receipt.block_hash.unwrap_or_default().to_string(),
+                            "block_hash" =>
+                                block_hash.to_string(),
+                            "tx_hash" => tx_hash.to_string(),
+                        );
 
-                            // If the receipt came from a different block, then the
-                            // Ethereum node no longer considers this block to be
-                            // in the main chain.  Nothing we can do from here
-                            // except give up trying to ingest this block.
-                            // There is no way to get the transaction receipt from
-                            // this block.
-                            Err(IngestorError::BlockUnavailable(block_hash))
-                        } else {
-                            Ok(receipt)
-                        }
-                    })
-            })
-            .collect::<Vec<_>>();
+                        // If the receipt came from a different block, then the
+                        // Ethereum node no longer considers this block to be
+                        // in the main chain.  Nothing we can do from here
+                        // except give up trying to ingest this block.
+                        // There is no way to get the transaction receipt from
+                        // this block.
+                        Err(IngestorError::BlockUnavailable(block_hash))
+                    } else {
+                        Ok(receipt)
+                    }
+                })
+        });
 
         let block_future =
             stream::futures_ordered(receipt_futures)
