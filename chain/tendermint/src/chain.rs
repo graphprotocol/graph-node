@@ -311,27 +311,23 @@ impl FirehoseMapper {
     ) -> Result<BlockWithTriggers<Chain>, FirehoseError> {
         // TODO: Find the best place to introduce an `Arc` and avoid this clone.
         let el = Arc::new(el.clone());
+        let events = el.events();
 
-        let events = el
-            .newblock.as_ref().unwrap()
-            .result_begin_block.as_ref().unwrap()
-            .events
+        let mut triggers = events
             .iter()
             .map(|event| {
                 trigger::EventData {
                     event: event.clone(),
                     block: el.cheap_clone(),
                 }
-            });
-
-        let mut trigger_data: Vec<_> = events
+            })
             .map(|e| TendermintTrigger::Event(Arc::new(e)))
-            .collect();
+            .collect::<Vec<_>>();
 
-        trigger_data.push(TendermintTrigger::Block(el.cheap_clone()));
+        triggers.push(TendermintTrigger::Block(el.cheap_clone()));
 
         // TODO: `block` should probably be an `Arc` in `BlockWithTriggers` to avoid this clone.
-        Ok(BlockWithTriggers::new(el.as_ref().clone(), trigger_data))
+        Ok(BlockWithTriggers::new(el.as_ref().clone(), triggers))
     }
 }
 
