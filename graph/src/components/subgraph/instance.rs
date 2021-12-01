@@ -94,7 +94,7 @@ impl<C: Blockchain> BlockState<C> {
     }
 
     pub fn push_created_data_source(&mut self, ds: DataSourceTemplateInfo<C>) {
-        assert!(self.in_handler);
+        // assert!(self.in_handler);
         self.handler_created_data_sources.push(ds);
     }
 }
