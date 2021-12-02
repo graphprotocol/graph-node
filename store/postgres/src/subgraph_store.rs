@@ -15,7 +15,7 @@ use graph::{
     cheap_clone::CheapClone,
     components::{
         server::index_node::VersionInfo,
-        store::{self, DeploymentLocator, EnsLookup as EnsLookupTrait, SubgraphFork},
+        store::{self, BlockStore, DeploymentLocator, EnsLookup as EnsLookupTrait, SubgraphFork},
     },
     constraint_violation,
     data::query::QueryTarget,
@@ -23,8 +23,9 @@ use graph::{
     prelude::StoreEvent,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        BlockNumber, BlockPtr, DeploymentHash, EntityOperation, Logger, NodeId, Schema, StoreError,
-        SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
+        BlockHash, BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation, Logger,
+        NodeId, PartialBlockPtr, Schema, StoreError, SubgraphName,
+        SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
     url::Url,
     util::timed_cache::TimedCache,
@@ -227,6 +228,17 @@ impl SubgraphStore {
         block: BlockPtr,
     ) -> Result<Option<[u8; 32]>, StoreError> {
         self.inner.get_proof_of_indexing(id, indexer, block).await
+    }
+
+    pub(crate) async fn get_public_proof_of_indexing(
+        &self,
+        id: &DeploymentHash,
+        block_number: BlockNumber,
+        block_store: Arc<impl BlockStore>,
+    ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
+        self.inner
+            .get_public_proof_of_indexing(id, block_number, block_store)
+            .await
     }
 
     pub fn notification_sender(&self) -> Arc<NotificationSender> {
@@ -905,6 +917,44 @@ impl SubgraphStoreInner {
     ) -> Result<Option<[u8; 32]>, StoreError> {
         let (store, site) = self.store(id).unwrap();
         store.get_proof_of_indexing(site, indexer, block).await
+    }
+
+    pub(crate) async fn get_public_proof_of_indexing(
+        &self,
+        id: &DeploymentHash,
+        block_number: BlockNumber,
+        block_store: Arc<impl BlockStore>,
+    ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
+        let (store, site) = self.store(&id).unwrap();
+
+        let chain_store = match block_store.chain_store(&site.network) {
+            Some(chain_store) => chain_store,
+            None => return Ok(None),
+        };
+        let mut hashes = chain_store.block_hashes_by_block_number(block_number)?;
+
+        // If we don't have this block or we have multiple versions of this block
+        // and using any of them could introduce non-deterministic because we don't
+        // know which one is the right one -> return no block hash
+        let block = PartialBlockPtr {
+            number: block_number,
+            hash: if hashes.is_empty() || hashes.len() > 1 {
+                None
+            } else {
+                Some(BlockHash::from(hashes.pop().unwrap()))
+            },
+        };
+
+        let block_for_poi_query = BlockPtr::new(
+            block.hash.clone().unwrap_or(BlockHash::zero()),
+            block.number,
+        );
+        let indexer = Some(Address::zero());
+        let poi = store
+            .get_proof_of_indexing(site, &indexer, block_for_poi_query)
+            .await?;
+
+        Ok(poi.map(|poi| (block, poi)))
     }
 
     // Only used by tests

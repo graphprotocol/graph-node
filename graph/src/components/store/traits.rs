@@ -451,4 +451,13 @@ pub trait StatusStore: Send + Sync + 'static {
         indexer: &Option<Address>,
         block: BlockPtr,
     ) -> Result<Option<[u8; 32]>, StoreError>;
+
+    /// Like `get_proof_of_indexing` but returns a Proof of Indexing signed by
+    /// address `0x00...0`, which allows it to be shared in public without
+    /// revealing the indexers _real_ Proof of Indexing.
+    async fn get_public_proof_of_indexing(
+        &self,
+        subgraph_id: &DeploymentHash,
+        block_number: BlockNumber,
+    ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError>;
 }

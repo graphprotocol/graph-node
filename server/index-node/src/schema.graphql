@@ -28,6 +28,14 @@ type Query {
     blockHash: Bytes!
     indexer: Bytes
   ): Bytes
+  """
+  Proofs of indexing for several deployments and blocks that can be shared and
+  compared in public without revealing the _actual_ proof of indexing that every
+  indexer has in their database
+  """
+  publicProofsOfIndexing(
+    requests: [PublicProofOfIndexingRequest!]!
+  ): [PublicProofOfIndexingResult!]!
   subgraphFeatures(subgraphId: String!): SubgraphFeatures!
   entityChangesInBlock(subgraphId: String!, blockNumber: Int!): EntityChanges!
   blockData(network: String!, blockHash: Bytes!): JSONObject
@@ -131,4 +139,37 @@ enum Feature {
   grafting
   fullTextSearch
   ipfsOnEthereumContracts
+}
+
+input BlockInput {
+  hash: Bytes!
+  number: BigInt!
+}
+
+input ProofOfIndexingRequest {
+  deployment: String!
+  block: BlockInput!
+}
+
+input PublicProofOfIndexingRequest {
+  deployment: String!
+  blockNumber: BigInt!
+}
+
+type PartialBlock {
+  hash: Bytes
+  number: BigInt!
+}
+
+type PublicProofOfIndexingResult {
+  deployment: String!
+  block: PartialBlock!
+  proofOfIndexing: Bytes!
+}
+
+type ProofOfIndexingResult {
+  deployment: String!
+  block: Block!
+  "There may not be a proof of indexing available for the deployment and block"
+  proofOfIndexing: Bytes
 }
