@@ -704,7 +704,6 @@ impl IngestorAdapterTrait<Chain> for IngestorAdapter {
         let ethereum_block = self
             .eth_adapter
             .load_full_block(&self.logger, block)
-            .compat()
             .await?;
 
         // We need something that implements `Block` to store the block; the

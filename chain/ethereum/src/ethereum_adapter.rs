@@ -37,6 +37,7 @@ use lazy_static::lazy_static;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 use web3::api::Web3;
@@ -1053,7 +1054,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
         &self,
         logger: &Logger,
         block: LightEthereumBlock,
-    ) -> Box<dyn Future<Item = EthereumBlock, Error = IngestorError> + Send> {
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<EthereumBlock, IngestorError>> + Send>>
+    {
         let logger = logger.clone();
         let block_hash = block.hash.expect("block is missing block hash");
 
@@ -1061,10 +1063,10 @@ impl EthereumAdapterTrait for EthereumAdapter {
         // request an empty batch which is not valid in JSON-RPC.
         if block.transactions.is_empty() {
             trace!(logger, "Block {} contains no transactions", block_hash);
-            return Box::new(future::ok(EthereumBlock {
+            return Box::pin(std::future::ready(Ok(EthereumBlock {
                 block: Arc::new(block),
                 transaction_receipts: Vec::new(),
-            }));
+            })));
         }
 
         // A receipt might be missing because the block was uncled, and the
@@ -1130,7 +1132,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     transaction_receipts,
                 });
 
-        Box::new(block_future)
+        Box::pin(block_future.compat())
     }
 
     fn block_pointer_from_number(
