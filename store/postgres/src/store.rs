@@ -11,8 +11,8 @@ use graph::{
     constraint_violation,
     data::subgraph::status,
     prelude::{
-        tokio, web3::types::Address, BlockPtr, CheapClone, DeploymentHash, QueryExecutionError,
-        StoreError,
+        tokio, web3::types::Address, BlockNumber, BlockPtr, CheapClone, DeploymentHash,
+        PartialBlockPtr, QueryExecutionError, StoreError,
     },
 };
 
@@ -141,6 +141,16 @@ impl StatusStore for Store {
     ) -> Result<Option<[u8; 32]>, StoreError> {
         self.subgraph_store
             .get_proof_of_indexing(subgraph_id, indexer, block)
+            .await
+    }
+
+    async fn get_public_proof_of_indexing(
+        &self,
+        subgraph_id: &DeploymentHash,
+        block_number: BlockNumber,
+    ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
+        self.subgraph_store
+            .get_public_proof_of_indexing(subgraph_id, block_number, self.block_store().clone())
             .await
     }
 

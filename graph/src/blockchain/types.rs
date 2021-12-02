@@ -26,6 +26,10 @@ impl BlockHash {
     pub fn hash_hex(&self) -> String {
         hex::encode(&self.0)
     }
+
+    pub fn zero() -> Self {
+        Self::from(H256::zero())
+    }
 }
 
 impl fmt::Display for BlockHash {
@@ -224,7 +228,7 @@ impl TryFromValue for BlockPtr {
     fn try_from_value(value: &r::Value) -> Result<Self, anyhow::Error> {
         match value {
             r::Value::Object(o) => {
-                let number = o.get_required::<BigInt>("number")?.to_u64() as i32;
+                let number = o.get_required::<BigInt>("number")?.to_u64() as BlockNumber;
                 let hash = o.get_required::<H256>("hash")?;
 
                 Ok(BlockPtr::from((hash, number)))
