@@ -144,6 +144,7 @@ fn add_directives(schema: &mut Document) {
         name: "entity".to_owned(),
         arguments: vec![],
         locations: vec![DirectiveLocation::Object],
+        repeatable: false,
     });
 
     let derived_from = Definition::DirectiveDefinition(DirectiveDefinition {
@@ -159,6 +160,7 @@ fn add_directives(schema: &mut Document) {
             directives: vec![],
         }],
         locations: vec![DirectiveLocation::FieldDefinition],
+        repeatable: false,
     });
 
     let subgraph_id = Definition::DirectiveDefinition(DirectiveDefinition {
@@ -174,6 +176,7 @@ fn add_directives(schema: &mut Document) {
             directives: vec![],
         }],
         locations: vec![DirectiveLocation::Object],
+        repeatable: false,
     });
 
     schema.definitions.push(entity);
