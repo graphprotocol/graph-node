@@ -35,10 +35,18 @@ struct StartPayload {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum IncomingMessage {
-    ConnectionInit { payload: Option<serde_json::Value> },
+    ConnectionInit {
+        #[allow(dead_code)]
+        payload: Option<serde_json::Value>,
+    },
     ConnectionTerminate,
-    Start { id: String, payload: StartPayload },
-    Stop { id: String },
+    Start {
+        id: String,
+        payload: StartPayload,
+    },
+    Stop {
+        id: String,
+    },
 }
 
 impl IncomingMessage {

@@ -297,7 +297,7 @@ fn input_value(
 
 #[derive(Clone)]
 pub struct IntrospectionResolver {
-    logger: Logger,
+    _logger: Logger,
     type_objects: TypeObjectsMap,
     directives: r::Value,
 }
@@ -313,7 +313,7 @@ impl IntrospectionResolver {
         let directives = schema_directive_objects(schema, &mut type_objects);
 
         IntrospectionResolver {
-            logger,
+            _logger: logger,
             type_objects,
             directives,
         }
