@@ -472,23 +472,20 @@ async fn new_block_stream<C: Blockchain>(
     };
 
     let block_stream = match is_firehose {
-        true => {
-            let firehose_cursor = inputs.store.block_cursor()?;
-
-            chain.new_firehose_block_stream(
-                inputs.deployment.clone(),
-                inputs.start_blocks.clone(),
-                firehose_cursor,
-                Arc::new(filter.clone()),
-                block_stream_metrics.clone(),
-                inputs.unified_api_version.clone(),
-            )
-        }
+        true => chain.new_firehose_block_stream(
+            inputs.deployment.clone(),
+            inputs.store.clone(),
+            inputs.start_blocks.clone(),
+            Arc::new(filter.clone()),
+            block_stream_metrics.clone(),
+            inputs.unified_api_version.clone(),
+        ),
         false => {
             let start_block = inputs.store.block_ptr()?;
 
             chain.new_polling_block_stream(
                 inputs.deployment.clone(),
+                inputs.store.clone(),
                 inputs.start_blocks.clone(),
                 start_block,
                 Arc::new(filter.clone()),

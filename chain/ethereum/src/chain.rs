@@ -1,5 +1,6 @@
 use anyhow::{Context, Error};
 use graph::blockchain::BlockchainKind;
+use graph::components::store::WritableStore;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoints, ForkStep};
 use graph::prelude::{
@@ -22,7 +23,6 @@ use graph::{
     prelude::{
         async_trait, lazy_static, o, serde_json as json, BlockNumber, ChainStore,
         EthereumBlockWithCalls, Future01CompatExt, Logger, LoggerFactory, MetricsRegistry, NodeId,
-        SubgraphStore,
     },
 };
 use prost::Message;
@@ -72,7 +72,6 @@ pub struct Chain {
     eth_adapters: Arc<EthereumNetworkAdapters>,
     chain_store: Arc<dyn ChainStore>,
     call_cache: Arc<dyn EthereumCallCache>,
-    subgraph_store: Arc<dyn SubgraphStore>,
     chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
     reorg_threshold: BlockNumber,
     pub is_ingestible: bool,
@@ -92,7 +91,6 @@ impl Chain {
         registry: Arc<dyn MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
         call_cache: Arc<dyn EthereumCallCache>,
-        subgraph_store: Arc<dyn SubgraphStore>,
         firehose_endpoints: FirehoseEndpoints,
         eth_adapters: EthereumNetworkAdapters,
         chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
@@ -108,7 +106,6 @@ impl Chain {
             eth_adapters: Arc::new(eth_adapters),
             chain_store,
             call_cache,
-            subgraph_store,
             chain_head_update_listener,
             reorg_threshold,
             is_ingestible,
@@ -190,8 +187,8 @@ impl Blockchain for Chain {
     async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
+        writable: Arc<dyn WritableStore>,
         start_blocks: Vec<BlockNumber>,
-        firehose_cursor: Option<String>,
         filter: Arc<Self::TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -220,6 +217,7 @@ impl Blockchain for Chain {
             .new(o!("component" => "FirehoseBlockStream"));
 
         let firehose_mapper = Arc::new(FirehoseMapper {});
+        let firehose_cursor = writable.block_cursor()?;
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,
@@ -235,6 +233,7 @@ impl Blockchain for Chain {
     async fn new_polling_block_stream(
         &self,
         deployment: DeploymentLocator,
+        writable: Arc<dyn WritableStore>,
         start_blocks: Vec<BlockNumber>,
         subgraph_start_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
@@ -259,12 +258,6 @@ impl Blockchain for Chain {
             .subgraph_logger(&deployment)
             .new(o!("component" => "BlockStream"));
         let chain_store = self.chain_store().clone();
-        let writable = self
-            .subgraph_store
-            .cheap_clone()
-            .writable(logger.clone(), deployment.id)
-            .await
-            .with_context(|| format!("no store for deployment `{}`", deployment.hash))?;
         let chain_head_update_stream = self
             .chain_head_update_listener
             .subscribe(self.name.clone(), logger.clone());

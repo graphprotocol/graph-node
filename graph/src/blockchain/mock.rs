@@ -6,7 +6,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use core::fmt;
 use serde::Deserialize;
-use std::convert::TryFrom;
+use std::{convert::TryFrom, sync::Arc};
 
 use super::{block_stream, HostFn, IngestorError, TriggerWithHandler};
 
@@ -296,8 +296,8 @@ impl Blockchain for MockBlockchain {
     async fn new_firehose_block_stream(
         &self,
         _deployment: crate::components::store::DeploymentLocator,
+        _store: Arc<dyn crate::components::store::WritableStore>,
         _start_blocks: Vec<crate::components::store::BlockNumber>,
-        _firehose_cursor: Option<String>,
         _filter: std::sync::Arc<Self::TriggerFilter>,
         _metrics: std::sync::Arc<block_stream::BlockStreamMetrics>,
         _unified_api_version: crate::data::subgraph::UnifiedMappingApiVersion,
@@ -308,6 +308,7 @@ impl Blockchain for MockBlockchain {
     async fn new_polling_block_stream(
         &self,
         _deployment: crate::components::store::DeploymentLocator,
+        _writable: Arc<dyn crate::components::store::WritableStore>,
         _start_blocks: Vec<crate::components::store::BlockNumber>,
         _subgraph_start_block: Option<BlockPtr>,
         _filter: std::sync::Arc<Self::TriggerFilter>,

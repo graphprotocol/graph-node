@@ -479,7 +479,6 @@ fn ethereum_networks_as_chains(
                 registry.clone(),
                 chain_store.cheap_clone(),
                 chain_store,
-                store.subgraph_store(),
                 firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
                 eth_adapters.clone(),
                 chain_head_update_listener.clone(),
