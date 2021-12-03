@@ -242,7 +242,7 @@ impl AscIndexId for AscResponseEndBlock {
 #[derive(AscType)]
 pub(crate) struct AscConsensusParams {
     pub block: AscPtr<AscBlock>,
-    // pub evidence: AscPtr<AscEvidence>,
+    pub evidence: AscPtr<AscEvidence>,
     pub validator: AscPtr<AscValidator>,
     pub version: AscPtr<AscVersion>,
 }
@@ -267,8 +267,8 @@ impl AscIndexId for AscVersion {
 #[derive(AscType)]
 pub(crate) struct AscBlock {
     pub header: AscPtr<AscHeader>,
-    // pub data: AscPtr<AscData>,
-    // pub evidence: AscPtr<AscEvidenceList>,
+    pub data: AscPtr<AscData>,
+    pub evidence: AscPtr<AscEvidenceList>,
     pub last_commit: AscPtr<AscCommit>,
 }
 
