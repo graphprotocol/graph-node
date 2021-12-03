@@ -4,7 +4,11 @@ use diesel::{
     sql_types::Text,
     types::{FromSql, ToSql},
 };
-use std::{collections::BTreeMap, collections::HashMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 use std::{fmt, io::Write};
 use std::{iter::FromIterator, time::Duration};
 
@@ -256,6 +260,7 @@ pub struct SubgraphStoreInner {
     sites: TimedCache<DeploymentHash, Site>,
     placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
     sender: Arc<NotificationSender>,
+    writables: Mutex<HashMap<DeploymentId, Arc<WritableStore>>>,
 }
 
 impl SubgraphStoreInner {
@@ -309,6 +314,7 @@ impl SubgraphStoreInner {
             sites,
             placer,
             sender,
+            writables: Mutex::new(HashMap::new()),
         }
     }
 
@@ -1045,19 +1051,28 @@ impl SubgraphStoreTrait for SubgraphStore {
         logger: Logger,
         deployment: graph::components::store::DeploymentId,
     ) -> Result<Arc<dyn store::WritableStore>, StoreError> {
+        let deployment = deployment.into();
+        // We cache writables to make sure calls to this method are
+        // idempotent and there is ever only one `WritableStore` for any
+        // deployment
+        if let Some(writable) = self.writables.lock().unwrap().get(&deployment) {
+            return Ok(writable.cheap_clone());
+        }
+
         // Ideally the lower level functions would be asyncified.
         let this = self.clone();
         let site = graph::spawn_blocking_allow_panic(move || -> Result<_, StoreError> {
-            this.find_site(deployment.into())
+            this.find_site(deployment)
         })
         .await
         .unwrap()?; // Propagate panics, there shouldn't be any.
 
-        Ok(Arc::new(WritableStore::new(
-            self.as_ref().clone(),
-            logger,
-            site,
-        )?))
+        let writable = Arc::new(WritableStore::new(self.as_ref().clone(), logger, site)?);
+        self.writables
+            .lock()
+            .unwrap()
+            .insert(deployment, writable.cheap_clone());
+        Ok(writable)
     }
 
     fn writable_for_network_indexer(
