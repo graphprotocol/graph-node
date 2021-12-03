@@ -1083,7 +1083,12 @@ impl EthereumAdapterTrait for EthereumAdapter {
         let hash_stream = graph::tokio_stream::iter(hashes);
 
         let receipt_stream = graph::tokio_stream::StreamExt::map(hash_stream, move |tx_hash| {
-            resolve_transaction_receipt(web3.clone(), tx_hash.clone(), block_hash, logger.clone())
+            resolve_transaction_receipt(
+                web3.cheap_clone(),
+                tx_hash,
+                block_hash,
+                logger.cheap_clone(),
+            )
         })
         .buffered(*MAX_CONCURRENT_JSON_RPC_CALLS);
 
