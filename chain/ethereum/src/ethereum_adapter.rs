@@ -1789,7 +1789,7 @@ async fn resolve_transaction_receipt(
     logger: Logger,
 ) -> Result<TransactionReceipt, IngestorError> {
     let retry_result = retry("batch eth_getTransactionReceipt RPC call", &logger)
-        .limit(16)
+        .limit(*REQUEST_RETRIES)
         .no_logging()
         .timeout_secs(*JSON_RPC_TIMEOUT)
         .run(move || web3.eth().transaction_receipt(transaction_hash).compat())
