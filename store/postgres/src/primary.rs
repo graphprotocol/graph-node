@@ -193,6 +193,7 @@ allow_tables_to_appear_in_same_query!(
 #[table_name = "deployment_schemas"]
 struct Schema {
     id: DeploymentId,
+    #[allow(dead_code)]
     pub created_at: PgTimestamp,
     pub subgraph: String,
     pub name: String,

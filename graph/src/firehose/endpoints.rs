@@ -18,7 +18,7 @@ pub struct FirehoseEndpoint {
     pub uri: String,
     pub token: Option<String>,
     channel: Channel,
-    logger: Logger,
+    _logger: Logger,
 }
 
 impl Display for FirehoseEndpoint {
@@ -61,7 +61,7 @@ impl FirehoseEndpoint {
             uri,
             channel,
             token,
-            logger,
+            _logger: logger,
         })
     }
 
