@@ -38,7 +38,7 @@ use crate::{
     primary,
     primary::{DeploymentId, Mirror as PrimaryMirror, Site},
     relational::Layout,
-    writable::WritableStore,
+    writable::WritableAgent,
     NotificationSender,
 };
 use crate::{
@@ -256,7 +256,7 @@ pub struct SubgraphStoreInner {
     sites: TimedCache<DeploymentHash, Site>,
     placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
     sender: Arc<NotificationSender>,
-    writables: Mutex<HashMap<DeploymentId, Arc<WritableStore>>>,
+    writables: Mutex<HashMap<DeploymentId, Arc<WritableAgent>>>,
 }
 
 impl SubgraphStoreInner {
@@ -1063,7 +1063,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         .await
         .unwrap()?; // Propagate panics, there shouldn't be any.
 
-        let writable = Arc::new(WritableStore::new(self.as_ref().clone(), logger, site)?);
+        let writable = Arc::new(WritableAgent::new(self.as_ref().clone(), logger, site)?);
         self.writables
             .lock()
             .unwrap()
@@ -1077,7 +1077,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         id: &DeploymentHash,
     ) -> Result<Arc<dyn WritableStoreTrait>, StoreError> {
         let site = self.site(id)?;
-        Ok(Arc::new(WritableStore::new(self.clone(), logger, site)?))
+        Ok(Arc::new(WritableAgent::new(self.clone(), logger, site)?))
     }
 
     fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError> {

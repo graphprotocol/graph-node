@@ -136,8 +136,8 @@ impl WritableStore {
     }
 }
 
-#[async_trait::async_trait]
-impl WritableStoreTrait for WritableStore {
+// Methods that mirror `WritableStoreTrait`
+impl WritableStore {
     fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
         self.retry("block_ptr", || self.writable.block_ptr(self.site.as_ref()))
     }
@@ -320,4 +320,116 @@ impl WritableStoreTrait for WritableStore {
 
 fn same_subgraph(mods: &Vec<EntityModification>, id: &DeploymentHash) -> bool {
     mods.iter().all(|md| &md.entity_key().subgraph_id == id)
+}
+
+#[allow(dead_code)]
+pub struct WritableAgent {
+    store: Arc<WritableStore>,
+}
+
+impl WritableAgent {
+    pub(crate) fn new(
+        subgraph_store: SubgraphStore,
+        logger: Logger,
+        site: Arc<Site>,
+    ) -> Result<Self, StoreError> {
+        Ok(Self {
+            store: Arc::new(WritableStore::new(subgraph_store, logger, site)?),
+        })
+    }
+}
+
+#[allow(unused_variables)]
+#[async_trait::async_trait]
+impl WritableStoreTrait for WritableAgent {
+    fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
+        self.store.block_ptr()
+    }
+
+    fn block_cursor(&self) -> Result<Option<String>, StoreError> {
+        self.store.block_cursor()
+    }
+
+    fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
+        // TODO: Spin up a background writer thread and establish a channel
+        self.store.start_subgraph_deployment(logger)
+    }
+
+    fn revert_block_operations(&self, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
+        // TODO: If we haven't written the block yet, revert in memory. If
+        // we have, revert in the database
+        self.store.revert_block_operations(block_ptr_to)
+    }
+
+    fn unfail_deterministic_error(
+        &self,
+        current_ptr: &BlockPtr,
+        parent_ptr: &BlockPtr,
+    ) -> Result<(), StoreError> {
+        self.store
+            .unfail_deterministic_error(current_ptr, parent_ptr)
+    }
+
+    fn unfail_non_deterministic_error(&self, current_ptr: &BlockPtr) -> Result<(), StoreError> {
+        self.store.unfail_non_deterministic_error(current_ptr)
+    }
+
+    async fn fail_subgraph(&self, error: SubgraphError) -> Result<(), StoreError> {
+        self.store.fail_subgraph(error).await
+    }
+
+    async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError> {
+        self.store.supports_proof_of_indexing().await
+    }
+
+    fn get(&self, key: &EntityKey) -> Result<Option<EntityVersion>, StoreError> {
+        self.store.get(key)
+    }
+
+    fn transact_block_operations(
+        &self,
+        block_ptr_to: BlockPtr,
+        firehose_cursor: Option<String>,
+        mods: Vec<EntityModification>,
+        stopwatch: StopwatchMetrics,
+        data_sources: Vec<StoredDynamicDataSource>,
+        deterministic_errors: Vec<SubgraphError>,
+    ) -> Result<Vec<(EntityKey, Vid)>, StoreError> {
+        self.store.transact_block_operations(
+            block_ptr_to,
+            firehose_cursor,
+            mods,
+            stopwatch,
+            data_sources,
+            deterministic_errors,
+        )
+    }
+
+    fn get_many(
+        &self,
+        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<EntityVersion>>, StoreError> {
+        self.store.get_many(ids_for_type)
+    }
+
+    fn deployment_synced(&self) -> Result<(), StoreError> {
+        self.store.deployment_synced()
+    }
+
+    async fn is_deployment_synced(&self) -> Result<bool, StoreError> {
+        self.store.is_deployment_synced().await
+    }
+
+    fn unassign_subgraph(&self) -> Result<(), StoreError> {
+        self.store.unassign_subgraph()
+    }
+
+    async fn load_dynamic_data_sources(&self) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
+        // TODO: Combine in-memory and stored data sources
+        self.store.load_dynamic_data_sources().await
+    }
+
+    fn shard(&self) -> &str {
+        self.store.shard()
+    }
 }
