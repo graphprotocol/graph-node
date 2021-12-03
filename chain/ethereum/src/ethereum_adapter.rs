@@ -29,7 +29,6 @@ use graph::{
 use graph::{
     components::ethereum::*,
     prelude::web3::api::Web3,
-    prelude::web3::transports::batch::Batch,
     prelude::web3::types::{Trace, TraceFilter, TraceFilterBuilder, H160},
 };
 use itertools::Itertools;
@@ -40,7 +39,6 @@ use std::iter::FromIterator;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
-use web3::api::Web3;
 
 use crate::chain::BlockFinality;
 use crate::{
@@ -1798,7 +1796,7 @@ async fn resolve_transaction_receipt(
         .limit(*REQUEST_RETRIES)
         .no_logging()
         .timeout_secs(*JSON_RPC_TIMEOUT)
-        .run(move || web3.eth().transaction_receipt(transaction_hash).compat())
+        .run(move || web3.eth().transaction_receipt(transaction_hash))
         .await;
 
     match retry_result {
