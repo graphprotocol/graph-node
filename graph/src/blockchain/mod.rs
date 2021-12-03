@@ -154,6 +154,12 @@ impl From<Error> for IngestorError {
     }
 }
 
+impl From<web3::Error> for IngestorError {
+    fn from(e: web3::Error) -> Self {
+        IngestorError::Unknown(anyhow::anyhow!(e))
+    }
+}
+
 #[async_trait]
 pub trait IngestorAdapter<C: Blockchain> {
     fn logger(&self) -> &Logger;
