@@ -34,6 +34,9 @@ those.
   subgraph if the limit is reached, but will simply restart the syncing step,
   so it can be low. This limit guards against scenarios such as requesting a
   block hash that has been reorged. Defaults to 10.
+- `GRAPH_ETHEREUM_MAX _CONCURRENT_JSON_RPC_CALLS`: The maximum number of
+   requests in-flight at once against Ethereum per batching context.
+   Defaultso 1,000.
 - `GRAPH_ETHEREUM_CLEANUP_BLOCKS` : Set to `true` to clean up unneeded
   blocks from the cache in the database. When this is `false` or unset (the
   default), blocks will never be removed from the block cache. This setting

@@ -108,6 +108,12 @@ lazy_static! {
         .map(|s| s.split(';').filter(|s| s.len() > 0).map(ToOwned::to_owned).collect())
         .unwrap_or(Vec::new())
     };
+
+    static ref MAX_CONCURRENT_JSON_RPC_CALLS: usize = std::env::var("GRAPH_MAX_CONCURRENT_JSON_RPC_CALLS")
+            .unwrap_or("1000".into())
+            .parse::<usize>()
+            .expect("invalid GRAPH_MAX_CONCURRENT_JSON_RPC_CALLS env var");
+
 }
 
 /// Gas limit for `eth_call`. The value of 50_000_000 is a protocol-wide parameter so this
@@ -721,7 +727,7 @@ impl EthereumAdapter {
             )
         }))
         // Real limits on the number of parallel requests are imposed within the adapter.
-        .buffered(1000)
+        .buffered(*MAX_CONCURRENT_JSON_RPC_CALLS)
         .try_concat()
         .boxed()
     }
@@ -1081,7 +1087,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         let receipt_stream = graph::tokio_stream::StreamExt::map(hash_stream, move |tx_hash| {
             resolve_transaction_receipt(web3.clone(), tx_hash.clone(), block_hash, logger.clone())
         })
-        .buffered(10);
+        .buffered(*MAX_CONCURRENT_JSON_RPC_CALLS);
 
         let receipts_future = graph::tokio_stream::StreamExt::collect::<
             Result<Vec<TransactionReceipt>, IngestorError>,
