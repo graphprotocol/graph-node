@@ -53,7 +53,7 @@ impl EventList {
                     .events
                     .clone()
             })
-            .collect::<Vec<_>>()
+            .collect()
     }
 
     pub fn end_block_events(&self) -> Vec<Event> {

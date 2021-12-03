@@ -312,18 +312,15 @@ impl FirehoseMapper {
         // TODO: Find the best place to introduce an `Arc` and avoid this clone.
         let el = Arc::new(el.clone());
 
-        let events = el.events()
+        let mut triggers: Vec<_> = el.events()
             .into_iter()
             .map(|event| {
-                trigger::EventData {
-                    event: event.clone(),
+                TendermintTrigger::Event(Arc::new(trigger::EventData {
+                    event,
                     block: el.cheap_clone(),
-                }
-            });
-
-        let mut triggers = events
-            .map(|e| TendermintTrigger::Event(Arc::new(e)))
-            .collect::<Vec<_>>();
+                }))
+            })
+            .collect();
 
         triggers.push(TendermintTrigger::Block(el.cheap_clone()));
 

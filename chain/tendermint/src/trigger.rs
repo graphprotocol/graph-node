@@ -64,8 +64,7 @@ impl PartialEq for TendermintTrigger {
         match (self, other) {
             (Self::Block(a_ptr), Self::Block(b_ptr)) => a_ptr == b_ptr,
             (Self::Event(a), Self::Event(b)) => a.event.eventtype == b.event.eventtype,
-
-            (Self::Block(_), Self::Event(_)) | (Self::Event(_), Self::Block(_)) => false,
+            _ => false,
         }
     }
 }
