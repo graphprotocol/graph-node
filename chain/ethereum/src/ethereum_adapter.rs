@@ -40,7 +40,7 @@ use std::iter::FromIterator;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
-use web3::api::{Eth, Web3};
+use web3::api::Web3;
 
 use crate::chain::BlockFinality;
 use crate::{
@@ -1056,7 +1056,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         block: LightEthereumBlock,
     ) -> Pin<Box<dyn std::future::Future<Output = Result<EthereumBlock, IngestorError>> + Send>>
     {
-        let eth = self.web3.eth();
+        let web3 = Arc::clone(&self.web3);
         let logger = logger.clone();
         let block_hash = block.hash.expect("block is missing block hash");
 
@@ -1079,7 +1079,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         let hash_stream = graph::tokio_stream::iter(hashes);
 
         let receipt_stream = graph::tokio_stream::StreamExt::map(hash_stream, move |tx_hash| {
-            resolve_transaction_receipt(eth.clone(), tx_hash.clone(), block_hash, logger.clone())
+            resolve_transaction_receipt(web3.clone(), tx_hash.clone(), block_hash, logger.clone())
         })
         .buffered(10);
 
@@ -1782,29 +1782,23 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     Ok(block)
 }
 
-async fn resolve_transaction_receipt<T: web3::Transport>(
-    eth: Eth<T>,
+async fn resolve_transaction_receipt(
+    web3: Arc<Web3<Transport>>,
     transaction_hash: H256,
     block_hash: H256,
     logger: Logger,
 ) -> Result<TransactionReceipt, IngestorError> {
-    eth.transaction_receipt(transaction_hash)
-        .compat()
-        .await?
-        // A receipt might be missing because the block was uncled, and the transaction never made it
-        // back into the main chain.
-        .ok_or_else(move || {
-            // No receipt was returned.
-            //
-            // This can be because the Ethereum node no longer considers this block to be part of
-            // the main chain, and so the transaction is no longer in the main chain. Nothing we can
-            // do from here except give up trying to ingest this block.
-            //
-            // This could also be because the receipt is simply not available yet. For that case, we
-            // should retry until it becomes available.
-            IngestorError::ReceiptUnavailable(block_hash, transaction_hash)
-        })
-        .and_then(move |receipt| {
+    let retry_result = retry("batch eth_getTransactionReceipt RPC call", &logger)
+        .limit(16)
+        .no_logging()
+        .timeout_secs(*JSON_RPC_TIMEOUT)
+        .run(move || web3.eth().transaction_receipt(transaction_hash).compat())
+        .await;
+
+    match retry_result {
+        // A receipt might be missing because the block was uncled, and the transaction never
+        // made it back into the main chain.
+        Ok(Some(receipt)) => {
             // Check if the receipt has a block hash and is for the right block. Parity nodes seem
             // to return receipts with no block hash when a transaction is no longer in the main
             // chain, so treat that case the same as a receipt being absent entirely.
@@ -1826,5 +1820,25 @@ async fn resolve_transaction_receipt<T: web3::Transport>(
             } else {
                 Ok(receipt)
             }
-        })
+        }
+        Ok(None) => {
+            // No receipt was returned.
+            //
+            // This can be because the Ethereum node no longer considers this block to be part of
+            // the main chain, and so the transaction is no longer in the main chain. Nothing we can
+            // do from here except give up trying to ingest this block.
+            //
+            // This could also be because the receipt is simply not available yet. For that case, we
+            // should retry until it becomes available.
+            Err(IngestorError::ReceiptUnavailable(
+                block_hash,
+                transaction_hash,
+            ))
+        }
+        Err(_timeout) => Err(anyhow::anyhow!(
+            "Ethereum node took too long to return receipts for block {}",
+            block_hash
+        )
+        .into()),
+    }
 }
