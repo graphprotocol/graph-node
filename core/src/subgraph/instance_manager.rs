@@ -34,14 +34,6 @@ const BUFFERED_BLOCK_STREAM_SIZE: usize = 100;
 const BUFFERED_FIREHOSE_STREAM_SIZE: usize = 1;
 
 lazy_static! {
-    /// Size limit of the entity LFU cache, in bytes.
-    // Multiplied by 1000 because the env var is in KB.
-    pub static ref ENTITY_CACHE_SIZE: usize = 1000
-        * std::env::var("GRAPH_ENTITY_CACHE_SIZE")
-            .unwrap_or("10000".into())
-            .parse::<usize>()
-            .expect("invalid GRAPH_ENTITY_CACHE_SIZE");
-
     // Keep deterministic errors non-fatal even if the subgraph is pending.
     // Used for testing Graph Node itself.
     pub static ref DISABLE_FAIL_FAST: bool =
@@ -1056,18 +1048,11 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
     let ModificationsAndCache {
         modifications: mut mods,
         data_sources,
-        entity_lfu_cache: mut cache,
+        entity_lfu_cache: cache,
     } = block_state
         .entity_cache
         .as_modifications()
         .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
-    section.end();
-
-    let section = ctx
-        .host_metrics
-        .stopwatch
-        .start_section("entity_cache_evict");
-    cache.evict(*ENTITY_CACHE_SIZE);
     section.end();
 
     // Put the cache back in the ctx, asserting that the placeholder cache was not used.

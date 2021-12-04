@@ -37,6 +37,14 @@ lazy_static! {
             )))
             .map(Duration::from_millis)
             .unwrap_or_else(|| Duration::from_millis(1000));
+
+    /// Size limit of the entity LFU cache, in bytes.
+    // Multiplied by 1000 because the env var is in KB.
+    pub static ref ENTITY_CACHE_SIZE: usize = 1000
+        * std::env::var("GRAPH_ENTITY_CACHE_SIZE")
+            .unwrap_or("10000".into())
+            .parse::<usize>()
+            .expect("invalid GRAPH_ENTITY_CACHE_SIZE");
 }
 
 /// The type name of an entity. This is the string that is used in the
@@ -1643,6 +1651,8 @@ impl EntityCache {
                 mods.push(modification)
             }
         }
+        self.current.evict(*ENTITY_CACHE_SIZE);
+
         Ok(ModificationsAndCache {
             modifications: mods,
             data_sources: self.data_sources,
