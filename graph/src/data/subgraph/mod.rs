@@ -565,7 +565,6 @@ pub struct BaseSubgraphManifest<C, S, D, T> {
     pub schema: S,
     pub data_sources: Vec<D>,
     pub graft: Option<Graft>,
-    pub debug_endpoint: Option<String>,
     #[serde(default)]
     pub templates: Vec<T>,
     #[serde(skip_serializing, default)]
@@ -773,7 +772,6 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             schema,
             data_sources,
             graft,
-            debug_endpoint,
             templates,
             chain,
         } = self;
@@ -823,7 +821,6 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             schema,
             data_sources,
             graft,
-            debug_endpoint,
             templates,
             chain,
         })

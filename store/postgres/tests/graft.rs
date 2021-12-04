@@ -119,7 +119,6 @@ fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator {
         schema: TEST_SUBGRAPH_SCHEMA.clone(),
         data_sources: vec![],
         graft: None,
-        debug_endpoint: None,
         templates: vec![],
         chain: PhantomData,
     };

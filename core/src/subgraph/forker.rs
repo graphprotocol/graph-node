@@ -90,7 +90,8 @@ impl SubgraphForkTrait for SubgraphFork {
         if !raw_json.contains("data") {
             return Err(anyhow!(
                 "the GraphQL query \"{:?}\" failed with {}.",
-                query, raw_json,
+                query,
+                raw_json,
             ));
         }
         let entity = SubgraphFork::extract_entity(&raw_json, &entity_type, fields)?;
@@ -170,11 +171,7 @@ query Query ($id: String) {{
         )
     }
 
-    fn extract_entity(
-        raw_json: &str,
-        entity_type: &str,
-        fields: Vec<String>,
-    ) -> Result<Entity> {
+    fn extract_entity(raw_json: &str, entity_type: &str, fields: Vec<String>) -> Result<Entity> {
         let json: serde_json::Value = serde_json::from_str(raw_json).unwrap();
         let entity = &json["data"][entity_type.to_lowercase()];
         let map: HashMap<Attribute, Value> = {

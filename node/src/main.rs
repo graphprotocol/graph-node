@@ -27,7 +27,7 @@ use graph_chain_ethereum::{self as ethereum, network_indexer, EthereumAdapterTra
 use graph_chain_near::{self as near};
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
-    SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar, SubgraphForker,
+    SubgraphForker, SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_graphql::prelude::GraphQlRunner;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
@@ -344,10 +344,8 @@ async fn main() {
             graph::spawn_blocking(job_runner.start());
         }
 
-        let subgraph_forker = SubgraphForker::new(
-            "Hello".to_string(),
-            network_store.subgraph_store(),
-        );
+        let subgraph_forker =
+            SubgraphForker::new("Hello".to_string(), network_store.subgraph_store());
 
         let subgraph_instance_manager = SubgraphInstanceManager::new(
             &logger_factory,
@@ -423,7 +421,7 @@ async fn main() {
                 async move {
                     subgraph_registrar.create_subgraph(name.clone()).await?;
                     subgraph_registrar
-                        .create_subgraph_version(name, subgraph_id, node_id, None, None)
+                        .create_subgraph_version(name, subgraph_id, node_id)
                         .await
                 }
                 .map_err(|e| panic!("Failed to deploy subgraph from `--subgraph` flag: {}", e)),

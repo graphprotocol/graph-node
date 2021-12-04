@@ -65,7 +65,6 @@ fn setup_with_features(
         schema: schema.clone(),
         data_sources: vec![],
         graft: None,
-        debug_endpoint: None,
         templates: vec![],
         chain: PhantomData,
     };

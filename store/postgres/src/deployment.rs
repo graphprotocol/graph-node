@@ -103,7 +103,6 @@ table! {
         repository -> Nullable<Text>,
         features -> Array<Text>,
         schema -> Text,
-        debug_endpoint -> Nullable<Text>,
         graph_node_version_id -> Nullable<Integer>,
     }
 }
@@ -201,25 +200,16 @@ pub fn schema(conn: &PgConnection, site: &Site) -> Result<Schema, StoreError> {
 pub fn manifest_info(
     conn: &PgConnection,
     site: &Site,
-) -> Result<(Schema, Option<String>, Option<String>, Option<String>), StoreError> {
+) -> Result<(Schema, Option<String>, Option<String>), StoreError> {
     use subgraph_manifest as sm;
-    let (s, description, repository, debug_endpoint): (
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    ) = sm::table
-        .select((
-            sm::schema,
-            sm::description,
-            sm::repository,
-            sm::debug_endpoint,
-        ))
-        .filter(sm::id.eq(site.id))
-        .first(conn)?;
+    let (s, description, repository): (String, Option<String>, Option<String>) =
+        sm::table
+            .select((sm::schema, sm::description, sm::repository))
+            .filter(sm::id.eq(site.id))
+            .first(conn)?;
     Schema::parse(s.as_str(), site.deployment.clone())
         .map_err(|e| StoreError::Unknown(e))
-        .map(|schema| (schema, description, repository, debug_endpoint))
+        .map(|schema| (schema, description, repository))
 }
 
 #[allow(dead_code)]
@@ -779,7 +769,6 @@ pub fn create_deployment(
                 repository,
                 features,
                 schema,
-                debug_endpoint,
             },
         failed,
         health: _,
@@ -822,7 +811,6 @@ pub fn create_deployment(
         m::repository.eq(repository),
         m::features.eq(features),
         m::schema.eq(schema),
-        m::debug_endpoint.eq(debug_endpoint),
         m::graph_node_version_id.eq(graph_node_version_id),
     );
 

@@ -1723,7 +1723,6 @@ dependencies = [
  "lazy_static",
  "never",
  "semver 1.0.4",
- "serde",
  "strum",
  "strum_macros",
  "uuid 0.8.2",

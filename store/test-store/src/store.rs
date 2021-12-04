@@ -162,7 +162,6 @@ pub fn create_subgraph(
         schema: schema.clone(),
         data_sources: vec![],
         graft: None,
-        debug_endpoint: None,
         templates: vec![],
         chain: PhantomData,
     };

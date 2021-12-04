@@ -68,7 +68,7 @@ pub struct HostExports<C: Blockchain> {
     causality_region: String,
     templates: Arc<Vec<C::DataSourceTemplate>>,
     pub(crate) link_resolver: Arc<dyn LinkResolver>,
-    pub(crate) store: Arc<dyn SubgraphStore>,
+    store: Arc<dyn SubgraphStore>,
 }
 
 impl<C: Blockchain> HostExports<C> {

@@ -107,8 +107,6 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
                 params.name.clone(),
                 params.ipfs_hash.clone(),
                 node_id,
-                None,
-                None,
             )
             .await
         {
@@ -138,8 +136,6 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
                 params.name.clone(),
                 params.ipfs_hash.clone(),
                 node_id,
-                Some(params.endpoint.clone()),
-                Some(params.block),
             )
             .await
         {
