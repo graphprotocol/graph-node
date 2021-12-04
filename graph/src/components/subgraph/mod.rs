@@ -1,3 +1,4 @@
+mod forker;
 mod host;
 mod instance;
 mod instance_manager;
@@ -7,6 +8,7 @@ mod registrar;
 
 pub use crate::prelude::Entity;
 
+pub use self::forker::{SubgraphFork, SubgraphForker};
 pub use self::host::{HostMetrics, MappingError, RuntimeHost, RuntimeHostBuilder};
 pub use self::instance::{BlockState, DataSourceTemplateInfo};
 pub use self::instance_manager::SubgraphInstanceManager;

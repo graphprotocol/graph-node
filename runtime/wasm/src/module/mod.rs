@@ -30,7 +30,6 @@ use crate::host_exports::HostExports;
 use crate::mapping::MappingContext;
 use crate::mapping::ValidModule;
 
-mod debug_tool;
 mod into_wasm_ret;
 pub mod stopwatch;
 
@@ -844,36 +843,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
                     .start_section("store_get_asc_new");
                 asc_new(self, &entity.sorted())?
             }
-            // Resort to the debug endpoint only if the entity is not found in the local store.
-            None => {
-                let store = &self.ctx.host_exports.store;
-                let endpoint_option = store
-                    .get_debug_endpoint(&self.ctx.host_exports.subgraph_id)
-                    .map_err(|e| {
-                        HostExportError::Unknown(anyhow!(
-                            "store_get: Failed to fetch the subgraph debug endpoint for subgraph with id `{}` from the store: {:?}",
-                            self.ctx.host_exports.subgraph_id,
-                            e,
-                        ))
-                    })?;
-
-                match endpoint_option {
-                    Some(endpoint) => {
-                        let schema = store
-                            .input_schema(&self.ctx.host_exports.subgraph_id)
-                            .map_err(|e| {
-                                HostExportError::Unknown(anyhow!(
-                                    "store_get: Failed to fetch the subgraph input schema for subgraph with id `{}` from the store: {:?}",
-                                    self.ctx.host_exports.subgraph_id,
-                                    e,
-                                ))
-                            })?;
-                        let entity = debug_tool::fetch_entity(&schema, &endpoint, &entity_type, &id)?;
-                        asc_new(self, &entity.sorted())?
-                    }
-                    None => AscPtr::null(),
-                }
-            }
+            None => AscPtr::null(),
         };
 
         Ok(ret)

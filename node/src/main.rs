@@ -27,7 +27,7 @@ use graph_chain_ethereum::{self as ethereum, network_indexer, EthereumAdapterTra
 use graph_chain_near::{self as near};
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
-    SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
+    SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar, SubgraphForker,
 };
 use graph_graphql::prelude::GraphQlRunner;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
@@ -344,12 +344,18 @@ async fn main() {
             graph::spawn_blocking(job_runner.start());
         }
 
+        let subgraph_forker = SubgraphForker::new(
+            "Hello".to_string(),
+            network_store.subgraph_store(),
+        );
+
         let subgraph_instance_manager = SubgraphInstanceManager::new(
             &logger_factory,
             network_store.subgraph_store(),
             blockchain_map.cheap_clone(),
             metrics_registry.clone(),
             link_resolver.cheap_clone(),
+            subgraph_forker,
         );
 
         // Create IPFS-based subgraph provider

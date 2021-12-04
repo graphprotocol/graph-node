@@ -3,6 +3,7 @@ use super::SubgraphInstance;
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
 use graph::blockchain::{BlockchainKind, DataSource};
+use graph::components::subgraph::SubgraphForker;
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::{UnifiedMappingApiVersion, MAX_SPEC_VERSION};
 use graph::prelude::TryStreamExt;
@@ -81,7 +82,7 @@ struct IndexingContext<T: RuntimeHostBuilder<C>, C: Blockchain> {
     pub block_stream_metrics: Arc<BlockStreamMetrics>,
 }
 
-pub struct SubgraphInstanceManager<S, M, L> {
+pub struct SubgraphInstanceManager<S, M, L, F> {
     logger_factory: LoggerFactory,
     subgraph_store: Arc<S>,
     chains: Arc<BlockchainMap>,
@@ -89,6 +90,7 @@ pub struct SubgraphInstanceManager<S, M, L> {
     manager_metrics: SubgraphInstanceManagerMetrics,
     instances: SharedInstanceKeepAliveMap,
     link_resolver: Arc<L>,
+    subgraph_forker: F,
 }
 
 struct SubgraphInstanceManagerMetrics {
@@ -172,11 +174,12 @@ impl SubgraphInstanceMetrics {
 }
 
 #[async_trait]
-impl<S, M, L> SubgraphInstanceManagerTrait for SubgraphInstanceManager<S, M, L>
+impl<S, M, L, F> SubgraphInstanceManagerTrait for SubgraphInstanceManager<S, M, L, F>
 where
     S: SubgraphStore,
     M: MetricsRegistry,
     L: LinkResolver + Clone,
+    F: SubgraphForker,
 {
     async fn start_subgraph(
         self: Arc<Self>,
@@ -232,11 +235,12 @@ where
     }
 }
 
-impl<S, M, L> SubgraphInstanceManager<S, M, L>
+impl<S, M, L, F> SubgraphInstanceManager<S, M, L, F>
 where
     S: SubgraphStore,
     M: MetricsRegistry,
     L: LinkResolver + Clone,
+    F: SubgraphForker,
 {
     pub fn new(
         logger_factory: &LoggerFactory,
@@ -244,6 +248,7 @@ where
         chains: Arc<BlockchainMap>,
         metrics_registry: Arc<M>,
         link_resolver: Arc<L>,
+        subgraph_forker: F,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
@@ -256,6 +261,7 @@ where
             metrics_registry,
             instances: SharedInstanceKeepAliveMap::default(),
             link_resolver,
+            subgraph_forker,
         }
     }
 
