@@ -550,6 +550,7 @@ impl SubgraphStoreInner {
             latest_block: deployment.earliest_block,
             graft_base: Some(src.deployment.clone()),
             graft_block: Some(block),
+            debug_fork: deployment.debug_fork,
             reorg_count: 0,
             current_reorg_depth: 0,
             max_reorg_depth: 0,
@@ -994,6 +995,12 @@ impl SubgraphStoreTrait for SubgraphStore {
         let (store, site) = self.store(&id)?;
         let info = store.subgraph_info(&site)?;
         Ok(info.api)
+    }
+
+    fn debug_fork(&self, id: &DeploymentHash) -> Result<Option<DeploymentHash>, StoreError> {
+        let (store, site) = self.store(&id)?;
+        let info = store.subgraph_info(&site)?;
+        Ok(info.debug_fork)
     }
 
     async fn writable(

@@ -82,6 +82,9 @@ pub(crate) struct SubgraphInfo {
     /// The block number at which this subgraph was grafted onto
     /// another one. We do not allow reverting past this block
     pub(crate) graft_block: Option<BlockNumber>,
+    /// The deployment hash of the remote subgraph whose store
+    /// will be GraphQL queried, for debugging purposes.
+    pub(crate) debug_fork: Option<DeploymentHash>,
     pub(crate) description: Option<String>,
     pub(crate) repository: Option<String>,
 }
@@ -564,6 +567,8 @@ impl DeploymentStore {
         let graft_block =
             deployment::graft_point(&conn, &site.deployment)?.map(|(_, ptr)| ptr.number as i32);
 
+        let debug_fork = deployment::debug_fork(&conn, &site.deployment)?;
+
         // Generate an API schema for the subgraph and make sure all types in the
         // API schema have a @subgraphId directive as well
         let mut schema = input_schema.clone();
@@ -575,6 +580,7 @@ impl DeploymentStore {
             input: Arc::new(input_schema),
             api: Arc::new(ApiSchema::from_api_schema(schema)?),
             graft_block,
+            debug_fork,
             description,
             repository,
         };

@@ -75,6 +75,7 @@ table! {
         graft_base -> Nullable<Text>,
         graft_block_hash -> Nullable<Binary>,
         graft_block_number -> Nullable<Numeric>,
+        debug_fork -> Nullable<Text>,
         reorg_count -> Integer,
         current_reorg_depth -> Integer,
         max_reorg_depth -> Integer,
@@ -180,12 +181,37 @@ pub fn graft_pending(
 
 /// Look up the graft point for the given subgraph in the database and
 /// return it. Returns `None` if the deployment does not have
-/// a graft
+/// a graft.
 pub fn graft_point(
     conn: &PgConnection,
     id: &DeploymentHash,
 ) -> Result<Option<(DeploymentHash, BlockPtr)>, StoreError> {
     graft(conn, id, false)
+}
+
+/// Look up the debug fork for the given subgraph in the database and
+/// return it. Returns `None` if the deployment does not have
+/// a deubg fork.
+pub fn debug_fork(
+    conn: &PgConnection,
+    id: &DeploymentHash,
+) -> Result<Option<DeploymentHash>, StoreError> {
+    use subgraph_deployment as sd;
+
+    let debug_fork: Option<String> = sd::table
+        .select(sd::debug_fork)
+        .filter(sd::deployment.eq(id.as_str()))
+        .first(conn)?;
+
+    match debug_fork {
+        Some(fork) => Ok(Some(DeploymentHash::new(fork.clone()).map_err(|_| {
+            StoreError::Unknown(anyhow!(
+                "the debug fork for a subgraph must be a valid subgraph id but is `{}`",
+                fork
+            ))
+        })?)),
+        None => Ok(None),
+    }
 }
 
 pub fn schema(conn: &PgConnection, site: &Site) -> Result<Schema, StoreError> {
@@ -202,11 +228,10 @@ pub fn manifest_info(
     site: &Site,
 ) -> Result<(Schema, Option<String>, Option<String>), StoreError> {
     use subgraph_manifest as sm;
-    let (s, description, repository): (String, Option<String>, Option<String>) =
-        sm::table
-            .select((sm::schema, sm::description, sm::repository))
-            .filter(sm::id.eq(site.id))
-            .first(conn)?;
+    let (s, description, repository): (String, Option<String>, Option<String>) = sm::table
+        .select((sm::schema, sm::description, sm::repository))
+        .filter(sm::id.eq(site.id))
+        .first(conn)?;
     Schema::parse(s.as_str(), site.deployment.clone())
         .map_err(|e| StoreError::Unknown(e))
         .map(|schema| (schema, description, repository))
@@ -779,6 +804,7 @@ pub fn create_deployment(
         latest_block,
         graft_base,
         graft_block,
+        debug_fork,
         reorg_count: _,
         current_reorg_depth: _,
         max_reorg_depth: _,
@@ -800,6 +826,7 @@ pub fn create_deployment(
         d::graft_base.eq(graft_base.as_ref().map(|s| s.as_str())),
         d::graft_block_hash.eq(b(&graft_block)),
         d::graft_block_number.eq(n(&graft_block)),
+        d::debug_fork.eq(debug_fork.as_ref().map(|s| s.as_str())),
     );
 
     let graph_node_version_id = GraphNodeVersion::create_or_get(&conn)?;

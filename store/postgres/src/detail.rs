@@ -58,6 +58,7 @@ pub struct DeploymentDetail {
     graft_base: Option<String>,
     graft_block_hash: Option<Bytes>,
     graft_block_number: Option<BigDecimal>,
+    debug_fork: Option<String>,
     reorg_count: i32,
     current_reorg_depth: i32,
     max_reorg_depth: i32,
@@ -345,6 +346,12 @@ impl TryFrom<StoredDeploymentEntity> for SubgraphDeploymentEntity {
             .transpose()
             .map_err(|b| constraint_violation!("invalid graft base `{}`", b))?;
 
+        let debug_fork = detail
+            .debug_fork
+            .map(|b| DeploymentHash::new(b))
+            .transpose()
+            .map_err(|b| constraint_violation!("invalid debug fork `{}`", b))?;
+
         Ok(SubgraphDeploymentEntity {
             manifest,
             failed: detail.failed,
@@ -356,6 +363,7 @@ impl TryFrom<StoredDeploymentEntity> for SubgraphDeploymentEntity {
             latest_block,
             graft_base,
             graft_block,
+            debug_fork,
             reorg_count: detail.reorg_count,
             current_reorg_depth: detail.current_reorg_depth,
             max_reorg_depth: detail.max_reorg_depth,

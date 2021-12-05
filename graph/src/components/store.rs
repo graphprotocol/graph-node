@@ -964,6 +964,10 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// adding a root query type etc. to it
     fn api_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError>;
 
+    /// Return the debug fork, which represents the deployment hash of the remote
+    /// subgraph whose store will be GraphQL queried, for debugging purposes.
+    fn debug_fork(&self, subgraph_id: &DeploymentHash) -> Result<Option<DeploymentHash>, StoreError>;
+
     /// Return a `WritableStore` that is used for indexing subgraphs. Only
     /// code that is part of indexing a subgraph should ever use this. The
     /// `logger` will be used to log important messages related to the
@@ -1152,6 +1156,10 @@ impl SubgraphStore for MockStore {
     }
 
     fn api_schema(&self, _: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError> {
+        unimplemented!()
+    }
+
+    fn debug_fork(&self, _: &DeploymentHash) -> Result<Option<DeploymentHash>, StoreError> {
         unimplemented!()
     }
 

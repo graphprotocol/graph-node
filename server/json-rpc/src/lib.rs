@@ -40,15 +40,7 @@ struct SubgraphDeployParams {
     name: SubgraphName,
     ipfs_hash: DeploymentHash,
     node_id: Option<NodeId>,
-}
-
-#[derive(Debug, Deserialize)]
-struct SubgraphDebugParams {
-    name: SubgraphName,
-    endpoint: String,
-    block: BlockNumber,
-    ipfs_hash: DeploymentHash,
-    node_id: Option<NodeId>,
+    debug_fork: Option<DeploymentHash>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -107,6 +99,7 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
                 params.name.clone(),
                 params.ipfs_hash.clone(),
                 node_id,
+                params.debug_fork.clone(),
             )
             .await
         {
@@ -114,35 +107,6 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
             Err(e) => Err(json_rpc_error(
                 &self.logger,
                 "subgraph_deploy",
-                e,
-                JSON_RPC_DEPLOY_ERROR,
-                params,
-            )),
-        }
-    }
-
-    /// Handler for the `subgraph_debug` endpoint.
-    async fn debug_handler(
-        &self,
-        params: SubgraphDebugParams,
-    ) -> Result<Value, jsonrpc_core::Error> {
-        info!(&self.logger, "Received subgraph_debug request"; "params" => format!("{:?}", params));
-
-        let node_id = params.node_id.clone().unwrap_or(self.node_id.clone());
-        let routes = subgraph_routes(&params.name, self.http_port, self.ws_port);
-        match self
-            .registrar
-            .create_subgraph_version(
-                params.name.clone(),
-                params.ipfs_hash.clone(),
-                node_id,
-            )
-            .await
-        {
-            Ok(_) => Ok(routes),
-            Err(e) => Err(json_rpc_error(
-                &self.logger,
-                "subgraph_debug",
                 e,
                 JSON_RPC_DEPLOY_ERROR,
                 params,
@@ -281,21 +245,6 @@ where
                 async move {
                     let params = params.parse()?;
                     me.deploy_handler(params).await
-                }
-                .boxed(),
-            ))
-            .compat()
-        });
-
-        let me = arc_self.clone();
-        let sender = task_sender.clone();
-        handler.add_method("subgraph_debug", move |params: Params| {
-            let me = me.clone();
-            Box::pin(tokio02_spawn(
-                sender.clone(),
-                async move {
-                    let params = params.parse()?;
-                    me.debug_handler(params).await
                 }
                 .boxed(),
             ))
