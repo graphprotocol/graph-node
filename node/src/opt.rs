@@ -203,6 +203,13 @@ pub struct Opt {
         help = "Allows setting configurations that may result in incorrect Proofs of Indexing."
     )]
     pub unsafe_config: bool,
+
+    #[structopt(
+        long,
+        value_name = "URL",
+        help = "Base URL for forking subgraphs"
+    )]
+    pub fork_base: Option<String>,
 }
 
 impl From<Opt> for config::Opt {

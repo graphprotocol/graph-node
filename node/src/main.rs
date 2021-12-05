@@ -344,8 +344,10 @@ async fn main() {
             graph::spawn_blocking(job_runner.start());
         }
 
-        let subgraph_forker =
-            SubgraphForker::new("Hello".to_string(), network_store.subgraph_store());
+        let subgraph_forker = match opt.fork_base {
+            Some(url) => Some(SubgraphForker::new(url, network_store.subgraph_store())),
+            None => None,
+        };
 
         let subgraph_instance_manager = SubgraphInstanceManager::new(
             &logger_factory,

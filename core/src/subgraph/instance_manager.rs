@@ -90,7 +90,7 @@ pub struct SubgraphInstanceManager<S, M, L, F> {
     manager_metrics: SubgraphInstanceManagerMetrics,
     instances: SharedInstanceKeepAliveMap,
     link_resolver: Arc<L>,
-    subgraph_forker: F,
+    subgraph_forker: Option<F>,
 }
 
 struct SubgraphInstanceManagerMetrics {
@@ -248,7 +248,7 @@ where
         chains: Arc<BlockchainMap>,
         metrics_registry: Arc<M>,
         link_resolver: Arc<L>,
-        subgraph_forker: F,
+        subgraph_forker: Option<F>,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
