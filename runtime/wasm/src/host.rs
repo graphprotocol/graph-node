@@ -9,7 +9,7 @@ use futures03::channel::oneshot::channel;
 use graph::blockchain::RuntimeAdapter;
 use graph::blockchain::{Blockchain, DataSource};
 use graph::blockchain::{HostFn, TriggerWithHandler};
-use graph::components::store::SubgraphStore;
+use graph::components::store::{SubgraphFork, SubgraphStore};
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
@@ -158,6 +158,7 @@ where
         trigger: TriggerWithHandler<C>,
         block_ptr: BlockPtr,
         proof_of_indexing: SharedProofOfIndexing,
+        debug_fork: &Option<Arc<dyn SubgraphFork>>,
     ) -> Result<BlockState<C>, MappingError> {
         let handler = trigger.handler_name().to_string();
 
@@ -183,6 +184,7 @@ where
                     block_ptr,
                     proof_of_indexing,
                     host_fns: self.host_fns.cheap_clone(),
+                    debug_fork: debug_fork.cheap_clone(),
                 },
                 trigger,
                 result_sender,
@@ -228,9 +230,17 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
         trigger: TriggerWithHandler<C>,
         state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
+        debug_fork: &Option<Arc<dyn SubgraphFork>>,
     ) -> Result<BlockState<C>, MappingError> {
-        self.send_mapping_request(logger, state, trigger, block_ptr, proof_of_indexing)
-            .await
+        self.send_mapping_request(
+            logger,
+            state,
+            trigger,
+            block_ptr,
+            proof_of_indexing,
+            debug_fork,
+        )
+        .await
     }
 
     fn creation_block_number(&self) -> Option<BlockNumber> {

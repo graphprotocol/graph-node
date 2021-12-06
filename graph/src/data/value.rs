@@ -170,6 +170,32 @@ impl TryFrom<q::Value> for Value {
     }
 }
 
+impl From<serde_json::Value> for Value {
+    fn from(value: serde_json::Value) -> Self {
+        match value {
+            serde_json::Value::Null => Value::Null,
+            serde_json::Value::Bool(b) => Value::Boolean(b),
+            serde_json::Value::Number(n) => match n.as_i64() {
+                Some(i) => Value::Int(i),
+                None => Value::Float(n.as_f64().unwrap()),
+            },
+            serde_json::Value::String(s) => Value::String(s),
+            serde_json::Value::Array(vals) => {
+                let vals: Vec<_> = vals.into_iter().map(Value::from).collect::<Vec<_>>();
+                Value::List(vals)
+            }
+            serde_json::Value::Object(map) => {
+                let mut rmap = BTreeMap::new();
+                for (key, value) in map.into_iter() {
+                    let value = Value::from(value);
+                    rmap.insert(key, value);
+                }
+                Value::Object(rmap)
+            }
+        }
+    }
+}
+
 impl From<Value> for q::Value {
     fn from(value: Value) -> Self {
         match value {

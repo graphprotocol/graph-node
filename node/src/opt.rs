@@ -204,11 +204,7 @@ pub struct Opt {
     )]
     pub unsafe_config: bool,
 
-    #[structopt(
-        long,
-        value_name = "URL",
-        help = "Base URL for forking subgraphs"
-    )]
+    #[structopt(long, value_name = "URL", help = "Base URL for forking subgraphs")]
     pub fork_base: Option<String>,
 }
 

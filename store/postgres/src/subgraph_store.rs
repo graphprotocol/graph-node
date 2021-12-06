@@ -12,7 +12,9 @@ use graph::{
     cheap_clone::CheapClone,
     components::{
         server::index_node::VersionInfo,
-        store::{self, DeploymentLocator, EntityType, WritableStore as WritableStoreTrait},
+        store::{
+            self, DeploymentLocator, EntityType, SubgraphFork, WritableStore as WritableStoreTrait,
+        },
     },
     constraint_violation,
     data::query::QueryTarget,
@@ -27,10 +29,12 @@ use graph::{
         SubgraphVersionSwitchingMode,
     },
     slog::{error, warn},
+    url::Url,
     util::{backoff::ExponentialBackoff, timed_cache::TimedCache},
 };
 use store::StoredDynamicDataSource;
 
+use crate::fork;
 use crate::{
     connection_pool::ConnectionPool,
     primary,
@@ -184,6 +188,8 @@ pub mod unused {
 #[derive(Clone)]
 pub struct SubgraphStore {
     inner: Arc<SubgraphStoreInner>,
+    // TODO: add docs
+    fork_base: Option<Url>,
 }
 
 impl SubgraphStore {
@@ -206,9 +212,11 @@ impl SubgraphStore {
         stores: Vec<(Shard, ConnectionPool, Vec<ConnectionPool>, Vec<usize>)>,
         placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
         sender: Arc<NotificationSender>,
+        fork_base: Option<Url>,
     ) -> Self {
         Self {
             inner: Arc::new(SubgraphStoreInner::new(logger, stores, placer, sender)),
+            fork_base,
         }
     }
 
@@ -997,10 +1005,25 @@ impl SubgraphStoreTrait for SubgraphStore {
         Ok(info.api)
     }
 
-    fn debug_fork(&self, id: &DeploymentHash) -> Result<Option<DeploymentHash>, StoreError> {
-        let (store, site) = self.store(&id)?;
+    fn debug_fork(
+        &self,
+        id: &DeploymentHash,
+        logger: Logger,
+    ) -> Result<Option<Arc<dyn SubgraphFork>>, StoreError> {
+        let (store, site) = self.store(id)?;
         let info = store.subgraph_info(&site)?;
-        Ok(info.debug_fork)
+        let fork_id = info.debug_fork;
+        let schema = self.input_schema(id)?;
+
+        match (self.fork_base.as_ref(), fork_id) {
+            (Some(b), Some(f)) => Ok(Some(Arc::new(fork::SubgraphFork::new(
+                b.join(&format!("id/{}", f))
+                    .map_err(|e| StoreError::Unknown(anyhow!("Failed to join fork base: {}", e)))?,
+                schema,
+                logger,
+            )))),
+            _ => Ok(None),
+        }
     }
 
     async fn writable(

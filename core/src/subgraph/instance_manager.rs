@@ -3,7 +3,6 @@ use super::SubgraphInstance;
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
 use graph::blockchain::{BlockchainKind, DataSource};
-use graph::components::subgraph::SubgraphForker;
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::{UnifiedMappingApiVersion, MAX_SPEC_VERSION};
 use graph::prelude::TryStreamExt;
@@ -22,7 +21,7 @@ use graph::{
 };
 use graph::{
     blockchain::{Block, BlockchainMap},
-    components::store::{DeploymentId, DeploymentLocator, ModificationsAndCache},
+    components::store::{DeploymentId, DeploymentLocator, ModificationsAndCache, SubgraphFork},
 };
 use lazy_static::lazy_static;
 use std::collections::{BTreeSet, HashMap};
@@ -52,6 +51,7 @@ struct IndexingInputs<C: Blockchain> {
     features: BTreeSet<SubgraphFeature>,
     start_blocks: Vec<BlockNumber>,
     store: Arc<dyn WritableStore>,
+    debug_fork: Option<Arc<dyn SubgraphFork>>,
     triggers_adapter: Arc<C::TriggersAdapter>,
     chain: Arc<C>,
     templates: Arc<Vec<C::DataSourceTemplate>>,
@@ -82,7 +82,7 @@ struct IndexingContext<T: RuntimeHostBuilder<C>, C: Blockchain> {
     pub block_stream_metrics: Arc<BlockStreamMetrics>,
 }
 
-pub struct SubgraphInstanceManager<S, M, L, F> {
+pub struct SubgraphInstanceManager<S, M, L> {
     logger_factory: LoggerFactory,
     subgraph_store: Arc<S>,
     chains: Arc<BlockchainMap>,
@@ -90,7 +90,6 @@ pub struct SubgraphInstanceManager<S, M, L, F> {
     manager_metrics: SubgraphInstanceManagerMetrics,
     instances: SharedInstanceKeepAliveMap,
     link_resolver: Arc<L>,
-    subgraph_forker: Option<F>,
 }
 
 struct SubgraphInstanceManagerMetrics {
@@ -174,12 +173,11 @@ impl SubgraphInstanceMetrics {
 }
 
 #[async_trait]
-impl<S, M, L, F> SubgraphInstanceManagerTrait for SubgraphInstanceManager<S, M, L, F>
+impl<S, M, L> SubgraphInstanceManagerTrait for SubgraphInstanceManager<S, M, L>
 where
     S: SubgraphStore,
     M: MetricsRegistry,
     L: LinkResolver + Clone,
-    F: SubgraphForker,
 {
     async fn start_subgraph(
         self: Arc<Self>,
@@ -235,12 +233,11 @@ where
     }
 }
 
-impl<S, M, L, F> SubgraphInstanceManager<S, M, L, F>
+impl<S, M, L> SubgraphInstanceManager<S, M, L>
 where
     S: SubgraphStore,
     M: MetricsRegistry,
     L: LinkResolver + Clone,
-    F: SubgraphForker,
 {
     pub fn new(
         logger_factory: &LoggerFactory,
@@ -248,7 +245,6 @@ where
         chains: Arc<BlockchainMap>,
         metrics_registry: Arc<M>,
         link_resolver: Arc<L>,
-        subgraph_forker: Option<F>,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
@@ -261,7 +257,6 @@ where
             metrics_registry,
             instances: SharedInstanceKeepAliveMap::default(),
             link_resolver,
-            subgraph_forker,
         }
     }
 
@@ -391,6 +386,10 @@ where
             .unwrap_or(0) as f64;
         block_stream_metrics.deployment_head.set(deployment_head);
 
+        let debug_fork = self
+            .subgraph_store
+            .debug_fork(&deployment.hash, logger.clone())?;
+
         let host_builder = graph_runtime_wasm::RuntimeHostBuilder::new(
             chain.runtime_adapter(),
             self.link_resolver.cheap_clone(),
@@ -409,6 +408,7 @@ where
                 features,
                 start_blocks,
                 store,
+                debug_fork,
                 triggers_adapter,
                 chain,
                 templates,
@@ -782,6 +782,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
         &block,
         triggers,
         &causality_region,
+        &ctx.inputs.debug_fork,
     )
     .await
     {
@@ -871,6 +872,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
                 block_state,
                 proof_of_indexing.cheap_clone(),
                 &causality_region,
+                &ctx.inputs.debug_fork,
             )
             .await
             .map_err(|e| {
@@ -1073,6 +1075,7 @@ async fn process_triggers<C: Blockchain>(
     block: &Arc<C::Block>,
     triggers: Vec<C::TriggerData>,
     causality_region: &str,
+    debug_fork: &Option<Arc<dyn SubgraphFork>>,
 ) -> Result<BlockState<C>, MappingError> {
     use graph::blockchain::TriggerData;
 
@@ -1086,6 +1089,7 @@ async fn process_triggers<C: Blockchain>(
                 block_state,
                 proof_of_indexing.cheap_clone(),
                 causality_region,
+                debug_fork,
             )
             .await
             .map_err(move |mut e| {

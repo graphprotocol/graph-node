@@ -11,6 +11,7 @@ use structopt::StructOpt;
 use graph::{
     log::logger,
     prelude::{info, o, slog, tokio, Logger, NodeId},
+    url::Url,
 };
 use graph_node::{manager::PanicSubscriptionManager, store_builder::StoreBuilder};
 use graph_store_postgres::{
@@ -64,6 +65,8 @@ pub struct Opt {
         help = "the size for connection pools. Set to 0\n to use pool size from configuration file\n corresponding to NODE_ID"
     )]
     pub pool_size: u32,
+    #[structopt(long, value_name = "URL", help = "Base URL for forking subgraphs")]
+    pub fork_base: Option<String>,
     #[structopt(subcommand)]
     pub cmd: Command,
 }
@@ -352,11 +355,12 @@ struct Context {
     logger: Logger,
     node_id: NodeId,
     config: Cfg,
+    fork_base: Option<Url>,
     registry: Arc<MetricsRegistry>,
 }
 
 impl Context {
-    fn new(logger: Logger, node_id: NodeId, config: Cfg) -> Self {
+    fn new(logger: Logger, node_id: NodeId, config: Cfg, fork_base: Option<Url>) -> Self {
         let prometheus_registry = Arc::new(Registry::new());
         let registry = Arc::new(MetricsRegistry::new(
             logger.clone(),
@@ -367,6 +371,7 @@ impl Context {
             logger,
             node_id,
             config,
+            fork_base,
             registry,
         }
     }
@@ -413,6 +418,7 @@ impl Context {
             &self.logger,
             &self.node_id,
             &self.config,
+            self.fork_base,
             self.registry,
         );
 
@@ -504,7 +510,19 @@ async fn main() {
         }
         Ok(node) => node,
     };
-    let ctx = Context::new(logger.clone(), node, config);
+
+    let fork_base = match opt.fork_base {
+        Some(url) => match Url::parse(&url) {
+            Err(e) => {
+                eprintln!("invalid fork base URL: {}", e);
+                std::process::exit(1);
+            }
+            Ok(url) => Some(url),
+        },
+        None => None,
+    };
+
+    let ctx = Context::new(logger.clone(), node, config, fork_base);
 
     use Command::*;
     let result = match opt.cmd {

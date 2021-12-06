@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use futures::sync::mpsc;
 
 use crate::blockchain::TriggerWithHandler;
+use crate::components::store::SubgraphFork;
 use crate::prelude::*;
 use crate::{blockchain::Blockchain, components::subgraph::SharedProofOfIndexing};
 use crate::{components::metrics::HistogramVec, runtime::DeterministicHostError};
@@ -57,6 +58,7 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
         trigger: TriggerWithHandler<C>,
         state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
+        debug_fork: &Option<Arc<dyn SubgraphFork>>,
     ) -> Result<BlockState<C>, MappingError>;
 
     /// Block number in which this host was created.

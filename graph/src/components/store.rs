@@ -905,6 +905,11 @@ impl Display for DeploymentLocator {
     }
 }
 
+// TODO: add docs
+pub trait SubgraphFork: Send + Sync + 'static {
+    fn fetch(&self, entity_type: String, id: String) -> Result<Option<Entity>, StoreError>;
+}
+
 /// Common trait for store implementations.
 #[async_trait]
 pub trait SubgraphStore: Send + Sync + 'static {
@@ -964,9 +969,15 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// adding a root query type etc. to it
     fn api_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError>;
 
-    /// Return the debug fork, which represents the deployment hash of the remote
-    /// subgraph whose store will be GraphQL queried, for debugging purposes.
-    fn debug_fork(&self, subgraph_id: &DeploymentHash) -> Result<Option<DeploymentHash>, StoreError>;
+    /// Return a `SubgraphFork` that is used for fetching remotely stored entities.
+    /// Forking a subgraph represents the process of lazily copying a remote
+    /// subgraph's store by GraphQL-querying it's endpoint. The returned subgraph fork
+    /// is designated for debugging purposes only.
+    fn debug_fork(
+        &self,
+        subgraph_id: &DeploymentHash,
+        logger: Logger,
+    ) -> Result<Option<Arc<dyn SubgraphFork>>, StoreError>;
 
     /// Return a `WritableStore` that is used for indexing subgraphs. Only
     /// code that is part of indexing a subgraph should ever use this. The
@@ -1159,7 +1170,11 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
-    fn debug_fork(&self, _: &DeploymentHash) -> Result<Option<DeploymentHash>, StoreError> {
+    fn debug_fork(
+        &self,
+        _: &DeploymentHash,
+        _: Logger,
+    ) -> Result<Option<Arc<dyn SubgraphFork>>, StoreError> {
         unimplemented!()
     }
 

@@ -8,7 +8,10 @@ use std::str::FromStr;
 use graph::{blockchain::DataSource, prelude::*};
 use graph::{
     blockchain::{Block, Blockchain},
-    components::subgraph::{MappingError, SharedProofOfIndexing},
+    components::{
+        store::SubgraphFork,
+        subgraph::{MappingError, SharedProofOfIndexing},
+    },
 };
 
 lazy_static! {
@@ -113,6 +116,7 @@ where
         state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
         causality_region: &str,
+        debug_fork: &Option<Arc<dyn SubgraphFork>>,
     ) -> Result<BlockState<C>, MappingError> {
         Self::process_trigger_in_runtime_hosts(
             logger,
@@ -122,6 +126,7 @@ where
             state,
             proof_of_indexing,
             causality_region,
+            debug_fork,
         )
         .await
     }
@@ -134,6 +139,7 @@ where
         mut state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
         causality_region: &str,
+        debug_fork: &Option<Arc<dyn SubgraphFork>>,
     ) -> Result<BlockState<C>, MappingError> {
         let error_count = state.deterministic_errors.len();
 
@@ -160,6 +166,7 @@ where
                     mapping_trigger,
                     state,
                     proof_of_indexing.cheap_clone(),
+                    debug_fork,
                 )
                 .await?;
         }

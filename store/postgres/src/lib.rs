@@ -35,6 +35,7 @@ mod deployment;
 mod deployment_store;
 mod detail;
 mod dynds;
+mod fork;
 mod functions;
 mod jobs;
 mod jsonb;

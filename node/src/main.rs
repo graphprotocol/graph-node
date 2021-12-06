@@ -22,12 +22,13 @@ use graph::components::store::BlockStore;
 use graph::data::graphql::effort::LoadManager;
 use graph::log::logger;
 use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
+use graph::url::Url;
 use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{self as ethereum, network_indexer, EthereumAdapterTrait, Transport};
 use graph_chain_near::{self as near};
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
-    SubgraphForker, SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
+    SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_graphql::prelude::GraphQlRunner;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
@@ -159,6 +160,12 @@ async fn main() {
     // Obtain metrics server port
     let metrics_port = opt.metrics_port;
 
+    // Obtain the fork base URL
+    let fork_base = match &opt.fork_base {
+        Some(url) => Some(Url::parse(url).expect("Failed to parse fork base URL")),
+        None => None,
+    };
+
     info!(logger, "Starting up");
 
     // Optionally, identify the Elasticsearch logging configuration
@@ -214,8 +221,14 @@ async fn main() {
 
     let expensive_queries = read_expensive_queries().unwrap();
 
-    let store_builder =
-        StoreBuilder::new(&logger, &node_id, &config, metrics_registry.cheap_clone()).await;
+    let store_builder = StoreBuilder::new(
+        &logger,
+        &node_id,
+        &config,
+        fork_base,
+        metrics_registry.cheap_clone(),
+    )
+    .await;
 
     let launch_services = |logger: Logger| async move {
         let subscription_manager = store_builder.subscription_manager();
@@ -344,18 +357,12 @@ async fn main() {
             graph::spawn_blocking(job_runner.start());
         }
 
-        let subgraph_forker = match opt.fork_base {
-            Some(url) => Some(SubgraphForker::new(url, network_store.subgraph_store())),
-            None => None,
-        };
-
         let subgraph_instance_manager = SubgraphInstanceManager::new(
             &logger_factory,
             network_store.subgraph_store(),
             blockchain_map.cheap_clone(),
             metrics_registry.clone(),
             link_resolver.cheap_clone(),
-            subgraph_forker,
         );
 
         // Create IPFS-based subgraph provider

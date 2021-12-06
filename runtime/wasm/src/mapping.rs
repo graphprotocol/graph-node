@@ -6,6 +6,7 @@ use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
 
 use graph::blockchain::{Blockchain, HostFn, TriggerWithHandler};
+use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::prelude::*;
 
@@ -111,6 +112,7 @@ pub struct MappingContext<C: Blockchain> {
     pub state: BlockState<C>,
     pub proof_of_indexing: SharedProofOfIndexing,
     pub host_fns: Arc<Vec<HostFn>>,
+    pub debug_fork: Option<Arc<dyn SubgraphFork>>,
 }
 
 impl<C: Blockchain> MappingContext<C> {
@@ -122,6 +124,7 @@ impl<C: Blockchain> MappingContext<C> {
             state: BlockState::new(self.state.entity_cache.store.clone(), Default::default()),
             proof_of_indexing: self.proof_of_indexing.cheap_clone(),
             host_fns: self.host_fns.cheap_clone(),
+            debug_fork: self.debug_fork.cheap_clone(),
         }
     }
 }

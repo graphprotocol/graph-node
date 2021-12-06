@@ -843,7 +843,28 @@ impl<C: Blockchain> WasmInstanceContext<C> {
                     .start_section("store_get_asc_new");
                 asc_new(self, &entity.sorted())?
             }
-            None => AscPtr::null(),
+            None => match &self.ctx.debug_fork {
+                Some(fork) => {
+                    let entity = fork.fetch(entity_type, id).map_err(|e| {
+                        // TODO: Better error handling.
+                        HostExportError::Unknown(anyhow!("Failed to fetch entity from fork: {}", e))
+                    })?;
+                    match entity {
+                        Some(entity) => {
+                            // TODO: Probably change the name of the section?
+                            let _section = self
+                                .host_metrics
+                                .stopwatch
+                                .start_section("store_get_asc_new");
+                            let entity = asc_new(self, &entity.sorted())?;
+                            self.store_set(entity_ptr, id_ptr, entity)?;
+                            entity
+                        }
+                        None => AscPtr::null(),
+                    }
+                }
+                None => AscPtr::null(),
+            },
         };
 
         Ok(ret)
