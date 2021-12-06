@@ -4,7 +4,7 @@ version = "0.25.0"
 edition = "2018"
 
 [dev-dependencies]
-bollard = "0.10"
+bollard = "0.11"
 tokio = {version = "1.14.0", features = ["rt", "macros", "process"]}
 tokio-stream = "0.1"
 futures = "0.3.13"
