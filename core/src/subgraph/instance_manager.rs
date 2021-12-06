@@ -657,7 +657,7 @@ where
                             .store
                             .unfail_non_deterministic_error(&block_ptr)?;
 
-                        match ctx.inputs.store.health(&ctx.inputs.deployment.hash)? {
+                        match ctx.inputs.store.health(&ctx.inputs.deployment.hash).await? {
                             SubgraphHealth::Failed => {
                                 // If the unfail call didn't change the subgraph health, we keep
                                 // `should_try_unfail_non_deterministic` as `true` until it's
@@ -732,7 +732,7 @@ where
                             // If we don't do this check we would keep adding the same error to the
                             // database.
                             let should_fail_subgraph =
-                                ctx.inputs.store.health(&ctx.inputs.deployment.hash)?
+                                ctx.inputs.store.health(&ctx.inputs.deployment.hash).await?
                                     != SubgraphHealth::Failed;
 
                             if should_fail_subgraph {

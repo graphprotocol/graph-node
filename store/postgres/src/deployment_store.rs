@@ -1375,11 +1375,12 @@ impl DeploymentStore {
         });
     }
 
-    pub(crate) fn health(
+    pub(crate) async fn health(
         &self,
         id: &DeploymentHash,
     ) -> Result<deployment::SubgraphHealth, StoreError> {
-        let conn = self.get_conn()?;
-        deployment::health(&conn, id)
+        let id = id.clone();
+        self.with_conn(move |conn, _| deployment::health(&conn, &id).map_err(Into::into))
+            .await
     }
 }

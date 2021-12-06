@@ -1326,8 +1326,11 @@ impl WritableStoreTrait for WritableStore {
         self.site.shard.as_str()
     }
 
-    fn health(&self, id: &DeploymentHash) -> Result<schema::SubgraphHealth, StoreError> {
-        self.retry("health", || self.writable.health(id).map(Into::into))
+    async fn health(&self, id: &DeploymentHash) -> Result<schema::SubgraphHealth, StoreError> {
+        self.retry_async("health", || async {
+            self.writable.health(id).await.map(Into::into)
+        })
+        .await
     }
 }
 
