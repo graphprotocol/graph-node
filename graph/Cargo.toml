@@ -15,7 +15,7 @@ chrono = "0.4.19"
 Inflector = "0.11.3"
 isatty = "0.1.9"
 reqwest = { version = "0.11.2", features = ["json", "stream", "multipart"] }
-ethabi = "14.0"
+ethabi = "15.0"
 hex = "0.4.3"
 http = "0.2.3"
 fail = { version = "0.5", features = ["failpoints"] }
