@@ -45,7 +45,7 @@ pub enum EthereumContractCallError {
     #[error("ABI error: {0}")]
     ABIError(ABIError),
     /// `Token` is not of expected `ParamType`
-    #[error("type mismatch, token {0:?} is not of kind {0:?}")]
+    #[error("type mismatch, token {0:?} is not of kind {1:?}")]
     TypeError(Token, ParamType),
     #[error("error encoding input call data: {0}")]
     EncodingError(ethabi::Error),
