@@ -50,6 +50,7 @@ fn mock_host_exports(
     }];
 
     let network = data_source.network.clone().unwrap();
+    let ens_lookup = store.ens_lookup();
     HostExports::new(
         subgraph_id,
         &data_source,
@@ -57,6 +58,7 @@ fn mock_host_exports(
         Arc::new(templates),
         Arc::new(graph_core::LinkResolver::from(IpfsClient::localhost())),
         store,
+        ens_lookup,
     )
 }
 

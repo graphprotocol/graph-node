@@ -8,7 +8,7 @@ use futures03::channel::oneshot::channel;
 use graph::blockchain::RuntimeAdapter;
 use graph::blockchain::{Blockchain, DataSource};
 use graph::blockchain::{HostFn, TriggerWithHandler};
-use graph::components::store::SubgraphStore;
+use graph::components::store::{EnsLookup, SubgraphStore};
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
@@ -100,6 +100,7 @@ impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C> {
             templates,
             mapping_request_sender,
             metrics,
+            self.store.ens_lookup(),
         )
     }
 }
@@ -126,6 +127,7 @@ where
         templates: Arc<Vec<C::DataSourceTemplate>>,
         mapping_request_sender: Sender<MappingRequest<C>>,
         metrics: Arc<HostMetrics>,
+        ens_lookup: Arc<dyn EnsLookup>,
     ) -> Result<Self, Error> {
         // Create new instance of externally hosted functions invoker. The `Arc` is simply to avoid
         // implementing `Clone` for `HostExports`.
@@ -136,6 +138,7 @@ where
             templates,
             link_resolver,
             store,
+            ens_lookup,
         ));
 
         let host_fns = Arc::new(runtime_adapter.host_fns(&data_source)?);

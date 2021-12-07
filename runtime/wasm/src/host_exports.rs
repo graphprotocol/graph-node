@@ -1,8 +1,8 @@
 use crate::{error::DeterminismLevel, module::IntoTrap};
 use graph::blockchain::DataSource;
 use graph::blockchain::{Blockchain, DataSourceTemplate as _};
-use graph::components::store::EntityKey;
 use graph::components::store::EntityType;
+use graph::components::store::{EnsLookup, EntityKey};
 use graph::components::subgraph::{CausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::data::store;
 use graph::prelude::ethabi::param_type::Reader;
@@ -69,6 +69,7 @@ pub struct HostExports<C: Blockchain> {
     templates: Arc<Vec<C::DataSourceTemplate>>,
     pub(crate) link_resolver: Arc<dyn LinkResolver>,
     store: Arc<dyn SubgraphStore>,
+    ens_lookup: Arc<dyn EnsLookup>,
 }
 
 impl<C: Blockchain> HostExports<C> {
@@ -79,6 +80,7 @@ impl<C: Blockchain> HostExports<C> {
         templates: Arc<Vec<C::DataSourceTemplate>>,
         link_resolver: Arc<dyn LinkResolver>,
         store: Arc<dyn SubgraphStore>,
+        ens_lookup: Arc<dyn EnsLookup>,
     ) -> Self {
         Self {
             subgraph_id,
@@ -91,6 +93,7 @@ impl<C: Blockchain> HostExports<C> {
             templates,
             link_resolver,
             store,
+            ens_lookup,
         }
     }
 
@@ -670,7 +673,7 @@ impl<C: Blockchain> HostExports<C> {
     }
 
     pub(crate) fn ens_name_by_hash(&self, hash: &str) -> Result<Option<String>, anyhow::Error> {
-        Ok(self.store.find_ens_name(hash)?)
+        Ok(self.ens_lookup.find_name(hash)?)
     }
 
     pub(crate) fn log_log(
