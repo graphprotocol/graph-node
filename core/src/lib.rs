@@ -1,6 +1,6 @@
 mod link_resolver;
 mod metrics;
-mod subgraph;
+pub mod subgraph;
 
 pub use crate::link_resolver::LinkResolver;
 pub use crate::metrics::MetricsRegistry;
