@@ -16,7 +16,7 @@ use graph::{
     },
     constraint_violation,
     data::query::QueryTarget,
-    data::subgraph::schema::SubgraphError,
+    data::subgraph::schema::{self, SubgraphError},
     data::subgraph::status,
     prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
@@ -1320,6 +1320,13 @@ impl WritableStoreTrait for WritableStore {
 
     fn shard(&self) -> &str {
         self.site.shard.as_str()
+    }
+
+    async fn health(&self, id: &DeploymentHash) -> Result<schema::SubgraphHealth, StoreError> {
+        self.retry_async("health", || async {
+            self.writable.health(id).await.map(Into::into)
+        })
+        .await
     }
 }
 

@@ -1074,6 +1074,8 @@ pub trait WritableStore: Send + Sync + 'static {
     /// Report the name of the shard in which the subgraph is stored. This
     /// should only be used for reporting and monitoring
     fn shard(&self) -> &str;
+
+    async fn health(&self, id: &DeploymentHash) -> Result<SubgraphHealth, StoreError>;
 }
 
 #[async_trait]
@@ -1262,6 +1264,10 @@ impl WritableStore for MockStore {
     }
 
     fn shard(&self) -> &str {
+        unimplemented!()
+    }
+
+    async fn health(&self, _: &DeploymentHash) -> Result<SubgraphHealth, StoreError> {
         unimplemented!()
     }
 }
