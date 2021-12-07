@@ -61,6 +61,10 @@ impl EntityType {
     pub fn into_string(self) -> String {
         self.0
     }
+
+    pub fn is_poi(&self) -> bool {
+        &self.0 == "Poi$"
+    }
 }
 
 impl fmt::Display for EntityType {

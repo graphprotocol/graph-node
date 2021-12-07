@@ -1097,9 +1097,8 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
 
     // If a deterministic error has happened, make the PoI to be the only entity that'll be stored.
     if has_errors && !is_non_fatal_errors_active {
-        let is_poi_entity = |entity_mod: &EntityModification| {
-            entity_mod.entity_key().entity_type.as_str() == "Poi$"
-        };
+        let is_poi_entity =
+            |entity_mod: &EntityModification| entity_mod.entity_key().entity_type.is_poi();
         mods.retain(is_poi_entity);
         // Confidence check
         assert!(

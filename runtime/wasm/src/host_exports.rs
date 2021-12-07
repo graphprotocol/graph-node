@@ -20,7 +20,6 @@ use std::time::{Duration, Instant};
 use web3::types::H160;
 
 use graph::ensure;
-use graph_graphql::prelude::validate_entity;
 use wasmtime::Trap;
 
 use crate::module::{WasmInstance, WasmInstanceContext};
@@ -180,7 +179,7 @@ impl<C: Blockchain> HostExports<C> {
 
         let entity = Entity::from(data);
         let schema = self.store.input_schema(&self.subgraph_id)?;
-        let is_valid = validate_entity(&schema.document, &key, &entity).is_ok();
+        let is_valid = entity.validate(&schema.document, &key).is_ok();
         state.entity_cache.set(key.clone(), entity);
 
         validation_section.end();
@@ -193,7 +192,7 @@ impl<C: Blockchain> HostExports<C> {
                 .get(&key)
                 .map_err(|e| HostExportError::Unknown(e.into()))?
                 .expect("we just stored this entity");
-            validate_entity(&schema.document, &key, &entity)?;
+            entity.validate(&schema.document, &key)?;
         }
         Ok(())
     }
