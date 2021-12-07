@@ -2,7 +2,7 @@
 mod pbcodec;
 
 use graph::{
-    blockchain::Block as Blockchainblock,
+    blockchain::Block as BlockchainBlock,
     blockchain::BlockPtr,
     prelude::{hex, web3::types::H256, BlockNumber},
 };
@@ -53,7 +53,7 @@ impl<'a> From<&'a Block> for BlockPtr {
     }
 }
 
-impl Blockchainblock for Block {
+impl BlockchainBlock for Block {
     fn number(&self) -> i32 {
         BlockNumber::try_from(self.header().height).unwrap()
     }

@@ -1,12 +1,16 @@
 #[path = "protobuf/dfuse.ethereum.codec.v1.rs"]
 mod pbcodec;
 
-use graph::prelude::{
-    web3,
-    web3::types::TransactionReceipt as w3TransactionReceipt,
-    web3::types::{Bytes, H160, H2048, H256, H64, U256, U64},
-    EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock,
+use graph::{
+    blockchain::{Block as BlockchainBlock, BlockPtr},
+    prelude::{
+        web3,
+        web3::types::TransactionReceipt as w3TransactionReceipt,
+        web3::types::{Bytes, H160, H2048, H256, H64, U256, U64},
+        BlockNumber, EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock,
+    },
 };
+use std::convert::TryFrom;
 use std::sync::Arc;
 
 use crate::chain::BlockFinality;
@@ -292,6 +296,40 @@ impl Into<EthereumBlockWithCalls> for &Block {
                     })
                     .collect(),
             ),
+        }
+    }
+}
+
+impl From<Block> for BlockPtr {
+    fn from(b: Block) -> BlockPtr {
+        (&b).into()
+    }
+}
+
+impl<'a> From<&'a Block> for BlockPtr {
+    fn from(b: &'a Block) -> BlockPtr {
+        BlockPtr::from((H256::from_slice(b.hash.as_ref()), b.number))
+    }
+}
+
+impl BlockchainBlock for Block {
+    fn number(&self) -> i32 {
+        BlockNumber::try_from(self.number).unwrap()
+    }
+
+    fn ptr(&self) -> BlockPtr {
+        self.into()
+    }
+
+    fn parent_ptr(&self) -> Option<BlockPtr> {
+        let parent_hash = &self.header.as_ref().unwrap().parent_hash;
+
+        match parent_hash.len() {
+            0 => None,
+            _ => Some(BlockPtr::from((
+                H256::from_slice(parent_hash.as_ref()),
+                self.number - 1,
+            ))),
         }
     }
 }

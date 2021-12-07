@@ -4,6 +4,7 @@
 
 pub mod block_ingestor;
 pub mod block_stream;
+pub mod firehose_block_ingestor;
 pub mod firehose_block_stream;
 pub mod polling_block_stream;
 mod types;
