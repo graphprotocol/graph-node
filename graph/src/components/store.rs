@@ -1485,8 +1485,33 @@ impl EntityCache {
         self.entity_op(key, EntityOp::Remove);
     }
 
-    pub fn set(&mut self, key: EntityKey, entity: Entity) {
-        self.entity_op(key, EntityOp::Update(entity))
+    /// Store the `entity` under the given `key`. The `entity` may be only a
+    /// partial entity; the cache will ensure partial updates get merged
+    /// with existing data. The entity will be validated against the
+    /// subgraph schema, and any errors will result in an `Err` being
+    /// returned.
+    pub fn set(&mut self, key: EntityKey, entity: Entity) -> Result<(), anyhow::Error> {
+        let is_valid = entity
+            .validate(&self.store.input_schema().document, &key)
+            .is_ok();
+
+        self.entity_op(key.clone(), EntityOp::Update(entity));
+
+        // The updates we were given are not valid by themselves; force a
+        // lookup in the database and check again with an entity that merges
+        // the existing entity with the changes
+        if !is_valid {
+            let entity = self.get(&key)?.ok_or_else(|| {
+                anyhow!(
+                    "Failed to read entity {}[{}] back from cache",
+                    key.entity_type,
+                    key.entity_id
+                )
+            })?;
+            entity.validate(&self.store.input_schema().document, &key)?;
+        }
+
+        Ok(())
     }
 
     pub fn append(&mut self, operations: Vec<EntityOperation>) {

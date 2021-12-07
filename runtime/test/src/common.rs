@@ -57,7 +57,6 @@ fn mock_host_exports(
         network,
         Arc::new(templates),
         Arc::new(graph_core::LinkResolver::from(IpfsClient::localhost())),
-        store,
         ens_lookup,
     )
 }

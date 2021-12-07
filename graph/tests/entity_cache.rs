@@ -10,13 +10,27 @@ use std::sync::Arc;
 use graph::components::store::{EntityType, StoredDynamicDataSource, WritableStore};
 use graph::{
     components::store::{DeploymentId, DeploymentLocator},
-    prelude::{DeploymentHash, Entity, EntityCache, EntityKey, EntityModification, Value},
+    prelude::{anyhow, DeploymentHash, Entity, EntityCache, EntityKey, EntityModification, Value},
 };
 
 lazy_static! {
     static ref SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("entity_cache").unwrap();
     static ref DEPLOYMENT: DeploymentLocator =
         DeploymentLocator::new(DeploymentId::new(-12), SUBGRAPH_ID.clone());
+    static ref SCHEMA: Arc<Schema> = Arc::new(
+        Schema::parse(
+            "
+            type Band @entity {
+                id: ID!
+                name: String!
+                founded: Int
+                label: String
+            }
+            ",
+            SUBGRAPH_ID.clone(),
+        )
+        .expect("Test schema invalid")
+    );
 }
 
 struct MockStore {
@@ -64,8 +78,17 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn get(&self, _: &EntityKey) -> Result<Option<Entity>, StoreError> {
-        unimplemented!()
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+        match self.get_many_res.get(&key.entity_type) {
+            Some(entities) => Ok(entities
+                .iter()
+                .find(|entity| entity.id().ok().as_ref() == Some(&key.entity_id))
+                .cloned()),
+            None => Err(StoreError::Unknown(anyhow!(
+                "nothing for type {}",
+                key.entity_type
+            ))),
+        }
     }
 
     fn transact_block_operations(
@@ -112,7 +135,7 @@ impl WritableStore for MockStore {
     }
 
     fn input_schema(&self) -> Arc<Schema> {
-        unimplemented!()
+        SCHEMA.clone()
     }
 }
 
@@ -149,13 +172,15 @@ fn insert_modifications() {
         "mogwai",
         vec![("id", "mogwai".into()), ("name", "Mogwai".into())],
     );
-    cache.set(mogwai_key.clone(), mogwai_data.clone());
+    cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
 
     let (sigurros_key, sigurros_data) = make_band(
         "sigurros",
         vec![("id", "sigurros".into()), ("name", "Sigur Ros".into())],
     );
-    cache.set(sigurros_key.clone(), sigurros_data.clone());
+    cache
+        .set(sigurros_key.clone(), sigurros_data.clone())
+        .unwrap();
 
     let result = cache.as_modifications();
     assert_eq!(
@@ -213,7 +238,7 @@ fn overwrite_modifications() {
             ("founded", 1995.into()),
         ],
     );
-    cache.set(mogwai_key.clone(), mogwai_data.clone());
+    cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
 
     let (sigurros_key, sigurros_data) = make_band(
         "sigurros",
@@ -223,7 +248,9 @@ fn overwrite_modifications() {
             ("founded", 1994.into()),
         ],
     );
-    cache.set(sigurros_key.clone(), sigurros_data.clone());
+    cache
+        .set(sigurros_key.clone(), sigurros_data.clone())
+        .unwrap();
 
     let result = cache.as_modifications();
     assert_eq!(
@@ -273,14 +300,14 @@ fn consecutive_modifications() {
             ("label", "Rock Action Records".into()),
         ],
     );
-    cache.set(update_key.clone(), update_data.clone());
+    cache.set(update_key.clone(), update_data.clone()).unwrap();
 
     // Then, just reset the "label".
     let (update_key, update_data) = make_band(
         "mogwai",
         vec![("id", "mogwai".into()), ("label", Value::Null)],
     );
-    cache.set(update_key.clone(), update_data.clone());
+    cache.set(update_key.clone(), update_data.clone()).unwrap();
 
     // We expect a single overwrite modification for the above that leaves "id"
     // and "name" untouched, sets "founded" and removes the "label" field.

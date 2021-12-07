@@ -404,7 +404,7 @@ where
         let host_builder = graph_runtime_wasm::RuntimeHostBuilder::new(
             chain.runtime_adapter(),
             self.link_resolver.cheap_clone(),
-            subgraph_store,
+            subgraph_store.ens_lookup(),
         );
 
         let features = manifest.features.clone();
@@ -1198,7 +1198,7 @@ async fn update_proof_of_indexing(
             digest: updated_proof_of_indexing,
         };
 
-        entity_cache.set(entity_key, new_poi_entity);
+        entity_cache.set(entity_key, new_poi_entity)?;
     }
 
     Ok(())
