@@ -45,4 +45,8 @@ impl ExponentialBackoff {
         self.attempt += 1;
         delay
     }
+
+    pub fn reset(&mut self) {
+        self.attempt = 0;
+    }
 }

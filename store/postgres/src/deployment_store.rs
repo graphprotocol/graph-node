@@ -1321,48 +1321,43 @@ impl DeploymentStore {
                 // Deployment head (current_ptr) advanced more than the error.
                 // That means it's healthy, and the non-deterministic error got
                 // solved (didn't happen on another try).
-                //
-                // This should be the scenario where the unfail happens, however
-                // for now we unfail in all cases that non-deterministic errors
-                // were found and the deployment head advanced.
                 (Bound::Included(error_block_number), _)
                     if current_ptr.number >= error_block_number =>
                     {
+                        info!(
+                            self.logger,
+                            "Unfailing the deployment status";
+                            "subgraph_id" => deployment_id,
+                        );
+
+                        // Unfail the deployment.
+                        deployment::update_deployment_status(
+                            conn,
+                            deployment_id,
+                            deployment::SubgraphHealth::Healthy,
+                            None,
+                        )?;
+
+                        // Delete the fatal error.
+                        deployment::delete_error(conn, &subgraph_error.id)?;
+
+                        Ok(())
                     }
-                // The deployment head is still before where non-deterministic error happened.
-                //
-                // Technically we shouldn't unfail the subgraph and delete the error
-                // until it's head actually passed the error block range. But for
-                // now we'll only log this and keep the old behavior.
+                // NOOP, the deployment head is still before where non-deterministic error happened.
                 block_range => {
                     info!(
                         self.logger,
-                        "Subgraph error is still ahead of deployment head";
+                        "Subgraph error is still ahead of deployment head, nothing to unfail";
                         "subgraph_id" => deployment_id,
                         "block_number" => format!("{}", current_ptr.number),
                         "block_hash" => format!("{}", current_ptr.hash),
                         "error_block_range" => format!("{:?}", block_range),
                         "error_block_hash" => subgraph_error.block_hash.as_ref().map(|hash| format!("0x{}", hex::encode(hash))),
                     );
+
+                    Ok(())
                 }
-            };
-
-            info!(
-                self.logger,
-                "Unfailing the deployment status";
-                "subgraph_id" => deployment_id,
-            );
-
-            // Unfail the deployment.
-            deployment::update_deployment_status(
-                conn,
-                deployment_id,
-                deployment::SubgraphHealth::Healthy,
-                None,
-            )?;
-
-            // Delete the fatal error.
-            deployment::delete_error(conn, &subgraph_error.id)
+            }
         })
     }
 
@@ -1378,5 +1373,14 @@ impl DeploymentStore {
                   "error" => e.to_string(),
                   "shard" => self.pool.shard.as_str())
         });
+    }
+
+    pub(crate) async fn health(
+        &self,
+        id: &DeploymentHash,
+    ) -> Result<deployment::SubgraphHealth, StoreError> {
+        let id = id.clone();
+        self.with_conn(move |conn, _| deployment::health(&conn, &id).map_err(Into::into))
+            .await
     }
 }

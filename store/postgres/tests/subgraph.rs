@@ -966,15 +966,14 @@ fn fail_unfail_non_deterministic_error_noop() {
         // Fail the subgraph with a non-deterministic error, but with an advanced block.
         writable.fail_subgraph(error).await.unwrap();
 
-        // Since the block range of the block won't match the deployment head, this would be NOOP,
-        // but we're skipping the confidence check for now.
+        // Since the block range of the block won't match the deployment head, this will be NOOP.
         writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
 
-        // Unfail ocurrs as expected.
-        assert_eq!(count(), 1);
+        // State continues the same besides a new error added to the database.
+        assert_eq!(count(), 2);
         let vi = get_version_info(&store, NAME);
         assert_eq!(&*NAME, vi.deployment_id.as_str());
-        assert_eq!(false, vi.failed);
+        assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
 
         test_store::remove_subgraphs();
