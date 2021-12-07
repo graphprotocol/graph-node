@@ -25,7 +25,7 @@ pub fn mock_host_exports(
     data_source: DataSource,
     store: Arc<impl SubgraphStore>,
     // api_version: Version,
-    data_source_templates: Arc<Vec<DataSourceTemplate>>
+    data_source_templates: Vec<DataSourceTemplate>
 ) -> HostExports<Chain> {
     // let templates = vec![DataSourceTemplate {
     //     kind: String::from("ethereum/contract"),
@@ -55,7 +55,7 @@ pub fn mock_host_exports(
         subgraph_id,
         &data_source,
         network,
-        data_source_templates,
+        Arc::new(data_source_templates),
         Arc::new(graph_core::LinkResolver::from(IpfsClient::localhost())),
         store,
     )
@@ -87,7 +87,7 @@ pub fn mock_context(
     data_source: DataSource,
     store: Arc<impl SubgraphStore>,
     // api_version: Version,
-    data_source_templates: Arc<Vec<DataSourceTemplate>>
+    data_source_templates: &Vec<DataSourceTemplate>
 ) -> MappingContext<Chain> {
     MappingContext {
         logger: Logger::root(slog::Discard, o!()),
@@ -100,7 +100,7 @@ pub fn mock_context(
             data_source,
             store.clone(),
             // api_version,
-            data_source_templates
+            data_source_templates.clone()
         )),
         state: BlockState::new(
             futures03::executor::block_on(store.writable(LOGGER.clone(), deployment.id)).unwrap(),
