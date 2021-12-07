@@ -535,7 +535,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolve
     }
 
     let (start_block, base_block) =
-        resolve_subgraph_chain_blocks(&manifest, chain.cheap_clone(), &logger.clone()).await?;
+        resolve_subgraph_chain_blocks(&manifest, chain, &logger.clone()).await?;
 
     info!(
         logger,

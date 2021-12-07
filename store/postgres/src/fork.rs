@@ -143,12 +143,12 @@ query Query ($id: String) {{
         fields: &Vec<Field>,
     ) -> Result<Entity, StoreError> {
         let json: serde_json::Value = serde_json::from_str(raw_json).unwrap();
-        let entity = &json["data"][entity_type.to_lowercase()];
+        let json = &json["data"][entity_type.to_lowercase()];
 
         let map: HashMap<Attribute, Value> = {
             let mut map = HashMap::new();
             for f in fields {
-                let value = entity.get(&f.name).unwrap().clone();
+                let value = json.get(&f.name).unwrap().clone();
                 let value = Value::from_query_value(&RValue::from(value), &f.field_type).map_err(|e| {
                     StoreError::Unknown(anyhow!(
                         "Fork::extract_entity: Unexpected! Failed to convert value to type `{}`: {}",
