@@ -1083,6 +1083,8 @@ pub trait WritableStore: Send + Sync + 'static {
     fn shard(&self) -> &str;
 
     async fn health(&self, id: &DeploymentHash) -> Result<SubgraphHealth, StoreError>;
+
+    fn input_schema(&self) -> Arc<Schema>;
 }
 
 #[async_trait]
@@ -1275,6 +1277,10 @@ impl WritableStore for MockStore {
     }
 
     async fn health(&self, _: &DeploymentHash) -> Result<SubgraphHealth, StoreError> {
+        unimplemented!()
+    }
+
+    fn input_schema(&self) -> Arc<Schema> {
         unimplemented!()
     }
 }
