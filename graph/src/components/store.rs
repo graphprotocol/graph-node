@@ -912,12 +912,18 @@ impl Display for DeploymentLocator {
     }
 }
 
+/// A special trait to handle looking up ENS names from special rainbow
+/// tables that need to be manually loaded into the system
+pub trait EnsLookup: Send + Sync + 'static {
+    /// Find the reverse of keccak256 for `hash` through looking it up in the
+    /// rainbow table.
+    fn find_name(&self, hash: &str) -> Result<Option<String>, StoreError>;
+}
+
 /// Common trait for store implementations.
 #[async_trait]
 pub trait SubgraphStore: Send + Sync + 'static {
-    /// Find the reverse of keccak256 for `hash` through looking it up in the
-    /// rainbow table.
-    fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, StoreError>;
+    fn ens_lookup(&self) -> Arc<dyn EnsLookup>;
 
     /// Check if the store is accepting queries for the specified subgraph.
     /// May return true even if the specified subgraph is not currently assigned to an indexing
@@ -1121,7 +1127,7 @@ pub type PoolWaitStats = Arc<RwLock<MovingStats>>;
 // The store trait must be implemented manually because mockall does not support async_trait, nor borrowing from arguments.
 #[async_trait]
 impl SubgraphStore for MockStore {
-    fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, StoreError> {
+    fn ens_lookup(&self) -> Arc<dyn EnsLookup> {
         unimplemented!()
     }
 

@@ -12,7 +12,10 @@ use graph::{
     cheap_clone::CheapClone,
     components::{
         server::index_node::VersionInfo,
-        store::{self, DeploymentLocator, EntityType, WritableStore as WritableStoreTrait},
+        store::{
+            self, DeploymentLocator, EnsLookup as EnsLookupTrait, EntityType,
+            WritableStore as WritableStoreTrait,
+        },
     },
     constraint_violation,
     data::query::QueryTarget,
@@ -944,10 +947,23 @@ impl SubgraphStoreInner {
     }
 }
 
+struct EnsLookup {
+    primary: ConnectionPool,
+}
+
+impl EnsLookupTrait for EnsLookup {
+    fn find_name(&self, hash: &str) -> Result<Option<String>, StoreError> {
+        let conn = self.primary.get()?;
+        primary::Connection::new(conn).find_ens_name(hash)
+    }
+}
+
 #[async_trait::async_trait]
 impl SubgraphStoreTrait for SubgraphStore {
-    fn find_ens_name(&self, hash: &str) -> Result<Option<String>, StoreError> {
-        self.primary_conn()?.find_ens_name(hash)
+    fn ens_lookup(&self) -> Arc<dyn EnsLookupTrait> {
+        Arc::new(EnsLookup {
+            primary: self.mirror.primary().clone(),
+        })
     }
 
     // FIXME: This method should not get a node_id
