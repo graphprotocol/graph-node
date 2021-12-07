@@ -969,10 +969,11 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// adding a root query type etc. to it
     fn api_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError>;
 
-    /// Return a `SubgraphFork` that is used for fetching remotely stored entities.
-    /// Forking a subgraph represents the process of lazily copying a remote
-    /// subgraph's store by GraphQL-querying it's endpoint. The returned subgraph fork
-    /// is designated for debugging purposes only.
+    /// Return a `SubgraphFork` that is used for debugging purposes only.
+    ///
+    /// Forking a subgraph represents the process of lazily fetching entities
+    /// from another subgraph's store. In the current implementation, the subgraph
+    /// is a remote one and the fetching is done by GraphQL-qurying its store.
     fn debug_fork(
         &self,
         subgraph_id: &DeploymentHash,

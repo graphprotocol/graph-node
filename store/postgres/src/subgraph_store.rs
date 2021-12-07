@@ -188,7 +188,9 @@ pub mod unused {
 #[derive(Clone)]
 pub struct SubgraphStore {
     inner: Arc<SubgraphStoreInner>,
-    // TODO: add docs
+    /// Base URL for the GraphQL endpoint from which
+    /// subgraph forks will fetch entities.
+    /// Example: https://api.thegraph.com/subgraphs/
     fork_base: Option<Url>,
 }
 
@@ -995,7 +997,7 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     fn input_schema(&self, id: &DeploymentHash) -> Result<Arc<Schema>, StoreError> {
         let (store, site) = self.store(&id)?;
-        let info = store.subgraph_info(site.as_ref())?;
+        let info = store.subgraph_info(&site)?;
         Ok(info.input)
     }
 
@@ -1010,10 +1012,10 @@ impl SubgraphStoreTrait for SubgraphStore {
         id: &DeploymentHash,
         logger: Logger,
     ) -> Result<Option<Arc<dyn SubgraphFork>>, StoreError> {
-        let (store, site) = self.store(id)?;
+        let (store, site) = self.store(&id)?;
         let info = store.subgraph_info(&site)?;
         let fork_id = info.debug_fork;
-        let schema = self.input_schema(id)?;
+        let schema = info.input;
 
         match (self.fork_base.as_ref(), fork_id) {
             (Some(b), Some(f)) => Ok(Some(Arc::new(fork::SubgraphFork::new(

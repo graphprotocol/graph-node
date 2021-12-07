@@ -42,12 +42,11 @@ pub struct SubgraphFork {
 impl SubgraphForkTrait for SubgraphFork {
     fn fetch(&self, entity_type: String, id: String) -> Result<Option<Entity>, StoreError> {
         if self.fetched_ids.contains(&id) {
+            info!(self.logger, "Already fetched entity! Abort!"; "entity_type" => entity_type, "id" => id);
             return Ok(None);
         }
 
-        // TODO: Better logging.
-        info!(self.logger, "Fetching entity"; "entity_type" => &entity_type, "id" => &id);
-        info!(self.logger, "Fetching entity from {}", &self.fork_url);
+        info!(self.logger, "Fetching entity from {}", &self.fork_url; "entity_type" => &entity_type, "id" => &id);
 
         let (query, fields) = self.infer_query(&entity_type, id)?;
         let raw_json = block_on(self.send(&query))?;
@@ -115,18 +114,16 @@ impl SubgraphFork {
         }
 
         let fields = &entity.unwrap().fields;
+        let names: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
 
         let query = Query {
-            query: SubgraphFork::get_query_string(
-                &entity_type.to_lowercase(),
-                fields.iter().map(|f| f.name.as_str()).collect(),
-            ),
+            query: SubgraphFork::query_string(&entity_type.to_lowercase(), &names),
             variables: Variables { id },
         };
         return Ok((query, fields));
     }
 
-    fn get_query_string(entity_type: &str, fields: Vec<&str>) -> String {
+    fn query_string(entity_type: &str, fields: &[&str]) -> String {
         format!(
             "\
 query Query ($id: String) {{

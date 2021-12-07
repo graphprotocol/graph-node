@@ -162,8 +162,14 @@ async fn main() {
 
     // Obtain the fork base URL
     let fork_base = match &opt.fork_base {
-        Some(url) => Some(Url::parse(url).expect("Failed to parse fork base URL")),
-        None => None,
+        Some(url) => Some(Url::parse(url).expect("Failed to parse the fork base URL")),
+        None => {
+            warn!(
+                logger,
+                "No fork base URL specified, subgraph forking is disabled"
+            );
+            None
+        }
     };
 
     info!(logger, "Starting up");

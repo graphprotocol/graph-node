@@ -344,6 +344,11 @@ where
 
         let templates = Arc::new(manifest.templates.clone());
 
+        // Obtain the debug fork from the subgraph store
+        let debug_fork = self
+            .subgraph_store
+            .debug_fork(&deployment.hash, logger.clone())?;
+
         // Create a subgraph instance from the manifest; this moves
         // ownership of the manifest and host builder into the new instance
         let stopwatch_metrics = StopwatchMetrics::new(
@@ -385,10 +390,6 @@ where
             .and_then(|ptr| ptr.map(|ptr| ptr.number))
             .unwrap_or(0) as f64;
         block_stream_metrics.deployment_head.set(deployment_head);
-
-        let debug_fork = self
-            .subgraph_store
-            .debug_fork(&deployment.hash, logger.clone())?;
 
         let host_builder = graph_runtime_wasm::RuntimeHostBuilder::new(
             chain.runtime_adapter(),
