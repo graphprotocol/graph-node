@@ -107,10 +107,12 @@ lazy_static! {
         .unwrap_or(Vec::new())
     };
 
-    static ref MAX_CONCURRENT_JSON_RPC_CALLS: usize = std::env::var("GRAPH_MAX_CONCURRENT_JSON_RPC_CALLS")
-            .unwrap_or("1000".into())
-            .parse::<usize>()
-            .expect("invalid GRAPH_MAX_CONCURRENT_JSON_RPC_CALLS env var");
+    static ref MAX_CONCURRENT_JSON_RPC_CALLS: usize = std::env::var(
+        "GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS"
+    )
+        .unwrap_or("1000".into())
+        .parse::<usize>()
+        .expect("invalid GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS env var");
 
 }
 

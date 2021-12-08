@@ -34,8 +34,9 @@ those.
   subgraph if the limit is reached, but will simply restart the syncing step,
   so it can be low. This limit guards against scenarios such as requesting a
   block hash that has been reorged. Defaults to 10.
-- `GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS`: The maximum
-   number of concurrent requests made against Ethereum during block ingestion.
+- `GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS`:
+   The maximum number of concurrent requests made against Ethereum for
+   requesting transaction receipts during block ingestion.
    Defaults to 1,000.
 - `GRAPH_ETHEREUM_CLEANUP_BLOCKS` : Set to `true` to clean up unneeded
   blocks from the cache in the database. When this is `false` or unset (the
