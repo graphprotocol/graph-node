@@ -114,6 +114,10 @@ lazy_static! {
         .parse::<usize>()
         .expect("invalid GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS env var");
 
+    static ref FETCH_RECEIPTS_CONCURRENTLY: bool = std::env::var("GRAPH_EXPERIMENTAL_FETCH_TXN_RECEIPTS_CONCURRENTLY")
+            .is_ok();
+
+
 }
 
 /// Gas limit for `eth_call`. The value of 50_000_000 is a protocol-wide parameter so this
@@ -1082,21 +1086,23 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .map(|txn| txn.hash.clone())
             .collect();
 
-        let hash_stream = graph::tokio_stream::iter(hashes);
-
-        let receipt_stream = graph::tokio_stream::StreamExt::map(hash_stream, move |tx_hash| {
-            resolve_single_transaction_receipt_with_retry(
-                web3.cheap_clone(),
-                tx_hash,
-                block_hash,
-                logger.cheap_clone(),
+        let receipts_future = if *FETCH_RECEIPTS_CONCURRENTLY {
+            let hash_stream = graph::tokio_stream::iter(hashes);
+            let receipt_stream = graph::tokio_stream::StreamExt::map(hash_stream, move |tx_hash| {
+                resolve_single_transaction_receipt_with_retry(
+                    web3.cheap_clone(),
+                    tx_hash,
+                    block_hash,
+                    logger.cheap_clone(),
+                )
+            })
+            .buffered(*MAX_CONCURRENT_JSON_RPC_CALLS);
+            graph::tokio_stream::StreamExt::collect::<Result<Vec<TransactionReceipt>, IngestorError>>(
+                receipt_stream,
             )
-        })
-        .buffered(*MAX_CONCURRENT_JSON_RPC_CALLS);
-
-        let receipts_future = graph::tokio_stream::StreamExt::collect::<
-            Result<Vec<TransactionReceipt>, IngestorError>,
-        >(receipt_stream);
+        } else {
+            todo!("use previous batching implementation here")
+        };
 
         let block_future =
             futures03::TryFutureExt::map_ok(receipts_future, move |transaction_receipts| {
