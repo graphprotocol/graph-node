@@ -1083,7 +1083,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         let hash_stream = graph::tokio_stream::iter(hashes);
 
         let receipt_stream = graph::tokio_stream::StreamExt::map(hash_stream, move |tx_hash| {
-            resolve_transaction_receipt(
+            resolve_single_transaction_receipt_with_retry(
                 web3.cheap_clone(),
                 tx_hash,
                 block_hash,
@@ -1791,23 +1791,34 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     Ok(block)
 }
 
-async fn resolve_transaction_receipt(
+async fn resolve_single_transaction_receipt_with_retry(
     web3: Arc<Web3<Transport>>,
     transaction_hash: H256,
     block_hash: H256,
     logger: Logger,
 ) -> Result<TransactionReceipt, IngestorError> {
-    let retry_result = retry("batch eth_getTransactionReceipt RPC call", &logger)
+    retry("batch eth_getTransactionReceipt RPC call", &logger)
         .limit(*REQUEST_RETRIES)
         .no_logging()
         .timeout_secs(*JSON_RPC_TIMEOUT)
         .run(move || web3.eth().transaction_receipt(transaction_hash))
-        .await;
+        .await
+        .or_else(|_timeout| Err(anyhow::anyhow!(block_hash).into()))
+        .and_then(move |some_receipt| {
+            resolve_transaction_receipt(some_receipt, transaction_hash, block_hash, logger)
+        })
+}
 
-    match retry_result {
+fn resolve_transaction_receipt(
+    transaction_receipt: Option<TransactionReceipt>,
+    transaction_hash: H256,
+    block_hash: H256,
+    logger: Logger,
+) -> Result<TransactionReceipt, IngestorError> {
+    match transaction_receipt {
         // A receipt might be missing because the block was uncled, and the transaction never
         // made it back into the main chain.
-        Ok(Some(receipt)) => {
+        Some(receipt) => {
             // Check if the receipt has a block hash and is for the right block. Parity nodes seem
             // to return receipts with no block hash when a transaction is no longer in the main
             // chain, so treat that case the same as a receipt being absent entirely.
@@ -1830,7 +1841,7 @@ async fn resolve_transaction_receipt(
                 Ok(receipt)
             }
         }
-        Ok(None) => {
+        None => {
             // No receipt was returned.
             //
             // This can be because the Ethereum node no longer considers this block to be part of
@@ -1844,10 +1855,5 @@ async fn resolve_transaction_receipt(
                 transaction_hash,
             ))
         }
-        Err(_timeout) => Err(anyhow::anyhow!(
-            "Ethereum node took too long to return receipts for block {}",
-            block_hash
-        )
-        .into()),
     }
 }
