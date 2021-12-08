@@ -1,10 +1,15 @@
-use graph::prelude::SubgraphStore;
+use async_trait::async_trait;
+use graph::blockchain::BlockPtr;
+use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
+use graph::prelude::{Schema, StopwatchMetrics, StoreError};
 use lazy_static::lazy_static;
-use slog::{o, Logger};
+use mockall::predicate::*;
+use mockall::*;
+use slog::Logger;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use graph::{components::store::EntityType, mock::MockStore};
+use graph::components::store::{EntityType, StoredDynamicDataSource, WritableStore};
 use graph::{
     components::store::{DeploymentId, DeploymentLocator},
     prelude::{DeploymentHash, Entity, EntityCache, EntityKey, EntityModification, Value},
@@ -14,6 +19,102 @@ lazy_static! {
     static ref SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("entity_cache").unwrap();
     static ref DEPLOYMENT: DeploymentLocator =
         DeploymentLocator::new(DeploymentId::new(-12), SUBGRAPH_ID.clone());
+}
+
+mock! {
+    pub Store {
+        fn get_many_mock<'a>(
+            &self,
+            _ids_for_type: BTreeMap<&'a EntityType, Vec<&'a str>>,
+        ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError>;
+    }
+}
+
+// The store trait must be implemented manually because mockall does not support async_trait, nor borrowing from arguments.
+#[async_trait]
+impl WritableStore for MockStore {
+    fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
+        unimplemented!()
+    }
+
+    fn block_cursor(&self) -> Result<Option<String>, StoreError> {
+        unimplemented!()
+    }
+
+    fn start_subgraph_deployment(&self, _: &Logger) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn revert_block_operations(&self, _: BlockPtr) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn unfail_deterministic_error(&self, _: &BlockPtr, _: &BlockPtr) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn unfail_non_deterministic_error(&self, _: &BlockPtr) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    async fn fail_subgraph(&self, _: SubgraphError) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError> {
+        unimplemented!()
+    }
+
+    fn get(&self, _: &EntityKey) -> Result<Option<Entity>, StoreError> {
+        unimplemented!()
+    }
+
+    fn transact_block_operations(
+        &self,
+        _: BlockPtr,
+        _: Option<String>,
+        _: Vec<EntityModification>,
+        _: StopwatchMetrics,
+        _: Vec<StoredDynamicDataSource>,
+        _: Vec<SubgraphError>,
+    ) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn get_many(
+        &self,
+        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+        self.get_many_mock(ids_for_type)
+    }
+
+    async fn is_deployment_synced(&self) -> Result<bool, StoreError> {
+        unimplemented!()
+    }
+
+    fn unassign_subgraph(&self) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    async fn load_dynamic_data_sources(&self) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
+        unimplemented!()
+    }
+
+    fn deployment_synced(&self) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn shard(&self) -> &str {
+        unimplemented!()
+    }
+
+    async fn health(&self, _: &DeploymentHash) -> Result<SubgraphHealth, StoreError> {
+        unimplemented!()
+    }
+
+    fn input_schema(&self) -> Arc<Schema> {
+        unimplemented!()
+    }
 }
 
 fn make_band(id: &'static str, data: Vec<(&str, Value)>) -> (EntityKey, Entity) {
@@ -30,11 +131,7 @@ fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModificati
 
 #[tokio::test]
 async fn empty_cache_modifications() {
-    let logger = Logger::root(slog::Discard, o!());
-    let store = Arc::new(MockStore::new())
-        .writable(logger, DEPLOYMENT.id)
-        .await
-        .unwrap();
+    let store = Arc::new(MockStore::new());
     let cache = EntityCache::new(store.clone());
     let result = cache.as_modifications();
     assert_eq!(result.unwrap().modifications, vec![]);
