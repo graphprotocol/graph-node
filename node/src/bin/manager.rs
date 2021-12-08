@@ -144,6 +144,17 @@ pub enum Command {
         /// The deployments to rewind
         names: Vec<String>,
     },
+    /// Runs a suite of tests around a specific subgraph
+    TestRun {
+        /// Network name (must fit one of the chain)
+        network_name: String,
+
+        /// Subgraph in the form `<IPFS Hash>` or `<name>:<IPFS Hash>`
+        subgraph: String,
+
+        /// Number of block to process
+        stop_block: i32,
+    },
     /// Check and interrogate the configuration
     ///
     /// Print information about a configuration file without
@@ -374,6 +385,18 @@ impl Context {
         }
     }
 
+    fn metrics_registry(&self) -> Arc<MetricsRegistry> {
+        self.registry.clone()
+    }
+
+    fn config(&self) -> Cfg {
+        self.config.clone()
+    }
+
+    fn node_id(&self) -> NodeId {
+        self.node_id.clone()
+    }
+
     fn primary_pool(self) -> ConnectionPool {
         let primary = self.config.primary_store();
         let pool = StoreBuilder::main_pool(
@@ -581,6 +604,30 @@ async fn main() {
                 force,
                 sleep,
             )
+        }
+        TestRun {
+            network_name,
+            subgraph,
+            stop_block,
+        } => {
+            let logger = ctx.logger.clone();
+            let config = ctx.config();
+            let registry = ctx.metrics_registry().clone();
+            let node_id = ctx.node_id().clone();
+            let (store, primary) = ctx.store_and_primary();
+
+            commands::test_run::run(
+                primary,
+                store,
+                logger,
+                network_name,
+                config,
+                registry,
+                node_id,
+                subgraph,
+                stop_block,
+            )
+            .await
         }
         Listen(cmd) => {
             use ListenCommand::*;

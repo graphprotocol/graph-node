@@ -9,5 +9,6 @@ pub mod query;
 pub mod remove;
 pub mod rewind;
 pub mod stats;
+pub mod test_run;
 pub mod txn_speed;
 pub mod unused_deployments;

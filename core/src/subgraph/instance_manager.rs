@@ -60,6 +60,7 @@ struct IndexingInputs<C: Blockchain> {
     deployment: DeploymentLocator,
     features: BTreeSet<SubgraphFeature>,
     start_blocks: Vec<BlockNumber>,
+    stop_block: Option<BlockNumber>,
     store: Arc<dyn WritableStore>,
     triggers_adapter: Arc<C::TriggersAdapter>,
     chain: Arc<C>,
@@ -192,6 +193,7 @@ where
         self: Arc<Self>,
         loc: DeploymentLocator,
         manifest: serde_yaml::Mapping,
+        stop_block: Option<BlockNumber>,
     ) {
         let logger = self.logger_factory.subgraph_logger(&loc);
         let err_logger = logger.clone();
@@ -201,13 +203,13 @@ where
             match BlockchainKind::from_manifest(&manifest)? {
                 BlockchainKind::Ethereum => {
                     instance_manager
-                        .start_subgraph_inner::<graph_chain_ethereum::Chain>(logger, loc, manifest)
+                        .start_subgraph_inner::<graph_chain_ethereum::Chain>(logger, loc, manifest, stop_block)
                         .await
                 }
 
                 BlockchainKind::Near => {
                     instance_manager
-                        .start_subgraph_inner::<graph_chain_near::Chain>(logger, loc, manifest)
+                        .start_subgraph_inner::<graph_chain_near::Chain>(logger, loc, manifest, stop_block)
                         .await
                 }
             }
@@ -274,6 +276,7 @@ where
         logger: Logger,
         deployment: DeploymentLocator,
         manifest: serde_yaml::Mapping,
+        stop_block: Option<BlockNumber>,
     ) -> Result<(), Error> {
         let subgraph_store = self.subgraph_store.cheap_clone();
         let registry = self.metrics_registry.cheap_clone();
@@ -412,6 +415,7 @@ where
                 deployment: deployment.clone(),
                 features,
                 start_blocks,
+                stop_block,
                 store,
                 triggers_adapter,
                 chain,
@@ -619,6 +623,17 @@ where
             };
 
             let block_ptr = block.ptr();
+
+
+            match ctx.inputs.stop_block.clone() {
+                Some(stop_block) => {
+                    if block_ptr.number > stop_block {
+                        info!(&logger, "stop block reached for subgraph");
+                        return Ok(());
+                    }
+                }
+                _ => {}
+            }
 
             if block.trigger_count() > 0 {
                 subgraph_metrics

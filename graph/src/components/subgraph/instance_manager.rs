@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use crate::prelude::BlockNumber;
 
 use crate::components::store::DeploymentLocator;
 
@@ -13,6 +14,7 @@ pub trait SubgraphInstanceManager: Send + Sync + 'static {
         self: Arc<Self>,
         deployment: DeploymentLocator,
         manifest: serde_yaml::Mapping,
+        stop_block: Option<BlockNumber>,
     );
     fn stop_subgraph(&self, deployment: DeploymentLocator);
 }
