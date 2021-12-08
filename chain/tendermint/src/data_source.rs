@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 use std::{convert::TryFrom, sync::Arc};
 
 use anyhow::{Error, Result};
+use itertools::Itertools;
+
 use graph::{
     blockchain::{self, Block, Blockchain, TriggerWithHandler},
     components::store::StoredDynamicDataSource,
@@ -149,7 +151,20 @@ impl blockchain::DataSource<Chain> for DataSource {
             errors.push(anyhow!("data source has duplicated block handlers"));
         }
 
-        // TODO: Ensure there is only one event handler for each event type
+        // Ensure there is only one event handler for each event type
+        let event_types = self.mapping
+            .event_handlers
+            .iter()
+            .map(|handler| handler.event.clone() )
+            .collect::<Vec<_>>();
+
+        let unique_event_types = event_types.iter()
+            .unique()
+            .collect::<Vec<_>>();
+
+        if event_types.len() > unique_event_types.len() {
+            errors.push(anyhow!("data source has duplicated event handlers"))
+        }
 
         errors
     }
@@ -191,8 +206,7 @@ impl DataSource {
     }
 
     fn handler_for_event(&self, event: &codec::Event) -> Option<MappingEventHandler> {
-        self
-            .mapping
+        self.mapping
             .event_handlers
             .iter()
             .find(|handler| event.eventtype == handler.event)
