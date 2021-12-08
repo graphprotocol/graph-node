@@ -7,6 +7,7 @@ use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::prelude::ethabi::ParamType;
 use graph::prelude::ethabi::Token;
 use graph::prelude::tokio::try_join;
+use graph::prelude::web3::transports::Batch;
 use graph::prelude::StopwatchMetrics;
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
@@ -1099,9 +1100,9 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .buffered(*MAX_CONCURRENT_JSON_RPC_CALLS);
             graph::tokio_stream::StreamExt::collect::<Result<Vec<TransactionReceipt>, IngestorError>>(
                 receipt_stream,
-            )
+            ).boxed()
         } else {
-            todo!("use previous batching implementation here")
+            resolve_transaction_receipts_in_batch(web3, hashes, block_hash, logger).boxed()
         };
 
         let block_future =
@@ -1799,19 +1800,50 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     Ok(block)
 }
 
+async fn resolve_transaction_receipts_in_batch(
+    web3: Arc<Web3<Transport>>,
+    hashes: Vec<H256>,
+    block_hash: H256,
+    logger: Logger,
+) -> Result<Vec<TransactionReceipt>, IngestorError> {
+    let batching_web3 = Web3::new(Batch::new(web3.transport().clone()));
+    let receipt_futures = hashes
+        .into_iter()
+        .map(|hash| {
+            let logger = logger.cheap_clone();
+            batching_web3
+                .eth()
+                .transaction_receipt(hash.clone())
+                .map_err(|web3_error| IngestorError::from(web3_error))
+                .and_then(move |some_receipt| async move {
+                    resolve_transaction_receipt(some_receipt, hash, block_hash, logger)
+                })
+        })
+        .collect::<Vec<_>>();
+
+    batching_web3.transport().submit_batch().await?;
+
+    let mut collected = vec![];
+    for receipt in receipt_futures.into_iter() {
+        collected.push(receipt.await?)
+    }
+    Ok(collected)
+}
+
 async fn resolve_single_transaction_receipt_with_retry(
     web3: Arc<Web3<Transport>>,
     transaction_hash: H256,
     block_hash: H256,
     logger: Logger,
 ) -> Result<TransactionReceipt, IngestorError> {
+    let logger = logger.cheap_clone();
     retry("batch eth_getTransactionReceipt RPC call", &logger)
         .limit(*REQUEST_RETRIES)
         .no_logging()
         .timeout_secs(*JSON_RPC_TIMEOUT)
-        .run(move || web3.eth().transaction_receipt(transaction_hash))
+        .run(move || web3.eth().transaction_receipt(transaction_hash).boxed())
         .await
-        .or_else(|_timeout| Err(anyhow::anyhow!(block_hash).into()))
+        .map_err(|_timeout| anyhow!(block_hash).into())
         .and_then(move |some_receipt| {
             resolve_transaction_receipt(some_receipt, transaction_hash, block_hash, logger)
         })
@@ -1844,7 +1876,7 @@ fn resolve_transaction_receipt(
                 // considers this block to be in the main chain. Nothing we can do from here except
                 // give up trying to ingest this block. There is no way to get the transaction
                 // receipt from this block.
-                Err(IngestorError::BlockUnavailable(block_hash))
+                Err(IngestorError::BlockUnavailable(block_hash.clone()))
             } else {
                 Ok(receipt)
             }
