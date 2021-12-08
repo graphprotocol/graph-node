@@ -2,8 +2,6 @@ use futures::stream::poll_fn;
 use futures::{Async, Poll, Stream};
 use graphql_parser::schema as s;
 use lazy_static::lazy_static;
-use mockall::predicate::*;
-use mockall::*;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
 use std::collections::btree_map::Entry;
@@ -1113,15 +1111,6 @@ pub trait QueryStoreManager: Send + Sync + 'static {
         target: QueryTarget,
         for_subscription: bool,
     ) -> Result<Arc<dyn QueryStore + Send + Sync>, QueryExecutionError>;
-}
-
-mock! {
-    pub Store {
-        fn get_many_mock<'a>(
-            &self,
-            _ids_for_type: BTreeMap<&'a EntityType, Vec<&'a str>>,
-        ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError>;
-    }
 }
 
 // The type that the connection pool uses to track wait times for

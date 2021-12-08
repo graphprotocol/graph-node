@@ -3,8 +3,6 @@ use graph::blockchain::BlockPtr;
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
 use graph::prelude::{Schema, StopwatchMetrics, StoreError};
 use lazy_static::lazy_static;
-use mockall::predicate::*;
-use mockall::*;
 use slog::Logger;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -21,12 +19,13 @@ lazy_static! {
         DeploymentLocator::new(DeploymentId::new(-12), SUBGRAPH_ID.clone());
 }
 
-mock! {
-    pub Store {
-        fn get_many_mock<'a>(
-            &self,
-            _ids_for_type: BTreeMap<&'a EntityType, Vec<&'a str>>,
-        ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError>;
+struct MockStore {
+    get_many_res: BTreeMap<EntityType, Vec<Entity>>,
+}
+
+impl MockStore {
+    fn new(get_many_res: BTreeMap<EntityType, Vec<Entity>>) -> Self {
+        Self { get_many_res }
     }
 }
 
@@ -83,9 +82,9 @@ impl WritableStore for MockStore {
 
     fn get_many(
         &self,
-        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+        _ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
-        self.get_many_mock(ids_for_type)
+        Ok(self.get_many_res.clone())
     }
 
     async fn is_deployment_synced(&self) -> Result<bool, StoreError> {
@@ -131,7 +130,7 @@ fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModificati
 
 #[tokio::test]
 async fn empty_cache_modifications() {
-    let store = Arc::new(MockStore::new());
+    let store = Arc::new(MockStore::new(BTreeMap::new()));
     let cache = EntityCache::new(store.clone());
     let result = cache.as_modifications();
     assert_eq!(result.unwrap().modifications, vec![]);
@@ -139,13 +138,9 @@ async fn empty_cache_modifications() {
 
 #[test]
 fn insert_modifications() {
-    let mut store = MockStore::new();
-
     // Return no entities from the store, forcing the cache to treat any `set`
     // operation as an insert.
-    store
-        .expect_get_many_mock()
-        .returning(|_| Ok(BTreeMap::new()));
+    let store = MockStore::new(BTreeMap::new());
 
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store.clone());
@@ -178,33 +173,34 @@ fn insert_modifications() {
     );
 }
 
+fn entity_version_map(
+    entity_type: &str,
+    entities: Vec<Entity>,
+) -> BTreeMap<EntityType, Vec<Entity>> {
+    let mut map = BTreeMap::new();
+    map.insert(EntityType::from(entity_type), entities);
+    map
+}
+
 #[test]
 fn overwrite_modifications() {
-    let mut store = MockStore::new();
-
     // Pre-populate the store with entities so that the cache treats
     // every set operation as an overwrite.
-    store.expect_get_many_mock().returning(|_| {
-        let mut map = BTreeMap::new();
-
-        map.insert(
-            EntityType::from("Band"),
-            vec![
-                make_band(
-                    "mogwai",
-                    vec![("id", "mogwai".into()), ("name", "Mogwai".into())],
-                )
-                .1,
-                make_band(
-                    "sigurros",
-                    vec![("id", "sigurros".into()), ("name", "Sigur Ros".into())],
-                )
-                .1,
-            ],
-        );
-
-        Ok(map)
-    });
+    let store = {
+        let entities = vec![
+            make_band(
+                "mogwai",
+                vec![("id", "mogwai".into()), ("name", "Mogwai".into())],
+            )
+            .1,
+            make_band(
+                "sigurros",
+                vec![("id", "sigurros".into()), ("name", "Sigur Ros".into())],
+            )
+            .1,
+        ];
+        MockStore::new(entity_version_map("Band", entities))
+    };
 
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store.clone());
@@ -247,30 +243,23 @@ fn overwrite_modifications() {
 
 #[test]
 fn consecutive_modifications() {
-    let mut store = MockStore::new();
-
     // Pre-populate the store with data so that we can test setting a field to
     // `Value::Null`.
-    store.expect_get_many_mock().returning(|_| {
-        let mut map = BTreeMap::new();
+    let store = {
+        let entities = vec![
+            make_band(
+                "mogwai",
+                vec![
+                    ("id", "mogwai".into()),
+                    ("name", "Mogwai".into()),
+                    ("label", "Chemikal Underground".into()),
+                ],
+            )
+            .1,
+        ];
 
-        map.insert(
-            EntityType::from("Band"),
-            vec![
-                make_band(
-                    "mogwai",
-                    vec![
-                        ("id", "mogwai".into()),
-                        ("name", "Mogwai".into()),
-                        ("label", "Chemikal Underground".into()),
-                    ],
-                )
-                .1,
-            ],
-        );
-
-        Ok(map)
-    });
+        MockStore::new(entity_version_map("Band", entities))
+    };
 
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store.clone());
