@@ -1428,15 +1428,33 @@ impl ChainStoreTrait for ChainStore {
             .map_err(Error::from)
     }
 
-    async fn set_chain_head_cursor(self: Arc<Self>, cursor: String) -> Result<(), Error> {
+    async fn set_chain_head(
+        self: Arc<Self>,
+        block: Arc<dyn Block>,
+        cursor: String,
+    ) -> Result<(), Error> {
         use public::ethereum_networks as n;
 
         let pool = self.pool.clone();
+        let network = self.chain.clone();
+        let storage = self.storage.clone();
+
+        let ptr = block.ptr();
+        let hash = ptr.hash_hex();
+        let number = ptr.number as i64;
 
         pool.with_conn(move |conn, _| {
             conn.transaction(|| -> Result<(), StoreError> {
+                storage
+                    .upsert_block(&conn, &network, block.as_ref(), true)
+                    .map_err(CancelableError::from)?;
+
                 update(n::table.filter(n::name.eq(&self.chain)))
-                    .set(n::head_block_cursor.eq(cursor))
+                    .set((
+                        n::head_block_hash.eq(&hash),
+                        n::head_block_number.eq(number),
+                        n::head_block_cursor.eq(cursor),
+                    ))
                     .execute(conn)?;
 
                 Ok(())

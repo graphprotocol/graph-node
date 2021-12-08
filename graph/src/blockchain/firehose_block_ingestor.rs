@@ -15,7 +15,6 @@ pub struct FirehoseBlockIngestor<M>
 where
     M: prost::Message + BlockchainBlock + Default + 'static,
 {
-    ancestor_count: i32,
     chain_store: Arc<dyn ChainStore>,
     endpoint: Arc<FirehoseEndpoint>,
     logger: Logger,
@@ -28,13 +27,11 @@ where
     M: prost::Message + BlockchainBlock + Default + 'static,
 {
     pub fn new(
-        ancestor_count: i32,
         chain_store: Arc<dyn ChainStore>,
         endpoint: Arc<FirehoseEndpoint>,
         logger: Logger,
     ) -> FirehoseBlockIngestor<M> {
         FirehoseBlockIngestor {
-            ancestor_count,
             chain_store,
             endpoint,
             logger,
@@ -104,7 +101,21 @@ where
         while let Some(message) = stream.next().await {
             match message {
                 Ok(v) => {
-                    if let Err(e) = self.process_block(&v).await {
+                    let step = bstream::ForkStep::from_i32(v.step)
+                        .expect("Fork step should always match to known value");
+
+                    let result = match step {
+                        bstream::ForkStep::StepNew => self.process_new_block(&v).await,
+                        bstream::ForkStep::StepUndo => {
+                            trace!(self.logger, "Received undo block to ingest, skipping");
+                            Ok(())
+                        }
+                        _ => panic!(
+                            "We explicitely requested StepNew|StepUndo but received something else"
+                        ),
+                    };
+
+                    if let Err(e) = result {
                         error!(self.logger, "Process block failed: {:?}", e);
                         break;
                     }
@@ -128,29 +139,17 @@ where
         latest_cursor
     }
 
-    async fn process_block(&self, response: &bstream::BlockResponseV2) -> Result<(), Error> {
+    async fn process_new_block(&self, response: &bstream::BlockResponseV2) -> Result<(), Error> {
         let block = decode_firehose_block::<M>(response)
             .context("Mapping firehose block to blockchain::Block")?;
 
-        trace!(self.logger, "Received block to ingest {}", block.ptr());
+        trace!(self.logger, "Received new block to ingest {}", block.ptr());
 
         self.chain_store
             .clone()
-            .upsert_block(block.clone())
+            .set_chain_head(block, response.cursor.clone())
             .await
-            .context("Inserting blockchain::Block in chain store")?;
-
-        self.chain_store
-            .clone()
-            .attempt_chain_head_update(self.ancestor_count)
-            .await
-            .context("Updating chain head update")?;
-
-        self.chain_store
-            .clone()
-            .set_chain_head_cursor(response.cursor.clone())
-            .await
-            .context("Updating chain head cursor")?;
+            .context("Updating chain head")?;
 
         Ok(())
     }

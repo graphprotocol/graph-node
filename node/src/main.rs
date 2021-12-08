@@ -25,7 +25,7 @@ use graph::log::logger;
 use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
 use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{self as ethereum, network_indexer, EthereumAdapterTrait, Transport};
-use graph_chain_near::{self as near, Block as NearFirehoseBlock};
+use graph_chain_near::{self as near, HeaderOnlyBlock as NearFirehoseHeaderOnlyBlock};
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -229,13 +229,14 @@ async fn main() {
         let mut blockchain_map = BlockchainMap::new();
 
         let (eth_networks, ethereum_idents) = connect_networks(&logger, eth_networks).await;
-        let (near_networks, near_idents) = connect_firehose_networks::<NearFirehoseBlock>(
-            &logger,
-            firehose_networks_by_kind
-                .remove(&BlockchainKind::Near)
-                .unwrap_or_else(|| FirehoseNetworks::new()),
-        )
-        .await;
+        let (near_networks, near_idents) =
+            connect_firehose_networks::<NearFirehoseHeaderOnlyBlock>(
+                &logger,
+                firehose_networks_by_kind
+                    .remove(&BlockchainKind::Near)
+                    .unwrap_or_else(|| FirehoseNetworks::new()),
+            )
+            .await;
 
         let network_identifiers = ethereum_idents.into_iter().chain(near_idents).collect();
         let network_store = store_builder.network_store(network_identifiers);
@@ -336,8 +337,7 @@ async fn main() {
             }
 
             if near_chains.len() > 0 {
-                start_firehose_block_ingestor::<_, NearFirehoseBlock>(
-                    3,
+                start_firehose_block_ingestor::<_, NearFirehoseHeaderOnlyBlock>(
                     &logger,
                     &network_store,
                     near_chains,
@@ -738,9 +738,7 @@ where
                             logger,
                             "Connected to Firehose";
                             "uri" => &endpoint.uri,
-                            "genesis_block_hash" => &ptr.hash_hex(),
-                            "genesis_block_number" => ptr.block_number(),
-
+                            "genesis_block" => format_args!("{}", &ptr),
                         );
 
                         let ident = ChainIdentifier {
@@ -1007,7 +1005,6 @@ struct FirehoseChain<C: Blockchain> {
 }
 
 fn start_firehose_block_ingestor<C, M>(
-    ancestor_block: i32,
     logger: &Logger,
     store: &Store,
     chains: HashMap<String, FirehoseChain<C>>,
@@ -1044,7 +1041,6 @@ fn start_firehose_block_ingestor<C, M>(
             match store.block_store().chain_store(network_name.as_ref()) {
                 Some(s) => {
                     let block_ingestor = FirehoseBlockIngestor::<M>::new(
-                        ancestor_block,
                         s,
                         endpoint.clone(),
                         logger.new(o!("component" => "FirehoseBlockIngestor", "provider" => endpoint.provider.clone())),
