@@ -905,7 +905,10 @@ impl Display for DeploymentLocator {
     }
 }
 
-// TODO: add docs
+/// Subgraph forking is the process of lazily fetching entities
+/// from another subgraph's store (usually a remote one).
+/// The fetched entities can be processed in the current (local) subgraph
+/// logic in any way whatsoever (for example get copied to the local store).
 pub trait SubgraphFork: Send + Sync + 'static {
     fn fetch(&self, entity_type: String, id: String) -> Result<Option<Entity>, StoreError>;
 }
@@ -969,11 +972,8 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// adding a root query type etc. to it
     fn api_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError>;
 
-    /// Return a `SubgraphFork` that is used for debugging purposes only.
-    ///
-    /// Forking a subgraph represents the process of lazily fetching entities
-    /// from another subgraph's store. In the current implementation, the subgraph
-    /// is a remote one and the fetching is done by GraphQL-qurying its store.
+    /// Return a `SubgraphFork` derived from the user's `debug-fork` cli argument
+    /// that is used for debugging purposes only.
     fn debug_fork(
         &self,
         subgraph_id: &DeploymentHash,

@@ -29,8 +29,13 @@ struct Variables {
     id: String,
 }
 
-/// Fork represents a simple subgraph "forking" mechanism which lazily fetches
-/// the store associated with the GraphQL endpoint at <base_url>/id/<subgraph_id>.
+/// SubgraphFork represents a simple subgraph forking mechanism
+/// which lazily fetches entities from a remote subgraph's store
+/// associated with a GraphQL endpoint at `fork_url`.
+///
+/// Since this mechanism is used for debug forks, entities are
+/// fetched only once per id in order to avoid fetching an entity
+/// that was deleted from the local store and thus causing inconsistencies.
 pub struct SubgraphFork {
     client: reqwest::Client,
     fork_url: Url,
@@ -47,6 +52,9 @@ impl SubgraphForkTrait for SubgraphFork {
         }
 
         info!(self.logger, "Fetching entity from {}", &self.fork_url; "entity_type" => &entity_type, "id" => &id);
+
+        // NOTE: Should compatability check be added?
+        // The local entities may not be compatible with the remote ones, resulting in an error.
 
         let (query, fields) = self.infer_query(&entity_type, id)?;
         let raw_json = block_on(self.send(&query))?;
