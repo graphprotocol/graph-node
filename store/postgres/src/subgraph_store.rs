@@ -17,7 +17,7 @@ use graph::{
     constraint_violation,
     data::query::QueryTarget,
     data::subgraph::schema::{self, SubgraphError},
-    data::{store::EntityVersion, subgraph::status},
+    data::subgraph::status,
     prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
     prelude::{
@@ -1233,7 +1233,7 @@ impl WritableStoreTrait for WritableStore {
         .await
     }
 
-    fn get(&self, key: &EntityKey) -> Result<Option<EntityVersion>, StoreError> {
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         self.retry("get", || self.writable.get(self.site.cheap_clone(), key))
     }
 

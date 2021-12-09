@@ -145,7 +145,7 @@ macro_rules! assert_entity_eq {
         let mut pass = true;
 
         for (key, left_value) in left.clone().sorted() {
-            match right.data.get(&key) {
+            match right.get(&key) {
                 None => {
                     pass = false;
                     println!("key '{}' missing from right", key);
@@ -161,7 +161,7 @@ macro_rules! assert_entity_eq {
                 }
             }
         }
-        for (key, _) in right.data.clone().sorted() {
+        for (key, _) in right.clone().sorted() {
             if left.get(&key).is_none() {
                 pass = false;
                 println!("key '{}' missing from left", key);

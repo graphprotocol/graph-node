@@ -11,7 +11,6 @@ use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Range, Text};
 use diesel::Connection;
-use graph::data::store::{EntityVersion, Vid};
 use lazy_static::lazy_static;
 
 use graph::prelude::{
@@ -30,7 +29,6 @@ use std::convert::TryFrom;
 use std::env;
 use std::fmt::{self, Display};
 use std::iter::FromIterator;
-use std::num::NonZeroU64;
 use std::str::FromStr;
 
 use crate::relational::{
@@ -275,8 +273,6 @@ pub trait FromEntityData: Default {
     type Value: FromColumnValue;
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value);
-
-    fn set_vid(&mut self, vid: Vid);
 }
 
 impl FromEntityData for Entity {
@@ -285,10 +281,6 @@ impl FromEntityData for Entity {
     fn insert_entity_data(&mut self, key: String, v: Self::Value) {
         self.insert(key, v);
     }
-
-    fn set_vid(&mut self, _vid: Vid) {
-        /* ignore */
-    }
 }
 
 impl FromEntityData for BTreeMap<String, r::Value> {
@@ -296,22 +288,6 @@ impl FromEntityData for BTreeMap<String, r::Value> {
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value) {
         self.insert(key, v);
-    }
-
-    fn set_vid(&mut self, _vid: Vid) {
-        /* ignore */
-    }
-}
-
-impl FromEntityData for EntityVersion {
-    type Value = graph::prelude::Value;
-
-    fn insert_entity_data(&mut self, key: String, v: Self::Value) {
-        self.data.insert(key, v);
-    }
-
-    fn set_vid(&mut self, vid: Vid) {
-        self.vid = vid
     }
 }
 
@@ -485,8 +461,6 @@ impl FromColumnValue for graph::prelude::Value {
 pub struct EntityData {
     #[sql_type = "Text"]
     entity: String,
-    #[sql_type = "BigInt"]
-    vid: i64,
     #[sql_type = "Jsonb"]
     data: serde_json::Value,
 }
@@ -512,7 +486,6 @@ impl EntityData {
                     "__typename".to_owned(),
                     T::Value::from_string(entity_type.into_string()),
                 );
-                out.set_vid(NonZeroU64::new(self.vid as u64));
                 for (key, json) in map {
                     // Simply ignore keys that do not have an underlying table
                     // column; those will be things like the block_range that
@@ -1196,7 +1169,7 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
         //      from schema.table e where id = $1
         out.push_sql("select ");
         out.push_bind_param::<Text, _>(&self.table.object.as_str())?;
-        out.push_sql(" as entity, e.vid, to_jsonb(e.*) as data\n");
+        out.push_sql(" as entity, to_jsonb(e.*) as data\n");
         out.push_sql("  from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" e\n where ");
@@ -1248,7 +1221,7 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
             }
             out.push_sql("select ");
             out.push_bind_param::<Text, _>(&table.object.as_str())?;
-            out.push_sql(" as entity, e.vid, to_jsonb(e.*) as data\n");
+            out.push_sql(" as entity, to_jsonb(e.*) as data\n");
             out.push_sql("  from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" e\n where ");
@@ -2323,7 +2296,7 @@ impl<'a> FilterQuery<'a> {
     fn select_entity_and_data(table: &Table, out: &mut AstPass<Pg>) {
         out.push_sql("select '");
         out.push_sql(table.object.as_str());
-        out.push_sql("' as entity, c.vid, to_jsonb(c.*) as data");
+        out.push_sql("' as entity, to_jsonb(c.*) as data");
     }
 
     /// Only one table/filter pair, and no window
@@ -2439,7 +2412,7 @@ impl<'a> FilterQuery<'a> {
             if i > 0 {
                 out.push_sql("\nunion all\n");
             }
-            out.push_sql("select m.entity, m.vid, ");
+            out.push_sql("select m.entity, ");
             jsonb_build_object(column_names, "c", &table, &mut out)?;
             out.push_sql(" as data, c.id");
             self.sort_key.select(&mut out)?;

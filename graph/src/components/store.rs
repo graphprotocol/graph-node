@@ -1034,7 +1034,7 @@ pub trait WritableStore: Send + Sync + 'static {
     async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError>;
 
     /// Looks up an entity using the given store key at the latest block.
-    fn get(&self, key: &EntityKey) -> Result<Option<EntityVersion>, StoreError>;
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError>;
 
     /// Transact the entity changes from a single block atomically into the store, and update the
     /// subgraph block pointer to `block_ptr_to`, and update the firehose cursor to `firehose_cursor`
@@ -1224,7 +1224,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn get(&self, _: &EntityKey) -> Result<Option<EntityVersion>, StoreError> {
+    fn get(&self, _: &EntityKey) -> Result<Option<Entity>, StoreError> {
         unimplemented!()
     }
 
@@ -1775,7 +1775,7 @@ impl LfuCache<EntityKey, Option<Entity>> {
     ) -> Result<Option<Entity>, QueryExecutionError> {
         match self.get(key) {
             None => {
-                let mut entity = store.get(key)?.map(|ev| ev.data);
+                let mut entity = store.get(key)?;
                 if let Some(entity) = &mut entity {
                     // `__typename` is for queries not for mappings.
                     entity.remove("__typename");
