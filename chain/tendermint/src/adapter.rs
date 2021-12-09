@@ -11,12 +11,6 @@ pub struct TriggerFilter {
 }
 
 impl bc::TriggerFilter<Chain> for TriggerFilter {
-    fn from_data_sources<'a>(data_sources: impl Iterator<Item = &'a DataSource> + Clone) -> Self {
-        let mut this = Self::default();
-        this.extend(data_sources);
-        this
-    }
-
     fn extend<'a>(&mut self, data_sources: impl Iterator<Item = &'a DataSource> + Clone) {
         self.block
             .extend(TendermintBlockFilter::from_data_sources(data_sources));
