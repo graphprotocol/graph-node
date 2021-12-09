@@ -4,7 +4,6 @@ use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use graph::components::store::{EntityType, StoredDynamicDataSource};
-use graph::data::store::{EntityVersion, Vid};
 use graph::data::subgraph::status;
 use graph::prelude::{
     tokio, CancelHandle, CancelToken, CancelableError, PoolWaitStats, SubgraphDeploymentEntity,
@@ -311,7 +310,7 @@ impl DeploymentStore {
         mods: &[EntityModification],
         ptr: &BlockPtr,
         stopwatch: StopwatchMetrics,
-    ) -> Result<(i32, Vec<(EntityKey, Vid)>), StoreError> {
+    ) -> Result<i32, StoreError> {
         use EntityModification::*;
         let mut count = 0;
 
@@ -327,69 +326,47 @@ impl DeploymentStore {
                         .or_insert_with(Vec::new)
                         .push((key, Cow::from(data)));
                 }
-                Overwrite {
-                    key,
-                    data,
-                    prev_vid,
-                } => {
-                    let (entities, vids) = overwrites
+                Overwrite { key, data } => {
+                    overwrites
                         .entry(key.entity_type.clone())
-                        .or_insert_with(|| (Vec::new(), Vec::new()));
-
-                    entities.push((key, Cow::from(data)));
-                    vids.push(*prev_vid);
+                        .or_insert_with(Vec::new)
+                        .push((key, Cow::from(data)));
                 }
-                Remove { key, prev_vid } => {
+                Remove { key } => {
                     removals
                         .entry(key.entity_type.clone())
                         .or_insert_with(Vec::new)
-                        .push(*prev_vid);
+                        .push(key.entity_id.as_str());
                 }
             }
         }
 
         // Apply modification groups.
-        let mut vid_map = Vec::new();
-
         // Inserts:
         for (entity_type, mut entities) in inserts.into_iter() {
-            for (id, vid) in
+            count +=
                 self.insert_entities(&entity_type, &mut entities, conn, layout, ptr, &stopwatch)?
-            {
-                count += 1;
-                vid_map.push((
-                    EntityKey::data(layout.site.deployment.clone(), entity_type.to_string(), id),
-                    vid,
-                ))
-            }
+                    as i32
         }
 
         // Overwrites:
-        for (entity_type, (mut entities, vids)) in overwrites.into_iter() {
+        for (entity_type, mut entities) in overwrites.into_iter() {
             // we do not update the count since the number of entities remains the same
-            for (id, vid) in self.overwrite_entities(
+            self.overwrite_entities(&entity_type, &mut entities, conn, layout, ptr, &stopwatch)?;
+        }
+
+        // Removals
+        for (entity_type, entity_keys) in removals.into_iter() {
+            count -= self.remove_entities(
                 &entity_type,
-                &mut entities,
-                vids.as_slice(),
+                entity_keys.as_slice(),
                 conn,
                 layout,
                 ptr,
                 &stopwatch,
-            )? {
-                vid_map.push((
-                    EntityKey::data(layout.site.deployment.clone(), entity_type.to_string(), id),
-                    vid,
-                ))
-            }
+            )? as i32;
         }
-
-        // Removals
-        for (entity_type, vids) in removals.into_iter() {
-            count -=
-                self.remove_entities(&entity_type, vids.as_slice(), conn, layout, ptr, &stopwatch)?
-                    as i32;
-        }
-        Ok((count, vid_map))
+        Ok(count)
     }
 
     fn insert_entities<'a>(
@@ -400,7 +377,7 @@ impl DeploymentStore {
         layout: &'a Layout,
         ptr: &BlockPtr,
         stopwatch: &StopwatchMetrics,
-    ) -> Result<Vec<(String, Vid)>, StoreError> {
+    ) -> Result<usize, StoreError> {
         let section = stopwatch.start_section("check_interface_entity_uniqueness");
         for (key, _) in data.iter() {
             // WARNING: This will potentially execute 2 queries for each entity key.
@@ -416,12 +393,11 @@ impl DeploymentStore {
         &'a self,
         entity_type: &'a EntityType,
         data: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
-        vids: &'a [Vid],
         conn: &PgConnection,
         layout: &'a Layout,
         ptr: &BlockPtr,
         stopwatch: &StopwatchMetrics,
-    ) -> Result<Vec<(String, Vid)>, StoreError> {
+    ) -> Result<usize, StoreError> {
         let section = stopwatch.start_section("check_interface_entity_uniqueness");
         for (key, _) in data.iter() {
             // WARNING: This will potentially execute 2 queries for each entity key.
@@ -430,13 +406,13 @@ impl DeploymentStore {
         section.end();
 
         let _section = stopwatch.start_section("apply_entity_modifications_update");
-        layout.update(conn, &entity_type, data, vids, block_number(ptr), stopwatch)
+        layout.update(conn, &entity_type, data, block_number(ptr), stopwatch)
     }
 
     fn remove_entities(
         &self,
         entity_type: &EntityType,
-        vids: &[Vid],
+        entity_keys: &[&str],
         conn: &PgConnection,
         layout: &Layout,
         ptr: &BlockPtr,
@@ -444,15 +420,14 @@ impl DeploymentStore {
     ) -> Result<usize, StoreError> {
         let _section = stopwatch.start_section("apply_entity_modifications_delete");
         layout
-            .delete(conn, entity_type, vids, block_number(ptr), stopwatch)
-            .map_err(|_error| {
-                anyhow!(
-                    "Failed to remove entities for type {}: {:?}",
-                    entity_type,
-                    vids
-                )
-                .into()
-            })
+            .delete(
+                conn,
+                entity_type,
+                &entity_keys,
+                block_number(ptr),
+                stopwatch,
+            )
+            .map_err(|_error| anyhow!("Failed to remove entities: {:?}", entity_keys).into())
     }
 
     /// Execute a closure with a connection to the database.
@@ -782,12 +757,9 @@ impl DeploymentStore {
                             AttributeNames::All,
                         )]),
                     );
-                    let entities: Vec<_> = store
-                        .execute_query::<EntityVersion>(conn, site4, query)
-                        .map_err(anyhow::Error::from)?
-                        .into_iter()
-                        .map(|ev| ev.data)
-                        .collect();
+                    let entities = store
+                        .execute_query::<Entity>(conn, site4, query)
+                        .map_err(anyhow::Error::from)?;
 
                     Ok(Some(entities))
                 })
@@ -829,7 +801,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
         key: &EntityKey,
-    ) -> Result<Option<EntityVersion>, StoreError> {
+    ) -> Result<Option<Entity>, StoreError> {
         let conn = self.get_conn()?;
         let layout = self.layout(&conn, site)?;
 
@@ -845,7 +817,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
         ids_for_type: &BTreeMap<&EntityType, Vec<&str>>,
-    ) -> Result<BTreeMap<EntityType, Vec<EntityVersion>>, StoreError> {
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         if ids_for_type.is_empty() {
             return Ok(BTreeMap::new());
         }
@@ -863,8 +835,7 @@ impl DeploymentStore {
         query: EntityQuery,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         let conn = self.get_conn()?;
-        self.execute_query::<EntityVersion>(&conn, site, query)
-            .map(|evs| evs.into_iter().map(|ev| ev.data).collect())
+        self.execute_query(&conn, site, query)
     }
 
     pub(crate) fn transact_block_operations(
@@ -876,7 +847,7 @@ impl DeploymentStore {
         stopwatch: StopwatchMetrics,
         data_sources: &[StoredDynamicDataSource],
         deterministic_errors: &[SubgraphError],
-    ) -> Result<(StoreEvent, Vec<(EntityKey, Vid)>), StoreError> {
+    ) -> Result<StoreEvent, StoreError> {
         // All operations should apply only to data or metadata for this subgraph
         if mods
             .iter()
@@ -894,7 +865,7 @@ impl DeploymentStore {
             self.get_conn()?
         };
 
-        conn.transaction(|| -> Result<_, StoreError> {
+        let event = conn.transaction(|| -> Result<_, StoreError> {
             // Emit a store event for the changes we are about to make. We
             // wait with sending it until we have done all our other work
             // so that we do not hold a lock on the notification queue
@@ -904,7 +875,7 @@ impl DeploymentStore {
             // Make the changes
             let layout = self.layout(&conn, site.clone())?;
             let section = stopwatch.start_section("apply_entity_modifications");
-            let (count, vid_map) = self.apply_entity_modifications(
+            let count = self.apply_entity_modifications(
                 &conn,
                 layout.as_ref(),
                 mods,
@@ -938,8 +909,10 @@ impl DeploymentStore {
                 }
             }
 
-            Ok((event, vid_map))
-        })
+            Ok(event)
+        })?;
+
+        Ok(event)
     }
 
     fn rewind_with_conn(

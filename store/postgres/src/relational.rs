@@ -18,7 +18,6 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::{From, TryFrom};
 use std::env;
 use std::fmt::{self, Write};
-use std::num::NonZeroU64;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -33,7 +32,7 @@ use crate::{
 use graph::components::store::EntityType;
 use graph::data::graphql::ext::{DirectiveFinder, DocumentExt, ObjectTypeExt};
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
-use graph::data::store::{EntityVersion, Vid, BYTES_SCALAR};
+use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{
     anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityCollection,
@@ -523,7 +522,7 @@ impl Layout {
         entity: &EntityType,
         id: &str,
         block: BlockNumber,
-    ) -> Result<Option<EntityVersion>, StoreError> {
+    ) -> Result<Option<Entity>, StoreError> {
         let table = self.table_for_entity(entity)?;
         FindQuery::new(table.as_ref(), id, block)
             .get_result::<EntityData>(conn)
@@ -537,7 +536,7 @@ impl Layout {
         conn: &PgConnection,
         ids_for_type: &BTreeMap<&EntityType, Vec<&str>>,
         block: BlockNumber,
-    ) -> Result<BTreeMap<EntityType, Vec<EntityVersion>>, StoreError> {
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         if ids_for_type.is_empty() {
             return Ok(BTreeMap::new());
         }
@@ -552,7 +551,7 @@ impl Layout {
             tables,
             block,
         };
-        let mut entities_for_type: BTreeMap<EntityType, Vec<EntityVersion>> = BTreeMap::new();
+        let mut entities_for_type: BTreeMap<EntityType, Vec<Entity>> = BTreeMap::new();
         for data in query.load::<EntityData>(conn)? {
             entities_for_type
                 .entry(data.entity_type())
@@ -569,21 +568,21 @@ impl Layout {
         entities: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
-    ) -> Result<Vec<(String, Vid)>, StoreError> {
+    ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(entity_type)?;
         let _section = stopwatch.start_section("insert_modification_insert_query");
-        let mut vid_map = Vec::with_capacity(entities.len());
+        let mut count = 0;
         // Each operation must respect the maximum number of bindings allowed in PostgreSQL queries,
         // so we need to act in chunks whose size is defined by the number of entities times the
         // number of attributes each entity type has.
         // We add 1 to account for the `block_range` bind parameter
         let chunk_size = POSTGRES_MAX_PARAMETERS / (table.columns.len() + 1);
         for chunk in entities.chunks_mut(chunk_size) {
-            for red in InsertQuery::new(table, chunk, block)?.get_results(conn)? {
-                vid_map.push((red.id, NonZeroU64::new(red.vid as u64)))
-            }
+            count += InsertQuery::new(table, chunk, block)?
+                .get_results(conn)
+                .map(|ids| ids.len())?
         }
-        Ok(vid_map)
+        Ok(count)
     }
 
     pub fn conflicting_entity(
@@ -682,45 +681,46 @@ impl Layout {
         conn: &PgConnection,
         entity_type: &'a EntityType,
         entities: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
-        vids: &'a [Vid],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
-    ) -> Result<Vec<(String, Vid)>, StoreError> {
+    ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&entity_type)?;
+        let entity_keys: Vec<&str> = entities
+            .iter()
+            .map(|(key, _)| key.entity_id.as_str())
+            .collect();
 
         let section = stopwatch.start_section("update_modification_clamp_range_query");
-        ClampRangeQuery::new(table, &vids, block)?.execute(conn)?;
+        ClampRangeQuery::new(table, &entity_type, &entity_keys, block).execute(conn)?;
         section.end();
 
         let _section = stopwatch.start_section("update_modification_insert_query");
+        let mut count = 0;
 
         // Each operation must respect the maximum number of bindings allowed in PostgreSQL queries,
         // so we need to act in chunks whose size is defined by the number of entities times the
         // number of attributes each entity type has.
         // We add 1 to account for the `block_range` bind parameter
         let chunk_size = POSTGRES_MAX_PARAMETERS / (table.columns.len() + 1);
-        let mut vid_map = Vec::with_capacity(entities.len());
         for chunk in entities.chunks_mut(chunk_size) {
-            for red in InsertQuery::new(table, chunk, block)?.get_results(conn)? {
-                vid_map.push((red.id, NonZeroU64::new(red.vid as u64)))
-            }
+            count += InsertQuery::new(table, chunk, block)?.execute(conn)?;
         }
-        Ok(vid_map)
+        Ok(count)
     }
 
     pub fn delete(
         &self,
         conn: &PgConnection,
         entity_type: &EntityType,
-        vids: &[Vid],
+        entity_ids: &[&str],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&entity_type)?;
         let _section = stopwatch.start_section("delete_modification_clamp_range_query");
         let mut count = 0;
-        for chunk in vids.chunks(DELETE_OPERATION_CHUNK_SIZE) {
-            count += ClampRangeQuery::new(table, chunk, block)?.execute(conn)?
+        for chunk in entity_ids.chunks(DELETE_OPERATION_CHUNK_SIZE) {
+            count += ClampRangeQuery::new(table, &entity_type, chunk, block).execute(conn)?
         }
         Ok(count)
     }

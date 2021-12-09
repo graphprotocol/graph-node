@@ -4,7 +4,6 @@ use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
 use graph::blockchain::{BlockchainKind, DataSource};
 use graph::data::store::scalar::Bytes;
-use graph::data::store::EntityVersion;
 use graph::data::subgraph::{UnifiedMappingApiVersion, MAX_SPEC_VERSION};
 use graph::prelude::TryStreamExt;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
@@ -73,7 +72,7 @@ struct IndexingState<T: RuntimeHostBuilder<C>, C: Blockchain> {
     instance: SubgraphInstance<C, T>,
     instances: SharedInstanceKeepAliveMap,
     filter: C::TriggerFilter,
-    entity_lfu_cache: LfuCache<EntityKey, Option<EntityVersion>>,
+    entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
 }
 
 struct IndexingContext<T: RuntimeHostBuilder<C>, C: Blockchain> {
@@ -1067,7 +1066,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
         data_sources,
         deterministic_errors,
     ) {
-        Ok(vid_map) => {
+        Ok(_) => {
             // For subgraphs with `nonFatalErrors` feature disabled, we consider
             // any error as fatal.
             //
@@ -1094,10 +1093,6 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
                 // just transacted so it will be already be set to unhealthy.
                 return Err(BlockProcessingError::Canceled);
             }
-
-            // Adjust the vids of cached entities because inserts and
-            // updates will have changed them
-            ctx.state.entity_lfu_cache.update_vids(vid_map);
 
             Ok(needs_restart)
         }

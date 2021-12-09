@@ -1,12 +1,10 @@
 //! Test relational schemas that use `Bytes` to store ids
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
-use graph::data::store::{EntityVersion, Vid};
 use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::borrow::Cow;
-use std::num::NonZeroU64;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::prelude::{
@@ -85,7 +83,7 @@ fn remove_test_data(conn: &PgConnection) {
         .expect("Failed to drop test schema");
 }
 
-fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) -> Vid {
+fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
     let key = EntityKey::data(
         THINGS_SUBGRAPH_ID.clone(),
         entity_type.to_owned(),
@@ -104,11 +102,6 @@ fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity
             &MOCK_STOPWATCH,
         )
         .expect(&errmsg);
-    layout
-        .find(conn, &entity_type, &entity.id().unwrap(), 0)
-        .unwrap()
-        .map(|ev| ev.vid)
-        .flatten()
 }
 
 fn insert_thing(conn: &PgConnection, layout: &Layout, id: &str, name: &str) {
@@ -152,7 +145,7 @@ macro_rules! assert_entity_eq {
         let mut pass = true;
 
         for (key, left_value) in left.clone().sorted() {
-            match right.data.get(&key) {
+            match right.get(&key) {
                 None => {
                     pass = false;
                     println!("key '{}' missing from right", key);
@@ -168,7 +161,7 @@ macro_rules! assert_entity_eq {
                 }
             }
         }
-        for (key, _) in right.data.clone().sorted() {
+        for (key, _) in right.clone().sorted() {
             if left.get(&key).is_none() {
                 pass = false;
                 println!("key '{}' missing from left", key);
@@ -273,7 +266,7 @@ fn find_many() {
             .get(&*THING)
             .expect("We got some things")
             .iter()
-            .map(|thing| thing.data.id().unwrap())
+            .map(|thing| thing.id().unwrap())
             .collect::<Vec<_>>();
 
         assert_eq!(2, ids.len());
@@ -285,7 +278,7 @@ fn find_many() {
 #[test]
 fn update() {
     run_test(|conn, layout| {
-        let vid = insert_entity(&conn, &layout, "Thing", BEEF_ENTITY.clone());
+        insert_entity(&conn, &layout, "Thing", BEEF_ENTITY.clone());
 
         // Update the entity
         let mut entity = BEEF_ENTITY.clone();
@@ -299,16 +292,8 @@ fn update() {
         let entity_id = entity.id().unwrap().clone();
         let entity_type = key.entity_type.clone();
         let mut entities = vec![(&key, Cow::from(&entity))];
-        let vids = vec![vid];
         layout
-            .update(
-                &conn,
-                &entity_type,
-                &mut entities,
-                &vids,
-                1,
-                &MOCK_STOPWATCH,
-            )
+            .update(&conn, &entity_type, &mut entities, 1, &MOCK_STOPWATCH)
             .expect("Failed to update");
 
         let actual = layout
@@ -325,7 +310,7 @@ fn delete() {
     run_test(|conn, layout| {
         const TWO_ID: &str = "deadbeef02";
 
-        let vid = insert_entity(&conn, &layout, "Thing", BEEF_ENTITY.clone());
+        insert_entity(&conn, &layout, "Thing", BEEF_ENTITY.clone());
         let mut two = BEEF_ENTITY.clone();
         two.set("id", TWO_ID);
         insert_entity(&conn, &layout, "Thing", two);
@@ -338,9 +323,8 @@ fn delete() {
         );
         let entity_type = key.entity_type.clone();
         let mut entity_keys = vec![key.entity_id.as_str()];
-        let vids = vec![NonZeroU64::new(712)];
         let count = layout
-            .delete(&conn, &entity_type, vids.as_slice(), 1, &MOCK_STOPWATCH)
+            .delete(&conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(0, count);
 
@@ -349,9 +333,8 @@ fn delete() {
             .get_mut(0)
             .map(|key| *key = TWO_ID)
             .expect("Failed to update entity types");
-        let vids = vec![vid];
         let count = layout
-            .delete(&conn, &entity_type, vids.as_slice(), 1, &MOCK_STOPWATCH)
+            .delete(&conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(1, count);
     });
@@ -416,7 +399,7 @@ fn make_thing_tree(conn: &PgConnection, layout: &Layout) -> (Entity, Entity, Ent
 fn query() {
     fn fetch(conn: &PgConnection, layout: &Layout, coll: EntityCollection) -> Vec<String> {
         layout
-            .query::<EntityVersion>(
+            .query::<Entity>(
                 &*LOGGER,
                 conn,
                 coll,
@@ -428,7 +411,7 @@ fn query() {
             )
             .expect("the query succeeds")
             .into_iter()
-            .map(|ev| ev.data.id().expect("entities have an id"))
+            .map(|e| e.id().expect("entities have an id"))
             .collect::<Vec<_>>()
     }
 

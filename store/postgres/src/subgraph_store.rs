@@ -17,16 +17,13 @@ use graph::{
     constraint_violation,
     data::query::QueryTarget,
     data::subgraph::schema::{self, SubgraphError},
-    data::{
-        store::{EntityVersion, Vid},
-        subgraph::status,
-    },
+    data::subgraph::status,
     prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        BlockPtr, DeploymentHash, EntityKey, EntityModification, Error, Logger, NodeId, Schema,
-        StopwatchMetrics, StoreError, SubgraphName, SubgraphStore as SubgraphStoreTrait,
+        BlockPtr, DeploymentHash, Entity, EntityKey, EntityModification, Error, Logger, NodeId,
+        Schema, StopwatchMetrics, StoreError, SubgraphName, SubgraphStore as SubgraphStoreTrait,
         SubgraphVersionSwitchingMode,
     },
     slog::{error, warn},
@@ -897,7 +894,7 @@ impl SubgraphStoreInner {
     pub fn find(
         &self,
         query: graph::prelude::EntityQuery,
-    ) -> Result<Vec<graph::prelude::Entity>, graph::prelude::QueryExecutionError> {
+    ) -> Result<Vec<Entity>, graph::prelude::QueryExecutionError> {
         let (store, site) = self.store(&query.subgraph_id)?;
         store.find(site, query)
     }
@@ -1236,7 +1233,7 @@ impl WritableStoreTrait for WritableStore {
         .await
     }
 
-    fn get(&self, key: &EntityKey) -> Result<Option<EntityVersion>, StoreError> {
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         self.retry("get", || self.writable.get(self.site.cheap_clone(), key))
     }
 
@@ -1248,13 +1245,13 @@ impl WritableStoreTrait for WritableStore {
         stopwatch: StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
-    ) -> Result<Vec<(EntityKey, Vid)>, StoreError> {
+    ) -> Result<(), StoreError> {
         assert!(
             same_subgraph(&mods, &self.site.deployment),
             "can only transact operations within one shard"
         );
         self.retry("transact_block_operations", move || {
-            let (event, vid_map) = self.writable.transact_block_operations(
+            let event = self.writable.transact_block_operations(
                 self.site.clone(),
                 &block_ptr_to,
                 firehose_cursor.as_deref(),
@@ -1265,15 +1262,14 @@ impl WritableStoreTrait for WritableStore {
             )?;
 
             let _section = stopwatch.start_section("send_store_event");
-            self.try_send_store_event(event)?;
-            Ok(vid_map)
+            self.try_send_store_event(event)
         })
     }
 
     fn get_many(
         &self,
         ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
-    ) -> Result<BTreeMap<EntityType, Vec<EntityVersion>>, StoreError> {
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         self.retry("get_many", || {
             self.writable
                 .get_many(self.site.cheap_clone(), &ids_for_type)

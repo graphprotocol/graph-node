@@ -1,9 +1,7 @@
-use graph::data::store::EntityVersion;
 use graph::prelude::SubgraphStore;
 use lazy_static::lazy_static;
 use slog::{o, Logger};
 use std::collections::BTreeMap;
-use std::num::NonZeroU64;
 use std::sync::Arc;
 
 use graph::{components::store::EntityType, mock::MockStore};
@@ -83,21 +81,6 @@ fn insert_modifications() {
     );
 }
 
-fn entity_version_map(
-    entity_type: &str,
-    entities: Vec<Entity>,
-) -> BTreeMap<EntityType, Vec<EntityVersion>> {
-    let evs = entities
-        .into_iter()
-        .enumerate()
-        .map(|(i, entity)| EntityVersion::new(entity, NonZeroU64::new((i + 1) as u64)))
-        .collect();
-
-    let mut map = BTreeMap::new();
-    map.insert(EntityType::from(entity_type), evs);
-    map
-}
-
 #[test]
 fn overwrite_modifications() {
     let mut store = MockStore::new();
@@ -105,19 +88,25 @@ fn overwrite_modifications() {
     // Pre-populate the store with entities so that the cache treats
     // every set operation as an overwrite.
     store.expect_get_many_mock().returning(|_| {
-        let entities = vec![
-            make_band(
-                "mogwai",
-                vec![("id", "mogwai".into()), ("name", "Mogwai".into())],
-            )
-            .1,
-            make_band(
-                "sigurros",
-                vec![("id", "sigurros".into()), ("name", "Sigur Ros".into())],
-            )
-            .1,
-        ];
-        Ok(entity_version_map("Band", entities))
+        let mut map = BTreeMap::new();
+
+        map.insert(
+            EntityType::from("Band"),
+            vec![
+                make_band(
+                    "mogwai",
+                    vec![("id", "mogwai".into()), ("name", "Mogwai".into())],
+                )
+                .1,
+                make_band(
+                    "sigurros",
+                    vec![("id", "sigurros".into()), ("name", "Sigur Ros".into())],
+                )
+                .1,
+            ],
+        );
+
+        Ok(map)
     });
 
     let store = Arc::new(store);
@@ -144,22 +133,18 @@ fn overwrite_modifications() {
     cache.set(sigurros_key.clone(), sigurros_data.clone());
 
     let result = cache.as_modifications();
-    let one = NonZeroU64::new(1);
-    let two = NonZeroU64::new(2);
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
-        vec![
+        sort_by_entity_key(vec![
             EntityModification::Overwrite {
                 key: mogwai_key,
                 data: mogwai_data,
-                prev_vid: one,
             },
             EntityModification::Overwrite {
                 key: sigurros_key,
                 data: sigurros_data,
-                prev_vid: two,
             }
-        ]
+        ])
     );
 }
 
@@ -170,19 +155,24 @@ fn consecutive_modifications() {
     // Pre-populate the store with data so that we can test setting a field to
     // `Value::Null`.
     store.expect_get_many_mock().returning(|_| {
-        let entities = vec![
-            make_band(
-                "mogwai",
-                vec![
-                    ("id", "mogwai".into()),
-                    ("name", "Mogwai".into()),
-                    ("label", "Chemikal Underground".into()),
-                ],
-            )
-            .1,
-        ];
+        let mut map = BTreeMap::new();
 
-        Ok(entity_version_map("Band", entities))
+        map.insert(
+            EntityType::from("Band"),
+            vec![
+                make_band(
+                    "mogwai",
+                    vec![
+                        ("id", "mogwai".into()),
+                        ("name", "Mogwai".into()),
+                        ("label", "Chemikal Underground".into()),
+                    ],
+                )
+                .1,
+            ],
+        );
+
+        Ok(map)
     });
 
     let store = Arc::new(store);
@@ -209,17 +199,15 @@ fn consecutive_modifications() {
     // We expect a single overwrite modification for the above that leaves "id"
     // and "name" untouched, sets "founded" and removes the "label" field.
     let result = cache.as_modifications();
-    let one = NonZeroU64::new(1);
     assert_eq!(
-        result.unwrap().modifications,
-        vec![EntityModification::Overwrite {
+        sort_by_entity_key(result.unwrap().modifications),
+        sort_by_entity_key(vec![EntityModification::Overwrite {
             key: update_key,
             data: Entity::from(vec![
                 ("id", "mogwai".into()),
                 ("name", "Mogwai".into()),
                 ("founded", 1995.into()),
             ]),
-            prev_vid: one
-        },]
+        },])
     );
 }
