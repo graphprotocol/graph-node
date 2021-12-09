@@ -1090,7 +1090,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         let receipts_future = if *FETCH_RECEIPTS_CONCURRENTLY {
             let hash_stream = graph::tokio_stream::iter(hashes);
             let receipt_stream = graph::tokio_stream::StreamExt::map(hash_stream, move |tx_hash| {
-                resolve_single_transaction_receipt_with_retry(
+                fetch_transaction_receipt_with_retry(
                     web3.cheap_clone(),
                     tx_hash,
                     block_hash,
@@ -1102,7 +1102,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 receipt_stream,
             ).boxed()
         } else {
-            resolve_transaction_receipts_in_batch(web3, hashes, block_hash, logger).boxed()
+            fetch_transaction_receipts_in_batch(web3, hashes, block_hash, logger).boxed()
         };
 
         let block_future =
@@ -1800,7 +1800,7 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     Ok(block)
 }
 
-async fn resolve_transaction_receipts_in_batch(
+async fn fetch_transaction_receipts_in_batch(
     web3: Arc<Web3<Transport>>,
     hashes: Vec<H256>,
     block_hash: H256,
@@ -1830,7 +1830,7 @@ async fn resolve_transaction_receipts_in_batch(
     Ok(collected)
 }
 
-async fn resolve_single_transaction_receipt_with_retry(
+async fn fetch_transaction_receipt_with_retry(
     web3: Arc<Web3<Transport>>,
     transaction_hash: H256,
     block_hash: H256,
