@@ -7,7 +7,6 @@ use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::prelude::ethabi::ParamType;
 use graph::prelude::ethabi::Token;
 use graph::prelude::tokio::try_join;
-use graph::prelude::web3::transports::Batch;
 use graph::prelude::StopwatchMetrics;
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
@@ -30,6 +29,7 @@ use graph::{
 use graph::{
     components::ethereum::*,
     prelude::web3::api::Web3,
+    prelude::web3::transports::Batch,
     prelude::web3::types::{Trace, TraceFilter, TraceFilterBuilder, H160},
 };
 use itertools::Itertools;
