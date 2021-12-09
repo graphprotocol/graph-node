@@ -2598,36 +2598,23 @@ impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}
 
 /// Reduce the upper bound of the current entry's block range to `block` as
 /// long as that does not result in an empty block range
-#[derive(Debug, Clone)]
-pub struct ClampRangeQuery<'a> {
+#[derive(Debug, Clone, Constructor)]
+pub struct ClampRangeQuery<'a, S> {
     table: &'a Table,
-    vids: Vec<i64>,
+    entity_type: &'a EntityType,
+    entity_ids: &'a [S],
     block: BlockNumber,
 }
 
-fn i64_from_vid(vid: &Vid) -> Result<i64, StoreError> {
-    match vid {
-        Some(vid) => i64::try_from(vid.get())
-            .map_err(|_| StoreError::ConstraintViolation(format!("vid out of bounds: {}", vid))),
-        None => Err(StoreError::ConstraintViolation("missing vid".to_string())),
-    }
-}
-
-impl<'a> ClampRangeQuery<'a> {
-    pub fn new(table: &'a Table, vids: &'a [Vid], block: BlockNumber) -> Result<Self, StoreError> {
-        let vids = vids
-            .into_iter()
-            .map(i64_from_vid)
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(Self { table, vids, block })
-    }
-}
-
-impl<'a> QueryFragment<Pg> for ClampRangeQuery<'a> {
+impl<'a, S> QueryFragment<Pg> for ClampRangeQuery<'a, S>
+where
+    S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
+{
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         // update table
         //    set block_range = int4range(lower(block_range), $block)
-        //  where vid = any([vid1, vid2, ..., vidN])
+        //  where id in (id1, id2, ..., idN)
+        //    and block_range @> INTMAX
         out.unsafe_to_cache_prepared();
         out.push_sql("update ");
         out.push_sql(self.table.qualified_name.as_str());
@@ -2637,21 +2624,27 @@ impl<'a> QueryFragment<Pg> for ClampRangeQuery<'a> {
         out.push_identifier(BLOCK_RANGE_COLUMN)?;
         out.push_sql("), ");
         out.push_bind_param::<Integer, _>(&self.block)?;
-        out.push_sql(")\n where vid = any(");
-        out.push_bind_param::<Array<BigInt>, _>(&self.vids)?;
+        out.push_sql(")\n where ");
+
+        self.table.primary_key().is_in(self.entity_ids, &mut out)?;
+        out.push_sql(" and (");
+        out.push_sql(BLOCK_RANGE_CURRENT);
         out.push_sql(")");
 
         Ok(())
     }
 }
 
-impl<'a> QueryId for ClampRangeQuery<'a> {
+impl<'a, S> QueryId for ClampRangeQuery<'a, S>
+where
+    S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
+{
     type QueryId = ();
 
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a, Conn> RunQueryDsl<Conn> for ClampRangeQuery<'a> {}
+impl<'a, S, Conn> RunQueryDsl<Conn> for ClampRangeQuery<'a, S> {}
 
 /// Helper struct for returning the id's touched by the RevertRemove and
 /// RevertExtend queries

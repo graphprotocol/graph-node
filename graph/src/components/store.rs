@@ -553,7 +553,7 @@ impl<'a> FromIterator<&'a EntityModification> for StoreEvent {
             .map(|op| {
                 use self::EntityModification::*;
                 match op {
-                    Insert { key, .. } | Overwrite { key, .. } | Remove { key, .. } => {
+                    Insert { key, .. } | Overwrite { key, .. } | Remove { key } => {
                         EntityChange::for_data(key.clone())
                     }
                 }
@@ -1457,20 +1457,16 @@ pub enum EntityModification {
     /// Insert the entity
     Insert { key: EntityKey, data: Entity },
     /// Update the entity by overwriting it
-    Overwrite {
-        key: EntityKey,
-        data: Entity,
-        prev_vid: Vid,
-    },
+    Overwrite { key: EntityKey, data: Entity },
     /// Remove the entity
-    Remove { key: EntityKey, prev_vid: Vid },
+    Remove { key: EntityKey },
 }
 
 impl EntityModification {
     pub fn entity_key(&self) -> &EntityKey {
         use EntityModification::*;
         match self {
-            Insert { key, .. } | Overwrite { key, .. } | Remove { key, .. } => key,
+            Insert { key, .. } | Overwrite { key, .. } | Remove { key } => key,
         }
     }
 
@@ -1741,11 +1737,7 @@ impl EntityCache {
                     let ev = EntityVersion::new(data.clone(), current.vid);
                     self.current.insert(key.clone(), Some(ev));
                     if current.data != data {
-                        Some(Overwrite {
-                            key,
-                            data,
-                            prev_vid: current.vid,
-                        })
+                        Some(Overwrite { key, data })
                     } else {
                         None
                     }
@@ -1755,22 +1747,15 @@ impl EntityCache {
                     let ev = EntityVersion::new(data.clone(), current.vid);
                     self.current.insert(key.clone(), Some(ev));
                     if current.data != data {
-                        Some(Overwrite {
-                            key,
-                            data,
-                            prev_vid: current.vid,
-                        })
+                        Some(Overwrite { key, data })
                     } else {
                         None
                     }
                 }
                 // Existing entity was deleted
-                (Some(current), EntityOp::Remove) => {
+                (Some(_), EntityOp::Remove) => {
                     self.current.insert(key.clone(), None);
-                    Some(Remove {
-                        key,
-                        prev_vid: current.vid,
-                    })
+                    Some(Remove { key })
                 }
                 // Entity was deleted, but it doesn't exist in the store
                 (None, EntityOp::Remove) => None,
