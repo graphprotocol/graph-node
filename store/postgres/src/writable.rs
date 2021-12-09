@@ -382,7 +382,7 @@ impl WritableStoreTrait for WritableAgent {
         self.store.supports_proof_of_indexing().await
     }
 
-    fn get(&self, key: &EntityKey) -> Result<Option<EntityVersion>, StoreError> {
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         self.store.get(key)
     }
 
@@ -394,7 +394,7 @@ impl WritableStoreTrait for WritableAgent {
         stopwatch: StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
-    ) -> Result<Vec<(EntityKey, Vid)>, StoreError> {
+    ) -> Result<(), StoreError> {
         self.store.transact_block_operations(
             block_ptr_to,
             firehose_cursor,
@@ -408,7 +408,7 @@ impl WritableStoreTrait for WritableAgent {
     fn get_many(
         &self,
         ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
-    ) -> Result<BTreeMap<EntityType, Vec<EntityVersion>>, StoreError> {
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         self.store.get_many(ids_for_type)
     }
 
@@ -431,5 +431,13 @@ impl WritableStoreTrait for WritableAgent {
 
     fn shard(&self) -> &str {
         self.store.shard()
+    }
+
+    async fn health(&self, id: &DeploymentHash) -> Result<schema::SubgraphHealth, StoreError> {
+        self.store.health(id).await
+    }
+
+    fn input_schema(&self) -> Arc<Schema> {
+        self.store.input_schema()
     }
 }
