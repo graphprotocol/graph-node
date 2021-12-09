@@ -1,3 +1,4 @@
+use std::sync::Mutex;
 use std::time::Duration;
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -325,6 +326,8 @@ fn same_subgraph(mods: &Vec<EntityModification>, id: &DeploymentHash) -> bool {
 #[allow(dead_code)]
 pub struct WritableAgent {
     store: Arc<WritableStore>,
+    block_ptr: Mutex<Option<BlockPtr>>,
+    block_cursor: Mutex<Option<String>>,
 }
 
 impl WritableAgent {
@@ -333,8 +336,13 @@ impl WritableAgent {
         logger: Logger,
         site: Arc<Site>,
     ) -> Result<Self, StoreError> {
+        let store = Arc::new(WritableStore::new(subgraph_store, logger, site)?);
+        let block_ptr = Mutex::new(store.block_ptr()?);
+        let block_cursor = Mutex::new(store.block_cursor()?);
         Ok(Self {
-            store: Arc::new(WritableStore::new(subgraph_store, logger, site)?),
+            store,
+            block_ptr,
+            block_cursor,
         })
     }
 }
@@ -342,12 +350,12 @@ impl WritableAgent {
 #[allow(unused_variables)]
 #[async_trait::async_trait]
 impl WritableStoreTrait for WritableAgent {
-    fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
-        self.store.block_ptr()
+    fn block_ptr(&self) -> Option<BlockPtr> {
+        self.block_ptr.lock().unwrap().clone()
     }
 
-    fn block_cursor(&self) -> Result<Option<String>, StoreError> {
-        self.store.block_cursor()
+    fn block_cursor(&self) -> Option<String> {
+        self.block_cursor.lock().unwrap().clone()
     }
 
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
@@ -356,6 +364,9 @@ impl WritableStoreTrait for WritableAgent {
     }
 
     fn revert_block_operations(&self, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
+        *self.block_ptr.lock().unwrap() = Some(block_ptr_to.clone());
+        // FIXME: What about the firehose cursor? Why doesn't that get updated?
+
         // TODO: If we haven't written the block yet, revert in memory. If
         // we have, revert in the database
         self.store.revert_block_operations(block_ptr_to)
@@ -396,13 +407,18 @@ impl WritableStoreTrait for WritableAgent {
         deterministic_errors: Vec<SubgraphError>,
     ) -> Result<(), StoreError> {
         self.store.transact_block_operations(
-            block_ptr_to,
-            firehose_cursor,
+            block_ptr_to.clone(),
+            firehose_cursor.clone(),
             mods,
             stopwatch,
             data_sources,
             deterministic_errors,
-        )
+        )?;
+
+        *self.block_ptr.lock().unwrap() = Some(block_ptr_to);
+        *self.block_cursor.lock().unwrap() = firehose_cursor;
+
+        Ok(())
     }
 
     fn get_many(

@@ -386,11 +386,7 @@ where
 
         // Initialize deployment_head with current deployment head. Any sort of trouble in
         // getting the deployment head ptr leads to initializing with 0
-        let deployment_head = store
-            .block_ptr()
-            .ok()
-            .and_then(|ptr| ptr.map(|ptr| ptr.number))
-            .unwrap_or(0) as f64;
+        let deployment_head = store.block_ptr().map(|ptr| ptr.number).unwrap_or(0) as f64;
         block_stream_metrics.deployment_head.set(deployment_head);
 
         let host_builder = graph_runtime_wasm::RuntimeHostBuilder::new(
@@ -481,7 +477,7 @@ async fn new_block_stream<C: Blockchain>(
             inputs.unified_api_version.clone(),
         ),
         false => {
-            let start_block = inputs.store.block_ptr()?;
+            let start_block = inputs.store.block_ptr();
 
             chain.new_polling_block_stream(
                 inputs.deployment.clone(),
@@ -677,7 +673,7 @@ where
             if should_try_unfail_deterministic {
                 should_try_unfail_deterministic = false;
 
-                if let Some(current_ptr) = inputs.store.block_ptr()? {
+                if let Some(current_ptr) = inputs.store.block_ptr() {
                     if let Some(parent_ptr) =
                         inputs.triggers_adapter.parent_ptr(&current_ptr).await?
                     {
