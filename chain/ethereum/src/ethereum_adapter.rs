@@ -1102,7 +1102,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 receipt_stream,
             ).boxed()
         } else {
-            fetch_transaction_receipts_in_batch(web3, hashes, block_hash, logger).boxed()
+            fetch_transaction_receipts_in_batch_with_retry(web3, hashes, block_hash, logger).boxed()
         };
 
         let block_future =
@@ -1798,6 +1798,26 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
               "block_number" => block.ptr().block_number());
     }
     Ok(block)
+}
+
+async fn fetch_transaction_receipts_in_batch_with_retry(
+    web3: Arc<Web3<Transport>>,
+    hashes: Vec<H256>,
+    block_hash: H256,
+    logger: Logger,
+) -> Result<Vec<TransactionReceipt>, IngestorError> {
+    retry("batch eth_getTransactionReceipt RPC call", &logger)
+        .limit(*REQUEST_RETRIES)
+        .no_logging()
+        .timeout_secs(*JSON_RPC_TIMEOUT)
+        .run(move || {
+            let web3 = web3.cheap_clone();
+            let hashes = hashes.clone();
+            let logger = logger.cheap_clone();
+            fetch_transaction_receipts_in_batch(web3, hashes, block_hash, logger).boxed()
+        })
+        .await
+        .map_err(|_timeout| anyhow!(block_hash).into())
 }
 
 async fn fetch_transaction_receipts_in_batch(
