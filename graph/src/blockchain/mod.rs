@@ -316,7 +316,7 @@ pub enum BlockchainKind {
     /// NEAR chains (Mainnet, Testnet) or chains that are compatible
     Near,
     /// Tendermint chains including cosmoshub
-    Tendermint
+    Tendermint,
 }
 
 impl fmt::Display for BlockchainKind {
