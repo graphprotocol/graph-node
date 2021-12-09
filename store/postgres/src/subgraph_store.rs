@@ -117,7 +117,8 @@ impl ToSql<Text, Pg> for Shard {
 /// indexers that should index it. The deployment should then be assigned to
 /// one of the returned indexers.
 pub trait DeploymentPlacer {
-    fn place(&self, name: &str, network: &str) -> Result<Option<(Shard, Vec<NodeId>)>, String>;
+    fn place(&self, name: &str, network: &str)
+        -> Result<Option<(Vec<Shard>, Vec<NodeId>)>, String>;
 }
 
 /// Tools for managing unused deployments
@@ -382,6 +383,31 @@ impl SubgraphStoreInner {
         store.find_layout(site)
     }
 
+    fn place_on_node(
+        &self,
+        mut nodes: Vec<NodeId>,
+        default_node: NodeId,
+    ) -> Result<NodeId, StoreError> {
+        match nodes.len() {
+            0 => {
+                // This is really a configuration error
+                Ok(default_node)
+            }
+            1 => Ok(nodes.pop().unwrap()),
+            _ => {
+                let conn = self.primary_conn()?;
+
+                // unwrap is fine since nodes is not empty
+                let node = conn.least_assigned_node(&nodes)?.unwrap();
+                Ok(node)
+            }
+        }
+    }
+
+    fn place_in_shard(&self, mut shards: Vec<Shard>) -> Result<Shard, StoreError> {
+        Ok(shards.pop().unwrap())
+    }
+
     fn place(
         &self,
         name: &SubgraphName,
@@ -402,16 +428,10 @@ impl SubgraphStoreInner {
 
         match placement {
             None => Ok((PRIMARY_SHARD.clone(), default_node)),
-            Some((_, nodes)) if nodes.is_empty() => {
-                // This is really a configuration error
-                Ok((PRIMARY_SHARD.clone(), default_node))
-            }
-            Some((shard, mut nodes)) if nodes.len() == 1 => Ok((shard, nodes.pop().unwrap())),
-            Some((shard, nodes)) => {
-                let conn = self.primary_conn()?;
+            Some((shards, nodes)) => {
+                let node = self.place_on_node(nodes, default_node)?;
+                let shard = self.place_in_shard(shards)?;
 
-                // unwrap is fine since nodes is not empty
-                let node = conn.least_assigned_node(&nodes)?.unwrap();
                 Ok((shard, node))
             }
         }

@@ -798,7 +798,11 @@ impl Deployment {
 }
 
 impl DeploymentPlacer for Deployment {
-    fn place(&self, name: &str, network: &str) -> Result<Option<(ShardName, Vec<NodeId>)>, String> {
+    fn place(
+        &self,
+        name: &str,
+        network: &str,
+    ) -> Result<Option<(Vec<ShardName>, Vec<NodeId>)>, String> {
         // Errors here are really programming errors. We should have validated
         // everything already so that the various conversions can't fail. We
         // still return errors so that they bubble up to the deployment request
@@ -814,7 +818,7 @@ impl DeploymentPlacer for Deployment {
                             .map_err(|()| format!("{} is not a valid node name", idx))
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                Some((shard, indexers))
+                Some((vec![shard], indexers))
             }
             None => None,
         };
