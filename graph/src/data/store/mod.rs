@@ -624,7 +624,7 @@ impl CacheWeight for Entity {
 
 pub type Vid = Option<NonZeroU64>;
 
-#[derive(Clone, Default, Debug)]
+#[derive(Default, Debug)]
 pub struct EntityVersion {
     pub data: Entity,
     /// The `vid` of the entity if it exists in the store
@@ -643,9 +643,9 @@ impl From<EntityVersion> for Entity {
     }
 }
 
-impl CacheWeight for EntityVersion {
-    fn indirect_weight(&self) -> usize {
-        self.data.weight()
+impl From<Entity> for EntityVersion {
+    fn from(data: Entity) -> Self {
+        Self { data, vid: None }
     }
 }
 
