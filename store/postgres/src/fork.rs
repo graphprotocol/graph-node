@@ -7,7 +7,7 @@ use graph::{
     block_on,
     components::store::SubgraphFork as SubgraphForkTrait,
     prelude::{
-        anyhow, info,
+        info,
         r::Value as RValue,
         reqwest,
         s::{Definition, Field, ObjectType, TypeDefinition},
@@ -15,8 +15,6 @@ use graph::{
     },
     url::Url,
 };
-
-// TODO: Define forking errors.
 
 #[derive(Serialize, Debug)]
 struct Query {
@@ -59,10 +57,9 @@ impl SubgraphForkTrait for SubgraphFork {
         let (query, fields) = self.infer_query(&entity_type, id)?;
         let raw_json = block_on(self.send(&query))?;
         if !raw_json.contains("data") {
-            return Err(StoreError::Unknown(anyhow!(
-                "the GraphQL query \"{:?}\" failed with {}.",
-                query,
-                raw_json,
+            return Err(StoreError::ForkFailure(format!(
+                "the GraphQL query \"{:?}\" to `{}` failed with \"{}\"",
+                query, self.fork_url, raw_json,
             )));
         }
         let entity = SubgraphFork::extract_entity(&raw_json, &entity_type, fields)?;
@@ -88,10 +85,20 @@ impl SubgraphFork {
             .json(query)
             .send()
             .await
-            .map_err(|e| StoreError::Unknown(anyhow!(e)))?
+            .map_err(|e| {
+                StoreError::ForkFailure(format!(
+                    "sending a GraphQL query to `{}` failed with: \"{}\"",
+                    self.fork_url, e,
+                ))
+            })?
             .text()
             .await
-            .map_err(|e| StoreError::Unknown(anyhow!(e)))?;
+            .map_err(|e| {
+                StoreError::ForkFailure(format!(
+                    "receiving a response from `{}` failed with: \"{}\"",
+                    self.fork_url, e,
+                ))
+            })?;
         Ok(res)
     }
 
@@ -115,8 +122,8 @@ impl SubgraphFork {
                 });
 
         if let None = entity {
-            return Err(StoreError::Unknown(anyhow!(
-                "Fork::infer_query: Unexpected! No object type definition with entity type `{}` found.",
+            return Err(StoreError::ForkFailure(format!(
+                "Unexpected error during query inference! No object type definition with entity type `{}` found in the GraphQL schema supplied by the user.",
                 entity_type
             )));
         }
@@ -157,9 +164,11 @@ query Query ($id: String) {{
             let mut map = HashMap::new();
             for f in fields {
                 let value = json.get(&f.name).unwrap().clone();
-                let value = Value::from_query_value(&RValue::from(value), &f.field_type).map_err(|e| {
-                    StoreError::Unknown(anyhow!(
-                        "Fork::extract_entity: Unexpected! Failed to convert value to type `{}`: {}",
+                let value = RValue::from(value);
+                let value = Value::from_query_value(&value, &f.field_type).map_err(|e| {
+                    StoreError::ForkFailure(format!(
+                        "Unexpected error during entity extraction! Failed to convert JSON value `{}` to type `{}`: {}",
+                        value,
                         f.field_type,
                         e
                     ))
