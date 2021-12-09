@@ -2574,6 +2574,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}
 #[derive(Debug, Clone, Constructor)]
 pub struct ClampRangeQuery<'a, S> {
     table: &'a Table,
+    #[allow(dead_code)]
     entity_type: &'a EntityType,
     entity_ids: &'a [S],
     block: BlockNumber,
