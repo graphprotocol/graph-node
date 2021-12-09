@@ -235,30 +235,44 @@ fn insert_entity(
     assert_eq!(inserted, entities_with_keys_owned.len());
 }
 
-fn update_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
-    let key = EntityKey::data(
-        THINGS_SUBGRAPH_ID.clone(),
-        entity_type.to_owned(),
-        entity.id().unwrap(),
-    );
-    let mut entity_with_keys = vec![(&key, Cow::from(&entity))];
+fn update_entity(
+    conn: &PgConnection,
+    layout: &Layout,
+    entity_type: &str,
+    mut entities: Vec<Entity>,
+) {
+    let entities_with_keys_owned: Vec<(EntityKey, Entity)> = entities
+        .drain(..)
+        .map(|entity| {
+            let key = EntityKey::data(
+                THINGS_SUBGRAPH_ID.clone(),
+                entity_type.to_owned(),
+                entity.id().unwrap(),
+            );
+            (key, entity)
+        })
+        .collect();
+    let mut entities_with_keys: Vec<_> = entities_with_keys_owned
+        .iter()
+        .map(|(key, entity)| (key, Cow::from(entity)))
+        .collect();
 
     let entity_type = EntityType::from(entity_type);
     let errmsg = format!(
         "Failed to insert entities {}[{:?}]",
-        entity_type, entity_with_keys
+        entity_type, entities_with_keys
     );
 
     let updated = layout
         .update(
             &conn,
             &entity_type,
-            &mut entity_with_keys,
+            &mut entities_with_keys,
             0,
             &MOCK_STOPWATCH,
         )
         .expect(&errmsg);
-    assert_eq!(updated, 1);
+    assert_eq!(updated, entities_with_keys_owned.len());
 }
 
 fn insert_user_entity(
@@ -380,7 +394,7 @@ fn update_user_entity(
         user.insert("drinks".to_owned(), drinks.into());
     }
 
-    update_entity(conn, layout, entity_type, user);
+    update_entity(conn, layout, entity_type, vec![user]);
 }
 
 fn insert_pet(conn: &PgConnection, layout: &Layout, entity_type: &str, id: &str, name: &str) {
