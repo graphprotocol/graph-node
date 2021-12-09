@@ -1,12 +1,7 @@
 use std::sync::Arc;
 
-use graph::blockchain::BlockchainKind;
 use graph::cheap_clone::CheapClone;
-// components::tendermint::hash::Hash,
-// use graph::components::tendermint::{TendermintBlock, TendermintBlockHeader, TendermintBlockTxData, TendermintConsensus, TendermintBlockId, TendermintPartSetHeader};
 use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::firehose::endpoints::FirehoseNetworkEndpoints;
-use graph::prelude::StopwatchMetrics;
 use graph::{
     anyhow,
     blockchain::{
@@ -15,13 +10,15 @@ use graph::{
             FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
         },
         firehose_block_stream::FirehoseBlockStream,
-        BlockHash, BlockPtr, Blockchain, IngestorAdapter as IngestorAdapterTrait, IngestorError,
+        BlockHash, BlockPtr, Blockchain, BlockchainKind, IngestorAdapter as IngestorAdapterTrait,
+        IngestorError,
     },
     components::store::DeploymentLocator,
-    firehose::bstream,
+    firehose::{bstream, endpoints::FirehoseNetworkEndpoints},
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
-        async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory, SubgraphStore,
+        async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory, StopwatchMetrics,
+        SubgraphStore,
     },
 };
 use prost::Message;
