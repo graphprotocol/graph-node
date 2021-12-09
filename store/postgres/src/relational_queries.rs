@@ -1384,7 +1384,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
         }
         out.push_sql("\nreturning ");
         out.push_sql(PRIMARY_KEY_COLUMN);
-        out.push_sql("::text, vid");
+        out.push_sql("::text");
 
         Ok(())
     }
@@ -2647,8 +2647,6 @@ impl<'a, Conn> RunQueryDsl<Conn> for ClampRangeQuery<'a> {}
 pub struct ReturnedEntityData {
     #[sql_type = "Text"]
     pub id: String,
-    #[sql_type = "BigInt"]
-    pub vid: i64,
 }
 
 impl ReturnedEntityData {
@@ -2691,7 +2689,7 @@ impl<'a> QueryFragment<Pg> for RevertRemoveQuery<'a> {
         out.push_bind_param::<Integer, _>(&self.block)?;
         out.push_sql("\nreturning ");
         out.push_sql(PRIMARY_KEY_COLUMN);
-        out.push_sql("::text, vid");
+        out.push_sql("::text");
         Ok(())
     }
 }
@@ -2762,7 +2760,7 @@ impl<'a> QueryFragment<Pg> for RevertClampQuery<'a> {
         out.push_sql("), 2147483647) < 2147483647");
         out.push_sql("\nreturning ");
         out.push_sql(PRIMARY_KEY_COLUMN);
-        out.push_sql("::text, vid");
+        out.push_sql("::text");
         Ok(())
     }
 }

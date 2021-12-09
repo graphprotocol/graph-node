@@ -18,7 +18,6 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::{From, TryFrom};
 use std::env;
 use std::fmt::{self, Write};
-use std::num::NonZeroU64;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -569,21 +568,21 @@ impl Layout {
         entities: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
-    ) -> Result<Vec<(String, Vid)>, StoreError> {
+    ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(entity_type)?;
         let _section = stopwatch.start_section("insert_modification_insert_query");
-        let mut vid_map = Vec::with_capacity(entities.len());
+        let mut count = 0;
         // Each operation must respect the maximum number of bindings allowed in PostgreSQL queries,
         // so we need to act in chunks whose size is defined by the number of entities times the
         // number of attributes each entity type has.
         // We add 1 to account for the `block_range` bind parameter
         let chunk_size = POSTGRES_MAX_PARAMETERS / (table.columns.len() + 1);
         for chunk in entities.chunks_mut(chunk_size) {
-            for red in InsertQuery::new(table, chunk, block)?.get_results(conn)? {
-                vid_map.push((red.id, NonZeroU64::new(red.vid as u64)))
-            }
+            count += InsertQuery::new(table, chunk, block)?
+                .get_results(conn)
+                .map(|ids| ids.len())?
         }
-        Ok(vid_map)
+        Ok(count)
     }
 
     pub fn conflicting_entity(
@@ -685,7 +684,7 @@ impl Layout {
         vids: &'a [Vid],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
-    ) -> Result<Vec<(String, Vid)>, StoreError> {
+    ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&entity_type)?;
 
         let section = stopwatch.start_section("update_modification_clamp_range_query");
@@ -693,19 +692,17 @@ impl Layout {
         section.end();
 
         let _section = stopwatch.start_section("update_modification_insert_query");
+        let mut count = 0;
 
         // Each operation must respect the maximum number of bindings allowed in PostgreSQL queries,
         // so we need to act in chunks whose size is defined by the number of entities times the
         // number of attributes each entity type has.
         // We add 1 to account for the `block_range` bind parameter
         let chunk_size = POSTGRES_MAX_PARAMETERS / (table.columns.len() + 1);
-        let mut vid_map = Vec::with_capacity(entities.len());
         for chunk in entities.chunks_mut(chunk_size) {
-            for red in InsertQuery::new(table, chunk, block)?.get_results(conn)? {
-                vid_map.push((red.id, NonZeroU64::new(red.vid as u64)))
-            }
+            count += InsertQuery::new(table, chunk, block)?.execute(conn)?;
         }
-        Ok(vid_map)
+        Ok(count)
     }
 
     pub fn delete(

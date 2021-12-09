@@ -235,8 +235,7 @@ fn insert_entity(
             0,
             &MOCK_STOPWATCH,
         )
-        .expect(&errmsg)
-        .len();
+        .expect(&errmsg);
     assert_eq!(inserted, entities_with_keys_owned.len());
     let ids_for_type = {
         let ids: Vec<_> = entities_with_keys_owned
@@ -289,8 +288,7 @@ fn update_entity(
             0,
             &MOCK_STOPWATCH,
         )
-        .expect(&errmsg)
-        .len();
+        .expect(&errmsg);
     assert_eq!(updated, 1);
 }
 
