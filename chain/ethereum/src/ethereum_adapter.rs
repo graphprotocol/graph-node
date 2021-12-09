@@ -1102,6 +1102,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 receipt_stream,
             ).boxed()
         } else {
+            // Deprecated batching retrieval of transaction receipts.
             fetch_transaction_receipts_in_batch_with_retry(web3, hashes, block_hash, logger).boxed()
         };
 
@@ -1800,6 +1801,7 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     Ok(block)
 }
 
+/// Deprecated. Wraps the [`fetch_transaction_receipts_in_batch`] in a retry loop.
 async fn fetch_transaction_receipts_in_batch_with_retry(
     web3: Arc<Web3<Transport>>,
     hashes: Vec<H256>,
@@ -1820,6 +1822,7 @@ async fn fetch_transaction_receipts_in_batch_with_retry(
         .map_err(|_timeout| anyhow!(block_hash).into())
 }
 
+/// Deprecated. Attempts to fetch multiple transaction receipts in a batching contex.
 async fn fetch_transaction_receipts_in_batch(
     web3: Arc<Web3<Transport>>,
     hashes: Vec<H256>,
@@ -1850,6 +1853,7 @@ async fn fetch_transaction_receipts_in_batch(
     Ok(collected)
 }
 
+/// Retries fetching a single transaction receipt.
 async fn fetch_transaction_receipt_with_retry(
     web3: Arc<Web3<Transport>>,
     transaction_hash: H256,
