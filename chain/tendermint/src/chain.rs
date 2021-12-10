@@ -277,13 +277,11 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 let piece = sp.newblock.as_ref().unwrap();
                 let block = piece.block.as_ref().unwrap();
                 let header = block.header.as_ref().unwrap();
+                let block_id = piece.block_id.as_ref().unwrap();
 
                 Ok(BlockStreamEvent::Revert(
                     BlockPtr {
-                        hash: BlockHash::from(
-                            // FIXME (TENDERMINT): this has to be hash of the block, and not the data inside
-                            header.data_hash.clone(),
-                        ),
+                        hash: BlockHash::from(block_id.hash.clone()),
                         number: header.height as i32,
                     },
                     Some(response.cursor.clone()),
