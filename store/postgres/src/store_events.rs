@@ -3,12 +3,13 @@ use graph::tokio_stream::wrappers::ReceiverStream;
 use std::sync::{atomic::Ordering, Arc, RwLock};
 use std::{collections::HashMap, sync::atomic::AtomicUsize};
 use tokio::sync::mpsc::{channel, Sender};
+use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::notification_listener::{NotificationListener, SafeChannelName};
-use graph::components::store::SubscriptionManager as SubscriptionManagerTrait;
+use graph::components::store::{SubscriptionManager as SubscriptionManagerTrait, UnitStream};
 use graph::prelude::serde_json;
-use graph::prelude::*;
+use graph::{prelude::*, tokio_stream};
 
 pub struct StoreEventListener {
     notification_listener: NotificationListener,
@@ -93,6 +94,17 @@ trait EventSink: Send + Sync {
 impl EventSink for Sender<Arc<StoreEvent>> {
     async fn send(&self, event: Arc<StoreEvent>) -> Result<(), Error> {
         Ok(self.send(event).await?)
+    }
+
+    fn is_closed(&self) -> bool {
+        self.is_closed()
+    }
+}
+
+#[async_trait]
+impl EventSink for watch::Sender<()> {
+    async fn send(&self, _event: Arc<StoreEvent>) -> Result<(), Error> {
+        Ok(self.send(())?)
     }
 
     fn is_closed(&self) -> bool {
@@ -203,5 +215,18 @@ impl SubscriptionManagerTrait for SubscriptionManager {
         // Return the subscription ID and entity change stream
         StoreEventStream::new(Box::new(ReceiverStream::new(receiver).map(Ok).compat()))
             .filter_by_entities(entities)
+    }
+
+    fn subscribe_no_payload(&self, entities: Vec<SubscriptionFilter>) -> UnitStream {
+        let id = Uuid::new_v4().to_string();
+
+        let (sender, receiver) = watch::channel(());
+
+        self.subscriptions
+            .write()
+            .unwrap()
+            .insert(id, (Arc::new(entities.clone()), Arc::new(sender)));
+
+        Box::new(tokio_stream::wrappers::WatchStream::new(receiver))
     }
 }
