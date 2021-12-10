@@ -444,6 +444,7 @@ impl<C: Blockchain> WasmInstance<C> {
         //
         // For reference, search this codebase for: ff652476-e6ad-40e4-85b8-e815d6c6e5e2
         link!("ipfs.cat", ipfs_cat, "host_export_ipfs_cat", hash_ptr);
+        link!("http.get", http_get, "host_export_http_get", hash_ptr);
         link!(
             "ipfs.map",
             ipfs_map,
@@ -966,6 +967,26 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let link = asc_get(self, link_ptr)?;
         let ipfs_res = self.ctx.host_exports.ipfs_cat(&self.ctx.logger, link);
         match ipfs_res {
+            Ok(bytes) => asc_new(self, &*bytes).map_err(Into::into),
+
+            // Return null in case of error.
+            Err(e) => {
+                info!(&self.ctx.logger, "Failed ipfs.cat, returning `null`";
+                                    "link" => asc_get::<String, _, _>(self, link_ptr)?,
+                                    "error" => e.to_string());
+                Ok(AscPtr::null())
+            }
+        }
+    }
+
+    /// function http.get(link: String): Bytes
+    pub fn http_get(
+        &mut self,
+        link_ptr: AscPtr<AscString>,
+    ) -> Result<AscPtr<Uint8Array>, HostExportError> {
+        let link = asc_get(self, link_ptr)?;
+        let res = self.ctx.host_exports.http_get(&self.ctx.logger, link);
+        match res {
             Ok(bytes) => asc_new(self, &*bytes).map_err(Into::into),
 
             // Return null in case of error.

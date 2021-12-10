@@ -246,6 +246,10 @@ impl<C: Blockchain> HostExports<C> {
         ))
     }
 
+    pub(crate) fn http_get(&self, logger: &Logger, link: String) -> Result<Vec<u8>, anyhow::Error> {
+        block_on03(self.link_resolver.http_get(logger, &Link { link }))
+    }
+
     pub(crate) fn ipfs_cat(&self, logger: &Logger, link: String) -> Result<Vec<u8>, anyhow::Error> {
         block_on03(self.link_resolver.cat(logger, &Link { link }))
     }

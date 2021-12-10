@@ -7,6 +7,7 @@ edition = "2018"
 async-trait = "0.1.50"
 atomic_refcell = "0.1.8"
 bytes = "0.5"
+reqwest = { version = "0.11", features = ["json"] }
 futures01 = { package="futures", version="0.1.31" }
 futures = { version="0.3.4", features=["compat"] }
 graph = { path = "../graph" }

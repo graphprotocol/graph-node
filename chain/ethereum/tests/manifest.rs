@@ -55,6 +55,13 @@ impl LinkResolverTrait for TextResolver {
             .map(Clone::clone)
     }
 
+    async fn http_get(&self, _logger: &Logger, link: &Link) -> Result<Vec<u8>, anyhow::Error> {
+        self.texts
+            .get(&link.link)
+            .ok_or(anyhow!("No text for {}", &link.link))
+            .map(Clone::clone)
+    }
+
     async fn json_stream(
         &self,
         _logger: &Logger,

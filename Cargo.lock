@@ -1618,6 +1618,7 @@ dependencies = [
  "lazy_static",
  "lru_time_cache",
  "pretty_assertions 1.0.0",
+ "reqwest",
  "semver 1.0.4",
  "serde",
  "serde_json",

@@ -195,6 +195,31 @@ impl LinkResolverTrait for LinkResolver {
     }
 
     /// Supports links of the form `/ipfs/ipfs_hash` or just `ipfs_hash`.
+    async fn http_get(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error> {
+        let path = link.link.to_owned();
+
+        let logger = logger.clone();
+
+        // Since http is indeterminate, no retries are performed here, 
+        // and a webhook handler is provided to allow the user to refresh the resource with a webhook
+        let data = retry_policy(false, "http.get", &logger)
+            .run(move || {
+                let path = path.clone();
+                // let logger = logger.clone();
+                async move {
+                    let resp = reqwest::get(&path).await?;
+                    assert!(resp.status().is_success());
+                    let bytes = resp.bytes().await?;
+                    let data = bytes.to_vec();
+                    Result::<Vec<u8>, reqwest::Error>::Ok(data)
+                }
+            })
+            .await?;
+
+        Ok(data)
+    }
+
+    /// Supports links of the form `/ipfs/ipfs_hash` or just `ipfs_hash`.
     async fn cat(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error> {
         // Discard the `/ipfs/` prefix (if present) to get the hash.
         let path = link.link.trim_start_matches("/ipfs/").to_owned();
