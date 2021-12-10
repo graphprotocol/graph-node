@@ -83,11 +83,27 @@ impl StoreEventListener {
     }
 }
 
+#[async_trait]
+trait EventSink: Send + Sync {
+    async fn send(&self, event: Arc<StoreEvent>) -> Result<(), Error>;
+    fn is_closed(&self) -> bool;
+}
+
+#[async_trait]
+impl EventSink for Sender<Arc<StoreEvent>> {
+    async fn send(&self, event: Arc<StoreEvent>) -> Result<(), Error> {
+        Ok(self.send(event).await?)
+    }
+
+    fn is_closed(&self) -> bool {
+        self.is_closed()
+    }
+}
+
 /// Manage subscriptions to the `StoreEvent` stream. Keep a list of
 /// currently active subscribers and forward new events to each of them
 pub struct SubscriptionManager {
-    subscriptions:
-        Arc<RwLock<HashMap<String, (Arc<Vec<SubscriptionFilter>>, Sender<Arc<StoreEvent>>)>>>,
+    subscriptions: Arc<RwLock<HashMap<String, (Arc<Vec<SubscriptionFilter>>, Arc<dyn EventSink>)>>>,
 
     /// Keep the notification listener alive
     listener: StoreEventListener,
@@ -182,7 +198,7 @@ impl SubscriptionManagerTrait for SubscriptionManager {
         self.subscriptions
             .write()
             .unwrap()
-            .insert(id, (Arc::new(entities.clone()), sender));
+            .insert(id, (Arc::new(entities.clone()), Arc::new(sender)));
 
         // Return the subscription ID and entity change stream
         StoreEventStream::new(Box::new(ReceiverStream::new(receiver).map(Ok).compat()))
