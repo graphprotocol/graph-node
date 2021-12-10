@@ -19,6 +19,7 @@ use crate::store::query::collect_entities_from_query_field;
 /// A resolver that fetches entities from a `Store`.
 #[derive(Clone)]
 pub struct StoreResolver {
+    #[allow(dead_code)]
     logger: Logger,
     pub(crate) store: Arc<dyn QueryStore>,
     subscription_manager: Arc<dyn SubscriptionManager>,
@@ -298,25 +299,17 @@ impl Resolver for StoreResolver {
         }
     }
 
-    async fn resolve_field_stream(
+    fn resolve_field_stream(
         &self,
         schema: &s::Document,
         object_type: &s::ObjectType,
         field: &q::Field,
-    ) -> result::Result<StoreEventStreamBox, QueryExecutionError> {
+    ) -> result::Result<UnitStream, QueryExecutionError> {
         // Collect all entities involved in the query field
         let entities = collect_entities_from_query_field(schema, object_type, field);
 
         // Subscribe to the store and return the entity change stream
-        Ok(self
-            .subscription_manager
-            .subscribe(entities)
-            .throttle_while_syncing(
-                &self.logger,
-                self.store.clone(),
-                *SUBSCRIPTION_THROTTLE_INTERVAL,
-            )
-            .await)
+        Ok(self.subscription_manager.subscribe_no_payload(entities))
     }
 
     fn post_process(&self, result: &mut QueryResult) -> Result<(), anyhow::Error> {
