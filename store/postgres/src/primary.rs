@@ -1241,6 +1241,40 @@ impl<'a> Connection<'a> {
             })
     }
 
+    /// Return the shard that has the fewest deployments out of the given
+    /// `shards`. If `shards` is empty, return `None`
+    ///
+    /// Usage of a shard is taken to be the number of assigned deployments
+    /// that are stored in it. Unassigned deployments are ignored; in
+    /// particular, that ignores deployments that are going to be removed
+    /// soon.
+    pub fn least_used_shard(&self, shards: &[Shard]) -> Result<Option<Shard>, StoreError> {
+        use deployment_schemas as ds;
+        use subgraph_deployment_assignment as a;
+
+        let used = ds::table
+            .inner_join(a::table.on(a::id.eq(ds::id)))
+            .filter(ds::shard.eq(any(shards)))
+            .select((ds::shard, sql("count(*)")))
+            .group_by(ds::shard)
+            .order_by(sql::<i64>("count(*)"))
+            .load::<(String, i64)>(self.conn.as_ref())?;
+
+        let missing = shards
+            .into_iter()
+            .filter(|shard| !used.iter().any(|(s, _)| s == shard.as_str()))
+            .map(|shard| (shard.as_str(), 0));
+
+        used.iter()
+            .map(|(shard, count)| (shard.as_str(), *count))
+            .chain(missing)
+            .min_by(|(_, a), (_, b)| a.cmp(b))
+            .map(|(shard, _)| Shard::new(shard.to_string()))
+            .transpose()
+            // This can't really happen since we filtered by valid shards
+            .map_err(|e| constraint_violation!("database has illegal shard name: {}", e))
+    }
+
     #[cfg(debug_assertions)]
     pub fn versions_for_subgraph(
         &self,

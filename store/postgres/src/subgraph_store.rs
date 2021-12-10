@@ -405,7 +405,17 @@ impl SubgraphStoreInner {
     }
 
     fn place_in_shard(&self, mut shards: Vec<Shard>) -> Result<Shard, StoreError> {
-        Ok(shards.pop().unwrap())
+        match shards.len() {
+            0 => Ok(PRIMARY_SHARD.clone()),
+            1 => Ok(shards.pop().unwrap()),
+            _ => {
+                let conn = self.primary_conn()?;
+
+                // unwrap is fine since shards is not empty
+                let shard = conn.least_used_shard(&shards)?.unwrap();
+                Ok(shard)
+            }
+        }
     }
 
     fn place(
