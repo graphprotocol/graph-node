@@ -2,11 +2,10 @@ use std::collections::BTreeMap;
 use std::{convert::TryFrom, sync::Arc};
 
 use anyhow::Error;
-use graph::blockchain::{Block, TriggerWithHandler};
-use graph::components::store::StoredDynamicDataSource;
-use graph::data::subgraph::{DataSourceContext, Source};
 use graph::{
-    blockchain::{self, Blockchain},
+    blockchain::{self, Block, Blockchain, TriggerWithHandler},
+    components::store::StoredDynamicDataSource,
+    data::subgraph::{DataSourceContext, Source},
     prelude::{
         anyhow, async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize,
         Link, LinkResolver, Logger,
