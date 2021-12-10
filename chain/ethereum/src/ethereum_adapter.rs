@@ -1068,93 +1068,73 @@ impl EthereumAdapterTrait for EthereumAdapter {
         }
         let web3 = self.web3.clone();
 
-        // Retry, but eventually give up.
         // A receipt might be missing because the block was uncled, and the
         // transaction never made it back into the main chain.
-        Box::new(
-            retry("batch eth_getTransactionReceipt RPC call", &logger)
-                .limit(*REQUEST_RETRIES)
-                .no_logging()
-                .timeout_secs(*JSON_RPC_TIMEOUT)
-                .run(move || {
-                    let block = block.clone();
 
-                    let receipt_futures = block
-                        .transactions
-                        .iter()
-                        .map(|tx| {
-                            let logger = logger.clone();
-                            let tx_hash = tx.hash;
+        let block = block.clone();
 
-                            web3.eth()
-                                .transaction_receipt(tx_hash)
-                                .from_err()
-                                .map_err(IngestorError::Unknown)
-                                .and_then(move |receipt_opt| {
-                                    receipt_opt.ok_or_else(move || {
-                                        // No receipt was returned.
-                                        //
-                                        // This can be because the Ethereum node no longer
-                                        // considers this block to be part of the main chain,
-                                        // and so the transaction is no longer in the main
-                                        // chain.  Nothing we can do from here except give up
-                                        // trying to ingest this block.
-                                        //
-                                        // This could also be because the receipt is simply not
-                                        // available yet. For that case, we should retry until
-                                        // it becomes available.
-                                        IngestorError::ReceiptUnavailable(block_hash, tx_hash)
-                                    })
-                                })
-                                .and_then(move |receipt| {
-                                    // Check if the receipt has a block hash and is for the right
-                                    // block. Parity nodes seem to return receipts with no block
-                                    // hash when a transaction is no longer in the main chain, so
-                                    // treat that case the same as a receipt being absent entirely.
-                                    if receipt.block_hash != Some(block_hash) {
-                                        info!(
-                                            logger, "receipt block mismatch";
-                                            "receipt_block_hash" =>
-                                            receipt.block_hash.unwrap_or_default().to_string(),
-                                            "block_hash" =>
-                                                block_hash.to_string(),
-                                            "tx_hash" => tx_hash.to_string(),
-                                        );
+        let receipt_futures = block
+            .transactions
+            .iter()
+            .map(|tx| {
+                let logger = logger.clone();
+                let tx_hash = tx.hash;
 
-                                        // If the receipt came from a different block, then the
-                                        // Ethereum node no longer considers this block to be
-                                        // in the main chain.  Nothing we can do from here
-                                        // except give up trying to ingest this block.
-                                        // There is no way to get the transaction receipt from
-                                        // this block.
-                                        Err(IngestorError::BlockUnavailable(block_hash))
-                                    } else {
-                                        Ok(receipt)
-                                    }
-                                })
+                web3.eth()
+                    .transaction_receipt(tx_hash)
+                    .from_err()
+                    .map_err(IngestorError::Unknown)
+                    .and_then(move |receipt_opt| {
+                        receipt_opt.ok_or_else(move || {
+                            // No receipt was returned.
+                            //
+                            // This can be because the Ethereum node no longer
+                            // considers this block to be part of the main chain,
+                            // and so the transaction is no longer in the main
+                            // chain.  Nothing we can do from here except give up
+                            // trying to ingest this block.
+                            //
+                            // This could also be because the receipt is simply not
+                            // available yet. For that case, we should retry until
+                            // it becomes available.
+                            IngestorError::ReceiptUnavailable(block_hash, tx_hash)
                         })
-                        .collect::<Vec<_>>();
-
-                    stream::futures_ordered(receipt_futures)
-                        .collect()
-                        .map(move |transaction_receipts| EthereumBlock {
-                            block: Arc::new(block),
-                            transaction_receipts,
-                        })
-                        .compat()
-                })
-                .map_err(move |e| {
-                    e.into_inner().unwrap_or_else(move || {
-                        anyhow!(
-                            "Ethereum node took too long to return receipts for block {}",
-                            block_hash
-                        )
-                        .into()
                     })
-                })
-                .boxed()
-                .compat(),
-        )
+                    .and_then(move |receipt| {
+                        // Check if the receipt has a block hash and is for the right
+                        // block. Parity nodes seem to return receipts with no block
+                        // hash when a transaction is no longer in the main chain, so
+                        // treat that case the same as a receipt being absent entirely.
+                        if receipt.block_hash != Some(block_hash) {
+                            info!(
+                                logger, "receipt block mismatch";
+                                "receipt_block_hash" =>
+                                receipt.block_hash.unwrap_or_default().to_string(),
+                                "block_hash" =>
+                                    block_hash.to_string(),
+                                "tx_hash" => tx_hash.to_string(),
+                            );
+
+                            // If the receipt came from a different block, then the
+                            // Ethereum node no longer considers this block to be
+                            // in the main chain.  Nothing we can do from here
+                            // except give up trying to ingest this block.
+                            // There is no way to get the transaction receipt from
+                            // this block.
+                            Err(IngestorError::BlockUnavailable(block_hash))
+                        } else {
+                            Ok(receipt)
+                        }
+                    })
+            })
+            .collect::<Vec<_>>();
+
+        Box::new(stream::futures_ordered(receipt_futures).collect().map(
+            move |transaction_receipts| EthereumBlock {
+                block: Arc::new(block),
+                transaction_receipts,
+            },
+        ))
     }
 
     fn block_pointer_from_number(
