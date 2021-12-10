@@ -81,7 +81,7 @@ impl Shard {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
         {
             return Err(StoreError::InvalidIdentifier(format!(
-                "shard names must only contain lowercase alphanumeric characters or '_'"
+                "shard name `{}` is invalid: shard names must only contain lowercase alphanumeric characters or '_'", name
             )));
         }
         Ok(Shard(name))
