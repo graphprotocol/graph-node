@@ -1195,7 +1195,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
 
 #[derive(Debug, Clone, Constructor)]
 pub struct FindManyQuery<'a> {
-    pub(crate) namespace: &'a Namespace,
+    pub(crate) _namespace: &'a Namespace,
     pub(crate) tables: Vec<&'a Table>,
 
     // Maps object name to ids.
@@ -1392,7 +1392,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for InsertQuery<'a> {}
 
 #[derive(Debug, Clone)]
 pub struct ConflictingEntityQuery<'a> {
-    layout: &'a Layout,
+    _layout: &'a Layout,
     tables: Vec<&'a Table>,
     entity_id: &'a str,
 }
@@ -1407,7 +1407,7 @@ impl<'a> ConflictingEntityQuery<'a> {
             .map(|entity| layout.table_for_entity(entity).map(|table| table.as_ref()))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(ConflictingEntityQuery {
-            layout,
+            _layout: layout,
             tables,
             entity_id,
         })
@@ -2574,6 +2574,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}
 #[derive(Debug, Clone, Constructor)]
 pub struct ClampRangeQuery<'a, S> {
     table: &'a Table,
+    #[allow(dead_code)]
     entity_type: &'a EntityType,
     entity_ids: &'a [S],
     block: BlockNumber,

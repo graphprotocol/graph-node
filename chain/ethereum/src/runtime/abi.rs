@@ -1,4 +1,4 @@
-use graph::prelude::BigInt;
+use graph::prelude::{ethabi, BigInt};
 use graph::runtime::{asc_get, asc_new, AscPtr, DeterministicHostError, FromAscObj, ToAscObj};
 use graph::runtime::{AscHeap, AscIndexId, AscType, IndexForAscTypeId};
 use graph_runtime_derive::AscType;
@@ -365,7 +365,7 @@ impl ToAscObj<AscEthereumTransaction_0_0_2> for EthereumTransactionData {
             value: asc_new(heap, &BigInt::from_unsigned_u256(&self.value))?,
             gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit))?,
             gas_price: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_price))?,
-            input: asc_new(heap, &*self.input.0)?,
+            input: asc_new(heap, &*self.input)?,
         })
     }
 }
@@ -386,7 +386,7 @@ impl ToAscObj<AscEthereumTransaction_0_0_6> for EthereumTransactionData {
             value: asc_new(heap, &BigInt::from_unsigned_u256(&self.value))?,
             gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit))?,
             gas_price: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_price))?,
-            input: asc_new(heap, &*self.input.0)?,
+            input: asc_new(heap, &*self.input)?,
             nonce: asc_new(heap, &BigInt::from_unsigned_u256(&self.nonce))?,
         })
     }

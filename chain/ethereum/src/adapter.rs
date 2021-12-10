@@ -45,7 +45,7 @@ pub enum EthereumContractCallError {
     #[error("ABI error: {0}")]
     ABIError(ABIError),
     /// `Token` is not of expected `ParamType`
-    #[error("type mismatch, token {0:?} is not of kind {0:?}")]
+    #[error("type mismatch, token {0:?} is not of kind {1:?}")]
     TypeError(Token, ParamType),
     #[error("error encoding input call data: {0}")]
     EncodingError(ethabi::Error),
@@ -672,8 +672,8 @@ mod tests {
     use super::EthereumCallFilter;
 
     use graph::prelude::web3::types::Address;
+    use graph::prelude::web3::types::Bytes;
     use graph::prelude::EthereumCall;
-    use web3::types::Bytes;
 
     use std::collections::{HashMap, HashSet};
     use std::iter::FromIterator;

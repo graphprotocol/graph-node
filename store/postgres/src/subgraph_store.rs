@@ -16,7 +16,7 @@ use graph::{
     },
     constraint_violation,
     data::query::QueryTarget,
-    data::subgraph::schema::SubgraphError,
+    data::subgraph::schema::{self, SubgraphError},
     data::subgraph::status,
     prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
@@ -122,11 +122,16 @@ pub trait DeploymentPlacer {
 
 /// Tools for managing unused deployments
 pub mod unused {
+    use graph::prelude::chrono::Duration;
+
     pub enum Filter {
         /// List all unused deployments
         All,
         /// List only deployments that are unused but have not been removed yet
         New,
+        /// List only deployments that were recorded as unused at least this
+        /// long ago but have not been removed at
+        UnusedLongerThan(Duration),
     }
 }
 
@@ -1320,6 +1325,13 @@ impl WritableStoreTrait for WritableStore {
 
     fn shard(&self) -> &str {
         self.site.shard.as_str()
+    }
+
+    async fn health(&self, id: &DeploymentHash) -> Result<schema::SubgraphHealth, StoreError> {
+        self.retry_async("health", || async {
+            self.writable.health(id).await.map(Into::into)
+        })
+        .await
     }
 }
 

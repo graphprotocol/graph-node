@@ -70,7 +70,7 @@ impl Chain {
 impl Blockchain for Chain {
     const KIND: BlockchainKind = BlockchainKind::Near;
 
-    type Block = codec::BlockWrapper;
+    type Block = codec::Block;
 
     type DataSource = DataSource;
 
@@ -206,7 +206,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     async fn triggers_in_block(
         &self,
         _logger: &Logger,
-        _block: codec::BlockWrapper,
+        _block: codec::Block,
         _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         // FIXME (NEAR): Share implementation with FirehoseMapper::firehose_triggers_in_block version.
@@ -223,7 +223,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         _ptr: BlockPtr,
         _offset: BlockNumber,
-    ) -> Result<Option<codec::BlockWrapper>, Error> {
+    ) -> Result<Option<codec::Block>, Error> {
         // FIXME (NEAR):  Might not be necessary for NEAR support for now
         Ok(None)
     }
@@ -267,7 +267,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         //
         // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
         // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
-        let block = codec::BlockWrapper::decode(any_block.value.as_ref())?;
+        let block = codec::Block::decode(any_block.value.as_ref())?;
 
         match step {
             bstream::ForkStep::StepNew => Ok(BlockStreamEvent::ProcessBlock(
@@ -276,8 +276,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             )),
 
             bstream::ForkStep::StepUndo => {
-                let block = block.block.as_ref().unwrap();
-                let header = block.header.as_ref().unwrap();
+                let header = block.header();
 
                 Ok(BlockStreamEvent::Revert(
                     BlockPtr {
@@ -307,7 +306,7 @@ impl FirehoseMapper {
     //        removed and TriggersAdapter::triggers_in_block should be use straight.
     fn firehose_triggers_in_block(
         &self,
-        block: &codec::BlockWrapper,
+        block: &codec::Block,
         _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, FirehoseError> {
         // TODO: Find the best place to introduce an `Arc` and avoid this clone.

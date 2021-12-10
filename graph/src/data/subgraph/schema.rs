@@ -44,9 +44,8 @@ impl SubgraphHealth {
 
     pub fn is_failed(&self) -> bool {
         match self {
-            SubgraphHealth::Healthy => false,
-            SubgraphHealth::Unhealthy => false,
             SubgraphHealth::Failed => true,
+            SubgraphHealth::Healthy | SubgraphHealth::Unhealthy => false,
         }
     }
 }

@@ -2,17 +2,20 @@ syntax = "proto3";
 
 package sf.near.codec.v1;
 
-message BlockWrapper {
-  Block block = 1;
-  repeated IndexerShard shards = 2;
-  repeated StateChangeWithCause state_changes = 3;
+option go_package = "github.com/streamingfast/sf-near/pb/sf/near/codec/v1;pbcodec";
+
+message Block {
+  string author = 1;
+  BlockHeader header = 2;
+  repeated ChunkHeader chunk_headers = 3;
+  repeated IndexerShard shards = 4;
+  repeated StateChangeWithCause state_changes = 5;
 }
 
 message StateChangeWithCause {
-  StateChangeCause cause = 1;
-  StateChangeValue value = 2;
+  StateChangeValue value = 1;
+  StateChangeCause cause = 2;
 }
-
 
 message StateChangeCause {
   oneof cause {
@@ -27,18 +30,18 @@ message StateChangeCause {
     ValidatorAccountsUpdate validator_accounts_update = 9;
     Migration migration = 10;
   }
-}
 
-message NotWritableToDisk {}
-message InitialState {}
-message TransactionProcessing {CryptoHash tx_hash = 1;}
-message ActionReceiptProcessingStarted {CryptoHash receipt_hash = 1;}
-message ActionReceiptGasReward {CryptoHash tx_hash = 1;}
-message ReceiptProcessing {CryptoHash tx_hash = 1;}
-message PostponedReceipt {CryptoHash tx_hash = 1;}
-message UpdatedDelayedReceipts {}
-message ValidatorAccountsUpdate {}
-message Migration {}
+  message NotWritableToDisk {}
+  message InitialState {}
+  message TransactionProcessing {CryptoHash tx_hash = 1;}
+  message ActionReceiptProcessingStarted {CryptoHash receipt_hash = 1;}
+  message ActionReceiptGasReward {CryptoHash tx_hash = 1;}
+  message ReceiptProcessing {CryptoHash tx_hash = 1;}
+  message PostponedReceipt {CryptoHash tx_hash = 1;}
+  message UpdatedDelayedReceipts {}
+  message ValidatorAccountsUpdate {}
+  message Migration {}
+}
 
 message StateChangeValue {
   oneof value {
@@ -51,49 +54,41 @@ message StateChangeValue {
     ContractCodeUpdate contract_code_update = 7;
     ContractCodeDeletion contract_deletion = 8;
   }
-}
 
-message AccountUpdate {string account_id = 1; Account account = 2;}
-message AccountDeletion {string account_id = 1;}
-message AccessKeyUpdate {
-  string account_id = 1;
-  PublicKey public_key = 2;
-  AccessKey access_key = 3;
+  message AccountUpdate {string account_id = 1; Account account = 2;}
+  message AccountDeletion {string account_id = 1;}
+  message AccessKeyUpdate {
+    string account_id = 1;
+    PublicKey public_key = 2;
+    AccessKey access_key = 3;
+  }
+  message AccessKeyDeletion {
+    string account_id = 1;
+    PublicKey public_key = 2;
+  }
+  message DataUpdate {
+    string account_id = 1;
+    bytes key = 2;
+    bytes value = 3;
+  }
+  message DataDeletion {
+    string account_id = 1;
+    bytes key = 2;
+  }
+  message ContractCodeUpdate {
+    string account_id = 1;
+    bytes code = 2;
+  }
+  message ContractCodeDeletion {
+    string account_id = 1;
+  }
 }
-message AccessKeyDeletion {
-  string account_id = 1;
-  PublicKey public_key = 2;
-}
-message DataUpdate {
-  string account_id = 1;
-  bytes key = 2;
-  bytes value = 3;
-}
-message DataDeletion {
-  string account_id = 1;
-  bytes key = 2;
-}
-message ContractCodeUpdate {
-  string account_id = 1;
-  bytes code = 2;
-}
-message ContractCodeDeletion {
-  string account_id = 1;
-}
-
-
 
 message Account {
   BigInt amount = 1;
   BigInt locked = 2;
   CryptoHash code_hash = 3;
   uint64 storage_usage = 4;
-}
-
-message Block {
-  string author = 1;
-  BlockHeader header = 2;
-  repeated ChunkHeader chunks = 3;
 }
 
 message BlockHeader {
@@ -117,17 +112,18 @@ message BlockHeader {
   repeated bool chunk_mask = 18;
   BigInt gas_price = 19;
   uint64 block_ordinal = 20;
-  BigInt validator_reward = 21;
-  BigInt total_supply = 22;
-  repeated SlashedValidator challenges_result = 23;
+  BigInt total_supply = 21;
+  repeated SlashedValidator challenges_result = 22;
+  uint64 last_final_block_height = 23;
   CryptoHash last_final_block = 24;
-  CryptoHash last_ds_final_block = 25;
-  CryptoHash next_bp_hash = 26;
-  CryptoHash block_merkle_root = 27;
-  bytes epoch_sync_data_hash = 28;
-  repeated Signature approvals = 29;
-  Signature signature = 30;
-  uint32 latest_protocol_version = 31;
+  uint64 last_ds_final_block_height = 25;
+  CryptoHash last_ds_final_block = 26;
+  CryptoHash next_bp_hash = 27;
+  CryptoHash block_merkle_root = 28;
+  bytes epoch_sync_data_hash = 29;
+  repeated Signature approvals = 30;
+  Signature signature = 31;
+  uint32 latest_protocol_version = 32;
 }
 
 message BigInt {
@@ -137,17 +133,19 @@ message CryptoHash {
   bytes bytes = 1;
 }
 
-enum SignatureType {
+enum CurveKind {
   ED25519 = 0;
   SECP256K1 = 1;
 }
 
 message Signature {
-  SignatureType type = 1;
+  CurveKind type = 1;
   bytes bytes = 2;
 }
+
 message PublicKey {
-  bytes bytes = 1;
+  CurveKind type = 1;
+  bytes bytes = 2;
 }
 
 message ValidatorStake {
@@ -179,19 +177,16 @@ message ChunkHeader {
   bytes tx_root = 15;
   repeated ValidatorStake validator_proposals = 16;
   Signature signature = 17;
-
 }
 
 message IndexerShard {
   uint64 shard_id = 1;
-  // Chunk is a real nullable field
   IndexerChunk chunk = 2;
   repeated IndexerExecutionOutcomeWithReceipt receipt_execution_outcomes = 3;
-
 }
 
 message IndexerExecutionOutcomeWithReceipt {
-  ExecutionOutcomeWithIdView execution_outcome = 1;
+  ExecutionOutcomeWithId execution_outcome = 1;
   Receipt receipt = 2;
 }
 
@@ -200,7 +195,6 @@ message IndexerChunk {
   ChunkHeader header = 2;
   repeated IndexerTransactionWithOutcome transactions = 3;
   repeated Receipt receipts = 4;
-
 }
 
 message IndexerTransactionWithOutcome {
@@ -219,7 +213,7 @@ message SignedTransaction {
 }
 
 message IndexerExecutionOutcomeWithOptionalReceipt {
-  ExecutionOutcomeWithIdView execution_outcome = 1;
+  ExecutionOutcomeWithId execution_outcome = 1;
   Receipt receipt = 2;
 }
 
@@ -253,7 +247,7 @@ message DataReceiver {
   string receiver_id = 2;
 }
 
-message ExecutionOutcomeWithIdView {
+message ExecutionOutcomeWithId {
   MerklePath proof = 1;
   CryptoHash block_hash = 2;
   CryptoHash id = 3;
@@ -272,10 +266,15 @@ message ExecutionOutcome {
     SuccessValueExecutionStatus success_value = 22;
     SuccessReceiptIdExecutionStatus success_receipt_id = 23;
   }
+  ExecutionMetadata metadata = 6;
+}
+
+enum ExecutionMetadata {
+  ExecutionMetadataV1 = 0;
 }
 
 message SuccessValueExecutionStatus {
-  string value = 1;
+  bytes value = 1;
 }
 
 message SuccessReceiptIdExecutionStatus {
@@ -305,8 +304,8 @@ message ActionError {
     TriesToUnstakeErrorKind tries_to_unstake = 30;
     TriesToStakeErrorKind tries_to_stake = 31;
     InsufficientStakeErrorKind insufficient_stake = 32;
-    FunctionCallErrorKind function_call = 33; //todo: uncompleted
-    NewReceiptValidationErrorKind new_receipt_validation = 34; //todo: uncompleted
+    FunctionCallErrorKind function_call = 33;
+    NewReceiptValidationErrorKind new_receipt_validation = 34;
     OnlyImplicitAccountCreationAllowedErrorKind only_implicit_account_creation_allowed = 35;
     DeleteAccountWithLargeStateErrorKind delete_account_with_large_state = 36;
   }
@@ -372,18 +371,45 @@ message InsufficientStakeErrorKind{
   BigInt stake = 2;
   BigInt minimum_stake = 3;
 }
-message FunctionCallErrorKind{} //todo: incomplete
-message NewReceiptValidationErrorKind{} //todo: incomplete
+
+message FunctionCallErrorKind {
+  FunctionCallErrorSer error = 1;
+}
+
+enum FunctionCallErrorSer { //todo: add more detail?
+  CompilationError = 0;
+  LinkError = 1;
+  MethodResolveError = 2;
+  WasmTrap = 3;
+  WasmUnknownError = 4;
+  HostError = 5;
+  _EVMError = 6;
+  ExecutionError = 7;
+}
+
+message NewReceiptValidationErrorKind {
+  ReceiptValidationError error = 1;
+}
+
+enum ReceiptValidationError { //todo: add more detail?
+  InvalidPredecessorId = 0;
+  InvalidReceiverAccountId = 1;
+  InvalidSignerAccountId = 2;
+  InvalidDataReceiverId = 3;
+  ReturnedValueLengthExceeded = 4;
+  NumberInputDataDependenciesExceeded = 5;
+  ActionsValidationError = 6;
+}
 
 message OnlyImplicitAccountCreationAllowedErrorKind{
   string account_id = 1;
 }
+
 message DeleteAccountWithLargeStateErrorKind{
   string account_id = 1;
 }
 
-
-enum InvalidTxError {//todo: half baked
+enum InvalidTxError { //todo: add more detail?
   InvalidAccessKeyError = 0;
   InvalidSignerId = 1;
   SignerDoesNotExist = 2;
@@ -400,10 +426,10 @@ enum InvalidTxError {//todo: half baked
   TransactionSizeExceeded = 13;
 }
 
-
 message MerklePath {
   repeated MerklePathItem path = 1;
 }
+
 message MerklePathItem {
   CryptoHash hash = 1;
   Direction direction = 2;
@@ -413,7 +439,6 @@ enum Direction {
   left = 0;
   right = 1;
 }
-
 
 message Action {
   oneof action {
@@ -432,12 +457,12 @@ message CreateAccountAction {
 }
 
 message DeployContractAction {
-  string code = 1;
+  bytes code = 1;
 }
 
 message FunctionCallAction {
   string method_name = 1;
-  string args = 2;
+  bytes args = 2;
   uint64 gas = 3;
   BigInt deposit = 4;
 }
@@ -477,7 +502,6 @@ message AccessKeyPermission {
 }
 
 message FunctionCallPermission {
-  // Allowance is a real nullable field
   BigInt allowance = 1;
   string receiver_id = 2;
   repeated  string method_names = 3;

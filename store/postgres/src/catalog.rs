@@ -117,6 +117,7 @@ pub fn supports_proof_of_indexing(
     #[derive(Debug, QueryableByName)]
     struct Table {
         #[sql_type = "Text"]
+        #[allow(dead_code)]
         pub table_name: String,
     }
     let query =

@@ -24,7 +24,7 @@ use diesel::{
 };
 use graph::{
     components::store::DeploymentId as GraphDeploymentId,
-    prelude::{CancelHandle, CancelToken},
+    prelude::{chrono, CancelHandle, CancelToken},
 };
 use graph::{
     components::store::DeploymentLocator,
@@ -193,6 +193,7 @@ allow_tables_to_appear_in_same_query!(
 #[table_name = "deployment_schemas"]
 struct Schema {
     id: DeploymentId,
+    #[allow(dead_code)]
     pub created_at: PgTimestamp,
     pub subgraph: String,
     pub name: String,
@@ -1391,6 +1392,21 @@ impl<'a> Connection<'a> {
                 .filter(u::removed_at.is_null())
                 .order_by(u::entity_count)
                 .load(self.conn.as_ref())?),
+            UnusedLongerThan(duration) => {
+                let ts = chrono::offset::Local::now()
+                    .checked_sub_signed(duration)
+                    .ok_or_else(|| {
+                        StoreError::ConstraintViolation(format!(
+                            "duration {} is too large",
+                            duration
+                        ))
+                    })?;
+                Ok(u::table
+                    .filter(u::removed_at.is_null())
+                    .filter(u::unused_at.lt(ts))
+                    .order_by(u::entity_count)
+                    .load(self.conn.as_ref())?)
+            }
         }
     }
 

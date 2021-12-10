@@ -1,6 +1,6 @@
 [package]
 name = "graph-node"
-version = "0.24.2"
+version = "0.25.0"
 edition = "2018"
 default-run = "graph-node"
 
@@ -16,7 +16,7 @@ path = "src/bin/manager.rs"
 clap = "2.33.3"
 env_logger = "0.9.0"
 git-testament = "0.2"
-graphql-parser = "0.3"
+graphql-parser = "0.4.0"
 futures = { version = "0.3.1", features = ["compat"] }
 lazy_static = "1.2.0"
 url = "2.2.1"
@@ -41,7 +41,7 @@ toml = "0.5.7"
 shellexpand = "2.1.0"
 diesel = "1.4.8"
 fail = "0.5"
-http = "0.1.21" # must be compatible with the version rust-web3 uses
+http = "0.2.5" # must be compatible with the version rust-web3 uses
 
 [dev-dependencies]
 assert_cli = "0.6"

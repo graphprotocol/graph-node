@@ -546,7 +546,7 @@ impl Layout {
             tables.push(self.table_for_entity(entity_type)?.as_ref());
         }
         let query = FindManyQuery {
-            namespace: &self.catalog.site.namespace,
+            _namespace: &self.catalog.site.namespace,
             ids_for_type,
             tables,
             block,
