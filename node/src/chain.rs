@@ -5,7 +5,7 @@ use futures::TryFutureExt;
 use graph::anyhow::Error;
 use graph::blockchain::{Block as BlockchainBlock, BlockchainKind, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
-use graph::firehose::endpoints::{FirehoseEndpoint, FirehoseNetworks};
+use graph::firehose::{FirehoseEndpoint, FirehoseNetworks};
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::{anyhow, tokio, BlockNumber};
 use graph::prelude::{prost, MetricsRegistry as MetricsRegistryTrait};

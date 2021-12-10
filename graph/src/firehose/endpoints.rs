@@ -2,7 +2,7 @@ use crate::{
     blockchain::Block as BlockchainBlock,
     blockchain::BlockPtr,
     cheap_clone::CheapClone,
-    firehose::decode_firehose_block,
+    firehose::{decode_firehose_block, ForkStep},
     prelude::{debug, info},
 };
 use anyhow::Context;
@@ -17,7 +17,7 @@ use tonic::{
     Request,
 };
 
-use super::bstream;
+use super::codec as firehose;
 
 #[derive(Clone, Debug)]
 pub struct FirehoseEndpoint {
@@ -81,7 +81,7 @@ impl FirehoseEndpoint {
             None => None,
         };
 
-        let mut client = bstream::block_stream_v2_client::BlockStreamV2Client::with_interceptor(
+        let mut client = firehose::stream_client::StreamClient::with_interceptor(
             self.channel.cheap_clone(),
             move |mut r: Request<()>| match token_metadata.as_ref() {
                 Some(t) => {
@@ -94,10 +94,9 @@ impl FirehoseEndpoint {
 
         debug!(logger, "Connecting to firehose to retrieve genesis block");
         let response_stream = client
-            .blocks(bstream::BlocksRequestV2 {
+            .blocks(firehose::Request {
                 start_block_num: 0,
-                details: bstream::BlockDetails::Light as i32,
-                fork_steps: vec![bstream::ForkStep::StepIrreversible as i32],
+                fork_steps: vec![ForkStep::StepIrreversible as i32],
                 ..Default::default()
             })
             .await?;
@@ -118,14 +117,14 @@ impl FirehoseEndpoint {
 
     pub async fn stream_blocks(
         self: Arc<Self>,
-        request: bstream::BlocksRequestV2,
-    ) -> Result<tonic::Streaming<bstream::BlockResponseV2>, anyhow::Error> {
+        request: firehose::Request,
+    ) -> Result<tonic::Streaming<firehose::Response>, anyhow::Error> {
         let token_metadata = match self.token.clone() {
             Some(token) => Some(MetadataValue::from_str(token.as_str())?),
             None => None,
         };
 
-        let mut client = bstream::block_stream_v2_client::BlockStreamV2Client::with_interceptor(
+        let mut client = firehose::stream_client::StreamClient::with_interceptor(
             self.channel.cheap_clone(),
             move |mut r: Request<()>| match token_metadata.as_ref() {
                 Some(t) => {
