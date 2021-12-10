@@ -246,7 +246,7 @@ fn create_mock_ethereum_adapter(
         .expect_load_full_block()
         .returning(move |_, block: LightEthereumBlock| {
             let chains = chains_for_load_full_block.lock().unwrap();
-            Box::new(future::result(
+            Box::pin(std::future::ready(
                 chains
                     .current_chain()
                     .ok_or_else(|| anyhow!("unknown chain {:?}", chains.index()))
