@@ -1232,7 +1232,7 @@ impl<'a> Connection<'a> {
             .iter()
             .map(|(node, count)| (node.as_str(), *count))
             .chain(missing)
-            .min_by(|(_, a), (_, b)| a.cmp(b))
+            .min_by_key(|(_, count)| *count)
             .map(|(node, _)| NodeId::new(node).map_err(|()| node))
             .transpose()
             // This can't really happen since we filtered by valid NodeId's
@@ -1260,6 +1260,8 @@ impl<'a> Connection<'a> {
             .order_by(sql::<i64>("count(*)"))
             .load::<(String, i64)>(self.conn.as_ref())?;
 
+        // Any shards that have no deployments in them will not be in
+        // 'used'; add them in with a count of 0
         let missing = shards
             .into_iter()
             .filter(|shard| !used.iter().any(|(s, _)| s == shard.as_str()))
@@ -1268,7 +1270,7 @@ impl<'a> Connection<'a> {
         used.iter()
             .map(|(shard, count)| (shard.as_str(), *count))
             .chain(missing)
-            .min_by(|(_, a), (_, b)| a.cmp(b))
+            .min_by_key(|(_, count)| *count)
             .map(|(shard, _)| Shard::new(shard.to_string()))
             .transpose()
             // This can't really happen since we filtered by valid shards

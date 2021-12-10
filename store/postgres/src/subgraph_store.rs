@@ -111,11 +111,12 @@ impl ToSql<Text, Pg> for Shard {
     }
 }
 
-/// Decide where a new deployment should be placed based on the subgraph name
-/// and the network it is indexing. If the deployment can be placed, returns
-/// the name of the database shard for the deployment and the names of the
-/// indexers that should index it. The deployment should then be assigned to
-/// one of the returned indexers.
+/// Decide where a new deployment should be placed based on the subgraph
+/// name and the network it is indexing. If the deployment can be placed,
+/// returns a list of eligible database shards for the deployment and the
+/// names of the indexers that should index it. The deployment should then
+/// be assigned to one of the returned indexers and placed into one of the
+/// shards.
 pub trait DeploymentPlacer {
     fn place(&self, name: &str, network: &str)
         -> Result<Option<(Vec<Shard>, Vec<NodeId>)>, String>;
