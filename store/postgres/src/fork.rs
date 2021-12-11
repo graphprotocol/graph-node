@@ -16,13 +16,13 @@ use graph::{
     url::Url,
 };
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, PartialEq)]
 struct Query {
     query: String,
     variables: Variables,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, PartialEq)]
 struct Variables {
     id: String,
 }
@@ -150,12 +150,11 @@ impl SubgraphFork {
             "\
 query Query ($id: String) {{
     {}(id: $id, subgraphError: allow) {{
-        id
         {}
     }}
 }}",
             entity_type,
-            format!("\n{}\n", fields.join("\n")),
+            fields.join("\n        ").trim(),
         )
     }
 
@@ -186,5 +185,106 @@ query Query ($id: String) {{
         };
 
         return Ok(Entity::from(map));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use graph::{
+        prelude::{s::Type, DeploymentHash},
+        slog::{self, o},
+    };
+    use graphql_parser::parse_schema;
+
+    fn test_schema() -> Arc<Schema> {
+        let schema = Schema::new(
+            DeploymentHash::new("test").unwrap(),
+            parse_schema::<String>(
+                r#"type Gravatar @entity {
+  id: ID!
+  owner: Bytes!
+  displayName: String!
+  imageUrl: String!
+}"#,
+            )
+            .unwrap(),
+        );
+        Arc::new(schema)
+    }
+
+    fn test_url() -> Url {
+        Url::parse("http://localhost:1234").unwrap()
+    }
+
+    fn test_logger() -> Logger {
+        Logger::root(slog::Discard, o!())
+    }
+
+    #[test]
+    fn test_infer_query() {
+        let url = test_url();
+        let schema = test_schema();
+        let logger = test_logger();
+
+        let fork = SubgraphFork::new(url, schema, logger);
+
+        let (query, fields) = fork.infer_query("Gravatar", "0x00".to_string()).unwrap();
+        assert_eq!(
+            query,
+            Query {
+                query: r#"query Query ($id: String) {
+    gravatar(id: $id, subgraphError: allow) {
+        id
+        owner
+        displayName
+        imageUrl
+    }
+}"#
+                .to_string(),
+                variables: Variables {
+                    id: "0x00".to_string()
+                },
+            }
+        );
+
+        assert_eq!(
+            fields,
+            &vec![
+                Field {
+                    position: graphql_parser::Pos { line: 2, column: 3 },
+                    description: None,
+                    name: "id".to_string(),
+                    arguments: vec![],
+                    field_type: Type::NonNullType(Box::new(Type::NamedType("ID".to_string()))),
+                    directives: vec![]
+                },
+                Field {
+                    position: graphql_parser::Pos { line: 3, column: 3 },
+                    description: None,
+                    name: "owner".to_string(),
+                    arguments: vec![],
+                    field_type: Type::NonNullType(Box::new(Type::NamedType("Bytes".to_string()))),
+                    directives: vec![]
+                },
+                Field {
+                    position: graphql_parser::Pos { line: 4, column: 3 },
+                    description: None,
+                    name: "displayName".to_string(),
+                    arguments: vec![],
+                    field_type: Type::NonNullType(Box::new(Type::NamedType("String".to_string()))),
+                    directives: vec![]
+                },
+                Field {
+                    position: graphql_parser::Pos { line: 5, column: 3 },
+                    description: None,
+                    name: "imageUrl".to_string(),
+                    arguments: vec![],
+                    field_type: Type::NonNullType(Box::new(Type::NamedType("String".to_string()))),
+                    directives: vec![]
+                },
+            ]
+        );
     }
 }
