@@ -447,6 +447,7 @@ fn version_info() {
             BLOCK_ONE.clone(),
             vec![],
         )
+        .await
         .unwrap();
 
         let vi = get_version_info(&store, NAME);
@@ -594,6 +595,7 @@ fn fail_unfail_deterministic_error() {
             BLOCKS[0].clone(),
             vec![],
         )
+        .await
         .unwrap();
 
         // We don't have any errors and the subgraph is healthy.
@@ -610,6 +612,7 @@ fn fail_unfail_deterministic_error() {
             BLOCKS[1].clone(),
             vec![],
         )
+        .await
         .unwrap();
 
         // Still no fatal errors.
@@ -685,6 +688,7 @@ fn fail_unfail_deterministic_error_noop() {
             BLOCKS[0].clone(),
             vec![],
         )
+        .await
         .unwrap();
 
         // We don't have any errors and the subgraph is healthy.
@@ -701,6 +705,7 @@ fn fail_unfail_deterministic_error_noop() {
             BLOCKS[1].clone(),
             vec![],
         )
+        .await
         .unwrap();
 
         // Still no fatal errors.
@@ -816,6 +821,7 @@ fn fail_unfail_non_deterministic_error() {
             BLOCKS[0].clone(),
             vec![],
         )
+        .await
         .unwrap();
 
         // We don't have any errors.
@@ -856,6 +862,7 @@ fn fail_unfail_non_deterministic_error() {
             BLOCKS[1].clone(),
             vec![],
         )
+        .await
         .unwrap();
 
         // Subgraph failed but it's deployment head pointer advanced.
@@ -905,6 +912,7 @@ fn fail_unfail_non_deterministic_error_noop() {
             BLOCKS[0].clone(),
             vec![],
         )
+        .await
         .unwrap();
 
         // We don't have any errors and the subgraph is healthy.
@@ -921,6 +929,7 @@ fn fail_unfail_non_deterministic_error_noop() {
             BLOCKS[1].clone(),
             vec![],
         )
+        .await
         .unwrap();
 
         // Still no errors.

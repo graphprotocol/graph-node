@@ -387,14 +387,14 @@ impl WritableStoreTrait for WritableAgent {
         Ok(())
     }
 
-    fn revert_block_operations(
+    async fn revert_block_operations(
         &self,
         block_ptr_to: BlockPtr,
         firehose_cursor: Option<&str>,
     ) -> Result<(), StoreError> {
         *self.block_ptr.lock().unwrap() = Some(block_ptr_to.clone());
-        // TODO: If we haven't written the block yet, revert in memory. If
-        // we have, revert in the database
+        *self.block_cursor.lock().unwrap() = firehose_cursor.map(|c| c.to_string());
+
         self.store
             .revert_block_operations(block_ptr_to, firehose_cursor)
     }
@@ -437,7 +437,7 @@ impl WritableStoreTrait for WritableAgent {
         self.store.get(key)
     }
 
-    fn transact_block_operations(
+    async fn transact_block_operations(
         &self,
         block_ptr_to: BlockPtr,
         firehose_cursor: Option<String>,

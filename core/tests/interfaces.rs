@@ -32,7 +32,8 @@ async fn insert_and_query(
         &deployment,
         GENESIS_PTR.clone(),
         insert_ops.collect::<Vec<_>>(),
-    )?;
+    )
+    .await?;
 
     let document = graphql_parser::parse_query(query).unwrap().into_static();
     let target = QueryTarget::Deployment(subgraph_id);

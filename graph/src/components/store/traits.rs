@@ -162,7 +162,7 @@ pub trait WritableStore: Send + Sync + 'static {
     /// subgraph block pointer to `block_ptr_to`.
     ///
     /// `block_ptr_to` must point to the parent block of the subgraph block pointer.
-    fn revert_block_operations(
+    async fn revert_block_operations(
         &self,
         block_ptr_to: BlockPtr,
         firehose_cursor: Option<&str>,
@@ -195,7 +195,7 @@ pub trait WritableStore: Send + Sync + 'static {
     /// subgraph block pointer to `block_ptr_to`, and update the firehose cursor to `firehose_cursor`
     ///
     /// `block_ptr_to` must point to a child block of the current subgraph block pointer.
-    fn transact_block_operations(
+    async fn transact_block_operations(
         &self,
         block_ptr_to: BlockPtr,
         firehose_cursor: Option<String>,

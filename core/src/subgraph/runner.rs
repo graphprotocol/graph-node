@@ -352,6 +352,7 @@ where
                 data_sources,
                 deterministic_errors,
             )
+            .await
             .context("Failed to transact block operations")?;
 
         // For subgraphs with `nonFatalErrors` feature disabled, we consider
@@ -778,6 +779,7 @@ where
             .inputs
             .store
             .revert_block_operations(revert_to_ptr, cursor.as_deref())
+            .await
         {
             error!(&self.logger, "Could not revert block. Retrying"; "error" => %e);
 

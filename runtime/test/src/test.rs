@@ -922,6 +922,7 @@ async fn test_entity_store(api_version: Version) {
         &deployment,
         vec![(user_type.clone(), alex), (user_type, steve)],
     )
+    .await
     .unwrap();
 
     let get_user = move |module: &mut WasmInstance<Chain>, id: &str| -> Option<Entity> {

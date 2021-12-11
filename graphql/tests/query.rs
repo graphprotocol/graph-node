@@ -39,11 +39,11 @@ use test_store::{
 
 const NETWORK_NAME: &str = "fake_network";
 
-fn setup(store: &Store) -> DeploymentLocator {
-    setup_with_features(store, "graphqlTestsQuery", BTreeSet::new())
+async fn setup(store: &Store) -> DeploymentLocator {
+    setup_with_features(store, "graphqlTestsQuery", BTreeSet::new()).await
 }
 
-fn setup_with_features(
+async fn setup_with_features(
     store: &Store,
     id: &str,
     features: BTreeSet<SubgraphFeature>,
@@ -70,7 +70,7 @@ fn setup_with_features(
         chain: PhantomData,
     };
 
-    insert_test_entities(store.subgraph_store().as_ref(), manifest)
+    insert_test_entities(store.subgraph_store().as_ref(), manifest).await
 }
 
 fn test_schema(id: DeploymentHash) -> Schema {
@@ -109,7 +109,7 @@ fn test_schema(id: DeploymentHash) -> Schema {
     .expect("Test schema invalid")
 }
 
-fn insert_test_entities(
+async fn insert_test_entities(
     store: &impl SubgraphStore,
     manifest: SubgraphManifest<graph_chain_ethereum::Chain>,
 ) -> DeploymentLocator {
@@ -223,7 +223,7 @@ fn insert_test_entities(
         ]),
     ];
 
-    fn insert_at(entities: Vec<Entity>, deployment: &DeploymentLocator, block_ptr: BlockPtr) {
+    async fn insert_at(entities: Vec<Entity>, deployment: &DeploymentLocator, block_ptr: BlockPtr) {
         let insert_ops = entities.into_iter().map(|data| EntityOperation::Set {
             key: EntityKey::data(
                 deployment.hash.clone(),
@@ -239,11 +239,12 @@ fn insert_test_entities(
             block_ptr,
             insert_ops.collect::<Vec<_>>(),
         )
+        .await
         .unwrap();
     }
 
-    insert_at(entities0, &deployment, GENESIS_PTR.clone());
-    insert_at(entities1, &deployment, BLOCK_ONE.clone());
+    insert_at(entities0, &deployment, GENESIS_PTR.clone()).await;
+    insert_at(entities1, &deployment, BLOCK_ONE.clone()).await;
     deployment
 }
 
@@ -291,7 +292,7 @@ macro_rules! extract_data {
 #[test]
 fn can_query_one_to_one_relationship() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let result = execute_query_document(
             &deployment.hash,
             graphql_parser::parse_query(
@@ -396,7 +397,7 @@ fn can_query_one_to_one_relationship() {
 #[test]
 fn can_query_one_to_many_relationships_in_both_directions() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let result = execute_query_document(
             &deployment.hash,
             graphql_parser::parse_query(
@@ -495,7 +496,7 @@ fn can_query_one_to_many_relationships_in_both_directions() {
 #[test]
 fn can_query_many_to_many_relationship() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let result = execute_query_document(
             &deployment.hash,
             graphql_parser::parse_query(
@@ -577,7 +578,7 @@ fn can_query_many_to_many_relationship() {
 #[test]
 fn root_fragments_are_expanded() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let query = graphql_parser::parse_query(
             r#"
             fragment Musicians on Query {
@@ -601,7 +602,7 @@ fn root_fragments_are_expanded() {
 #[test]
 fn query_variables_are_used() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let query = graphql_parser::parse_query(
             "
         query musicians($where: Musician_filter!) {
@@ -643,7 +644,7 @@ fn query_variables_are_used() {
 #[test]
 fn skip_directive_works_with_query_variables() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let query = graphql_parser::parse_query(
             "
         query musicians($skip: Boolean!) {
@@ -722,7 +723,7 @@ fn skip_directive_works_with_query_variables() {
 #[test]
 fn include_directive_works_with_query_variables() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let query = graphql_parser::parse_query(
             "
         query musicians($include: Boolean!) {
@@ -801,7 +802,7 @@ fn include_directive_works_with_query_variables() {
 #[test]
 fn query_complexity() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let query = Query::new(
             graphql_parser::parse_query(
                 "query {
@@ -870,7 +871,7 @@ fn query_complexity() {
 #[test]
 fn query_complexity_subscriptions() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let logger = Logger::root(slog::Discard, o!());
         let store = STORE
             .clone()
@@ -973,7 +974,7 @@ fn query_complexity_subscriptions() {
 #[test]
 fn instant_timeout() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let query = Query::new(
             graphql_parser::parse_query("query { musicians(first: 100) { name } }")
                 .unwrap()
@@ -1002,7 +1003,7 @@ fn instant_timeout() {
 #[test]
 fn variable_defaults() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let query = graphql_parser::parse_query(
             "
         query musicians($orderDir: OrderDirection = desc) {
@@ -1060,7 +1061,7 @@ fn variable_defaults() {
 #[test]
 fn skip_is_nullable() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let query = graphql_parser::parse_query(
             "
         query musicians {
@@ -1093,7 +1094,7 @@ fn skip_is_nullable() {
 #[test]
 fn first_is_nullable() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let query = graphql_parser::parse_query(
             "
         query musicians {
@@ -1126,7 +1127,7 @@ fn first_is_nullable() {
 #[test]
 fn nested_variable() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let query = graphql_parser::parse_query(
             "
         query musicians($name: String) {
@@ -1164,7 +1165,7 @@ fn nested_variable() {
 #[test]
 fn ambiguous_derived_from_result() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let query = graphql_parser::parse_query(
             "
         {
@@ -1208,7 +1209,7 @@ fn ambiguous_derived_from_result() {
 #[test]
 fn can_filter_by_relationship_fields() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let result = execute_query_document(
             &deployment.hash,
             graphql_parser::parse_query(
@@ -1267,7 +1268,7 @@ fn can_filter_by_relationship_fields() {
 #[test]
 fn cannot_filter_by_derved_relationship_fields() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let result = execute_query_document(
             &deployment.hash,
             graphql_parser::parse_query(
@@ -1309,7 +1310,7 @@ fn cannot_filter_by_derved_relationship_fields() {
 #[test]
 fn subscription_gets_result_even_without_events() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let logger = Logger::root(slog::Discard, o!());
         let store = STORE
             .clone()
@@ -1370,7 +1371,7 @@ fn subscription_gets_result_even_without_events() {
 #[test]
 fn can_use_nested_filter() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let result = execute_query_document(
             &deployment.hash,
             graphql_parser::parse_query(
@@ -1430,7 +1431,7 @@ fn can_use_nested_filter() {
 #[test]
 fn ignores_invalid_field_arguments() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         // This query has to return all the musicians since `id` is not a
         // valid argument for the `musicians` field and must therefore be
         // ignored
@@ -1476,7 +1477,7 @@ fn ignores_invalid_field_arguments() {
 #[test]
 fn leaf_selection_mismatch() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let result = execute_query_document(
             &deployment.hash,
             // 'name' is a string and doesn't admit a selection
@@ -1561,7 +1562,7 @@ fn leaf_selection_mismatch() {
 #[test]
 fn missing_variable() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let result = execute_query_document(
             &deployment.hash,
             // '$first' is not defined, use its default from the schema
@@ -1631,7 +1632,7 @@ fn missing_variable() {
 #[test]
 fn invalid_field_merge() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let result = execute_query_document(
             &deployment.hash,
             graphql_parser::parse_query("query { musicians { t: id t: mainBand { id } } }")
@@ -1723,7 +1724,7 @@ fn query_at_block() {
          up to block number 1 and data for block number 7000 is therefore not yet available";
         const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         musicians_at(&deployment, "number: 7000", Err(BLOCK_NOT_INDEXED), "n7000").await;
         musicians_at(&deployment, "number: 0", Ok(vec!["m1", "m2"]), "n0").await;
         musicians_at(
@@ -1823,7 +1824,7 @@ fn query_at_block_with_vars() {
          up to block number 1 and data for block number 7000 is therefore not yet available";
         const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         musicians_at_nr(&deployment, 7000, Err(BLOCK_NOT_INDEXED), "n7000").await;
         musicians_at_nr(&deployment, 0, Ok(vec!["m1", "m2"]), "n0").await;
         musicians_at_nr(&deployment, 1, Ok(vec!["m1", "m2", "m3", "m4"]), "n1").await;
@@ -1854,7 +1855,7 @@ fn query_at_block_with_vars() {
 #[test]
 fn query_detects_reorg() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let query = "query { musician(id: \"m1\") { id } }";
         let query = graphql_parser::parse_query(query)
             .expect("invalid test query")
@@ -1895,6 +1896,7 @@ fn query_detects_reorg() {
             BLOCK_ONE.clone(),
             vec![],
         )
+        .await
         .unwrap();
         let result = execute_query_document(&deployment.hash, query.clone()).await;
         match result.to_result().unwrap_err()[0] {
@@ -1919,7 +1921,7 @@ fn can_query_meta() {
             .expect("invalid test query")
             .into_static();
 
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let result = execute_query_document(&deployment.hash, query).await;
         let exp = object! {
             _meta: object! {
@@ -1992,7 +1994,8 @@ fn non_fatal_errors() {
             store.as_ref(),
             "testNonFatalErrors",
             BTreeSet::from_iter(Some(SubgraphFeature::NonFatalErrors)),
-        );
+        )
+        .await;
 
         let err = SubgraphError {
             subgraph_id: deployment.hash.clone(),
@@ -2087,7 +2090,7 @@ fn can_query_root_typename() {
         let query = graphql_parser::parse_query(query)
             .expect("invalid test query")
             .into_static();
-        let deployment = setup(store.as_ref());
+        let deployment = setup(store.as_ref()).await;
         let result = execute_query_document(&deployment.hash, query).await;
         let exp = object! {
             __typename: "Query"

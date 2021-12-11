@@ -62,7 +62,11 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn revert_block_operations(&self, _: BlockPtr, _: Option<&str>) -> Result<(), StoreError> {
+    async fn revert_block_operations(
+        &self,
+        _: BlockPtr,
+        _: Option<&str>,
+    ) -> Result<(), StoreError> {
         unimplemented!()
     }
 
@@ -99,7 +103,7 @@ impl WritableStore for MockStore {
         }
     }
 
-    fn transact_block_operations(
+    async fn transact_block_operations(
         &self,
         _: BlockPtr,
         _: Option<String>,
