@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use graph::{
@@ -34,20 +34,27 @@ struct Variables {
 /// Since this mechanism is used for debug forks, entities are
 /// fetched only once per id in order to avoid fetching an entity
 /// that was deleted from the local store and thus causing inconsistencies.
-pub struct SubgraphFork {
+pub(crate) struct SubgraphFork {
     client: reqwest::Client,
     fork_url: Url,
     schema: Arc<Schema>,
-    fetched_ids: HashSet<String>,
+    fetched_ids: Mutex<HashSet<String>>,
     logger: Logger,
 }
 
 impl SubgraphForkTrait for SubgraphFork {
     fn fetch(&self, entity_type: String, id: String) -> Result<Option<Entity>, StoreError> {
-        if self.fetched_ids.contains(&id) {
+        let mut fids = self.fetched_ids.lock().map_err(|e| {
+            StoreError::ForkFailure(format!(
+                "attempt to acquire lock on `fetched_ids` failed with {}",
+                e,
+            ))
+        })?;
+        if fids.contains(&id) {
             info!(self.logger, "Already fetched entity! Abort!"; "entity_type" => entity_type, "id" => id);
             return Ok(None);
         }
+        fids.insert(id.clone());
 
         info!(self.logger, "Fetching entity from {}", &self.fork_url; "entity_type" => &entity_type, "id" => &id);
 
@@ -68,12 +75,12 @@ impl SubgraphForkTrait for SubgraphFork {
 }
 
 impl SubgraphFork {
-    pub fn new(fork_url: Url, schema: Arc<Schema>, logger: Logger) -> Self {
+    pub(crate) fn new(fork_url: Url, schema: Arc<Schema>, logger: Logger) -> Self {
         Self {
             client: reqwest::Client::new(),
             fork_url,
             schema,
-            fetched_ids: HashSet::new(),
+            fetched_ids: Mutex::new(HashSet::new()),
             logger,
         }
     }
