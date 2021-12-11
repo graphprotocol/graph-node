@@ -3,7 +3,6 @@ mod capabilities;
 pub mod codec;
 mod data_source;
 mod ethereum_adapter;
-pub mod network_indexer;
 pub mod runtime;
 mod transport;
 

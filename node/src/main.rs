@@ -1,4 +1,4 @@
-use ethereum::{EthereumNetworks, NodeCapabilities, ProviderEthRpcMetrics};
+use ethereum::{EthereumNetworks, ProviderEthRpcMetrics};
 use futures::future::join_all;
 use git_testament::{git_testament, render_testament};
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
@@ -24,7 +24,7 @@ use graph::data::graphql::effort::LoadManager;
 use graph::log::logger;
 use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
 use graph::util::security::SafeDisplay;
-use graph_chain_ethereum::{self as ethereum, network_indexer, EthereumAdapterTrait, Transport};
+use graph_chain_ethereum::{self as ethereum, EthereumAdapterTrait, Transport};
 use graph_chain_near::{self as near, HeaderOnlyBlock as NearFirehoseHeaderOnlyBlock};
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
@@ -291,43 +291,6 @@ async fn main() {
             link_resolver.clone(),
             network_store.subgraph_store().clone(),
         );
-
-        // Spawn Ethereum network indexers for all networks that are to be indexed
-        opt.network_subgraphs
-            .iter()
-            .filter(|network_subgraph| network_subgraph.starts_with("ethereum/"))
-            .for_each(|network_subgraph| {
-                let network_name = network_subgraph.replace("ethereum/", "");
-                let mut indexer = network_indexer::NetworkIndexer::new(
-                    &logger,
-                    eth_networks
-                        .adapter_with_capabilities(
-                            network_name.clone(),
-                            &NodeCapabilities {
-                                archive: false,
-                                traces: false,
-                            },
-                        )
-                        .expect(&*format!("adapter for network, {}", network_name))
-                        .clone(),
-                    network_store.subgraph_store(),
-                    metrics_registry.clone(),
-                    format!("network/{}", network_subgraph).into(),
-                    None,
-                    network_name,
-                );
-                graph::spawn(
-                    indexer
-                        .take_event_stream()
-                        .unwrap()
-                        .for_each(|_| {
-                            // For now we simply ignore these events; we may later use them
-                            // to drive subgraph indexing
-                            Ok(())
-                        })
-                        .compat(),
-                );
-            });
 
         if !opt.disable_block_ingestor {
             if ethereum_chains.len() > 0 {
