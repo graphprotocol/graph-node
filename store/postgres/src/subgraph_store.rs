@@ -1018,12 +1018,12 @@ impl SubgraphStoreTrait for SubgraphStore {
         let schema = info.input;
 
         match (self.fork_base.as_ref(), fork_id) {
-            (Some(b), Some(f)) => Ok(Some(Arc::new(fork::SubgraphFork::new(
-                b.join(f.as_str())
-                    .map_err(|e| StoreError::Unknown(anyhow!("Failed to join fork base: {}", e)))?,
+            (Some(base), Some(id)) => Ok(Some(Arc::new(fork::SubgraphFork::new(
+                base.clone(),
+                id,
                 schema,
                 logger,
-            )))),
+            )?))),
             _ => Ok(None),
         }
     }

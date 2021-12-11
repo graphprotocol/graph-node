@@ -11,7 +11,8 @@ use graph::{
         r::Value as RValue,
         reqwest,
         s::{Definition, Field, ObjectType, TypeDefinition},
-        serde_json, Attribute, Entity, Logger, Schema, Serialize, StoreError, Value,
+        serde_json, Attribute, DeploymentHash, Entity, Logger, Schema, Serialize, StoreError,
+        Value,
     },
     url::Url,
 };
@@ -36,7 +37,7 @@ struct Variables {
 /// that was deleted from the local store and thus causing inconsistencies.
 pub(crate) struct SubgraphFork {
     client: reqwest::Client,
-    fork_url: Url,
+    endpoint: Url,
     schema: Arc<Schema>,
     fetched_ids: Mutex<HashSet<String>>,
     logger: Logger,
@@ -56,17 +57,19 @@ impl SubgraphForkTrait for SubgraphFork {
         }
         fids.insert(id.clone());
 
-        info!(self.logger, "Fetching entity from {}", &self.fork_url; "entity_type" => &entity_type, "id" => &id);
+        info!(self.logger, "Fetching entity from {}", &self.endpoint; "entity_type" => &entity_type, "id" => &id);
 
-        // NOTE: Should compatability check be added?
-        // The local entities may not be compatible with the remote ones, resulting in an error.
+        // NOTE: Subgraph fork compatability checking (similar to the grafting compatability checks)
+        // will be added in the future (in a separate PR).
+        // Currently, forking incompatible subgraphs is allowed, but, for example, storing the
+        // incompatible fetched entities in the local store results in an error.
 
         let (query, fields) = self.infer_query(&entity_type, id)?;
         let raw_json = block_on(self.send(&query))?;
         if !raw_json.contains("data") {
             return Err(StoreError::ForkFailure(format!(
                 "the GraphQL query \"{:?}\" to `{}` failed with \"{}\"",
-                query, self.fork_url, raw_json,
+                query, self.endpoint, raw_json,
             )));
         }
         let entity = SubgraphFork::extract_entity(&raw_json, &entity_type, fields)?;
@@ -75,27 +78,34 @@ impl SubgraphForkTrait for SubgraphFork {
 }
 
 impl SubgraphFork {
-    pub(crate) fn new(fork_url: Url, schema: Arc<Schema>, logger: Logger) -> Self {
-        Self {
+    pub(crate) fn new(
+        base: Url,
+        id: DeploymentHash,
+        schema: Arc<Schema>,
+        logger: Logger,
+    ) -> Result<Self, StoreError> {
+        Ok(Self {
             client: reqwest::Client::new(),
-            fork_url,
+            endpoint: base
+                .join(id.as_str())
+                .map_err(|e| StoreError::ForkFailure(format!("failed to join fork base: {}", e)))?,
             schema,
             fetched_ids: Mutex::new(HashSet::new()),
             logger,
-        }
+        })
     }
 
     async fn send(&self, query: &Query) -> Result<String, StoreError> {
         let res = self
             .client
-            .post(self.fork_url.clone())
+            .post(self.endpoint.clone())
             .json(query)
             .send()
             .await
             .map_err(|e| {
                 StoreError::ForkFailure(format!(
                     "sending a GraphQL query to `{}` failed with: \"{}\"",
-                    self.fork_url, e,
+                    self.endpoint, e,
                 ))
             })?
             .text()
@@ -103,7 +113,7 @@ impl SubgraphFork {
             .map_err(|e| {
                 StoreError::ForkFailure(format!(
                     "receiving a response from `{}` failed with: \"{}\"",
-                    self.fork_url, e,
+                    self.endpoint, e,
                 ))
             })?;
         Ok(res)
@@ -201,6 +211,14 @@ mod tests {
     };
     use graphql_parser::parse_schema;
 
+    fn test_base() -> Url {
+        Url::parse("https://api.thegraph.com/subgraph/id/").unwrap()
+    }
+
+    fn test_id() -> DeploymentHash {
+        DeploymentHash::new("test").unwrap()
+    }
+
     fn test_schema() -> Arc<Schema> {
         let schema = Schema::new(
             DeploymentHash::new("test").unwrap(),
@@ -215,10 +233,6 @@ mod tests {
             .unwrap(),
         );
         Arc::new(schema)
-    }
-
-    fn test_url() -> Url {
-        Url::parse("http://localhost:1234").unwrap()
     }
 
     fn test_logger() -> Logger {
@@ -264,11 +278,12 @@ mod tests {
 
     #[test]
     fn test_infer_query() {
-        let url = test_url();
+        let base = test_base();
+        let id = test_id();
         let schema = test_schema();
         let logger = test_logger();
 
-        let fork = SubgraphFork::new(url, schema, logger);
+        let fork = SubgraphFork::new(base, id, schema, logger).unwrap();
 
         let (query, fields) = fork.infer_query("Gravatar", "0x00".to_string()).unwrap();
         assert_eq!(
