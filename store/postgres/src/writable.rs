@@ -218,26 +218,26 @@ impl WritableStore {
 
     fn transact_block_operations(
         &self,
-        block_ptr_to: BlockPtr,
-        firehose_cursor: Option<String>,
-        mods: Vec<EntityModification>,
+        block_ptr_to: &BlockPtr,
+        firehose_cursor: Option<&str>,
+        mods: &[EntityModification],
         stopwatch: StopwatchMetrics,
-        data_sources: Vec<StoredDynamicDataSource>,
-        deterministic_errors: Vec<SubgraphError>,
+        data_sources: &[StoredDynamicDataSource],
+        deterministic_errors: &[SubgraphError],
     ) -> Result<(), StoreError> {
         assert!(
-            same_subgraph(&mods, &self.site.deployment),
+            same_subgraph(mods, &self.site.deployment),
             "can only transact operations within one shard"
         );
         self.retry("transact_block_operations", move || {
             let event = self.writable.transact_block_operations(
                 self.site.clone(),
-                &block_ptr_to,
-                firehose_cursor.as_deref(),
-                &mods,
+                block_ptr_to,
+                firehose_cursor,
+                mods,
                 stopwatch.cheap_clone(),
-                &data_sources,
-                &deterministic_errors,
+                data_sources,
+                deterministic_errors,
             )?;
 
             let _section = stopwatch.start_section("send_store_event");
@@ -319,7 +319,7 @@ impl WritableStore {
     }
 }
 
-fn same_subgraph(mods: &Vec<EntityModification>, id: &DeploymentHash) -> bool {
+fn same_subgraph(mods: &[EntityModification], id: &DeploymentHash) -> bool {
     mods.iter().all(|md| &md.entity_key().subgraph_id == id)
 }
 
@@ -407,12 +407,12 @@ impl WritableStoreTrait for WritableAgent {
         deterministic_errors: Vec<SubgraphError>,
     ) -> Result<(), StoreError> {
         self.store.transact_block_operations(
-            block_ptr_to.clone(),
-            firehose_cursor.clone(),
-            mods,
+            &block_ptr_to,
+            firehose_cursor.as_deref(),
+            &mods,
             stopwatch,
-            data_sources,
-            deterministic_errors,
+            &data_sources,
+            &deterministic_errors,
         )?;
 
         *self.block_ptr.lock().unwrap() = Some(block_ptr_to);
