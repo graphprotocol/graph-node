@@ -233,6 +233,9 @@ pub trait WritableStore: Send + Sync + 'static {
     async fn health(&self, id: &DeploymentHash) -> Result<SubgraphHealth, StoreError>;
 
     fn input_schema(&self) -> Arc<Schema>;
+
+    /// Wait for the background writer to finish processing its queue
+    async fn wait(&self) -> Result<(), StoreError>;
 }
 
 #[async_trait]

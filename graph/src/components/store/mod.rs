@@ -753,6 +753,7 @@ pub enum UnfailOutcome {
     Unfailed,
 }
 
+#[derive(Clone)]
 pub struct StoredDynamicDataSource {
     pub name: String,
     pub source: Source,
@@ -836,6 +837,14 @@ impl EntityModification {
         use EntityModification::*;
         match self {
             Insert { key, .. } | Overwrite { key, .. } | Remove { key } => key,
+        }
+    }
+
+    pub fn entity(&self) -> Option<&Entity> {
+        match self {
+            EntityModification::Insert { data, .. }
+            | EntityModification::Overwrite { data, .. } => Some(data),
+            EntityModification::Remove { .. } => None,
         }
     }
 

@@ -1,9 +1,12 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::data::subgraph::schema;
+use graph::env::env_var;
 use graph::prelude::{BlockNumber, Entity, Schema, SubgraphStore as _, BLOCK_NUMBER_MAX};
+use graph::util::bounded_queue::BoundedQueue;
 use graph::{
     cheap_clone::CheapClone,
     components::store::{self, EntityType, WritableStore as WritableStoreTrait},
@@ -19,6 +22,16 @@ use store::StoredDynamicDataSource;
 
 use crate::deployment_store::DeploymentStore;
 use crate::{primary, primary::Site, relational::Layout, SubgraphStore};
+
+graph::prelude::lazy_static! {
+    /// The size of the write queue; this many blocks can be buffered for
+    /// writing before calls to transact block operations will block.
+    /// Setting this to `0` disables pipelined writes, and writes will be
+    /// done synchronously.
+    pub static ref WRITE_QUEUE_SIZE: usize = {
+        env_var("GRAPH_STORE_WRITE_QUEUE", 5)
+    };
+}
 
 /// A wrapper around `SubgraphStore` that only exposes functions that are
 /// safe to call from `WritableStore`, i.e., functions that either do not
@@ -225,10 +238,9 @@ impl SyncStore {
         .await
     }
 
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+    fn get(&self, key: &EntityKey, block: BlockNumber) -> Result<Option<Entity>, StoreError> {
         self.retry("get", || {
-            self.writable
-                .get(self.site.cheap_clone(), key, BLOCK_NUMBER_MAX)
+            self.writable.get(self.site.cheap_clone(), key, block)
         })
     }
 
@@ -269,10 +281,11 @@ impl SyncStore {
     fn get_many(
         &self,
         ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+        block: BlockNumber,
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         self.retry("get_many", || {
             self.writable
-                .get_many(self.site.cheap_clone(), &ids_for_type, BLOCK_NUMBER_MAX)
+                .get_many(self.site.cheap_clone(), &ids_for_type, block)
         })
     }
 
@@ -342,10 +355,434 @@ impl SyncStore {
     }
 }
 
+/// Track block numbers we see in a few methods that traverse the queue
+struct BlockTracker {
+    /// The smallest block number for which we saw a revert
+    revert: BlockNumber,
+    /// The smallest block number for which the queue has an entry
+    block: BlockNumber,
+}
+
+impl BlockTracker {
+    fn new() -> Self {
+        Self {
+            revert: BLOCK_NUMBER_MAX,
+            block: BLOCK_NUMBER_MAX,
+        }
+    }
+
+    fn update(&mut self, req: &Request) {
+        match req {
+            Request::Write { block_ptr, .. } => {
+                self.block = self.block.min(block_ptr.number);
+            }
+            Request::Revert { block_ptr, .. } => {
+                self.revert = self.revert.min(block_ptr.number);
+                self.block = self.block.min(block_ptr.number);
+            }
+        }
+    }
+
+    /// The block at which a query should run so it does not see the result
+    /// of any writes that might have happened concurrently but have already
+    /// been accounted for by inspecting the in-memory queue
+    fn query_block(&self) -> BlockNumber {
+        if self.block == BLOCK_NUMBER_MAX {
+            BLOCK_NUMBER_MAX
+        } else {
+            self.block - 1
+        }
+    }
+
+    /// Return `true` if a write at this block will be visible, i.e., not
+    /// reverted by a previous queue entry
+    fn visible(&self, block_ptr: &BlockPtr) -> bool {
+        self.revert > block_ptr.number
+    }
+}
+
+/// A write request received from the `WritableStore` frontend that gets
+/// queued
+enum Request {
+    Write {
+        /// The block at which we are writing the changes
+        block_ptr: BlockPtr,
+        firehose_cursor: Option<String>,
+        mods: Vec<EntityModification>,
+        stopwatch: StopwatchMetrics,
+        data_sources: Vec<StoredDynamicDataSource>,
+        deterministic_errors: Vec<SubgraphError>,
+    },
+    Revert {
+        /// The subgraph head will be at this block pointer after the revert
+        block_ptr: BlockPtr,
+        firehose_cursor: Option<String>,
+    },
+}
+
+/// A queue that asynchronously writes requests queued with `push` to the
+/// underlying store and allows retrieving information that is a combination
+/// of queued changes and changes already committed to the store.
+struct Queue {
+    store: Arc<SyncStore>,
+    /// A queue of pending requests. New requests are appended at the
+    /// back, and popped off the front for processing. That means that
+    /// going front-to-back, block numbers in the requests are
+    /// increasing.
+    queue: BoundedQueue<Arc<Request>>,
+
+    /// The write task puts errors from `transact_block_operations` here so
+    /// we can report them on the next call to transact block operations.
+    write_err: Mutex<Option<StoreError>>,
+
+    /// True if the background worker ever encountered an error. Once that
+    /// happens, no more changes will be written, and any attempt to write
+    /// or revert will result in an error
+    poisoned: AtomicBool,
+}
+
+impl Queue {
+    /// Create a new queue and spawn a task that processes write requests
+    fn start(store: Arc<SyncStore>, capacity: usize) -> Arc<Self> {
+        async fn start_writer(queue: Arc<Queue>) {
+            loop {
+                let res = match queue.queue.peek().await.as_ref() {
+                    Request::Write {
+                        block_ptr: block_ptr_to,
+                        firehose_cursor,
+                        mods,
+                        stopwatch,
+                        data_sources,
+                        deterministic_errors,
+                    } => queue.store.transact_block_operations(
+                        block_ptr_to,
+                        firehose_cursor.as_deref(),
+                        mods,
+                        &stopwatch,
+                        data_sources,
+                        deterministic_errors,
+                    ),
+                    Request::Revert {
+                        block_ptr,
+                        firehose_cursor,
+                    } => queue
+                        .store
+                        .revert_block_operations(block_ptr.clone(), firehose_cursor.as_deref()),
+                };
+                // Remove the tombstone that take_front left in place
+                queue.queue.pop().await;
+
+                if let Err(e) = res {
+                    *queue.write_err.lock().unwrap() = Some(e);
+                    queue.poisoned.store(true, Ordering::SeqCst);
+                    return;
+                }
+            }
+        }
+
+        let queue = BoundedQueue::with_capacity(capacity);
+        let write_err = Mutex::new(None);
+        let queue = Self {
+            store,
+            queue,
+            write_err,
+            poisoned: AtomicBool::new(false),
+        };
+        let queue = Arc::new(queue);
+
+        graph::spawn(start_writer(queue.clone()));
+
+        queue
+    }
+
+    /// Add a write request to the queue
+    async fn push(&self, req: Request) -> Result<(), StoreError> {
+        self.check_err()?;
+        self.queue.push(Arc::new(req)).await;
+        Ok(())
+    }
+
+    /// Wait for the background writer to finish processing queued entries
+    async fn wait(&self) -> Result<(), StoreError> {
+        self.queue
+            .wait_empty()
+            .await
+            .map_err(|()| StoreError::Canceled)?;
+        match self.write_err.lock().unwrap().take() {
+            Some(err) => Err(err),
+            None => Ok(()),
+        }
+    }
+
+    fn check_err(&self) -> Result<(), StoreError> {
+        if let Some(err) = self.write_err.lock().unwrap().take() {
+            return Err(err);
+        }
+        match self.poisoned.load(Ordering::SeqCst) {
+            true => Err(StoreError::Poisoned),
+            false => Ok(()),
+        }
+    }
+
+    /// Get the entity for `key` if it exists by looking at both the queue
+    /// and the store
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+        enum Op {
+            Write(Entity),
+            Remove,
+        }
+
+        // Going from newest to oldest entry in the queue as `find_map` does
+        // ensures that we see reverts before we see the corresponding write
+        // request. We ignore any write request that writes blocks that have
+        // a number strictly higher than the revert with the smallest block
+        // number, as all such writes will be undone once the revert is
+        // processed.
+        let mut tracker = BlockTracker::new();
+
+        let op = self.queue.find_map(|req| {
+            tracker.update(req.as_ref());
+            match req.as_ref() {
+                Request::Write {
+                    block_ptr, mods, ..
+                } => {
+                    if tracker.visible(block_ptr) {
+                        mods.iter()
+                            .find(|emod| emod.entity_key() == key)
+                            .map(|emod| match emod {
+                                EntityModification::Insert { data, .. }
+                                | EntityModification::Overwrite { data, .. } => {
+                                    Op::Write(data.clone())
+                                }
+                                EntityModification::Remove { .. } => Op::Remove,
+                            })
+                    } else {
+                        None
+                    }
+                }
+                Request::Revert { .. } => None,
+            }
+        });
+
+        match op {
+            Some(Op::Write(entity)) => Ok(Some(entity)),
+            Some(Op::Remove) => Ok(None),
+            None => self.store.get(key, tracker.query_block()),
+        }
+    }
+
+    /// Get many entities at once by looking at both the queue and the store
+    fn get_many(
+        &self,
+        mut ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+        // See the implementation of `get` for how we handle reverts
+        let mut tracker = BlockTracker::new();
+
+        // Get entities from entries in the queue
+        let mut map = self.queue.fold(
+            BTreeMap::new(),
+            |mut map: BTreeMap<EntityType, Vec<Entity>>, req| {
+                tracker.update(req.as_ref());
+                match req.as_ref() {
+                    Request::Write {
+                        block_ptr, mods, ..
+                    } => {
+                        if tracker.visible(block_ptr) {
+                            for emod in mods {
+                                let key = emod.entity_key();
+                                if let Some(ids) = ids_for_type.get_mut(&key.entity_type) {
+                                    if let Some(idx) =
+                                        ids.iter().position(|id| *id == &key.entity_id)
+                                    {
+                                        // We are looking for the entity
+                                        // underlying this modification. Add
+                                        // it to the result map, but also
+                                        // remove it from `ids_for_type` so
+                                        // that we don't look for it any
+                                        // more
+                                        if let Some(entity) = emod.entity() {
+                                            map.entry(key.entity_type.clone())
+                                                .or_default()
+                                                .push(entity.clone());
+                                        }
+                                        ids.swap_remove(idx);
+                                        if ids.is_empty() {
+                                            ids_for_type.remove(&key.entity_type);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Request::Revert { .. } => { /* nothing to do */ }
+                }
+                map
+            },
+        );
+
+        // Whatever remains in `ids_for_type` needs to be gotten from the
+        // store. Take extra care to not unnecessarily copy maps
+        if !ids_for_type.is_empty() {
+            let store_map = self.store.get_many(ids_for_type, tracker.query_block())?;
+            if !store_map.is_empty() {
+                if map.is_empty() {
+                    map = store_map
+                } else {
+                    for (entity_type, mut entities) in store_map {
+                        map.entry(entity_type).or_default().append(&mut entities);
+                    }
+                }
+            }
+        }
+        Ok(map)
+    }
+
+    /// Load dynamic data sources by looking at both the queue and the store
+    async fn load_dynamic_data_sources(&self) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
+        // See the implementation of `get` for how we handle reverts
+        let mut tracker = BlockTracker::new();
+
+        // We need to produce a list of dynamic data sources that are
+        // ordered by their creation block. We first look through all the
+        // dds that are still in the queue, and then load dds from the store
+        // as long as they were written at a block before whatever is still
+        // in the queue. The overall list of dds is the list of dds from the
+        // store plus the ones still in memory sorted by their block number.
+        let mut queue_dds = self.queue.fold(Vec::new(), |mut dds, req| {
+            tracker.update(req.as_ref());
+            match req.as_ref() {
+                Request::Write {
+                    block_ptr,
+                    data_sources,
+                    ..
+                } => {
+                    if tracker.visible(block_ptr) {
+                        dds.extend(data_sources.clone());
+                    }
+                }
+                Request::Revert { .. } => { /* nothing to do */ }
+            }
+            dds
+        });
+        // Using a stable sort is important here so that dds created at the
+        // same block stay in the order in which they were added (and
+        // therefore will be loaded from the store in that order once the
+        // queue has been written)
+        queue_dds.sort_by_key(|dds| dds.creation_block);
+
+        let mut dds = self
+            .store
+            .load_dynamic_data_sources(tracker.query_block())
+            .await?;
+        dds.append(&mut queue_dds);
+
+        Ok(dds)
+    }
+}
+
+/// A shim to allow bypassing any pipelined store handling if need be
+enum Writer {
+    Sync(Arc<SyncStore>),
+    Async(Arc<Queue>),
+}
+
+impl Writer {
+    fn new(store: Arc<SyncStore>, capacity: usize) -> Self {
+        if capacity == 0 {
+            Self::Sync(store)
+        } else {
+            Self::Async(Queue::start(store, capacity))
+        }
+    }
+
+    async fn write(
+        &self,
+        block_ptr_to: BlockPtr,
+        firehose_cursor: Option<String>,
+        mods: Vec<EntityModification>,
+        stopwatch: &StopwatchMetrics,
+        data_sources: Vec<StoredDynamicDataSource>,
+        deterministic_errors: Vec<SubgraphError>,
+    ) -> Result<(), StoreError> {
+        match self {
+            Writer::Sync(store) => store.transact_block_operations(
+                &block_ptr_to,
+                firehose_cursor.as_deref(),
+                &mods,
+                stopwatch,
+                &data_sources,
+                &deterministic_errors,
+            ),
+            Writer::Async(queue) => {
+                let req = Request::Write {
+                    block_ptr: block_ptr_to,
+                    firehose_cursor,
+                    mods,
+                    stopwatch: stopwatch.cheap_clone(),
+                    data_sources,
+                    deterministic_errors,
+                };
+                queue.push(req).await
+            }
+        }
+    }
+
+    async fn revert(
+        &self,
+        block_ptr_to: BlockPtr,
+        firehose_cursor: Option<&str>,
+    ) -> Result<(), StoreError> {
+        match self {
+            Writer::Sync(store) => store.revert_block_operations(block_ptr_to, firehose_cursor),
+            Writer::Async(queue) => {
+                let firehose_cursor = firehose_cursor.map(|c| c.to_string());
+                let req = Request::Revert {
+                    block_ptr: block_ptr_to,
+                    firehose_cursor,
+                };
+                queue.push(req).await
+            }
+        }
+    }
+
+    async fn wait(&self) -> Result<(), StoreError> {
+        match self {
+            Writer::Sync { .. } => Ok(()),
+            Writer::Async(queue) => queue.wait().await,
+        }
+    }
+
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+        match self {
+            Writer::Sync(store) => store.get(key, BLOCK_NUMBER_MAX),
+            Writer::Async(queue) => queue.get(key),
+        }
+    }
+
+    fn get_many(
+        &self,
+        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+        match self {
+            Writer::Sync(store) => store.get_many(ids_for_type, BLOCK_NUMBER_MAX),
+            Writer::Async(queue) => queue.get_many(ids_for_type),
+        }
+    }
+
+    async fn load_dynamic_data_sources(&self) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
+        match self {
+            Writer::Sync(store) => store.load_dynamic_data_sources(BLOCK_NUMBER_MAX).await,
+            Writer::Async(queue) => queue.load_dynamic_data_sources().await,
+        }
+    }
+}
+
 pub struct WritableStore {
     store: Arc<SyncStore>,
     block_ptr: Mutex<Option<BlockPtr>>,
     block_cursor: Mutex<Option<String>>,
+    writer: Writer,
 }
 
 impl WritableStore {
@@ -357,10 +794,13 @@ impl WritableStore {
         let store = Arc::new(SyncStore::new(subgraph_store, logger, site)?);
         let block_ptr = Mutex::new(store.block_ptr().await?);
         let block_cursor = Mutex::new(store.block_cursor().await?);
+        let writer = Writer::new(store.clone(), ENV_VARS.store.write_queue_size);
+
         Ok(Self {
             store,
             block_ptr,
             block_cursor,
+            writer,
         })
     }
 }
@@ -403,8 +843,7 @@ impl WritableStoreTrait for WritableStore {
         *self.block_ptr.lock().unwrap() = Some(block_ptr_to.clone());
         *self.block_cursor.lock().unwrap() = firehose_cursor.map(|c| c.to_string());
 
-        self.store
-            .revert_block_operations(block_ptr_to, firehose_cursor)
+        self.writer.revert(block_ptr_to, firehose_cursor).await
     }
 
     fn unfail_deterministic_error(
@@ -442,7 +881,7 @@ impl WritableStoreTrait for WritableStore {
     }
 
     fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
-        self.store.get(key)
+        self.writer.get(key)
     }
 
     async fn transact_block_operations(
@@ -454,14 +893,16 @@ impl WritableStoreTrait for WritableStore {
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
     ) -> Result<(), StoreError> {
-        self.store.transact_block_operations(
-            &block_ptr_to,
-            firehose_cursor.as_deref(),
-            &mods,
-            &stopwatch,
-            &data_sources,
-            &deterministic_errors,
-        )?;
+        self.writer
+            .write(
+                block_ptr_to.clone(),
+                firehose_cursor.clone(),
+                mods,
+                stopwatch,
+                data_sources,
+                deterministic_errors,
+            )
+            .await?;
 
         *self.block_ptr.lock().unwrap() = Some(block_ptr_to);
         *self.block_cursor.lock().unwrap() = firehose_cursor;
@@ -473,7 +914,7 @@ impl WritableStoreTrait for WritableStore {
         &self,
         ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
-        self.store.get_many(ids_for_type)
+        self.writer.get_many(ids_for_type)
     }
 
     fn deployment_synced(&self) -> Result<(), StoreError> {
@@ -489,8 +930,7 @@ impl WritableStoreTrait for WritableStore {
     }
 
     async fn load_dynamic_data_sources(&self) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
-        // TODO: Combine in-memory and stored data sources
-        self.store.load_dynamic_data_sources(BLOCK_NUMBER_MAX).await
+        self.writer.load_dynamic_data_sources().await
     }
 
     fn shard(&self) -> &str {
@@ -503,5 +943,9 @@ impl WritableStoreTrait for WritableStore {
 
     fn input_schema(&self) -> Arc<Schema> {
         self.store.input_schema()
+    }
+
+    async fn wait(&self) -> Result<(), StoreError> {
+        self.writer.wait().await
     }
 }

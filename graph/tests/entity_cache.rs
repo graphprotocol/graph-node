@@ -149,6 +149,10 @@ impl WritableStore for MockStore {
     fn input_schema(&self) -> Arc<Schema> {
         SCHEMA.clone()
     }
+
+    async fn wait(&self) -> Result<(), StoreError> {
+        unimplemented!()
+    }
 }
 
 fn make_band(id: &'static str, data: Vec<(&str, Value)>) -> (EntityKey, Entity) {

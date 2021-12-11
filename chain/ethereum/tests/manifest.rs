@@ -181,7 +181,7 @@ specVersion: 0.0.2
         thing.set("id", "datthing");
         test_store::insert_entities(&deployment, vec![(EntityType::from("Thing"), thing)])
             .await
-            .expect("Can insert a thing");
+            .unwrap();
 
         // Validation against subgraph that has not reached the graft point fails
         let unvalidated = resolve_unvalidated(YAML).await;

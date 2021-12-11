@@ -320,24 +320,27 @@ async fn check_graft(
         key: EntityKey::data(deployment.hash.clone(), USER.to_owned(), "3".to_owned()),
         data: shaq,
     };
-    transact_entity_operations(&store, &deployment, BLOCKS[2].clone(), vec![op])
+    transact_and_wait(&store, &deployment, BLOCKS[2].clone(), vec![op])
         .await
         .unwrap();
 
-    store
-        .cheap_clone()
-        .writable(LOGGER.clone(), deployment.id)
-        .await?
+    let writable = store.writable(LOGGER.clone(), deployment.id).await?;
+    writable
         .revert_block_operations(BLOCKS[1].clone(), None)
         .await
         .expect("We can revert a block we just created");
+    writable.wait().await.expect("we can revert to BLOCKS[1]");
 
-    let err = store
-        .writable(LOGGER.clone(), deployment.id)
-        .await?
-        .revert_block_operations(BLOCKS[0].clone(), None)
-        .await
-        .expect_err("Reverting past graft point is not allowed");
+    let err = {
+        match writable
+            .revert_block_operations(BLOCKS[0].clone(), None)
+            .await
+        {
+            Ok(()) => writable.wait().await,
+            Err(e) => Err(e),
+        }
+    }
+    .expect_err("Reverting past graft point is not allowed");
 
     assert!(err.to_string().contains("Can not revert subgraph"));
 

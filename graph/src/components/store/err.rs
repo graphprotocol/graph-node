@@ -45,6 +45,8 @@ pub enum StoreError {
     DatabaseUnavailable,
     #[error("subgraph forking failed: {0}")]
     ForkFailure(String),
+    #[error("subgraph writer poisoned by previous error")]
+    Poisoned,
 }
 
 // Convenience to report a constraint violation
