@@ -190,9 +190,12 @@ query Query ($id: String) {{
 
 #[cfg(test)]
 mod tests {
+    use std::{iter::FromIterator, str::FromStr};
+
     use super::*;
 
     use graph::{
+        data::store::scalar,
         prelude::{s::Type, DeploymentHash},
         slog::{self, o},
     };
@@ -222,6 +225,43 @@ mod tests {
         Logger::root(slog::Discard, o!())
     }
 
+    fn test_fields() -> Vec<Field> {
+        vec![
+            Field {
+                position: graphql_parser::Pos { line: 2, column: 3 },
+                description: None,
+                name: "id".to_string(),
+                arguments: vec![],
+                field_type: Type::NonNullType(Box::new(Type::NamedType("ID".to_string()))),
+                directives: vec![],
+            },
+            Field {
+                position: graphql_parser::Pos { line: 3, column: 3 },
+                description: None,
+                name: "owner".to_string(),
+                arguments: vec![],
+                field_type: Type::NonNullType(Box::new(Type::NamedType("Bytes".to_string()))),
+                directives: vec![],
+            },
+            Field {
+                position: graphql_parser::Pos { line: 4, column: 3 },
+                description: None,
+                name: "displayName".to_string(),
+                arguments: vec![],
+                field_type: Type::NonNullType(Box::new(Type::NamedType("String".to_string()))),
+                directives: vec![],
+            },
+            Field {
+                position: graphql_parser::Pos { line: 5, column: 3 },
+                description: None,
+                name: "imageUrl".to_string(),
+                arguments: vec![],
+                field_type: Type::NonNullType(Box::new(Type::NamedType("String".to_string()))),
+                directives: vec![],
+            },
+        ]
+    }
+
     #[test]
     fn test_infer_query() {
         let url = test_url();
@@ -249,42 +289,44 @@ mod tests {
             }
         );
 
+        assert_eq!(fields, &test_fields());
+    }
+
+    #[test]
+    fn test_extract_entity() {
+        let entity = SubgraphFork::extract_entity(
+            r#"{
+    "data": {
+        "gravatar": {
+            "id": "0x00",
+            "owner": "0x01",
+            "displayName": "test",
+            "imageUrl": "http://example.com/image.png"
+        }
+    }
+}"#,
+            "Gravatar",
+            &test_fields(),
+        )
+        .unwrap();
+
         assert_eq!(
-            fields,
-            &vec![
-                Field {
-                    position: graphql_parser::Pos { line: 2, column: 3 },
-                    description: None,
-                    name: "id".to_string(),
-                    arguments: vec![],
-                    field_type: Type::NonNullType(Box::new(Type::NamedType("ID".to_string()))),
-                    directives: vec![]
-                },
-                Field {
-                    position: graphql_parser::Pos { line: 3, column: 3 },
-                    description: None,
-                    name: "owner".to_string(),
-                    arguments: vec![],
-                    field_type: Type::NonNullType(Box::new(Type::NamedType("Bytes".to_string()))),
-                    directives: vec![]
-                },
-                Field {
-                    position: graphql_parser::Pos { line: 4, column: 3 },
-                    description: None,
-                    name: "displayName".to_string(),
-                    arguments: vec![],
-                    field_type: Type::NonNullType(Box::new(Type::NamedType("String".to_string()))),
-                    directives: vec![]
-                },
-                Field {
-                    position: graphql_parser::Pos { line: 5, column: 3 },
-                    description: None,
-                    name: "imageUrl".to_string(),
-                    arguments: vec![],
-                    field_type: Type::NonNullType(Box::new(Type::NamedType("String".to_string()))),
-                    directives: vec![]
-                },
-            ]
+            entity,
+            Entity::from(HashMap::from_iter(
+                vec![
+                    ("id".to_string(), Value::String("0x00".to_string())),
+                    (
+                        "owner".to_string(),
+                        Value::Bytes(scalar::Bytes::from_str("0x01").unwrap())
+                    ),
+                    ("displayName".to_string(), Value::String("test".to_string())),
+                    (
+                        "imageUrl".to_string(),
+                        Value::String("http://example.com/image.png".to_string())
+                    ),
+                ]
+                .into_iter()
+            ))
         );
     }
 }
