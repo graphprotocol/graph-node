@@ -279,9 +279,11 @@ async fn follow_interface_reference_invalid() {
         .unwrap();
 
     match &res.to_result().unwrap_err()[0] {
-        QueryError::ExecutionError(QueryExecutionError::UnknownField(_, type_name, field_name)) => {
-            assert_eq!(type_name, "Legged");
-            assert_eq!(field_name, "parent");
+        QueryError::ExecutionError(QueryExecutionError::ValidationError(_, error_message)) => {
+            assert_eq!(
+                error_message,
+                "Cannot query field \"parent\" on type \"Legged\"."
+            );
         }
         e => panic!("error {} is not the expected one", e),
     }
@@ -1424,7 +1426,7 @@ async fn recursive_fragment() {
         .await
         .unwrap();
     let data = res.to_result().unwrap_err()[0].to_string();
-    assert_eq!(data, "query has fragment cycle including `FooFrag`");
+    assert_eq!(data, "Cannot spread fragment \"FooFrag\" within itself.");
 
     let co_recursive = "
         query {
@@ -1451,5 +1453,8 @@ async fn recursive_fragment() {
         .await
         .unwrap();
     let data = res.to_result().unwrap_err()[0].to_string();
-    assert_eq!(data, "query has fragment cycle including `BarFrag`");
+    assert_eq!(
+        data,
+        "Cannot spread fragment \"BarFrag\" within itself via \"FooFrag\"."
+    );
 }

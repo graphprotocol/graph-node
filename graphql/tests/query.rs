@@ -895,17 +895,18 @@ fn query_complexity_subscriptions() {
                 "subscription {
                 musicians(orderBy: id) {
                     name
-                    bands(first: 100, orderBy: id) {
+                    t1: bands(first: 100, orderBy: id) {
                         name
                         members(first: 100, orderBy: id) {
                             name
                         }
                     }
-                }
-                __schema {
-                    types {
-                        name
-                    }
+                    t2: bands(first: 200, orderBy: id) {
+                      name
+                      members(first: 100, orderBy: id) {
+                          name
+                      }
+                  }
                 }
             }",
             )
@@ -932,12 +933,12 @@ fn query_complexity_subscriptions() {
             result_size: result_size_metrics(),
         };
 
-        // The extra introspection causes the complexity to go over.
         let result = execute_subscription(Subscription { query }, schema, options);
+
         match result {
-            Err(SubscriptionError::GraphQLError(e)) => match e[0] {
-                QueryExecutionError::TooComplex(1_010_200, _) => (), // Expected
-                _ => panic!("did not catch complexity"),
+            Err(SubscriptionError::GraphQLError(e)) => match &e[0] {
+                QueryExecutionError::TooComplex(3_030_100, _) => (), // Expected
+                e => panic!("did not catch complexity: {:?}", e),
             },
             _ => panic!("did not catch complexity"),
         }

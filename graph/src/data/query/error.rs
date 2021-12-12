@@ -41,6 +41,7 @@ pub enum QueryExecutionError {
     AbstractTypeError(String),
     InvalidArgumentError(Pos, String, q::Value),
     MissingArgumentError(Pos, String),
+    ValidationError(Option<Pos>, String),
     InvalidVariableTypeError(Pos, String),
     MissingVariableError(Pos, String),
     ResolveEntitiesError(String),
@@ -137,6 +138,7 @@ impl QueryExecutionError {
             | DeploymentReverted
             | SubgraphManifestResolveError(_)
             | InvalidSubgraphManifest
+            | ValidationError(_, _)
             | ResultTooBig(_, _) => false,
         }
     }
@@ -160,6 +162,9 @@ impl fmt::Display for QueryExecutionError {
             OperationNameRequired => write!(f, "Operation name required"),
             OperationNotFound(s) => {
                 write!(f, "Operation name not found `{}`", s)
+            }
+            ValidationError(_pos, message) => {
+                write!(f, "{}", message)
             }
             NotSupported(s) => write!(f, "Not supported: {}", s),
             NoRootSubscriptionObjectType => {
