@@ -136,7 +136,7 @@ where
         let logger = self.logger.clone();
 
         self.subscription_manager
-            .subscribe(vec![SubscriptionFilter::Assignment])
+            .subscribe(FromIterator::from_iter([SubscriptionFilter::Assignment]))
             .map_err(|()| anyhow!("Entity change stream failed"))
             .map(|event| {
                 // We're only interested in the SubgraphDeploymentAssignment change; we
