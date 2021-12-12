@@ -588,7 +588,7 @@ impl StoreEvent {
         self
     }
 
-    pub fn matches(&self, filters: &Vec<SubscriptionFilter>) -> bool {
+    pub fn matches(&self, filters: &BTreeSet<SubscriptionFilter>) -> bool {
         self.changes
             .iter()
             .any(|change| filters.iter().any(|filter| filter.matches(change)))
@@ -649,7 +649,7 @@ where
     /// Filter a `StoreEventStream` by subgraph and entity. Only events that have
     /// at least one change to one of the given (subgraph, entity) combinations
     /// will be delivered by the filtered stream.
-    pub fn filter_by_entities(self, filters: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
+    pub fn filter_by_entities(self, filters: BTreeSet<SubscriptionFilter>) -> StoreEventStreamBox {
         let source = self.source.filter(move |event| event.matches(&filters));
 
         StoreEventStream::new(Box::new(source))
@@ -852,10 +852,10 @@ pub trait SubscriptionManager: Send + Sync + 'static {
     /// Subscribe to changes for specific subgraphs and entities.
     ///
     /// Returns a stream of store events that match the input arguments.
-    fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox;
+    fn subscribe(&self, entities: BTreeSet<SubscriptionFilter>) -> StoreEventStreamBox;
 
     /// If the payload is not required, use for a more efficient subscription mechanism backed by a watcher.
-    fn subscribe_no_payload(&self, entities: Vec<SubscriptionFilter>) -> UnitStream;
+    fn subscribe_no_payload(&self, entities: BTreeSet<SubscriptionFilter>) -> UnitStream;
 }
 
 /// An internal identifer for the specific instance of a deployment. The
