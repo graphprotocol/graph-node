@@ -154,6 +154,8 @@ impl Chain {
             true => 0,
         };
 
+        let start_block = writable.block_ptr()?;
+
         Ok(Box::new(PollingBlockStream::new(
             writable,
             chain_store,
@@ -169,6 +171,7 @@ impl Chain {
             *MAX_BLOCK_RANGE_SIZE,
             *TARGET_TRIGGERS_PER_BLOCK_RANGE,
             unified_api_version,
+            start_block,
         )))
     }
 
