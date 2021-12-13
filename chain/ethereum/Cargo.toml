@@ -34,4 +34,4 @@ pretty_assertions = "1.0.0"
 test-store = { path = "../../store/test-store" }
 
 [build-dependencies]
-tonic-build = "0.5.1"
+tonic-build = "0.6.2"
