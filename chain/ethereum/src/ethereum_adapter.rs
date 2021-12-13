@@ -1080,13 +1080,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 transaction_receipts: Vec::new(),
             })));
         }
-
-        let hashes: Vec<_> = block
-            .transactions
-            .iter()
-            .map(|txn| txn.hash.clone())
-            .collect();
-
+        let hashes: Vec<_> = block.transactions.iter().map(|txn| txn.hash).collect();
         let receipts_future = if *FETCH_RECEIPTS_CONCURRENTLY {
             let hash_stream = graph::tokio_stream::iter(hashes);
             let receipt_stream = graph::tokio_stream::StreamExt::map(hash_stream, move |tx_hash| {
