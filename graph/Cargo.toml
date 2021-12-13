@@ -47,7 +47,7 @@ tokio-retry = "0.3.0"
 url = "2.2.1"
 prometheus = "0.13.0"
 priority-queue = "0.7.0"
-tonic = { version = "0.5.1", features = ["tls-roots"] }
+tonic = { version = "0.6.2", features = ["tls-roots"] }
 prost = "0.8.0"
 prost-types = "0.8.0"
 futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
