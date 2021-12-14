@@ -105,7 +105,8 @@ pub(crate) struct ChainHeadUpdateSender {
 
 impl ChainHeadUpdateListener {
     pub fn new(logger: &Logger, registry: Arc<dyn MetricsRegistry>, postgres_url: String) -> Self {
-        let logger = logger.new(o!("component" => "ChainHeadUpdateListener"));
+        let uuid = uuid::Uuid::new_v4().to_string();
+        let logger = logger.new(o!("component" => "ChainHeadUpdateListener", "uuid" => uuid));
         let ingestor_metrics = Arc::new(BlockIngestorMetrics::new(registry.clone()));
         let counter = registry
             .global_counter_vec(
