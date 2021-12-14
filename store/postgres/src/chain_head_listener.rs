@@ -187,8 +187,10 @@ impl ChainHeadUpdateListener {
                         let logger = logger.new(o!("network" => update.network_name.clone()));
                         tokio::task::spawn_blocking(move || {
                             sending_to_watcher.store(true, atomic::Ordering::SeqCst);
-                            sender.send_logged((), logger).unwrap();
+                            debug!(logger, "calling send_logged");
+                            sender.send_logged((), logger.cheap_clone()).unwrap();
                             sending_to_watcher.store(false, atomic::Ordering::SeqCst);
+                            debug!(logger, "send_logged finished");
                         });
                     } else {
                         debug!(logger, "skipping chain head update, watcher is deadlocked"; "network" => &update.network_name);
