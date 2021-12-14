@@ -795,6 +795,10 @@ impl<'a> QueryFilter<'a> {
                 }
             }
 
+            // This is a special case since we want to allow passing "block" column filter, but we dont
+            // want to fail/error when this is passed here, since this column is not really an entity column.
+            ChangeBlockGte(..) => {}
+
             Contains(attr, _)
             | NotContains(attr, _)
             | Equal(attr, _)
@@ -1075,6 +1079,21 @@ impl<'a> QueryFilter<'a> {
         Ok(())
     }
 
+    fn filter_block_gte(
+        &self,
+        block_number_gte: &BlockNumber,
+        mut out: AstPass<Pg>,
+    ) -> QueryResult<()> {
+        // constructs a filter for lower(c.block_range) >= $block_number_gte
+        // to allow consumers to filter by a specific change block
+        out.push_sql("lower(c.");
+        out.push_sql(BLOCK_RANGE_COLUMN);
+        out.push_sql(")");
+        out.push_sql(" >= ");
+        out.push_bind_param::<Integer, _>(block_number_gte)?;
+        Ok(())
+    }
+
     fn starts_or_ends_with(
         &self,
         attribute: &Attribute,
@@ -1148,6 +1167,7 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
             NotEndsWith(attr, value) => {
                 self.starts_or_ends_with(attr, value, " not like ", false, out)?
             }
+            ChangeBlockGte(block_number) => self.filter_block_gte(block_number, out)?,
         }
         Ok(())
     }
