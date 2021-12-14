@@ -183,7 +183,7 @@ impl ChainHeadUpdateListener {
                     if !sending_to_watcher.load(atomic::Ordering::SeqCst) {
                         let sending_to_watcher = sending_to_watcher.cheap_clone();
                         let sender = watcher.sender.cheap_clone();
-                        let logger = logger.cheap_clone();
+                        let logger = logger.new(o!("network" => update.network_name.clone()));
                         tokio::task::spawn_blocking(move || {
                             sending_to_watcher.store(true, atomic::Ordering::SeqCst);
                             sender.send_logged((), logger).unwrap();
