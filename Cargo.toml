@@ -23,3 +23,6 @@ members = [
 incremental = false
 [profile.test]
 incremental = false
+
+[patch.crates-io]
+tokio = { git = 'https://github.com/edgeandnode/tokio', branch = 'leo/log-watcher-send' }
