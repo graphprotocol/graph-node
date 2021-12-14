@@ -887,9 +887,8 @@ fn query_complexity_subscriptions() {
 
         // This query is exactly at the maximum complexity.
         // FIXME: Not collecting the stream because that will hang the test.
-        let _ignore_stream = execute_subscription(Subscription { query }, schema.clone(), options)
-            .await
-            .unwrap();
+        let _ignore_stream =
+            execute_subscription(Subscription { query }, schema.clone(), options).unwrap();
 
         let query = Query::new(
             graphql_parser::parse_query(
@@ -934,7 +933,7 @@ fn query_complexity_subscriptions() {
         };
 
         // The extra introspection causes the complexity to go over.
-        let result = execute_subscription(Subscription { query }, schema, options).await;
+        let result = execute_subscription(Subscription { query }, schema, options);
         match result {
             Err(SubscriptionError::GraphQLError(e)) => match e[0] {
                 QueryExecutionError::TooComplex(1_010_200, _) => (), // Expected
@@ -1314,9 +1313,7 @@ fn subscription_gets_result_even_without_events() {
         };
         // Execute the subscription and expect at least one result to be
         // available in the result stream
-        let stream = execute_subscription(Subscription { query }, schema, options)
-            .await
-            .unwrap();
+        let stream = execute_subscription(Subscription { query }, schema, options).unwrap();
         let results: Vec<_> = stream
             .take(1)
             .collect()

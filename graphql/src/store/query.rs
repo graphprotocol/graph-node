@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::mem::discriminant;
 
 use graph::prelude::*;
@@ -295,7 +295,7 @@ pub fn collect_entities_from_query_field(
     schema: &s::Document,
     object_type: &s::ObjectType,
     field: &q::Field,
-) -> Vec<SubscriptionFilter> {
+) -> BTreeSet<SubscriptionFilter> {
     // Output entities
     let mut entities = HashSet::new();
 

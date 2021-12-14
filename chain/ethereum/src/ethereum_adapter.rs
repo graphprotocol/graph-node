@@ -29,7 +29,7 @@ use graph::{
 use graph::{
     components::ethereum::*,
     prelude::web3::api::Web3,
-    prelude::web3::transports::batch::Batch,
+    prelude::web3::transports::Batch,
     prelude::web3::types::{Trace, TraceFilter, TraceFilterBuilder, H160},
 };
 use itertools::Itertools;
@@ -37,6 +37,7 @@ use lazy_static::lazy_static;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -106,6 +107,18 @@ lazy_static! {
         .map(|s| s.split(';').filter(|s| s.len() > 0).map(ToOwned::to_owned).collect())
         .unwrap_or(Vec::new())
     };
+
+    static ref MAX_CONCURRENT_JSON_RPC_CALLS: usize = std::env::var(
+        "GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS"
+    )
+        .unwrap_or("1000".into())
+        .parse::<usize>()
+        .expect("invalid GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS env var");
+
+    static ref FETCH_RECEIPTS_CONCURRENTLY: bool = std::env::var("GRAPH_EXPERIMENTAL_FETCH_TXN_RECEIPTS_CONCURRENTLY")
+            .is_ok();
+
+
 }
 
 /// Gas limit for `eth_call`. The value of 50_000_000 is a protocol-wide parameter so this
@@ -719,7 +732,7 @@ impl EthereumAdapter {
             )
         }))
         // Real limits on the number of parallel requests are imposed within the adapter.
-        .buffered(1000)
+        .buffered(*MAX_CONCURRENT_JSON_RPC_CALLS)
         .try_concat()
         .boxed()
     }
@@ -1052,7 +1065,9 @@ impl EthereumAdapterTrait for EthereumAdapter {
         &self,
         logger: &Logger,
         block: LightEthereumBlock,
-    ) -> Box<dyn Future<Item = EthereumBlock, Error = IngestorError> + Send> {
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<EthereumBlock, IngestorError>> + Send>>
+    {
+        let web3 = Arc::clone(&self.web3);
         let logger = logger.clone();
         let block_hash = block.hash.expect("block is missing block hash");
 
@@ -1060,107 +1075,46 @@ impl EthereumAdapterTrait for EthereumAdapter {
         // request an empty batch which is not valid in JSON-RPC.
         if block.transactions.is_empty() {
             trace!(logger, "Block {} contains no transactions", block_hash);
-            return Box::new(future::ok(EthereumBlock {
+            return Box::pin(std::future::ready(Ok(EthereumBlock {
                 block: Arc::new(block),
                 transaction_receipts: Vec::new(),
-            }));
+            })));
         }
-        let web3 = self.web3.clone();
 
-        // Retry, but eventually give up.
-        // A receipt might be missing because the block was uncled, and the
-        // transaction never made it back into the main chain.
-        Box::new(
-            retry("batch eth_getTransactionReceipt RPC call", &logger)
-                .limit(*REQUEST_RETRIES)
-                .no_logging()
-                .timeout_secs(*JSON_RPC_TIMEOUT)
-                .run(move || {
-                    let block = block.clone();
-                    let batching_web3 = Web3::new(Batch::new(web3.transport().clone()));
+        let hashes: Vec<_> = block
+            .transactions
+            .iter()
+            .map(|txn| txn.hash.clone())
+            .collect();
 
-                    let receipt_futures = block
-                        .transactions
-                        .iter()
-                        .map(|tx| {
-                            let logger = logger.clone();
-                            let tx_hash = tx.hash;
+        let receipts_future = if *FETCH_RECEIPTS_CONCURRENTLY {
+            let hash_stream = graph::tokio_stream::iter(hashes);
+            let receipt_stream = graph::tokio_stream::StreamExt::map(hash_stream, move |tx_hash| {
+                fetch_transaction_receipt_with_retry(
+                    web3.cheap_clone(),
+                    tx_hash,
+                    block_hash,
+                    logger.cheap_clone(),
+                )
+            })
+            .buffered(*MAX_CONCURRENT_JSON_RPC_CALLS);
+            graph::tokio_stream::StreamExt::collect::<Result<Vec<TransactionReceipt>, IngestorError>>(
+                receipt_stream,
+            ).boxed()
+        } else {
+            // Deprecated batching retrieval of transaction receipts.
+            fetch_transaction_receipts_in_batch_with_retry(web3, hashes, block_hash, logger).boxed()
+        };
 
-                            Box::pin(batching_web3.eth().transaction_receipt(tx_hash))
-                                .compat()
-                                .from_err()
-                                .map_err(IngestorError::Unknown)
-                                .and_then(move |receipt_opt| {
-                                    receipt_opt.ok_or_else(move || {
-                                        // No receipt was returned.
-                                        //
-                                        // This can be because the Ethereum node no longer
-                                        // considers this block to be part of the main chain,
-                                        // and so the transaction is no longer in the main
-                                        // chain.  Nothing we can do from here except give up
-                                        // trying to ingest this block.
-                                        //
-                                        // This could also be because the receipt is simply not
-                                        // available yet. For that case, we should retry until
-                                        // it becomes available.
-                                        IngestorError::ReceiptUnavailable(block_hash, tx_hash)
-                                    })
-                                })
-                                .and_then(move |receipt| {
-                                    // Check if the receipt has a block hash and is for the right
-                                    // block. Parity nodes seem to return receipts with no block
-                                    // hash when a transaction is no longer in the main chain, so
-                                    // treat that case the same as a receipt being absent entirely.
-                                    if receipt.block_hash != Some(block_hash) {
-                                        info!(
-                                            logger, "receipt block mismatch";
-                                            "receipt_block_hash" =>
-                                            receipt.block_hash.unwrap_or_default().to_string(),
-                                            "block_hash" =>
-                                                block_hash.to_string(),
-                                            "tx_hash" => tx_hash.to_string(),
-                                        );
+        let block_future =
+            futures03::TryFutureExt::map_ok(receipts_future, move |transaction_receipts| {
+                EthereumBlock {
+                    block: Arc::new(block),
+                    transaction_receipts,
+                }
+            });
 
-                                        // If the receipt came from a different block, then the
-                                        // Ethereum node no longer considers this block to be
-                                        // in the main chain.  Nothing we can do from here
-                                        // except give up trying to ingest this block.
-                                        // There is no way to get the transaction receipt from
-                                        // this block.
-                                        Err(IngestorError::BlockUnavailable(block_hash))
-                                    } else {
-                                        Ok(receipt)
-                                    }
-                                })
-                        })
-                        .collect::<Vec<_>>();
-
-                    Box::pin(batching_web3.transport().submit_batch())
-                        .compat()
-                        .from_err()
-                        .map_err(IngestorError::Unknown)
-                        .and_then(move |_| {
-                            stream::futures_ordered(receipt_futures).collect().map(
-                                move |transaction_receipts| EthereumBlock {
-                                    block: Arc::new(block),
-                                    transaction_receipts,
-                                },
-                            )
-                        })
-                        .compat()
-                })
-                .map_err(move |e| {
-                    e.into_inner().unwrap_or_else(move || {
-                        anyhow!(
-                            "Ethereum node took too long to return receipts for block {}",
-                            block_hash
-                        )
-                        .into()
-                    })
-                })
-                .boxed()
-                .compat(),
-        )
+        Box::pin(block_future)
     }
 
     fn block_pointer_from_number(
@@ -1845,4 +1799,125 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
               "block_number" => block.ptr().block_number());
     }
     Ok(block)
+}
+
+/// Deprecated. Wraps the [`fetch_transaction_receipts_in_batch`] in a retry loop.
+async fn fetch_transaction_receipts_in_batch_with_retry(
+    web3: Arc<Web3<Transport>>,
+    hashes: Vec<H256>,
+    block_hash: H256,
+    logger: Logger,
+) -> Result<Vec<TransactionReceipt>, IngestorError> {
+    retry("batch eth_getTransactionReceipt RPC call", &logger)
+        .limit(*REQUEST_RETRIES)
+        .no_logging()
+        .timeout_secs(*JSON_RPC_TIMEOUT)
+        .run(move || {
+            let web3 = web3.cheap_clone();
+            let hashes = hashes.clone();
+            let logger = logger.cheap_clone();
+            fetch_transaction_receipts_in_batch(web3, hashes, block_hash, logger).boxed()
+        })
+        .await
+        .map_err(|_timeout| anyhow!(block_hash).into())
+}
+
+/// Deprecated. Attempts to fetch multiple transaction receipts in a batching contex.
+async fn fetch_transaction_receipts_in_batch(
+    web3: Arc<Web3<Transport>>,
+    hashes: Vec<H256>,
+    block_hash: H256,
+    logger: Logger,
+) -> Result<Vec<TransactionReceipt>, IngestorError> {
+    let batching_web3 = Web3::new(Batch::new(web3.transport().clone()));
+    let receipt_futures = hashes
+        .into_iter()
+        .map(|hash| {
+            let logger = logger.cheap_clone();
+            batching_web3
+                .eth()
+                .transaction_receipt(hash.clone())
+                .map_err(|web3_error| IngestorError::from(web3_error))
+                .and_then(move |some_receipt| async move {
+                    resolve_transaction_receipt(some_receipt, hash, block_hash, logger)
+                })
+        })
+        .collect::<Vec<_>>();
+
+    batching_web3.transport().submit_batch().await?;
+
+    let mut collected = vec![];
+    for receipt in receipt_futures.into_iter() {
+        collected.push(receipt.await?)
+    }
+    Ok(collected)
+}
+
+/// Retries fetching a single transaction receipt.
+async fn fetch_transaction_receipt_with_retry(
+    web3: Arc<Web3<Transport>>,
+    transaction_hash: H256,
+    block_hash: H256,
+    logger: Logger,
+) -> Result<TransactionReceipt, IngestorError> {
+    let logger = logger.cheap_clone();
+    retry("batch eth_getTransactionReceipt RPC call", &logger)
+        .limit(*REQUEST_RETRIES)
+        .no_logging()
+        .timeout_secs(*JSON_RPC_TIMEOUT)
+        .run(move || web3.eth().transaction_receipt(transaction_hash).boxed())
+        .await
+        .map_err(|_timeout| anyhow!(block_hash).into())
+        .and_then(move |some_receipt| {
+            resolve_transaction_receipt(some_receipt, transaction_hash, block_hash, logger)
+        })
+}
+
+fn resolve_transaction_receipt(
+    transaction_receipt: Option<TransactionReceipt>,
+    transaction_hash: H256,
+    block_hash: H256,
+    logger: Logger,
+) -> Result<TransactionReceipt, IngestorError> {
+    match transaction_receipt {
+        // A receipt might be missing because the block was uncled, and the transaction never
+        // made it back into the main chain.
+        Some(receipt) => {
+            // Check if the receipt has a block hash and is for the right block. Parity nodes seem
+            // to return receipts with no block hash when a transaction is no longer in the main
+            // chain, so treat that case the same as a receipt being absent entirely.
+            if receipt.block_hash != Some(block_hash) {
+                info!(
+                    logger, "receipt block mismatch";
+                    "receipt_block_hash" =>
+                    receipt.block_hash.unwrap_or_default().to_string(),
+                    "block_hash" =>
+                        block_hash.to_string(),
+                    "tx_hash" => transaction_hash.to_string(),
+                );
+
+                // If the receipt came from a different block, then the Ethereum node no longer
+                // considers this block to be in the main chain. Nothing we can do from here except
+                // give up trying to ingest this block. There is no way to get the transaction
+                // receipt from this block.
+                Err(IngestorError::BlockUnavailable(block_hash.clone()))
+            } else {
+                Ok(receipt)
+            }
+        }
+        None => {
+            // No receipt was returned.
+            //
+            // This can be because the Ethereum node no longer considers this block to be part of
+            // the main chain, and so the transaction is no longer in the main chain. Nothing we can
+            // do from here except give up trying to ingest this block.
+            //
+            // This could also be because the receipt is simply not available yet. For that case, we
+            // should retry until it becomes available.
+            Err(IngestorError::ReceiptUnavailable(
+                block_hash,
+                transaction_hash,
+            ))
+        }
+    }
 }

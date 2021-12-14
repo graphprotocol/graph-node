@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use crate::execution::ExecutionContext;
-use graph::prelude::{async_trait, q, s, tokio, Error, QueryExecutionError, StoreEventStreamBox};
+use graph::components::store::UnitStream;
+use graph::prelude::{async_trait, q, s, tokio, Error, QueryExecutionError};
 use graph::{
     data::graphql::{ext::DocumentExt, ObjectOrInterface},
     prelude::{r, QueryResult},
@@ -109,12 +110,12 @@ pub trait Resolver: Sized + Send + Sync + 'static {
     }
 
     // Resolves a change stream for a given field.
-    async fn resolve_field_stream(
+    fn resolve_field_stream(
         &self,
         _schema: &s::Document,
         _object_type: &s::ObjectType,
         _field: &q::Field,
-    ) -> Result<StoreEventStreamBox, QueryExecutionError> {
+    ) -> Result<UnitStream, QueryExecutionError> {
         Err(QueryExecutionError::NotSupported(String::from(
             "Resolving field streams is not supported by this resolver",
         )))

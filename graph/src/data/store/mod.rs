@@ -26,7 +26,7 @@ pub mod scalar;
 pub mod ethereum;
 
 /// Filter subscriptions
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SubscriptionFilter {
     /// Receive updates about all entities from the given deployment of the
     /// given type

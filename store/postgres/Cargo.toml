@@ -31,12 +31,12 @@ backtrace = "0.3"
 diesel_derives = "1.4.1"
 anyhow = "1.0.45"
 git-testament = "0.2.0"
-itertools = "0.10.1"
+itertools = "0.10.3"
 pin-utils = "0.1"
 hex = "0.4.3"
 
 [dev-dependencies]
-clap = "2.33.3"
+clap = "2.34.0"
 graphql-parser = "0.4.0"
 test-store = { path = "../test-store" }
 hex-literal = "0.3"

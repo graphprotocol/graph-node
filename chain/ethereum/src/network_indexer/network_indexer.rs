@@ -204,7 +204,7 @@ fn fetch_block_and_ommers_by_number(
             adapter
                 .clone()
                 .block_by_number(&logger, block_number)
-                .from_err()
+                .map_err(Into::into)
         )
         .and_then(move |block| match block {
             None => {
@@ -224,8 +224,9 @@ fn fetch_block_and_ommers_by_number(
                     fetch_full_block_problems,
                     adapter_for_full_block
                         .load_full_block(&logger_for_full_block, block)
-                        .from_err()
+                        .map_err(Into::into)
                 )
+                .compat()
                 .and_then(move |block| {
                     fetch_ommers(
                         logger_for_ommers.clone(),
