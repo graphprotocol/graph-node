@@ -58,7 +58,7 @@ itertools = "0.10.3"
 
 # Our fork contains patches for custom http headers and to make some block fields optional.
 # Without the "arbitrary_precision" feature, we get the error `data did not match any variant of untagged enum Response`.
-web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "lutter/graph-0.15.0", features = ["arbitrary_precision"] }
+web3 = { git = "https://github.com/georg-getz/rust-web3", branch = "lutter/graph-0.15.0", features = ["arbitrary_precision"] }
 serde_plain = "1.0.0"
 
 [dev-dependencies]
