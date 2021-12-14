@@ -173,9 +173,7 @@ impl ChainHeadUpdateListener {
                         }
                     };
 
-                let logger = logger.new(o!("network" => update.network_name.clone()));
-
-                debug!(logger, "parsed update"; "number" => update.head_block_number);
+                let logger = logger.new(o!("network" => update.network_name.clone(),  "number" => update.head_block_number));
 
                 // Observe the latest chain head for each network to monitor block ingestion
                 metrics
@@ -191,13 +189,13 @@ impl ChainHeadUpdateListener {
                         let logger = logger.cheap_clone();
                         tokio::task::spawn_blocking(move || {
                             sending_to_watcher.store(true, atomic::Ordering::SeqCst);
-                            debug!(logger, "calling send_logged"; "number" => update.head_block_number);
+                            debug!(logger, "calling send_logged");
                             sender.send_logged((), logger.cheap_clone()).unwrap();
                             sending_to_watcher.store(false, atomic::Ordering::SeqCst);
                             debug!(logger, "send_logged finished");
                         });
                     } else {
-                        debug!(logger, "skipping chain head update, watcher is deadlocked"; "network" => &update.network_name, "number" => update.head_block_number);
+                        debug!(logger, "skipping chain head update, watcher is deadlocked");
                     }
                 }
             }
