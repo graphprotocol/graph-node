@@ -453,6 +453,8 @@ async fn main() {
 
     graph::spawn(launch_services(logger.clone()));
 
+    block_contention_check(contention_logger.cheap_clone());
+
     // Periodically check for contention in the tokio threadpool. First spawn a
     // task that simply responds to "ping" requests. Then spawn a separate
     // thread to periodically ping it and check responsiveness.
@@ -1034,4 +1036,56 @@ mod test {
         assert_eq!(goerli_capability, archive);
         assert_eq!(mainnet_capability, traces);
     }
+}
+
+fn block_contention_check(contention_logger: Logger) {
+    graph::spawn_thread("contention checker".to_string(), move || loop {
+        std::thread::sleep(Duration::from_secs(1));
+
+        // // Check contention on the non-blocking threadpool.
+        // let (pong_send, pong_receive) = crossbeam_channel::bounded(1);
+        // if futures::executor::block_on(ping_send.clone().send(pong_send)).is_err() {
+        //     debug!(contention_logger, "Shutting down contention checker thread");
+        //     break;
+        // }
+        // let mut timeout = Duration::from_millis(10);
+        // while pong_receive.recv_timeout(timeout)
+        //     == Err(crossbeam_channel::RecvTimeoutError::Timeout)
+        // {
+        //     debug!(contention_logger, "Possible contention in tokio threadpool";
+        //                              "timeout_ms" => timeout.as_millis(),
+        //                              "code" => LogCode::TokioContention);
+        //     if timeout < Duration::from_secs(10) {
+        //         timeout *= 10;
+        //     } else if std::env::var_os("GRAPH_KILL_IF_UNRESPONSIVE").is_some() {
+        //         // The node is unresponsive, kill it in hopes it will be restarted.
+        //         crit!(contention_logger, "Node is unresponsive, killing process");
+        //         std::process::abort()
+        //     }
+        // }
+
+        // Check contention on the blocking threadpool.
+        let (blocking_ping_send, blocking_ping_receive) =
+            crossbeam_channel::bounded::<crossbeam_channel::Sender<()>>(1);
+        tokio::task::spawn_blocking(move || {
+            let pong_send = blocking_ping_receive.recv().unwrap();
+            let _ = pong_send.send(());
+        });
+        let (pong_send, pong_receive) = crossbeam_channel::bounded(1);
+        if blocking_ping_send.send(pong_send).is_err() {
+            debug!(contention_logger, "Shutting down contention checker thread");
+            break;
+        }
+        let mut timeout = Duration::from_millis(10);
+        while pong_receive.recv_timeout(timeout)
+            == Err(crossbeam_channel::RecvTimeoutError::Timeout)
+        {
+            debug!(contention_logger, "Possible contention in tokio blocking threadpool";
+                                             "timeout_ms" => timeout.as_millis(),
+                                             "code" => LogCode::TokioContention);
+            if timeout < Duration::from_secs(10) {
+                timeout *= 10;
+            }
+        }
+    });
 }
