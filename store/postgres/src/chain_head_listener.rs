@@ -193,8 +193,11 @@ impl ChainHeadUpdateListener {
                             let logger = logger.cheap_clone();
                             send_to_watcher = Some(tokio::task::spawn_blocking(move || {
                                 debug!(logger, "calling send_logged");
-                                sender.send_logged((), logger.cheap_clone()).unwrap();
-                                debug!(logger, "send_logged finished");
+                                let res = sender.send_logged((), logger.cheap_clone()).unwrap();
+                                std::sync::atomic::compiler_fence(
+                                    std::sync::atomic::Ordering::SeqCst,
+                                );
+                                debug!(logger, "send_logged finished {:?}", res);
                             }));
                         }
                         Some(None) => {
