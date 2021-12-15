@@ -1,8 +1,7 @@
 use graph_runtime_derive::AscType;
 use graph::runtime::{AscType, AscIndexId, DeterministicHostError, IndexForAscTypeId, AscPtr, AscValue};
-use graph::{semver, anyhow, semver::Version};
-use std::mem::size_of;
-use graph_runtime_wasm::asc_abi::class::{Uint8Array, AscEnum, Array, AscBigInt, AscString};
+use graph::{semver::Version};
+use graph_runtime_wasm::asc_abi::class::{Uint8Array, AscEnum, Array, AscString};
 
 pub(crate) type AscHash = Uint8Array;
 
@@ -256,7 +255,7 @@ impl AscIndexId for AscConsensusParams {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscVersion {
-    pub app_version: AscPtr<AscBigInt>,
+    pub app_version: u64,
 }
 
 impl AscIndexId for AscVersion {
@@ -281,10 +280,11 @@ impl AscIndexId for AscBlock {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscCommit {
-    pub height: AscPtr<AscBigInt>,
+    pub height: u64,
     pub round: i32,
     pub block_id: AscPtr<AscBlockID>,
     pub signatures: AscPtr<AscCommitSigArray>,
+    pub _padding: u32,
 }
 
 impl AscIndexId for AscCommit {
@@ -325,7 +325,7 @@ impl AscIndexId for AscEventBlockHeader {
 pub(crate) struct AscHeader {
     pub version: AscPtr<AscConsensus>,
     pub chain_id: AscPtr<AscString>,
-    pub height: AscPtr<AscBigInt>,
+    pub height: u64,
     pub time: AscPtr<AscTimestamp>,
     pub last_block_id: AscPtr<AscBlockID>,
     pub last_commit_hash: AscPtr<AscHash>,
@@ -337,6 +337,7 @@ pub(crate) struct AscHeader {
     pub last_results_hash: AscPtr<AscHash>,
     pub evidence_hash: AscPtr<AscHash>,
     pub proposer_address: AscPtr<AscAddress>,
+    pub _padding: u32
 }
 
 impl AscIndexId for AscHeader {
@@ -347,8 +348,8 @@ impl AscIndexId for AscHeader {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscConsensus {
-    pub block: AscPtr<AscBigInt>,
-    pub app: AscPtr<AscBigInt>,
+    pub block: u64,
+    pub app: u64,
 }
 
 impl AscIndexId for AscConsensus {
@@ -433,7 +434,7 @@ impl AscIndexId for AscEventTx {
 #[derive(AscType)]
 pub(crate) struct AscEventVote {
     pub eventvotetype: AscPtr<AscSignedMsgTypeEnum>,
-    pub height: AscPtr<AscBigInt>,
+    pub height: u64,
     pub round: i32,
     pub block_id: AscPtr<AscBlockID>,
     pub timestamp: AscPtr<AscTimestamp>,
@@ -540,10 +541,11 @@ impl AscIndexId for AscPublicKey {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscTxResult {
-    pub height: AscPtr<AscBigInt>,
+    pub height: u64,
     pub index: u32,
     pub tx: AscPtr<Uint8Array>,
     pub result: AscPtr<AscResponseDeliverTx>,
+    pub _padding: u32,
 }
 
 impl AscIndexId for AscTxResult {
@@ -587,6 +589,8 @@ pub(crate) struct AscEventAttribute {
     pub key: AscPtr<AscString>,
     pub value: AscPtr<AscString>,
     pub index: bool,
+    pub _padding: u8,
+    pub _padding2: u16,
 }
 
 impl AscIndexId for AscEventAttribute {
@@ -621,6 +625,7 @@ impl AscIndexId for AscEventValidatorSetUpdates {
 pub(crate) struct AscTimestamp {
     pub seconds: i64,
     pub nanos: i32,
+    pub _padding: u32
 }
 
 impl AscIndexId for AscTimestamp {
@@ -638,3 +643,13 @@ impl AscIndexId for Ascfig {
 }
 
 
+#[repr(C)]
+#[derive(AscType)]
+pub(crate) struct AscEventData {
+    pub event: AscPtr<AscEvent>,
+    pub block: AscPtr<AscEventList>,
+}
+
+impl AscIndexId for AscEventData {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventData;
+}

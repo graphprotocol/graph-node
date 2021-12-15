@@ -9,7 +9,7 @@ use graph::{blockchain::BlockPtr, prelude::BlockNumber};
 use std::convert::TryFrom;
 
 impl EventList {
-    pub fn block(&self) -> &pbcodec::EventBlock {
+    pub fn block(&self) -> &EventBlock {
         self.newblock.as_ref().unwrap()
     }
 
@@ -21,6 +21,48 @@ impl EventList {
             .header
             .as_ref()
             .unwrap()
+    }
+
+    pub fn events(&self) -> Vec<Event> {
+        self.begin_block_events()
+            .into_iter()
+            .chain(self.tx_events().into_iter())
+            .chain(self.end_block_events().into_iter())
+            .collect()
+    }
+
+    pub fn begin_block_events(&self) -> Vec<Event> {
+        self.block()
+            .result_begin_block
+            .as_ref()
+            .unwrap()
+            .events
+            .clone()
+    }
+
+    pub fn tx_events(&self) -> Vec<Event> {
+        self.transaction
+            .iter()
+            .flat_map(|tx| {
+                tx.tx_result
+                    .as_ref()
+                    .unwrap()
+                    .result
+                    .as_ref()
+                    .unwrap()
+                    .events
+                    .clone()
+            })
+            .collect()
+    }
+
+    pub fn end_block_events(&self) -> Vec<Event> {
+        self.block()
+            .result_end_block
+            .as_ref()
+            .unwrap()
+            .events
+            .clone()
     }
 
     pub fn parent_ptr(&self) -> Option<BlockPtr> {
