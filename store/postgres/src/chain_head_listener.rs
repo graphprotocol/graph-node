@@ -154,6 +154,8 @@ impl ChainHeadUpdateListener {
         // Process chain head updates in a dedicated task
         graph::spawn(async move {
             let mut send_to_watcher: Option<JoinHandle<()>> = None;
+            let uuid2 = uuid::Uuid::new_v4().to_string();
+
             while let Some(notification) = receiver.recv().await {
                 // Create ChainHeadUpdate from JSON
                 let update: ChainHeadUpdate =
@@ -174,7 +176,8 @@ impl ChainHeadUpdateListener {
                         }
                     };
 
-                let logger = logger.new(o!("network" => update.network_name.clone(),  "number" => update.head_block_number));
+                let logger = logger.new(o!("network" => update.network_name.clone(),  "number" => update.head_block_number, "uuid2" => uuid2.clone()));
+                debug!(logger, "parsed notification");
 
                 // Observe the latest chain head for each network to monitor block ingestion
                 metrics
