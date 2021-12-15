@@ -111,8 +111,13 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
-        // FIXME (NEAR): Implement me!
-        todo!()
+        StoredDynamicDataSource {
+            name: self.name.clone(),
+            source: self.source.clone(),
+            // one as_ref for Arc, another one for Option
+            context: self.context().as_ref().as_ref().and_then(|c| c.id().ok()),
+            creation_block: self.creation_block,
+        }
     }
 
     fn from_stored_dynamic_data_source(
