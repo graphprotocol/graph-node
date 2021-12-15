@@ -2,7 +2,8 @@ use graph::{
     blockchain::ChainHeadUpdateStream,
     prelude::{
         futures03::{self, FutureExt},
-        tokio, StoreError,
+        tokio::{self, task::JoinHandle},
+        StoreError,
     },
     prometheus::{CounterVec, GaugeVec},
     util::timed_rw_lock::TimedRwLock,
@@ -152,7 +153,7 @@ impl ChainHeadUpdateListener {
     ) {
         // Process chain head updates in a dedicated task
         graph::spawn(async move {
-            let sending_to_watcher = Arc::new(AtomicBool::new(false));
+            let mut send_to_watcher: Option<JoinHandle<()>> = None;
             while let Some(notification) = receiver.recv().await {
                 // Create ChainHeadUpdate from JSON
                 let update: ChainHeadUpdate =
@@ -183,19 +184,19 @@ impl ChainHeadUpdateListener {
                 if let Some(watcher) = watchers.read(&logger).get(&update.network_name) {
                     // Due to a tokio bug, we must assume that the watcher can deadlock, see
                     // https://github.com/tokio-rs/tokio/issues/4246.
-                    if !sending_to_watcher.load(atomic::Ordering::SeqCst) {
-                        let sending_to_watcher = sending_to_watcher.cheap_clone();
-                        let sender = watcher.sender.cheap_clone();
-                        let logger = logger.cheap_clone();
-                        tokio::task::spawn_blocking(move || {
-                            sending_to_watcher.store(true, atomic::Ordering::SeqCst);
-                            debug!(logger, "calling send_logged");
-                            sender.send_logged((), logger.cheap_clone()).unwrap();
-                            sending_to_watcher.store(false, atomic::Ordering::SeqCst);
-                            debug!(logger, "send_logged finished");
-                        });
-                    } else {
-                        debug!(logger, "skipping chain head update, watcher is deadlocked");
+                    match send_to_watcher.as_mut().map(FutureExt::now_or_never) {
+                        None | Some(Some(_)) => {
+                            let sender = watcher.sender.cheap_clone();
+                            let logger = logger.cheap_clone();
+                            send_to_watcher = Some(tokio::task::spawn_blocking(move || {
+                                debug!(logger, "calling send_logged");
+                                sender.send_logged((), logger.cheap_clone()).unwrap();
+                                debug!(logger, "send_logged finished");
+                            }));
+                        }
+                        Some(None) => {
+                            debug!(logger, "skipping chain head update, watcher is deadlocked"; "network" => &update.network_name)
+                        }
                     }
                 }
             }
