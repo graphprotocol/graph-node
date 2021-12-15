@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::{convert::TryFrom, sync::Arc};
 
-use anyhow::Error;
+use anyhow::{Error, Result};
 use graph::{
     blockchain::{self, Block, Blockchain, TriggerWithHandler},
     components::store::StoredDynamicDataSource,
@@ -45,7 +45,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         trigger: &<Chain as Blockchain>::TriggerData,
         block: Arc<<Chain as Blockchain>::Block>,
         _logger: &Logger,
-    ) -> Result<Option<TriggerWithHandler<Chain>>, Error> {
+    ) -> Result<Option<TriggerWithHandler<Chain>>> {
         if self.source.start_block > block.number() {
             return Ok(None);
         }
@@ -118,7 +118,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     fn from_stored_dynamic_data_source(
         _templates: &BTreeMap<&str, &DataSourceTemplate>,
         _stored: StoredDynamicDataSource,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self> {
         // FIXME (NEAR): Implement me correctly
         todo!()
     }
@@ -170,7 +170,7 @@ impl DataSource {
         source: Source,
         mapping: Mapping,
         context: Option<DataSourceContext>,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self> {
         // Data sources in the manifest are created "before genesis" so they have no creation block.
         let creation_block = None;
 
@@ -203,11 +203,7 @@ pub struct UnresolvedDataSource {
 
 #[async_trait]
 impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
-    async fn resolve(
-        self,
-        resolver: &impl LinkResolver,
-        logger: &Logger,
-    ) -> Result<DataSource, anyhow::Error> {
+    async fn resolve(self, resolver: &impl LinkResolver, logger: &Logger) -> Result<DataSource> {
         let UnresolvedDataSource {
             kind,
             network,
@@ -226,9 +222,9 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
 }
 
 impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
-    type Error = anyhow::Error;
+    type Error = Error;
 
-    fn try_from(info: DataSourceTemplateInfo<Chain>) -> Result<Self, anyhow::Error> {
+    fn try_from(info: DataSourceTemplateInfo<Chain>) -> Result<Self> {
         let DataSourceTemplateInfo {
             template,
             params: _,
@@ -270,7 +266,7 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
         self,
         resolver: &impl LinkResolver,
         logger: &Logger,
-    ) -> Result<DataSourceTemplate, anyhow::Error> {
+    ) -> Result<DataSourceTemplate> {
         let UnresolvedDataSourceTemplate {
             kind,
             network,
@@ -316,11 +312,7 @@ pub struct UnresolvedMapping {
 }
 
 impl UnresolvedMapping {
-    pub async fn resolve(
-        self,
-        resolver: &impl LinkResolver,
-        logger: &Logger,
-    ) -> Result<Mapping, anyhow::Error> {
+    pub async fn resolve(self, resolver: &impl LinkResolver, logger: &Logger) -> Result<Mapping> {
         let UnresolvedMapping {
             kind,
             api_version,
