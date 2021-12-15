@@ -3,7 +3,6 @@ mod pbcodec;
 
 use crate::codec;
 use crate::trigger::EventData;
-use graph::prelude::BigInt;
 use graph::runtime::{
     asc_new, AscHeap, AscIndexId, AscPtr, AscType, DeterministicHostError, ToAscObj,
 };
@@ -72,7 +71,7 @@ impl ToAscObj<AscHeader> for codec::Header {
         Ok(AscHeader {
             version: asc_new_or_missing(heap, &self.version, "Header", "version")?,
             chain_id: asc_new(heap, &self.chain_id)?,
-            height: asc_new(heap, &BigInt::from(self.height))?,
+            height: self.height,
             time: asc_new_or_missing(heap, &self.time, "Header", "time")?,
             last_block_id: asc_new_or_missing(
                 heap,
@@ -89,6 +88,7 @@ impl ToAscObj<AscHeader> for codec::Header {
             last_results_hash: asc_new(heap, &Bytes(&self.last_results_hash))?,
             evidence_hash: asc_new(heap, &Bytes(&self.evidence_hash))?,
             proposer_address: asc_new_or_null(heap, &self.proposer_address)?,
+            _padding: 0,
         })
     }
 }
@@ -138,11 +138,11 @@ impl ToAscObj<AscPartSetHeader> for codec::PartSetHeader {
 impl ToAscObj<AscConsensus> for codec::Consensus {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        heap: &mut H,
+        _heap: &mut H,
     ) -> Result<AscConsensus, DeterministicHostError> {
         Ok(AscConsensus {
-            block: asc_new(heap, &BigInt::from(self.block))?,
-            app: asc_new(heap, &BigInt::from(self.app))?,
+            block: self.block,
+            app: self.app,
         })
     }
 }
@@ -221,8 +221,8 @@ impl ToAscObj<AscEventAttribute> for codec::EventAttribute {
         Ok(AscEventAttribute {
             key: asc_new(heap, &self.key)?,
             value: asc_new(heap, &self.value)?,
-            index: self.index, // TODO(l): seems broken ?
-            _padding: true,
+            index: self.index,
+            _padding: false,
             _padding2: 0,
         })
     }
@@ -269,10 +269,10 @@ impl ToAscObj<AscConsensusParams> for codec::ConsensusParams {
 impl ToAscObj<AscVersion> for codec::Version {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        heap: &mut H,
+        _heap: &mut H,
     ) -> Result<AscVersion, DeterministicHostError> {
         Ok(AscVersion {
-            app_version: asc_new(heap, &BigInt::from(self.app_version))?,
+            app_version: self.app_version,
         })
     }
 }
@@ -283,10 +283,11 @@ impl ToAscObj<AscCommit> for codec::Commit {
         heap: &mut H,
     ) -> Result<AscCommit, DeterministicHostError> {
         Ok(AscCommit {
-            height: asc_new(heap, &BigInt::from(self.height))?,
+            height: self.height,
             round: self.round,
             block_id: asc_new_or_missing(heap, &self.block_id, "Commit", "block_id")?,
             signatures: asc_new(heap, &self.signatures)?,
+            _padding: 0,
         })
     }
 }
@@ -498,7 +499,7 @@ impl ToAscObj<AscEventVote> for codec::EventVote {
     ) -> Result<AscEventVote, DeterministicHostError> {
         Ok(AscEventVote {
             eventvotetype: asc_new(heap, &SignedMessageTypeKind(self.eventvotetype))?,
-            height: asc_new(heap, &BigInt::from(self.height))?,
+            height: self.height,
             round: self.round,
             block_id: asc_new_or_missing(heap, &self.block_id, "EventVote", "block_id")?,
             timestamp: asc_new_or_missing(heap, &self.timestamp, "EventVote", "timestamp")?,
@@ -548,10 +549,11 @@ impl ToAscObj<AscTxResult> for codec::TxResult {
         heap: &mut H,
     ) -> Result<AscTxResult, DeterministicHostError> {
         Ok(AscTxResult {
-            height: asc_new(heap, &BigInt::from(self.height))?,
+            height: self.height,
             index: self.index,
             tx: asc_new(heap, &Bytes(&self.tx))?,
             result: asc_new_or_null(heap, &self.result)?,
+            _padding: 0,
         })
     }
 }
