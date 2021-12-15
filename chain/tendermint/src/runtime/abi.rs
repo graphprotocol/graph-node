@@ -222,7 +222,7 @@ impl ToAscObj<AscEventAttribute> for codec::EventAttribute {
             key: asc_new(heap, &self.key)?,
             value: asc_new(heap, &self.value)?,
             index: self.index,
-            _padding: false,
+            _padding: 0,
             _padding2: 0,
         })
     }

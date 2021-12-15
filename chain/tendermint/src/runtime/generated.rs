@@ -589,7 +589,7 @@ pub(crate) struct AscEventAttribute {
     pub key: AscPtr<AscString>,
     pub value: AscPtr<AscString>,
     pub index: bool,
-    pub _padding: bool,
+    pub _padding: u8,
     pub _padding2: u16,
 }
 
