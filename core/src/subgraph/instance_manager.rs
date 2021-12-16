@@ -223,7 +223,7 @@ where
                 Err(err) => error!(
                     err_logger,
                     "Failed to start subgraph";
-                    "error" => format!("{}", err),
+                    "error" => format!("{:#}", err),
                     "code" => LogCode::SubgraphStartFailure
                 ),
             }
