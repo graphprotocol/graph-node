@@ -1,6 +1,7 @@
 use ethereum::{EthereumNetworks, NodeCapabilities, ProviderEthRpcMetrics};
 use futures::future::join_all;
 use git_testament::{git_testament, render_testament};
+use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::firehose::endpoints::{FirehoseEndpoint, FirehoseNetworkEndpoints, FirehoseNetworks};
 use graph::{ipfs_client::IpfsClient, prometheus::Registry};
 use lazy_static::lazy_static;
@@ -16,7 +17,7 @@ use tokio::sync::mpsc;
 
 use graph::blockchain::block_ingestor::BlockIngestor;
 use graph::blockchain::{
-    BlockHash, Blockchain as _, BlockchainKind, BlockchainMap, ChainIdentifier,
+    Block as BlockchainBlock, Blockchain, BlockchainKind, BlockchainMap, ChainIdentifier,
 };
 use graph::components::store::BlockStore;
 use graph::data::graphql::effort::LoadManager;
@@ -24,7 +25,7 @@ use graph::log::logger;
 use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
 use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{self as ethereum, network_indexer, EthereumAdapterTrait, Transport};
-use graph_chain_near::{self as near};
+use graph_chain_near::{self as near, HeaderOnlyBlock as NearFirehoseHeaderOnlyBlock};
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -65,7 +66,7 @@ lazy_static! {
 /// How long we will hold up node startup to get the net version and genesis
 /// hash from the client. If we can't get it within that time, we'll try and
 /// continue regardless.
-const ETH_NET_VERSION_WAIT_TIME: Duration = Duration::from_secs(30);
+const NET_VERSION_WAIT_TIME: Duration = Duration::from_secs(30);
 
 git_testament!(TESTAMENT);
 
@@ -200,7 +201,7 @@ async fn main() {
             .expect("Failed to parse Ethereum networks")
     };
 
-    let firehose_networks_by_kind = if query_only {
+    let mut firehose_networks_by_kind = if query_only {
         BTreeMap::new()
     } else {
         create_firehose_networks(logger.clone(), metrics_registry.clone(), &config)
@@ -228,14 +229,16 @@ async fn main() {
         let mut blockchain_map = BlockchainMap::new();
 
         let (eth_networks, ethereum_idents) = connect_networks(&logger, eth_networks).await;
-        let near_idents =
-            compute_near_network_identifiers(firehose_networks_by_kind.get(&BlockchainKind::Near));
+        let (near_networks, near_idents) =
+            connect_firehose_networks::<NearFirehoseHeaderOnlyBlock>(
+                &logger,
+                firehose_networks_by_kind
+                    .remove(&BlockchainKind::Near)
+                    .unwrap_or_else(|| FirehoseNetworks::new()),
+            )
+            .await;
 
-        let network_identifiers = ethereum_idents
-            .into_iter()
-            .chain(near_idents.into_iter())
-            .collect();
-
+        let network_identifiers = ethereum_idents.into_iter().chain(near_idents).collect();
         let network_store = store_builder.network_store(network_identifiers);
 
         let ethereum_chains = ethereum_networks_as_chains(
@@ -250,10 +253,10 @@ async fn main() {
             &logger_factory,
         );
 
-        near_networks_as_chains(
+        let near_chains = near_networks_as_chains(
             &mut blockchain_map,
             &logger,
-            firehose_networks_by_kind.get(&BlockchainKind::Near),
+            &near_networks,
             network_store.as_ref(),
             &logger_factory,
         );
@@ -332,6 +335,12 @@ async fn main() {
 
                 start_block_ingestor(&logger, block_polling_interval, ethereum_chains);
             }
+
+            start_firehose_block_ingestor::<_, NearFirehoseHeaderOnlyBlock>(
+                &logger,
+                &network_store,
+                near_chains,
+            );
 
             // Start a task runner
             let mut job_runner = graph::util::jobs::Runner::new(&logger);
@@ -590,31 +599,31 @@ async fn create_firehose_networks(
     Ok(networks_by_kind)
 }
 
+// The status of a provider that we learned from connecting to it
+#[derive(PartialEq)]
+enum ProviderNetworkStatus {
+    Broken {
+        network: String,
+        provider: String,
+    },
+    Version {
+        network: String,
+        ident: ChainIdentifier,
+    },
+}
+
 /// Try to connect to all the providers in `eth_networks` and get their net
 /// version and genesis block. Return the same `eth_networks` and the
 /// retrieved net identifiers grouped by network name. Remove all providers
 /// for which trying to connect resulted in an error from the returned
 /// `EthereumNetworks`, since it's likely pointless to try and connect to
 /// them. If the connection attempt to a provider times out after
-/// `ETH_NET_VERSION_WAIT_TIME`, keep the provider, but don't report a
+/// `NET_VERSION_WAIT_TIME`, keep the provider, but don't report a
 /// version for it.
 async fn connect_networks(
     logger: &Logger,
     mut eth_networks: EthereumNetworks,
 ) -> (EthereumNetworks, Vec<(String, Vec<ChainIdentifier>)>) {
-    // The status of a provider that we learned from connecting to it
-    #[derive(PartialEq)]
-    enum Status {
-        Broken {
-            network: String,
-            provider: String,
-        },
-        Version {
-            network: String,
-            ident: ChainIdentifier,
-        },
-    }
-
     // This has one entry for each provider, and therefore multiple entries
     // for each network
     let statuses = join_all(
@@ -630,7 +639,7 @@ async fn connect_networks(
                     logger, "Connecting to Ethereum to get network identifier";
                     "capabilities" => &capabilities
                 );
-                match tokio::time::timeout(ETH_NET_VERSION_WAIT_TIME, eth_adapter.net_identifiers())
+                match tokio::time::timeout(NET_VERSION_WAIT_TIME, eth_adapter.net_identifiers())
                     .await
                     .map_err(Error::from)
                 {
@@ -639,7 +648,7 @@ async fn connect_networks(
                     Ok(Err(e)) | Err(e) => {
                         error!(logger, "Connection to provider failed. Not using this provider";
                                        "error" =>  e.to_string());
-                        Status::Broken {
+                        ProviderNetworkStatus::Broken {
                             network,
                             provider: eth_adapter.provider().to_string(),
                         }
@@ -651,7 +660,7 @@ async fn connect_networks(
                             "network_version" => &ident.net_version,
                             "capabilities" => &capabilities
                         );
-                        Status::Version { network, ident }
+                        ProviderNetworkStatus::Version { network, ident }
                     }
                 }
             }),
@@ -664,10 +673,10 @@ async fn connect_networks(
             .into_iter()
             .fold(HashMap::new(), |mut networks, status| {
                 match status {
-                    Status::Broken { network, provider } => {
+                    ProviderNetworkStatus::Broken { network, provider } => {
                         eth_networks.remove(&network, &provider)
                     }
-                    Status::Version { network, ident } => {
+                    ProviderNetworkStatus::Version { network, ident } => {
                         networks.entry(network.to_string()).or_default().push(ident)
                     }
                 }
@@ -677,35 +686,88 @@ async fn connect_networks(
     (eth_networks, idents)
 }
 
-// FIXME (NEAR): This is quite wrong, will need a refactor to remove the need to have a `ChainIdentifier`
-//               to create an actual `NetworkStore` (see `store_builder.network_store`).
-fn compute_near_network_identifiers(
-    firehose_networks: Option<&FirehoseNetworks>,
-) -> Vec<(String, Vec<ChainIdentifier>)> {
-    match firehose_networks {
-        None => vec![],
-        Some(v) => v
+/// Try to connect to all the providers in `firehose_networks` and get their net
+/// version and genesis block. Return the same `eth_networks` and the
+/// retrieved net identifiers grouped by network name. Remove all providers
+/// for which trying to connect resulted in an error from the returned
+/// `EthereumNetworks`, since it's likely pointless to try and connect to
+/// them. If the connection attempt to a provider times out after
+/// `NET_VERSION_WAIT_TIME`, keep the provider, but don't report a
+/// version for it.
+async fn connect_firehose_networks<M>(
+    logger: &Logger,
+    mut firehose_networks: FirehoseNetworks,
+) -> (FirehoseNetworks, Vec<(String, Vec<ChainIdentifier>)>)
+where
+    M: prost::Message + BlockchainBlock + Default + 'static,
+{
+    // This has one entry for each provider, and therefore multiple entries
+    // for each network
+    let statuses = join_all(
+        firehose_networks
             .flatten()
             .into_iter()
-            .map(|(name, endpoint)| {
-                (
-                    name,
-                    ChainIdentifier {
-                        genesis_block_hash: BlockHash::from(vec![]),
-                        net_version: endpoint.provider.clone(),
-                    },
+            .map(|(network_name, endpoint)| (network_name, endpoint, logger.clone()))
+            .map(|(network, endpoint, logger)| async move {
+                let logger = logger.new(o!("provider" => endpoint.provider.to_string()));
+                info!(
+                    logger, "Connecting to Firehose to get network identifier";
+                    "url" => &endpoint.uri,
+                );
+                match tokio::time::timeout(
+                    NET_VERSION_WAIT_TIME,
+                    endpoint.genesis_block_ptr::<M>(&logger),
                 )
-            })
-            .fold(
-                HashMap::<String, Vec<ChainIdentifier>>::new(),
-                |mut networks, (name, endpoint)| {
-                    networks.entry(name.to_string()).or_default().push(endpoint);
-                    networks
-                },
-            )
+                .await
+                .map_err(Error::from)
+                {
+                    // An `Err` means a timeout, an `Ok(Err)` means some other error (maybe a typo
+                    // on the URL)
+                    Ok(Err(e)) | Err(e) => {
+                        error!(logger, "Connection to provider failed. Not using this provider";
+                                       "error" =>  e.to_string());
+                        ProviderNetworkStatus::Broken {
+                            network,
+                            provider: endpoint.provider.to_string(),
+                        }
+                    }
+                    Ok(Ok(ptr)) => {
+                        info!(
+                            logger,
+                            "Connected to Firehose";
+                            "uri" => &endpoint.uri,
+                            "genesis_block" => format_args!("{}", &ptr),
+                        );
+
+                        let ident = ChainIdentifier {
+                            net_version: "0".to_string(),
+                            genesis_block_hash: ptr.hash,
+                        };
+
+                        ProviderNetworkStatus::Version { network, ident }
+                    }
+                }
+            }),
+    )
+    .await;
+
+    // Group identifiers by network name
+    let idents: HashMap<String, Vec<ChainIdentifier>> =
+        statuses
             .into_iter()
-            .collect(),
-    }
+            .fold(HashMap::new(), |mut networks, status| {
+                match status {
+                    ProviderNetworkStatus::Broken { network, provider } => {
+                        firehose_networks.remove(&network, &provider)
+                    }
+                    ProviderNetworkStatus::Version { network, ident } => {
+                        networks.entry(network.to_string()).or_default().push(ident)
+                    }
+                }
+                networks
+            });
+    let idents: Vec<_> = idents.into_iter().collect();
+    (firehose_networks, idents)
 }
 
 fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<IpfsClient> {
@@ -840,51 +902,49 @@ fn ethereum_networks_as_chains(
 fn near_networks_as_chains(
     blockchain_map: &mut BlockchainMap,
     logger: &Logger,
-    firehose_networks: Option<&FirehoseNetworks>,
+    firehose_networks: &FirehoseNetworks,
     store: &Store,
     logger_factory: &LoggerFactory,
-) -> HashMap<String, Arc<near::Chain>> {
-    match firehose_networks {
-        None => HashMap::new(),
-        Some(v) => {
-            let chains: Vec<_> = v
-                .networks
-                .iter()
-                .filter_map(|(network_name, firehose_endpoints)| {
-                    store
-                        .block_store()
-                        .chain_store(network_name)
-                        .map(|chain_store| (network_name, chain_store, firehose_endpoints))
-                        .or_else(|| {
-                            error!(
-                                logger,
-                                "No store configured for NEAR chain {}; ignoring this chain",
-                                network_name
-                            );
-                            None
-                        })
+) -> HashMap<String, FirehoseChain<near::Chain>> {
+    let chains: Vec<_> = firehose_networks
+        .networks
+        .iter()
+        .filter_map(|(network_name, firehose_endpoints)| {
+            store
+                .block_store()
+                .chain_store(network_name)
+                .map(|chain_store| (network_name, chain_store, firehose_endpoints))
+                .or_else(|| {
+                    error!(
+                        logger,
+                        "No store configured for NEAR chain {}; ignoring this chain", network_name
+                    );
+                    None
                 })
-                .map(|(network_name, chain_store, firehose_endpoints)| {
-                    (
+        })
+        .map(|(network_name, chain_store, firehose_endpoints)| {
+            (
+                network_name.clone(),
+                FirehoseChain {
+                    chain: Arc::new(near::Chain::new(
+                        logger_factory.clone(),
                         network_name.clone(),
-                        Arc::new(near::Chain::new(
-                            logger_factory.clone(),
-                            network_name.clone(),
-                            chain_store,
-                            store.subgraph_store(),
-                            firehose_endpoints.clone(),
-                        )),
-                    )
-                })
-                .collect();
+                        chain_store,
+                        store.subgraph_store(),
+                        firehose_endpoints.clone(),
+                    )),
+                    firehose_endpoints: firehose_endpoints.clone(),
+                },
+            )
+        })
+        .collect();
 
-            for (network_name, chain) in chains.iter().cloned() {
-                blockchain_map.insert::<graph_chain_near::Chain>(network_name, chain)
-            }
-
-            HashMap::from_iter(chains)
-        }
+    for (network_name, firehose_chain) in chains.iter() {
+        blockchain_map
+            .insert::<graph_chain_near::Chain>(network_name.clone(), firehose_chain.chain.clone())
     }
+
+    HashMap::from_iter(chains)
 }
 
 fn start_block_ingestor(
@@ -936,6 +996,63 @@ fn start_block_ingestor(
         });
 }
 
+#[derive(Clone)]
+struct FirehoseChain<C: Blockchain> {
+    chain: Arc<C>,
+    firehose_endpoints: FirehoseNetworkEndpoints,
+}
+
+fn start_firehose_block_ingestor<C, M>(
+    logger: &Logger,
+    store: &Store,
+    chains: HashMap<String, FirehoseChain<C>>,
+) where
+    C: Blockchain,
+    M: prost::Message + BlockchainBlock + Default + 'static,
+{
+    info!(
+        logger,
+        "Starting firehose block ingestors with {} chains [{}]",
+        chains.len(),
+        chains
+            .keys()
+            .map(|v| v.clone())
+            .collect::<Vec<String>>()
+            .join(", ")
+    );
+
+    // Create Firehose block ingestors and spawn a thread to run each
+    chains
+        .iter()
+        .for_each(|(network_name, chain)| {
+            info!(
+                logger,
+                "Starting firehose block ingestor for network";
+                "network_name" => &network_name
+            );
+
+            let endpoint = chain
+                .firehose_endpoints
+                .random()
+                .expect("One Firehose endpoint should exist at that execution point");
+
+            match store.block_store().chain_store(network_name.as_ref()) {
+                Some(s) => {
+                    let block_ingestor = FirehoseBlockIngestor::<M>::new(
+                        s,
+                        endpoint.clone(),
+                        logger.new(o!("component" => "FirehoseBlockIngestor", "provider" => endpoint.provider.clone())),
+                    );
+
+                    // Run the Firehose block ingestor in the background
+                    graph::spawn(block_ingestor.run());
+                },
+                None => {
+                    error!(logger, "Not starting firehose block ingestor (no chain store available)"; "network_name" => &network_name);
+                }
+            }
+        });
+}
 #[cfg(test)]
 mod test {
     use super::create_ethereum_networks;

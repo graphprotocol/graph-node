@@ -12,6 +12,16 @@ message Block {
   repeated StateChangeWithCause state_changes = 5;
 }
 
+// HeaderOnlyBlock is a standard [Block] structure where all other fields are
+// removed so that hydrating that object from a [Block] bytes payload will
+// drastically reduced allocated memory required to hold the full block.
+//
+// This can be used to unpack a [Block] when only the [BlockHeader] information
+// is required and greatly reduced required memory.
+message HeaderOnlyBlock {
+  BlockHeader header = 2;
+}
+
 message StateChangeWithCause {
   StateChangeValue value = 1;
   StateChangeCause cause = 2;

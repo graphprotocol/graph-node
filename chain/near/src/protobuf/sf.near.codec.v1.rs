@@ -11,6 +11,17 @@ pub struct Block {
     #[prost(message, repeated, tag = "5")]
     pub state_changes: ::prost::alloc::vec::Vec<StateChangeWithCause>,
 }
+/// HeaderOnlyBlock is a standard [Block] structure where all other fields are
+/// removed so that hydrating that object from a [Block] bytes payload will
+/// drastically reduced allocated memory required to hold the full block.
+///
+/// This can be used to unpack a [Block] when only the [BlockHeader] information
+/// is required and greatly reduced required memory.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HeaderOnlyBlock {
+    #[prost(message, optional, tag = "2")]
+    pub header: ::core::option::Option<BlockHeader>,
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StateChangeWithCause {
     #[prost(message, optional, tag = "1")]

@@ -1324,6 +1324,21 @@ pub trait ChainStore: Send + Sync + 'static {
     /// The head block pointer will be None on initial set up.
     fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 
+    /// Get the current head block cursor for this chain.
+    ///
+    /// The head block cursor will be None on initial set up.
+    fn chain_head_cursor(&self) -> Result<Option<String>, Error>;
+
+    /// This method does actually three operations:
+    /// - Upserts received block into blocks table
+    /// - Update chain head block into networks table
+    /// - Update chain head cursor into networks table
+    async fn set_chain_head(
+        self: Arc<Self>,
+        block: Arc<dyn Block>,
+        cursor: String,
+    ) -> Result<(), Error>;
+
     /// Returns the blocks present in the store.
     fn blocks(&self, hashes: &[H256]) -> Result<Vec<serde_json::Value>, Error>;
 
