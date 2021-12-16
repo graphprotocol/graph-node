@@ -77,6 +77,7 @@ pub enum QueryExecutionError {
     Panic(String),
     EventStreamError,
     FulltextQueryRequiresFilter,
+    FulltextQueryInvalidSyntax(String),
     DeploymentReverted,
     SubgraphManifestResolveError(Arc<SubgraphManifestResolveError>),
     InvalidSubgraphManifest,
@@ -113,6 +114,7 @@ impl QueryExecutionError {
             | Unimplemented(_)
             | CyclicalFragment(_)
             | UndefinedFragment(_)
+            | FulltextQueryInvalidSyntax(_)
             | FulltextQueryRequiresFilter => true,
             NonNullError(_, _)
             | ListValueError(_, _)
@@ -273,6 +275,7 @@ impl fmt::Display for QueryExecutionError {
             Panic(msg) => write!(f, "panic processing query: {}", msg),
             EventStreamError => write!(f, "error in the subscription event stream"),
             FulltextQueryRequiresFilter => write!(f, "fulltext search queries can only use EntityFilter::Equal"),
+            FulltextQueryInvalidSyntax(msg) => write!(f, "Invalid fulltext search query syntax. Error: {}. Hint: Search terms with spaces need to be enclosed in single quotes", msg),
             TooExpensive => write!(f, "query is too expensive"),
             Throttled => write!(f, "service is overloaded and can not run the query right now. Please try again in a few minutes"),
             DeploymentReverted => write!(f, "the chain was reorganized while executing the query"),

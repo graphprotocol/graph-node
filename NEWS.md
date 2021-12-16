@@ -1,5 +1,9 @@
 # NEWS
 
+## Unreleased
+- Gracefully handle syntax errors on fulltext search. Specifically provides information about common use case 
+where whitespace characters were part of the terms.
+
 ## 0.25.0
 
 ### Api Version 0.0.6

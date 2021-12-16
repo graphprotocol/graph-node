@@ -658,12 +658,18 @@ impl Layout {
                 }
                 query.load::<EntityData>(conn)
             })
-            .map_err(|e| {
-                QueryExecutionError::ResolveEntitiesError(format!(
+            .map_err(|e| match e {
+                diesel::result::Error::DatabaseError(
+                    diesel::result::DatabaseErrorKind::__Unknown,
+                    ref info,
+                ) if info.message().starts_with("syntax error in tsquery") => {
+                    QueryExecutionError::FulltextQueryInvalidSyntax(info.message().to_string())
+                }
+                _ => QueryExecutionError::ResolveEntitiesError(format!(
                     "{}, query = {:?}",
                     e,
                     debug_query(&query_clone).to_string()
-                ))
+                )),
             })?;
         log_query_timing(logger, &query_clone, start.elapsed(), values.len());
         values
