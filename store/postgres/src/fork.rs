@@ -59,7 +59,7 @@ impl SubgraphForkTrait for SubgraphFork {
 
         info!(self.logger, "Fetching entity from {}", &self.endpoint; "entity_type" => &entity_type, "id" => &id);
 
-        // NOTE: Subgraph fork compatability checking (similar to the grafting compatability checks)
+        // NOTE: Subgraph fork compatibility checking (similar to the grafting compatibility checks)
         // will be added in the future (in a separate PR).
         // Currently, forking incompatible subgraphs is allowed, but, for example, storing the
         // incompatible fetched entities in the local store results in an error.
