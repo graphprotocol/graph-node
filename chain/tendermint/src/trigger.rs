@@ -75,12 +75,12 @@ impl TendermintTrigger {
         }
     }
 
-    // pub fn block_hash(&self) -> H256 {
-    /* pub fn block_hash(&self) -> Vec<u8> {
-           match self {
-               TendermintTrigger::Block(block_ptr, _) => block_ptr; // .hash_as_h256(),
-           }
-    }*/
+    pub fn block_hash(&self) -> BlockHash {
+        match self {
+            TendermintTrigger::Block(block_ptr) => block_ptr.hash(),
+            TendermintTrigger::Event(data) => data.block.hash(),
+        }
+    }
 }
 
 impl Ord for TendermintTrigger {
@@ -110,14 +110,14 @@ impl TriggerData for TendermintTrigger {
     fn error_context(&self) -> std::string::String {
         match self {
             TendermintTrigger::Block(..) => {
-                format!("block #{}", self.block_number()) // TODO: Add `self.block_hash()`
+                format!("block #{}, hash {}", self.block_number(), self.block_hash())
             }
             TendermintTrigger::Event(data) => {
                 format!(
-                    "event type {}, block #{}",
+                    "event type {}, block #{}, hash {}",
                     data.event.eventtype,
                     self.block_number(),
-                    // TODO: Add `self.block_hash()`
+                    self.block_hash(),
                 )
             }
         }
