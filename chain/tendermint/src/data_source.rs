@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::{convert::TryFrom, sync::Arc};
 
 use anyhow::{Error, Result};
@@ -152,18 +152,15 @@ impl blockchain::DataSource<Chain> for DataSource {
         }
 
         // Ensure there is only one event handler for each event type
-        let event_types = self.mapping
-            .event_handlers
-            .iter()
-            .map(|handler| handler.event.clone() )
-            .collect::<Vec<_>>();
-
-        let unique_event_types = event_types.iter()
-            .unique()
-            .collect::<Vec<_>>();
-
-        if event_types.len() > unique_event_types.len() {
-            errors.push(anyhow!("data source has duplicated event handlers"))
+        let mut event_types = HashSet::with_capacity(self.mapping.event_handlers.len());
+        for event_handler in self.mapping.event_handlers.iter() {
+            // insert returns false if value was already in the set
+            if !event_types.insert(event_handler.event.clone()) {
+                errors.push(anyhow!(
+                    "data source has multiple {} event handlers",
+                    event_handler.event
+                ));
+            }
         }
 
         errors
