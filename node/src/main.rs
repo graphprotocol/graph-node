@@ -336,13 +336,11 @@ async fn main() {
                 start_block_ingestor(&logger, block_polling_interval, ethereum_chains);
             }
 
-            if near_chains.len() > 0 {
-                start_firehose_block_ingestor::<_, NearFirehoseHeaderOnlyBlock>(
-                    &logger,
-                    &network_store,
-                    near_chains,
-                );
-            }
+            start_firehose_block_ingestor::<_, NearFirehoseHeaderOnlyBlock>(
+                &logger,
+                &network_store,
+                near_chains,
+            );
 
             // Start a task runner
             let mut job_runner = graph::util::jobs::Runner::new(&logger);

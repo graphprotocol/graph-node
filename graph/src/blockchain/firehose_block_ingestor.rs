@@ -11,6 +11,7 @@ use anyhow::{Context, Error};
 use futures03::StreamExt;
 use slog::trace;
 use tonic::Streaming;
+
 pub struct FirehoseBlockIngestor<M>
 where
     M: prost::Message + BlockchainBlock + Default + 'static,
@@ -54,6 +55,7 @@ where
                 .endpoint
                 .clone()
                 .stream_blocks(bstream::BlocksRequestV2 {
+                    // Starts at current HEAD block of the chain (viewed from Firehose side)
                     start_block_num: -1,
                     start_cursor: latest_cursor.clone(),
                     fork_steps: vec![
@@ -65,7 +67,10 @@ where
                 .await;
 
             match result {
-                Ok(stream) => latest_cursor = self.process_blocks(latest_cursor, stream).await,
+                Ok(stream) => {
+                    // Consume the stream of blocks until an error is hit
+                    latest_cursor = self.process_blocks(latest_cursor, stream).await
+                }
                 Err(e) => {
                     error!(self.logger, "Unable to connect to endpoint: {:?}", e);
                 }
@@ -91,11 +96,16 @@ where
         }
     }
 
+    /// Consumes the incoming stream of blocks infinitely until it hits an error. In which case
+    /// the error is logged right away and the latest available cursor is returned
+    /// upstream for future consumption.
     async fn process_blocks(
         &self,
         cursor: String,
         mut stream: Streaming<bstream::BlockResponseV2>,
     ) -> String {
+        use bstream::ForkStep::*;
+
         let mut latest_cursor = cursor;
 
         while let Some(message) = stream.next().await {
@@ -105,13 +115,13 @@ where
                         .expect("Fork step should always match to known value");
 
                     let result = match step {
-                        bstream::ForkStep::StepNew => self.process_new_block(&v).await,
-                        bstream::ForkStep::StepUndo => {
+                        StepNew => self.process_new_block(&v).await,
+                        StepUndo => {
                             trace!(self.logger, "Received undo block to ingest, skipping");
                             Ok(())
                         }
-                        _ => panic!(
-                            "We explicitely requested StepNew|StepUndo but received something else"
+                        StepIrreversible | StepUnknown => panic!(
+                            "We explicitly requested StepNew|StepUndo but received something else"
                         ),
                     };
 
