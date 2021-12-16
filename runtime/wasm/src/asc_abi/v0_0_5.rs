@@ -54,7 +54,7 @@ impl ArrayBuffer {
         self.content[byte_offset..]
             .chunks(size_of::<T>())
             .take(length)
-            .map(|asc_obj| T::from_asc_bytes(asc_obj, api_version.clone()))
+            .map(|asc_obj| T::from_asc_bytes(asc_obj, &api_version))
             .collect()
     }
 }
@@ -76,7 +76,7 @@ impl AscType for ArrayBuffer {
 
     fn from_asc_bytes(
         asc_obj: &[u8],
-        _api_version: Version,
+        _api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
         Ok(ArrayBuffer {
             byte_length: asc_obj.len() as u32,
@@ -108,7 +108,7 @@ pub struct TypedArray<T> {
 }
 
 impl<T: AscValue> TypedArray<T> {
-    pub fn new<H: AscHeap + ?Sized>(
+    pub(crate) fn new<H: AscHeap + ?Sized>(
         content: &[T],
         heap: &mut H,
     ) -> Result<Self, DeterministicHostError> {
@@ -127,6 +127,10 @@ impl<T: AscValue> TypedArray<T> {
         &self,
         heap: &H,
     ) -> Result<Vec<T>, DeterministicHostError> {
+        // We're trying to read the pointer below, we should check it's
+        // not null before using it.
+        self.buffer.check_is_not_null()?;
+
         // This subtraction is needed because on the ArrayBufferView memory layout
         // there are two pointers to the data.
         // - The first (self.buffer) points to the related ArrayBuffer.
@@ -138,7 +142,7 @@ impl<T: AscValue> TypedArray<T> {
             .checked_sub(self.buffer.wasm_ptr())
             .ok_or_else(|| {
                 DeterministicHostError(anyhow::anyhow!(
-                    "Subtract overflow on pointer: {}", // Usually when pointer is zero because of null in AssemblyScript
+                    "Subtract overflow on pointer: {}",
                     self.data_start
                 ))
             })?;
@@ -201,7 +205,7 @@ impl AscType for AscString {
     /// The Rust representation of an Asc object as layed out in Asc memory.
     fn from_asc_bytes(
         asc_obj: &[u8],
-        _api_version: Version,
+        _api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
         // UTF-16 (used in assemblyscript) always uses one
         // pair of bytes per code unit.
@@ -272,6 +276,10 @@ impl<T: AscValue> Array<T> {
         &self,
         heap: &H,
     ) -> Result<Vec<T>, DeterministicHostError> {
+        // We're trying to read the pointer below, we should check it's
+        // not null before using it.
+        self.buffer.check_is_not_null()?;
+
         // This subtraction is needed because on the ArrayBufferView memory layout
         // there are two pointers to the data.
         // - The first (self.buffer) points to the related ArrayBuffer.
@@ -283,7 +291,7 @@ impl<T: AscValue> Array<T> {
             .checked_sub(self.buffer.wasm_ptr())
             .ok_or_else(|| {
                 DeterministicHostError(anyhow::anyhow!(
-                    "Subtract overflow on pointer: {}", // Usually when pointer is zero because of null in AssemblyScript
+                    "Subtract overflow on pointer: {}",
                     self.buffer_data_start
                 ))
             })?;

@@ -1,8 +1,14 @@
 use graph::{
-    blockchain::block_ingestor::CLEANUP_BLOCKS,
+    anyhow::Error,
+    blockchain::{block_ingestor::CLEANUP_BLOCKS, BlockchainKind},
     prelude::{
         anyhow::{anyhow, bail, Context, Result},
-        info, serde_json, Logger, NodeId,
+        info,
+        serde::{
+            de::{self, value, SeqAccess, Visitor},
+            Deserialize, Deserializer, Serialize,
+        },
+        serde_json, Logger, NodeId, StoreError,
     },
 };
 use graph_chain_ethereum::NodeCapabilities;
@@ -10,7 +16,6 @@ use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
 use http::{HeaderMap, Uri};
 use regex::Regex;
-use serde::{Deserialize, Serialize};
 use std::fs::read_to_string;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -36,6 +41,7 @@ pub struct Opt {
     pub ethereum_rpc: Vec<String>,
     pub ethereum_ws: Vec<String>,
     pub ethereum_ipc: Vec<String>,
+    pub unsafe_config: bool,
 }
 
 impl Default for Opt {
@@ -51,6 +57,7 @@ impl Default for Opt {
             ethereum_rpc: vec![],
             ethereum_ws: vec![],
             ethereum_ipc: vec![],
+            unsafe_config: false,
         }
     }
 }
@@ -107,12 +114,10 @@ impl Config {
 
         // Check that deployment rules only reference existing stores and chains
         for (i, rule) in self.deployment.rules.iter().enumerate() {
-            if !self.stores.contains_key(&rule.shard) {
-                return Err(anyhow!(
-                    "unknown shard {} in deployment rule {}",
-                    rule.shard,
-                    i
-                ));
+            for shard in &rule.shards {
+                if !self.stores.contains_key(shard) {
+                    return Err(anyhow!("unknown shard {} in deployment rule {}", shard, i));
+                }
             }
             if let Some(networks) = &rule.pred.network {
                 for network in networks.to_vec() {
@@ -294,7 +299,7 @@ impl PoolSize {
 
         let pool_size = match self {
             None => bail!("missing pool size for {}", connection),
-            Fixed(s) => s.clone(),
+            Fixed(s) => *s,
             Rule(rules) => rules.iter().map(|rule| rule.size).min().unwrap_or(0u32),
         };
 
@@ -313,7 +318,7 @@ impl PoolSize {
         use PoolSize::*;
         match self {
             None => unreachable!("validation ensures we have a pool size"),
-            Fixed(s) => Ok(s.clone()),
+            Fixed(s) => Ok(*s),
             Rule(rules) => rules
                 .iter()
                 .find(|rule| rule.matches(node.as_str()))
@@ -431,7 +436,7 @@ impl ChainSection {
                     return Err(anyhow!("Ethereum node URL cannot be an empty string"));
                 }
 
-                let colon = rest.find(":").ok_or_else(|| {
+                let colon = rest.find(':').ok_or_else(|| {
                     return anyhow!(
                         "A network name must be provided alongside the \
                          Ethereum node location. Try e.g. 'mainnet:URL'."
@@ -456,6 +461,7 @@ impl ChainSection {
                 };
                 let entry = chains.entry(name.to_string()).or_insert_with(|| Chain {
                     shard: PRIMARY_SHARD.to_string(),
+                    protocol: BlockchainKind::Ethereum,
                     providers: vec![],
                 });
                 entry.providers.push(provider);
@@ -465,11 +471,17 @@ impl ChainSection {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Chain {
     pub shard: String,
+    #[serde(default = "default_blockchain_kind")]
+    pub protocol: BlockchainKind,
     #[serde(rename = "provider")]
     pub providers: Vec<Provider>,
+}
+
+fn default_blockchain_kind() -> BlockchainKind {
+    BlockchainKind::Ethereum
 }
 
 impl Chain {
@@ -520,6 +532,7 @@ pub enum ProviderDetails {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct FirehoseProvider {
     pub url: String,
+    pub token: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -555,17 +568,24 @@ impl Provider {
         validate_name(&self.label).context("illegal provider name")?;
 
         match self.details {
-            ProviderDetails::Firehose(ref firehose) => {
+            ProviderDetails::Firehose(ref mut firehose) => {
+                firehose.url = shellexpand::env(&firehose.url)?.into_owned();
+
                 // A Firehose url must be a valid Uri since gRPC library we use (Tonic)
                 // works with Uri.
+                let label = &self.label;
                 firehose.url.parse::<Uri>().map_err(|e| {
                     anyhow!(
                         "the url `{}` for firehose provider {} is not a legal URI: {}",
                         firehose.url,
-                        self.label,
+                        label,
                         e
                     )
                 })?;
+
+                if let Some(token) = &firehose.token {
+                    firehose.token = Some(shellexpand::env(token)?.into_owned());
+                }
             }
 
             ProviderDetails::Web3(ref mut web3) => {
@@ -781,14 +801,18 @@ impl Deployment {
 }
 
 impl DeploymentPlacer for Deployment {
-    fn place(&self, name: &str, network: &str) -> Result<Option<(ShardName, Vec<NodeId>)>, String> {
+    fn place(
+        &self,
+        name: &str,
+        network: &str,
+    ) -> Result<Option<(Vec<ShardName>, Vec<NodeId>)>, String> {
         // Errors here are really programming errors. We should have validated
         // everything already so that the various conversions can't fail. We
         // still return errors so that they bubble up to the deployment request
         // rather than crashing the node and burying the crash in the logs
         let placement = match self.rules.iter().find(|rule| rule.matches(name, network)) {
             Some(rule) => {
-                let shard = ShardName::new(rule.shard.clone()).map_err(|e| e.to_string())?;
+                let shards = rule.shard_names().map_err(|e| e.to_string())?;
                 let indexers: Vec<_> = rule
                     .indexers
                     .iter()
@@ -797,7 +821,7 @@ impl DeploymentPlacer for Deployment {
                             .map_err(|()| format!("{} is not a valid node name", idx))
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                Some((shard, indexers))
+                Some((shards, indexers))
             }
             None => None,
         };
@@ -809,8 +833,13 @@ impl DeploymentPlacer for Deployment {
 struct Rule {
     #[serde(rename = "match", default)]
     pred: Predicate,
-    #[serde(default = "primary_store")]
-    shard: String,
+    // For backwards compatibility, we also accept 'shard' for the shards
+    #[serde(
+        alias = "shard",
+        default = "primary_store",
+        deserialize_with = "string_or_vec"
+    )]
+    shards: Vec<String>,
     indexers: Vec<String>,
 }
 
@@ -823,6 +852,14 @@ impl Rule {
         self.pred.matches(name, network)
     }
 
+    fn shard_names(&self) -> Result<Vec<ShardName>, StoreError> {
+        self.shards
+            .iter()
+            .cloned()
+            .map(ShardName::new)
+            .collect::<Result<_, _>>()
+    }
+
     fn validate(&self) -> Result<()> {
         if self.indexers.is_empty() {
             return Err(anyhow!("useless rule without indexers"));
@@ -830,8 +867,7 @@ impl Rule {
         for indexer in &self.indexers {
             NodeId::new(indexer).map_err(|()| anyhow!("invalid node id {}", &indexer))?;
         }
-        ShardName::new(self.shard.clone())
-            .map_err(|e| anyhow!("illegal name for store shard `{}`: {}", &self.shard, e))?;
+        self.shard_names().map_err(Error::from)?;
         Ok(())
     }
 }
@@ -922,18 +958,53 @@ fn no_name() -> Regex {
     Regex::new(NO_NAME).unwrap()
 }
 
-fn primary_store() -> String {
-    PRIMARY_SHARD.to_string()
+fn primary_store() -> Vec<String> {
+    vec![PRIMARY_SHARD.to_string()]
 }
 
 fn one() -> usize {
     1
 }
 
+// From https://github.com/serde-rs/serde/issues/889#issuecomment-295988865
+fn string_or_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct StringOrVec;
+
+    impl<'de> Visitor<'de> for StringOrVec {
+        type Value = Vec<String>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("string or list of strings")
+        }
+
+        fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(vec![s.to_owned()])
+        }
+
+        fn visit_seq<S>(self, seq: S) -> Result<Self::Value, S::Error>
+        where
+            S: SeqAccess<'de>,
+        {
+            Deserialize::deserialize(value::SeqAccessDeserializer::new(seq))
+        }
+    }
+
+    deserializer.deserialize_any(StringOrVec)
+}
+
 #[cfg(test)]
 mod tests {
 
-    use super::{Config, FirehoseProvider, Provider, ProviderDetails, Transport, Web3Provider};
+    use super::{
+        Chain, Config, FirehoseProvider, Provider, ProviderDetails, Transport, Web3Provider,
+    };
+    use graph::blockchain::BlockchainKind;
     use http::{HeaderMap, HeaderValue};
     use std::collections::BTreeSet;
     use std::fs::read_to_string;
@@ -953,6 +1024,47 @@ mod tests {
         assert_eq!(4, actual.chains.chains.len());
         assert_eq!(2, actual.stores.len());
         assert_eq!(3, actual.deployment.rules.len());
+    }
+
+    #[test]
+    fn it_works_on_chain_without_protocol() {
+        let actual = toml::from_str(
+            r#"
+            shard = "primary"
+            provider = []
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            Chain {
+                shard: "primary".to_string(),
+                protocol: BlockchainKind::Ethereum,
+                providers: vec![],
+            },
+            actual
+        );
+    }
+
+    #[test]
+    fn it_works_on_chain_with_protocol() {
+        let actual = toml::from_str(
+            r#"
+            shard = "primary"
+            protocol = "near"
+            provider = []
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            Chain {
+                shard: "primary".to_string(),
+                protocol: BlockchainKind::Near,
+                providers: vec![],
+            },
+            actual
+        );
     }
 
     #[test]
@@ -1123,6 +1235,7 @@ mod tests {
                 label: "firehose".to_owned(),
                 details: ProviderDetails::Firehose(FirehoseProvider {
                     url: "http://localhost:9000".to_owned(),
+                    token: None,
                 }),
             },
             actual

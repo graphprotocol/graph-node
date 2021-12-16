@@ -198,6 +198,11 @@ pub struct Opt {
                 (e.g. 'ethereum/mainnet')."
     )]
     pub network_subgraphs: Vec<String>,
+    #[structopt(
+        long,
+        help = "Allows setting configurations that may result in incorrect Proofs of Indexing."
+    )]
+    pub unsafe_config: bool,
 }
 
 impl From<Opt> for config::Opt {
@@ -213,8 +218,10 @@ impl From<Opt> for config::Opt {
             ethereum_rpc,
             ethereum_ws,
             ethereum_ipc,
+            unsafe_config,
             ..
         } = opt;
+
         config::Opt {
             postgres_url,
             config,
@@ -226,6 +233,7 @@ impl From<Opt> for config::Opt {
             ethereum_rpc,
             ethereum_ws,
             ethereum_ipc,
+            unsafe_config,
         }
     }
 }

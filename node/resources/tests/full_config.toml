@@ -35,7 +35,7 @@ match = { name = "^custom/.*" }
 indexers = [ "index_custom_0" ]
 
 [[deployment.rule]]
-shard = "shard_a"
+shards = [ "primary", "shard_a" ]
 indexers = [ "index_node_1_a",
              "index_node_2_a",
              "index_node_3_a" ]

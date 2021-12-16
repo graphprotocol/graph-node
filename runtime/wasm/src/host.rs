@@ -5,9 +5,9 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
-use graph::blockchain::HostFn;
 use graph::blockchain::RuntimeAdapter;
-use graph::blockchain::{Blockchain, DataSource, MappingTrigger as _};
+use graph::blockchain::{Blockchain, DataSource};
+use graph::blockchain::{HostFn, TriggerWithHandler};
 use graph::components::store::SubgraphStore;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::prelude::{
@@ -154,7 +154,7 @@ where
         &self,
         logger: &Logger,
         state: BlockState<C>,
-        trigger: C::MappingTrigger,
+        trigger: TriggerWithHandler<C>,
         block_ptr: BlockPtr,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState<C>, MappingError> {
@@ -216,7 +216,7 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
         trigger: &C::TriggerData,
         block: Arc<C::Block>,
         logger: &Logger,
-    ) -> Result<Option<C::MappingTrigger>, Error> {
+    ) -> Result<Option<TriggerWithHandler<C>>, Error> {
         self.data_source.match_and_decode(trigger, block, logger)
     }
 
@@ -224,7 +224,7 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
         &self,
         logger: &Logger,
         block_ptr: BlockPtr,
-        trigger: C::MappingTrigger,
+        trigger: TriggerWithHandler<C>,
         state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
     ) -> Result<BlockState<C>, MappingError> {

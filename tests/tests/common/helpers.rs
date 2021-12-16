@@ -126,7 +126,7 @@ pub fn make_ganache_uri(ganache_ports: &MappedPorts) -> (u16, String) {
         .get(&GANACHE_DEFAULT_PORT)
         .expect("failed to fetch Ganache port from mapped ports");
     let uri = format!("test:http://{host}:{port}", host = "localhost", port = port);
-    (port.clone(), uri)
+    (*port, uri)
 }
 
 pub fn contains_subslice<T: PartialEq>(data: &[T], needle: &[T]) -> bool {

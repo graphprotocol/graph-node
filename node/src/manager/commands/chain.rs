@@ -3,16 +3,22 @@ use std::sync::Arc;
 use graph::blockchain::BlockPtr;
 use graph::prelude::BlockNumber;
 use graph::prelude::ChainStore as _;
+use graph::prelude::EthereumBlock;
 use graph::prelude::LightEthereumBlockExt as _;
 use graph::prelude::{anyhow, anyhow::bail};
-use graph::{components::store::BlockStore as _, prelude::anyhow::Error};
+use graph::{
+    components::store::BlockStore as _, prelude::anyhow::Error, prelude::serde_json as json,
+};
 use graph_store_postgres::BlockStore;
 use graph_store_postgres::{
     command_support::catalog::block_store, connection_pool::ConnectionPool,
 };
 
 pub fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(), Error> {
-    let mut chains = block_store::load_chains(&primary)?;
+    let mut chains = {
+        let conn = primary.get()?;
+        block_store::load_chains(&conn)?
+    };
     chains.sort_by_key(|chain| chain.name.clone());
 
     if !chains.is_empty() {
@@ -79,6 +85,8 @@ pub fn info(
         None => None,
         Some(head_block) => chain_store
             .ancestor_block(head_block.clone(), offset)?
+            .map(json::from_value::<EthereumBlock>)
+            .transpose()?
             .map(|b| b.block.block_ptr()),
     };
 

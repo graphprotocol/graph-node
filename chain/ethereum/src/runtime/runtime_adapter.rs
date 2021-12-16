@@ -1,17 +1,20 @@
 use std::{sync::Arc, time::Instant};
 
+use crate::data_source::MappingABI;
 use crate::{
     capabilities::NodeCapabilities, network::EthereumNetworkAdapters, Chain, DataSource,
     EthereumAdapter, EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError,
 };
 use anyhow::{Context, Error};
 use blockchain::HostFn;
-use ethabi::{Address, Token};
 use graph::runtime::{AscIndexId, IndexForAscTypeId};
 use graph::{
     blockchain::{self, BlockPtr, HostFnCtx},
     cheap_clone::CheapClone,
-    prelude::{EthereumCallCache, Future01CompatExt, MappingABI},
+    prelude::{
+        ethabi::{self, Address, Token},
+        EthereumCallCache, Future01CompatExt,
+    },
     runtime::{asc_get, asc_new, AscPtr, HostExportError},
     semver::Version,
     slog::{info, trace, Logger},
@@ -143,7 +146,7 @@ fn eth_call(
     };
 
     let call = EthereumContractCall {
-        address: unresolved_call.contract_address.clone(),
+        address: unresolved_call.contract_address,
         block_ptr: block_ptr.cheap_clone(),
         function: function.clone(),
         args: unresolved_call.function_args.clone(),

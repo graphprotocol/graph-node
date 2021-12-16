@@ -1,6 +1,8 @@
 use anyhow::Error;
 use ethabi::{Error as ABIError, Function, ParamType, Token};
 use futures::Future;
+use graph::blockchain::ChainIdentifier;
+use graph::env::env_var;
 use mockall::automock;
 use mockall::predicate::*;
 use std::cmp;
@@ -11,18 +13,24 @@ use thiserror::Error;
 use tiny_keccak::keccak256;
 use web3::types::{Address, Block, Log, H256};
 
+use graph::prelude::*;
 use graph::{
     blockchain as bc,
     components::metrics::{CounterVec, GaugeVec, HistogramVec},
     petgraph::{self, graphmap::GraphMap},
 };
-use graph::{components::ethereum::EthereumNetworkIdentifier, prelude::*};
 
 use crate::capabilities::NodeCapabilities;
+use crate::data_source::BlockHandlerFilter;
 use crate::{data_source::DataSource, Chain};
 
 pub type EventSignature = H256;
 pub type FunctionSelector = [u8; 4];
+
+lazy_static! {
+    static ref ETH_GET_LOGS_MAX_CONTRACTS: usize =
+        env_var("GRAPH_ETH_GET_LOGS_MAX_CONTRACTS", 2000);
+}
 
 #[derive(Clone, Debug)]
 pub struct EthereumContractCall {
@@ -37,7 +45,7 @@ pub enum EthereumContractCallError {
     #[error("ABI error: {0}")]
     ABIError(ABIError),
     /// `Token` is not of expected `ParamType`
-    #[error("type mismatch, token {0:?} is not of kind {0:?}")]
+    #[error("type mismatch, token {0:?} is not of kind {1:?}")]
     TypeError(Token, ParamType),
     #[error("error encoding input call data: {0}")]
     EncodingError(ethabi::Error),
@@ -66,6 +74,22 @@ enum LogFilterNode {
 pub struct EthGetLogsFilter {
     pub contracts: Vec<Address>,
     pub event_signatures: Vec<EventSignature>,
+}
+
+impl EthGetLogsFilter {
+    fn from_contract(address: Address) -> Self {
+        EthGetLogsFilter {
+            contracts: vec![address],
+            event_signatures: vec![],
+        }
+    }
+
+    fn from_event(event: EventSignature) -> Self {
+        EthGetLogsFilter {
+            contracts: vec![],
+            event_signatures: vec![event],
+        }
+    }
 }
 
 impl fmt::Display for EthGetLogsFilter {
@@ -104,12 +128,6 @@ impl TriggerFilter {
 }
 
 impl bc::TriggerFilter<Chain> for TriggerFilter {
-    fn from_data_sources<'a>(data_sources: impl Iterator<Item = &'a DataSource> + Clone) -> Self {
-        let mut this = Self::default();
-        this.extend(data_sources);
-        this
-    }
-
     fn extend<'a>(&mut self, data_sources: impl Iterator<Item = &'a DataSource> + Clone) {
         self.log
             .extend(EthereumLogFilter::from_data_sources(data_sources.clone()));
@@ -149,7 +167,7 @@ impl EthereumLogFilter {
                 // The `Log` matches the filter either if the filter contains
                 // a (contract address, event signature) pair that matches the
                 // `Log`, or if the filter contains wildcard event that matches.
-                let contract = LogFilterNode::Contract(log.address.clone());
+                let contract = LogFilterNode::Contract(log.address);
                 let event = LogFilterNode::Event(*sig);
                 self.contracts_and_events_graph
                     .all_edges()
@@ -213,10 +231,7 @@ impl EthereumLogFilter {
 
         // First add the wildcard event filters.
         for wildcard_event in self.wildcard_events {
-            filters.push(EthGetLogsFilter {
-                contracts: vec![],
-                event_signatures: vec![wildcard_event],
-            })
+            filters.push(EthGetLogsFilter::from_event(wildcard_event))
         }
 
         // The current algorithm is to repeatedly find the maximum cardinality vertex and turn all
@@ -234,31 +249,37 @@ impl EthereumLogFilter {
         // might cause the filter to become too broad, so at the moment it seems excessive.
         let mut g = self.contracts_and_events_graph;
         while g.edge_count() > 0 {
+            let mut push_filter = |filter: EthGetLogsFilter| {
+                // Sanity checks:
+                // - The filter is not a wildcard because all nodes have neighbors.
+                // - The graph is bipartite.
+                assert!(filter.contracts.len() > 0 && filter.event_signatures.len() > 0);
+                assert!(filter.contracts.len() == 1 || filter.event_signatures.len() == 1);
+                filters.push(filter);
+            };
+
             // If there are edges, there are vertexes.
             let max_vertex = g.nodes().max_by_key(|&n| g.neighbors(n).count()).unwrap();
             let mut filter = match max_vertex {
-                LogFilterNode::Contract(address) => EthGetLogsFilter {
-                    contracts: vec![address],
-                    event_signatures: vec![],
-                },
-                LogFilterNode::Event(event_sig) => EthGetLogsFilter {
-                    contracts: vec![],
-                    event_signatures: vec![event_sig],
-                },
+                LogFilterNode::Contract(address) => EthGetLogsFilter::from_contract(address),
+                LogFilterNode::Event(event_sig) => EthGetLogsFilter::from_event(event_sig),
             };
             for neighbor in g.neighbors(max_vertex) {
                 match neighbor {
-                    LogFilterNode::Contract(address) => filter.contracts.push(address),
+                    LogFilterNode::Contract(address) => {
+                        if filter.contracts.len() == *ETH_GET_LOGS_MAX_CONTRACTS {
+                            // The batch size was reached, register the filter and start a new one.
+                            let event = filter.event_signatures[0];
+                            push_filter(filter);
+                            filter = EthGetLogsFilter::from_event(event);
+                        }
+                        filter.contracts.push(address);
+                    }
                     LogFilterNode::Event(event_sig) => filter.event_signatures.push(event_sig),
                 }
             }
 
-            // Sanity checks:
-            // - The filter is not a wildcard because all nodes have neighbors.
-            // - The graph is bipartite.
-            assert!(filter.contracts.len() > 0 && filter.event_signatures.len() > 0);
-            assert!(filter.contracts.len() == 1 || filter.event_signatures.len() == 1);
-            filters.push(filter);
+            push_filter(filter);
             g.remove_node(max_vertex);
         }
         filters.into_iter()
@@ -275,32 +296,32 @@ pub(crate) struct EthereumCallFilter {
 
 impl EthereumCallFilter {
     pub fn matches(&self, call: &EthereumCall) -> bool {
-        // Ensure the call is to a contract the filter expressed an interest in
-        if !self
-            .contract_addresses_function_signatures
-            .contains_key(&call.to)
-        {
+        // Calls returned by Firehose actually contains pure transfers and smart
+        // contract calls. If the input is less than 4 bytes, we assume it's a pure transfer
+        // and discards those.
+        if call.input.0.len() < 4 {
             return false;
         }
-        // If the call is to a contract with no specified functions, keep the call
-        if self
-            .contract_addresses_function_signatures
-            .get(&call.to)
-            .unwrap()
-            .1
-            .is_empty()
-        {
-            // Allow the ability to match on calls to a contract generally
-            // If you want to match on a generic call to contract this limits you
-            // from matching with a specific call to a contract
-            return true;
+
+        // Ensure the call is to a contract the filter expressed an interest in
+        match self.contract_addresses_function_signatures.get(&call.to) {
+            None => false,
+            Some(v) => {
+                let signature = &v.1;
+
+                // If the call is to a contract with no specified functions, keep the call
+                //
+                // Allows the ability to genericly match on all calls to a contract.
+                // Caveat is this catch all clause limits you from matching with a specific call
+                // on the same address
+                if signature.is_empty() {
+                    true
+                } else {
+                    // Ensure the call is to run a function the filter expressed an interest in
+                    signature.contains(&call.input.0[..4])
+                }
+            }
         }
-        // Ensure the call is to run a function the filter expressed an interest in
-        self.contract_addresses_function_signatures
-            .get(&call.to)
-            .unwrap()
-            .1
-            .contains(&call.input.0[..4])
     }
 
     pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
@@ -333,8 +354,7 @@ impl EthereumCallFilter {
                 .get_mut(&address)
             {
                 Some((existing_start_block, existing_sigs)) => {
-                    *existing_start_block =
-                        cmp::min(proposed_start_block, existing_start_block.clone());
+                    *existing_start_block = cmp::min(proposed_start_block, *existing_start_block);
                     existing_sigs.extend(new_sigs);
                 }
                 None => {
@@ -409,8 +429,8 @@ impl EthereumBlockFilter {
                     .clone()
                     .into_iter()
                     .any(|block_handler| match block_handler.filter {
-                        Some(ref filter) if *filter == BlockHandlerFilter::Call => return true,
-                        _ => return false,
+                        Some(ref filter) if *filter == BlockHandlerFilter::Call => true,
+                        _ => false,
                     });
 
                 let has_block_handler_without_filter = data_source
@@ -477,15 +497,15 @@ impl ProviderEthRpcMetrics {
             .new_histogram_vec(
                 "eth_rpc_request_duration",
                 "Measures eth rpc request duration",
-                vec![String::from("method")],
-                vec![0.05, 0.2, 0.5, 1.0, 3.0, 5.0],
+                vec![String::from("method"), String::from("provider")],
+                vec![0.05, 0.1, 0.2, 0.4, 0.8, 1.6, 3.2, 6.4, 12.8, 25.6],
             )
             .unwrap();
         let errors = registry
             .new_counter_vec(
                 "eth_rpc_errors",
                 "Counts eth rpc request errors",
-                vec![String::from("method")],
+                vec![String::from("method"), String::from("provider")],
             )
             .unwrap();
         Self {
@@ -494,14 +514,14 @@ impl ProviderEthRpcMetrics {
         }
     }
 
-    pub fn observe_request(&self, duration: f64, method: &str) {
+    pub fn observe_request(&self, duration: f64, method: &str, provider: &str) {
         self.request_duration
-            .with_label_values(vec![method].as_slice())
+            .with_label_values(&[method, provider])
             .observe(duration);
     }
 
-    pub fn add_error(&self, method: &str) {
-        self.errors.with_label_values(vec![method].as_slice()).inc();
+    pub fn add_error(&self, method: &str, provider: &str) {
+        self.errors.with_label_values(&[method, provider]).inc();
     }
 }
 
@@ -518,7 +538,7 @@ impl SubgraphEthRpcMetrics {
                 "deployment_eth_rpc_request_duration",
                 "Measures eth rpc request duration for a subgraph deployment",
                 &subgraph_hash,
-                vec![String::from("method")],
+                vec![String::from("method"), String::from("provider")],
             )
             .unwrap();
         let errors = registry
@@ -526,7 +546,7 @@ impl SubgraphEthRpcMetrics {
                 "deployment_eth_rpc_errors",
                 "Counts eth rpc request errors for a subgraph deployment",
                 &subgraph_hash,
-                vec![String::from("method")],
+                vec![String::from("method"), String::from("provider")],
             )
             .unwrap();
         Self {
@@ -535,14 +555,14 @@ impl SubgraphEthRpcMetrics {
         }
     }
 
-    pub fn observe_request(&self, duration: f64, method: &str) {
+    pub fn observe_request(&self, duration: f64, method: &str, provider: &str) {
         self.request_duration
-            .with_label_values(vec![method].as_slice())
+            .with_label_values(&[method, provider])
             .set(duration);
     }
 
-    pub fn add_error(&self, method: &str) {
-        self.errors.with_label_values(vec![method].as_slice()).inc();
+    pub fn add_error(&self, method: &str, provider: &str) {
+        self.errors.with_label_values(&[method, provider]).inc();
     }
 }
 
@@ -560,7 +580,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
 
     /// Ask the Ethereum node for some identifying information about the Ethereum network it is
     /// connected to.
-    async fn net_identifiers(&self) -> Result<EthereumNetworkIdentifier, Error>;
+    async fn net_identifiers(&self) -> Result<ChainIdentifier, Error>;
 
     /// Get the latest block, including full transactions.
     fn latest_block(
@@ -587,7 +607,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: Logger,
         chain_store: Arc<dyn ChainStore>,
         block_hashes: HashSet<H256>,
-    ) -> Box<dyn Stream<Item = LightEthereumBlock, Error = Error> + Send>;
+    ) -> Box<dyn Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send>;
 
     /// Find a block by its hash.
     fn block_by_hash(
@@ -607,7 +627,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         logger: &Logger,
         block: LightEthereumBlock,
-    ) -> Box<dyn Future<Item = EthereumBlock, Error = bc::IngestorError> + Send>;
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<EthereumBlock, bc::IngestorError>> + Send>>;
 
     /// Load block pointer for the specified `block number`.
     fn block_pointer_from_number(
@@ -652,9 +672,54 @@ mod tests {
     use super::EthereumCallFilter;
 
     use graph::prelude::web3::types::Address;
+    use graph::prelude::web3::types::Bytes;
+    use graph::prelude::EthereumCall;
 
     use std::collections::{HashMap, HashSet};
     use std::iter::FromIterator;
+
+    #[test]
+    fn matching_ethereum_call_filter() {
+        let address = |id: u64| Address::from_low_u64_be(id);
+        let bytes = |value: Vec<u8>| Bytes::from(value);
+        let call = |to: Address, input: Vec<u8>| EthereumCall {
+            to,
+            input: bytes(input),
+            ..Default::default()
+        };
+
+        let filter = EthereumCallFilter {
+            contract_addresses_function_signatures: HashMap::from_iter(vec![
+                (address(0), (0, HashSet::from_iter(vec![[0u8; 4]]))),
+                (address(1), (1, HashSet::from_iter(vec![[1u8; 4]]))),
+                (address(2), (2, HashSet::new())),
+            ]),
+        };
+
+        assert_eq!(
+            false,
+            filter.matches(&call(address(2), vec![])),
+            "call with empty bytes are always ignore, whatever the condition"
+        );
+
+        assert_eq!(
+            false,
+            filter.matches(&call(address(4), vec![1; 36])),
+            "call with incorrect address should be ignored"
+        );
+
+        assert_eq!(
+            true,
+            filter.matches(&call(address(1), vec![1; 36])),
+            "call with correct address & signature should match"
+        );
+
+        assert_eq!(
+            false,
+            filter.matches(&call(address(1), vec![4u8; 36])),
+            "call with correct address but incorrect signature for a specific contract filter (i.e. matches some signatures) should be ignored"
+        );
+    }
 
     #[test]
     fn extending_ethereum_call_filter() {
@@ -699,5 +764,66 @@ mod tests {
                 .get(&Address::from_low_u64_be(1)),
             Some(&(1, HashSet::from_iter(vec![[1u8; 4]])))
         );
+    }
+}
+
+// Tests `eth_get_logs_filters` in instances where all events are filtered on by all contracts.
+// This represents, for example, the relationship between dynamic data sources and their events.
+#[test]
+fn complete_log_filter() {
+    use std::collections::BTreeSet;
+
+    // Test a few combinations of complete graphs.
+    for i in [1, 2] {
+        let events: BTreeSet<_> = (0..i).map(H256::from_low_u64_le).collect();
+
+        for j in [1, 1000, 2000, 3000] {
+            let contracts: BTreeSet<_> = (0..j).map(Address::from_low_u64_le).collect();
+
+            // Construct the complete bipartite graph with i events and j contracts.
+            let mut contracts_and_events_graph = GraphMap::new();
+            for &contract in &contracts {
+                for &event in &events {
+                    contracts_and_events_graph.add_edge(
+                        LogFilterNode::Contract(contract),
+                        LogFilterNode::Event(event),
+                        (),
+                    );
+                }
+            }
+
+            // Run `eth_get_logs_filters`, which is what we want to test.
+            let logs_filters: Vec<_> = EthereumLogFilter {
+                contracts_and_events_graph,
+                wildcard_events: HashSet::new(),
+            }
+            .eth_get_logs_filters()
+            .collect();
+
+            // Assert that a contract or event is filtered on iff it was present in the graph.
+            assert_eq!(
+                logs_filters
+                    .iter()
+                    .map(|l| l.contracts.iter())
+                    .flatten()
+                    .copied()
+                    .collect::<BTreeSet<_>>(),
+                contracts
+            );
+            assert_eq!(
+                logs_filters
+                    .iter()
+                    .map(|l| l.event_signatures.iter())
+                    .flatten()
+                    .copied()
+                    .collect::<BTreeSet<_>>(),
+                events
+            );
+
+            // Assert that chunking works.
+            for filter in logs_filters {
+                assert!(filter.contracts.len() <= *ETH_GET_LOGS_MAX_CONTRACTS);
+            }
+        }
     }
 }

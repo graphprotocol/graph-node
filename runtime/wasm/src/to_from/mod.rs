@@ -109,7 +109,7 @@ impl FromAscObj<AscString> for String {
             .map_err(|e| DeterministicHostError(e.into()))?;
 
         // Strip null characters since they are not accepted by Postgres.
-        if string.contains("\u{0000}") {
+        if string.contains('\u{0000}') {
             string = string.replace("\u{0000}", "");
         }
         Ok(string)

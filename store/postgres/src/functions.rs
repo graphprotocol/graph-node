@@ -8,9 +8,5 @@ sql_function! {
 }
 
 sql_function! {
-    fn pg_notify(channel: Text, msg: Text)
-}
-
-sql_function! {
     fn lower(range: Range<Integer>) -> Integer
 }

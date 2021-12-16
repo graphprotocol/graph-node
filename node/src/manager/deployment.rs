@@ -10,6 +10,7 @@ use graph::{
         DeploymentHash, Error, SubgraphStore as _,
     },
 };
+use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::{command_support::catalog as store_catalog, Shard, SubgraphStore};
 
 use crate::manager::deployment;
@@ -29,7 +30,12 @@ pub struct Deployment {
 }
 
 impl Deployment {
-    pub fn lookup(conn: &PgConnection, name: String) -> Result<Vec<Self>, anyhow::Error> {
+    pub fn lookup(primary: &ConnectionPool, name: String) -> Result<Vec<Self>, anyhow::Error> {
+        let conn = primary.get()?;
+        Self::lookup_with_conn(&conn, name)
+    }
+
+    pub fn lookup_with_conn(conn: &PgConnection, name: String) -> Result<Vec<Self>, anyhow::Error> {
         use store_catalog::deployment_schemas as ds;
         use store_catalog::subgraph as s;
         use store_catalog::subgraph_deployment_assignment as a;

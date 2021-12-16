@@ -267,6 +267,12 @@ select c.*, p.id as parent_id
    and .. other conditions on c ..
 ```
 
+If the list of unique `child_ids` is small enough, we also add a where
+clause `c.id = any({ unique child_ids })`. The list is small enough if it
+contains fewer than `TYPED_CHILDREN_SET_SIZE` (default: 150) unique child
+ids.
+
+
 The `ROWS FROM` construct is not part of ANSI SQL.
 
 ### Handling interfaces

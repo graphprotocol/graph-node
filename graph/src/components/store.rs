@@ -18,7 +18,7 @@ use std::time::Duration;
 use thiserror::Error;
 use web3::types::{Address, H256};
 
-use crate::blockchain::Blockchain;
+use crate::blockchain::{Block, Blockchain};
 use crate::components::server::index_node::VersionInfo;
 use crate::components::transaction_receipt;
 use crate::data::subgraph::status;
@@ -587,6 +587,12 @@ impl StoreEvent {
         self.changes.extend(other.changes);
         self
     }
+
+    pub fn matches(&self, filters: &BTreeSet<SubscriptionFilter>) -> bool {
+        self.changes
+            .iter()
+            .any(|change| filters.iter().any(|filter| filter.matches(change)))
+    }
 }
 
 impl fmt::Display for StoreEvent {
@@ -617,6 +623,8 @@ pub struct StoreEventStream<S> {
 pub type StoreEventStreamBox =
     StoreEventStream<Box<dyn Stream<Item = Arc<StoreEvent>, Error = ()> + Send>>;
 
+pub type UnitStream = Box<dyn futures03::Stream<Item = ()> + Unpin + Send + Sync>;
+
 impl<S> Stream for StoreEventStream<S>
 where
     S: Stream<Item = Arc<StoreEvent>, Error = ()> + Send,
@@ -641,13 +649,8 @@ where
     /// Filter a `StoreEventStream` by subgraph and entity. Only events that have
     /// at least one change to one of the given (subgraph, entity) combinations
     /// will be delivered by the filtered stream.
-    pub fn filter_by_entities(self, filters: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
-        let source = self.source.filter(move |event| {
-            event
-                .changes
-                .iter()
-                .any(|change| filters.iter().any(|filter| filter.matches(change)))
-        });
+    pub fn filter_by_entities(self, filters: BTreeSet<SubscriptionFilter>) -> StoreEventStreamBox {
+        let source = self.source.filter(move |event| event.matches(&filters));
 
         StoreEventStream::new(Box::new(source))
     }
@@ -660,6 +663,8 @@ where
     /// on the returned stream as a single `StoreEvent`; the events are
     /// combined by using the maximum of all sources and the concatenation
     /// of the changes of the `StoreEvents` received during the interval.
+    //
+    // Currently unused, needs to be made compatible with `subscribe_no_payload`.
     pub async fn throttle_while_syncing(
         self,
         logger: &Logger,
@@ -706,14 +711,14 @@ where
                 match source.poll() {
                     Ok(Async::NotReady) => {
                         if should_send && pending_event.is_some() {
-                            let event = pending_event.take().map(|event| Arc::new(event));
+                            let event = pending_event.take().map(Arc::new);
                             return Ok(Async::Ready(event));
                         } else {
                             return Ok(Async::NotReady);
                         }
                     }
                     Ok(Async::Ready(None)) => {
-                        let event = pending_event.take().map(|event| Arc::new(event));
+                        let event = pending_event.take().map(Arc::new);
                         return Ok(Async::Ready(event));
                     }
                     Ok(Async::Ready(Some(event))) => {
@@ -724,7 +729,7 @@ where
                         // We will report the error the next time poll() is called
                         if pending_event.is_some() {
                             had_err = true;
-                            let event = pending_event.take().map(|event| Arc::new(event));
+                            let event = pending_event.take().map(Arc::new);
                             return Ok(Async::Ready(event));
                         } else {
                             return Err(());
@@ -847,7 +852,10 @@ pub trait SubscriptionManager: Send + Sync + 'static {
     /// Subscribe to changes for specific subgraphs and entities.
     ///
     /// Returns a stream of store events that match the input arguments.
-    fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox;
+    fn subscribe(&self, entities: BTreeSet<SubscriptionFilter>) -> StoreEventStreamBox;
+
+    /// If the payload is not required, use for a more efficient subscription mechanism backed by a watcher.
+    fn subscribe_no_payload(&self, entities: BTreeSet<SubscriptionFilter>) -> UnitStream;
 }
 
 /// An internal identifer for the specific instance of a deployment. The
@@ -909,12 +917,12 @@ impl Display for DeploymentLocator {
 pub trait SubgraphStore: Send + Sync + 'static {
     /// Find the reverse of keccak256 for `hash` through looking it up in the
     /// rainbow table.
-    fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, QueryExecutionError>;
+    fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, StoreError>;
 
     /// Check if the store is accepting queries for the specified subgraph.
     /// May return true even if the specified subgraph is not currently assigned to an indexing
     /// node, as the store will still accept queries.
-    fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, Error>;
+    fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
 
     /// Create a new deployment for the subgraph `name`. If the deployment
     /// already exists (as identified by the `schema.id`), reuse that, otherwise
@@ -964,10 +972,13 @@ pub trait SubgraphStore: Send + Sync + 'static {
     fn api_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError>;
 
     /// Return a `WritableStore` that is used for indexing subgraphs. Only
-    /// code that is part of indexing a subgraph should ever use this.
-    fn writable(
-        &self,
-        deployment: &DeploymentLocator,
+    /// code that is part of indexing a subgraph should ever use this. The
+    /// `logger` will be used to log important messages related to the
+    /// subgraph
+    async fn writable(
+        self: Arc<Self>,
+        logger: Logger,
+        deployment: DeploymentId,
     ) -> Result<Arc<dyn WritableStore>, StoreError>;
 
     /// The network indexer does not follow the normal flow of how subgraphs
@@ -976,6 +987,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// `writable` should be used instead
     fn writable_for_network_indexer(
         &self,
+        logger: Logger,
         id: &DeploymentHash,
     ) -> Result<Arc<dyn WritableStore>, StoreError>;
 
@@ -983,16 +995,24 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// that we would use to query or copy from; in particular, this will
     /// ignore any instances of this deployment that are in the process of
     /// being set up
-    fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, Error>;
+    fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError>;
 
     /// Find the deployment locators for the subgraph with the given hash
     fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError>;
 }
 
+/// A view of the store for indexing. All indexing-related operations need
+/// to go through this trait. Methods in this trait will never return a
+/// `StoreError::DatabaseUnavailable`. Instead, they will retry the
+/// operation indefinitely until it succeeds.
 #[async_trait]
 pub trait WritableStore: Send + Sync + 'static {
     /// Get a pointer to the most recently processed block in the subgraph.
-    fn block_ptr(&self) -> Result<Option<BlockPtr>, Error>;
+    fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError>;
+
+    /// Returns the Firehose `cursor` this deployment is currently at in the block stream of events. This
+    /// is used when re-connecting a Firehose stream to start back exactly where we left off.
+    fn block_cursor(&self) -> Result<Option<String>, StoreError>;
 
     /// Start an existing subgraph deployment.
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError>;
@@ -1003,24 +1023,34 @@ pub trait WritableStore: Send + Sync + 'static {
     /// `block_ptr_to` must point to the parent block of the subgraph block pointer.
     fn revert_block_operations(&self, block_ptr_to: BlockPtr) -> Result<(), StoreError>;
 
-    /// Remove the fatal error from a subgraph and check if it is healthy or unhealthy.
-    fn unfail(&self) -> Result<(), StoreError>;
+    /// If a deterministic error happened, this function reverts the block operations from the
+    /// current block to the previous block.
+    fn unfail_deterministic_error(
+        &self,
+        current_ptr: &BlockPtr,
+        parent_ptr: &BlockPtr,
+    ) -> Result<(), StoreError>;
+
+    /// If a non-deterministic error happened and the current deployment head is past the error
+    /// block range, this function unfails the subgraph and deletes the error.
+    fn unfail_non_deterministic_error(&self, current_ptr: &BlockPtr) -> Result<(), StoreError>;
 
     /// Set subgraph status to failed with the given error as the cause.
     async fn fail_subgraph(&self, error: SubgraphError) -> Result<(), StoreError>;
 
-    fn supports_proof_of_indexing<'a>(self: Arc<Self>) -> DynTryFuture<'a, bool>;
+    async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError>;
 
     /// Looks up an entity using the given store key at the latest block.
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, QueryExecutionError>;
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError>;
 
     /// Transact the entity changes from a single block atomically into the store, and update the
-    /// subgraph block pointer to `block_ptr_to`.
+    /// subgraph block pointer to `block_ptr_to`, and update the firehose cursor to `firehose_cursor`
     ///
     /// `block_ptr_to` must point to a child block of the current subgraph block pointer.
     fn transact_block_operations(
         &self,
         block_ptr_to: BlockPtr,
+        firehose_cursor: Option<String>,
         mods: Vec<EntityModification>,
         stopwatch: StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
@@ -1037,11 +1067,11 @@ pub trait WritableStore: Send + Sync + 'static {
     /// The deployment `id` finished syncing, mark it as synced in the database
     /// and promote it to the current version in the subgraphs where it was the
     /// pending version so far
-    fn deployment_synced(&self) -> Result<(), Error>;
+    fn deployment_synced(&self) -> Result<(), StoreError>;
 
     /// Return true if the deployment with the given id is fully synced,
     /// and return false otherwise. Errors from the store are passed back up
-    async fn is_deployment_synced(&self) -> Result<bool, Error>;
+    async fn is_deployment_synced(&self) -> Result<bool, StoreError>;
 
     fn unassign_subgraph(&self) -> Result<(), StoreError>;
 
@@ -1051,6 +1081,8 @@ pub trait WritableStore: Send + Sync + 'static {
     /// Report the name of the shard in which the subgraph is stored. This
     /// should only be used for reporting and monitoring
     fn shard(&self) -> &str;
+
+    async fn health(&self, id: &DeploymentHash) -> Result<SubgraphHealth, StoreError>;
 }
 
 #[async_trait]
@@ -1087,7 +1119,7 @@ pub type PoolWaitStats = Arc<RwLock<MovingStats>>;
 // The store trait must be implemented manually because mockall does not support async_trait, nor borrowing from arguments.
 #[async_trait]
 impl SubgraphStore for MockStore {
-    fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, QueryExecutionError> {
+    fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, StoreError> {
         unimplemented!()
     }
 
@@ -1135,20 +1167,25 @@ impl SubgraphStore for MockStore {
         unimplemented!()
     }
 
-    fn writable(&self, _: &DeploymentLocator) -> Result<Arc<dyn WritableStore>, StoreError> {
+    async fn writable(
+        self: Arc<Self>,
+        _: Logger,
+        _: DeploymentId,
+    ) -> Result<Arc<dyn WritableStore>, StoreError> {
         Ok(Arc::new(MockStore::new()))
     }
 
-    fn is_deployed(&self, _: &DeploymentHash) -> Result<bool, Error> {
+    fn is_deployed(&self, _: &DeploymentHash) -> Result<bool, StoreError> {
         unimplemented!()
     }
 
-    fn least_block_ptr(&self, _: &DeploymentHash) -> Result<Option<BlockPtr>, Error> {
+    fn least_block_ptr(&self, _: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError> {
         unimplemented!()
     }
 
     fn writable_for_network_indexer(
         &self,
+        _: Logger,
         _: &DeploymentHash,
     ) -> Result<Arc<dyn WritableStore>, StoreError> {
         unimplemented!()
@@ -1162,7 +1199,11 @@ impl SubgraphStore for MockStore {
 // The store trait must be implemented manually because mockall does not support async_trait, nor borrowing from arguments.
 #[async_trait]
 impl WritableStore for MockStore {
-    fn block_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+    fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
+        unimplemented!()
+    }
+
+    fn block_cursor(&self) -> Result<Option<String>, StoreError> {
         unimplemented!()
     }
 
@@ -1174,7 +1215,11 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn unfail(&self) -> Result<(), StoreError> {
+    fn unfail_deterministic_error(&self, _: &BlockPtr, _: &BlockPtr) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn unfail_non_deterministic_error(&self, _: &BlockPtr) -> Result<(), StoreError> {
         unimplemented!()
     }
 
@@ -1182,17 +1227,18 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn supports_proof_of_indexing<'a>(self: Arc<Self>) -> DynTryFuture<'a, bool> {
+    async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError> {
         unimplemented!()
     }
 
-    fn get(&self, _: &EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
+    fn get(&self, _: &EntityKey) -> Result<Option<Entity>, StoreError> {
         unimplemented!()
     }
 
     fn transact_block_operations(
         &self,
         _: BlockPtr,
+        _: Option<String>,
         _: Vec<EntityModification>,
         _: StopwatchMetrics,
         _: Vec<StoredDynamicDataSource>,
@@ -1208,7 +1254,7 @@ impl WritableStore for MockStore {
         self.get_many_mock(ids_for_type)
     }
 
-    async fn is_deployment_synced(&self) -> Result<bool, Error> {
+    async fn is_deployment_synced(&self) -> Result<bool, StoreError> {
         unimplemented!()
     }
 
@@ -1220,11 +1266,15 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn deployment_synced(&self) -> Result<(), Error> {
+    fn deployment_synced(&self) -> Result<(), StoreError> {
         unimplemented!()
     }
 
     fn shard(&self) -> &str {
+        unimplemented!()
+    }
+
+    async fn health(&self, _: &DeploymentHash) -> Result<SubgraphHealth, StoreError> {
         unimplemented!()
     }
 }
@@ -1236,16 +1286,15 @@ pub trait BlockStore: Send + Sync + 'static {
 }
 
 /// Common trait for blockchain store implementations.
-#[automock]
 #[async_trait]
 pub trait ChainStore: Send + Sync + 'static {
     /// Get a pointer to this blockchain's genesis block.
     fn genesis_block_ptr(&self) -> Result<BlockPtr, Error>;
 
     /// Insert a block into the store (or update if they are already present).
-    async fn upsert_block(&self, block: EthereumBlock) -> Result<(), Error>;
+    async fn upsert_block(&self, block: Arc<dyn Block>) -> Result<(), Error>;
 
-    fn upsert_light_blocks(&self, blocks: Vec<LightEthereumBlock>) -> Result<(), Error>;
+    fn upsert_light_blocks(&self, blocks: &[&dyn Block]) -> Result<(), Error>;
 
     /// Try to update the head block pointer to the block with the highest block number.
     ///
@@ -1276,7 +1325,7 @@ pub trait ChainStore: Send + Sync + 'static {
     fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 
     /// Returns the blocks present in the store.
-    fn blocks(&self, hashes: Vec<H256>) -> Result<Vec<LightEthereumBlock>, Error>;
+    fn blocks(&self, hashes: &[H256]) -> Result<Vec<serde_json::Value>, Error>;
 
     /// Get the `offset`th ancestor of `block_hash`, where offset=0 means the block matching
     /// `block_hash` and offset=1 means its parent. Returns None if unable to complete due to
@@ -1287,7 +1336,7 @@ pub trait ChainStore: Send + Sync + 'static {
         &self,
         block_ptr: BlockPtr,
         offset: BlockNumber,
-    ) -> Result<Option<EthereumBlock>, Error>;
+    ) -> Result<Option<serde_json::Value>, Error>;
 
     /// Remove old blocks from the cache we maintain in the database and
     /// return a pair containing the number of the oldest block retained
@@ -1341,11 +1390,11 @@ pub trait QueryStore: Send + Sync {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<Vec<BTreeMap<String, q::Value>>, QueryExecutionError>;
+    ) -> Result<Vec<BTreeMap<String, r::Value>>, QueryExecutionError>;
 
     async fn is_deployment_synced(&self) -> Result<bool, Error>;
 
-    fn block_ptr(&self) -> Result<Option<BlockPtr>, Error>;
+    fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError>;
 
     fn block_number(&self, block_hash: H256) -> Result<Option<BlockNumber>, StoreError>;
 
@@ -1387,17 +1436,24 @@ pub trait StatusStore: Send + Sync + 'static {
         subgraph_id: &str,
     ) -> Result<(Option<String>, Option<String>), StoreError>;
 
+    /// Support for the explorer-specific API. Returns a vector of (name, version) of all
+    /// subgraphs for a given deployment hash.
+    fn subgraphs_for_deployment_hash(
+        &self,
+        deployment_hash: &str,
+    ) -> Result<Vec<(String, String)>, StoreError>;
+
     /// A value of None indicates that the table is not available. Re-deploying
     /// the subgraph fixes this. It is undesirable to force everything to
     /// re-sync from scratch, so existing deployments will continue without a
     /// Proof of Indexing. Once all subgraphs have been re-deployed the Option
     /// can be removed.
-    fn get_proof_of_indexing<'a>(
-        self: Arc<Self>,
-        subgraph_id: &'a DeploymentHash,
-        indexer: &'a Option<Address>,
+    async fn get_proof_of_indexing(
+        &self,
+        subgraph_id: &DeploymentHash,
+        indexer: &Option<Address>,
         block: BlockPtr,
-    ) -> DynTryFuture<'a, Option<[u8; 32]>>;
+    ) -> Result<Option<[u8; 32]>, StoreError>;
 }
 
 /// An entity operation that can be transacted into the store; as opposed to
@@ -1562,11 +1618,11 @@ impl EntityCache {
 
     pub fn get(&mut self, key: &EntityKey) -> Result<Option<Entity>, QueryExecutionError> {
         // Get the current entity, apply any updates from `updates`, then from `handler_updates`.
-        let mut entity = self.current.get_entity(&*self.store, &key)?;
-        if let Some(op) = self.updates.get(&key).cloned() {
+        let mut entity = self.current.get_entity(&*self.store, key)?;
+        if let Some(op) = self.updates.get(key).cloned() {
             entity = op.apply_to(entity)
         }
-        if let Some(op) = self.handler_updates.get(&key).cloned() {
+        if let Some(op) = self.handler_updates.get(key).cloned() {
             entity = op.apply_to(entity)
         }
         Ok(entity)
@@ -1724,7 +1780,7 @@ impl LfuCache<EntityKey, Option<Entity>> {
         store: &(impl WritableStore + ?Sized),
         key: &EntityKey,
     ) -> Result<Option<Entity>, QueryExecutionError> {
-        match self.get(&key) {
+        match self.get(key) {
             None => {
                 let mut entity = store.get(key)?;
                 if let Some(entity) = &mut entity {
@@ -1749,7 +1805,7 @@ pub enum AttributeNames {
 }
 
 impl AttributeNames {
-    pub fn insert(&mut self, column_name: &str) {
+    fn insert(&mut self, column_name: &str) {
         match self {
             AttributeNames::All => {
                 let mut set = BTreeSet::new();
@@ -1762,12 +1818,25 @@ impl AttributeNames {
         }
     }
 
-    pub fn update(&mut self, field: &q::Field) {
-        // ignore "meta" field names
-        if field.name.starts_with("__") {
+    /// Adds a attribute name. Ignores meta fields.
+    pub fn add(&mut self, field: &q::Field) {
+        if Self::is_meta_field(&field.name) {
             return;
         }
         self.insert(&field.name)
+    }
+
+    /// Adds a attribute name. Ignores meta fields.
+    pub fn add_str(&mut self, field_name: &str) {
+        if Self::is_meta_field(field_name) {
+            return;
+        }
+        self.insert(field_name);
+    }
+
+    /// Returns `true` for meta field names, `false` otherwise.
+    fn is_meta_field(field_name: &str) -> bool {
+        field_name.starts_with("__")
     }
 
     pub fn extend(&mut self, other: Self) {

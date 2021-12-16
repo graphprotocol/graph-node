@@ -221,7 +221,7 @@ impl LinkResolverTrait for LinkResolver {
 
         let path = path.clone();
         let this = self.clone();
-        let timeout = self.timeout.clone();
+        let timeout = self.timeout;
         let logger = logger.clone();
         let data = retry_policy(self.retry, "ipfs.cat", &logger)
             .run(move || {

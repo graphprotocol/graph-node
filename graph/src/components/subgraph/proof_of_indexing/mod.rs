@@ -4,6 +4,7 @@ mod reference;
 
 pub use event::ProofOfIndexingEvent;
 pub use online::{BlockEventStream, ProofOfIndexing, ProofOfIndexingFinisher};
+pub use reference::CausalityRegion;
 
 use atomic_refcell::AtomicRefCell;
 use std::sync::Arc;

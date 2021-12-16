@@ -1,3 +1,4 @@
+use graph_chain_ethereum::{Mapping, MappingABI};
 use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
 use lazy_static::lazy_static;
@@ -135,7 +136,8 @@ where
         let deployment = insert_test_data(subgraph_store.clone());
         let writable = store
             .subgraph_store()
-            .writable(&deployment)
+            .writable(LOGGER.clone(), deployment.id)
+            .await
             .expect("we can get a writable store");
 
         // Run test
@@ -973,10 +975,11 @@ fn subscribe(
     subgraph: &DeploymentHash,
     entity_type: &str,
 ) -> StoreEventStream<impl Stream<Item = Arc<StoreEvent>, Error = ()> + Send> {
-    let subscription = SUBSCRIPTION_MANAGER.subscribe(vec![SubscriptionFilter::Entities(
-        subgraph.clone(),
-        EntityType::new(entity_type.to_owned()),
-    )]);
+    let subscription =
+        SUBSCRIPTION_MANAGER.subscribe(FromIterator::from_iter([SubscriptionFilter::Entities(
+            subgraph.clone(),
+            EntityType::new(entity_type.to_owned()),
+        )]));
 
     StoreEventStream::new(subscription)
 }
@@ -999,7 +1002,7 @@ async fn check_basic_revert(
     assert_eq!(&deployment.hash, &state.id);
 
     // Revert block 3
-    revert_block(&store, &deployment, &*TEST_BLOCK_1_PTR);
+    revert_block(&store, &deployment, &*TEST_BLOCK_1_PTR).await;
 
     let returned_entities = store
         .subgraph_store()
@@ -1058,7 +1061,7 @@ fn revert_block_with_delete() {
 
         // Revert deletion
         let count = get_entity_count(store.clone(), &deployment.hash);
-        revert_block(&store, &deployment, &*TEST_BLOCK_2_PTR);
+        revert_block(&store, &deployment, &*TEST_BLOCK_2_PTR).await;
         assert_eq!(count + 1, get_entity_count(store.clone(), &deployment.hash));
 
         // Query after revert
@@ -1113,7 +1116,7 @@ fn revert_block_with_partial_update() {
 
         // Perform revert operation, reversing the partial update
         let count = get_entity_count(store.clone(), &deployment.hash);
-        revert_block(&store, &deployment, &*TEST_BLOCK_2_PTR);
+        revert_block(&store, &deployment, &*TEST_BLOCK_2_PTR).await;
         assert_eq!(count, get_entity_count(store.clone(), &deployment.hash));
 
         // Obtain the reverted entity from the store
@@ -1228,7 +1231,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         let subscription = subscribe(&deployment.hash, USER);
 
         // Revert block that added the user and the dynamic data source
-        revert_block(&store, &deployment, &*TEST_BLOCK_2_PTR);
+        revert_block(&store, &deployment, &*TEST_BLOCK_2_PTR).await;
 
         // Verify that the user is the original again
         assert_eq!(
@@ -1540,6 +1543,7 @@ fn handle_large_string_with_index() {
         writable
             .transact_block_operations(
                 TEST_BLOCK_3_PTR.clone(),
+                None,
                 vec![
                     make_insert_op(ONE, &long_text),
                     make_insert_op(TWO, &other_text),
@@ -1918,11 +1922,11 @@ fn reorg_tracking() {
         check_state!(store, 0, 0, 4);
 
         // Back to block 3
-        revert_block(&store, &deployment, &*TEST_BLOCK_3_PTR);
+        revert_block(&store, &deployment, &*TEST_BLOCK_3_PTR).await;
         check_state!(store, 1, 1, 3);
 
         // Back to block 2
-        revert_block(&store, &deployment, &*TEST_BLOCK_2_PTR);
+        revert_block(&store, &deployment, &*TEST_BLOCK_2_PTR).await;
         check_state!(store, 2, 2, 2);
 
         // Forward to block 3
@@ -1938,13 +1942,13 @@ fn reorg_tracking() {
         check_state!(store, 2, 2, 5);
 
         // Revert all the way back to block 2
-        revert_block(&store, &deployment, &*TEST_BLOCK_4_PTR);
+        revert_block(&store, &deployment, &*TEST_BLOCK_4_PTR).await;
         check_state!(store, 3, 2, 4);
 
-        revert_block(&store, &deployment, &*TEST_BLOCK_3_PTR);
+        revert_block(&store, &deployment, &*TEST_BLOCK_3_PTR).await;
         check_state!(store, 4, 2, 3);
 
-        revert_block(&store, &deployment, &*TEST_BLOCK_2_PTR);
+        revert_block(&store, &deployment, &*TEST_BLOCK_2_PTR).await;
         check_state!(store, 5, 3, 2);
     })
 }

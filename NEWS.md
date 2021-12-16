@@ -1,10 +1,136 @@
 # NEWS
 
-## 0.24
+## 0.25.0
+
+### Api Version 0.0.6
+This release ships support for API version 0.0.6 in mappings:
+- Added `nonce` field for `Transaction` objects.
+- Added `baseFeePerGas` field for `Block` objects ([EIP-1559](https://eips.ethereum.org/EIPS/eip-1559)).
+
+#### Block Cache Invalidation and Reset
+
+All cached block data must be refetched to account for the new `Block` and `Trasaction`
+struct versions, so this release includes a `graph-node` startup check that will:
+1. Truncate all block cache tables.
+2. Bump the `db_version` value from `2` to `3`.
+
+_(Table truncation is a fast operation and no downtime will occur because of that.)_
+
+
+### Ethereum
+
+- 'Out of gas' errors on contract calls are now considered deterministic errors,
+  so they can be handled by `try_` calls. The gas limit is 50 million.
+
+### Environment Variables
+
+- The `GRAPH_ETH_CALL_GAS` environment is removed to prevent misuse, its value
+  is now hardcoded to 50 million.
+
+### Multiblockchain
+- Initial support for NEAR subgraphs.
+- Added `FirehoseBlockStream` implementation of `BlockStream` (#2716)
+
+### Misc
+- Rust docker image is now based on Debian Buster.
+- Optimizations to the PostgreSQL notification queue.
+- Improve PostgreSQL robustness in multi-sharded setups. (#2815)
+- Added 'networks' to the 'subgraphFeatures' endpoint. (#2826)
+- Check and limit the size of GraphQL query results. (#2845)
+- Allow `_in` and `_not_in` GraphQL filters. (#2841)
+- Add PoI for failed subgraphs. (#2748)
+- Make `graphman rewind` safer to use. (#2879)
+- Add `subgraphErrors` for all GraphQL schemas. (#2894)
+- Add `Graph-Attestable` response header. (#2946)
+- Add support for minimum block constraint in GraphQL queries (`number_gte`) (#2868).
+- Handle revert cases from Hardhat and Ganache (#2984)
+- Fix bug on experimental prefetching optimization feature (#2899)
+
+
+## 0.24.2
+
+This release only adds a fix for an issue where certain GraphQL queries
+could lead to `graph-node` running out of memory even on very large
+systems. This release adds code that checks the size of GraphQL responses
+as they are assembled, and can warn about large responses in the logs
+resp. abort query execution based on the values of the two new environment
+variables `GRAPH_GRAPHQL_WARN_RESULT_SIZE` and
+`GRAPH_GRAPHQL_ERROR_RESULT_SIZE`. It also adds Prometheus metrics
+`query_result_size` and `query_result_max` to track the memory consumption
+of successful GraphQL queries. The unit for the two environment variables
+is bytes, based on an estimate of the memory used by the result; it is best
+to set them after observing the Prometheus metrics for a while to establish
+what constitutes a reasonable limit for them.
+
+We strongly recommend updating to this version as quickly as possible.
+
+## 0.24.1
+
+### Feature Management
+
+This release supports the upcoming Spec Version 0.0.4 that enables subgraph features to be declared in the manifest and
+validated during subgraph deployment
+[#2682](https://github.com/graphprotocol/graph-node/pull/2682)
+[#2746](https://github.com/graphprotocol/graph-node/pull/2746).
+
+> Subgraphs using previous versions are still supported and won't be affected by this change.
+
+#### New Indexer GraphQL query: `subgraphFetaures`
+
+It is now possible to query for the features a subgraph uses given its Qm-hash ID.
+
+For instance, the following query...
+
+```graphql
+{
+  subgraphFeatures(subgraphId: "QmW9ajg2oTyPfdWKyUkxc7cTJejwdyCbRrSivfryTfFe5D") {
+    features
+    errors
+  }
+}
+```
+
+... would produce this result:
+
+```json
+{
+  "data": {
+    "subgraphFeatures": {
+      "errors": [],
+      "features": [
+        "nonFatalErrors",
+        "ipfsOnEthereumContracts"
+      ]
+    }
+  }
+}
+```
+
+Subraphs with any Spec Version can be queried that way.
 
 ### Api Version 0.0.5
 
-This release ships support for API version 0.0.5 in mappings. It contains a fix for call handlers
+- Added better error message for null pointers in the runtime [#2780](https://github.com/graphprotocol/graph-node/pull/2780).
+
+### Environment Variables
+
+- When `GETH_ETH_CALL_ERRORS_ENV` is unset, it doesn't make `eth_call` errors to be considered determinsistic anymore [#2784](https://github.com/graphprotocol/graph-node/pull/2784)
+
+### Robustness
+
+- Tolerate a non-primary shard being down during startup [#2727](https://github.com/graphprotocol/graph-node/pull/2727).
+- Check that at least one replica for each shard has a non-zero weight [#2749](https://github.com/graphprotocol/graph-node/pull/2749).
+- Reduce locking for the chain head listener [#2763](https://github.com/graphprotocol/graph-node/pull/2763).
+
+### Logs
+
+- Improve block ingestor error reporting for missing receipts [#2743](https://github.com/graphprotocol/graph-node/pull/2743).
+
+## 0.24.0
+
+### Api Version 0.0.5
+
+This release ships support for API version 0.0.5 in mappings. hIt contains a fix for call handlers
 and the long awaited AssemblyScript version upgrade!
 
 - AssemblyScript upgrade: The mapping runtime is updated to support up-to-date versions of the
@@ -20,6 +146,7 @@ and the long awaited AssemblyScript version upgrade!
 ### Metrics
 - `query_semaphore_wait_ms` is now by shard, and has the `pool` and `shard` labels.
 - `deployment_failed` metric added, it is `1` if the subgraph has failed and `0` otherwise.
+
 ### Other
 - Upgrade to tokio 1.0 and futures 0.3 [#2679](https://github.com/graphprotocol/graph-node/pull/2679), the first major contribution by StreamingFast!
 - Support Celo block reward events [#2670](https://github.com/graphprotocol/graph-node/pull/2670).

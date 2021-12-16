@@ -9,6 +9,7 @@
     "host-exports",
     "non-fatal-errors",
     "overloaded-contract-functions",
+    "poi-for-failed-subgraph",
     "remove-then-update",
     "value-roundtrip"
   ]

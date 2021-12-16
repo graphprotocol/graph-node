@@ -110,7 +110,7 @@ impl EthereumNetworks {
                     .map(move |network_adapter| {
                         (
                             network_name.clone(),
-                            network_adapter.capabilities.clone(),
+                            network_adapter.capabilities,
                             network_adapter.adapter.clone(),
                         )
                     })

@@ -14,7 +14,7 @@ use diesel::Connection;
 use lazy_static::lazy_static;
 
 use graph::prelude::{
-    anyhow, q, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
+    anyhow, r, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
     EntityFilter, EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink,
     QueryExecutionError, StoreError, Value,
 };
@@ -23,6 +23,7 @@ use graph::{
     data::{schema::FulltextAlgorithm, store::scalar},
 };
 use itertools::Itertools;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::env;
@@ -53,6 +54,18 @@ lazy_static! {
             })
             .unwrap_or(150)
     };
+    /// Include a constraint on the child ids as a set in child_type_d
+    /// queries if the size of the set is below this threshold. Set this to
+    /// 0 to turn off this optimization
+    static ref TYPED_CHILDREN_SET_SIZE: usize = {
+        env::var("TYPED_CHILDREN_SET_SIZE")
+            .ok()
+            .map(|s| {
+                usize::from_str(&s)
+                    .unwrap_or_else(|_| panic!("TYPED_CHILDREN_SET_SIZE must be a number, but is `{}`", s))
+            })
+            .unwrap_or(150)
+    };
     /// When we add `order by id` to a query should we add instead
     /// `order by id, block_range`
     static ref ORDER_BY_BLOCK_RANGE: bool = {
@@ -74,11 +87,10 @@ lazy_static! {
             })
             .unwrap_or(false)
     };
-
-    /// Those are columns that we always want to fetch from the database.
-    static ref BASE_SQL_COLUMNS: BTreeSet<String> =
-        ["id"].iter().map(ToString::to_string).collect();
 }
+
+/// Those are columns that we always want to fetch from the database.
+const BASE_SQL_COLUMNS: [&'static str; 2] = ["id", "vid"];
 
 #[derive(Debug)]
 pub(crate) struct UnsupportedFilter {
@@ -257,7 +269,7 @@ impl ForeignKeyClauses for Column {
     }
 }
 
-pub trait FromEntityData: Default + From<Entity> {
+pub trait FromEntityData: Default {
     type Value: FromColumnValue;
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value);
@@ -271,8 +283,8 @@ impl FromEntityData for Entity {
     }
 }
 
-impl FromEntityData for BTreeMap<String, q::Value> {
-    type Value = q::Value;
+impl FromEntityData for BTreeMap<String, r::Value> {
+    type Value = r::Value;
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value) {
         self.insert(key, v);
@@ -360,9 +372,9 @@ pub trait FromColumnValue: Sized {
     }
 }
 
-impl FromColumnValue for q::Value {
+impl FromColumnValue for r::Value {
     fn is_null(&self) -> bool {
-        self == &q::Value::Null
+        matches!(self, r::Value::Null)
     }
 
     fn null() -> Self {
@@ -370,31 +382,31 @@ impl FromColumnValue for q::Value {
     }
 
     fn from_string(s: String) -> Self {
-        q::Value::String(s)
+        r::Value::String(s)
     }
 
     fn from_bool(b: bool) -> Self {
-        q::Value::Boolean(b)
+        r::Value::Boolean(b)
     }
 
     fn from_i32(i: i32) -> Self {
-        q::Value::Int(i.into())
+        r::Value::Int(i.into())
     }
 
     fn from_big_decimal(d: scalar::BigDecimal) -> Self {
-        q::Value::String(d.to_string())
+        r::Value::String(d.to_string())
     }
 
     fn from_big_int(i: serde_json::Number) -> Result<Self, StoreError> {
-        Ok(q::Value::String(i.to_string()))
+        Ok(r::Value::String(i.to_string()))
     }
 
     fn from_bytes(b: &str) -> Result<Self, StoreError> {
-        Ok(q::Value::String(format!("0x{}", b)))
+        Ok(r::Value::String(format!("0x{}", b)))
     }
 
     fn from_vec(v: Vec<Self>) -> Self {
-        q::Value::List(v)
+        r::Value::List(v)
     }
 }
 
@@ -1183,11 +1195,11 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
 
 #[derive(Debug, Clone, Constructor)]
 pub struct FindManyQuery<'a> {
-    pub(crate) namespace: &'a Namespace,
+    pub(crate) _namespace: &'a Namespace,
     pub(crate) tables: Vec<&'a Table>,
 
     // Maps object name to ids.
-    pub(crate) ids_for_type: BTreeMap<&'a EntityType, Vec<&'a str>>,
+    pub(crate) ids_for_type: &'a BTreeMap<&'a EntityType, Vec<&'a str>>,
     pub(crate) block: BlockNumber,
 }
 
@@ -1240,7 +1252,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 #[derive(Debug)]
 pub struct InsertQuery<'a> {
     table: &'a Table,
-    entities: &'a [(EntityKey, Entity)],
+    entities: &'a [(&'a EntityKey, Cow<'a, Entity>)],
     unique_columns: Vec<&'a Column>,
     block: BlockNumber,
 }
@@ -1248,7 +1260,7 @@ pub struct InsertQuery<'a> {
 impl<'a> InsertQuery<'a> {
     pub fn new(
         table: &'a Table,
-        entities: &'a mut [(EntityKey, Entity)],
+        entities: &'a mut [(&'a EntityKey, Cow<Entity>)],
         block: BlockNumber,
     ) -> Result<InsertQuery<'a>, StoreError> {
         for (entity_key, entity) in entities.iter_mut() {
@@ -1261,7 +1273,7 @@ impl<'a> InsertQuery<'a> {
                             .cloned()
                             .collect::<Vec<Value>>();
                         if !fulltext_field_values.is_empty() {
-                            entity.insert(
+                            entity.to_mut().insert(
                                 column.field.to_string(),
                                 Value::List(fulltext_field_values),
                             );
@@ -1290,7 +1302,10 @@ impl<'a> InsertQuery<'a> {
     }
 
     /// Build the column name list using the subset of all keys among present entities.
-    fn unique_columns(table: &'a Table, entities: &'a [(EntityKey, Entity)]) -> Vec<&'a Column> {
+    fn unique_columns(
+        table: &'a Table,
+        entities: &'a [(&'a EntityKey, Cow<'a, Entity>)],
+    ) -> Vec<&'a Column> {
         let mut hashmap = HashMap::new();
         for (_key, entity) in entities.iter() {
             for column in &table.columns {
@@ -1377,7 +1392,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for InsertQuery<'a> {}
 
 #[derive(Debug, Clone)]
 pub struct ConflictingEntityQuery<'a> {
-    layout: &'a Layout,
+    _layout: &'a Layout,
     tables: Vec<&'a Table>,
     entity_id: &'a str,
 }
@@ -1392,7 +1407,7 @@ impl<'a> ConflictingEntityQuery<'a> {
             .map(|entity| layout.table_for_entity(entity).map(|table| table.as_ref()))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(ConflictingEntityQuery {
-            layout,
+            _layout: layout,
             tables,
             entity_id,
         })
@@ -1594,6 +1609,14 @@ impl<'a> FilterWindow<'a> {
             column_names,
         } = window;
         let table = layout.table_for_entity(&child_type).map(|rc| rc.as_ref())?;
+
+        // Confidence check: ensure that all selected column names exist in the table
+        if let AttributeNames::Select(ref selected_field_names) = column_names {
+            for field in selected_field_names {
+                let _ = table.column_for_field(&field)?;
+            }
+        }
+
         let query_filter = query_filter
             .map(|filter| QueryFilter::new(filter, table))
             .transpose()?;
@@ -1821,6 +1844,17 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" c where ");
         BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
         limit.filter(out);
+        if *TYPED_CHILDREN_SET_SIZE > 0 {
+            let mut child_set: Vec<&str> = child_ids.iter().map(|id| id.as_str()).collect();
+            child_set.sort();
+            child_set.dedup();
+
+            if child_set.len() <= *TYPED_CHILDREN_SET_SIZE {
+                out.push_sql(" and c.id = any(");
+                self.table.primary_key().bind_ids(&child_set, out)?;
+                out.push_sql(")");
+            }
+        }
         out.push_sql(" and ");
         out.push_sql("c.id = p.child_id");
         self.and_filter(out.reborrow())?;
@@ -2540,6 +2574,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}
 #[derive(Debug, Clone, Constructor)]
 pub struct ClampRangeQuery<'a, S> {
     table: &'a Table,
+    #[allow(dead_code)]
     entity_type: &'a EntityType,
     entity_ids: &'a [S],
     block: BlockNumber,
@@ -2732,54 +2767,6 @@ fn block_number_max_is_i32_max() {
     assert_eq!(2147483647, graph::prelude::BLOCK_NUMBER_MAX);
 }
 
-/// Remove all entities from the given table whose id has a prefix that
-/// matches one of the given prefixes. This query is mostly useful to
-/// delete subgraph metadata that belongs to a certain dynamic data source
-#[derive(Debug, Clone, Constructor)]
-pub struct DeleteByPrefixQuery<'a> {
-    table: &'a Table,
-    prefixes: &'a Vec<String>,
-    prefix_len: i32,
-}
-
-impl<'a> QueryFragment<Pg> for DeleteByPrefixQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
-        out.unsafe_to_cache_prepared();
-
-        // Construct a query
-        //   delete from {table}
-        //    where left(id, {prefix_len}) = any({prefixes})
-        //   returning id
-        out.push_sql("delete from ");
-        out.push_sql(self.table.qualified_name.as_str());
-        out.push_sql("\n where left(");
-        out.push_sql(PRIMARY_KEY_COLUMN);
-        out.push_sql(",");
-        out.push_bind_param::<Integer, _>(&self.prefix_len)?;
-        out.push_sql(") = any(");
-        out.push_bind_param::<Array<Text>, _>(&self.prefixes)?;
-        out.push_sql(")\nreturning ");
-        out.push_sql(PRIMARY_KEY_COLUMN);
-        out.push_sql("::text");
-        Ok(())
-    }
-}
-
-impl<'a> QueryId for DeleteByPrefixQuery<'a> {
-    type QueryId = ();
-
-    const HAS_STATIC_QUERY_ID: bool = false;
-}
-
-impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for DeleteByPrefixQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
-        conn.query_by_name(&self)
-            .map(|data| ReturnedEntityData::bytes_as_str(&self.table, data))
-    }
-}
-
-impl<'a, Conn> RunQueryDsl<Conn> for DeleteByPrefixQuery<'a> {}
-
 /// Copy the data of one table to another table. All rows whose `vid` is in
 /// the range `[first_vid, last_vid]` will be copied
 #[derive(Debug, Clone)]
@@ -2816,8 +2803,6 @@ impl<'a> CopyEntityBatchQuery<'a> {
                     dcol.field
                 )
                 .into());
-            } else {
-                columns.push(dcol);
             }
         }
 
@@ -2896,18 +2881,9 @@ fn write_column_names(
     match column_names {
         AttributeNames::All => out.push_sql(" * "),
         AttributeNames::Select(column_names) => {
-            let mut iterator = column_names
-                .union(&BASE_SQL_COLUMNS)
-                .into_iter()
-                .map(|column_name| {
-                    &table
-                        .column_for_field(&column_name)
-                        .expect("failed to find column for field")
-                        .name
-                })
-                .peekable();
+            let mut iterator = iter_column_names(column_names, table).peekable();
             while let Some(column_name) = iterator.next() {
-                out.push_identifier(&column_name.as_str())?;
+                out.push_identifier(&column_name)?;
                 if iterator.peek().is_some() {
                     out.push_sql(", ");
                 }
@@ -2931,25 +2907,16 @@ fn jsonb_build_object(
         }
         AttributeNames::Select(column_names) => {
             out.push_sql("jsonb_build_object(");
-            let mut iterator = column_names
-                .union(&BASE_SQL_COLUMNS)
-                .into_iter()
-                .map(|column_name| {
-                    &table
-                        .column_for_field(&column_name)
-                        .expect("failed to find column for field")
-                        .name
-                })
-                .peekable();
+            let mut iterator = iter_column_names(column_names, table).peekable();
             while let Some(column_name) = iterator.next() {
                 // field name as json key
                 out.push_sql("'");
-                out.push_sql(column_name.as_str());
+                out.push_sql(column_name);
                 out.push_sql("', ");
                 // column identifier
                 out.push_sql(table_identifier);
                 out.push_sql(".");
-                out.push_identifier(column_name.as_str())?;
+                out.push_identifier(column_name)?;
                 if iterator.peek().is_some() {
                     out.push_sql(", ");
                 }
@@ -2958,4 +2925,22 @@ fn jsonb_build_object(
         }
     }
     Ok(())
+}
+
+/// Helper function to iterate over the merged fields of BASE_SQL_COLUMNS and the provided attribute
+/// names, yielding valid SQL names for the given table.
+fn iter_column_names<'a, 'b>(
+    attribute_names: &'a BTreeSet<String>,
+    table: &'b Table,
+) -> impl Iterator<Item = &'b str> {
+    attribute_names
+        .iter()
+        .map(|attribute_name| {
+            // Unwrapping: We have already checked that all attribute names exist in table
+            table.column_for_field(attribute_name).unwrap()
+        })
+        .map(|column| column.name.as_str())
+        .chain(BASE_SQL_COLUMNS.iter().copied())
+        .sorted()
+        .dedup()
 }

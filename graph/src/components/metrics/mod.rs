@@ -47,6 +47,13 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         const_labels: HashMap<String, String>,
     ) -> Result<Counter, PrometheusError>;
 
+    fn global_counter_vec(
+        &self,
+        name: &str,
+        help: &str,
+        variable_labels: &[&str],
+    ) -> Result<CounterVec, PrometheusError>;
+
     fn global_deployment_counter(
         &self,
         name: &str,
@@ -208,6 +215,18 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         let opts = HistogramOpts::new(name, help)
             .const_labels(deployment_labels(subgraph))
             .buckets(buckets);
+        let histogram = Box::new(Histogram::with_opts(opts)?);
+        self.register(name, histogram.clone());
+        Ok(histogram)
+    }
+
+    fn new_histogram(
+        &self,
+        name: &str,
+        help: &str,
+        buckets: Vec<f64>,
+    ) -> Result<Box<Histogram>, PrometheusError> {
+        let opts = HistogramOpts::new(name, help).buckets(buckets);
         let histogram = Box::new(Histogram::with_opts(opts)?);
         self.register(name, histogram.clone());
         Ok(histogram)

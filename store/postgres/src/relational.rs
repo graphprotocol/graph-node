@@ -13,6 +13,7 @@ use graph::prelude::{q, s, StopwatchMetrics};
 use graph::slog::warn;
 use inflector::Inflector;
 use lazy_static::lazy_static;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::{From, TryFrom};
 use std::env;
@@ -71,7 +72,7 @@ lazy_static! {
             // qualified name
             env::var("GRAPH_ACCOUNT_TABLES")
                 .ok()
-                .map(|v| v.split(",").map(|s| format!("\"{}\"", s.replace(".", "\".\""))).collect())
+                .map(|v| v.split(',').map(|s| format!("\"{}\"", s.replace(".", "\".\""))).collect())
                 .unwrap_or(HashSet::new())
     };
 
@@ -533,7 +534,7 @@ impl Layout {
     pub fn find_many<'a>(
         &self,
         conn: &PgConnection,
-        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+        ids_for_type: &BTreeMap<&EntityType, Vec<&str>>,
         block: BlockNumber,
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         if ids_for_type.is_empty() {
@@ -545,7 +546,7 @@ impl Layout {
             tables.push(self.table_for_entity(entity_type)?.as_ref());
         }
         let query = FindManyQuery {
-            namespace: &self.catalog.site.namespace,
+            _namespace: &self.catalog.site.namespace,
             ids_for_type,
             tables,
             block,
@@ -560,11 +561,11 @@ impl Layout {
         Ok(entities_for_type)
     }
 
-    pub fn insert(
-        &self,
+    pub fn insert<'a>(
+        &'a self,
         conn: &PgConnection,
-        entity_type: &EntityType,
-        entities: &mut [(EntityKey, Entity)],
+        entity_type: &'a EntityType,
+        entities: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
@@ -675,11 +676,11 @@ impl Layout {
             .collect()
     }
 
-    pub fn update(
-        &self,
+    pub fn update<'a>(
+        &'a self,
         conn: &PgConnection,
-        entity_type: &EntityType,
-        entities: &mut [(EntityKey, Entity)],
+        entity_type: &'a EntityType,
+        entities: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
@@ -711,7 +712,7 @@ impl Layout {
         &self,
         conn: &PgConnection,
         entity_type: &EntityType,
-        entity_ids: &[String],
+        entity_ids: &[&str],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
@@ -800,9 +801,13 @@ impl Layout {
     }
 
     /// Update the layout with the latest information from the database; for
-    /// now, an update only changes the `is_account_like` flag for tables.
-    /// If no update is needed, just return `self`.
-    pub fn refresh(self: Arc<Self>, conn: &PgConnection) -> Result<Arc<Self>, StoreError> {
+    /// now, an update only changes the `is_account_like` flag for tables or
+    /// the layout's site. If no update is needed, just return `self`.
+    pub fn refresh(
+        self: Arc<Self>,
+        conn: &PgConnection,
+        site: Arc<Site>,
+    ) -> Result<Arc<Self>, StoreError> {
         let account_like = crate::catalog::account_like(conn, &self.site)?;
         let is_account_like = {
             |table: &Table| {
@@ -816,7 +821,7 @@ impl Layout {
             .values()
             .filter(|table| table.is_account_like != is_account_like(table.as_ref()))
             .collect();
-        if changed_tables.is_empty() {
+        if changed_tables.is_empty() && site == self.site {
             return Ok(self);
         }
         let mut layout = (*self).clone();
@@ -825,6 +830,7 @@ impl Layout {
             table.is_account_like = is_account_like(&table);
             layout.tables.insert(table.object.clone(), Arc::new(table));
         }
+        layout.site = site;
         Ok(Arc::new(layout))
     }
 }
@@ -890,7 +896,7 @@ impl ColumnType {
 
         // See if its an object type defined in the schema
         if let Some(id_type) = id_types.get(&EntityType::new(name.to_string())) {
-            return Ok(id_type.clone().into());
+            return Ok((*id_type).into());
         }
 
         // Check if it's an enum, and if it is, return an appropriate
@@ -1385,7 +1391,7 @@ impl LayoutCache {
             catalog,
             has_poi,
         )?);
-        layout.refresh(conn)
+        layout.refresh(conn, site)
     }
 
     fn cache(&self, layout: Arc<Layout>) {
@@ -1395,7 +1401,7 @@ impl LayoutCache {
                 expires: Instant::now() + self.ttl,
                 value: layout,
             };
-            &self.entries.lock().unwrap().insert(deployment, entry);
+            self.entries.lock().unwrap().insert(deployment, entry);
         }
     }
 
@@ -1427,7 +1433,7 @@ impl LayoutCache {
             Some(CacheEntry { value, expires }) => {
                 if now <= expires {
                     // Entry is not expired; use it
-                    return Ok(value);
+                    Ok(value)
                 } else {
                     // Only do a cache refresh once; we don't want to have
                     // multiple threads refreshing the same layout
@@ -1437,7 +1443,7 @@ impl LayoutCache {
                     if let Err(_) = refresh {
                         return Ok(value.clone());
                     }
-                    match value.cheap_clone().refresh(conn) {
+                    match value.cheap_clone().refresh(conn, site) {
                         Err(e) => {
                             warn!(
                                 logger,
@@ -1448,11 +1454,11 @@ impl LayoutCache {
                             // Update the timestamp so we don't retry
                             // refreshing too often
                             self.cache(value.cheap_clone());
-                            return Ok(value);
+                            Ok(value)
                         }
                         Ok(layout) => {
                             self.cache(layout.cheap_clone());
-                            return Ok(layout);
+                            Ok(layout)
                         }
                     }
                 }
@@ -1460,7 +1466,7 @@ impl LayoutCache {
             None => {
                 let layout = Self::load(conn, site)?;
                 self.cache(layout.cheap_clone());
-                return Ok(layout);
+                Ok(layout)
             }
         }
     }

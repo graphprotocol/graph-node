@@ -1,11 +1,15 @@
 use std::sync::Arc;
 
-use graph::prelude::{anyhow::anyhow, Error, NodeId, SubgraphStore as _};
+use graph::{
+    prelude::{anyhow::anyhow, Error, NodeId, SubgraphStore as _},
+    slog::Logger,
+};
 use graph_store_postgres::SubgraphStore;
 
 use crate::manager::deployment::locate;
 
-pub fn unassign(
+pub async fn unassign(
+    logger: Logger,
     store: Arc<SubgraphStore>,
     hash: String,
     shard: Option<String>,
@@ -13,7 +17,10 @@ pub fn unassign(
     let deployment = locate(store.as_ref(), hash, shard)?;
 
     println!("unassigning {}", deployment);
-    store.writable(&deployment)?.unassign_subgraph()?;
+    store
+        .writable(logger, deployment.id)
+        .await?
+        .unassign_subgraph()?;
 
     Ok(())
 }

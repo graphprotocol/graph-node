@@ -1,21 +1,28 @@
-use super::block_stream::{BlockStreamEvent, BlockWithTriggers, TriggersAdapter};
-use super::ChainHeadUpdateStream;
-use super::{BlockPtr, Blockchain};
-use super::{BlockStream, BlockStreamMetrics};
-use crate::blockchain::Block;
-use crate::components::store::BlockNumber;
-use crate::components::store::WritableStore;
-use crate::data::subgraph::UnifiedMappingApiVersion;
-use crate::prelude::*;
 use anyhow::Error;
 use futures03::{stream::Stream, Future, FutureExt};
 use std::cmp;
 use std::collections::VecDeque;
+use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
+use super::block_stream::{
+    BlockStream, BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers, ChainHeadUpdateStream,
+    FirehoseCursor, TriggersAdapter,
+};
+use super::{Block, BlockPtr, Blockchain};
+
+use crate::components::store::BlockNumber;
+use crate::components::store::WritableStore;
+use crate::data::subgraph::UnifiedMappingApiVersion;
+use crate::prelude::*;
 #[cfg(debug_assertions)]
 use fail::fail_point;
+
+// A high number here forces a slow start.
+const STARTING_PREVIOUS_TRIGGERS_PER_BLOCK: f64 = 1_000_000.0;
+
 enum BlockStreamState<C>
 where
     C: Blockchain,
@@ -71,7 +78,7 @@ where
     Done,
 }
 
-struct BlockStreamContext<C>
+struct PollingBlockStreamContext<C>
 where
     C: Blockchain,
 {
@@ -96,7 +103,7 @@ where
     unified_api_version: UnifiedMappingApiVersion,
 }
 
-impl<C: Blockchain> Clone for BlockStreamContext<C> {
+impl<C: Blockchain> Clone for PollingBlockStreamContext<C> {
     fn clone(&self) -> Self {
         Self {
             subgraph_store: self.subgraph_store.cheap_clone(),
@@ -122,7 +129,7 @@ pub struct PollingBlockStream<C: Blockchain> {
     state: BlockStreamState<C>,
     consecutive_err_count: u32,
     chain_head_update_stream: ChainHeadUpdateStream,
-    ctx: BlockStreamContext<C>,
+    ctx: PollingBlockStreamContext<C>,
 }
 
 // This is the same as `ReconciliationStep` but without retries.
@@ -159,11 +166,11 @@ where
         target_triggers_per_block_range: u64,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Self {
-        PollingBlockStream {
+        Self {
             state: BlockStreamState::BeginReconciliation,
             consecutive_err_count: 0,
             chain_head_update_stream,
-            ctx: BlockStreamContext {
+            ctx: PollingBlockStreamContext {
                 subgraph_store,
                 chain_store,
                 adapter,
@@ -174,9 +181,7 @@ where
                 filter,
                 start_blocks,
                 metrics,
-
-                // A high number here forces a slow start, with a range of 1.
-                previous_triggers_per_block: 1_000_000.0,
+                previous_triggers_per_block: STARTING_PREVIOUS_TRIGGERS_PER_BLOCK,
                 previous_block_range_size: 1,
                 max_block_range_size,
                 target_triggers_per_block_range,
@@ -186,7 +191,7 @@ where
     }
 }
 
-impl<C> BlockStreamContext<C>
+impl<C> PollingBlockStreamContext<C>
 where
     C: Blockchain,
 {
@@ -464,7 +469,7 @@ where
 
     /// Set subgraph deployment entity synced flag if and only if the subgraph block pointer is
     /// caught up to the head block pointer.
-    fn update_subgraph_synced_status(&self) -> Result<(), Error> {
+    fn update_subgraph_synced_status(&self) -> Result<(), StoreError> {
         let head_ptr_opt = self.chain_store.chain_head_ptr()?;
         let subgraph_ptr = self.subgraph_store.block_ptr()?;
 
@@ -539,7 +544,11 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
                         }
                         Poll::Ready(Ok(NextBlocks::Revert(block))) => {
                             self.state = BlockStreamState::BeginReconciliation;
-                            break Poll::Ready(Some(Ok(BlockStreamEvent::Revert(block))));
+                            break Poll::Ready(Some(Ok(BlockStreamEvent::Revert(
+                                block,
+                                FirehoseCursor::None,
+                                None,
+                            ))));
                         }
                         Poll::Pending => {
                             break Poll::Pending;
@@ -547,7 +556,8 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
                         Poll::Ready(Err(e)) => {
                             // Reset the block range size in an attempt to recover from the error.
                             // See also: 018c6df4-132f-4acc-8697-a2d64e83a9f0
-                            self.ctx.previous_block_range_size = 1;
+                            self.ctx.previous_triggers_per_block =
+                                STARTING_PREVIOUS_TRIGGERS_PER_BLOCK;
                             self.consecutive_err_count += 1;
 
                             // Pause before trying again
@@ -569,6 +579,7 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
                         Some(next_block) => {
                             break Poll::Ready(Some(Ok(BlockStreamEvent::ProcessBlock(
                                 next_block,
+                                FirehoseCursor::None,
                             ))));
                         }
 

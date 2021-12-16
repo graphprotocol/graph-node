@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
 use crate::execution::ExecutionContext;
-use graph::prelude::{async_trait, q, s, tokio, Error, QueryExecutionError, StoreEventStreamBox};
+use graph::components::store::UnitStream;
+use graph::prelude::{async_trait, q, s, tokio, Error, QueryExecutionError};
 use graph::{
     data::graphql::{ext::DocumentExt, ObjectOrInterface},
-    prelude::QueryResult,
+    prelude::{r, QueryResult},
 };
 
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
@@ -19,36 +20,36 @@ pub trait Resolver: Sized + Send + Sync + 'static {
         &self,
         ctx: &ExecutionContext<Self>,
         selection_set: &q::SelectionSet,
-    ) -> Result<Option<q::Value>, Vec<QueryExecutionError>>;
+    ) -> Result<Option<r::Value>, Vec<QueryExecutionError>>;
 
     /// Resolves list of objects, `prefetched_objects` is `Some` if the parent already calculated the value.
     fn resolve_objects(
         &self,
-        prefetched_objects: Option<q::Value>,
+        prefetched_objects: Option<r::Value>,
         field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
-        arguments: &HashMap<&str, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError>;
+        arguments: &HashMap<&str, r::Value>,
+    ) -> Result<r::Value, QueryExecutionError>;
 
     /// Resolves an object, `prefetched_object` is `Some` if the parent already calculated the value.
     fn resolve_object(
         &self,
-        prefetched_object: Option<q::Value>,
+        prefetched_object: Option<r::Value>,
         field: &q::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
-        arguments: &HashMap<&str, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError>;
+        arguments: &HashMap<&str, r::Value>,
+    ) -> Result<r::Value, QueryExecutionError>;
 
     /// Resolves an enum value for a given enum type.
     fn resolve_enum_value(
         &self,
         _field: &q::Field,
         _enum_type: &s::EnumType,
-        value: Option<q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
-        Ok(value.unwrap_or(q::Value::Null))
+        value: Option<r::Value>,
+    ) -> Result<r::Value, QueryExecutionError> {
+        Ok(value.unwrap_or(r::Value::Null))
     }
 
     /// Resolves a scalar value for a given scalar type.
@@ -57,12 +58,12 @@ pub trait Resolver: Sized + Send + Sync + 'static {
         _parent_object_type: &s::ObjectType,
         _field: &q::Field,
         _scalar_type: &s::ScalarType,
-        value: Option<q::Value>,
-        _argument_values: &HashMap<&str, q::Value>,
-    ) -> Result<q::Value, QueryExecutionError> {
+        value: Option<r::Value>,
+        _argument_values: &HashMap<&str, r::Value>,
+    ) -> Result<r::Value, QueryExecutionError> {
         // This code is duplicated.
         // See also c2112309-44fd-4a84-92a0-5a651e6ed548
-        Ok(value.unwrap_or(q::Value::Null))
+        Ok(value.unwrap_or(r::Value::Null))
     }
 
     /// Resolves a list of enum values for a given enum type.
@@ -70,9 +71,9 @@ pub trait Resolver: Sized + Send + Sync + 'static {
         &self,
         _field: &q::Field,
         _enum_type: &s::EnumType,
-        value: Option<q::Value>,
-    ) -> Result<q::Value, Vec<QueryExecutionError>> {
-        Ok(value.unwrap_or(q::Value::Null))
+        value: Option<r::Value>,
+    ) -> Result<r::Value, Vec<QueryExecutionError>> {
+        Ok(value.unwrap_or(r::Value::Null))
     }
 
     /// Resolves a list of scalar values for a given list type.
@@ -80,9 +81,9 @@ pub trait Resolver: Sized + Send + Sync + 'static {
         &self,
         _field: &q::Field,
         _scalar_type: &s::ScalarType,
-        value: Option<q::Value>,
-    ) -> Result<q::Value, Vec<QueryExecutionError>> {
-        Ok(value.unwrap_or(q::Value::Null))
+        value: Option<r::Value>,
+    ) -> Result<r::Value, Vec<QueryExecutionError>> {
+        Ok(value.unwrap_or(r::Value::Null))
     }
 
     // Resolves an abstract type into the specific type of an object.
@@ -90,12 +91,12 @@ pub trait Resolver: Sized + Send + Sync + 'static {
         &self,
         schema: &'a s::Document,
         _abstract_type: &s::TypeDefinition,
-        object_value: &q::Value,
+        object_value: &r::Value,
     ) -> Option<&'a s::ObjectType> {
         let concrete_type_name = match object_value {
             // All objects contain `__typename`
-            q::Value::Object(data) => match &data["__typename"] {
-                q::Value::String(name) => name.clone(),
+            r::Value::Object(data) => match &data["__typename"] {
+                r::Value::String(name) => name.clone(),
                 _ => unreachable!("__typename must be a string"),
             },
             _ => unreachable!("abstract type value must be an object"),
@@ -109,12 +110,12 @@ pub trait Resolver: Sized + Send + Sync + 'static {
     }
 
     // Resolves a change stream for a given field.
-    async fn resolve_field_stream(
+    fn resolve_field_stream(
         &self,
         _schema: &s::Document,
         _object_type: &s::ObjectType,
         _field: &q::Field,
-    ) -> Result<StoreEventStreamBox, QueryExecutionError> {
+    ) -> Result<UnitStream, QueryExecutionError> {
         Err(QueryExecutionError::NotSupported(String::from(
             "Resolving field streams is not supported by this resolver",
         )))

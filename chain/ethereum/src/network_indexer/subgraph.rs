@@ -9,7 +9,7 @@ fn check_subgraph_exists(
     store: Arc<dyn SubgraphStore>,
     subgraph_id: DeploymentHash,
 ) -> impl Future<Item = bool, Error = Error> {
-    future::result(store.is_deployed(&subgraph_id))
+    future::result(store.is_deployed(&subgraph_id).map_err(Error::from))
 }
 
 fn create_subgraph(

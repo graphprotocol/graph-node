@@ -1,11 +1,12 @@
 use std::iter::FromIterator;
 use std::{collections::HashMap, sync::Arc};
 
+use graph::prelude::r;
 use graph::{
     data::query::QueryTarget,
     prelude::{
         anyhow::{self, anyhow},
-        q, serde_json, DeploymentHash, GraphQlRunner as _, Query, QueryVariables, SubgraphName,
+        serde_json, DeploymentHash, GraphQlRunner as _, Query, QueryVariables, SubgraphName,
     },
 };
 use graph_graphql::prelude::GraphQlRunner;
@@ -30,15 +31,15 @@ pub async fn run(
     };
 
     let document = graphql_parser::parse_query(&query)?.into_static();
-    let vars: Vec<(String, q::Value)> = vars
+    let vars: Vec<(String, r::Value)> = vars
         .into_iter()
         .map(|v| {
             let mut pair = v.splitn(2, '=').map(|s| s.to_string());
             let key = pair.next();
             let value = pair
                 .next()
-                .map(|s| q::Value::String(s))
-                .unwrap_or(q::Value::Null);
+                .map(|s| r::Value::String(s))
+                .unwrap_or(r::Value::Null);
             match key {
                 Some(key) => Ok((key, value)),
                 None => Err(anyhow!(

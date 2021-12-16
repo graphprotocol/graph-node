@@ -228,7 +228,7 @@ impl From<&s::Directive> for FulltextDefinition {
         let included_entity = included_entity_list.first().unwrap().as_object().unwrap();
         let included_field_values = included_entity.get("fields").unwrap().as_list().unwrap();
         let included_fields: HashSet<String> = included_field_values
-            .into_iter()
+            .iter()
             .map(|field| {
                 field
                     .as_object()
@@ -521,7 +521,7 @@ impl Schema {
     }
 
     pub fn parse(raw: &str, id: DeploymentHash) -> Result<Self, Error> {
-        let document = graphql_parser::parse_schema(&raw)?.into_static();
+        let document = graphql_parser::parse_schema(raw)?.into_static();
 
         let (interfaces_for_type, types_for_interface) = Self::collect_interfaces(&document)?;
 

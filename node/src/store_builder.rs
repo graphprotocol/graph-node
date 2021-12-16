@@ -2,15 +2,17 @@ use std::iter::FromIterator;
 use std::{collections::HashMap, sync::Arc};
 
 use futures::future::join_all;
+use graph::blockchain::ChainIdentifier;
 use graph::prelude::{o, MetricsRegistry, NodeId};
 use graph::{
-    prelude::{info, CheapClone, EthereumNetworkIdentifier, Logger},
+    prelude::{info, CheapClone, Logger},
     util::security::SafeDisplay,
 };
 use graph_store_postgres::connection_pool::{ConnectionPool, ForeignServer, PoolName};
 use graph_store_postgres::{
     BlockStore as DieselBlockStore, ChainHeadUpdateListener as PostgresChainHeadUpdateListener,
-    Shard as ShardName, Store as DieselStore, SubgraphStore, SubscriptionManager, PRIMARY_SHARD,
+    NotificationSender, Shard as ShardName, Store as DieselStore, SubgraphStore,
+    SubscriptionManager, PRIMARY_SHARD,
 };
 
 use crate::config::{Config, Shard};
@@ -33,13 +35,14 @@ impl StoreBuilder {
         logger: &Logger,
         node: &NodeId,
         config: &Config,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<impl MetricsRegistry>,
     ) -> Self {
         let primary_shard = config.primary_store().clone();
 
         let subscription_manager = Arc::new(SubscriptionManager::new(
             logger.cheap_clone(),
             primary_shard.connection.to_owned(),
+            registry.clone(),
         ));
 
         let (store, pools) =
@@ -49,7 +52,7 @@ impl StoreBuilder {
         // attempt doesn't work for all of them because the database is
         // unavailable, they will try again later in the normal course of
         // using the pool
-        join_all(pools.iter().map(|(_, pool)| async move { pool.setup() })).await;
+        join_all(pools.iter().map(|(_, pool)| pool.setup())).await;
 
         let chains = HashMap::from_iter(config.chains.chains.iter().map(|(name, chain)| {
             let shard = ShardName::new(chain.shard.to_string())
@@ -80,8 +83,10 @@ impl StoreBuilder {
         logger: &Logger,
         node: &NodeId,
         config: &Config,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<impl MetricsRegistry>,
     ) -> (Arc<SubgraphStore>, HashMap<ShardName, ConnectionPool>) {
+        let notification_sender = Arc::new(NotificationSender::new(registry.cheap_clone()));
+
         let servers = config
             .stores
             .iter()
@@ -129,21 +134,10 @@ impl StoreBuilder {
             logger,
             shards,
             Arc::new(config.deployment.clone()),
+            notification_sender,
         ));
 
         (store, pools)
-    }
-
-    // Somehow, rustc gets this wrong; the function is used in
-    // `manager::Context.subgraph_store`
-    #[allow(dead_code)]
-    pub fn make_subgraph_store(
-        logger: &Logger,
-        node: &NodeId,
-        config: &Config,
-        registry: Arc<dyn MetricsRegistry>,
-    ) -> Arc<SubgraphStore> {
-        Self::make_subgraph_store_and_pools(logger, node, config, registry).0
     }
 
     pub fn make_store(
@@ -151,7 +145,7 @@ impl StoreBuilder {
         pools: HashMap<ShardName, ConnectionPool>,
         subgraph_store: Arc<SubgraphStore>,
         chains: HashMap<String, ShardName>,
-        networks: Vec<(String, Vec<EthereumNetworkIdentifier>)>,
+        networks: Vec<(String, Vec<ChainIdentifier>)>,
     ) -> Arc<DieselStore> {
         let networks = networks
             .into_iter()
@@ -164,14 +158,22 @@ impl StoreBuilder {
         let logger = logger.new(o!("component" => "BlockStore"));
 
         let block_store = Arc::new(
-            DieselBlockStore::new(logger, networks, pools.clone())
-                .expect("Creating the BlockStore works"),
+            DieselBlockStore::new(
+                logger,
+                networks,
+                pools.clone(),
+                subgraph_store.notification_sender(),
+            )
+            .expect("Creating the BlockStore works"),
         );
+        block_store
+            .update_db_version()
+            .expect("Updating `db_version` works");
 
         Arc::new(DieselStore::new(subgraph_store, block_store))
     }
 
-    /// Create a connection pool for the main database of hte primary shard
+    /// Create a connection pool for the main database of the primary shard
     /// without connecting to all the other configured databases
     pub fn main_pool(
         logger: &Logger,
@@ -256,10 +258,7 @@ impl StoreBuilder {
 
     /// Return a store that combines both a `Store` for subgraph data
     /// and a `BlockStore` for all chain related data
-    pub fn network_store(
-        self,
-        networks: Vec<(String, Vec<EthereumNetworkIdentifier>)>,
-    ) -> Arc<DieselStore> {
+    pub fn network_store(self, networks: Vec<(String, Vec<ChainIdentifier>)>) -> Arc<DieselStore> {
         Self::make_store(
             &self.logger,
             self.pools,
@@ -277,10 +276,6 @@ impl StoreBuilder {
         self.chain_head_update_listener.clone()
     }
 
-    // This is used in the test-store, but rustc keeps complaining that it
-    // is not used
-    #[cfg(debug_assertions)]
-    #[allow(dead_code)]
     pub fn primary_pool(&self) -> ConnectionPool {
         self.pools.get(&*PRIMARY_SHARD).unwrap().clone()
     }

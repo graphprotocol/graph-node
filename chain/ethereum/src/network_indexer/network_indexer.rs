@@ -107,9 +107,9 @@ fn load_local_head(context: &Context) -> LocalHeadFuture {
         future::result(
             context
                 .store
-                .writable_for_network_indexer(&context.subgraph_id)
+                .writable_for_network_indexer(context.logger.clone(), &context.subgraph_id)
                 .map_err(Error::from)
-                .and_then(|store| store.block_ptr())
+                .and_then(|store| store.block_ptr().map_err(Error::from))
         )
     ))
 }
@@ -204,7 +204,7 @@ fn fetch_block_and_ommers_by_number(
             adapter
                 .clone()
                 .block_by_number(&logger, block_number)
-                .from_err()
+                .map_err(Into::into)
         )
         .and_then(move |block| match block {
             None => {
@@ -224,8 +224,9 @@ fn fetch_block_and_ommers_by_number(
                     fetch_full_block_problems,
                     adapter_for_full_block
                         .load_full_block(&logger_for_full_block, block)
-                        .from_err()
+                        .map_err(Into::into)
                 )
+                .compat()
                 .and_then(move |block| {
                     fetch_ommers(
                         logger_for_ommers.clone(),
@@ -288,14 +289,21 @@ fn write_block(block_writer: Arc<BlockWriter>, block: BlockWithOmmers) -> AddBlo
 fn load_parent_block_from_store(context: &Context, block_ptr: BlockPtr) -> BlockPointerFuture {
     let block_ptr_for_missing_parent = block_ptr.clone();
     let block_ptr_for_invalid_parent = block_ptr.clone();
+    let key = block_ptr.to_entity_key(context.subgraph_id.clone());
 
     Box::new(
         // Load the block itself from the store
         future::result(
             context
                 .writable
-                .get(&block_ptr.to_entity_key(context.subgraph_id.clone()))
-                .map_err(|e| e.into())
+                .get(&key)
+                .map_err(|e| {
+                    let ctx = format!(
+                        "Failed to get `{}` entity with ID `{}` from store: {}",
+                        key.entity_type, key.entity_id, e
+                    );
+                    Error::from(e).context(ctx)
+                })
                 .and_then(|entity| {
                     entity.ok_or_else(|| anyhow!("block {} is missing in store", block_ptr))
                 }),
@@ -1080,7 +1088,7 @@ impl PollStateMachine for StateMachine {
 
         match state.new_local_head.poll() {
             // Adding the block is not complete yet, try again later.
-            Ok(Async::NotReady) => return Ok(Async::NotReady),
+            Ok(Async::NotReady) => Ok(Async::NotReady),
 
             // We have the new local block, update it and continue processing blocks.
             Ok(Async::Ready(block_ptr)) => {
@@ -1162,7 +1170,7 @@ impl NetworkIndexer {
         ));
 
         let writable = store
-            .writable_for_network_indexer(&subgraph_id)
+            .writable_for_network_indexer(logger.clone(), &subgraph_id)
             .expect("can get writable store");
         let block_writer = Arc::new(BlockWriter::new(
             subgraph_id.clone(),

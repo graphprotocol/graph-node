@@ -4,6 +4,7 @@ use diesel::pg::PgConnection;
 use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
 use lazy_static::lazy_static;
+use std::borrow::Cow;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::prelude::{
@@ -90,10 +91,16 @@ fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity
     );
 
     let entity_type = EntityType::from(entity_type);
-    let mut entities = vec![(key.clone(), entity)];
+    let mut entities = vec![(&key, Cow::from(&entity))];
     let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
     layout
-        .insert(&conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
+        .insert(
+            &conn,
+            &entity_type,
+            entities.as_mut_slice(),
+            0,
+            &MOCK_STOPWATCH,
+        )
         .expect(&errmsg);
 }
 
@@ -251,7 +258,7 @@ fn find_many() {
         id_map.insert(&*THING, vec![ID, ID2, "badd"]);
 
         let entities = layout
-            .find_many(conn, id_map, BLOCK_NUMBER_MAX)
+            .find_many(conn, &id_map, BLOCK_NUMBER_MAX)
             .expect("Failed to read many things");
         assert_eq!(1, entities.len());
 
@@ -284,7 +291,7 @@ fn update() {
 
         let entity_id = entity.id().unwrap().clone();
         let entity_type = key.entity_type.clone();
-        let mut entities = vec![(key, entity)];
+        let mut entities = vec![(&key, Cow::from(&entity))];
         layout
             .update(&conn, &entity_type, &mut entities, 1, &MOCK_STOPWATCH)
             .expect("Failed to update");
@@ -294,8 +301,7 @@ fn update() {
             .expect("Failed to read Thing[deadbeef]")
             .unwrap();
 
-        let entity = &entities.first().unwrap().1;
-        assert_entity_eq!(scrub(&entity), actual);
+        assert_entity_eq!(entity, actual);
     });
 }
 
@@ -316,7 +322,7 @@ fn delete() {
             "ffff".to_owned(),
         );
         let entity_type = key.entity_type.clone();
-        let mut entity_keys = vec![key.entity_id.clone()];
+        let mut entity_keys = vec![key.entity_id.as_str()];
         let count = layout
             .delete(&conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
@@ -325,7 +331,7 @@ fn delete() {
         // Delete entity two
         entity_keys
             .get_mut(0)
-            .map(|key| *key = TWO_ID.to_owned())
+            .map(|key| *key = TWO_ID)
             .expect("Failed to update entity types");
         let count = layout
             .delete(&conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)

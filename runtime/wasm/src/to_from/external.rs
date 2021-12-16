@@ -127,6 +127,17 @@ impl TryFromAscObj<AscBigDecimal> for BigDecimal {
     }
 }
 
+impl ToAscObj<Array<AscPtr<AscString>>> for Vec<String> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<Array<AscPtr<AscString>>, DeterministicHostError> {
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x)).collect();
+        let content = content?;
+        Ok(Array::new(&*content, heap)?)
+    }
+}
+
 impl ToAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,

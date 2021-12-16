@@ -136,7 +136,7 @@ impl Default for WeightedResult {
 
 struct HashableQuery<'a> {
     query_schema_id: &'a DeploymentHash,
-    query_variables: &'a HashMap<String, q::Value>,
+    query_variables: &'a HashMap<String, r::Value>,
     query_fragments: &'a HashMap<String, q::FragmentDefinition>,
     selection_set: &'a q::SelectionSet,
     block_ptr: &'a BlockPtr,
@@ -290,15 +290,15 @@ pub fn execute_root_selection_set_uncached(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
     root_type: &s::ObjectType,
-) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>> {
+) -> Result<BTreeMap<String, r::Value>, Vec<QueryExecutionError>> {
     // Split the top-level fields into introspection fields and
     // regular data fields
     let mut data_set = q::SelectionSet {
-        span: selection_set.span.clone(),
+        span: selection_set.span,
         items: Vec::new(),
     };
     let mut intro_set = q::SelectionSet {
-        span: selection_set.span.clone(),
+        span: selection_set.span,
         items: Vec::new(),
     };
     let mut meta_items = Vec::new();
@@ -414,7 +414,7 @@ pub async fn execute_root_selection_set<R: Resolver>(
                 let e = match e
                     .downcast_ref::<String>()
                     .map(String::as_str)
-                    .or(e.downcast_ref::<&'static str>().map(|&s| s))
+                    .or(e.downcast_ref::<&'static str>().copied())
                 {
                     Some(e) => e.to_string(),
                     None => "panic is not a string".to_string(),
@@ -491,9 +491,9 @@ fn execute_selection_set<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
     object_type: &s::ObjectType,
-    prefetched_value: Option<q::Value>,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
-    Ok(q::Value::Object(execute_selection_set_to_map(
+    prefetched_value: Option<r::Value>,
+) -> Result<r::Value, Vec<QueryExecutionError>> {
+    Ok(r::Value::Object(execute_selection_set_to_map(
         ctx,
         selection_sets,
         object_type,
@@ -505,15 +505,15 @@ fn execute_selection_set_to_map<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
     object_type: &s::ObjectType,
-    prefetched_value: Option<q::Value>,
-) -> Result<BTreeMap<String, q::Value>, Vec<QueryExecutionError>> {
+    prefetched_value: Option<r::Value>,
+) -> Result<BTreeMap<String, r::Value>, Vec<QueryExecutionError>> {
     let mut prefetched_object = match prefetched_value {
-        Some(q::Value::Object(object)) => Some(object),
+        Some(r::Value::Object(object)) => Some(object),
         Some(_) => unreachable!(),
         None => None,
     };
     let mut errors: Vec<QueryExecutionError> = Vec::new();
-    let mut result_map: BTreeMap<String, q::Value> = BTreeMap::new();
+    let mut result_map: BTreeMap<String, r::Value> = BTreeMap::new();
 
     // Group fields with the same response key, so we can execute them together
     let grouped_field_set = collect_fields(ctx, object_type, selection_sets);
@@ -697,11 +697,11 @@ fn does_fragment_type_apply(
 fn execute_field(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
-    field_value: Option<q::Value>,
+    field_value: Option<r::Value>,
     field: &q::Field,
     field_definition: &s::Field,
     fields: Vec<&q::Field>,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
+) -> Result<r::Value, Vec<QueryExecutionError>> {
     coerce_argument_values(&ctx.query, object_type, field)
         .and_then(|argument_values| {
             resolve_field_value(
@@ -721,12 +721,12 @@ fn execute_field(
 fn resolve_field_value(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
-    field_value: Option<q::Value>,
+    field_value: Option<r::Value>,
     field: &q::Field,
     field_definition: &s::Field,
     field_type: &s::Type,
-    argument_values: &HashMap<&str, q::Value>,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
+    argument_values: &HashMap<&str, r::Value>,
+) -> Result<r::Value, Vec<QueryExecutionError>> {
     match field_type {
         s::Type::NonNullType(inner_type) => resolve_field_value(
             ctx,
@@ -764,12 +764,12 @@ fn resolve_field_value(
 fn resolve_field_value_for_named_type(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
-    field_value: Option<q::Value>,
+    field_value: Option<r::Value>,
     field: &q::Field,
     field_definition: &s::Field,
     type_name: &str,
-    argument_values: &HashMap<&str, q::Value>,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
+    argument_values: &HashMap<&str, r::Value>,
+) -> Result<r::Value, Vec<QueryExecutionError>> {
     // Try to resolve the type name into the actual type
     let named_type = ctx
         .query
@@ -817,12 +817,12 @@ fn resolve_field_value_for_named_type(
 fn resolve_field_value_for_list_type(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
-    field_value: Option<q::Value>,
+    field_value: Option<r::Value>,
     field: &q::Field,
     field_definition: &s::Field,
     inner_type: &s::Type,
-    argument_values: &HashMap<&str, q::Value>,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
+    argument_values: &HashMap<&str, r::Value>,
+) -> Result<r::Value, Vec<QueryExecutionError>> {
     match inner_type {
         s::Type::NonNullType(inner_type) => resolve_field_value_for_list_type(
             ctx,
@@ -902,13 +902,13 @@ fn complete_value(
     field: &q::Field,
     field_type: &s::Type,
     fields: &Vec<&q::Field>,
-    resolved_value: q::Value,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
+    resolved_value: r::Value,
+) -> Result<r::Value, Vec<QueryExecutionError>> {
     match field_type {
         // Fail if the field type is non-null but the value is null
         s::Type::NonNullType(inner_type) => {
             return match complete_value(ctx, field, inner_type, fields, resolved_value)? {
-                q::Value::Null => Err(vec![QueryExecutionError::NonNullError(
+                r::Value::Null => Err(vec![QueryExecutionError::NonNullError(
                     field.position,
                     field.name.to_string(),
                 )]),
@@ -918,21 +918,19 @@ fn complete_value(
         }
 
         // If the resolved value is null, return null
-        _ if resolved_value == q::Value::Null => {
-            return Ok(resolved_value);
-        }
+        _ if resolved_value.is_null() => Ok(resolved_value),
 
         // Complete list values
         s::Type::ListType(inner_type) => {
             match resolved_value {
                 // Complete list values individually
-                q::Value::List(mut values) => {
+                r::Value::List(mut values) => {
                     let mut errors = Vec::new();
 
                     // To avoid allocating a new vector this completes the values in place.
                     for value_place in &mut values {
                         // Put in a placeholder, complete the value, put the completed value back.
-                        let value = std::mem::replace(value_place, q::Value::Null);
+                        let value = std::mem::replace(value_place, r::Value::Null);
                         match complete_value(ctx, field, inner_type, fields, value) {
                             Ok(value) => {
                                 *value_place = value;
@@ -941,7 +939,7 @@ fn complete_value(
                         }
                     }
                     match errors.is_empty() {
-                        true => Ok(q::Value::List(values)),
+                        true => Ok(r::Value::List(values)),
                         false => Err(errors),
                     }
                 }
@@ -960,11 +958,11 @@ fn complete_value(
             match named_type {
                 // Complete scalar values
                 s::TypeDefinition::Scalar(scalar_type) => {
-                    resolved_value.coerce(scalar_type).map_err(|value| {
+                    resolved_value.coerce_scalar(scalar_type).map_err(|value| {
                         vec![QueryExecutionError::ScalarCoercionError(
-                            field.position.clone(),
+                            field.position,
                             field.name.to_owned(),
-                            value,
+                            value.into(),
                             scalar_type.name.to_owned(),
                         )]
                     })
@@ -972,11 +970,11 @@ fn complete_value(
 
                 // Complete enum values
                 s::TypeDefinition::Enum(enum_type) => {
-                    resolved_value.coerce(enum_type).map_err(|value| {
+                    resolved_value.coerce_enum(enum_type).map_err(|value| {
                         vec![QueryExecutionError::EnumCoercionError(
-                            field.position.clone(),
+                            field.position,
                             field.name.to_owned(),
-                            value,
+                            value.into(),
                             enum_type.name.to_owned(),
                             enum_type
                                 .values
@@ -1031,7 +1029,7 @@ fn complete_value(
 fn resolve_abstract_type<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     abstract_type: &s::TypeDefinition,
-    object_value: &q::Value,
+    object_value: &r::Value,
 ) -> Result<&'a s::ObjectType, Vec<QueryExecutionError>> {
     // Let the resolver handle the type resolution, return an error if the resolution
     // yields nothing
@@ -1049,7 +1047,7 @@ pub fn coerce_argument_values<'a>(
     query: &crate::execution::Query,
     ty: impl Into<ObjectOrInterface<'a>>,
     field: &q::Field,
-) -> Result<HashMap<&'a str, q::Value>, Vec<QueryExecutionError>> {
+) -> Result<HashMap<&'a str, r::Value>, Vec<QueryExecutionError>> {
     let mut coerced_values = HashMap::new();
     let mut errors = vec![];
 
@@ -1065,7 +1063,7 @@ pub fn coerce_argument_values<'a>(
                 if argument_def.name == "text".to_string() {
                     coerced_values.insert(
                         argument_def.name.as_str(),
-                        q::Value::Object(BTreeMap::from_iter(vec![(field.name.clone(), value)])),
+                        r::Value::Object(BTreeMap::from_iter(vec![(field.name.clone(), value)])),
                     );
                 } else {
                     coerced_values.insert(&argument_def.name, value);

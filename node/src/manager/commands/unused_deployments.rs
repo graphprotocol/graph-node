@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Instant};
 
-use graph::prelude::anyhow::Error;
+use graph::prelude::{anyhow::Error, chrono};
 use graph_store_postgres::{unused, SubgraphStore, UnusedDeployment};
 
 use crate::manager::display::List;
@@ -77,8 +77,13 @@ pub fn remove(
     store: Arc<SubgraphStore>,
     count: usize,
     deployment: Option<String>,
+    older: Option<chrono::Duration>,
 ) -> Result<(), Error> {
-    let unused = store.list_unused_deployments(unused::Filter::New)?;
+    let filter = match older {
+        Some(duration) => unused::Filter::UnusedLongerThan(duration),
+        None => unused::Filter::New,
+    };
+    let unused = store.list_unused_deployments(filter)?;
     let unused = match &deployment {
         None => unused,
         Some(deployment) => unused
