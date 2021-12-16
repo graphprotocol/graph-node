@@ -18,7 +18,7 @@ impl std::fmt::Debug for TendermintTrigger {
         #[derive(Debug)]
         pub enum MappingTriggerWithoutBlock {
             Block,
-            Event
+            Event,
         }
 
         let trigger_without_block = match self {
@@ -59,6 +59,7 @@ impl CheapClone for TendermintTrigger {
         }
     }
 }
+
 impl PartialEq for TendermintTrigger {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
