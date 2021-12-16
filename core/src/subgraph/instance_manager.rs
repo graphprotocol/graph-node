@@ -671,14 +671,6 @@ where
                         };
                     }
 
-                    // Notify the BlockStream implementation that a block was succesfully consumed
-                    // and that its internal cursoring mechanism can be saved to memory.
-                    //
-                    // The first `get_mut` is to get the inner `Stream` out of `Cancelable` which
-                    // returns a `TryStreamExt::MapErr` struct and the second `get_mut` is to get
-                    // out the actual `dyn BlockStream` trait on which we can call our method.
-                    block_stream.get_mut().get_mut().notify_block_consumed();
-
                     if needs_restart {
                         // Cancel the stream for real
                         ctx.state

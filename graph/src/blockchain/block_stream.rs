@@ -11,7 +11,6 @@ use crate::{prelude::*, prometheus::labels};
 pub trait BlockStream<C: Blockchain>:
     Stream<Item = Result<BlockStreamEvent<C>, Error>> + Unpin
 {
-    fn notify_block_consumed(&mut self) {}
 }
 
 pub type FirehoseCursor = Option<String>;
