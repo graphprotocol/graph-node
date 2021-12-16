@@ -247,28 +247,8 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
 impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
     type Error = Error;
 
-    fn try_from(info: DataSourceTemplateInfo<Chain>) -> Result<Self> {
-        let DataSourceTemplateInfo {
-            template,
-            params: _,
-            context,
-            creation_block,
-        } = info;
-
-        Ok(DataSource {
-            kind: template.kind,
-            network: template.network,
-            name: template.name,
-            source: Source {
-                // FIXME (NEAR): Made those element dummy elements
-                address: None,
-                abi: "".to_string(),
-                start_block: 0,
-            },
-            mapping: template.mapping,
-            context: Arc::new(context),
-            creation_block: Some(creation_block),
-        })
+    fn try_from(_info: DataSourceTemplateInfo<Chain>) -> Result<Self> {
+        Err(anyhow!("Tendermint subgraphs do not support templates"))
     }
 }
 
