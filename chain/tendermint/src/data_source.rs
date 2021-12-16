@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, HashSet};
 use std::{convert::TryFrom, sync::Arc};
 
 use anyhow::{Error, Result};
-use itertools::Itertools;
 
 use graph::{
     blockchain::{self, Block, Blockchain, TriggerWithHandler},
