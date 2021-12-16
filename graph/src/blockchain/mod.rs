@@ -17,7 +17,7 @@ use crate::{
     },
     data::subgraph::UnifiedMappingApiVersion,
     prelude::DataSourceContext,
-    runtime::{AscHeap, AscPtr, DeterministicHostError, HostExportError},
+    runtime::{gas::GasCounter, AscHeap, AscPtr, DeterministicHostError, HostExportError},
 };
 use crate::{
     components::{
@@ -286,6 +286,7 @@ pub struct HostFnCtx<'a> {
     pub logger: Logger,
     pub block_ptr: BlockPtr,
     pub heap: &'a mut dyn AscHeap,
+    pub gas: GasCounter,
 }
 
 /// Host fn that receives one u32 argument and returns an u32.

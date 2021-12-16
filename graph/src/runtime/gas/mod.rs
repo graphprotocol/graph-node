@@ -58,6 +58,10 @@ pub struct Gas(u64);
 
 impl Gas {
     pub const ZERO: Gas = Gas(0);
+
+    pub const fn new(gas: u64) -> Self {
+        Gas(gas)
+    }
 }
 
 impl From<u64> for Gas {

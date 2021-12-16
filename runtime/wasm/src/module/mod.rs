@@ -393,6 +393,7 @@ impl<C: Blockchain> WasmInstance<C> {
             for module in modules {
                 let func_shared_ctx = Rc::downgrade(&shared_ctx);
                 let host_fn = host_fn.cheap_clone();
+                let gas = gas.cheap_clone();
                 linker.func(module, host_fn.name, move |call_ptr: u32| {
                     let start = Instant::now();
                     let instance = func_shared_ctx.upgrade().unwrap();
@@ -420,6 +421,7 @@ impl<C: Blockchain> WasmInstance<C> {
                         logger: instance.ctx.logger.cheap_clone(),
                         block_ptr: instance.ctx.block_ptr.cheap_clone(),
                         heap: instance,
+                        gas: gas.cheap_clone(),
                     };
                     let ret = (host_fn.func)(ctx, call_ptr).map_err(|e| match e {
                         HostExportError::Deterministic(e) => {
