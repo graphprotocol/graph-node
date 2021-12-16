@@ -1,14 +1,9 @@
 use std::{cmp::Ordering, sync::Arc};
 
-use graph::blockchain;
-use graph::blockchain::Block;
-use graph::blockchain::TriggerData;
+use graph::blockchain::{Block, BlockHash, MappingTrigger, TriggerData};
 use graph::cheap_clone::CheapClone;
 use graph::prelude::BlockNumber;
-use graph::runtime::asc_new;
-use graph::runtime::AscHeap;
-use graph::runtime::AscPtr;
-use graph::runtime::DeterministicHostError;
+use graph::runtime::{asc_new, AscHeap, AscPtr, DeterministicHostError};
 
 use crate::codec;
 
@@ -30,7 +25,7 @@ impl std::fmt::Debug for TendermintTrigger {
     }
 }
 
-impl blockchain::MappingTrigger for TendermintTrigger {
+impl MappingTrigger for TendermintTrigger {
     fn to_asc_ptr<H: AscHeap>(self, heap: &mut H) -> Result<AscPtr<()>, DeterministicHostError> {
         Ok(match self {
             TendermintTrigger::Block(block) => {
