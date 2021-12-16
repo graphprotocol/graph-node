@@ -140,7 +140,7 @@ impl<C: Blockchain> WasmInstance<C> {
 
     #[cfg(debug_assertions)]
     pub fn gas_used(&self) -> u64 {
-        self.gas.get().into()
+        self.gas.get().value()
     }
 
     fn invoke_handler<T>(

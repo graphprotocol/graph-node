@@ -102,7 +102,7 @@ impl<C: Blockchain> HostExports<C> {
         column_number: Option<u32>,
         gas: &GasCounter,
     ) -> Result<Never, DeterministicHostError> {
-        gas.consume_host_fn(gas::DEFAULT_BASE_COST.into())?;
+        gas.consume_host_fn(Gas::new(gas::DEFAULT_BASE_COST))?;
 
         let message = message
             .map(|message| format!("message: {}", message))
@@ -702,7 +702,7 @@ impl<C: Blockchain> HostExports<C> {
         &self,
         gas: &GasCounter,
     ) -> Result<Vec<u8>, DeterministicHostError> {
-        gas.consume_host_fn(Gas::from(gas::DEFAULT_BASE_COST))?;
+        gas.consume_host_fn(Gas::new(gas::DEFAULT_BASE_COST))?;
         Ok(self.data_source_address.clone())
     }
 
@@ -710,7 +710,7 @@ impl<C: Blockchain> HostExports<C> {
         &self,
         gas: &GasCounter,
     ) -> Result<String, DeterministicHostError> {
-        gas.consume_host_fn(Gas::from(gas::DEFAULT_BASE_COST))?;
+        gas.consume_host_fn(Gas::new(gas::DEFAULT_BASE_COST))?;
         Ok(self.data_source_network.clone())
     }
 
@@ -718,7 +718,7 @@ impl<C: Blockchain> HostExports<C> {
         &self,
         gas: &GasCounter,
     ) -> Result<Entity, DeterministicHostError> {
-        gas.consume_host_fn(Gas::from(gas::DEFAULT_BASE_COST))?;
+        gas.consume_host_fn(Gas::new(gas::DEFAULT_BASE_COST))?;
         Ok(self
             .data_source_context
             .as_ref()

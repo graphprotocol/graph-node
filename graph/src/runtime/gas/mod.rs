@@ -62,17 +62,10 @@ impl Gas {
     pub const fn new(gas: u64) -> Self {
         Gas(gas)
     }
-}
 
-impl From<u64> for Gas {
-    fn from(x: u64) -> Self {
-        Gas(x)
-    }
-}
-
-impl From<Gas> for u64 {
-    fn from(x: Gas) -> Self {
-        x.0
+    #[cfg(debug_assertions)]
+    pub const fn value(&self) -> u64 {
+        self.0
     }
 }
 
