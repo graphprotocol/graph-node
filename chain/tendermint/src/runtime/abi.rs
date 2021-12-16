@@ -1,12 +1,14 @@
 #[path = "../protobuf/fig.tendermint.codec.v1.rs"]
 mod pbcodec;
 
-use crate::codec;
-use crate::trigger::EventData;
+use anyhow::anyhow;
 use graph::runtime::{
     asc_new, AscHeap, AscIndexId, AscPtr, AscType, DeterministicHostError, ToAscObj,
 };
 use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, EnumPayload, Uint8Array};
+
+use crate::codec;
+use crate::trigger::EventData;
 
 pub(crate) use super::generated::*;
 
@@ -638,7 +640,7 @@ impl ToAscObj<AscSignedMsgTypeEnum> for SignedMessageTypeKind {
             2 => AscSignedMsgType::SignedMsgTypePrecommit,
             3 => AscSignedMsgType::SignedMsgTypeProposal,
             _ => {
-                return Err(DeterministicHostError(anyhow::format_err!(
+                return Err(DeterministicHostError(anyhow!(
                     "Invalid direction value {}",
                     self.0
                 )))
