@@ -117,7 +117,7 @@ impl Blockchain for Chain {
                 unified_api_version.clone(),
                 metrics.stopwatch.clone(),
             )
-            .expect(&format!("no adapter for network {}", self.name));
+            .unwrap_or_else(|_| panic!("no adapter for network {}", self.name));
 
         let firehose_endpoint = match self.firehose_endpoints.random() {
             Some(e) => e.clone(),

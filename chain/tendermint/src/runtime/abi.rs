@@ -164,7 +164,7 @@ impl ToAscObj<AscBytesArray> for Vec<Vec<u8>> {
         &self,
         heap: &mut H,
     ) -> Result<AscBytesArray, DeterministicHostError> {
-        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, &Bytes(&x))).collect();
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, &Bytes(x))).collect();
 
         Ok(AscBytesArray(Array::new(&content?, heap)?))
     }
@@ -367,7 +367,7 @@ impl ToAscObj<AscEvidence> for codec::Evidence {
         let sum = self
             .sum
             .as_ref()
-            .ok_or(missing_field_error("Evidence", "sum"))?;
+            .ok_or_else(|| missing_field_error("Evidence", "sum"))?;
 
         let (duplicate_vote_evidence, light_client_attack_evidence) = match sum {
             Sum::DuplicateVoteEvidence(d) => (asc_new(heap, d)?, AscPtr::null()),
@@ -391,12 +391,12 @@ impl ToAscObj<AscPublicKey> for codec::PublicKey {
         let sum = self
             .sum
             .as_ref()
-            .ok_or(missing_field_error("PublicKey", "sum"))?;
+            .ok_or_else(|| missing_field_error("PublicKey", "sum"))?;
 
         let (ed25519, secp256k1, sr25519) = match sum {
-            Sum::Ed25519(e) => (asc_new(heap, &Bytes(&e))?, AscPtr::null(), AscPtr::null()),
-            Sum::Secp256k1(s) => (AscPtr::null(), asc_new(heap, &Bytes(&s))?, AscPtr::null()),
-            Sum::Sr25519(s) => (AscPtr::null(), AscPtr::null(), asc_new(heap, &Bytes(&s))?),
+            Sum::Ed25519(e) => (asc_new(heap, &Bytes(e))?, AscPtr::null(), AscPtr::null()),
+            Sum::Secp256k1(s) => (AscPtr::null(), asc_new(heap, &Bytes(s))?, AscPtr::null()),
+            Sum::Sr25519(s) => (AscPtr::null(), AscPtr::null(), asc_new(heap, &Bytes(s))?),
         };
 
         Ok(AscPublicKey {

@@ -66,7 +66,7 @@ impl blockchain::DataSource<Chain> for DataSource {
 
         Ok(Some(TriggerWithHandler::new(
             trigger.cheap_clone(),
-            handler.to_owned(),
+            handler,
         )))
     }
 
@@ -79,7 +79,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn network(&self) -> Option<&str> {
-        self.network.as_ref().map(|s| s.as_str())
+        self.network.as_deref()
     }
 
     fn context(&self) -> Arc<Option<DataSourceContext>> {
