@@ -28,14 +28,8 @@ impl std::fmt::Debug for TendermintTrigger {
 impl MappingTrigger for TendermintTrigger {
     fn to_asc_ptr<H: AscHeap>(self, heap: &mut H) -> Result<AscPtr<()>, DeterministicHostError> {
         Ok(match self {
-            TendermintTrigger::Block(block) => {
-                //let block = TendermintBlockData::from(block.as_ref());
-                //b.header()
-                asc_new(heap, block.as_ref())?.erase()
-            }
-            TendermintTrigger::Event(data) => {
-                asc_new(heap, data.as_ref())?.erase()
-            }
+            TendermintTrigger::Block(block) => asc_new(heap, block.as_ref())?.erase(),
+            TendermintTrigger::Event(data) => asc_new(heap, data.as_ref())?.erase(),
         })
     }
 }
@@ -125,6 +119,6 @@ impl TriggerData for TendermintTrigger {
 }
 
 pub struct EventData {
-    pub event: codec::Event, // REVIEW: Do we want to have this behind an `Arc` wrapper?
+    pub event: codec::Event,
     pub block: Arc<codec::EventList>,
 }
