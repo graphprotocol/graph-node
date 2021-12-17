@@ -1,3 +1,4 @@
+use chrono::prelude::{Utc};
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
@@ -41,6 +42,10 @@ mod public {
             net_version -> Varchar,
             genesis_block_hash -> Varchar,
             head_block_cursor -> Nullable<Varchar>,
+            backfill_block_cursor -> Nullable<Varchar>,
+            backfill_completed -> Nullable<Bool>,
+            backfill_completed_date -> Nullable<Timestamp>,
+            backfill_target_block_number -> Nullable<BigInt>,
         }
     }
 }
@@ -612,6 +617,37 @@ mod data {
                 .map(|number| {
                     BlockNumber::try_from(number)
                         .map_err(|e| StoreError::QueryExecutionError(e.to_string()))
+                })
+                .transpose()
+        }
+
+        pub(super) fn min_block_number(
+            &self,
+            conn: &PgConnection,
+            chain: &str,
+        ) -> Result<Option<BlockNumber>, Error> {
+            let number = match self {
+                Storage::Shared => {
+                    use public::ethereum_blocks as b;
+
+                    b::table
+                        .filter(b::network_name.eq(chain))
+                        .order_by(b::number.asc())
+                        .select(b::number)
+                        .first::<i64>(conn)
+                        .optional()?
+                }
+                Storage::Private(Schema { blocks, .. }) => blocks
+                    .table()
+                    .order_by(blocks.number().asc())
+                    .select(blocks.number())
+                    .first::<i64>(conn)
+                    .optional()?,
+            };
+            number
+                .map(|number| {
+                    BlockNumber::try_from(number)
+                        .map_err(Error::from)
                 })
                 .transpose()
         }
@@ -1462,6 +1498,122 @@ impl ChainStoreTrait for ChainStore {
             .map_err(CancelableError::from)
         })
         .await?;
+
+        Ok(())
+    }
+
+    fn chain_initial_backfill_target_block_num(&self) -> Result<Option<BlockNumber>, Error> {
+        let chain = self.chain.clone();
+        let storage = self.storage.clone();
+        let conn = self.get_conn()?;
+
+        storage.min_block_number(&conn, chain.as_str())
+    }
+
+    fn chain_backfill_target_block_num(&self) -> Result<Option<BlockNumber>, Error> {
+        use public::ethereum_networks::dsl::*;
+
+        ethereum_networks
+            .select(backfill_target_block_number)
+            .filter(name.eq(&self.chain))
+            .load::<Option<i64>>(&*self.get_conn()?)
+            .map(|rows| {
+                rows.first().map(|opt| match opt {
+                    Some(t) => {
+                        let bn = BlockNumber::try_from(*t).unwrap();
+                        Some(bn)
+                    },
+                    None => None
+                }).and_then(|opt| opt)
+            })
+            .map_err(Error::from)
+    }
+
+    fn chain_backfill_is_completed(&self) -> Result<Option<bool>, Error> {
+        use public::ethereum_networks::dsl::*;
+
+        ethereum_networks
+            .select(backfill_completed)
+            .filter(name.eq(&self.chain))
+            .load::<Option<bool>>(&*self.get_conn()?)
+            .map(|rows| {
+                rows.first().map(|opt| match opt {
+                    Some(t) => Some(*t),
+                    None => None
+                }).and_then(|opt| opt)
+            })
+            .map_err(Error::from)
+    }
+
+    async fn set_chain_backfill_as_completed(self: Arc<Self>) -> Result<(), Error> {
+        use public::ethereum_networks as n;
+
+        let pool = self.pool.clone();
+
+        let now = Utc::now().naive_utc();
+        pool.with_conn(move |conn, _| {
+            conn.transaction(|| -> Result<(), StoreError> {
+                update(n::table.filter(n::name.eq(&self.chain)))
+                    .set((n::backfill_completed.eq(true), n::backfill_completed_date.eq(now)))
+                    .execute(conn)?;
+
+                Ok(())
+            })
+                .map_err(CancelableError::from)
+        }).await?;
+
+        Ok(())
+    }
+
+    fn chain_backfill_cursor(&self) -> Result<Option<String>, Error> {
+        use public::ethereum_networks::dsl::*;
+
+        ethereum_networks
+            .select(backfill_block_cursor)
+            .filter(name.eq(&self.chain))
+            .load::<Option<String>>(&*self.get_conn()?)
+            .map(|rows| {
+                rows.first()
+                    .map(|cursor_opt| cursor_opt.as_ref().map(|cursor| cursor.clone()))
+                    .and_then(|opt| opt)
+            })
+            .map_err(Error::from)
+    }
+
+    async fn set_chain_backfill_cursor(self: Arc<Self>, cursor: String) -> Result<(), Error> {
+        use public::ethereum_networks as n;
+
+        let pool = self.pool.clone();
+
+        pool.with_conn(move |conn, _| {
+            conn.transaction(|| -> Result<(), StoreError> {
+                update(n::table.filter(n::name.eq(&self.chain)))
+                    .set(n::backfill_block_cursor.eq(cursor))
+                    .execute(conn)?;
+
+                Ok(())
+            })
+                .map_err(CancelableError::from)
+        }).await?;
+
+        Ok(())
+    }
+
+    async fn set_chain_backfill_target_block_num(self: Arc<Self>, block_num: BlockNumber) -> Result<(), Error> {
+        use public::ethereum_networks as n;
+
+        let pool = self.pool.clone();
+
+        pool.with_conn(move |conn, _| {
+            conn.transaction(|| -> Result<(), StoreError> {
+                update(n::table.filter(n::name.eq(&self.chain)))
+                    .set(n::backfill_target_block_number.eq(block_num as i64))
+                    .execute(conn)?;
+
+                Ok(())
+            })
+                .map_err(CancelableError::from)
+        }).await?;
 
         Ok(())
     }

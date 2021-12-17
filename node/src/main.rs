@@ -653,13 +653,22 @@ fn start_firehose_block_ingestor<C, M>(
             match store.block_store().chain_store(network_name.as_ref()) {
                 Some(s) => {
                     let block_ingestor = FirehoseBlockIngestor::<M>::new(
-                        s,
+                        s.clone(),
                         endpoint.clone(),
                         logger.new(o!("component" => "FirehoseBlockIngestor", "provider" => endpoint.provider.clone())),
                     );
 
                     // Run the Firehose block ingestor in the background
                     graph::spawn(block_ingestor.run());
+
+                    let backfill_block_ingestor = FirehoseBlockIngestor::<M>::new(
+                        s.clone(),
+                        endpoint.clone(),
+                        logger.new(o!("component" => "FirehoseBlockIngestor", "provider" => endpoint.provider.clone())),
+                    );
+
+                    // Run the Firehose backfill block ingestor in the background
+                    graph::spawn(backfill_block_ingestor.run_backfill());
                 },
                 None => {
                     error!(logger, "Not starting firehose block ingestor (no chain store available)"; "network_name" => &network_name);

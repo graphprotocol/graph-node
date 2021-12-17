@@ -1339,6 +1339,33 @@ pub trait ChainStore: Send + Sync + 'static {
         cursor: String,
     ) -> Result<(), Error>;
 
+    /// Get the current backfill block cursor for this chain.
+    ///
+    /// The backfill block cursor will be None on initial set up.
+    fn chain_backfill_cursor(&self) -> Result<Option<String>, Error>;
+
+    /// Set the current backfill cursor for this chain.
+    async fn set_chain_backfill_cursor(self: Arc<Self>, cursor: String) -> Result<(), Error>;
+
+    /// Get the backfill target block number from the ethereum_networks table.
+    ///
+    /// If this value is not yet set, will return None
+    fn chain_backfill_target_block_num(&self) -> Result<Option<BlockNumber>, Error>;
+
+    /// Set the backfill target block number in the ethereum_networks table
+    async fn set_chain_backfill_target_block_num(self: Arc<Self>, block_num: BlockNumber) -> Result<(), Error>;
+
+    /// Determine the initial backfill target block number from the raw blocks storage table
+    ///
+    /// Should only be called once
+    fn chain_initial_backfill_target_block_num(&self) -> Result<Option<BlockNumber>, Error>;
+
+    /// Returns whether or not the backfill process is complete
+    fn chain_backfill_is_completed(&self) -> Result<Option<bool>, Error>;
+
+    /// This method sets the backfill process as completed
+    async fn set_chain_backfill_as_completed(self: Arc<Self>) -> Result<(), Error>;
+
     /// Returns the blocks present in the store.
     fn blocks(&self, hashes: &[H256]) -> Result<Vec<serde_json::Value>, Error>;
 
