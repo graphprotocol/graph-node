@@ -6,6 +6,7 @@ edition = "2018"
 [dependencies]
 anyhow = "1.0"
 async-trait = "0.1.50"
+async-stream = "0.3"
 atomic_refcell = "0.1.8"
 bigdecimal = { version = "0.1.0", features = ["serde"] }
 bytes = "1.0.1"

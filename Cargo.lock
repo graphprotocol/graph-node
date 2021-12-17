@@ -1475,6 +1475,7 @@ version = "0.25.0"
 dependencies = [
  "Inflector",
  "anyhow",
+ "async-stream",
  "async-trait",
  "atomic_refcell",
  "bigdecimal",
