@@ -199,118 +199,17 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         _to: BlockNumber,
         _filter: &TriggerFilter,
     ) -> Result<Vec<BlockWithTriggers<Chain>>, Error> {
-        // FIXME (NEAR): Scanning triggers makes little sense in Firehose approach, let's see
-        Ok(vec![])
+        panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
     async fn triggers_in_block(
         &self,
         _logger: &Logger,
-        _block: codec::Block,
+        block: codec::Block,
         _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
-        // FIXME (NEAR): Share implementation with FirehoseMapper::firehose_triggers_in_block version.
-        // This is currently unreachable since Near does not yet support dynamic data sources.
-        todo!()
-    }
-
-    async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
-        // FIXME (NEAR): Might not be necessary for NEAR support for now
-        Ok(true)
-    }
-
-    fn ancestor_block(
-        &self,
-        _ptr: BlockPtr,
-        _offset: BlockNumber,
-    ) -> Result<Option<codec::Block>, Error> {
-        // FIXME (NEAR):  Might not be necessary for NEAR support for now
-        Ok(None)
-    }
-
-    /// Panics if `block` is genesis.
-    /// But that's ok since this is only called when reverting `block`.
-    async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
-        // FIXME (NEAR):  Might not be necessary for NEAR support for now
-        Ok(Some(BlockPtr {
-            hash: BlockHash::from(vec![0xff; 32]),
-            number: block.number.saturating_sub(1),
-        }))
-    }
-}
-
-pub struct FirehoseMapper {}
-
-impl FirehoseMapperTrait<Chain> for FirehoseMapper {
-    fn to_block_stream_event(
-        &self,
-        _logger: &Logger,
-        response: &bstream::BlockResponseV2,
-        _adapter: &TriggersAdapter,
-        filter: &TriggerFilter,
-    ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
-        let step = bstream::ForkStep::from_i32(response.step).unwrap_or_else(|| {
-            panic!(
-                "unknown step i32 value {}, maybe you forgot update & re-regenerate the protobuf definitions?",
-                response.step
-            )
-        });
-        let any_block = response
-            .block
-            .as_ref()
-            .expect("block payload information should always be present");
-
-        // Right now, this is done in all cases but in reality, with how the BlockStreamEvent::Revert
-        // is defined right now, only block hash and block number is necessary. However, this information
-        // is not part of the actual bstream::BlockResponseV2 payload. As such, we need to decode the full
-        // block which is useless.
-        //
-        // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
-        // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
-        let block = codec::Block::decode(any_block.value.as_ref())?;
-
-        match step {
-            bstream::ForkStep::StepNew => Ok(BlockStreamEvent::ProcessBlock(
-                self.firehose_triggers_in_block(&block, filter)?,
-                Some(response.cursor.clone()),
-            )),
-
-            bstream::ForkStep::StepUndo => {
-                let header = block.header();
-
-                Ok(BlockStreamEvent::Revert(
-                    BlockPtr {
-                        hash: BlockHash::from(header.hash.as_ref().unwrap().bytes.clone()),
-                        number: header.height as i32,
-                    },
-                    Some(response.cursor.clone()),
-                    None, // FIXME: we should get the parent block pointer when we have access to parent block height
-                ))
-            }
-
-            bstream::ForkStep::StepIrreversible => {
-                panic!("irreversible step is not handled and should not be requested in the Firehose request")
-            }
-
-            bstream::ForkStep::StepUnknown => {
-                panic!("unknown step should not happen in the Firehose response")
-            }
-        }
-    }
-}
-
-impl FirehoseMapper {
-    // FIXME: This should be replaced by using the `TriggersAdapter` struct directly. However, the TriggersAdapter trait
-    //        is async. It's actual async usage is done inside a manual `poll` implementation in `firehose_block_stream#poll_next`
-    //        value. An upcoming improvement will be to remove this `poll_next`. Once the refactor occurs, this should be
-    //        removed and TriggersAdapter::triggers_in_block should be use straight.
-    fn firehose_triggers_in_block(
-        &self,
-        block: &codec::Block,
-        _filter: &TriggerFilter,
-    ) -> Result<BlockWithTriggers<Chain>, FirehoseError> {
         // TODO: Find the best place to introduce an `Arc` and avoid this clone.
-        let block = Arc::new(block.clone());
+        let shared_block = Arc::new(block.clone());
 
         // Filter non-successful or non-action receipts.
         let receipts = block.shards.iter().flat_map(|shard| {
@@ -339,7 +238,7 @@ impl FirehoseMapper {
                     Some(trigger::ReceiptWithOutcome {
                         outcome: outcome.execution_outcome.as_ref()?.clone(),
                         receipt: outcome.receipt.as_ref()?.clone(),
-                        block: block.cheap_clone(),
+                        block: shared_block.cheap_clone(),
                     })
                 })
         });
@@ -348,10 +247,92 @@ impl FirehoseMapper {
             .map(|r| NearTrigger::Receipt(Arc::new(r)))
             .collect();
 
-        trigger_data.push(NearTrigger::Block(block.cheap_clone()));
+        trigger_data.push(NearTrigger::Block(shared_block.cheap_clone()));
 
-        // TODO: `block` should probably be an `Arc` in `BlockWithTriggers` to avoid this clone.
-        Ok(BlockWithTriggers::new(block.as_ref().clone(), trigger_data))
+        Ok(BlockWithTriggers::new(block, trigger_data))
+    }
+
+    async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
+        panic!("Should never be called since not used by FirehoseBlockStream")
+    }
+
+    fn ancestor_block(
+        &self,
+        _ptr: BlockPtr,
+        _offset: BlockNumber,
+    ) -> Result<Option<codec::Block>, Error> {
+        panic!("Should never be called since FirehoseBlockStream cannot resolve it")
+    }
+
+    /// Panics if `block` is genesis.
+    /// But that's ok since this is only called when reverting `block`.
+    async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
+        // FIXME (NEAR):  Might not be necessary for NEAR support for now
+        Ok(Some(BlockPtr {
+            hash: BlockHash::from(vec![0xff; 32]),
+            number: block.number.saturating_sub(1),
+        }))
+    }
+}
+
+pub struct FirehoseMapper {}
+
+#[async_trait]
+impl FirehoseMapperTrait<Chain> for FirehoseMapper {
+    async fn to_block_stream_event(
+        &self,
+        logger: &Logger,
+        response: &bstream::BlockResponseV2,
+        adapter: &TriggersAdapter,
+        filter: &TriggerFilter,
+    ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
+        let step = bstream::ForkStep::from_i32(response.step).unwrap_or_else(|| {
+            panic!(
+                "unknown step i32 value {}, maybe you forgot update & re-regenerate the protobuf definitions?",
+                response.step
+            )
+        });
+        let any_block = response
+            .block
+            .as_ref()
+            .expect("block payload information should always be present");
+
+        // Right now, this is done in all cases but in reality, with how the BlockStreamEvent::Revert
+        // is defined right now, only block hash and block number is necessary. However, this information
+        // is not part of the actual bstream::BlockResponseV2 payload. As such, we need to decode the full
+        // block which is useless.
+        //
+        // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
+        // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
+        let block = codec::Block::decode(any_block.value.as_ref())?;
+
+        match step {
+            bstream::ForkStep::StepNew => Ok(BlockStreamEvent::ProcessBlock(
+                adapter.triggers_in_block(logger, block, filter).await?,
+                Some(response.cursor.clone()),
+            )),
+
+            bstream::ForkStep::StepUndo => {
+                let header = block.header();
+
+                Ok(BlockStreamEvent::Revert(
+                    BlockPtr {
+                        hash: BlockHash::from(header.hash.as_ref().unwrap().bytes.clone()),
+                        number: header.height as i32,
+                    },
+                    Some(response.cursor.clone()),
+                    None, // FIXME: we should get the parent block pointer when we have access to parent block height
+                ))
+            }
+
+            bstream::ForkStep::StepIrreversible => {
+                panic!("irreversible step is not handled and should not be requested in the Firehose request")
+            }
+
+            bstream::ForkStep::StepUnknown => {
+                panic!("unknown step should not happen in the Firehose response")
+            }
+        }
     }
 }
 

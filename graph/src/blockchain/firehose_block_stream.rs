@@ -94,7 +94,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                     for await response in stream {
                         match response {
                             Ok(v) => {
-                                match mapper.to_block_stream_event(&logger, &v, &adapter, &filter) {
+                                match mapper.to_block_stream_event(&logger, &v, &adapter, &filter).await {
                                     Ok(event) => {
                                         yield event;
 
