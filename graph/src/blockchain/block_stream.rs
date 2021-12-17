@@ -77,8 +77,9 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error>;
 }
 
+#[async_trait]
 pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
-    fn to_block_stream_event(
+    async fn to_block_stream_event(
         &self,
         logger: &Logger,
         response: &bstream::BlockResponseV2,
