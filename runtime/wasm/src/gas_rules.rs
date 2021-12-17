@@ -141,6 +141,7 @@ impl Rules for GasRules {
             End => 100,
             Return => 100,
             Drop => 100,
+            SignExt(_) => 100,
             Nop => 1,
             Unreachable => 1,
         };
