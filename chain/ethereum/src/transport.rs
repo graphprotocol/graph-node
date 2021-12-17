@@ -17,6 +17,7 @@ pub enum Transport {
 
 impl Transport {
     /// Creates an IPC transport.
+    #[cfg(unix)]
     pub async fn new_ipc(ipc: &str) -> Self {
         ipc::Ipc::new(ipc)
             .await
