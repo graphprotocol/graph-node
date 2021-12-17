@@ -119,97 +119,6 @@ impl Chain {
             is_ingestible,
         }
     }
-
-    async fn new_polling_block_stream(
-        &self,
-        deployment: DeploymentLocator,
-        start_blocks: Vec<BlockNumber>,
-        adapter: Arc<TriggersAdapter>,
-        filter: Arc<TriggerFilter>,
-        metrics: Arc<BlockStreamMetrics>,
-        unified_api_version: UnifiedMappingApiVersion,
-    ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        let logger = self
-            .logger_factory
-            .subgraph_logger(&deployment)
-            .new(o!("component" => "BlockStream"));
-        let chain_store = self.chain_store().clone();
-        let writable = self
-            .subgraph_store
-            .cheap_clone()
-            .writable(logger.clone(), deployment.id)
-            .await
-            .with_context(|| format!("no store for deployment `{}`", deployment.hash))?;
-        let chain_head_update_stream = self
-            .chain_head_update_listener
-            .subscribe(self.name.clone(), logger.clone());
-
-        // Special case: Detect Celo and set the threshold to 0, so that eth_getLogs is always used.
-        // This is ok because Celo blocks are always final. And we _need_ to do this because
-        // some events appear only in eth_getLogs but not in transaction receipts.
-        // See also ca0edc58-0ec5-4c89-a7dd-2241797f5e50.
-        let chain_id = self.eth_adapters.cheapest().unwrap().chain_id().await?;
-        let reorg_threshold = match CELO_CHAIN_IDS.contains(&chain_id) {
-            false => self.reorg_threshold,
-            true => 0,
-        };
-
-        let start_block = writable.block_ptr()?;
-
-        Ok(Box::new(PollingBlockStream::new(
-            writable,
-            chain_store,
-            chain_head_update_stream,
-            adapter,
-            self.node_id.clone(),
-            deployment.hash,
-            filter,
-            start_blocks,
-            reorg_threshold,
-            logger,
-            metrics,
-            *MAX_BLOCK_RANGE_SIZE,
-            *TARGET_TRIGGERS_PER_BLOCK_RANGE,
-            unified_api_version,
-            start_block,
-        )))
-    }
-
-    async fn new_firehose_block_stream(
-        &self,
-        deployment: DeploymentLocator,
-        start_blocks: Vec<BlockNumber>,
-        adapter: Arc<TriggersAdapter>,
-        filter: Arc<TriggerFilter>,
-    ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        let firehose_endpoint = match self.firehose_endpoints.random() {
-            Some(e) => e.clone(),
-            None => return Err(anyhow::format_err!("no firehose endpoint available",)),
-        };
-
-        let logger = self
-            .logger_factory
-            .subgraph_logger(&deployment)
-            .new(o!("component" => "FirehoseBlockStream"));
-
-        let firehose_mapper = Arc::new(FirehoseMapper {});
-        let firehose_cursor = self
-            .subgraph_store
-            .cheap_clone()
-            .writable(logger.clone(), deployment.id)
-            .await?
-            .block_cursor()?;
-
-        Ok(Box::new(FirehoseBlockStream::new(
-            firehose_endpoint,
-            firehose_cursor,
-            firehose_mapper,
-            adapter,
-            filter,
-            start_blocks,
-            logger,
-        )))
-    }
 }
 
 #[async_trait]
@@ -279,11 +188,12 @@ impl Blockchain for Chain {
         Ok(Arc::new(adapter))
     }
 
-    async fn new_block_stream(
+    async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        filter: Arc<TriggerFilter>,
+        firehose_cursor: Option<String>,
+        filter: Arc<Self::TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
@@ -300,20 +210,93 @@ impl Blockchain for Chain {
                 self.name, requirements
             ));
 
-        if self.firehose_endpoints.len() > 0 {
-            self.new_firehose_block_stream(deployment, start_blocks, adapter, filter)
-                .await
-        } else {
-            self.new_polling_block_stream(
-                deployment,
-                start_blocks,
-                adapter,
-                filter,
-                metrics,
-                unified_api_version,
+        let firehose_endpoint = match self.firehose_endpoints.random() {
+            Some(e) => e.clone(),
+            None => return Err(anyhow::format_err!("no firehose endpoint available",)),
+        };
+
+        let logger = self
+            .logger_factory
+            .subgraph_logger(&deployment)
+            .new(o!("component" => "FirehoseBlockStream"));
+
+        let firehose_mapper = Arc::new(FirehoseMapper {});
+
+        Ok(Box::new(FirehoseBlockStream::new(
+            firehose_endpoint,
+            firehose_cursor,
+            firehose_mapper,
+            adapter,
+            filter,
+            start_blocks,
+            logger,
+        )))
+    }
+
+    async fn new_polling_block_stream(
+        &self,
+        deployment: DeploymentLocator,
+        start_blocks: Vec<BlockNumber>,
+        subgraph_start_block: Option<BlockPtr>,
+        filter: Arc<Self::TriggerFilter>,
+        metrics: Arc<BlockStreamMetrics>,
+        unified_api_version: UnifiedMappingApiVersion,
+    ) -> Result<Box<dyn BlockStream<Self>>, Error> {
+        let requirements = filter.node_capabilities();
+        let adapter = self
+            .triggers_adapter(
+                &deployment,
+                &requirements,
+                unified_api_version.clone(),
+                metrics.stopwatch.clone(),
             )
+            .expect(&format!(
+                "no adapter for network {} with capabilities {}",
+                self.name, requirements
+            ));
+
+        let logger = self
+            .logger_factory
+            .subgraph_logger(&deployment)
+            .new(o!("component" => "BlockStream"));
+        let chain_store = self.chain_store().clone();
+        let writable = self
+            .subgraph_store
+            .cheap_clone()
+            .writable(logger.clone(), deployment.id)
             .await
-        }
+            .with_context(|| format!("no store for deployment `{}`", deployment.hash))?;
+        let chain_head_update_stream = self
+            .chain_head_update_listener
+            .subscribe(self.name.clone(), logger.clone());
+
+        // Special case: Detect Celo and set the threshold to 0, so that eth_getLogs is always used.
+        // This is ok because Celo blocks are always final. And we _need_ to do this because
+        // some events appear only in eth_getLogs but not in transaction receipts.
+        // See also ca0edc58-0ec5-4c89-a7dd-2241797f5e50.
+        let chain_id = self.eth_adapters.cheapest().unwrap().chain_id().await?;
+        let reorg_threshold = match CELO_CHAIN_IDS.contains(&chain_id) {
+            false => self.reorg_threshold,
+            true => 0,
+        };
+
+        Ok(Box::new(PollingBlockStream::new(
+            writable,
+            chain_store,
+            chain_head_update_stream,
+            adapter,
+            self.node_id.clone(),
+            deployment.hash,
+            filter,
+            start_blocks,
+            reorg_threshold,
+            logger,
+            metrics,
+            *MAX_BLOCK_RANGE_SIZE,
+            *TARGET_TRIGGERS_PER_BLOCK_RANGE,
+            unified_api_version,
+            subgraph_start_block,
+        )))
     }
 
     fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter> {
@@ -364,6 +347,10 @@ impl Blockchain for Chain {
             eth_adapters: self.eth_adapters.cheap_clone(),
             call_cache: self.call_cache.cheap_clone(),
         })
+    }
+
+    fn is_firehose_supported(&self) -> bool {
+        self.firehose_endpoints.len() > 0
     }
 }
 

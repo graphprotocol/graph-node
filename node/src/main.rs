@@ -893,7 +893,6 @@ fn near_networks_as_chains(
                         logger_factory.clone(),
                         network_name.clone(),
                         chain_store,
-                        store.subgraph_store(),
                         firehose_endpoints.clone(),
                     )),
                     firehose_endpoints: firehose_endpoints.clone(),
