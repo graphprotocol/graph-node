@@ -483,6 +483,16 @@ impl EthereumBlockFilter {
     fn requires_traces(&self) -> bool {
         !self.contract_addresses.is_empty()
     }
+
+    /// An empty filter is one that never matches.
+    pub fn is_empty(&self) -> bool {
+        // If we are triggering every block, we are of course not empty
+        if self.trigger_every_block {
+            return false;
+        }
+
+        self.contract_addresses.is_empty()
+    }
 }
 
 #[derive(Clone)]

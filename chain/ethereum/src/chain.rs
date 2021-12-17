@@ -513,12 +513,22 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             }
             BlockFinality::NonFinal(full_block) => {
                 let mut triggers = Vec::new();
-                triggers.append(&mut parse_log_triggers(
-                    &filter.log,
-                    &full_block.ethereum_block,
-                ));
-                triggers.append(&mut parse_call_triggers(&filter.call, &full_block)?);
-                triggers.append(&mut parse_block_triggers(filter.block.clone(), &full_block));
+
+                if !filter.log.is_empty() {
+                    triggers.append(&mut parse_log_triggers(
+                        &filter.log,
+                        &full_block.ethereum_block,
+                    ));
+                }
+
+                if !filter.call.is_empty() {
+                    triggers.append(&mut parse_call_triggers(&filter.call, &full_block)?);
+                }
+
+                if !filter.block.is_empty() {
+                    triggers.append(&mut parse_block_triggers(filter.block.clone(), &full_block));
+                }
+
                 Ok(BlockWithTriggers::new(block, triggers))
             }
         }
