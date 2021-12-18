@@ -402,11 +402,19 @@ impl FromIterator<(BlockNumber, Address, FunctionSelector)> for EthereumCallFilt
 
 impl From<EthereumBlockFilter> for EthereumCallFilter {
     fn from(ethereum_block_filter: EthereumBlockFilter) -> Self {
+        EthereumCallFilter::from(&ethereum_block_filter)
+    }
+}
+
+impl From<&EthereumBlockFilter> for EthereumCallFilter {
+    fn from(ethereum_block_filter: &EthereumBlockFilter) -> Self {
         Self {
             contract_addresses_function_signatures: ethereum_block_filter
                 .contract_addresses
-                .into_iter()
-                .map(|(start_block_opt, address)| (address, (start_block_opt, HashSet::default())))
+                .iter()
+                .map(|(start_block_opt, address)| {
+                    (address.clone(), (*start_block_opt, HashSet::default()))
+                })
                 .collect::<HashMap<Address, (BlockNumber, HashSet<FunctionSelector>)>>(),
         }
     }
