@@ -24,9 +24,17 @@ pub fn ensure<T, E: std::fmt::Display>(res: Result<T, E>, msg: &str) -> T {
 
 pub fn main() {
     let args: Vec<String> = env::args().collect();
-    let schema = match args.len() {
+    let (schema, active_flags) = match args.len() {
         0 | 1 => usage("please provide a GraphQL schema"),
-        2 => args[1].clone(),
+        2 => (args[1].clone(), vec!["genesis".to_string()]),
+        3 => (
+            args[1].clone(),
+            args[2]
+                .clone()
+                .split(',')
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>(),
+        ),
         _ => usage("too many arguments"),
     };
     let schema = ensure(fs::read_to_string(schema), "Can not read schema file");
@@ -34,7 +42,10 @@ pub fn main() {
         parse_schema(&schema).map(|v| v.into_static()),
         "Failed to parse schema",
     );
-    let schema = ensure(api_schema(&schema), "Failed to convert to API schema");
+    let schema = ensure(
+        api_schema(&schema, active_flags),
+        "Failed to convert to API schema",
+    );
 
     println!("{}", schema);
 }

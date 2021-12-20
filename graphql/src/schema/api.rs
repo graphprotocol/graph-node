@@ -1,4 +1,7 @@
-use std::str::FromStr;
+use std::{
+    borrow::{Borrow, BorrowMut},
+    str::FromStr,
+};
 
 use graphql_parser::Pos;
 use inflector::Inflector;
@@ -70,29 +73,88 @@ impl TryFrom<&r::Value> for ErrorPolicy {
     }
 }
 
+trait GraphQLSchemaComponent {
+    fn should_apply(&self, active_flags: &Vec<String>) -> bool;
+    fn apply(&self, input_schema: &Document, schema: &mut Document) -> Result<(), APISchemaError>;
+}
+
+struct GenesisSchema;
+impl GraphQLSchemaComponent for GenesisSchema {
+    fn should_apply(&self, _active_flags: &Vec<String>) -> bool {
+        return true;
+    }
+
+    fn apply(&self, input_schema: &Document, schema: &mut Document) -> Result<(), APISchemaError> {
+        let object_types = input_schema.get_object_type_definitions();
+        let interface_types = input_schema.get_interface_type_definitions();
+
+        add_directives(schema);
+        add_builtin_scalar_types(schema)?;
+        add_order_direction_enum(schema);
+        add_block_height_type(schema);
+        add_meta_field_type(schema);
+        add_types_for_object_types(schema, &object_types)?;
+        add_types_for_interface_types(schema, &interface_types)?;
+        add_field_arguments(schema, input_schema)?;
+        add_query_type(schema, &object_types, &interface_types)?;
+        add_subscription_type(schema, &object_types, &interface_types)?;
+
+        Ok(())
+    }
+}
+
+struct DemoExtraSchema;
+impl GraphQLSchemaComponent for DemoExtraSchema {
+    fn should_apply(&self, _active_flags: &Vec<String>) -> bool {
+        return _active_flags.contains(&"demo".to_string());
+    }
+
+    fn apply(&self, input_schema: &Document, schema: &mut Document) -> Result<(), APISchemaError> {
+        let typedef = TypeDefinition::Object(ObjectType {
+            position: Pos::default(),
+            description: None,
+            name: "DemoSchemaTest".to_string(),
+            implements_interfaces: vec![],
+            directives: vec![],
+            fields: vec![Field {
+                position: Pos::default(),
+                description: None,
+                name: "test".to_camel_case(), // Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()`
+                arguments: vec![],
+                field_type: Type::NamedType("String".to_owned()),
+                directives: vec![],
+            }],
+        });
+
+        let def = Definition::TypeDefinition(typedef);
+        schema.definitions.push(def);
+
+        Ok(())
+    }
+}
+
 /// Derives a full-fledged GraphQL API schema from an input schema.
 ///
 /// The input schema should only have type/enum/interface/union definitions
 /// and must not include a root Query type. This Query type is derived,
 /// with all its fields and their input arguments, based on the existing
 /// types.
-pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
-    // Refactor: Take `input_schema` by value.
-    let object_types = input_schema.get_object_type_definitions();
-    let interface_types = input_schema.get_interface_type_definitions();
+pub fn api_schema(
+    input_schema: &Document,
+    active_flags: Vec<String>,
+) -> Result<Document, APISchemaError> {
+    let mut features: Vec<Box<dyn GraphQLSchemaComponent>> = Vec::new();
+    features.push(Box::new(GenesisSchema {}));
+    features.push(Box::new(DemoExtraSchema {}));
 
     // Refactor: Don't clone the schema.
     let mut schema = input_schema.clone();
-    add_directives(&mut schema);
-    add_builtin_scalar_types(&mut schema)?;
-    add_order_direction_enum(&mut schema);
-    add_block_height_type(&mut schema);
-    add_meta_field_type(&mut schema);
-    add_types_for_object_types(&mut schema, &object_types)?;
-    add_types_for_interface_types(&mut schema, &interface_types)?;
-    add_field_arguments(&mut schema, input_schema)?;
-    add_query_type(&mut schema, &object_types, &interface_types)?;
-    add_subscription_type(&mut schema, &object_types, &interface_types)?;
+
+    for feature in features {
+        if feature.should_apply(&active_flags) {
+            feature.apply(input_schema, &mut schema)?;
+        }
+    }
 
     // Remove the `_Schema_` type from the generated schema.
     schema.definitions.retain(|d| match d {
@@ -866,7 +928,7 @@ mod tests {
     fn api_schema_contains_built_in_scalar_types() {
         let input_schema =
             parse_schema("type User { id: ID! }").expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derive API schema");
+        let schema = api_schema(&input_schema, vec![]).expect("Failed to derive API schema");
 
         schema
             .get_named_type("Boolean")
@@ -889,7 +951,7 @@ mod tests {
     fn api_schema_contains_order_direction_enum() {
         let input_schema = parse_schema("type User { id: ID!, name: String! }")
             .expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+        let schema = api_schema(&input_schema, vec![]).expect("Failed to derived API schema");
 
         let order_direction = schema
             .get_named_type("OrderDirection")
@@ -912,7 +974,7 @@ mod tests {
     fn api_schema_contains_query_type() {
         let input_schema =
             parse_schema("type User { id: ID! }").expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derive API schema");
+        let schema = api_schema(&input_schema, vec![]).expect("Failed to derive API schema");
         schema
             .get_named_type("Query")
             .expect("Root Query type is missing in API schema");
@@ -922,7 +984,7 @@ mod tests {
     fn api_schema_contains_field_order_by_enum() {
         let input_schema = parse_schema("type User { id: ID!, name: String! }")
             .expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+        let schema = api_schema(&input_schema, vec![]).expect("Failed to derived API schema");
 
         let user_order_by = schema
             .get_named_type("User_orderBy")
@@ -972,7 +1034,7 @@ mod tests {
             "#,
         )
         .expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+        let schema = api_schema(&input_schema, vec![]).expect("Failed to derived API schema");
 
         let user_filter = schema
             .get_named_type("User_filter")
@@ -1052,7 +1114,7 @@ mod tests {
             "type User { id: ID!, name: String! } type UserProfile { id: ID!, title: String! }",
         )
         .expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derive API schema");
+        let schema = api_schema(&input_schema, vec![]).expect("Failed to derive API schema");
 
         let query_type = schema
             .get_named_type("Query")
@@ -1149,7 +1211,7 @@ mod tests {
             ",
         )
         .expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+        let schema = api_schema(&input_schema, vec![]).expect("Failed to derived API schema");
 
         let query_type = schema
             .get_named_type("Query")
@@ -1238,7 +1300,7 @@ type Gravatar @entity {
 }
 "#;
         let input_schema = parse_schema(SCHEMA).expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derive API schema");
+        let schema = api_schema(&input_schema, vec![]).expect("Failed to derive API schema");
 
         let query_type = schema
             .get_named_type("Query")
