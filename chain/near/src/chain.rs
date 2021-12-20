@@ -16,9 +16,7 @@ use graph::{
     components::store::DeploymentLocator,
     firehose::bstream,
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
-    prelude::{
-        async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory, SubgraphStore,
-    },
+    prelude::{async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory},
 };
 use prost::Message;
 use std::sync::Arc;
@@ -39,7 +37,6 @@ pub struct Chain {
     name: String,
     firehose_endpoints: Arc<FirehoseNetworkEndpoints>,
     chain_store: Arc<dyn ChainStore>,
-    subgraph_store: Arc<dyn SubgraphStore>,
 }
 
 impl std::fmt::Debug for Chain {
@@ -53,7 +50,6 @@ impl Chain {
         logger_factory: LoggerFactory,
         name: String,
         chain_store: Arc<dyn ChainStore>,
-        subgraph_store: Arc<dyn SubgraphStore>,
         firehose_endpoints: FirehoseNetworkEndpoints,
     ) -> Self {
         Chain {
@@ -61,7 +57,6 @@ impl Chain {
             name,
             firehose_endpoints: Arc::new(firehose_endpoints),
             chain_store,
-            subgraph_store,
         }
     }
 }
@@ -105,11 +100,12 @@ impl Blockchain for Chain {
         Ok(Arc::new(adapter))
     }
 
-    async fn new_block_stream(
+    async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        filter: Arc<TriggerFilter>,
+        firehose_cursor: Option<String>,
+        filter: Arc<Self::TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
@@ -133,12 +129,6 @@ impl Blockchain for Chain {
             .new(o!("component" => "FirehoseBlockStream"));
 
         let firehose_mapper = Arc::new(FirehoseMapper {});
-        let firehose_cursor = self
-            .subgraph_store
-            .cheap_clone()
-            .writable(logger.clone(), deployment.id)
-            .await?
-            .block_cursor()?;
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,
@@ -149,6 +139,18 @@ impl Blockchain for Chain {
             start_blocks,
             logger,
         )))
+    }
+
+    async fn new_polling_block_stream(
+        &self,
+        _deployment: DeploymentLocator,
+        _start_blocks: Vec<BlockNumber>,
+        _subgraph_start_block: Option<BlockPtr>,
+        _filter: Arc<Self::TriggerFilter>,
+        _metrics: Arc<BlockStreamMetrics>,
+        _unified_api_version: UnifiedMappingApiVersion,
+    ) -> Result<Box<dyn BlockStream<Self>>, Error> {
+        panic!("NEAR does not support polling block stream")
     }
 
     fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter> {
@@ -186,6 +188,10 @@ impl Blockchain for Chain {
 
     fn runtime_adapter(&self) -> Arc<Self::RuntimeAdapter> {
         Arc::new(RuntimeAdapter {})
+    }
+
+    fn is_firehose_supported(&self) -> bool {
+        true
     }
 }
 
