@@ -1,6 +1,16 @@
-use ethabi::LogParam;
 use graph::blockchain;
 use graph::blockchain::TriggerData;
+use graph::prelude::ethabi::ethereum_types::H160;
+use graph::prelude::ethabi::ethereum_types::H256;
+use graph::prelude::ethabi::ethereum_types::U128;
+use graph::prelude::ethabi::ethereum_types::U256;
+use graph::prelude::ethabi::ethereum_types::U64;
+use graph::prelude::ethabi::Address;
+use graph::prelude::ethabi::Bytes;
+use graph::prelude::ethabi::LogParam;
+use graph::prelude::web3::types::Block;
+use graph::prelude::web3::types::Log;
+use graph::prelude::web3::types::Transaction;
 use graph::prelude::BlockNumber;
 use graph::prelude::BlockPtr;
 use graph::prelude::{CheapClone, EthereumCall};
@@ -12,12 +22,6 @@ use graph::semver::Version;
 use std::convert::TryFrom;
 use std::ops::Deref;
 use std::{cmp::Ordering, sync::Arc};
-use web3::types::Bytes;
-use web3::types::H160;
-use web3::types::U128;
-use web3::types::U256;
-use web3::types::U64;
-use web3::types::{Address, Block, Log, Transaction, H256};
 
 use crate::runtime::abi::AscEthereumBlock;
 use crate::runtime::abi::AscEthereumBlock_0_0_6;
@@ -56,15 +60,15 @@ impl std::fmt::Debug for MappingTrigger {
         #[derive(Debug)]
         enum MappingTriggerWithoutBlock {
             Log {
-                transaction: Arc<Transaction>,
-                log: Arc<Log>,
-                params: Vec<LogParam>,
+                _transaction: Arc<Transaction>,
+                _log: Arc<Log>,
+                _params: Vec<LogParam>,
             },
             Call {
-                transaction: Arc<Transaction>,
-                call: Arc<EthereumCall>,
-                inputs: Vec<LogParam>,
-                outputs: Vec<LogParam>,
+                _transaction: Arc<Transaction>,
+                _call: Arc<EthereumCall>,
+                _inputs: Vec<LogParam>,
+                _outputs: Vec<LogParam>,
             },
             Block,
         }
@@ -76,9 +80,9 @@ impl std::fmt::Debug for MappingTrigger {
                 log,
                 params,
             } => MappingTriggerWithoutBlock::Log {
-                transaction: transaction.cheap_clone(),
-                log: log.cheap_clone(),
-                params: params.clone(),
+                _transaction: transaction.cheap_clone(),
+                _log: log.cheap_clone(),
+                _params: params.clone(),
             },
             MappingTrigger::Call {
                 block: _,
@@ -87,10 +91,10 @@ impl std::fmt::Debug for MappingTrigger {
                 inputs,
                 outputs,
             } => MappingTriggerWithoutBlock::Call {
-                transaction: transaction.cheap_clone(),
-                call: call.cheap_clone(),
-                inputs: inputs.clone(),
-                outputs: outputs.clone(),
+                _transaction: transaction.cheap_clone(),
+                _call: call.cheap_clone(),
+                _inputs: inputs.clone(),
+                _outputs: outputs.clone(),
             },
             MappingTrigger::Block { block: _ } => MappingTriggerWithoutBlock::Block,
         };
@@ -359,15 +363,18 @@ pub struct EthereumTransactionData {
 
 impl From<&'_ Transaction> for EthereumTransactionData {
     fn from(tx: &Transaction) -> EthereumTransactionData {
+        // unwrap: this is always `Some` for txns that have been mined
+        //         (see https://github.com/tomusdrw/rust-web3/pull/407)
+        let from = tx.from.unwrap();
         EthereumTransactionData {
             hash: tx.hash,
             index: tx.transaction_index.unwrap().as_u64().into(),
-            from: tx.from,
+            from,
             to: tx.to,
             value: tx.value,
             gas_limit: tx.gas,
             gas_price: tx.gas_price,
-            input: tx.input.clone(),
+            input: tx.input.0.clone(),
             nonce: tx.nonce.clone(),
         }
     }

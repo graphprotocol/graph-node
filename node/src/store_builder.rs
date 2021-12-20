@@ -2,9 +2,10 @@ use std::iter::FromIterator;
 use std::{collections::HashMap, sync::Arc};
 
 use futures::future::join_all;
+use graph::blockchain::ChainIdentifier;
 use graph::prelude::{o, MetricsRegistry, NodeId};
 use graph::{
-    prelude::{info, CheapClone, EthereumNetworkIdentifier, Logger},
+    prelude::{info, CheapClone, Logger},
     util::security::SafeDisplay,
 };
 use graph_store_postgres::connection_pool::{ConnectionPool, ForeignServer, PoolName};
@@ -51,7 +52,7 @@ impl StoreBuilder {
         // attempt doesn't work for all of them because the database is
         // unavailable, they will try again later in the normal course of
         // using the pool
-        join_all(pools.iter().map(|(_, pool)| async move { pool.setup() })).await;
+        join_all(pools.iter().map(|(_, pool)| pool.setup())).await;
 
         let chains = HashMap::from_iter(config.chains.chains.iter().map(|(name, chain)| {
             let shard = ShardName::new(chain.shard.to_string())
@@ -144,7 +145,7 @@ impl StoreBuilder {
         pools: HashMap<ShardName, ConnectionPool>,
         subgraph_store: Arc<SubgraphStore>,
         chains: HashMap<String, ShardName>,
-        networks: Vec<(String, Vec<EthereumNetworkIdentifier>)>,
+        networks: Vec<(String, Vec<ChainIdentifier>)>,
     ) -> Arc<DieselStore> {
         let networks = networks
             .into_iter()
@@ -165,11 +166,14 @@ impl StoreBuilder {
             )
             .expect("Creating the BlockStore works"),
         );
+        block_store
+            .update_db_version()
+            .expect("Updating `db_version` works");
 
         Arc::new(DieselStore::new(subgraph_store, block_store))
     }
 
-    /// Create a connection pool for the main database of hte primary shard
+    /// Create a connection pool for the main database of the primary shard
     /// without connecting to all the other configured databases
     pub fn main_pool(
         logger: &Logger,
@@ -254,10 +258,7 @@ impl StoreBuilder {
 
     /// Return a store that combines both a `Store` for subgraph data
     /// and a `BlockStore` for all chain related data
-    pub fn network_store(
-        self,
-        networks: Vec<(String, Vec<EthereumNetworkIdentifier>)>,
-    ) -> Arc<DieselStore> {
+    pub fn network_store(self, networks: Vec<(String, Vec<ChainIdentifier>)>) -> Arc<DieselStore> {
         Self::make_store(
             &self.logger,
             self.pools,

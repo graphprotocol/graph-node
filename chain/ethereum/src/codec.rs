@@ -1,12 +1,17 @@
 #[path = "protobuf/dfuse.ethereum.codec.v1.rs"]
 mod pbcodec;
 
-use graph::prelude::{
-    web3::types::TransactionReceipt as w3TransactionReceipt, EthereumBlock, EthereumBlockWithCalls,
-    EthereumCall, LightEthereumBlock,
+use graph::{
+    blockchain::{Block as BlockchainBlock, BlockPtr},
+    prelude::{
+        web3,
+        web3::types::TransactionReceipt as w3TransactionReceipt,
+        web3::types::{Bytes, H160, H2048, H256, H64, U256, U64},
+        BlockNumber, EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock,
+    },
 };
+use std::convert::TryFrom;
 use std::sync::Arc;
-use web3::types::{Bytes, H160, H2048, H256, H64, U256, U64};
 
 use crate::chain::BlockFinality;
 
@@ -156,7 +161,7 @@ impl<'a> Into<web3::types::Transaction> for TransactionTraceAt<'a> {
             block_hash: Some(H256::from_slice(&self.block.hash)),
             block_number: Some(U64::from(self.block.number)),
             transaction_index: Some(U64::from(self.trace.index as u64)),
-            from: H160::from_slice(&self.trace.from),
+            from: Some(H160::from_slice(&self.trace.from)),
             to: Some(H160::from_slice(&self.trace.to)),
             value: self
                 .trace
@@ -170,6 +175,10 @@ impl<'a> Into<web3::types::Transaction> for TransactionTraceAt<'a> {
                 .map_or_else(|| U256::from(0), |x| x.into()),
             gas: U256::from(self.trace.gas_used),
             input: Bytes::from(self.trace.input.clone()),
+            v: None,
+            r: None,
+            s: None,
+            raw: None,
         }
     }
 }
@@ -287,6 +296,40 @@ impl Into<EthereumBlockWithCalls> for &Block {
                     })
                     .collect(),
             ),
+        }
+    }
+}
+
+impl From<Block> for BlockPtr {
+    fn from(b: Block) -> BlockPtr {
+        (&b).into()
+    }
+}
+
+impl<'a> From<&'a Block> for BlockPtr {
+    fn from(b: &'a Block) -> BlockPtr {
+        BlockPtr::from((H256::from_slice(b.hash.as_ref()), b.number))
+    }
+}
+
+impl BlockchainBlock for Block {
+    fn number(&self) -> i32 {
+        BlockNumber::try_from(self.number).unwrap()
+    }
+
+    fn ptr(&self) -> BlockPtr {
+        self.into()
+    }
+
+    fn parent_ptr(&self) -> Option<BlockPtr> {
+        let parent_hash = &self.header.as_ref().unwrap().parent_hash;
+
+        match parent_hash.len() {
+            0 => None,
+            _ => Some(BlockPtr::from((
+                H256::from_slice(parent_hash.as_ref()),
+                self.number - 1,
+            ))),
         }
     }
 }

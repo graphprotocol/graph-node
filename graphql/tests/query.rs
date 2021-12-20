@@ -2,6 +2,7 @@
 extern crate pretty_assertions;
 
 use graphql_parser::Pos;
+use std::convert::TryFrom;
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -19,7 +20,7 @@ use graph::{
         subgraph::SubgraphFeature,
     },
     prelude::{
-        futures03::stream::StreamExt, o, q, serde_json, slog, BlockPtr, DeploymentHash, Entity,
+        futures03::stream::StreamExt, o, q, r, serde_json, slog, BlockPtr, DeploymentHash, Entity,
         EntityKey, EntityOperation, FutureExtension, GraphQlRunner as _, Logger, NodeId, Query,
         QueryError, QueryExecutionError, QueryResult, QueryStoreManager, QueryVariables, Schema,
         SubgraphDeploymentEntity, SubgraphManifest, SubgraphName, SubgraphStore,
@@ -322,65 +323,65 @@ fn can_query_one_to_one_relationship() {
             Some(object_value(vec![
                 (
                     "musicians",
-                    q::Value::List(vec![
+                    r::Value::List(vec![
                         object_value(vec![
-                            ("name", q::Value::String(String::from("John"))),
+                            ("name", r::Value::String(String::from("John"))),
                             (
                                 "mainBand",
                                 object_value(vec![(
                                     "name",
-                                    q::Value::String(String::from("The Musicians")),
+                                    r::Value::String(String::from("The Musicians")),
                                 )]),
                             ),
                         ]),
                         object_value(vec![
-                            ("name", q::Value::String(String::from("Lisa"))),
+                            ("name", r::Value::String(String::from("Lisa"))),
                             (
                                 "mainBand",
                                 object_value(vec![(
                                     "name",
-                                    q::Value::String(String::from("The Musicians")),
+                                    r::Value::String(String::from("The Musicians")),
                                 )]),
                             ),
                         ]),
                         object_value(vec![
-                            ("name", q::Value::String(String::from("Tom"))),
+                            ("name", r::Value::String(String::from("Tom"))),
                             (
                                 "mainBand",
                                 object_value(vec![(
                                     "name",
-                                    q::Value::String(String::from("The Amateurs")),
+                                    r::Value::String(String::from("The Amateurs")),
                                 )]),
                             ),
                         ]),
                         object_value(vec![
-                            ("name", q::Value::String(String::from("Valerie"))),
-                            ("mainBand", q::Value::Null),
+                            ("name", r::Value::String(String::from("Valerie"))),
+                            ("mainBand", r::Value::Null),
                         ]),
                     ])
                 ),
                 (
                     "songStats",
-                    q::Value::List(vec![
+                    r::Value::List(vec![
                         object_value(vec![
-                            ("id", q::Value::String(String::from("s1"))),
-                            ("played", q::Value::Int(q::Number::from(10))),
+                            ("id", r::Value::String(String::from("s1"))),
+                            ("played", r::Value::Int(10)),
                             (
                                 "song",
                                 object_value(vec![
-                                    ("id", q::Value::String(String::from("s1"))),
-                                    ("title", q::Value::String(String::from("Cheesy Tune")))
+                                    ("id", r::Value::String(String::from("s1"))),
+                                    ("title", r::Value::String(String::from("Cheesy Tune")))
                                 ])
                             ),
                         ]),
                         object_value(vec![
-                            ("id", q::Value::String(String::from("s2"))),
-                            ("played", q::Value::Int(q::Number::from(15))),
+                            ("id", r::Value::String(String::from("s2"))),
+                            ("played", r::Value::Int(15)),
                             (
                                 "song",
                                 object_value(vec![
-                                    ("id", q::Value::String(String::from("s2"))),
-                                    ("title", q::Value::String(String::from("Rock Tune")))
+                                    ("id", r::Value::String(String::from("s2"))),
+                                    ("title", r::Value::String(String::from("Rock Tune")))
                                 ])
                             ),
                         ])
@@ -419,29 +420,29 @@ fn can_query_one_to_many_relationships_in_both_directions() {
             extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
-                q::Value::List(vec![
+                r::Value::List(vec![
                     object_value(vec![
-                        ("name", q::Value::String(String::from("John"))),
+                        ("name", r::Value::String(String::from("John"))),
                         (
                             "writtenSongs",
-                            q::Value::List(vec![
+                            r::Value::List(vec![
                                 object_value(vec![
-                                    ("title", q::Value::String(String::from("Cheesy Tune"))),
+                                    ("title", r::Value::String(String::from("Cheesy Tune"))),
                                     (
                                         "writtenBy",
                                         object_value(vec![(
                                             "name",
-                                            q::Value::String(String::from("John")),
+                                            r::Value::String(String::from("John")),
                                         )]),
                                     ),
                                 ]),
                                 object_value(vec![
-                                    ("title", q::Value::String(String::from("Pop Tune"))),
+                                    ("title", r::Value::String(String::from("Pop Tune"))),
                                     (
                                         "writtenBy",
                                         object_value(vec![(
                                             "name",
-                                            q::Value::String(String::from("John")),
+                                            r::Value::String(String::from("John")),
                                         )]),
                                     ),
                                 ]),
@@ -449,40 +450,40 @@ fn can_query_one_to_many_relationships_in_both_directions() {
                         ),
                     ]),
                     object_value(vec![
-                        ("name", q::Value::String(String::from("Lisa"))),
+                        ("name", r::Value::String(String::from("Lisa"))),
                         (
                             "writtenSongs",
-                            q::Value::List(vec![object_value(vec![
-                                ("title", q::Value::String(String::from("Rock Tune"))),
+                            r::Value::List(vec![object_value(vec![
+                                ("title", r::Value::String(String::from("Rock Tune"))),
                                 (
                                     "writtenBy",
                                     object_value(vec![(
                                         "name",
-                                        q::Value::String(String::from("Lisa")),
+                                        r::Value::String(String::from("Lisa")),
                                     )]),
                                 ),
                             ])]),
                         ),
                     ]),
                     object_value(vec![
-                        ("name", q::Value::String(String::from("Tom"))),
+                        ("name", r::Value::String(String::from("Tom"))),
                         (
                             "writtenSongs",
-                            q::Value::List(vec![object_value(vec![
-                                ("title", q::Value::String(String::from("Folk Tune"))),
+                            r::Value::List(vec![object_value(vec![
+                                ("title", r::Value::String(String::from("Folk Tune"))),
                                 (
                                     "writtenBy",
                                     object_value(vec![(
                                         "name",
-                                        q::Value::String(String::from("Tom"))
+                                        r::Value::String(String::from("Tom"))
                                     )]),
                                 ),
                             ])]),
                         ),
                     ]),
                     object_value(vec![
-                        ("name", q::Value::String(String::from("Valerie"))),
-                        ("writtenSongs", q::Value::List(vec![])),
+                        ("name", r::Value::String(String::from("Valerie"))),
+                        ("writtenSongs", r::Value::List(vec![])),
                     ]),
                 ]),
             )])),
@@ -517,24 +518,24 @@ fn can_query_many_to_many_relationship() {
         .await;
 
         let the_musicians = object_value(vec![
-            ("name", q::Value::String(String::from("The Musicians"))),
+            ("name", r::Value::String(String::from("The Musicians"))),
             (
                 "members",
-                q::Value::List(vec![
-                    object_value(vec![("name", q::Value::String(String::from("John")))]),
-                    object_value(vec![("name", q::Value::String(String::from("Lisa")))]),
-                    object_value(vec![("name", q::Value::String(String::from("Tom")))]),
+                r::Value::List(vec![
+                    object_value(vec![("name", r::Value::String(String::from("John")))]),
+                    object_value(vec![("name", r::Value::String(String::from("Lisa")))]),
+                    object_value(vec![("name", r::Value::String(String::from("Tom")))]),
                 ]),
             ),
         ]);
 
         let the_amateurs = object_value(vec![
-            ("name", q::Value::String(String::from("The Amateurs"))),
+            ("name", r::Value::String(String::from("The Amateurs"))),
             (
                 "members",
-                q::Value::List(vec![
-                    object_value(vec![("name", q::Value::String(String::from("John")))]),
-                    object_value(vec![("name", q::Value::String(String::from("Tom")))]),
+                r::Value::List(vec![
+                    object_value(vec![("name", r::Value::String(String::from("John")))]),
+                    object_value(vec![("name", r::Value::String(String::from("Tom")))]),
                 ]),
             ),
         ]);
@@ -543,28 +544,28 @@ fn can_query_many_to_many_relationship() {
             extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
-                q::Value::List(vec![
+                r::Value::List(vec![
                     object_value(vec![
-                        ("name", q::Value::String(String::from("John"))),
+                        ("name", r::Value::String(String::from("John"))),
                         (
                             "bands",
-                            q::Value::List(vec![the_musicians.clone(), the_amateurs.clone()]),
+                            r::Value::List(vec![the_musicians.clone(), the_amateurs.clone()]),
                         ),
                     ]),
                     object_value(vec![
-                        ("name", q::Value::String(String::from("Lisa"))),
-                        ("bands", q::Value::List(vec![the_musicians.clone()])),
+                        ("name", r::Value::String(String::from("Lisa"))),
+                        ("bands", r::Value::List(vec![the_musicians.clone()])),
                     ]),
                     object_value(vec![
-                        ("name", q::Value::String(String::from("Tom"))),
+                        ("name", r::Value::String(String::from("Tom"))),
                         (
                             "bands",
-                            q::Value::List(vec![the_musicians.clone(), the_amateurs.clone()]),
+                            r::Value::List(vec![the_musicians.clone(), the_amateurs.clone()]),
                         ),
                     ]),
                     object_value(vec![
-                        ("name", q::Value::String(String::from("Valerie"))),
-                        ("bands", q::Value::List(vec![])),
+                        ("name", r::Value::String(String::from("Valerie"))),
+                        ("bands", r::Value::List(vec![])),
                     ]),
                 ])
             )]))
@@ -594,7 +595,7 @@ fn query_variables_are_used() {
             Some(QueryVariables::new(HashMap::from_iter(
                 vec![(
                     String::from("where"),
-                    object_value(vec![("name", q::Value::String(String::from("Tom")))]),
+                    object_value(vec![("name", r::Value::String(String::from("Tom")))]),
                 )]
                 .into_iter(),
             ))),
@@ -605,9 +606,9 @@ fn query_variables_are_used() {
             extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
-                q::Value::List(vec![object_value(vec![(
+                r::Value::List(vec![object_value(vec![(
                     "name",
-                    q::Value::String(String::from("Tom"))
+                    r::Value::String(String::from("Tom"))
                 )])],)
             )]))
         );
@@ -636,7 +637,7 @@ fn skip_directive_works_with_query_variables() {
             &deployment.hash,
             query.clone(),
             Some(QueryVariables::new(HashMap::from_iter(
-                vec![(String::from("skip"), q::Value::Boolean(true))].into_iter(),
+                vec![(String::from("skip"), r::Value::Boolean(true))].into_iter(),
             ))),
         )
         .await;
@@ -646,11 +647,11 @@ fn skip_directive_works_with_query_variables() {
             extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
-                q::Value::List(vec![
-                    object_value(vec![("name", q::Value::String(String::from("John")))]),
-                    object_value(vec![("name", q::Value::String(String::from("Lisa")))]),
-                    object_value(vec![("name", q::Value::String(String::from("Tom")))]),
-                    object_value(vec![("name", q::Value::String(String::from("Valerie")))]),
+                r::Value::List(vec![
+                    object_value(vec![("name", r::Value::String(String::from("John")))]),
+                    object_value(vec![("name", r::Value::String(String::from("Lisa")))]),
+                    object_value(vec![("name", r::Value::String(String::from("Tom")))]),
+                    object_value(vec![("name", r::Value::String(String::from("Valerie")))]),
                 ],)
             )]))
         );
@@ -660,7 +661,7 @@ fn skip_directive_works_with_query_variables() {
             &deployment.hash,
             query,
             Some(QueryVariables::new(HashMap::from_iter(
-                vec![(String::from("skip"), q::Value::Boolean(false))].into_iter(),
+                vec![(String::from("skip"), r::Value::Boolean(false))].into_iter(),
             ))),
         )
         .await;
@@ -670,22 +671,22 @@ fn skip_directive_works_with_query_variables() {
             extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
-                q::Value::List(vec![
+                r::Value::List(vec![
                     object_value(vec![
-                        ("id", q::Value::String(String::from("m1"))),
-                        ("name", q::Value::String(String::from("John")))
+                        ("id", r::Value::String(String::from("m1"))),
+                        ("name", r::Value::String(String::from("John")))
                     ]),
                     object_value(vec![
-                        ("id", q::Value::String(String::from("m2"))),
-                        ("name", q::Value::String(String::from("Lisa")))
+                        ("id", r::Value::String(String::from("m2"))),
+                        ("name", r::Value::String(String::from("Lisa")))
                     ]),
                     object_value(vec![
-                        ("id", q::Value::String(String::from("m3"))),
-                        ("name", q::Value::String(String::from("Tom")))
+                        ("id", r::Value::String(String::from("m3"))),
+                        ("name", r::Value::String(String::from("Tom")))
                     ]),
                     object_value(vec![
-                        ("id", q::Value::String(String::from("m4"))),
-                        ("name", q::Value::String(String::from("Valerie")))
+                        ("id", r::Value::String(String::from("m4"))),
+                        ("name", r::Value::String(String::from("Valerie")))
                     ]),
                 ],)
             )]))
@@ -715,7 +716,7 @@ fn include_directive_works_with_query_variables() {
             &deployment.hash,
             query.clone(),
             Some(QueryVariables::new(HashMap::from_iter(
-                vec![(String::from("include"), q::Value::Boolean(true))].into_iter(),
+                vec![(String::from("include"), r::Value::Boolean(true))].into_iter(),
             ))),
         )
         .await;
@@ -725,22 +726,22 @@ fn include_directive_works_with_query_variables() {
             extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
-                q::Value::List(vec![
+                r::Value::List(vec![
                     object_value(vec![
-                        ("id", q::Value::String(String::from("m1"))),
-                        ("name", q::Value::String(String::from("John")))
+                        ("id", r::Value::String(String::from("m1"))),
+                        ("name", r::Value::String(String::from("John")))
                     ]),
                     object_value(vec![
-                        ("id", q::Value::String(String::from("m2"))),
-                        ("name", q::Value::String(String::from("Lisa")))
+                        ("id", r::Value::String(String::from("m2"))),
+                        ("name", r::Value::String(String::from("Lisa")))
                     ]),
                     object_value(vec![
-                        ("id", q::Value::String(String::from("m3"))),
-                        ("name", q::Value::String(String::from("Tom")))
+                        ("id", r::Value::String(String::from("m3"))),
+                        ("name", r::Value::String(String::from("Tom")))
                     ]),
                     object_value(vec![
-                        ("id", q::Value::String(String::from("m4"))),
-                        ("name", q::Value::String(String::from("Valerie")))
+                        ("id", r::Value::String(String::from("m4"))),
+                        ("name", r::Value::String(String::from("Valerie")))
                     ]),
                 ],)
             )]))
@@ -751,7 +752,7 @@ fn include_directive_works_with_query_variables() {
             &deployment.hash,
             query,
             Some(QueryVariables::new(HashMap::from_iter(
-                vec![(String::from("include"), q::Value::Boolean(false))].into_iter(),
+                vec![(String::from("include"), r::Value::Boolean(false))].into_iter(),
             ))),
         )
         .await;
@@ -761,11 +762,11 @@ fn include_directive_works_with_query_variables() {
             extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
-                q::Value::List(vec![
-                    object_value(vec![("name", q::Value::String(String::from("John")))]),
-                    object_value(vec![("name", q::Value::String(String::from("Lisa")))]),
-                    object_value(vec![("name", q::Value::String(String::from("Tom")))]),
-                    object_value(vec![("name", q::Value::String(String::from("Valerie")))]),
+                r::Value::List(vec![
+                    object_value(vec![("name", r::Value::String(String::from("John")))]),
+                    object_value(vec![("name", r::Value::String(String::from("Lisa")))]),
+                    object_value(vec![("name", r::Value::String(String::from("Tom")))]),
+                    object_value(vec![("name", r::Value::String(String::from("Valerie")))]),
                 ],)
             )]))
         );
@@ -886,9 +887,8 @@ fn query_complexity_subscriptions() {
 
         // This query is exactly at the maximum complexity.
         // FIXME: Not collecting the stream because that will hang the test.
-        let _ignore_stream = execute_subscription(Subscription { query }, schema.clone(), options)
-            .await
-            .unwrap();
+        let _ignore_stream =
+            execute_subscription(Subscription { query }, schema.clone(), options).unwrap();
 
         let query = Query::new(
             graphql_parser::parse_query(
@@ -933,7 +933,7 @@ fn query_complexity_subscriptions() {
         };
 
         // The extra introspection causes the complexity to go over.
-        let result = execute_subscription(Subscription { query }, schema, options).await;
+        let result = execute_subscription(Subscription { query }, schema, options);
         match result {
             Err(SubscriptionError::GraphQLError(e)) => match e[0] {
                 QueryExecutionError::TooComplex(1_010_200, _) => (), // Expected
@@ -1001,9 +1001,9 @@ fn variable_defaults() {
             extract_data!(result),
             Some(object_value(vec![(
                 "bands",
-                q::Value::List(vec![
-                    object_value(vec![("id", q::Value::String(String::from("b2")))]),
-                    object_value(vec![("id", q::Value::String(String::from("b1")))])
+                r::Value::List(vec![
+                    object_value(vec![("id", r::Value::String(String::from("b2")))]),
+                    object_value(vec![("id", r::Value::String(String::from("b1")))])
                 ],)
             )]))
         );
@@ -1013,7 +1013,7 @@ fn variable_defaults() {
             &deployment.hash,
             query,
             Some(QueryVariables::new(HashMap::from_iter(
-                vec![(String::from("orderDir"), q::Value::Null)].into_iter(),
+                vec![(String::from("orderDir"), r::Value::Null)].into_iter(),
             ))),
         )
         .await;
@@ -1022,9 +1022,9 @@ fn variable_defaults() {
             extract_data!(result),
             Some(object_value(vec![(
                 "bands",
-                q::Value::List(vec![
-                    object_value(vec![("id", q::Value::String(String::from("b1")))]),
-                    object_value(vec![("id", q::Value::String(String::from("b2")))])
+                r::Value::List(vec![
+                    object_value(vec![("id", r::Value::String(String::from("b1")))]),
+                    object_value(vec![("id", r::Value::String(String::from("b2")))])
                 ],)
             )]))
         );
@@ -1053,11 +1053,11 @@ fn skip_is_nullable() {
             extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
-                q::Value::List(vec![
-                    object_value(vec![("name", q::Value::String(String::from("John")))]),
-                    object_value(vec![("name", q::Value::String(String::from("Lisa")))]),
-                    object_value(vec![("name", q::Value::String(String::from("Tom")))]),
-                    object_value(vec![("name", q::Value::String(String::from("Valerie")))]),
+                r::Value::List(vec![
+                    object_value(vec![("name", r::Value::String(String::from("John")))]),
+                    object_value(vec![("name", r::Value::String(String::from("Lisa")))]),
+                    object_value(vec![("name", r::Value::String(String::from("Tom")))]),
+                    object_value(vec![("name", r::Value::String(String::from("Valerie")))]),
                 ],)
             )]))
         );
@@ -1086,11 +1086,11 @@ fn first_is_nullable() {
             extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
-                q::Value::List(vec![
-                    object_value(vec![("name", q::Value::String(String::from("John")))]),
-                    object_value(vec![("name", q::Value::String(String::from("Lisa")))]),
-                    object_value(vec![("name", q::Value::String(String::from("Tom")))]),
-                    object_value(vec![("name", q::Value::String(String::from("Valerie")))]),
+                r::Value::List(vec![
+                    object_value(vec![("name", r::Value::String(String::from("John")))]),
+                    object_value(vec![("name", r::Value::String(String::from("Lisa")))]),
+                    object_value(vec![("name", r::Value::String(String::from("Tom")))]),
+                    object_value(vec![("name", r::Value::String(String::from("Valerie")))]),
                 ],)
             )]))
         );
@@ -1117,7 +1117,7 @@ fn nested_variable() {
             &deployment.hash,
             query,
             Some(QueryVariables::new(HashMap::from_iter(
-                vec![(String::from("name"), q::Value::String("Lisa".to_string()))].into_iter(),
+                vec![(String::from("name"), r::Value::String("Lisa".to_string()))].into_iter(),
             ))),
         )
         .await;
@@ -1126,9 +1126,9 @@ fn nested_variable() {
             extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
-                q::Value::List(vec![object_value(vec![(
+                r::Value::List(vec![object_value(vec![(
                     "name",
-                    q::Value::String(String::from("Lisa"))
+                    r::Value::String(String::from("Lisa"))
                 )])])
             )]))
         );
@@ -1209,26 +1209,26 @@ fn can_filter_by_relationship_fields() {
             Some(object_value(vec![
                 (
                     "musicians",
-                    q::Value::List(vec![object_value(vec![
-                        ("id", q::Value::String(String::from("m3"))),
-                        ("name", q::Value::String(String::from("Tom"))),
+                    r::Value::List(vec![object_value(vec![
+                        ("id", r::Value::String(String::from("m3"))),
+                        ("name", r::Value::String(String::from("Tom"))),
                         (
                             "mainBand",
-                            object_value(vec![("id", q::Value::String(String::from("b2")))])
+                            object_value(vec![("id", r::Value::String(String::from("b2")))])
                         )
                     ])])
                 ),
                 (
                     "bands",
-                    q::Value::List(vec![object_value(vec![
-                        ("id", q::Value::String(String::from("b2"))),
-                        ("name", q::Value::String(String::from("The Amateurs"))),
+                    r::Value::List(vec![object_value(vec![
+                        ("id", r::Value::String(String::from("b2"))),
+                        ("name", r::Value::String(String::from("The Amateurs"))),
                         (
                             "originalSongs",
-                            q::Value::List(vec![
-                                object_value(vec![("id", q::Value::String(String::from("s1")))]),
-                                object_value(vec![("id", q::Value::String(String::from("s3")))]),
-                                object_value(vec![("id", q::Value::String(String::from("s4")))]),
+                            r::Value::List(vec![
+                                object_value(vec![("id", r::Value::String(String::from("s1")))]),
+                                object_value(vec![("id", r::Value::String(String::from("s3")))]),
+                                object_value(vec![("id", r::Value::String(String::from("s4")))]),
                             ])
                         )
                     ])])
@@ -1263,10 +1263,10 @@ fn cannot_filter_by_derved_relationship_fields() {
             QueryError::ExecutionError(QueryExecutionError::InvalidArgumentError(_, s, v)) => {
                 assert_eq!(s, "where");
                 assert_eq!(
-                    v,
-                    &object_value(vec![(
+                    r::Value::try_from(v.clone()).unwrap(),
+                    object_value(vec![(
                         "writtenSongs",
-                        q::Value::List(vec![q::Value::String(String::from("s1"))])
+                        r::Value::List(vec![r::Value::String(String::from("s1"))])
                     )]),
                 );
             }
@@ -1313,9 +1313,7 @@ fn subscription_gets_result_even_without_events() {
         };
         // Execute the subscription and expect at least one result to be
         // available in the result stream
-        let stream = execute_subscription(Subscription { query }, schema, options)
-            .await
-            .unwrap();
+        let stream = execute_subscription(Subscription { query }, schema, options).unwrap();
         let results: Vec<_> = stream
             .take(1)
             .collect()
@@ -1329,9 +1327,9 @@ fn subscription_gets_result_even_without_events() {
             extract_data!(result),
             Some(object_value(vec![(
                 "musicians",
-                q::Value::List(vec![
-                    object_value(vec![("name", q::Value::String(String::from("John")))]),
-                    object_value(vec![("name", q::Value::String(String::from("Lisa")))])
+                r::Value::List(vec![
+                    object_value(vec![("name", r::Value::String(String::from("John")))]),
+                    object_value(vec![("name", r::Value::String(String::from("Lisa")))])
                 ])
             )])),
         );
@@ -1363,33 +1361,33 @@ fn can_use_nested_filter() {
             extract_data!(result).unwrap(),
             object_value(vec![(
                 "musicians",
-                q::Value::List(vec![
+                r::Value::List(vec![
                     object_value(vec![
-                        ("name", q::Value::String(String::from("John"))),
+                        ("name", r::Value::String(String::from("John"))),
                         (
                             "bands",
-                            q::Value::List(vec![object_value(vec![(
+                            r::Value::List(vec![object_value(vec![(
                                 "id",
-                                q::Value::String(String::from("b2"))
+                                r::Value::String(String::from("b2"))
                             )])])
                         )
                     ]),
                     object_value(vec![
-                        ("name", q::Value::String(String::from("Lisa"))),
-                        ("bands", q::Value::List(vec![]))
+                        ("name", r::Value::String(String::from("Lisa"))),
+                        ("bands", r::Value::List(vec![]))
                     ]),
                     object_value(vec![
-                        ("name", q::Value::String(String::from("Tom"))),
+                        ("name", r::Value::String(String::from("Tom"))),
                         (
                             "bands",
-                            q::Value::List(vec![object_value(vec![
-                                (("id", q::Value::String(String::from("b2"))))
+                            r::Value::List(vec![object_value(vec![
+                                (("id", r::Value::String(String::from("b2"))))
                             ])])
                         )
                     ]),
                     object_value(vec![
-                        ("name", q::Value::String(String::from("Valerie"))),
-                        ("bands", q::Value::List(vec![]))
+                        ("name", r::Value::String(String::from("Valerie"))),
+                        ("bands", r::Value::List(vec![]))
                     ])
                 ])
             )])
@@ -1400,7 +1398,7 @@ fn can_use_nested_filter() {
 async fn check_musicians_at(
     id: &DeploymentHash,
     query: &str,
-    block_var: Option<(&str, q::Value)>,
+    block_var: Option<(&str, r::Value)>,
     expected: Result<Vec<&str>, &str>,
     qid: &str,
 ) {
@@ -1419,9 +1417,9 @@ async fn check_musicians_at(
         Ok(ids) => {
             let ids: Vec<_> = ids
                 .into_iter()
-                .map(|id| object_value(vec![("id", q::Value::String(String::from(id)))]))
+                .map(|id| object_value(vec![("id", r::Value::String(String::from(id)))]))
                 .collect();
-            let expected = Some(object_value(vec![("musicians", q::Value::List(ids))]));
+            let expected = Some(object_value(vec![("musicians", r::Value::List(ids))]));
             let data = match result.to_result() {
                 Err(errors) => panic!("unexpected error: {:?} ({})\n", errors, qid),
                 Ok(data) => data,
@@ -1533,7 +1531,7 @@ fn query_at_block_with_vars() {
             qid: &str,
         ) {
             let query = "query by_nr($block: Int!) { musicians(block: { number: $block }) { id } }";
-            let number = q::Value::Int(q::Number::from(block));
+            let number = r::Value::Int(block.into());
             let var = Some(("block", number.clone()));
 
             check_musicians_at(&deployment.hash, query, var, expected.clone(), qid).await;
@@ -1541,8 +1539,21 @@ fn query_at_block_with_vars() {
             let query = "query by_nr($block: Block_height!) { musicians(block: $block) { id } }";
             let mut map = BTreeMap::new();
             map.insert("number".to_owned(), number);
-            let block = q::Value::Object(map);
+            let block = r::Value::Object(map);
             let var = Some(("block", block));
+
+            check_musicians_at(&deployment.hash, query, var, expected, qid).await;
+        }
+
+        async fn musicians_at_nr_gte(
+            deployment: &DeploymentLocator,
+            block: i32,
+            expected: Result<Vec<&str>, &str>,
+            qid: &str,
+        ) {
+            let query =
+                "query by_nr($block: Int!) { musicians(block: { number_gte: $block }) { id } }";
+            let var = Some(("block", r::Value::Int(block.into())));
 
             check_musicians_at(&deployment.hash, query, var, expected, qid).await;
         }
@@ -1555,7 +1566,7 @@ fn query_at_block_with_vars() {
         ) {
             let query =
                 "query by_hash($block: String!) { musicians(block: { hash: $block }) { id } }";
-            let var = Some(("block", q::Value::String(block.hash.to_owned())));
+            let var = Some(("block", r::Value::String(block.hash.to_owned())));
 
             check_musicians_at(&deployment.hash, query, var, expected, qid).await;
         }
@@ -1568,6 +1579,10 @@ fn query_at_block_with_vars() {
         musicians_at_nr(&deployment, 7000, Err(BLOCK_NOT_INDEXED), "n7000").await;
         musicians_at_nr(&deployment, 0, Ok(vec!["m1", "m2"]), "n0").await;
         musicians_at_nr(&deployment, 1, Ok(vec!["m1", "m2", "m3", "m4"]), "n1").await;
+
+        musicians_at_nr_gte(&deployment, 7000, Err(BLOCK_NOT_INDEXED), "ngte7000").await;
+        musicians_at_nr_gte(&deployment, 0, Ok(vec!["m1", "m2", "m3", "m4"]), "ngte0").await;
+        musicians_at_nr_gte(&deployment, 1, Ok(vec!["m1", "m2", "m3", "m4"]), "ngte1").await;
 
         musicians_at_hash(&deployment, &GENESIS_BLOCK, Ok(vec!["m1", "m2"]), "h0").await;
         musicians_at_hash(
@@ -1681,7 +1696,7 @@ fn can_query_meta() {
         let exp = object! {
             _meta: object! {
                 block: object! {
-                    hash: q::Value::Null,
+                    hash: r::Value::Null,
                     number: 0
                 },
                 deployment: "graphqlTestsQuery"

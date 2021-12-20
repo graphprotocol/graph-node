@@ -2,9 +2,10 @@
 //! final result
 
 use anyhow::{anyhow, Error};
-use graph::prelude::CacheWeight;
+use graph::constraint_violation;
+use graph::prelude::{r, CacheWeight};
 use graph::slog::warn;
-use graph::util::cache_weight::btree_node_size;
+use graph::util::cache_weight;
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -18,12 +19,12 @@ use graph::{
     prelude::{
         q, s, ApiSchema, AttributeNames, BlockNumber, ChildMultiplicity, EntityCollection,
         EntityFilter, EntityLink, EntityOrder, EntityWindow, Logger, ParentLink,
-        QueryExecutionError, QueryStore, Value as StoreValue, WindowAttribute,
+        QueryExecutionError, QueryStore, StoreError, Value as StoreValue, WindowAttribute,
     },
 };
 
 use crate::execution::{ExecutionContext, Resolver};
-use crate::query::ast as qast;
+use crate::query::ast::{self as qast, get_argument_value};
 use crate::runner::ResultSizeMetrics;
 use crate::schema::ast as sast;
 use crate::store::{build_query, StoreResolver};
@@ -48,6 +49,10 @@ lazy_static! {
 }
 
 type GroupedFieldSet<'a> = IndexMap<&'a str, CollectedResponseKey<'a>>;
+
+/// Used for associating objects or interfaces and the field names used in `orderBy` query field
+/// attributes.
+type ComplementaryFields<'a> = BTreeMap<ObjectOrInterface<'a>, String>;
 
 /// An `ObjectType` with `Hash` and `Eq` derived from the name.
 #[derive(Clone, Debug)]
@@ -95,7 +100,7 @@ struct Node {
     /// the keys and values of the `children` map, but not of the map itself
     children_weight: usize,
 
-    entity: BTreeMap<String, q::Value>,
+    entity: BTreeMap<String, r::Value>,
     /// We are using an `Rc` here for two reasons: it allows us to defer
     /// copying objects until the end, when converting to `q::Value` forces
     /// us to copy any child that is referenced by multiple parents. It also
@@ -139,8 +144,8 @@ struct Node {
     children: BTreeMap<String, Vec<Rc<Node>>>,
 }
 
-impl From<BTreeMap<String, q::Value>> for Node {
-    fn from(entity: BTreeMap<String, q::Value>) -> Self {
+impl From<BTreeMap<String, r::Value>> for Node {
+    fn from(entity: BTreeMap<String, r::Value>) -> Self {
         Node {
             children_weight: entity.weight(),
             entity,
@@ -151,14 +156,14 @@ impl From<BTreeMap<String, q::Value>> for Node {
 
 impl CacheWeight for Node {
     fn indirect_weight(&self) -> usize {
-        self.children_weight + btree_node_size(&self.children)
+        self.children_weight + cache_weight::btree::node_size(&self.children)
     }
 }
 
 /// Convert a list of nodes into a `q::Value::List` where each node has also
 /// been converted to a `q::Value`
-fn node_list_as_value(nodes: Vec<Rc<Node>>) -> q::Value {
-    q::Value::List(
+fn node_list_as_value(nodes: Vec<Rc<Node>>) -> r::Value {
+    r::Value::List(
         nodes
             .into_iter()
             .map(|node| Rc::try_unwrap(node).unwrap_or_else(|rc| rc.as_ref().clone()))
@@ -197,13 +202,13 @@ fn make_root_node() -> Vec<Node> {
 /// always a `q::Value::Object`. The entity's associations are mapped to
 /// entries `r:{response_key}` as that name is guaranteed to not conflict
 /// with any field of the entity.
-impl From<Node> for q::Value {
+impl From<Node> for r::Value {
     fn from(node: Node) -> Self {
         let mut map = node.entity;
         for (key, nodes) in node.children.into_iter() {
             map.insert(format!("prefetch:{}", key), node_list_as_value(nodes));
         }
-        q::Value::Object(map)
+        r::Value::Object(map)
     }
 }
 
@@ -211,10 +216,10 @@ trait ValueExt {
     fn as_str(&self) -> Option<&str>;
 }
 
-impl ValueExt for q::Value {
+impl ValueExt for r::Value {
     fn as_str(&self) -> Option<&str> {
         match self {
-            q::Value::String(s) => Some(s),
+            r::Value::String(s) => Some(s),
             _ => None,
         }
     }
@@ -224,12 +229,12 @@ impl Node {
     fn id(&self) -> Result<String, Error> {
         match self.get("id") {
             None => Err(anyhow!("Entity is missing an `id` attribute")),
-            Some(q::Value::String(s)) => Ok(s.to_owned()),
+            Some(r::Value::String(s)) => Ok(s.to_owned()),
             _ => Err(anyhow!("Entity has non-string `id` attribute")),
         }
     }
 
-    fn get(&self, key: &str) -> Option<&q::Value> {
+    fn get(&self, key: &str) -> Option<&r::Value> {
         self.entity.get(key)
     }
 
@@ -364,7 +369,7 @@ impl<'a> JoinCond<'a> {
                             .filter_map(|(id, node)| {
                                 node.get(*child_field)
                                     .and_then(|value| match value {
-                                        q::Value::List(values) => {
+                                        r::Value::List(values) => {
                                             let values: Vec<_> = values
                                                 .iter()
                                                 .filter_map(|value| {
@@ -455,7 +460,7 @@ impl<'a> Join<'a> {
                 .get("g$parent_id")
                 .expect("the query that produces 'child' ensures there is always a g$parent_id")
             {
-                q::Value::String(key) => grouped.entry(&key).or_default().push(child.clone()),
+                r::Value::String(key) => grouped.entry(&key).or_default().push(child.clone()),
                 _ => unreachable!("the parent_id returned by the query is always a string"),
             }
         }
@@ -533,11 +538,11 @@ pub fn run(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &q::SelectionSet,
     result_size: &ResultSizeMetrics,
-) -> Result<q::Value, Vec<QueryExecutionError>> {
+) -> Result<r::Value, Vec<QueryExecutionError>> {
     execute_root_selection_set(resolver, ctx, selection_set).map(|nodes| {
         result_size.observe(nodes.weight());
         let map = BTreeMap::default();
-        q::Value::Object(nodes.into_iter().fold(map, |mut map, node| {
+        r::Value::Object(nodes.into_iter().fold(map, |mut map, node| {
             // For root nodes, we only care about the children
             for (key, nodes) in node.children.into_iter() {
                 map.insert(format!("prefetch:{}", key), node_list_as_value(nodes));
@@ -555,10 +560,17 @@ fn execute_root_selection_set(
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     // Obtain the root Query type and fail if there isn't one
     let query_type = ctx.query.schema.query_type.as_ref().into();
-    let grouped_field_set = collect_fields(ctx, query_type, once(selection_set));
+    let (grouped_field_set, _complementary_fields) =
+        collect_fields(ctx, query_type, once(selection_set));
 
     // Execute the root selection set against the root query type
-    execute_selection_set(resolver, ctx, make_root_node(), grouped_field_set)
+    execute_selection_set(
+        resolver,
+        ctx,
+        make_root_node(),
+        grouped_field_set,
+        ComplementaryFields::new(),
+    )
 }
 
 fn check_result_size(logger: &Logger, size: usize) -> Result<(), QueryExecutionError> {
@@ -576,6 +588,7 @@ fn execute_selection_set<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     mut parents: Vec<Node>,
     grouped_field_set: GroupedFieldSet<'a>,
+    mut complementary_fields: ComplementaryFields<'a>,
 ) -> Result<Vec<Node>, Vec<QueryExecutionError>> {
     let schema = &ctx.query.schema;
     let mut errors: Vec<QueryExecutionError> = Vec::new();
@@ -619,7 +632,7 @@ fn execute_selection_set<'a>(
                 &field.name,
             );
             // Group fields with the same response key, so we can execute them together
-            let mut grouped_field_set =
+            let (mut grouped_field_set, new_complementary_fields) =
                 collect_fields(ctx, child_type, fields.iter().map(|f| &f.selection_set));
 
             // "Select by Specific Attribute Names" is an experimental feature and can be disabled completely.
@@ -630,8 +643,10 @@ fn execute_selection_set<'a>(
                 if *DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES {
                     BTreeMap::new()
                 } else {
-                    CollectedAttributeNames::consolidate_column_names(&mut grouped_field_set)
-                        .resolve_interfaces(&ctx.query.schema.types_for_interface())
+                    let mut collected =
+                        CollectedAttributeNames::consolidate_column_names(&mut grouped_field_set);
+                    collected.populate_complementary_fields(&mut complementary_fields);
+                    collected.resolve_interfaces(&ctx.query.schema.types_for_interface())
                 };
 
             match execute_field(
@@ -645,7 +660,13 @@ fn execute_selection_set<'a>(
                 collected_columns,
             ) {
                 Ok(children) => {
-                    match execute_selection_set(resolver, ctx, children, grouped_field_set) {
+                    match execute_selection_set(
+                        resolver,
+                        ctx,
+                        children,
+                        grouped_field_set,
+                        new_complementary_fields,
+                    ) {
                         Ok(children) => {
                             Join::perform(&mut parents, children, response_key);
                             let weight =
@@ -660,6 +681,23 @@ fn execute_selection_set<'a>(
                 }
             };
         }
+    }
+
+    // Confidence check: all complementary fields must be consumed, otherwise constructed SQL
+    // queries will be malformed.
+    if !*DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES {
+        complementary_fields
+            .into_iter()
+            .for_each(|(parent, complementary_field)| {
+                errors.push(
+                    constraint_violation!(
+                        "Complementary field \"{}\" was not prefetched by its parent: {}",
+                        complementary_field,
+                        parent.name().to_string(),
+                    )
+                    .into(),
+                )
+            });
     }
 
     if errors.is_empty() {
@@ -755,8 +793,9 @@ fn collect_fields<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     parent_ty: ObjectOrInterface<'a>,
     selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
-) -> GroupedFieldSet<'a> {
+) -> (GroupedFieldSet<'a>, ComplementaryFields<'a>) {
     let mut grouped_fields = IndexMap::new();
+    let mut complementary_fields = ComplementaryFields::new();
 
     for selection_set in selection_sets {
         collect_fields_inner(
@@ -765,6 +804,7 @@ fn collect_fields<'a>(
             selection_set,
             &mut HashSet::new(),
             &mut grouped_fields,
+            &mut complementary_fields,
         );
     }
 
@@ -778,7 +818,7 @@ fn collect_fields<'a>(
         }
     }
 
-    grouped_fields
+    (grouped_fields, complementary_fields)
 }
 
 // When querying an object type, `type_condition` will always be that object type, even if it passes
@@ -792,6 +832,7 @@ fn collect_fields_inner<'a>(
     selection_set: &'a q::SelectionSet,
     visited_fragments: &mut HashSet<&'a str>,
     output: &mut GroupedFieldSet<'a>,
+    complementary_fields: &mut ComplementaryFields<'a>,
 ) {
     fn collect_fragment<'a>(
         ctx: &'a ExecutionContext<impl Resolver>,
@@ -800,6 +841,7 @@ fn collect_fields_inner<'a>(
         frag_selection_set: &'a q::SelectionSet,
         visited_fragments: &mut HashSet<&'a str>,
         output: &mut GroupedFieldSet<'a>,
+        complementary_fields: &mut ComplementaryFields<'a>,
     ) {
         let schema = &ctx.query.schema.document();
         let fragment_ty = match frag_ty_condition {
@@ -820,6 +862,7 @@ fn collect_fields_inner<'a>(
                 &frag_selection_set,
                 visited_fragments,
                 output,
+                complementary_fields,
             );
         } else {
             // This is an interface fragment in the root selection for an interface.
@@ -842,6 +885,7 @@ fn collect_fields_inner<'a>(
                     &frag_selection_set,
                     visited_fragments,
                     output,
+                    complementary_fields,
                 );
             }
         }
@@ -863,6 +907,36 @@ fn collect_fields_inner<'a>(
                     type_condition,
                     field,
                 );
+
+                // Collect complementary fields used in the `orderBy` query attribute, if present.
+                if !*DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES {
+                    if let Some(arguments) = get_argument_value(&field.arguments, "orderBy") {
+                        let schema_field = type_condition.field(&field.name).expect(&format!(
+                            "the field {:?} to exist in {:?}",
+                            &field.name,
+                            &type_condition.name()
+                        ));
+                        let field_name = sast::get_field_name(&schema_field.field_type);
+                        let object_or_interface_for_field = ctx
+                            .query
+                            .schema
+                            .document()
+                            .object_or_interface(&field_name)
+                            .expect(&format!(
+                                "The field {:?} to exist in the Document",
+                                field_name
+                            ));
+                        match arguments {
+                            graphql_parser::schema::Value::Enum(complementary_field_name) => {
+                                complementary_fields.insert(
+                                    object_or_interface_for_field,
+                                    complementary_field_name.clone(),
+                                );
+                            }
+                            _ => unimplemented!("unsure on what to do about other variants"),
+                        }
+                    }
+                }
             }
 
             q::Selection::FragmentSpread(spread) => {
@@ -878,6 +952,7 @@ fn collect_fields_inner<'a>(
                         &fragment.selection_set,
                         visited_fragments,
                         output,
+                        complementary_fields,
                     );
                 }
             }
@@ -890,6 +965,7 @@ fn collect_fields_inner<'a>(
                     &fragment.selection_set,
                     visited_fragments,
                     output,
+                    complementary_fields,
                 );
             }
         }
@@ -939,7 +1015,7 @@ fn fetch(
     store: &(impl QueryStore + ?Sized),
     parents: &Vec<&mut Node>,
     join: &Join<'_>,
-    arguments: HashMap<&str, q::Value>,
+    arguments: HashMap<&str, r::Value>,
     multiplicity: ChildMultiplicity,
     types_for_interface: &BTreeMap<EntityType, Vec<s::ObjectType>>,
     block: BlockNumber,
@@ -966,7 +1042,7 @@ fn fetch(
     }
 
     query.logger = Some(logger);
-    if let Some(q::Value::String(id)) = arguments.get(ARG_ID.as_str()) {
+    if let Some(r::Value::String(id)) = arguments.get(ARG_ID.as_str()) {
         query.filter = Some(
             EntityFilter::Equal(ARG_ID.to_owned(), StoreValue::from(id.to_owned()))
                 .and_maybe(query.filter),
@@ -999,7 +1075,22 @@ impl<'a> CollectedAttributeNames<'a> {
         self.0
             .entry(object_or_interface)
             .or_insert(AttributeNames::All)
-            .update(field);
+            .add(field);
+    }
+
+    /// Injects complementary fields that were collected priviously in upper hierarchical levels of
+    /// the query into `self`.
+    fn populate_complementary_fields(
+        &mut self,
+        complementary_fields: &mut ComplementaryFields<'a>,
+    ) {
+        for (object_or_interface, selected_attributes) in self.0.iter_mut() {
+            if let Some(complementary_field_name) =
+                complementary_fields.remove(&object_or_interface)
+            {
+                selected_attributes.add_str(&complementary_field_name)
+            }
+        }
     }
 
     /// Consume this instance and transform it into a mapping from
@@ -1090,7 +1181,7 @@ fn filter_derived_fields(
                         None // field does not exist
                     }
                 })
-                .for_each(|col| filtered.insert(&col));
+                .for_each(|col| filtered.add_str(&col));
             filtered
         }
     }

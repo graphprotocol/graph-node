@@ -16,6 +16,7 @@ For detailed instructions and more context, check out the [Getting Started Guide
 To build and run this project you need to have the following installed on your system:
 
 - Rust (latest stable) – [How to install Rust](https://www.rust-lang.org/en-US/install.html)
+  - Note that `rustfmt`, which is part of the default Rust installation, is a build-time requirement.
 - PostgreSQL – [PostgreSQL Downloads](https://www.postgresql.org/download/)
 - IPFS – [Installing IPFS](https://docs.ipfs.io/install/)
 
@@ -43,7 +44,7 @@ Once you have all the dependencies set up, you can run the following:
 ```
 cargo run -p graph-node --release -- \
   --postgres-url postgresql://USERNAME[:PASSWORD]@localhost:5432/graph-node \
-  --ethereum-rpc [URL] \
+  --ethereum-rpc NETWORK_NAME:[CAPABILITIES]:URL \
   --ipfs 127.0.0.1:5001
 ```
 

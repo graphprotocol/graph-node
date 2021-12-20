@@ -16,9 +16,7 @@ use graph::{
     components::store::DeploymentLocator,
     firehose::bstream,
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
-    prelude::{
-        async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory, SubgraphStore,
-    },
+    prelude::{async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory},
 };
 use prost::Message;
 use std::sync::Arc;
@@ -27,7 +25,7 @@ use crate::adapter::TriggerFilter;
 use crate::capabilities::NodeCapabilities;
 use crate::data_source::{DataSourceTemplate, UnresolvedDataSourceTemplate};
 use crate::runtime::RuntimeAdapter;
-use crate::trigger::NearTrigger;
+use crate::trigger::{self, NearTrigger};
 use crate::{
     codec,
     data_source::{DataSource, UnresolvedDataSource},
@@ -39,7 +37,6 @@ pub struct Chain {
     name: String,
     firehose_endpoints: Arc<FirehoseNetworkEndpoints>,
     chain_store: Arc<dyn ChainStore>,
-    subgraph_store: Arc<dyn SubgraphStore>,
 }
 
 impl std::fmt::Debug for Chain {
@@ -53,7 +50,6 @@ impl Chain {
         logger_factory: LoggerFactory,
         name: String,
         chain_store: Arc<dyn ChainStore>,
-        subgraph_store: Arc<dyn SubgraphStore>,
         firehose_endpoints: FirehoseNetworkEndpoints,
     ) -> Self {
         Chain {
@@ -61,7 +57,6 @@ impl Chain {
             name,
             firehose_endpoints: Arc::new(firehose_endpoints),
             chain_store,
-            subgraph_store,
         }
     }
 }
@@ -70,7 +65,7 @@ impl Chain {
 impl Blockchain for Chain {
     const KIND: BlockchainKind = BlockchainKind::Near;
 
-    type Block = codec::BlockWrapper;
+    type Block = codec::Block;
 
     type DataSource = DataSource;
 
@@ -105,11 +100,12 @@ impl Blockchain for Chain {
         Ok(Arc::new(adapter))
     }
 
-    async fn new_block_stream(
+    async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        filter: Arc<TriggerFilter>,
+        firehose_cursor: Option<String>,
+        filter: Arc<Self::TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
@@ -133,23 +129,28 @@ impl Blockchain for Chain {
             .new(o!("component" => "FirehoseBlockStream"));
 
         let firehose_mapper = Arc::new(FirehoseMapper {});
-        let firehose_cursor = self
-            .subgraph_store
-            .cheap_clone()
-            .writable(logger.clone(), deployment.id)
-            .await?
-            .block_cursor()?;
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,
             firehose_cursor,
             firehose_mapper,
-            deployment.hash,
             adapter,
             filter,
             start_blocks,
             logger,
         )))
+    }
+
+    async fn new_polling_block_stream(
+        &self,
+        _deployment: DeploymentLocator,
+        _start_blocks: Vec<BlockNumber>,
+        _subgraph_start_block: Option<BlockPtr>,
+        _filter: Arc<Self::TriggerFilter>,
+        _metrics: Arc<BlockStreamMetrics>,
+        _unified_api_version: UnifiedMappingApiVersion,
+    ) -> Result<Box<dyn BlockStream<Self>>, Error> {
+        panic!("NEAR does not support polling block stream")
     }
 
     fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter> {
@@ -188,6 +189,10 @@ impl Blockchain for Chain {
     fn runtime_adapter(&self) -> Arc<Self::RuntimeAdapter> {
         Arc::new(RuntimeAdapter {})
     }
+
+    fn is_firehose_supported(&self) -> bool {
+        true
+    }
 }
 
 pub struct TriggersAdapter {}
@@ -200,54 +205,91 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         _to: BlockNumber,
         _filter: &TriggerFilter,
     ) -> Result<Vec<BlockWithTriggers<Chain>>, Error> {
-        // FIXME (NEAR): Scanning triggers makes little sense in Firehose approach, let's see
-        Ok(vec![])
+        panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
     async fn triggers_in_block(
         &self,
         _logger: &Logger,
-        _block: codec::BlockWrapper,
+        block: codec::Block,
         _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
-        // FIXME (NEAR): Share implementation with FirehoseMapper::firehose_triggers_in_block version.
-        // This is currently unreachable since Near does not yet support dynamic data sources.
-        todo!()
+        // TODO: Find the best place to introduce an `Arc` and avoid this clone.
+        let shared_block = Arc::new(block.clone());
+
+        // Filter non-successful or non-action receipts.
+        let receipts = block.shards.iter().flat_map(|shard| {
+            shard
+                .receipt_execution_outcomes
+                .iter()
+                .filter_map(|outcome| {
+                    if !outcome
+                        .execution_outcome
+                        .as_ref()?
+                        .outcome
+                        .as_ref()?
+                        .status
+                        .as_ref()?
+                        .is_success()
+                    {
+                        return None;
+                    }
+                    if !matches!(
+                        outcome.receipt.as_ref()?.receipt,
+                        Some(codec::receipt::Receipt::Action(_))
+                    ) {
+                        return None;
+                    }
+
+                    Some(trigger::ReceiptWithOutcome {
+                        outcome: outcome.execution_outcome.as_ref()?.clone(),
+                        receipt: outcome.receipt.as_ref()?.clone(),
+                        block: shared_block.cheap_clone(),
+                    })
+                })
+        });
+
+        let mut trigger_data: Vec<_> = receipts
+            .map(|r| NearTrigger::Receipt(Arc::new(r)))
+            .collect();
+
+        trigger_data.push(NearTrigger::Block(shared_block.cheap_clone()));
+
+        Ok(BlockWithTriggers::new(block, trigger_data))
     }
 
     async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
-        // FIXME (NEAR): Might not be necessary for NEAR support for now
-        Ok(true)
+        panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
     fn ancestor_block(
         &self,
         _ptr: BlockPtr,
         _offset: BlockNumber,
-    ) -> Result<Option<codec::BlockWrapper>, Error> {
-        // FIXME (NEAR):  Might not be necessary for NEAR support for now
-        Ok(None)
+    ) -> Result<Option<codec::Block>, Error> {
+        panic!("Should never be called since FirehoseBlockStream cannot resolve it")
     }
 
     /// Panics if `block` is genesis.
     /// But that's ok since this is only called when reverting `block`.
-    async fn parent_ptr(&self, _block: &BlockPtr) -> Result<BlockPtr, Error> {
+    async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
         // FIXME (NEAR):  Might not be necessary for NEAR support for now
-        Ok(BlockPtr {
+        Ok(Some(BlockPtr {
             hash: BlockHash::from(vec![0xff; 32]),
-            number: 0,
-        })
+            number: block.number.saturating_sub(1),
+        }))
     }
 }
 
 pub struct FirehoseMapper {}
 
+#[async_trait]
 impl FirehoseMapperTrait<Chain> for FirehoseMapper {
-    fn to_block_stream_event(
+    async fn to_block_stream_event(
         &self,
-        _logger: &Logger,
+        logger: &Logger,
         response: &bstream::BlockResponseV2,
-        _adapter: &TriggersAdapter,
+        adapter: &TriggersAdapter,
         filter: &TriggerFilter,
     ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
         let step = bstream::ForkStep::from_i32(response.step).unwrap_or_else(|| {
@@ -268,17 +310,16 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         //
         // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
         // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
-        let block = codec::BlockWrapper::decode(any_block.value.as_ref())?;
+        let block = codec::Block::decode(any_block.value.as_ref())?;
 
         match step {
             bstream::ForkStep::StepNew => Ok(BlockStreamEvent::ProcessBlock(
-                self.firehose_triggers_in_block(&block, filter)?,
+                adapter.triggers_in_block(logger, block, filter).await?,
                 Some(response.cursor.clone()),
             )),
 
             bstream::ForkStep::StepUndo => {
-                let block = block.block.as_ref().unwrap();
-                let header = block.header.as_ref().unwrap();
+                let header = block.header();
 
                 Ok(BlockStreamEvent::Revert(
                     BlockPtr {
@@ -286,6 +327,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                         number: header.height as i32,
                     },
                     Some(response.cursor.clone()),
+                    None, // FIXME: we should get the parent block pointer when we have access to parent block height
                 ))
             }
 
@@ -297,24 +339,6 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 panic!("unknown step should not happen in the Firehose response")
             }
         }
-    }
-}
-
-impl FirehoseMapper {
-    // FIXME: This should be replaced by using the `TriggersAdapter` struct directly. However, the TriggersAdapter trait
-    //        is async. It's actual async usage is done inside a manual `poll` implementation in `firehose_block_stream#poll_next`
-    //        value. An upcoming improvement will be to remove this `poll_next`. Once the refactor occurs, this should be
-    //        removed and TriggersAdapter::triggers_in_block should be use straight.
-    fn firehose_triggers_in_block(
-        &self,
-        block: &codec::BlockWrapper,
-        _filter: &TriggerFilter,
-    ) -> Result<BlockWithTriggers<Chain>, FirehoseError> {
-        Ok(BlockWithTriggers {
-            // TODO: Find the best place to introduce an `Arc` and avoid these clones.
-            block: block.clone(),
-            trigger_data: vec![NearTrigger::Block(Arc::new(block.clone()))],
-        })
     }
 }
 

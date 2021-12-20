@@ -159,6 +159,10 @@ deployment should be stored, which defaults to `primary`, and a list of
 mentioned in `indexers`. The names for the indexers must be the same names
 that are passed with `--node-id` when those index nodes are started.
 
+Instead of a fixed `shard`, it is also possible to use a list of `shards`;
+in that case, the system uses the shard from the given list with the fewest
+active deployments in it.
+
 ```toml
 [deployment]
 [[deployment.rule]]
@@ -174,6 +178,7 @@ match = { network = [ "xdai", "poa-core" ] }
 indexers = [ "index_node_other_0" ]
 [[deployment.rule]]
 # There's no 'match', so any subgraph matches
+shards = [ "sharda", "shardb" ]
 indexers = [
     "index_node_community_0",
     "index_node_community_1",

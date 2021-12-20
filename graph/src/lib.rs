@@ -101,8 +101,8 @@ pub mod prelude {
     pub use crate::blockchain::BlockPtr;
 
     pub use crate::components::ethereum::{
-        EthereumBlock, EthereumBlockWithCalls, EthereumCall, EthereumNetworkIdentifier,
-        LightEthereumBlock, LightEthereumBlockExt,
+        EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock,
+        LightEthereumBlockExt,
     };
     pub use crate::components::graphql::{
         GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,
@@ -197,4 +197,8 @@ pub mod prelude {
         EnumType, Type, Document, ScalarType, InputValue, DirectiveDefinition,
         UnionType, InputObjectType, EnumValue,
     });
+
+    pub mod r {
+        pub use crate::data::value::Value;
+    }
 }

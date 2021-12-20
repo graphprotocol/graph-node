@@ -1,13 +1,13 @@
 [package]
 name = "graph-graphql"
-version = "0.24.2"
+version = "0.25.0"
 edition = "2018"
 
 [dependencies]
 crossbeam = "0.8"
 futures01 = { package="futures", version="0.1.29" }
 graph = { path = "../graph" }
-graphql-parser = "0.3"
+graphql-parser = "0.4.0"
 indexmap = "1.7"
 Inflector = "0.11.3"
 lazy_static = "1.2.0"

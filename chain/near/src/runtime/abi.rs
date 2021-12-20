@@ -1,23 +1,20 @@
 use crate::codec;
 use crate::trigger::ReceiptWithOutcome;
-use base64;
-use graph::anyhow::{anyhow, Context};
+use graph::anyhow::anyhow;
 use graph::runtime::{asc_new, AscHeap, AscPtr, DeterministicHostError, ToAscObj};
 use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, EnumPayload, Uint8Array};
 
 pub(crate) use super::generated::*;
 
-impl ToAscObj<AscBlock> for codec::BlockWrapper {
+impl ToAscObj<AscBlock> for codec::Block {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
     ) -> Result<AscBlock, DeterministicHostError> {
-        let block = self.block();
-
         Ok(AscBlock {
-            author: asc_new(heap, &block.author)?,
+            author: asc_new(heap, &self.author)?,
             header: asc_new(heap, self.header())?,
-            chunks: asc_new(heap, &block.chunks)?,
+            chunks: asc_new(heap, &self.chunk_headers)?,
         })
     }
 }
@@ -57,8 +54,7 @@ impl ToAscObj<AscBlockHeader> for codec::BlockHeader {
             block_merkle_root: asc_new(heap, self.block_merkle_root.as_ref().unwrap())?,
             epoch_sync_data_hash: asc_new(heap, self.epoch_sync_data_hash.as_slice())?,
             approvals: asc_new(heap, &self.approvals)?,
-            // FIXME: Right now near-dm-indexer does not populate this field properly ...
-            signature: AscPtr::null(),
+            signature: asc_new(heap, &self.signature.as_ref().unwrap())?,
             latest_protocol_version: self.latest_protocol_version,
         })
     }
@@ -71,8 +67,7 @@ impl ToAscObj<AscChunkHeader> for codec::ChunkHeader {
     ) -> Result<AscChunkHeader, DeterministicHostError> {
         Ok(AscChunkHeader {
             chunk_hash: asc_new(heap, self.chunk_hash.as_slice())?,
-            // FIXME: Right now near-dm-indexer does not populate this field properly ...
-            signature: AscPtr::null(),
+            signature: asc_new(heap, &self.signature.as_ref().unwrap())?,
             prev_block_hash: asc_new(heap, self.prev_block_hash.as_slice())?,
             prev_state_root: asc_new(heap, self.prev_state_root.as_slice())?,
             encoded_merkle_root: asc_new(heap, self.encoded_merkle_root.as_slice())?,
@@ -86,6 +81,8 @@ impl ToAscObj<AscChunkHeader> for codec::ChunkHeader {
             outgoing_receipts_root: asc_new(heap, self.outgoing_receipts_root.as_slice())?,
             tx_root: asc_new(heap, self.tx_root.as_slice())?,
             validator_proposals: asc_new(heap, &self.validator_proposals)?,
+
+            _padding: 0,
         })
     }
 }
@@ -180,8 +177,8 @@ impl ToAscObj<AscActionEnum> for codec::Action {
         };
 
         Ok(AscActionEnum(AscEnum {
-            _padding: 0,
             kind,
+            _padding: 0,
             payload: EnumPayload(payload),
         }))
     }
@@ -212,17 +209,8 @@ impl ToAscObj<AscDeployContractAction> for codec::DeployContractAction {
         &self,
         heap: &mut H,
     ) -> Result<AscDeployContractAction, DeterministicHostError> {
-        // In next iteration of NEAR protobuf format, `self.code` will be renamed to `self.code_hash` and
-        // it will a pre-decoded Vec<u8> directly.
-        let code_hash = match base64::decode(&self.code)
-            .with_context(|| "DeployContract code hash is not in base64 format")
-        {
-            Ok(bytes) => bytes,
-            Err(err) => return Err(DeterministicHostError(err)),
-        };
-
         Ok(AscDeployContractAction {
-            code: asc_new(heap, code_hash.as_slice())?,
+            code: asc_new(heap, self.code.as_slice())?,
         })
     }
 }
@@ -232,19 +220,12 @@ impl ToAscObj<AscFunctionCallAction> for codec::FunctionCallAction {
         &self,
         heap: &mut H,
     ) -> Result<AscFunctionCallAction, DeterministicHostError> {
-        // In next iteration of NEAR protobuf format, `self.args` will a pre-decoded Vec<u8> directly.
-        let args = match base64::decode(&self.args)
-            .with_context(|| "FunctionCall args is not in base64 format")
-        {
-            Ok(bytes) => bytes,
-            Err(err) => return Err(DeterministicHostError(err)),
-        };
-
         Ok(AscFunctionCallAction {
             method_name: asc_new(heap, &self.method_name)?,
-            args: asc_new(heap, args.as_slice())?,
+            args: asc_new(heap, self.args.as_slice())?,
             gas: self.gas,
             deposit: asc_new(heap, self.deposit.as_ref().unwrap())?,
+            _padding: 0,
         })
     }
 }
@@ -292,6 +273,7 @@ impl ToAscObj<AscAccessKey> for codec::AccessKey {
         Ok(AscAccessKey {
             nonce: self.nonce,
             permission: asc_new(heap, self.permission.as_ref().unwrap())?,
+            _padding: 0,
         })
     }
 }
@@ -326,8 +308,11 @@ impl ToAscObj<AscFunctionCallPermission> for codec::FunctionCallPermission {
         heap: &mut H,
     ) -> Result<AscFunctionCallPermission, DeterministicHostError> {
         Ok(AscFunctionCallPermission {
-            // allowance is one of the few
-            allowance: asc_new(heap, self.allowance.as_ref().unwrap())?,
+            // The `allowance` field is one of the few fields that can actually be None for real
+            allowance: match self.allowance.as_ref() {
+                Some(allowance) => asc_new(heap, allowance)?,
+                None => AscPtr::null(),
+            },
             receiver_id: asc_new(heap, &self.receiver_id)?,
             method_names: asc_new(heap, &self.method_names)?,
         })
@@ -388,7 +373,7 @@ impl ToAscObj<AscDataReceiverArray> for Vec<codec::DataReceiver> {
     }
 }
 
-impl ToAscObj<AscExecutionOutcome> for codec::ExecutionOutcomeWithIdView {
+impl ToAscObj<AscExecutionOutcome> for codec::ExecutionOutcomeWithId {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
@@ -416,17 +401,11 @@ impl ToAscObj<AscSuccessStatusEnum> for codec::execution_outcome::Status {
     ) -> Result<AscSuccessStatusEnum, DeterministicHostError> {
         let (kind, payload) = match self {
             codec::execution_outcome::Status::SuccessValue(value) => {
-                // In next iteration of NEAR protobuf format, `value.value` will a pre-decoded Vec<u8> directly.
-                let value = match base64::decode(&value.value)
-                    .with_context(|| "FunctionCall args is not in base64 format")
-                {
-                    Ok(bytes) => bytes,
-                    Err(err) => return Err(DeterministicHostError(err)),
-                };
+                let bytes = &value.value;
 
                 (
                     AscSuccessStatusKind::Value,
-                    asc_new(heap, value.as_slice())?.to_payload(),
+                    asc_new(heap, bytes.as_slice())?.to_payload(),
                 )
             }
             codec::execution_outcome::Status::SuccessReceiptId(receipt_id) => (
@@ -523,11 +502,7 @@ impl ToAscObj<AscPublicKey> for codec::PublicKey {
         heap: &mut H,
     ) -> Result<AscPublicKey, DeterministicHostError> {
         Ok(AscPublicKey {
-            // FIXME: Right now proto-near definitions is wrong since it's missing the `type` field.
-            //        When `proto-near` has been adjusted, we will uncomment this line and remove the
-            //        one below.
-            // kind: match self.r#type {
-            kind: match 0 {
+            kind: match self.r#type {
                 0 => 0,
                 1 => 1,
                 value => {
@@ -614,8 +589,9 @@ impl ToAscObj<Uint8Array> for codec::BigInt {
         &self,
         heap: &mut H,
     ) -> Result<Uint8Array, DeterministicHostError> {
-        // FIXME (NEAR): Hopefully the bytes here fits the BigInt format expected in `graph-node`,
-        //               will need to validate that in the subgraph directly.
-        self.bytes.to_asc_obj(heap)
+        // Bytes are reversed to align with BigInt bytes endianess
+        let reversed: Vec<u8> = self.bytes.iter().rev().map(|x| *x).collect();
+
+        reversed.to_asc_obj(heap)
     }
 }

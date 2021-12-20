@@ -12,8 +12,6 @@ those.
 
 - `ETHEREUM_POLLING_INTERVAL`: how often to poll Ethereum for new blocks (in ms,
   defaults to 500ms)
-- `ETHEREUM_RPC_MAX_PARALLEL_REQUESTS`: Maximum number of concurrent HTTP
-  requests to an Ethereum RPC endpoint (defaults to 64).
 - `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`: The ideal amount of triggers
   to be processed in a batch. If this is too small it may cause too many requests
   to the ethereum node, if it is too large it may cause unreasonably expensive
@@ -36,6 +34,10 @@ those.
   subgraph if the limit is reached, but will simply restart the syncing step,
   so it can be low. This limit guards against scenarios such as requesting a
   block hash that has been reorged. Defaults to 10.
+- `GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS`:
+   The maximum number of concurrent requests made against Ethereum for
+   requesting transaction receipts during block ingestion.
+   Defaults to 1,000.
 - `GRAPH_ETHEREUM_CLEANUP_BLOCKS` : Set to `true` to clean up unneeded
   blocks from the cache in the database. When this is `false` or unset (the
   default), blocks will never be removed from the block cache. This setting
@@ -76,7 +78,7 @@ those.
 - `GRAPH_QUERY_CACHE_STALE_PERIOD`: Number of queries after which a cache
   entry can be considered stale. Defaults to 100.
 - `GRAPH_MAX_API_VERSION`: Maximum `apiVersion` supported, if a developer tries to create a subgraph
-  with a higher `apiVersion` than this in their mappings, they'll receive an error. Defaults to `0.0.5`.
+  with a higher `apiVersion` than this in their mappings, they'll receive an error. Defaults to `0.0.6`.
 - `GRAPH_RUNTIME_MAX_STACK_SIZE`: Maximum stack size for the WASM runtime, if exceeded the execution
   stops and an error is thrown. Defaults to 512KiB.
 
@@ -171,3 +173,9 @@ those.
 - `EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE`: default is `instant`, set 
   to `synced` to only switch a named subgraph to a new deployment once it 
   has synced, making the new deployment the "Pending" version.
+- `GRAPH_REMOVE_UNUSED_INTERVAL`: How long to wait before removing an
+  unused deployment. The system periodically checks and marks deployments
+  that are not used by any subgraphs any longer. Once a deployment has been
+  identified as unused, `graph-node` will wait at least this long before
+  actually deleting the data (value is in minutes, defaults to 360, i.e. 6
+  hours)

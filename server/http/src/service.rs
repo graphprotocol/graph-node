@@ -429,7 +429,7 @@ mod tests {
             QueryResults::from(BTreeMap::from_iter(
                 vec![(
                     String::from("name"),
-                    q::Value::String(String::from("Jordi")),
+                    r::Value::String(String::from("Jordi")),
                 )]
                 .into_iter(),
             ))

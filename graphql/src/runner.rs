@@ -347,7 +347,6 @@ where
                 result_size: self.result_size.clone(),
             },
         )
-        .await
     }
 
     fn load_manager(&self) -> Arc<LoadManager> {

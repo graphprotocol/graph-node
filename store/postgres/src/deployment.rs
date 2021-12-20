@@ -34,6 +34,14 @@ pub enum SubgraphHealth {
     Unhealthy,
 }
 
+impl SubgraphHealth {
+    fn is_failed(&self) -> bool {
+        use graph::data::subgraph::schema::SubgraphHealth as H;
+
+        H::from(*self).is_failed()
+    }
+}
+
 impl From<SubgraphHealth> for graph::data::subgraph::schema::SubgraphHealth {
     fn from(health: SubgraphHealth) -> Self {
         use graph::data::subgraph::schema::SubgraphHealth as H;
@@ -202,6 +210,7 @@ pub fn manifest_info(
         .map(|schema| (schema, description, repository))
 }
 
+#[allow(dead_code)]
 pub fn features(conn: &PgConnection, site: &Site) -> Result<BTreeSet<SubgraphFeature>, StoreError> {
     use subgraph_manifest as sm;
 
@@ -491,16 +500,10 @@ pub fn fail(
     id: &DeploymentHash,
     error: &SubgraphError,
 ) -> Result<(), StoreError> {
-    use subgraph_deployment as d;
-
     let error_id = insert_subgraph_error(conn, error)?;
-    update(d::table.filter(d::deployment.eq(id.as_str())))
-        .set((
-            d::failed.eq(true),
-            d::health.eq(SubgraphHealth::Failed),
-            d::fatal_error.eq(Some(error_id)),
-        ))
-        .execute(conn)?;
+
+    update_deployment_status(conn, id, SubgraphHealth::Failed, Some(error_id))?;
+
     Ok(())
 }
 
@@ -541,43 +544,35 @@ pub(crate) fn has_non_fatal_errors(
     .map_err(|e| e.into())
 }
 
-/// Clear the `SubgraphHealth::Failed` status of a subgraph and mark it as
-/// healthy or unhealthy depending on whether it also had non-fatal errors
-pub fn unfail(conn: &PgConnection, id: &DeploymentHash) -> Result<(), StoreError> {
+pub fn get_fatal_error_id(
+    conn: &PgConnection,
+    deployment_id: &DeploymentHash,
+) -> Result<Option<String>, StoreError> {
     use subgraph_deployment as d;
-    use subgraph_error as e;
-    use SubgraphHealth::*;
-
-    let prev_health = if has_non_fatal_errors(conn, id, None)? {
-        Unhealthy
-    } else {
-        Healthy
-    };
-
-    let fatal_error_id = match d::table
-        .filter(d::deployment.eq(id.as_str()))
+    d::table
+        .filter(d::deployment.eq(deployment_id.as_str()))
         .select(d::fatal_error)
-        .get_result::<Option<String>>(conn)?
-    {
-        Some(fatal_error_id) => fatal_error_id,
+        .get_result(conn)
+        .map_err(StoreError::from)
+}
 
-        // If the subgraph is not failed then there is nothing to do.
-        None => return Ok(()),
-    };
+pub fn update_deployment_status(
+    conn: &PgConnection,
+    deployment_id: &DeploymentHash,
+    health: SubgraphHealth,
+    fatal_error: Option<String>,
+) -> Result<(), StoreError> {
+    use subgraph_deployment as d;
 
-    // Unfail the deployment.
-    update(d::table.filter(d::deployment.eq(id.as_str())))
+    update(d::table.filter(d::deployment.eq(deployment_id.as_str())))
         .set((
-            d::failed.eq(false),
-            d::health.eq(prev_health),
-            d::fatal_error.eq::<Option<String>>(None),
+            d::failed.eq(health.is_failed()),
+            d::health.eq(health),
+            d::fatal_error.eq::<Option<String>>(fatal_error),
         ))
-        .execute(conn)?;
-
-    // Delete the fatal error.
-    delete(e::table.filter(e::id.eq(fatal_error_id))).execute(conn)?;
-
-    Ok(())
+        .execute(conn)
+        .map(|_| ())
+        .map_err(StoreError::from)
 }
 
 /// Insert the errors and check if the subgraph needs to be set as unhealthy.
@@ -631,6 +626,19 @@ fn check_health(
     .map_err(|e| e.into())
 }
 
+pub(crate) fn health(
+    conn: &PgConnection,
+    id: &DeploymentHash,
+) -> Result<SubgraphHealth, StoreError> {
+    use subgraph_deployment as d;
+
+    d::table
+        .filter(d::deployment.eq(id.as_str()))
+        .select(d::health)
+        .get_result(conn)
+        .map_err(|e| e.into())
+}
+
 /// Reverts the errors and updates the subgraph health if necessary.
 pub(crate) fn revert_subgraph_errors(
     conn: &PgConnection,
@@ -651,6 +659,14 @@ pub(crate) fn revert_subgraph_errors(
     // `reverted_block` were just deleted, but semantically we care about `reverted_block - 1` which
     // is the block being reverted to.
     check_health(conn, id, reverted_block - 1)
+}
+
+pub(crate) fn delete_error(conn: &PgConnection, error_id: &str) -> Result<(), StoreError> {
+    use subgraph_error as e;
+    delete(e::table.filter(e::id.eq(error_id)))
+        .execute(conn)
+        .map(|_| ())
+        .map_err(StoreError::from)
 }
 
 /// Copy the dynamic data sources for `src` to `dst`. All data sources that

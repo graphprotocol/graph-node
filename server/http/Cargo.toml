@@ -1,11 +1,11 @@
 [package]
 name = "graph-server-http"
-version = "0.24.2"
+version = "0.25.0"
 edition = "2018"
 
 [dependencies]
 futures = "0.1.21"
-graphql-parser = "0.3"
+graphql-parser = "0.4.0"
 http = "0.2"
 hyper = "0.14"
 serde = "1.0"

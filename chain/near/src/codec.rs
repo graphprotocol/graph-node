@@ -2,7 +2,7 @@
 mod pbcodec;
 
 use graph::{
-    blockchain::Block,
+    blockchain::Block as BlockchainBlock,
     blockchain::BlockPtr,
     prelude::{hex, web3::types::H256, BlockNumber},
 };
@@ -23,41 +23,44 @@ impl LowerHex for &CryptoHash {
     }
 }
 
-impl BlockWrapper {
-    pub fn block(&self) -> &pbcodec::Block {
-        self.block.as_ref().unwrap()
-    }
-
-    pub fn header(&self) -> &BlockHeader {
-        self.block().header.as_ref().unwrap()
-    }
-
+impl BlockHeader {
     pub fn parent_ptr(&self) -> Option<BlockPtr> {
-        let header = self.header();
-
-        match (header.prev_hash.as_ref(), header.prev_height) {
+        match (self.prev_hash.as_ref(), self.prev_height) {
             (Some(hash), number) => Some(BlockPtr::from((hash.into(), number))),
             _ => None,
         }
     }
 }
 
-impl From<BlockWrapper> for BlockPtr {
-    fn from(b: BlockWrapper) -> BlockPtr {
+impl<'a> From<&'a BlockHeader> for BlockPtr {
+    fn from(b: &'a BlockHeader) -> BlockPtr {
+        BlockPtr::from((b.hash.as_ref().unwrap().into(), b.height))
+    }
+}
+
+impl Block {
+    pub fn header(&self) -> &BlockHeader {
+        self.header.as_ref().unwrap()
+    }
+
+    pub fn parent_ptr(&self) -> Option<BlockPtr> {
+        self.header().parent_ptr()
+    }
+}
+
+impl From<Block> for BlockPtr {
+    fn from(b: Block) -> BlockPtr {
         (&b).into()
     }
 }
 
-impl<'a> From<&'a BlockWrapper> for BlockPtr {
-    fn from(b: &'a BlockWrapper) -> BlockPtr {
-        let header = b.header();
-        let hash: H256 = header.hash.as_ref().unwrap().into();
-
-        BlockPtr::from((hash, header.height))
+impl<'a> From<&'a Block> for BlockPtr {
+    fn from(b: &'a Block) -> BlockPtr {
+        BlockPtr::from(b.header())
     }
 }
 
-impl Block for BlockWrapper {
+impl BlockchainBlock for Block {
     fn number(&self) -> i32 {
         BlockNumber::try_from(self.header().height).unwrap()
     }
@@ -68,5 +71,41 @@ impl Block for BlockWrapper {
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
         self.parent_ptr()
+    }
+}
+
+impl HeaderOnlyBlock {
+    pub fn header(&self) -> &BlockHeader {
+        self.header.as_ref().unwrap()
+    }
+}
+
+impl<'a> From<&'a HeaderOnlyBlock> for BlockPtr {
+    fn from(b: &'a HeaderOnlyBlock) -> BlockPtr {
+        BlockPtr::from(b.header())
+    }
+}
+
+impl BlockchainBlock for HeaderOnlyBlock {
+    fn number(&self) -> i32 {
+        BlockNumber::try_from(self.header().height).unwrap()
+    }
+
+    fn ptr(&self) -> BlockPtr {
+        self.into()
+    }
+
+    fn parent_ptr(&self) -> Option<BlockPtr> {
+        self.header().parent_ptr()
+    }
+}
+
+impl execution_outcome::Status {
+    pub fn is_success(&self) -> bool {
+        use execution_outcome::Status::*;
+        match self {
+            Unknown(_) | Failure(_) => false,
+            SuccessValue(_) | SuccessReceiptId(_) => true,
+        }
     }
 }

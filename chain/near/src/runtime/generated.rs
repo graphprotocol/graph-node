@@ -1,10 +1,9 @@
 use graph::runtime::{
     AscIndexId, AscPtr, AscType, AscValue, DeterministicHostError, IndexForAscTypeId,
 };
-use graph::{anyhow, semver, semver::Version};
+use graph::semver::Version;
 use graph_runtime_derive::AscType;
 use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEnum, AscString, Uint8Array};
-use std::mem::size_of;
 
 pub(crate) type AscCryptoHash = Uint8Array;
 pub(crate) type AscAccountId = AscString;
@@ -267,6 +266,15 @@ impl AscIndexId for AscFullAccessPermission {
 pub(crate) struct AscAccessKey {
     pub nonce: u64,
     pub permission: AscPtr<AscAccessKeyPermissionEnum>,
+
+    // It seems that is impossible to correctly order fields in this struct
+    // so that Rust packs it tighly without padding. So we add 4 bytes of padding
+    // ourself.
+    //
+    // This is a bit problematic because AssemblyScript actually is ok with 12 bytes
+    // and is fully packed. Seems like a differences between alignment for `repr(C)` and
+    // AssemblyScript.
+    pub(crate) _padding: u32,
 }
 
 impl AscIndexId for AscAccessKey {
@@ -330,6 +338,15 @@ pub(crate) struct AscFunctionCallAction {
     pub args: AscPtr<Uint8Array>,
     pub gas: u64,
     pub deposit: AscPtr<AscBigInt>,
+
+    // It seems that is impossible to correctly order fields in this struct
+    // so that Rust packs it tighly without padding. So we add 4 bytes of padding
+    // ourself.
+    //
+    // This is a bit problematic because AssemblyScript actually is ok with 20 bytes
+    // and is fully packed. Seems like a differences between alignment for `repr(C)` and
+    // AssemblyScript.
+    pub(crate) _padding: u32,
 }
 
 impl AscIndexId for AscFunctionCallAction {
@@ -469,12 +486,12 @@ impl AscIndexId for AscMerklePathItem {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscExecutionOutcome {
+    pub gas_burnt: u64,
     pub proof: AscPtr<AscMerklePathItemArray>,
     pub block_hash: AscPtr<AscCryptoHash>,
     pub id: AscPtr<AscCryptoHash>,
     pub logs: AscPtr<Array<AscPtr<AscString>>>,
     pub receipt_ids: AscPtr<AscCryptoHashArray>,
-    pub gas_burnt: u64,
     pub tokens_burnt: AscPtr<AscBigInt>,
     pub executor_id: AscPtr<AscString>,
     pub status: AscPtr<AscSuccessStatusEnum>,
@@ -500,23 +517,23 @@ impl AscIndexId for AscSlashedValidator {
 pub(crate) struct AscBlockHeader {
     pub height: AscBlockHeight,
     pub prev_height: AscBlockHeight,
+    pub block_ordinal: AscNumBlocks,
     pub epoch_id: AscPtr<AscCryptoHash>,
     pub next_epoch_id: AscPtr<AscCryptoHash>,
+    pub chunks_included: u64,
     pub hash: AscPtr<AscCryptoHash>,
     pub prev_hash: AscPtr<AscCryptoHash>,
+    pub timestamp_nanosec: u64,
     pub prev_state_root: AscPtr<AscCryptoHash>,
     pub chunk_receipts_root: AscPtr<AscCryptoHash>,
     pub chunk_headers_root: AscPtr<AscCryptoHash>,
     pub chunk_tx_root: AscPtr<AscCryptoHash>,
     pub outcome_root: AscPtr<AscCryptoHash>,
-    pub chunks_included: u64,
     pub challenges_root: AscPtr<AscCryptoHash>,
-    pub timestamp_nanosec: u64,
     pub random_value: AscPtr<AscCryptoHash>,
     pub validator_proposals: AscPtr<AscValidatorStakeArray>,
     pub chunk_mask: AscPtr<Array<bool>>,
     pub gas_price: AscPtr<AscBalance>,
-    pub block_ordinal: AscNumBlocks,
     pub total_supply: AscPtr<AscBalance>,
     pub challenges_result: AscPtr<AscSlashedValidatorArray>,
     pub last_final_block: AscPtr<AscCryptoHash>,
@@ -548,21 +565,30 @@ impl AscIndexId for AscValidatorStake {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscChunkHeader {
+    pub encoded_length: u64,
+    pub gas_used: AscGas,
+    pub gas_limit: AscGas,
+    pub shard_id: AscShardId,
+    pub height_created: AscBlockHeight,
+    pub height_included: AscBlockHeight,
     pub chunk_hash: AscPtr<AscCryptoHash>,
     pub signature: AscPtr<AscSignature>,
     pub prev_block_hash: AscPtr<AscCryptoHash>,
     pub prev_state_root: AscPtr<AscCryptoHash>,
     pub encoded_merkle_root: AscPtr<AscCryptoHash>,
-    pub encoded_length: u64,
-    pub height_created: AscBlockHeight,
-    pub height_included: AscBlockHeight,
-    pub shard_id: AscShardId,
-    pub gas_used: AscGas,
-    pub gas_limit: AscGas,
     pub balance_burnt: AscPtr<AscBalance>,
     pub outgoing_receipts_root: AscPtr<AscCryptoHash>,
     pub tx_root: AscPtr<AscCryptoHash>,
     pub validator_proposals: AscPtr<AscValidatorStakeArray>,
+
+    // It seems that is impossible to correctly order fields in this struct
+    // so that Rust packs it tighly without padding. So we add 4 bytes of padding
+    // ourself.
+    //
+    // This is a bit problematic because AssemblyScript actually is ok with 84 bytes
+    // and is fully packed. Seems like a differences between alignment for `repr(C)` and
+    // AssemblyScript.
+    pub(crate) _padding: u32,
 }
 
 impl AscIndexId for AscChunkHeader {

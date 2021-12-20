@@ -1,5 +1,8 @@
 use graph::{
-    components::store::{DeploymentLocator, StatusStore},
+    components::{
+        server::index_node::VersionInfo,
+        store::{DeploymentLocator, StatusStore},
+    },
     data::subgraph::schema::SubgraphError,
     data::subgraph::schema::SubgraphHealth,
     prelude::EntityChange,
@@ -39,6 +42,13 @@ fn unassigned(deployment: &DeploymentLocator) -> EntityChange {
         deployment: deployment.clone(),
         operation: EntityChangeOperation::Removed,
     }
+}
+
+fn get_version_info(store: &Store, subgraph_name: &str) -> VersionInfo {
+    let primary = primary_connection();
+    let (current, _) = primary.versions_for_subgraph(subgraph_name).unwrap();
+    let current = current.unwrap();
+    store.version_info(&current).unwrap()
 }
 
 #[test]
@@ -426,11 +436,7 @@ fn version_info() {
         )
         .unwrap();
 
-        let primary = primary_connection();
-        let (current, _) = primary.versions_for_subgraph(&*NAME).unwrap();
-        let current = current.unwrap();
-
-        let vi = store.version_info(&current).unwrap();
+        let vi = get_version_info(&store, NAME);
         assert_eq!(&*NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.synced);
         assert_eq!(false, vi.failed);
@@ -550,19 +556,54 @@ fn fatal_vs_non_fatal() {
 }
 
 #[test]
-fn fail_unfail() {
+fn fail_unfail_deterministic_error() {
+    const NAME: &str = "failUnfailDeterministic";
+
     fn setup() -> DeploymentLocator {
-        let id = DeploymentHash::new("failUnfail").unwrap();
+        let id = DeploymentHash::new(NAME).unwrap();
         remove_subgraphs();
         create_test_subgraph(&id, SUBGRAPH_GQL)
     }
 
     run_test_sequentially(|store| async move {
         let deployment = setup();
+
         let query_store = store
             .query_store(deployment.hash.cheap_clone().into(), false)
             .await
             .unwrap();
+
+        // Process the first block.
+        transact_entity_operations(
+            &store.subgraph_store(),
+            &deployment,
+            BLOCKS[0].clone(),
+            vec![],
+        )
+        .unwrap();
+
+        // We don't have any errors and the subgraph is healthy.
+        assert!(!query_store.has_non_fatal_errors(None).await.unwrap());
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(false, vi.failed);
+        assert_eq!(Some(0), vi.latest_ethereum_block_number);
+
+        // Process the second block.
+        transact_entity_operations(
+            &store.subgraph_store(),
+            &deployment,
+            BLOCKS[1].clone(),
+            vec![],
+        )
+        .unwrap();
+
+        // Still no fatal errors.
+        assert!(!query_store.has_non_fatal_errors(None).await.unwrap());
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(false, vi.failed);
+        assert_eq!(Some(1), vi.latest_ethereum_block_number);
 
         let error = SubgraphError {
             subgraph_id: deployment.hash.clone(),
@@ -577,14 +618,68 @@ fn fail_unfail() {
             .writable(LOGGER.clone(), deployment.id)
             .await
             .expect("can get writable");
+
+        // Fail the subgraph with a deterministic error.
         writable.fail_subgraph(error).await.unwrap();
 
+        // Now we have a fatal error because the subgraph failed.
+        assert!(query_store.has_non_fatal_errors(None).await.unwrap());
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(true, vi.failed);
+        assert_eq!(Some(1), vi.latest_ethereum_block_number);
+
+        // Unfail the subgraph.
+        writable
+            .unfail_deterministic_error(&BLOCKS[1], &BLOCKS[0])
+            .unwrap();
+
+        // We don't have fatal errors anymore and the block got reverted.
         assert!(!query_store.has_non_fatal_errors(None).await.unwrap());
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(false, vi.failed);
+        assert_eq!(Some(0), vi.latest_ethereum_block_number);
 
-        // This will unfail the subgraph and delete the fatal error.
-        writable.unfail().unwrap();
+        test_store::remove_subgraphs();
+    })
+}
 
-        // Advance the block ptr to the block of the deleted error.
+#[test]
+fn fail_unfail_deterministic_error_noop() {
+    const NAME: &str = "failUnfailDeterministicNoop";
+
+    fn setup() -> DeploymentLocator {
+        let id = DeploymentHash::new(NAME).unwrap();
+        remove_subgraphs();
+        create_test_subgraph(&id, SUBGRAPH_GQL)
+    }
+
+    run_test_sequentially(|store| async move {
+        let deployment = setup();
+
+        let count = || -> usize {
+            let store = store.subgraph_store();
+            store.error_count(&deployment.hash).unwrap()
+        };
+
+        // Process the first block.
+        transact_entity_operations(
+            &store.subgraph_store(),
+            &deployment,
+            BLOCKS[0].clone(),
+            vec![],
+        )
+        .unwrap();
+
+        // We don't have any errors and the subgraph is healthy.
+        assert_eq!(count(), 0);
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(false, vi.failed);
+        assert_eq!(Some(0), vi.latest_ethereum_block_number);
+
+        // Process the second block.
         transact_entity_operations(
             &store.subgraph_store(),
             &deployment,
@@ -593,8 +688,293 @@ fn fail_unfail() {
         )
         .unwrap();
 
-        // We still have no fatal errors.
-        assert!(!query_store.has_non_fatal_errors(None).await.unwrap());
+        // Still no fatal errors.
+        assert_eq!(count(), 0);
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(false, vi.failed);
+        assert_eq!(Some(1), vi.latest_ethereum_block_number);
+
+        let writable = store
+            .subgraph_store()
+            .writable(LOGGER.clone(), deployment.id)
+            .await
+            .expect("can get writable");
+
+        // Run unfail with no errors results in NOOP.
+        writable
+            .unfail_deterministic_error(&BLOCKS[1], &BLOCKS[0])
+            .unwrap();
+
+        // Nothing to unfail, state continues the same.
+        assert_eq!(count(), 0);
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(false, vi.failed);
+        assert_eq!(Some(1), vi.latest_ethereum_block_number);
+
+        let error = SubgraphError {
+            subgraph_id: deployment.hash.clone(),
+            message: "test".to_string(),
+            block_ptr: Some(BLOCKS[1].clone()),
+            handler: None,
+            deterministic: false, // wrong determinism
+        };
+
+        // Fail the subraph with a NON-deterministic error.
+        writable.fail_subgraph(error).await.unwrap();
+
+        // Now we have a fatal error because the subgraph failed.
+        assert_eq!(count(), 1);
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(true, vi.failed);
+        assert_eq!(Some(1), vi.latest_ethereum_block_number);
+
+        // Running unfail_deterministic_error against a NON-deterministic error will do nothing.
+        writable
+            .unfail_deterministic_error(&BLOCKS[1], &BLOCKS[0])
+            .unwrap();
+
+        // State continues the same, nothing happened.
+        // Neither the block got reverted or error deleted.
+        assert_eq!(count(), 1);
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(true, vi.failed);
+        assert_eq!(Some(1), vi.latest_ethereum_block_number);
+
+        let error = SubgraphError {
+            subgraph_id: deployment.hash.clone(),
+            message: "test".to_string(),
+            block_ptr: Some(BLOCKS[2].clone()), // wrong block
+            handler: None,
+            deterministic: true, // right determinism
+        };
+
+        // Fail the subgraph with an advanced block.
+        writable.fail_subgraph(error).await.unwrap();
+
+        // Running unfail_deterministic_error won't do anything,
+        // the hashes won't match and there's nothing to revert.
+        writable
+            .unfail_deterministic_error(&BLOCKS[1], &BLOCKS[0])
+            .unwrap();
+
+        // State continues the same.
+        // Neither the block got reverted or error deleted.
+        assert_eq!(count(), 2);
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(true, vi.failed);
+        assert_eq!(Some(1), vi.latest_ethereum_block_number);
+
+        test_store::remove_subgraphs();
+    })
+}
+
+#[test]
+fn fail_unfail_non_deterministic_error() {
+    const NAME: &str = "failUnfailNonDeterministic";
+
+    fn setup() -> DeploymentLocator {
+        let id = DeploymentHash::new(NAME).unwrap();
+        remove_subgraphs();
+        create_test_subgraph(&id, SUBGRAPH_GQL)
+    }
+
+    run_test_sequentially(|store| async move {
+        let deployment = setup();
+
+        let count = || -> usize {
+            let store = store.subgraph_store();
+            store.error_count(&deployment.hash).unwrap()
+        };
+
+        // Process the first block.
+        transact_entity_operations(
+            &store.subgraph_store(),
+            &deployment,
+            BLOCKS[0].clone(),
+            vec![],
+        )
+        .unwrap();
+
+        // We don't have any errors.
+        assert_eq!(count(), 0);
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(false, vi.failed);
+        assert_eq!(Some(0), vi.latest_ethereum_block_number);
+
+        let error = SubgraphError {
+            subgraph_id: deployment.hash.clone(),
+            message: "test".to_string(),
+            block_ptr: Some(BLOCKS[1].clone()),
+            handler: None,
+            deterministic: false,
+        };
+
+        let writable = store
+            .subgraph_store()
+            .writable(LOGGER.clone(), deployment.id)
+            .await
+            .expect("can get writable");
+
+        // Fail subgraph with a non-deterministic error.
+        writable.fail_subgraph(error).await.unwrap();
+
+        // Now we have a fatal error because the subgraph failed.
+        assert_eq!(count(), 1);
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(true, vi.failed);
+        assert_eq!(Some(0), vi.latest_ethereum_block_number);
+
+        // Process the second block.
+        transact_entity_operations(
+            &store.subgraph_store(),
+            &deployment,
+            BLOCKS[1].clone(),
+            vec![],
+        )
+        .unwrap();
+
+        // Subgraph failed but it's deployment head pointer advanced.
+        assert_eq!(count(), 1);
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(true, vi.failed);
+        assert_eq!(Some(1), vi.latest_ethereum_block_number);
+
+        // Unfail the subgraph and delete the fatal error.
+        writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
+
+        // We don't have fatal errors anymore and the subgraph is healthy.
+        assert_eq!(count(), 0);
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(false, vi.failed);
+        assert_eq!(Some(1), vi.latest_ethereum_block_number);
+
+        test_store::remove_subgraphs();
+    })
+}
+
+#[test]
+fn fail_unfail_non_deterministic_error_noop() {
+    const NAME: &str = "failUnfailNonDeterministicNoop";
+
+    fn setup() -> DeploymentLocator {
+        let id = DeploymentHash::new(NAME).unwrap();
+        remove_subgraphs();
+        create_test_subgraph(&id, SUBGRAPH_GQL)
+    }
+
+    run_test_sequentially(|store| async move {
+        let deployment = setup();
+
+        let count = || -> usize {
+            let store = store.subgraph_store();
+            store.error_count(&deployment.hash).unwrap()
+        };
+
+        // Process the first block.
+        transact_entity_operations(
+            &store.subgraph_store(),
+            &deployment,
+            BLOCKS[0].clone(),
+            vec![],
+        )
+        .unwrap();
+
+        // We don't have any errors and the subgraph is healthy.
+        assert_eq!(count(), 0);
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(false, vi.failed);
+        assert_eq!(Some(0), vi.latest_ethereum_block_number);
+
+        // Process the second block.
+        transact_entity_operations(
+            &store.subgraph_store(),
+            &deployment,
+            BLOCKS[1].clone(),
+            vec![],
+        )
+        .unwrap();
+
+        // Still no errors.
+        assert_eq!(count(), 0);
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(false, vi.failed);
+        assert_eq!(Some(1), vi.latest_ethereum_block_number);
+
+        let writable = store
+            .subgraph_store()
+            .writable(LOGGER.clone(), deployment.id)
+            .await
+            .expect("can get writable");
+
+        // Running unfail without any errors will do nothing.
+        writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
+
+        // State continues the same, nothing happened.
+        assert_eq!(count(), 0);
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(false, vi.failed);
+        assert_eq!(Some(1), vi.latest_ethereum_block_number);
+
+        let error = SubgraphError {
+            subgraph_id: deployment.hash.clone(),
+            message: "test".to_string(),
+            block_ptr: Some(BLOCKS[1].clone()),
+            handler: None,
+            deterministic: true, // wrong determinism
+        };
+
+        // Fail the subgraph with a DETERMININISTIC error.
+        writable.fail_subgraph(error).await.unwrap();
+
+        // We now have a fatal error because the subgraph failed.
+        assert_eq!(count(), 1);
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(true, vi.failed);
+        assert_eq!(Some(1), vi.latest_ethereum_block_number);
+
+        // Running unfail_non_deterministic_error will be NOOP, the error is deterministic.
+        writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
+
+        // Nothing happeened, state continues the same.
+        assert_eq!(count(), 1);
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(true, vi.failed);
+        assert_eq!(Some(1), vi.latest_ethereum_block_number);
+
+        let error = SubgraphError {
+            subgraph_id: deployment.hash.clone(),
+            message: "test".to_string(),
+            block_ptr: Some(BLOCKS[2].clone()), // wrong block
+            handler: None,
+            deterministic: false, // right determinism
+        };
+
+        // Fail the subgraph with a non-deterministic error, but with an advanced block.
+        writable.fail_subgraph(error).await.unwrap();
+
+        // Since the block range of the block won't match the deployment head, this will be NOOP.
+        writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
+
+        // State continues the same besides a new error added to the database.
+        assert_eq!(count(), 2);
+        let vi = get_version_info(&store, NAME);
+        assert_eq!(&*NAME, vi.deployment_id.as_str());
+        assert_eq!(true, vi.failed);
+        assert_eq!(Some(1), vi.latest_ethereum_block_number);
 
         test_store::remove_subgraphs();
     })

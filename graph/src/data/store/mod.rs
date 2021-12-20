@@ -1,6 +1,6 @@
 use crate::{
     components::store::{DeploymentLocator, EntityType},
-    prelude::{q, s, CacheWeight, EntityKey, QueryExecutionError},
+    prelude::{q, r, s, CacheWeight, EntityKey, QueryExecutionError},
 };
 use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
 use anyhow::{anyhow, Error};
@@ -26,6 +26,7 @@ pub mod scalar;
 pub mod ethereum;
 
 /// Filter subscriptions
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SubscriptionFilter {
     /// Receive updates about all entities from the given deployment of the
     /// given type
@@ -211,28 +212,28 @@ impl StableHash for Value {
 }
 
 impl Value {
-    pub fn from_query_value(value: &q::Value, ty: &s::Type) -> Result<Value, QueryExecutionError> {
+    pub fn from_query_value(value: &r::Value, ty: &s::Type) -> Result<Value, QueryExecutionError> {
         use graphql_parser::schema::Type::{ListType, NamedType, NonNullType};
 
         Ok(match (value, ty) {
             // When dealing with non-null types, use the inner type to convert the value
             (value, NonNullType(t)) => Value::from_query_value(value, t)?,
 
-            (q::Value::List(values), ListType(ty)) => Value::List(
+            (r::Value::List(values), ListType(ty)) => Value::List(
                 values
                     .iter()
                     .map(|value| Self::from_query_value(value, ty))
                     .collect::<Result<Vec<_>, _>>()?,
             ),
 
-            (q::Value::List(values), NamedType(n)) => Value::List(
+            (r::Value::List(values), NamedType(n)) => Value::List(
                 values
                     .iter()
                     .map(|value| Self::from_query_value(value, &NamedType(n.to_string())))
                     .collect::<Result<Vec<_>, _>>()?,
             ),
-            (q::Value::Enum(e), NamedType(_)) => Value::String(e.clone()),
-            (q::Value::String(s), NamedType(n)) => {
+            (r::Value::Enum(e), NamedType(_)) => Value::String(e.clone()),
+            (r::Value::String(s), NamedType(n)) => {
                 // Check if `ty` is a custom scalar type, otherwise assume it's
                 // just a string.
                 match n.as_str() {
@@ -242,14 +243,9 @@ impl Value {
                     _ => Value::String(s.clone()),
                 }
             }
-            (q::Value::Int(i), _) => Value::Int(
-                i.to_owned()
-                    .as_i64()
-                    .ok_or_else(|| QueryExecutionError::NamedTypeError("Int".to_string()))?
-                    as i32,
-            ),
-            (q::Value::Boolean(b), _) => Value::Bool(b.to_owned()),
-            (q::Value::Null, _) => Value::Null,
+            (r::Value::Int(i), _) => Value::Int(*i as i32),
+            (r::Value::Boolean(b), _) => Value::Bool(b.to_owned()),
+            (r::Value::Null, _) => Value::Null,
             _ => {
                 return Err(QueryExecutionError::AttributeTypeError(
                     value.to_string(),
@@ -381,6 +377,23 @@ impl From<Value> for q::Value {
             }
             Value::Bytes(bytes) => q::Value::String(bytes.to_string()),
             Value::BigInt(number) => q::Value::String(number.to_string()),
+        }
+    }
+}
+
+impl From<Value> for r::Value {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::String(s) => r::Value::String(s),
+            Value::Int(i) => r::Value::Int(i as i64),
+            Value::BigDecimal(d) => r::Value::String(d.to_string()),
+            Value::Bool(b) => r::Value::Boolean(b),
+            Value::Null => r::Value::Null,
+            Value::List(values) => {
+                r::Value::List(values.into_iter().map(|value| value.into()).collect())
+            }
+            Value::Bytes(bytes) => r::Value::String(bytes.to_string()),
+            Value::BigInt(number) => r::Value::String(number.to_string()),
         }
     }
 }
@@ -626,7 +639,7 @@ pub trait ToEntityKey {
 
 #[test]
 fn value_bytes() {
-    let graphql_value = q::Value::String("0x8f494c66afc1d3f8ac1b45df21f02a46".to_owned());
+    let graphql_value = r::Value::String("0x8f494c66afc1d3f8ac1b45df21f02a46".to_owned());
     let ty = q::Type::NamedType(BYTES_SCALAR.to_owned());
     let from_query = Value::from_query_value(&graphql_value, &ty).unwrap();
     assert_eq!(
@@ -635,18 +648,18 @@ fn value_bytes() {
             &[143, 73, 76, 102, 175, 193, 211, 248, 172, 27, 69, 223, 33, 240, 42, 70][..]
         ))
     );
-    assert_eq!(q::Value::from(from_query), graphql_value);
+    assert_eq!(r::Value::from(from_query), graphql_value);
 }
 
 #[test]
 fn value_bigint() {
     let big_num = "340282366920938463463374607431768211456";
-    let graphql_value = q::Value::String(big_num.to_owned());
+    let graphql_value = r::Value::String(big_num.to_owned());
     let ty = q::Type::NamedType(BIG_INT_SCALAR.to_owned());
     let from_query = Value::from_query_value(&graphql_value, &ty).unwrap();
     assert_eq!(
         from_query,
         Value::BigInt(FromStr::from_str(big_num).unwrap())
     );
-    assert_eq!(q::Value::from(from_query), graphql_value);
+    assert_eq!(r::Value::from(from_query), graphql_value);
 }

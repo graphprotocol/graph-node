@@ -2,7 +2,6 @@
 
 use pretty_assertions::assert_eq;
 
-use graph::prelude::q;
 use graph::{components::store::EntityType, data::graphql::object};
 use graph::{data::query::QueryTarget, prelude::*};
 use test_store::*;
@@ -90,7 +89,7 @@ async fn one_interface_one_entity() {
     let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
-        "Object({\"leggeds\": List([Object({\"legs\": Int(Number(3))})])})"
+        "Object({\"leggeds\": List([Object({\"legs\": Int(3)})])})"
     );
 
     // Query by ID.
@@ -101,7 +100,7 @@ async fn one_interface_one_entity() {
     let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
-        "Object({\"legged\": Object({\"legs\": Int(Number(3))})})",
+        "Object({\"legged\": Object({\"legs\": Int(3)})})",
     );
 }
 
@@ -153,7 +152,7 @@ async fn one_interface_multiple_entities() {
     let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
-        "Object({\"leggeds\": List([Object({\"legs\": Int(Number(3))}), Object({\"legs\": Int(Number(4))})])})"
+        "Object({\"leggeds\": List([Object({\"legs\": Int(3)}), Object({\"legs\": Int(4)})])})"
     );
 
     // Test for support issue #32.
@@ -164,7 +163,7 @@ async fn one_interface_multiple_entities() {
     let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
-        "Object({\"legged\": Object({\"legs\": Int(Number(4))})})",
+        "Object({\"legged\": Object({\"legs\": Int(4)})})",
     );
 }
 
@@ -427,7 +426,7 @@ async fn two_interfaces() {
     let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
-        "Object({\"ibars\": List([Object({\"bar\": Int(Number(100))}), Object({\"bar\": Int(Number(200))})]), \
+        "Object({\"ibars\": List([Object({\"bar\": Int(100)}), Object({\"bar\": Int(200)})]), \
                  \"ifoos\": List([Object({\"foo\": String(\"bla\")}), Object({\"foo\": String(\"ble\")})])})"
     );
 }
@@ -466,7 +465,7 @@ async fn interface_non_inline_fragment() {
     let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
-        r#"Object({"leggeds": List([Object({"legs": Int(Number(3)), "name": String("cow")})])})"#,
+        r#"Object({"leggeds": List([Object({"legs": Int(3), "name": String("cow")})])})"#,
     );
 }
 
@@ -502,7 +501,7 @@ async fn interface_inline_fragment() {
     let data = extract_data!(res).unwrap();
     assert_eq!(
         format!("{:?}", data),
-        r#"Object({"leggeds": List([Object({"airspeed": Int(Number(24))}), Object({"name": String("cow")})])})"#
+        r#"Object({"leggeds": List([Object({"airspeed": Int(24)}), Object({"name": String("cow")})])})"#
     );
 }
 
@@ -572,11 +571,11 @@ async fn interface_inline_fragment_with_subquery() {
         "Object({\
          \"leggeds\": List([\
          Object({\
-         \"airspeed\": Int(Number(5)), \
-         \"legs\": Int(Number(2)), \
+         \"airspeed\": Int(5), \
+         \"legs\": Int(2), \
          \"parent\": Object({\"id\": String(\"mama_bird\")})\
          }), \
-         Object({\"legs\": Int(Number(4))})\
+         Object({\"legs\": Int(4)})\
          ])\
          })"
     );
@@ -738,7 +737,7 @@ async fn fragments_dont_panic() {
                     }
                 },
                 object! {
-                    child: q::Value::Null
+                    child: r::Value::Null
                 }
             ]
         }
@@ -809,7 +808,7 @@ async fn fragments_dont_duplicate_data() {
         object! {
             parents: vec![
                 object! {
-                    children: Vec::<q::Value>::new()
+                    children: Vec::<r::Value>::new()
                 },
                 object! {
                     children: vec![
@@ -872,7 +871,7 @@ async fn redundant_fields() {
                     },
                 },
                 object! {
-                    parent: q::Value::Null
+                    parent: r::Value::Null
                 }
             ]
         }
@@ -1247,7 +1246,7 @@ async fn nested_interface_fragments_overlapping() {
 
 #[tokio::test]
 async fn enums() {
-    use graphql_parser::query::Value::Enum;
+    use r::Value::Enum;
     let subgraph_id = "enums";
     let schema = r#"
        enum Direction {
@@ -1307,7 +1306,7 @@ async fn enums() {
 
 #[tokio::test]
 async fn enum_list_filters() {
-    use graphql_parser::query::Value::Enum;
+    use r::Value::Enum;
     let subgraph_id = "enum_list_filters";
     let schema = r#"
        enum Direction {
