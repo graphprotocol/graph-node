@@ -42,7 +42,7 @@ slog-envlogger = "2.1.0"
 slog-term = "2.7.0"
 petgraph = "0.6.0"
 tiny-keccak = "1.5.0"
-tokio = { version = "1.14.0", features = ["time", "sync", "macros", "test-util", "rt-multi-thread", "parking_lot"] }
+tokio = { version = "1.15.0", features = ["time", "sync", "macros", "test-util", "rt-multi-thread", "parking_lot"] }
 tokio-stream = { version = "0.1.8", features = ["sync"] }
 tokio-retry = "0.3.0"
 url = "2.2.1"
