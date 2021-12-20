@@ -170,6 +170,9 @@ those.
   decisions. Set to `true` to turn simulation on, defaults to `false`
 - `GRAPH_STORE_CONNECTION_TIMEOUT`: How long to wait to connect to a
   database before assuming the database is down in ms. Defaults to 5000ms.
+- `EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE`: default is `instant`, set 
+  to `synced` to only switch a named subgraph to a new deployment once it 
+  has synced, making the new deployment the "Pending" version.
 - `GRAPH_REMOVE_UNUSED_INTERVAL`: How long to wait before removing an
   unused deployment. The system periodically checks and marks deployments
   that are not used by any subgraphs any longer. Once a deployment has been
