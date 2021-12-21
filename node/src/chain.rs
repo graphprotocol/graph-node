@@ -381,6 +381,7 @@ where
 
 #[cfg(test)]
 mod test {
+    use crate::chain::create_ethereum_networks;
     use crate::config::{Config, Opt};
     use graph::log::logger;
     use graph::prelude::tokio;
