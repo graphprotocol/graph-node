@@ -1413,6 +1413,17 @@ impl<'a> Connection<'a> {
         Ok(())
     }
 
+    /// The deployment `site` that we marked as unused previously is in fact
+    /// now used again, e.g., because it was redeployed in between recording
+    /// it as unused and now. Remove it from the `unused_deployments` table
+    pub fn unused_deployment_is_used(&self, site: &Site) -> Result<(), StoreError> {
+        use unused_deployments as u;
+        delete(u::table.filter(u::id.eq(site.id)))
+            .execute(self.conn.as_ref())
+            .map(|_| ())
+            .map_err(StoreError::from)
+    }
+
     pub fn list_unused_deployments(
         &self,
         filter: unused::Filter,

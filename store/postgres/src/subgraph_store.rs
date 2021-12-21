@@ -767,36 +767,28 @@ impl SubgraphStoreInner {
         let store = self.for_site(site.as_ref())?;
 
         // Check that deployment is not assigned
-        match self.mirror.assigned_node(site.as_ref())? {
-            Some(node) => {
-                return Err(constraint_violation!(
-                    "deployment {} can not be removed since it is assigned to node {}",
-                    site.deployment.as_str(),
-                    node.as_str()
-                ));
-            }
-            None => { /* ok */ }
-        }
+        let mut removable = self.mirror.assigned_node(site.as_ref())?.is_some();
 
         // Check that it is not current/pending for any subgraph if it is
         // the active deployment of that subgraph
         if site.active {
-            let versions = self
+            if !self
                 .primary_conn()?
-                .subgraphs_using_deployment(site.as_ref())?;
-            if versions.len() > 0 {
-                return Err(constraint_violation!(
-                    "deployment {} can not be removed \
-                since it is the current or pending version for the subgraph(s) {}",
-                    site.deployment.as_str(),
-                    versions.join(", "),
-                ));
+                .subgraphs_using_deployment(site.as_ref())?
+                .is_empty()
+            {
+                removable = false;
             }
         }
 
-        store.drop_deployment(&site)?;
+        if removable {
+            store.drop_deployment(&site)?;
 
-        self.primary_conn()?.drop_site(site.as_ref())?;
+            self.primary_conn()?.drop_site(site.as_ref())?;
+        } else {
+            self.primary_conn()?
+                .unused_deployment_is_used(site.as_ref())?;
+        }
 
         Ok(())
     }
