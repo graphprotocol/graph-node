@@ -400,12 +400,6 @@ impl FromIterator<(BlockNumber, Address, FunctionSelector)> for EthereumCallFilt
     }
 }
 
-impl From<EthereumBlockFilter> for EthereumCallFilter {
-    fn from(ethereum_block_filter: EthereumBlockFilter) -> Self {
-        EthereumCallFilter::from(&ethereum_block_filter)
-    }
-}
-
 impl From<&EthereumBlockFilter> for EthereumCallFilter {
     fn from(ethereum_block_filter: &EthereumBlockFilter) -> Self {
         Self {

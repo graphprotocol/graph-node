@@ -1388,7 +1388,7 @@ pub(crate) async fn blocks_with_triggers(
     // and the blocks yielded need to be deduped. If any error occurs
     // while searching for a trigger type, the entire operation fails.
     let eth = adapter.clone();
-    let call_filter = EthereumCallFilter::from(filter.block.clone());
+    let call_filter = EthereumCallFilter::from(&filter.block);
 
     let mut trigger_futs: futures::stream::FuturesUnordered<
         Box<dyn Future<Item = Vec<EthereumTrigger>, Error = Error> + Send>,
