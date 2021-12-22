@@ -1388,7 +1388,7 @@ pub(crate) async fn blocks_with_triggers(
     // and the blocks yielded need to be deduped. If any error occurs
     // while searching for a trigger type, the entire operation fails.
     let eth = adapter.clone();
-    let call_filter = EthereumCallFilter::from(filter.block.clone());
+    let call_filter = EthereumCallFilter::from(&filter.block);
 
     let mut trigger_futs: futures::stream::FuturesUnordered<
         Box<dyn Future<Item = Vec<EthereumTrigger>, Error = Error> + Send>,
@@ -1590,6 +1590,10 @@ pub(crate) fn parse_log_triggers(
     log_filter: &EthereumLogFilter,
     block: &EthereumBlock,
 ) -> Vec<EthereumTrigger> {
+    if log_filter.is_empty() {
+        return vec![];
+    }
+
     block
         .transaction_receipts
         .iter()
@@ -1607,6 +1611,10 @@ pub(crate) fn parse_call_triggers(
     call_filter: &EthereumCallFilter,
     block: &EthereumBlockWithCalls,
 ) -> anyhow::Result<Vec<EthereumTrigger>> {
+    if call_filter.is_empty() {
+        return Ok(vec![]);
+    }
+
     match &block.calls {
         Some(calls) => calls
             .iter()
@@ -1625,9 +1633,13 @@ pub(crate) fn parse_call_triggers(
 }
 
 pub(crate) fn parse_block_triggers(
-    block_filter: EthereumBlockFilter,
+    block_filter: &EthereumBlockFilter,
     block: &EthereumBlockWithCalls,
 ) -> Vec<EthereumTrigger> {
+    if block_filter.is_empty() {
+        return vec![];
+    }
+
     let block_ptr = BlockPtr::from(&block.ethereum_block);
     let trigger_every_block = block_filter.trigger_every_block;
     let call_filter = EthereumCallFilter::from(block_filter);

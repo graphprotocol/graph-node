@@ -505,7 +505,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                     &full_block.ethereum_block,
                 ));
                 triggers.append(&mut parse_call_triggers(&filter.call, &full_block)?);
-                triggers.append(&mut parse_block_triggers(filter.block.clone(), &full_block));
+                triggers.append(&mut parse_block_triggers(&filter.block, &full_block));
                 Ok(BlockWithTriggers::new(block, triggers))
             }
         }
