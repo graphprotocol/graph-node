@@ -12,7 +12,7 @@ use super::Blockchain;
 use crate::{firehose, firehose::FirehoseEndpoint};
 
 pub struct FirehoseBlockStream<C: Blockchain> {
-    stream: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, Error>>>>,
+    stream: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, Error>> + Send>>,
 }
 
 impl<C> FirehoseBlockStream<C>

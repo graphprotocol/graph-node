@@ -1,7 +1,7 @@
 use anyhow::{Context, Error};
 use graph::blockchain::BlockchainKind;
 use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::firehose::FirehoseEndpoints;
+use graph::firehose::{FirehoseEndpoints, ForkStep};
 use graph::prelude::{
     EthereumBlock, EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, StopwatchMetrics,
 };
@@ -542,8 +542,6 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         adapter: &TriggersAdapter,
         filter: &TriggerFilter,
     ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
-        use firehose::ForkStep;
-
         let step = ForkStep::from_i32(response.step).unwrap_or_else(|| {
             panic!(
                 "unknown step i32 value {}, maybe you forgot update & re-regenerate the protobuf definitions?",
