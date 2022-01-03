@@ -215,8 +215,7 @@ where
                     continue;
                 }
                 ReconciliationStep::Done => {
-                    // Reconciliation is complete, so try to mark subgraph as Synced
-                    ctx.update_subgraph_synced_status()?;
+                    ctx.handle_subgraph_synced().await?;
 
                     return Ok(NextBlocks::Done);
                 }
@@ -485,23 +484,15 @@ where
         Ok(ptr)
     }
 
-    /// Set subgraph deployment entity synced flag if and only if the subgraph block pointer is
-    /// caught up to the head block pointer.
-    fn update_subgraph_synced_status(&self) -> Result<(), StoreError> {
-        let head_ptr_opt = self.chain_store.chain_head_ptr()?;
-        let subgraph_ptr = self.current_block.clone();
-
-        if head_ptr_opt != subgraph_ptr || head_ptr_opt.is_none() || subgraph_ptr.is_none() {
-            // Not synced yet
-            Ok(())
-        } else {
-            // Synced
-
+    /// Stop metrics if subgraph is synced.
+    /// Sync mechanism is now implemented in the instance manager.
+    async fn handle_subgraph_synced(&self) -> Result<(), StoreError> {
+        if self.subgraph_store.is_deployment_synced().await? {
             // Stop recording time-to-sync metrics.
             self.metrics.stopwatch.disable();
-
-            self.subgraph_store.deployment_synced()
         }
+
+        Ok(())
     }
 }
 
