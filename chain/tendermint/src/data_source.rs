@@ -1,8 +1,7 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::{convert::TryFrom, sync::Arc};
 
 use anyhow::{Error, Result};
-use itertools::Itertools;
 
 use graph::{
     blockchain::{self, Block, Blockchain, TriggerWithHandler},
@@ -57,17 +56,17 @@ impl blockchain::DataSource<Chain> for DataSource {
             TendermintTrigger::Block(_) => match self.handler_for_block() {
                 Some(handler) => handler.handler,
                 None => return Ok(None),
-            }
+            },
 
             TendermintTrigger::Event(data) => match self.handler_for_event(&data.event) {
                 Some(handler) => handler.handler,
                 None => return Ok(None),
-            }
+            },
         };
 
         Ok(Some(TriggerWithHandler::new(
             trigger.cheap_clone(),
-            handler.to_owned(),
+            handler,
         )))
     }
 
@@ -80,7 +79,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn network(&self) -> Option<&str> {
-        self.network.as_ref().map(|s| s.as_str())
+        self.network.as_deref()
     }
 
     fn context(&self) -> Arc<Option<DataSourceContext>> {
@@ -152,18 +151,15 @@ impl blockchain::DataSource<Chain> for DataSource {
         }
 
         // Ensure there is only one event handler for each event type
-        let event_types = self.mapping
-            .event_handlers
-            .iter()
-            .map(|handler| handler.event.clone() )
-            .collect::<Vec<_>>();
-
-        let unique_event_types = event_types.iter()
-            .unique()
-            .collect::<Vec<_>>();
-
-        if event_types.len() > unique_event_types.len() {
-            errors.push(anyhow!("data source has duplicated event handlers"))
+        let mut event_types = HashSet::with_capacity(self.mapping.event_handlers.len());
+        for event_handler in self.mapping.event_handlers.iter() {
+            // insert returns false if value was already in the set
+            if !event_types.insert(event_handler.event.clone()) {
+                errors.push(anyhow!(
+                    "data source has multiple {} event handlers",
+                    event_handler.event
+                ));
+            }
         }
 
         errors
@@ -247,28 +243,8 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
 impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
     type Error = Error;
 
-    fn try_from(info: DataSourceTemplateInfo<Chain>) -> Result<Self> {
-        let DataSourceTemplateInfo {
-            template,
-            params: _,
-            context,
-            creation_block,
-        } = info;
-
-        Ok(DataSource {
-            kind: template.kind,
-            network: template.network,
-            name: template.name,
-            source: Source {
-                // FIXME (NEAR): Made those element dummy elements
-                address: None,
-                abi: "".to_string(),
-                start_block: 0,
-            },
-            mapping: template.mapping,
-            context: Arc::new(context),
-            creation_block: Some(creation_block),
-        })
+    fn try_from(_info: DataSourceTemplateInfo<Chain>) -> Result<Self> {
+        Err(anyhow!("Tendermint subgraphs do not support templates"))
     }
 }
 

@@ -1,14 +1,9 @@
 use std::{cmp::Ordering, sync::Arc};
 
-use graph::blockchain;
-use graph::blockchain::Block;
-use graph::blockchain::TriggerData;
+use graph::blockchain::{Block, BlockHash, MappingTrigger, TriggerData};
 use graph::cheap_clone::CheapClone;
 use graph::prelude::BlockNumber;
-use graph::runtime::asc_new;
-use graph::runtime::AscHeap;
-use graph::runtime::AscPtr;
-use graph::runtime::DeterministicHostError;
+use graph::runtime::{asc_new, AscHeap, AscPtr, DeterministicHostError};
 
 use crate::codec;
 
@@ -18,7 +13,7 @@ impl std::fmt::Debug for TendermintTrigger {
         #[derive(Debug)]
         pub enum MappingTriggerWithoutBlock {
             Block,
-            Event
+            Event,
         }
 
         let trigger_without_block = match self {
@@ -30,17 +25,11 @@ impl std::fmt::Debug for TendermintTrigger {
     }
 }
 
-impl blockchain::MappingTrigger for TendermintTrigger {
+impl MappingTrigger for TendermintTrigger {
     fn to_asc_ptr<H: AscHeap>(self, heap: &mut H) -> Result<AscPtr<()>, DeterministicHostError> {
         Ok(match self {
-            TendermintTrigger::Block(block) => {
-                //let block = TendermintBlockData::from(block.as_ref());
-                //b.header()
-                asc_new(heap, block.as_ref())?.erase()
-            }
-            TendermintTrigger::Event(data) => {
-                asc_new(heap, data.as_ref())?.erase()
-            }
+            TendermintTrigger::Block(block) => asc_new(heap, block.as_ref())?.erase(),
+            TendermintTrigger::Event(data) => asc_new(heap, data.as_ref())?.erase(),
         })
     }
 }
@@ -59,6 +48,7 @@ impl CheapClone for TendermintTrigger {
         }
     }
 }
+
 impl PartialEq for TendermintTrigger {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -79,12 +69,12 @@ impl TendermintTrigger {
         }
     }
 
-    // pub fn block_hash(&self) -> H256 {
-    /* pub fn block_hash(&self) -> Vec<u8> {
-           match self {
-               TendermintTrigger::Block(block_ptr, _) => block_ptr; // .hash_as_h256(),
-           }
-    }*/
+    pub fn block_hash(&self) -> BlockHash {
+        match self {
+            TendermintTrigger::Block(block_ptr) => block_ptr.hash(),
+            TendermintTrigger::Event(data) => data.block.hash(),
+        }
+    }
 }
 
 impl Ord for TendermintTrigger {
@@ -114,14 +104,14 @@ impl TriggerData for TendermintTrigger {
     fn error_context(&self) -> std::string::String {
         match self {
             TendermintTrigger::Block(..) => {
-                format!("block #{}", self.block_number()) // TODO: Add `self.block_hash()`
+                format!("block #{}, hash {}", self.block_number(), self.block_hash())
             }
             TendermintTrigger::Event(data) => {
                 format!(
-                    "event type {}, block #{}",
+                    "event type {}, block #{}, hash {}",
                     data.event.eventtype,
                     self.block_number(),
-                    // TODO: Add `self.block_hash()`
+                    self.block_hash(),
                 )
             }
         }
@@ -129,6 +119,6 @@ impl TriggerData for TendermintTrigger {
 }
 
 pub struct EventData {
-    pub event: codec::Event, // REVIEW: Do we want to have this behind an `Arc` wrapper?
+    pub event: codec::Event,
     pub block: Arc<codec::EventList>,
 }

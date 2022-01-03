@@ -1,5 +1,5 @@
 use crate::adapter::TendermintAdapter as TendermintAdapterTrait;
-use graph::prelude::{async_trait, CheapClone, Logger};
+use graph::prelude::{CheapClone, Logger};
 
 #[derive(Clone)]
 pub struct TendermintAdapter {
@@ -22,7 +22,6 @@ impl TendermintAdapter {
     }
 }
 
-#[async_trait]
 impl TendermintAdapterTrait for TendermintAdapter {
     fn provider(&self) -> &str {
         &self.provider

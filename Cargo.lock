@@ -1616,7 +1616,6 @@ dependencies = [
  "graph-core",
  "graph-runtime-derive",
  "graph-runtime-wasm",
- "itertools",
  "mockall 0.9.1",
  "pretty_assertions 0.7.2",
  "prost",

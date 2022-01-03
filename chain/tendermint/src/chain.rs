@@ -117,7 +117,7 @@ impl Blockchain for Chain {
                 unified_api_version.clone(),
                 metrics.stopwatch.clone(),
             )
-            .expect(&format!("no adapter for network {}", self.name));
+            .unwrap_or_else(|_| panic!("no adapter for network {}", self.name));
 
         let firehose_endpoint = match self.firehose_endpoints.random() {
             Some(e) => e.clone(),
@@ -312,7 +312,8 @@ impl FirehoseMapper {
         // TODO: Find the best place to introduce an `Arc` and avoid this clone.
         let el = Arc::new(el.clone());
 
-        let mut triggers: Vec<_> = el.events()
+        let mut triggers: Vec<_> = el
+            .events()
             .into_iter()
             .map(|event| {
                 TendermintTrigger::Event(Arc::new(trigger::EventData {

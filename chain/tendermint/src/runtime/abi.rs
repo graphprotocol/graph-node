@@ -1,12 +1,14 @@
 #[path = "../protobuf/fig.tendermint.codec.v1.rs"]
 mod pbcodec;
 
-use crate::codec;
-use crate::trigger::EventData;
+use anyhow::anyhow;
 use graph::runtime::{
     asc_new, AscHeap, AscIndexId, AscPtr, AscType, DeterministicHostError, ToAscObj,
 };
 use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, EnumPayload, Uint8Array};
+
+use crate::codec;
+use crate::trigger::EventData;
 
 pub(crate) use super::generated::*;
 
@@ -162,7 +164,7 @@ impl ToAscObj<AscBytesArray> for Vec<Vec<u8>> {
         &self,
         heap: &mut H,
     ) -> Result<AscBytesArray, DeterministicHostError> {
-        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, &Bytes(&x))).collect();
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, &Bytes(x))).collect();
 
         Ok(AscBytesArray(Array::new(&content?, heap)?))
     }
@@ -365,7 +367,7 @@ impl ToAscObj<AscEvidence> for codec::Evidence {
         let sum = self
             .sum
             .as_ref()
-            .ok_or(missing_field_error("Evidence", "sum"))?;
+            .ok_or_else(|| missing_field_error("Evidence", "sum"))?;
 
         let (duplicate_vote_evidence, light_client_attack_evidence) = match sum {
             Sum::DuplicateVoteEvidence(d) => (asc_new(heap, d)?, AscPtr::null()),
@@ -389,12 +391,12 @@ impl ToAscObj<AscPublicKey> for codec::PublicKey {
         let sum = self
             .sum
             .as_ref()
-            .ok_or(missing_field_error("PublicKey", "sum"))?;
+            .ok_or_else(|| missing_field_error("PublicKey", "sum"))?;
 
         let (ed25519, secp256k1, sr25519) = match sum {
-            Sum::Ed25519(e) => (asc_new(heap, &Bytes(&e))?, AscPtr::null(), AscPtr::null()),
-            Sum::Secp256k1(s) => (AscPtr::null(), asc_new(heap, &Bytes(&s))?, AscPtr::null()),
-            Sum::Sr25519(s) => (AscPtr::null(), AscPtr::null(), asc_new(heap, &Bytes(&s))?),
+            Sum::Ed25519(e) => (asc_new(heap, &Bytes(e))?, AscPtr::null(), AscPtr::null()),
+            Sum::Secp256k1(s) => (AscPtr::null(), asc_new(heap, &Bytes(s))?, AscPtr::null()),
+            Sum::Sr25519(s) => (AscPtr::null(), AscPtr::null(), asc_new(heap, &Bytes(s))?),
         };
 
         Ok(AscPublicKey {
@@ -638,7 +640,7 @@ impl ToAscObj<AscSignedMsgTypeEnum> for SignedMessageTypeKind {
             2 => AscSignedMsgType::SignedMsgTypePrecommit,
             3 => AscSignedMsgType::SignedMsgTypeProposal,
             _ => {
-                return Err(DeterministicHostError(anyhow::format_err!(
+                return Err(DeterministicHostError(anyhow!(
                     "Invalid direction value {}",
                     self.0
                 )))
