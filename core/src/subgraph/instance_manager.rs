@@ -1329,6 +1329,24 @@ fn has_threshold_passed(timer: &mut Instant, threshold: Duration) -> bool {
     }
 }
 
+#[test]
+fn test_has_threshold_passed() {
+    let mut now = Instant::now();
+    let now_clone = now.clone();
+    assert!(!has_threshold_passed(&mut now, MINUTE * 3));
+    assert_eq!(now, now_clone);
+
+    let mut now = Instant::now() - MINUTE * 2;
+    let now_clone = now.clone();
+    assert!(!has_threshold_passed(&mut now, MINUTE * 3));
+    assert_eq!(now, now_clone);
+
+    let mut now = Instant::now() - MINUTE * 5;
+    let now_clone = now.clone();
+    assert!(has_threshold_passed(&mut now, MINUTE * 3));
+    assert!(now > now_clone);
+}
+
 /// Checks if two BlockPtrs are the same.
 fn is_deployment_synced(deployment_head_ptr: &BlockPtr, chain_head_ptr: Option<BlockPtr>) -> bool {
     matches!((deployment_head_ptr, &chain_head_ptr), (b1, Some(b2)) if b1 == b2)
