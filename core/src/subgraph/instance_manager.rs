@@ -1352,6 +1352,29 @@ fn is_deployment_synced(deployment_head_ptr: &BlockPtr, chain_head_ptr: Option<B
     matches!((deployment_head_ptr, &chain_head_ptr), (b1, Some(b2)) if b1 == b2)
 }
 
+#[test]
+fn test_is_deployment_synced() {
+    let block_a = BlockPtr::try_from((
+        "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
+        0,
+    ))
+    .unwrap();
+    let block_b = BlockPtr::try_from((
+        "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
+        1,
+    ))
+    .unwrap();
+
+    assert!(!is_deployment_synced(&block_a, None));
+    assert!(!is_deployment_synced(&block_b, None));
+
+    assert!(!is_deployment_synced(&block_a, Some(block_b.clone())));
+    assert!(!is_deployment_synced(&block_b, Some(block_a.clone())));
+
+    assert!(is_deployment_synced(&block_a, Some(block_a.clone())));
+    assert!(is_deployment_synced(&block_b, Some(block_b.clone())));
+}
+
 /// Returns true if `store.deployment_synced()` should be called.
 /// This should happen if:
 /// - The deployment is not synced yet
