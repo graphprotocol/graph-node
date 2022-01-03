@@ -110,7 +110,7 @@ impl WritableStore for MockStore {
         Ok(self.get_many_res.clone())
     }
 
-    async fn is_deployment_synced(&self) -> Result<bool, StoreError> {
+    fn is_deployment_synced(&self) -> Result<bool, StoreError> {
         unimplemented!()
     }
 
