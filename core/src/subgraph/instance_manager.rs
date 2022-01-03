@@ -1400,3 +1400,61 @@ fn should_try_update_sync_status(
             get_chain_head()?,
         ))
 }
+
+#[test]
+fn test_should_try_update_sync_status() {
+    let block_a = BlockPtr::try_from((
+        "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
+        0,
+    ))
+    .unwrap();
+    let block_b = BlockPtr::try_from((
+        "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
+        1,
+    ))
+    .unwrap();
+
+    // When it's already synced
+    let mut now = Instant::now();
+    assert!(!should_try_update_sync_status(
+        true,
+        &mut now,
+        SYNC_STATUS_THRESHOLD,
+        &block_a,
+        || unreachable!("Will not be called"),
+    )
+    .unwrap());
+
+    // When the threshold has NOT passed
+    let mut now = Instant::now();
+    assert!(!should_try_update_sync_status(
+        false,
+        &mut now,
+        SYNC_STATUS_THRESHOLD,
+        &block_a,
+        || unreachable!("Will not be called"),
+    )
+    .unwrap());
+
+    // When the threshold has passed but it's NOT the same block
+    let mut now = Instant::now() - SYNC_STATUS_THRESHOLD * 2;
+    assert!(!should_try_update_sync_status(
+        false,
+        &mut now,
+        SYNC_STATUS_THRESHOLD,
+        &block_a,
+        || Ok(Some(block_b.clone())),
+    )
+    .unwrap());
+
+    // When the threshold has passed AND it's the same block
+    let mut now = Instant::now() - SYNC_STATUS_THRESHOLD * 2;
+    assert!(should_try_update_sync_status(
+        false,
+        &mut now,
+        SYNC_STATUS_THRESHOLD,
+        &block_a,
+        || Ok(Some(block_a.clone())),
+    )
+    .unwrap());
+}
