@@ -712,22 +712,14 @@ where
 
             match res {
                 Ok(needs_restart) => {
-                    let should_try_update_sync_status =
-                        // Once synced, no need to try to update the status again.
-                        !synced
-
-                        // Try to update the sync status every time the threshold Duration has passed.
-                        && has_threshold_passed(&mut sync_status_timer, SYNC_STATUS_THRESHOLD)
-
-                        // deployment.head == chain.head
-                        && is_deployment_synced(
-                            // This is the new deployment head since the block just has been processed.
-                            &block_ptr,
-                            // Only called if the threshold passed.
-                            chain_store.chain_head_ptr()?,
-                        );
-
-                    if should_try_update_sync_status {
+                    if should_try_update_sync_status(
+                        synced,
+                        &mut sync_status_timer,
+                        SYNC_STATUS_THRESHOLD,
+                        // This is the new deployment head since the block just has been processed.
+                        &block_ptr,
+                        || chain_store.chain_head_ptr(),
+                    )? {
                         // Updating the sync status is an one way operation.
                         // This state change exists: not synced -> synced
                         // This state change does NOT: synced -> not synced
@@ -1340,4 +1332,30 @@ fn has_threshold_passed(timer: &mut Instant, threshold: Duration) -> bool {
 /// Checks if two BlockPtrs are the same.
 fn is_deployment_synced(deployment_head_ptr: &BlockPtr, chain_head_ptr: Option<BlockPtr>) -> bool {
     matches!((deployment_head_ptr, &chain_head_ptr), (b1, Some(b2)) if b1 == b2)
+}
+
+/// Returns true if `store.deployment_synced()` should be called.
+/// This should happen if:
+/// - The deployment is not synced yet
+/// - A time threshold has passed
+/// - Chain and deployment head blocks are the same
+fn should_try_update_sync_status(
+    synced: bool,
+    timer: &mut Instant,
+    threshold: Duration,
+    deployment_head_ptr: &BlockPtr,
+    get_chain_head: impl Fn() -> Result<Option<BlockPtr>, anyhow::Error>,
+) -> Result<bool, anyhow::Error> {
+    // Once synced, no need to try to update the status again.
+    Ok(!synced
+
+        // Try to update the sync status every time the threshold Duration has passed.
+        && has_threshold_passed(timer, threshold)
+
+        // deployment.head == chain.head
+        && is_deployment_synced(
+            deployment_head_ptr,
+            // Only called if the threshold passed.
+            get_chain_head()?,
+        ))
 }
