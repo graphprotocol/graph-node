@@ -516,7 +516,7 @@ where
     let id_for_err = inputs.deployment.hash.clone();
     let mut should_try_unfail_deterministic = true;
     let mut should_try_unfail_non_deterministic = true;
-    let mut should_try_update_sync_status = true;
+    let mut synced = false;
     let mut sync_status_timer = Instant::now();
 
     // Exponential backoff that starts with two minutes and keeps
@@ -712,15 +712,29 @@ where
 
             match res {
                 Ok(needs_restart) => {
-                    if should_try_update_sync_status {
-                        should_try_update_sync_status = !update_sync_status(
-                            &mut sync_status_timer,
-                            SYNC_STATUS_THRESHOLD,
-                            &chain_store,
-                            &inputs.store,
+                    let should_try_update_sync_status =
+                        // Once synced, no need to try to update the status again.
+                        !synced
+
+                        // Try to update the sync status every time the threshold Duration has passed.
+                        && has_threshold_passed(&mut sync_status_timer, SYNC_STATUS_THRESHOLD)
+
+                        // deployment.head == chain.head
+                        && is_deployment_synced(
                             // This is the new deployment head since the block just has been processed.
                             &block_ptr,
-                        )?;
+                            // Only called if the threshold passed.
+                            chain_store.chain_head_ptr()?,
+                        );
+
+                    if should_try_update_sync_status {
+                        // Updating the sync status is an one way operation.
+                        // This state change exists: not synced -> synced
+                        // This state change does NOT: synced -> not synced
+                        inputs.store.deployment_synced()?;
+
+                        // Stop trying to update the sync status.
+                        synced = true;
                     }
 
                     // Keep trying to unfail subgraph for everytime it advances block(s) until it's
@@ -1311,42 +1325,19 @@ fn persist_dynamic_data_sources<T: RuntimeHostBuilder<C>, C: Blockchain>(
     ctx.state.filter.extend(data_sources.iter());
 }
 
-/// Tries to update the sync status of a deployment if a threshold has passed.
-/// If the update happened, this function returns true.
-/// It returns false otherwise (should keep calling this to try the update again).
-fn update_sync_status(
-    timer: &mut Instant,
-    threshold: Duration,
-    chain_store: &Arc<dyn ChainStore>,
-    subgraph_store: &Arc<dyn WritableStore>,
-    subgraph_head_ptr: &BlockPtr,
-) -> Result<bool, Error> {
-    let threshold_has_passed = if timer.elapsed() >= threshold {
+/// Returns true if the timer has elapsed given duration/threshold.
+/// It will reset the timer in that case.
+fn has_threshold_passed(timer: &mut Instant, threshold: Duration) -> bool {
+    if timer.elapsed() >= threshold {
+        // Reset if threshold passed.
         *timer = Instant::now();
         true
     } else {
         false
-    };
-
-    if !threshold_has_passed {
-        // Early return, no need to fetch chain head pointer.
-        return Ok(false);
     }
+}
 
-    let chain_head_ptr = chain_store.chain_head_ptr()?;
-
-    if matches!((&chain_head_ptr, subgraph_head_ptr), (Some(b1), b2) if b1 == b2) {
-        // Update the deployment sync status.
-        subgraph_store.deployment_synced()?;
-
-        // Deployment synced. No need to call this function again.
-        //
-        // Updating the sync status is an one way operation.
-        // This state change exists: not synced -> synced
-        // This state change does NOT: synced -> not synced
-        Ok(true)
-    } else {
-        // Deployment not synced. Should call this function again.
-        Ok(false)
-    }
+/// Checks if two BlockPtrs are the same.
+fn is_deployment_synced(deployment_head_ptr: &BlockPtr, chain_head_ptr: Option<BlockPtr>) -> bool {
+    matches!((deployment_head_ptr, &chain_head_ptr), (b1, Some(b2)) if b1 == b2)
 }
