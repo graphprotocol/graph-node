@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "chain": "hardhat node --network hardhat"
+  },
+  "dependencies": {
+    "hardhat": "2.8.0"
+  }
+}

@@ -1,5 +1,14 @@
 version: '3'
 services:
+  local_chain:
+    ports:
+      - '8545:8545'
+    volumes:
+      - ./data/hardhat/cache:/hardhat/cache
+      - ./data/hardhat/artifacts:/hardhat/artifacts
+    build:
+      context: ./local-chain/
+      dockerfile: Dockerfile
   ipfs:
     image: ipfs/go-ipfs:v0.4.23
     ports:
