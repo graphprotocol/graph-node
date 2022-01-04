@@ -263,7 +263,7 @@ async fn execute_query_document_with_variables(
         LOAD_MANAGER.clone(),
         METRICS_REGISTRY.clone(),
     ));
-    let target = QueryTarget::Deployment(id.clone());
+    let target = QueryTarget::Deployment(id.clone(), Default::default());
     let query = Query::new(query, variables);
 
     runner

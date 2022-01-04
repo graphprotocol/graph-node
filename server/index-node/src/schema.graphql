@@ -19,6 +19,7 @@ type Query {
     indexer: Bytes
   ): Bytes
   subgraphFeatures(subgraphId: String!): SubgraphFeatures!
+  subgraphVersions(subgraphId: String!): [SubgraphVersion!]!
 }
 
 type SubgraphIndexingStatus {
@@ -94,4 +95,11 @@ enum Feature {
   grafting,
   fullTextSearch,
   ipfsOnEthereumContracts,
+}
+
+type SubgraphVersion {
+  """
+  Version number in SemVer format
+  """
+  version: String!
 }

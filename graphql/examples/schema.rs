@@ -34,7 +34,10 @@ pub fn main() {
         parse_schema(&schema).map(|v| v.into_static()),
         "Failed to parse schema",
     );
-    let schema = ensure(api_schema(&schema), "Failed to convert to API schema");
+    let schema = ensure(
+        api_schema(&schema, &Default::default()),
+        "Failed to convert to API schema",
+    );
 
     println!("{}", schema);
 }

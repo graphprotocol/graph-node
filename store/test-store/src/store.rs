@@ -383,11 +383,11 @@ async fn execute_subgraph_query_internal(
     deadline: Option<Instant>,
 ) -> QueryResults {
     let logger = Logger::root(slog::Discard, o!());
-    let id = match target {
-        QueryTarget::Deployment(id) => id,
+    let (id, version) = match target {
+        QueryTarget::Deployment(id, version) => (id, version),
         _ => unreachable!("tests do not use this"),
     };
-    let schema = SUBGRAPH_STORE.api_schema(&id).unwrap();
+    let schema = SUBGRAPH_STORE.api_schema(&id, &Default::default()).unwrap();
     let status = StatusStore::status(
         STORE.as_ref(),
         status::Filter::Deployments(vec![id.to_string()]),
@@ -406,7 +406,10 @@ async fn execute_subgraph_query_internal(
     let deployment = query.schema.id().clone();
     let store = STORE
         .clone()
-        .query_store(deployment.into(), false)
+        .query_store(
+            QueryTarget::Deployment(deployment.into(), version.clone()),
+            false,
+        )
         .await
         .unwrap();
     for (bc, (selection_set, error_policy)) in return_err!(query.block_constraint()) {
@@ -444,7 +447,10 @@ async fn execute_subgraph_query_internal(
 
 pub async fn deployment_state(store: &Store, subgraph_id: &DeploymentHash) -> DeploymentState {
     store
-        .query_store(QueryTarget::Deployment(subgraph_id.to_owned()), false)
+        .query_store(
+            QueryTarget::Deployment(subgraph_id.to_owned(), Default::default()),
+            false,
+        )
         .await
         .expect("could get a query store")
         .deployment_state()

@@ -166,17 +166,45 @@ where
         self.serve_dynamic_file(self.graphiql_html())
     }
 
+    fn resolve_version_number(
+        &self,
+        request: &Request<Body>,
+    ) -> Result<VersionNumber, GraphQLServerError> {
+        let version_header = request.headers().get("api-version");
+
+        let mut version = VersionNumber::default();
+
+        if let Some(header_value) = version_header {
+            let version_value = header_value.to_str().map_err(|_| {
+                GraphQLServerError::ClientError(format!(
+                    "Invalid api-version header value {:?}",
+                    header_value
+                ))
+            })?;
+            VersionNumber::validate(version_value.to_string())
+                .map_err(|error| GraphQLServerError::ClientError(error))?;
+
+            version = version_value.into();
+        }
+
+        Ok(version)
+    }
+
     async fn handle_graphql_query_by_name(
         self,
         subgraph_name: String,
         request: Request<Body>,
     ) -> GraphQLServiceResult {
+        let version = self.resolve_version_number(&request)?;
         let subgraph_name = SubgraphName::new(subgraph_name.as_str()).map_err(|()| {
             GraphQLServerError::ClientError(format!("Invalid subgraph name {:?}", subgraph_name))
         })?;
 
-        self.handle_graphql_query(subgraph_name.into(), request.into_body())
-            .await
+        self.handle_graphql_query(
+            QueryTarget::Name(subgraph_name, version),
+            request.into_body(),
+        )
+        .await
     }
 
     fn handle_graphql_query_by_id(
@@ -185,11 +213,16 @@ where
         request: Request<Body>,
     ) -> GraphQLServiceResponse {
         let res = DeploymentHash::new(id)
-            .map_err(|id| GraphQLServerError::ClientError(format!("Invalid subgraph id `{}`", id)));
+            .map_err(|id| GraphQLServerError::ClientError(format!("Invalid subgraph id `{}`", id)))
+            .and_then(|id| match self.resolve_version_number(&request) {
+                Ok(version) => Ok((id, version)),
+                Err(error) => Err(error),
+            });
+
         match res {
             Err(_) => self.handle_not_found(),
-            Ok(id) => self
-                .handle_graphql_query(id.into(), request.into_body())
+            Ok((id, version)) => self
+                .handle_graphql_query(QueryTarget::Deployment(id, version), request.into_body())
                 .boxed(),
         }
     }

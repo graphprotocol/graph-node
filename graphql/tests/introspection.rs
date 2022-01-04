@@ -1133,7 +1133,7 @@ async fn successfully_runs_introspection_query_against_complex_schema() {
         DeploymentHash::new("complexschema").unwrap(),
     )
     .unwrap();
-    schema.document = api_schema(&schema.document).unwrap();
+    schema.document = api_schema(&schema.document, &Default::default()).unwrap();
 
     let result = introspection_query(
         schema.clone(),
@@ -1243,7 +1243,7 @@ async fn introspection_possible_types() {
         DeploymentHash::new("complexschema").unwrap(),
     )
     .unwrap();
-    schema.document = api_schema(&schema.document).unwrap();
+    schema.document = api_schema(&schema.document, &Default::default()).unwrap();
 
     // Test "possibleTypes" introspection in interfaces
     let response = introspection_query(

@@ -175,7 +175,7 @@ impl Config {
         })
     }
 
-    /// Genrate a JSON representation of the config.
+    /// Generate a JSON representation of the config.
     pub fn to_json(&self) -> Result<String> {
         // It would be nice to produce a TOML representation, but that runs
         // into this error: https://github.com/alexcrichton/toml-rs/issues/142

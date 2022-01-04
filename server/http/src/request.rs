@@ -79,8 +79,10 @@ mod tests {
     use super::GraphQLRequest;
 
     lazy_static! {
-        static ref TARGET: QueryTarget =
-            QueryTarget::Name(SubgraphName::new("test/request").unwrap());
+        static ref TARGET: QueryTarget = QueryTarget::Name(
+            SubgraphName::new("test/request").unwrap(),
+            Default::default()
+        );
     }
 
     #[test]

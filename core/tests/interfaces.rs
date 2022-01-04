@@ -35,7 +35,7 @@ async fn insert_and_query(
     )?;
 
     let document = graphql_parser::parse_query(query).unwrap().into_static();
-    let target = QueryTarget::Deployment(subgraph_id);
+    let target = QueryTarget::Deployment(subgraph_id, Default::default());
     let query = Query::new(document, None);
     Ok(execute_subgraph_query(query, target)
         .await
