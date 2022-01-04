@@ -602,17 +602,17 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 ))
             }
 
-            StepUndo => Ok(BlockStreamEvent::Revert(
-                BlockPtr {
-                    hash: BlockHash::from(block.hash),
-                    number: block.number as i32,
-                },
-                FirehoseCursor::Some(response.cursor.clone()),
-                Some(BlockPtr {
-                    hash: BlockHash::from(block.header.unwrap().parent_hash),
-                    number: (block.number.checked_sub(1).unwrap() as i32), // Will never receive undo on blocknum 0
-                }),
-            )),
+            StepUndo => {
+                let parent_ptr = block
+                    .parent_ptr()
+                    .expect("A reverted block should always have a parent");
+
+                Ok(BlockStreamEvent::Revert(
+                    block.ptr(),
+                    FirehoseCursor::Some(response.cursor.clone()),
+                    Some(parent_ptr),
+                ))
+            }
 
             StepIrreversible => {
                 unreachable!("irreversible step is not handled and should not be requested in the Firehose request")

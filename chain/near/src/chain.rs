@@ -15,7 +15,6 @@ use graph::{
     },
     components::store::DeploymentLocator,
     firehose::{self as firehose, ForkStep},
-    log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory},
 };
 use prost::Message;
@@ -154,20 +153,7 @@ impl Blockchain for Chain {
     }
 
     fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter> {
-        let logger = self
-            .logger_factory
-            .component_logger(
-                "BlockIngestor",
-                Some(ComponentLoggerConfig {
-                    elastic: Some(ElasticComponentLoggerConfig {
-                        index: String::from("block-ingestor-logs"),
-                    }),
-                }),
-            )
-            .new(o!());
-
-        let adapter = IngestorAdapter { logger };
-        Arc::new(adapter)
+        Arc::new(IngestorAdapter {})
     }
 
     fn chain_store(&self) -> Arc<dyn ChainStore> {
@@ -298,6 +284,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 response.step
             )
         });
+
         let any_block = response
             .block
             .as_ref()
@@ -321,14 +308,14 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 
             StepUndo => {
                 let header = block.header();
+                let parent_ptr = header
+                    .parent_ptr()
+                    .expect("A reverted block should always have a parent");
 
                 Ok(BlockStreamEvent::Revert(
-                    BlockPtr {
-                        hash: BlockHash::from(header.hash.as_ref().unwrap().bytes.clone()),
-                        number: header.height as i32,
-                    },
+                    block.ptr(),
                     Some(response.cursor.clone()),
-                    None, // FIXME: we should get the parent block pointer when we have access to parent block height
+                    Some(parent_ptr),
                 ))
             }
 
@@ -343,42 +330,34 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
     }
 }
 
-pub struct IngestorAdapter {
-    logger: Logger,
-}
+pub struct IngestorAdapter {}
 
 #[async_trait]
 impl IngestorAdapterTrait<Chain> for IngestorAdapter {
     fn logger(&self) -> &Logger {
-        &self.logger
+        panic!("Should never be called, FirehoseBlockIngestor must be used instead")
     }
 
     fn ancestor_count(&self) -> BlockNumber {
-        0
+        panic!("Should never be called, FirehoseBlockIngestor must be used instead")
     }
 
     async fn latest_block(&self) -> Result<BlockPtr, IngestorError> {
-        Ok(BlockPtr {
-            hash: BlockHash::from(vec![0xff; 32]),
-            number: 0,
-        })
+        panic!("Should never be called, FirehoseBlockIngestor must be used instead")
     }
 
     async fn ingest_block(
         &self,
         _block_hash: &BlockHash,
     ) -> Result<Option<BlockHash>, IngestorError> {
-        // FIXME (NEAR):  Might not be necessary for NEAR support for now
-        Ok(None)
+        panic!("Should never be called, FirehoseBlockIngestor must be used instead")
     }
 
     fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
-        // FIXME (NEAR):  Might not be necessary for NEAR support for now
-        Ok(None)
+        panic!("Should never be called, FirehoseBlockIngestor must be used instead")
     }
 
     fn cleanup_cached_blocks(&self) -> Result<Option<(i32, usize)>, Error> {
-        // FIXME (NEAR):  Might not be necessary for NEAR support for now
-        Ok(None)
+        panic!("Should never be called, FirehoseBlockIngestor must be used instead")
     }
 }
