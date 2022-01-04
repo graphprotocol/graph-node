@@ -57,6 +57,9 @@ pub mod trigger_processor;
 /// Components dealing with collecting metrics
 pub mod metrics;
 
+/// Components dealing with versioning
+pub mod versions;
+
 /// A component that receives events of type `T`.
 pub trait EventConsumer<E> {
     /// Get the event sink.

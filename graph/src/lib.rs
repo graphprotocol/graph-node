@@ -133,6 +133,7 @@ pub mod prelude {
         SubgraphVersionSwitchingMode,
     };
     pub use crate::components::trigger_processor::TriggerProcessor;
+    pub use crate::components::versions::{ApiVersion, FeatureFlag};
     pub use crate::components::{transaction_receipt, EventConsumer, EventProducer};
     pub use crate::env::ENV_VARS;
 
@@ -141,7 +142,7 @@ pub mod prelude {
         shape_hash::shape_hash, SerializableValue, TryFromValue, ValueMap,
     };
     pub use crate::data::query::{
-        Query, QueryError, QueryExecutionError, QueryResult, QueryVariables,
+        Query, QueryError, QueryExecutionError, QueryResult, QueryTarget, QueryVariables,
     };
     pub use crate::data::schema::{ApiSchema, Schema};
     pub use crate::data::store::ethereum::*;

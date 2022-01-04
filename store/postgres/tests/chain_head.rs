@@ -8,7 +8,7 @@ use std::sync::Arc;
 use graph::prelude::web3::types::H256;
 use graph::prelude::{anyhow::anyhow, anyhow::Error};
 use graph::prelude::{serde_json as json, EthereumBlock};
-use graph::prelude::{BlockNumber, QueryStoreManager};
+use graph::prelude::{BlockNumber, QueryStoreManager, QueryTarget};
 use graph::{cheap_clone::CheapClone, prelude::web3::types::H160};
 use graph::{components::store::BlockStore as _, prelude::DeploymentHash};
 use graph::{components::store::ChainStore as _, prelude::EthereumCallCache as _};
@@ -177,7 +177,10 @@ fn block_number() {
             create_test_subgraph(&subgraph, "type Dummy @entity { id: ID! }").await;
 
             let query_store = subgraph_store
-                .query_store(subgraph.cheap_clone().into(), false)
+                .query_store(
+                    QueryTarget::Deployment(subgraph.cheap_clone().into(), Default::default()),
+                    false,
+                )
                 .await
                 .unwrap();
 

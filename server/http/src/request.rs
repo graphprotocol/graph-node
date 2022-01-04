@@ -59,8 +59,10 @@ mod tests {
     use super::parse_graphql_request;
 
     lazy_static! {
-        static ref TARGET: QueryTarget =
-            QueryTarget::Name(SubgraphName::new("test/request").unwrap());
+        static ref TARGET: QueryTarget = QueryTarget::Name(
+            SubgraphName::new("test/request").unwrap(),
+            Default::default()
+        );
     }
 
     #[test]

@@ -108,7 +108,8 @@ where
         // while the query is running. `self.store` can not be used after this
         // point, and everything needs to go through the `store` we are
         // setting up here
-        let store = self.store.query_store(target, false).await?;
+
+        let store = self.store.query_store(target.clone(), false).await?;
         let state = store.deployment_state().await?;
         let network = Some(store.network_name().to_string());
         let schema = store.api_schema()?;
@@ -227,7 +228,7 @@ where
         subscription: Subscription,
         target: QueryTarget,
     ) -> Result<SubscriptionResult, SubscriptionError> {
-        let store = self.store.query_store(target, true).await?;
+        let store = self.store.query_store(target.clone(), true).await?;
         let schema = store.api_schema()?;
         let network = store.network_name().to_string();
 

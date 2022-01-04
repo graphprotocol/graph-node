@@ -13,6 +13,7 @@ pub(crate) struct QueryStore {
     replica_id: ReplicaId,
     store: Arc<DeploymentStore>,
     chain_store: Arc<crate::ChainStore>,
+    api_version: Arc<ApiVersion>,
 }
 
 impl QueryStore {
@@ -21,12 +22,14 @@ impl QueryStore {
         chain_store: Arc<crate::ChainStore>,
         site: Arc<Site>,
         replica_id: ReplicaId,
+        api_version: Arc<ApiVersion>,
     ) -> Self {
         QueryStore {
             site,
             replica_id,
             store,
             chain_store,
+            api_version,
         }
     }
 }
@@ -103,7 +106,7 @@ impl QueryStoreTrait for QueryStore {
 
     fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError> {
         let info = self.store.subgraph_info(&self.site)?;
-        Ok(info.api)
+        Ok(info.api.get(&self.api_version).unwrap().clone())
     }
 
     fn network_name(&self) -> &str {
