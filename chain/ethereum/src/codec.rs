@@ -1,4 +1,4 @@
-#[path = "protobuf/dfuse.ethereum.codec.v1.rs"]
+#[path = "protobuf/sf.ethereum.codec.v1.rs"]
 mod pbcodec;
 
 use graph::{

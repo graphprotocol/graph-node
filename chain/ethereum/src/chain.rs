@@ -1,7 +1,7 @@
 use anyhow::{Context, Error};
 use graph::blockchain::BlockchainKind;
 use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::firehose::endpoints::FirehoseNetworkEndpoints;
+use graph::firehose::FirehoseNetworkEndpoints;
 use graph::prelude::{
     EthereumBlock, EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, StopwatchMetrics,
 };
@@ -19,7 +19,7 @@ use graph::{
     },
     cheap_clone::CheapClone,
     components::store::DeploymentLocator,
-    firehose::bstream,
+    firehose,
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
         async_trait, error, lazy_static, o, serde_json as json, web3::types::H256, BlockNumber,
@@ -562,11 +562,13 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
     async fn to_block_stream_event(
         &self,
         logger: &Logger,
-        response: &bstream::BlockResponseV2,
+        response: &firehose::Response,
         adapter: &TriggersAdapter,
         filter: &TriggerFilter,
     ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
-        let step = bstream::ForkStep::from_i32(response.step).unwrap_or_else(|| {
+        use firehose::ForkStep;
+
+        let step = ForkStep::from_i32(response.step).unwrap_or_else(|| {
             panic!(
                 "unknown step i32 value {}, maybe you forgot update & re-regenerate the protobuf definitions?",
                 response.step
@@ -579,15 +581,16 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 
         // Right now, this is done in all cases but in reality, with how the BlockStreamEvent::Revert
         // is defined right now, only block hash and block number is necessary. However, this information
-        // is not part of the actual bstream::BlockResponseV2 payload. As such, we need to decode the full
+        // is not part of the actual firehose::Response payload. As such, we need to decode the full
         // block which is useless.
         //
-        // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
+        // Check about adding basic information about the block in the firehose::Response or maybe
         // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
         let block = codec::Block::decode(any_block.value.as_ref())?;
 
+        use firehose::ForkStep::*;
         match step {
-            bstream::ForkStep::StepNew => {
+            StepNew => {
                 let ethereum_block: EthereumBlockWithCalls = (&block).into();
                 let block_with_triggers = adapter
                     .triggers_in_block(logger, BlockFinality::NonFinal(ethereum_block), filter)
@@ -599,7 +602,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 ))
             }
 
-            bstream::ForkStep::StepUndo => Ok(BlockStreamEvent::Revert(
+            StepUndo => Ok(BlockStreamEvent::Revert(
                 BlockPtr {
                     hash: BlockHash::from(block.hash),
                     number: block.number as i32,
@@ -611,11 +614,11 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 }),
             )),
 
-            bstream::ForkStep::StepIrreversible => {
+            StepIrreversible => {
                 unreachable!("irreversible step is not handled and should not be requested in the Firehose request")
             }
 
-            bstream::ForkStep::StepUnknown => {
+            StepUnknown => {
                 unreachable!("unknown step should not happen in the Firehose response")
             }
         }

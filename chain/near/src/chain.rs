@@ -1,7 +1,7 @@
 use graph::blockchain::BlockchainKind;
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::firehose::endpoints::FirehoseNetworkEndpoints;
+use graph::firehose::FirehoseNetworkEndpoints;
 use graph::prelude::StopwatchMetrics;
 use graph::{
     anyhow,
@@ -14,7 +14,7 @@ use graph::{
         BlockHash, BlockPtr, Blockchain, IngestorAdapter as IngestorAdapterTrait, IngestorError,
     },
     components::store::DeploymentLocator,
-    firehose::bstream,
+    firehose::{self as firehose, ForkStep},
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory},
 };
@@ -288,11 +288,11 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
     async fn to_block_stream_event(
         &self,
         logger: &Logger,
-        response: &bstream::BlockResponseV2,
+        response: &firehose::Response,
         adapter: &TriggersAdapter,
         filter: &TriggerFilter,
     ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
-        let step = bstream::ForkStep::from_i32(response.step).unwrap_or_else(|| {
+        let step = ForkStep::from_i32(response.step).unwrap_or_else(|| {
             panic!(
                 "unknown step i32 value {}, maybe you forgot update & re-regenerate the protobuf definitions?",
                 response.step
@@ -312,13 +312,14 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
         let block = codec::Block::decode(any_block.value.as_ref())?;
 
+        use ForkStep::*;
         match step {
-            bstream::ForkStep::StepNew => Ok(BlockStreamEvent::ProcessBlock(
+            StepNew => Ok(BlockStreamEvent::ProcessBlock(
                 adapter.triggers_in_block(logger, block, filter).await?,
                 Some(response.cursor.clone()),
             )),
 
-            bstream::ForkStep::StepUndo => {
+            StepUndo => {
                 let header = block.header();
 
                 Ok(BlockStreamEvent::Revert(
@@ -331,11 +332,11 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 ))
             }
 
-            bstream::ForkStep::StepIrreversible => {
+            StepIrreversible => {
                 panic!("irreversible step is not handled and should not be requested in the Firehose request")
             }
 
-            bstream::ForkStep::StepUnknown => {
+            StepUnknown => {
                 panic!("unknown step should not happen in the Firehose response")
             }
         }

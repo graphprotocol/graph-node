@@ -4,13 +4,12 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use crate::firehose::endpoints::FirehoseEndpoint;
 use crate::prelude::*;
 use crate::util::backoff::ExponentialBackoff;
 
 use super::block_stream::{BlockStream, BlockStreamEvent, FirehoseMapper};
 use super::Blockchain;
-use crate::firehose::bstream;
+use crate::{firehose, firehose::FirehoseEndpoint};
 
 pub struct FirehoseBlockStream<C: Blockchain> {
     stream: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, Error>>>>,
@@ -62,7 +61,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
     start_block_num: BlockNumber,
     logger: Logger,
 ) -> impl Stream<Item = Result<BlockStreamEvent<C>, Error>> {
-    use bstream::ForkStep::*;
+    use firehose::ForkStep::*;
 
     try_stream! {
         let mut latest_cursor = cursor.unwrap_or_else(|| "".to_string());
@@ -79,7 +78,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
 
             let result = endpoint
             .clone()
-            .stream_blocks(bstream::BlocksRequestV2 {
+            .stream_blocks(firehose::Request {
                 start_block_num: start_block_num as i64,
                 start_cursor: latest_cursor.clone(),
                 fork_steps: vec![StepNew as i32, StepUndo as i32],

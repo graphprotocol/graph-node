@@ -3,7 +3,7 @@ use std::{marker::PhantomData, sync::Arc, time::Duration};
 use crate::{
     blockchain::Block as BlockchainBlock,
     components::store::ChainStore,
-    firehose::{bstream, decode_firehose_block, endpoints::FirehoseEndpoint},
+    firehose::{self, decode_firehose_block, FirehoseEndpoint},
     prelude::{error, info, Logger},
     util::backoff::ExponentialBackoff,
 };
@@ -41,6 +41,8 @@ where
     }
 
     pub async fn run(self) {
+        use firehose::ForkStep::*;
+
         let mut latest_cursor = self.fetch_head_cursor().await;
         let mut backoff =
             ExponentialBackoff::new(Duration::from_millis(250), Duration::from_secs(30));
@@ -54,20 +56,19 @@ where
             let result = self
                 .endpoint
                 .clone()
-                .stream_blocks(bstream::BlocksRequestV2 {
+                .stream_blocks(firehose::Request {
                     // Starts at current HEAD block of the chain (viewed from Firehose side)
                     start_block_num: -1,
                     start_cursor: latest_cursor.clone(),
-                    fork_steps: vec![
-                        bstream::ForkStep::StepNew as i32,
-                        bstream::ForkStep::StepUndo as i32,
-                    ],
+                    fork_steps: vec![StepNew as i32, StepUndo as i32],
                     ..Default::default()
                 })
                 .await;
 
             match result {
                 Ok(stream) => {
+                    info!(self.logger, "Blockstream connected, consuming blocks");
+
                     // Consume the stream of blocks until an error is hit
                     latest_cursor = self.process_blocks(latest_cursor, stream).await
                 }
@@ -102,16 +103,17 @@ where
     async fn process_blocks(
         &self,
         cursor: String,
-        mut stream: Streaming<bstream::BlockResponseV2>,
+        mut stream: Streaming<firehose::Response>,
     ) -> String {
-        use bstream::ForkStep::*;
+        use firehose::ForkStep;
+        use firehose::ForkStep::*;
 
         let mut latest_cursor = cursor;
 
         while let Some(message) = stream.next().await {
             match message {
                 Ok(v) => {
-                    let step = bstream::ForkStep::from_i32(v.step)
+                    let step = ForkStep::from_i32(v.step)
                         .expect("Fork step should always match to known value");
 
                     let result = match step {
@@ -149,7 +151,7 @@ where
         latest_cursor
     }
 
-    async fn process_new_block(&self, response: &bstream::BlockResponseV2) -> Result<(), Error> {
+    async fn process_new_block(&self, response: &firehose::Response) -> Result<(), Error> {
         let block = decode_firehose_block::<M>(response)
             .context("Mapping firehose block to blockchain::Block")?;
 
