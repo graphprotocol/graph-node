@@ -4,6 +4,7 @@ services:
     ports:
       - '8545:8545'
     volumes:
+      - ./data/hardhat/contracts:/hardhat/contracts
       - ./data/hardhat/cache:/hardhat/cache
       - ./data/hardhat/artifacts:/hardhat/artifacts
     build:
