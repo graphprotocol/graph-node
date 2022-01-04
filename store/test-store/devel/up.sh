@@ -26,7 +26,7 @@ main() {
   prepare
 
   # Pass execution to docker compose
-  exec docker-compose up --force-recreate
+  exec docker-compose up
 }
 
 prepare() {
