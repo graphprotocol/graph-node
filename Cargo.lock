@@ -5412,7 +5412,7 @@ dependencies = [
 [[package]]
 name = "web3"
 version = "0.15.0-graph"
-source = "git+https://github.com/graphprotocol/rust-web3?branch=lutter/graph-0.15.0#738e547708ab1a4581ce3693d90fcd8df9506a4f"
+source = "git+https://github.com/graphprotocol/rust-web3?branch=lutter/graph-0.15.0#6d6ee87a98250c73f7b36087400a17f502e6d699"
 dependencies = [
  "arrayvec 0.5.2",
  "async-native-tls",
