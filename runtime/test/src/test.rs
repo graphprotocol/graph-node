@@ -179,7 +179,7 @@ impl WasmInstanceExt for WasmInstance<Chain> {
     }
 }
 
-fn test_json_conversions(api_version: Version) {
+fn test_json_conversions(api_version: Version, gas_used: u64) {
     let mut module = test_module(
         "jsonConversions",
         mock_data_source(
@@ -212,23 +212,26 @@ fn test_json_conversions(api_version: Version) {
     let number_ptr = asc_new(&mut module, number).unwrap();
     let big_int_obj: AscPtr<AscBigInt> = module.invoke_export1("testToBigInt", number_ptr);
     let bytes: Vec<u8> = asc_get(&module, big_int_obj).unwrap();
+
     assert_eq!(
         scalar::BigInt::from_str(number).unwrap(),
         scalar::BigInt::from_signed_bytes_le(&bytes)
     );
+
+    assert_eq!(module.gas_used(), gas_used);
 }
 
 #[tokio::test]
 async fn json_conversions_v0_0_4() {
-    test_json_conversions(API_VERSION_0_0_4);
+    test_json_conversions(API_VERSION_0_0_4, 51937534);
 }
 
 #[tokio::test]
 async fn json_conversions_v0_0_5() {
-    test_json_conversions(API_VERSION_0_0_5);
+    test_json_conversions(API_VERSION_0_0_5, 912148);
 }
 
-fn test_json_parsing(api_version: Version) {
+fn test_json_parsing(api_version: Version, gas_used: u64) {
     let mut module = test_module(
         "jsonParsing",
         mock_data_source(
@@ -251,18 +254,20 @@ fn test_json_parsing(api_version: Version) {
     let bytes: &[u8] = s.as_ref();
     let bytes_ptr = asc_new(&mut module, bytes).unwrap();
     let return_value: AscPtr<AscString> = module.invoke_export1("handleJsonError", bytes_ptr);
+
     let output: String = asc_get(&module, return_value).unwrap();
     assert_eq!(output, "OK: foo, ERROR: false");
+    assert_eq!(module.gas_used(), gas_used);
 }
 
 #[tokio::test]
 async fn json_parsing_v0_0_4() {
-    test_json_parsing(API_VERSION_0_0_4);
+    test_json_parsing(API_VERSION_0_0_4, 2062683);
 }
 
 #[tokio::test]
 async fn json_parsing_v0_0_5() {
-    test_json_parsing(API_VERSION_0_0_5);
+    test_json_parsing(API_VERSION_0_0_5, 2693805);
 }
 
 async fn test_ipfs_cat(api_version: Version) {
@@ -542,7 +547,7 @@ async fn crypto_keccak256_v0_0_5() {
     test_crypto_keccak256(API_VERSION_0_0_5);
 }
 
-fn test_big_int_to_hex(api_version: Version) {
+fn test_big_int_to_hex(api_version: Version, gas_used: u64) {
     let mut module = test_module(
         "BigIntToHex",
         mock_data_source(
@@ -575,19 +580,21 @@ fn test_big_int_to_hex(api_version: Version) {
         u256_max_hex_str,
         "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     );
+
+    assert_eq!(module.gas_used(), gas_used);
 }
 
 #[tokio::test]
 async fn big_int_to_hex_v0_0_4() {
-    test_big_int_to_hex(API_VERSION_0_0_4);
+    test_big_int_to_hex(API_VERSION_0_0_4, 51770565);
 }
 
 #[tokio::test]
 async fn big_int_to_hex_v0_0_5() {
-    test_big_int_to_hex(API_VERSION_0_0_5);
+    test_big_int_to_hex(API_VERSION_0_0_5, 962685);
 }
 
-fn test_big_int_arithmetic(api_version: Version) {
+fn test_big_int_arithmetic(api_version: Version, gas_used: u64) {
     let mut module = test_module(
         "BigIntArithmetic",
         mock_data_source(
@@ -650,16 +657,18 @@ fn test_big_int_arithmetic(api_version: Version) {
     let result_ptr: AscPtr<AscBigInt> = module.invoke_export2("mod", five, two);
     let result: BigInt = asc_get(&module, result_ptr).unwrap();
     assert_eq!(result, BigInt::from(1));
+
+    assert_eq!(module.gas_used(), gas_used);
 }
 
 #[tokio::test]
 async fn big_int_arithmetic_v0_0_4() {
-    test_big_int_arithmetic(API_VERSION_0_0_4);
+    test_big_int_arithmetic(API_VERSION_0_0_4, 52099180);
 }
 
 #[tokio::test]
 async fn big_int_arithmetic_v0_0_5() {
-    test_big_int_arithmetic(API_VERSION_0_0_5);
+    test_big_int_arithmetic(API_VERSION_0_0_5, 3035221);
 }
 
 fn test_abort(api_version: Version, error_msg: &str) {
@@ -691,7 +700,7 @@ async fn abort_v0_0_5() {
     );
 }
 
-fn test_bytes_to_base58(api_version: Version) {
+fn test_bytes_to_base58(api_version: Version, gas_used: u64) {
     let mut module = test_module(
         "bytesToBase58",
         mock_data_source(
@@ -705,20 +714,22 @@ fn test_bytes_to_base58(api_version: Version) {
     let bytes_ptr = asc_new(&mut module, bytes.as_slice()).unwrap();
     let result_ptr: AscPtr<AscString> = module.invoke_export1("bytes_to_base58", bytes_ptr);
     let base58: String = asc_get(&module, result_ptr).unwrap();
+
     assert_eq!(base58, "QmWmyoMoctfbAaiEs2G46gpeUmhqFRDW6KWo64y5r581Vz");
+    assert_eq!(module.gas_used(), gas_used);
 }
 
 #[tokio::test]
 async fn bytes_to_base58_v0_0_4() {
-    test_bytes_to_base58(API_VERSION_0_0_4);
+    test_bytes_to_base58(API_VERSION_0_0_4, 51577627);
 }
 
 #[tokio::test]
 async fn bytes_to_base58_v0_0_5() {
-    test_bytes_to_base58(API_VERSION_0_0_5);
+    test_bytes_to_base58(API_VERSION_0_0_5, 477157);
 }
 
-fn test_data_source_create(api_version: Version) {
+fn test_data_source_create(api_version: Version, gas_used: u64) {
     let run_data_source_create =
         move |name: String,
               params: Vec<String>|
@@ -737,6 +748,9 @@ fn test_data_source_create(api_version: Version) {
             module.instance_ctx_mut().ctx.state.enter_handler();
             module.invoke_export2_void("dataSourceCreate", name, params)?;
             module.instance_ctx_mut().ctx.state.exit_handler();
+
+            assert_eq!(module.gas_used(), gas_used);
+
             Ok(module.take_ctx().ctx.state.drain_created_data_sources())
         };
 
@@ -763,12 +777,12 @@ fn test_data_source_create(api_version: Version) {
 
 #[tokio::test]
 async fn data_source_create_v0_0_4() {
-    test_data_source_create(API_VERSION_0_0_4);
+    test_data_source_create(API_VERSION_0_0_4, 151393645);
 }
 
 #[tokio::test]
 async fn data_source_create_v0_0_5() {
-    test_data_source_create(API_VERSION_0_0_5);
+    test_data_source_create(API_VERSION_0_0_5, 100440279);
 }
 
 fn test_ens_name_by_hash(api_version: Version) {
