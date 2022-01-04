@@ -524,7 +524,7 @@ where
     let mut should_try_unfail_deterministic = true;
     let mut should_try_unfail_non_deterministic = true;
     let mut synced = false;
-    let mut sync_status_timer = Instant::now();
+    let sync_status_timer = Instant::now();
 
     // Exponential backoff that starts with two minutes and keeps
     // increasing its timeout exponentially until it reaches the ceiling.
@@ -721,7 +721,7 @@ where
                 Ok(needs_restart) => {
                     if should_try_update_sync_status(
                         synced,
-                        &mut sync_status_timer,
+                        sync_status_timer,
                         *SYNC_STATUS_THRESHOLD,
                         // This is the new deployment head since the block just has been processed.
                         &block_ptr,
@@ -1325,33 +1325,16 @@ fn persist_dynamic_data_sources<T: RuntimeHostBuilder<C>, C: Blockchain>(
 }
 
 /// Returns true if the timer has elapsed given duration/threshold.
-/// It will reset the timer in that case.
-fn has_threshold_passed(timer: &mut Instant, threshold: Duration) -> bool {
-    if timer.elapsed() >= threshold {
-        // Reset if threshold passed.
-        *timer = Instant::now();
-        true
-    } else {
-        false
-    }
+fn has_threshold_passed(timer: Instant, threshold: Duration) -> bool {
+    timer.elapsed() >= threshold
 }
 
 #[test]
 fn test_has_threshold_passed() {
-    let mut now = Instant::now();
-    let now_clone = now.clone();
-    assert!(!has_threshold_passed(&mut now, MINUTE * 3));
-    assert_eq!(now, now_clone);
-
-    let mut now = Instant::now() - MINUTE * 2;
-    let now_clone = now.clone();
-    assert!(!has_threshold_passed(&mut now, MINUTE * 3));
-    assert_eq!(now, now_clone);
-
-    let mut now = Instant::now() - MINUTE * 5;
-    let now_clone = now.clone();
-    assert!(has_threshold_passed(&mut now, MINUTE * 3));
-    assert!(now > now_clone);
+    let now = Instant::now();
+    assert!(!has_threshold_passed(now, MINUTE * 3));
+    assert!(!has_threshold_passed(now - MINUTE * 2, MINUTE * 3));
+    assert!(has_threshold_passed(now - MINUTE * 5, MINUTE * 3));
 }
 
 /// Checks if two BlockPtrs are the same.
@@ -1389,7 +1372,7 @@ fn test_is_deployment_synced() {
 /// - Chain and deployment head blocks are the same
 fn should_try_update_sync_status(
     synced: bool,
-    timer: &mut Instant,
+    timer: Instant,
     threshold: Duration,
     deployment_head_ptr: &BlockPtr,
     get_chain_head: impl Fn() -> Result<Option<BlockPtr>, anyhow::Error>,
@@ -1410,6 +1393,7 @@ fn should_try_update_sync_status(
 
 #[test]
 fn test_should_try_update_sync_status() {
+    let now = Instant::now();
     let block_a = BlockPtr::try_from((
         "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
         0,
@@ -1422,10 +1406,9 @@ fn test_should_try_update_sync_status() {
     .unwrap();
 
     // When it's already synced
-    let mut now = Instant::now();
     assert!(!should_try_update_sync_status(
         true,
-        &mut now,
+        now,
         *SYNC_STATUS_THRESHOLD,
         &block_a,
         || unreachable!("Will not be called"),
@@ -1433,10 +1416,9 @@ fn test_should_try_update_sync_status() {
     .unwrap());
 
     // When the threshold has NOT passed
-    let mut now = Instant::now();
     assert!(!should_try_update_sync_status(
         false,
-        &mut now,
+        now,
         *SYNC_STATUS_THRESHOLD,
         &block_a,
         || unreachable!("Will not be called"),
@@ -1444,10 +1426,9 @@ fn test_should_try_update_sync_status() {
     .unwrap());
 
     // When the threshold has passed but it's NOT the same block
-    let mut now = Instant::now() - *SYNC_STATUS_THRESHOLD * 2;
     assert!(!should_try_update_sync_status(
         false,
-        &mut now,
+        now - *SYNC_STATUS_THRESHOLD * 2,
         *SYNC_STATUS_THRESHOLD,
         &block_a,
         || Ok(Some(block_b.clone())),
@@ -1455,10 +1436,9 @@ fn test_should_try_update_sync_status() {
     .unwrap());
 
     // When the threshold has passed AND it's the same block
-    let mut now = Instant::now() - *SYNC_STATUS_THRESHOLD * 2;
     assert!(should_try_update_sync_status(
         false,
-        &mut now,
+        now - *SYNC_STATUS_THRESHOLD * 2,
         *SYNC_STATUS_THRESHOLD,
         &block_a,
         || Ok(Some(block_a.clone())),
