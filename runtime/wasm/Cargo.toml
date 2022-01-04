@@ -24,8 +24,7 @@ wasmtime = "0.27.0"
 defer = "0.1"
 never = "0.1"
 
-# Patch being upstreamed in https://github.com/paritytech/wasm-utils/pull/174
-pwasm-utils = { git = "https://github.com/edgeandnode/wasm-utils", branch = "sign-ext-feature-flag", features = ["sign_ext"] }
+pwasm-utils = { git = "https://github.com/paritytech/wasm-utils", rev = "b22696aaa516212284f2d94a28d8d292afe27859", features = ["sign_ext"] }
 
 # AssemblyScript uses sign extensions
 parity-wasm = { version = "0.42", features = ["std", "sign_ext"] }

@@ -3265,7 +3265,7 @@ dependencies = [
 [[package]]
 name = "pwasm-utils"
 version = "0.19.0"
-source = "git+https://github.com/edgeandnode/wasm-utils?branch=sign-ext-feature-flag#1b939aba3ee861338d6102ce01d6511128b7b11f"
+source = "git+https://github.com/paritytech/wasm-utils?rev=b22696aaa516212284f2d94a28d8d292afe27859#b22696aaa516212284f2d94a28d8d292afe27859"
 dependencies = [
  "byteorder",
  "log",
