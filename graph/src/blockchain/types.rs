@@ -186,7 +186,10 @@ impl TryFrom<(&[u8], i64)> for BlockPtr {
             H256::from_slice(bytes)
         } else {
             return Err(anyhow!(
-                "invalid H256 value `{}` has {} bytes instead of {}"
+                "invalid H256 value `{:?}` has {} bytes instead of {}",
+                bytes,
+                bytes.len(),
+                H256::len_bytes()
             ));
         };
         Ok(BlockPtr::from((hash, number)))
