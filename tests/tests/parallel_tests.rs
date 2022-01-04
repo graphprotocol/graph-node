@@ -388,6 +388,10 @@ async fn run_graph_node(test_setup: &IntegrationTestSetup) -> anyhow::Result<Chi
         );
     }
 
+    // This is necessary because most integration tests finish before the default threshold (3
+    // minutes).
+    command.env("GRAPH_SUBGRAPH_SYNC_STATUS_UPDATE_THRESHOLD_MILLIS", "50");
+
     command
         .spawn()
         .context("failed to start graph-node command.")
