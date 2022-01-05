@@ -1495,8 +1495,8 @@ pub(crate) async fn blocks_with_triggers(
                     triggers,
                 )),
                 None => Err(anyhow!(
-                    "block {:?} not found in `triggers_by_block`",
-                    block
+                    "block {} not found in `triggers_by_block`",
+                    block.block_ptr()
                 )),
             },
         )
