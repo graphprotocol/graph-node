@@ -252,23 +252,34 @@ impl ToAscObj<u32> for IndexForAscTypeId {
 }
 
 #[derive(Debug)]
-pub struct DeterministicHostError(Error);
+pub enum DeterministicHostError {
+    Gas(Error),
+    Other(Error),
+}
 
 impl DeterministicHostError {
+    pub fn gas(e: Error) -> Self {
+        DeterministicHostError::Gas(e)
+    }
+
     pub fn inner(self) -> Error {
-        self.0
+        match self {
+            DeterministicHostError::Gas(e) | DeterministicHostError::Other(e) => e,
+        }
     }
 }
 
 impl fmt::Display for DeterministicHostError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
+        match self {
+            DeterministicHostError::Gas(e) | DeterministicHostError::Other(e) => e.fmt(f),
+        }
     }
 }
 
 impl From<Error> for DeterministicHostError {
     fn from(e: Error) -> DeterministicHostError {
-        DeterministicHostError(e)
+        DeterministicHostError::Other(e)
     }
 }
 
@@ -294,7 +305,11 @@ impl From<anyhow::Error> for HostExportError {
 
 impl From<DeterministicHostError> for HostExportError {
     fn from(value: DeterministicHostError) -> Self {
-        HostExportError::Deterministic(value.0)
+        match value {
+            // Until we are confident on the gas numbers, gas errors are not deterministic
+            DeterministicHostError::Gas(e) => HostExportError::Unknown(e),
+            DeterministicHostError::Other(e) => HostExportError::Deterministic(e),
+        }
     }
 }
 
