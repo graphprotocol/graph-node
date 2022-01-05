@@ -638,7 +638,7 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
         let mut data = vec![0; size];
 
         self.memory.read(offset, &mut data).map_err(|_| {
-            DeterministicHostError(anyhow!(
+            DeterministicHostError::from(anyhow!(
                 "Heap access out of bounds. Offset: {} Size: {}",
                 offset,
                 size
@@ -662,7 +662,7 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
             .unwrap() // Unwrap ok because it's only called on correct apiVersion, look for AscPtr::generate_header
             .call(type_id_index as u32)
             .with_context(|| format!("Failed to call 'asc_type_id' with '{:?}'", type_id_index))
-            .map_err(DeterministicHostError)?;
+            .map_err(DeterministicHostError::from)?;
         Ok(type_id)
     }
 }
@@ -987,7 +987,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
                     &bytes[..bytes.len().min(1024)],
                 )
             })
-            .map_err(DeterministicHostError)?;
+            .map_err(DeterministicHostError::from)?;
         asc_new(self, &result)
     }
 
@@ -1263,7 +1263,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         x_ptr: AscPtr<AscBigInt>,
         exp: u32,
     ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
-        let exp = u8::try_from(exp).map_err(|e| DeterministicHostError(e.into()))?;
+        let exp = u8::try_from(exp).map_err(|e| DeterministicHostError::from(Error::from(e)))?;
         let result = self
             .ctx
             .host_exports
@@ -1308,7 +1308,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         x_ptr: AscPtr<AscBigInt>,
         bits: u32,
     ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
-        let bits = u8::try_from(bits).map_err(|e| DeterministicHostError(e.into()))?;
+        let bits = u8::try_from(bits).map_err(|e| DeterministicHostError::from(Error::from(e)))?;
         let result = self
             .ctx
             .host_exports
@@ -1323,7 +1323,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         x_ptr: AscPtr<AscBigInt>,
         bits: u32,
     ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
-        let bits = u8::try_from(bits).map_err(|e| DeterministicHostError(e.into()))?;
+        let bits = u8::try_from(bits).map_err(|e| DeterministicHostError::from(Error::from(e)))?;
         let result = self
             .ctx
             .host_exports

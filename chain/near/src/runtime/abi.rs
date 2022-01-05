@@ -119,7 +119,7 @@ impl ToAscObj<AscActionReceipt> for codec::Receipt {
         let action = match self.receipt.as_ref().unwrap() {
             codec::receipt::Receipt::Action(action) => action,
             codec::receipt::Receipt::Data(_) => {
-                return Err(DeterministicHostError(anyhow!(
+                return Err(DeterministicHostError::from(anyhow!(
                     "Data receipt are now allowed"
                 )));
             }
@@ -413,12 +413,12 @@ impl ToAscObj<AscSuccessStatusEnum> for codec::execution_outcome::Status {
                 asc_new(heap, receipt_id.id.as_ref().unwrap())?.to_payload(),
             ),
             codec::execution_outcome::Status::Failure(_) => {
-                return Err(DeterministicHostError(anyhow!(
+                return Err(DeterministicHostError::from(anyhow!(
                     "Failure execution status are not allowed"
                 )));
             }
             codec::execution_outcome::Status::Unknown(_) => {
-                return Err(DeterministicHostError(anyhow!(
+                return Err(DeterministicHostError::from(anyhow!(
                     "Unknown execution status are not allowed"
                 )));
             }
@@ -443,7 +443,7 @@ impl ToAscObj<AscMerklePathItem> for codec::MerklePathItem {
                 0 => AscDirection::Left,
                 1 => AscDirection::Right,
                 x => {
-                    return Err(DeterministicHostError(anyhow!(
+                    return Err(DeterministicHostError::from(anyhow!(
                         "Invalid direction value {}",
                         x
                     )))
@@ -474,7 +474,7 @@ impl ToAscObj<AscSignature> for codec::Signature {
                 0 => 0,
                 1 => 1,
                 value => {
-                    return Err(DeterministicHostError(anyhow!(
+                    return Err(DeterministicHostError::from(anyhow!(
                         "Invalid signature type {}",
                         value,
                     )))
@@ -506,7 +506,7 @@ impl ToAscObj<AscPublicKey> for codec::PublicKey {
                 0 => 0,
                 1 => 1,
                 value => {
-                    return Err(DeterministicHostError(anyhow!(
+                    return Err(DeterministicHostError::from(anyhow!(
                         "Invalid public key type {}",
                         value,
                     )))
