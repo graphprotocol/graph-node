@@ -36,10 +36,9 @@ pub enum SubgraphHealth {
 
 impl SubgraphHealth {
     fn is_failed(&self) -> bool {
-        match self {
-            Self::Failed => true,
-            Self::Healthy | Self::Unhealthy => false,
-        }
+        use graph::data::subgraph::schema::SubgraphHealth as H;
+
+        H::from(*self).is_failed()
     }
 }
 
@@ -651,6 +650,19 @@ fn check_health(
     .execute(conn)
     .map(|_| ())
     .map_err(|e| e.into())
+}
+
+pub(crate) fn health(
+    conn: &PgConnection,
+    id: &DeploymentHash,
+) -> Result<SubgraphHealth, StoreError> {
+    use subgraph_deployment as d;
+
+    d::table
+        .filter(d::deployment.eq(id.as_str()))
+        .select(d::health)
+        .get_result(conn)
+        .map_err(|e| e.into())
 }
 
 /// Reverts the errors and updates the subgraph health if necessary.

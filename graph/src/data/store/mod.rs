@@ -1,6 +1,7 @@
 use crate::{
     components::store::{DeploymentLocator, EntityType},
     prelude::{q, r, s, CacheWeight, EntityKey, QueryExecutionError},
+    runtime::gas::{Gas, GasSizeOf},
 };
 use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
 use anyhow::{anyhow, Error};
@@ -26,7 +27,7 @@ pub mod scalar;
 pub mod ethereum;
 
 /// Filter subscriptions
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SubscriptionFilter {
     /// Receive updates about all entities from the given deployment of the
     /// given type
@@ -619,6 +620,12 @@ impl<'a> From<Vec<(&'a str, Value)>> for Entity {
 impl CacheWeight for Entity {
     fn indirect_weight(&self) -> usize {
         self.0.indirect_weight()
+    }
+}
+
+impl GasSizeOf for Entity {
+    fn gas_size_of(&self) -> Gas {
+        self.0.gas_size_of()
     }
 }
 

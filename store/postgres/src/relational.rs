@@ -546,7 +546,7 @@ impl Layout {
             tables.push(self.table_for_entity(entity_type)?.as_ref());
         }
         let query = FindManyQuery {
-            namespace: &self.catalog.site.namespace,
+            _namespace: &self.catalog.site.namespace,
             ids_for_type,
             tables,
             block,
@@ -658,12 +658,18 @@ impl Layout {
                 }
                 query.load::<EntityData>(conn)
             })
-            .map_err(|e| {
-                QueryExecutionError::ResolveEntitiesError(format!(
+            .map_err(|e| match e {
+                diesel::result::Error::DatabaseError(
+                    diesel::result::DatabaseErrorKind::__Unknown,
+                    ref info,
+                ) if info.message().starts_with("syntax error in tsquery") => {
+                    QueryExecutionError::FulltextQueryInvalidSyntax(info.message().to_string())
+                }
+                _ => QueryExecutionError::ResolveEntitiesError(format!(
                     "{}, query = {:?}",
                     e,
                     debug_query(&query_clone).to_string()
-                ))
+                )),
             })?;
         log_query_timing(logger, &query_clone, start.elapsed(), values.len());
         values

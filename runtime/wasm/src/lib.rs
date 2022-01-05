@@ -1,10 +1,3 @@
-pub use host::RuntimeHostBuilder;
-pub use host_exports::HostExports;
-pub use mapping::{MappingContext, ValidModule};
-#[cfg(debug_assertions)]
-pub use module::TRAP_TIMEOUT;
-pub use module::{ExperimentalFeatures, WasmInstance};
-
 pub mod asc_abi;
 
 mod host;
@@ -22,3 +15,12 @@ pub mod module;
 pub mod host_exports;
 
 pub mod error;
+mod gas_rules;
+
+pub use host::RuntimeHostBuilder;
+pub use host_exports::HostExports;
+pub use mapping::{MappingContext, ValidModule};
+pub use module::{ExperimentalFeatures, WasmInstance};
+
+#[cfg(debug_assertions)]
+pub use module::TRAP_TIMEOUT;

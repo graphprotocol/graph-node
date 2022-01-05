@@ -5,13 +5,12 @@ use thiserror::Error;
 
 use super::{Block, BlockPtr, Blockchain};
 use crate::components::store::BlockNumber;
-use crate::firehose::bstream;
+use crate::firehose;
 use crate::{prelude::*, prometheus::labels};
 
 pub trait BlockStream<C: Blockchain>:
     Stream<Item = Result<BlockStreamEvent<C>, Error>> + Unpin
 {
-    fn notify_block_consumed(&mut self) {}
 }
 
 pub type FirehoseCursor = Option<String>;
@@ -78,11 +77,12 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error>;
 }
 
+#[async_trait]
 pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
-    fn to_block_stream_event(
+    async fn to_block_stream_event(
         &self,
         logger: &Logger,
-        response: &bstream::BlockResponseV2,
+        response: &firehose::Response,
         adapter: &C::TriggersAdapter,
         filter: &C::TriggerFilter,
     ) -> Result<BlockStreamEvent<C>, FirehoseError>;

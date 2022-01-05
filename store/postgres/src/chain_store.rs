@@ -40,6 +40,7 @@ mod public {
             head_block_number -> Nullable<BigInt>,
             net_version -> Varchar,
             genesis_block_hash -> Varchar,
+            head_block_cursor -> Nullable<Varchar>,
         }
     }
 }
@@ -390,6 +391,15 @@ mod data {
             }
         }
 
+        pub(super) fn truncate_block_cache(&self, conn: &PgConnection) -> Result<(), StoreError> {
+            let table_name = match &self {
+                Storage::Shared => ETHEREUM_BLOCKS_TABLE_NAME,
+                Storage::Private(Schema { blocks, .. }) => &blocks.qname,
+            };
+            conn.batch_execute(&format!("truncate table {} restart identity", table_name))?;
+            Ok(())
+        }
+
         /// Insert a block. If the table already contains a block with the
         /// same hash, then overwrite that block since it may be adding
         /// transaction receipts. If `overwrite` is `true`, overwrite a
@@ -477,12 +487,19 @@ mod data {
         ) -> Result<Vec<json::Value>, Error> {
             use diesel::dsl::any;
 
+            // We need to deal with chain stores where some entries have a
+            // toplevel 'block' field and others directly contain what would
+            // be in the 'block' field. Make sure we return the contents of
+            // the 'block' field if it exists, otherwise assume the whole
+            // Json object is what should be in 'block'
+            //
+            // see also 7736e440-4c6b-11ec-8c4d-b42e99f52061
             match self {
                 Storage::Shared => {
                     use public::ethereum_blocks as b;
 
                     b::table
-                        .select(sql::<Jsonb>("data -> 'block'"))
+                        .select(sql::<Jsonb>("coalesce(data -> 'block', data)"))
                         .filter(b::network_name.eq(chain))
                         .filter(b::hash.eq(any(Vec::from_iter(
                             hashes.into_iter().map(|h| format!("{:x}", h)),
@@ -491,7 +508,7 @@ mod data {
                 }
                 Storage::Private(Schema { blocks, .. }) => blocks
                     .table()
-                    .select(sql::<Jsonb>("data -> 'block'"))
+                    .select(sql::<Jsonb>("coalesce(data -> 'block', data)"))
                     .filter(
                         blocks
                             .hash()
@@ -826,6 +843,20 @@ mod data {
                 }
             };
 
+            // We need to deal with chain stores where some entries have a
+            // toplevel 'blocks' field and others directly contain what
+            // would be in the 'blocks' field. Make sure the value we return
+            // has a 'block' entry
+            //
+            // see also 7736e440-4c6b-11ec-8c4d-b42e99f52061
+            let data = {
+                use graph::prelude::serde_json::json;
+
+                data.map(|data| match data.get("block") {
+                    Some(_) => data,
+                    None => json!({ "block": data, "transaction_receipts": [] }),
+                })
+            };
             Ok(data)
         }
 
@@ -1264,6 +1295,12 @@ impl ChainStore {
         self.storage
             .set_chain(&conn, &self.chain, genesis_hash, chain);
     }
+
+    pub fn truncate_block_cache(&self) -> Result<(), StoreError> {
+        let conn = self.get_conn()?;
+        self.storage.truncate_block_cache(&conn)?;
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -1374,6 +1411,59 @@ impl ChainStoreTrait for ChainStore {
                     .and_then(|opt| opt)
             })
             .map_err(Error::from)
+    }
+
+    fn chain_head_cursor(&self) -> Result<Option<String>, Error> {
+        use public::ethereum_networks::dsl::*;
+
+        ethereum_networks
+            .select(head_block_cursor)
+            .filter(name.eq(&self.chain))
+            .load::<Option<String>>(&*self.get_conn()?)
+            .map(|rows| {
+                rows.first()
+                    .map(|cursor_opt| cursor_opt.as_ref().map(|cursor| cursor.clone()))
+                    .and_then(|opt| opt)
+            })
+            .map_err(Error::from)
+    }
+
+    async fn set_chain_head(
+        self: Arc<Self>,
+        block: Arc<dyn Block>,
+        cursor: String,
+    ) -> Result<(), Error> {
+        use public::ethereum_networks as n;
+
+        let pool = self.pool.clone();
+        let network = self.chain.clone();
+        let storage = self.storage.clone();
+
+        let ptr = block.ptr();
+        let hash = ptr.hash_hex();
+        let number = ptr.number as i64;
+
+        pool.with_conn(move |conn, _| {
+            conn.transaction(|| -> Result<(), StoreError> {
+                storage
+                    .upsert_block(&conn, &network, block.as_ref(), true)
+                    .map_err(CancelableError::from)?;
+
+                update(n::table.filter(n::name.eq(&self.chain)))
+                    .set((
+                        n::head_block_hash.eq(&hash),
+                        n::head_block_number.eq(number),
+                        n::head_block_cursor.eq(cursor),
+                    ))
+                    .execute(conn)?;
+
+                Ok(())
+            })
+            .map_err(CancelableError::from)
+        })
+        .await?;
+
+        Ok(())
     }
 
     fn blocks(&self, hashes: &[H256]) -> Result<Vec<json::Value>, Error> {

@@ -1,51 +1,17 @@
 syntax = "proto3";
 
-package dfuse.bstream.v1;
+package sf.firehose.v1;
 
-import "google/protobuf/timestamp.proto";
 import "google/protobuf/any.proto";
 
-option go_package = "github.com/streamingfast/pbgo/dfuse/bstream/v1;pbbstream";
+option go_package = "github.com/streamingfast/pbgo/sf/firehose/v1;pbfirehose";
 
-service BlockStream {
-  rpc Blocks(BlockRequest) returns (stream Block);
-}
-
-service BlockStreamV2 {
-  rpc Blocks(BlocksRequestV2) returns (stream BlockResponseV2);
-}
-
-// Version 1 request
-
-message BlockRequest {
-  // Number of blocks we want to get in burst upon connection, on a best effort basis.
-  int64 burst = 1;
-
-  // Type of blocks we're after here, is it 'ethereum' data, 'eos', etc.. The server can fail early
-  // if he doesn't match the data he serves (services mismatch, etc..)
-  string content_type = 2;
-
-  // Whether we can assume the data will come ordered, unless there is a chain reorganization.
-  // mindreaders output ordered data, whereas relayers can output unordered data.
-  // The server can fail early if the assumption of the caller cannot be fulfilled.
-  enum Order {
-    UNSPECIFIED = 0;
-    ORDERED = 1;
-    UNORDERED = 2;
-  }
-  Order order = 3;
-
-  string requester = 4;
-}
-
-// Version 2 request
-
-message IrreversibleBlocksRequestV2 {
-  int64 start_block_num = 1;
+service Stream {
+  rpc Blocks(Request) returns (stream Response);
 }
 
 // For historical segments, forks are not passed
-message BlocksRequestV2 {
+message Request {
   // Controls where the stream of blocks will start.
   //
   // The stream will start **inclusively** at the requested block num.
@@ -66,7 +32,7 @@ message BlocksRequestV2 {
   // Controls where the stream of blocks will start which will be immediately after
   // the Block pointed by this opaque cursor.
   //
-  // Obtain this value from a previously received BlockResponseV2.cursor.
+  // Obtain this value from a previously received from `Response.cursor`.
   //
   // This value takes precedence over `start_block_num`.
   string start_cursor = 13;
@@ -92,17 +58,30 @@ message BlocksRequestV2 {
 
   // **Warning** Experimental API, controls how blocks are trimmed for extraneous information before
   // being sent back. The actual trimming is chain dependent.
-  BlockDetails details = 15;
+  //BlockDetails details = 15;
+  reserved 15;
 
   // controls how many confirmations will consider a given block as final (STEP_IRREVERSIBLE). Warning, if any reorg goes beyond that number of confirmations, the request will stall forever
-  uint64 confirmations = 16;
+  //uint64 confirmations = 16;
+  reserved 16;
 
+
+  //- EOS "handoffs:3"
+  //- EOS "lib"
+  //- EOS "confirms:3"
+  //- ETH "confirms:200"
+  //- ETH "confirms:7"
+  //- SOL "commmitement:finalized"
+  //- SOL "confirms:200"
+  string irreversibility_condition = 17;
+
+  repeated google.protobuf.Any transforms = 18;
 }
 
-message BlockResponseV2 {
+message Response {
   // Chain specific block payload, one of:
-  // - dfuse.eosio.codec.v1.Block
-  // - dfuse.ethereum.codec.v1.Block
+  // - sf.eosio.codec.v1.Block
+  // - sf.ethereum.codec.v1.Block
   // - sf.near.codec.v1.Block
   // - sf.solana.codec.v1.Block
   google.protobuf.Any block = 1;
@@ -124,41 +103,8 @@ enum ForkStep {
   reserved 5 ;
 }
 
+// TODO: move to ethereum specific transforms
 enum BlockDetails {
   BLOCK_DETAILS_FULL = 0;
   BLOCK_DETAILS_LIGHT = 1;
-}
-
-message Cursor {
-  BlockRef block = 1;
-  BlockRef head_block = 2;
-  BlockRef lib = 3;
-  ForkStep step = 4;
-}
-
-// General response and structs
-
-message Block {
-  uint64 number = 1;
-  string id = 2;
-  string previous_id = 3;
-  google.protobuf.Timestamp timestamp = 4;
-  uint64 lib_num = 5;
-
-  Protocol payload_kind = 6;
-  int32 payload_version = 7;
-  bytes payload_buffer = 8;
-}
-
-message BlockRef {
-  uint64 num = 1;
-  string id = 2;
-}
-
-enum Protocol {
-  UNKNOWN = 0;
-  EOS = 1;
-  ETH = 2;
-  SOLANA = 3;
-  NEAR = 4;
 }

@@ -59,7 +59,7 @@ impl StoreBuilder {
         // attempt doesn't work for all of them because the database is
         // unavailable, they will try again later in the normal course of
         // using the pool
-        join_all(pools.iter().map(|(_, pool)| async move { pool.setup() })).await;
+        join_all(pools.iter().map(|(_, pool)| pool.setup())).await;
 
         let chains = HashMap::from_iter(config.chains.chains.iter().map(|(name, chain)| {
             let shard = ShardName::new(chain.shard.to_string())
@@ -175,11 +175,14 @@ impl StoreBuilder {
             )
             .expect("Creating the BlockStore works"),
         );
+        block_store
+            .update_db_version()
+            .expect("Updating `db_version` works");
 
         Arc::new(DieselStore::new(subgraph_store, block_store))
     }
 
-    /// Create a connection pool for the main database of hte primary shard
+    /// Create a connection pool for the main database of the primary shard
     /// without connecting to all the other configured databases
     pub fn main_pool(
         logger: &Logger,

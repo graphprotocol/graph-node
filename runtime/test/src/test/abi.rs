@@ -59,7 +59,7 @@ async fn unbounded_recursion_v0_0_5() {
     test_unbounded_recursion(API_VERSION_0_0_5);
 }
 
-fn test_abi_array(api_version: Version) {
+fn test_abi_array(api_version: Version, gas_used: u64) {
     let mut module = test_module(
         "abiArray",
         mock_data_source(
@@ -81,6 +81,7 @@ fn test_abi_array(api_version: Version) {
         module.invoke_export1("test_array", vec_obj);
     let new_vec: Vec<String> = asc_get(&module, new_vec_obj).unwrap();
 
+    assert_eq!(module.gas_used(), gas_used);
     assert_eq!(
         new_vec,
         vec![
@@ -95,12 +96,12 @@ fn test_abi_array(api_version: Version) {
 
 #[tokio::test]
 async fn abi_array_v0_0_4() {
-    test_abi_array(API_VERSION_0_0_4);
+    test_abi_array(API_VERSION_0_0_4, 200657);
 }
 
 #[tokio::test]
 async fn abi_array_v0_0_5() {
-    test_abi_array(API_VERSION_0_0_5);
+    test_abi_array(API_VERSION_0_0_5, 722564);
 }
 
 fn test_abi_subarray(api_version: Version) {

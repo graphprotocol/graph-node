@@ -1,5 +1,12 @@
-use crate::cheap_clone::CheapClone;
+use crate::{
+    blockchain::Block as BlockchainBlock,
+    blockchain::BlockPtr,
+    cheap_clone::CheapClone,
+    firehose::{decode_firehose_block, ForkStep},
+    prelude::{debug, info},
+};
 use anyhow::Context;
+use futures03::StreamExt;
 use http::uri::{Scheme, Uri};
 use rand::prelude::IteratorRandom;
 use slog::Logger;
@@ -10,7 +17,7 @@ use tonic::{
     Request,
 };
 
-use super::bstream;
+use super::codec as firehose;
 
 #[derive(Clone, Debug)]
 pub struct FirehoseEndpoint {
@@ -18,7 +25,7 @@ pub struct FirehoseEndpoint {
     pub uri: String,
     pub token: Option<String>,
     channel: Channel,
-    logger: Logger,
+    _logger: Logger,
 }
 
 impl Display for FirehoseEndpoint {
@@ -61,20 +68,63 @@ impl FirehoseEndpoint {
             uri,
             channel,
             token,
-            logger,
+            _logger: logger,
         })
     }
 
-    pub async fn stream_blocks(
-        self: Arc<Self>,
-        request: bstream::BlocksRequestV2,
-    ) -> Result<tonic::Streaming<bstream::BlockResponseV2>, anyhow::Error> {
+    pub async fn genesis_block_ptr<M>(&self, logger: &Logger) -> Result<BlockPtr, anyhow::Error>
+    where
+        M: prost::Message + BlockchainBlock + Default + 'static,
+    {
         let token_metadata = match self.token.clone() {
             Some(token) => Some(MetadataValue::from_str(token.as_str())?),
             None => None,
         };
 
-        let mut client = bstream::block_stream_v2_client::BlockStreamV2Client::with_interceptor(
+        let mut client = firehose::stream_client::StreamClient::with_interceptor(
+            self.channel.cheap_clone(),
+            move |mut r: Request<()>| match token_metadata.as_ref() {
+                Some(t) => {
+                    r.metadata_mut().insert("authorization", t.clone());
+                    Ok(r)
+                }
+                _ => Ok(r),
+            },
+        );
+
+        debug!(logger, "Connecting to firehose to retrieve genesis block");
+        let response_stream = client
+            .blocks(firehose::Request {
+                start_block_num: 0,
+                fork_steps: vec![ForkStep::StepIrreversible as i32],
+                ..Default::default()
+            })
+            .await?;
+
+        let mut block_stream = response_stream.into_inner();
+
+        info!(logger, "Requesting genesis block from firehose");
+        let next = block_stream.next().await;
+
+        match next {
+            Some(Ok(v)) => Ok(decode_firehose_block::<M>(&v)?.ptr()),
+            Some(Err(e)) => Err(anyhow::format_err!("firehose error {}", e)),
+            None => Err(anyhow::format_err!(
+                "firehose should have returned one block for genesis block request"
+            )),
+        }
+    }
+
+    pub async fn stream_blocks(
+        self: Arc<Self>,
+        request: firehose::Request,
+    ) -> Result<tonic::Streaming<firehose::Response>, anyhow::Error> {
+        let token_metadata = match self.token.clone() {
+            Some(token) => Some(MetadataValue::from_str(token.as_str())?),
+            None => None,
+        };
+
+        let mut client = firehose::stream_client::StreamClient::with_interceptor(
             self.channel.cheap_clone(),
             move |mut r: Request<()>| match token_metadata.as_ref() {
                 Some(t) => {

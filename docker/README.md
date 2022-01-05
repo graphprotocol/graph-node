@@ -78,3 +78,18 @@ can access these via:
 Once this is up and running, you can use
 [`graph-cli`](https://github.com/graphprotocol/graph-cli) to create and
 deploy your subgraph to the running Graph Node.
+  
+### Running Graph Node on an Macbook M1
+  
+We do not currently build native images for Macbook M1, which can lead to processes being killed due to out-of-memory errors (code 137). Based on the example `docker-compose.yml` is possible to rebuild the image for your M1 by running the following, then running `docker-compose up` as normal:
+ 
+```
+# Remove the original image
+docker rmi graphprotocol/graph-node:latest
+
+# Build the image
+./docker/build.sh
+
+# Tag the newly created image
+docker tag graph-node graphprotocol/graph-node:latest
+```

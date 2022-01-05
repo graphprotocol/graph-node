@@ -1,12 +1,12 @@
 [package]
 name = "graph-store-postgres"
-version = "0.24.2"
+version = "0.25.0"
 edition = "2018"
 
 [dependencies]
 async-trait = "0.1.50"
 blake3 = "0.3.8"
-derive_more = { version = "0.99.14" }
+derive_more = { version = "0.99.17" }
 diesel = { version = "1.4.8", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 # We use diesel-dynamic-schema straight from git as the project has not
 # made a release as a crate yet
@@ -17,7 +17,7 @@ fallible-iterator = "0.2.0"
 futures = "0.1.21"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
-graphql-parser = "0.3"
+graphql-parser = "0.4.0"
 Inflector = "0.11.3"
 lazy_static = "1.1"
 lru_time_cache = "0.11"
@@ -31,13 +31,13 @@ backtrace = "0.3"
 diesel_derives = "1.4.1"
 anyhow = "1.0.45"
 git-testament = "0.2.0"
-itertools = "0.10.1"
+itertools = "0.10.3"
 pin-utils = "0.1"
 hex = "0.4.3"
 
 [dev-dependencies]
-clap = "2.33.3"
-graphql-parser = "0.3"
+clap = "2.34.0"
+graphql-parser = "0.4.0"
 test-store = { path = "../test-store" }
 hex-literal = "0.3"
 graph-chain-ethereum = { path = "../../chain/ethereum" }

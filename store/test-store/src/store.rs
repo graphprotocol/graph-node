@@ -142,7 +142,7 @@ pub fn remove_subgraphs() {
         .expect("deleting test entities succeeds");
 }
 
-pub fn place(name: &str) -> Result<Option<(Shard, Vec<NodeId>)>, String> {
+pub fn place(name: &str) -> Result<Option<(Vec<Shard>, Vec<NodeId>)>, String> {
     CONFIG.deployment.place(name, NETWORK_NAME)
 }
 

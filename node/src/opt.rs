@@ -192,14 +192,6 @@ pub struct Opt {
     pub store_connection_pool_size: u32,
     #[structopt(
         long,
-        min_values = 1,
-        value_name = "NETWORK_NAME",
-        help = "One or more network names to index using built-in subgraphs \
-                (e.g. 'ethereum/mainnet')."
-    )]
-    pub network_subgraphs: Vec<String>,
-    #[structopt(
-        long,
         help = "Allows setting configurations that may result in incorrect Proofs of Indexing."
     )]
     pub unsafe_config: bool,
