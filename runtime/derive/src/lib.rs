@@ -102,7 +102,7 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
                         // that contains both versions (each in a variant), and that increased
                         // the memory size, so that's why we use less than.
                         if asc_obj.len() < std::mem::size_of::<Self>() {
-                            return Err(graph::runtime::DeterministicHostError(graph::prelude::anyhow::anyhow!("Size does not match")));
+                            return Err(graph::runtime::DeterministicHostError::from(graph::prelude::anyhow::anyhow!("Size does not match")));
                         }
                     }
                     _ => {
@@ -110,7 +110,7 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
                         let aligned_size = graph::runtime::padding_to_16(content_size);
 
                         if graph::runtime::HEADER_SIZE + asc_obj.len() == aligned_size + content_size {
-                            return Err(graph::runtime::DeterministicHostError(graph::prelude::anyhow::anyhow!("Size does not match")));
+                            return Err(graph::runtime::DeterministicHostError::from(graph::prelude::anyhow::anyhow!("Size does not match")));
                         }
                     },
                 };
@@ -120,7 +120,7 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
                 #(
                 let field_size = std::mem::size_of::<#field_types>();
                 let field_data = asc_obj.get(offset..(offset + field_size)).ok_or_else(|| {
-                    graph::runtime::DeterministicHostError(graph::prelude::anyhow::anyhow!("Attempted to read past end of array"))
+                    graph::runtime::DeterministicHostError::from(graph::prelude::anyhow::anyhow!("Attempted to read past end of array"))
                 })?;
                 let #field_names2 = graph::runtime::AscType::from_asc_bytes(&field_data, api_version)?;
                 offset += field_size;
@@ -163,7 +163,7 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
 //     fn from_asc_bytes(asc_obj: &[u8], _api_version: graph::semver::Version) -> Result<Self, graph::runtime::DeterministicHostError> {
 //         let mut u32_bytes: [u8; size_of::<u32>()] = [0; size_of::<u32>()];
 //         if std::mem::size_of_val(&u32_bytes) != std::mem::size_of_val(&asc_obj) {
-//             return Err(graph::runtime::DeterministicHostError(graph::prelude::anyhow::anyhow!("Invalid asc bytes size")));
+//             return Err(graph::runtime::DeterministicHostError::from(graph::prelude::anyhow::anyhow!("Invalid asc bytes size")));
 //         }
 //         u32_bytes.copy_from_slice(&asc_obj);
 //         let discr = u32::from_le_bytes(u32_bytes);
@@ -174,7 +174,7 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
 //             3u32 => JsonValueKind::String,
 //             4u32 => JsonValueKind::Array,
 //             5u32 => JsonValueKind::Object,
-//             _ => Err(graph::runtime::DeterministicHostError(graph::prelude::anyhow::anyhow!("value {} is out of range for {}", discr, "JsonValueKind"))),
+//             _ => Err(graph::runtime::DeterministicHostError::from(graph::prelude::anyhow::anyhow!("value {} is out of range for {}", discr, "JsonValueKind"))),
 //         }
 //     }
 // }
@@ -206,11 +206,11 @@ fn asc_type_derive_enum(item_enum: ItemEnum) -> TokenStream {
 
             fn from_asc_bytes(asc_obj: &[u8], _api_version: &graph::semver::Version) -> Result<Self, graph::runtime::DeterministicHostError> {
                 let u32_bytes = ::std::convert::TryFrom::try_from(asc_obj)
-                    .map_err(|_| graph::runtime::DeterministicHostError(graph::prelude::anyhow::anyhow!("Invalid asc bytes size")))?;
+                    .map_err(|_| graph::runtime::DeterministicHostError::from(graph::prelude::anyhow::anyhow!("Invalid asc bytes size")))?;
                 let discr = u32::from_le_bytes(u32_bytes);
                 match discr {
                     #(#variant_discriminant2 => Ok(#enum_name_iter2::#variant_paths2),)*
-                    _ => Err(graph::runtime::DeterministicHostError(graph::prelude::anyhow::anyhow!("value {} is out of range for {}", discr, stringify!(#enum_name))))
+                    _ => Err(graph::runtime::DeterministicHostError::from(graph::prelude::anyhow::anyhow!("value {} is out of range for {}", discr, stringify!(#enum_name))))
                 }
             }
         }

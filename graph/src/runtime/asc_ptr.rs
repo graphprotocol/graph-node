@@ -158,7 +158,10 @@ impl<C: AscType> AscPtr<C> {
         self.check_is_not_null()?;
 
         let start_of_rt_size = self.0.checked_sub(SIZE_OF_RT_SIZE).ok_or_else(|| {
-            DeterministicHostError(anyhow::anyhow!("Subtract overflow on pointer: {}", self.0))
+            DeterministicHostError::from(anyhow::anyhow!(
+                "Subtract overflow on pointer: {}",
+                self.0
+            ))
         })?;
         let raw_bytes = heap.get(start_of_rt_size, size_of::<u32>() as u32)?;
         let mut u32_bytes: [u8; size_of::<u32>()] = [0; size_of::<u32>()];
@@ -183,7 +186,7 @@ impl<C: AscType> AscPtr<C> {
     /// Summary: ALWAYS call this before reading an AscPtr.
     pub fn check_is_not_null(&self) -> Result<(), DeterministicHostError> {
         if self.is_null() {
-            return Err(DeterministicHostError(anyhow::anyhow!(
+            return Err(DeterministicHostError::from(anyhow::anyhow!(
                 "Tried to read AssemblyScript value that is 'null'. Suggestion: look into the function that the error happened and add 'log' calls till you find where a 'null' value is being used as non-nullable. It's likely that you're calling a 'graph-ts' function (or operator) with a 'null' value when it doesn't support it."
             )));
         }
