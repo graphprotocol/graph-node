@@ -1080,13 +1080,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 transaction_receipts: Vec::new(),
             })));
         }
-
-        let hashes: Vec<_> = block
-            .transactions
-            .iter()
-            .map(|txn| txn.hash.clone())
-            .collect();
-
+        let hashes: Vec<_> = block.transactions.iter().map(|txn| txn.hash).collect();
         let receipts_future = if *FETCH_RECEIPTS_CONCURRENTLY {
             let hash_stream = graph::tokio_stream::iter(hashes);
             let receipt_stream = graph::tokio_stream::StreamExt::map(hash_stream, move |tx_hash| {
@@ -1842,13 +1836,12 @@ async fn fetch_transaction_receipts_in_batch(
     logger: Logger,
 ) -> Result<Vec<TransactionReceipt>, IngestorError> {
     let batching_web3 = Web3::new(Batch::new(web3.transport().clone()));
+    let eth = batching_web3.eth();
     let receipt_futures = hashes
         .into_iter()
-        .map(|hash| {
+        .map(move |hash| {
             let logger = logger.cheap_clone();
-            batching_web3
-                .eth()
-                .transaction_receipt(hash.clone())
+            eth.transaction_receipt(hash)
                 .map_err(|web3_error| IngestorError::from(web3_error))
                 .and_then(move |some_receipt| async move {
                     resolve_transaction_receipt(some_receipt, hash, block_hash, logger)
