@@ -190,8 +190,9 @@ impl EthereumAdapter {
         addresses: Vec<H160>,
     ) -> Result<Vec<Trace>, Error> {
         let eth = self.clone();
-
-        retry("trace_filter RPC call", &logger)
+        let retry_log_message =
+            format!("trace_filter RPC call for block range: [{}..{}]", from, to);
+        retry(retry_log_message, &logger)
             .limit(*REQUEST_RETRIES)
             .timeout_secs(*JSON_RPC_TIMEOUT)
             .run(move || {
@@ -284,8 +285,8 @@ impl EthereumAdapter {
         too_many_logs_fingerprints: &'static [&'static str],
     ) -> Result<Vec<Log>, TimeoutError<web3::error::Error>> {
         let eth_adapter = self.clone();
-
-        retry("eth_getLogs RPC call", &logger)
+        let retry_log_message = format!("eth_getLogs RPC call for block range: [{}..{}]", from, to);
+        retry(retry_log_message, &logger)
             .when(move |res: &Result<_, web3::error::Error>| match res {
                 Ok(_) => false,
                 Err(e) => !too_many_logs_fingerprints
@@ -485,8 +486,8 @@ impl EthereumAdapter {
         } else {
             BlockId::Hash(block_ptr.hash_as_h256())
         };
-
-        retry("eth_call RPC call", &logger)
+        let retry_log_message = format!("eth_call RPC call for block {}", block_ptr);
+        retry(retry_log_message, &logger)
             .when(|result| match result {
                 Ok(_) | Err(EthereumContractCallError::Revert(_)) => false,
                 Err(_) => true,
@@ -1006,9 +1007,12 @@ impl EthereumAdapterTrait for EthereumAdapter {
     ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send> {
         let web3 = self.web3.clone();
         let logger = logger.clone();
-
+        let retry_log_message = format!(
+            "eth_getBlockByHash RPC call for block hash {:?}",
+            block_hash
+        );
         Box::new(
-            retry("eth_getBlockByHash RPC call", &logger)
+            retry(retry_log_message, &logger)
                 .limit(*REQUEST_RETRIES)
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
@@ -1034,9 +1038,12 @@ impl EthereumAdapterTrait for EthereumAdapter {
     ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send> {
         let web3 = self.web3.clone();
         let logger = logger.clone();
-
+        let retry_log_message = format!(
+            "eth_getBlockByNumber RPC call for block number {}",
+            block_number
+        );
         Box::new(
-            retry("eth_getBlockByNumber RPC call", &logger)
+            retry(retry_log_message, &logger)
                 .no_limit()
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
@@ -1137,9 +1144,12 @@ impl EthereumAdapterTrait for EthereumAdapter {
         block_number: BlockNumber,
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send> {
         let web3 = self.web3.clone();
-
+        let retry_log_message = format!(
+            "eth_getBlockByNumber RPC call for block number {}",
+            block_number
+        );
         Box::new(
-            retry("eth_getBlockByNumber RPC call", &logger)
+            retry(retry_log_message, &logger)
                 .no_limit()
                 .timeout_secs(*JSON_RPC_TIMEOUT)
                 .run(move || {
@@ -1183,12 +1193,14 @@ impl EthereumAdapterTrait for EthereumAdapter {
             }
         };
         let n = block.uncles.len();
-
         Box::new(
             futures::stream::futures_ordered((0..n).map(move |index| {
                 let web3 = self.web3.clone();
-
-                retry("eth_getUncleByBlockHashAndIndex RPC call", &logger)
+                let retry_log_message = format!(
+                    "eth_getUncleByBlockHashAndIndex RPC call for block {:?} (uncle {}/{})",
+                    block_hash, index, n
+                );
+                retry(retry_log_message, &logger)
                     .no_limit()
                     .timeout_secs(60)
                     .run(move || {
@@ -1814,7 +1826,11 @@ async fn fetch_transaction_receipts_in_batch_with_retry(
     block_hash: H256,
     logger: Logger,
 ) -> Result<Vec<TransactionReceipt>, IngestorError> {
-    retry("batch eth_getTransactionReceipt RPC call", &logger)
+    let retry_log_message = format!(
+        "batch eth_getTransactionReceipt RPC call for block {:?}",
+        block_hash
+    );
+    retry(retry_log_message, &logger)
         .limit(*REQUEST_RETRIES)
         .no_logging()
         .timeout_secs(*JSON_RPC_TIMEOUT)
@@ -1866,7 +1882,11 @@ async fn fetch_transaction_receipt_with_retry(
     logger: Logger,
 ) -> Result<TransactionReceipt, IngestorError> {
     let logger = logger.cheap_clone();
-    retry("batch eth_getTransactionReceipt RPC call", &logger)
+    let retry_log_message = format!(
+        "eth_getTransactionReceipt RPC call for transaction {:?}",
+        transaction_hash
+    );
+    retry(retry_log_message, &logger)
         .limit(*REQUEST_RETRIES)
         .no_logging()
         .timeout_secs(*JSON_RPC_TIMEOUT)
