@@ -162,11 +162,17 @@ pub enum EntityFilter {
     In(Attribute, Vec<Value>),
     NotIn(Attribute, Vec<Value>),
     Contains(Attribute, Value),
+    ContainsStrict(Attribute, Value),
     NotContains(Attribute, Value),
+    NotContainsStrict(Attribute, Value),
     StartsWith(Attribute, Value),
+    StartsWithStrict(Attribute, Value),
     NotStartsWith(Attribute, Value),
+    NotStartsWithStrict(Attribute, Value),
     EndsWith(Attribute, Value),
+    EndsWithStrict(Attribute, Value),
     NotEndsWith(Attribute, Value),
+    NotEndsWithStrict(Attribute, Value),
 }
 
 // Define some convenience methods
