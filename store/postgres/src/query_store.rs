@@ -47,10 +47,11 @@ impl QueryStoreTrait for QueryStore {
 
     /// Return true if the deployment with the given id is fully synced,
     /// and return false otherwise. Errors from the store are passed back up
-    fn is_deployment_synced(&self) -> Result<bool, Error> {
+    async fn is_deployment_synced(&self) -> Result<bool, Error> {
         Ok(self
             .store
-            .exists_and_synced(self.site.deployment.cheap_clone())?)
+            .exists_and_synced(self.site.deployment.cheap_clone())
+            .await?)
     }
 
     fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {

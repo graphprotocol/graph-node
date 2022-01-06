@@ -1065,9 +1065,12 @@ impl DeploymentStore {
         .await
     }
 
-    pub(crate) fn exists_and_synced(&self, id: DeploymentHash) -> Result<bool, StoreError> {
-        let conn = self.get_conn()?;
-        conn.transaction(|| deployment::exists_and_synced(&conn, &id))
+    pub(crate) async fn exists_and_synced(&self, id: DeploymentHash) -> Result<bool, StoreError> {
+        self.with_conn(move |conn, _| {
+            conn.transaction(|| deployment::exists_and_synced(&conn, &id))
+                .map_err(Into::into)
+        })
+        .await
     }
 
     pub(crate) fn graft_pending(

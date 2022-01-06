@@ -1148,7 +1148,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
 
             // To prevent a buggy pending version from replacing a current version, if errors are
             // present the subgraph will be unassigned.
-            if has_errors && !*DISABLE_FAIL_FAST && !store.is_deployment_synced()? {
+            if has_errors && !*DISABLE_FAIL_FAST && !store.is_deployment_synced().await? {
                 store
                     .unassign_subgraph()
                     .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
