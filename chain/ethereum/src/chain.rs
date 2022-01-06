@@ -14,17 +14,15 @@ use graph::{
         },
         firehose_block_stream::FirehoseBlockStream,
         polling_block_stream::PollingBlockStream,
-        Block, BlockHash, BlockPtr, Blockchain, ChainHeadUpdateListener,
-        IngestorAdapter as IngestorAdapterTrait, IngestorError, TriggerFilter as _,
+        Block, BlockPtr, Blockchain, ChainHeadUpdateListener, IngestorError, TriggerFilter as _,
     },
     cheap_clone::CheapClone,
     components::store::DeploymentLocator,
     firehose,
-    log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
-        async_trait, error, lazy_static, o, serde_json as json, web3::types::H256, BlockNumber,
-        ChainStore, EthereumBlockWithCalls, Future01CompatExt, Logger, LoggerFactory,
-        MetricsRegistry, NodeId, SubgraphStore,
+        async_trait, lazy_static, o, serde_json as json, BlockNumber, ChainStore,
+        EthereumBlockWithCalls, Future01CompatExt, Logger, LoggerFactory, MetricsRegistry, NodeId,
+        SubgraphStore,
     },
 };
 use prost::Message;
@@ -72,7 +70,6 @@ pub struct Chain {
     registry: Arc<dyn MetricsRegistry>,
     firehose_endpoints: Arc<FirehoseEndpoints>,
     eth_adapters: Arc<EthereumNetworkAdapters>,
-    ancestor_count: BlockNumber,
     chain_store: Arc<dyn ChainStore>,
     call_cache: Arc<dyn EthereumCallCache>,
     subgraph_store: Arc<dyn SubgraphStore>,
@@ -99,7 +96,6 @@ impl Chain {
         firehose_endpoints: FirehoseEndpoints,
         eth_adapters: EthereumNetworkAdapters,
         chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
-        ancestor_count: BlockNumber,
         reorg_threshold: BlockNumber,
         is_ingestible: bool,
     ) -> Self {
@@ -110,7 +106,6 @@ impl Chain {
             registry,
             firehose_endpoints: Arc::new(firehose_endpoints),
             eth_adapters: Arc::new(eth_adapters),
-            ancestor_count,
             chain_store,
             call_cache,
             subgraph_store,
@@ -118,6 +113,12 @@ impl Chain {
             reorg_threshold,
             is_ingestible,
         }
+    }
+}
+
+impl Chain {
+    pub fn cheapest_adapter(&self) -> Arc<EthereumAdapter> {
+        self.eth_adapters.cheapest().unwrap().clone()
     }
 }
 
@@ -144,8 +145,6 @@ impl Blockchain for Chain {
     type TriggerFilter = crate::adapter::TriggerFilter;
 
     type NodeCapabilities = crate::capabilities::NodeCapabilities;
-
-    type IngestorAdapter = IngestorAdapter;
 
     type RuntimeAdapter = RuntimeAdapter;
 
@@ -297,29 +296,6 @@ impl Blockchain for Chain {
             unified_api_version,
             subgraph_start_block,
         )))
-    }
-
-    fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter> {
-        let eth_adapter = self.eth_adapters.cheapest().unwrap().clone();
-        let logger = self
-            .logger_factory
-            .component_logger(
-                "BlockIngestor",
-                Some(ComponentLoggerConfig {
-                    elastic: Some(ElasticComponentLoggerConfig {
-                        index: String::from("block-ingestor-logs"),
-                    }),
-                }),
-            )
-            .new(o!("provider" => eth_adapter.provider().to_string()));
-
-        let adapter = IngestorAdapter {
-            eth_adapter,
-            logger,
-            ancestor_count: self.ancestor_count,
-            chain_store: self.chain_store.clone(),
-        };
-        Arc::new(adapter)
     }
 
     fn chain_store(&self) -> Arc<dyn ChainStore> {
@@ -622,81 +598,5 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 unreachable!("unknown step should not happen in the Firehose response")
             }
         }
-    }
-}
-
-pub struct IngestorAdapter {
-    logger: Logger,
-    ancestor_count: i32,
-    eth_adapter: Arc<EthereumAdapter>,
-    chain_store: Arc<dyn ChainStore>,
-}
-
-#[async_trait]
-impl IngestorAdapterTrait<Chain> for IngestorAdapter {
-    fn logger(&self) -> &Logger {
-        &self.logger
-    }
-
-    fn ancestor_count(&self) -> BlockNumber {
-        self.ancestor_count
-    }
-
-    async fn latest_block(&self) -> Result<BlockPtr, IngestorError> {
-        self.eth_adapter
-            .latest_block_header(&self.logger)
-            .compat()
-            .await
-            .map(|block| block.into())
-    }
-
-    async fn ingest_block(
-        &self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<BlockHash>, IngestorError> {
-        // TODO: H256::from_slice can panic
-        let block_hash = H256::from_slice(block_hash.as_slice());
-
-        // Get the fully populated block
-        let block = self
-            .eth_adapter
-            .block_by_hash(&self.logger, block_hash)
-            .compat()
-            .await?
-            .ok_or_else(|| IngestorError::BlockUnavailable(block_hash))?;
-        let ethereum_block = self
-            .eth_adapter
-            .load_full_block(&self.logger, block)
-            .await?;
-
-        // We need something that implements `Block` to store the block; the
-        // store does not care whether the block is final or not
-        let ethereum_block = BlockFinality::NonFinal(EthereumBlockWithCalls {
-            ethereum_block,
-            calls: None,
-        });
-
-        // Store it in the database and try to advance the chain head pointer
-        self.chain_store
-            .upsert_block(Arc::new(ethereum_block))
-            .await?;
-
-        self.chain_store
-            .cheap_clone()
-            .attempt_chain_head_update(self.ancestor_count)
-            .await
-            .map(|missing| missing.map(|h256| h256.into()))
-            .map_err(|e| {
-                error!(self.logger, "failed to update chain head");
-                IngestorError::Unknown(e)
-            })
-    }
-
-    fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
-        self.chain_store.chain_head_ptr()
-    }
-
-    fn cleanup_cached_blocks(&self) -> Result<Option<(i32, usize)>, Error> {
-        self.chain_store.cleanup_cached_blocks(self.ancestor_count)
     }
 }
