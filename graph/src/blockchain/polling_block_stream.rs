@@ -215,6 +215,7 @@ where
                     continue;
                 }
                 ReconciliationStep::Done => {
+                    ctx.handle_subgraph_synced().await?;
                     return Ok(NextBlocks::Done);
                 }
                 ReconciliationStep::Revert(from, to) => return Ok(NextBlocks::Revert(from, to)),
@@ -238,7 +239,6 @@ where
 
             // Don't do any reconciliation until the chain store has more blocks
             None => {
-                ctx.handle_subgraph_synced().await?;
                 return Ok(ReconciliationStep::Done);
             }
         };
@@ -261,7 +261,6 @@ where
         // subgraph_ptr > head_ptr shouldn't happen, but if it does, it's safest to just stop.
         if let Some(ptr) = &subgraph_ptr {
             if ptr.number >= head_ptr.number {
-                ctx.handle_subgraph_synced().await?;
                 return Ok(ReconciliationStep::Done);
             }
 
