@@ -863,9 +863,9 @@ impl<'a> QueryFilter<'a> {
             Value::String(s) => {
                 out.push_identifier(column.name.as_str())?;
                 if negated {
-                    out.push_sql(" not like ");
+                    out.push_sql(" not ilike ");
                 } else {
-                    out.push_sql(" like ")
+                    out.push_sql(" ilike ")
                 };
                 if s.starts_with('%') || s.ends_with('%') {
                     out.push_bind_param::<Text, _>(s)?;
@@ -1139,14 +1139,16 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
             NotIn(attr, values) => self.in_array(attr, values, true, out)?,
 
             StartsWith(attr, value) => {
-                self.starts_or_ends_with(attr, value, " like ", true, out)?
+                self.starts_or_ends_with(attr, value, " ilike ", true, out)?
             }
             NotStartsWith(attr, value) => {
-                self.starts_or_ends_with(attr, value, " not like ", true, out)?
+                self.starts_or_ends_with(attr, value, " not ilike ", true, out)?
             }
-            EndsWith(attr, value) => self.starts_or_ends_with(attr, value, " like ", false, out)?,
+            EndsWith(attr, value) => {
+                self.starts_or_ends_with(attr, value, " ilike ", false, out)?
+            }
             NotEndsWith(attr, value) => {
-                self.starts_or_ends_with(attr, value, " not like ", false, out)?
+                self.starts_or_ends_with(attr, value, " not ilike ", false, out)?
             }
         }
         Ok(())
