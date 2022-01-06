@@ -5,7 +5,7 @@ use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::{Block as BlockchainBlock, Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::store::BlockStore;
 use graph::data::graphql::effort::LoadManager;
-use graph::firehose::{FirehoseNetworkEndpoints, FirehoseNetworks};
+use graph::firehose::{FirehoseEndpoints, FirehoseNetworks};
 use graph::log::logger;
 use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
 use graph::prometheus::Registry;
@@ -476,7 +476,7 @@ fn ethereum_networks_as_chains(
                 chain_store.cheap_clone(),
                 chain_store,
                 store.subgraph_store(),
-                firehose_endpoints.map_or_else(|| FirehoseNetworkEndpoints::new(), |v| v.clone()),
+                firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
                 eth_adapters.clone(),
                 chain_head_update_listener.clone(),
                 *ANCESTOR_COUNT,
@@ -505,38 +505,38 @@ fn near_networks_as_chains(
     let chains: Vec<_> = firehose_networks
         .networks
         .iter()
-        .filter_map(|(network_name, firehose_endpoints)| {
+        .filter_map(|(chain_id, endpoints)| {
             store
                 .block_store()
-                .chain_store(network_name)
-                .map(|chain_store| (network_name, chain_store, firehose_endpoints))
+                .chain_store(chain_id)
+                .map(|chain_store| (chain_id, chain_store, endpoints))
                 .or_else(|| {
                     error!(
                         logger,
-                        "No store configured for NEAR chain {}; ignoring this chain", network_name
+                        "No store configured for NEAR chain {}; ignoring this chain", chain_id
                     );
                     None
                 })
         })
-        .map(|(network_name, chain_store, firehose_endpoints)| {
+        .map(|(chain_id, chain_store, endpoints)| {
             (
-                network_name.clone(),
+                chain_id.clone(),
                 FirehoseChain {
                     chain: Arc::new(near::Chain::new(
                         logger_factory.clone(),
-                        network_name.clone(),
+                        chain_id.clone(),
                         chain_store,
-                        firehose_endpoints.clone(),
+                        endpoints.clone(),
                     )),
-                    firehose_endpoints: firehose_endpoints.clone(),
+                    firehose_endpoints: endpoints.clone(),
                 },
             )
         })
         .collect();
 
-    for (network_name, firehose_chain) in chains.iter() {
+    for (chain_id, firehose_chain) in chains.iter() {
         blockchain_map
-            .insert::<graph_chain_near::Chain>(network_name.clone(), firehose_chain.chain.clone())
+            .insert::<graph_chain_near::Chain>(chain_id.clone(), firehose_chain.chain.clone())
     }
 
     HashMap::from_iter(chains)
@@ -594,7 +594,7 @@ fn start_block_ingestor(
 #[derive(Clone)]
 struct FirehoseChain<C: Blockchain> {
     chain: Arc<C>,
-    firehose_endpoints: FirehoseNetworkEndpoints,
+    firehose_endpoints: FirehoseEndpoints,
 }
 
 fn start_firehose_block_ingestor<C, M>(
