@@ -605,7 +605,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             StepUndo => {
                 let parent_ptr = block
                     .parent_ptr()
-                    .expect("A reverted block should always have a parent");
+                    .expect("Genesis block should never be reverted");
 
                 Ok(BlockStreamEvent::Revert(
                     block.ptr(),
