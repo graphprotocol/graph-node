@@ -1371,6 +1371,48 @@ mod tests {
     }
 
     #[test]
+    fn extending_ethereum_block_filter_every_block_in_base_and_merge_contract_addresses() {
+        let mut base = EthereumBlockFilter {
+            contract_addresses: HashSet::from_iter(vec![(10, address(2))]),
+            trigger_every_block: true,
+        };
+
+        let extension = EthereumBlockFilter {
+            contract_addresses: HashSet::from_iter(vec![]),
+            trigger_every_block: false,
+        };
+
+        base.extend(extension);
+
+        assert_eq!(true, base.trigger_every_block);
+        assert_eq!(
+            HashSet::from_iter(vec![(10, address(2))]),
+            base.contract_addresses,
+        );
+    }
+
+    #[test]
+    fn extending_ethereum_block_filter_every_block_in_ext_and_merge_contract_addresses() {
+        let mut base = EthereumBlockFilter {
+            contract_addresses: HashSet::from_iter(vec![(10, address(2))]),
+            trigger_every_block: false,
+        };
+
+        let extension = EthereumBlockFilter {
+            contract_addresses: HashSet::from_iter(vec![(10, address(1))]),
+            trigger_every_block: true,
+        };
+
+        base.extend(extension);
+
+        assert_eq!(true, base.trigger_every_block);
+        assert_eq!(
+            HashSet::from_iter(vec![(10, address(2)), (10, address(1))]),
+            base.contract_addresses,
+        );
+    }
+
+    #[test]
     fn extending_ethereum_call_filter() {
         let mut base = EthereumCallFilter {
             contract_addresses_function_signatures: HashMap::from_iter(vec![
