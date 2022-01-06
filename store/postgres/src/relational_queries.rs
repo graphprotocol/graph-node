@@ -830,7 +830,9 @@ impl<'a> QueryFilter<'a> {
             }
 
             Contains(attr, _)
+            | ContainsInsensitive(attr, _)
             | NotContains(attr, _)
+            | NotContainsInsensitive(attr, _)
             | Equal(attr, _)
             | Not(attr, _)
             | GreaterThan(attr, _)
@@ -840,9 +842,13 @@ impl<'a> QueryFilter<'a> {
             | In(attr, _)
             | NotIn(attr, _)
             | StartsWith(attr, _)
+            | StartsWithInsensitive(attr, _)
             | NotStartsWith(attr, _)
+            | NotStartsWithInsensitive(attr, _)
             | EndsWith(attr, _)
-            | NotEndsWith(attr, _) => {
+            | EndsWithInsensitive(attr, _)
+            | NotEndsWith(attr, _)
+            | NotEndsWithInsensitive(attr, _) => {
                 table.column_for_field(attr)?;
             }
         }
@@ -889,18 +895,20 @@ impl<'a> QueryFilter<'a> {
         attribute: &Attribute,
         value: &Value,
         negated: bool,
+        strict: bool,
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
         let column = self.column(attribute);
-
+        let operation = match (strict, negated) {
+            (true, true) => " not like ",
+            (true, false) => " like ",
+            (false, true) => " not ilike ",
+            (false, false) => " ilike ",
+        };
         match value {
             Value::String(s) => {
                 out.push_identifier(column.name.as_str())?;
-                if negated {
-                    out.push_sql(" not like ");
-                } else {
-                    out.push_sql(" like ")
-                };
+                out.push_sql(operation);
                 if s.starts_with('%') || s.ends_with('%') {
                     out.push_bind_param::<Text, _>(s)?;
                 } else {
@@ -1158,8 +1166,10 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
             And(filters) => self.binary_op(filters, " and ", " true ", out)?,
             Or(filters) => self.binary_op(filters, " or ", " false ", out)?,
 
-            Contains(attr, value) => self.contains(attr, value, false, out)?,
-            NotContains(attr, value) => self.contains(attr, value, true, out)?,
+            Contains(attr, value) => self.contains(attr, value, false, true, out)?,
+            ContainsInsensitive(attr, value) => self.contains(attr, value, false, false, out)?,
+            NotContains(attr, value) => self.contains(attr, value, true, true, out)?,
+            NotContainsInsensitive(attr, value) => self.contains(attr, value, true, false, out)?,
 
             Equal(attr, value) => self.equals(attr, value, c::Equal, out)?,
             Not(attr, value) => self.equals(attr, value, c::NotEqual, out)?,
@@ -1175,12 +1185,24 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
             StartsWith(attr, value) => {
                 self.starts_or_ends_with(attr, value, " like ", true, out)?
             }
+            StartsWithInsensitive(attr, value) => {
+                self.starts_or_ends_with(attr, value, " ilike ", true, out)?
+            }
             NotStartsWith(attr, value) => {
                 self.starts_or_ends_with(attr, value, " not like ", true, out)?
             }
+            NotStartsWithInsensitive(attr, value) => {
+                self.starts_or_ends_with(attr, value, " not ilike ", true, out)?
+            }
             EndsWith(attr, value) => self.starts_or_ends_with(attr, value, " like ", false, out)?,
+            EndsWithInsensitive(attr, value) => {
+                self.starts_or_ends_with(attr, value, " ilike ", false, out)?
+            }
             NotEndsWith(attr, value) => {
                 self.starts_or_ends_with(attr, value, " not like ", false, out)?
+            }
+            NotEndsWithInsensitive(attr, value) => {
+                self.starts_or_ends_with(attr, value, " not ilike ", false, out)?
             }
         }
         Ok(())

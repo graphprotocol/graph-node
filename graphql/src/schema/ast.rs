@@ -21,11 +21,17 @@ pub(crate) enum FilterOp {
     In,
     NotIn,
     Contains,
+    ContainsInsensitive,
     NotContains,
+    NotContainsInsensitive,
     StartsWith,
+    StartsWithInsensitive,
     NotStartsWith,
+    NotStartsWithInsensitive,
     EndsWith,
+    EndsWithInsensitive,
     NotEndsWith,
+    NotEndsWithInsensitive,
     Equal,
 }
 
@@ -40,11 +46,32 @@ pub(crate) fn parse_field_as_filter(key: &str) -> (String, FilterOp) {
         k if k.ends_with("_not_in") => ("_not_in", FilterOp::NotIn),
         k if k.ends_with("_in") => ("_in", FilterOp::In),
         k if k.ends_with("_not_contains") => ("_not_contains", FilterOp::NotContains),
+        k if k.ends_with("_not_contains_insensitive") => (
+            "_not_contains_insensitive",
+            FilterOp::NotContainsInsensitive,
+        ),
         k if k.ends_with("_contains") => ("_contains", FilterOp::Contains),
+        k if k.ends_with("_contains_insensitive") => {
+            ("_contains_insensitive", FilterOp::ContainsInsensitive)
+        }
         k if k.ends_with("_not_starts_with") => ("_not_starts_with", FilterOp::NotStartsWith),
+        k if k.ends_with("_not_starts_with_insensitive") => (
+            "_not_starts_with_insensitive",
+            FilterOp::NotStartsWithInsensitive,
+        ),
         k if k.ends_with("_not_ends_with") => ("_not_ends_with", FilterOp::NotEndsWith),
+        k if k.ends_with("_not_ends_with_insensitive") => (
+            "_not_ends_with_insensitive",
+            FilterOp::NotEndsWithInsensitive,
+        ),
         k if k.ends_with("_starts_with") => ("_starts_with", FilterOp::StartsWith),
+        k if k.ends_with("_starts_with_insensitive") => {
+            ("_starts_with_insensitive", FilterOp::StartsWithInsensitive)
+        }
         k if k.ends_with("_ends_with") => ("_ends_with", FilterOp::EndsWith),
+        k if k.ends_with("_ends_with_insensitive") => {
+            ("_ends_with_insensitive", FilterOp::EndsWithInsensitive)
+        }
         _ => ("", FilterOp::Equal),
     };
 

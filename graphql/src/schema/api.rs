@@ -275,11 +275,17 @@ fn field_scalar_filter_input_values(
             "in",
             "not_in",
             "contains",
+            "contains_insensitive",
             "not_contains",
+            "not_contains_insensitive",
             "starts_with",
+            "starts_with_insensitive",
             "not_starts_with",
+            "not_starts_with_insensitive",
             "ends_with",
+            "ends_with_insensitive",
             "not_ends_with",
+            "not_ends_with_insensitive",
         ],
         _ => vec!["", "not"],
     }
@@ -341,18 +347,25 @@ fn field_list_filter_input_values(
         };
 
         Some(
-            vec!["", "not", "contains", "not_contains"]
-                .into_iter()
-                .map(|filter_type| {
-                    input_value(
-                        &field.name,
-                        filter_type,
-                        Type::ListType(Box::new(Type::NonNullType(Box::new(
-                            input_field_type.clone(),
-                        )))),
-                    )
-                })
-                .collect(),
+            vec![
+                "",
+                "not",
+                "contains",
+                "contains_insensitive",
+                "not_contains",
+                "not_contains_insensitive",
+            ]
+            .into_iter()
+            .map(|filter_type| {
+                input_value(
+                    &field.name,
+                    filter_type,
+                    Type::ListType(Box::new(Type::NonNullType(Box::new(
+                        input_field_type.clone(),
+                    )))),
+                )
+            })
+            .collect(),
         )
     })
 }
@@ -864,19 +877,29 @@ mod tests {
                 "name_in",
                 "name_not_in",
                 "name_contains",
+                "name_contains_insensitive",
                 "name_not_contains",
+                "name_not_contains_insensitive",
                 "name_starts_with",
+                "name_starts_with_insensitive",
                 "name_not_starts_with",
+                "name_not_starts_with_insensitive",
                 "name_ends_with",
+                "name_ends_with_insensitive",
                 "name_not_ends_with",
+                "name_not_ends_with_insensitive",
                 "favoritePetNames",
                 "favoritePetNames_not",
                 "favoritePetNames_contains",
+                "favoritePetNames_contains_insensitive",
                 "favoritePetNames_not_contains",
+                "favoritePetNames_not_contains_insensitive",
                 "pets",
                 "pets_not",
                 "pets_contains",
+                "pets_contains_insensitive",
                 "pets_not_contains",
+                "pets_not_contains_insensitive",
                 "favoriteFurType",
                 "favoriteFurType_not",
                 "favoriteFurType_in",
@@ -890,11 +913,17 @@ mod tests {
                 "favoritePet_in",
                 "favoritePet_not_in",
                 "favoritePet_contains",
+                "favoritePet_contains_insensitive",
                 "favoritePet_not_contains",
+                "favoritePet_not_contains_insensitive",
                 "favoritePet_starts_with",
+                "favoritePet_starts_with_insensitive",
                 "favoritePet_not_starts_with",
+                "favoritePet_not_starts_with_insensitive",
                 "favoritePet_ends_with",
+                "favoritePet_ends_with_insensitive",
                 "favoritePet_not_ends_with",
+                "favoritePet_not_ends_with_insensitive",
             ]
             .iter()
             .map(ToString::to_string)
