@@ -11,7 +11,6 @@ use crate::{prelude::*, prometheus::labels};
 pub trait BlockStream<C: Blockchain>:
     Stream<Item = Result<BlockStreamEvent<C>, Error>> + Unpin
 {
-    fn notify_block_consumed(&mut self) {}
 }
 
 pub type FirehoseCursor = Option<String>;
@@ -78,8 +77,9 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error>;
 }
 
+#[async_trait]
 pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
-    fn to_block_stream_event(
+    async fn to_block_stream_event(
         &self,
         logger: &Logger,
         response: &bstream::BlockResponseV2,
@@ -102,7 +102,8 @@ pub enum FirehoseError {
 pub enum BlockStreamEvent<C: Blockchain> {
     // The payload is the current subgraph head pointer, which should be reverted, such that the
     // parent of the current subgraph head becomes the new subgraph head.
-    Revert(BlockPtr, FirehoseCursor),
+    // An optional pointer to the parent block will save a round trip operation when reverting.
+    Revert(BlockPtr, FirehoseCursor, Option<BlockPtr>),
 
     ProcessBlock(BlockWithTriggers<C>, FirehoseCursor),
 }

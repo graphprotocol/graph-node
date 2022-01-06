@@ -2,7 +2,7 @@ use std::{collections::HashMap, env, num::ParseIntError, sync::Arc, time::Durati
 
 use config::PoolSize;
 use git_testament::{git_testament, render_testament};
-use graph::{data::graphql::effort::LoadManager, prometheus::Registry};
+use graph::{data::graphql::effort::LoadManager, prelude::chrono, prometheus::Registry};
 use graph_core::MetricsRegistry;
 use graph_graphql::prelude::GraphQlRunner;
 use lazy_static::lazy_static;
@@ -200,6 +200,9 @@ pub enum UnusedCommand {
         /// Remove a specific deployment
         #[structopt(short, long, conflicts_with = "count")]
         deployment: Option<String>,
+        /// Remove unused deployments that were recorded at least this many minutes ago
+        #[structopt(short, long)]
+        older: Option<u32>,
     },
 }
 
@@ -531,9 +534,14 @@ async fn main() {
             match cmd {
                 List { existing } => commands::unused_deployments::list(store, existing),
                 Record => commands::unused_deployments::record(store),
-                Remove { count, deployment } => {
+                Remove {
+                    count,
+                    deployment,
+                    older,
+                } => {
                     let count = count.unwrap_or(1_000_000);
-                    commands::unused_deployments::remove(store, count, deployment)
+                    let older = older.map(|older| chrono::Duration::minutes(older as i64));
+                    commands::unused_deployments::remove(store, count, deployment, older)
                 }
             }
         }

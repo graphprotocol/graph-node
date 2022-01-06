@@ -64,7 +64,7 @@ lazy_static! {
     static ref MAX_API_VERSION: semver::Version = std::env::var("GRAPH_MAX_API_VERSION")
         .ok()
         .and_then(|api_version_str| semver::Version::parse(&api_version_str).ok())
-        .unwrap_or(semver::Version::new(0, 0, 5));
+        .unwrap_or(semver::Version::new(0, 0, 6));
 }
 
 /// Rust representation of the GraphQL schema for a `SubgraphManifest`.
@@ -207,8 +207,8 @@ impl SubgraphName {
 
         // Parse into components and validate each
         for part in s.split('/') {
-            // Each part must be non-empty and not too long
-            if part.is_empty() || part.len() > 32 {
+            // Each part must be non-empty
+            if part.is_empty() {
                 return Err(());
             }
 
@@ -894,7 +894,7 @@ fn test_subgraph_name_validation() {
     assert!(SubgraphName::new("aaaa+aaaaa").is_err());
     assert!(SubgraphName::new("a/graphql").is_err());
     assert!(SubgraphName::new("graphql/a").is_err());
-    assert!(SubgraphName::new("this-component-is-longer-than-the-length-limit").is_err());
+    assert!(SubgraphName::new("this-component-is-very-long-but-we-dont-care").is_ok());
 }
 
 #[test]

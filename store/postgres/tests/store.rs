@@ -975,10 +975,11 @@ fn subscribe(
     subgraph: &DeploymentHash,
     entity_type: &str,
 ) -> StoreEventStream<impl Stream<Item = Arc<StoreEvent>, Error = ()> + Send> {
-    let subscription = SUBSCRIPTION_MANAGER.subscribe(vec![SubscriptionFilter::Entities(
-        subgraph.clone(),
-        EntityType::new(entity_type.to_owned()),
-    )]);
+    let subscription =
+        SUBSCRIPTION_MANAGER.subscribe(FromIterator::from_iter([SubscriptionFilter::Entities(
+            subgraph.clone(),
+            EntityType::new(entity_type.to_owned()),
+        )]));
 
     StoreEventStream::new(subscription)
 }

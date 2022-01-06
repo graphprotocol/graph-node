@@ -285,6 +285,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                         number: header.height as i32,
                     },
                     Some(response.cursor.clone()),
+                    None, // FIXME: we should get the parent block pointer when we have access to parent block height
                 ))
             }
 

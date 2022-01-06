@@ -3,6 +3,7 @@ use std::iter;
 use std::result::Result;
 use std::time::{Duration, Instant};
 
+use graph::components::store::UnitStream;
 use graph::{components::store::SubscriptionManager, prelude::*};
 
 use crate::runner::ResultSizeMetrics;
@@ -40,7 +41,7 @@ pub struct SubscriptionExecutionOptions {
     pub result_size: Arc<ResultSizeMetrics>,
 }
 
-pub async fn execute_subscription(
+pub fn execute_subscription(
     subscription: Subscription,
     schema: Arc<ApiSchema>,
     options: SubscriptionExecutionOptions,
@@ -53,10 +54,10 @@ pub async fn execute_subscription(
         options.max_complexity,
         options.max_depth,
     )?;
-    execute_prepared_subscription(query, options).await
+    execute_prepared_subscription(query, options)
 }
 
-pub(crate) async fn execute_prepared_subscription(
+pub(crate) fn execute_prepared_subscription(
     query: Arc<crate::execution::Query>,
     options: SubscriptionExecutionOptions,
 ) -> Result<SubscriptionResult, SubscriptionError> {
@@ -72,15 +73,15 @@ pub(crate) async fn execute_prepared_subscription(
         "query" => &query.query_text,
     );
 
-    let source_stream = create_source_event_stream(query.clone(), &options).await?;
+    let source_stream = create_source_event_stream(query.clone(), &options)?;
     let response_stream = map_source_to_response_stream(query, options, source_stream);
     Ok(response_stream)
 }
 
-async fn create_source_event_stream(
+fn create_source_event_stream(
     query: Arc<crate::execution::Query>,
     options: &SubscriptionExecutionOptions,
-) -> Result<StoreEventStreamBox, SubscriptionError> {
+) -> Result<UnitStream, SubscriptionError> {
     let resolver = StoreResolver::for_subscription(
         &options.logger,
         query.schema.id().clone(),
@@ -123,35 +124,31 @@ async fn create_source_event_stream(
     let field = fields.1[0];
     let argument_values = coerce_argument_values(&ctx.query, subscription_type.as_ref(), field)?;
 
-    resolve_field_stream(&ctx, &subscription_type, field, argument_values).await
+    resolve_field_stream(&ctx, &subscription_type, field, argument_values)
 }
 
-async fn resolve_field_stream(
+fn resolve_field_stream(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     field: &q::Field,
     _argument_values: HashMap<&str, r::Value>,
-) -> Result<StoreEventStreamBox, SubscriptionError> {
+) -> Result<UnitStream, SubscriptionError> {
     ctx.resolver
         .resolve_field_stream(&ctx.query.schema.document(), object_type, field)
-        .await
         .map_err(SubscriptionError::from)
 }
 
 fn map_source_to_response_stream(
     query: Arc<crate::execution::Query>,
     options: SubscriptionExecutionOptions,
-    source_stream: StoreEventStreamBox,
+    source_stream: UnitStream,
 ) -> QueryResultStream {
     // Create a stream with a single empty event. By chaining this in front
     // of the real events, we trick the subscription into executing its query
     // at least once. This satisfies the GraphQL over Websocket protocol
     // requirement of "respond[ing] with at least one GQL_DATA message", see
     // https://github.com/apollographql/subscriptions-transport-ws/blob/master/PROTOCOL.md#gql_data
-    let trigger_stream = futures03::stream::iter(vec![Ok(Arc::new(StoreEvent {
-        tag: 0,
-        changes: Default::default(),
-    }))]);
+    let trigger_stream = futures03::stream::once(async {});
 
     let SubscriptionExecutionOptions {
         logger,
@@ -165,28 +162,22 @@ fn map_source_to_response_stream(
         result_size,
     } = options;
 
-    Box::new(
-        trigger_stream
-            .chain(source_stream.compat())
-            .then(move |res| match res {
-                Err(()) => {
-                    futures03::future::ready(Arc::new(QueryExecutionError::EventStreamError.into()))
-                        .boxed()
-                }
-                Ok(event) => execute_subscription_event(
-                    logger.clone(),
-                    store.clone(),
-                    subscription_manager.cheap_clone(),
-                    query.clone(),
-                    event,
-                    timeout,
-                    max_first,
-                    max_skip,
-                    result_size.cheap_clone(),
-                )
-                .boxed(),
-            }),
-    )
+    trigger_stream
+        .chain(source_stream)
+        .then(move |()| {
+            execute_subscription_event(
+                logger.clone(),
+                store.clone(),
+                subscription_manager.cheap_clone(),
+                query.clone(),
+                timeout,
+                max_first,
+                max_skip,
+                result_size.cheap_clone(),
+            )
+            .boxed()
+        })
+        .boxed()
 }
 
 async fn execute_subscription_event(
@@ -194,14 +185,11 @@ async fn execute_subscription_event(
     store: Arc<dyn QueryStore>,
     subscription_manager: Arc<dyn SubscriptionManager>,
     query: Arc<crate::execution::Query>,
-    event: Arc<StoreEvent>,
     timeout: Option<Duration>,
     max_first: u32,
     max_skip: u32,
     result_size: Arc<ResultSizeMetrics>,
 ) -> Arc<QueryResult> {
-    debug!(logger, "Execute subscription event"; "event" => format!("{:?}", event));
-
     let resolver = match StoreResolver::at_block(
         &logger,
         store,

@@ -4,6 +4,7 @@
 
 pub mod block_ingestor;
 pub mod block_stream;
+pub mod firehose_block_ingestor;
 pub mod firehose_block_stream;
 pub mod polling_block_stream;
 mod types;
@@ -109,10 +110,21 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         stopwatch_metrics: StopwatchMetrics,
     ) -> Result<Arc<Self::TriggersAdapter>, Error>;
 
-    async fn new_block_stream(
+    async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
+        firehose_cursor: Option<String>,
+        filter: Arc<Self::TriggerFilter>,
+        metrics: Arc<BlockStreamMetrics>,
+        unified_api_version: UnifiedMappingApiVersion,
+    ) -> Result<Box<dyn BlockStream<Self>>, Error>;
+
+    async fn new_polling_block_stream(
+        &self,
+        deployment: DeploymentLocator,
+        start_blocks: Vec<BlockNumber>,
+        subgraph_start_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -129,6 +141,8 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     ) -> Result<BlockPtr, IngestorError>;
 
     fn runtime_adapter(&self) -> Arc<Self::RuntimeAdapter>;
+
+    fn is_firehose_supported(&self) -> bool;
 }
 
 #[derive(Error, Debug)]
@@ -151,6 +165,12 @@ pub enum IngestorError {
 impl From<Error> for IngestorError {
     fn from(e: Error) -> Self {
         IngestorError::Unknown(e)
+    }
+}
+
+impl From<web3::Error> for IngestorError {
+    fn from(e: web3::Error) -> Self {
+        IngestorError::Unknown(anyhow::anyhow!(e))
     }
 }
 

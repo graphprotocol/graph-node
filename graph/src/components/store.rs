@@ -588,7 +588,7 @@ impl StoreEvent {
         self
     }
 
-    pub fn matches(&self, filters: &Vec<SubscriptionFilter>) -> bool {
+    pub fn matches(&self, filters: &BTreeSet<SubscriptionFilter>) -> bool {
         self.changes
             .iter()
             .any(|change| filters.iter().any(|filter| filter.matches(change)))
@@ -623,6 +623,8 @@ pub struct StoreEventStream<S> {
 pub type StoreEventStreamBox =
     StoreEventStream<Box<dyn Stream<Item = Arc<StoreEvent>, Error = ()> + Send>>;
 
+pub type UnitStream = Box<dyn futures03::Stream<Item = ()> + Unpin + Send + Sync>;
+
 impl<S> Stream for StoreEventStream<S>
 where
     S: Stream<Item = Arc<StoreEvent>, Error = ()> + Send,
@@ -647,7 +649,7 @@ where
     /// Filter a `StoreEventStream` by subgraph and entity. Only events that have
     /// at least one change to one of the given (subgraph, entity) combinations
     /// will be delivered by the filtered stream.
-    pub fn filter_by_entities(self, filters: Vec<SubscriptionFilter>) -> StoreEventStreamBox {
+    pub fn filter_by_entities(self, filters: BTreeSet<SubscriptionFilter>) -> StoreEventStreamBox {
         let source = self.source.filter(move |event| event.matches(&filters));
 
         StoreEventStream::new(Box::new(source))
@@ -661,6 +663,8 @@ where
     /// on the returned stream as a single `StoreEvent`; the events are
     /// combined by using the maximum of all sources and the concatenation
     /// of the changes of the `StoreEvents` received during the interval.
+    //
+    // Currently unused, needs to be made compatible with `subscribe_no_payload`.
     pub async fn throttle_while_syncing(
         self,
         logger: &Logger,
@@ -848,7 +852,10 @@ pub trait SubscriptionManager: Send + Sync + 'static {
     /// Subscribe to changes for specific subgraphs and entities.
     ///
     /// Returns a stream of store events that match the input arguments.
-    fn subscribe(&self, entities: Vec<SubscriptionFilter>) -> StoreEventStreamBox;
+    fn subscribe(&self, entities: BTreeSet<SubscriptionFilter>) -> StoreEventStreamBox;
+
+    /// If the payload is not required, use for a more efficient subscription mechanism backed by a watcher.
+    fn subscribe_no_payload(&self, entities: BTreeSet<SubscriptionFilter>) -> UnitStream;
 }
 
 /// An internal identifer for the specific instance of a deployment. The
@@ -1016,14 +1023,17 @@ pub trait WritableStore: Send + Sync + 'static {
     /// `block_ptr_to` must point to the parent block of the subgraph block pointer.
     fn revert_block_operations(&self, block_ptr_to: BlockPtr) -> Result<(), StoreError>;
 
-    /// This method:
-    /// - Sets the SubgraphDeployment status accordingly to it's SubgraphErrors
-    /// - Reverts block operations to the parent block if necessary
-    fn unfail(
+    /// If a deterministic error happened, this function reverts the block operations from the
+    /// current block to the previous block.
+    fn unfail_deterministic_error(
         &self,
-        current_ptr: Option<BlockPtr>,
-        parent_ptr: Option<BlockPtr>,
+        current_ptr: &BlockPtr,
+        parent_ptr: &BlockPtr,
     ) -> Result<(), StoreError>;
+
+    /// If a non-deterministic error happened and the current deployment head is past the error
+    /// block range, this function unfails the subgraph and deletes the error.
+    fn unfail_non_deterministic_error(&self, current_ptr: &BlockPtr) -> Result<(), StoreError>;
 
     /// Set subgraph status to failed with the given error as the cause.
     async fn fail_subgraph(&self, error: SubgraphError) -> Result<(), StoreError>;
@@ -1071,6 +1081,8 @@ pub trait WritableStore: Send + Sync + 'static {
     /// Report the name of the shard in which the subgraph is stored. This
     /// should only be used for reporting and monitoring
     fn shard(&self) -> &str;
+
+    async fn health(&self, id: &DeploymentHash) -> Result<SubgraphHealth, StoreError>;
 }
 
 #[async_trait]
@@ -1203,7 +1215,11 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn unfail(&self, _: Option<BlockPtr>, _: Option<BlockPtr>) -> Result<(), StoreError> {
+    fn unfail_deterministic_error(&self, _: &BlockPtr, _: &BlockPtr) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn unfail_non_deterministic_error(&self, _: &BlockPtr) -> Result<(), StoreError> {
         unimplemented!()
     }
 
@@ -1257,6 +1273,10 @@ impl WritableStore for MockStore {
     fn shard(&self) -> &str {
         unimplemented!()
     }
+
+    async fn health(&self, _: &DeploymentHash) -> Result<SubgraphHealth, StoreError> {
+        unimplemented!()
+    }
 }
 
 pub trait BlockStore: Send + Sync + 'static {
@@ -1303,6 +1323,21 @@ pub trait ChainStore: Send + Sync + 'static {
     ///
     /// The head block pointer will be None on initial set up.
     fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
+
+    /// Get the current head block cursor for this chain.
+    ///
+    /// The head block cursor will be None on initial set up.
+    fn chain_head_cursor(&self) -> Result<Option<String>, Error>;
+
+    /// This method does actually three operations:
+    /// - Upserts received block into blocks table
+    /// - Update chain head block into networks table
+    /// - Update chain head cursor into networks table
+    async fn set_chain_head(
+        self: Arc<Self>,
+        block: Arc<dyn Block>,
+        cursor: String,
+    ) -> Result<(), Error>;
 
     /// Returns the blocks present in the store.
     fn blocks(&self, hashes: &[H256]) -> Result<Vec<serde_json::Value>, Error>;
@@ -1785,7 +1820,7 @@ pub enum AttributeNames {
 }
 
 impl AttributeNames {
-    pub fn insert(&mut self, column_name: &str) {
+    fn insert(&mut self, column_name: &str) {
         match self {
             AttributeNames::All => {
                 let mut set = BTreeSet::new();
@@ -1798,12 +1833,25 @@ impl AttributeNames {
         }
     }
 
-    pub fn update(&mut self, field: &q::Field) {
-        // ignore "meta" field names
-        if field.name.starts_with("__") {
+    /// Adds a attribute name. Ignores meta fields.
+    pub fn add(&mut self, field: &q::Field) {
+        if Self::is_meta_field(&field.name) {
             return;
         }
         self.insert(&field.name)
+    }
+
+    /// Adds a attribute name. Ignores meta fields.
+    pub fn add_str(&mut self, field_name: &str) {
+        if Self::is_meta_field(field_name) {
+            return;
+        }
+        self.insert(field_name);
+    }
+
+    /// Returns `true` for meta field names, `false` otherwise.
+    fn is_meta_field(field_name: &str) -> bool {
+        field_name.starts_with("__")
     }
 
     pub fn extend(&mut self, other: Self) {

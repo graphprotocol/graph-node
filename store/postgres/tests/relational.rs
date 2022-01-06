@@ -13,6 +13,7 @@ use graph_store_postgres::layout_for_tests::SqlName;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::borrow::Cow;
+use std::panic;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::thread::sleep;
@@ -889,6 +890,7 @@ impl<'a> QueryChecker<'a> {
     }
 
     fn check(self, expected_entity_ids: Vec<&'static str>, query: EntityQuery) -> Self {
+        let q = query.clone();
         let unordered = matches!(query.order, EntityOrder::Unordered);
         let entities = self
             .layout
@@ -921,7 +923,7 @@ impl<'a> QueryChecker<'a> {
             expected_entity_ids.sort();
         }
 
-        assert_eq!(entity_ids, expected_entity_ids);
+        assert_eq!(entity_ids, expected_entity_ids, "{:?}", q);
         self
     }
 }
@@ -963,6 +965,19 @@ impl EasyOrder for EntityQuery {
     fn unordered(self) -> Self {
         self.order(EntityOrder::Unordered)
     }
+}
+
+#[test]
+#[should_panic(
+    expected = "layout.query failed to execute query: FulltextQueryInvalidSyntax(\"syntax error in tsquery: \\\"Jono 'a\\\"\")"
+)]
+fn check_fulltext_search_syntax_error() {
+    run_test(move |conn, layout| {
+        QueryChecker::new(conn, layout).check(
+            vec!["1"],
+            user_query().filter(EntityFilter::Equal("userSearch".into(), "Jono 'a".into())),
+        );
+    });
 }
 
 #[test]

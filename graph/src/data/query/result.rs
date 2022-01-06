@@ -163,6 +163,10 @@ impl QueryResults {
             .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, User-Agent")
             .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS, POST")
             .header(CONTENT_TYPE, "application/json")
+            .header(
+                "Graph-Attestable",
+                self.results.iter().all(|r| r.is_attestable()).to_string(),
+            )
             .body(T::from(json))
             .unwrap()
     }
@@ -209,6 +213,10 @@ impl QueryResult {
 
     pub fn has_data(&self) -> bool {
         self.data.is_some()
+    }
+
+    pub fn is_attestable(&self) -> bool {
+        self.errors.iter().all(|err| err.is_attestable())
     }
 
     pub fn to_result(self) -> Result<Option<r::Value>, Vec<QueryError>> {
