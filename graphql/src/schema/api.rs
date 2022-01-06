@@ -490,18 +490,25 @@ fn field_list_filter_input_values(
         };
 
         Some(
-            vec!["", "not", "contains", "not_contains"]
-                .into_iter()
-                .map(|filter_type| {
-                    input_value(
-                        &field.name,
-                        filter_type,
-                        Type::ListType(Box::new(Type::NonNullType(Box::new(
-                            input_field_type.clone(),
-                        )))),
-                    )
-                })
-                .collect(),
+            vec![
+                "",
+                "not",
+                "contains",
+                "contains_strict",
+                "not_contains",
+                "not_contains_strict",
+            ]
+            .into_iter()
+            .map(|filter_type| {
+                input_value(
+                    &field.name,
+                    filter_type,
+                    Type::ListType(Box::new(Type::NonNullType(Box::new(
+                        input_field_type.clone(),
+                    )))),
+                )
+            })
+            .collect(),
         )
     })
 }
@@ -1023,7 +1030,7 @@ mod tests {
                 "name_ends_with",
                 "name_ends_with_strict",
                 "name_not_ends_with",
-                "name_ends_with_strict",
+                "name_not_ends_with_strict",
                 "favoritePetNames",
                 "favoritePetNames_not",
                 "favoritePetNames_contains",
