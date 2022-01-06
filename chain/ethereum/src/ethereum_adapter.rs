@@ -18,8 +18,8 @@ use graph::{
         web3::{
             self,
             types::{
-                Address, Block, BlockId, BlockNumber as Web3BlockNumber, Bytes, CallRequest,
-                Filter, FilterBuilder, Log, Transaction, TransactionReceipt, H256,
+                Address, BlockId, BlockNumber as Web3BlockNumber, Bytes, CallRequest, Filter,
+                FilterBuilder, Log, Transaction, TransactionReceipt, H256,
             },
         },
         BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger,
@@ -1172,60 +1172,6 @@ impl EthereumAdapterTrait for EthereumAdapter {
                         )
                     })
                 }),
-        )
-    }
-
-    fn uncles(
-        &self,
-        logger: &Logger,
-        block: &LightEthereumBlock,
-    ) -> Box<dyn Future<Item = Vec<Option<Block<H256>>>, Error = Error> + Send> {
-        let block_hash = match block.hash {
-            Some(hash) => hash,
-            None => {
-                return Box::new(future::result(Err(anyhow!(
-                    "could not get uncle for block '{}' because block has null hash",
-                    block
-                        .number
-                        .map(|num| num.to_string())
-                        .unwrap_or(String::from("null"))
-                ))))
-            }
-        };
-        let n = block.uncles.len();
-        Box::new(
-            futures::stream::futures_ordered((0..n).map(move |index| {
-                let web3 = self.web3.clone();
-                let retry_log_message = format!(
-                    "eth_getUncleByBlockHashAndIndex RPC call for block {:?} (uncle {}/{})",
-                    block_hash, index, n
-                );
-                retry(retry_log_message, &logger)
-                    .no_limit()
-                    .timeout_secs(60)
-                    .run(move || {
-                        Box::pin(web3.eth().uncle(block_hash.clone().into(), index.into()))
-                            .compat()
-                            .map_err(move |e| {
-                                anyhow!(
-                                    "could not get uncle {} for block {:?} ({} uncles): {}",
-                                    index,
-                                    block_hash,
-                                    n,
-                                    e
-                                )
-                            })
-                            .compat()
-                    })
-                    .map_err(move |e| {
-                        e.into_inner().unwrap_or_else(move || {
-                            anyhow!("Ethereum node took too long to return uncle")
-                        })
-                    })
-                    .boxed()
-                    .compat()
-            }))
-            .collect(),
         )
     }
 
