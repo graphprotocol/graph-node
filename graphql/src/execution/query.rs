@@ -106,6 +106,12 @@ impl<'a> std::fmt::Display for SelectedFields<'a> {
 /// A GraphQL query that has been preprocessed and checked and is ready
 /// for execution. Checking includes validating all query fields and, if
 /// desired, checking the query's complexity
+//
+// The implementation contains various workarounds to make it compatible
+// with the previous implementation when it comes to queries that are not
+// fully spec compliant and should be rejected through rigorous validation
+// against the GraphQL spec. Once we do validate queries, code that is
+// marked with `graphql-bug-compat` can be deleted.
 pub struct Query {
     /// The schema against which to execute the query
     pub schema: Arc<ApiSchema>,
@@ -791,6 +797,7 @@ impl Transform {
 
         let resolver = |name: &str| self.schema.get_named_type(name);
 
+        let mut defined_args: usize = 0;
         for argument_def in sast::get_argument_definitions(ty, field_name)
             .into_iter()
             .flatten()
@@ -799,6 +806,9 @@ impl Transform {
                 .iter_mut()
                 .find(|arg| &arg.0 == &argument_def.name)
                 .map(|arg| &mut arg.1);
+            if arg_value.is_some() {
+                defined_args += 1;
+            }
             match coercion::coerce_input_value(
                 arg_value.as_deref().cloned(),
                 &argument_def,
@@ -817,6 +827,18 @@ impl Transform {
                 }
                 Ok(None) => {}
                 Err(e) => errors.push(e),
+            }
+        }
+
+        // see: graphql-bug-compat
+        // avoids error 'unknown argument on field'
+        if defined_args < arguments.len() {
+            // `arguments` contains undefined arguments, remove them
+            match sast::get_argument_definitions(ty, field_name) {
+                None => arguments.clear(),
+                Some(arg_defs) => {
+                    arguments.retain(|(name, _)| arg_defs.iter().any(|def| &def.name == name))
+                }
             }
         }
 

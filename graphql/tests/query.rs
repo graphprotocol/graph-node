@@ -1421,6 +1421,37 @@ fn can_use_nested_filter() {
     })
 }
 
+// see: graphql-bug-compat
+#[test]
+fn ignores_invalid_field_arguments() {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
+        // This query has to return all the musicians since `id` is not a
+        // valid argument for the `musicians` field and must therefore be
+        // ignored
+        let result = execute_query_document(
+            &deployment.hash,
+            graphql_parser::parse_query("query { musicians(id: \"m1\") { id } } ")
+                .expect("invalid test query")
+                .into_static(),
+        )
+        .await;
+
+        let data = extract_data!(result).unwrap();
+        match data {
+            r::Value::Object(obj) => match obj.get("musicians").unwrap() {
+                r::Value::List(lst) => {
+                    assert_eq!(4, lst.len());
+                }
+                _ => panic!("expected a list of values"),
+            },
+            _ => {
+                panic!("expected an object")
+            }
+        }
+    })
+}
+
 async fn check_musicians_at(
     id: &DeploymentHash,
     query: &str,
