@@ -22,11 +22,17 @@ pub(crate) enum FilterOp {
     In,
     NotIn,
     Contains,
+    ContainsStrict,
     NotContains,
+    NotContainsStrict,
     StartsWith,
+    StartsWithStrict,
     NotStartsWith,
+    NotStartsWithStrict,
     EndsWith,
+    EndsWithStrict,
     NotEndsWith,
+    NotEndsWithStrict,
     Equal,
 }
 
@@ -41,11 +47,25 @@ pub(crate) fn parse_field_as_filter(key: &str) -> (String, FilterOp) {
         k if k.ends_with("_not_in") => ("_not_in", FilterOp::NotIn),
         k if k.ends_with("_in") => ("_in", FilterOp::In),
         k if k.ends_with("_not_contains") => ("_not_contains", FilterOp::NotContains),
+        k if k.ends_with("_not_contains_strict") => {
+            ("_not_contains_strict", FilterOp::NotContainsStrict)
+        }
         k if k.ends_with("_contains") => ("_contains", FilterOp::Contains),
+        k if k.ends_with("_contains_strict") => ("_contains_strict", FilterOp::ContainsStrict),
         k if k.ends_with("_not_starts_with") => ("_not_starts_with", FilterOp::NotStartsWith),
+        k if k.ends_with("_not_starts_with_strict") => {
+            ("_not_starts_with_strict", FilterOp::NotStartsWithStrict)
+        }
         k if k.ends_with("_not_ends_with") => ("_not_ends_with", FilterOp::NotEndsWith),
+        k if k.ends_with("_not_ends_with_strict") => {
+            ("_not_ends_with_strict", FilterOp::NotEndsWithStrict)
+        }
         k if k.ends_with("_starts_with") => ("_starts_with", FilterOp::StartsWith),
+        k if k.ends_with("_starts_with_strict") => {
+            ("_starts_with_strict", FilterOp::StartsWithStrict)
+        }
         k if k.ends_with("_ends_with") => ("_ends_with", FilterOp::EndsWith),
+        k if k.ends_with("_ends_with_strict") => ("_ends_with_strict", FilterOp::EndsWithStrict),
         _ => ("", FilterOp::Equal),
     };
 

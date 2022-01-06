@@ -173,11 +173,19 @@ fn build_filter_from_object(
                     In => EntityFilter::In(field_name, list_values(store_value, "_in")?),
                     NotIn => EntityFilter::NotIn(field_name, list_values(store_value, "_not_in")?),
                     Contains => EntityFilter::Contains(field_name, store_value),
+                    ContainsStrict => EntityFilter::ContainsStrict(field_name, store_value),
                     NotContains => EntityFilter::NotContains(field_name, store_value),
+                    NotContainsStrict => EntityFilter::NotContainsStrict(field_name, store_value),
                     StartsWith => EntityFilter::StartsWith(field_name, store_value),
+                    StartsWithStrict => EntityFilter::StartsWithStrict(field_name, store_value),
                     NotStartsWith => EntityFilter::NotStartsWith(field_name, store_value),
+                    NotStartsWithStrict => {
+                        EntityFilter::NotStartsWithStrict(field_name, store_value)
+                    }
                     EndsWith => EntityFilter::EndsWith(field_name, store_value),
+                    EndsWithStrict => EntityFilter::EndsWithStrict(field_name, store_value),
                     NotEndsWith => EntityFilter::NotEndsWith(field_name, store_value),
+                    NotEndsWithStrict => EntityFilter::NotEndsWithStrict(field_name, store_value),
                     Equal => EntityFilter::Equal(field_name, store_value),
                 })
             })
