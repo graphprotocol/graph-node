@@ -115,10 +115,8 @@ lazy_static! {
         .parse::<usize>()
         .expect("invalid GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS env var");
 
-    static ref FETCH_RECEIPTS_CONCURRENTLY: bool = std::env::var("GRAPH_EXPERIMENTAL_FETCH_TXN_RECEIPTS_CONCURRENTLY")
-            .is_ok();
-
-
+    static ref FETCH_RECEIPTS_IN_BATCHES: bool =
+        matches!(std::env::var("GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES").as_deref(), Ok("true"));
 }
 
 /// Gas limit for `eth_call`. The value of 50_000_000 is a protocol-wide parameter so this
@@ -1081,7 +1079,10 @@ impl EthereumAdapterTrait for EthereumAdapter {
             })));
         }
         let hashes: Vec<_> = block.transactions.iter().map(|txn| txn.hash).collect();
-        let receipts_future = if *FETCH_RECEIPTS_CONCURRENTLY {
+        let receipts_future = if *FETCH_RECEIPTS_IN_BATCHES {
+            // Deprecated batching retrieval of transaction receipts.
+            fetch_transaction_receipts_in_batch_with_retry(web3, hashes, block_hash, logger).boxed()
+        } else {
             let hash_stream = graph::tokio_stream::iter(hashes);
             let receipt_stream = graph::tokio_stream::StreamExt::map(hash_stream, move |tx_hash| {
                 fetch_transaction_receipt_with_retry(
@@ -1095,9 +1096,6 @@ impl EthereumAdapterTrait for EthereumAdapter {
             graph::tokio_stream::StreamExt::collect::<Result<Vec<TransactionReceipt>, IngestorError>>(
                 receipt_stream,
             ).boxed()
-        } else {
-            // Deprecated batching retrieval of transaction receipts.
-            fetch_transaction_receipts_in_batch_with_retry(web3, hashes, block_hash, logger).boxed()
         };
 
         let block_future =
