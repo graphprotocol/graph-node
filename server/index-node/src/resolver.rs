@@ -264,6 +264,7 @@ where
         let mut response: BTreeMap<String, r::Value> = BTreeMap::new();
         response.insert("features".to_string(), features);
         response.insert("errors".to_string(), errors);
+        response.insert("network".to_string(), network);
 
         Ok(r::Value::Object(response))
     }

@@ -223,7 +223,7 @@ async fn main() {
         let network_identifiers = ethereum_idents
             .into_iter()
             .chain(near_idents)
-            .chain(tendermint_networks)
+            .chain(tendermint_idents)
             .collect();
 
         let network_store = store_builder.network_store(network_identifiers);
