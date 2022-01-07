@@ -1,6 +1,6 @@
 use std::{convert::TryInto, num::NonZeroU32};
 
-use graph::runtime::gas::MAX_GAS_PER_HANDLER;
+use graph::runtime::gas::CONST_MAX_GAS_PER_HANDLER;
 use parity_wasm::elements::Instruction;
 use pwasm_utils::rules::{MemoryGrowCost, Rules};
 
@@ -158,7 +158,7 @@ impl Rules for GasRules {
         // free pages because this is 32bit WASM.
         const MAX_PAGES: u64 = 12 * GIB / PAGE;
         let gas_per_page =
-            NonZeroU32::new((*MAX_GAS_PER_HANDLER / MAX_PAGES).try_into().unwrap()).unwrap();
+            NonZeroU32::new((CONST_MAX_GAS_PER_HANDLER / MAX_PAGES).try_into().unwrap()).unwrap();
 
         Some(MemoryGrowCost::Linear(gas_per_page))
     }
