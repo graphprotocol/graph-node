@@ -115,12 +115,8 @@ lazy_static! {
         .parse::<usize>()
         .expect("invalid GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS env var");
 
-    static ref FETCH_RECEIPTS_IN_BATCHES: bool = std::env::var("GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES")
-        .map_or(false, |var| var.parse::<bool>().unwrap_or_default());
-
-
-
-
+    static ref FETCH_RECEIPTS_IN_BATCHES: bool =
+        matches!(std::env::var("GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES").as_deref(), Ok("true"));
 }
 
 /// Gas limit for `eth_call`. The value of 50_000_000 is a protocol-wide parameter so this
