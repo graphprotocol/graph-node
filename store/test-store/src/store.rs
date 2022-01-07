@@ -278,7 +278,7 @@ pub async fn revert_block(store: &Arc<Store>, deployment: &DeploymentLocator, pt
         .writable(LOGGER.clone(), deployment.id)
         .await
         .expect("can get writable")
-        .revert_block_operations(ptr.clone())
+        .revert_block_operations(ptr.clone(), None)
         .unwrap();
 }
 

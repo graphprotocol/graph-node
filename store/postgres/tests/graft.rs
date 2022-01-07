@@ -301,13 +301,13 @@ async fn check_graft(
         .cheap_clone()
         .writable(LOGGER.clone(), deployment.id)
         .await?
-        .revert_block_operations(BLOCKS[1].clone())
+        .revert_block_operations(BLOCKS[1].clone(), None)
         .expect("We can revert a block we just created");
 
     let err = store
         .writable(LOGGER.clone(), deployment.id)
         .await?
-        .revert_block_operations(BLOCKS[0].clone())
+        .revert_block_operations(BLOCKS[0].clone(), None)
         .expect_err("Reverting past graft point is not allowed");
 
     assert!(err.to_string().contains("Can not revert subgraph"));

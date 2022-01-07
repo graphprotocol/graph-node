@@ -1,3 +1,4 @@
+use anyhow::Context;
 use detail::DeploymentDetail;
 use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
@@ -905,7 +906,7 @@ impl DeploymentStore {
 
             if let Some(cursor) = firehose_cursor {
                 if cursor != "" {
-                    deployment::update_firehose_cursor(&conn, &site.deployment, &cursor)?;
+                    deployment::update_firehose_cursor(&conn, &site.deployment, cursor)?;
                 }
             }
 
@@ -920,6 +921,7 @@ impl DeploymentStore {
         conn: &PgConnection,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
+        firehose_cursor: Option<&str>,
     ) -> Result<StoreEvent, StoreError> {
         let event = conn.transaction(|| -> Result<_, StoreError> {
             // Don't revert past a graft point
@@ -939,6 +941,11 @@ impl DeploymentStore {
             }
 
             deployment::revert_block_ptr(&conn, &site.deployment, block_ptr_to.clone())?;
+
+            if let Some(cursor) = firehose_cursor {
+                deployment::update_firehose_cursor(&conn, &site.deployment, cursor)
+                    .context("updating firehose cursor")?;
+            }
 
             // Revert the data
             let layout = self.layout(&conn, site.clone())?;
@@ -991,13 +998,18 @@ impl DeploymentStore {
                 block_ptr_to.number
             );
         }
-        self.rewind_with_conn(&conn, site, block_ptr_to)
+
+        // When rewinding, we reset the firehose cursor to the empty string. That way, on resume,
+        // Firehose will start from the block_ptr instead (with sanity check to ensure it's resume
+        // at the exact block).
+        self.rewind_with_conn(&conn, site, block_ptr_to, Some(""))
     }
 
     pub(crate) fn revert_block_operations(
         &self,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
+        firehose_cursor: Option<&str>,
     ) -> Result<StoreEvent, StoreError> {
         let conn = self.get_conn()?;
         // Unwrap: If we are reverting then the block ptr is not `None`.
@@ -1008,7 +1020,7 @@ impl DeploymentStore {
             panic!("revert_block_operations must revert a single block only");
         }
 
-        self.rewind_with_conn(&conn, site, block_ptr_to)
+        self.rewind_with_conn(&conn, site, block_ptr_to, firehose_cursor)
     }
 
     pub(crate) async fn deployment_state_from_id(
@@ -1227,7 +1239,11 @@ impl DeploymentStore {
                     );
 
                     // We ignore the StoreEvent that's being returned, we'll not use it.
-                    let _ = self.revert_block_operations(site.clone(), parent_ptr.clone())?;
+                    //
+                    // We reset the firehose cursor to the empty string. That way, on resume,
+                    // Firehose will start from the block_ptr instead (with sanity checks to ensure it's resuming
+                    // at the correct block).
+                    let _ = self.revert_block_operations(site.clone(), parent_ptr.clone(), Some(""))?;
 
                     // Unfail the deployment.
                     deployment::update_deployment_status(conn, deployment_id, prev_health, None)?;
