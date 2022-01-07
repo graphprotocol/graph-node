@@ -734,6 +734,9 @@ where
 
                         // Stop trying to update the sync status.
                         synced = true;
+
+                        // Stop recording time-to-sync metrics.
+                        ctx.block_stream_metrics.stopwatch.disable();
                     }
 
                     // Keep trying to unfail subgraph for everytime it advances block(s) until it's

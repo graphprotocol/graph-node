@@ -215,7 +215,6 @@ where
                     continue;
                 }
                 ReconciliationStep::Done => {
-                    ctx.handle_subgraph_synced().await?;
                     return Ok(NextBlocks::Done);
                 }
                 ReconciliationStep::Revert(from, to) => return Ok(NextBlocks::Revert(from, to)),
@@ -481,17 +480,6 @@ where
             .expect("genesis block can't be reverted");
 
         Ok(ptr)
-    }
-
-    /// Stop metrics if subgraph is synced.
-    /// Sync mechanism is now implemented in the instance manager.
-    async fn handle_subgraph_synced(&self) -> Result<(), StoreError> {
-        if self.subgraph_store.is_deployment_synced().await? {
-            // Stop recording time-to-sync metrics.
-            self.metrics.stopwatch.disable();
-        }
-
-        Ok(())
     }
 }
 
