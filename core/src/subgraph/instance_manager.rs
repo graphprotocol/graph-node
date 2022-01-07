@@ -545,7 +545,9 @@ where
                                     "block_hash" => format!("{}", subgraph_ptr.hash),
                                     "error" => e.to_string(),
                                 );
-                                continue;
+
+                                // Exit inner block stream consumption loop and go up to loop that restarts subgraph
+                                break;
                             }
                         }
                         None => {
@@ -575,7 +577,9 @@ where
                                     "block_hash" => format!("{}", subgraph_ptr.hash),
                                     "error" => e.to_string(),
                                 );
-                                continue;
+
+                                // Exit inner block stream consumption loop and go up to loop that restarts subgraph
+                                break;
                             }
                         }
                     }
