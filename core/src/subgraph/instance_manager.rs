@@ -1357,32 +1357,36 @@ fn test_has_threshold_passed() {
     assert!(now > now_clone);
 }
 
-/// Checks if two BlockPtrs are the same.
+/// Checks if the Deployment BlockPtr is at least one block behind to the chain head.
 fn is_deployment_synced(deployment_head_ptr: &BlockPtr, chain_head_ptr: Option<BlockPtr>) -> bool {
-    matches!((deployment_head_ptr, &chain_head_ptr), (b1, Some(b2)) if b1 == b2)
+    matches!((deployment_head_ptr, &chain_head_ptr), (b1, Some(b2)) if b1.number >= (b2.number - 1))
 }
 
 #[test]
 fn test_is_deployment_synced() {
-    let block_a = BlockPtr::try_from((
+    let block_0 = BlockPtr::try_from((
         "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
         0,
     ))
     .unwrap();
-    let block_b = BlockPtr::try_from((
+    let block_1 = BlockPtr::try_from((
         "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
         1,
     ))
     .unwrap();
+    let block_2 = BlockPtr::try_from((
+        "b98fb783b49de5652097a989414c767824dff7e7fd765a63b493772511db81c1",
+        2,
+    ))
+    .unwrap();
 
-    assert!(!is_deployment_synced(&block_a, None));
-    assert!(!is_deployment_synced(&block_b, None));
+    assert!(!is_deployment_synced(&block_0, None));
+    assert!(!is_deployment_synced(&block_2, None));
 
-    assert!(!is_deployment_synced(&block_a, Some(block_b.clone())));
-    assert!(!is_deployment_synced(&block_b, Some(block_a.clone())));
+    assert!(!is_deployment_synced(&block_0, Some(block_2.clone())));
 
-    assert!(is_deployment_synced(&block_a, Some(block_a.clone())));
-    assert!(is_deployment_synced(&block_b, Some(block_b.clone())));
+    assert!(is_deployment_synced(&block_1, Some(block_2.clone())));
+    assert!(is_deployment_synced(&block_2, Some(block_2.clone())));
 }
 
 /// Returns true if `store.deployment_synced()` should be called.
@@ -1413,14 +1417,19 @@ fn should_try_update_sync_status(
 
 #[test]
 fn test_should_try_update_sync_status() {
-    let block_a = BlockPtr::try_from((
+    let block_0 = BlockPtr::try_from((
         "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
         0,
     ))
     .unwrap();
-    let block_b = BlockPtr::try_from((
+    let block_1 = BlockPtr::try_from((
         "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
         1,
+    ))
+    .unwrap();
+    let block_2 = BlockPtr::try_from((
+        "b98fb783b49de5652097a989414c767824dff7e7fd765a63b493772511db81c1",
+        2,
     ))
     .unwrap();
 
@@ -1430,7 +1439,7 @@ fn test_should_try_update_sync_status() {
         true,
         &mut now,
         *SYNC_STATUS_THRESHOLD,
-        &block_a,
+        &block_0,
         || unreachable!("Will not be called"),
     )
     .unwrap());
@@ -1441,19 +1450,19 @@ fn test_should_try_update_sync_status() {
         false,
         &mut now,
         *SYNC_STATUS_THRESHOLD,
-        &block_a,
+        &block_0,
         || unreachable!("Will not be called"),
     )
     .unwrap());
 
-    // When the threshold has passed but it's NOT the same block
+    // When the threshold has passed but it's still behind head
     let mut now = Instant::now() - *SYNC_STATUS_THRESHOLD * 2;
     assert!(!should_try_update_sync_status(
         false,
         &mut now,
         *SYNC_STATUS_THRESHOLD,
-        &block_a,
-        || Ok(Some(block_b.clone())),
+        &block_0,
+        || Ok(Some(block_2.clone())),
     )
     .unwrap());
 
@@ -1463,8 +1472,8 @@ fn test_should_try_update_sync_status() {
         false,
         &mut now,
         *SYNC_STATUS_THRESHOLD,
-        &block_a,
-        || Ok(Some(block_a.clone())),
+        &block_1,
+        || Ok(Some(block_2.clone())),
     )
     .unwrap());
 }
