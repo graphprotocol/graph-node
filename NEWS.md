@@ -1,8 +1,9 @@
 # NEWS
 
 ## Unreleased
-- Gracefully handle syntax errors on fulltext search. Specifically provides information about common use case 
-where whitespace characters were part of the terms.
+- Gracefully handle syntax errors on fulltext search. Specifically provides information about common use case
+  where whitespace characters were part of the terms.
+- Adds support for Solidity Custom Errors (issue #2577)
 
 ## 0.25.0
 

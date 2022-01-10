@@ -1,12 +1,12 @@
 use crate::{error::DeterminismLevel, module::IntoTrap};
-use ethabi::param_type::Reader;
-use ethabi::{decode, encode, Token};
 use graph::blockchain::DataSource;
 use graph::blockchain::{Blockchain, DataSourceTemplate as _};
 use graph::components::store::EntityKey;
 use graph::components::store::EntityType;
 use graph::components::subgraph::{CausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::data::store;
+use graph::prelude::ethabi::param_type::Reader;
+use graph::prelude::ethabi::{decode, encode, Token};
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
 use graph::runtime::gas::{self, complexity, Gas, GasCounter};
