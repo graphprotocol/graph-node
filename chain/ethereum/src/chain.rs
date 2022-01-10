@@ -272,7 +272,6 @@ impl Blockchain for Chain {
         };
 
         Ok(Box::new(PollingBlockStream::new(
-            writable,
             chain_store,
             chain_head_update_stream,
             adapter,

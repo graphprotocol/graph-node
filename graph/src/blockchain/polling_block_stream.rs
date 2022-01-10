@@ -14,7 +14,6 @@ use super::block_stream::{
 use super::{Block, BlockPtr, Blockchain};
 
 use crate::components::store::BlockNumber;
-use crate::components::store::WritableStore;
 use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::prelude::*;
 #[cfg(debug_assertions)]
@@ -82,7 +81,6 @@ struct PollingBlockStreamContext<C>
 where
     C: Blockchain,
 {
-    subgraph_store: Arc<dyn WritableStore>,
     chain_store: Arc<dyn ChainStore>,
     adapter: Arc<C::TriggersAdapter>,
     node_id: NodeId,
@@ -107,7 +105,6 @@ where
 impl<C: Blockchain> Clone for PollingBlockStreamContext<C> {
     fn clone(&self) -> Self {
         Self {
-            subgraph_store: self.subgraph_store.cheap_clone(),
             chain_store: self.chain_store.cheap_clone(),
             adapter: self.adapter.clone(),
             node_id: self.node_id.clone(),
@@ -153,7 +150,6 @@ where
     C: Blockchain,
 {
     pub fn new(
-        subgraph_store: Arc<dyn WritableStore>,
         chain_store: Arc<dyn ChainStore>,
         chain_head_update_stream: ChainHeadUpdateStream,
         adapter: Arc<C::TriggersAdapter>,
@@ -175,7 +171,6 @@ where
             chain_head_update_stream,
             ctx: PollingBlockStreamContext {
                 current_block: start_block,
-                subgraph_store,
                 chain_store,
                 adapter,
                 node_id,
