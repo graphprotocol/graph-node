@@ -11,7 +11,7 @@ use std::fmt;
 use std::marker::Unpin;
 use thiserror::Error;
 use tiny_keccak::keccak256;
-use web3::types::{Address, Block, Log, H256};
+use web3::types::{Address, Log, H256};
 
 use graph::prelude::*;
 use graph::{
@@ -662,13 +662,6 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
         block_number: BlockNumber,
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send>;
-
-    /// Obtain all uncle blocks for a given block hash.
-    fn uncles(
-        &self,
-        logger: &Logger,
-        block: &LightEthereumBlock,
-    ) -> Box<dyn Future<Item = Vec<Option<Block<H256>>>, Error = Error> + Send>;
 
     /// Call the function of a smart contract.
     fn contract_call(
