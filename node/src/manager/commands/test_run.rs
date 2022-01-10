@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
+use std::env;
 use std::sync::Arc;
 use std::time::Duration;
-use std::env;
 
 use crate::config::{Config, ProviderDetails};
 use crate::manager::deployment::Deployment;
@@ -16,12 +16,11 @@ use graph::cheap_clone::CheapClone;
 use graph::components::store::BlockStore as _;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, FirehoseNetworks};
 use graph::ipfs_client::IpfsClient;
-use graph::prelude::{
-    anyhow, tokio, BlockNumber, DeploymentHash, LoggerFactory, NodeId,
-    SubgraphAssignmentProvider, SubgraphName, SubgraphRegistrar, SubgraphStore,
-    SubgraphVersionSwitchingMode,
-};
 use graph::prelude::MetricsRegistry as MetricsRegistryTrait;
+use graph::prelude::{
+    anyhow, tokio, BlockNumber, DeploymentHash, LoggerFactory, NodeId, SubgraphAssignmentProvider,
+    SubgraphName, SubgraphRegistrar, SubgraphStore, SubgraphVersionSwitchingMode,
+};
 use graph::slog::{debug, error, info, o, Logger};
 use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{self as ethereum, EthereumAdapterTrait, Transport};
@@ -495,4 +494,3 @@ async fn connect_ethereum_networks(
     let idents: Vec<_> = idents.into_iter().collect();
     (eth_networks, idents)
 }
-
