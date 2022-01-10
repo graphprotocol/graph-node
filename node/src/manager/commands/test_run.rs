@@ -1,8 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::Duration;
-use std::{collections::HashSet, convert::TryFrom};
-use std::{env, thread};
+use std::env;
 
 use crate::config::{Config, ProviderDetails};
 use crate::manager::deployment::Deployment;
@@ -11,34 +10,32 @@ use crate::store_builder::StoreBuilder;
 use ethereum::{EthereumNetworks, ProviderEthRpcMetrics};
 use futures::future::join_all;
 use futures::TryFutureExt;
-use graph::anyhow::{bail, format_err, Error};
-use graph::blockchain::{Block as BlockchainBlock, BlockchainKind, BlockchainMap, ChainIdentifier};
+use graph::anyhow::{format_err, Error};
+use graph::blockchain::{BlockchainKind, BlockchainMap, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
-use graph::components::store::{BlockStore as _, ChainStore as _, DeploymentId, DeploymentLocator};
-use graph::firehose::endpoints::{FirehoseEndpoint, FirehoseNetworkEndpoints, FirehoseNetworks};
+use graph::components::store::BlockStore as _;
+use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, FirehoseNetworks};
 use graph::ipfs_client::IpfsClient;
-use graph::log::logger;
 use graph::prelude::{
-    anyhow, tokio, BlockNumber, BlockPtr, DeploymentHash, LoggerFactory, NodeId,
+    anyhow, tokio, BlockNumber, DeploymentHash, LoggerFactory, NodeId,
     SubgraphAssignmentProvider, SubgraphName, SubgraphRegistrar, SubgraphStore,
     SubgraphVersionSwitchingMode,
 };
-use graph::prelude::{prost, MetricsRegistry as MetricsRegistryTrait};
+use graph::prelude::MetricsRegistry as MetricsRegistryTrait;
 use graph::slog::{debug, error, info, o, Logger};
 use graph::util::security::SafeDisplay;
-use graph_chain_ethereum::{self as ethereum, network_indexer, EthereumAdapterTrait, Transport};
+use graph_chain_ethereum::{self as ethereum, EthereumAdapterTrait, Transport};
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
-use graph_store_postgres::BlockStore;
 use graph_store_postgres::{connection_pool::ConnectionPool, Store};
 use lazy_static::lazy_static;
 use std::str::FromStr;
 
 pub async fn run(
     primary: ConnectionPool,
-    store: Arc<Store>,
+    _store: Arc<Store>,
     logger: Logger,
     network_name: String,
     config: Config,
@@ -85,7 +82,7 @@ pub async fn run(
         StoreBuilder::new(&logger, &node_id, &config, metrics_registry.clone()).await;
     let chain_head_update_listener = store_builder.chain_head_update_listener();
 
-    let (eth_networks, ethereum_idents) = connect_ethereum_networks(&logger, eth_networks).await;
+    let (_, ethereum_idents) = connect_ethereum_networks(&logger, eth_networks).await;
     // let (near_networks, near_idents) = connect_firehose_networks::<NearFirehoseHeaderOnlyBlock>(
     //     &logger,
     //     firehose_networks_by_kind
@@ -111,7 +108,7 @@ pub async fn run(
         chain_store.cheap_clone(),
         chain_store,
         subgraph_store.clone(),
-        firehose_endpoints.map_or_else(|| FirehoseNetworkEndpoints::new(), |v| v.clone()),
+        firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
         eth_adapters,
         chain_head_update_listener,
         *ANCESTOR_COUNT,
@@ -499,86 +496,3 @@ async fn connect_ethereum_networks(
     (eth_networks, idents)
 }
 
-/// Try to connect to all the providers in `firehose_networks` and get their net
-/// version and genesis block. Return the same `eth_networks` and the
-/// retrieved net identifiers grouped by network name. Remove all providers
-/// for which trying to connect resulted in an error from the returned
-/// `EthereumNetworks`, since it's likely pointless to try and connect to
-/// them. If the connection attempt to a provider times out after
-/// `NET_VERSION_WAIT_TIME`, keep the provider, but don't report a
-/// version for it.
-async fn connect_firehose_networks<M>(
-    logger: &Logger,
-    mut firehose_networks: FirehoseNetworks,
-) -> (FirehoseNetworks, Vec<(String, Vec<ChainIdentifier>)>)
-where
-    M: prost::Message + BlockchainBlock + Default + 'static,
-{
-    // This has one entry for each provider, and therefore multiple entries
-    // for each network
-    let statuses = join_all(
-        firehose_networks
-            .flatten()
-            .into_iter()
-            .map(|(network_name, endpoint)| (network_name, endpoint, logger.clone()))
-            .map(|(network, endpoint, logger)| async move {
-                let logger = logger.new(o!("provider" => endpoint.provider.to_string()));
-                info!(
-                    logger, "Connecting to Firehose to get network identifier";
-                    "url" => &endpoint.uri,
-                );
-                match tokio::time::timeout(
-                    NET_VERSION_WAIT_TIME,
-                    endpoint.genesis_block_ptr::<M>(&logger),
-                )
-                .await
-                .map_err(Error::from)
-                {
-                    // An `Err` means a timeout, an `Ok(Err)` means some other error (maybe a typo
-                    // on the URL)
-                    Ok(Err(e)) | Err(e) => {
-                        error!(logger, "Connection to provider failed. Not using this provider";
-                                       "error" =>  e.to_string());
-                        ProviderNetworkStatus::Broken {
-                            network,
-                            provider: endpoint.provider.to_string(),
-                        }
-                    }
-                    Ok(Ok(ptr)) => {
-                        info!(
-                            logger,
-                            "Connected to Firehose";
-                            "uri" => &endpoint.uri,
-                            "genesis_block" => format_args!("{}", &ptr),
-                        );
-
-                        let ident = ChainIdentifier {
-                            net_version: "0".to_string(),
-                            genesis_block_hash: ptr.hash,
-                        };
-
-                        ProviderNetworkStatus::Version { network, ident }
-                    }
-                }
-            }),
-    )
-    .await;
-
-    // Group identifiers by network name
-    let idents: HashMap<String, Vec<ChainIdentifier>> =
-        statuses
-            .into_iter()
-            .fold(HashMap::new(), |mut networks, status| {
-                match status {
-                    ProviderNetworkStatus::Broken { network, provider } => {
-                        firehose_networks.remove(&network, &provider)
-                    }
-                    ProviderNetworkStatus::Version { network, ident } => {
-                        networks.entry(network.to_string()).or_default().push(ident)
-                    }
-                }
-                networks
-            });
-    let idents: Vec<_> = idents.into_iter().collect();
-    (firehose_networks, idents)
-}
