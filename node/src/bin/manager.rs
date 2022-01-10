@@ -434,6 +434,10 @@ impl Context {
         pools
     }
 
+    async fn store_builder(self) -> StoreBuilder {
+        StoreBuilder::new(&self.logger, &self.node_id, &self.config, self.registry).await
+    }
+
     fn store_and_pools(self) -> (Arc<Store>, HashMap<Shard, ConnectionPool>) {
         let (subgraph_store, pools) = StoreBuilder::make_subgraph_store_and_pools(
             &self.logger,
@@ -614,12 +618,11 @@ async fn main() {
             let config = ctx.config();
             let registry = ctx.metrics_registry().clone();
             let node_id = ctx.node_id().clone();
-            let (store, primary) = ctx.store_and_primary();
+            let store_builder = ctx.store_builder().await;
 
             commands::test_run::run(
-                primary,
-                store,
                 logger,
+                store_builder,
                 network_name,
                 config,
                 registry,

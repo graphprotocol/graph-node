@@ -28,14 +28,12 @@ use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
-use graph_store_postgres::{connection_pool::ConnectionPool, Store};
 use lazy_static::lazy_static;
 use std::str::FromStr;
 
 pub async fn run(
-    primary: ConnectionPool,
-    _store: Arc<Store>,
     logger: Logger,
+    store_builder: StoreBuilder,
     network_name: String,
     config: Config,
     metrics_registry: Arc<MetricsRegistry>,
@@ -77,10 +75,6 @@ pub async fn run(
         }
     };
 
-    let store_builder =
-        StoreBuilder::new(&logger, &node_id, &config, metrics_registry.clone()).await;
-    let chain_head_update_listener = store_builder.chain_head_update_listener();
-
     let (_, ethereum_idents) = connect_ethereum_networks(&logger, eth_networks).await;
     // let (near_networks, near_idents) = connect_firehose_networks::<NearFirehoseHeaderOnlyBlock>(
     //     &logger,
@@ -90,6 +84,8 @@ pub async fn run(
     // )
     // .await;
 
+    let chain_head_update_listener = store_builder.chain_head_update_listener();
+    let primary_pool = store_builder.primary_pool();
     let network_identifiers = ethereum_idents.into_iter().collect();
     let network_store = store_builder.network_store(network_identifiers);
 
@@ -180,9 +176,7 @@ pub async fn run(
     )
     .await?;
 
-    // let deployment_locator = DeploymentLocator::new(DeploymentId(deployment_id), subgraph_hash);
-
-    let deployments = Deployment::lookup(&primary, name.to_string())?;
+    let deployments = Deployment::lookup(&primary_pool, name.to_string())?;
     let deployment = deployments
         .first()
         .expect("At least one deployment should exist");
