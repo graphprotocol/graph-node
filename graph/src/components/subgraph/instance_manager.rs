@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use crate::prelude::BlockNumber;
+use std::sync::Arc;
 
 use crate::components::store::DeploymentLocator;
 

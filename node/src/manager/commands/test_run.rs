@@ -191,7 +191,12 @@ pub async fn run(
         .first()
         .expect("At least one deployment should exist");
 
-    SubgraphAssignmentProvider::start(subgraph_provider.as_ref(), deployment.locator(), Some(stop_block)).await?;
+    SubgraphAssignmentProvider::start(
+        subgraph_provider.as_ref(),
+        deployment.locator(),
+        Some(stop_block),
+    )
+    .await?;
 
     loop {
         tokio::time::sleep(Duration::from_millis(1000)).await;
@@ -202,10 +207,12 @@ pub async fn run(
             .unwrap();
 
         if block_ptr.number >= stop_block {
-            info!(&logger, "subgraph now at block {}, reached stop block {}", block_ptr.number, stop_block);
+            info!(
+                &logger,
+                "subgraph now at block {}, reached stop block {}", block_ptr.number, stop_block
+            );
             break;
         }
-
     }
     info!(&logger, "Removing subgraph {}", name);
     subgraph_store.clone().remove_subgraph(subgraph_name)?;

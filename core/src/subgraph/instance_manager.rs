@@ -203,13 +203,17 @@ where
             match BlockchainKind::from_manifest(&manifest)? {
                 BlockchainKind::Ethereum => {
                     instance_manager
-                        .start_subgraph_inner::<graph_chain_ethereum::Chain>(logger, loc, manifest, stop_block)
+                        .start_subgraph_inner::<graph_chain_ethereum::Chain>(
+                            logger, loc, manifest, stop_block,
+                        )
                         .await
                 }
 
                 BlockchainKind::Near => {
                     instance_manager
-                        .start_subgraph_inner::<graph_chain_near::Chain>(logger, loc, manifest, stop_block)
+                        .start_subgraph_inner::<graph_chain_near::Chain>(
+                            logger, loc, manifest, stop_block,
+                        )
                         .await
                 }
             }
@@ -623,7 +627,6 @@ where
             };
 
             let block_ptr = block.ptr();
-
 
             match ctx.inputs.stop_block.clone() {
                 Some(stop_block) => {

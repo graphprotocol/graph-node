@@ -40,7 +40,11 @@ where
     L: LinkResolver,
     I: SubgraphInstanceManager,
 {
-    async fn start(&self, loc: DeploymentLocator, stop_block: Option<BlockNumber>) -> Result<(), SubgraphAssignmentProviderError> {
+    async fn start(
+        &self,
+        loc: DeploymentLocator,
+        stop_block: Option<BlockNumber>,
+    ) -> Result<(), SubgraphAssignmentProviderError> {
         let logger = self.logger_factory.subgraph_logger(&loc);
 
         // If subgraph ID already in set
