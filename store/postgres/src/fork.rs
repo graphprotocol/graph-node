@@ -45,17 +45,19 @@ pub(crate) struct SubgraphFork {
 
 impl SubgraphForkTrait for SubgraphFork {
     fn fetch(&self, entity_type: String, id: String) -> Result<Option<Entity>, StoreError> {
-        let mut fids = self.fetched_ids.lock().map_err(|e| {
-            StoreError::ForkFailure(format!(
-                "attempt to acquire lock on `fetched_ids` failed with {}",
-                e,
-            ))
-        })?;
-        if fids.contains(&id) {
-            info!(self.logger, "Already fetched entity! Abort!"; "entity_type" => entity_type, "id" => id);
-            return Ok(None);
+        {
+            let mut fids = self.fetched_ids.lock().map_err(|e| {
+                StoreError::ForkFailure(format!(
+                    "attempt to acquire lock on `fetched_ids` failed with {}",
+                    e,
+                ))
+            })?;
+            if fids.contains(&id) {
+                info!(self.logger, "Already fetched entity! Abort!"; "entity_type" => entity_type, "id" => id);
+                return Ok(None);
+            }
+            fids.insert(id.clone());
         }
-        fids.insert(id.clone());
 
         info!(self.logger, "Fetching entity from {}", &self.endpoint; "entity_type" => &entity_type, "id" => &id);
 
