@@ -1608,6 +1608,7 @@ dependencies = [
  "graphql-parser",
  "http 0.2.5",
  "lazy_static",
+ "prometheus",
  "regex",
  "serde",
  "serde_regex",
@@ -3180,9 +3181,11 @@ dependencies = [
  "cfg-if 1.0.0",
  "fnv",
  "lazy_static",
+ "libc",
  "memchr",
  "parking_lot 0.11.2",
  "protobuf",
+ "reqwest",
  "thiserror",
 ]
 
