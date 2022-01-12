@@ -865,15 +865,16 @@ impl<'a> QueryFilter<'a> {
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
         let column = self.column(attribute);
-        let operation = if strict { "like" } else { "ilike" };
+        let operation = match (strict, negated) {
+            (true, true) => " not like ",
+            (true, false) => " like ",
+            (false, true) => " not ilike ",
+            (false, false) => " ilike ",
+        };
         match value {
             Value::String(s) => {
                 out.push_identifier(column.name.as_str())?;
-                if negated {
-                    out.push_sql(&(" not ".to_owned() + &operation.to_owned() + &" ".to_owned()));
-                } else {
-                    out.push_sql(&(" ".to_owned() + &operation.to_owned() + &" ".to_owned()));
-                };
+                out.push_sql(operation);
                 if s.starts_with('%') || s.ends_with('%') {
                     out.push_bind_param::<Text, _>(s)?;
                 } else {
