@@ -1,0 +1,15 @@
+{
+  "name": "data-source",
+  "version": "0.1.0",
+  "scripts": {
+    "codegen": "graph codegen",
+    "create:test": "graph create test/data-source-context --node $GRAPH_NODE_ADMIN_URI",
+    "deploy:test": "graph deploy test/data-source-context --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
+  },
+  "devDependencies": {
+    "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#master",
+    "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#master"
+  },
+  "dependencies": {
+  }
+}

@@ -1,0 +1,12 @@
+type Payment @entity {
+    id: ID!
+
+    to: String!
+    from: String!
+    value: BigInt!
+}
+type Block @entity {
+    id: ID!
+
+    number: BigInt!
+}

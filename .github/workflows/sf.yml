@@ -1,0 +1,306 @@
+name: Continuous Integration
+
+on: push
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: full
+  GRAPH_LOG: info
+  STREAMING_FAST_API_TOKEN: ${{ secrets.GRAPH_FIREHOSE_API_TOKEN }}
+  STREAMING_FAST_ETH_MAINNET_RPC: ${{ secrets.GRAPH_ETH_MAINNET_RPC_URL }}
+  POSTGRES_URL: postgresql://graph-node:let-me-in@localhost:5432/graph-node
+
+jobs:
+  build-graphman:
+    name: Build graphman from graph-node source
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Install lld
+        run: sudo apt-get install -y lld
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: test-cargo-${{ hashFiles('**/Cargo.toml') }}
+      - name: Build graphman
+        env:
+          RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --bin graphman
+      - name: Upload graphman
+        uses: actions/upload-artifact@v2
+        with:
+          retention-days: 1
+          name: graphman
+          path: target/debug/graphman
+
+  compare-dense-events:
+    name: Run dense events subgraph
+    needs: build-graphman
+    strategy:
+      fail-fast: false
+    environment: eth-mainnet
+    runs-on: ubuntu-latest
+    services:
+      ipfs:
+        image: ipfs/go-ipfs:v0.4.23
+        ports:
+          - 5001:5001
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_PASSWORD: let-me-in
+          POSTGRES_DB: graph-node
+          POSTGRES_USER: graph-node
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Retrieve built graphman
+        uses: actions/download-artifact@v2
+        with:
+          name: graphman
+          path: ./bin
+
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '17.2'
+
+      - name: Build subgraphs to IPFS
+        run: |
+          npm install -g @graphprotocol/graph-cli
+          set -o pipefail
+          cd tests/integration-tests/eth-transfers
+          yarn
+          echo "Duplicating the mainnet-calls subgraph to get different deployment hashes"
+          sed "s/description: .*/description: Test Events RPC/" mainnet-events.yaml > mainnet-events-rpc.yaml
+          sed "s/description: .*/description: Test Events firehose/" mainnet-events.yaml > mainnet-events-firehose.yaml
+          graph build  --ipfs http://localhost:5001 mainnet-events-rpc.yaml |tee buildout-rpc
+          graph build  --ipfs http://localhost:5001 mainnet-events-firehose.yaml |tee buildout-firehose
+          IPFS_HASH_RPC="$(awk '/Build.completed/ {print $3}' buildout-rpc)"
+          IPFS_HASH_FIREHOSE="$(awk '/Build.completed/ {print $3}' buildout-firehose)"
+          echo "ipfs_hash_rpc=$IPFS_HASH_RPC" >> $GITHUB_ENV
+          echo "ipfs_hash_firehose=$IPFS_HASH_FIREHOSE" >> $GITHUB_ENV
+
+      - name: install psql utility
+        run: sudo apt-get install --yes --no-install-recommends postgresql-client
+
+      - name: run firehose test
+        run: |
+          chmod +x bin/graphman
+          bin/graphman --config tests/integration-tests/configs/eth-mainnet-firehose.toml run eth-mainnet "${{ env.ipfs_hash_firehose }}" 11000200
+          psql ${POSTGRES_URL} -c "\copy (select encode(digest::bytea, 'hex'), block_range FROM sgd1.poi2$ order by block_range asc) TO 'dense_events_poi_firehose.csv' With CSV"
+
+      - name: work around rpc existing blocks requirement
+        run: |
+          psql ${POSTGRES_URL} -c \
+          "update public.ethereum_networks set head_block_hash='d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3',head_block_number=99999999 where name='eth-mainnet'"
+
+      - name: run rpc test
+        run: |
+          bin/graphman --config tests/integration-tests/configs/eth-mainnet-rpc.toml run eth-mainnet "${{ env.ipfs_hash_rpc }}" 11000200
+          psql ${POSTGRES_URL} -c \
+          "\copy (select encode(digest::bytea, 'hex'), block_range FROM sgd2.poi2$ order by block_range asc) TO 'dense_events_poi_rpc.csv' With CSV"
+
+      - name: Upload results
+        uses: actions/upload-artifact@v2
+        with:
+          name: dense_events_poi
+          path: dense_events_poi_*.csv
+
+      - name: Ensure outputs are identical
+        run: diff dense_events_poi_rpc.csv dense_events_poi_firehose.csv
+
+  compare-dense-calls:
+    name: Run dense calls subgraph
+    needs: build-graphman
+    strategy:
+      fail-fast: false
+    environment: eth-mainnet
+    runs-on: ubuntu-latest
+    services:
+      ipfs:
+        image: ipfs/go-ipfs:v0.4.23
+        ports:
+          - 5001:5001
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_PASSWORD: let-me-in
+          POSTGRES_DB: graph-node
+          POSTGRES_USER: graph-node
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Retrieve built graphman
+        uses: actions/download-artifact@v2
+        with:
+          name: graphman
+          path: ./bin
+
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '17.2'
+
+      - name: Build subgraph to IPFS
+        run: |
+          npm install -g @graphprotocol/graph-cli
+          set -o pipefail
+          cd tests/integration-tests/eth-transfers
+          yarn
+          echo "Duplicating the mainnet-calls subgraph to get different deployment hashes"
+          sed "s/description: .*/description: Test Calls RPC/" mainnet-calls.yaml > mainnet-calls-rpc.yaml
+          sed "s/description: .*/description: Test Calls firehose/" mainnet-calls.yaml > mainnet-calls-firehose.yaml
+          graph build  --ipfs http://localhost:5001 mainnet-calls-rpc.yaml |tee buildout-rpc
+          graph build  --ipfs http://localhost:5001 mainnet-calls-firehose.yaml |tee buildout-firehose
+          IPFS_HASH_RPC="$(awk '/Build.completed/ {print $3}' buildout-rpc)"
+          IPFS_HASH_FIREHOSE="$(awk '/Build.completed/ {print $3}' buildout-firehose)"
+          echo "ipfs_hash_rpc=$IPFS_HASH_RPC" >> $GITHUB_ENV
+          echo "ipfs_hash_firehose=$IPFS_HASH_FIREHOSE" >> $GITHUB_ENV
+
+
+      - name: install psql utility
+        run: sudo apt-get install --yes --no-install-recommends postgresql-client
+
+      - name: run firehose test
+        run: |
+          chmod +x bin/graphman
+          bin/graphman --config tests/integration-tests/configs/eth-mainnet-firehose.toml run eth-mainnet "${{ env.ipfs_hash_firehose }}" 11000200
+          psql ${POSTGRES_URL} -c \
+          "\copy (select encode(digest::bytea, 'hex'), block_range FROM sgd1.poi2$ order by block_range asc) TO 'dense_calls_poi_firehose.csv' With CSV"
+
+      - name: work around rpc existing blocks requirement
+        run: |
+          psql ${POSTGRES_URL} -c \
+          "update public.ethereum_networks set head_block_hash='d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3',head_block_number=99999999 where name='eth-mainnet'"
+
+      - name: run rpc test
+        run: |
+          bin/graphman --config tests/integration-tests/configs/eth-mainnet-rpc.toml run eth-mainnet "${{ env.ipfs_hash_rpc }}" 11000200
+          psql ${POSTGRES_URL} -c \
+          "\copy (select encode(digest::bytea, 'hex'), block_range FROM sgd2.poi2$ order by block_range asc) TO 'dense_calls_poi_rpc.csv' With CSV"
+
+      - name: Upload results
+        uses: actions/upload-artifact@v2
+        with:
+          name: dense_calls_poi
+          path: dense_calls_poi_*.csv
+
+      - name: Ensure outputs are identical
+        run: diff dense_calls_poi_rpc.csv dense_calls_poi_firehose.csv
+
+  compare-data-source:
+    name: Run data source subgraph
+    needs: build-graphman
+    strategy:
+      fail-fast: false
+    environment: eth-mainnet
+    runs-on: ubuntu-latest
+    services:
+      ipfs:
+        image: ipfs/go-ipfs:v0.4.23
+        ports:
+          - 5001:5001
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_PASSWORD: let-me-in
+          POSTGRES_DB: graph-node
+          POSTGRES_USER: graph-node
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Retrieve built graphman
+        uses: actions/download-artifact@v2
+        with:
+          name: graphman
+          path: ./bin
+
+      - uses: actions/setup-node@v2
+        with:
+          node-version: '17.2'
+
+      - name: Build subgraph to IPFS
+        run: |
+          set -o pipefail
+          cd tests/integration-tests
+          yarn install
+
+          cd data-source
+          echo "Duplicating the subgraph subgraph to get different deployment hashes"
+          sed "s/description: .*/description: Test Calls RPC/" subgraph.yaml > subgraph-rpc.yaml
+          sed "s/description: .*/description: Test Calls firehose/" subgraph.yaml > subgraph-firehose.yaml
+
+          yarn graph codegen
+          yarn graph build  --ipfs http://localhost:5001 subgraph-rpc.yaml |tee buildout-rpc
+          yarn graph build  --ipfs http://localhost:5001 subgraph-firehose.yaml |tee buildout-firehose
+          IPFS_HASH_RPC="$(awk '/Build.completed/ {print $3}' buildout-rpc)"
+          IPFS_HASH_FIREHOSE="$(awk '/Build.completed/ {print $3}' buildout-firehose)"
+          echo "ipfs_hash_rpc=$IPFS_HASH_RPC" >> $GITHUB_ENV
+          echo "ipfs_hash_firehose=$IPFS_HASH_FIREHOSE" >> $GITHUB_ENV
+
+
+      - name: install psql utility
+        run: sudo apt-get install --yes --no-install-recommends postgresql-client
+
+      - name: run firehose test
+        run: |
+          chmod +x bin/graphman
+          bin/graphman --config tests/integration-tests/configs/eth-mainnet-firehose.toml run eth-mainnet "${{ env.ipfs_hash_firehose }}" 12370000
+          psql ${POSTGRES_URL} -c \
+          "\copy (select encode(digest::bytea, 'hex'), block_range FROM sgd1.poi2$ order by block_range asc) TO 'data_source_poi_firehose.csv' With CSV"
+
+      - name: work around rpc existing blocks requirement
+        run: |
+          psql ${POSTGRES_URL} -c \
+          "update public.ethereum_networks set head_block_hash='d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3',head_block_number=99999999 where name='eth-mainnet'"
+
+      - name: run rpc test
+        run: |
+          bin/graphman --config tests/integration-tests/configs/eth-mainnet-rpc.toml run eth-mainnet "${{ env.ipfs_hash_rpc }}" 12370000
+          psql ${POSTGRES_URL} -c \
+          "\copy (select encode(digest::bytea, 'hex'), block_range FROM sgd2.poi2$ order by block_range asc) TO 'data_source_poi_rpc.csv' With CSV"
+
+      - name: Upload results
+        uses: actions/upload-artifact@v2
+        with:
+          name: data_source_poi
+          path: data_source_poi_*.csv
+
+      - name: Ensure outputs are identical
+        run: diff data_source_poi_rpc.csv data_source_poi_firehose.csv

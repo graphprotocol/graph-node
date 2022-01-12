@@ -1,0 +1,22 @@
+[general]
+
+[store]
+[store.primary]
+connection = "postgresql://graph-node:let-me-in@localhost:5432/graph-node"
+weight = 1
+pool_size = 10
+
+[chains]
+ingestor = "block_ingestor_node"
+[chains.eth-mainnet]
+shard = "primary"
+protocol = "ethereum"
+provider = [
+  { label = "firehose", details = { type = "firehose", url = "https://api.streamingfast.io", token = "$STREAMING_FAST_API_TOKEN" }},
+  { label = "peering", url = "$STREAMING_FAST_ETH_MAINNET_RPC", features = [ "archive" ] },
+]
+
+[deployment]
+[[deployment.rule]]
+shard = "primary"
+indexers = [ "default" ]
