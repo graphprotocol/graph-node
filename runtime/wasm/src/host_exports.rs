@@ -3,8 +3,6 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
-use ethabi::param_type::Reader;
-use ethabi::{decode, encode, Token};
 use never::Never;
 use semver::Version;
 use wasmtime::Trap;
@@ -17,6 +15,8 @@ use graph::components::store::EntityType;
 use graph::components::subgraph::{CausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::data::store;
 use graph::ensure;
+use graph::prelude::ethabi::param_type::Reader;
+use graph::prelude::ethabi::{decode, encode, Token};
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
 use graph::runtime::gas::{self, complexity, Gas, GasCounter};
@@ -120,7 +120,7 @@ impl<C: Blockchain> HostExports<C> {
             ),
             _ => unreachable!(),
         };
-        Err(DeterministicHostError(anyhow::anyhow!(
+        Err(DeterministicHostError::from(anyhow::anyhow!(
             "Mapping aborted at {}, with {}",
             location,
             message
@@ -355,7 +355,7 @@ impl<C: Blockchain> HostExports<C> {
         gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(complexity::Size, &json))?;
         i64::from_str(&json)
             .with_context(|| format!("JSON `{}` cannot be parsed as i64", json))
-            .map_err(DeterministicHostError)
+            .map_err(DeterministicHostError::from)
     }
 
     /// Expects a decimal string.
@@ -368,7 +368,7 @@ impl<C: Blockchain> HostExports<C> {
 
         u64::from_str(&json)
             .with_context(|| format!("JSON `{}` cannot be parsed as u64", json))
-            .map_err(DeterministicHostError)
+            .map_err(DeterministicHostError::from)
     }
 
     /// Expects a decimal string.
@@ -381,7 +381,7 @@ impl<C: Blockchain> HostExports<C> {
 
         f64::from_str(&json)
             .with_context(|| format!("JSON `{}` cannot be parsed as f64", json))
-            .map_err(DeterministicHostError)
+            .map_err(DeterministicHostError::from)
     }
 
     /// Expects a decimal string.
@@ -394,7 +394,7 @@ impl<C: Blockchain> HostExports<C> {
 
         let big_int = BigInt::from_str(&json)
             .with_context(|| format!("JSON `{}` is not a decimal string", json))
-            .map_err(DeterministicHostError)?;
+            .map_err(DeterministicHostError::from)?;
         Ok(big_int.to_signed_bytes_le())
     }
 
@@ -446,7 +446,7 @@ impl<C: Blockchain> HostExports<C> {
     ) -> Result<BigInt, DeterministicHostError> {
         gas.consume_host_fn(gas::BIG_MATH_GAS_OP.with_args(complexity::Mul, (&x, &y)))?;
         if y == 0.into() {
-            return Err(DeterministicHostError(anyhow!(
+            return Err(DeterministicHostError::from(anyhow!(
                 "attempted to divide BigInt `{}` by zero",
                 x
             )));
@@ -462,7 +462,7 @@ impl<C: Blockchain> HostExports<C> {
     ) -> Result<BigInt, DeterministicHostError> {
         gas.consume_host_fn(gas::BIG_MATH_GAS_OP.with_args(complexity::Mul, (&x, &y)))?;
         if y == 0.into() {
-            return Err(DeterministicHostError(anyhow!(
+            return Err(DeterministicHostError::from(anyhow!(
                 "attempted to calculate the remainder of `{}` with a divisor of zero",
                 x
             )));
@@ -489,7 +489,7 @@ impl<C: Blockchain> HostExports<C> {
         gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(complexity::Size, &s))?;
         BigInt::from_str(&s)
             .with_context(|| format!("string is not a BigInt: `{}`", s))
-            .map_err(DeterministicHostError)
+            .map_err(DeterministicHostError::from)
     }
 
     pub(crate) fn big_int_bit_or(
@@ -581,7 +581,7 @@ impl<C: Blockchain> HostExports<C> {
     ) -> Result<BigDecimal, DeterministicHostError> {
         gas.consume_host_fn(gas::BIG_MATH_GAS_OP.with_args(complexity::Mul, (&x, &y)))?;
         if y == 0.into() {
-            return Err(DeterministicHostError(anyhow!(
+            return Err(DeterministicHostError::from(anyhow!(
                 "attempted to divide BigDecimal `{}` by zero",
                 x
             )));
@@ -616,7 +616,7 @@ impl<C: Blockchain> HostExports<C> {
         gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(complexity::Size, &s))?;
         BigDecimal::from_str(&s)
             .with_context(|| format!("string  is not a BigDecimal: '{}'", s))
-            .map_err(DeterministicHostError)
+            .map_err(DeterministicHostError::from)
     }
 
     pub(crate) fn data_source_create(
@@ -656,7 +656,7 @@ impl<C: Blockchain> HostExports<C> {
                         .join(", ")
                 )
             })
-            .map_err(DeterministicHostError)?
+            .map_err(DeterministicHostError::from)?
             .clone();
 
         // Remember that we need to create this data source
@@ -692,7 +692,7 @@ impl<C: Blockchain> HostExports<C> {
         ));
 
         if level == slog::Level::Critical {
-            return Err(DeterministicHostError(anyhow!(
+            return Err(DeterministicHostError::from(anyhow!(
                 "Critical error logged in mapping"
             )));
         }
@@ -733,7 +733,8 @@ impl<C: Blockchain> HostExports<C> {
         gas: &GasCounter,
     ) -> Result<serde_json::Value, DeterministicHostError> {
         gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(gas::complexity::Size, &bytes))?;
-        serde_json::from_reader(bytes.as_slice()).map_err(|e| DeterministicHostError(e.into()))
+        serde_json::from_reader(bytes.as_slice())
+            .map_err(|e| DeterministicHostError::from(Error::from(e)))
     }
 
     pub(crate) fn string_to_h160(
@@ -797,7 +798,7 @@ fn string_to_h160(string: &str) -> Result<H160, DeterministicHostError> {
     let s = string.trim_start_matches("0x");
     H160::from_str(s)
         .with_context(|| format!("Failed to convert string to Address/H160: '{}'", s))
-        .map_err(DeterministicHostError)
+        .map_err(DeterministicHostError::from)
 }
 
 fn bytes_to_string(logger: &Logger, bytes: Vec<u8>) -> String {

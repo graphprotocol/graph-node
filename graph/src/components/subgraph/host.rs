@@ -27,7 +27,7 @@ impl From<anyhow::Error> for MappingError {
 
 impl From<DeterministicHostError> for MappingError {
     fn from(value: DeterministicHostError) -> MappingError {
-        MappingError::Unknown(value.0)
+        MappingError::Unknown(value.inner())
     }
 }
 

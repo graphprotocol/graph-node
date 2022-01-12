@@ -552,7 +552,9 @@ where
                                     "block_hash" => format!("{}", subgraph_ptr.hash),
                                     "error" => e.to_string(),
                                 );
-                                continue;
+
+                                // Exit inner block stream consumption loop and go up to loop that restarts subgraph
+                                break;
                             }
                         }
                         None => {
@@ -582,7 +584,9 @@ where
                                     "block_hash" => format!("{}", subgraph_ptr.hash),
                                     "error" => e.to_string(),
                                 );
-                                continue;
+
+                                // Exit inner block stream consumption loop and go up to loop that restarts subgraph
+                                break;
                             }
                         }
                     }
@@ -770,7 +774,7 @@ where
                                 .unwrap()
                                 .remove(&ctx.inputs.deployment.id);
 
-                            error!(logger, "Subgraph failed for non-deterministic error: {}", e;
+                            error!(logger, "Subgraph failed with non-deterministic error: {}", e;
                                 "attempt" => backoff.attempt,
                                 "retry_delay_s" => backoff.delay().as_secs());
 

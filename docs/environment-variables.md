@@ -38,6 +38,9 @@ those.
    The maximum number of concurrent requests made against Ethereum for
    requesting transaction receipts during block ingestion.
    Defaults to 1,000.
+- `GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES`: Set to `true` to
+  disable fetching receipts from the Ethereum node concurrently during
+  block ingestion. This will use fewer, batched requests.
 - `GRAPH_ETHEREUM_CLEANUP_BLOCKS` : Set to `true` to clean up unneeded
   blocks from the cache in the database. When this is `false` or unset (the
   default), blocks will never be removed from the block cache. This setting

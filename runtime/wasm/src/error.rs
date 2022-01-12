@@ -28,6 +28,6 @@ impl IntoTrap for DeterministicHostError {
         DeterminismLevel::Deterministic
     }
     fn into_trap(self) -> Trap {
-        Trap::from(self.0)
+        Trap::from(self.inner())
     }
 }

@@ -13,7 +13,7 @@ const GAS_PER_SECOND: u64 = 10_000_000_000;
 /// like 10 gas for ~1ns allows us to be granular in instructions which are aggregated into metered
 /// blocks via https://docs.rs/pwasm-utils/0.16.0/pwasm_utils/fn.inject_gas_counter.html But we can
 /// still charge very high numbers for other things.
-const CONST_MAX_GAS_PER_HANDLER: u64 = 1000 * GAS_PER_SECOND;
+pub const CONST_MAX_GAS_PER_HANDLER: u64 = 1000 * GAS_PER_SECOND;
 
 lazy_static! {
     /// This is configurable only for debugging purposes. This value is set by the protocol,

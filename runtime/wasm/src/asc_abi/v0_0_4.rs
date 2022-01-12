@@ -35,7 +35,7 @@ impl ArrayBuffer {
         }
 
         if content.len() > u32::max_value() as usize {
-            return Err(DeterministicHostError(anyhow::anyhow!(
+            return Err(DeterministicHostError::from(anyhow::anyhow!(
                 "slice cannot fit in WASM memory"
             )));
         }
@@ -72,7 +72,7 @@ impl ArrayBuffer {
         self.content
             .get(range)
             .ok_or_else(|| {
-                DeterministicHostError(anyhow::anyhow!("Attempted to read past end of array"))
+                DeterministicHostError::from(anyhow::anyhow!("Attempted to read past end of array"))
             })?
             .chunks_exact(size_of::<T>())
             .map(|bytes| T::from_asc_bytes(bytes))
@@ -109,10 +109,10 @@ impl AscType for ArrayBuffer {
         // Skip `byte_length` and the padding.
         let content_offset = size_of::<u32>() + 4;
         let byte_length = asc_obj.get(..size_of::<u32>()).ok_or_else(|| {
-            DeterministicHostError(anyhow!("Attempted to read past end of array"))
+            DeterministicHostError::from(anyhow!("Attempted to read past end of array"))
         })?;
         let content = asc_obj.get(content_offset..).ok_or_else(|| {
-            DeterministicHostError(anyhow!("Attempted to read past end of array"))
+            DeterministicHostError::from(anyhow!("Attempted to read past end of array"))
         })?;
         Ok(ArrayBuffer {
             byte_length: u32::from_asc_bytes(&byte_length, api_version)?,
@@ -191,7 +191,7 @@ pub struct AscString {
 impl AscString {
     pub fn new(content: &[u16]) -> Result<Self, DeterministicHostError> {
         if size_of_val(content) > u32::max_value() as usize {
-            return Err(DeterministicHostError(anyhow!(
+            return Err(DeterministicHostError::from(anyhow!(
                 "string cannot fit in WASM memory"
             )));
         }
@@ -232,21 +232,21 @@ impl AscType for AscString {
 
         let length = asc_obj
             .get(..offset)
-            .ok_or(DeterministicHostError(anyhow::anyhow!(
+            .ok_or(DeterministicHostError::from(anyhow::anyhow!(
                 "String bytes not long enough to contain length"
             )))?;
 
         // Does not panic - already validated slice length == size_of::<i32>.
         let length = i32::from_le_bytes(length.try_into().unwrap());
         if length.checked_mul(2).and_then(|l| l.checked_add(4)) != asc_obj.len().try_into().ok() {
-            return Err(DeterministicHostError(anyhow::anyhow!(
+            return Err(DeterministicHostError::from(anyhow::anyhow!(
                 "String length header does not equal byte length"
             )));
         }
 
         // Prevents panic when accessing offset + 1 in the loop
         if asc_obj.len() % 2 != 0 {
-            return Err(DeterministicHostError(anyhow::anyhow!(
+            return Err(DeterministicHostError::from(anyhow::anyhow!(
                 "Invalid string length"
             )));
         }
@@ -282,7 +282,7 @@ impl AscType for AscString {
         let data_size = code_point_size.checked_mul(length);
         let total_size = data_size.and_then(|d| d.checked_add(length_size));
         total_size.ok_or_else(|| {
-            DeterministicHostError(anyhow::anyhow!("Overflowed when getting size of string"))
+            DeterministicHostError::from(anyhow::anyhow!("Overflowed when getting size of string"))
         })
     }
 }

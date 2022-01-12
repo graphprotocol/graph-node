@@ -94,7 +94,7 @@ impl AscType for bool {
         _api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
         if asc_obj.len() != 1 {
-            Err(DeterministicHostError(anyhow::anyhow!(
+            Err(DeterministicHostError::from(anyhow::anyhow!(
                 "Incorrect size for bool. Expected 1, got {},",
                 asc_obj.len()
             )))
@@ -117,7 +117,7 @@ macro_rules! impl_asc_type {
 
                 fn from_asc_bytes(asc_obj: &[u8], _api_version: &Version) -> Result<Self, DeterministicHostError> {
                     let bytes = asc_obj.try_into().map_err(|_| {
-                        DeterministicHostError(anyhow::anyhow!(
+                        DeterministicHostError::from(anyhow::anyhow!(
                             "Incorrect size for {}. Expected {}, got {},",
                             stringify!($T),
                             size_of::<Self>(),
@@ -252,11 +252,34 @@ impl ToAscObj<u32> for IndexForAscTypeId {
 }
 
 #[derive(Debug)]
-pub struct DeterministicHostError(pub Error);
+pub enum DeterministicHostError {
+    Gas(Error),
+    Other(Error),
+}
+
+impl DeterministicHostError {
+    pub fn gas(e: Error) -> Self {
+        DeterministicHostError::Gas(e)
+    }
+
+    pub fn inner(self) -> Error {
+        match self {
+            DeterministicHostError::Gas(e) | DeterministicHostError::Other(e) => e,
+        }
+    }
+}
 
 impl fmt::Display for DeterministicHostError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
+        match self {
+            DeterministicHostError::Gas(e) | DeterministicHostError::Other(e) => e.fmt(f),
+        }
+    }
+}
+
+impl From<Error> for DeterministicHostError {
+    fn from(e: Error) -> DeterministicHostError {
+        DeterministicHostError::Other(e)
     }
 }
 
@@ -282,7 +305,11 @@ impl From<anyhow::Error> for HostExportError {
 
 impl From<DeterministicHostError> for HostExportError {
     fn from(value: DeterministicHostError) -> Self {
-        HostExportError::Deterministic(value.0)
+        match value {
+            // Until we are confident on the gas numbers, gas errors are not deterministic
+            DeterministicHostError::Gas(e) => HostExportError::Unknown(e),
+            DeterministicHostError::Other(e) => HostExportError::Deterministic(e),
+        }
     }
 }
 
