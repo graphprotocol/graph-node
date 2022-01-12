@@ -767,7 +767,7 @@ impl SubgraphStoreInner {
         let store = self.for_site(site.as_ref())?;
 
         // Check that deployment is not assigned
-        let mut removable = self.mirror.assigned_node(site.as_ref())?.is_some();
+        let mut removable = self.mirror.assigned_node(site.as_ref())?.is_none();
 
         // Check that it is not current/pending for any subgraph if it is
         // the active deployment of that subgraph
