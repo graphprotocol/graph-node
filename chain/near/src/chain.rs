@@ -11,7 +11,7 @@ use graph::{
             FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
         },
         firehose_block_stream::FirehoseBlockStream,
-        BlockHash, BlockPtr, Blockchain, IngestorAdapter as IngestorAdapterTrait, IngestorError,
+        BlockHash, BlockPtr, Blockchain, IngestorError,
     },
     components::store::DeploymentLocator,
     firehose::{self as firehose, ForkStep},
@@ -84,8 +84,6 @@ impl Blockchain for Chain {
 
     type NodeCapabilities = crate::capabilities::NodeCapabilities;
 
-    type IngestorAdapter = IngestorAdapter;
-
     type RuntimeAdapter = RuntimeAdapter;
 
     fn triggers_adapter(
@@ -150,10 +148,6 @@ impl Blockchain for Chain {
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         panic!("NEAR does not support polling block stream")
-    }
-
-    fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter> {
-        Arc::new(IngestorAdapter {})
     }
 
     fn chain_store(&self) -> Arc<dyn ChainStore> {
@@ -327,37 +321,5 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 panic!("unknown step should not happen in the Firehose response")
             }
         }
-    }
-}
-
-pub struct IngestorAdapter {}
-
-#[async_trait]
-impl IngestorAdapterTrait<Chain> for IngestorAdapter {
-    fn logger(&self) -> &Logger {
-        panic!("Should never be called, FirehoseBlockIngestor must be used instead")
-    }
-
-    fn ancestor_count(&self) -> BlockNumber {
-        panic!("Should never be called, FirehoseBlockIngestor must be used instead")
-    }
-
-    async fn latest_block(&self) -> Result<BlockPtr, IngestorError> {
-        panic!("Should never be called, FirehoseBlockIngestor must be used instead")
-    }
-
-    async fn ingest_block(
-        &self,
-        _block_hash: &BlockHash,
-    ) -> Result<Option<BlockHash>, IngestorError> {
-        panic!("Should never be called, FirehoseBlockIngestor must be used instead")
-    }
-
-    fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
-        panic!("Should never be called, FirehoseBlockIngestor must be used instead")
-    }
-
-    fn cleanup_cached_blocks(&self) -> Result<Option<(i32, usize)>, Error> {
-        panic!("Should never be called, FirehoseBlockIngestor must be used instead")
     }
 }

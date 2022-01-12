@@ -1,6 +1,5 @@
-use ethereum::EthereumNetworks;
+use ethereum::{BlockIngestor as EthereumBlockIngestor, EthereumAdapterTrait, EthereumNetworks};
 use git_testament::{git_testament, render_testament};
-use graph::blockchain::block_ingestor::BlockIngestor;
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::{Block as BlockchainBlock, Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::store::BlockStore;
@@ -267,7 +266,12 @@ async fn main() {
             if ethereum_chains.len() > 0 {
                 let block_polling_interval = Duration::from_millis(opt.ethereum_polling_interval);
 
-                start_block_ingestor(&logger, block_polling_interval, ethereum_chains);
+                start_block_ingestor(
+                    &logger,
+                    &logger_factory,
+                    block_polling_interval,
+                    ethereum_chains,
+                );
             }
 
             start_firehose_block_ingestor::<_, NearFirehoseHeaderOnlyBlock>(
@@ -479,7 +483,6 @@ fn ethereum_networks_as_chains(
                 firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
                 eth_adapters.clone(),
                 chain_head_update_listener.clone(),
-                *ANCESTOR_COUNT,
                 *REORG_THRESHOLD,
                 is_ingestible,
             );
@@ -544,6 +547,7 @@ fn near_networks_as_chains(
 
 fn start_block_ingestor(
     logger: &Logger,
+    logger_factory: &LoggerFactory,
     block_polling_interval: Duration,
     chains: HashMap<String, Arc<ethereum::Chain>>,
 ) {
@@ -580,8 +584,23 @@ fn start_block_ingestor(
                 "network_name" => &network_name
             );
 
-            let block_ingestor = BlockIngestor::<ethereum::Chain>::new(
-                chain.ingestor_adapter(),
+            let eth_adapter = chain.cheapest_adapter();
+                let logger = logger_factory
+                    .component_logger(
+                        "BlockIngestor",
+                        Some(ComponentLoggerConfig {
+                            elastic: Some(ElasticComponentLoggerConfig {
+                                index: String::from("block-ingestor-logs"),
+                            }),
+                        }),
+                    )
+                    .new(o!("provider" => eth_adapter.provider().to_string()));
+
+            let block_ingestor = EthereumBlockIngestor::new(
+                logger,
+                *ANCESTOR_COUNT,
+                eth_adapter,
+                chain.chain_store(),
                 block_polling_interval,
             )
             .expect("failed to create Ethereum block ingestor");
