@@ -42,7 +42,7 @@ pub async fn run(
     stop_block: BlockNumber,
 ) -> Result<(), anyhow::Error> {
     println!(
-        "Test run starting subgraph => {}, stop_block = {}",
+        "Run command: starting subgraph => {}, stop_block = {}",
         subgraph, stop_block
     );
 
@@ -70,8 +70,8 @@ pub async fn run(
         Some(adapters) => adapters.clone(),
         None => {
             return Err(format_err!(
-            "No ethereum adapters found, but required in this state of graphman test-run command"
-        ))
+                "No ethereum adapters found, but required in this state of graphman run command"
+            ))
         }
     };
 

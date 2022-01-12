@@ -144,15 +144,15 @@ pub enum Command {
         /// The deployments to rewind
         names: Vec<String>,
     },
-    /// Runs a suite of tests around a specific subgraph
-    TestRun {
+    /// Deploy and run an arbitrary subgraph, up to a certain block (for dev and testing purposes) -- WARNING: WILL RUN MIGRATIONS ON THE DB, DO NOT USE IN PRODUCTION
+    Run {
         /// Network name (must fit one of the chain)
         network_name: String,
 
         /// Subgraph in the form `<IPFS Hash>` or `<name>:<IPFS Hash>`
         subgraph: String,
 
-        /// Number of block to process
+        /// Highest block number to process before stopping (inclusive)
         stop_block: i32,
     },
     /// Check and interrogate the configuration
@@ -609,7 +609,7 @@ async fn main() {
                 sleep,
             )
         }
-        TestRun {
+        Run {
             network_name,
             subgraph,
             stop_block,
@@ -620,7 +620,7 @@ async fn main() {
             let node_id = ctx.node_id().clone();
             let store_builder = ctx.store_builder().await;
 
-            commands::test_run::run(
+            commands::run::run(
                 logger,
                 store_builder,
                 network_name,
