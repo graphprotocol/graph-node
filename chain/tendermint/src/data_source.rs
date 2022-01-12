@@ -17,7 +17,7 @@ use crate::chain::Chain;
 use crate::codec;
 use crate::trigger::TendermintTrigger;
 
-pub const TENDERMINT_KIND: &str = "tendermint/data";
+pub const TENDERMINT_KIND: &str = "tendermint";
 
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
