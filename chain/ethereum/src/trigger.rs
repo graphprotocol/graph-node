@@ -56,15 +56,15 @@ impl std::fmt::Debug for MappingTrigger {
         #[derive(Debug)]
         enum MappingTriggerWithoutBlock {
             Log {
-                transaction: Arc<Transaction>,
-                log: Arc<Log>,
-                params: Vec<LogParam>,
+                _transaction: Arc<Transaction>,
+                _log: Arc<Log>,
+                _params: Vec<LogParam>,
             },
             Call {
-                transaction: Arc<Transaction>,
-                call: Arc<EthereumCall>,
-                inputs: Vec<LogParam>,
-                outputs: Vec<LogParam>,
+                _transaction: Arc<Transaction>,
+                _call: Arc<EthereumCall>,
+                _inputs: Vec<LogParam>,
+                _outputs: Vec<LogParam>,
             },
             Block,
         }
@@ -76,9 +76,9 @@ impl std::fmt::Debug for MappingTrigger {
                 log,
                 params,
             } => MappingTriggerWithoutBlock::Log {
-                transaction: transaction.cheap_clone(),
-                log: log.cheap_clone(),
-                params: params.clone(),
+                _transaction: transaction.cheap_clone(),
+                _log: log.cheap_clone(),
+                _params: params.clone(),
             },
             MappingTrigger::Call {
                 block: _,
@@ -87,10 +87,10 @@ impl std::fmt::Debug for MappingTrigger {
                 inputs,
                 outputs,
             } => MappingTriggerWithoutBlock::Call {
-                transaction: transaction.cheap_clone(),
-                call: call.cheap_clone(),
-                inputs: inputs.clone(),
-                outputs: outputs.clone(),
+                _transaction: transaction.cheap_clone(),
+                _call: call.cheap_clone(),
+                _inputs: inputs.clone(),
+                _outputs: outputs.clone(),
             },
             MappingTrigger::Block { block: _ } => MappingTriggerWithoutBlock::Block,
         };
