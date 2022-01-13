@@ -1,7 +1,7 @@
 use graph::blockchain::BlockchainKind;
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::firehose::endpoints::FirehoseNetworkEndpoints;
+use graph::firehose::FirehoseEndpoints;
 use graph::prelude::StopwatchMetrics;
 use graph::{
     anyhow,
@@ -11,11 +11,10 @@ use graph::{
             FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
         },
         firehose_block_stream::FirehoseBlockStream,
-        BlockHash, BlockPtr, Blockchain, IngestorAdapter as IngestorAdapterTrait, IngestorError,
+        BlockHash, BlockPtr, Blockchain, IngestorError,
     },
     components::store::DeploymentLocator,
-    firehose::bstream,
-    log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
+    firehose::{self as firehose, ForkStep},
     prelude::{async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory},
 };
 use prost::Message;
@@ -35,7 +34,7 @@ use graph::blockchain::block_stream::BlockStream;
 pub struct Chain {
     logger_factory: LoggerFactory,
     name: String,
-    firehose_endpoints: Arc<FirehoseNetworkEndpoints>,
+    firehose_endpoints: Arc<FirehoseEndpoints>,
     chain_store: Arc<dyn ChainStore>,
 }
 
@@ -50,7 +49,7 @@ impl Chain {
         logger_factory: LoggerFactory,
         name: String,
         chain_store: Arc<dyn ChainStore>,
-        firehose_endpoints: FirehoseNetworkEndpoints,
+        firehose_endpoints: FirehoseEndpoints,
     ) -> Self {
         Chain {
             logger_factory,
@@ -84,8 +83,6 @@ impl Blockchain for Chain {
     type TriggerFilter = crate::adapter::TriggerFilter;
 
     type NodeCapabilities = crate::capabilities::NodeCapabilities;
-
-    type IngestorAdapter = IngestorAdapter;
 
     type RuntimeAdapter = RuntimeAdapter;
 
@@ -151,23 +148,6 @@ impl Blockchain for Chain {
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         panic!("NEAR does not support polling block stream")
-    }
-
-    fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter> {
-        let logger = self
-            .logger_factory
-            .component_logger(
-                "BlockIngestor",
-                Some(ComponentLoggerConfig {
-                    elastic: Some(ElasticComponentLoggerConfig {
-                        index: String::from("block-ingestor-logs"),
-                    }),
-                }),
-            )
-            .new(o!());
-
-        let adapter = IngestorAdapter { logger };
-        Arc::new(adapter)
     }
 
     fn chain_store(&self) -> Arc<dyn ChainStore> {
@@ -288,16 +268,17 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
     async fn to_block_stream_event(
         &self,
         logger: &Logger,
-        response: &bstream::BlockResponseV2,
+        response: &firehose::Response,
         adapter: &TriggersAdapter,
         filter: &TriggerFilter,
     ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
-        let step = bstream::ForkStep::from_i32(response.step).unwrap_or_else(|| {
+        let step = ForkStep::from_i32(response.step).unwrap_or_else(|| {
             panic!(
                 "unknown step i32 value {}, maybe you forgot update & re-regenerate the protobuf definitions?",
                 response.step
             )
         });
+
         let any_block = response
             .block
             .as_ref()
@@ -312,72 +293,33 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
         let block = codec::Block::decode(any_block.value.as_ref())?;
 
+        use ForkStep::*;
         match step {
-            bstream::ForkStep::StepNew => Ok(BlockStreamEvent::ProcessBlock(
+            StepNew => Ok(BlockStreamEvent::ProcessBlock(
                 adapter.triggers_in_block(logger, block, filter).await?,
                 Some(response.cursor.clone()),
             )),
 
-            bstream::ForkStep::StepUndo => {
+            StepUndo => {
                 let header = block.header();
+                let parent_ptr = header
+                    .parent_ptr()
+                    .expect("Genesis block should never be reverted");
 
                 Ok(BlockStreamEvent::Revert(
-                    BlockPtr {
-                        hash: BlockHash::from(header.hash.as_ref().unwrap().bytes.clone()),
-                        number: header.height as i32,
-                    },
+                    block.ptr(),
                     Some(response.cursor.clone()),
-                    None, // FIXME: we should get the parent block pointer when we have access to parent block height
+                    Some(parent_ptr),
                 ))
             }
 
-            bstream::ForkStep::StepIrreversible => {
+            StepIrreversible => {
                 panic!("irreversible step is not handled and should not be requested in the Firehose request")
             }
 
-            bstream::ForkStep::StepUnknown => {
+            StepUnknown => {
                 panic!("unknown step should not happen in the Firehose response")
             }
         }
-    }
-}
-
-pub struct IngestorAdapter {
-    logger: Logger,
-}
-
-#[async_trait]
-impl IngestorAdapterTrait<Chain> for IngestorAdapter {
-    fn logger(&self) -> &Logger {
-        &self.logger
-    }
-
-    fn ancestor_count(&self) -> BlockNumber {
-        0
-    }
-
-    async fn latest_block(&self) -> Result<BlockPtr, IngestorError> {
-        Ok(BlockPtr {
-            hash: BlockHash::from(vec![0xff; 32]),
-            number: 0,
-        })
-    }
-
-    async fn ingest_block(
-        &self,
-        _block_hash: &BlockHash,
-    ) -> Result<Option<BlockHash>, IngestorError> {
-        // FIXME (NEAR):  Might not be necessary for NEAR support for now
-        Ok(None)
-    }
-
-    fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
-        // FIXME (NEAR):  Might not be necessary for NEAR support for now
-        Ok(None)
-    }
-
-    fn cleanup_cached_blocks(&self) -> Result<Option<(i32, usize)>, Error> {
-        // FIXME (NEAR):  Might not be necessary for NEAR support for now
-        Ok(None)
     }
 }

@@ -1,11 +1,8 @@
 use anyhow::Error;
 use graph::{
-    firehose::{
-        bstream::BlockResponseV2, bstream::BlocksRequestV2, bstream::ForkStep,
-        endpoints::FirehoseEndpoint,
-    },
     log::logger,
     prelude::{prost, tokio, tonic},
+    {firehose, firehose::FirehoseEndpoint, firehose::ForkStep},
 };
 use graph_chain_ethereum::codec;
 use prost::Message;
@@ -23,9 +20,9 @@ async fn main() -> Result<(), Error> {
 
     loop {
         println!("connecting to the stream!");
-        let mut stream: Streaming<BlockResponseV2> = match firehose
+        let mut stream: Streaming<firehose::Response> = match firehose
             .clone()
-            .stream_blocks(BlocksRequestV2 {
+            .stream_blocks(firehose::Request {
                 start_block_num: 7000000,
                 start_cursor: match &cursor {
                     Some(c) => c.clone(),

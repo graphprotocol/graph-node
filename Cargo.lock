@@ -846,11 +846,11 @@ dependencies = [
 
 [[package]]
 name = "diesel-derive-enum"
-version = "1.1.1"
+version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70806b70be328e646f243680a3fc93b3cfdd6db373faa5110660a5dd5af243bc"
+checksum = "6c8910921b014e2af16298f006de12aa08af894b71f0f49a486ab6d74b17bbed"
 dependencies = [
- "heck",
+ "heck 0.4.0",
  "proc-macro2",
  "quote",
  "syn",
@@ -1013,11 +1013,10 @@ dependencies = [
 
 [[package]]
 name = "ethabi"
-version = "14.1.0"
+version = "16.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a01317735d563b3bad2d5f90d2e1799f414165408251abb762510f40e790e69a"
+checksum = "a4c98847055d934070b90e806e12d3936b787d0a115068981c1d8dfd5dfef5a5"
 dependencies = [
- "anyhow",
  "ethereum-types",
  "hex",
  "serde",
@@ -1042,9 +1041,9 @@ dependencies = [
 
 [[package]]
 name = "ethereum-types"
-version = "0.11.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f64b5df66a228d85e4b17e5d6c6aa43b0310898ffe8a85988c4c032357aaabfd"
+checksum = "05136f7057fe789f06e6d41d07b34e6f70d8c86e5693b60f97aaa6553553bdaf"
 dependencies = [
  "ethbloom",
  "fixed-hash",
@@ -1586,6 +1585,7 @@ dependencies = [
  "graph",
  "graph-chain-ethereum",
  "graphql-parser",
+ "graphql-tools",
  "indexmap",
  "lazy_static",
  "once_cell",
@@ -1680,6 +1680,8 @@ dependencies = [
  "hex",
  "lazy_static",
  "never",
+ "parity-wasm",
+ "pwasm-utils",
  "semver 1.0.4",
  "strum",
  "strum_macros",
@@ -1819,6 +1821,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphql-tools"
+version = "0.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f47ccdd42a537f86a915d9ca4c5880005183d6eb544b86d9e924511942a00647"
+dependencies = [
+ "graphql-parser",
+]
+
+[[package]]
 name = "h2"
 version = "0.1.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1894,6 +1905,12 @@ checksum = "6d621efb26863f0e9924c6ac577e8275e5e6b77455db64ffa6c65c904e9e132c"
 dependencies = [
  "unicode-segmentation",
 ]
+
+[[package]]
+name = "heck"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2540771e65fc8cb83cd6e8a237f70c319bd5c29f78ed1084ba5d50eeac86f7f9"
 
 [[package]]
 name = "hermit-abi"
@@ -2839,6 +2856,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "parity-wasm"
+version = "0.42.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be5e13c266502aadf83426d87d81a0f5d1ef45b8027f5a471c360abfe4bfae92"
+
+[[package]]
 name = "parking_lot"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3120,9 +3143,9 @@ dependencies = [
 
 [[package]]
 name = "primitive-types"
-version = "0.9.1"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06345ee39fbccfb06ab45f3a1a5798d9dafa04cb8921a76d227040003a234b0e"
+checksum = "05e4722c697a58a99d5d06a08c30821d7c082a4632198de1eaa5a6c22ef42373"
 dependencies = [
  "fixed-hash",
  "impl-codec",
@@ -3189,9 +3212,9 @@ checksum = "bc881b2c22681370c6a780e47af9840ef841837bc98118431d4e1868bd0c1086"
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.28"
+version = "1.0.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c7ed8b8c7b886ea3ed7dde405212185f423ab44682667c8c6dd14aa1d9f6612"
+checksum = "c7342d5883fbccae1cc37a2353b09c87c9b0f3afd73f5fb9bba687a1f733b029"
 dependencies = [
  "unicode-xid",
 ]
@@ -3228,7 +3251,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "355f634b43cdd80724ee7848f95770e7e70eefa6dcf14fea676216573b8fd603"
 dependencies = [
  "bytes 1.0.1",
- "heck",
+ "heck 0.3.3",
  "itertools",
  "log",
  "multimap",
@@ -3278,6 +3301,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pwasm-utils"
+version = "0.19.0"
+source = "git+https://github.com/paritytech/wasm-utils?rev=b22696aaa516212284f2d94a28d8d292afe27859#b22696aaa516212284f2d94a28d8d292afe27859"
+dependencies = [
+ "byteorder",
+ "log",
+ "parity-wasm",
+]
+
+[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3285,9 +3318,9 @@ checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
 
 [[package]]
 name = "quote"
-version = "1.0.9"
+version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3d0b9745dc2debf507c8422de05d7226cc1f0644216dfdfead988f9b1ab32a7"
+checksum = "47aa80447ce4daf1717500037052af176af5d38cc3e571d9ec1c7353fc10c87d"
 dependencies = [
  "proc-macro2",
 ]
@@ -4220,7 +4253,7 @@ version = "0.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dcb5ae327f9cc13b68763b5749770cb9e048a99bd9dfdfa58d0cf05d5f64afe0"
 dependencies = [
- "heck",
+ "heck 0.3.3",
  "proc-macro-error",
  "proc-macro2",
  "quote",
@@ -4239,7 +4272,7 @@ version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d06aaeeee809dbc59eb4556183dd927df67db1540de5be8d3ec0b6636358a5ec"
 dependencies = [
- "heck",
+ "heck 0.3.3",
  "proc-macro2",
  "quote",
  "syn",
@@ -5426,7 +5459,7 @@ dependencies = [
 [[package]]
 name = "web3"
 version = "0.15.0-graph"
-source = "git+https://github.com/graphprotocol/rust-web3?branch=lutter/graph-0.15.0#738e547708ab1a4581ce3693d90fcd8df9506a4f"
+source = "git+https://github.com/graphprotocol/rust-web3?branch=lutter/graph-0.15.0#8310cf686cbe6c3e7585cb5f755810dbf5e8dc91"
 dependencies = [
  "arrayvec 0.5.2",
  "async-native-tls",

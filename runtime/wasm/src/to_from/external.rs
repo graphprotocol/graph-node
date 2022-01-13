@@ -115,7 +115,7 @@ impl TryFromAscObj<AscBigDecimal> for BigDecimal {
         let min_exp: i64 = BigDecimal::MIN_EXP.into();
         let max_exp: i64 = BigDecimal::MAX_EXP.into();
         if exp < min_exp || max_exp < exp {
-            Err(DeterministicHostError(anyhow::anyhow!(
+            Err(DeterministicHostError::from(anyhow::anyhow!(
                 "big decimal exponent `{}` is outside the `{}` to `{}` range",
                 exp,
                 min_exp,

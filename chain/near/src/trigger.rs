@@ -439,14 +439,16 @@ mod tests {
         fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, DeterministicHostError> {
             let memory_byte_count = self.memory.len();
             if memory_byte_count == 0 {
-                return Err(DeterministicHostError(anyhow!("No memory is allocated")));
+                return Err(DeterministicHostError::from(anyhow!(
+                    "No memory is allocated"
+                )));
             }
 
             let start_offset = offset as usize;
             let end_offset_exclusive = start_offset + size as usize;
 
             if start_offset >= memory_byte_count {
-                return Err(DeterministicHostError(anyhow!(
+                return Err(DeterministicHostError::from(anyhow!(
                     "Start offset {} is outside of allocated memory, max offset is {}",
                     start_offset,
                     memory_byte_count - 1
@@ -454,7 +456,7 @@ mod tests {
             }
 
             if end_offset_exclusive > memory_byte_count {
-                return Err(DeterministicHostError(anyhow!(
+                return Err(DeterministicHostError::from(anyhow!(
                     "End of offset {} is outside of allocated memory, max offset is {}",
                     end_offset_exclusive,
                     memory_byte_count - 1

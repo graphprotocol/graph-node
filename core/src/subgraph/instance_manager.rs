@@ -227,7 +227,7 @@ where
                 Err(err) => error!(
                     err_logger,
                     "Failed to start subgraph";
-                    "error" => format!("{}", err),
+                    "error" => format!("{:#}", err),
                     "code" => LogCode::SubgraphStartFailure
                 ),
             }
@@ -549,7 +549,9 @@ where
                                     "block_hash" => format!("{}", subgraph_ptr.hash),
                                     "error" => e.to_string(),
                                 );
-                                continue;
+
+                                // Exit inner block stream consumption loop and go up to loop that restarts subgraph
+                                break;
                             }
                         }
                         None => {
@@ -579,7 +581,9 @@ where
                                     "block_hash" => format!("{}", subgraph_ptr.hash),
                                     "error" => e.to_string(),
                                 );
-                                continue;
+
+                                // Exit inner block stream consumption loop and go up to loop that restarts subgraph
+                                break;
                             }
                         }
                     }
@@ -767,7 +771,7 @@ where
                                 .unwrap()
                                 .remove(&ctx.inputs.deployment.id);
 
-                            error!(logger, "Subgraph failed for non-deterministic error: {}", e;
+                            error!(logger, "Subgraph failed with non-deterministic error: {}", e;
                                 "attempt" => backoff.attempt,
                                 "retry_delay_s" => backoff.delay().as_secs());
 
@@ -883,7 +887,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
     )
     .await
     {
-        // Triggers processed with no errors or with only determinstic errors.
+        // Triggers processed with no errors or with only deterministic errors.
         Ok(block_state) => block_state,
 
         // Some form of unknown or non-deterministic error ocurred.

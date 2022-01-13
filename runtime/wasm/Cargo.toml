@@ -6,7 +6,7 @@ edition = "2018"
 [dependencies]
 async-trait = "0.1.50"
 atomic_refcell = "0.1.8"
-ethabi = "14.0"
+ethabi = "16.0"
 futures = "0.1.21"
 hex = "0.4.3"
 graph = { path = "../../graph" }
@@ -23,3 +23,8 @@ anyhow = "1.0"
 wasmtime = "0.27.0"
 defer = "0.1"
 never = "0.1"
+
+pwasm-utils = { git = "https://github.com/paritytech/wasm-utils", rev = "b22696aaa516212284f2d94a28d8d292afe27859", features = ["sign_ext"] }
+
+# AssemblyScript uses sign extensions
+parity-wasm = { version = "0.42", features = ["std", "sign_ext"] }

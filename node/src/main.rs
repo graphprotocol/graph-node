@@ -1,11 +1,10 @@
-use ethereum::EthereumNetworks;
+use ethereum::{BlockIngestor as EthereumBlockIngestor, EthereumAdapterTrait, EthereumNetworks};
 use git_testament::{git_testament, render_testament};
-use graph::blockchain::block_ingestor::BlockIngestor;
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::{Block as BlockchainBlock, Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::store::BlockStore;
 use graph::data::graphql::effort::LoadManager;
-use graph::firehose::endpoints::{FirehoseNetworkEndpoints, FirehoseNetworks};
+use graph::firehose::{FirehoseEndpoints, FirehoseNetworks};
 use graph::log::logger;
 use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
 use graph::prometheus::Registry;
@@ -291,7 +290,12 @@ async fn main() {
             if ethereum_chains.len() > 0 {
                 let block_polling_interval = Duration::from_millis(opt.ethereum_polling_interval);
 
-                start_block_ingestor(&logger, block_polling_interval, ethereum_chains);
+                start_block_ingestor(
+                    &logger,
+                    &logger_factory,
+                    block_polling_interval,
+                    ethereum_chains,
+                );
             }
 
             start_firehose_block_ingestor::<_, NearFirehoseHeaderOnlyBlock>(
@@ -505,10 +509,9 @@ fn ethereum_networks_as_chains(
                 chain_store.cheap_clone(),
                 chain_store,
                 store.subgraph_store(),
-                firehose_endpoints.map_or_else(|| FirehoseNetworkEndpoints::new(), |v| v.clone()),
+                firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
                 eth_adapters.clone(),
                 chain_head_update_listener.clone(),
-                *ANCESTOR_COUNT,
                 *REORG_THRESHOLD,
                 is_ingestible,
             );
@@ -582,38 +585,38 @@ fn near_networks_as_chains(
     let chains: Vec<_> = firehose_networks
         .networks
         .iter()
-        .filter_map(|(network_name, firehose_endpoints)| {
+        .filter_map(|(chain_id, endpoints)| {
             store
                 .block_store()
-                .chain_store(network_name)
-                .map(|chain_store| (network_name, chain_store, firehose_endpoints))
+                .chain_store(chain_id)
+                .map(|chain_store| (chain_id, chain_store, endpoints))
                 .or_else(|| {
                     error!(
                         logger,
-                        "No store configured for NEAR chain {}; ignoring this chain", network_name
+                        "No store configured for NEAR chain {}; ignoring this chain", chain_id
                     );
                     None
                 })
         })
-        .map(|(network_name, chain_store, firehose_endpoints)| {
+        .map(|(chain_id, chain_store, endpoints)| {
             (
-                network_name.clone(),
+                chain_id.clone(),
                 FirehoseChain {
                     chain: Arc::new(near::Chain::new(
                         logger_factory.clone(),
-                        network_name.clone(),
+                        chain_id.clone(),
                         chain_store,
-                        firehose_endpoints.clone(),
+                        endpoints.clone(),
                     )),
-                    firehose_endpoints: firehose_endpoints.clone(),
+                    firehose_endpoints: endpoints.clone(),
                 },
             )
         })
         .collect();
 
-    for (network_name, firehose_chain) in chains.iter() {
+    for (chain_id, firehose_chain) in chains.iter() {
         blockchain_map
-            .insert::<graph_chain_near::Chain>(network_name.clone(), firehose_chain.chain.clone())
+            .insert::<graph_chain_near::Chain>(chain_id.clone(), firehose_chain.chain.clone())
     }
 
     HashMap::from_iter(chains)
@@ -621,6 +624,7 @@ fn near_networks_as_chains(
 
 fn start_block_ingestor(
     logger: &Logger,
+    logger_factory: &LoggerFactory,
     block_polling_interval: Duration,
     chains: HashMap<String, Arc<ethereum::Chain>>,
 ) {
@@ -657,8 +661,23 @@ fn start_block_ingestor(
                 "network_name" => &network_name
             );
 
-            let block_ingestor = BlockIngestor::<ethereum::Chain>::new(
-                chain.ingestor_adapter(),
+            let eth_adapter = chain.cheapest_adapter();
+                let logger = logger_factory
+                    .component_logger(
+                        "BlockIngestor",
+                        Some(ComponentLoggerConfig {
+                            elastic: Some(ElasticComponentLoggerConfig {
+                                index: String::from("block-ingestor-logs"),
+                            }),
+                        }),
+                    )
+                    .new(o!("provider" => eth_adapter.provider().to_string()));
+
+            let block_ingestor = EthereumBlockIngestor::new(
+                logger,
+                *ANCESTOR_COUNT,
+                eth_adapter,
+                chain.chain_store(),
                 block_polling_interval,
             )
             .expect("failed to create Ethereum block ingestor");
@@ -671,7 +690,7 @@ fn start_block_ingestor(
 #[derive(Clone)]
 struct FirehoseChain<C: Blockchain> {
     chain: Arc<C>,
-    firehose_endpoints: FirehoseNetworkEndpoints,
+    firehose_endpoints: FirehoseEndpoints,
 }
 
 fn start_firehose_block_ingestor<C, M>(

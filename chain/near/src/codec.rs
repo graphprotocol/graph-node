@@ -43,14 +43,12 @@ impl Block {
         self.header.as_ref().unwrap()
     }
 
+    pub fn ptr(&self) -> BlockPtr {
+        BlockPtr::from(self.header())
+    }
+
     pub fn parent_ptr(&self) -> Option<BlockPtr> {
         self.header().parent_ptr()
-    }
-}
-
-impl From<Block> for BlockPtr {
-    fn from(b: Block) -> BlockPtr {
-        (&b).into()
     }
 }
 

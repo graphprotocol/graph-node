@@ -3,6 +3,7 @@ mod capabilities;
 pub mod codec;
 mod data_source;
 mod ethereum_adapter;
+mod ingestor;
 pub mod runtime;
 mod transport;
 
@@ -26,6 +27,7 @@ pub use crate::adapter::{
 };
 pub use crate::chain::Chain;
 pub use crate::network::EthereumNetworks;
+pub use ingestor::{BlockIngestor, CLEANUP_BLOCKS};
 
 #[cfg(test)]
 mod tests;

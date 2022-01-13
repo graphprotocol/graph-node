@@ -29,7 +29,7 @@ impl ArrayBuffer {
         }
 
         if content.len() > u32::max_value() as usize {
-            return Err(DeterministicHostError(anyhow::anyhow!(
+            return Err(DeterministicHostError::from(anyhow::anyhow!(
                 "slice cannot fit in WASM memory"
             )));
         }
@@ -141,7 +141,7 @@ impl<T: AscValue> TypedArray<T> {
             .data_start
             .checked_sub(self.buffer.wasm_ptr())
             .ok_or_else(|| {
-                DeterministicHostError(anyhow::anyhow!(
+                DeterministicHostError::from(anyhow::anyhow!(
                     "Subtract overflow on pointer: {}",
                     self.data_start
                 ))
@@ -169,7 +169,7 @@ pub struct AscString {
 impl AscString {
     pub fn new(content: &[u16]) -> Result<Self, DeterministicHostError> {
         if size_of_val(content) > u32::max_value() as usize {
-            return Err(DeterministicHostError(anyhow!(
+            return Err(DeterministicHostError::from(anyhow!(
                 "string cannot fit in WASM memory"
             )));
         }
@@ -222,7 +222,7 @@ impl AscType for AscString {
             let code_point_bytes = [
                 pair[0],
                 *pair.get(1).ok_or_else(|| {
-                    DeterministicHostError(anyhow!(
+                    DeterministicHostError::from(anyhow!(
                         "Attempted to read past end of string content bytes chunk"
                     ))
                 })?,
@@ -290,7 +290,7 @@ impl<T: AscValue> Array<T> {
             .buffer_data_start
             .checked_sub(self.buffer.wasm_ptr())
             .ok_or_else(|| {
-                DeterministicHostError(anyhow::anyhow!(
+                DeterministicHostError::from(anyhow::anyhow!(
                     "Subtract overflow on pointer: {}",
                     self.buffer_data_start
                 ))

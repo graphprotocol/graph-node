@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use super::bstream;
 use crate::blockchain::Block as BlockchainBlock;
+use crate::firehose;
 use anyhow::Error;
 
 pub fn decode_firehose_block<M>(
-    block_response: &bstream::BlockResponseV2,
+    block_response: &firehose::Response,
 ) -> Result<Arc<dyn BlockchainBlock>, Error>
 where
     M: prost::Message + BlockchainBlock + Default + 'static,

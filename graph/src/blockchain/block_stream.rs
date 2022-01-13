@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use super::{Block, BlockPtr, Blockchain};
 use crate::components::store::BlockNumber;
-use crate::firehose::bstream;
+use crate::firehose;
 use crate::{prelude::*, prometheus::labels};
 
 pub trait BlockStream<C: Blockchain>:
@@ -82,7 +82,7 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
     async fn to_block_stream_event(
         &self,
         logger: &Logger,
-        response: &bstream::BlockResponseV2,
+        response: &firehose::Response,
         adapter: &C::TriggersAdapter,
         filter: &C::TriggerFilter,
     ) -> Result<BlockStreamEvent<C>, FirehoseError>;

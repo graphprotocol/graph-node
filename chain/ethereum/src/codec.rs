@@ -1,4 +1,4 @@
-#[path = "protobuf/dfuse.ethereum.codec.v1.rs"]
+#[path = "protobuf/sf.ethereum.codec.v1.rs"]
 mod pbcodec;
 
 use graph::{
@@ -134,7 +134,9 @@ impl Into<web3::types::U64> for TransactionTraceStatus {
 impl Into<Option<web3::types::U64>> for TransactionTraceStatus {
     fn into(self) -> Option<web3::types::U64> {
         match self {
-            Self::Unknown => None,
+            Self::Unknown => {
+                panic!("Got a transaction trace with status UNKNOWN, datasource is broken")
+            }
             Self::Succeeded => Some(web3::types::U64::from(1)),
             Self::Failed => Some(web3::types::U64::from(0)),
             Self::Reverted => Some(web3::types::U64::from(0)),
