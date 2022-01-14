@@ -10,12 +10,10 @@ use graph::{
             FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
         },
         firehose_block_stream::FirehoseBlockStream,
-        BlockHash, BlockPtr, Blockchain, BlockchainKind, IngestorAdapter as IngestorAdapterTrait,
-        IngestorError,
+        BlockHash, BlockPtr, Blockchain, BlockchainKind, IngestorError,
     },
     components::store::DeploymentLocator,
-    firehose::{bstream, endpoints::FirehoseNetworkEndpoints},
-    log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
+    firehose::{self, FirehoseEndpoints, ForkStep},
     prelude::{
         async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory, StopwatchMetrics,
     },
@@ -33,7 +31,7 @@ use crate::{codec, TriggerFilter};
 pub struct Chain {
     logger_factory: LoggerFactory,
     name: String,
-    firehose_endpoints: Arc<FirehoseNetworkEndpoints>,
+    firehose_endpoints: Arc<FirehoseEndpoints>,
     chain_store: Arc<dyn ChainStore>,
 }
 
@@ -48,7 +46,7 @@ impl Chain {
         logger_factory: LoggerFactory,
         name: String,
         chain_store: Arc<dyn ChainStore>,
-        firehose_endpoints: FirehoseNetworkEndpoints,
+        firehose_endpoints: FirehoseEndpoints,
     ) -> Self {
         Chain {
             logger_factory,
@@ -82,8 +80,6 @@ impl Blockchain for Chain {
     type TriggerFilter = crate::adapter::TriggerFilter;
 
     type NodeCapabilities = crate::capabilities::NodeCapabilities;
-
-    type IngestorAdapter = IngestorAdapter;
 
     type RuntimeAdapter = RuntimeAdapter;
 
@@ -149,23 +145,6 @@ impl Blockchain for Chain {
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         panic!("Tendermint does not support polling block stream")
-    }
-
-    fn ingestor_adapter(&self) -> Arc<Self::IngestorAdapter> {
-        let logger = self
-            .logger_factory
-            .component_logger(
-                "BlockIngestor",
-                Some(ComponentLoggerConfig {
-                    elastic: Some(ElasticComponentLoggerConfig {
-                        index: String::from("block-ingestor-logs"),
-                    }),
-                }),
-            )
-            .new(o!());
-
-        let adapter = IngestorAdapter { logger };
-        Arc::new(adapter)
     }
 
     fn chain_store(&self) -> Arc<dyn ChainStore> {
@@ -251,11 +230,11 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
     async fn to_block_stream_event(
         &self,
         _logger: &Logger,
-        response: &bstream::BlockResponseV2,
+        response: &firehose::Response,
         _adapter: &TriggersAdapter,
         filter: &TriggerFilter,
     ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
-        let step = bstream::ForkStep::from_i32(response.step).unwrap_or_else(|| {
+        let step = ForkStep::from_i32(response.step).unwrap_or_else(|| {
             panic!(
                 "unknown step i32 value {}, maybe you forgot update & re-regenerate the protobuf definitions?",
                 response.step
@@ -276,12 +255,12 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         let sp = codec::EventList::decode(any_block.value.as_ref())?;
 
         match step {
-            bstream::ForkStep::StepNew => Ok(BlockStreamEvent::ProcessBlock(
+            ForkStep::StepNew => Ok(BlockStreamEvent::ProcessBlock(
                 self.firehose_triggers_in_block(&sp, filter)?,
                 Some(response.cursor.clone()),
             )),
 
-            bstream::ForkStep::StepUndo => {
+            ForkStep::StepUndo => {
                 let piece = sp.newblock.as_ref().unwrap();
                 let block = piece.block.as_ref().unwrap();
                 let header = block.header.as_ref().unwrap();
@@ -297,11 +276,11 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 ))
             }
 
-            bstream::ForkStep::StepIrreversible => {
+            ForkStep::StepIrreversible => {
                 panic!("irreversible step is not handled and should not be requested in the Firehose request")
             }
 
-            bstream::ForkStep::StepUnknown => {
+            ForkStep::StepUnknown => {
                 panic!("unknown step should not happen in the Firehose response")
             }
         }
@@ -336,45 +315,5 @@ impl FirehoseMapper {
 
         // TODO: `block` should probably be an `Arc` in `BlockWithTriggers` to avoid this clone.
         Ok(BlockWithTriggers::new(el.as_ref().clone(), triggers))
-    }
-}
-
-pub struct IngestorAdapter {
-    logger: Logger,
-}
-
-#[async_trait]
-impl IngestorAdapterTrait<Chain> for IngestorAdapter {
-    fn logger(&self) -> &Logger {
-        &self.logger
-    }
-
-    fn ancestor_count(&self) -> BlockNumber {
-        0
-    }
-
-    async fn latest_block(&self) -> Result<BlockPtr, IngestorError> {
-        Ok(BlockPtr {
-            hash: BlockHash::from(vec![0xff; 32]),
-            number: 0,
-        })
-    }
-
-    async fn ingest_block(
-        &self,
-        _block_hash: &BlockHash,
-    ) -> Result<Option<BlockHash>, IngestorError> {
-        // FIXME (NEAR):  Might not be necessary for NEAR support for now
-        Ok(None)
-    }
-
-    fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
-        // FIXME (NEAR):  Might not be necessary for NEAR support for now
-        Ok(None)
-    }
-
-    fn cleanup_cached_blocks(&self) -> Result<Option<(i32, usize)>, Error> {
-        // FIXME (NEAR):  Might not be necessary for NEAR support for now
-        Ok(None)
     }
 }
