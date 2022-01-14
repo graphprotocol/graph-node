@@ -106,7 +106,6 @@ pub async fn run(
         firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
         eth_adapters,
         chain_head_update_listener,
-        *ANCESTOR_COUNT,
         *REORG_THRESHOLD,
         // We assume the tested chain is always ingestible for now
         true,
