@@ -440,7 +440,14 @@ impl Context {
     }
 
     async fn store_builder(self) -> StoreBuilder {
-        StoreBuilder::new(&self.logger, &self.node_id, &self.config, self.registry).await
+        StoreBuilder::new(
+            &self.logger,
+            &self.node_id,
+            &self.config,
+            self.fork_base,
+            self.registry,
+        )
+        .await
     }
 
     fn store_and_pools(self) -> (Arc<Store>, HashMap<Shard, ConnectionPool>) {
