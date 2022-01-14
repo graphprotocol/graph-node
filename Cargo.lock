@@ -1564,6 +1564,7 @@ dependencies = [
  "graph",
  "graph-chain-ethereum",
  "graphql-parser",
+ "graphql-tools",
  "indexmap",
  "lazy_static",
  "once_cell",
@@ -1794,6 +1795,15 @@ checksum = "d2ebc8013b4426d5b81a4364c419a95ed0b404af2b82e2457de52d9348f0e474"
 dependencies = [
  "combine",
  "thiserror",
+]
+
+[[package]]
+name = "graphql-tools"
+version = "0.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f47ccdd42a537f86a915d9ca4c5880005183d6eb544b86d9e924511942a00647"
+dependencies = [
+ "graphql-parser",
 ]
 
 [[package]]
