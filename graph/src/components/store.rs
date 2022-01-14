@@ -1353,7 +1353,10 @@ pub trait ChainStore: Send + Sync + 'static {
     fn chain_backfill_target_block_num(&self) -> Result<Option<BlockNumber>, Error>;
 
     /// Set the backfill target block number in the ethereum_networks table
-    async fn set_chain_backfill_target_block_num(self: Arc<Self>, block_num: BlockNumber) -> Result<(), Error>;
+    async fn set_chain_backfill_target_block_num(
+        self: Arc<Self>,
+        block_num: BlockNumber,
+    ) -> Result<(), Error>;
 
     /// Determine the initial backfill target block number from the raw blocks storage table
     ///

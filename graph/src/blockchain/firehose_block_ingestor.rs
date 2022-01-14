@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, sync::Arc, time::Duration};
+use crate::prelude::BlockNumber;
 use crate::{
     blockchain::Block as BlockchainBlock,
     components::store::ChainStore,
@@ -8,9 +8,9 @@ use crate::{
 };
 use anyhow::{Context, Error};
 use futures03::StreamExt;
-use slog::{trace};
+use slog::trace;
+use std::{marker::PhantomData, sync::Arc, time::Duration};
 use tonic::Streaming;
-use crate::prelude::BlockNumber;
 
 pub struct FirehoseBlockIngestor<M>
 where
@@ -98,20 +98,33 @@ where
             }
 
             let backfill_target_block_number = self.fetch_backfill_target_block_num().await;
-            let result = self.endpoint.clone().stream_blocks(firehose::Request{
-                start_block_num: 0,
-                stop_block_num: backfill_target_block_number as u64,
-                start_cursor: backfill_cursor.clone(),
-                fork_steps: vec![StepIrreversible as i32],
-                ..Default::default()
-            }).await;
+            let result = self
+                .endpoint
+                .clone()
+                .stream_blocks(firehose::Request {
+                    start_block_num: 0,
+                    stop_block_num: backfill_target_block_number as u64,
+                    start_cursor: backfill_cursor.clone(),
+                    fork_steps: vec![StepIrreversible as i32],
+                    ..Default::default()
+                })
+                .await;
 
             match result {
                 Ok(stream) => {
-                    backfill_cursor = self.process_backfill_blocks(backfill_cursor, stream, backfill_target_block_number).await
-                },
+                    backfill_cursor = self
+                        .process_backfill_blocks(
+                            backfill_cursor,
+                            stream,
+                            backfill_target_block_number,
+                        )
+                        .await
+                }
                 Err(e) => {
-                    error!(self.logger, "Unable to connect to backfill endpoint: {:?}", e)
+                    error!(
+                        self.logger,
+                        "Unable to connect to backfill endpoint: {:?}", e
+                    )
                 }
             }
 
@@ -127,18 +140,22 @@ where
             match self.chain_store.clone().chain_backfill_is_completed() {
                 Ok(opt) => {
                     return match opt {
-                        Some(t) => {
-                            t
-                        },
+                        Some(t) => t,
                         None => {
-                            info!(self.logger, "Fetching chain backfill completion returned None. Sleeping.");
+                            info!(
+                                self.logger,
+                                "Fetching chain backfill completion returned None. Sleeping."
+                            );
                             backoff.sleep_async().await;
                             continue;
                         }
                     }
-                },
+                }
                 Err(e) => {
-                    error!(self.logger, "Fetching chain backfill completion failed: {:?}", e);
+                    error!(
+                        self.logger,
+                        "Fetching chain backfill completion failed: {:?}", e
+                    );
 
                     backoff.sleep_async().await;
                 }
@@ -168,7 +185,10 @@ where
             match self.chain_store.clone().chain_backfill_cursor() {
                 Ok(cursor) => return cursor.unwrap_or_else(|| "".to_string()),
                 Err(e) => {
-                    error!(self.logger, "Fetching chain backfill cursor failed: {:?}", e);
+                    error!(
+                        self.logger,
+                        "Fetching chain backfill cursor failed: {:?}", e
+                    );
 
                     backoff.sleep_async().await;
                 }
@@ -189,7 +209,7 @@ where
                                 None => {
                                     info!(self.logger, "Could not yet determine backfill target block number: no blocks set yet for this chain");
                                     backoff.sleep_async().await;
-                                    continue
+                                    continue;
                                 }
                                 Some(block_num) => {
                                     self.set_backfill_target_block_num(block_num).await;
@@ -197,13 +217,14 @@ where
                                 }
                             }
                         }
-                        Some(block_num) => {
-                            block_num.into()
-                        }
-                    }
-                },
+                        Some(block_num) => block_num.into(),
+                    };
+                }
                 Err(e) => {
-                    error!(self.logger, "Fetching chain backfill target failed: {:?}", e);
+                    error!(
+                        self.logger,
+                        "Fetching chain backfill target failed: {:?}", e
+                    );
                     backoff.sleep_async().await;
                 }
             }
@@ -218,12 +239,8 @@ where
             match self.chain_store.chain_initial_backfill_target_block_num() {
                 Ok(opt) => {
                     return match opt {
-                        None => {
-                            None
-                        }
-                        Some(t) => {
-                            Some(t)
-                        },
+                        None => None,
+                        Some(t) => Some(t),
                     }
                 }
                 Err(e) => {
@@ -232,7 +249,6 @@ where
                 }
             }
         }
-
     }
 
     async fn set_backfill_target_block_num(&self, block_num: BlockNumber) {
@@ -240,10 +256,13 @@ where
             ExponentialBackoff::new(Duration::from_millis(250), Duration::from_secs(30));
 
         loop {
-            match self.chain_store.clone().set_chain_backfill_target_block_num(block_num).await {
-                Ok(_) => {
-                    return
-                },
+            match self
+                .chain_store
+                .clone()
+                .set_chain_backfill_target_block_num(block_num)
+                .await
+            {
+                Ok(_) => return,
                 Err(e) => {
                     error!(self.logger, "Setting chain backfill target failed: {:?}", e);
                     backoff.sleep_async().await;
@@ -325,14 +344,17 @@ where
         &self,
         cursor: String,
         mut stream: Streaming<firehose::Response>,
-        backfill_target_block_number: BlockNumber
+        backfill_target_block_number: BlockNumber,
     ) -> String {
         let mut latest_cursor = cursor;
 
         while let Some(message) = stream.next().await {
             match message {
                 Ok(v) => {
-                    if let Err(e) = self.process_backfill_block(&v, backfill_target_block_number).await {
+                    if let Err(e) = self
+                        .process_backfill_block(&v, backfill_target_block_number)
+                        .await
+                    {
                         error!(self.logger, "Process block failed: {:?}", e);
                         break;
                     }
@@ -356,11 +378,19 @@ where
         latest_cursor
     }
 
-    async fn process_backfill_block(&self, response: &firehose::Response, backfill_target_block_number: BlockNumber) -> Result<(), Error> {
+    async fn process_backfill_block(
+        &self,
+        response: &firehose::Response,
+        backfill_target_block_number: BlockNumber,
+    ) -> Result<(), Error> {
         let block = decode_firehose_block::<M>(response)
             .context("Mapping firehose block to blockchain::Block")?;
 
-        trace!(self.logger, "Received block to ingest in backfill {}", block.ptr());
+        trace!(
+            self.logger,
+            "Received block to ingest in backfill {}",
+            block.ptr()
+        );
 
         let block_number = block.number();
 

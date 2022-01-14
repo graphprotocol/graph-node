@@ -1,4 +1,4 @@
-use chrono::prelude::{Utc};
+use chrono::prelude::Utc;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
@@ -645,10 +645,7 @@ mod data {
                     .optional()?,
             };
             number
-                .map(|number| {
-                    BlockNumber::try_from(number)
-                        .map_err(Error::from)
-                })
+                .map(|number| BlockNumber::try_from(number).map_err(Error::from))
                 .transpose()
         }
 
@@ -1518,13 +1515,15 @@ impl ChainStoreTrait for ChainStore {
             .filter(name.eq(&self.chain))
             .load::<Option<i64>>(&*self.get_conn()?)
             .map(|rows| {
-                rows.first().map(|opt| match opt {
-                    Some(t) => {
-                        let bn = BlockNumber::try_from(*t).unwrap();
-                        Some(bn)
-                    },
-                    None => None
-                }).and_then(|opt| opt)
+                rows.first()
+                    .map(|opt| match opt {
+                        Some(t) => {
+                            let bn = BlockNumber::try_from(*t).unwrap();
+                            Some(bn)
+                        }
+                        None => None,
+                    })
+                    .and_then(|opt| opt)
             })
             .map_err(Error::from)
     }
@@ -1537,10 +1536,12 @@ impl ChainStoreTrait for ChainStore {
             .filter(name.eq(&self.chain))
             .load::<Option<bool>>(&*self.get_conn()?)
             .map(|rows| {
-                rows.first().map(|opt| match opt {
-                    Some(t) => Some(*t),
-                    None => None
-                }).and_then(|opt| opt)
+                rows.first()
+                    .map(|opt| match opt {
+                        Some(t) => Some(*t),
+                        None => None,
+                    })
+                    .and_then(|opt| opt)
             })
             .map_err(Error::from)
     }
@@ -1554,13 +1555,17 @@ impl ChainStoreTrait for ChainStore {
         pool.with_conn(move |conn, _| {
             conn.transaction(|| -> Result<(), StoreError> {
                 update(n::table.filter(n::name.eq(&self.chain)))
-                    .set((n::backfill_completed.eq(true), n::backfill_completed_date.eq(now)))
+                    .set((
+                        n::backfill_completed.eq(true),
+                        n::backfill_completed_date.eq(now),
+                    ))
                     .execute(conn)?;
 
                 Ok(())
             })
-                .map_err(CancelableError::from)
-        }).await?;
+            .map_err(CancelableError::from)
+        })
+        .await?;
 
         Ok(())
     }
@@ -1593,13 +1598,17 @@ impl ChainStoreTrait for ChainStore {
 
                 Ok(())
             })
-                .map_err(CancelableError::from)
-        }).await?;
+            .map_err(CancelableError::from)
+        })
+        .await?;
 
         Ok(())
     }
 
-    async fn set_chain_backfill_target_block_num(self: Arc<Self>, block_num: BlockNumber) -> Result<(), Error> {
+    async fn set_chain_backfill_target_block_num(
+        self: Arc<Self>,
+        block_num: BlockNumber,
+    ) -> Result<(), Error> {
         use public::ethereum_networks as n;
 
         let pool = self.pool.clone();
@@ -1612,8 +1621,9 @@ impl ChainStoreTrait for ChainStore {
 
                 Ok(())
             })
-                .map_err(CancelableError::from)
-        }).await?;
+            .map_err(CancelableError::from)
+        })
+        .await?;
 
         Ok(())
     }
