@@ -81,8 +81,8 @@ pub struct CommitSig {
     #[prost(enumeration = "BlockIdFlag", tag = "1")]
     pub block_id_flag: i32,
     /// hash 256 20 bytes - this is the first 20 characters of a 32-byte key - SHA256(pubkey)[:20]
-    #[prost(message, optional, tag = "2")]
-    pub validator_address: ::core::option::Option<Address>,
+    #[prost(bytes = "vec", tag = "2")]
+    pub validator_address: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "3")]
     pub timestamp: ::core::option::Option<Timestamp>,
     /// length should be > 0 and < 64
@@ -137,8 +137,8 @@ pub struct Header {
     #[prost(bytes = "vec", tag = "13")]
     pub evidence_hash: ::prost::alloc::vec::Vec<u8>,
     /// hash 256 20 bytes - this is the first 20 characters of a 32-byte key - SHA256(pubkey)[:20]
-    #[prost(message, optional, tag = "14")]
-    pub proposer_address: ::core::option::Option<Address>,
+    #[prost(bytes = "vec", tag = "14")]
+    pub proposer_address: ::prost::alloc::vec::Vec<u8>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Consensus {
@@ -218,8 +218,8 @@ pub struct EventVote {
     #[prost(message, optional, tag = "5")]
     pub timestamp: ::core::option::Option<Timestamp>,
     /// hash with a length of 20
-    #[prost(message, optional, tag = "6")]
-    pub validator_address: ::core::option::Option<Address>,
+    #[prost(bytes = "vec", tag = "6")]
+    pub validator_address: ::prost::alloc::vec::Vec<u8>,
     #[prost(int32, tag = "7")]
     pub validator_index: i32,
     /// hash length should be >0 and <64
@@ -346,11 +346,6 @@ pub struct EventAttribute {
     #[prost(bool, tag = "3")]
     pub index: bool,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Address {
-    #[prost(bytes = "vec", tag = "1")]
-    pub address: ::prost::alloc::vec::Vec<u8>,
-}
 /// EventValidatorSetUpdates
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventValidatorSetUpdates {
@@ -366,6 +361,20 @@ pub struct Timestamp {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Fig {}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Reward {
+    #[prost(string, tag = "1")]
+    pub amount: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub validator: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EventData {
+    #[prost(message, optional, tag = "1")]
+    pub event: ::core::option::Option<Event>,
+    #[prost(message, optional, tag = "2")]
+    pub block: ::core::option::Option<EventList>,
+}
 /// used in Vote
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -375,7 +384,7 @@ pub enum SignedMsgType {
     Prevote = 1,
     Precommit = 2,
     /// Proposals
-    Proposal = 3,
+    Proposal = 32,
 }
 /// BlockIdFlag indicates which BlockID the signature is for
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]

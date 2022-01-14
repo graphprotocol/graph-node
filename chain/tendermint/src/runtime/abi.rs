@@ -89,7 +89,7 @@ impl ToAscObj<AscHeader> for codec::Header {
             app_hash: asc_new(heap, &Bytes(&self.app_hash))?,
             last_results_hash: asc_new(heap, &Bytes(&self.last_results_hash))?,
             evidence_hash: asc_new(heap, &Bytes(&self.evidence_hash))?,
-            proposer_address: asc_new_or_null(heap, &self.proposer_address)?,
+            proposer_address: asc_new(heap, &Bytes(&self.proposer_address))?,
             _padding: 0,
         })
     }
@@ -301,7 +301,7 @@ impl ToAscObj<AscCommitSig> for codec::CommitSig {
     ) -> Result<AscCommitSig, DeterministicHostError> {
         Ok(AscCommitSig {
             block_id_flag: asc_new(heap, &BlockIDKind(self.block_id_flag))?,
-            validator_address: asc_new_or_null(heap, &self.validator_address)?,
+            validator_address: asc_new(heap, &Bytes(&self.validator_address))?,
             timestamp: asc_new_or_missing(heap, &self.timestamp, "CommitSig", "timestamp")?,
             signature: asc_new(heap, &Bytes(&self.signature))?,
         })
@@ -505,7 +505,7 @@ impl ToAscObj<AscEventVote> for codec::EventVote {
             round: self.round,
             block_id: asc_new_or_missing(heap, &self.block_id, "EventVote", "block_id")?,
             timestamp: asc_new_or_missing(heap, &self.timestamp, "EventVote", "timestamp")?,
-            validator_address: asc_new_or_null(heap, &self.validator_address)?,
+            validator_address: asc_new(heap, &Bytes(&self.validator_address))?,
             validator_index: self.validator_index,
             signature: asc_new(heap, &Bytes(&self.signature))?,
         })
@@ -578,16 +578,6 @@ impl ToAscObj<AscResponseDeliverTx> for codec::ResponseDeliverTx {
     }
 }
 
-impl ToAscObj<AscAddress> for codec::Address {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscAddress, DeterministicHostError> {
-        Ok(AscAddress {
-            address: asc_new(heap, &Bytes(&self.address))?,
-        })
-    }
-}
 impl ToAscObj<AscEventValidatorSetUpdates> for codec::EventValidatorSetUpdates {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,

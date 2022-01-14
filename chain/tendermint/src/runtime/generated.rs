@@ -296,7 +296,7 @@ impl AscIndexId for AscCommit {
 #[derive(AscType)]
 pub(crate) struct AscCommitSig {
     pub block_id_flag: AscPtr<AscBlockIDFlagEnum>,
-    pub validator_address: AscPtr<AscAddress>,
+    pub validator_address: AscPtr<AscHash>,
     pub timestamp: AscPtr<AscTimestamp>,
     pub signature: AscPtr<Uint8Array>,
 }
@@ -336,7 +336,7 @@ pub(crate) struct AscHeader {
     pub app_hash: AscPtr<AscHash>,
     pub last_results_hash: AscPtr<AscHash>,
     pub evidence_hash: AscPtr<AscHash>,
-    pub proposer_address: AscPtr<AscAddress>,
+    pub proposer_address: AscPtr<AscHash>,
     pub _padding: u32
 }
 
@@ -438,7 +438,7 @@ pub(crate) struct AscEventVote {
     pub round: i32,
     pub block_id: AscPtr<AscBlockID>,
     pub timestamp: AscPtr<AscTimestamp>,
-    pub validator_address: AscPtr<AscAddress>,
+    pub validator_address: AscPtr<AscHash>,
     pub validator_index: i32,
     pub signature: AscPtr<Uint8Array>,
 }
@@ -595,17 +595,6 @@ pub(crate) struct AscEventAttribute {
 
 impl AscIndexId for AscEventAttribute {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventAttribute;
-}
-
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscAddress {
-    pub address: AscPtr<Uint8Array>,
-}
-
-impl AscIndexId for AscAddress {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintAddress;
 }
 
 
