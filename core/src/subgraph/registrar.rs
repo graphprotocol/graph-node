@@ -409,7 +409,7 @@ async fn start_subgraph(
     trace!(logger, "Start subgraph");
 
     let start_time = Instant::now();
-    let result = provider.start(deployment.clone()).await;
+    let result = provider.start(deployment.clone(), None).await;
 
     debug!(
         logger,
