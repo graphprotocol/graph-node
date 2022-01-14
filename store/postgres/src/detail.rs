@@ -1,3 +1,6 @@
+// For git_testament_macros
+#![allow(unused_macros)]
+
 //! Queries to support the index node API
 use crate::primary::Site;
 use crate::{
