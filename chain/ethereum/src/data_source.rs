@@ -2,6 +2,7 @@ use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
 use graph::blockchain::TriggerWithHandler;
 use graph::components::store::StoredDynamicDataSource;
+use graph::prelude::ethabi::ethereum_types::H160;
 use graph::prelude::ethabi::StateMutability;
 use graph::prelude::futures03::future::try_join;
 use graph::prelude::futures03::stream::FuturesOrdered;
@@ -553,6 +554,7 @@ impl DataSource {
                         block_hash: block.hash,
                         block_number: block.number,
                         transaction_index: log.transaction_index,
+                        from: Some(H160::zero()),
                         ..Transaction::default()
                     }
                 };

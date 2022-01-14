@@ -70,7 +70,7 @@ enum LogFilterNode {
 }
 
 /// Corresponds to an `eth_getLogs` call.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct EthGetLogsFilter {
     pub contracts: Vec<Address>,
     pub event_signatures: Vec<EventSignature>,
