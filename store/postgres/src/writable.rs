@@ -3,7 +3,7 @@ use std::time::Duration;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::data::subgraph::schema;
-use graph::prelude::{Entity, Schema, SubgraphStore as _};
+use graph::prelude::{BlockNumber, Entity, Schema, SubgraphStore as _, BLOCK_NUMBER_MAX};
 use graph::{
     cheap_clone::CheapClone,
     components::store::{self, EntityType, WritableStore as WritableStoreTrait},
@@ -226,7 +226,10 @@ impl SyncStore {
     }
 
     fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
-        self.retry("get", || self.writable.get(self.site.cheap_clone(), key))
+        self.retry("get", || {
+            self.writable
+                .get(self.site.cheap_clone(), key, BLOCK_NUMBER_MAX)
+        })
     }
 
     fn transact_block_operations(
@@ -269,7 +272,7 @@ impl SyncStore {
     ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
         self.retry("get_many", || {
             self.writable
-                .get_many(self.site.cheap_clone(), &ids_for_type)
+                .get_many(self.site.cheap_clone(), &ids_for_type, BLOCK_NUMBER_MAX)
         })
     }
 
@@ -292,10 +295,13 @@ impl SyncStore {
         })
     }
 
-    async fn load_dynamic_data_sources(&self) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
+    async fn load_dynamic_data_sources(
+        &self,
+        block: BlockNumber,
+    ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         self.retry_async("load_dynamic_data_sources", || async {
             self.writable
-                .load_dynamic_data_sources(self.site.deployment.clone())
+                .load_dynamic_data_sources(self.site.deployment.clone(), block)
                 .await
         })
         .await
@@ -484,7 +490,7 @@ impl WritableStoreTrait for WritableStore {
 
     async fn load_dynamic_data_sources(&self) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         // TODO: Combine in-memory and stored data sources
-        self.store.load_dynamic_data_sources().await
+        self.store.load_dynamic_data_sources(BLOCK_NUMBER_MAX).await
     }
 
     fn shard(&self) -> &str {
