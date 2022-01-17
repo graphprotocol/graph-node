@@ -543,7 +543,7 @@ where
         let metrics = ctx.block_stream_metrics.clone();
         let filter = ctx.state.filter.clone();
         let stream_inputs = inputs.clone();
-        let mut block_stream = new_block_stream(stream_inputs, filter, metrics)
+        let mut block_stream = new_block_stream(stream_inputs, filter, metrics.cheap_clone())
             .await?
             .map_err(CancelableError::Error)
             .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
@@ -560,7 +560,13 @@ where
 
         // Process events from the stream as long as no restart is needed
         loop {
-            let (block, cursor) = match block_stream.next().await {
+            let event = {
+                let _section = metrics.stopwatch.start_section("scan_blocks");
+
+                block_stream.next().await
+            };
+
+            let (block, cursor) = match event {
                 Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => (block, cursor),
                 Some(Ok(BlockStreamEvent::Revert(subgraph_ptr, _, optional_parent_ptr))) => {
                     info!(
