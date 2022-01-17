@@ -388,7 +388,6 @@ where
             };
             let to = cmp::min(from + range_size - 1, to_limit);
 
-            let section = ctx.metrics.stopwatch.start_section("scan_blocks");
             info!(
                 ctx.logger,
                 "Scanning blocks [{}, {}]", from, to;
@@ -397,7 +396,6 @@ where
 
             let blocks = self.adapter.scan_triggers(from, to, &self.filter).await?;
 
-            section.end();
             Ok(ReconciliationStep::ProcessDescendantBlocks(
                 blocks, range_size,
             ))

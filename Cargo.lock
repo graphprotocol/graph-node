@@ -1528,6 +1528,7 @@ name = "graph-core"
 version = "0.25.0"
 dependencies = [
  "anyhow",
+ "async-stream",
  "async-trait",
  "atomic_refcell",
  "bytes 0.5.6",

@@ -143,7 +143,7 @@ impl Canceler for CancelHandle {
 /// an `Arc`.
 ///
 /// To cancel guarded streams or futures, call `cancel` or drop the guard.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SharedCancelGuard {
     guard: Mutex<Option<CancelGuard>>,
 }
@@ -169,6 +169,14 @@ impl SharedCancelGuard {
         } else {
             // A handle that is always canceled.
             CancelHandle { guard: Weak::new() }
+        }
+    }
+}
+
+impl Default for SharedCancelGuard {
+    fn default() -> Self {
+        Self {
+            guard: Mutex::new(Some(CancelGuard::new())),
         }
     }
 }
