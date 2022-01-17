@@ -58,6 +58,11 @@ lazy_static! {
         .unwrap_or("100".into())
         .parse::<u64>()
         .expect("invalid GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE");
+
+    /// Controls if firehose should be preferred over RPC if Firehose endpoints are present, if not set, the default behavior is
+    /// is kept which is to automatically favor Firehose.
+    static ref IS_FIREHOSE_PREFERRED: Option<bool> = std::env::var("GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED")
+        .map_or_else(|_| None, |input| Some(input.parse::<bool>().expect("invalid GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED")));
 }
 
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
@@ -319,7 +324,10 @@ impl Blockchain for Chain {
     }
 
     fn is_firehose_supported(&self) -> bool {
-        self.firehose_endpoints.len() > 0
+        match *IS_FIREHOSE_PREFERRED {
+            Some(is_preferred) => is_preferred && self.firehose_endpoints.len() > 0,
+            None => self.firehose_endpoints.len() > 0,
+        }
     }
 }
 
