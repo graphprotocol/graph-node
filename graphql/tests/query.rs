@@ -3,7 +3,6 @@ extern crate pretty_assertions;
 
 use graph::data::value::Object;
 use graphql_parser::Pos;
-use std::convert::TryFrom;
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -1286,17 +1285,22 @@ fn cannot_filter_by_derved_relationship_fields() {
         .await;
 
         match &result.to_result().unwrap_err()[0] {
-            QueryError::ExecutionError(QueryExecutionError::InvalidArgumentError(_, s, v)) => {
-                assert_eq!(s, "where");
+            // With validations
+            QueryError::ExecutionError(QueryExecutionError::ValidationError(_, error_message)) => {
                 assert_eq!(
-                    r::Value::try_from(v.clone()).unwrap(),
-                    object_value(vec![(
-                        "writtenSongs",
-                        r::Value::List(vec![r::Value::String(String::from("s1"))])
-                    )]),
+                    error_message,
+                    "Field \"writtenSongs\" is not defined by type \"Musician_filter\"."
                 );
             }
-            e => panic!("expected ResolveEntitiesError, got {}", e),
+            // Without validations
+            QueryError::ExecutionError(QueryExecutionError::InvalidArgumentError(
+                _pos,
+                error_message,
+                _value,
+            )) => {
+                assert_eq!(error_message, "where");
+            }
+            e => panic!("expected a runtime/validation error, got {:?}", e),
         };
     })
 }
@@ -1437,16 +1441,31 @@ fn ignores_invalid_field_arguments() {
         )
         .await;
 
-        let data = extract_data!(result).unwrap();
-        match data {
-            r::Value::Object(obj) => match obj.get("musicians").unwrap() {
+        match &result.to_result() {
+            // Without validations
+            Ok(Some(r::Value::Object(obj))) => match obj.get("musicians").unwrap() {
                 r::Value::List(lst) => {
                     assert_eq!(4, lst.len());
                 }
                 _ => panic!("expected a list of values"),
             },
-            _ => {
-                panic!("expected an object")
+            // With validations
+            Err(e) => {
+                match e.get(0).unwrap() {
+                    QueryError::ExecutionError(QueryExecutionError::ValidationError(
+                        _pos,
+                        message,
+                    )) => {
+                        assert_eq!(
+                            message,
+                            "Unknown argument \"id\" on field \"Query.musicians\"."
+                        );
+                    }
+                    r => panic!("unexpexted query error: {:?}", r),
+                };
+            }
+            r => {
+                panic!("unexpexted result: {:?}", r);
             }
         }
     })
@@ -1465,14 +1484,44 @@ fn leaf_selection_mismatch() {
                 .into_static(),
         )
         .await;
+
         let exp = object! {
             musician: object! {
                 id: "m1",
                 name: "John"
             }
         };
-        let data = extract_data!(result).unwrap();
-        assert_eq!(exp, data);
+
+        match &result.to_result() {
+            // Without validations
+            Ok(Some(data)) => {
+                assert_eq!(exp, *data);
+            }
+            // With validations
+            Err(e) => {
+                match e.get(0).unwrap() {
+                    QueryError::ExecutionError(QueryExecutionError::ValidationError(
+                        _pos,
+                        message,
+                    )) => {
+                        assert_eq!(message, "Field \"name\" must not have a selection since type \"String!\" has no subfields.");
+                    }
+                    r => panic!("unexpexted query error: {:?}", r),
+                };
+                match e.get(1).unwrap() {
+                    QueryError::ExecutionError(QueryExecutionError::ValidationError(
+                        _pos,
+                        message,
+                    )) => {
+                        assert_eq!(message, "Cannot query field \"wat\" on type \"String\".");
+                    }
+                    r => panic!("unexpexted query error: {:?}", r),
+                }
+            }
+            r => {
+                panic!("unexpexted result: {:?}", r);
+            }
+        }
 
         let result = execute_query_document(
             &deployment.hash,
@@ -1482,8 +1531,28 @@ fn leaf_selection_mismatch() {
                 .into_static(),
         )
         .await;
-        let data = extract_data!(result).unwrap();
-        assert_eq!(exp, data);
+
+        match &result.to_result() {
+            // Without validations
+            Ok(Some(data)) => {
+                assert_eq!(exp, *data);
+            }
+            // With validations
+            Err(e) => {
+                match e.get(0).unwrap() {
+                    QueryError::ExecutionError(QueryExecutionError::ValidationError(
+                        _pos,
+                        message,
+                    )) => {
+                        assert_eq!(message, "Field \"mainBand\" of type \"Band\" must have a selection of subfields. Did you mean \"mainBand { ... }\"?");
+                    }
+                    r => panic!("unexpexted query error: {:?}", r),
+                };
+            }
+            r => {
+                panic!("unexpexted result: {:?}", r);
+            }
+        }
     })
 }
 
@@ -1495,13 +1564,12 @@ fn missing_variable() {
         let result = execute_query_document(
             &deployment.hash,
             // '$first' is not defined, use its default from the schema
-            graphql_parser::parse_query("query { musicians(first: $first, skip: $skip) { id } }")
+            graphql_parser::parse_query("query { musicians(first: $first) { id } }")
                 .expect("invalid test query")
                 .into_static(),
         )
         .await;
-        // We silently set `$first` to 100 and `$skip` to 0, and therefore
-        // get everything
+
         let exp = object! {
             musicians: vec![
                 object! { id: "m1" },
@@ -1510,8 +1578,23 @@ fn missing_variable() {
                 object! { id: "m4" },
             ]
         };
-        let data = extract_data!(result).unwrap();
-        assert_eq!(exp, data);
+
+        match &result.to_result() {
+            // We silently set `$first` to 100 and `$skip` to 0, and therefore
+            Ok(Some(data)) => {
+                assert_eq!(exp, *data);
+            }
+            // With GraphQL validations active, this query fails
+            Err(e) => match e.get(0).unwrap() {
+                QueryError::ExecutionError(QueryExecutionError::ValidationError(_pos, message)) => {
+                    assert_eq!(message, "Variable \"$first\" is not defined.");
+                }
+                r => panic!("unexpexted query error: {:?}", r),
+            },
+            r => {
+                panic!("unexpexted result: {:?}", r);
+            }
+        }
 
         let result = execute_query_document(
             &deployment.hash,
@@ -1521,8 +1604,23 @@ fn missing_variable() {
                 .into_static(),
         )
         .await;
-        let data = extract_data!(result).unwrap();
-        assert_eq!(exp, data);
+
+        match &result.to_result() {
+            // '$where' is not defined but nullable, ignore the argument
+            Ok(Some(data)) => {
+                assert_eq!(exp, *data);
+            }
+            // With GraphQL validations active, this query fails
+            Err(e) => match e.get(0).unwrap() {
+                QueryError::ExecutionError(QueryExecutionError::ValidationError(_pos, message)) => {
+                    assert_eq!(message, "Variable \"$where\" is not defined.");
+                }
+                r => panic!("unexpexted query error: {:?}", r),
+            },
+            r => {
+                panic!("unexpexted result: {:?}", r);
+            }
+        }
     })
 }
 
@@ -1714,7 +1812,7 @@ fn query_at_block_with_vars() {
             qid: &str,
         ) {
             let query =
-                "query by_hash($block: String!) { musicians(block: { hash: $block }) { id } }";
+                "query by_hash($block: Bytes!) { musicians(block: { hash: $block }) { id } }";
             let var = Some(("block", r::Value::String(block.hash.to_owned())));
 
             check_musicians_at(&deployment.hash, query, var, expected, qid).await;

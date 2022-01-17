@@ -1,3 +1,6 @@
+directive @skip(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+directive @include(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+
 # The type names are purposely awkward to minimize the risk of them
 # colliding with user-supplied types
 "The type for the top-level _meta field"
