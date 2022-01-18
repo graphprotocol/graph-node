@@ -47,14 +47,6 @@ lazy_static! {
             .parse::<u64>()
             .map(Duration::from_secs)
             .expect("invalid GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS");
-
-    /// Threshold for when the sync status update of subgraphs will happen, in milliseconds.
-    pub static ref SYNC_STATUS_THRESHOLD: Duration =
-        std::env::var("GRAPH_SUBGRAPH_SYNC_STATUS_UPDATE_THRESHOLD_MILLIS")
-            .unwrap_or((MINUTE * 3).as_millis().to_string())
-            .parse::<u64>()
-            .map(Duration::from_millis)
-            .expect("invalid GRAPH_SUBGRAPH_SYNC_STATUS_UPDATE_THRESHOLD_MILLIS");
 }
 
 type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<DeploymentId, CancelGuard>>>;
