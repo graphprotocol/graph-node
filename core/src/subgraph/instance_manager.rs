@@ -714,7 +714,7 @@ where
                         synced,
                         // This is the new deployment head since the block just has been processed.
                         &block_ptr,
-                        || chain_store.chain_head_ptr(),
+                        || chain_store.cached_head_ptr(),
                     )? {
                         // Updating the sync status is an one way operation.
                         // This state change exists: not synced -> synced
