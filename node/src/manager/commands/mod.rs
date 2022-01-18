@@ -1,3 +1,4 @@
+pub mod analyze;
 pub mod assign;
 pub mod chain;
 pub mod config;
