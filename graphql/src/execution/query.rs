@@ -24,11 +24,7 @@ use crate::{execution::get_field, schema::api::ErrorPolicy};
 
 lazy_static! {
     static ref GRAPHQL_VALIDATION_PLAN: ValidationPlan = ValidationPlan::from(
-        if std::env::var("DISABLE_GRAPHQL_VALIDATIONS")
-            .unwrap_or_else(|_| "false".into())
-            .parse::<bool>()
-            .unwrap_or_else(|_| false)
-        {
+        if std::env::var("ENABLE_GRAPHQL_VALIDATIONS").ok().is_none() {
             vec![]
         } else {
             vec![
