@@ -2,7 +2,7 @@ use anyhow::{Context, Error};
 use graph::blockchain::BlockchainKind;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::env::env_var;
-use graph::firehose::{FirehoseEndpoints, ForkStep};
+use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, ForkStep};
 use graph::prelude::{
     EthereumBlock, EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, StopwatchMetrics,
 };
@@ -187,6 +187,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         block_cursor: Option<String>,
         start_blocks: Vec<BlockNumber>,
+        subgraph_start_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -214,10 +215,13 @@ impl Blockchain for Chain {
             .subgraph_logger(&deployment)
             .new(o!("component" => "FirehoseBlockStream"));
 
-        let firehose_mapper = Arc::new(FirehoseMapper {});
+        let firehose_mapper = Arc::new(FirehoseMapper {
+            endpoint: firehose_endpoint.cheap_clone(),
+        });
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,
+            subgraph_start_block,
             block_cursor,
             firehose_mapper,
             adapter,
@@ -519,7 +523,9 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     }
 }
 
-pub struct FirehoseMapper {}
+pub struct FirehoseMapper {
+    endpoint: Arc<FirehoseEndpoint>,
+}
 
 #[async_trait]
 impl FirehoseMapperTrait<Chain> for FirehoseMapper {
@@ -584,5 +590,23 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 unreachable!("unknown step should not happen in the Firehose response")
             }
         }
+    }
+
+    async fn final_block_ptr_for(
+        &self,
+        logger: &Logger,
+        block: &BlockFinality,
+    ) -> Result<BlockPtr, Error> {
+        // Firehose for Ethereum has an hard-coded confirmations for finality sets to 200 block
+        // behind the current block. The magic value 200 here comes from this hard-coded Firehose
+        // value.
+        let final_block_number = match block.number() {
+            x if x >= 200 => x - 200,
+            _ => 0,
+        };
+
+        self.endpoint
+            .block_ptr_for_number::<codec::HeaderOnlyBlock>(logger, final_block_number)
+            .await
     }
 }

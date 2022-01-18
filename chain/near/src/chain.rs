@@ -1,8 +1,8 @@
 use graph::blockchain::BlockchainKind;
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::firehose::FirehoseEndpoints;
-use graph::prelude::StopwatchMetrics;
+use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
+use graph::prelude::{StopwatchMetrics, TryFutureExt};
 use graph::{
     anyhow,
     blockchain::{
@@ -102,6 +102,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         block_cursor: Option<String>,
         start_blocks: Vec<BlockNumber>,
+        subgraph_start_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -117,7 +118,7 @@ impl Blockchain for Chain {
 
         let firehose_endpoint = match self.firehose_endpoints.random() {
             Some(e) => e.clone(),
-            None => return Err(anyhow::format_err!("no firehose endpoint available",)),
+            None => return Err(anyhow::format_err!("no firehose endpoint available")),
         };
 
         let logger = self
@@ -125,10 +126,13 @@ impl Blockchain for Chain {
             .subgraph_logger(&deployment)
             .new(o!("component" => "FirehoseBlockStream"));
 
-        let firehose_mapper = Arc::new(FirehoseMapper {});
+        let firehose_mapper = Arc::new(FirehoseMapper {
+            endpoint: firehose_endpoint.cheap_clone(),
+        });
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,
+            subgraph_start_block,
             block_cursor,
             firehose_mapper,
             adapter,
@@ -156,14 +160,18 @@ impl Blockchain for Chain {
 
     async fn block_pointer_from_number(
         &self,
-        _logger: &Logger,
-        _number: BlockNumber,
+        logger: &Logger,
+        number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
-        // FIXME (NEAR): Hmmm, what to do with this?
-        Ok(BlockPtr {
-            hash: BlockHash::from(vec![0xff; 32]),
-            number: 0,
-        })
+        let firehose_endpoint = match self.firehose_endpoints.random() {
+            Some(e) => e.clone(),
+            None => return Err(anyhow::format_err!("no firehose endpoint available").into()),
+        };
+
+        firehose_endpoint
+            .block_ptr_for_number::<codec::HeaderOnlyBlock>(logger, number)
+            .map_err(Into::into)
+            .await
     }
 
     fn runtime_adapter(&self) -> Arc<Self::RuntimeAdapter> {
@@ -261,7 +269,9 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     }
 }
 
-pub struct FirehoseMapper {}
+pub struct FirehoseMapper {
+    endpoint: Arc<FirehoseEndpoint>,
+}
 
 #[async_trait]
 impl FirehoseMapperTrait<Chain> for FirehoseMapper {
@@ -321,5 +331,17 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 panic!("unknown step should not happen in the Firehose response")
             }
         }
+    }
+
+    async fn final_block_ptr_for(
+        &self,
+        logger: &Logger,
+        block: &codec::Block,
+    ) -> Result<BlockPtr, Error> {
+        let final_block_number = block.header().last_final_block_height as BlockNumber;
+
+        self.endpoint
+            .block_ptr_for_number::<codec::HeaderOnlyBlock>(logger, final_block_number)
+            .await
     }
 }
