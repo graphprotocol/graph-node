@@ -16,7 +16,7 @@ use graph::{
     components::{
         server::index_node::VersionInfo,
         store::{
-            self, DeploymentLocator, EnsLookup as EnsLookupTrait,
+            self, DeploymentLocator, EnsLookup as EnsLookupTrait, EntityType,
             WritableStore as WritableStoreTrait,
         },
     },
