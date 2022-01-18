@@ -62,7 +62,8 @@ lazy_static! {
     /// Controls if firehose should be preferred over RPC if Firehose endpoints are present, if not set, the default behavior is
     /// is kept which is to automatically favor Firehose.
     static ref IS_FIREHOSE_PREFERRED: Option<bool> = std::env::var("GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED")
-        .map_or_else(|_| None, |input| Some(input.parse::<bool>().expect("invalid GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED")));
+        .ok()
+        .map(|input| input.parse::<bool>().expect("invalid GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED"));
 }
 
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
