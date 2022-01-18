@@ -674,6 +674,25 @@ impl DeploymentStore {
         })
         .await
     }
+
+    /// Runs the SQL `ANALYZE` command in a table.
+    pub(crate) async fn analyze(
+        &self,
+        site: Arc<Site>,
+        entity_name: String,
+    ) -> Result<(), StoreError> {
+        let entity = EntityType::new(entity_name);
+        let store = self.clone();
+        self.with_conn(move |conn, _| {
+            let layout = store.layout(conn, site)?;
+            let table = layout.table_for_entity(&entity)?;
+            let table_name = &table.qualified_name;
+            let sql = format!("analyze {table_name}");
+            conn.execute(&sql)?;
+            Ok(())
+        })
+        .await
+    }
 }
 
 /// Methods that back the trait `graph::components::Store`, but have small
