@@ -1,3 +1,4 @@
+use graph::data::graphql::DocumentExt as _;
 use graph::data::value::Object;
 use graphql_parser::Pos;
 use graphql_tools::validation::rules::*;
@@ -18,7 +19,7 @@ use graph::prelude::{info, o, q, r, s, BlockNumber, CheapClone, Logger, TryFromV
 
 use crate::execution::ast as a;
 use crate::query::{ast as qast, ext::BlockConstraint};
-use crate::schema::ast as sast;
+use crate::schema::ast::{self as sast};
 use crate::values::coercion;
 use crate::{execution::get_field, schema::api::ErrorPolicy};
 
@@ -861,6 +862,26 @@ impl Transform {
             selection_set,
         } = field;
 
+        // Short-circuit '__typename' since it is not a real field
+        if name == "__typename" {
+            return Ok(Some(a::Field {
+                position,
+                alias,
+                name,
+                arguments: vec![],
+                directives: vec![],
+                selection_set: a::SelectionSet::new(vec![]),
+            }));
+        }
+
+        let field_type = parent_type.field(&name).ok_or_else(|| {
+            vec![QueryExecutionError::UnknownField(
+                position,
+                parent_type.name().to_string(),
+                name.clone(),
+            )]
+        })?;
+
         let (directives, skip) = self.interpolate_directives(directives)?;
         if skip {
             return Ok(None);
@@ -868,14 +889,26 @@ impl Transform {
 
         let mut arguments = self.interpolate_arguments(arguments, &position)?;
         self.coerce_argument_values(&mut arguments, parent_type, &name)?;
+
+        let is_leaf_type = self.schema.document().is_leaf_type(&field_type.field_type);
         let selection_set = if selection_set.items.is_empty() {
+            if !is_leaf_type {
+                // see: graphql-bug-compat
+                // Field requires selection, ignore this field
+                return Ok(None);
+            }
             a::SelectionSet::new(vec![])
         } else {
-            let field_type = parent_type.field(&name).expect("field names are valid");
-            let ty = field_type.field_type.get_base_type();
-            let type_set = a::ObjectTypeSet::from_name(&self.schema, ty)?;
-            let ty = self.schema.object_or_interface(ty).unwrap();
-            self.expand_selection_set(selection_set, &type_set, ty)?
+            if is_leaf_type {
+                // see: graphql-bug-compat
+                // Field does not allow selections, ignore selections
+                a::SelectionSet::new(vec![])
+            } else {
+                let ty = field_type.field_type.get_base_type();
+                let type_set = a::ObjectTypeSet::from_name(&self.schema, ty)?;
+                let ty = self.schema.object_or_interface(ty).unwrap();
+                self.expand_selection_set(selection_set, &type_set, ty)?
+            }
         };
 
         Ok(Some(a::Field {

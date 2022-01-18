@@ -1452,6 +1452,41 @@ fn ignores_invalid_field_arguments() {
     })
 }
 
+// see: graphql-bug-compat
+#[test]
+fn leaf_selection_mismatch() {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
+        let result = execute_query_document(
+            &deployment.hash,
+            // 'name' is a string and doesn't admit a selection
+            graphql_parser::parse_query("query { musician(id: \"m1\") { id name { wat }} } ")
+                .expect("invalid test query")
+                .into_static(),
+        )
+        .await;
+        let exp = object! {
+            musician: object! {
+                id: "m1",
+                name: "John"
+            }
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(exp, data);
+
+        let result = execute_query_document(
+            &deployment.hash,
+            // 'mainBand' is an object and requires a selection; it is ignored
+            graphql_parser::parse_query("query { musician(id: \"m1\") { id name mainBand } } ")
+                .expect("invalid test query")
+                .into_static(),
+        )
+        .await;
+        let data = extract_data!(result).unwrap();
+        assert_eq!(exp, data);
+    })
+}
+
 async fn check_musicians_at(
     id: &DeploymentHash,
     query: &str,
