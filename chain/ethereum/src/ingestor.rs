@@ -118,8 +118,7 @@ impl BlockIngestor {
             None => {
                 info!(
                     self.logger,
-                    "Downloading latest blocks from Ethereum. \
-                                    This may take a few minutes..."
+                    "Downloading latest blocks from Ethereum, this may take a few minutes..."
                 );
             }
             Some(head_block_ptr) => {
@@ -135,7 +134,7 @@ impl BlockIngestor {
                 if distance > 0 {
                     info!(
                         self.logger,
-                        "Syncing {} blocks from Ethereum.",
+                        "Syncing {} blocks from Ethereum",
                         blocks_needed;
                         "current_block_head" => head_number,
                         "latest_block_head" => latest_number,

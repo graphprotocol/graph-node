@@ -54,6 +54,10 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
+    fn delete_block_cursor(&self) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
     fn start_subgraph_deployment(&self, _: &Logger) -> Result<(), StoreError> {
         unimplemented!()
     }

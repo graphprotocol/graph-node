@@ -147,6 +147,10 @@ impl WritableStore {
         self.writable.block_cursor(self.site.as_ref())
     }
 
+    fn delete_block_cursor(&self) -> Result<(), StoreError> {
+        self.writable.delete_block_cursor(self.site.as_ref())
+    }
+
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
         self.retry("start_subgraph_deployment", || {
             let store = &self.writable;
@@ -364,6 +368,12 @@ impl WritableStoreTrait for WritableAgent {
 
     fn block_cursor(&self) -> Option<String> {
         self.block_cursor.lock().unwrap().clone()
+    }
+
+    fn delete_block_cursor(&self) -> Result<(), StoreError> {
+        self.store.delete_block_cursor()?;
+        *self.block_cursor.lock().unwrap() = None;
+        Ok(())
     }
 
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {

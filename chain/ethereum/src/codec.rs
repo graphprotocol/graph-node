@@ -302,9 +302,21 @@ impl Into<EthereumBlockWithCalls> for &Block {
     }
 }
 
-impl From<Block> for BlockPtr {
-    fn from(b: Block) -> BlockPtr {
-        (&b).into()
+impl BlockHeader {
+    pub fn parent_ptr(&self) -> Option<BlockPtr> {
+        match self.parent_hash.len() {
+            0 => None,
+            _ => Some(BlockPtr::from((
+                H256::from_slice(self.parent_hash.as_ref()),
+                self.number - 1,
+            ))),
+        }
+    }
+}
+
+impl<'a> From<&'a BlockHeader> for BlockPtr {
+    fn from(b: &'a BlockHeader) -> BlockPtr {
+        BlockPtr::from((H256::from_slice(b.hash.as_ref()), b.number))
     }
 }
 
@@ -314,9 +326,23 @@ impl<'a> From<&'a Block> for BlockPtr {
     }
 }
 
+impl Block {
+    pub fn header(&self) -> &BlockHeader {
+        self.header.as_ref().unwrap()
+    }
+
+    pub fn ptr(&self) -> BlockPtr {
+        BlockPtr::from(self.header())
+    }
+
+    pub fn parent_ptr(&self) -> Option<BlockPtr> {
+        self.header().parent_ptr()
+    }
+}
+
 impl BlockchainBlock for Block {
     fn number(&self) -> i32 {
-        BlockNumber::try_from(self.number).unwrap()
+        BlockNumber::try_from(self.header().number).unwrap()
     }
 
     fn ptr(&self) -> BlockPtr {
@@ -324,14 +350,32 @@ impl BlockchainBlock for Block {
     }
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
-        let parent_hash = &self.header.as_ref().unwrap().parent_hash;
+        self.parent_ptr()
+    }
+}
 
-        match parent_hash.len() {
-            0 => None,
-            _ => Some(BlockPtr::from((
-                H256::from_slice(parent_hash.as_ref()),
-                self.number - 1,
-            ))),
-        }
+impl HeaderOnlyBlock {
+    pub fn header(&self) -> &BlockHeader {
+        self.header.as_ref().unwrap()
+    }
+}
+
+impl<'a> From<&'a HeaderOnlyBlock> for BlockPtr {
+    fn from(b: &'a HeaderOnlyBlock) -> BlockPtr {
+        BlockPtr::from(b.header())
+    }
+}
+
+impl BlockchainBlock for HeaderOnlyBlock {
+    fn number(&self) -> i32 {
+        BlockNumber::try_from(self.header().number).unwrap()
+    }
+
+    fn ptr(&self) -> BlockPtr {
+        self.into()
+    }
+
+    fn parent_ptr(&self) -> Option<BlockPtr> {
+        self.header().parent_ptr()
     }
 }

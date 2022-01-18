@@ -798,6 +798,15 @@ impl DeploymentStore {
         )?)
     }
 
+    pub(crate) fn delete_block_cursor(&self, site: &Site) -> Result<(), StoreError> {
+        let conn = self.get_conn()?;
+
+        Ok(deployment::delete_subgraph_firehose_cursor(
+            &conn,
+            &site.deployment,
+        )?)
+    }
+
     pub(crate) async fn supports_proof_of_indexing<'a>(
         &self,
         site: Arc<Site>,
@@ -1138,9 +1147,9 @@ impl DeploymentStore {
             return Ok(None);
         }
 
-        // Sanity check on block numbers
-        if deployment_head.number != block_ptr_to.number + 1 {
-            panic!("revert_block_operations must revert a single block only");
+        // Sanity check on revert to ensure we go backward only
+        if block_ptr_to.number >= deployment_head.number {
+            panic!("revert_block_operations must revert only backward, you are trying to revert forward going from subgraph block {} to new block {}", deployment_head, block_ptr_to);
         }
 
         self.rewind_with_conn(&conn, site, block_ptr_to, firehose_cursor)

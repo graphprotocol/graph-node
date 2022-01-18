@@ -111,6 +111,10 @@ impl<C: Blockchain> BlockWithTriggers<C> {
     pub fn ptr(&self) -> BlockPtr {
         self.block.ptr()
     }
+
+    pub fn parent_ptr(&self) -> Option<BlockPtr> {
+        self.block.parent_ptr()
+    }
 }
 
 #[async_trait]
@@ -160,6 +164,23 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
         adapter: &C::TriggersAdapter,
         filter: &C::TriggerFilter,
     ) -> Result<BlockStreamEvent<C>, FirehoseError>;
+
+    /// Returns the closest final block ptr to the block ptr received.
+    /// On probablitics chain like Ethereum, final is determined by
+    /// the confirmations threshold configured for the Firehose stack (currently
+    /// hard-coded to 200).
+    ///
+    /// On some other chain like NEAR, the actual final block number is determined
+    /// from the block itself since it contains information about which block number
+    /// is final against the current block.
+    ///
+    /// To take an example, assuming we are on Ethereum, the final block pointer
+    /// for block #10212 would be the determined final block #10012 (10212 - 200 = 10012).
+    async fn final_block_ptr_for(
+        &self,
+        logger: &Logger,
+        block: &C::Block,
+    ) -> Result<BlockPtr, Error>;
 }
 
 #[derive(Error, Debug)]

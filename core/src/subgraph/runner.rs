@@ -9,6 +9,7 @@ use graph::blockchain::block_stream::{
     BlockStream, BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers, BufferedBlockStream,
 };
 use graph::blockchain::{Block, Blockchain, DataSource, TriggerFilter as _, TriggersAdapter};
+use graph::components::store::WritableStore;
 use graph::components::{
     store::{ModificationsAndCache, SubgraphFork},
     subgraph::{CausalityRegion, MappingError, ProofOfIndexing, SharedProofOfIndexing},
@@ -25,6 +26,7 @@ use std::convert::TryFrom;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+const SECOND: Duration = Duration::from_secs(1);
 const MINUTE: Duration = Duration::from_secs(60);
 const SKIP_PTR_UPDATES_THRESHOLD: Duration = Duration::from_secs(60 * 5);
 
@@ -59,27 +61,26 @@ async fn new_block_stream<C: Blockchain>(
         false => BUFFERED_BLOCK_STREAM_SIZE,
     };
 
+    let current_ptr = inputs.store.block_ptr();
+
     let block_stream = match is_firehose {
         true => chain.new_firehose_block_stream(
             inputs.deployment.clone(),
             inputs.store.block_cursor(),
             inputs.start_blocks.clone(),
+            current_ptr,
             Arc::new(filter.clone()),
             block_stream_metrics.clone(),
             inputs.unified_api_version.clone(),
         ),
-        false => {
-            let current_ptr = inputs.store.block_ptr();
-
-            chain.new_polling_block_stream(
-                inputs.deployment.clone(),
-                inputs.start_blocks.clone(),
-                current_ptr,
-                Arc::new(filter.clone()),
-                block_stream_metrics.clone(),
-                inputs.unified_api_version.clone(),
-            )
-        }
+        false => chain.new_polling_block_stream(
+            inputs.deployment.clone(),
+            inputs.start_blocks.clone(),
+            current_ptr,
+            Arc::new(filter.clone()),
+            block_stream_metrics.clone(),
+            inputs.unified_api_version.clone(),
+        ),
     }
     .await?;
 
@@ -121,6 +122,13 @@ where
         // increasing its timeout exponentially until it reaches the ceiling.
         let mut backoff = ExponentialBackoff::new(MINUTE * 2, *SUBGRAPH_ERROR_RETRY_CEIL_SECS);
 
+        // This ensures that any existing Firehose cursor is deleted prior starting using a
+        // non-Firehose block stream so that if we ever resume again the Firehose block stream,
+        // we will not start from a stalled cursor.
+        if !self.inputs.chain.is_firehose_supported() {
+            delete_subgraph_firehose_cursor(&logger, self.inputs.store.as_ref()).await;
+        }
+
         loop {
             debug!(logger, "Starting or restarting subgraph");
 
@@ -158,26 +166,15 @@ where
 
                 let (block, cursor) = match event {
                     Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => (block, cursor),
-                    Some(Ok(BlockStreamEvent::Revert(subgraph_ptr, parent_ptr, cursor))) => {
-                        info!(
-                            logger,
-                            "Reverting block to get back to main chain";
-                            "block_number" => format!("{}", subgraph_ptr.number),
-                            "block_hash" => format!("{}", subgraph_ptr.hash)
-                        );
+                    Some(Ok(BlockStreamEvent::Revert(subgraph_ptr, revert_to_ptr, cursor))) => {
+                        info!(&logger, "Reverting block to get back to main chain"; "current" => &subgraph_ptr, "revert_to" => &revert_to_ptr);
 
                         if let Err(e) = self
                             .inputs
                             .store
-                            .revert_block_operations(parent_ptr, cursor.as_deref())
+                            .revert_block_operations(revert_to_ptr, cursor.as_deref())
                         {
-                            error!(
-                                &logger,
-                                "Could not revert block. Retrying";
-                                "block_number" => format!("{}", subgraph_ptr.number),
-                                "block_hash" => format!("{}", subgraph_ptr.hash),
-                                "error" => e.to_string(),
-                            );
+                            error!(&logger, "Could not revert block. Retrying"; "error" => %e);
 
                             // Exit inner block stream consumption loop and go up to loop that restarts subgraph
                             break;
@@ -903,6 +900,24 @@ async fn update_proof_of_indexing(
     }
 
     Ok(())
+}
+
+async fn delete_subgraph_firehose_cursor(logger: &Logger, store: &dyn WritableStore) {
+    debug!(logger, "Deleting any existing Firehose cursor");
+    let mut backoff = ExponentialBackoff::new(30 * SECOND, *SUBGRAPH_ERROR_RETRY_CEIL_SECS);
+
+    loop {
+        match store.delete_block_cursor() {
+            Ok(_) => return,
+            Err(_) => {
+                error!(
+                    logger,
+                    "Unable to delete firehose cursor, waiting and retrying again"
+                );
+                backoff.sleep_async().await;
+            }
+        }
+    }
 }
 
 /// Checks if the Deployment BlockPtr is at least one block behind to the chain head.

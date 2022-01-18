@@ -40,6 +40,17 @@ pub struct Block {
     #[prost(string, tag = "42")]
     pub filtering_exclude_filter_expr: ::prost::alloc::string::String,
 }
+/// HeaderOnlyBlock is a standard [Block] structure where all other fields are
+/// removed so that hydrating that object from a [Block] bytes payload will
+/// drastically reduced allocated memory required to hold the full block.
+///
+/// This can be used to unpack a [Block] when only the [BlockHeader] information
+/// is required and greatly reduced required memory.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HeaderOnlyBlock {
+    #[prost(message, optional, tag = "5")]
+    pub header: ::core::option::Option<BlockHeader>,
+}
 /// BlockWithRefs is a lightweight block, with traces and transactions
 /// purged from the `block` within, and only.  It is used in transports
 /// to pass block data around.

@@ -19,6 +19,7 @@
 /tests/integration-tests/**/generated
 /tests/integration-tests/**/node_modules
 /tests/integration-tests/**/yarn.lock
+/tests/integration-tests/**/yarn-error.log
 
 # Built solidity contracts.
 /tests/integration-tests/**/bin

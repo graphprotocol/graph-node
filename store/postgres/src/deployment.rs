@@ -300,6 +300,19 @@ pub fn forward_block_ptr(
     }
 }
 
+pub fn delete_subgraph_firehose_cursor(
+    conn: &PgConnection,
+    id: &DeploymentHash,
+) -> Result<(), StoreError> {
+    use subgraph_deployment as d;
+
+    update(d::table.filter(d::deployment.eq(id.as_str())))
+        .set(d::firehose_cursor.eq::<Option<&str>>(None))
+        .execute(conn)
+        .map(|_| ())
+        .map_err(|e| e.into())
+}
+
 pub fn get_subgraph_firehose_cursor(
     conn: &PgConnection,
     deployment_hash: &DeploymentHash,
@@ -322,7 +335,7 @@ pub fn update_firehose_cursor(
     use subgraph_deployment as d;
 
     update(d::table.filter(d::deployment.eq(id.as_str())))
-        .set((d::firehose_cursor.eq(cursor),))
+        .set(d::firehose_cursor.eq(cursor))
         .execute(conn)
         .map(|_| ())
         .map_err(|e| e.into())
