@@ -7,8 +7,6 @@ option go_package = "github.com/figment-networks/tendermint-protobuf-def/codec";
 import "gogo.proto";
 import "google/protobuf/descriptor.proto";
 
-option (gogoproto.equal_all) = true;
-
 // used in Vote
 enum SignedMsgType {
   option (gogoproto.goproto_enum_stringer)  = true;
@@ -41,7 +39,6 @@ message Block {
 }
 
 message BlockID {
-  // bytes hash = 1 [(fig.bytetype) = "Hash"];
   bytes         hash            = 1;
   PartSetHeader part_set_header = 2 [(gogoproto.nullable) = false];
 }
@@ -59,10 +56,10 @@ message Commit {
 }
 
 message CommitSig {
-  BlockIDFlag block_id_flag     = 1;  // must match those in the enum above
-  bytes       validator_address = 2;  // hash 256 20 bytes - this is the first 20 characters of a 32-byte key - SHA256(pubkey)[:20]
+  BlockIDFlag block_id_flag     = 1; // must match those in the enum above
+  bytes       validator_address = 2; // hash 256 20 bytes - this is the first 20 characters of a 32-byte key - SHA256(pubkey)[:20]
   Timestamp   timestamp         = 3 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-  bytes       signature         = 4;  // length should be > 0 and < 64
+  bytes       signature         = 4; // length should be > 0 and < 64
 }
 
 message Consensus {
@@ -73,10 +70,10 @@ message Consensus {
 }
 
 message ConsensusParams {
-  BlockParams     block     = 1;
-  EvidenceParams  evidence  = 2;
-  ValidatorParams validator = 3;
-  VersionParams   version   = 4;
+  BlockParams     block     = 1 [(gogoproto.nullable) = false];
+  EvidenceParams  evidence  = 2 [(gogoproto.nullable) = false];
+  ValidatorParams validator = 3 [(gogoproto.nullable) = false];
+  VersionParams   version   = 4 [(gogoproto.nullable) = false];
 }
 
 message Data {
@@ -97,7 +94,7 @@ message DuplicateVoteEvidence {
 }
 
 message Event {
-  string                  type       = 1;
+  string                  event_type = 1 [json_name = "type"];
   repeated EventAttribute attributes = 2 [
     (gogoproto.nullable) = false,
     (gogoproto.jsontag)  = "attributes,omitempty"
@@ -105,28 +102,28 @@ message Event {
 }
 
 message EventAttribute {
-  bytes key   = 1;
-  bytes value = 2;
-  bool  index = 3;  // nondeterministic
+  string  key   = 1;
+  string  value = 2;
+  bool    index = 3; // nondeterministic
 }
 
 message EventBlock {
   Block               block               = 1;
-  BlockID             block_id            = 2;  // not present in v0.34.13
+  BlockID             block_id            = 2; // not present in v0.34.13
   ResponseBeginBlock  result_begin_block  = 3;
   ResponseEndBlock    result_end_block    = 4;
 }
 
 // EventData
 message EventData {
-  Event event = 1;
+  Event     event = 1;
   EventList block = 2;
 }
 
 // EventList
 message EventList {
-  EventBlock                new_block            = 1;
-  repeated EventTx          transaction         = 2;
+  EventBlock                new_block             = 1;
+  repeated EventTx          transaction           = 2;
   EventValidatorSetUpdates  validator_set_updates = 3;
 }
 
@@ -139,14 +136,14 @@ message EventValidatorSetUpdates {
 }
 
 message EventVote {
-  SignedMsgType event_vote_type     = 1 [json_name = "type"]; // should be present in the enum at the top of this file
-  uint64        height            = 2;  // must be > 0
-  int32         round             = 3;  // must be > 0
+  SignedMsgType event_vote_type   = 1 [json_name = "type"]; // should be present in the enum at the top of this file
+  uint64        height            = 2; // must be > 0
+  int32         round             = 3; // must be > 0
   BlockID       block_id          = 4 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
   Timestamp     timestamp         = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-  bytes         validator_address = 6;  // hash with a length of 20
+  bytes         validator_address = 6; // hash with a length of 20
   int32         validator_index   = 7;
-  bytes         signature         = 8;  // hash length should be >0 and <64
+  bytes         signature         = 8; // hash length should be >0 and <64
 }
 
 message Evidence {
@@ -167,33 +164,26 @@ message EvidenceParams {
   int64     max_bytes           = 3; // Default is 1048576 or 1MB
 }
 
-// fig
-message fig {
-  extend google.protobuf.FieldOptions {
-    string bytetype = 50003;
-  }
-}
-
 message Header {
   Consensus version               = 1 [(gogoproto.nullable) = false];
   string    chain_id              = 2 [(gogoproto.customname) = "ChainID"];
   uint64    height                = 3;
   Timestamp time                  = 4 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
   BlockID   last_block_id         = 5 [(gogoproto.nullable) = false];
-  bytes     last_commit_hash      = 6 [(fig.bytetype) = "Hash"];  // hash 256 32 bytes
-  bytes     data_hash             = 7 [(fig.bytetype) = "Hash"];         // hash 256 32 bytes
-  bytes     validators_hash       = 8 [(fig.bytetype) = "Hash"];   // hash 256 32 bytes
-  bytes     next_validators_hash  = 9 [(fig.bytetype) = "Hash"];                        // hash 256 32 bytes
-  bytes     consensus_hash        = 10 [(fig.bytetype) = "Hash"];  // hash 256 32 bytes
-  bytes     app_hash              = 11 [(fig.bytetype) = "Hash"];  // determined by application, not a fixed length
-  bytes     last_results_hash     = 12 [(fig.bytetype) = "Hash"];  // hash 256 32 bytes - first block will be results of an empty hash
-  bytes     eidence_hash          = 13 [(fig.bytetype) = "Hash"];  // hash sha256 32 bytes
+  bytes     last_commit_hash      = 6; // hash 256 32 bytes
+  bytes     data_hash             = 7; // hash 256 32 bytes
+  bytes     validators_hash       = 8; // hash 256 32 bytes
+  bytes     next_validators_hash  = 9; // hash 256 32 bytes
+  bytes     consensus_hash        = 10; // hash 256 32 bytes
+  bytes     app_hash              = 11; // determined by application, not a fixed length
+  bytes     last_results_hash     = 12; // hash 256 32 bytes - first block will be results of an empty hash
+  bytes     evidence_hash         = 13; // hash sha256 32 bytes
   bytes     proposer_address      = 14; // hash 256 20 bytes - this is the first 20 characters of a 32-byte key - SHA256(pubkey)[:20]
 }
 
 message LightBlock {
-  SignedHeader signed_header = 1;  // cannot be nil
-  ValidatorSet validator_set = 2;  // cannot be nil
+  SignedHeader signed_header = 1; // cannot be nil
+  ValidatorSet validator_set = 2; // cannot be nil
 }
 
 message LightClientAttackEvidence {
@@ -216,7 +206,7 @@ message PublicKey {
 
 message PartSetHeader {
   uint32  total = 1;
-  bytes   hash  = 2 [(fig.bytetype) = "Hash"]; // hash 256 32 bytes
+  bytes   hash  = 2; // hash 256 32 bytes
 }
 
 message ResponseBeginBlock {
@@ -256,16 +246,18 @@ message Timestamp {
   int32 nanos = 2;
 }
 
-message Validator {
-  bytes     address           = 1;
-  PublicKey pub_key           = 2 [(gogoproto.nullable) = false];  // must be >0
-  int64     voting_power      = 3;
-  int64     proposer_priority = 4;
+message TxResult {
+  uint64            height  = 1;
+  uint32            index   = 2;
+  bytes             tx      = 3;
+  ResponseDeliverTx result  = 4;
 }
 
-message ValidatorUpdate {
-  PublicKey pub_key = 1 [(gogoproto.nullable) = false];
-  int64     power   = 2;
+message Validator {
+  bytes     address           = 1;
+  PublicKey pub_key           = 2 [(gogoproto.nullable) = false]; // must be >0
+  int64     voting_power      = 3;
+  int64     proposer_priority = 4;
 }
 
 message ValidatorParams { 
@@ -275,22 +267,20 @@ message ValidatorParams {
   repeated string pub_key_types = 1;
 }
 
+message ValidatorSet {
+  repeated Validator  validators         = 1; // cannot be empty of nil
+  Validator           proposer           = 2; // cannot be nil
+  int64               total_voting_power = 3;
+}
+
+message ValidatorUpdate {
+  PublicKey pub_key = 1 [(gogoproto.nullable) = false];
+  int64     power   = 2;
+}
+
 message VersionParams {
   option (gogoproto.populate) = true;
   option (gogoproto.equal)    = true;
 
   uint64 app_version = 1;
-}
-
-message ValidatorSet {
-  repeated Validator  validators         = 1;  // cannot be empty of nil
-  Validator           proposer           = 2;  // cannot be nil
-  int64               total_voting_power = 3;
-}
-
-message TxResult {
-  uint64            height  = 1;
-  uint32            index   = 2;
-  bytes             tx      = 3;
-  ResponseDeliverTx result  = 4;
 }
