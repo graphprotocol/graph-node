@@ -947,6 +947,15 @@ impl SubgraphStoreInner {
         )
         .await;
     }
+
+    pub async fn analyze(
+        &self,
+        id: &DeploymentHash,
+        entity_type: EntityType,
+    ) -> Result<(), StoreError> {
+        let (store, site) = self.store(&id)?;
+        store.analyze(site, entity_type).await
+    }
 }
 
 struct EnsLookup {

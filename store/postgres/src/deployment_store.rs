@@ -679,13 +679,12 @@ impl DeploymentStore {
     pub(crate) async fn analyze(
         &self,
         site: Arc<Site>,
-        entity_name: String,
+        entity_type: EntityType,
     ) -> Result<(), StoreError> {
-        let entity = EntityType::new(entity_name);
         let store = self.clone();
         self.with_conn(move |conn, _| {
             let layout = store.layout(conn, site)?;
-            let table = layout.table_for_entity(&entity)?;
+            let table = layout.table_for_entity(&entity_type)?;
             let table_name = &table.qualified_name;
             let sql = format!("analyze {table_name}");
             conn.execute(&sql)?;
