@@ -269,6 +269,8 @@ async fn follow_interface_reference_invalid() {
         .await
         .unwrap();
 
+    // Depending on whether `ENABLE_GRAPHQL_VALIDATIONS` is set or not, we
+    // get different errors
     match &res.to_result().unwrap_err()[0] {
         QueryError::ExecutionError(QueryExecutionError::ValidationError(_, error_message)) => {
             assert_eq!(
@@ -276,7 +278,11 @@ async fn follow_interface_reference_invalid() {
                 "Cannot query field \"parent\" on type \"Legged\"."
             );
         }
-        e => panic!("error {} is not the expected one", e),
+        QueryError::ExecutionError(QueryExecutionError::UnknownField(_, type_name, field_name)) => {
+            assert_eq!(type_name, "Legged");
+            assert_eq!(field_name, "parent");
+        }
+        e => panic!("error `{}` is not the expected one", e),
     }
 }
 
@@ -1370,6 +1376,16 @@ async fn enum_list_filters() {
 
 #[tokio::test]
 async fn recursive_fragment() {
+    // Depending on whether `ENABLE_GRAPHQL_VALIDATIONS` is set or not, we
+    // get different error messages
+    const FOO_ERRORS: [&str; 2] = [
+        "Cannot spread fragment \"FooFrag\" within itself.",
+        "query has fragment cycle including `FooFrag`",
+    ];
+    const FOO_BAR_ERRORS: [&str; 2] = [
+        "Cannot spread fragment \"BarFrag\" within itself via \"FooFrag\".",
+        "query has fragment cycle including `BarFrag`",
+    ];
     let subgraph_id = "RecursiveFragment";
     let schema = "
         type Foo @entity {
@@ -1402,7 +1418,7 @@ async fn recursive_fragment() {
         .await
         .unwrap();
     let data = res.to_result().unwrap_err()[0].to_string();
-    assert_eq!(data, "Cannot spread fragment \"FooFrag\" within itself.");
+    assert!(FOO_ERRORS.contains(&data.as_str()));
 
     let co_recursive = "
         query {
@@ -1429,8 +1445,5 @@ async fn recursive_fragment() {
         .await
         .unwrap();
     let data = res.to_result().unwrap_err()[0].to_string();
-    assert_eq!(
-        data,
-        "Cannot spread fragment \"BarFrag\" within itself via \"FooFrag\"."
-    );
+    assert!(FOO_BAR_ERRORS.contains(&data.as_str()));
 }
