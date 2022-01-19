@@ -2,6 +2,7 @@ use anyhow::{Context, Error};
 use graph::blockchain::BlockchainKind;
 use graph::components::store::WritableStore;
 use graph::data::subgraph::UnifiedMappingApiVersion;
+use graph::env::env_var;
 use graph::firehose::{FirehoseEndpoints, ForkStep};
 use graph::prelude::{
     EthereumBlock, EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, StopwatchMetrics,
@@ -48,22 +49,14 @@ use graph::blockchain::block_stream::{BlockStream, FirehoseCursor};
 
 lazy_static! {
     /// Maximum number of blocks to request in each chunk.
-    static ref MAX_BLOCK_RANGE_SIZE: BlockNumber = std::env::var("GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE")
-        .unwrap_or("2000".into())
-        .parse::<BlockNumber>()
-        .expect("invalid GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE");
+    static ref MAX_BLOCK_RANGE_SIZE: BlockNumber = env_var("GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE", 2000);
 
     /// Ideal number of triggers in a range. The range size will adapt to try to meet this.
-    static ref TARGET_TRIGGERS_PER_BLOCK_RANGE: u64 = std::env::var("GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE")
-        .unwrap_or("100".into())
-        .parse::<u64>()
-        .expect("invalid GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE");
+    static ref TARGET_TRIGGERS_PER_BLOCK_RANGE: u64 = env_var("GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE", 100);
 
     /// Controls if firehose should be preferred over RPC if Firehose endpoints are present, if not set, the default behavior is
     /// is kept which is to automatically favor Firehose.
-    static ref IS_FIREHOSE_PREFERRED: Option<bool> = std::env::var("GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED")
-        .ok()
-        .map(|input| input.parse::<bool>().expect("invalid GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED"));
+    static ref IS_FIREHOSE_PREFERRED: bool = env_var("GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED", true);
 }
 
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
@@ -325,10 +318,7 @@ impl Blockchain for Chain {
     }
 
     fn is_firehose_supported(&self) -> bool {
-        match *IS_FIREHOSE_PREFERRED {
-            Some(is_preferred) => is_preferred && self.firehose_endpoints.len() > 0,
-            None => self.firehose_endpoints.len() > 0,
-        }
+        *IS_FIREHOSE_PREFERRED && self.firehose_endpoints.len() > 0
     }
 }
 
