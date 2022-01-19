@@ -179,13 +179,6 @@ pub enum Command {
     Chain(ChainCommand),
     /// Manipulate internal subgraph statistics
     Stats(StatsCommand),
-    /// Perform a SQL ANALYZE in a Entity table
-    Analyze {
-        /// The id of the deployment
-        id: String,
-        /// The name of the Entity to ANALYZE
-        entity: String,
-    },
 }
 
 impl Command {
@@ -715,11 +708,6 @@ async fn main() {
                     commands::stats::analyze(subgraph_store, id, entity).await
                 }
             }
-        }
-        Analyze { id, entity } => {
-            let store = ctx.store();
-            let subgraph_store = store.subgraph_store();
-            commands::analyze::analyze(subgraph_store, id, entity).await
         }
     };
     if let Err(e) = result {
