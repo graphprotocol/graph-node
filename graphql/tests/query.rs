@@ -1487,6 +1487,45 @@ fn leaf_selection_mismatch() {
     })
 }
 
+// see: graphql-bug-compat
+#[test]
+fn missing_variable() {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
+        let result = execute_query_document(
+            &deployment.hash,
+            // '$first' is not defined, use its default from the schema
+            graphql_parser::parse_query("query { musicians(first: $first, skip: $skip) { id } }")
+                .expect("invalid test query")
+                .into_static(),
+        )
+        .await;
+        // We silently set `$first` to 100 and `$skip` to 0, and therefore
+        // get everything
+        let exp = object! {
+            musicians: vec![
+                object! { id: "m1" },
+                object! { id: "m2" },
+                object! { id: "m3" },
+                object! { id: "m4" },
+            ]
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(exp, data);
+
+        let result = execute_query_document(
+            &deployment.hash,
+            // '$where' is not defined but nullable, ignore the argument
+            graphql_parser::parse_query("query { musicians(where: $where) { id } }")
+                .expect("invalid test query")
+                .into_static(),
+        )
+        .await;
+        let data = extract_data!(result).unwrap();
+        assert_eq!(exp, data);
+    })
+}
+
 async fn check_musicians_at(
     id: &DeploymentHash,
     query: &str,
