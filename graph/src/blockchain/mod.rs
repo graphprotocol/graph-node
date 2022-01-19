@@ -256,7 +256,11 @@ pub trait TriggerData {
 pub trait MappingTrigger: Send + Sync {
     /// A flexible interface for writing a type to AS memory, any pointer can be returned.
     /// Use `AscPtr::erased` to convert `AscPtr<T>` into `AscPtr<()>`.
-    fn to_asc_ptr<H: AscHeap>(self, heap: &mut H) -> Result<AscPtr<()>, DeterministicHostError>;
+    fn to_asc_ptr<H: AscHeap>(
+        self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscPtr<()>, DeterministicHostError>;
 }
 
 pub struct HostFnCtx<'a> {
@@ -415,7 +419,8 @@ impl<C: Blockchain> TriggerWithHandler<C> {
     pub fn to_asc_ptr<H: AscHeap>(
         self,
         heap: &mut H,
+        gas: &GasCounter,
     ) -> Result<AscPtr<()>, DeterministicHostError> {
-        self.trigger.to_asc_ptr(heap)
+        self.trigger.to_asc_ptr(heap, gas)
     }
 }

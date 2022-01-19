@@ -1,6 +1,7 @@
 use crate::{
     components::{link_resolver::LinkResolver, store::BlockNumber},
     prelude::DataSourceTemplateInfo,
+    runtime::gas::GasCounter,
 };
 use anyhow::Error;
 use async_trait::async_trait;
@@ -216,6 +217,7 @@ impl MappingTrigger for MockMappingTrigger {
     fn to_asc_ptr<H: crate::runtime::AscHeap>(
         self,
         _heap: &mut H,
+        _gas: &GasCounter,
     ) -> Result<crate::runtime::AscPtr<()>, crate::runtime::DeterministicHostError> {
         todo!()
     }

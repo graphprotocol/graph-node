@@ -4,6 +4,7 @@ use std::mem::{size_of, size_of_val};
 use anyhow::anyhow;
 use semver::Version;
 
+use graph::runtime::gas::GasCounter;
 use graph::runtime::{AscHeap, AscPtr, AscType, AscValue, DeterministicHostError, HEADER_SIZE};
 use graph_runtime_derive::AscType;
 
@@ -114,10 +115,11 @@ impl<T: AscValue> TypedArray<T> {
     pub(crate) fn new<H: AscHeap + ?Sized>(
         content: &[T],
         heap: &mut H,
+        gas: &GasCounter,
     ) -> Result<Self, DeterministicHostError> {
         let buffer = class::ArrayBuffer::new(content, heap.api_version())?;
         let byte_length = content.len() as u32;
-        let ptr = AscPtr::alloc_obj(buffer, heap)?;
+        let ptr = AscPtr::alloc_obj(buffer, heap, gas)?;
         Ok(TypedArray {
             buffer: AscPtr::new(ptr.wasm_ptr()), // new AscPtr necessary to convert type parameter
             data_start: ptr.wasm_ptr(),
@@ -129,6 +131,7 @@ impl<T: AscValue> TypedArray<T> {
     pub(crate) fn to_vec<H: AscHeap + ?Sized>(
         &self,
         heap: &H,
+        gas: &GasCounter,
     ) -> Result<Vec<T>, DeterministicHostError> {
         // We're trying to read the pointer below, we should check it's
         // not null before using it.
@@ -150,7 +153,7 @@ impl<T: AscValue> TypedArray<T> {
                 ))
             })?;
 
-        self.buffer.read_ptr(heap)?.get(
+        self.buffer.read_ptr(heap, gas)?.get(
             data_start_with_offset,
             self.byte_length / size_of::<T>() as u32,
             heap.api_version(),
@@ -262,10 +265,11 @@ impl<T: AscValue> Array<T> {
     pub fn new<H: AscHeap + ?Sized>(
         content: &[T],
         heap: &mut H,
+        gas: &GasCounter,
     ) -> Result<Self, DeterministicHostError> {
         let arr_buffer = class::ArrayBuffer::new(content, heap.api_version())?;
-        let buffer = AscPtr::alloc_obj(arr_buffer, heap)?;
-        let buffer_data_length = buffer.read_len(heap)?;
+        let buffer = AscPtr::alloc_obj(arr_buffer, heap, gas)?;
+        let buffer_data_length = buffer.read_len(heap, gas)?;
         Ok(Array {
             buffer: AscPtr::new(buffer.wasm_ptr()),
             buffer_data_start: buffer.wasm_ptr(),
@@ -278,6 +282,7 @@ impl<T: AscValue> Array<T> {
     pub(crate) fn to_vec<H: AscHeap + ?Sized>(
         &self,
         heap: &H,
+        gas: &GasCounter,
     ) -> Result<Vec<T>, DeterministicHostError> {
         // We're trying to read the pointer below, we should check it's
         // not null before using it.
@@ -299,7 +304,7 @@ impl<T: AscValue> Array<T> {
                 ))
             })?;
 
-        self.buffer.read_ptr(heap)?.get(
+        self.buffer.read_ptr(heap, gas)?.get(
             buffer_data_start_with_offset,
             self.length as u32,
             heap.api_version(),

@@ -15,6 +15,7 @@ use graph::prelude::BlockNumber;
 use graph::prelude::BlockPtr;
 use graph::prelude::{CheapClone, EthereumCall};
 use graph::runtime::asc_new;
+use graph::runtime::gas::GasCounter;
 use graph::runtime::AscHeap;
 use graph::runtime::AscPtr;
 use graph::runtime::DeterministicHostError;
@@ -104,7 +105,11 @@ impl std::fmt::Debug for MappingTrigger {
 }
 
 impl blockchain::MappingTrigger for MappingTrigger {
-    fn to_asc_ptr<H: AscHeap>(self, heap: &mut H) -> Result<AscPtr<()>, DeterministicHostError> {
+    fn to_asc_ptr<H: AscHeap>(
+        self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscPtr<()>, DeterministicHostError> {
         Ok(match self {
             MappingTrigger::Log {
                 block,
@@ -127,18 +132,20 @@ impl blockchain::MappingTrigger for MappingTrigger {
                         AscEthereumEvent<AscEthereumTransaction_0_0_6, AscEthereumBlock_0_0_6>,
                         _,
                         _,
-                    >(heap, &ethereum_event_data)?
+                    >(heap, &ethereum_event_data, gas)?
                     .erase()
                 } else if api_version >= Version::new(0, 0, 2) {
                     asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_2, AscEthereumBlock>, _, _>(
                         heap,
                         &ethereum_event_data,
+                        gas
                     )?
                     .erase()
                 } else {
                     asc_new::<AscEthereumEvent<AscEthereumTransaction_0_0_1, AscEthereumBlock>, _, _>(
                         heap,
                         &ethereum_event_data,
+                        gas
                     )?
                     .erase()
                 }
@@ -163,25 +170,25 @@ impl blockchain::MappingTrigger for MappingTrigger {
                         AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_6, AscEthereumBlock_0_0_6>,
                         _,
                         _,
-                    >(heap, &call)?
+                    >(heap, &call, gas)?
                     .erase()
                 } else if heap.api_version() >= Version::new(0, 0, 3) {
                     asc_new::<
                         AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_2, AscEthereumBlock>,
                         _,
                         _,
-                    >(heap, &call)?
+                    >(heap, &call, gas)?
                     .erase()
                 } else {
-                    asc_new::<AscEthereumCall, _, _>(heap, &call)?.erase()
+                    asc_new::<AscEthereumCall, _, _>(heap, &call, gas)?.erase()
                 }
             }
             MappingTrigger::Block { block } => {
                 let block = EthereumBlockData::from(block.as_ref());
                 if heap.api_version() >= Version::new(0, 0, 6) {
-                    asc_new::<AscEthereumBlock_0_0_6, _, _>(heap, &block)?.erase()
+                    asc_new::<AscEthereumBlock_0_0_6, _, _>(heap, &block, gas)?.erase()
                 } else {
-                    asc_new::<AscEthereumBlock, _, _>(heap, &block)?.erase()
+                    asc_new::<AscEthereumBlock, _, _>(heap, &block, gas)?.erase()
                 }
             }
         })
