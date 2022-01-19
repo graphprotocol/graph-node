@@ -693,6 +693,57 @@ impl DeploymentStore {
         })
         .await
     }
+
+    /// Creates a new index in the specified Entity table if it doesn't already exist.
+    ///
+    /// This is a potentially time-consuming operation.
+    pub(crate) async fn create_index(
+        &self,
+        site: Arc<Site>,
+        entity_type: EntityType,
+        field_names: Vec<String>,
+        index_method: String,
+    ) -> Result<(), StoreError> {
+        let store = self.clone();
+
+        self.with_conn(move |conn, _| {
+            let schema_name = site.namespace.clone();
+            let layout = store.layout(conn, site)?;
+            let table = layout.table_for_entity(&entity_type)?;
+            let table_name = &table.qualified_name;
+
+            // resolve column names
+            let column_names = field_names
+                .iter()
+                .map(|f| table.column_for_field(f).map(|column| column.name.as_str()))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let column_names_sep_by_underscores = column_names.join("_");
+            let column_names_sep_by_commas = column_names.join(", ");
+            let index_name = format!("manual_{table_name}_{column_names_sep_by_underscores}");
+
+            let sql = format!(
+                "create index concurrently if not exists {index_name}
+                 on {table_name}({column_names_sep_by_commas}) using {index_method}"
+            );
+            // This might take a long time.
+            conn.execute(&sql)?;
+
+            // check if the index creation was successfull
+            let index_is_valid =
+                deployment::check_index_is_valid(conn, schema_name.as_str(), &index_name)?;
+            if index_is_valid {
+                Ok(())
+            } else {
+                // Index creation falied. We should drop the index before returning.
+                let drop_index_sql = format!("drop index {schema_name}.{index_name}");
+                conn.execute(&drop_index_sql)?;
+                Err(StoreError::Canceled)
+            }
+            .map_err(Into::into)
+        })
+        .await
+    }
 }
 
 /// Methods that back the trait `graph::components::Store`, but have small
