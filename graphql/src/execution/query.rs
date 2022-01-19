@@ -704,11 +704,15 @@ struct Transform {
 }
 
 impl Transform {
-    fn variable(&self, name: &str, pos: &Pos) -> Result<r::Value, QueryExecutionError> {
+    /// Look up the value of the variable `name`. If the variable is not
+    /// defined, return `r::Value::Null`
+    // graphql-bug-compat: Once queries are fully validated, all variables
+    // will be defined
+    fn variable(&self, name: &str) -> r::Value {
         self.variables
             .get(name)
             .map(|value| value.clone())
-            .ok_or_else(|| QueryExecutionError::MissingVariableError(pos.clone(), name.to_string()))
+            .unwrap_or(r::Value::Null)
     }
 
     /// Interpolate variable references in the arguments `args`
@@ -716,42 +720,41 @@ impl Transform {
         &self,
         args: Vec<(String, q::Value)>,
         pos: &Pos,
-    ) -> Result<Vec<(String, r::Value)>, QueryExecutionError> {
+    ) -> Vec<(String, r::Value)> {
         args.into_iter()
-            .map(|(name, val)| self.interpolate_value(val, pos).map(|val| (name, val)))
+            .map(|(name, val)| {
+                let val = self.interpolate_value(val, pos);
+                (name, val)
+            })
             .collect()
     }
 
     /// Turn `value` into an `r::Value` by resolving variable references
-    fn interpolate_value(
-        &self,
-        value: q::Value,
-        pos: &Pos,
-    ) -> Result<r::Value, QueryExecutionError> {
+    fn interpolate_value(&self, value: q::Value, pos: &Pos) -> r::Value {
         match value {
-            q::Value::Variable(var) => self.variable(&var, pos),
-            q::Value::Int(ref num) => Ok(r::Value::Int(
-                num.as_i64().expect("q::Value::Int contains an i64"),
-            )),
-            q::Value::Float(f) => Ok(r::Value::Float(f)),
-            q::Value::String(s) => Ok(r::Value::String(s)),
-            q::Value::Boolean(b) => Ok(r::Value::Boolean(b)),
-            q::Value::Null => Ok(r::Value::Null),
-            q::Value::Enum(s) => Ok(r::Value::Enum(s)),
+            q::Value::Variable(var) => self.variable(&var),
+            q::Value::Int(ref num) => {
+                r::Value::Int(num.as_i64().expect("q::Value::Int contains an i64"))
+            }
+            q::Value::Float(f) => r::Value::Float(f),
+            q::Value::String(s) => r::Value::String(s),
+            q::Value::Boolean(b) => r::Value::Boolean(b),
+            q::Value::Null => r::Value::Null,
+            q::Value::Enum(s) => r::Value::Enum(s),
             q::Value::List(vals) => {
-                let vals: Vec<_> = vals
+                let vals = vals
                     .into_iter()
                     .map(|val| self.interpolate_value(val, pos))
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(r::Value::List(vals))
+                    .collect();
+                r::Value::List(vals)
             }
             q::Value::Object(map) => {
                 let mut rmap = BTreeMap::new();
                 for (key, value) in map.into_iter() {
-                    let value = self.interpolate_value(value, pos)?;
+                    let value = self.interpolate_value(value, pos);
                     rmap.insert(key, value);
                 }
-                Ok(r::Value::object(rmap))
+                r::Value::object(rmap)
             }
         }
     }
@@ -763,7 +766,7 @@ impl Transform {
         &self,
         dirs: Vec<q::Directive>,
     ) -> Result<(Vec<a::Directive>, bool), QueryExecutionError> {
-        let dirs = dirs
+        let dirs: Vec<_> = dirs
             .into_iter()
             .map(|dir| {
                 let q::Directive {
@@ -771,14 +774,14 @@ impl Transform {
                     position,
                     arguments,
                 } = dir;
-                self.interpolate_arguments(arguments, &position)
-                    .map(|arguments| a::Directive {
-                        name,
-                        position,
-                        arguments,
-                    })
+                let arguments = self.interpolate_arguments(arguments, &position);
+                a::Directive {
+                    name,
+                    position,
+                    arguments,
+                }
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect();
         let skip = dirs.iter().any(|dir| dir.skip());
         Ok((dirs, skip))
     }
@@ -887,7 +890,7 @@ impl Transform {
             return Ok(None);
         }
 
-        let mut arguments = self.interpolate_arguments(arguments, &position)?;
+        let mut arguments = self.interpolate_arguments(arguments, &position);
         self.coerce_argument_values(&mut arguments, parent_type, &name)?;
 
         let is_leaf_type = self.schema.document().is_leaf_type(&field_type.field_type);
