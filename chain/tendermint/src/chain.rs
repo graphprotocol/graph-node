@@ -18,7 +18,7 @@ use graph::{
     log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig},
     prelude::{
         async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory, StopwatchMetrics,
-        SubgraphStore,
+        SubgraphStore, info
     },
 };
 use prost::Message;
@@ -258,13 +258,15 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             .as_ref()
             .expect("block payload information should always be present");
 
+        // info!(_logger, "block: {:#?}", response.block.new_block);
+            
         // Right now, this is done in all cases but in reality, with how the BlockStreamEvent::Revert
         // is defined right now, only block hash and block number is necessary. However, this information
         // is not part of the actual bstream::BlockResponseV2 payload. As such, we need to decode the full
         // block which is useless.
         //
         // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
-        // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
+        // define a slimmed down struct that would decode only a few fields and ignore all the rest.
         let sp = codec::EventList::decode(any_block.value.as_ref())?;
 
         match step {

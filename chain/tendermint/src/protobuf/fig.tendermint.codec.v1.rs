@@ -387,9 +387,11 @@ pub struct ValidatorSet {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ValidatorUpdate {
-    #[prost(message, optional, tag = "1")]
+    #[prost(bytes = "vec", tag = "1")]
+    pub address: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag = "2")]
     pub pub_key: ::core::option::Option<PublicKey>,
-    #[prost(int64, tag = "2")]
+    #[prost(int64, tag = "3")]
     pub power: i64,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]

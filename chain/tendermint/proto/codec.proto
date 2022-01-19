@@ -274,8 +274,9 @@ message ValidatorSet {
 }
 
 message ValidatorUpdate {
-  PublicKey pub_key = 1 [(gogoproto.nullable) = false];
-  int64     power   = 2;
+  bytes     address = 1;
+  PublicKey pub_key = 2 [(gogoproto.nullable) = false];
+  int64     power   = 3;
 }
 
 message VersionParams {
