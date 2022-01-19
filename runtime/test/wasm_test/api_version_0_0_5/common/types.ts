@@ -22,14 +22,14 @@ export type FixedBytes = Uint8Array;
  * Enum for supported value types.
  */
 export enum ValueKind {
-    STRING = 0,
-    INT = 1,
-    BIG_DECIMAL = 2,
-    BOOL = 3,
-    ARRAY = 4,
-    NULL = 5,
-    BYTES = 6,
-    BIG_INT = 7,
+  STRING = 0,
+  INT = 1,
+  BIG_DECIMAL = 2,
+  BOOL = 3,
+  ARRAY = 4,
+  NULL = 5,
+  BYTES = 6,
+  BIG_INT = 7,
 }
 // Big enough to fit any pointer or native `this.data`.
 export type Payload = u64
@@ -37,354 +37,354 @@ export type Payload = u64
  * A dynamically typed value.
  */
 export class Value {
-    kind: ValueKind
-    data: Payload
+  kind: ValueKind
+  data: Payload
 
-    toAddress(): Address {
-        assert(this.kind == ValueKind.BYTES, 'Value is not an address.')
-        return changetype<Address>(this.data as u32)
-    }
+  toAddress(): Address {
+    assert(this.kind == ValueKind.BYTES, 'Value is not an address.')
+    return changetype<Address>(this.data as u32)
+  }
 
-    toBoolean(): boolean {
-        if (this.kind == ValueKind.NULL) {
-            return false;
-        }
-        assert(this.kind == ValueKind.BOOL, 'Value is not a boolean.')
-        return this.data != 0
+  toBoolean(): boolean {
+    if (this.kind == ValueKind.NULL) {
+      return false;
     }
+    assert(this.kind == ValueKind.BOOL, 'Value is not a boolean.')
+    return this.data != 0
+  }
 
-    toBytes(): Bytes {
-        assert(this.kind == ValueKind.BYTES, 'Value is not a byte array.')
-        return changetype<Bytes>(this.data as u32)
-    }
+  toBytes(): Bytes {
+    assert(this.kind == ValueKind.BYTES, 'Value is not a byte array.')
+    return changetype<Bytes>(this.data as u32)
+  }
 
-    toI32(): i32 {
-        if (this.kind == ValueKind.NULL) {
-            return 0;
-        }
-        assert(this.kind == ValueKind.INT, 'Value is not an i32.')
-        return this.data as i32
+  toI32(): i32 {
+    if (this.kind == ValueKind.NULL) {
+      return 0;
     }
+    assert(this.kind == ValueKind.INT, 'Value is not an i32.')
+    return this.data as i32
+  }
 
-    toString(): string {
-        assert(this.kind == ValueKind.STRING, 'Value is not a string.')
-        return changetype<string>(this.data as u32)
-    }
+  toString(): string {
+    assert(this.kind == ValueKind.STRING, 'Value is not a string.')
+    return changetype<string>(this.data as u32)
+  }
 
-    toBigInt(): BigInt {
-        assert(this.kind == ValueKind.BIGINT, 'Value is not a BigInt.')
-        return changetype<BigInt>(this.data as u32)
-    }
+  toBigInt(): BigInt {
+    assert(this.kind == ValueKind.BIGINT, 'Value is not a BigInt.')
+    return changetype<BigInt>(this.data as u32)
+  }
 
-    toBigDecimal(): BigDecimal {
-        assert(this.kind == ValueKind.BIGDECIMAL, 'Value is not a BigDecimal.')
-        return changetype<BigDecimal>(this.data as u32)
-    }
+  toBigDecimal(): BigDecimal {
+    assert(this.kind == ValueKind.BIGDECIMAL, 'Value is not a BigDecimal.')
+    return changetype<BigDecimal>(this.data as u32)
+  }
 
-    toArray(): Array<Value> {
-        assert(this.kind == ValueKind.ARRAY, 'Value is not an array.')
-        return changetype<Array<Value>>(this.data as u32)
-    }
+  toArray(): Array<Value> {
+    assert(this.kind == ValueKind.ARRAY, 'Value is not an array.')
+    return changetype<Array<Value>>(this.data as u32)
+  }
 
-    toBooleanArray(): Array<boolean> {
-        let values = this.toArray()
-        let output = new Array<boolean>(values.length)
-        for (let i: i32; i < values.length; i++) {
-            output[i] = values[i].toBoolean()
-        }
-        return output
+  toBooleanArray(): Array<boolean> {
+    let values = this.toArray()
+    let output = new Array<boolean>(values.length)
+    for (let i: i32; i < values.length; i++) {
+      output[i] = values[i].toBoolean()
     }
+    return output
+  }
 
-    toBytesArray(): Array<Bytes> {
-        let values = this.toArray()
-        let output = new Array<Bytes>(values.length)
-        for (let i: i32 = 0; i < values.length; i++) {
-            output[i] = values[i].toBytes()
-        }
-        return output
+  toBytesArray(): Array<Bytes> {
+    let values = this.toArray()
+    let output = new Array<Bytes>(values.length)
+    for (let i: i32 = 0; i < values.length; i++) {
+      output[i] = values[i].toBytes()
     }
+    return output
+  }
 
-    toStringArray(): Array<string> {
-        let values = this.toArray()
-        let output = new Array<string>(values.length)
-        for (let i: i32 = 0; i < values.length; i++) {
-            output[i] = values[i].toString()
-        }
-        return output
+  toStringArray(): Array<string> {
+    let values = this.toArray()
+    let output = new Array<string>(values.length)
+    for (let i: i32 = 0; i < values.length; i++) {
+      output[i] = values[i].toString()
     }
+    return output
+  }
 
-    toI32Array(): Array<i32> {
-        let values = this.toArray()
-        let output = new Array<i32>(values.length)
-        for (let i: i32 = 0; i < values.length; i++) {
-            output[i] = values[i].toI32()
-        }
-        return output
+  toI32Array(): Array<i32> {
+    let values = this.toArray()
+    let output = new Array<i32>(values.length)
+    for (let i: i32 = 0; i < values.length; i++) {
+      output[i] = values[i].toI32()
     }
+    return output
+  }
 
-    toBigIntArray(): Array<BigInt> {
-        let values = this.toArray()
-        let output = new Array<BigInt>(values.length)
-        for (let i: i32 = 0; i < values.length; i++) {
-            output[i] = values[i].toBigInt()
-        }
-        return output
+  toBigIntArray(): Array<BigInt> {
+    let values = this.toArray()
+    let output = new Array<BigInt>(values.length)
+    for (let i: i32 = 0; i < values.length; i++) {
+      output[i] = values[i].toBigInt()
     }
+    return output
+  }
 
-    toBigDecimalArray(): Array<BigDecimal> {
-        let values = this.toArray()
-        let output = new Array<BigDecimal>(values.length)
-        for (let i: i32 = 0; i < values.length; i++) {
-            output[i] = values[i].toBigDecimal()
-        }
-        return output
+  toBigDecimalArray(): Array<BigDecimal> {
+    let values = this.toArray()
+    let output = new Array<BigDecimal>(values.length)
+    for (let i: i32 = 0; i < values.length; i++) {
+      output[i] = values[i].toBigDecimal()
     }
+    return output
+  }
 
-    static fromBooleanArray(input: Array<boolean>): Value {
-        let output = new Array<Value>(input.length)
-        for (let i: i32 = 0; i < input.length; i++) {
-            output[i] = Value.fromBoolean(input[i])
-        }
-        return Value.fromArray(output)
+  static fromBooleanArray(input: Array<boolean>): Value {
+    let output = new Array<Value>(input.length)
+    for (let i: i32 = 0; i < input.length; i++) {
+      output[i] = Value.fromBoolean(input[i])
     }
+    return Value.fromArray(output)
+  }
 
-    static fromBytesArray(input: Array<Bytes>): Value {
-        let output = new Array<Value>(input.length)
-        for (let i: i32 = 0; i < input.length; i++) {
-            output[i] = Value.fromBytes(input[i])
-        }
-        return Value.fromArray(output)
+  static fromBytesArray(input: Array<Bytes>): Value {
+    let output = new Array<Value>(input.length)
+    for (let i: i32 = 0; i < input.length; i++) {
+      output[i] = Value.fromBytes(input[i])
     }
+    return Value.fromArray(output)
+  }
 
-    static fromI32Array(input: Array<i32>): Value {
-        let output = new Array<Value>(input.length)
-        for (let i: i32 = 0; i < input.length; i++) {
-            output[i] = Value.fromI32(input[i])
-        }
-        return Value.fromArray(output)
+  static fromI32Array(input: Array<i32>): Value {
+    let output = new Array<Value>(input.length)
+    for (let i: i32 = 0; i < input.length; i++) {
+      output[i] = Value.fromI32(input[i])
     }
+    return Value.fromArray(output)
+  }
 
-    static fromBigIntArray(input: Array<BigInt>): Value {
-        let output = new Array<Value>(input.length)
-        for (let i: i32 = 0; i < input.length; i++) {
-            output[i] = Value.fromBigInt(input[i])
-        }
-        return Value.fromArray(output)
+  static fromBigIntArray(input: Array<BigInt>): Value {
+    let output = new Array<Value>(input.length)
+    for (let i: i32 = 0; i < input.length; i++) {
+      output[i] = Value.fromBigInt(input[i])
     }
+    return Value.fromArray(output)
+  }
 
-    static fromBigDecimalArray(input: Array<BigDecimal>): Value {
-        let output = new Array<Value>(input.length)
-        for (let i: i32 = 0; i < input.length; i++) {
-            output[i] = Value.fromBigDecimal(input[i])
-        }
-        return Value.fromArray(output)
+  static fromBigDecimalArray(input: Array<BigDecimal>): Value {
+    let output = new Array<Value>(input.length)
+    for (let i: i32 = 0; i < input.length; i++) {
+      output[i] = Value.fromBigDecimal(input[i])
     }
+    return Value.fromArray(output)
+  }
 
-    static fromStringArray(input: Array<string>): Value {
-        let output = new Array<Value>(input.length)
-        for (let i: i32 = 0; i < input.length; i++) {
-            output[i] = Value.fromString(input[i])
-        }
-        return Value.fromArray(output)
+  static fromStringArray(input: Array<string>): Value {
+    let output = new Array<Value>(input.length)
+    for (let i: i32 = 0; i < input.length; i++) {
+      output[i] = Value.fromString(input[i])
     }
+    return Value.fromArray(output)
+  }
 
-    static fromArray(input: Array<Value>): Value {
-        let value = new Value()
-        value.kind = ValueKind.ARRAY
-        value.data = input as u64
-        return value
-    }
+  static fromArray(input: Array<Value>): Value {
+    let value = new Value()
+    value.kind = ValueKind.ARRAY
+    value.data = changetype<u32>(input) as u64
+    return value
+  }
 
-    static fromBigInt(n: BigInt): Value {
-        let value = new Value()
-        value.kind = ValueKind.BIGINT
-        value.data = n as u64
-        return value
-    }
+  static fromBigInt(n: BigInt): Value {
+    let value = new Value()
+    value.kind = ValueKind.BIGINT
+    value.data = n as u64
+    return value
+  }
 
-    static fromBoolean(b: boolean): Value {
-        let value = new Value()
-        value.kind = ValueKind.BOOL
-        value.data = b ? 1 : 0
-        return value
-    }
+  static fromBoolean(b: boolean): Value {
+    let value = new Value()
+    value.kind = ValueKind.BOOL
+    value.data = b ? 1 : 0
+    return value
+  }
 
-    static fromBytes(bytes: Bytes): Value {
-        let value = new Value()
-        value.kind = ValueKind.BYTES
-        value.data = bytes as u64
-        return value
-    }
+  static fromBytes(bytes: Bytes): Value {
+    let value = new Value()
+    value.kind = ValueKind.BYTES
+    value.data = changetype<u32>(bytes) as u64
+    return value
+  }
 
-    static fromNull(): Value {
-        let value = new Value()
-        value.kind = ValueKind.NULL
-        return value
-    }
+  static fromNull(): Value {
+    let value = new Value()
+    value.kind = ValueKind.NULL
+    return value
+  }
 
-    static fromI32(n: i32): Value {
-        let value = new Value()
-        value.kind = ValueKind.INT
-        value.data = n as u64
-        return value
-    }
+  static fromI32(n: i32): Value {
+    let value = new Value()
+    value.kind = ValueKind.INT
+    value.data = n as u64
+    return value
+  }
 
-    static fromString(s: string): Value {
-        let value = new Value()
-        value.kind = ValueKind.STRING
-        value.data = changetype<u32>(s)
-        return value
-    }
+  static fromString(s: string): Value {
+    let value = new Value()
+    value.kind = ValueKind.STRING
+    value.data = changetype<u32>(s)
+    return value
+  }
 
-    static fromBigDecimal(n: BigDecimal): Value {
-        let value = new Value()
-        value.kind = ValueKind.BIGDECIMAL
-        value.data = n as u64
-        return value
-    }
+  static fromBigDecimal(n: BigDecimal): Value {
+    let value = new Value()
+    value.kind = ValueKind.BIGDECIMAL
+    value.data = n as u64
+    return value
+  }
 }
 
 /** An arbitrary size integer represented as an array of bytes. */
 export class BigInt extends Uint8Array {
-    toHex(): string {
-        return typeConversion.bigIntToHex(this)
-    }
+  toHex(): string {
+    return typeConversion.bigIntToHex(this)
+  }
 
-    toHexString(): string {
-        return typeConversion.bigIntToHex(this)
-    }
+  toHexString(): string {
+    return typeConversion.bigIntToHex(this)
+  }
 
-    toString(): string {
-        return typeConversion.bigIntToString(this)
-    }
+  toString(): string {
+    return typeConversion.bigIntToString(this)
+  }
 
-    static fromI32(x: i32): BigInt {
-        return typeConversion.i32ToBigInt(x) as BigInt
-    }
+  static fromI32(x: i32): BigInt {
+    return typeConversion.i32ToBigInt(x) as BigInt
+  }
 
-    toI32(): i32 {
-        return typeConversion.bigIntToI32(this)
-    }
+  toI32(): i32 {
+    return typeConversion.bigIntToI32(this)
+  }
 
-    @operator('+')
-    plus(other: BigInt): BigInt {
-        return bigInt.plus(this, other)
-    }
+  @operator('+')
+  plus(other: BigInt): BigInt {
+    return bigInt.plus(this, other)
+  }
 
-    @operator('-')
-    minus(other: BigInt): BigInt {
-        return bigInt.minus(this, other)
-    }
+  @operator('-')
+  minus(other: BigInt): BigInt {
+    return bigInt.minus(this, other)
+  }
 
-    @operator('*')
-    times(other: BigInt): BigInt {
-        return bigInt.times(this, other)
-    }
+  @operator('*')
+  times(other: BigInt): BigInt {
+    return bigInt.times(this, other)
+  }
 
-    @operator('/')
-    div(other: BigInt): BigInt {
-        return bigInt.dividedBy(this, other)
-    }
+  @operator('/')
+  div(other: BigInt): BigInt {
+    return bigInt.dividedBy(this, other)
+  }
 
-    divDecimal(other: BigDecimal): BigDecimal {
-        return bigInt.dividedByDecimal(this, other)
-    }
+  divDecimal(other: BigDecimal): BigDecimal {
+    return bigInt.dividedByDecimal(this, other)
+  }
 
-    @operator('%')
-    mod(other: BigInt): BigInt {
-        return bigInt.mod(this, other)
-    }
+  @operator('%')
+  mod(other: BigInt): BigInt {
+    return bigInt.mod(this, other)
+  }
 
-    @operator('==')
-    equals(other: BigInt): boolean {
-        if (this.length !== other.length) {
-            return false;
-        }
-        for (let i = 0; i < this.length; i++) {
-            if (this[i] !== other[i]) {
-                return false;
-            }
-        }
-        return true;
+  @operator('==')
+  equals(other: BigInt): boolean {
+    if (this.length !== other.length) {
+      return false;
     }
+    for (let i = 0; i < this.length; i++) {
+      if (this[i] !== other[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
 
-    toBigDecimal(): BigDecimal {
-        return new BigDecimal(this)
-    }
+  toBigDecimal(): BigDecimal {
+    return new BigDecimal(this)
+  }
 }
 
 export class BigDecimal {
-    exp!: BigInt
-    digits!: BigInt
+  exp!: BigInt
+  digits!: BigInt
 
-    constructor(bigInt: BigInt) {
-        this.digits = bigInt
-        this.exp = BigInt.fromI32(0)
-    }
+  constructor(bigInt: BigInt) {
+    this.digits = bigInt
+    this.exp = BigInt.fromI32(0)
+  }
 
-    static fromString(s: string): BigDecimal {
-        return bigDecimal.fromString(s)
-    }
+  static fromString(s: string): BigDecimal {
+    return bigDecimal.fromString(s)
+  }
 
-    toString(): string {
-        return bigDecimal.toString(this)
-    }
+  toString(): string {
+    return bigDecimal.toString(this)
+  }
 
-    truncate(decimals: i32): BigDecimal {
-        let digitsRightOfZero = this.digits.toString().length + this.exp.toI32()
-        let newDigitLength = decimals + digitsRightOfZero
-        let truncateLength = this.digits.toString().length - newDigitLength
-        if (truncateLength < 0) {
-            return this
-        } else {
-            for (let i = 0; i < truncateLength; i++) {
-                this.digits = this.digits.div(BigInt.fromI32(10))
-            }
-            this.exp = BigInt.fromI32(decimals* -1)
-            return this
-        }
+  truncate(decimals: i32): BigDecimal {
+    let digitsRightOfZero = this.digits.toString().length + this.exp.toI32()
+    let newDigitLength = decimals + digitsRightOfZero
+    let truncateLength = this.digits.toString().length - newDigitLength
+    if (truncateLength < 0) {
+      return this
+    } else {
+      for (let i = 0; i < truncateLength; i++) {
+        this.digits = this.digits.div(BigInt.fromI32(10))
+      }
+      this.exp = BigInt.fromI32(decimals * -1)
+      return this
     }
+  }
 
-    @operator('+')
-    plus(other: BigDecimal): BigDecimal {
-        return bigDecimal.plus(this, other)
-    }
+  @operator('+')
+  plus(other: BigDecimal): BigDecimal {
+    return bigDecimal.plus(this, other)
+  }
 
-    @operator('-')
-    minus(other: BigDecimal): BigDecimal {
-        return bigDecimal.minus(this, other)
-    }
+  @operator('-')
+  minus(other: BigDecimal): BigDecimal {
+    return bigDecimal.minus(this, other)
+  }
 
-    @operator('*')
-    times(other: BigDecimal): BigDecimal {
-        return bigDecimal.times(this, other)
-    }
+  @operator('*')
+  times(other: BigDecimal): BigDecimal {
+    return bigDecimal.times(this, other)
+  }
 
-    @operator('/')
-    div(other: BigDecimal): BigDecimal {
-        return bigDecimal.dividedBy(this, other)
-    }
+  @operator('/')
+  div(other: BigDecimal): BigDecimal {
+    return bigDecimal.dividedBy(this, other)
+  }
 
-    @operator('==')
-    equals(other: BigDecimal): boolean {
-        return bigDecimal.equals(this, other)
-    }
+  @operator('==')
+  equals(other: BigDecimal): boolean {
+    return bigDecimal.equals(this, other)
+  }
 }
 
 export enum TokenKind {
-    ADDRESS = 0,
-    FIXED_BYTES = 1,
-    BYTES = 2,
-    INT = 3,
-    UINT = 4,
-    BOOL = 5,
-    STRING = 6,
-    FIXED_ARRAY = 7,
-    ARRAY = 8
+  ADDRESS = 0,
+  FIXED_BYTES = 1,
+  BYTES = 2,
+  INT = 3,
+  UINT = 4,
+  BOOL = 5,
+  STRING = 6,
+  FIXED_ARRAY = 7,
+  ARRAY = 8
 }
 export class Token {
-    kind: TokenKind
-    data: Payload
+  kind: TokenKind
+  data: Payload
 }
 
 // Sequence of 4 `u64`s.
