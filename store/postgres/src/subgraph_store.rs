@@ -956,6 +956,19 @@ impl SubgraphStoreInner {
         let (store, site) = self.store(&id)?;
         store.analyze(site, entity_type).await
     }
+
+    pub async fn create_index(
+        &self,
+        id: &DeploymentHash,
+        entity_type: EntityType,
+        field_names: Vec<String>,
+        index_method: String,
+    ) -> Result<(), StoreError> {
+        let (store, site) = self.store(&id)?;
+        store
+            .create_index(site, entity_type, field_names, index_method)
+            .await
+    }
 }
 
 struct EnsLookup {
