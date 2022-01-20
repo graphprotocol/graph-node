@@ -5,6 +5,7 @@ use diesel::sql_types::Text;
 use diesel::{insert_into, update};
 use graph::blockchain::{Block, ChainIdentifier};
 use graph::prelude::web3::types::H256;
+use graph::util::timed_cache::TimedCache;
 use graph::{
     constraint_violation,
     prelude::{
@@ -19,6 +20,7 @@ use std::{
     convert::{TryFrom, TryInto},
     iter::FromIterator,
     sync::Arc,
+    time::Duration,
 };
 
 use graph::prelude::{
@@ -1176,6 +1178,7 @@ pub struct ChainStore {
     genesis_block_ptr: BlockPtr,
     status: ChainStatus,
     chain_head_update_sender: ChainHeadUpdateSender,
+    block_cache: TimedCache<&'static str, BlockPtr>,
 }
 
 impl ChainStore {
@@ -1194,6 +1197,7 @@ impl ChainStore {
             genesis_block_ptr: BlockPtr::new(net_identifier.genesis_block_hash.clone(), 0),
             status,
             chain_head_update_sender,
+            block_cache: TimedCache::new(Duration::from_secs(5)),
         };
 
         store
@@ -1408,9 +1412,20 @@ impl ChainStoreTrait for ChainStore {
                         (None, None) => None,
                         _ => unreachable!(),
                     })
-                    .and_then(|opt| opt)
+                    .and_then(|opt: Option<BlockPtr>| opt)
+                    .map(|head| {
+                        self.block_cache.set("head", Arc::new(head.clone()));
+                        head
+                    })
             })
             .map_err(Error::from)
+    }
+
+    fn cached_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        match self.block_cache.get("head") {
+            Some(head) => Ok(Some(head.as_ref().clone())),
+            None => self.chain_head_ptr(),
+        }
     }
 
     fn chain_head_cursor(&self) -> Result<Option<String>, Error> {

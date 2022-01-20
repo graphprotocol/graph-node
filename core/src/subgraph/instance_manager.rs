@@ -30,6 +30,7 @@ use std::time::{Duration, Instant};
 use tokio::task;
 
 const MINUTE: Duration = Duration::from_secs(60);
+
 const BUFFERED_BLOCK_STREAM_SIZE: usize = 100;
 const BUFFERED_FIREHOSE_STREAM_SIZE: usize = 1;
 
@@ -481,7 +482,6 @@ async fn new_block_stream<C: Blockchain>(
 
             chain.new_polling_block_stream(
                 inputs.deployment.clone(),
-                inputs.store.clone(),
                 inputs.start_blocks.clone(),
                 start_block,
                 Arc::new(filter.clone()),
@@ -514,6 +514,7 @@ where
     let id_for_err = inputs.deployment.hash.clone();
     let mut should_try_unfail_deterministic = true;
     let mut should_try_unfail_non_deterministic = true;
+    let mut synced = false;
 
     // Exponential backoff that starts with two minutes and keeps
     // increasing its timeout exponentially until it reaches the ceiling.
@@ -532,6 +533,8 @@ where
             .await?
             .map_err(CancelableError::Error)
             .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
+        let chain = inputs.chain.clone();
+        let chain_store = chain.chain_store();
 
         // Keep the stream's cancel guard around to be able to shut it down
         // when the subgraph deployment is unassigned
@@ -706,6 +709,20 @@ where
 
             match res {
                 Ok(needs_restart) => {
+                    // Once synced, no need to try to update the status again.
+                    if !synced && is_deployment_synced(&block_ptr, chain_store.cached_head_ptr()?) {
+                        // Updating the sync status is an one way operation.
+                        // This state change exists: not synced -> synced
+                        // This state change does NOT: synced -> not synced
+                        inputs.store.deployment_synced()?;
+
+                        // Stop trying to update the sync status.
+                        synced = true;
+
+                        // Stop recording time-to-sync metrics.
+                        ctx.block_stream_metrics.stopwatch.disable();
+                    }
+
                     // Keep trying to unfail subgraph for everytime it advances block(s) until it's
                     // health is not Failed anymore.
                     if should_try_unfail_non_deterministic {
@@ -1292,4 +1309,36 @@ fn persist_dynamic_data_sources<T: RuntimeHostBuilder<C>, C: Blockchain>(
 
     // Merge filters from data sources into the block stream builder
     ctx.state.filter.extend(data_sources.iter());
+}
+
+/// Checks if the Deployment BlockPtr is at least one block behind to the chain head.
+fn is_deployment_synced(deployment_head_ptr: &BlockPtr, chain_head_ptr: Option<BlockPtr>) -> bool {
+    matches!((deployment_head_ptr, &chain_head_ptr), (b1, Some(b2)) if b1.number >= (b2.number - 1))
+}
+
+#[test]
+fn test_is_deployment_synced() {
+    let block_0 = BlockPtr::try_from((
+        "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
+        0,
+    ))
+    .unwrap();
+    let block_1 = BlockPtr::try_from((
+        "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
+        1,
+    ))
+    .unwrap();
+    let block_2 = BlockPtr::try_from((
+        "b98fb783b49de5652097a989414c767824dff7e7fd765a63b493772511db81c1",
+        2,
+    ))
+    .unwrap();
+
+    assert!(!is_deployment_synced(&block_0, None));
+    assert!(!is_deployment_synced(&block_2, None));
+
+    assert!(!is_deployment_synced(&block_0, Some(block_2.clone())));
+
+    assert!(is_deployment_synced(&block_1, Some(block_2.clone())));
+    assert!(is_deployment_synced(&block_2, Some(block_2.clone())));
 }

@@ -143,7 +143,6 @@ impl Blockchain for Chain {
     async fn new_polling_block_stream(
         &self,
         _deployment: DeploymentLocator,
-        _writable: Arc<dyn WritableStore>,
         _start_blocks: Vec<BlockNumber>,
         _subgraph_start_block: Option<BlockPtr>,
         _filter: Arc<Self::TriggerFilter>,

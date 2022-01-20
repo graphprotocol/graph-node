@@ -1170,6 +1170,9 @@ pub trait ChainStore: Send + Sync + 'static {
     /// The head block pointer will be None on initial set up.
     fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 
+    /// In-memory time cached version of `chain_head_ptr`.
+    fn cached_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
+
     /// Get the current head block cursor for this chain.
     ///
     /// The head block cursor will be None on initial set up.

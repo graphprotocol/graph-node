@@ -14,7 +14,6 @@ use super::block_stream::{
 use super::{Block, BlockPtr, Blockchain};
 
 use crate::components::store::BlockNumber;
-use crate::components::store::WritableStore;
 use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::prelude::*;
 #[cfg(debug_assertions)]
@@ -82,7 +81,6 @@ struct PollingBlockStreamContext<C>
 where
     C: Blockchain,
 {
-    subgraph_store: Arc<dyn WritableStore>,
     chain_store: Arc<dyn ChainStore>,
     adapter: Arc<C::TriggersAdapter>,
     node_id: NodeId,
@@ -107,7 +105,6 @@ where
 impl<C: Blockchain> Clone for PollingBlockStreamContext<C> {
     fn clone(&self) -> Self {
         Self {
-            subgraph_store: self.subgraph_store.cheap_clone(),
             chain_store: self.chain_store.cheap_clone(),
             adapter: self.adapter.clone(),
             node_id: self.node_id.clone(),
@@ -153,7 +150,6 @@ where
     C: Blockchain,
 {
     pub fn new(
-        subgraph_store: Arc<dyn WritableStore>,
         chain_store: Arc<dyn ChainStore>,
         chain_head_update_stream: ChainHeadUpdateStream,
         adapter: Arc<C::TriggersAdapter>,
@@ -175,7 +171,6 @@ where
             chain_head_update_stream,
             ctx: PollingBlockStreamContext {
                 current_block: start_block,
-                subgraph_store,
                 chain_store,
                 adapter,
                 node_id,
@@ -215,9 +210,6 @@ where
                     continue;
                 }
                 ReconciliationStep::Done => {
-                    // Reconciliation is complete, so try to mark subgraph as Synced
-                    ctx.update_subgraph_synced_status()?;
-
                     return Ok(NextBlocks::Done);
                 }
                 ReconciliationStep::Revert(from, to) => return Ok(NextBlocks::Revert(from, to)),
@@ -483,25 +475,6 @@ where
             .expect("genesis block can't be reverted");
 
         Ok(ptr)
-    }
-
-    /// Set subgraph deployment entity synced flag if and only if the subgraph block pointer is
-    /// caught up to the head block pointer.
-    fn update_subgraph_synced_status(&self) -> Result<(), StoreError> {
-        let head_ptr_opt = self.chain_store.chain_head_ptr()?;
-        let subgraph_ptr = self.current_block.clone();
-
-        if head_ptr_opt != subgraph_ptr || head_ptr_opt.is_none() || subgraph_ptr.is_none() {
-            // Not synced yet
-            Ok(())
-        } else {
-            // Synced
-
-            // Stop recording time-to-sync metrics.
-            self.metrics.stopwatch.disable();
-
-            self.subgraph_store.deployment_synced()
-        }
     }
 }
 
