@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use diesel::r2d2::ConnectionManager;
 use diesel::r2d2::PooledConnection;
@@ -6,12 +7,15 @@ use diesel::sql_query;
 use diesel::sql_types::{Integer, Text};
 use diesel::PgConnection;
 use diesel::RunQueryDsl;
+use graph::components::store::EntityType;
 use graph::prelude::anyhow;
 use graph::prelude::anyhow::bail;
+use graph::prelude::DeploymentHash;
 use graph_store_postgres::command_support::catalog::Site;
 use graph_store_postgres::command_support::{catalog as store_catalog, SqlName};
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::Shard;
+use graph_store_postgres::SubgraphStore;
 use graph_store_postgres::PRIMARY_SHARD;
 
 fn parse_table_name(table: &str) -> Result<(&str, SqlName), anyhow::Error> {
@@ -150,4 +154,23 @@ pub fn show(
     }
 
     Ok(())
+}
+
+pub async fn analyze(
+    store: Arc<SubgraphStore>,
+    hash: String,
+    entity_name: String,
+) -> Result<(), anyhow::Error> {
+    println!("Running ANALYZE for {entity_name} entity");
+    let entity_type = EntityType::new(entity_name);
+    let deployment_hash = DeploymentHash::new(hash).map_err(|malformed_hash| {
+        anyhow!(
+            "Subgraph hash must be a valid IPFS hash: {}",
+            malformed_hash
+        )
+    })?;
+    store
+        .analyze(&deployment_hash, entity_type)
+        .await
+        .map_err(|e| anyhow!(e))
 }

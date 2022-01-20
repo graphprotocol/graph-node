@@ -705,7 +705,7 @@ async fn main() {
                 Analyze { id, entity } => {
                     let store = ctx.store();
                     let subgraph_store = store.subgraph_store();
-                    commands::analyze::analyze(subgraph_store, id, entity).await
+                    commands::stats::analyze(subgraph_store, id, entity).await
                 }
             }
         }
