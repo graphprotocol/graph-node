@@ -709,12 +709,8 @@ where
 
             match res {
                 Ok(needs_restart) => {
-                    if should_try_update_sync_status(
-                        synced,
-                        // This is the new deployment head since the block just has been processed.
-                        &block_ptr,
-                        || chain_store.cached_head_ptr(),
-                    )? {
+                    // Once synced, no need to try to update the status again.
+                    if !synced && is_deployment_synced(&block_ptr, chain_store.cached_head_ptr()?) {
                         // Updating the sync status is an one way operation.
                         // This state change exists: not synced -> synced
                         // This state change does NOT: synced -> not synced
@@ -1345,56 +1341,4 @@ fn test_is_deployment_synced() {
 
     assert!(is_deployment_synced(&block_1, Some(block_2.clone())));
     assert!(is_deployment_synced(&block_2, Some(block_2.clone())));
-}
-
-/// Returns true if `store.deployment_synced()` should be called.
-/// This should happen if:
-/// - The deployment is not synced yet
-/// - Chain and deployment head blocks are the same
-fn should_try_update_sync_status(
-    synced: bool,
-    deployment_head_ptr: &BlockPtr,
-    get_chain_head: impl Fn() -> Result<Option<BlockPtr>, anyhow::Error>,
-) -> Result<bool, anyhow::Error> {
-    // Once synced, no need to try to update the status again.
-    Ok(!synced
-
-        // deployment.head == chain.head
-        && is_deployment_synced(
-            deployment_head_ptr,
-            get_chain_head()?,
-        ))
-}
-
-#[test]
-fn test_should_try_update_sync_status() {
-    let block_0 = BlockPtr::try_from((
-        "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
-        0,
-    ))
-    .unwrap();
-    let block_1 = BlockPtr::try_from((
-        "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
-        1,
-    ))
-    .unwrap();
-    let block_2 = BlockPtr::try_from((
-        "b98fb783b49de5652097a989414c767824dff7e7fd765a63b493772511db81c1",
-        2,
-    ))
-    .unwrap();
-
-    // When it's already synced
-    assert!(
-        !should_try_update_sync_status(true, &block_0, || unreachable!("Will not be called"),)
-            .unwrap()
-    );
-
-    // When it's still behind head
-    assert!(
-        !should_try_update_sync_status(false, &block_0, || Ok(Some(block_2.clone())),).unwrap()
-    );
-
-    // When the threshold has passed AND it's close to head
-    assert!(should_try_update_sync_status(false, &block_1, || Ok(Some(block_2.clone())),).unwrap());
 }
