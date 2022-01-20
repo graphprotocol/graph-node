@@ -31,6 +31,25 @@ enum BlockIDFlag {
   BLOCK_ID_FLAG_NIL     = 3 [(gogoproto.enumvalue_customname) = "BlockIDFlagNil"];
 }
 
+// EventData
+message EventData {
+  Event     event = 1;
+  EventList block = 2;
+}
+
+// EventList
+message EventList {
+  EventBlock                new_block             = 1;
+  repeated EventTx          transaction           = 2;
+  EventValidatorSetUpdates  validator_set_updates = 3;
+}
+
+// Reward
+message Reward {
+  string amount = 1;
+  string validator = 2;
+}
+
 message Block {
   Header        header      = 1 [(gogoproto.nullable) = false];
   Data          data        = 2 [(gogoproto.nullable) = false];
@@ -52,7 +71,7 @@ message Commit {
   int64               height      = 1; // must be > 0
   int32               round       = 2; // must be > 0
   BlockID             block_id    = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
-  repeated CommitSig  signatures  = 4 [(gogoproto.nullable) = false]; // must be > 0
+  repeated CommitSig  signatures  = 4 [(gogoproto.nullable) = false];
 }
 
 message CommitSig {
@@ -112,19 +131,6 @@ message EventBlock {
   BlockID             block_id            = 2; // not present in v0.34.13
   ResponseBeginBlock  result_begin_block  = 3;
   ResponseEndBlock    result_end_block    = 4;
-}
-
-// EventData
-message EventData {
-  Event     event = 1;
-  EventList block = 2;
-}
-
-// EventList
-message EventList {
-  EventBlock                new_block             = 1;
-  repeated EventTx          transaction           = 2;
-  EventValidatorSetUpdates  validator_set_updates = 3;
 }
 
 message EventTx {
@@ -225,15 +231,10 @@ message ResponseDeliverTx {
   bytes           data        = 2;
   string          log         = 3;
   string          info        = 4;
-  int64           gas_wanted  = 5 [json_name = "gas_wanted"];
-  int64           gas_used    = 6 [json_name = "gas_used"];
+  int64           gas_wanted  = 5;
+  int64           gas_used    = 6;
   repeated Event  events      = 7 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"];
   string          codespace   = 8;
-}
-
-message Reward {
-  string amount = 1;
-  string validator = 2;
 }
 
 message SignedHeader {
@@ -255,7 +256,7 @@ message TxResult {
 
 message Validator {
   bytes     address           = 1;
-  PublicKey pub_key           = 2 [(gogoproto.nullable) = false]; // must be >0
+  PublicKey pub_key           = 2 [(gogoproto.nullable) = false]; // must be > 0
   int64     voting_power      = 3;
   int64     proposer_priority = 4;
 }
@@ -268,7 +269,7 @@ message ValidatorParams {
 }
 
 message ValidatorSet {
-  repeated Validator  validators         = 1; // cannot be empty of nil
+  repeated Validator  validators         = 1; // cannot be empty or nil
   Validator           proposer           = 2; // cannot be nil
   int64               total_voting_power = 3;
 }

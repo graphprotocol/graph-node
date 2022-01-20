@@ -1,3 +1,29 @@
+/// EventData
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EventData {
+    #[prost(message, optional, tag = "1")]
+    pub event: ::core::option::Option<Event>,
+    #[prost(message, optional, tag = "2")]
+    pub block: ::core::option::Option<EventList>,
+}
+/// EventList
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EventList {
+    #[prost(message, optional, tag = "1")]
+    pub new_block: ::core::option::Option<EventBlock>,
+    #[prost(message, repeated, tag = "2")]
+    pub transaction: ::prost::alloc::vec::Vec<EventTx>,
+    #[prost(message, optional, tag = "3")]
+    pub validator_set_updates: ::core::option::Option<EventValidatorSetUpdates>,
+}
+/// Reward
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Reward {
+    #[prost(string, tag = "1")]
+    pub amount: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub validator: ::prost::alloc::string::String,
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Block {
     #[prost(message, optional, tag = "1")]
@@ -35,7 +61,6 @@ pub struct Commit {
     pub round: i32,
     #[prost(message, optional, tag = "3")]
     pub block_id: ::core::option::Option<BlockId>,
-    /// must be > 0
     #[prost(message, repeated, tag = "4")]
     pub signatures: ::prost::alloc::vec::Vec<CommitSig>,
 }
@@ -124,24 +149,6 @@ pub struct EventBlock {
     pub result_begin_block: ::core::option::Option<ResponseBeginBlock>,
     #[prost(message, optional, tag = "4")]
     pub result_end_block: ::core::option::Option<ResponseEndBlock>,
-}
-/// EventData
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct EventData {
-    #[prost(message, optional, tag = "1")]
-    pub event: ::core::option::Option<Event>,
-    #[prost(message, optional, tag = "2")]
-    pub block: ::core::option::Option<EventList>,
-}
-/// EventList
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct EventList {
-    #[prost(message, optional, tag = "1")]
-    pub new_block: ::core::option::Option<EventBlock>,
-    #[prost(message, repeated, tag = "2")]
-    pub transaction: ::prost::alloc::vec::Vec<EventTx>,
-    #[prost(message, optional, tag = "3")]
-    pub validator_set_updates: ::core::option::Option<EventValidatorSetUpdates>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventTx {
@@ -326,13 +333,6 @@ pub struct ResponseDeliverTx {
     pub codespace: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Reward {
-    #[prost(string, tag = "1")]
-    pub amount: ::prost::alloc::string::String,
-    #[prost(string, tag = "2")]
-    pub validator: ::prost::alloc::string::String,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignedHeader {
     #[prost(message, optional, tag = "1")]
     pub header: ::core::option::Option<Header>,
@@ -361,7 +361,7 @@ pub struct TxResult {
 pub struct Validator {
     #[prost(bytes = "vec", tag = "1")]
     pub address: ::prost::alloc::vec::Vec<u8>,
-    /// must be >0
+    /// must be > 0
     #[prost(message, optional, tag = "2")]
     pub pub_key: ::core::option::Option<PublicKey>,
     #[prost(int64, tag = "3")]
@@ -376,7 +376,7 @@ pub struct ValidatorParams {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ValidatorSet {
-    /// cannot be empty of nil
+    /// cannot be empty or nil
     #[prost(message, repeated, tag = "1")]
     pub validators: ::prost::alloc::vec::Vec<Validator>,
     /// cannot be nil

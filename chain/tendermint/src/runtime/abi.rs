@@ -388,23 +388,10 @@ impl ToAscObj<AscCommitSigArray> for Vec<codec::CommitSig> {
         heap: &mut H,
     ) -> Result<AscCommitSigArray, DeterministicHostError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x)).collect();
-        let content = content?;
-        Ok(AscCommitSigArray(Array::new(&*content, heap)?))
-    }
-}
 
-/*
-impl ToAscObj<AscBytesArray> for Vec<codec::Bytes> {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscBytesArray, DeterministicHostError> {
-        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x)).collect();
-        let content = content?;
-        Ok(AscBytesArray(Array::new(&*content, heap)?))
+        Ok(AscCommitSigArray(Array::new(&content?, heap)?))
     }
 }
-*/
 
 impl ToAscObj<AscValidatorArray> for Vec<codec::Validator> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -467,26 +454,15 @@ impl ToAscObj<AscPublicKey> for codec::PublicKey {
             .as_ref()
             .ok_or_else(|| missing_field_error("PublicKey", "sum"))?;
         
-        // let bytesPubKeyEd25519: Vec<u8> = Vec::with_capacity(32);
-        // let bytesPubKeySecp256k1: Vec<u8> = Vec::with_capacity(33);
-        // let bytesPubKeyEd25519Ptr = bytesPubKeyEd25519.as_ptr();
-        // let bytesPubKeySecp256k1Ptr = bytesPubKeySecp256k1.as_ptr();
-
-        // println!("sum {:#?}", sum);
-
         let (ed25519, secp256k1) = match sum {
             Sum::Ed25519(e) => (asc_new(heap, &Bytes(e))?, AscPtr::null()),
             Sum::Secp256k1(s) => (AscPtr::null(), asc_new(heap, &Bytes(s))?)
         };
 
-        
         Ok(AscPublicKey {
             ed25519,
             secp256k1,
         })
-        // Ok(AscPublicKey {
-        //     ed25519: asc_new(heap, &Bytes(&self.ed25519))?,
-        // })
     }
 }
 
@@ -601,8 +577,8 @@ impl ToAscObj<AscEvidenceArray> for Vec<codec::Evidence> {
         heap: &mut H,
     ) -> Result<AscEvidenceArray, DeterministicHostError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x)).collect();
-        let content = content?;
-        Ok(AscEvidenceArray(Array::new(&*content, heap)?))
+
+        Ok(AscEvidenceArray(Array::new(&content?, heap)?))
     }
 }
 
@@ -612,8 +588,8 @@ impl ToAscObj<AscEventTxArray> for Vec<codec::EventTx> {
         heap: &mut H,
     ) -> Result<AscEventTxArray, DeterministicHostError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x)).collect();
-        let content = content?;
-        Ok(AscEventTxArray(Array::new(&*content, heap)?))
+        
+        Ok(AscEventTxArray(Array::new(&content?, heap)?))
     }
 }
 
@@ -728,9 +704,6 @@ impl ToAscObj<AscSignedMsgTypeEnum> for SignedMessageTypeKind {
     }
 }
 
-// struct BytesPubKeyEd25519<'a>(&'a Vec<u8>);
-// struct BytesPubKeySecp256k1<'a>(&'a Vec<u8>);
-
 struct Bytes<'a>(&'a Vec<u8>);
 
 impl ToAscObj<Uint8Array> for Bytes<'_> {
@@ -757,28 +730,6 @@ where
         None => Ok(AscPtr::null()),
     }
 }
-
-// /// Map an optional object to its Asc equivalent if Some, otherwise return a missing field error.
-// fn asc_new_sized_or_null<H, O, A>(
-//     heap: &mut H,
-//     object: &Option<O>,
-//     size: usize,
-// ) -> Result<AscPtr<A>, DeterministicHostError>
-// where
-//     H: AscHeap + ?Sized,
-//     O: ToAscObj<A>,
-//     A: AscType + AscIndexId,
-// {
-//     let (obj, null_obj) = match object {
-//         Some(o) => asc_new(heap, o),
-//         None => Ok(AscPtr::null()),
-//     }
-
-//     Ok(AscPtr {
-//         obj,
-//         null_obj,
-//     })
-// }
 
 /// Create an error for a missing field in a type.
 fn missing_field_error(type_name: &str, field_name: &str) -> DeterministicHostError {

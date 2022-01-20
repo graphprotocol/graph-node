@@ -6,8 +6,6 @@ use graph_runtime_wasm::asc_abi::class::{Uint8Array, AscEnum, Array, AscString};
 pub(crate) type AscBytes = Uint8Array;
 pub(crate) type AscHash = Uint8Array;
 pub(crate) type AscGas = i64;
-pub(crate) type AscPubKeyEd25519 = [AscBytes; 32];
-pub(crate) type AscPubKeySecp256k1 = [AscBytes; 33];
 
 pub struct AscEventTxArray(pub(crate) Array<AscPtr<AscEventTx>>);
 
@@ -585,11 +583,8 @@ impl AscIndexId for AscValidatorArray {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscPublicKey {
-    // pub ed25519: AscPtr<AscPubKeyEd25519>,
-    // pub secp256k1: AscPtr<AscPubKeySecp256k1>,
     pub ed25519: AscPtr<AscBytes>,
     pub secp256k1: AscPtr<AscBytes>,
-    // pub sr25519: AscPtr<Uint8Array>,
 }
 
 impl AscIndexId for AscPublicKey {
