@@ -482,7 +482,6 @@ async fn new_block_stream<C: Blockchain>(
 
             chain.new_polling_block_stream(
                 inputs.deployment.clone(),
-                inputs.store.clone(),
                 inputs.start_blocks.clone(),
                 start_block,
                 Arc::new(filter.clone()),

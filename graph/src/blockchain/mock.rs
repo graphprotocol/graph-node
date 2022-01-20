@@ -308,7 +308,6 @@ impl Blockchain for MockBlockchain {
     async fn new_polling_block_stream(
         &self,
         _deployment: crate::components::store::DeploymentLocator,
-        _writable: Arc<dyn crate::components::store::WritableStore>,
         _start_blocks: Vec<crate::components::store::BlockNumber>,
         _subgraph_start_block: Option<BlockPtr>,
         _filter: std::sync::Arc<Self::TriggerFilter>,
