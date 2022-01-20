@@ -89,6 +89,7 @@ where
             ExponentialBackoff::new(Duration::from_millis(250), Duration::from_secs(30));
 
         let mut backfill_cursor = self.fetch_backfill_cursor().await;
+        let backfill_target_block_number = self.fetch_backfill_target_block_num().await;
 
         loop {
             let backfill_completed = self.fetch_backfill_is_completed().await;
@@ -97,7 +98,6 @@ where
                 break;
             }
 
-            let backfill_target_block_number = self.fetch_backfill_target_block_num().await;
             let result = self
                 .endpoint
                 .clone()
@@ -333,7 +333,7 @@ where
 
         self.chain_store
             .clone()
-            .set_chain_head(block.clone(), response.cursor.clone())
+            .set_chain_head(block, response.cursor.clone())
             .await
             .context("Updating chain head")?;
 
