@@ -8,7 +8,7 @@ use graph::{
 use graph_store_postgres::SubgraphStore;
 use std::{collections::HashSet, sync::Arc};
 
-pub fn validate_fields<T: AsRef<str>>(fields: &[T]) -> Result<(), anyhow::Error> {
+fn validate_fields<T: AsRef<str>>(fields: &[T]) -> Result<(), anyhow::Error> {
     // Must be non-empty. Double checking, since [`StructOpt`] already checks this.
     if fields.is_empty() {
         anyhow::bail!("ate least one field must be informed")
