@@ -411,7 +411,7 @@ where
                 .clone()
                 .set_chain_backfill_as_completed()
                 .await
-                .context("setting backfill completion")?;
+                .context("Setting backfill completion")?;
         }
 
         Ok(())
