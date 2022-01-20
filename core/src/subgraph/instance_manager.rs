@@ -1351,7 +1351,6 @@ fn test_is_deployment_synced() {
 /// Returns true if `store.deployment_synced()` should be called.
 /// This should happen if:
 /// - The deployment is not synced yet
-/// - A time threshold has passed
 /// - Chain and deployment head blocks are the same
 fn should_try_update_sync_status(
     synced: bool,
