@@ -264,7 +264,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         // block which is useless.
         //
         // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
-        // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
+        // define a slimmed down struct that would decode only a few fields and ignore all the rest.
         let sp = codec::EventList::decode(any_block.value.as_ref())?;
 
         match step {
@@ -274,7 +274,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             )),
 
             bstream::ForkStep::StepUndo => {
-                let piece = sp.newblock.as_ref().unwrap();
+                let piece = sp.new_block.as_ref().unwrap();
                 let block = piece.block.as_ref().unwrap();
                 let header = block.header.as_ref().unwrap();
                 let block_id = piece.block_id.as_ref().unwrap();

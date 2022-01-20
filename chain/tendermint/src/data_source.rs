@@ -205,7 +205,7 @@ impl DataSource {
         self.mapping
             .event_handlers
             .iter()
-            .find(|handler| event.eventtype == handler.event)
+            .find(|handler| event.event_type == handler.event)
             .cloned()
     }
 }

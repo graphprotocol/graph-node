@@ -10,7 +10,7 @@ use std::convert::TryFrom;
 
 impl EventList {
     pub fn block(&self) -> &EventBlock {
-        self.newblock.as_ref().unwrap()
+        self.new_block.as_ref().unwrap()
     }
 
     pub fn header(&self) -> &Header {
