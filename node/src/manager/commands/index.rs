@@ -32,7 +32,7 @@ pub async fn create(
         .map_err(|e| anyhow::anyhow!("Subgraph hash must be a valid IPFS hash: {}", e))?;
     let entity_type = EntityType::new(entity_name);
     store
-        .create_index(&deployment_hash, entity_type, field_names, index_method)
+        .create_manual_index(&deployment_hash, entity_type, field_names, index_method)
         .await
         .map_err(|e| anyhow::anyhow!(e))
 }

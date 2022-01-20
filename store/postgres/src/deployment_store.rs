@@ -697,7 +697,7 @@ impl DeploymentStore {
     /// Creates a new index in the specified Entity table if it doesn't already exist.
     ///
     /// This is a potentially time-consuming operation.
-    pub(crate) async fn create_index(
+    pub(crate) async fn create_manual_index(
         &self,
         site: Arc<Site>,
         entity_type: EntityType,

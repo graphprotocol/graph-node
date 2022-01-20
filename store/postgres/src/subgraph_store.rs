@@ -957,7 +957,7 @@ impl SubgraphStoreInner {
         store.analyze(site, entity_type).await
     }
 
-    pub async fn create_index(
+    pub async fn create_manual_index(
         &self,
         id: &DeploymentHash,
         entity_type: EntityType,
@@ -966,7 +966,7 @@ impl SubgraphStoreInner {
     ) -> Result<(), StoreError> {
         let (store, site) = self.store(&id)?;
         store
-            .create_index(site, entity_type, field_names, index_method)
+            .create_manual_index(site, entity_type, field_names, index_method)
             .await
     }
 }
