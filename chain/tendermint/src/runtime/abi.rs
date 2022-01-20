@@ -325,7 +325,12 @@ impl ToAscObj<AscEvidenceParams> for codec::EvidenceParams {
     ) -> Result<AscEvidenceParams, DeterministicHostError> {
         Ok(AscEvidenceParams {
             max_age_num_blocks: self.max_age_num_blocks,
-            max_age_duration: asc_new_or_missing(heap, &self.max_age_duration, "EvidenceParams", "timestamp")?,
+            max_age_duration: asc_new_or_missing(
+                heap,
+                &self.max_age_duration,
+                "EvidenceParams",
+                "timestamp",
+            )?,
             max_bytes: self.max_bytes,
         })
     }
@@ -453,16 +458,13 @@ impl ToAscObj<AscPublicKey> for codec::PublicKey {
             .sum
             .as_ref()
             .ok_or_else(|| missing_field_error("PublicKey", "sum"))?;
-        
+
         let (ed25519, secp256k1) = match sum {
             Sum::Ed25519(e) => (asc_new(heap, &Bytes(e))?, AscPtr::null()),
-            Sum::Secp256k1(s) => (AscPtr::null(), asc_new(heap, &Bytes(s))?)
+            Sum::Secp256k1(s) => (AscPtr::null(), asc_new(heap, &Bytes(s))?),
         };
 
-        Ok(AscPublicKey {
-            ed25519,
-            secp256k1,
-        })
+        Ok(AscPublicKey { ed25519, secp256k1 })
     }
 }
 
@@ -588,7 +590,7 @@ impl ToAscObj<AscEventTxArray> for Vec<codec::EventTx> {
         heap: &mut H,
     ) -> Result<AscEventTxArray, DeterministicHostError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x)).collect();
-        
+
         Ok(AscEventTxArray(Array::new(&content?, heap)?))
     }
 }
