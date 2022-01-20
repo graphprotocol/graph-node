@@ -573,8 +573,8 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 
                 Ok(BlockStreamEvent::Revert(
                     block.ptr(),
+                    parent_ptr,
                     FirehoseCursor::Some(response.cursor.clone()),
-                    Some(parent_ptr),
                 ))
             }
 

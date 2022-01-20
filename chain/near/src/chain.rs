@@ -303,15 +303,15 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             )),
 
             StepUndo => {
-                let header = block.header();
-                let parent_ptr = header
+                let parent_ptr = block
+                    .header()
                     .parent_ptr()
                     .expect("Genesis block should never be reverted");
 
                 Ok(BlockStreamEvent::Revert(
                     block.ptr(),
+                    parent_ptr,
                     Some(response.cursor.clone()),
-                    Some(parent_ptr),
                 ))
             }
 

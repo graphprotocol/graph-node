@@ -556,7 +556,7 @@ where
 
             let (block, cursor) = match event {
                 Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => (block, cursor),
-                Some(Ok(BlockStreamEvent::Revert(subgraph_ptr, _, optional_parent_ptr))) => {
+                Some(Ok(BlockStreamEvent::Revert(subgraph_ptr, parent_ptr, cursor))) => {
                     info!(
                         logger,
                         "Reverting block to get back to main chain";
@@ -564,53 +564,20 @@ where
                         "block_hash" => format!("{}", subgraph_ptr.hash)
                     );
 
-                    // We would like to revert the DB state to the parent of the current block.
-                    match optional_parent_ptr {
-                        Some(parent_ptr) => {
-                            if let Err(e) = inputs.store.revert_block_operations(parent_ptr) {
-                                error!(
-                                    &logger,
-                                    "Could not revert block. Retrying";
-                                    "block_number" => format!("{}", subgraph_ptr.number),
-                                    "block_hash" => format!("{}", subgraph_ptr.hash),
-                                    "error" => e.to_string(),
-                                );
+                    if let Err(e) = inputs
+                        .store
+                        .revert_block_operations(parent_ptr, cursor.as_deref())
+                    {
+                        error!(
+                            &logger,
+                            "Could not revert block. Retrying";
+                            "block_number" => format!("{}", subgraph_ptr.number),
+                            "block_hash" => format!("{}", subgraph_ptr.hash),
+                            "error" => e.to_string(),
+                        );
 
-                                // Exit inner block stream consumption loop and go up to loop that restarts subgraph
-                                break;
-                            }
-                        }
-                        None => {
-                            // First, load the block in order to get the parent hash.
-                            if let Err(e) = inputs
-                                .triggers_adapter
-                                .parent_ptr(&subgraph_ptr)
-                                .await
-                                .map(|parent_ptr| {
-                                    parent_ptr.expect("genesis block cannot be reverted")
-                                })
-                                .and_then(|parent_ptr| {
-                                    // Revert entity changes from this block, and update subgraph ptr.
-                                    inputs
-                                        .store
-                                        .revert_block_operations(parent_ptr)
-                                        .map_err(Into::into)
-                                })
-                            {
-                                error!(
-                                    &logger,
-                                    "Could not revert block. \
-                                    The likely cause is the block not being found due to a deep reorg. \
-                                    Retrying";
-                                    "block_number" => format!("{}", subgraph_ptr.number),
-                                    "block_hash" => format!("{}", subgraph_ptr.hash),
-                                    "error" => e.to_string(),
-                                );
-
-                                // Exit inner block stream consumption loop and go up to loop that restarts subgraph
-                                break;
-                            }
-                        }
+                        // Exit inner block stream consumption loop and go up to loop that restarts subgraph
+                        break;
                     }
 
                     ctx.block_stream_metrics
@@ -629,6 +596,7 @@ where
                     ctx.state.entity_lfu_cache = LfuCache::new();
                     continue;
                 }
+
                 // Log and drop the errors from the block_stream
                 // The block stream will continue attempting to produce blocks
                 Some(Err(e)) => {

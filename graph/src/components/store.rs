@@ -1037,7 +1037,11 @@ pub trait WritableStore: Send + Sync + 'static {
     /// subgraph block pointer to `block_ptr_to`.
     ///
     /// `block_ptr_to` must point to the parent block of the subgraph block pointer.
-    fn revert_block_operations(&self, block_ptr_to: BlockPtr) -> Result<(), StoreError>;
+    fn revert_block_operations(
+        &self,
+        block_ptr_to: BlockPtr,
+        firehose_cursor: Option<&str>,
+    ) -> Result<(), StoreError>;
 
     /// If a deterministic error happened, this function reverts the block operations from the
     /// current block to the previous block.

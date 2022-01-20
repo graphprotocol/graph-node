@@ -139,7 +139,7 @@ where
     /// Blocks and range size
     Blocks(VecDeque<BlockWithTriggers<C>>, BlockNumber),
 
-    // The payload is the current subgraph head pointer, which should be reverted and it's parent, such that the
+    // The payload is the current subgraph head pointer, which should be reverted and its parent, such that the
     // parent of the current subgraph head becomes the new subgraph head.
     Revert(BlockPtr, BlockPtr),
     Done,
@@ -212,7 +212,9 @@ where
                 ReconciliationStep::Done => {
                     return Ok(NextBlocks::Done);
                 }
-                ReconciliationStep::Revert(from, to) => return Ok(NextBlocks::Revert(from, to)),
+                ReconciliationStep::Revert(from, parent_ptr) => {
+                    return Ok(NextBlocks::Revert(from, parent_ptr))
+                }
             }
         }
     }
@@ -538,14 +540,14 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
                                 // Poll for chain head update
                                 continue;
                             }
-                            NextBlocks::Revert(from, to) => {
-                                self.ctx.current_block = to.into();
+                            NextBlocks::Revert(from, parent_ptr) => {
+                                self.ctx.current_block = Some(parent_ptr.clone());
 
                                 self.state = BlockStreamState::BeginReconciliation;
                                 break Poll::Ready(Some(Ok(BlockStreamEvent::Revert(
                                     from,
+                                    parent_ptr,
                                     FirehoseCursor::None,
-                                    self.ctx.current_block.clone(),
                                 ))));
                             }
                         },
