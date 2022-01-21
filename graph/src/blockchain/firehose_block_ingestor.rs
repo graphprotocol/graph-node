@@ -92,7 +92,7 @@ where
 
         let mut backfill_target_block_number = self.fetch_backfill_target_block_num().await;
         if backfill_target_block_number.is_none() {
-                backfill_target_block_number =  Some(self.initialize_backfill_target_block_num().await);
+            backfill_target_block_number = Some(self.initialize_backfill_target_block_num().await);
         }
 
         loop {
@@ -218,7 +218,7 @@ where
                         .set_chain_backfill_target_block_num(block_num)
                         .await
                     {
-                        Ok(_) => {},
+                        Ok(_) => {}
                         Err(e) => {
                             error!(self.logger, "Setting chain backfill target failed: {:?}", e);
                             backoff.sleep_async().await;
