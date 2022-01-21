@@ -89,7 +89,11 @@ where
             ExponentialBackoff::new(Duration::from_millis(250), Duration::from_secs(30));
 
         let mut backfill_cursor = self.fetch_backfill_cursor().await;
-        let backfill_target_block_number = self.fetch_backfill_target_block_num().await;
+
+        let mut backfill_target_block_number = self.fetch_backfill_target_block_num().await;
+        if backfill_target_block_number.is_none() {
+                backfill_target_block_number =  Some(self.initialize_backfill_target_block_num().await);
+        }
 
         loop {
             let backfill_completed = self.fetch_backfill_is_completed().await;
@@ -103,7 +107,7 @@ where
                 .clone()
                 .stream_blocks(firehose::Request {
                     start_block_num: 0,
-                    stop_block_num: backfill_target_block_number as u64,
+                    stop_block_num: backfill_target_block_number.unwrap() as u64,
                     start_cursor: backfill_cursor.clone(),
                     fork_steps: vec![StepIrreversible as i32],
                     ..Default::default()
@@ -116,7 +120,7 @@ where
                         .process_backfill_blocks(
                             backfill_cursor,
                             stream,
-                            backfill_target_block_number,
+                            backfill_target_block_number.unwrap(),
                         )
                         .await
                 }
@@ -196,29 +200,32 @@ where
         }
     }
 
-    async fn fetch_backfill_target_block_num(&self) -> BlockNumber {
+    async fn initialize_backfill_target_block_num(&self) -> BlockNumber {
+        let mut backoff =
+            ExponentialBackoff::new(Duration::from_millis(250), Duration::from_secs(30));
+
+        loop {
+            match self.determine_backfill_target_block_num().await {
+                None => {
+                    info!(self.logger, "Could not yet determine backfill target block number: no blocks set yet for this chain");
+                    backoff.sleep_async().await;
+                    continue;
+                }
+                Some(block_num) => {
+                    self.set_backfill_target_block_num(block_num).await;
+                    return block_num;
+                }
+            }
+        }
+    }
+
+    async fn fetch_backfill_target_block_num(&self) -> Option<BlockNumber> {
         let mut backoff =
             ExponentialBackoff::new(Duration::from_millis(250), Duration::from_secs(30));
         loop {
             match self.chain_store.clone().chain_backfill_target_block_num() {
                 Ok(opt) => {
-                    return match opt {
-                        None => {
-                            // no target block number set yet. will determine and save initial target block from raw blocks table
-                            match self.determine_backfill_target_block_num().await {
-                                None => {
-                                    info!(self.logger, "Could not yet determine backfill target block number: no blocks set yet for this chain");
-                                    backoff.sleep_async().await;
-                                    continue;
-                                }
-                                Some(block_num) => {
-                                    self.set_backfill_target_block_num(block_num).await;
-                                    block_num
-                                }
-                            }
-                        }
-                        Some(block_num) => block_num.into(),
-                    };
+                    return opt;
                 }
                 Err(e) => {
                     error!(
