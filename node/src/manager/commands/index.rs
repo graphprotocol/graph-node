@@ -28,6 +28,7 @@ pub async fn create(
     let deployment_hash = DeploymentHash::new(id)
         .map_err(|e| anyhow::anyhow!("Subgraph hash must be a valid IPFS hash: {}", e))?;
     let entity_type = EntityType::new(entity_name);
+    println!("Index creation started. Please wait.");
     match store
         .create_manual_index(&deployment_hash, entity_type, field_names, index_method)
         .await
