@@ -212,7 +212,19 @@ where
                     continue;
                 }
                 Some(block_num) => {
-                    self.set_backfill_target_block_num(block_num).await;
+                    match self
+                        .chain_store
+                        .clone()
+                        .set_chain_backfill_target_block_num(block_num)
+                        .await
+                    {
+                        Ok(_) => {},
+                        Err(e) => {
+                            error!(self.logger, "Setting chain backfill target failed: {:?}", e);
+                            backoff.sleep_async().await;
+                        }
+                    }
+
                     return block_num;
                 }
             }
@@ -250,26 +262,6 @@ where
                         Some(t) => Some(t),
                     }
                 }
-                Err(e) => {
-                    error!(self.logger, "Setting chain backfill target failed: {:?}", e);
-                    backoff.sleep_async().await;
-                }
-            }
-        }
-    }
-
-    async fn set_backfill_target_block_num(&self, block_num: BlockNumber) {
-        let mut backoff =
-            ExponentialBackoff::new(Duration::from_millis(250), Duration::from_secs(30));
-
-        loop {
-            match self
-                .chain_store
-                .clone()
-                .set_chain_backfill_target_block_num(block_num)
-                .await
-            {
-                Ok(_) => return,
                 Err(e) => {
                     error!(self.logger, "Setting chain backfill target failed: {:?}", e);
                     backoff.sleep_async().await;
