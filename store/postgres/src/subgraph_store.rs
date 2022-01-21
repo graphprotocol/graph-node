@@ -37,7 +37,7 @@ use crate::{
     primary,
     primary::{DeploymentId, Mirror as PrimaryMirror, Site},
     relational::Layout,
-    writable::WritableAgent,
+    writable::WritableStore,
     NotificationSender,
 };
 use crate::{
@@ -266,7 +266,7 @@ pub struct SubgraphStoreInner {
     sites: TimedCache<DeploymentHash, Site>,
     placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
     sender: Arc<NotificationSender>,
-    writables: Mutex<HashMap<DeploymentId, Arc<WritableAgent>>>,
+    writables: Mutex<HashMap<DeploymentId, Arc<WritableStore>>>,
 }
 
 impl SubgraphStoreInner {
@@ -1177,7 +1177,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         .await
         .unwrap()?; // Propagate panics, there shouldn't be any.
 
-        let writable = Arc::new(WritableAgent::new(self.as_ref().clone(), logger, site).await?);
+        let writable = Arc::new(WritableStore::new(self.as_ref().clone(), logger, site).await?);
         self.writables
             .lock()
             .unwrap()
