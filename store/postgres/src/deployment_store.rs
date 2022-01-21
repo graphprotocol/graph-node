@@ -710,7 +710,7 @@ impl DeploymentStore {
             let schema_name = site.namespace.clone();
             let layout = store.layout(conn, site)?;
             let table = layout.table_for_entity(&entity_type)?;
-            let table_name = &table.qualified_name;
+            let table_name = &table.name;
 
             // resolve column names
             let column_names = field_names
@@ -723,8 +723,9 @@ impl DeploymentStore {
             let index_name = format!("manual_{table_name}_{column_names_sep_by_underscores}");
 
             let sql = format!(
-                "create index concurrently if not exists {index_name}
-                 on {table_name}({column_names_sep_by_commas}) using {index_method}"
+                "create index concurrently if not exists {index_name} \
+                 on {schema_name}.{table_name} using {index_method} \
+                 ({column_names_sep_by_commas})"
             );
             // This might take a long time.
             conn.execute(&sql)?;
