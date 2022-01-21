@@ -731,7 +731,7 @@ impl DeploymentStore {
 
             // check if the index creation was successfull
             let index_is_valid =
-                deployment::check_index_is_valid(conn, schema_name.as_str(), &index_name)?;
+                catalog::check_index_is_valid(conn, schema_name.as_str(), &index_name)?;
             if index_is_valid {
                 Ok(())
             } else {
