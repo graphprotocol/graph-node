@@ -144,6 +144,7 @@ impl StoreBuilder {
             Arc::new(config.deployment.clone()),
             notification_sender,
             fork_base,
+            registry,
         ));
 
         (store, pools)

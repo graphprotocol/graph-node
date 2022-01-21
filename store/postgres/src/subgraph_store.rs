@@ -24,7 +24,7 @@ use graph::{
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
         BlockHash, BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation, Logger,
-        NodeId, PartialBlockPtr, Schema, StoreError, SubgraphName,
+        MetricsRegistry, NodeId, PartialBlockPtr, Schema, StoreError, SubgraphName,
         SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
     url::Url,
@@ -214,9 +214,12 @@ impl SubgraphStore {
         placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
         sender: Arc<NotificationSender>,
         fork_base: Option<Url>,
+        registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         Self {
-            inner: Arc::new(SubgraphStoreInner::new(logger, stores, placer, sender)),
+            inner: Arc::new(SubgraphStoreInner::new(
+                logger, stores, placer, sender, registry,
+            )),
             fork_base,
         }
     }
@@ -267,6 +270,7 @@ pub struct SubgraphStoreInner {
     placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
     sender: Arc<NotificationSender>,
     writables: Mutex<HashMap<DeploymentId, Arc<WritableStore>>>,
+    registry: Arc<dyn MetricsRegistry>,
 }
 
 impl SubgraphStoreInner {
@@ -289,6 +293,7 @@ impl SubgraphStoreInner {
         stores: Vec<(Shard, ConnectionPool, Vec<ConnectionPool>, Vec<usize>)>,
         placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
         sender: Arc<NotificationSender>,
+        registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         let mirror = {
             let pools = HashMap::from_iter(
@@ -321,6 +326,7 @@ impl SubgraphStoreInner {
             placer,
             sender,
             writables: Mutex::new(HashMap::new()),
+            registry,
         }
     }
 
@@ -1177,7 +1183,9 @@ impl SubgraphStoreTrait for SubgraphStore {
         .await
         .unwrap()?; // Propagate panics, there shouldn't be any.
 
-        let writable = Arc::new(WritableStore::new(self.as_ref().clone(), logger, site).await?);
+        let writable = Arc::new(
+            WritableStore::new(self.as_ref().clone(), logger, site, self.registry.clone()).await?,
+        );
         self.writables
             .lock()
             .unwrap()

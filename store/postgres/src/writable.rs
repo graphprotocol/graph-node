@@ -5,7 +5,9 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use graph::data::subgraph::schema;
 use graph::env::env_var;
-use graph::prelude::{BlockNumber, Entity, Schema, SubgraphStore as _, BLOCK_NUMBER_MAX};
+use graph::prelude::{
+    BlockNumber, Entity, MetricsRegistry, Schema, SubgraphStore as _, BLOCK_NUMBER_MAX,
+};
 use graph::util::bounded_queue::BoundedQueue;
 use graph::{
     cheap_clone::CheapClone,
@@ -409,7 +411,6 @@ enum Request {
         block_ptr: BlockPtr,
         firehose_cursor: Option<String>,
         mods: Vec<EntityModification>,
-        stopwatch: StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
     },
@@ -443,15 +444,19 @@ struct Queue {
 
 impl Queue {
     /// Create a new queue and spawn a task that processes write requests
-    fn start(store: Arc<SyncStore>, capacity: usize) -> Arc<Self> {
-        async fn start_writer(queue: Arc<Queue>) {
+    fn start(
+        logger: Logger,
+        store: Arc<SyncStore>,
+        capacity: usize,
+        registry: Arc<dyn MetricsRegistry>,
+    ) -> Arc<Self> {
+        async fn start_writer(queue: Arc<Queue>, stopwatch: StopwatchMetrics) {
             loop {
                 let res = match queue.queue.peek().await.as_ref() {
                     Request::Write {
                         block_ptr: block_ptr_to,
                         firehose_cursor,
                         mods,
-                        stopwatch,
                         data_sources,
                         deterministic_errors,
                     } => queue.store.transact_block_operations(
@@ -490,7 +495,12 @@ impl Queue {
         };
         let queue = Arc::new(queue);
 
-        graph::spawn(start_writer(queue.clone()));
+        // Use a separate instance of the `StopwatchMetrics` for background
+        // work since that has its own call hierarchy, and using the
+        // foreground metrics will lead to incorrect nesting of sections
+        let stopwatch =
+            StopwatchMetrics::new(logger, queue.store.site.deployment.clone(), registry);
+        graph::spawn(start_writer(queue.clone(), stopwatch));
 
         queue
     }
@@ -688,11 +698,16 @@ enum Writer {
 }
 
 impl Writer {
-    fn new(store: Arc<SyncStore>, capacity: usize) -> Self {
+    fn new(
+        logger: Logger,
+        store: Arc<SyncStore>,
+        capacity: usize,
+        registry: Arc<dyn MetricsRegistry>,
+    ) -> Self {
         if capacity == 0 {
             Self::Sync(store)
         } else {
-            Self::Async(Queue::start(store, capacity))
+            Self::Async(Queue::start(logger, store, capacity, registry))
         }
     }
 
@@ -719,7 +734,6 @@ impl Writer {
                     block_ptr: block_ptr_to,
                     firehose_cursor,
                     mods,
-                    stopwatch: stopwatch.cheap_clone(),
                     data_sources,
                     deterministic_errors,
                 };
@@ -790,11 +804,17 @@ impl WritableStore {
         subgraph_store: SubgraphStore,
         logger: Logger,
         site: Arc<Site>,
+        registry: Arc<dyn MetricsRegistry>,
     ) -> Result<Self, StoreError> {
-        let store = Arc::new(SyncStore::new(subgraph_store, logger, site)?);
+        let store = Arc::new(SyncStore::new(subgraph_store, logger.clone(), site)?);
         let block_ptr = Mutex::new(store.block_ptr().await?);
         let block_cursor = Mutex::new(store.block_cursor().await?);
-        let writer = Writer::new(store.clone(), ENV_VARS.store.write_queue_size);
+        let writer = Writer::new(
+            logger,
+            store.clone(),
+            ENV_VARS.store.write_queue_size,
+            registry,
+        );
 
         Ok(Self {
             store,
