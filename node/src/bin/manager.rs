@@ -382,7 +382,10 @@ pub enum IndexCommand {
         #[structopt(min_values = 1, required = true)]
         fields: Vec<String>,
         /// The index method. Defaults to `btree`.
-        #[structopt(short, long, default_value = "btree")]
+        #[structopt(
+            short, long, default_value = "btree",
+            possible_values = &["btree", "hash", "gist", "spgist", "gin", "brin"]
+        )]
         method: String,
     },
 }
