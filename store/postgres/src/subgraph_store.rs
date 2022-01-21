@@ -16,7 +16,7 @@ use graph::{
     components::{
         server::index_node::VersionInfo,
         store::{
-            self, DeploymentLocator, EnsLookup as EnsLookupTrait,
+            self, DeploymentLocator, EnsLookup as EnsLookupTrait, EntityType,
             WritableStore as WritableStoreTrait,
         },
     },
@@ -946,6 +946,15 @@ impl SubgraphStoreInner {
                 .map(|store| store.mirror_primary_tables(logger)),
         )
         .await;
+    }
+
+    pub async fn analyze(
+        &self,
+        id: &DeploymentHash,
+        entity_type: EntityType,
+    ) -> Result<(), StoreError> {
+        let (store, site) = self.store(&id)?;
+        store.analyze(site, entity_type).await
     }
 }
 

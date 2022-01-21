@@ -349,6 +349,13 @@ pub enum StatsCommand {
         /// The name of a table to fully count
         table: Option<String>,
     },
+    /// Perform a SQL ANALYZE in a Entity table
+    Analyze {
+        /// The id of the deployment
+        id: String,
+        /// The name of the Entity to ANALYZE
+        entity: String,
+    },
 }
 
 impl From<Opt> for config::Opt {
@@ -695,6 +702,11 @@ async fn main() {
                     commands::stats::account_like(ctx.pools(), clear, table)
                 }
                 Show { nsp, table } => commands::stats::show(ctx.pools(), nsp, table),
+                Analyze { id, entity } => {
+                    let store = ctx.store();
+                    let subgraph_store = store.subgraph_store();
+                    commands::stats::analyze(subgraph_store, id, entity).await
+                }
             }
         }
     };
