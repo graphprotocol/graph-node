@@ -736,7 +736,8 @@ impl DeploymentStore {
                 Ok(())
             } else {
                 // Index creation falied. We should drop the index before returning.
-                let drop_index_sql = format!("drop index {schema_name}.{index_name}");
+                let drop_index_sql =
+                    format!("drop index concurrently if exists {schema_name}.{index_name}");
                 conn.execute(&drop_index_sql)?;
                 Err(StoreError::Canceled)
             }
