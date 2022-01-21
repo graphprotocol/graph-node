@@ -2,7 +2,7 @@ use graph::{
     components::store::EntityType,
     prelude::{
         anyhow::{self, Context},
-        DeploymentHash,
+        DeploymentHash, StoreError,
     },
 };
 use graph_store_postgres::SubgraphStore;
@@ -31,8 +31,15 @@ pub async fn create(
     let deployment_hash = DeploymentHash::new(id)
         .map_err(|e| anyhow::anyhow!("Subgraph hash must be a valid IPFS hash: {}", e))?;
     let entity_type = EntityType::new(entity_name);
-    store
+    match store
         .create_manual_index(&deployment_hash, entity_type, field_names, index_method)
         .await
-        .map_err(|e| anyhow::anyhow!(e))
+    {
+        Ok(()) => Ok(()),
+        Err(StoreError::Canceled) => {
+            eprintln!("Index creation attempt faield. Please retry.");
+            ::std::process::exit(1);
+        }
+        Err(other) => Err(anyhow::anyhow!(other)),
+    }
 }
