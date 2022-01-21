@@ -1364,7 +1364,7 @@ pub trait ChainStore: Send + Sync + 'static {
     fn chain_initial_backfill_target_block_num(&self) -> Result<Option<BlockNumber>, Error>;
 
     /// Returns whether or not the backfill process is complete
-    fn chain_backfill_is_completed(&self) -> Result<Option<bool>, Error>;
+    fn chain_backfill_is_completed(&self) -> Result<bool, Error>;
 
     /// This method sets the backfill process as completed
     async fn set_chain_backfill_as_completed(self: Arc<Self>) -> Result<(), Error>;

@@ -43,7 +43,7 @@ mod public {
             genesis_block_hash -> Varchar,
             head_block_cursor -> Nullable<Varchar>,
             backfill_block_cursor -> Nullable<Varchar>,
-            backfill_completed -> Nullable<Bool>,
+            backfill_completed -> Bool,
             backfill_completed_date -> Nullable<Timestamp>,
             backfill_target_block_number -> Nullable<BigInt>,
         }
@@ -1528,20 +1528,16 @@ impl ChainStoreTrait for ChainStore {
             .map_err(Error::from)
     }
 
-    fn chain_backfill_is_completed(&self) -> Result<Option<bool>, Error> {
+    fn chain_backfill_is_completed(&self) -> Result<bool, Error> {
         use public::ethereum_networks::dsl::*;
 
         ethereum_networks
             .select(backfill_completed)
             .filter(name.eq(&self.chain))
-            .load::<Option<bool>>(&*self.get_conn()?)
-            .map(|rows| {
-                rows.first()
-                    .map(|opt| match opt {
-                        Some(t) => Some(*t),
-                        None => None,
-                    })
-                    .and_then(|opt| opt)
+            .load::<bool>(&*self.get_conn()?)
+            .map(|rows| match rows.first() {
+                None => false,
+                Some(bp) => *bp,
             })
             .map_err(Error::from)
     }

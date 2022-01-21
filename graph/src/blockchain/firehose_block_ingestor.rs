@@ -142,18 +142,8 @@ where
             ExponentialBackoff::new(Duration::from_millis(250), Duration::from_secs(30));
         loop {
             match self.chain_store.clone().chain_backfill_is_completed() {
-                Ok(opt) => {
-                    return match opt {
-                        Some(t) => t,
-                        None => {
-                            info!(
-                                self.logger,
-                                "Fetching chain backfill completion returned None. Sleeping."
-                            );
-                            backoff.sleep_async().await;
-                            continue;
-                        }
-                    }
+                Ok(b) => {
+                    return b;
                 }
                 Err(e) => {
                     error!(
