@@ -1,6 +1,7 @@
 //! Test mapping of GraphQL schema to a relational schema
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
+use graph::entity;
 use graph::prelude::{
     o, slog, tokio, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter,
     EntityKey, EntityOrder, EntityQuery, EntityRange, Logger, Schema, StopwatchMetrics, Value,
@@ -139,47 +140,29 @@ lazy_static! {
         "977c084229c72a0fa377cae304eda9099b6a2cb5d83b25cdf0f0969b69874255"
     ));
     static ref SCALAR_ENTITY: Entity = {
-        let mut entity = Entity::new();
-        let strings = Value::from(
-            vec!["left", "right", "middle"]
-                .into_iter()
-                .map(|s| Value::from(s))
-                .collect::<Vec<_>>(),
-        );
-        let byte_array = Value::from(
-            vec![*BYTES_VALUE, *BYTES_VALUE2, *BYTES_VALUE3]
-                .into_iter()
-                .map(|s| Value::from(s))
-                .collect::<Vec<_>>(),
-        );
-        entity.set("id", "one");
-        entity.set("bool", true);
-        entity.set("int", std::i32::MAX);
         let decimal = (*LARGE_DECIMAL).clone();
-        entity.set("bigDecimal", decimal.clone());
-        entity.set(
-            "bigDecimalArray",
-            vec![decimal.clone(), (decimal + 1.into()).clone()],
-        );
-        entity.set("string", "scalar");
-        entity.set("strings", strings);
-        entity.set("bytes", *BYTES_VALUE);
-        entity.set("byteArray", byte_array);
         let big_int = (*LARGE_INT).clone();
-        entity.set("bigInt", big_int.clone());
-        entity.set(
-            "bigIntArray",
-            vec![big_int.clone(), (big_int + 1.into()).clone()],
-        );
-        entity.set("color", "yellow");
-        entity.set("__typename", "Scalar");
-        entity
+        entity! {
+            id: "one",
+            bool: true,
+            int: std::i32::MAX,
+            bigDecimal: decimal.clone(),
+            bigDecimalArray: vec![decimal.clone(), (decimal + 1.into()).clone()],
+            string: "scalar",
+            strings: vec!["left", "right", "middle"],
+            bytes: *BYTES_VALUE,
+            byteArray: vec![*BYTES_VALUE, *BYTES_VALUE2, *BYTES_VALUE3],
+            bigInt: big_int.clone(),
+            bigIntArray: vec![big_int.clone(), (big_int + 1.into()).clone()],
+            color: "yellow",
+            __typename: "Scalar",
+        }
     };
     static ref EMPTY_NULLABLESTRINGS_ENTITY: Entity = {
-        let mut entity = Entity::new();
-        entity.set("id", "one");
-        entity.set("__typename", "NullableStrings");
-        entity
+        entity! {
+            id: "one",
+            __typename: "NullableStrings"
+        }
     };
     static ref SCALAR: EntityType = EntityType::from("Scalar");
     static ref NO_ENTITY: EntityType = EntityType::from("NoEntity");
@@ -289,31 +272,40 @@ fn insert_user_entity(
     favorite_color: Option<&str>,
     drinks: Option<Vec<&str>>,
 ) {
-    let mut user = Entity::new();
+    let user = make_user(id, name, email, age, weight, coffee, favorite_color, drinks);
 
-    user.insert("id".to_owned(), Value::String(id.to_owned()));
-    user.insert("name".to_owned(), Value::String(name.to_owned()));
+    insert_entity(conn, layout, entity_type, vec![user]);
+}
+
+fn make_user(
+    id: &str,
+    name: &str,
+    email: &str,
+    age: i32,
+    weight: f64,
+    coffee: bool,
+    favorite_color: Option<&str>,
+    drinks: Option<Vec<&str>>,
+) -> Entity {
+    let favorite_color = favorite_color
+        .map(|s| Value::String(s.to_owned()))
+        .unwrap_or(Value::Null);
     let bin_name = Bytes::from_str(&hex::encode(name)).unwrap();
-    user.insert("bin_name".to_owned(), Value::Bytes(bin_name));
-    user.insert("email".to_owned(), Value::String(email.to_owned()));
-    user.insert("age".to_owned(), Value::Int(age));
-    user.insert(
-        "seconds_age".to_owned(),
-        Value::BigInt(BigInt::from(age) * 31557600.into()),
-    );
-    user.insert("weight".to_owned(), Value::BigDecimal(weight.into()));
-    user.insert("coffee".to_owned(), Value::Bool(coffee));
-    user.insert(
-        "favorite_color".to_owned(),
-        favorite_color
-            .map(|s| Value::String(s.to_owned()))
-            .unwrap_or(Value::Null),
-    );
+    let mut user = entity! {
+        id: id,
+        name: name,
+        bin_name: bin_name,
+        email: email,
+        age: age,
+        seconds_age: BigInt::from(age) * BigInt::from(31557600 as u64),
+        weight: BigDecimal::from(weight),
+        coffee: coffee,
+        favorite_color: favorite_color
+    };
     if let Some(drinks) = drinks {
         user.insert("drinks".to_owned(), drinks.into());
     }
-
-    insert_entity(conn, layout, entity_type, vec![user]);
+    user
 }
 
 fn insert_users(conn: &PgConnection, layout: &Layout) {
@@ -371,37 +363,15 @@ fn update_user_entity(
     favorite_color: Option<&str>,
     drinks: Option<Vec<&str>>,
 ) {
-    let mut user = Entity::new();
-
-    user.insert("id".to_owned(), Value::String(id.to_owned()));
-    user.insert("name".to_owned(), Value::String(name.to_owned()));
-    let bin_name = Bytes::from_str(&hex::encode(name)).unwrap();
-    user.insert("bin_name".to_owned(), Value::Bytes(bin_name));
-    user.insert("email".to_owned(), Value::String(email.to_owned()));
-    user.insert("age".to_owned(), Value::Int(age));
-    user.insert(
-        "seconds_age".to_owned(),
-        Value::BigInt(BigInt::from(age) * 31557600.into()),
-    );
-    user.insert("weight".to_owned(), Value::BigDecimal(weight.into()));
-    user.insert("coffee".to_owned(), Value::Bool(coffee));
-    user.insert(
-        "favorite_color".to_owned(),
-        favorite_color
-            .map(|s| Value::String(s.to_owned()))
-            .unwrap_or(Value::Null),
-    );
-    if let Some(drinks) = drinks {
-        user.insert("drinks".to_owned(), drinks.into());
-    }
-
+    let user = make_user(id, name, email, age, weight, coffee, favorite_color, drinks);
     update_entity(conn, layout, entity_type, vec![user]);
 }
 
 fn insert_pet(conn: &PgConnection, layout: &Layout, entity_type: &str, id: &str, name: &str) {
-    let mut pet = Entity::new();
-    pet.set("id", id);
-    pet.set("name", name);
+    let pet = entity! {
+        id: id,
+        name: name
+    };
     insert_entity(conn, layout, entity_type, vec![pet]);
 }
 
