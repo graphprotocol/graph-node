@@ -1458,23 +1458,33 @@ fn ferrets() -> (String, String, String, String) {
     )
 }
 
-fn text_find(expected_entity_ids: Vec<&str>, filter: EntityFilter) {
-    let expected_entity_ids: Vec<String> =
-        expected_entity_ids.into_iter().map(str::to_owned).collect();
+struct FilterChecker<'a> {
+    conn: &'a PgConnection,
+    layout: &'a Layout,
+}
 
-    run_test(move |conn, layout| {
+impl<'a> FilterChecker<'a> {
+    fn new(conn: &'a PgConnection, layout: &'a Layout) -> Self {
         let (a1, a2, a2b, a3) = ferrets();
         insert_pet(conn, layout, "Ferret", "a1", &a1);
         insert_pet(conn, layout, "Ferret", "a2", &a2);
         insert_pet(conn, layout, "Ferret", "a2b", &a2b);
         insert_pet(conn, layout, "Ferret", "a3", &a3);
 
+        Self { conn, layout }
+    }
+
+    fn check(&self, expected_entity_ids: Vec<&'static str>, filter: EntityFilter) -> &Self {
+        let expected_entity_ids: Vec<String> =
+            expected_entity_ids.into_iter().map(str::to_owned).collect();
+
         let query = query(vec!["Ferret"]).filter(filter).asc("id");
 
-        let entities = layout
+        let entities = self
+            .layout
             .query::<Entity>(
                 &*LOGGER,
-                conn,
+                &self.conn,
                 query.collection,
                 query.filter,
                 query.order,
@@ -1494,85 +1504,39 @@ fn text_find(expected_entity_ids: Vec<&str>, filter: EntityFilter) {
             .collect();
 
         assert_eq!(expected_entity_ids, entity_ids);
-    })
+        self
+    }
 }
 
 #[test]
-fn text_equal() {
+fn check_filters() {
     let (a1, a2, a2b, a3) = ferrets();
-    fn filter(name: String) -> EntityFilter {
+
+    fn filter_eq(name: &str) -> EntityFilter {
         EntityFilter::Equal("name".to_owned(), name.into())
     }
-    text_find(vec!["a1"], filter(a1));
-    text_find(vec!["a2"], filter(a2));
-    text_find(vec!["a2b"], filter(a2b));
-    text_find(vec!["a3"], filter(a3));
-}
 
-#[test]
-fn text_not_equal() {
-    let (a1, a2, a2b, a3) = ferrets();
-    fn filter(name: String) -> EntityFilter {
+    fn filter_not(name: &str) -> EntityFilter {
         EntityFilter::Not("name".to_owned(), name.into())
     }
-    text_find(vec!["a2", "a2b", "a3"], filter(a1));
-    text_find(vec!["a1", "a2b", "a3"], filter(a2));
-    text_find(vec!["a1", "a2", "a3"], filter(a2b));
-    text_find(vec!["a1", "a2", "a2b"], filter(a3));
-}
 
-#[test]
-fn text_less_than() {
-    let (a1, a2, a2b, a3) = ferrets();
-    fn filter(name: String) -> EntityFilter {
+    fn filter_lt(name: &str) -> EntityFilter {
         EntityFilter::LessThan("name".to_owned(), name.into())
     }
-    text_find(vec![], filter(a1));
-    text_find(vec!["a1"], filter(a2));
-    text_find(vec!["a1", "a2", "a3"], filter(a2b));
-    text_find(vec!["a1", "a2"], filter(a3));
-}
 
-#[test]
-fn text_less_or_equal() {
-    let (a1, a2, a2b, a3) = ferrets();
-    fn filter(name: String) -> EntityFilter {
+    fn filter_le(name: &str) -> EntityFilter {
         EntityFilter::LessOrEqual("name".to_owned(), name.into())
     }
-    text_find(vec!["a1"], filter(a1));
-    text_find(vec!["a1", "a2"], filter(a2));
-    text_find(vec!["a1", "a2", "a2b", "a3"], filter(a2b));
-    text_find(vec!["a1", "a2", "a3"], filter(a3));
-}
 
-#[test]
-fn text_greater_than() {
-    let (a1, a2, a2b, a3) = ferrets();
-    fn filter(name: String) -> EntityFilter {
+    fn filter_gt(name: &str) -> EntityFilter {
         EntityFilter::GreaterThan("name".to_owned(), name.into())
     }
-    text_find(vec!["a2", "a2b", "a3"], filter(a1));
-    text_find(vec!["a2b", "a3"], filter(a2));
-    text_find(vec![], filter(a2b));
-    text_find(vec!["a2b"], filter(a3));
-}
 
-#[test]
-fn text_greater_or_equal() {
-    let (a1, a2, a2b, a3) = ferrets();
-    fn filter(name: String) -> EntityFilter {
+    fn filter_ge(name: &str) -> EntityFilter {
         EntityFilter::GreaterOrEqual("name".to_owned(), name.into())
     }
-    text_find(vec!["a1", "a2", "a2b", "a3"], filter(a1));
-    text_find(vec!["a2", "a2b", "a3"], filter(a2));
-    text_find(vec!["a2b"], filter(a2b));
-    text_find(vec!["a2b", "a3"], filter(a3));
-}
 
-#[test]
-fn text_in() {
-    let (a1, a2, a2b, a3) = ferrets();
-    fn filter(names: Vec<&str>) -> EntityFilter {
+    fn filter_in(names: Vec<&str>) -> EntityFilter {
         EntityFilter::In(
             "name".to_owned(),
             names
@@ -1582,18 +1546,7 @@ fn text_in() {
         )
     }
 
-    text_find(vec!["a1"], filter(vec![&a1]));
-    text_find(vec!["a2"], filter(vec![&a2]));
-    text_find(vec!["a2b"], filter(vec![&a2b]));
-    text_find(vec!["a3"], filter(vec![&a3]));
-    text_find(vec!["a1", "a2"], filter(vec![&a1, &a2]));
-    text_find(vec!["a1", "a3"], filter(vec![&a1, &a3]));
-}
-
-#[test]
-fn text_not_in() {
-    let (a1, a2, a2b, a3) = ferrets();
-    fn filter(names: Vec<&str>) -> EntityFilter {
+    fn filter_not_in(names: Vec<&str>) -> EntityFilter {
         EntityFilter::NotIn(
             "name".to_owned(),
             names
@@ -1603,10 +1556,59 @@ fn text_not_in() {
         )
     }
 
-    text_find(vec!["a2", "a2b", "a3"], filter(vec![&a1]));
-    text_find(vec!["a1", "a2b", "a3"], filter(vec![&a2]));
-    text_find(vec!["a1", "a2", "a3"], filter(vec![&a2b]));
-    text_find(vec!["a1", "a2", "a2b"], filter(vec![&a3]));
-    text_find(vec!["a2b", "a3"], filter(vec![&a1, &a2]));
-    text_find(vec!["a2", "a2b"], filter(vec![&a1, &a3]));
+    run_test(move |conn, layout| {
+        let checker = FilterChecker::new(conn, layout);
+
+        checker
+            .check(vec!["a1"], filter_eq(&a1))
+            .check(vec!["a2"], filter_eq(&a2))
+            .check(vec!["a2b"], filter_eq(&a2b))
+            .check(vec!["a3"], filter_eq(&a3));
+
+        checker
+            .check(vec!["a2", "a2b", "a3"], filter_not(&a1))
+            .check(vec!["a1", "a2b", "a3"], filter_not(&a2))
+            .check(vec!["a1", "a2", "a3"], filter_not(&a2b))
+            .check(vec!["a1", "a2", "a2b"], filter_not(&a3));
+
+        checker
+            .check(vec![], filter_lt(&a1))
+            .check(vec!["a1"], filter_lt(&a2))
+            .check(vec!["a1", "a2", "a3"], filter_lt(&a2b))
+            .check(vec!["a1", "a2"], filter_lt(&a3));
+
+        checker
+            .check(vec!["a1"], filter_le(&a1))
+            .check(vec!["a1", "a2"], filter_le(&a2))
+            .check(vec!["a1", "a2", "a2b", "a3"], filter_le(&a2b))
+            .check(vec!["a1", "a2", "a3"], filter_le(&a3));
+
+        checker
+            .check(vec!["a2", "a2b", "a3"], filter_gt(&a1))
+            .check(vec!["a2b", "a3"], filter_gt(&a2))
+            .check(vec![], filter_gt(&a2b))
+            .check(vec!["a2b"], filter_gt(&a3));
+
+        checker
+            .check(vec!["a1", "a2", "a2b", "a3"], filter_ge(&a1))
+            .check(vec!["a2", "a2b", "a3"], filter_ge(&a2))
+            .check(vec!["a2b"], filter_ge(&a2b))
+            .check(vec!["a2b", "a3"], filter_ge(&a3));
+
+        checker
+            .check(vec!["a1"], filter_in(vec![&a1]))
+            .check(vec!["a2"], filter_in(vec![&a2]))
+            .check(vec!["a2b"], filter_in(vec![&a2b]))
+            .check(vec!["a3"], filter_in(vec![&a3]))
+            .check(vec!["a1", "a2"], filter_in(vec![&a1, &a2]))
+            .check(vec!["a1", "a3"], filter_in(vec![&a1, &a3]));
+
+        checker
+            .check(vec!["a2", "a2b", "a3"], filter_not_in(vec![&a1]))
+            .check(vec!["a1", "a2b", "a3"], filter_not_in(vec![&a2]))
+            .check(vec!["a1", "a2", "a3"], filter_not_in(vec![&a2b]))
+            .check(vec!["a1", "a2", "a2b"], filter_not_in(vec![&a3]))
+            .check(vec!["a2b", "a3"], filter_not_in(vec![&a1, &a2]))
+            .check(vec!["a2", "a2b"], filter_not_in(vec![&a1, &a3]));
+    });
 }
