@@ -175,7 +175,7 @@ lazy_static! {
 }
 
 /// Removes test data from the database behind the store.
-fn remove_test_data(conn: &PgConnection) {
+fn remove_schema(conn: &PgConnection) {
     let query = format!("drop schema if exists {} cascade", NAMESPACE.as_str());
     conn.batch_execute(&query)
         .expect("Failed to drop test schema");
@@ -380,7 +380,7 @@ fn insert_pets(conn: &PgConnection, layout: &Layout) {
     insert_pet(conn, layout, "Cat", "garfield", "Garfield");
 }
 
-fn insert_test_data(conn: &PgConnection) -> Layout {
+fn create_schema(conn: &PgConnection) -> Layout {
     let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
     let site = make_dummy_site(
         THINGS_SUBGRAPH_ID.clone(),
@@ -441,10 +441,10 @@ where
 {
     run_test_with_conn(|conn| {
         // Reset state before starting
-        remove_test_data(conn);
+        remove_schema(conn);
 
-        // Seed database with test data
-        let layout = insert_test_data(conn);
+        // Create the database schema
+        let layout = create_schema(conn);
 
         // Run test
         test(conn, &layout);
