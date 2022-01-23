@@ -1062,7 +1062,7 @@ impl DeploymentStore {
             // The revert functions want the number of the first block that we need to get rid of
             let block = block + 1;
 
-            let (event, count) = layout.revert_block(&conn, &site.deployment, block)?;
+            let (event, count) = layout.revert_block(&conn, block)?;
 
             // Revert the meta data changes that correspond to this subgraph.
             // Only certain meta data changes need to be reverted, most
@@ -1273,7 +1273,7 @@ impl DeploymentStore {
                 let block_to_revert: BlockNumber = (block.number + 1)
                     .try_into()
                     .expect("block numbers fit into an i32");
-                dst.revert_block(&conn, &dst.site.deployment, block_to_revert)?;
+                dst.revert_block(&conn, block_to_revert)?;
                 info!(logger, "Rewound subgraph to block {}", block.number;
                       "time_ms" => start.elapsed().as_millis());
 

@@ -732,10 +732,13 @@ impl Layout {
         Ok(count)
     }
 
+    /// Revert the block with number `block` and all blocks with higher
+    /// numbers. After this operation, only entity versions inserted or
+    /// updated at blocks with numbers strictly lower than `block` will
+    /// remain
     pub fn revert_block(
         &self,
         conn: &PgConnection,
-        subgraph_id: &DeploymentHash,
         block: BlockNumber,
     ) -> Result<(StoreEvent, i32), StoreError> {
         let mut changes: Vec<EntityChange> = Vec::new();
@@ -770,13 +773,13 @@ impl Layout {
                 .into_iter()
                 .filter(|id| !unclamped.contains(id))
                 .map(|_| EntityChange::Data {
-                    subgraph_id: subgraph_id.clone(),
+                    subgraph_id: self.site.deployment.clone(),
                     entity_type: table.object.clone(),
                 });
             changes.extend(deleted);
             // EntityChange for versions that we just updated or inserted
             let set = unclamped.into_iter().map(|_| EntityChange::Data {
-                subgraph_id: subgraph_id.clone(),
+                subgraph_id: self.site.deployment.clone(),
                 entity_type: table.object.clone(),
             });
             changes.extend(set);
