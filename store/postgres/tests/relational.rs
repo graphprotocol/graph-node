@@ -2,6 +2,7 @@
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
 use graph::entity;
+use graph::prelude::BlockNumber;
 use graph::prelude::{
     o, slog, tokio, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter,
     EntityKey, EntityOrder, EntityQuery, EntityRange, Logger, Schema, StopwatchMetrics, Value,
@@ -181,11 +182,12 @@ fn remove_schema(conn: &PgConnection) {
         .expect("Failed to drop test schema");
 }
 
-fn insert_entity(
+fn insert_entity_at(
     conn: &PgConnection,
     layout: &Layout,
     entity_type: &str,
     mut entities: Vec<Entity>,
+    block: BlockNumber,
 ) {
     let entities_with_keys_owned = entities
         .drain(..)
@@ -212,18 +214,23 @@ fn insert_entity(
             &conn,
             &entity_type,
             &mut entities_with_keys,
-            0,
+            block,
             &MOCK_STOPWATCH,
         )
         .expect(&errmsg);
     assert_eq!(inserted, entities_with_keys_owned.len());
 }
 
-fn update_entity(
+fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entities: Vec<Entity>) {
+    insert_entity_at(conn, layout, entity_type, entities, 0);
+}
+
+fn update_entity_at(
     conn: &PgConnection,
     layout: &Layout,
     entity_type: &str,
     mut entities: Vec<Entity>,
+    block: BlockNumber,
 ) {
     let entities_with_keys_owned: Vec<(EntityKey, Entity)> = entities
         .drain(..)
@@ -252,11 +259,15 @@ fn update_entity(
             &conn,
             &entity_type,
             &mut entities_with_keys,
-            0,
+            block,
             &MOCK_STOPWATCH,
         )
         .expect(&errmsg);
     assert_eq!(updated, entities_with_keys_owned.len());
+}
+
+fn update_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entities: Vec<Entity>) {
+    update_entity_at(conn, layout, entity_type, entities, 0);
 }
 
 fn insert_user_entity(
@@ -831,6 +842,52 @@ fn conflicting_entity() {
         assert!(result.is_err());
         assert_eq!("unknown table 'Chair'", result.err().unwrap().to_string());
     })
+}
+
+#[test]
+fn revert_block() {
+    fn check_fred(conn: &PgConnection, layout: &Layout) {
+        let id = "fred";
+
+        let set_fred = |name, block| {
+            let fred = entity! {
+                id: id,
+                name: name
+            };
+            if block == 0 {
+                insert_entity_at(conn, layout, "Cat", vec![fred], block);
+            } else {
+                update_entity_at(conn, layout, "Cat", vec![fred], block);
+            }
+        };
+
+        let assert_fred = |name: &str| {
+            let fred = layout
+                .find(conn, &EntityType::from("Cat"), id, BLOCK_NUMBER_MAX)
+                .unwrap()
+                .expect("there's a fred");
+            assert_eq!(name, fred.get("name").unwrap().as_str().unwrap())
+        };
+
+        set_fred("zero", 0);
+        set_fred("one", 1);
+        set_fred("two", 2);
+        set_fred("three", 3);
+
+        layout.revert_block(conn, 3).unwrap();
+        assert_fred("two");
+        layout.revert_block(conn, 2).unwrap();
+        assert_fred("one");
+
+        set_fred("three", 3);
+        assert_fred("three");
+        layout.revert_block(conn, 3).unwrap();
+        assert_fred("one");
+    }
+
+    run_test(|conn, layout| {
+        check_fred(conn, layout);
+    });
 }
 
 struct QueryChecker<'a> {
