@@ -3,7 +3,7 @@ mod pbcodec;
 
 pub use pbcodec::*;
 
-use graph::blockchain::Block as BBlock;
+use graph::blockchain::Block as BlockchainBlock;
 use graph::{blockchain::BlockPtr, prelude::BlockNumber};
 
 use std::convert::TryFrom;
@@ -84,9 +84,43 @@ impl<'a> From<&'a EventList> for BlockPtr {
     }
 }
 
-impl BBlock for EventList {
+impl BlockchainBlock for EventList {
     fn number(&self) -> i32 {
         BlockNumber::try_from(self.header().height).unwrap()
+    }
+
+    fn ptr(&self) -> BlockPtr {
+        self.into()
+    }
+
+    fn parent_ptr(&self) -> Option<BlockPtr> {
+        self.parent_ptr()
+    }
+}
+
+impl Header {
+    pub fn parent_ptr(&self) -> Option<BlockPtr> {
+        self.last_block_id
+            .as_ref()
+            .map(|last_block_id| BlockPtr::from((last_block_id.hash.clone(), self.height - 1)))
+    }
+}
+
+impl From<Header> for BlockPtr {
+    fn from(b: Header) -> BlockPtr {
+        (&b).into()
+    }
+}
+
+impl<'a> From<&'a Header> for BlockPtr {
+    fn from(b: &'a Header) -> BlockPtr {
+        BlockPtr::from((b.data_hash.clone(), b.height))
+    }
+}
+
+impl BlockchainBlock for Header {
+    fn number(&self) -> i32 {
+        BlockNumber::try_from(self.height).unwrap()
     }
 
     fn ptr(&self) -> BlockPtr {

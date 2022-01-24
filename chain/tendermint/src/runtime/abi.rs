@@ -19,7 +19,7 @@ impl ToAscObj<AscEventData> for EventData {
     ) -> Result<AscEventData, DeterministicHostError> {
         Ok(AscEventData {
             event: asc_new(heap, &self.event)?,
-            block: asc_new(heap, self.block.as_ref())?,
+            block_header: asc_new(heap, &self.block_header)?,
         })
     }
 }
@@ -309,7 +309,7 @@ impl ToAscObj<AscConsensusParams> for codec::ConsensusParams {
 impl ToAscObj<AscBlockParams> for codec::BlockParams {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        heap: &mut H,
+        _heap: &mut H,
     ) -> Result<AscBlockParams, DeterministicHostError> {
         Ok(AscBlockParams {
             max_bytes: self.max_bytes,

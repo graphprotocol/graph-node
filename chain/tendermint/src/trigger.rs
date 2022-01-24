@@ -65,14 +65,14 @@ impl TendermintTrigger {
     pub fn block_number(&self) -> BlockNumber {
         match self {
             TendermintTrigger::Block(block_ptr) => block_ptr.number(),
-            TendermintTrigger::Event(data) => data.block.number(),
+            TendermintTrigger::Event(data) => data.block_header.number(),
         }
     }
 
     pub fn block_hash(&self) -> BlockHash {
         match self {
             TendermintTrigger::Block(block_ptr) => block_ptr.hash(),
-            TendermintTrigger::Event(data) => data.block.hash(),
+            TendermintTrigger::Event(data) => data.block_header.hash(),
         }
     }
 }
@@ -120,5 +120,5 @@ impl TriggerData for TendermintTrigger {
 
 pub struct EventData {
     pub event: codec::Event,
-    pub block: Arc<codec::EventList>,
+    pub block_header: codec::Header,
 }

@@ -685,7 +685,7 @@ impl AscIndexId for AscTimestamp {
 #[derive(AscType)]
 pub(crate) struct AscEventData {
     pub event: AscPtr<AscEvent>,
-    pub block: AscPtr<AscEventList>,
+    pub block_header: AscPtr<AscHeader>,
 }
 
 impl AscIndexId for AscEventData {
