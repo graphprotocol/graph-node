@@ -288,7 +288,7 @@ jobs:
       - name: run firehose test
         run: |
           chmod +x bin/graphman
-          bin/graphman --config tests/integration-tests/configs/eth-mainnet-firehose.toml run eth-mainnet "${{ env.ipfs_hash_firehose }}" 12370000
+          bin/graphman --config tests/integration-tests/configs/eth-mainnet-firehose.toml run eth-mainnet "${{ env.ipfs_hash_firehose }}" 12369998
           psql ${POSTGRES_URL} -c \
           "\copy (select encode(digest::bytea, 'hex'), block_range FROM sgd1.poi2$ order by block_range asc) TO 'data_source_poi_firehose.csv' With CSV"
 
