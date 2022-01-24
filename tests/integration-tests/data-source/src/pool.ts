@@ -1,7 +1,7 @@
 import { ethereum } from "@graphprotocol/graph-ts"
 import { Factory, Pool, Swap, Transaction } from "../generated/schema"
 import { FACTORY_ADDRESS, ONE_BI } from "./utils"
-import { Swap as SwapEvent } from "../generated/templates/Pool/Pool"
+import { Swap as SwapEvent } from "../generated/templates/pool/pool"
 
 export function handleSwap(event: SwapEvent): void {
   let factory = Factory.load(FACTORY_ADDRESS)
