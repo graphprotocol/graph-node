@@ -87,16 +87,17 @@ jobs:
 
       - name: Build subgraphs to IPFS
         run: |
-          npm install -g @graphprotocol/graph-cli
           set -o pipefail
-          cd tests/integration-tests/eth-transfers
-          yarn
+          cd tests/integration-tests
+          yarn install
+
+          cd eth-transfers
           echo "Duplicating the mainnet-calls subgraph to get different deployment hashes"
           sed "s/description: .*/description: Test Events RPC/" mainnet-events.yaml > mainnet-events-rpc.yaml
           sed "s/description: .*/description: Test Events firehose/" mainnet-events.yaml > mainnet-events-firehose.yaml
-          graph codegen mainnet-events-rpc.yaml
-          graph build  --ipfs http://localhost:5001 mainnet-events-rpc.yaml |tee buildout-rpc
-          graph build  --ipfs http://localhost:5001 mainnet-events-firehose.yaml |tee buildout-firehose
+          yarn graph codegen mainnet-events-rpc.yaml
+          yarn graph build  --ipfs http://localhost:5001 mainnet-events-rpc.yaml |tee buildout-rpc
+          yarn graph build  --ipfs http://localhost:5001 mainnet-events-firehose.yaml |tee buildout-firehose
           IPFS_HASH_RPC="$(awk '/Build.completed/ {print $3}' buildout-rpc)"
           IPFS_HASH_FIREHOSE="$(awk '/Build.completed/ {print $3}' buildout-firehose)"
           echo "ipfs_hash_rpc=$IPFS_HASH_RPC" >> $GITHUB_ENV
@@ -172,16 +173,16 @@ jobs:
 
       - name: Build subgraph to IPFS
         run: |
-          npm install -g @graphprotocol/graph-cli
           set -o pipefail
-          cd tests/integration-tests/eth-transfers
-          yarn
+          cd tests/integration-tests
+          yarn install
+          cd eth-transfers
           echo "Duplicating the mainnet-calls subgraph to get different deployment hashes"
           sed "s/description: .*/description: Test Calls RPC/" mainnet-calls.yaml > mainnet-calls-rpc.yaml
           sed "s/description: .*/description: Test Calls firehose/" mainnet-calls.yaml > mainnet-calls-firehose.yaml
-          graph codegen mainnet-events-rpc.yaml
-          graph build  --ipfs http://localhost:5001 mainnet-calls-rpc.yaml |tee buildout-rpc
-          graph build  --ipfs http://localhost:5001 mainnet-calls-firehose.yaml |tee buildout-firehose
+          yarn graph codegen mainnet-calls-rpc.yaml
+          yarn graph build  --ipfs http://localhost:5001 mainnet-calls-rpc.yaml |tee buildout-rpc
+          yarn graph build  --ipfs http://localhost:5001 mainnet-calls-firehose.yaml |tee buildout-firehose
           IPFS_HASH_RPC="$(awk '/Build.completed/ {print $3}' buildout-rpc)"
           IPFS_HASH_FIREHOSE="$(awk '/Build.completed/ {print $3}' buildout-firehose)"
           echo "ipfs_hash_rpc=$IPFS_HASH_RPC" >> $GITHUB_ENV
