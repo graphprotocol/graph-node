@@ -2597,12 +2597,23 @@ pub struct ClampRangeQuery<'a, S> {
 }
 
 impl<'a, S> ClampRangeQuery<'a, S> {
-    pub fn new(table: &'a Table, entity_ids: &'a [S], block: BlockNumber) -> Self {
-        let br_column = BlockRangeColumn::new(table, "", block);
-        Self {
-            table,
-            entity_ids,
-            br_column,
+    pub fn new(
+        table: &'a Table,
+        entity_ids: &'a [S],
+        block: BlockNumber,
+    ) -> Result<Self, StoreError> {
+        if table.immutable {
+            Err(graph::constraint_violation!(
+                "immutable entities can not be deleted or updated (table `{}`)",
+                table.qualified_name
+            ))
+        } else {
+            let br_column = BlockRangeColumn::new(table, "", block);
+            Ok(Self {
+                table,
+                entity_ids,
+                br_column,
+            })
         }
     }
 }
@@ -2718,10 +2729,22 @@ impl<'a, Conn> RunQueryDsl<Conn> for RevertRemoveQuery<'a> {}
 
 /// A query that unclamps the block range of all versions that contain
 /// `block` by setting the upper bound of the block range to infinity.
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug, Clone)]
 pub struct RevertClampQuery<'a> {
     table: &'a Table,
     block: BlockNumber,
+}
+impl<'a> RevertClampQuery<'a> {
+    pub(crate) fn new(table: &'a Table, block: BlockNumber) -> Result<Self, StoreError> {
+        if table.immutable {
+            Err(graph::constraint_violation!(
+                "can not revert clamping in immutable table `{}`",
+                table.qualified_name
+            ))
+        } else {
+            Ok(Self { table, block })
+        }
+    }
 }
 
 impl<'a> QueryFragment<Pg> for RevertClampQuery<'a> {

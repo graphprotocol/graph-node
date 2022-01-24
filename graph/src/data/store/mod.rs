@@ -278,9 +278,9 @@ impl Value {
         matches!(self, Value::String(_))
     }
 
-    pub fn as_int(self) -> Option<i32> {
+    pub fn as_int(&self) -> Option<i32> {
         if let Value::Int(i) = self {
-            Some(i)
+            Some(*i)
         } else {
             None
         }

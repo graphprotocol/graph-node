@@ -9,7 +9,8 @@
 use diesel::{connection::SimpleConnection, Connection};
 use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
 use graph::cheap_clone::CheapClone;
-use graph::data::graphql::TypeExt as _;
+use graph::constraint_violation;
+use graph::data::graphql::{DirectiveExt, TypeExt as _};
 use graph::prelude::{q, s, StopwatchMetrics};
 use graph::slog::warn;
 use inflector::Inflector;
@@ -41,7 +42,7 @@ use graph::prelude::{
     StoreEvent, ValueType, BLOCK_NUMBER_MAX,
 };
 
-use crate::block_range::BLOCK_RANGE_COLUMN;
+use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 pub use crate::catalog::Catalog;
 use crate::connection_pool::ForeignServer;
 use crate::{catalog, deployment};
@@ -329,10 +330,17 @@ impl Layout {
         let count_query = tables
             .iter()
             .map(|table| {
-                format!(
-                    "select count(*) from \"{}\".\"{}\" where block_range @> {}",
-                    &catalog.site.namespace, table.name, BLOCK_NUMBER_MAX
-                )
+                if table.immutable {
+                    format!(
+                        "select count(*) from \"{}\".\"{}\"",
+                        &catalog.site.namespace, table.name
+                    )
+                } else {
+                    format!(
+                        "select count(*) from \"{}\".\"{}\" where block_range @> {}",
+                        &catalog.site.namespace, table.name, BLOCK_NUMBER_MAX
+                    )
+                }
             })
             .collect::<Vec<_>>()
             .join("\nunion all\n");
@@ -387,6 +395,7 @@ impl Layout {
             /// predictable
             position: position as u32,
             is_account_like: false,
+            immutable: false,
         }
     }
 
@@ -692,13 +701,20 @@ impl Layout {
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&entity_type)?;
+        if table.immutable {
+            return Err(constraint_violation!(
+                "entities of type `{}` can not be updated since they are immutable",
+                entity_type
+            ));
+        }
+
         let entity_keys: Vec<&str> = entities
             .iter()
             .map(|(key, _)| key.entity_id.as_str())
             .collect();
 
         let section = stopwatch.start_section("update_modification_clamp_range_query");
-        ClampRangeQuery::new(table, &entity_keys, block).execute(conn)?;
+        ClampRangeQuery::new(table, &entity_keys, block)?.execute(conn)?;
         section.end();
 
         let _section = stopwatch.start_section("update_modification_insert_query");
@@ -724,10 +740,17 @@ impl Layout {
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&entity_type)?;
+        if table.immutable {
+            return Err(constraint_violation!(
+                "entities of type `{}` can not be deleted since they are immutable",
+                entity_type
+            ));
+        }
+
         let _section = stopwatch.start_section("delete_modification_clamp_range_query");
         let mut count = 0;
         for chunk in entity_ids.chunks(DELETE_OPERATION_CHUNK_SIZE) {
-            count += ClampRangeQuery::new(table, chunk, block).execute(conn)?
+            count += ClampRangeQuery::new(table, chunk, block)?.execute(conn)?
         }
         Ok(count)
     }
@@ -755,11 +778,15 @@ impl Layout {
             // Make the versions current that existed at `block - 1` but that
             // are not current yet. Those are the ones that were updated or
             // deleted at `block`
-            let unclamped = RevertClampQuery::new(table, block - 1)
-                .get_results(conn)?
-                .into_iter()
-                .map(|data| data.id)
-                .collect::<HashSet<_>>();
+            let unclamped = if table.immutable {
+                HashSet::new()
+            } else {
+                RevertClampQuery::new(table, block - 1)?
+                    .get_results(conn)?
+                    .into_iter()
+                    .map(|data| data.id)
+                    .collect::<HashSet<_>>()
+            };
             // Adjust the entity count; we can tell which operation was
             // initially performed by
             //   id in (unset - unclamped)  => insert (we now deleted)
@@ -1146,6 +1173,10 @@ pub struct Table {
     /// is really only needed for the tests to make the names of indexes
     /// predictable
     position: u32,
+
+    /// Entities in this table are immutable, i.e., will never be updated or
+    /// deleted
+    pub(crate) immutable: bool,
 }
 
 impl Table {
@@ -1169,6 +1200,16 @@ impl Table {
             .collect::<Result<Vec<Column>, StoreError>>()?;
         let qualified_name = SqlName::qualified_name(&catalog.site.namespace, &table_name);
         let is_account_like = ACCOUNT_TABLES.contains(qualified_name.as_str());
+
+        let immutable = defn
+            .find_directive("entity")
+            .and_then(|dir| dir.argument("immutable"))
+            .map(|value| match value {
+                q::Value::Boolean(b) => *b,
+                _ => false,
+            })
+            .unwrap_or(false);
+
         let table = Table {
             object: EntityType::from(defn),
             name: table_name.clone(),
@@ -1176,6 +1217,7 @@ impl Table {
             is_account_like,
             columns,
             position,
+            immutable,
         };
         Ok(table)
     }
@@ -1245,22 +1287,42 @@ impl Table {
         }
 
         fn create_table(table: &Table, out: &mut String, layout: &Layout) -> fmt::Result {
-            writeln!(
-                out,
-                r#"
-            create table {nsp}.{name} (
-                {vid}                  bigserial primary key,
-                {block_range}          int4range not null,
-                {cols}
-                exclude using gist   (id with =, {block_range} with &&)
-            );
-            "#,
-                nsp = layout.catalog.site.namespace,
-                name = table.name.quoted(),
-                cols = columns_ddl(table)?,
-                vid = VID_COLUMN,
-                block_range = BLOCK_RANGE_COLUMN
-            )
+            if table.immutable {
+                writeln!(
+                    out,
+                    r#"
+                create table {nsp}.{name} (
+                    {vid}                  bigserial primary key,
+                    {block}                int not null,
+                    {cols}
+                    unique({id})
+                );
+                "#,
+                    nsp = layout.catalog.site.namespace,
+                    name = table.name.quoted(),
+                    cols = columns_ddl(table)?,
+                    vid = VID_COLUMN,
+                    block = BLOCK_COLUMN,
+                    id = table.primary_key().name
+                )
+            } else {
+                writeln!(
+                    out,
+                    r#"
+                create table {nsp}.{name} (
+                    {vid}                  bigserial primary key,
+                    {block_range}          int4range not null,
+                    {cols}
+                    exclude using gist   (id with =, {block_range} with &&)
+                );
+                "#,
+                    nsp = layout.catalog.site.namespace,
+                    name = table.name.quoted(),
+                    cols = columns_ddl(table)?,
+                    vid = VID_COLUMN,
+                    block_range = BLOCK_RANGE_COLUMN
+                )
+            }
         }
 
         fn create_time_travel_indexes(
@@ -1268,45 +1330,57 @@ impl Table {
             out: &mut String,
             layout: &Layout,
         ) -> fmt::Result {
-            // Add a BRIN index on the block_range bounds to exploit the fact
-            // that block ranges closely correlate with where in a table an
-            // entity appears physically. This index is incredibly efficient for
-            // reverts where we look for very recent blocks, so that this index
-            // is highly selective. See https://github.com/graphprotocol/graph-node/issues/1415#issuecomment-630520713
-            // for details on one experiment.
-            //
-            // We do not index the `block_range` as a whole, but rather the lower
-            // and upper bound separately, since experimentation has shown that
-            // Postgres will not use the index on `block_range` for clauses like
-            // `block_range @> $block` but rather falls back to a full table scan.
-            //
-            // We also make sure that we do not put `NULL` in the index for
-            // the upper bound since nulls can not be compared to anything and
-            // will make the index less effective.
-            //
-            // To make the index usable, queries need to have clauses using
-            // `lower(block_range)` and `coalesce(..)` verbatim.
-            //
-            // We also index `vid` as that correlates with the order in which
-            // entities are stored.
-            write!(out,"create index brin_{table_name}\n    \
+            if table.immutable {
+                write!(
+                    out,
+                    "create index brin_{table_name}\n    \
+                    on {schema_name}.{table_name}\n \
+                       using brin({block}, vid);\n",
+                    table_name = table.name,
+                    schema_name = layout.catalog.site.namespace,
+                    block = BLOCK_COLUMN
+                )
+            } else {
+                // Add a BRIN index on the block_range bounds to exploit the fact
+                // that block ranges closely correlate with where in a table an
+                // entity appears physically. This index is incredibly efficient for
+                // reverts where we look for very recent blocks, so that this index
+                // is highly selective. See https://github.com/graphprotocol/graph-node/issues/1415#issuecomment-630520713
+                // for details on one experiment.
+                //
+                // We do not index the `block_range` as a whole, but rather the lower
+                // and upper bound separately, since experimentation has shown that
+                // Postgres will not use the index on `block_range` for clauses like
+                // `block_range @> $block` but rather falls back to a full table scan.
+                //
+                // We also make sure that we do not put `NULL` in the index for
+                // the upper bound since nulls can not be compared to anything and
+                // will make the index less effective.
+                //
+                // To make the index usable, queries need to have clauses using
+                // `lower(block_range)` and `coalesce(..)` verbatim.
+                //
+                // We also index `vid` as that correlates with the order in which
+                // entities are stored.
+                write!(out,"create index brin_{table_name}\n    \
                     on {schema_name}.{table_name}\n \
                        using brin(lower(block_range), coalesce(upper(block_range), {block_max}), vid);\n",
-            table_name = table.name,
-            schema_name = layout.catalog.site.namespace,
-            block_max = BLOCK_NUMBER_MAX)?;
+                    table_name = table.name,
+                    schema_name = layout.catalog.site.namespace,
+                    block_max = BLOCK_NUMBER_MAX)?;
 
-            // Add a BTree index that helps with the `RevertClampQuery` by making
-            // it faster to find entity versions that have been modified
-            write!(
-                out,
-                "create index {table_name}_block_range_closed\n    \
+                // Add a BTree index that helps with the `RevertClampQuery` by making
+                // it faster to find entity versions that have been modified
+                write!(
+                    out,
+                    "create index {table_name}_block_range_closed\n    \
                      on {schema_name}.{table_name}(coalesce(upper(block_range), {block_max}))\n \
                      where coalesce(upper(block_range), {block_max}) < {block_max};\n",
-                table_name = table.name,
-                schema_name = layout.catalog.site.namespace,
-                block_max = BLOCK_NUMBER_MAX
-            )
+                    table_name = table.name,
+                    schema_name = layout.catalog.site.namespace,
+                    block_max = BLOCK_NUMBER_MAX
+                )
+            }
         }
 
         fn create_attribute_indexes(
@@ -1324,12 +1398,24 @@ impl Table {
                 .filter(|col| !(col.is_list() && col.is_enum()))
                 .enumerate()
             {
+                if table.immutable && column.is_primary_key() {
+                    // We create a unique index on `id` in `create_table`
+                    // and don't need an explicit attribute index
+                    continue;
+                }
+
                 let (method, index_expr) = if column.is_reference() && !column.is_list() {
                     // For foreign keys, index the key together with the block range
                     // since we almost always also have a block_range clause in
                     // queries that look for specific foreign keys
-                    let index_expr = format!("{}, {}", column.name.quoted(), BLOCK_RANGE_COLUMN);
-                    ("gist", index_expr)
+                    if table.immutable {
+                        let index_expr = format!("{}, {}", column.name.quoted(), BLOCK_COLUMN);
+                        ("btree", index_expr)
+                    } else {
+                        let index_expr =
+                            format!("{}, {}", column.name.quoted(), BLOCK_RANGE_COLUMN);
+                        ("gist", index_expr)
+                    }
                 } else {
                     // Attributes that are plain strings are indexed with a BTree; but
                     // they can be too large for Postgres' limit on values that can go
@@ -1763,7 +1849,7 @@ type Band @entity {
     originalSongs: [Song!]!
 }
 
-type Song @entity {
+type Song @entity(immutable: true) {
     id: ID!
     title: String!
     writtenBy: Musician!
@@ -1823,26 +1909,21 @@ create index attr_1_2_band_original_songs
     on sgd0815.\"band\" using gin(\"original_songs\");
 
 create table sgd0815.\"song\" (
-        vid                  bigserial primary key,
-        block_range          int4range not null,
+        vid                    bigserial primary key,
+        block$                 int not null,
         \"id\"                 text not null,
         \"title\"              text not null,
         \"written_by\"         text not null,
 
-        exclude using gist   (id with =, block_range with &&)
+        unique(id)
 );
 create index brin_song
     on sgd0815.song
- using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
-create index song_block_range_closed
-    on sgd0815.song(coalesce(upper(block_range), 2147483647))
- where coalesce(upper(block_range), 2147483647) < 2147483647;
-create index attr_2_0_song_id
-    on sgd0815.\"song\" using btree(\"id\");
+ using brin(block$, vid);
 create index attr_2_1_song_title
     on sgd0815.\"song\" using btree(left(\"title\", 256));
 create index attr_2_2_song_written_by
-    on sgd0815.\"song\" using gist(\"written_by\", block_range);
+    on sgd0815.\"song\" using btree(\"written_by\", block$);
 
 create table sgd0815.\"song_stat\" (
         vid                  bigserial primary key,

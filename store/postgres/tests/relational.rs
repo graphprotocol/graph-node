@@ -104,6 +104,11 @@ const THINGS_GQL: &str = r#"
         name: String!
     }
 
+    type Mink @entity(immutable: true) {
+        id: ID!,
+        order: Int,
+    }
+
     type User @entity {
         id: ID!,
         name: String!,
@@ -885,8 +890,69 @@ fn revert_block() {
         assert_fred("one");
     }
 
+    fn check_marty(conn: &PgConnection, layout: &Layout) {
+        let set_marties = |from, to| {
+            for block in from..=to {
+                let id = format!("marty-{}", block);
+                let marty = entity! {
+                    id: id,
+                    order: block,
+                };
+                insert_entity_at(conn, layout, "Mink", vec![marty], block);
+            }
+        };
+
+        let assert_marties = |max_block, except: Vec<BlockNumber>| {
+            let marties: Vec<Entity> = layout
+                .query(
+                    &*LOGGER,
+                    conn,
+                    EntityCollection::All(vec![(EntityType::from("Mink"), AttributeNames::All)]),
+                    Some(EntityFilter::StartsWith(
+                        "id".to_string(),
+                        Value::from("marty"),
+                    )),
+                    EntityOrder::Ascending("order".to_string(), ValueType::Int),
+                    EntityRange::first(100),
+                    BLOCK_NUMBER_MAX,
+                    None,
+                )
+                .expect("loading all marties works");
+
+            let mut skipped = 0;
+            for block in 0..=max_block {
+                if except.contains(&block) {
+                    skipped += 1;
+                    continue;
+                }
+                let marty = &marties[block as usize - skipped];
+                let id = format!("marty-{}", block);
+                assert_eq!(id, marty.get("id").unwrap().as_str().unwrap());
+                assert_eq!(block, marty.get("order").unwrap().as_int().unwrap())
+            }
+        };
+
+        let assert_all_marties = |max_block| assert_marties(max_block, vec![]);
+
+        set_marties(0, 4);
+        assert_all_marties(4);
+
+        layout.revert_block(conn, 3).unwrap();
+        assert_all_marties(2);
+        layout.revert_block(conn, 2).unwrap();
+        assert_all_marties(1);
+
+        set_marties(4, 4);
+        // We don't have entries for 2 and 3 anymore
+        assert_marties(4, vec![2, 3]);
+
+        layout.revert_block(conn, 2).unwrap();
+        assert_all_marties(1);
+    }
+
     run_test(|conn, layout| {
         check_fred(conn, layout);
+        check_marty(conn, layout);
     });
 }
 
