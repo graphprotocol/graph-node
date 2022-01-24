@@ -318,7 +318,7 @@ impl FirehoseMapper {
             .map(|event| {
                 TendermintTrigger::Event(Arc::new(trigger::EventData {
                     event,
-                    block: el.cheap_clone(),
+                    block_header: el.header().clone(),
                 }))
             })
             .collect();
