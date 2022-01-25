@@ -299,7 +299,7 @@ jobs:
 
       - name: run rpc test
         run: |
-          bin/graphman --config tests/integration-tests/configs/eth-mainnet-rpc.toml run eth-mainnet "${{ env.ipfs_hash_rpc }}" 12370000
+          bin/graphman --config tests/integration-tests/configs/eth-mainnet-rpc.toml run eth-mainnet "${{ env.ipfs_hash_rpc }}" 12379998
           psql ${POSTGRES_URL} -c \
           "\copy (select encode(digest::bytea, 'hex'), block_range FROM sgd2.poi2$ order by block_range asc) TO 'data_source_poi_rpc.csv' With CSV"
 
