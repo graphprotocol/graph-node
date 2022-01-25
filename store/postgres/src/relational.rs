@@ -1488,6 +1488,8 @@ impl LayoutCache {
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
+
     use super::*;
 
     use crate::layout_for_tests::make_dummy_site;
@@ -1531,25 +1533,37 @@ mod tests {
 
     #[test]
     fn generate_ddl() {
+        // Check that the two strings are the same after replacing runs of
+        // whitespace with a single space
+        #[track_caller]
+        fn check_eqv(left: &str, right: &str) {
+            let left_s = left.split_whitespace().join(" ");
+            let right_s = right.split_whitespace().join(" ");
+            if left_s != right_s {
+                // Make sure the original strings show up in the error message
+                assert_eq!(left, right);
+            }
+        }
+
         let layout = test_layout(THING_GQL);
         let sql = layout.as_ddl().expect("Failed to generate DDL");
-        assert_eq!(THING_DDL, sql);
+        check_eqv(THING_DDL, &sql);
 
         let layout = test_layout(MUSIC_GQL);
         let sql = layout.as_ddl().expect("Failed to generate DDL");
-        assert_eq!(MUSIC_DDL, sql);
+        check_eqv(MUSIC_DDL, &sql);
 
         let layout = test_layout(FOREST_GQL);
         let sql = layout.as_ddl().expect("Failed to generate DDL");
-        assert_eq!(FOREST_DDL, sql);
+        check_eqv(FOREST_DDL, &sql);
 
         let layout = test_layout(FULLTEXT_GQL);
         let sql = layout.as_ddl().expect("Failed to generate DDL");
-        assert_eq!(FULLTEXT_DDL, sql);
+        check_eqv(FULLTEXT_DDL, &sql);
 
         let layout = test_layout(FORWARD_ENUM_GQL);
         let sql = layout.as_ddl().expect("Failed to generate DDL");
-        assert_eq!(FORWARD_ENUM_SQL, sql);
+        check_eqv(FORWARD_ENUM_SQL, &sql);
     }
 
     #[test]
