@@ -33,22 +33,12 @@ where
     where
         F: FirehoseMapper<C> + 'static,
     {
-        let start_block_num: BlockNumber = subgraph_start_block
-            .as_ref()
-            .map(|ptr| {
-                // Firehose start block is inclusive while the subgraph_start_block is where the actual
-                // subgraph is currently at. So to process the actual next block, we must start one block
-                // further in the chain.
-                ptr.block_number() + 1 as BlockNumber
-            })
-            .unwrap_or_else(|| {
-                start_blocks
-                    .into_iter()
-                    .min()
-                    // Firehose knows where to start the stream for the specific chain, 0 here means
-                    // start at Genesis block.
-                    .unwrap_or(0)
-            });
+        let manifest_start_block_num = start_blocks
+            .into_iter()
+            .min()
+            // Firehose knows where to start the stream for the specific chain, 0 here means
+            // start at Genesis block.
+            .unwrap_or(0);
 
         FirehoseBlockStream {
             stream: Box::pin(stream_blocks(
@@ -57,7 +47,7 @@ where
                 mapper,
                 adapter,
                 filter,
-                start_block_num,
+                manifest_start_block_num,
                 subgraph_start_block,
                 logger,
             )),
@@ -71,7 +61,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
     mapper: Arc<F>,
     adapter: Arc<C::TriggersAdapter>,
     filter: Arc<C::TriggerFilter>,
-    start_block_num: BlockNumber,
+    manifest_start_block_num: BlockNumber,
     subgraph_start_block: Option<BlockPtr>,
     logger: Logger,
 ) -> impl Stream<Item = Result<BlockStreamEvent<C>, Error>> {
@@ -80,7 +70,15 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
     let mut latest_cursor = cursor.unwrap_or_else(|| "".to_string());
     let mut backoff = ExponentialBackoff::new(Duration::from_millis(500), Duration::from_secs(45));
     let mut subgraph_start_block = subgraph_start_block;
-    let mut start_block_num = start_block_num;
+    let mut start_block_num = subgraph_start_block
+        .as_ref()
+        .map(|ptr| {
+            // Firehose start block is inclusive while the subgraph_start_block is where the actual
+            // subgraph is currently at. So to process the actual next block, we must start one block
+            // further in the chain.
+            ptr.block_number() + 1 as BlockNumber
+        })
+        .unwrap_or(manifest_start_block_num);
 
     // Seems the `try_stream!` macro interfer and don't see we are actually reading/writing this
     #[allow(unused_assignments)]
@@ -136,6 +134,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                         match process_firehose_response(
                             response,
                             &mut check_subgraph_continuity,
+                            manifest_start_block_num,
                             subgraph_start_block.as_ref(),
                             mapper.as_ref(),
                             &adapter,
@@ -201,6 +200,7 @@ enum BlockResponse<C: Blockchain> {
 async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
     result: Result<firehose::Response, Status>,
     check_subgraph_continuity: &mut bool,
+    manifest_start_block_num: BlockNumber,
     subgraph_start_block: Option<&BlockPtr>,
     mapper: &F,
     adapter: &C::TriggersAdapter,
@@ -229,10 +229,26 @@ async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
                     "firehose_start_block" => &previous_block_ptr.unwrap(),
                 );
 
-                let revert_to = mapper
+                let mut revert_to = mapper
                     .final_block_ptr_for(logger, &block.block)
                     .await
                     .context("Could not fetch final block to revert to")?;
+
+                if revert_to.number < manifest_start_block_num {
+                    warn!(&logger, "We would return before subgraph manifest's start block, limiting rewind to manifest's start block");
+
+                    // We must revert up to parent's of manifest start block to ensure we delete everything "including" the start
+                    // block that was processed.
+                    let mut block_num = manifest_start_block_num - 1;
+                    if block_num < 0 {
+                        block_num = 0;
+                    }
+
+                    revert_to = mapper
+                        .block_ptr_for_number(logger, block_num)
+                        .await
+                        .context("Could not fetch manifest start block to revert to")?;
+                }
 
                 return Ok(BlockResponse::Rewind(revert_to));
             }

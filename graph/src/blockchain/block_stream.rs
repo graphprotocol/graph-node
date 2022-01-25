@@ -165,6 +165,17 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
         filter: &C::TriggerFilter,
     ) -> Result<BlockStreamEvent<C>, FirehoseError>;
 
+    /// Returns the [BlockPtr] value for this given block number. This is the block pointer
+    /// of the longuest according to Firehose view of the blockchain state.
+    ///
+    /// This is a thin wrapper around [FirehoseEndpoint#block_ptr_for_number] to make
+    /// it chain agnostic and callable from chain agnostic [FirehoseBlockStream].
+    async fn block_ptr_for_number(
+        &self,
+        logger: &Logger,
+        number: BlockNumber,
+    ) -> Result<BlockPtr, Error>;
+
     /// Returns the closest final block ptr to the block ptr received.
     /// On probablitics chain like Ethereum, final is determined by
     /// the confirmations threshold configured for the Firehose stack (currently
