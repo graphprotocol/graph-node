@@ -1234,23 +1234,25 @@ impl Table {
     /// See the unit tests at the end of this file for the actual DDL that
     /// gets generated
     fn as_ddl(&self, out: &mut String, layout: &Layout) -> fmt::Result {
+        let mut cols = String::new();
+        for column in &self.columns {
+            write!(cols, "    ")?;
+            column.as_ddl(&mut cols)?;
+            writeln!(cols, ",")?;
+        }
+
         writeln!(
             out,
-            "create table {}.{} (",
-            layout.catalog.site.namespace,
-            self.name.quoted()
-        )?;
-        for column in self.columns.iter() {
-            write!(out, "    ")?;
-            column.as_ddl(out)?;
-            writeln!(out, ",")?;
-        }
-        // Add block_range column and constraint
-        write!(
-            out,
-            "\n        {vid}                  bigserial primary key,\
-             \n        {block_range}          int4range not null,
-        exclude using gist   (id with =, {block_range} with &&)\n);\n",
+            r#"
+        create table {nsp}.{name} (
+            {vid}                  bigserial primary key,
+            {block_range}          int4range not null,
+            {cols}
+            exclude using gist   (id with =, {block_range} with &&)
+        );
+        "#,
+            nsp = layout.catalog.site.namespace,
+            name = self.name.quoted(),
             vid = VID_COLUMN,
             block_range = BLOCK_RANGE_COLUMN
         )?;
@@ -1667,11 +1669,11 @@ mod tests {
 create type sgd0815.\"size\"
     as enum (\'large\', \'medium\', \'small\');
 create table sgd0815.\"thing\" (
+        vid                  bigserial primary key,
+        block_range          int4range not null,
         \"id\"                 text not null,
         \"big_thing\"          text not null,
 
-        vid                  bigserial primary key,
-        block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_thing
@@ -1686,6 +1688,8 @@ create index attr_0_1_thing_big_thing
     on sgd0815.\"thing\" using gist(\"big_thing\", block_range);
 
 create table sgd0815.\"scalar\" (
+        vid                  bigserial primary key,
+        block_range          int4range not null,
         \"id\"                 text not null,
         \"bool\"               boolean,
         \"int\"                integer,
@@ -1695,8 +1699,6 @@ create table sgd0815.\"scalar\" (
         \"big_int\"            numeric,
         \"color\"              \"sgd0815\".\"color\",
 
-        vid                  bigserial primary key,
-        block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_scalar
@@ -1752,13 +1754,13 @@ type SongStat @entity {
     played: Int!
 }";
     const MUSIC_DDL: &str = "create table sgd0815.\"musician\" (
+        vid                  bigserial primary key,
+        block_range          int4range not null,
         \"id\"                 text not null,
         \"name\"               text not null,
         \"main_band\"          text,
         \"bands\"              text[] not null,
 
-        vid                  bigserial primary key,
-        block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_musician
@@ -1777,12 +1779,12 @@ create index attr_0_3_musician_bands
     on sgd0815.\"musician\" using gin(\"bands\");
 
 create table sgd0815.\"band\" (
+        vid                  bigserial primary key,
+        block_range          int4range not null,
         \"id\"                 text not null,
         \"name\"               text not null,
         \"original_songs\"     text[] not null,
 
-        vid                  bigserial primary key,
-        block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_band
@@ -1799,12 +1801,12 @@ create index attr_1_2_band_original_songs
     on sgd0815.\"band\" using gin(\"original_songs\");
 
 create table sgd0815.\"song\" (
+        vid                  bigserial primary key,
+        block_range          int4range not null,
         \"id\"                 text not null,
         \"title\"              text not null,
         \"written_by\"         text not null,
 
-        vid                  bigserial primary key,
-        block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_song
@@ -1821,11 +1823,11 @@ create index attr_2_2_song_written_by
     on sgd0815.\"song\" using gist(\"written_by\", block_range);
 
 create table sgd0815.\"song_stat\" (
+        vid                  bigserial primary key,
+        block_range          int4range not null,
         \"id\"                 text not null,
         \"played\"             integer not null,
 
-        vid                  bigserial primary key,
-        block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_song_stat
@@ -1863,11 +1865,11 @@ type Habitat @entity {
 }";
 
     const FOREST_DDL: &str = "create table sgd0815.\"animal\" (
+        vid                  bigserial primary key,
+        block_range          int4range not null,
         \"id\"                 text not null,
         \"forest\"             text,
 
-        vid                  bigserial primary key,
-        block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_animal
@@ -1882,10 +1884,10 @@ create index attr_0_1_animal_forest
     on sgd0815.\"animal\" using gist(\"forest\", block_range);
 
 create table sgd0815.\"forest\" (
-        \"id\"                 text not null,
-
         vid                  bigserial primary key,
         block_range          int4range not null,
+        \"id\"                 text not null,
+
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_forest
@@ -1898,12 +1900,12 @@ create index attr_1_0_forest_id
     on sgd0815.\"forest\" using btree(\"id\");
 
 create table sgd0815.\"habitat\" (
+        vid                  bigserial primary key,
+        block_range          int4range not null,
         \"id\"                 text not null,
         \"most_common\"        text not null,
         \"dwellers\"           text[] not null,
 
-        vid                  bigserial primary key,
-        block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_habitat
@@ -1952,14 +1954,14 @@ type Habitat @entity {
 }";
 
     const FULLTEXT_DDL: &str = "create table sgd0815.\"animal\" (
+        vid                  bigserial primary key,
+        block_range          int4range not null,
         \"id\"                 text not null,
         \"name\"               text not null,
         \"species\"            text not null,
         \"forest\"             text,
         \"search\"             tsvector,
 
-        vid                  bigserial primary key,
-        block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_animal
@@ -1980,10 +1982,10 @@ create index attr_0_4_animal_search
     on sgd0815.\"animal\" using gin(\"search\");
 
 create table sgd0815.\"forest\" (
-        \"id\"                 text not null,
-
         vid                  bigserial primary key,
         block_range          int4range not null,
+        \"id\"                 text not null,
+
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_forest
@@ -1996,12 +1998,12 @@ create index attr_1_0_forest_id
     on sgd0815.\"forest\" using btree(\"id\");
 
 create table sgd0815.\"habitat\" (
+        vid                  bigserial primary key,
+        block_range          int4range not null,
         \"id\"                 text not null,
         \"most_common\"        text not null,
         \"dwellers\"           text[] not null,
 
-        vid                  bigserial primary key,
-        block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_habitat
@@ -2033,11 +2035,11 @@ enum Orientation {
     const FORWARD_ENUM_SQL: &str = "create type sgd0815.\"orientation\"
     as enum (\'DOWN\', \'UP\');
 create table sgd0815.\"thing\" (
+        vid                  bigserial primary key,
+        block_range          int4range not null,
         \"id\"                 text not null,
         \"orientation\"        \"sgd0815\".\"orientation\" not null,
 
-        vid                  bigserial primary key,
-        block_range          int4range not null,
         exclude using gist   (id with =, block_range with &&)
 );
 create index brin_thing
