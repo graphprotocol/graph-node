@@ -2,12 +2,13 @@ use graph::data::graphql::DocumentExt as _;
 use graph::data::value::Object;
 use graphql_parser::Pos;
 use graphql_tools::validation::rules::*;
+use graphql_tools::validation::utils::ValidationError;
 use graphql_tools::validation::validate::{validate, ValidationPlan};
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Instant;
 use std::{collections::hash_map::DefaultHasher, convert::TryFrom};
 
@@ -22,6 +23,11 @@ use crate::query::{ast as qast, ext::BlockConstraint};
 use crate::schema::ast::{self as sast};
 use crate::values::coercion;
 use crate::{execution::get_field, schema::api::ErrorPolicy};
+
+lazy_static! {
+    static ref GRAPHQL_VALIDATION_CACHE: Mutex<HashMap<u64, Vec<ValidationError>>> =
+        Mutex::new(HashMap::<u64, Vec<ValidationError>>::new());
+}
 
 lazy_static! {
     static ref GRAPHQL_VALIDATION_PLAN: ValidationPlan = ValidationPlan::from(
@@ -145,17 +151,25 @@ impl Query {
         max_complexity: Option<u64>,
         max_depth: u8,
     ) -> Result<Arc<Self>, Vec<QueryExecutionError>> {
-        let validation_errors = validate(
-            &schema.document(),
-            &query.document,
-            &GRAPHQL_VALIDATION_PLAN,
-        );
+        let mut validation_cache = GRAPHQL_VALIDATION_CACHE
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let validation_errors = validation_cache.entry(query.shape_hash).or_insert_with(|| {
+            validate(
+                &schema.document(),
+                &query.document,
+                &GRAPHQL_VALIDATION_PLAN,
+            )
+        });
 
         if validation_errors.len() > 0 {
             return Err(validation_errors
                 .into_iter()
                 .map(|e| {
-                    QueryExecutionError::ValidationError(e.locations.first().cloned(), e.message)
+                    QueryExecutionError::ValidationError(
+                        e.locations.first().cloned(),
+                        e.message.clone(),
+                    )
                 })
                 .collect());
         }
