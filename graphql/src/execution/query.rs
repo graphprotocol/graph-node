@@ -258,7 +258,7 @@ impl Query {
 
         let root_type = sast::ObjectType::from(self.schema.query_type.cheap_clone());
         let mut prev_bc: Option<BlockConstraint> = None;
-        for field in self.selection_set.fields_for(&root_type) {
+        for field in self.selection_set.fields_for(&root_type)? {
             let bc = match field.argument_value("block") {
                 Some(bc) => BlockConstraint::try_from_value(bc).map_err(|_| {
                     vec![QueryExecutionError::InvalidArgumentError(

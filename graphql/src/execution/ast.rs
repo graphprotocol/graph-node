@@ -99,17 +99,24 @@ impl SelectionSet {
     }
 
     /// Iterate over all fields for the given object type
-    ///
-    /// # Panics
-    /// If this `SelectionSet` does not have an entry for `obj_type`, this
-    /// method will panic
-    pub fn fields_for(&self, obj_type: &ObjectType) -> impl Iterator<Item = &Field> {
+    pub fn fields_for(
+        &self,
+        obj_type: &ObjectType,
+    ) -> Result<impl Iterator<Item = &Field>, QueryExecutionError> {
         let item = self
             .items
             .iter()
             .find(|(our_type, _)| our_type == obj_type)
-            .expect("there is an entry for the type");
-        item.1.iter()
+            .ok_or_else(|| {
+                // see: graphql-bug-compat
+                // Once queries are validated, this can become a panic since
+                // users won't be able to trigger this any more
+                QueryExecutionError::ValidationError(
+                    None,
+                    format!("invalid query: no fields for type `{}`", obj_type.name),
+                )
+            })?;
+        Ok(item.1.iter())
     }
 
     /// Append the field for all the sets' types

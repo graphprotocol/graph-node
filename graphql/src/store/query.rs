@@ -292,7 +292,7 @@ pub(crate) fn collect_entities_from_query_field(
     schema: &ApiSchema,
     object_type: sast::ObjectType,
     field: &a::Field,
-) -> BTreeSet<SubscriptionFilter> {
+) -> Result<BTreeSet<SubscriptionFilter>, QueryExecutionError> {
     // Output entities
     let mut entities = HashSet::new();
 
@@ -322,7 +322,7 @@ pub(crate) fn collect_entities_from_query_field(
                     // If the query field has a non-empty selection set, this means we
                     // need to recursively process it
                     let object_type = schema.object_type(object_type).into();
-                    for sub_field in field.selection_set.fields_for(&object_type) {
+                    for sub_field in field.selection_set.fields_for(&object_type)? {
                         queue.push_back((object_type.cheap_clone(), sub_field))
                     }
                 }
@@ -330,10 +330,10 @@ pub(crate) fn collect_entities_from_query_field(
         }
     }
 
-    entities
+    Ok(entities
         .into_iter()
         .map(|(id, entity_type)| SubscriptionFilter::Entities(id, EntityType::new(entity_type)))
-        .collect()
+        .collect())
 }
 
 #[cfg(test)]
