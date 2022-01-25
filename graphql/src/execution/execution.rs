@@ -256,11 +256,11 @@ pub(crate) fn execute_root_selection_set_uncached(
         // non-existent fields; those will cause an error later when we execute
         // the data_set SelectionSet
         if is_introspection_field(&field.name) {
-            intro_set.push(field)
+            intro_set.push(field)?
         } else if &field.name == META_FIELD_NAME {
             meta_items.push(field)
         } else {
-            data_set.push(field)
+            data_set.push(field)?
         }
     }
 
@@ -269,7 +269,7 @@ pub(crate) fn execute_root_selection_set_uncached(
         Object::default()
     } else {
         let initial_data = ctx.resolver.prefetch(&ctx, &data_set)?;
-        data_set.push_fields(meta_items);
+        data_set.push_fields(meta_items)?;
         execute_selection_set_to_map(&ctx, &data_set, root_type, initial_data)?
     };
 

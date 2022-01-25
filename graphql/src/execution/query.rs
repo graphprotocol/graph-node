@@ -284,13 +284,13 @@ impl Query {
             let next_bc = Some(bc.clone());
             if prev_bc == next_bc {
                 let (selection_set, error_policy) = &mut bcs.last_mut().unwrap().1;
-                selection_set.push(field);
+                selection_set.push(field)?;
                 if field_error_policy == ErrorPolicy::Deny {
                     *error_policy = ErrorPolicy::Deny;
                 }
             } else {
                 let mut selection_set = a::SelectionSet::empty_from(&self.selection_set);
-                selection_set.push(field);
+                selection_set.push(field)?;
                 bcs.push((bc, (selection_set, field_error_policy)))
             }
             prev_bc = next_bc;
@@ -946,7 +946,7 @@ impl Transform {
             match sel {
                 q::Selection::Field(field) => {
                     if let Some(field) = self.expand_field(field, ty)? {
-                        newset.push(&field);
+                        newset.push(&field)?;
                     }
                 }
                 q::Selection::FragmentSpread(spread) => {
@@ -1019,7 +1019,7 @@ impl Transform {
         if !skip {
             let type_set = a::ObjectTypeSet::convert(&self.schema, frag_cond)?.intersect(type_set);
             let selection_set = self.expand_selection_set(selection_set, &type_set, ty)?;
-            newset.merge(selection_set, directives);
+            newset.merge(selection_set, directives)?;
         }
         Ok(())
     }

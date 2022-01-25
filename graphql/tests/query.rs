@@ -1526,6 +1526,24 @@ fn missing_variable() {
     })
 }
 
+// see: graphql-bug-compat
+// Test that queries with nonmergeable fields do not cause a panic. Can be
+// deleted once queries are validated
+#[test]
+fn invalid_field_merge() {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
+        let result = execute_query_document(
+            &deployment.hash,
+            graphql_parser::parse_query("query { musicians { t: id t: mainBand { id } } }")
+                .expect("invalid test query")
+                .into_static(),
+        )
+        .await;
+        assert!(result.has_errors());
+    })
+}
+
 async fn check_musicians_at(
     id: &DeploymentHash,
     query: &str,
