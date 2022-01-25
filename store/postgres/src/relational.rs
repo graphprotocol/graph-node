@@ -1234,117 +1234,139 @@ impl Table {
     /// See the unit tests at the end of this file for the actual DDL that
     /// gets generated
     fn as_ddl(&self, out: &mut String, layout: &Layout) -> fmt::Result {
-        let mut cols = String::new();
-        for column in &self.columns {
-            write!(cols, "    ")?;
-            column.as_ddl(&mut cols)?;
-            writeln!(cols, ",")?;
+        fn columns_ddl(table: &Table) -> Result<String, fmt::Error> {
+            let mut cols = String::new();
+            for column in &table.columns {
+                write!(cols, "    ")?;
+                column.as_ddl(&mut cols)?;
+                writeln!(cols, ",")?;
+            }
+            Ok(cols)
         }
 
-        writeln!(
-            out,
-            r#"
-        create table {nsp}.{name} (
-            {vid}                  bigserial primary key,
-            {block_range}          int4range not null,
-            {cols}
-            exclude using gist   (id with =, {block_range} with &&)
-        );
-        "#,
-            nsp = layout.catalog.site.namespace,
-            name = self.name.quoted(),
-            vid = VID_COLUMN,
-            block_range = BLOCK_RANGE_COLUMN
-        )?;
+        fn create_table(table: &Table, out: &mut String, layout: &Layout) -> fmt::Result {
+            writeln!(
+                out,
+                r#"
+            create table {nsp}.{name} (
+                {vid}                  bigserial primary key,
+                {block_range}          int4range not null,
+                {cols}
+                exclude using gist   (id with =, {block_range} with &&)
+            );
+            "#,
+                nsp = layout.catalog.site.namespace,
+                name = table.name.quoted(),
+                cols = columns_ddl(table)?,
+                vid = VID_COLUMN,
+                block_range = BLOCK_RANGE_COLUMN
+            )
+        }
 
-        // Add a BRIN index on the block_range bounds to exploit the fact
-        // that block ranges closely correlate with where in a table an
-        // entity appears physically. This index is incredibly efficient for
-        // reverts where we look for very recent blocks, so that this index
-        // is highly selective. See https://github.com/graphprotocol/graph-node/issues/1415#issuecomment-630520713
-        // for details on one experiment.
-        //
-        // We do not index the `block_range` as a whole, but rather the lower
-        // and upper bound separately, since experimentation has shown that
-        // Postgres will not use the index on `block_range` for clauses like
-        // `block_range @> $block` but rather falls back to a full table scan.
-        //
-        // We also make sure that we do not put `NULL` in the index for
-        // the upper bound since nulls can not be compared to anything and
-        // will make the index less effective.
-        //
-        // To make the index usable, queries need to have clauses using
-        // `lower(block_range)` and `coalesce(..)` verbatim.
-        //
-        // We also index `vid` as that correlates with the order in which
-        // entities are stored.
-        write!(out,"create index brin_{table_name}\n    \
+        fn create_time_travel_indexes(
+            table: &Table,
+            out: &mut String,
+            layout: &Layout,
+        ) -> fmt::Result {
+            // Add a BRIN index on the block_range bounds to exploit the fact
+            // that block ranges closely correlate with where in a table an
+            // entity appears physically. This index is incredibly efficient for
+            // reverts where we look for very recent blocks, so that this index
+            // is highly selective. See https://github.com/graphprotocol/graph-node/issues/1415#issuecomment-630520713
+            // for details on one experiment.
+            //
+            // We do not index the `block_range` as a whole, but rather the lower
+            // and upper bound separately, since experimentation has shown that
+            // Postgres will not use the index on `block_range` for clauses like
+            // `block_range @> $block` but rather falls back to a full table scan.
+            //
+            // We also make sure that we do not put `NULL` in the index for
+            // the upper bound since nulls can not be compared to anything and
+            // will make the index less effective.
+            //
+            // To make the index usable, queries need to have clauses using
+            // `lower(block_range)` and `coalesce(..)` verbatim.
+            //
+            // We also index `vid` as that correlates with the order in which
+            // entities are stored.
+            write!(out,"create index brin_{table_name}\n    \
                     on {schema_name}.{table_name}\n \
                        using brin(lower(block_range), coalesce(upper(block_range), {block_max}), vid);\n",
-            table_name = self.name,
+            table_name = table.name,
             schema_name = layout.catalog.site.namespace,
             block_max = BLOCK_NUMBER_MAX)?;
 
-        // Add a BTree index that helps with the `RevertClampQuery` by making
-        // it faster to find entity versions that have been modified
-        write!(
-            out,
-            "create index {table_name}_block_range_closed\n    \
-                     on {schema_name}.{table_name}(coalesce(upper(block_range), {block_max}))\n \
-                     where coalesce(upper(block_range), {block_max}) < {block_max};\n",
-            table_name = self.name,
-            schema_name = layout.catalog.site.namespace,
-            block_max = BLOCK_NUMBER_MAX
-        )?;
-
-        // Create indexes. Skip columns whose type is an array of enum,
-        // since there is no good way to index them with Postgres 9.6.
-        // Once we move to Postgres 11, we can enable that
-        // (tracked in graph-node issue #1330)
-        for (i, column) in self
-            .columns
-            .iter()
-            .filter(|col| !(col.is_list() && col.is_enum()))
-            .enumerate()
-        {
-            let (method, index_expr) = if column.is_reference() && !column.is_list() {
-                // For foreign keys, index the key together with the block range
-                // since we almost always also have a block_range clause in
-                // queries that look for specific foreign keys
-                let index_expr = format!("{}, {}", column.name.quoted(), BLOCK_RANGE_COLUMN);
-                ("gist", index_expr)
-            } else {
-                // Attributes that are plain strings are indexed with a BTree; but
-                // they can be too large for Postgres' limit on values that can go
-                // into a BTree. For those attributes, only index the first
-                // STRING_PREFIX_SIZE characters
-                let index_expr = if column.is_text() {
-                    format!("left({}, {})", column.name.quoted(), STRING_PREFIX_SIZE)
-                } else {
-                    column.name.quoted()
-                };
-
-                let method = if column.is_list() || column.is_fulltext() {
-                    "gin"
-                } else {
-                    "btree"
-                };
-
-                (method, index_expr)
-            };
+            // Add a BTree index that helps with the `RevertClampQuery` by making
+            // it faster to find entity versions that have been modified
             write!(
                 out,
+                "create index {table_name}_block_range_closed\n    \
+                     on {schema_name}.{table_name}(coalesce(upper(block_range), {block_max}))\n \
+                     where coalesce(upper(block_range), {block_max}) < {block_max};\n",
+                table_name = table.name,
+                schema_name = layout.catalog.site.namespace,
+                block_max = BLOCK_NUMBER_MAX
+            )
+        }
+
+        fn create_attribute_indexes(
+            table: &Table,
+            out: &mut String,
+            layout: &Layout,
+        ) -> fmt::Result {
+            // Create indexes. Skip columns whose type is an array of enum,
+            // since there is no good way to index them with Postgres 9.6.
+            // Once we move to Postgres 11, we can enable that
+            // (tracked in graph-node issue #1330)
+            for (i, column) in table
+                .columns
+                .iter()
+                .filter(|col| !(col.is_list() && col.is_enum()))
+                .enumerate()
+            {
+                let (method, index_expr) = if column.is_reference() && !column.is_list() {
+                    // For foreign keys, index the key together with the block range
+                    // since we almost always also have a block_range clause in
+                    // queries that look for specific foreign keys
+                    let index_expr = format!("{}, {}", column.name.quoted(), BLOCK_RANGE_COLUMN);
+                    ("gist", index_expr)
+                } else {
+                    // Attributes that are plain strings are indexed with a BTree; but
+                    // they can be too large for Postgres' limit on values that can go
+                    // into a BTree. For those attributes, only index the first
+                    // STRING_PREFIX_SIZE characters
+                    let index_expr = if column.is_text() {
+                        format!("left({}, {})", column.name.quoted(), STRING_PREFIX_SIZE)
+                    } else {
+                        column.name.quoted()
+                    };
+
+                    let method = if column.is_list() || column.is_fulltext() {
+                        "gin"
+                    } else {
+                        "btree"
+                    };
+
+                    (method, index_expr)
+                };
+                write!(
+                out,
                 "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {schema_name}.\"{table_name}\" using {method}({index_expr});\n",
-                table_index = self.position,
-                table_name = self.name,
+                table_index = table.position,
+                table_name = table.name,
                 column_index = i,
                 column_name = column.name,
                 schema_name = layout.catalog.site.namespace,
                 method = method,
                 index_expr = index_expr,
             )?;
+            }
+            writeln!(out)
         }
-        writeln!(out)
+
+        create_table(self, out, layout)?;
+        create_time_travel_indexes(self, out, layout)?;
+        create_attribute_indexes(self, out, layout)
     }
 }
 
