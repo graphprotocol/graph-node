@@ -1713,12 +1713,11 @@ impl AttributeNames {
         }
     }
 
-    /// Adds a attribute name. Ignores meta fields.
-    pub fn add(&mut self, field: &q::Field) {
-        if Self::is_meta_field(&field.name) {
+    pub fn update(&mut self, field_name: &str) {
+        if Self::is_meta_field(field_name) {
             return;
         }
-        self.insert(&field.name)
+        self.insert(&field_name)
     }
 
     /// Adds a attribute name. Ignores meta fields.

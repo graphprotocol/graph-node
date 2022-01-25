@@ -1,28 +1,7 @@
-use std::sync::Arc;
-
-use graphql_parser;
-
-use graph::data::graphql::ext::DocumentExt;
-use graph::data::graphql::ext::ObjectTypeExt;
-use graph::data::schema::{ApiSchema, Schema};
-use graph::data::subgraph::DeploymentHash;
-use graph::prelude::s::Document;
-
-use lazy_static::lazy_static;
-
-use crate::schema::ast as sast;
-
-const INTROSPECTION_SCHEMA: &str = "
-scalar Boolean
-scalar Float
-scalar Int
-scalar ID
-scalar String
-
-type Query {
-  __schema: __Schema!
-  __type(name: String!): __Type
-}
+# A GraphQL introspection schema for inclusion in a subgraph's API schema.
+# The schema differs from the 'standard' introspection schema in that it
+# doesn't have a Query type nor scalar declarations as they come from the
+# API schema.
 
 type __Schema {
   types: [__Type!]!
@@ -116,23 +95,4 @@ enum __DirectiveLocation {
   ENUM_VALUE
   INPUT_OBJECT
   INPUT_FIELD_DEFINITION
-}";
-
-lazy_static! {
-    pub static ref INTROSPECTION_DOCUMENT: Document =
-        graphql_parser::parse_schema(INTROSPECTION_SCHEMA).unwrap();
-    pub static ref INTROSPECTION_QUERY_TYPE: sast::ObjectType = sast::ObjectType::from(Arc::new(
-        INTROSPECTION_DOCUMENT
-            .get_root_query_type()
-            .unwrap()
-            .clone()
-    ));
-}
-
-pub fn introspection_schema(id: DeploymentHash) -> ApiSchema {
-    ApiSchema::from_api_schema(Schema::new(id, INTROSPECTION_DOCUMENT.clone())).unwrap()
-}
-
-pub fn is_introspection_field(name: &String) -> bool {
-    INTROSPECTION_QUERY_TYPE.field(name).is_some()
 }

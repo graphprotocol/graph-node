@@ -1,7 +1,8 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::result;
 use std::sync::Arc;
 
+use graph::data::value::Object;
 use graph::data::{
     graphql::{object, ObjectOrInterface},
     schema::META_FIELD_TYPE,
@@ -9,6 +10,7 @@ use graph::data::{
 use graph::prelude::*;
 use graph::{components::store::*, data::schema::BLOCK_FIELD_TYPE};
 
+use crate::execution::ast as a;
 use crate::query::ext::BlockConstraint;
 use crate::runner::ResultSizeMetrics;
 use crate::schema::ast as sast;
@@ -220,7 +222,7 @@ impl StoreResolver {
                 "__typename".to_string(),
                 r::Value::String(META_FIELD_TYPE.to_string()),
             );
-            return Ok((None, Some(r::Value::Object(map))));
+            return Ok((None, Some(r::Value::object(map))));
         }
         Ok((prefetched_object, None))
     }
@@ -237,7 +239,7 @@ impl Resolver for StoreResolver {
     fn prefetch(
         &self,
         ctx: &ExecutionContext<Self>,
-        selection_set: &q::SelectionSet,
+        selection_set: &a::SelectionSet,
     ) -> Result<Option<r::Value>, Vec<QueryExecutionError>> {
         super::prefetch::run(self, ctx, selection_set, &self.result_size).map(Some)
     }
@@ -245,10 +247,9 @@ impl Resolver for StoreResolver {
     fn resolve_objects(
         &self,
         prefetched_objects: Option<r::Value>,
-        field: &q::Field,
+        field: &a::Field,
         _field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&str, r::Value>,
     ) -> Result<r::Value, QueryExecutionError> {
         if let Some(child) = prefetched_objects {
             Ok(child)
@@ -265,10 +266,9 @@ impl Resolver for StoreResolver {
     fn resolve_object(
         &self,
         prefetched_object: Option<r::Value>,
-        field: &q::Field,
+        field: &a::Field,
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&str, r::Value>,
     ) -> Result<r::Value, QueryExecutionError> {
         let (prefetched_object, meta) = self.handle_meta(prefetched_object, &object_type)?;
         if let Some(meta) = meta {
@@ -301,11 +301,12 @@ impl Resolver for StoreResolver {
 
     fn resolve_field_stream(
         &self,
-        schema: &s::Document,
+        schema: &ApiSchema,
         object_type: &s::ObjectType,
-        field: &q::Field,
+        field: &a::Field,
     ) -> result::Result<UnitStream, QueryExecutionError> {
         // Collect all entities involved in the query field
+        let object_type = schema.object_type(object_type).into();
         let entities = collect_entities_from_query_field(schema, object_type, field);
 
         // Subscribe to the store and return the entity change stream
@@ -328,8 +329,9 @@ impl Resolver for StoreResolver {
             // or a different field queried under the response key `_meta`.
             ErrorPolicy::Deny => {
                 let data = result.take_data();
-                let meta = data.and_then(|mut d| d.remove_entry("_meta"));
-                result.set_data(meta.map(|m| BTreeMap::from_iter(Some(m))));
+                let meta =
+                    data.and_then(|d| d.get("_meta").map(|m| ("_meta".to_string(), m.clone())));
+                result.set_data(meta.map(|m| Object::from_iter(Some(m))));
             }
             ErrorPolicy::Allow => (),
         }

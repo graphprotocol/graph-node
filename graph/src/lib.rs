@@ -184,7 +184,7 @@ pub mod prelude {
     static_graphql!(q, query, {
         Document, Value, OperationDefinition, InlineFragment, TypeCondition,
         FragmentSpread, Field, Selection, SelectionSet, FragmentDefinition,
-        Directive, VariableDefinition, Type,
+        Directive, VariableDefinition, Type, Query,
     });
     static_graphql!(s, schema, {
         Field, Directive, InterfaceType, ObjectType, Value, TypeDefinition,
