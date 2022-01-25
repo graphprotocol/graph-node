@@ -333,6 +333,16 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         }
     }
 
+    async fn block_ptr_for_number(
+        &self,
+        logger: &Logger,
+        number: BlockNumber,
+    ) -> Result<BlockPtr, Error> {
+        self.endpoint
+            .block_ptr_for_number::<codec::HeaderOnlyBlock>(logger, number)
+            .await
+    }
+
     async fn final_block_ptr_for(
         &self,
         logger: &Logger,
