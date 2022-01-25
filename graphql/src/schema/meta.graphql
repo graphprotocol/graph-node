@@ -40,6 +40,16 @@ type _Meta_ {
   hasIndexingErrors: Boolean!
 }
 
+input BlockChangedFilter {
+  number_gte: Int!
+}
+
+input Block_height {
+  hash: Bytes
+  number: Int
+  number_gte: Int
+}
+
 type _Block_ {
   "The hash of the block"
   hash: Bytes
