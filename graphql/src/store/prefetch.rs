@@ -718,7 +718,13 @@ impl SelectedAttributes {
                         .map(|field_type| !field_type.is_derived())
                         .unwrap_or(false)
                 })
-                .map(|field| field.name.clone())
+                .filter_map(|field| {
+                    if field.name.starts_with("__") {
+                        None
+                    } else {
+                        Some(field.name.clone())
+                    }
+                })
                 .collect();
             map.insert(
                 object_type.name().to_string(),
