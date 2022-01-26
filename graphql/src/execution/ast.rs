@@ -99,52 +99,77 @@ impl SelectionSet {
     }
 
     /// Iterate over all fields for the given object type
-    ///
-    /// # Panics
-    /// If this `SelectionSet` does not have an entry for `obj_type`, this
-    /// method will panic
-    pub fn fields_for(&self, obj_type: &ObjectType) -> impl Iterator<Item = &Field> {
+    pub fn fields_for(
+        &self,
+        obj_type: &ObjectType,
+    ) -> Result<impl Iterator<Item = &Field>, QueryExecutionError> {
         let item = self
             .items
             .iter()
             .find(|(our_type, _)| our_type == obj_type)
-            .expect("there is an entry for the type");
-        item.1.iter()
+            .ok_or_else(|| {
+                // see: graphql-bug-compat
+                // Once queries are validated, this can become a panic since
+                // users won't be able to trigger this any more
+                QueryExecutionError::ValidationError(
+                    None,
+                    format!("invalid query: no fields for type `{}`", obj_type.name),
+                )
+            })?;
+        Ok(item.1.iter())
     }
 
     /// Append the field for all the sets' types
-    pub fn push(&mut self, new_field: &Field) {
+    pub fn push(&mut self, new_field: &Field) -> Result<(), QueryExecutionError> {
         for (_, fields) in &mut self.items {
-            Self::merge_field(fields, new_field.clone());
+            Self::merge_field(fields, new_field.clone())?;
         }
+        Ok(())
     }
 
     /// Append the fields for all the sets' types
-    pub fn push_fields(&mut self, fields: Vec<&Field>) {
+    pub fn push_fields(&mut self, fields: Vec<&Field>) -> Result<(), QueryExecutionError> {
         for field in fields {
-            self.push(field);
+            self.push(field)?;
         }
+        Ok(())
     }
 
     /// Merge `self` with the fields from `other`, which must have the same,
     /// or a subset of, the types of `self`. The `directives` are added to
     /// `self`'s directives so that they take precedence over existing
     /// directives with the same name
-    pub fn merge(&mut self, other: SelectionSet, directives: Vec<Directive>) {
-        for (other_name, other_fields) in other.items {
+    pub fn merge(
+        &mut self,
+        other: SelectionSet,
+        directives: Vec<Directive>,
+    ) -> Result<(), QueryExecutionError> {
+        for (other_type, other_fields) in other.items {
             let item = self
                 .items
                 .iter_mut()
-                .find(|(name, _)| &other_name == name)
-                .expect("all possible types are already in items");
+                .find(|(obj_type, _)| &other_type == obj_type)
+                .ok_or_else(|| {
+                    // graphql-bug-compat: once queries are validated, this
+                    // can become a panic since users won't be able to
+                    // trigger this anymore
+                    QueryExecutionError::ValidationError(
+                        None,
+                        format!(
+                            "invalid query: can not merge fields because type `{}` showed up unexpectedly",
+                            other_type.name
+                        ),
+                    )
+                })?;
             for mut other_field in other_fields {
                 other_field.prepend_directives(directives.clone());
-                Self::merge_field(&mut item.1, other_field);
+                Self::merge_field(&mut item.1, other_field)?;
             }
         }
+        Ok(())
     }
 
-    fn merge_field(fields: &mut Vec<Field>, new_field: Field) {
+    fn merge_field(fields: &mut Vec<Field>, new_field: Field) -> Result<(), QueryExecutionError> {
         match fields
             .iter_mut()
             .find(|field| field.response_key() == new_field.response_key())
@@ -153,10 +178,11 @@ impl SelectionSet {
                 // TODO: check that _field and new_field are mergeable, in
                 // particular that their name, directives and arguments are
                 // compatible
-                field.selection_set.merge(new_field.selection_set, vec![]);
+                field.selection_set.merge(new_field.selection_set, vec![])?;
             }
             None => fields.push(new_field),
         }
+        Ok(())
     }
 }
 

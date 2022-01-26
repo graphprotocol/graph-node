@@ -251,16 +251,16 @@ pub(crate) fn execute_root_selection_set_uncached(
     let mut intro_set = a::SelectionSet::empty_from(selection_set);
     let mut meta_items = Vec::new();
 
-    for field in selection_set.fields_for(root_type) {
+    for field in selection_set.fields_for(root_type)? {
         // See if this is an introspection or data field. We don't worry about
         // non-existent fields; those will cause an error later when we execute
         // the data_set SelectionSet
         if is_introspection_field(&field.name) {
-            intro_set.push(field)
+            intro_set.push(field)?
         } else if &field.name == META_FIELD_NAME {
             meta_items.push(field)
         } else {
-            data_set.push(field)
+            data_set.push(field)?
         }
     }
 
@@ -269,7 +269,7 @@ pub(crate) fn execute_root_selection_set_uncached(
         Object::default()
     } else {
         let initial_data = ctx.resolver.prefetch(&ctx, &data_set)?;
-        data_set.push_fields(meta_items);
+        data_set.push_fields(meta_items)?;
         execute_selection_set_to_map(&ctx, &data_set, root_type, initial_data)?
     };
 
@@ -465,7 +465,7 @@ fn execute_selection_set_to_map<'a>(
     let multiple_response_keys = {
         let mut multiple_response_keys = HashSet::new();
         let mut fields = HashSet::new();
-        for field in selection_set.fields_for(object_type) {
+        for field in selection_set.fields_for(object_type)? {
             if !fields.insert(field.name.as_str()) {
                 multiple_response_keys.insert(field.name.as_str());
             }
@@ -474,7 +474,7 @@ fn execute_selection_set_to_map<'a>(
     };
 
     // Process all field groups in order
-    for field in selection_set.fields_for(object_type) {
+    for field in selection_set.fields_for(object_type)? {
         match ctx.deadline {
             Some(deadline) if deadline < Instant::now() => {
                 errors.push(QueryExecutionError::Timeout);
