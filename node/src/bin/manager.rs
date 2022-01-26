@@ -182,6 +182,9 @@ pub enum Command {
     Chain(ChainCommand),
     /// Manipulate internal subgraph statistics
     Stats(StatsCommand),
+
+    /// Manage database indexes
+    Index(IndexCommand),
 }
 
 impl Command {
@@ -351,6 +354,42 @@ pub enum StatsCommand {
         nsp: String,
         /// The name of a table to fully count
         table: Option<String>,
+    },
+    /// Perform a SQL ANALYZE in a Entity table
+    Analyze {
+        /// The id of the deployment
+        id: String,
+        /// The name of the Entity to ANALYZE, in camel case
+        entity: String,
+    },
+}
+
+#[derive(Clone, Debug, StructOpt)]
+pub enum IndexCommand {
+    /// Creates a new database index.
+    ///
+    /// The new index will be created concurrenly for the provided entity and its fields. whose
+    /// names must be declared the in camel case, following GraphQL conventions.
+    ///
+    /// The index will have its validity checked after the operation and will be dropped if it is
+    /// invalid.
+    ///
+    /// This command may be time-consuming.
+    Create {
+        /// The id of the deployment
+        id: String,
+        /// The Entity name, in camel case.
+        #[structopt(empty_values = false)]
+        entity: String,
+        /// The Field names, in camel case.
+        #[structopt(min_values = 1, required = true)]
+        fields: Vec<String>,
+        /// The index method. Defaults to `btree`.
+        #[structopt(
+            short, long, default_value = "btree",
+            possible_values = &["btree", "hash", "gist", "spgist", "gin", "brin"]
+        )]
+        method: String,
     },
 }
 
@@ -720,6 +759,26 @@ async fn main() {
                     commands::stats::account_like(ctx.pools(), clear, table)
                 }
                 Show { nsp, table } => commands::stats::show(ctx.pools(), nsp, table),
+                Analyze { id, entity } => {
+                    let store = ctx.store();
+                    let subgraph_store = store.subgraph_store();
+                    commands::stats::analyze(subgraph_store, id, entity).await
+                }
+            }
+        }
+        Index(cmd) => {
+            use IndexCommand::*;
+            match cmd {
+                Create {
+                    id,
+                    entity,
+                    fields,
+                    method,
+                } => {
+                    let store = ctx.store();
+                    let subgraph_store = store.subgraph_store();
+                    commands::index::create(subgraph_store, id, entity, fields, method).await
+                }
             }
         }
     };

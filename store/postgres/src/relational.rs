@@ -9,6 +9,7 @@
 use diesel::{connection::SimpleConnection, Connection};
 use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
 use graph::cheap_clone::CheapClone;
+use graph::data::graphql::TypeExt as _;
 use graph::prelude::{q, s, StopwatchMetrics};
 use graph::slog::warn;
 use inflector::Inflector;
@@ -1040,9 +1041,7 @@ impl Column {
     }
 
     pub fn is_list(&self) -> bool {
-        use graph_graphql::prelude::is_list as type_is_list;
-
-        type_is_list(&self.field_type)
+        self.field_type.is_list()
     }
 
     pub fn is_enum(&self) -> bool {

@@ -102,7 +102,6 @@ pub async fn run(
         metrics_registry.clone(),
         chain_store.cheap_clone(),
         chain_store,
-        subgraph_store.clone(),
         firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
         eth_adapters,
         chain_head_update_listener,

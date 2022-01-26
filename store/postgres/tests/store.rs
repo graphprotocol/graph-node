@@ -1,3 +1,4 @@
+use graph::data::graphql::ext::TypeDefinitionExt;
 use graph_chain_ethereum::{Mapping, MappingABI};
 use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
@@ -1474,13 +1475,12 @@ fn subgraph_schema_types_have_subgraph_id_directive() {
             .api_schema(&deployment.hash)
             .expect("test subgraph should have a schema");
         for typedef in schema
-            .document()
-            .definitions
-            .iter()
+            .definitions()
             .filter_map(|def| match def {
                 s::Definition::TypeDefinition(typedef) => Some(typedef),
                 _ => None,
             })
+            .filter(|typedef| !typedef.is_introspection())
         {
             // Verify that all types have a @subgraphId directive on them
             let directive = match typedef {

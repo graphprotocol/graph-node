@@ -1,5 +1,6 @@
 use graph::blockchain::BlockchainKind;
 use graph::cheap_clone::CheapClone;
+use graph::components::store::WritableStore;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::FirehoseEndpoints;
 use graph::prelude::StopwatchMetrics;
@@ -100,8 +101,8 @@ impl Blockchain for Chain {
     async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
+        store: Arc<dyn WritableStore>,
         start_blocks: Vec<BlockNumber>,
-        firehose_cursor: Option<String>,
         filter: Arc<Self::TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -126,6 +127,7 @@ impl Blockchain for Chain {
             .new(o!("component" => "FirehoseBlockStream"));
 
         let firehose_mapper = Arc::new(FirehoseMapper {});
+        let firehose_cursor = store.block_cursor();
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,
@@ -301,15 +303,15 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             )),
 
             StepUndo => {
-                let header = block.header();
-                let parent_ptr = header
+                let parent_ptr = block
+                    .header()
                     .parent_ptr()
                     .expect("Genesis block should never be reverted");
 
                 Ok(BlockStreamEvent::Revert(
                     block.ptr(),
+                    parent_ptr,
                     Some(response.cursor.clone()),
-                    Some(parent_ptr),
                 ))
             }
 

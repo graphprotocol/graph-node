@@ -10,8 +10,8 @@ use web3::types::H160;
 
 use graph::blockchain::DataSource;
 use graph::blockchain::{Blockchain, DataSourceTemplate as _};
-use graph::components::store::EntityKey;
 use graph::components::store::EntityType;
+use graph::components::store::{EnsLookup, EntityKey};
 use graph::components::subgraph::{CausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::data::store;
 use graph::ensure;
@@ -21,7 +21,6 @@ use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
 use graph::runtime::gas::{self, complexity, Gas, GasCounter};
 pub use graph::runtime::{DeterministicHostError, HostExportError};
-use graph_graphql::prelude::validate_entity;
 
 use crate::module::{WasmInstance, WasmInstanceContext};
 use crate::{error::DeterminismLevel, module::IntoTrap};
@@ -69,7 +68,7 @@ pub struct HostExports<C: Blockchain> {
     causality_region: String,
     templates: Arc<Vec<C::DataSourceTemplate>>,
     pub(crate) link_resolver: Arc<dyn LinkResolver>,
-    store: Arc<dyn SubgraphStore>,
+    ens_lookup: Arc<dyn EnsLookup>,
 }
 
 impl<C: Blockchain> HostExports<C> {
@@ -79,7 +78,7 @@ impl<C: Blockchain> HostExports<C> {
         data_source_network: String,
         templates: Arc<Vec<C::DataSourceTemplate>>,
         link_resolver: Arc<dyn LinkResolver>,
-        store: Arc<dyn SubgraphStore>,
+        ens_lookup: Arc<dyn EnsLookup>,
     ) -> Self {
         Self {
             subgraph_id,
@@ -91,7 +90,7 @@ impl<C: Blockchain> HostExports<C> {
             data_source_network,
             templates,
             link_resolver,
-            store,
+            ens_lookup,
         }
     }
 
@@ -167,7 +166,7 @@ impl<C: Blockchain> HostExports<C> {
         }
 
         id_insert_section.end();
-        let validation_section = stopwatch.start_section("host_export_store_set__validation");
+        let validation_section = stopwatch.start_section("host_export_store_set");
         let key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
             entity_type: EntityType::new(entity_type),
@@ -177,22 +176,9 @@ impl<C: Blockchain> HostExports<C> {
         gas.consume_host_fn(gas::STORE_SET.with_args(complexity::Linear, (&key, &data)))?;
 
         let entity = Entity::from(data);
-        let schema = self.store.input_schema(&self.subgraph_id)?;
-        let is_valid = validate_entity(&schema.document, &key, &entity).is_ok();
-        state.entity_cache.set(key.clone(), entity);
-
+        state.entity_cache.set(key.clone(), entity)?;
         validation_section.end();
-        // Validate the changes against the subgraph schema.
-        // If the set of fields we have is already valid, avoid hitting the DB.
-        if !is_valid {
-            stopwatch.start_section("host_export_store_set__post_validation");
-            let entity = state
-                .entity_cache
-                .get(&key)
-                .map_err(|e| HostExportError::Unknown(e.into()))?
-                .expect("we just stored this entity");
-            validate_entity(&schema.document, &key, &entity)?;
-        }
+
         Ok(())
     }
 
@@ -671,7 +657,7 @@ impl<C: Blockchain> HostExports<C> {
     }
 
     pub(crate) fn ens_name_by_hash(&self, hash: &str) -> Result<Option<String>, anyhow::Error> {
-        Ok(self.store.find_ens_name(hash)?)
+        Ok(self.ens_lookup.find_name(hash)?)
     }
 
     pub(crate) fn log_log(

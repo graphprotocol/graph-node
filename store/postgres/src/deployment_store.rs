@@ -1,3 +1,4 @@
+use anyhow::Context;
 use detail::DeploymentDetail;
 use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
@@ -680,6 +681,77 @@ impl DeploymentStore {
         })
         .await
     }
+
+    /// Runs the SQL `ANALYZE` command in a table.
+    pub(crate) async fn analyze(
+        &self,
+        site: Arc<Site>,
+        entity_type: EntityType,
+    ) -> Result<(), StoreError> {
+        let store = self.clone();
+        self.with_conn(move |conn, _| {
+            let layout = store.layout(conn, site)?;
+            let table = layout.table_for_entity(&entity_type)?;
+            let table_name = &table.qualified_name;
+            let sql = format!("analyze {table_name}");
+            conn.execute(&sql)?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Creates a new index in the specified Entity table if it doesn't already exist.
+    ///
+    /// This is a potentially time-consuming operation.
+    pub(crate) async fn create_manual_index(
+        &self,
+        site: Arc<Site>,
+        entity_type: EntityType,
+        field_names: Vec<String>,
+        index_method: String,
+    ) -> Result<(), StoreError> {
+        let store = self.clone();
+
+        self.with_conn(move |conn, _| {
+            let schema_name = site.namespace.clone();
+            let layout = store.layout(conn, site)?;
+            let table = layout.table_for_entity(&entity_type)?;
+            let table_name = &table.name;
+
+            // resolve column names
+            let column_names = field_names
+                .iter()
+                .map(|f| table.column_for_field(f).map(|column| column.name.as_str()))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let column_names_sep_by_underscores = column_names.join("_");
+            let column_names_sep_by_commas = column_names.join(", ");
+            let index_name = format!("manual_{table_name}_{column_names_sep_by_underscores}");
+
+            let sql = format!(
+                "create index concurrently if not exists {index_name} \
+                 on {schema_name}.{table_name} using {index_method} \
+                 ({column_names_sep_by_commas})"
+            );
+            // This might take a long time.
+            conn.execute(&sql)?;
+
+            // check if the index creation was successfull
+            let index_is_valid =
+                catalog::check_index_is_valid(conn, schema_name.as_str(), &index_name)?;
+            if index_is_valid {
+                Ok(())
+            } else {
+                // Index creation falied. We should drop the index before returning.
+                let drop_index_sql =
+                    format!("drop index concurrently if exists {schema_name}.{index_name}");
+                conn.execute(&drop_index_sql)?;
+                Err(StoreError::Canceled)
+            }
+            .map_err(Into::into)
+        })
+        .await
+    }
 }
 
 /// Methods that back the trait `graph::components::Store`, but have small
@@ -911,7 +983,7 @@ impl DeploymentStore {
 
             if let Some(cursor) = firehose_cursor {
                 if cursor != "" {
-                    deployment::update_firehose_cursor(&conn, &site.deployment, &cursor)?;
+                    deployment::update_firehose_cursor(&conn, &site.deployment, cursor)?;
                 }
             }
 
@@ -926,6 +998,7 @@ impl DeploymentStore {
         conn: &PgConnection,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
+        firehose_cursor: Option<&str>,
     ) -> Result<StoreEvent, StoreError> {
         let event = conn.transaction(|| -> Result<_, StoreError> {
             // Don't revert past a graft point
@@ -945,6 +1018,11 @@ impl DeploymentStore {
             }
 
             deployment::revert_block_ptr(&conn, &site.deployment, block_ptr_to.clone())?;
+
+            if let Some(cursor) = firehose_cursor {
+                deployment::update_firehose_cursor(&conn, &site.deployment, cursor)
+                    .context("updating firehose cursor")?;
+            }
 
             // Revert the data
             let layout = self.layout(&conn, site.clone())?;
@@ -997,13 +1075,18 @@ impl DeploymentStore {
                 block_ptr_to.number
             );
         }
-        self.rewind_with_conn(&conn, site, block_ptr_to)
+
+        // When rewinding, we reset the firehose cursor to the empty string. That way, on resume,
+        // Firehose will start from the block_ptr instead (with sanity check to ensure it's resume
+        // at the exact block).
+        self.rewind_with_conn(&conn, site, block_ptr_to, Some(""))
     }
 
     pub(crate) fn revert_block_operations(
         &self,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
+        firehose_cursor: Option<&str>,
     ) -> Result<StoreEvent, StoreError> {
         let conn = self.get_conn()?;
         // Unwrap: If we are reverting then the block ptr is not `None`.
@@ -1014,7 +1097,7 @@ impl DeploymentStore {
             panic!("revert_block_operations must revert a single block only");
         }
 
-        self.rewind_with_conn(&conn, site, block_ptr_to)
+        self.rewind_with_conn(&conn, site, block_ptr_to, firehose_cursor)
     }
 
     pub(crate) async fn deployment_state_from_id(
@@ -1233,7 +1316,11 @@ impl DeploymentStore {
                     );
 
                     // We ignore the StoreEvent that's being returned, we'll not use it.
-                    let _ = self.revert_block_operations(site.clone(), parent_ptr.clone())?;
+                    //
+                    // We reset the firehose cursor to the empty string. That way, on resume,
+                    // Firehose will start from the block_ptr instead (with sanity checks to ensure it's resuming
+                    // at the correct block).
+                    let _ = self.revert_block_operations(site.clone(), parent_ptr.clone(), Some(""))?;
 
                     // Unfail the deployment.
                     deployment::update_deployment_status(conn, deployment_id, prev_health, None)?;

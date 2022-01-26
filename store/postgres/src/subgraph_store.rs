@@ -4,7 +4,10 @@ use diesel::{
     sql_types::Text,
     types::{FromSql, ToSql},
 };
-use std::{collections::BTreeMap, collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 use std::{fmt, io::Write};
 use std::{iter::FromIterator, time::Duration};
 
@@ -13,26 +16,23 @@ use graph::{
     components::{
         server::index_node::VersionInfo,
         store::{
-            self, DeploymentLocator, EntityType, SubgraphFork, WritableStore as WritableStoreTrait,
+            self, DeploymentLocator, EnsLookup as EnsLookupTrait, EntityType, SubgraphFork,
+            WritableStore as WritableStoreTrait,
         },
     },
     constraint_violation,
     data::query::QueryTarget,
-    data::subgraph::schema::{self, SubgraphError},
     data::subgraph::status,
     prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        BlockPtr, DeploymentHash, Entity, EntityKey, EntityModification, Error, Logger, NodeId,
-        Schema, StopwatchMetrics, StoreError, SubgraphName, SubgraphStore as SubgraphStoreTrait,
-        SubgraphVersionSwitchingMode,
+        BlockPtr, DeploymentHash, Logger, NodeId, Schema, StoreError, SubgraphName,
+        SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
-    slog::{error, warn},
     url::Url,
-    util::{backoff::ExponentialBackoff, timed_cache::TimedCache},
+    util::timed_cache::TimedCache,
 };
-use store::StoredDynamicDataSource;
 
 use crate::fork;
 use crate::{
@@ -40,6 +40,7 @@ use crate::{
     primary,
     primary::{DeploymentId, Mirror as PrimaryMirror, Site},
     relational::Layout,
+    writable::WritableAgent,
     NotificationSender,
 };
 use crate::{
@@ -263,6 +264,7 @@ pub struct SubgraphStoreInner {
     sites: TimedCache<DeploymentHash, Site>,
     placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
     sender: Arc<NotificationSender>,
+    writables: Mutex<HashMap<DeploymentId, Arc<WritableAgent>>>,
 }
 
 impl SubgraphStoreInner {
@@ -316,6 +318,7 @@ impl SubgraphStoreInner {
             sites,
             placer,
             sender,
+            writables: Mutex::new(HashMap::new()),
         }
     }
 
@@ -383,13 +386,13 @@ impl SubgraphStoreInner {
         Ok((store, site))
     }
 
-    fn for_site(&self, site: &Site) -> Result<&Arc<DeploymentStore>, StoreError> {
+    pub(crate) fn for_site(&self, site: &Site) -> Result<&Arc<DeploymentStore>, StoreError> {
         self.stores
             .get(&site.shard)
             .ok_or(StoreError::UnknownShard(site.shard.as_str().to_string()))
     }
 
-    fn layout(&self, id: &DeploymentHash) -> Result<Arc<Layout>, StoreError> {
+    pub(crate) fn layout(&self, id: &DeploymentHash) -> Result<Arc<Layout>, StoreError> {
         let (store, site) = self.store(id)?;
         store.find_layout(site)
     }
@@ -671,7 +674,7 @@ impl SubgraphStoreInner {
     /// connections can deadlock the entire process if the pool runs out
     /// of connections in between getting the first one and trying to get the
     /// second one.
-    fn primary_conn(&self) -> Result<primary::Connection, StoreError> {
+    pub(crate) fn primary_conn(&self) -> Result<primary::Connection, StoreError> {
         let conn = self.mirror.primary().get()?;
         Ok(primary::Connection::new(conn))
     }
@@ -928,7 +931,7 @@ impl SubgraphStoreInner {
     pub fn find(
         &self,
         query: graph::prelude::EntityQuery,
-    ) -> Result<Vec<Entity>, graph::prelude::QueryExecutionError> {
+    ) -> Result<Vec<graph::prelude::Entity>, graph::prelude::QueryExecutionError> {
         let (store, site) = self.store(&query.subgraph_id)?;
         store.find(site, query)
     }
@@ -953,12 +956,47 @@ impl SubgraphStoreInner {
         )
         .await;
     }
+
+    pub async fn analyze(
+        &self,
+        id: &DeploymentHash,
+        entity_type: EntityType,
+    ) -> Result<(), StoreError> {
+        let (store, site) = self.store(&id)?;
+        store.analyze(site, entity_type).await
+    }
+
+    pub async fn create_manual_index(
+        &self,
+        id: &DeploymentHash,
+        entity_type: EntityType,
+        field_names: Vec<String>,
+        index_method: String,
+    ) -> Result<(), StoreError> {
+        let (store, site) = self.store(&id)?;
+        store
+            .create_manual_index(site, entity_type, field_names, index_method)
+            .await
+    }
+}
+
+struct EnsLookup {
+    primary: ConnectionPool,
+}
+
+impl EnsLookupTrait for EnsLookup {
+    fn find_name(&self, hash: &str) -> Result<Option<String>, StoreError> {
+        let conn = self.primary.get()?;
+        primary::Connection::new(conn).find_ens_name(hash)
+    }
 }
 
 #[async_trait::async_trait]
 impl SubgraphStoreTrait for SubgraphStore {
-    fn find_ens_name(&self, hash: &str) -> Result<Option<String>, StoreError> {
-        self.primary_conn()?.find_ens_name(hash)
+    fn ens_lookup(&self) -> Arc<dyn EnsLookupTrait> {
+        Arc::new(EnsLookup {
+            primary: self.mirror.primary().clone(),
+        })
     }
 
     // FIXME: This method should not get a node_id
@@ -1061,19 +1099,28 @@ impl SubgraphStoreTrait for SubgraphStore {
         logger: Logger,
         deployment: graph::components::store::DeploymentId,
     ) -> Result<Arc<dyn store::WritableStore>, StoreError> {
+        let deployment = deployment.into();
+        // We cache writables to make sure calls to this method are
+        // idempotent and there is ever only one `WritableStore` for any
+        // deployment
+        if let Some(writable) = self.writables.lock().unwrap().get(&deployment) {
+            return Ok(writable.cheap_clone());
+        }
+
         // Ideally the lower level functions would be asyncified.
         let this = self.clone();
         let site = graph::spawn_blocking_allow_panic(move || -> Result<_, StoreError> {
-            this.find_site(deployment.into())
+            this.find_site(deployment)
         })
         .await
         .unwrap()?; // Propagate panics, there shouldn't be any.
 
-        Ok(Arc::new(WritableStore::new(
-            self.as_ref().clone(),
-            logger,
-            site,
-        )?))
+        let writable = Arc::new(WritableAgent::new(self.as_ref().clone(), logger, site)?);
+        self.writables
+            .lock()
+            .unwrap()
+            .insert(deployment, writable.cheap_clone());
+        Ok(writable)
     }
 
     fn writable_for_network_indexer(
@@ -1082,7 +1129,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         id: &DeploymentHash,
     ) -> Result<Arc<dyn WritableStoreTrait>, StoreError> {
         let site = self.site(id)?;
-        Ok(Arc::new(WritableStore::new(self.clone(), logger, site)?))
+        Ok(Arc::new(WritableAgent::new(self.clone(), logger, site)?))
     }
 
     fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
@@ -1107,289 +1154,4 @@ impl SubgraphStoreTrait for SubgraphStore {
             .map(|site| site.into())
             .collect())
     }
-}
-
-/// A wrapper around `SubgraphStore` that only exposes functions that are
-/// safe to call from `WritableStore`, i.e., functions that either do not
-/// deal with anything that depends on a specific deployment
-/// location/instance, or where the result is independent of the deployment
-/// instance
-struct WritableSubgraphStore(SubgraphStore);
-
-impl WritableSubgraphStore {
-    fn primary_conn(&self) -> Result<primary::Connection, StoreError> {
-        self.0.primary_conn()
-    }
-
-    pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
-        self.0.send_store_event(event)
-    }
-
-    fn layout(&self, id: &DeploymentHash) -> Result<Arc<Layout>, StoreError> {
-        self.0.layout(id)
-    }
-}
-
-struct WritableStore {
-    logger: Logger,
-    store: WritableSubgraphStore,
-    writable: Arc<DeploymentStore>,
-    site: Arc<Site>,
-}
-
-impl WritableStore {
-    const BACKOFF_BASE: Duration = Duration::from_millis(100);
-    const BACKOFF_CEIL: Duration = Duration::from_secs(10);
-
-    fn new(
-        subgraph_store: SubgraphStore,
-        logger: Logger,
-        site: Arc<Site>,
-    ) -> Result<Self, StoreError> {
-        let store = WritableSubgraphStore(subgraph_store.clone());
-        let writable = subgraph_store.for_site(site.as_ref())?.clone();
-        Ok(Self {
-            logger,
-            store,
-            writable,
-            site,
-        })
-    }
-
-    fn log_backoff_warning(&self, op: &str, backoff: &ExponentialBackoff) {
-        warn!(self.logger,
-            "database unavailable, will retry";
-            "operation" => op,
-            "attempt" => backoff.attempt,
-            "delay_ms" => backoff.delay().as_millis());
-    }
-
-    fn retry<T, F>(&self, op: &str, f: F) -> Result<T, StoreError>
-    where
-        F: Fn() -> Result<T, StoreError>,
-    {
-        let mut backoff = ExponentialBackoff::new(Self::BACKOFF_BASE, Self::BACKOFF_CEIL);
-        loop {
-            match f() {
-                Ok(v) => return Ok(v),
-                Err(StoreError::DatabaseUnavailable) => {
-                    self.log_backoff_warning(op, &backoff);
-                }
-                Err(e) => return Err(e),
-            }
-            backoff.sleep();
-        }
-    }
-
-    async fn retry_async<T, F, Fut>(&self, op: &str, f: F) -> Result<T, StoreError>
-    where
-        F: Fn() -> Fut,
-        Fut: std::future::Future<Output = Result<T, StoreError>>,
-    {
-        let mut backoff = ExponentialBackoff::new(Self::BACKOFF_BASE, Self::BACKOFF_CEIL);
-        loop {
-            match f().await {
-                Ok(v) => return Ok(v),
-                Err(StoreError::DatabaseUnavailable) => {
-                    self.log_backoff_warning(op, &backoff);
-                }
-                Err(e) => return Err(e),
-            }
-            backoff.sleep_async().await;
-        }
-    }
-
-    /// Try to send a `StoreEvent`; if sending fails, log the error but
-    /// return `Ok(())`
-    fn try_send_store_event(&self, event: StoreEvent) -> Result<(), StoreError> {
-        if *SEND_SUBSCRIPTION_NOTIFICATIONS {
-            let _ = self.store.send_store_event(&event).map_err(
-                |e| error!(self.logger, "Could not send store event"; "error" => e.to_string()),
-            );
-            Ok(())
-        } else {
-            Ok(())
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl WritableStoreTrait for WritableStore {
-    fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
-        self.retry("block_ptr", || self.writable.block_ptr(self.site.as_ref()))
-    }
-
-    fn block_cursor(&self) -> Result<Option<String>, StoreError> {
-        self.writable.block_cursor(self.site.as_ref())
-    }
-
-    fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
-        self.retry("start_subgraph_deployment", || {
-            let store = &self.writable;
-
-            let graft_base = match store.graft_pending(&self.site.deployment)? {
-                Some((base_id, base_ptr)) => {
-                    let src = self.store.layout(&base_id)?;
-                    Some((src, base_ptr))
-                }
-                None => None,
-            };
-            store.start_subgraph(logger, self.site.clone(), graft_base)?;
-            self.store.primary_conn()?.copy_finished(self.site.as_ref())
-        })
-    }
-
-    fn revert_block_operations(&self, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
-        self.retry("revert_block_operations", || {
-            let event = self
-                .writable
-                .revert_block_operations(self.site.clone(), block_ptr_to.clone())?;
-            self.try_send_store_event(event)
-        })
-    }
-
-    fn unfail_deterministic_error(
-        &self,
-        current_ptr: &BlockPtr,
-        parent_ptr: &BlockPtr,
-    ) -> Result<(), StoreError> {
-        self.retry("unfail_deterministic_error", || {
-            self.writable
-                .unfail_deterministic_error(self.site.clone(), current_ptr, parent_ptr)
-        })
-    }
-
-    fn unfail_non_deterministic_error(&self, current_ptr: &BlockPtr) -> Result<(), StoreError> {
-        self.retry("unfail_non_deterministic_error", || {
-            self.writable
-                .unfail_non_deterministic_error(self.site.clone(), current_ptr)
-        })
-    }
-
-    async fn fail_subgraph(&self, error: SubgraphError) -> Result<(), StoreError> {
-        self.retry_async("fail_subgraph", || {
-            let error = error.clone();
-            async {
-                self.writable
-                    .clone()
-                    .fail_subgraph(self.site.deployment.clone(), error)
-                    .await
-            }
-        })
-        .await
-    }
-
-    async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError> {
-        self.retry_async("supports_proof_of_indexing", || async {
-            self.writable
-                .supports_proof_of_indexing(self.site.clone())
-                .await
-        })
-        .await
-    }
-
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
-        self.retry("get", || self.writable.get(self.site.cheap_clone(), key))
-    }
-
-    fn transact_block_operations(
-        &self,
-        block_ptr_to: BlockPtr,
-        firehose_cursor: Option<String>,
-        mods: Vec<EntityModification>,
-        stopwatch: StopwatchMetrics,
-        data_sources: Vec<StoredDynamicDataSource>,
-        deterministic_errors: Vec<SubgraphError>,
-    ) -> Result<(), StoreError> {
-        assert!(
-            same_subgraph(&mods, &self.site.deployment),
-            "can only transact operations within one shard"
-        );
-        self.retry("transact_block_operations", move || {
-            let event = self.writable.transact_block_operations(
-                self.site.clone(),
-                &block_ptr_to,
-                firehose_cursor.as_deref(),
-                &mods,
-                stopwatch.cheap_clone(),
-                &data_sources,
-                &deterministic_errors,
-            )?;
-
-            let _section = stopwatch.start_section("send_store_event");
-            self.try_send_store_event(event)
-        })
-    }
-
-    fn get_many(
-        &self,
-        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
-        self.retry("get_many", || {
-            self.writable
-                .get_many(self.site.cheap_clone(), &ids_for_type)
-        })
-    }
-
-    async fn is_deployment_synced(&self) -> Result<bool, StoreError> {
-        self.retry_async("is_deployment_synced", || async {
-            self.writable
-                .exists_and_synced(self.site.deployment.cheap_clone())
-                .await
-        })
-        .await
-    }
-
-    fn unassign_subgraph(&self) -> Result<(), StoreError> {
-        self.retry("unassign_subgraph", || {
-            let pconn = self.store.primary_conn()?;
-            pconn.transaction(|| -> Result<_, StoreError> {
-                let changes = pconn.unassign_subgraph(self.site.as_ref())?;
-                pconn.send_store_event(&self.store.0.sender, &StoreEvent::new(changes))
-            })
-        })
-    }
-
-    async fn load_dynamic_data_sources(&self) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
-        self.retry_async("load_dynamic_data_sources", || async {
-            self.writable
-                .load_dynamic_data_sources(self.site.deployment.clone())
-                .await
-        })
-        .await
-    }
-
-    fn deployment_synced(&self) -> Result<(), StoreError> {
-        self.retry("deployment_synced", || {
-            let event = {
-                // Make sure we drop `pconn` before we call into the deployment
-                // store so that we do not hold two database connections which
-                // might come from the same pool and could therefore deadlock
-                let pconn = self.store.primary_conn()?;
-                pconn.transaction(|| -> Result<_, Error> {
-                    let changes = pconn.promote_deployment(&self.site.deployment)?;
-                    Ok(StoreEvent::new(changes))
-                })?
-            };
-
-            self.writable.deployment_synced(&self.site.deployment)?;
-
-            self.store.send_store_event(&event)
-        })
-    }
-
-    fn shard(&self) -> &str {
-        self.site.shard.as_str()
-    }
-
-    async fn health(&self, id: &DeploymentHash) -> Result<schema::SubgraphHealth, StoreError> {
-        self.retry_async("health", || async {
-            self.writable.health(id).await.map(Into::into)
-        })
-        .await
-    }
-}
-
-fn same_subgraph(mods: &Vec<EntityModification>, id: &DeploymentHash) -> bool {
-    mods.iter().all(|md| &md.entity_key().subgraph_id == id)
 }
