@@ -9,7 +9,7 @@ use diesel::pg::{Pg, PgConnection};
 use diesel::query_builder::{AstPass, QueryFragment, QueryId};
 use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::{Error as DieselError, QueryResult};
-use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Range, Text};
+use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text};
 use diesel::Connection;
 use lazy_static::lazy_static;
 
@@ -36,7 +36,7 @@ use crate::relational::{
 };
 use crate::sql_value::SqlValue;
 use crate::{
-    block_range::{BlockRange, BlockRangeContainsClause, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT},
+    block_range::{BlockRangeColumn, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT},
     primary::Namespace,
 };
 
@@ -1185,7 +1185,7 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
         out.push_sql(" e\n where ");
         self.table.primary_key().eq(&self.id, &mut out)?;
         out.push_sql(" and ");
-        BlockRangeContainsClause::new(&self.table, "e.", self.block).walk_ast(out)
+        BlockRangeColumn::new(&self.table, "e.", self.block).contains(&mut out)
     }
 }
 
@@ -1239,7 +1239,7 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
                 .primary_key()
                 .is_in(&self.ids_for_type[&table.object], &mut out)?;
             out.push_sql(" and ");
-            BlockRangeContainsClause::new(&table, "e.", self.block).walk_ast(out.reborrow())?;
+            BlockRangeColumn::new(&table, "e.", self.block).contains(&mut out)?;
         }
         Ok(())
     }
@@ -1264,7 +1264,7 @@ pub struct InsertQuery<'a> {
     table: &'a Table,
     entities: &'a [(&'a EntityKey, Cow<'a, Entity>)],
     unique_columns: Vec<&'a Column>,
-    block: BlockNumber,
+    br_column: BlockRangeColumn<'a>,
 }
 
 impl<'a> InsertQuery<'a> {
@@ -1302,12 +1302,13 @@ impl<'a> InsertQuery<'a> {
             }
         }
         let unique_columns = InsertQuery::unique_columns(table, entities);
+        let br_column = BlockRangeColumn::new(table, "", block);
 
         Ok(InsertQuery {
             table,
             entities,
             unique_columns,
-            block,
+            br_column,
         })
     }
 
@@ -1350,7 +1351,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
             out.push_identifier(column.name.as_str())?;
             out.push_sql(", ");
         }
-        out.push_identifier(BLOCK_RANGE_COLUMN)?;
+        self.br_column.name(&mut out);
 
         out.push_sql(") values\n");
 
@@ -1368,8 +1369,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
                 }
                 out.push_sql(", ");
             }
-            let block_range: BlockRange = (self.block..).into();
-            out.push_bind_param::<Range<Integer>, _>(&block_range)?;
+            self.br_column.value(&mut out)?;
             out.push_sql(")");
 
             // finalize line according to remaining entities to insert
@@ -1675,7 +1675,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
+        BlockRangeColumn::new(&self.table, "c.", block).contains(out)?;
         limit.filter(out);
         out.push_sql(" and p.id = any(c.");
         out.push_identifier(column.name.as_str())?;
@@ -1711,7 +1711,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(") as p(id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
+        BlockRangeColumn::new(&self.table, "c.", block).contains(out)?;
         limit.filter(out);
         out.push_sql(" and c.");
         out.push_identifier(column.name.as_str())?;
@@ -1754,7 +1754,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
+        BlockRangeColumn::new(&self.table, "c.", block).contains(out)?;
         limit.filter(out);
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
@@ -1784,7 +1784,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(") as p(id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
+        BlockRangeColumn::new(&self.table, "c.", block).contains(out)?;
         limit.filter(out);
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
@@ -1823,7 +1823,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
+        BlockRangeColumn::new(&self.table, "c.", block).contains(out)?;
         limit.filter(out);
         out.push_sql(" and c.id = any(p.child_ids)");
         self.and_filter(out.reborrow())?;
@@ -1852,7 +1852,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(")) as p(id, child_id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
+        BlockRangeColumn::new(&self.table, "c.", block).contains(out)?;
         limit.filter(out);
         if *TYPED_CHILDREN_SET_SIZE > 0 {
             let mut child_set: Vec<&str> = child_ids.iter().map(|id| id.as_str()).collect();
@@ -2008,13 +2008,13 @@ impl<'a> FilterCollection<'a> {
 
 /// Convenience to pass the name of the column to order by around. If `name`
 /// is `None`, the sort key should be ignored
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum SortKey<'a> {
     None,
     /// Order by `id asc`
-    IdAsc,
+    IdAsc(Option<BlockRangeColumn<'a>>),
     /// Order by `id desc`
-    IdDesc,
+    IdDesc(Option<BlockRangeColumn<'a>>),
     /// Order by some other column; `column` will never be `id`
     Key {
         column: &'a Column,
@@ -2028,6 +2028,7 @@ impl<'a> SortKey<'a> {
         order: EntityOrder,
         table: &'a Table,
         filter: Option<&'a EntityFilter>,
+        block: BlockNumber,
     ) -> Result<Self, QueryExecutionError> {
         const ASC: &str = "asc";
         const DESC: &str = "desc";
@@ -2037,6 +2038,7 @@ impl<'a> SortKey<'a> {
             attribute: String,
             filter: Option<&'a EntityFilter>,
             direction: &'static str,
+            br_column: Option<BlockRangeColumn<'a>>,
         ) -> Result<SortKey<'a>, QueryExecutionError> {
             let column = table.column_for_field(&attribute)?;
             if column.is_fulltext() {
@@ -2057,8 +2059,8 @@ impl<'a> SortKey<'a> {
                 }
             } else if column.is_primary_key() {
                 match direction {
-                    ASC => Ok(SortKey::IdAsc),
-                    DESC => Ok(SortKey::IdDesc),
+                    ASC => Ok(SortKey::IdAsc(br_column)),
+                    DESC => Ok(SortKey::IdDesc(br_column)),
                     _ => unreachable!("direction is 'asc' or 'desc'"),
                 }
             } else {
@@ -2070,10 +2072,16 @@ impl<'a> SortKey<'a> {
             }
         }
 
+        let br_column = if *ORDER_BY_BLOCK_RANGE {
+            Some(BlockRangeColumn::new(table, "c.", block))
+        } else {
+            None
+        };
+
         match order {
-            EntityOrder::Ascending(attr, _) => with_key(table, attr, filter, ASC),
-            EntityOrder::Descending(attr, _) => with_key(table, attr, filter, DESC),
-            EntityOrder::Default => Ok(SortKey::IdAsc),
+            EntityOrder::Ascending(attr, _) => with_key(table, attr, filter, ASC, br_column),
+            EntityOrder::Descending(attr, _) => with_key(table, attr, filter, DESC, br_column),
+            EntityOrder::Default => Ok(SortKey::IdAsc(br_column)),
             EntityOrder::Unordered => Ok(SortKey::None),
         }
     }
@@ -2082,10 +2090,10 @@ impl<'a> SortKey<'a> {
     fn select(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match self {
             SortKey::None => Ok(()),
-            SortKey::IdAsc | SortKey::IdDesc => {
-                if *ORDER_BY_BLOCK_RANGE {
-                    out.push_sql(", c.");
-                    out.push_sql(BLOCK_RANGE_COLUMN);
+            SortKey::IdAsc(br_column) | SortKey::IdDesc(br_column) => {
+                if let Some(br_column) = br_column {
+                    out.push_sql(", ");
+                    br_column.name(out);
                 }
                 Ok(())
             }
@@ -2109,22 +2117,22 @@ impl<'a> SortKey<'a> {
     fn order_by(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match self {
             SortKey::None => Ok(()),
-            SortKey::IdAsc => {
+            SortKey::IdAsc(br_column) => {
                 out.push_sql("order by ");
                 out.push_identifier(PRIMARY_KEY_COLUMN)?;
-                if *ORDER_BY_BLOCK_RANGE {
+                if let Some(br_column) = br_column {
                     out.push_sql(", ");
-                    out.push_sql(BLOCK_RANGE_COLUMN);
+                    br_column.bare_name(out);
                 }
                 Ok(())
             }
-            SortKey::IdDesc => {
+            SortKey::IdDesc(br_column) => {
                 out.push_sql("order by ");
                 out.push_identifier(PRIMARY_KEY_COLUMN)?;
                 out.push_sql(" desc");
-                if *ORDER_BY_BLOCK_RANGE {
+                if let Some(br_column) = br_column {
                     out.push_sql(", ");
-                    out.push_sql(BLOCK_RANGE_COLUMN);
+                    br_column.bare_name(out);
                     out.push_sql(" desc");
                 }
                 Ok(())
@@ -2145,11 +2153,11 @@ impl<'a> SortKey<'a> {
     fn order_by_parent(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match self {
             SortKey::None => Ok(()),
-            SortKey::IdAsc => {
+            SortKey::IdAsc(_) => {
                 out.push_sql("order by g$parent_id, ");
                 out.push_identifier(PRIMARY_KEY_COLUMN)
             }
-            SortKey::IdDesc => {
+            SortKey::IdDesc(_) => {
                 out.push_sql("order by g$parent_id, ");
                 out.push_identifier(PRIMARY_KEY_COLUMN)?;
                 out.push_sql(" desc");
@@ -2267,7 +2275,7 @@ impl<'a> FilterQuery<'a> {
         let first_table = collection
             .first_table()
             .expect("an entity query always contains at least one entity type/table");
-        let sort_key = SortKey::new(order, first_table, filter)?;
+        let sort_key = SortKey::new(order, first_table, filter, block)?;
 
         Ok(FilterQuery {
             collection,
@@ -2294,7 +2302,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql(table.qualified_name.as_str());
         out.push_sql(" c");
         out.push_sql("\n where ");
-        BlockRangeContainsClause::new(&table, "c.", self.block).walk_ast(out.reborrow())?;
+        BlockRangeColumn::new(&table, "c.", self.block).contains(&mut out)?;
         if let Some(filter) = table_filter {
             out.push_sql(" and ");
             filter.walk_ast(out.reborrow())?;
@@ -2581,13 +2589,22 @@ impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}
 
 /// Reduce the upper bound of the current entry's block range to `block` as
 /// long as that does not result in an empty block range
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug)]
 pub struct ClampRangeQuery<'a, S> {
     table: &'a Table,
-    #[allow(dead_code)]
-    entity_type: &'a EntityType,
     entity_ids: &'a [S],
-    block: BlockNumber,
+    br_column: BlockRangeColumn<'a>,
+}
+
+impl<'a, S> ClampRangeQuery<'a, S> {
+    pub fn new(table: &'a Table, entity_ids: &'a [S], block: BlockNumber) -> Self {
+        let br_column = BlockRangeColumn::new(table, "", block);
+        Self {
+            table,
+            entity_ids,
+            br_column,
+        }
+    }
 }
 
 impl<'a, S> QueryFragment<Pg> for ClampRangeQuery<'a, S>
@@ -2603,16 +2620,12 @@ where
         out.push_sql("update ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql("\n   set ");
-        out.push_identifier(BLOCK_RANGE_COLUMN)?;
-        out.push_sql(" = int4range(lower(");
-        out.push_identifier(BLOCK_RANGE_COLUMN)?;
-        out.push_sql("), ");
-        out.push_bind_param::<Integer, _>(&self.block)?;
-        out.push_sql(")\n where ");
+        self.br_column.clamp(&mut out)?;
+        out.push_sql("\n where ");
 
         self.table.primary_key().is_in(self.entity_ids, &mut out)?;
         out.push_sql(" and (");
-        out.push_sql(BLOCK_RANGE_CURRENT);
+        self.br_column.latest(&mut out);
         out.push_sql(")");
 
         Ok(())
@@ -2656,10 +2669,17 @@ impl ReturnedEntityData {
 
 /// A query that removes all versions whose block range lies entirely
 /// beyond `block`.
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug, Clone)]
 pub struct RevertRemoveQuery<'a> {
     table: &'a Table,
-    block: BlockNumber,
+    br_column: BlockRangeColumn<'a>,
+}
+
+impl<'a> RevertRemoveQuery<'a> {
+    pub fn new(table: &'a Table, block: BlockNumber) -> Self {
+        let br_column = BlockRangeColumn::new(table, "", block);
+        Self { table, br_column }
+    }
 }
 
 impl<'a> QueryFragment<Pg> for RevertRemoveQuery<'a> {
@@ -2672,10 +2692,8 @@ impl<'a> QueryFragment<Pg> for RevertRemoveQuery<'a> {
         //   returning id
         out.push_sql("delete from ");
         out.push_sql(self.table.qualified_name.as_str());
-        out.push_sql("\n where lower(");
-        out.push_identifier(BLOCK_RANGE_COLUMN)?;
-        out.push_sql(") >= ");
-        out.push_bind_param::<Integer, _>(&self.block)?;
+        out.push_sql("\n where ");
+        self.br_column.changed_since(&mut out)?;
         out.push_sql("\nreturning ");
         out.push_sql(PRIMARY_KEY_COLUMN);
         out.push_sql("::text");

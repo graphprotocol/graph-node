@@ -698,7 +698,7 @@ impl Layout {
             .collect();
 
         let section = stopwatch.start_section("update_modification_clamp_range_query");
-        ClampRangeQuery::new(table, &entity_type, &entity_keys, block).execute(conn)?;
+        ClampRangeQuery::new(table, &entity_keys, block).execute(conn)?;
         section.end();
 
         let _section = stopwatch.start_section("update_modification_insert_query");
@@ -727,7 +727,7 @@ impl Layout {
         let _section = stopwatch.start_section("delete_modification_clamp_range_query");
         let mut count = 0;
         for chunk in entity_ids.chunks(DELETE_OPERATION_CHUNK_SIZE) {
-            count += ClampRangeQuery::new(table, &entity_type, chunk, block).execute(conn)?
+            count += ClampRangeQuery::new(table, chunk, block).execute(conn)?
         }
         Ok(count)
     }

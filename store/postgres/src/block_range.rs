@@ -1,5 +1,5 @@
 use diesel::pg::Pg;
-use diesel::query_builder::{AstPass, QueryFragment};
+use diesel::query_builder::AstPass;
 use diesel::result::QueryResult;
 ///! Utilities to deal with block numbers and block ranges
 use diesel::serialize::{Output, ToSql};
@@ -89,19 +89,19 @@ impl ToSql<Range<Integer>, Pg> for BlockRange {
 
 /// Generate the clause that checks whether `block` is in the block range
 /// of an entity
-#[derive(Constructor)]
-pub struct BlockRangeContainsClause<'a> {
+#[derive(Constructor, Debug, Clone)]
+pub struct BlockRangeColumn<'a> {
     table: &'a Table,
     table_prefix: &'a str,
     block: BlockNumber,
 }
 
-impl<'a> QueryFragment<Pg> for BlockRangeContainsClause<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+impl<'a> BlockRangeColumn<'a> {
+    /// Output SQL that matches only rows whose block range contains `block`
+    pub fn contains(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        out.push_sql(self.table_prefix);
-        out.push_identifier(BLOCK_RANGE_COLUMN)?;
+        self.name(out);
         out.push_sql(" @> ");
         out.push_bind_param::<Integer, _>(&self.block)?;
         if self.table.is_account_like && self.block < BLOCK_NUMBER_MAX {
@@ -120,6 +120,50 @@ impl<'a> QueryFragment<Pg> for BlockRangeContainsClause<'a> {
         } else {
             Ok(())
         }
+    }
+
+    /// Output the qualified name of the block range column
+    pub fn name(&self, out: &mut AstPass<Pg>) {
+        out.push_sql(self.table_prefix);
+        out.push_sql(BLOCK_RANGE_COLUMN);
+    }
+
+    /// Output the literal value of the block range `[block,..)`
+    pub fn value(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        let block_range: BlockRange = (self.block..).into();
+        out.push_bind_param::<Range<Integer>, _>(&block_range)
+    }
+
+    /// Output an expression that matches rows that are the latest version
+    /// of their entity
+    pub fn latest(&self, out: &mut AstPass<Pg>) {
+        out.push_sql(BLOCK_RANGE_CURRENT);
+    }
+
+    /// Output SQL that updates the block range column so that the row is
+    /// only valid up to `block` (exclusive)
+    pub fn clamp(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        self.name(out);
+        out.push_sql(" = int4range(lower(");
+        out.push_identifier(BLOCK_RANGE_COLUMN)?;
+        out.push_sql("), ");
+        out.push_bind_param::<Integer, _>(&self.block)?;
+        out.push_sql(")");
+        Ok(())
+    }
+
+    /// Output the name of the block range column without the table prefix
+    pub(crate) fn bare_name(&self, out: &mut AstPass<Pg>) {
+        out.push_sql(BLOCK_RANGE_COLUMN);
+    }
+
+    /// Output an expression that matches all rows that have been changed
+    /// after `block` (inclusive)
+    pub(crate) fn changed_since(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        out.push_sql("lower(");
+        out.push_identifier(BLOCK_RANGE_COLUMN)?;
+        out.push_sql(") >= ");
+        out.push_bind_param::<Integer, _>(&self.block)
     }
 }
 
