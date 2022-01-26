@@ -1,21 +1,24 @@
 use std::{
     collections::{HashMap, HashSet},
+    str::FromStr,
     sync::{Arc, Mutex},
 };
 
 use graph::{
     block_on,
     components::store::SubgraphFork as SubgraphForkTrait,
+    data::graphql::ext::DirectiveFinder,
     prelude::{
         info,
         r::Value as RValue,
         reqwest,
         s::{Definition, Field, ObjectType, TypeDefinition},
         serde_json, Attribute, DeploymentHash, Entity, Logger, Schema, Serialize, StoreError,
-        Value,
+        Value, ValueType,
     },
     url::Url,
 };
+use inflector::Inflector;
 
 #[derive(Serialize, Debug, PartialEq)]
 struct Query {
@@ -66,7 +69,11 @@ impl SubgraphForkTrait for SubgraphFork {
         // Currently, forking incompatible subgraphs is allowed, but, for example, storing the
         // incompatible fetched entities in the local store results in an error.
 
-        let (query, fields) = self.infer_query(&entity_type, id)?;
+        let fields = self.get_fields_of(&entity_type)?;
+        let query = Query {
+            query: self.query_string(&entity_type, fields)?,
+            variables: Variables { id },
+        };
         let raw_json = block_on(self.send(&query))?;
         if !raw_json.contains("data") {
             return Err(StoreError::ForkFailure(format!(
@@ -74,8 +81,9 @@ impl SubgraphForkTrait for SubgraphFork {
                 query, self.endpoint, raw_json,
             )));
         }
+
         let entity = SubgraphFork::extract_entity(&raw_json, &entity_type, fields)?;
-        return Ok(Some(entity));
+        Ok(entity)
     }
 }
 
@@ -121,11 +129,7 @@ impl SubgraphFork {
         Ok(res)
     }
 
-    fn infer_query(
-        &self,
-        entity_type: &str,
-        id: String,
-    ) -> Result<(Query, &Vec<Field>), StoreError> {
+    fn get_fields_of(&self, entity_type: &str) -> Result<&Vec<Field>, StoreError> {
         let entity: Option<&ObjectType> =
             self.schema
                 .document
@@ -140,49 +144,79 @@ impl SubgraphFork {
                     _ => None,
                 });
 
-        if let None = entity {
+        if entity.is_none() {
             return Err(StoreError::ForkFailure(format!(
-                "Unexpected error during query inference! No object type definition with entity type `{}` found in the GraphQL schema supplied by the user.",
+                "No object type definition with entity type `{}` found in the GraphQL schema supplied by the user.",
                 entity_type
             )));
         }
 
-        let fields = &entity.unwrap().fields;
-        let names: Vec<&str> = fields.iter().map(|f| f.name.as_str()).collect();
-
-        let query = Query {
-            query: SubgraphFork::query_string(&entity_type.to_lowercase(), &names),
-            variables: Variables { id },
-        };
-        return Ok((query, fields));
+        Ok(&entity.unwrap().fields)
     }
 
-    fn query_string(entity_type: &str, fields: &[&str]) -> String {
-        format!(
+    fn query_string(&self, entity_type: &str, fields: &[Field]) -> Result<String, StoreError> {
+        let names = fields
+            .iter()
+            .map(|f| {
+                let fname = f.name.to_string();
+                let ftype = f.field_type.to_string().replace(&['!', '[', ']'], "");
+                match ValueType::from_str(&ftype) {
+                    Ok(_) => fname,
+                    Err(_) => {
+                        format!("{} {{ id }}", fname,)
+                    }
+                }
+            })
+            .collect::<Vec<String>>();
+
+        Ok(format!(
             "\
 query Query ($id: String) {{
     {}(id: $id, subgraphError: allow) {{
         {}
     }}
 }}",
-            entity_type,
-            fields.join("\n        ").trim(),
-        )
+            entity_type.to_camel_case(),
+            names.join(" ").trim(),
+        ))
     }
 
     fn extract_entity(
         raw_json: &str,
         entity_type: &str,
         fields: &Vec<Field>,
-    ) -> Result<Entity, StoreError> {
+    ) -> Result<Option<Entity>, StoreError> {
         let json: serde_json::Value = serde_json::from_str(raw_json).unwrap();
-        let json = &json["data"][entity_type.to_lowercase()];
+        let entity = &json["data"][entity_type.to_lowercase()];
+
+        if entity.is_null() {
+            return Ok(None);
+        }
 
         let map: HashMap<Attribute, Value> = {
             let mut map = HashMap::new();
             for f in fields {
-                let value = json.get(&f.name).unwrap().clone();
-                let value = RValue::from(value);
+                if f.is_derived() {
+                    // Derived fields cannot be store.set'ed.
+                    continue;
+                }
+
+                let value = entity.get(&f.name).unwrap().clone();
+                let value = if let Some(id) = value.get("id") {
+                    RValue::String(id.as_str().unwrap().to_string())
+                } else if let Some(list) = value.as_array() {
+                    RValue::List(
+                        list.iter()
+                            .map(|v| match v.get("id") {
+                                Some(id) => RValue::String(id.as_str().unwrap().to_string()),
+                                None => RValue::from(v.clone()),
+                            })
+                            .collect(),
+                    )
+                } else {
+                    RValue::from(value)
+                };
+
                 let value = Value::from_query_value(&value, &f.field_type).map_err(|e| {
                     StoreError::ForkFailure(format!(
                         "Unexpected error during entity extraction! Failed to convert JSON value `{}` to type `{}`: {}",
@@ -196,7 +230,7 @@ query Query ($id: String) {{
             map
         };
 
-        return Ok(Entity::from(map));
+        Ok(Some(Entity::from(map)))
     }
 }
 
@@ -279,7 +313,7 @@ mod tests {
     }
 
     #[test]
-    fn test_infer_query() {
+    fn test_get_fields_of() {
         let base = test_base();
         let id = test_id();
         let schema = test_schema();
@@ -287,16 +321,30 @@ mod tests {
 
         let fork = SubgraphFork::new(base, id, schema, logger).unwrap();
 
-        let (query, fields) = fork.infer_query("Gravatar", "0x00".to_string()).unwrap();
+        assert_eq!(fork.get_fields_of("Gravatar").unwrap(), &test_fields());
+    }
+
+    #[test]
+    fn test_query_string() {
+        let base = test_base();
+        let id = test_id();
+        let schema = test_schema();
+        let logger = test_logger();
+
+        let fork = SubgraphFork::new(base, id, schema, logger).unwrap();
+
+        let query = Query {
+            query: fork.query_string("Gravatar", &test_fields()).unwrap(),
+            variables: Variables {
+                id: "0x00".to_string(),
+            },
+        };
         assert_eq!(
             query,
             Query {
                 query: r#"query Query ($id: String) {
     gravatar(id: $id, subgraphError: allow) {
-        id
-        owner
-        displayName
-        imageUrl
+        id owner displayName imageUrl
     }
 }"#
                 .to_string(),
@@ -305,8 +353,6 @@ mod tests {
                 },
             }
         );
-
-        assert_eq!(fields, &test_fields());
     }
 
     #[test]
@@ -328,7 +374,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            entity,
+            entity.unwrap(),
             Entity::from(HashMap::from_iter(
                 vec![
                     ("id".to_string(), Value::String("0x00".to_string())),
