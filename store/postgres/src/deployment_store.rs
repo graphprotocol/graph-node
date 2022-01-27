@@ -770,6 +770,20 @@ impl DeploymentStore {
         })
         .await
     }
+
+    /// Drops an index for a given deployment, concurrently.
+    pub(crate) async fn drop_index(
+        &self,
+        site: Arc<Site>,
+        index_name: &str,
+    ) -> Result<(), StoreError> {
+        let index_name = String::from(index_name);
+        self.with_conn(move |conn, _| {
+            let schema_name = site.namespace.clone();
+            catalog::drop_index(conn, schema_name.as_str(), &index_name).map_err(Into::into)
+        })
+        .await
+    }
 }
 
 /// Methods that back the trait `graph::components::Store`, but have small

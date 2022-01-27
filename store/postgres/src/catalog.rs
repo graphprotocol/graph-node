@@ -444,3 +444,16 @@ pub(crate) fn indexes_for_table(
 
     Ok(results.into_iter().map(|i| i.def).collect())
 }
+pub(crate) fn drop_index(
+    conn: &PgConnection,
+    schema_name: &str,
+    index_name: &str,
+) -> Result<(), StoreError> {
+    let query = format!("drop index concurrently {schema_name}.{index_name}");
+    sql_query(&query)
+        .bind::<Text, _>(schema_name)
+        .bind::<Text, _>(index_name)
+        .execute(conn)
+        .map_err::<StoreError, _>(Into::into)?;
+    Ok(())
+}

@@ -58,3 +58,17 @@ pub async fn list(
     }
     Ok(())
 }
+
+pub async fn drop(
+    store: Arc<SubgraphStore>,
+    id: &str,
+    index_name: &str,
+) -> Result<(), anyhow::Error> {
+    let deployment_hash = DeploymentHash::new(id)
+        .map_err(|e| anyhow::anyhow!("Subgraph hash must be a valid IPFS hash: {}", e))?;
+    store
+        .drop_index_for_deployment(&deployment_hash, &index_name)
+        .await?;
+    println!("Dropped index {index_name}");
+    Ok(())
+}

@@ -409,6 +409,16 @@ pub enum IndexCommand {
         #[structopt(empty_values = false)]
         entity: String,
     },
+
+    /// Drops an index for a given deployment, concurrently
+    Drop {
+        /// The id of the deployment
+        #[structopt(empty_values = false)]
+        id: String,
+        /// The name of the index to be dropped
+        #[structopt(empty_values = false)]
+        index_name: String,
+    },
 }
 
 impl From<Opt> for config::Opt {
@@ -840,6 +850,9 @@ async fn main() {
                     method,
                 } => commands::index::create(subgraph_store, id, entity, fields, method).await,
                 List { id, entity } => commands::index::list(subgraph_store, id, entity).await,
+                Drop { id, index_name } => {
+                    commands::index::drop(subgraph_store, &id, &index_name).await
+                }
             }
         }
     };

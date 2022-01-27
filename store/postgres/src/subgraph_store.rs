@@ -987,6 +987,15 @@ impl SubgraphStoreInner {
         let (store, site) = self.store(&id)?;
         store.indexes_for_entity(site, entity_type).await
     }
+
+    pub async fn drop_index_for_deployment(
+        &self,
+        id: &DeploymentHash,
+        index_name: &str,
+    ) -> Result<(), StoreError> {
+        let (store, site) = self.store(&id)?;
+        store.drop_index(site, index_name).await
+    }
 }
 
 struct EnsLookup {
