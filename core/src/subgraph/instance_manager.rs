@@ -619,6 +619,7 @@ where
                     );
                     continue;
                 }
+                // Scenario where this can happen: 1504c9d8-36e4-45bb-b4f2-71cf58789ed9
                 None => unreachable!("The block stream stopped producing blocks"),
             };
 
