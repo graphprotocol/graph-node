@@ -125,7 +125,8 @@ those.
 
 - `GRAPH_NODE_ID`: sets the node ID, allowing to run multiple Graph Nodes
   in parallel and deploy to specific nodes; each ID must be unique among the set
-  of nodes.
+  of nodes. A single node should have the same value between consecutive restarts.
+  Subgraphs get assigned to node IDs and are not reassigned to other nodes automatically.
 - `GRAPH_LOG`: control log levels, the same way that `RUST_LOG` is described
   [here](https://docs.rs/env_logger/0.6.0/env_logger/)
 - `THEGRAPH_STORE_POSTGRES_DIESEL_URL`: postgres instance used when running
