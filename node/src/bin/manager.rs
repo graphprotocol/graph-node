@@ -144,6 +144,17 @@ pub enum Command {
         /// The deployments to rewind
         names: Vec<String>,
     },
+    /// Deploy and run an arbitrary subgraph, up to a certain block (for dev and testing purposes) -- WARNING: WILL RUN MIGRATIONS ON THE DB, DO NOT USE IN PRODUCTION
+    Run {
+        /// Network name (must fit one of the chain)
+        network_name: String,
+
+        /// Subgraph in the form `<IPFS Hash>` or `<name>:<IPFS Hash>`
+        subgraph: String,
+
+        /// Highest block number to process before stopping (inclusive)
+        stop_block: i32,
+    },
     /// Check and interrogate the configuration
     ///
     /// Print information about a configuration file without
@@ -168,6 +179,9 @@ pub enum Command {
     Chain(ChainCommand),
     /// Manipulate internal subgraph statistics
     Stats(StatsCommand),
+
+    /// Manage database indexes
+    Index(IndexCommand),
 }
 
 impl Command {
@@ -338,6 +352,42 @@ pub enum StatsCommand {
         /// The name of a table to fully count
         table: Option<String>,
     },
+    /// Perform a SQL ANALYZE in a Entity table
+    Analyze {
+        /// The id of the deployment
+        id: String,
+        /// The name of the Entity to ANALYZE, in camel case
+        entity: String,
+    },
+}
+
+#[derive(Clone, Debug, StructOpt)]
+pub enum IndexCommand {
+    /// Creates a new database index.
+    ///
+    /// The new index will be created concurrenly for the provided entity and its fields. whose
+    /// names must be declared the in camel case, following GraphQL conventions.
+    ///
+    /// The index will have its validity checked after the operation and will be dropped if it is
+    /// invalid.
+    ///
+    /// This command may be time-consuming.
+    Create {
+        /// The id of the deployment
+        id: String,
+        /// The Entity name, in camel case.
+        #[structopt(empty_values = false)]
+        entity: String,
+        /// The Field names, in camel case.
+        #[structopt(min_values = 1, required = true)]
+        fields: Vec<String>,
+        /// The index method. Defaults to `btree`.
+        #[structopt(
+            short, long, default_value = "btree",
+            possible_values = &["btree", "hash", "gist", "spgist", "gin", "brin"]
+        )]
+        method: String,
+    },
 }
 
 impl From<Opt> for config::Opt {
@@ -372,6 +422,18 @@ impl Context {
             config,
             registry,
         }
+    }
+
+    fn metrics_registry(&self) -> Arc<MetricsRegistry> {
+        self.registry.clone()
+    }
+
+    fn config(&self) -> Cfg {
+        self.config.clone()
+    }
+
+    fn node_id(&self) -> NodeId {
+        self.node_id.clone()
     }
 
     fn primary_pool(self) -> ConnectionPool {
@@ -409,6 +471,10 @@ impl Context {
     fn pools(self) -> HashMap<Shard, ConnectionPool> {
         let (_, pools) = self.store_and_pools();
         pools
+    }
+
+    async fn store_builder(self) -> StoreBuilder {
+        StoreBuilder::new(&self.logger, &self.node_id, &self.config, self.registry).await
     }
 
     fn store_and_pools(self) -> (Arc<Store>, HashMap<Shard, ConnectionPool>) {
@@ -582,6 +648,29 @@ async fn main() {
                 sleep,
             )
         }
+        Run {
+            network_name,
+            subgraph,
+            stop_block,
+        } => {
+            let logger = ctx.logger.clone();
+            let config = ctx.config();
+            let registry = ctx.metrics_registry().clone();
+            let node_id = ctx.node_id().clone();
+            let store_builder = ctx.store_builder().await;
+
+            commands::run::run(
+                logger,
+                store_builder,
+                network_name,
+                config,
+                registry,
+                node_id,
+                subgraph,
+                stop_block,
+            )
+            .await
+        }
         Listen(cmd) => {
             use ListenCommand::*;
             match cmd {
@@ -645,6 +734,26 @@ async fn main() {
                     commands::stats::account_like(ctx.pools(), clear, table)
                 }
                 Show { nsp, table } => commands::stats::show(ctx.pools(), nsp, table),
+                Analyze { id, entity } => {
+                    let store = ctx.store();
+                    let subgraph_store = store.subgraph_store();
+                    commands::stats::analyze(subgraph_store, id, entity).await
+                }
+            }
+        }
+        Index(cmd) => {
+            use IndexCommand::*;
+            match cmd {
+                Create {
+                    id,
+                    entity,
+                    fields,
+                    method,
+                } => {
+                    let store = ctx.store();
+                    let subgraph_store = store.subgraph_store();
+                    commands::index::create(subgraph_store, id, entity, fields, method).await
+                }
             }
         }
     };

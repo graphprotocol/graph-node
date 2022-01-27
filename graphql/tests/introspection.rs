@@ -1,16 +1,15 @@
 #[macro_use]
 extern crate pretty_assertions;
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use graph::data::graphql::{object, object_value, ObjectOrInterface};
 use graph::prelude::{
-    async_trait, o, q, r, s, slog, tokio, ApiSchema, DeploymentHash, Logger, Query,
+    async_trait, o, r, s, slog, tokio, ApiSchema, DeploymentHash, Logger, Query,
     QueryExecutionError, QueryResult, Schema,
 };
 use graph_graphql::prelude::{
-    api_schema, execute_query, ExecutionContext, Query as PreparedQuery, QueryExecutionOptions,
+    a, api_schema, execute_query, ExecutionContext, Query as PreparedQuery, QueryExecutionOptions,
     Resolver,
 };
 use test_store::LOAD_MANAGER;
@@ -26,7 +25,7 @@ impl Resolver for MockResolver {
     fn prefetch(
         &self,
         _: &ExecutionContext<Self>,
-        _: &q::SelectionSet,
+        _: &a::SelectionSet,
     ) -> Result<Option<r::Value>, Vec<QueryExecutionError>> {
         Ok(None)
     }
@@ -34,10 +33,9 @@ impl Resolver for MockResolver {
     fn resolve_objects<'a>(
         &self,
         _: Option<r::Value>,
-        _field: &q::Field,
+        _field: &a::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&str, r::Value>,
     ) -> Result<r::Value, QueryExecutionError> {
         Ok(r::Value::Null)
     }
@@ -45,10 +43,9 @@ impl Resolver for MockResolver {
     fn resolve_object(
         &self,
         __: Option<r::Value>,
-        _field: &q::Field,
+        _field: &a::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&str, r::Value>,
     ) -> Result<r::Value, QueryExecutionError> {
         Ok(r::Value::Null)
     }
@@ -120,8 +117,8 @@ fn expected_mock_schema_introspection() -> r::Value {
         description: r::Value::Null,
         fields: r::Value::Null,
         inputFields: r::Value::Null,
-        enumValues: r::Value::Null,
         interfaces: r::Value::Null,
+        enumValues: r::Value::Null,
         possibleTypes: r::Value::Null,
     };
 
@@ -131,8 +128,8 @@ fn expected_mock_schema_introspection() -> r::Value {
         description: r::Value::Null,
         fields: r::Value::Null,
         inputFields: r::Value::Null,
-        enumValues: r::Value::Null,
         interfaces: r::Value::Null,
+        enumValues: r::Value::Null,
         possibleTypes: r::Value::Null,
     };
 
@@ -142,8 +139,8 @@ fn expected_mock_schema_introspection() -> r::Value {
         description: r::Value::Null,
         fields: r::Value::Null,
         inputFields: r::Value::Null,
-        enumValues: r::Value::Null,
         interfaces: r::Value::Null,
+        enumValues: r::Value::Null,
         possibleTypes: r::Value::Null,
     };
 
@@ -153,8 +150,8 @@ fn expected_mock_schema_introspection() -> r::Value {
         description: r::Value::Null,
         fields: r::Value::Null,
         inputFields: r::Value::Null,
-        enumValues: r::Value::Null,
         interfaces: r::Value::Null,
+        enumValues: r::Value::Null,
         possibleTypes: r::Value::Null,
     };
 
@@ -164,6 +161,7 @@ fn expected_mock_schema_introspection() -> r::Value {
         description: r::Value::Null,
         fields: r::Value::Null,
         inputFields: r::Value::Null,
+        interfaces: r::Value::Null,
         enumValues:
             r::Value::List(vec![
                 object! {
@@ -179,7 +177,6 @@ fn expected_mock_schema_introspection() -> r::Value {
                     deprecationReason: r::Value::Null,
                 },
             ]),
-        interfaces: r::Value::Null,
         possibleTypes: r::Value::Null,
     };
 
@@ -192,6 +189,7 @@ fn expected_mock_schema_introspection() -> r::Value {
             r::Value::List(vec![object_value(vec![
                 ("name", r::Value::String("id".to_string())),
                 ("description", r::Value::Null),
+                ("args", r::Value::List(vec![])),
                 (
                     "type",
                     object_value(vec![
@@ -207,14 +205,13 @@ fn expected_mock_schema_introspection() -> r::Value {
                         ),
                     ]),
                 ),
-                ("args", r::Value::List(vec![])),
-                ("deprecationReason", r::Value::Null),
                 ("isDeprecated", r::Value::Boolean(false)),
+                ("deprecationReason", r::Value::Null),
             ])]),
         ),
         ("inputFields", r::Value::Null),
-        ("enumValues", r::Value::Null),
         ("interfaces", r::Value::Null),
+        ("enumValues", r::Value::Null),
         (
             "possibleTypes",
             r::Value::List(vec![object_value(vec![
@@ -231,6 +228,7 @@ fn expected_mock_schema_introspection() -> r::Value {
         ("description", r::Value::Null),
         ("fields", r::Value::Null),
         ("inputFields", r::Value::Null),
+        ("interfaces", r::Value::Null),
         (
             "enumValues",
             r::Value::List(vec![
@@ -248,7 +246,6 @@ fn expected_mock_schema_introspection() -> r::Value {
                 ]),
             ]),
         ),
-        ("interfaces", r::Value::Null),
         ("possibleTypes", r::Value::Null),
     ]);
 
@@ -264,22 +261,21 @@ fn expected_mock_schema_introspection() -> r::Value {
                     ("name", r::Value::String("name_eq".to_string())),
                     ("description", r::Value::Null),
                     (
-                        "defaultValue",
-                        r::Value::String("\"default name\"".to_string()),
-                    ),
-                    (
                         "type",
                         object_value(vec![
                             ("kind", r::Value::Enum("SCALAR".to_string())),
                             ("name", r::Value::String("String".to_string())),
                             ("ofType", r::Value::Null),
                         ]),
+                    ),
+                    (
+                        "defaultValue",
+                        r::Value::String("\"default name\"".to_string()),
                     ),
                 ]),
                 object_value(vec![
                     ("name", r::Value::String("name_not".to_string())),
                     ("description", r::Value::Null),
-                    ("defaultValue", r::Value::Null),
                     (
                         "type",
                         object_value(vec![
@@ -288,11 +284,12 @@ fn expected_mock_schema_introspection() -> r::Value {
                             ("ofType", r::Value::Null),
                         ]),
                     ),
+                    ("defaultValue", r::Value::Null),
                 ]),
             ]),
         ),
-        ("enumValues", r::Value::Null),
         ("interfaces", r::Value::Null),
+        ("enumValues", r::Value::Null),
         ("possibleTypes", r::Value::Null),
     ]);
 
@@ -372,7 +369,6 @@ fn expected_mock_schema_introspection() -> r::Value {
             ]),
         ),
         ("inputFields", r::Value::Null),
-        ("enumValues", r::Value::Null),
         (
             "interfaces",
             r::Value::List(vec![object_value(vec![
@@ -381,6 +377,7 @@ fn expected_mock_schema_introspection() -> r::Value {
                 ("ofType", r::Value::Null),
             ])]),
         ),
+        ("enumValues", r::Value::Null),
         ("possibleTypes", r::Value::Null),
     ]);
 
@@ -398,9 +395,8 @@ fn expected_mock_schema_introspection() -> r::Value {
                         "args",
                         r::Value::List(vec![
                             object_value(vec![
-                                ("defaultValue", r::Value::Null),
-                                ("description", r::Value::Null),
                                 ("name", r::Value::String("orderBy".to_string())),
+                                ("description", r::Value::Null),
                                 (
                                     "type",
                                     object_value(vec![
@@ -409,11 +405,11 @@ fn expected_mock_schema_introspection() -> r::Value {
                                         ("ofType", r::Value::Null),
                                     ]),
                                 ),
+                                ("defaultValue", r::Value::Null),
                             ]),
                             object_value(vec![
-                                ("defaultValue", r::Value::Null),
-                                ("description", r::Value::Null),
                                 ("name", r::Value::String("filter".to_string())),
+                                ("description", r::Value::Null),
                                 (
                                     "type",
                                     object_value(vec![
@@ -422,6 +418,7 @@ fn expected_mock_schema_introspection() -> r::Value {
                                         ("ofType", r::Value::Null),
                                     ]),
                                 ),
+                                ("defaultValue", r::Value::Null),
                             ]),
                         ]),
                     ),
@@ -456,9 +453,8 @@ fn expected_mock_schema_introspection() -> r::Value {
                     (
                         "args",
                         r::Value::List(vec![object_value(vec![
-                            ("defaultValue", r::Value::String("99".to_string())),
-                            ("description", r::Value::Null),
                             ("name", r::Value::String("age".to_string())),
+                            ("description", r::Value::Null),
                             (
                                 "type",
                                 object_value(vec![
@@ -467,6 +463,7 @@ fn expected_mock_schema_introspection() -> r::Value {
                                     ("ofType", r::Value::Null),
                                 ]),
                             ),
+                            ("defaultValue", r::Value::String("99".to_string())),
                         ])]),
                     ),
                     (
@@ -498,8 +495,8 @@ fn expected_mock_schema_introspection() -> r::Value {
             ]),
         ),
         ("inputFields", r::Value::Null),
-        ("enumValues", r::Value::Null),
         ("interfaces", r::Value::List(vec![])),
+        ("enumValues", r::Value::Null),
         ("possibleTypes", r::Value::Null),
     ]);
 
@@ -528,7 +525,6 @@ fn expected_mock_schema_introspection() -> r::Value {
             r::Value::List(vec![object_value(vec![
                 ("name", r::Value::String("language".to_string())),
                 ("description", r::Value::Null),
-                ("defaultValue", r::Value::String("\"English\"".to_string())),
                 (
                     "type",
                     object_value(vec![
@@ -537,6 +533,7 @@ fn expected_mock_schema_introspection() -> r::Value {
                         ("ofType", r::Value::Null),
                     ]),
                 ),
+                ("defaultValue", r::Value::String("\"English\"".to_string())),
             ])]),
         ),
     ])]);

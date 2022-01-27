@@ -2,8 +2,6 @@ use futures::stream::poll_fn;
 use futures::{Async, Poll, Stream};
 use graphql_parser::schema as s;
 use lazy_static::lazy_static;
-use mockall::predicate::*;
-use mockall::*;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
 use std::collections::btree_map::Entry;
@@ -39,6 +37,14 @@ lazy_static! {
             )))
             .map(Duration::from_millis)
             .unwrap_or_else(|| Duration::from_millis(1000));
+
+    /// Size limit of the entity LFU cache, in bytes.
+    // Multiplied by 1000 because the env var is in KB.
+    pub static ref ENTITY_CACHE_SIZE: usize = 1000
+        * std::env::var("GRAPH_ENTITY_CACHE_SIZE")
+            .unwrap_or("10000".into())
+            .parse::<usize>()
+            .expect("invalid GRAPH_ENTITY_CACHE_SIZE");
 }
 
 /// The type name of an entity. This is the string that is used in the
@@ -60,6 +66,10 @@ impl EntityType {
 
     pub fn into_string(self) -> String {
         self.0
+    }
+
+    pub fn is_poi(&self) -> bool {
+        &self.0 == "Poi$"
     }
 }
 
@@ -912,12 +922,18 @@ impl Display for DeploymentLocator {
     }
 }
 
+/// A special trait to handle looking up ENS names from special rainbow
+/// tables that need to be manually loaded into the system
+pub trait EnsLookup: Send + Sync + 'static {
+    /// Find the reverse of keccak256 for `hash` through looking it up in the
+    /// rainbow table.
+    fn find_name(&self, hash: &str) -> Result<Option<String>, StoreError>;
+}
+
 /// Common trait for store implementations.
 #[async_trait]
 pub trait SubgraphStore: Send + Sync + 'static {
-    /// Find the reverse of keccak256 for `hash` through looking it up in the
-    /// rainbow table.
-    fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, StoreError>;
+    fn ens_lookup(&self) -> Arc<dyn EnsLookup>;
 
     /// Check if the store is accepting queries for the specified subgraph.
     /// May return true even if the specified subgraph is not currently assigned to an indexing
@@ -1008,11 +1024,11 @@ pub trait SubgraphStore: Send + Sync + 'static {
 #[async_trait]
 pub trait WritableStore: Send + Sync + 'static {
     /// Get a pointer to the most recently processed block in the subgraph.
-    fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError>;
+    fn block_ptr(&self) -> Option<BlockPtr>;
 
     /// Returns the Firehose `cursor` this deployment is currently at in the block stream of events. This
     /// is used when re-connecting a Firehose stream to start back exactly where we left off.
-    fn block_cursor(&self) -> Result<Option<String>, StoreError>;
+    fn block_cursor(&self) -> Option<String>;
 
     /// Start an existing subgraph deployment.
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError>;
@@ -1021,7 +1037,11 @@ pub trait WritableStore: Send + Sync + 'static {
     /// subgraph block pointer to `block_ptr_to`.
     ///
     /// `block_ptr_to` must point to the parent block of the subgraph block pointer.
-    fn revert_block_operations(&self, block_ptr_to: BlockPtr) -> Result<(), StoreError>;
+    fn revert_block_operations(
+        &self,
+        block_ptr_to: BlockPtr,
+        firehose_cursor: Option<&str>,
+    ) -> Result<(), StoreError>;
 
     /// If a deterministic error happened, this function reverts the block operations from the
     /// current block to the previous block.
@@ -1083,6 +1103,8 @@ pub trait WritableStore: Send + Sync + 'static {
     fn shard(&self) -> &str;
 
     async fn health(&self, id: &DeploymentHash) -> Result<SubgraphHealth, StoreError>;
+
+    fn input_schema(&self) -> Arc<Schema>;
 }
 
 #[async_trait]
@@ -1103,181 +1125,9 @@ pub trait QueryStoreManager: Send + Sync + 'static {
     ) -> Result<Arc<dyn QueryStore + Send + Sync>, QueryExecutionError>;
 }
 
-mock! {
-    pub Store {
-        fn get_many_mock<'a>(
-            &self,
-            _ids_for_type: BTreeMap<&'a EntityType, Vec<&'a str>>,
-        ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError>;
-    }
-}
-
 // The type that the connection pool uses to track wait times for
 // connection checkouts
 pub type PoolWaitStats = Arc<RwLock<MovingStats>>;
-
-// The store trait must be implemented manually because mockall does not support async_trait, nor borrowing from arguments.
-#[async_trait]
-impl SubgraphStore for MockStore {
-    fn find_ens_name(&self, _hash: &str) -> Result<Option<String>, StoreError> {
-        unimplemented!()
-    }
-
-    fn create_subgraph_deployment(
-        &self,
-        _: SubgraphName,
-        _: &Schema,
-        _: SubgraphDeploymentEntity,
-        _: NodeId,
-        _: String,
-        _: SubgraphVersionSwitchingMode,
-    ) -> Result<DeploymentLocator, StoreError> {
-        unimplemented!()
-    }
-
-    fn create_subgraph(&self, _: SubgraphName) -> Result<String, StoreError> {
-        unimplemented!()
-    }
-
-    fn remove_subgraph(&self, _: SubgraphName) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn reassign_subgraph(&self, _: &DeploymentLocator, _: &NodeId) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn assigned_node(&self, _: &DeploymentLocator) -> Result<Option<NodeId>, StoreError> {
-        unimplemented!()
-    }
-
-    fn assignments(&self, _: &NodeId) -> Result<Vec<DeploymentLocator>, StoreError> {
-        unimplemented!()
-    }
-
-    fn subgraph_exists(&self, _: &SubgraphName) -> Result<bool, StoreError> {
-        unimplemented!()
-    }
-
-    fn input_schema(&self, _: &DeploymentHash) -> Result<Arc<Schema>, StoreError> {
-        unimplemented!()
-    }
-
-    fn api_schema(&self, _: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError> {
-        unimplemented!()
-    }
-
-    async fn writable(
-        self: Arc<Self>,
-        _: Logger,
-        _: DeploymentId,
-    ) -> Result<Arc<dyn WritableStore>, StoreError> {
-        Ok(Arc::new(MockStore::new()))
-    }
-
-    fn is_deployed(&self, _: &DeploymentHash) -> Result<bool, StoreError> {
-        unimplemented!()
-    }
-
-    fn least_block_ptr(&self, _: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError> {
-        unimplemented!()
-    }
-
-    fn writable_for_network_indexer(
-        &self,
-        _: Logger,
-        _: &DeploymentHash,
-    ) -> Result<Arc<dyn WritableStore>, StoreError> {
-        unimplemented!()
-    }
-
-    fn locators(&self, _: &str) -> Result<Vec<DeploymentLocator>, StoreError> {
-        unimplemented!()
-    }
-}
-
-// The store trait must be implemented manually because mockall does not support async_trait, nor borrowing from arguments.
-#[async_trait]
-impl WritableStore for MockStore {
-    fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
-        unimplemented!()
-    }
-
-    fn block_cursor(&self) -> Result<Option<String>, StoreError> {
-        unimplemented!()
-    }
-
-    fn start_subgraph_deployment(&self, _: &Logger) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn revert_block_operations(&self, _: BlockPtr) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn unfail_deterministic_error(&self, _: &BlockPtr, _: &BlockPtr) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn unfail_non_deterministic_error(&self, _: &BlockPtr) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    async fn fail_subgraph(&self, _: SubgraphError) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError> {
-        unimplemented!()
-    }
-
-    fn get(&self, _: &EntityKey) -> Result<Option<Entity>, StoreError> {
-        unimplemented!()
-    }
-
-    fn transact_block_operations(
-        &self,
-        _: BlockPtr,
-        _: Option<String>,
-        _: Vec<EntityModification>,
-        _: StopwatchMetrics,
-        _: Vec<StoredDynamicDataSource>,
-        _: Vec<SubgraphError>,
-    ) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn get_many(
-        &self,
-        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
-        self.get_many_mock(ids_for_type)
-    }
-
-    async fn is_deployment_synced(&self) -> Result<bool, StoreError> {
-        unimplemented!()
-    }
-
-    fn unassign_subgraph(&self) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    async fn load_dynamic_data_sources(&self) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
-        unimplemented!()
-    }
-
-    fn deployment_synced(&self) -> Result<(), StoreError> {
-        unimplemented!()
-    }
-
-    fn shard(&self) -> &str {
-        unimplemented!()
-    }
-
-    async fn health(&self, _: &DeploymentHash) -> Result<SubgraphHealth, StoreError> {
-        unimplemented!()
-    }
-}
 
 pub trait BlockStore: Send + Sync + 'static {
     type ChainStore: ChainStore;
@@ -1323,6 +1173,9 @@ pub trait ChainStore: Send + Sync + 'static {
     ///
     /// The head block pointer will be None on initial set up.
     fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
+
+    /// In-memory time cached version of `chain_head_ptr`.
+    fn cached_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 
     /// Get the current head block cursor for this chain.
     ///
@@ -1647,8 +1500,33 @@ impl EntityCache {
         self.entity_op(key, EntityOp::Remove);
     }
 
-    pub fn set(&mut self, key: EntityKey, entity: Entity) {
-        self.entity_op(key, EntityOp::Update(entity))
+    /// Store the `entity` under the given `key`. The `entity` may be only a
+    /// partial entity; the cache will ensure partial updates get merged
+    /// with existing data. The entity will be validated against the
+    /// subgraph schema, and any errors will result in an `Err` being
+    /// returned.
+    pub fn set(&mut self, key: EntityKey, entity: Entity) -> Result<(), anyhow::Error> {
+        let is_valid = entity
+            .validate(&self.store.input_schema().document, &key)
+            .is_ok();
+
+        self.entity_op(key.clone(), EntityOp::Update(entity));
+
+        // The updates we were given are not valid by themselves; force a
+        // lookup in the database and check again with an entity that merges
+        // the existing entity with the changes
+        if !is_valid {
+            let entity = self.get(&key)?.ok_or_else(|| {
+                anyhow!(
+                    "Failed to read entity {}[{}] back from cache",
+                    key.entity_type,
+                    key.entity_id
+                )
+            })?;
+            entity.validate(&self.store.input_schema().document, &key)?;
+        }
+
+        Ok(())
     }
 
     pub fn append(&mut self, operations: Vec<EntityOperation>) {
@@ -1780,6 +1658,8 @@ impl EntityCache {
                 mods.push(modification)
             }
         }
+        self.current.evict(*ENTITY_CACHE_SIZE);
+
         Ok(ModificationsAndCache {
             modifications: mods,
             data_sources: self.data_sources,
@@ -1833,12 +1713,11 @@ impl AttributeNames {
         }
     }
 
-    /// Adds a attribute name. Ignores meta fields.
-    pub fn add(&mut self, field: &q::Field) {
-        if Self::is_meta_field(&field.name) {
+    pub fn update(&mut self, field_name: &str) {
+        if Self::is_meta_field(field_name) {
             return;
         }
-        self.insert(&field.name)
+        self.insert(&field_name)
     }
 
     /// Adds a attribute name. Ignores meta fields.

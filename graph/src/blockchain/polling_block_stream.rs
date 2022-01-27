@@ -14,7 +14,6 @@ use super::block_stream::{
 use super::{Block, BlockPtr, Blockchain};
 
 use crate::components::store::BlockNumber;
-use crate::components::store::WritableStore;
 use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::prelude::*;
 #[cfg(debug_assertions)]
@@ -82,7 +81,6 @@ struct PollingBlockStreamContext<C>
 where
     C: Blockchain,
 {
-    subgraph_store: Arc<dyn WritableStore>,
     chain_store: Arc<dyn ChainStore>,
     adapter: Arc<C::TriggersAdapter>,
     node_id: NodeId,
@@ -107,7 +105,6 @@ where
 impl<C: Blockchain> Clone for PollingBlockStreamContext<C> {
     fn clone(&self) -> Self {
         Self {
-            subgraph_store: self.subgraph_store.cheap_clone(),
             chain_store: self.chain_store.cheap_clone(),
             adapter: self.adapter.clone(),
             node_id: self.node_id.clone(),
@@ -142,7 +139,7 @@ where
     /// Blocks and range size
     Blocks(VecDeque<BlockWithTriggers<C>>, BlockNumber),
 
-    // The payload is the current subgraph head pointer, which should be reverted and it's parent, such that the
+    // The payload is the current subgraph head pointer, which should be reverted and its parent, such that the
     // parent of the current subgraph head becomes the new subgraph head.
     Revert(BlockPtr, BlockPtr),
     Done,
@@ -153,7 +150,6 @@ where
     C: Blockchain,
 {
     pub fn new(
-        subgraph_store: Arc<dyn WritableStore>,
         chain_store: Arc<dyn ChainStore>,
         chain_head_update_stream: ChainHeadUpdateStream,
         adapter: Arc<C::TriggersAdapter>,
@@ -175,7 +171,6 @@ where
             chain_head_update_stream,
             ctx: PollingBlockStreamContext {
                 current_block: start_block,
-                subgraph_store,
                 chain_store,
                 adapter,
                 node_id,
@@ -215,12 +210,11 @@ where
                     continue;
                 }
                 ReconciliationStep::Done => {
-                    // Reconciliation is complete, so try to mark subgraph as Synced
-                    ctx.update_subgraph_synced_status()?;
-
                     return Ok(NextBlocks::Done);
                 }
-                ReconciliationStep::Revert(from, to) => return Ok(NextBlocks::Revert(from, to)),
+                ReconciliationStep::Revert(from, parent_ptr) => {
+                    return Ok(NextBlocks::Revert(from, parent_ptr))
+                }
             }
         }
     }
@@ -388,7 +382,6 @@ where
             };
             let to = cmp::min(from + range_size - 1, to_limit);
 
-            let section = ctx.metrics.stopwatch.start_section("scan_blocks");
             info!(
                 ctx.logger,
                 "Scanning blocks [{}, {}]", from, to;
@@ -397,7 +390,6 @@ where
 
             let blocks = self.adapter.scan_triggers(from, to, &self.filter).await?;
 
-            section.end();
             Ok(ReconciliationStep::ProcessDescendantBlocks(
                 blocks, range_size,
             ))
@@ -486,25 +478,6 @@ where
 
         Ok(ptr)
     }
-
-    /// Set subgraph deployment entity synced flag if and only if the subgraph block pointer is
-    /// caught up to the head block pointer.
-    fn update_subgraph_synced_status(&self) -> Result<(), StoreError> {
-        let head_ptr_opt = self.chain_store.chain_head_ptr()?;
-        let subgraph_ptr = self.current_block.clone();
-
-        if head_ptr_opt != subgraph_ptr || head_ptr_opt.is_none() || subgraph_ptr.is_none() {
-            // Not synced yet
-            Ok(())
-        } else {
-            // Synced
-
-            // Stop recording time-to-sync metrics.
-            self.metrics.stopwatch.disable();
-
-            self.subgraph_store.deployment_synced()
-        }
-    }
 }
 
 impl<C: Blockchain> BlockStream<C> for PollingBlockStream<C> {}
@@ -567,14 +540,14 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
                                 // Poll for chain head update
                                 continue;
                             }
-                            NextBlocks::Revert(from, to) => {
-                                self.ctx.current_block = to.into();
+                            NextBlocks::Revert(from, parent_ptr) => {
+                                self.ctx.current_block = Some(parent_ptr.clone());
 
                                 self.state = BlockStreamState::BeginReconciliation;
                                 break Poll::Ready(Some(Ok(BlockStreamEvent::Revert(
                                     from,
+                                    parent_ptr,
                                     FirehoseCursor::None,
-                                    self.ctx.current_block.clone(),
                                 ))));
                             }
                         },

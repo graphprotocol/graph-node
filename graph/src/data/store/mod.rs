@@ -1,6 +1,6 @@
 use crate::{
     components::store::{DeploymentLocator, EntityType},
-    prelude::{q, r, s, CacheWeight, EntityKey, QueryExecutionError},
+    prelude::{anyhow::Context, q, r, s, CacheWeight, EntityKey, QueryExecutionError},
     runtime::gas::{Gas, GasSizeOf},
 };
 use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
@@ -19,6 +19,8 @@ use std::{
 };
 use strum::AsStaticRef as _;
 use strum_macros::AsStaticStr;
+
+use super::graphql::{ext::DirectiveFinder, DocumentExt as _, TypeExt as _};
 
 /// Custom scalars in GraphQL.
 pub mod scalar;
@@ -343,6 +345,22 @@ impl Value {
             Value::String(_) => "String".to_owned(),
         }
     }
+
+    pub fn is_assignable(&self, scalar_type: &ValueType, is_list: bool) -> bool {
+        match (self, scalar_type) {
+            (Value::String(_), ValueType::String)
+            | (Value::BigDecimal(_), ValueType::BigDecimal)
+            | (Value::BigInt(_), ValueType::BigInt)
+            | (Value::Bool(_), ValueType::Boolean)
+            | (Value::Bytes(_), ValueType::Bytes)
+            | (Value::Int(_), ValueType::Int)
+            | (Value::Null, _) => true,
+            (Value::List(values), _) if is_list => values
+                .iter()
+                .all(|value| value.is_assignable(scalar_type, false)),
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for Value {
@@ -583,6 +601,92 @@ impl Entity {
             };
         }
     }
+
+    /// Validate that this entity matches the object type definition in the
+    /// schema. An entity that passes these checks can be stored
+    /// successfully in the subgraph's database schema
+    pub fn validate(&self, schema: &s::Document, key: &EntityKey) -> Result<(), anyhow::Error> {
+        if key.entity_type.is_poi() {
+            // Users can't modify Poi entities, and therefore they do not
+            // need to be validated. In addition, the schema has no object
+            // type for them, and validation would therefore fail
+            return Ok(());
+        }
+        let object_type_definitions = schema.get_object_type_definitions();
+        let object_type = object_type_definitions
+            .iter()
+            .find(|object_type| key.entity_type.as_str() == &object_type.name)
+            .with_context(|| {
+                format!(
+                    "Entity {}[{}]: unknown entity type `{}`",
+                    key.entity_type, key.entity_id, key.entity_type
+                )
+            })?;
+
+        for field in &object_type.fields {
+            let is_derived = field.is_derived();
+            match (self.get(&field.name), is_derived) {
+                (Some(value), false) => {
+                    let scalar_type = schema.scalar_value_type(&field.field_type);
+                    if field.field_type.is_list() {
+                        // Check for inhomgeneous lists to produce a better
+                        // error message for them; other problems, like
+                        // assigning a scalar to a list will be caught below
+                        if let Value::List(elts) = value {
+                            for (index, elt) in elts.iter().enumerate() {
+                                if !elt.is_assignable(&scalar_type, false) {
+                                    anyhow::bail!(
+                                        "Entity {}[{}]: field `{}` is of type {}, but the value `{}` \
+                                        contains a {} at index {}",
+                                        key.entity_type,
+                                        key.entity_id,
+                                        field.name,
+                                        &field.field_type,
+                                        value,
+                                        elt.type_name(),
+                                        index
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    if !value.is_assignable(&scalar_type, field.field_type.is_list()) {
+                        anyhow::bail!(
+                            "Entity {}[{}]: the value `{}` for field `{}` must have type {} but has type {}",
+                            key.entity_type,
+                            key.entity_id,
+                            value,
+                            field.name,
+                            &field.field_type,
+                            value.type_name()
+                        );
+                    }
+                }
+                (None, false) => {
+                    if field.field_type.is_non_null() {
+                        anyhow::bail!(
+                            "Entity {}[{}]: missing value for non-nullable field `{}`",
+                            key.entity_type,
+                            key.entity_id,
+                            field.name,
+                        );
+                    }
+                }
+                (Some(_), true) => {
+                    anyhow::bail!(
+                        "Entity {}[{}]: field `{}` is derived and can not be set",
+                        key.entity_type,
+                        key.entity_id,
+                        field.name,
+                    );
+                }
+                (None, true) => {
+                    // derived fields should not be set
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl From<Entity> for BTreeMap<String, q::Value> {
@@ -669,4 +773,114 @@ fn value_bigint() {
         Value::BigInt(FromStr::from_str(big_num).unwrap())
     );
     assert_eq!(r::Value::from(from_query), graphql_value);
+}
+
+#[test]
+fn entity_validation() {
+    fn make_thing(name: &str) -> Entity {
+        let mut thing = Entity::new();
+        thing.set("id", name);
+        thing.set("name", name);
+        thing.set("stuff", "less");
+        thing.set("favorite_color", "red");
+        thing.set("things", Value::List(vec![]));
+        thing
+    }
+
+    fn check(thing: Entity, errmsg: &str) {
+        const DOCUMENT: &str = "
+      enum Color { red, yellow, blue }
+      interface Stuff { id: ID!, name: String! }
+      type Cruft @entity {
+          id: ID!,
+          thing: Thing!
+      }
+      type Thing @entity {
+          id: ID!,
+          name: String!,
+          favorite_color: Color,
+          stuff: Stuff,
+          things: [Thing!]!
+          # Make sure we do not validate derived fields; it's ok
+          # to store a thing with a null Cruft
+          cruft: Cruft! @derivedFrom(field: \"thing\")
+      }";
+        let subgraph = DeploymentHash::new("doesntmatter").unwrap();
+        let schema =
+            crate::prelude::Schema::parse(DOCUMENT, subgraph).expect("Failed to parse test schema");
+        let id = thing.id().unwrap_or("none".to_owned());
+        let key = EntityKey::data(
+            DeploymentHash::new("doesntmatter").unwrap(),
+            "Thing".to_owned(),
+            id.to_owned(),
+        );
+
+        let err = thing.validate(&schema.document, &key);
+        if errmsg == "" {
+            assert!(
+                err.is_ok(),
+                "checking entity {}: expected ok but got {}",
+                id,
+                err.unwrap_err()
+            );
+        } else {
+            if let Err(e) = err {
+                assert_eq!(errmsg, e.to_string(), "checking entity {}", id);
+            } else {
+                panic!(
+                    "Expected error `{}` but got ok when checking entity {}",
+                    errmsg, id
+                );
+            }
+        }
+    }
+
+    let mut thing = make_thing("t1");
+    thing.set("things", Value::from(vec!["thing1", "thing2"]));
+    check(thing, "");
+
+    let thing = make_thing("t2");
+    check(thing, "");
+
+    let mut thing = make_thing("t3");
+    thing.remove("name");
+    check(
+        thing,
+        "Entity Thing[t3]: missing value for non-nullable field `name`",
+    );
+
+    let mut thing = make_thing("t4");
+    thing.remove("things");
+    check(
+        thing,
+        "Entity Thing[t4]: missing value for non-nullable field `things`",
+    );
+
+    let mut thing = make_thing("t5");
+    thing.set("name", Value::Int(32));
+    check(
+        thing,
+        "Entity Thing[t5]: the value `32` for field `name` must \
+         have type String! but has type Int",
+    );
+
+    let mut thing = make_thing("t6");
+    thing.set("things", Value::List(vec!["thing1".into(), 17.into()]));
+    check(
+        thing,
+        "Entity Thing[t6]: field `things` is of type [Thing!]!, \
+         but the value `[thing1, 17]` contains a Int at index 1",
+    );
+
+    let mut thing = make_thing("t7");
+    thing.remove("favorite_color");
+    thing.remove("stuff");
+    check(thing, "");
+
+    let mut thing = make_thing("t8");
+    thing.set("cruft", "wat");
+    check(
+        thing,
+        "Entity Thing[t8]: field `cruft` is derived and can not be set",
+    );
 }

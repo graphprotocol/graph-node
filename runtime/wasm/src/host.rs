@@ -8,7 +8,7 @@ use futures03::channel::oneshot::channel;
 use graph::blockchain::RuntimeAdapter;
 use graph::blockchain::{Blockchain, DataSource};
 use graph::blockchain::{HostFn, TriggerWithHandler};
-use graph::components::store::SubgraphStore;
+use graph::components::store::EnsLookup;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
@@ -30,7 +30,7 @@ lazy_static! {
 pub struct RuntimeHostBuilder<C: Blockchain> {
     runtime_adapter: Arc<C::RuntimeAdapter>,
     link_resolver: Arc<dyn LinkResolver>,
-    store: Arc<dyn SubgraphStore>,
+    ens_lookup: Arc<dyn EnsLookup>,
 }
 
 impl<C: Blockchain> Clone for RuntimeHostBuilder<C> {
@@ -38,7 +38,7 @@ impl<C: Blockchain> Clone for RuntimeHostBuilder<C> {
         RuntimeHostBuilder {
             runtime_adapter: self.runtime_adapter.cheap_clone(),
             link_resolver: self.link_resolver.cheap_clone(),
-            store: self.store.cheap_clone(),
+            ens_lookup: self.ens_lookup.cheap_clone(),
         }
     }
 }
@@ -47,12 +47,12 @@ impl<C: Blockchain> RuntimeHostBuilder<C> {
     pub fn new(
         runtime_adapter: Arc<C::RuntimeAdapter>,
         link_resolver: Arc<dyn LinkResolver>,
-        store: Arc<dyn SubgraphStore>,
+        ens_lookup: Arc<dyn EnsLookup>,
     ) -> Self {
         RuntimeHostBuilder {
             runtime_adapter,
             link_resolver,
-            store,
+            ens_lookup,
         }
     }
 }
@@ -93,13 +93,13 @@ impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C> {
         RuntimeHost::new(
             self.runtime_adapter.cheap_clone(),
             self.link_resolver.clone(),
-            self.store.clone(),
             network_name,
             subgraph_id,
             data_source,
             templates,
             mapping_request_sender,
             metrics,
+            self.ens_lookup.cheap_clone(),
         )
     }
 }
@@ -119,13 +119,13 @@ where
     fn new(
         runtime_adapter: Arc<C::RuntimeAdapter>,
         link_resolver: Arc<dyn LinkResolver>,
-        store: Arc<dyn SubgraphStore>,
         network_name: String,
         subgraph_id: DeploymentHash,
         data_source: C::DataSource,
         templates: Arc<Vec<C::DataSourceTemplate>>,
         mapping_request_sender: Sender<MappingRequest<C>>,
         metrics: Arc<HostMetrics>,
+        ens_lookup: Arc<dyn EnsLookup>,
     ) -> Result<Self, Error> {
         // Create new instance of externally hosted functions invoker. The `Arc` is simply to avoid
         // implementing `Clone` for `HostExports`.
@@ -135,7 +135,7 @@ where
             network_name,
             templates,
             link_resolver,
-            store,
+            ens_lookup,
         ));
 
         let host_fns = Arc::new(runtime_adapter.host_fns(&data_source)?);

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use graph::cheap_clone::CheapClone;
+use graph::components::store::WritableStore;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::{
     anyhow,
@@ -97,8 +98,8 @@ impl Blockchain for Chain {
     async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
+        store: Arc<dyn WritableStore>,
         start_blocks: Vec<BlockNumber>,
-        firehose_cursor: Option<String>,
         filter: Arc<TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -123,6 +124,7 @@ impl Blockchain for Chain {
             .new(o!("component" => "FirehoseBlockStream"));
 
         let firehose_mapper = Arc::new(FirehoseMapper {});
+        let firehose_cursor = store.block_cursor();
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,
@@ -260,7 +262,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         // block which is useless.
         //
         // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
-        // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
+        // define a slimmed down struct that would decode only a few fields and ignore all the rest.
         let sp = codec::EventList::decode(any_block.value.as_ref())?;
 
         match step {
@@ -270,15 +272,18 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             )),
 
             ForkStep::StepUndo => {
-                let piece = sp.newblock.as_ref().unwrap();
+                let piece = sp.new_block.as_ref().unwrap();
                 let block = piece.block.as_ref().unwrap();
                 let header = block.header.as_ref().unwrap();
                 let block_id = piece.block_id.as_ref().unwrap();
+                let parent_ptr = sp
+                    .parent_ptr()
+                    .expect("Genesis block should never be reverted");
 
                 Ok(BlockStreamEvent::Revert(
                     sp.into(),
+                    parent_ptr,
                     Some(response.cursor.clone()),
-                    sp.parent_ptr(),
                 ))
             }
 

@@ -1832,7 +1832,6 @@ async fn fetch_transaction_receipt_with_retry(
     );
     retry(retry_log_message, &logger)
         .limit(*REQUEST_RETRIES)
-        .no_logging()
         .timeout_secs(*JSON_RPC_TIMEOUT)
         .run(move || web3.eth().transaction_receipt(transaction_hash).boxed())
         .await

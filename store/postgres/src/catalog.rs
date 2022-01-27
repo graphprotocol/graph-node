@@ -1,4 +1,4 @@
-use diesel::sql_types::Integer;
+use diesel::sql_types::{Bool, Integer};
 use diesel::{connection::SimpleConnection, prelude::RunQueryDsl, select};
 use diesel::{insert_into, OptionalExtension};
 use diesel::{pg::PgConnection, sql_query};
@@ -381,4 +381,36 @@ pub fn create_foreign_table(
         )
     })?;
     Ok(query)
+}
+
+/// Checks in the database if a given index is valid.
+pub(crate) fn check_index_is_valid(
+    conn: &PgConnection,
+    schema_name: &str,
+    index_name: &str,
+) -> Result<bool, StoreError> {
+    #[derive(Queryable, QueryableByName)]
+    struct ManualIndexCheck {
+        #[sql_type = "Bool"]
+        is_valid: bool,
+    }
+
+    let query = "
+        select
+            i.indisvalid as is_valid
+        from
+            pg_class c
+            join pg_index i on i.indexrelid = c.oid
+            join pg_namespace n on c.relnamespace = n.oid
+        where
+            n.nspname = $1
+            and c.relname = $2";
+    let result = sql_query(query)
+        .bind::<Text, _>(schema_name)
+        .bind::<Text, _>(index_name)
+        .get_result::<ManualIndexCheck>(conn)
+        .optional()
+        .map_err::<StoreError, _>(Into::into)?
+        .map(|check| check.is_valid);
+    Ok(matches!(result, Some(true)))
 }

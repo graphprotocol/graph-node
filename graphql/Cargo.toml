@@ -9,7 +9,7 @@ futures01 = { package="futures", version="0.1.29" }
 graph = { path = "../graph" }
 graphql-parser = "0.4.0"
 graphql-tools = "0.0.15"
-indexmap = "1.7"
+indexmap = "1.8"
 Inflector = "0.11.3"
 lazy_static = "1.2.0"
 stable-hash = { git = "https://github.com/graphprotocol/stable-hash" }
