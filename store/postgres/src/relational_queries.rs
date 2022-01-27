@@ -87,11 +87,10 @@ lazy_static! {
             })
             .unwrap_or(false)
     };
-
-    /// Those are columns that we always want to fetch from the database.
-    static ref BASE_SQL_COLUMNS: BTreeSet<String> =
-        ["id"].iter().map(ToString::to_string).collect();
 }
+
+/// Those are columns that we always want to fetch from the database.
+const BASE_SQL_COLUMNS: [&'static str; 2] = ["id", "vid"];
 
 #[derive(Debug)]
 pub(crate) struct UnsupportedFilter {
@@ -270,14 +269,22 @@ impl ForeignKeyClauses for Column {
     }
 }
 
-pub trait FromEntityData: Default {
+pub trait FromEntityData {
     type Value: FromColumnValue;
+
+    fn new_entity(typename: String) -> Self;
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value);
 }
 
 impl FromEntityData for Entity {
     type Value = graph::prelude::Value;
+
+    fn new_entity(typename: String) -> Self {
+        let mut entity = Entity::new();
+        entity.insert("__typename".to_string(), Self::Value::String(typename));
+        entity
+    }
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value) {
         self.insert(key, v);
@@ -286,6 +293,12 @@ impl FromEntityData for Entity {
 
 impl FromEntityData for BTreeMap<String, r::Value> {
     type Value = r::Value;
+
+    fn new_entity(typename: String) -> Self {
+        let mut map = BTreeMap::new();
+        map.insert("__typename".to_string(), Self::Value::from_string(typename));
+        map
+    }
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value) {
         self.insert(key, v);
@@ -482,11 +495,7 @@ impl EntityData {
         use serde_json::Value as j;
         match self.data {
             j::Object(map) => {
-                let mut out = T::default();
-                out.insert_entity_data(
-                    "__typename".to_owned(),
-                    T::Value::from_string(entity_type.into_string()),
-                );
+                let mut out = T::new_entity(entity_type.into_string());
                 for (key, json) in map {
                     // Simply ignore keys that do not have an underlying table
                     // column; those will be things like the block_range that
@@ -1196,7 +1205,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
 
 #[derive(Debug, Clone, Constructor)]
 pub struct FindManyQuery<'a> {
-    pub(crate) namespace: &'a Namespace,
+    pub(crate) _namespace: &'a Namespace,
     pub(crate) tables: Vec<&'a Table>,
 
     // Maps object name to ids.
@@ -1393,7 +1402,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for InsertQuery<'a> {}
 
 #[derive(Debug, Clone)]
 pub struct ConflictingEntityQuery<'a> {
-    layout: &'a Layout,
+    _layout: &'a Layout,
     tables: Vec<&'a Table>,
     entity_id: &'a str,
 }
@@ -1408,7 +1417,7 @@ impl<'a> ConflictingEntityQuery<'a> {
             .map(|entity| layout.table_for_entity(entity).map(|table| table.as_ref()))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(ConflictingEntityQuery {
-            layout,
+            _layout: layout,
             tables,
             entity_id,
         })
@@ -1610,6 +1619,14 @@ impl<'a> FilterWindow<'a> {
             column_names,
         } = window;
         let table = layout.table_for_entity(&child_type).map(|rc| rc.as_ref())?;
+
+        // Confidence check: ensure that all selected column names exist in the table
+        if let AttributeNames::Select(ref selected_field_names) = column_names {
+            for field in selected_field_names {
+                let _ = table.column_for_field(&field)?;
+            }
+        }
+
         let query_filter = query_filter
             .map(|filter| QueryFilter::new(filter, table))
             .transpose()?;
@@ -2567,6 +2584,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}
 #[derive(Debug, Clone, Constructor)]
 pub struct ClampRangeQuery<'a, S> {
     table: &'a Table,
+    #[allow(dead_code)]
     entity_type: &'a EntityType,
     entity_ids: &'a [S],
     block: BlockNumber,
@@ -2873,18 +2891,9 @@ fn write_column_names(
     match column_names {
         AttributeNames::All => out.push_sql(" * "),
         AttributeNames::Select(column_names) => {
-            let mut iterator = column_names
-                .union(&BASE_SQL_COLUMNS)
-                .into_iter()
-                .map(|column_name| {
-                    &table
-                        .column_for_field(&column_name)
-                        .expect("failed to find column for field")
-                        .name
-                })
-                .peekable();
+            let mut iterator = iter_column_names(column_names, table).peekable();
             while let Some(column_name) = iterator.next() {
-                out.push_identifier(&column_name.as_str())?;
+                out.push_identifier(&column_name)?;
                 if iterator.peek().is_some() {
                     out.push_sql(", ");
                 }
@@ -2908,25 +2917,16 @@ fn jsonb_build_object(
         }
         AttributeNames::Select(column_names) => {
             out.push_sql("jsonb_build_object(");
-            let mut iterator = column_names
-                .union(&BASE_SQL_COLUMNS)
-                .into_iter()
-                .map(|column_name| {
-                    &table
-                        .column_for_field(&column_name)
-                        .expect("failed to find column for field")
-                        .name
-                })
-                .peekable();
+            let mut iterator = iter_column_names(column_names, table).peekable();
             while let Some(column_name) = iterator.next() {
                 // field name as json key
                 out.push_sql("'");
-                out.push_sql(column_name.as_str());
+                out.push_sql(column_name);
                 out.push_sql("', ");
                 // column identifier
                 out.push_sql(table_identifier);
                 out.push_sql(".");
-                out.push_identifier(column_name.as_str())?;
+                out.push_identifier(column_name)?;
                 if iterator.peek().is_some() {
                     out.push_sql(", ");
                 }
@@ -2935,4 +2935,22 @@ fn jsonb_build_object(
         }
     }
     Ok(())
+}
+
+/// Helper function to iterate over the merged fields of BASE_SQL_COLUMNS and the provided attribute
+/// names, yielding valid SQL names for the given table.
+fn iter_column_names<'a, 'b>(
+    attribute_names: &'a BTreeSet<String>,
+    table: &'b Table,
+) -> impl Iterator<Item = &'b str> {
+    attribute_names
+        .iter()
+        .map(|attribute_name| {
+            // Unwrapping: We have already checked that all attribute names exist in table
+            table.column_for_field(attribute_name).unwrap()
+        })
+        .map(|column| column.name.as_str())
+        .chain(BASE_SQL_COLUMNS.iter().copied())
+        .sorted()
+        .dedup()
 }

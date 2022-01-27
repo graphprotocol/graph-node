@@ -21,7 +21,7 @@ impl std::fmt::Debug for NearTrigger {
             Block,
 
             Receipt {
-                outcome: &'a codec::ExecutionOutcomeWithIdView,
+                outcome: &'a codec::ExecutionOutcomeWithId,
                 receipt: &'a codec::Receipt,
             },
         }
@@ -49,7 +49,7 @@ impl blockchain::MappingTrigger for NearTrigger {
 
 #[derive(Clone)]
 pub enum NearTrigger {
-    Block(Arc<codec::BlockWrapper>),
+    Block(Arc<codec::Block>),
     Receipt(Arc<ReceiptWithOutcome>),
 }
 
@@ -134,9 +134,9 @@ impl TriggerData for NearTrigger {
 
 pub struct ReceiptWithOutcome {
     // REVIEW: Do we want to actually also have those two below behind an `Arc` wrapper?
-    pub outcome: codec::ExecutionOutcomeWithIdView,
+    pub outcome: codec::ExecutionOutcomeWithId,
     pub receipt: codec::Receipt,
-    pub block: Arc<codec::BlockWrapper>,
+    pub block: Arc<codec::Block>,
 }
 
 #[cfg(test)]
@@ -173,45 +173,44 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    fn block() -> codec::BlockWrapper {
-        codec::BlockWrapper {
-            block: Some(codec::Block {
-                author: "test".to_string(),
-                header: Some(codec::BlockHeader {
-                    height: 2,
-                    prev_height: 1,
-                    epoch_id: hash("01"),
-                    next_epoch_id: hash("02"),
-                    hash: hash("01"),
-                    prev_hash: hash("00"),
-                    prev_state_root: hash("bb00010203"),
-                    chunk_receipts_root: hash("bb00010203"),
-                    chunk_headers_root: hash("bb00010203"),
-                    chunk_tx_root: hash("bb00010203"),
-                    outcome_root: hash("cc00010203"),
-                    chunks_included: 1,
-                    challenges_root: hash("aa"),
-                    timestamp: 100,
-                    timestamp_nanosec: 0,
-                    random_value: hash("010203"),
-                    validator_proposals: vec![],
-                    chunk_mask: vec![],
-                    gas_price: big_int(10),
-                    block_ordinal: 0,
-                    validator_reward: big_int(100),
-                    total_supply: big_int(1_000),
-                    challenges_result: vec![],
-                    last_final_block: hash("00"),
-                    last_ds_final_block: hash("00"),
-                    next_bp_hash: hash("bb"),
-                    block_merkle_root: hash("aa"),
-                    epoch_sync_data_hash: vec![0x00, 0x01],
-                    approvals: vec![],
-                    signature: None,
-                    latest_protocol_version: 0,
-                }),
-                chunks: vec![chunk_header().unwrap()],
+    fn block() -> codec::Block {
+        codec::Block {
+            author: "test".to_string(),
+            header: Some(codec::BlockHeader {
+                height: 2,
+                prev_height: 1,
+                epoch_id: hash("01"),
+                next_epoch_id: hash("02"),
+                hash: hash("01"),
+                prev_hash: hash("00"),
+                prev_state_root: hash("bb00010203"),
+                chunk_receipts_root: hash("bb00010203"),
+                chunk_headers_root: hash("bb00010203"),
+                chunk_tx_root: hash("bb00010203"),
+                outcome_root: hash("cc00010203"),
+                chunks_included: 1,
+                challenges_root: hash("aa"),
+                timestamp: 100,
+                timestamp_nanosec: 0,
+                random_value: hash("010203"),
+                validator_proposals: vec![],
+                chunk_mask: vec![],
+                gas_price: big_int(10),
+                block_ordinal: 0,
+                total_supply: big_int(1_000),
+                challenges_result: vec![],
+                last_final_block: hash("00"),
+                last_final_block_height: 0,
+                last_ds_final_block: hash("00"),
+                last_ds_final_block_height: 0,
+                next_bp_hash: hash("bb"),
+                block_merkle_root: hash("aa"),
+                epoch_sync_data_hash: vec![0x00, 0x01],
+                approvals: vec![],
+                signature: signature("00"),
+                latest_protocol_version: 0,
             }),
+            chunk_headers: vec![chunk_header().unwrap()],
             shards: vec![codec::IndexerShard {
                 shard_id: 0,
                 chunk: Some(codec::IndexerChunk {
@@ -220,14 +219,11 @@ mod tests {
                     transactions: vec![codec::IndexerTransactionWithOutcome {
                         transaction: Some(codec::SignedTransaction {
                             signer_id: "signer".to_string(),
-                            public_key: Some(codec::PublicKey { bytes: vec![] }),
+                            public_key: public_key("aabb"),
                             nonce: 1,
                             receiver_id: "receiver".to_string(),
                             actions: vec![],
-                            signature: Some(codec::Signature {
-                                r#type: 1,
-                                bytes: vec![],
-                            }),
+                            signature: signature("ff"),
                             hash: hash("bb"),
                         }),
                         outcome: Some(codec::IndexerExecutionOutcomeWithOptionalReceipt {
@@ -253,7 +249,7 @@ mod tests {
             receipt_id: hash("dead"),
             receipt: Some(codec::receipt::Receipt::Action(codec::ReceiptAction {
                 signer_id: "near".to_string(),
-                signer_public_key: Some(codec::PublicKey { bytes: vec![] }),
+                signer_public_key: public_key("aa"),
                 gas_price: big_int(2),
                 output_data_receivers: vec![],
                 input_data_ids: vec![],
@@ -266,7 +262,7 @@ mod tests {
                     codec::Action {
                         action: Some(codec::action::Action::DeployContract(
                             codec::DeployContractAction {
-                                code: "/6q7zA==".to_string(),
+                                code: vec![0x01, 0x02],
                             },
                         )),
                     },
@@ -274,7 +270,7 @@ mod tests {
                         action: Some(codec::action::Action::FunctionCall(
                             codec::FunctionCallAction {
                                 method_name: "func".to_string(),
-                                args: "e30=".to_string(),
+                                args: vec![0x01, 0x02],
                                 gas: 1000,
                                 deposit: big_int(100),
                             },
@@ -288,12 +284,32 @@ mod tests {
                     codec::Action {
                         action: Some(codec::action::Action::Stake(codec::StakeAction {
                             stake: big_int(100),
-                            public_key: Some(codec::PublicKey { bytes: vec![] }),
+                            public_key: public_key("aa"),
                         })),
                     },
                     codec::Action {
                         action: Some(codec::action::Action::AddKey(codec::AddKeyAction {
-                            public_key: Some(codec::PublicKey { bytes: vec![] }),
+                            public_key: public_key("aa"),
+                            access_key: Some(codec::AccessKey {
+                                nonce: 1,
+                                permission: Some(codec::AccessKeyPermission {
+                                    permission: Some(
+                                        codec::access_key_permission::Permission::FunctionCall(
+                                            codec::FunctionCallPermission {
+                                                // allowance can be None, so let's test this out here
+                                                allowance: None,
+                                                receiver_id: "receiver".to_string(),
+                                                method_names: vec!["sayGm".to_string()],
+                                            },
+                                        ),
+                                    ),
+                                }),
+                            }),
+                        })),
+                    },
+                    codec::Action {
+                        action: Some(codec::action::Action::AddKey(codec::AddKeyAction {
+                            public_key: public_key("aa"),
                             access_key: Some(codec::AccessKey {
                                 nonce: 1,
                                 permission: Some(codec::AccessKeyPermission {
@@ -308,7 +324,7 @@ mod tests {
                     },
                     codec::Action {
                         action: Some(codec::action::Action::DeleteKey(codec::DeleteKeyAction {
-                            public_key: Some(codec::PublicKey { bytes: vec![] }),
+                            public_key: public_key("aa"),
                         })),
                     },
                     codec::Action {
@@ -345,15 +361,12 @@ mod tests {
                 public_key: public_key("aa"),
                 stake: big_int(10),
             }],
-            signature: Some(codec::Signature {
-                r#type: 0,
-                bytes: vec![],
-            }),
+            signature: signature("ff"),
         })
     }
 
-    fn execution_outcome_with_id() -> Option<codec::ExecutionOutcomeWithIdView> {
-        Some(codec::ExecutionOutcomeWithIdView {
+    fn execution_outcome_with_id() -> Option<codec::ExecutionOutcomeWithId> {
+        Some(codec::ExecutionOutcomeWithId {
             proof: Some(codec::MerklePath { path: vec![] }),
             block_hash: hash("aa"),
             id: hash("beef"),
@@ -368,10 +381,9 @@ mod tests {
             gas_burnt: 1,
             tokens_burnt: big_int(2),
             executor_id: "near".to_string(),
+            metadata: 0,
             status: Some(codec::execution_outcome::Status::SuccessValue(
-                codec::SuccessValueExecutionStatus {
-                    value: "/6q7zA==".to_string(),
-                },
+                codec::SuccessValueExecutionStatus { value: vec![0x00] },
             )),
         })
     }
@@ -392,7 +404,15 @@ mod tests {
 
     fn public_key(input: &str) -> Option<codec::PublicKey> {
         Some(codec::PublicKey {
+            r#type: 0,
             bytes: hex::decode(input).expect(format!("Invalid PublicKey value {}", input).as_ref()),
+        })
+    }
+
+    fn signature(input: &str) -> Option<codec::Signature> {
+        Some(codec::Signature {
+            r#type: 0,
+            bytes: hex::decode(input).expect(format!("Invalid Signature value {}", input).as_ref()),
         })
     }
 
@@ -419,14 +439,16 @@ mod tests {
         fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, DeterministicHostError> {
             let memory_byte_count = self.memory.len();
             if memory_byte_count == 0 {
-                return Err(DeterministicHostError(anyhow!("No memory is allocated")));
+                return Err(DeterministicHostError::from(anyhow!(
+                    "No memory is allocated"
+                )));
             }
 
             let start_offset = offset as usize;
             let end_offset_exclusive = start_offset + size as usize;
 
             if start_offset >= memory_byte_count {
-                return Err(DeterministicHostError(anyhow!(
+                return Err(DeterministicHostError::from(anyhow!(
                     "Start offset {} is outside of allocated memory, max offset is {}",
                     start_offset,
                     memory_byte_count - 1
@@ -434,7 +456,7 @@ mod tests {
             }
 
             if end_offset_exclusive > memory_byte_count {
-                return Err(DeterministicHostError(anyhow!(
+                return Err(DeterministicHostError::from(anyhow!(
                     "End of offset {} is outside of allocated memory, max offset is {}",
                     end_offset_exclusive,
                     memory_byte_count - 1

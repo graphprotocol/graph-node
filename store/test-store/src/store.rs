@@ -142,7 +142,7 @@ pub fn remove_subgraphs() {
         .expect("deleting test entities succeeds");
 }
 
-pub fn place(name: &str) -> Result<Option<(Shard, Vec<NodeId>)>, String> {
+pub fn place(name: &str) -> Result<Option<(Vec<Shard>, Vec<NodeId>)>, String> {
     CONFIG.deployment.place(name, NETWORK_NAME)
 }
 
@@ -278,7 +278,7 @@ pub async fn revert_block(store: &Arc<Store>, deployment: &DeploymentLocator, pt
         .writable(LOGGER.clone(), deployment.id)
         .await
         .expect("can get writable")
-        .revert_block_operations(ptr.clone())
+        .revert_block_operations(ptr.clone(), None)
         .unwrap();
 }
 

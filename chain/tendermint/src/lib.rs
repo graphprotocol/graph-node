@@ -15,3 +15,5 @@ pub use data_source::{DataSource, DataSourceTemplate};
 
 pub use crate::adapter::{TendermintAdapter as TendermintAdapterTrait, TriggerFilter};
 pub use crate::chain::Chain;
+
+pub use self::codec::EventList;

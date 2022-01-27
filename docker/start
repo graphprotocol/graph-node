@@ -54,6 +54,8 @@ run_graph_node() {
     then
         # Start with a configuration file; we don't do a check whether
         # postgres is up in this case, though we probably should
+        wait_for_ipfs "$ipfs"
+        sleep 5
         graph-node \
             --node-id "${node_id//-/_}" \
             --config "$GRAPH_NODE_CONFIG" \

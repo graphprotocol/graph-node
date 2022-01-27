@@ -14,11 +14,13 @@ use super::block_stream::{
 use super::{Block, BlockPtr, Blockchain};
 
 use crate::components::store::BlockNumber;
-use crate::components::store::WritableStore;
 use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::prelude::*;
 #[cfg(debug_assertions)]
 use fail::fail_point;
+
+// A high number here forces a slow start.
+const STARTING_PREVIOUS_TRIGGERS_PER_BLOCK: f64 = 1_000_000.0;
 
 enum BlockStreamState<C>
 where
@@ -59,10 +61,10 @@ enum ReconciliationStep<C>
 where
     C: Blockchain,
 {
-    /// Revert the current block pointed at by the subgraph pointer. The pointer is to the current
+    /// Revert(from, to) the current block pointed at by the subgraph pointer. The pointer is to the current
     /// subgraph head, and a single block will be reverted so the new head will be the parent of the
-    /// current one.
-    Revert(BlockPtr),
+    /// current one. The second BlockPtr is the parent.
+    Revert(BlockPtr, BlockPtr),
 
     /// Move forwards, processing one or more blocks. Second element is the block range size.
     ProcessDescendantBlocks(Vec<BlockWithTriggers<C>>, BlockNumber),
@@ -79,7 +81,6 @@ struct PollingBlockStreamContext<C>
 where
     C: Blockchain,
 {
-    subgraph_store: Arc<dyn WritableStore>,
     chain_store: Arc<dyn ChainStore>,
     adapter: Arc<C::TriggersAdapter>,
     node_id: NodeId,
@@ -98,12 +99,12 @@ where
     max_block_range_size: BlockNumber,
     target_triggers_per_block_range: u64,
     unified_api_version: UnifiedMappingApiVersion,
+    current_block: Option<BlockPtr>,
 }
 
 impl<C: Blockchain> Clone for PollingBlockStreamContext<C> {
     fn clone(&self) -> Self {
         Self {
-            subgraph_store: self.subgraph_store.cheap_clone(),
             chain_store: self.chain_store.cheap_clone(),
             adapter: self.adapter.clone(),
             node_id: self.node_id.clone(),
@@ -118,6 +119,7 @@ impl<C: Blockchain> Clone for PollingBlockStreamContext<C> {
             max_block_range_size: self.max_block_range_size,
             target_triggers_per_block_range: self.target_triggers_per_block_range,
             unified_api_version: self.unified_api_version.clone(),
+            current_block: self.current_block.clone(),
         }
     }
 }
@@ -137,9 +139,9 @@ where
     /// Blocks and range size
     Blocks(VecDeque<BlockWithTriggers<C>>, BlockNumber),
 
-    // The payload is the current subgraph head pointer, which should be reverted, such that the
+    // The payload is the current subgraph head pointer, which should be reverted and its parent, such that the
     // parent of the current subgraph head becomes the new subgraph head.
-    Revert(BlockPtr),
+    Revert(BlockPtr, BlockPtr),
     Done,
 }
 
@@ -148,7 +150,6 @@ where
     C: Blockchain,
 {
     pub fn new(
-        subgraph_store: Arc<dyn WritableStore>,
         chain_store: Arc<dyn ChainStore>,
         chain_head_update_stream: ChainHeadUpdateStream,
         adapter: Arc<C::TriggersAdapter>,
@@ -162,13 +163,14 @@ where
         max_block_range_size: BlockNumber,
         target_triggers_per_block_range: u64,
         unified_api_version: UnifiedMappingApiVersion,
+        start_block: Option<BlockPtr>,
     ) -> Self {
         Self {
             state: BlockStreamState::BeginReconciliation,
             consecutive_err_count: 0,
             chain_head_update_stream,
             ctx: PollingBlockStreamContext {
-                subgraph_store,
+                current_block: start_block,
                 chain_store,
                 adapter,
                 node_id,
@@ -178,9 +180,7 @@ where
                 filter,
                 start_blocks,
                 metrics,
-
-                // A high number here forces a slow start, with a range of 1.
-                previous_triggers_per_block: 1_000_000.0,
+                previous_triggers_per_block: STARTING_PREVIOUS_TRIGGERS_PER_BLOCK,
                 previous_block_range_size: 1,
                 max_block_range_size,
                 target_triggers_per_block_range,
@@ -210,12 +210,11 @@ where
                     continue;
                 }
                 ReconciliationStep::Done => {
-                    // Reconciliation is complete, so try to mark subgraph as Synced
-                    ctx.update_subgraph_synced_status()?;
-
                     return Ok(NextBlocks::Done);
                 }
-                ReconciliationStep::Revert(block) => return Ok(NextBlocks::Revert(block)),
+                ReconciliationStep::Revert(from, parent_ptr) => {
+                    return Ok(NextBlocks::Revert(from, parent_ptr))
+                }
             }
         }
     }
@@ -228,7 +227,7 @@ where
 
         // Get pointers from database for comparison
         let head_ptr_opt = ctx.chain_store.chain_head_ptr()?;
-        let subgraph_ptr = ctx.subgraph_store.block_ptr()?;
+        let subgraph_ptr = self.current_block.clone();
 
         // If chain head ptr is not set yet
         let head_ptr = match head_ptr_opt {
@@ -248,7 +247,7 @@ where
         trace!(
             ctx.logger, "Subgraph pointer";
             "hash" => format!("{:?}", subgraph_ptr.as_ref().map(|block| &block.hash)),
-            "number" => subgraph_ptr.as_ref().map(|block| block.number),
+            "number" => subgraph_ptr.as_ref().map(|block| &block.number),
         );
 
         // Make sure not to include genesis in the reorg threshold.
@@ -316,7 +315,10 @@ where
                 //
                 // Note: We can safely unwrap the subgraph ptr here, because
                 // if it was `None`, `is_on_main_chain` would be true.
-                return Ok(ReconciliationStep::Revert(subgraph_ptr.unwrap()));
+                let from = subgraph_ptr.unwrap();
+                let parent = self.parent_ptr(&from).await?;
+
+                return Ok(ReconciliationStep::Revert(from, parent));
             }
 
             // The subgraph ptr points to a block on the main chain.
@@ -380,7 +382,6 @@ where
             };
             let to = cmp::min(from + range_size - 1, to_limit);
 
-            let section = ctx.metrics.stopwatch.start_section("scan_blocks");
             info!(
                 ctx.logger,
                 "Scanning blocks [{}, {}]", from, to;
@@ -389,7 +390,6 @@ where
 
             let blocks = self.adapter.scan_triggers(from, to, &self.filter).await?;
 
-            section.end();
             Ok(ReconciliationStep::ProcessDescendantBlocks(
                 blocks, range_size,
             ))
@@ -421,7 +421,8 @@ where
 
             #[cfg(debug_assertions)]
             if test_reorg(subgraph_ptr.clone()) {
-                return Ok(ReconciliationStep::Revert(subgraph_ptr));
+                let parent = self.parent_ptr(&subgraph_ptr).await?;
+                return Ok(ReconciliationStep::Revert(subgraph_ptr.clone(), parent));
             }
 
             // Precondition: subgraph_ptr.number < head_ptr.number
@@ -456,33 +457,26 @@ where
                             .await?;
                         Ok(ReconciliationStep::ProcessDescendantBlocks(vec![block], 1))
                     } else {
+                        let parent = self.parent_ptr(&subgraph_ptr).await?;
+
                         // The subgraph ptr is not on the main chain.
                         // We will need to step back (possibly repeatedly) one block at a time
                         // until we are back on the main chain.
-                        Ok(ReconciliationStep::Revert(subgraph_ptr))
+                        Ok(ReconciliationStep::Revert(subgraph_ptr, parent))
                     }
                 }
             }
         }
     }
 
-    /// Set subgraph deployment entity synced flag if and only if the subgraph block pointer is
-    /// caught up to the head block pointer.
-    fn update_subgraph_synced_status(&self) -> Result<(), StoreError> {
-        let head_ptr_opt = self.chain_store.chain_head_ptr()?;
-        let subgraph_ptr = self.subgraph_store.block_ptr()?;
+    async fn parent_ptr(&self, block_ptr: &BlockPtr) -> Result<BlockPtr, Error> {
+        let ptr = self
+            .adapter
+            .parent_ptr(block_ptr)
+            .await?
+            .expect("genesis block can't be reverted");
 
-        if head_ptr_opt != subgraph_ptr || head_ptr_opt.is_none() || subgraph_ptr.is_none() {
-            // Not synced yet
-            Ok(())
-        } else {
-            // Synced
-
-            // Stop recording time-to-sync metrics.
-            self.metrics.stopwatch.disable();
-
-            self.subgraph_store.deployment_synced()
-        }
+        Ok(ptr)
     }
 }
 
@@ -504,57 +498,65 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
                 // Waiting for the reconciliation to complete or yield blocks
                 BlockStreamState::Reconciliation(next_blocks_future) => {
                     match next_blocks_future.poll_unpin(cx) {
-                        Poll::Ready(Ok(NextBlocks::Blocks(next_blocks, block_range_size))) => {
-                            // We had only one error, so we infer that reducing the range size is
-                            // what fixed it. Reduce the max range size to prevent future errors.
-                            // See: 018c6df4-132f-4acc-8697-a2d64e83a9f0
-                            if self.consecutive_err_count == 1 {
-                                // Reduce the max range size by 10%, but to no less than 10.
-                                self.ctx.max_block_range_size =
-                                    (self.ctx.max_block_range_size * 9 / 10).max(10);
+                        Poll::Ready(Ok(next_block_step)) => match next_block_step {
+                            NextBlocks::Blocks(next_blocks, block_range_size) => {
+                                // We had only one error, so we infer that reducing the range size is
+                                // what fixed it. Reduce the max range size to prevent future errors.
+                                // See: 018c6df4-132f-4acc-8697-a2d64e83a9f0
+                                if self.consecutive_err_count == 1 {
+                                    // Reduce the max range size by 10%, but to no less than 10.
+                                    self.ctx.max_block_range_size =
+                                        (self.ctx.max_block_range_size * 9 / 10).max(10);
+                                }
+                                self.consecutive_err_count = 0;
+
+                                let total_triggers =
+                                    next_blocks.iter().map(|b| b.trigger_count()).sum::<usize>();
+                                self.ctx.previous_triggers_per_block =
+                                    total_triggers as f64 / block_range_size as f64;
+                                self.ctx.previous_block_range_size = block_range_size;
+                                if total_triggers > 0 {
+                                    debug!(
+                                        self.ctx.logger,
+                                        "Processing {} triggers", total_triggers
+                                    );
+                                }
+
+                                // Switch to yielding state until next_blocks is depleted
+                                self.state =
+                                    BlockStreamState::YieldingBlocks(Box::new(next_blocks));
+
+                                // Yield the first block in next_blocks
+                                continue;
                             }
-                            self.consecutive_err_count = 0;
+                            // Reconciliation completed. We're caught up to chain head.
+                            NextBlocks::Done => {
+                                // Reset error count
+                                self.consecutive_err_count = 0;
 
-                            let total_triggers =
-                                next_blocks.iter().map(|b| b.trigger_count()).sum::<usize>();
-                            self.ctx.previous_triggers_per_block =
-                                total_triggers as f64 / block_range_size as f64;
-                            self.ctx.previous_block_range_size = block_range_size;
-                            if total_triggers > 0 {
-                                debug!(self.ctx.logger, "Processing {} triggers", total_triggers);
+                                // Switch to idle
+                                self.state = BlockStreamState::Idle;
+
+                                // Poll for chain head update
+                                continue;
                             }
+                            NextBlocks::Revert(from, parent_ptr) => {
+                                self.ctx.current_block = Some(parent_ptr.clone());
 
-                            // Switch to yielding state until next_blocks is depleted
-                            self.state = BlockStreamState::YieldingBlocks(Box::new(next_blocks));
-
-                            // Yield the first block in next_blocks
-                            continue;
-                        }
-                        // Reconciliation completed. We're caught up to chain head.
-                        Poll::Ready(Ok(NextBlocks::Done)) => {
-                            // Reset error count
-                            self.consecutive_err_count = 0;
-
-                            // Switch to idle
-                            self.state = BlockStreamState::Idle;
-
-                            // Poll for chain head update
-                            continue;
-                        }
-                        Poll::Ready(Ok(NextBlocks::Revert(block))) => {
-                            self.state = BlockStreamState::BeginReconciliation;
-                            break Poll::Ready(Some(Ok(BlockStreamEvent::Revert(
-                                block,
-                                FirehoseCursor::None,
-                            ))));
-                        }
-                        Poll::Pending => {
-                            break Poll::Pending;
-                        }
+                                self.state = BlockStreamState::BeginReconciliation;
+                                break Poll::Ready(Some(Ok(BlockStreamEvent::Revert(
+                                    from,
+                                    parent_ptr,
+                                    FirehoseCursor::None,
+                                ))));
+                            }
+                        },
+                        Poll::Pending => break Poll::Pending,
                         Poll::Ready(Err(e)) => {
                             // Reset the block range size in an attempt to recover from the error.
                             // See also: 018c6df4-132f-4acc-8697-a2d64e83a9f0
-                            self.ctx.previous_block_range_size = 1;
+                            self.ctx.previous_triggers_per_block =
+                                STARTING_PREVIOUS_TRIGGERS_PER_BLOCK;
                             self.consecutive_err_count += 1;
 
                             // Pause before trying again
@@ -574,6 +576,8 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
                     match next_blocks.pop_front() {
                         // Yield one block
                         Some(next_block) => {
+                            self.ctx.current_block = Some(next_block.block.ptr());
+
                             break Poll::Ready(Some(Ok(BlockStreamEvent::ProcessBlock(
                                 next_block,
                                 FirehoseCursor::None,

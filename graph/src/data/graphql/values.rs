@@ -1,8 +1,9 @@
 use anyhow::{anyhow, Error};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::str::FromStr;
 
+use crate::data::value::Object;
 use crate::prelude::{r, BigInt, Entity};
 use web3::types::{H160, H256};
 
@@ -166,7 +167,7 @@ impl ValueMap for r::Value {
     }
 }
 
-impl ValueMap for &BTreeMap<String, r::Value> {
+impl ValueMap for &Object {
     fn get_required<T>(&self, key: &str) -> Result<T, Error>
     where
         T: TryFromValue,

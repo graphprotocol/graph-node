@@ -7,12 +7,15 @@ use crate::{
 };
 use anyhow::{Context, Error};
 use blockchain::HostFn;
-use ethabi::{Address, Token};
+use graph::runtime::gas::Gas;
 use graph::runtime::{AscIndexId, IndexForAscTypeId};
 use graph::{
     blockchain::{self, BlockPtr, HostFnCtx},
     cheap_clone::CheapClone,
-    prelude::{EthereumCallCache, Future01CompatExt},
+    prelude::{
+        ethabi::{self, Address, Token},
+        EthereumCallCache, Future01CompatExt,
+    },
     runtime::{asc_get, asc_new, AscPtr, HostExportError},
     semver::Version,
     slog::{info, trace, Logger},
@@ -20,6 +23,15 @@ use graph::{
 use graph_runtime_wasm::asc_abi::class::{AscEnumArray, EthereumValueKind};
 
 use super::abi::{AscUnresolvedContractCall, AscUnresolvedContractCall_0_0_4};
+
+// Allow up to 1,000 ethereum calls. The justification is that we don't know how much Ethereum gas a
+// call takes, but we limit the maximum to 25 million. One unit of Ethereum gas is at least 100ns
+// according to these benchmarks [1], so 1000 of our gas. Assuming the worst case, an Ethereum call
+// should therefore consume 25 billion gas. This allows for 400 calls per handler with the current
+// limits.
+//
+// [1] - https://www.sciencedirect.com/science/article/abs/pii/S0166531620300900
+pub const ETHEREUM_CALL: Gas = Gas::new(25_000_000_000);
 
 pub struct RuntimeAdapter {
     pub(crate) eth_adapters: Arc<EthereumNetworkAdapters>,
@@ -58,6 +70,8 @@ fn ethereum_call(
     wasm_ptr: u32,
     abis: &[Arc<MappingABI>],
 ) -> Result<AscEnumArray<EthereumValueKind>, HostExportError> {
+    ctx.gas.consume_host_fn(ETHEREUM_CALL)?;
+
     // For apiVersion >= 0.0.4 the call passed from the mapping includes the
     // function signature; subgraphs using an apiVersion < 0.0.4 don't pass
     // the signature along with the call.

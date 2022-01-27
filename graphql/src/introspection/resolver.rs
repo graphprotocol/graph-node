@@ -1,26 +1,31 @@
+use graph::data::graphql::ext::{FieldExt, TypeDefinitionExt};
 use graphql_parser::Pos;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use graph::data::graphql::{object, DocumentExt, ObjectOrInterface};
 use graph::prelude::*;
 
+use crate::execution::ast as a;
 use crate::prelude::*;
 use crate::schema::ast as sast;
 
 type TypeObjectsMap = BTreeMap<String, r::Value>;
 
+/// Our Schema has the introspection schema mixed in. When we build the
+/// `TypeObjectsMap`, suppress types and fields that belong to the
+/// introspection schema
 fn schema_type_objects(schema: &Schema) -> TypeObjectsMap {
-    sast::get_type_definitions(&schema.document).iter().fold(
-        BTreeMap::new(),
-        |mut type_objects, typedef| {
+    sast::get_type_definitions(&schema.document)
+        .iter()
+        .filter(|def| !def.is_introspection())
+        .fold(BTreeMap::new(), |mut type_objects, typedef| {
             let type_name = sast::get_type_name(typedef);
             if !type_objects.contains_key(type_name) {
                 let type_object = type_definition_object(schema, &mut type_objects, typedef);
                 type_objects.insert(type_name.to_owned(), type_object);
             }
             type_objects
-        },
-    )
+        })
 }
 
 fn type_object(schema: &Schema, type_objects: &mut TypeObjectsMap, t: &s::Type) -> r::Value {
@@ -166,6 +171,7 @@ fn field_objects(
     r::Value::List(
         fields
             .iter()
+            .filter(|field| !field.is_introspection())
             .map(|field| field_object(schema, type_objects, field))
             .collect(),
     )
@@ -297,7 +303,7 @@ fn input_value(
 
 #[derive(Clone)]
 pub struct IntrospectionResolver {
-    logger: Logger,
+    _logger: Logger,
     type_objects: TypeObjectsMap,
     directives: r::Value,
 }
@@ -313,7 +319,7 @@ impl IntrospectionResolver {
         let directives = schema_directive_objects(schema, &mut type_objects);
 
         IntrospectionResolver {
-            logger,
+            _logger: logger,
             type_objects,
             directives,
         }
@@ -359,7 +365,7 @@ impl Resolver for IntrospectionResolver {
     fn prefetch(
         &self,
         _: &ExecutionContext<Self>,
-        _: &q::SelectionSet,
+        _: &a::SelectionSet,
     ) -> Result<Option<r::Value>, Vec<QueryExecutionError>> {
         Ok(None)
     }
@@ -367,10 +373,9 @@ impl Resolver for IntrospectionResolver {
     fn resolve_objects(
         &self,
         prefetched_objects: Option<r::Value>,
-        field: &q::Field,
+        field: &a::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        _arguments: &HashMap<&str, r::Value>,
     ) -> Result<r::Value, QueryExecutionError> {
         match field.name.as_str() {
             "possibleTypes" => {
@@ -409,15 +414,14 @@ impl Resolver for IntrospectionResolver {
     fn resolve_object(
         &self,
         prefetched_object: Option<r::Value>,
-        field: &q::Field,
+        field: &a::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        arguments: &HashMap<&str, r::Value>,
     ) -> Result<r::Value, QueryExecutionError> {
         let object = match field.name.as_str() {
             "__schema" => self.schema_object(),
             "__type" => {
-                let name = arguments.get("name").ok_or_else(|| {
+                let name = field.argument_value("name").ok_or_else(|| {
                     QueryExecutionError::MissingArgumentError(
                         Pos::default(),
                         "missing argument `name` in `__type(name: String!)`".to_owned(),

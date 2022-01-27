@@ -4,8 +4,10 @@ use crate::prelude::s::{
     Definition, Directive, Document, EnumType, Field, InterfaceType, ObjectType, Type,
     TypeDefinition, Value,
 };
+use crate::prelude::ValueType;
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap};
+use std::str::FromStr;
 
 lazy_static! {
     static ref ALLOW_NON_DETERMINISTIC_FULLTEXT_SEARCH: bool = if cfg!(debug_assertions) {
@@ -62,6 +64,15 @@ pub trait DocumentExt {
     fn object_or_interface(&self, name: &str) -> Option<ObjectOrInterface<'_>>;
 
     fn get_named_type(&self, name: &str) -> Option<&TypeDefinition>;
+
+    fn scalar_value_type(&self, field_type: &Type) -> ValueType;
+
+    /// Return `true` if the type does not allow selection of child fields.
+    ///
+    /// # Panics
+    ///
+    /// If `field_type` names an unknown type
+    fn is_leaf_type(&self, field_type: &Type) -> bool;
 }
 
 impl DocumentExt for Document {
@@ -196,10 +207,44 @@ impl DocumentExt for Document {
                 TypeDefinition::Union(t) => &t.name == name,
             })
     }
+
+    fn scalar_value_type(&self, field_type: &Type) -> ValueType {
+        use TypeDefinition as t;
+        match field_type {
+            Type::NamedType(name) => {
+                ValueType::from_str(&name).unwrap_or_else(|_| match self.get_named_type(name) {
+                    Some(t::Object(_)) | Some(t::Interface(_)) | Some(t::Enum(_)) => {
+                        ValueType::String
+                    }
+                    Some(t::Scalar(_)) => unreachable!("user-defined scalars are not used"),
+                    Some(t::Union(_)) => unreachable!("unions are not used"),
+                    Some(t::InputObject(_)) => unreachable!("inputObjects are not used"),
+                    None => unreachable!("names of field types have been validated"),
+                })
+            }
+            Type::NonNullType(inner) => self.scalar_value_type(inner),
+            Type::ListType(inner) => self.scalar_value_type(inner),
+        }
+    }
+
+    fn is_leaf_type(&self, field_type: &Type) -> bool {
+        match self
+            .get_named_type(field_type.get_base_type())
+            .expect("names of field types have been validated")
+        {
+            TypeDefinition::Enum(_) | TypeDefinition::Scalar(_) => true,
+            TypeDefinition::Object(_)
+            | TypeDefinition::Interface(_)
+            | TypeDefinition::Union(_)
+            | TypeDefinition::InputObject(_) => false,
+        }
+    }
 }
 
 pub trait TypeExt {
     fn get_base_type(&self) -> &str;
+    fn is_list(&self) -> bool;
+    fn is_non_null(&self) -> bool;
 }
 
 impl TypeExt for Type {
@@ -208,6 +253,22 @@ impl TypeExt for Type {
             Type::NamedType(name) => name,
             Type::NonNullType(inner) => Self::get_base_type(inner),
             Type::ListType(inner) => Self::get_base_type(inner),
+        }
+    }
+
+    fn is_list(&self) -> bool {
+        match self {
+            Type::NamedType(_) => false,
+            Type::NonNullType(inner) => inner.is_list(),
+            Type::ListType(_) => true,
+        }
+    }
+
+    // Returns true if the given type is a non-null type.
+    fn is_non_null(&self) -> bool {
+        match self {
+            Type::NonNullType(_) => true,
+            _ => false,
         }
     }
 }
@@ -304,6 +365,41 @@ impl DirectiveFinder for Vec<Directive> {
         let is_derived = |directive: &Directive| directive.name.eq("derivedFrom");
 
         self.iter().any(is_derived)
+    }
+}
+
+pub trait TypeDefinitionExt {
+    fn name(&self) -> &str;
+
+    // Return `true` if this is the definition of a type from the
+    // introspection schema
+    fn is_introspection(&self) -> bool {
+        self.name().starts_with("__")
+    }
+}
+
+impl TypeDefinitionExt for TypeDefinition {
+    fn name(&self) -> &str {
+        match self {
+            TypeDefinition::Scalar(t) => &t.name,
+            TypeDefinition::Object(t) => &t.name,
+            TypeDefinition::Interface(t) => &t.name,
+            TypeDefinition::Union(t) => &t.name,
+            TypeDefinition::Enum(t) => &t.name,
+            TypeDefinition::InputObject(t) => &t.name,
+        }
+    }
+}
+
+pub trait FieldExt {
+    // Return `true` if this is the name of one of the query fields from the
+    // introspection schema
+    fn is_introspection(&self) -> bool;
+}
+
+impl FieldExt for Field {
+    fn is_introspection(&self) -> bool {
+        &self.name == "__schema" || &self.name == "__type"
     }
 }
 

@@ -1,9 +1,13 @@
-use std::{sync::Arc, time::Duration};
-
-use crate::{
-    blockchain::{Blockchain, IngestorAdapter, IngestorError},
-    prelude::{info, lazy_static, tokio, trace, warn, Error, LogCode, Logger},
+use crate::{chain::BlockFinality, EthereumAdapter, EthereumAdapterTrait};
+use graph::{
+    blockchain::{BlockHash, BlockPtr, IngestorError},
+    cheap_clone::CheapClone,
+    prelude::{
+        error, ethabi::ethereum_types::H256, info, lazy_static, tokio, trace, warn, ChainStore,
+        Error, EthereumBlockWithCalls, Future01CompatExt, LogCode, Logger,
+    },
 };
+use std::{sync::Arc, time::Duration};
 
 lazy_static! {
     // graph_node::config disallows setting this in a store with multiple
@@ -14,27 +18,27 @@ lazy_static! {
         .unwrap_or(false);
 }
 
-pub struct BlockIngestor<C>
-where
-    C: Blockchain,
-{
-    adapter: Arc<C::IngestorAdapter>,
+pub struct BlockIngestor {
     logger: Logger,
+    ancestor_count: i32,
+    eth_adapter: Arc<EthereumAdapter>,
+    chain_store: Arc<dyn ChainStore>,
     polling_interval: Duration,
 }
 
-impl<C> BlockIngestor<C>
-where
-    C: Blockchain,
-{
+impl BlockIngestor {
     pub fn new(
-        adapter: Arc<C::IngestorAdapter>,
+        logger: Logger,
+        ancestor_count: i32,
+        eth_adapter: Arc<EthereumAdapter>,
+        chain_store: Arc<dyn ChainStore>,
         polling_interval: Duration,
-    ) -> Result<BlockIngestor<C>, Error> {
-        let logger = adapter.logger().clone();
+    ) -> Result<BlockIngestor, Error> {
         Ok(BlockIngestor {
-            adapter,
             logger,
+            ancestor_count,
+            eth_adapter,
+            chain_store,
             polling_interval,
         })
     }
@@ -73,7 +77,7 @@ where
     }
 
     fn cleanup_cached_blocks(&self) {
-        match self.adapter.cleanup_cached_blocks() {
+        match self.chain_store.cleanup_cached_blocks(self.ancestor_count) {
             Ok(Some((min_block, count))) => {
                 if count > 0 {
                     info!(
@@ -97,12 +101,12 @@ where
         trace!(self.logger, "BlockIngestor::do_poll");
 
         // Get chain head ptr from store
-        let head_block_ptr_opt = self.adapter.chain_head_ptr()?;
+        let head_block_ptr_opt = self.chain_store.chain_head_ptr()?;
 
         // To check if there is a new block or not, fetch only the block header since that's cheaper
         // than the full block. This is worthwhile because most of the time there won't be a new
         // block, as we expect the poll interval to be much shorter than the block time.
-        let latest_block = self.adapter.latest_block().await?;
+        let latest_block = self.latest_block().await?;
 
         // If latest block matches head block in store, nothing needs to be done
         if Some(&latest_block) == head_block_ptr_opt.as_ref() {
@@ -122,7 +126,7 @@ where
                 let latest_number = latest_block.number;
                 let head_number = head_block_ptr.number;
                 let distance = latest_number - head_number;
-                let blocks_needed = (distance).min(self.adapter.ancestor_count());
+                let blocks_needed = (distance).min(self.ancestor_count);
                 let code = if distance >= 15 {
                     LogCode::BlockIngestionLagging
                 } else {
@@ -147,7 +151,7 @@ where
         // Might be a no-op if latest block is one that we have seen.
         // ingest_blocks will return a (potentially incomplete) list of blocks that are
         // missing.
-        let mut missing_block_hash = self.adapter.ingest_block(&latest_block.hash).await?;
+        let mut missing_block_hash = self.ingest_block(&latest_block.hash).await?;
 
         // Repeatedly fetch missing parent blocks, and ingest them.
         // ingest_blocks will continue to tell us about more missing parent
@@ -168,8 +172,58 @@ where
         //   iteration will have at most block number N-1.
         // - Therefore, the loop will iterate at most ancestor_count times.
         while let Some(hash) = missing_block_hash {
-            missing_block_hash = self.adapter.ingest_block(&hash).await?;
+            missing_block_hash = self.ingest_block(&hash).await?;
         }
         Ok(())
+    }
+
+    async fn ingest_block(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BlockHash>, IngestorError> {
+        // TODO: H256::from_slice can panic
+        let block_hash = H256::from_slice(block_hash.as_slice());
+
+        // Get the fully populated block
+        let block = self
+            .eth_adapter
+            .block_by_hash(&self.logger, block_hash)
+            .compat()
+            .await?
+            .ok_or_else(|| IngestorError::BlockUnavailable(block_hash))?;
+        let ethereum_block = self
+            .eth_adapter
+            .load_full_block(&self.logger, block)
+            .await?;
+
+        // We need something that implements `Block` to store the block; the
+        // store does not care whether the block is final or not
+        let ethereum_block = BlockFinality::NonFinal(EthereumBlockWithCalls {
+            ethereum_block,
+            calls: None,
+        });
+
+        // Store it in the database and try to advance the chain head pointer
+        self.chain_store
+            .upsert_block(Arc::new(ethereum_block))
+            .await?;
+
+        self.chain_store
+            .cheap_clone()
+            .attempt_chain_head_update(self.ancestor_count)
+            .await
+            .map(|missing| missing.map(|h256| h256.into()))
+            .map_err(|e| {
+                error!(self.logger, "failed to update chain head");
+                IngestorError::Unknown(e)
+            })
+    }
+
+    async fn latest_block(&self) -> Result<BlockPtr, IngestorError> {
+        self.eth_adapter
+            .latest_block_header(&self.logger)
+            .compat()
+            .await
+            .map(|block| block.into())
     }
 }

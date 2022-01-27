@@ -1,13 +1,14 @@
 #[macro_use]
 extern crate pretty_assertions;
 
+use graph::data::value::Object;
 use graphql_parser::Pos;
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap},
     marker::PhantomData,
 };
 
@@ -365,7 +366,6 @@ fn can_query_one_to_one_relationship() {
                     r::Value::List(vec![
                         object_value(vec![
                             ("id", r::Value::String(String::from("s1"))),
-                            ("played", r::Value::Int(10)),
                             (
                                 "song",
                                 object_value(vec![
@@ -373,10 +373,10 @@ fn can_query_one_to_one_relationship() {
                                     ("title", r::Value::String(String::from("Cheesy Tune")))
                                 ])
                             ),
+                            ("played", r::Value::Int(10)),
                         ]),
                         object_value(vec![
                             ("id", r::Value::String(String::from("s2"))),
-                            ("played", r::Value::Int(15)),
                             (
                                 "song",
                                 object_value(vec![
@@ -384,6 +384,7 @@ fn can_query_one_to_one_relationship() {
                                     ("title", r::Value::String(String::from("Rock Tune")))
                                 ])
                             ),
+                            ("played", r::Value::Int(15)),
                         ])
                     ])
                 )
@@ -570,6 +571,30 @@ fn can_query_many_to_many_relationship() {
                 ])
             )]))
         );
+    })
+}
+
+#[test]
+fn root_fragments_are_expanded() {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
+        let query = graphql_parser::parse_query(
+            r#"
+            fragment Musicians on Query {
+                musicians(first: 100, where: { name: "Tom" }) {
+                    name
+                }
+            }
+            query MyQuery {
+                ...Musicians
+            }"#,
+        )
+        .expect("invalid test query")
+        .into_static();
+
+        let result = execute_query_document_with_variables(&deployment.hash, query, None).await;
+        let exp = object! { musicians: vec![ object! { name: "Tom" }]};
+        assert_eq!(extract_data!(result), Some(exp));
     })
 }
 
@@ -887,26 +912,26 @@ fn query_complexity_subscriptions() {
 
         // This query is exactly at the maximum complexity.
         // FIXME: Not collecting the stream because that will hang the test.
-        let _ignore_stream = execute_subscription(Subscription { query }, schema.clone(), options)
-            .await
-            .unwrap();
+        let _ignore_stream =
+            execute_subscription(Subscription { query }, schema.clone(), options).unwrap();
 
         let query = Query::new(
             graphql_parser::parse_query(
                 "subscription {
                 musicians(orderBy: id) {
                     name
-                    bands(first: 100, orderBy: id) {
+                    t1: bands(first: 100, orderBy: id) {
                         name
                         members(first: 100, orderBy: id) {
                             name
                         }
                     }
-                }
-                __schema {
-                    types {
-                        name
-                    }
+                    t2: bands(first: 200, orderBy: id) {
+                      name
+                      members(first: 100, orderBy: id) {
+                          name
+                      }
+                  }
                 }
             }",
             )
@@ -933,12 +958,12 @@ fn query_complexity_subscriptions() {
             result_size: result_size_metrics(),
         };
 
-        // The extra introspection causes the complexity to go over.
-        let result = execute_subscription(Subscription { query }, schema, options).await;
+        let result = execute_subscription(Subscription { query }, schema, options);
+
         match result {
-            Err(SubscriptionError::GraphQLError(e)) => match e[0] {
-                QueryExecutionError::TooComplex(1_010_200, _) => (), // Expected
-                _ => panic!("did not catch complexity"),
+            Err(SubscriptionError::GraphQLError(e)) => match &e[0] {
+                QueryExecutionError::TooComplex(3_030_100, _) => (), // Expected
+                e => panic!("did not catch complexity: {:?}", e),
             },
             _ => panic!("did not catch complexity"),
         }
@@ -1314,9 +1339,7 @@ fn subscription_gets_result_even_without_events() {
         };
         // Execute the subscription and expect at least one result to be
         // available in the result stream
-        let stream = execute_subscription(Subscription { query }, schema, options)
-            .await
-            .unwrap();
+        let stream = execute_subscription(Subscription { query }, schema, options).unwrap();
         let results: Vec<_> = stream
             .take(1)
             .collect()
@@ -1395,6 +1418,129 @@ fn can_use_nested_filter() {
                 ])
             )])
         );
+    })
+}
+
+// see: graphql-bug-compat
+#[test]
+fn ignores_invalid_field_arguments() {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
+        // This query has to return all the musicians since `id` is not a
+        // valid argument for the `musicians` field and must therefore be
+        // ignored
+        let result = execute_query_document(
+            &deployment.hash,
+            graphql_parser::parse_query("query { musicians(id: \"m1\") { id } } ")
+                .expect("invalid test query")
+                .into_static(),
+        )
+        .await;
+
+        let data = extract_data!(result).unwrap();
+        match data {
+            r::Value::Object(obj) => match obj.get("musicians").unwrap() {
+                r::Value::List(lst) => {
+                    assert_eq!(4, lst.len());
+                }
+                _ => panic!("expected a list of values"),
+            },
+            _ => {
+                panic!("expected an object")
+            }
+        }
+    })
+}
+
+// see: graphql-bug-compat
+#[test]
+fn leaf_selection_mismatch() {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
+        let result = execute_query_document(
+            &deployment.hash,
+            // 'name' is a string and doesn't admit a selection
+            graphql_parser::parse_query("query { musician(id: \"m1\") { id name { wat }} } ")
+                .expect("invalid test query")
+                .into_static(),
+        )
+        .await;
+        let exp = object! {
+            musician: object! {
+                id: "m1",
+                name: "John"
+            }
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(exp, data);
+
+        let result = execute_query_document(
+            &deployment.hash,
+            // 'mainBand' is an object and requires a selection; it is ignored
+            graphql_parser::parse_query("query { musician(id: \"m1\") { id name mainBand } } ")
+                .expect("invalid test query")
+                .into_static(),
+        )
+        .await;
+        let data = extract_data!(result).unwrap();
+        assert_eq!(exp, data);
+    })
+}
+
+// see: graphql-bug-compat
+#[test]
+fn missing_variable() {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
+        let result = execute_query_document(
+            &deployment.hash,
+            // '$first' is not defined, use its default from the schema
+            graphql_parser::parse_query("query { musicians(first: $first, skip: $skip) { id } }")
+                .expect("invalid test query")
+                .into_static(),
+        )
+        .await;
+        // We silently set `$first` to 100 and `$skip` to 0, and therefore
+        // get everything
+        let exp = object! {
+            musicians: vec![
+                object! { id: "m1" },
+                object! { id: "m2" },
+                object! { id: "m3" },
+                object! { id: "m4" },
+            ]
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(exp, data);
+
+        let result = execute_query_document(
+            &deployment.hash,
+            // '$where' is not defined but nullable, ignore the argument
+            graphql_parser::parse_query("query { musicians(where: $where) { id } }")
+                .expect("invalid test query")
+                .into_static(),
+        )
+        .await;
+        let data = extract_data!(result).unwrap();
+        assert_eq!(exp, data);
+    })
+}
+
+// see: graphql-bug-compat
+// Test that queries with nonmergeable fields do not cause a panic. Can be
+// deleted once queries are validated
+#[test]
+fn invalid_field_merge() {
+    run_test_sequentially(|store| async move {
+        let deployment = setup(store.as_ref());
+        let result = execute_query_document(
+            &deployment.hash,
+            graphql_parser::parse_query("query { musicians { t: id t: mainBand { id } } }")
+                .expect("invalid test query")
+                .into_static(),
+        )
+        .await;
+        assert!(result.has_errors());
     })
 }
 
@@ -1540,10 +1686,23 @@ fn query_at_block_with_vars() {
             check_musicians_at(&deployment.hash, query, var, expected.clone(), qid).await;
 
             let query = "query by_nr($block: Block_height!) { musicians(block: $block) { id } }";
-            let mut map = BTreeMap::new();
+            let mut map = Object::new();
             map.insert("number".to_owned(), number);
             let block = r::Value::Object(map);
             let var = Some(("block", block));
+
+            check_musicians_at(&deployment.hash, query, var, expected, qid).await;
+        }
+
+        async fn musicians_at_nr_gte(
+            deployment: &DeploymentLocator,
+            block: i32,
+            expected: Result<Vec<&str>, &str>,
+            qid: &str,
+        ) {
+            let query =
+                "query by_nr($block: Int!) { musicians(block: { number_gte: $block }) { id } }";
+            let var = Some(("block", r::Value::Int(block.into())));
 
             check_musicians_at(&deployment.hash, query, var, expected, qid).await;
         }
@@ -1569,6 +1728,10 @@ fn query_at_block_with_vars() {
         musicians_at_nr(&deployment, 7000, Err(BLOCK_NOT_INDEXED), "n7000").await;
         musicians_at_nr(&deployment, 0, Ok(vec!["m1", "m2"]), "n0").await;
         musicians_at_nr(&deployment, 1, Ok(vec!["m1", "m2", "m3", "m4"]), "n1").await;
+
+        musicians_at_nr_gte(&deployment, 7000, Err(BLOCK_NOT_INDEXED), "ngte7000").await;
+        musicians_at_nr_gte(&deployment, 0, Ok(vec!["m1", "m2", "m3", "m4"]), "ngte0").await;
+        musicians_at_nr_gte(&deployment, 1, Ok(vec!["m1", "m2", "m3", "m4"]), "ngte1").await;
 
         musicians_at_hash(&deployment, &GENESIS_BLOCK, Ok(vec!["m1", "m2"]), "h0").await;
         musicians_at_hash(
@@ -1661,12 +1824,12 @@ fn can_query_meta() {
         let result = execute_query_document(&deployment.hash, query).await;
         let exp = object! {
             _meta: object! {
+                deployment: "graphqlTestsQuery",
                 block: object! {
                     hash: "0x8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
                     number: 1,
                     __typename: "_Block_"
                 },
-                deployment: "graphqlTestsQuery",
                 __typename: "_Meta_"
             },
         };
@@ -1681,11 +1844,11 @@ fn can_query_meta() {
         let result = execute_query_document(&deployment.hash, query).await;
         let exp = object! {
             _meta: object! {
+                deployment: "graphqlTestsQuery",
                 block: object! {
                     hash: r::Value::Null,
                     number: 0
                 },
-                deployment: "graphqlTestsQuery"
             },
         };
         assert_eq!(extract_data!(result), Some(exp));
@@ -1700,11 +1863,11 @@ fn can_query_meta() {
         let result = execute_query_document(&deployment.hash, query).await;
         let exp = object! {
             _meta: object! {
+                deployment: "graphqlTestsQuery",
                 block: object! {
                     hash: "0xbd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
                     number: 0
                 },
-                deployment: "graphqlTestsQuery"
             },
         };
         assert_eq!(extract_data!(result), Some(exp));

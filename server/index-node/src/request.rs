@@ -70,9 +70,9 @@ impl Future for IndexNodeRequest {
 mod tests {
     use graphql_parser;
     use hyper;
-    use std::collections::{BTreeMap, HashMap};
+    use std::collections::HashMap;
 
-    use graph::prelude::*;
+    use graph::{data::value::Object, prelude::*};
 
     use super::IndexNodeRequest;
 
@@ -169,7 +169,7 @@ mod tests {
                 (String::from("string"), r::Value::String(String::from("s"))),
                 (
                     String::from("map"),
-                    r::Value::Object(BTreeMap::from_iter(
+                    r::Value::Object(Object::from_iter(
                         vec![(String::from("k"), r::Value::String(String::from("v")))].into_iter(),
                     )),
                 ),

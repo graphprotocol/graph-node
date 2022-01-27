@@ -1,6 +1,6 @@
 use either::Either;
 use graph::blockchain::{Blockchain, BlockchainKind};
-use std::collections::{BTreeMap, HashMap};
+use graph::data::value::Object;
 
 use graph::data::subgraph::features::detect_features;
 use graph::data::subgraph::{status, MAX_SPEC_VERSION};
@@ -9,7 +9,7 @@ use graph::{
     components::store::StatusStore,
     data::graphql::{IntoValue, ObjectOrInterface, ValueMap},
 };
-use graph_graphql::prelude::{ExecutionContext, Resolver};
+use graph_graphql::prelude::{a, ExecutionContext, Resolver};
 use std::convert::TryInto;
 use web3::types::{Address, H256};
 
@@ -42,12 +42,9 @@ where
         }
     }
 
-    fn resolve_indexing_statuses(
-        &self,
-        arguments: &HashMap<&str, r::Value>,
-    ) -> Result<r::Value, QueryExecutionError> {
-        let deployments = arguments
-            .get("subgraphs")
+    fn resolve_indexing_statuses(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
+        let deployments = field
+            .argument_value("subgraphs")
             .map(|value| match value {
                 r::Value::List(ids) => ids
                     .into_iter()
@@ -68,12 +65,12 @@ where
 
     fn resolve_indexing_statuses_for_subgraph_name(
         &self,
-        arguments: &HashMap<&str, r::Value>,
+        field: &a::Field,
     ) -> Result<r::Value, QueryExecutionError> {
         // Get the subgraph name from the arguments; we can safely use `expect` here
         // because the argument will already have been validated prior to the resolver
         // being called
-        let subgraph_name = arguments
+        let subgraph_name = field
             .get_required::<String>("subgraphName")
             .expect("subgraphName not provided");
 
@@ -90,29 +87,24 @@ where
         Ok(infos.into_value())
     }
 
-    fn resolve_proof_of_indexing(
-        &self,
-        argument_values: &HashMap<&str, r::Value>,
-    ) -> Result<r::Value, QueryExecutionError> {
-        let deployment_id = argument_values
+    fn resolve_proof_of_indexing(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
+        let deployment_id = field
             .get_required::<DeploymentHash>("subgraph")
             .expect("Valid subgraphId required");
 
-        let block_number: u64 = argument_values
+        let block_number: u64 = field
             .get_required::<u64>("blockNumber")
             .expect("Valid blockNumber required")
             .try_into()
             .unwrap();
-        // TODO(Tendermint): check this type
-        let block_hash: H256 = argument_values
+
+        let block_hash = field
             .get_required::<H256>("blockHash")
-            .expect("Valid blockHash required")
-            .try_into()
-            .unwrap();
+            .expect("Valid blockHash required");
 
         let block = BlockPtr::from((block_hash, block_number));
 
-        let indexer = argument_values
+        let indexer = field
             .get_optional::<Address>("indexer")
             .expect("Invalid indexer");
 
@@ -139,13 +131,13 @@ where
 
     fn resolve_indexing_status_for_version(
         &self,
-        arguments: &HashMap<&str, r::Value>,
+        field: &a::Field,
 
         // If `true` return the current version, if `false` return the pending version.
         current_version: bool,
     ) -> Result<r::Value, QueryExecutionError> {
         // We can safely unwrap because the argument is non-nullable and has been validated.
-        let subgraph_name = arguments.get_required::<String>("subgraphName").unwrap();
+        let subgraph_name = field.get_required::<String>("subgraphName").unwrap();
 
         debug!(
             self.logger,
@@ -168,10 +160,10 @@ where
 
     async fn resolve_subgraph_features(
         &self,
-        arguments: &HashMap<&str, r::Value>,
+        field: &a::Field,
     ) -> Result<r::Value, QueryExecutionError> {
         // We can safely unwrap because the argument is non-nullable and has been validated.
-        let subgraph_id = arguments.get_required::<String>("subgraphId").unwrap();
+        let subgraph_id = field.get_required::<String>("subgraphId").unwrap();
 
         // TODO:
         //
@@ -261,9 +253,10 @@ where
 
         // We then bulid a GraphqQL `Object` value that contains the feature detection and
         // validation results and send it back as a response.
-        let mut response: BTreeMap<String, r::Value> = BTreeMap::new();
+        let mut response = Object::new();
         response.insert("features".to_string(), features);
         response.insert("errors".to_string(), errors);
+        response.insert("network".to_string(), network);
 
         Ok(r::Value::Object(response))
     }
@@ -392,7 +385,7 @@ where
     fn prefetch(
         &self,
         _: &ExecutionContext<Self>,
-        _: &q::SelectionSet,
+        _: &a::SelectionSet,
     ) -> Result<Option<r::Value>, Vec<QueryExecutionError>> {
         Ok(None)
     }
@@ -401,17 +394,16 @@ where
     fn resolve_scalar_value(
         &self,
         parent_object_type: &s::ObjectType,
-        field: &q::Field,
+        field: &a::Field,
         scalar_type: &s::ScalarType,
         value: Option<r::Value>,
-        argument_values: &HashMap<&str, r::Value>,
     ) -> Result<r::Value, QueryExecutionError> {
         // Check if we are resolving the proofOfIndexing bytes
         if &parent_object_type.name == "Query"
             && &field.name == "proofOfIndexing"
             && &scalar_type.name == "Bytes"
         {
-            return self.resolve_proof_of_indexing(argument_values);
+            return self.resolve_proof_of_indexing(field);
         }
 
         // Fallback to the same as is in the default trait implementation. There
@@ -424,20 +416,19 @@ where
     fn resolve_objects(
         &self,
         prefetched_objects: Option<r::Value>,
-        field: &q::Field,
+        field: &a::Field,
         _field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
-        arguments: &HashMap<&str, r::Value>,
     ) -> Result<r::Value, QueryExecutionError> {
         match (prefetched_objects, object_type.name(), field.name.as_str()) {
             // The top-level `indexingStatuses` field
             (None, "SubgraphIndexingStatus", "indexingStatuses") => {
-                self.resolve_indexing_statuses(arguments)
+                self.resolve_indexing_statuses(field)
             }
 
             // The top-level `indexingStatusesForSubgraphName` field
             (None, "SubgraphIndexingStatus", "indexingStatusesForSubgraphName") => {
-                self.resolve_indexing_statuses_for_subgraph_name(arguments)
+                self.resolve_indexing_statuses_for_subgraph_name(field)
             }
 
             // Resolve fields of `Object` values (e.g. the `chains` field of `ChainIndexingStatus`)
@@ -448,26 +439,23 @@ where
     fn resolve_object(
         &self,
         prefetched_object: Option<r::Value>,
-        field: &q::Field,
+        field: &a::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
-        arguments: &HashMap<&str, r::Value>,
     ) -> Result<r::Value, QueryExecutionError> {
         match (prefetched_object, field.name.as_str()) {
             // The top-level `indexingStatusForCurrentVersion` field
             (None, "indexingStatusForCurrentVersion") => {
-                self.resolve_indexing_status_for_version(arguments, true)
+                self.resolve_indexing_status_for_version(field, true)
             }
 
             // The top-level `indexingStatusForPendingVersion` field
             (None, "indexingStatusForPendingVersion") => {
-                self.resolve_indexing_status_for_version(arguments, false)
+                self.resolve_indexing_status_for_version(field, false)
             }
 
             // The top-level `indexingStatusForPendingVersion` field
-            (None, "subgraphFeatures") => {
-                graph::block_on(self.resolve_subgraph_features(arguments))
-            }
+            (None, "subgraphFeatures") => graph::block_on(self.resolve_subgraph_features(field)),
 
             // Resolve fields of `Object` values (e.g. the `latestBlock` field of `EthereumBlock`)
             (value, _) => Ok(value.unwrap_or(r::Value::Null)),

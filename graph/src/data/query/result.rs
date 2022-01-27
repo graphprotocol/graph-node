@@ -1,4 +1,5 @@
 use super::error::{QueryError, QueryExecutionError};
+use crate::data::value::Object;
 use crate::prelude::{r, CacheWeight, DeploymentHash};
 use http::header::{
     ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
@@ -6,7 +7,6 @@ use http::header::{
 };
 use serde::ser::*;
 use serde::Serialize;
-use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::sync::Arc;
 
@@ -39,7 +39,7 @@ where
     ser.end()
 }
 
-pub type Data = BTreeMap<String, r::Value>;
+pub type Data = Object;
 
 #[derive(Debug)]
 /// A collection of query results that is serialized as a single result.
@@ -163,6 +163,10 @@ impl QueryResults {
             .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, User-Agent")
             .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS, POST")
             .header(CONTENT_TYPE, "application/json")
+            .header(
+                "Graph-Attestable",
+                self.results.iter().all(|r| r.is_attestable()).to_string(),
+            )
             .body(T::from(json))
             .unwrap()
     }
@@ -209,6 +213,10 @@ impl QueryResult {
 
     pub fn has_data(&self) -> bool {
         self.data.is_some()
+    }
+
+    pub fn is_attestable(&self) -> bool {
+        self.errors.iter().all(|err| err.is_attestable())
     }
 
     pub fn to_result(self) -> Result<Option<r::Value>, Vec<QueryError>> {
@@ -262,8 +270,8 @@ impl From<Vec<QueryExecutionError>> for QueryResult {
     }
 }
 
-impl From<Data> for QueryResult {
-    fn from(val: Data) -> Self {
+impl From<Object> for QueryResult {
+    fn from(val: Object) -> Self {
         QueryResult::new(val)
     }
 }
@@ -301,7 +309,7 @@ fn multiple_data_items() {
     use serde_json::json;
 
     fn make_obj(key: &str, value: &str) -> Arc<QueryResult> {
-        let mut map = BTreeMap::new();
+        let mut map = Object::new();
         map.insert(key.to_owned(), r::Value::String(value.to_owned()));
         Arc::new(map.into())
     }

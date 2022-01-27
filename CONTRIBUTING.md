@@ -48,9 +48,49 @@ This will watch your source directory and continuously do the following on chang
 The tests can (and should) be run against a sharded store. See [store/test-store/README.md](./store/test-store/README.md) for
 detailed instructions about how to run the sharded integrations tests.
 
-## Commit messages
+## Commit messages and pull requests
 
 We use the following format for commit messages:
 `{crate-name}: {Brief description of changes}`, for example: `store: Support 'Or' filters`.
 
-If multiple crates are being changed list them all like this: `core, graphql, mock, runtime, postgres-diesel: Add event source to store`
+If multiple crates are being changed list them all like this: `core,
+graphql: Add event source to store` If all (or most) crates are affected
+by the commit, start the message with `all: `.
+
+The body of the message can be terse, with just enough information to
+explain what the commit does overall. In a lot of cases, more extensive
+explanations of _how_ the commit achieves its goal are better as comments
+in the code.
+
+Commits in a pull request should be structured in such a way that each
+commit consists of a small logical step towards the overall goal of the
+pull request. Your pull request should make it as easy as possible for the
+reviewer to follow each change you are making. For example, it is a good
+idea to separate simple mechanical changes like renaming a method that
+touches many files from logic changes. Your pull request should not be
+structured into commits according to how you implemented your feature,
+often indicated by commit messages like 'Fix problem' or 'Cleanup'. Flex a
+bit, and make the world think that you implemented your feature perfectly,
+in small logical steps, in one sitting without ever having to touch up
+something you did earlier in the pull request. (In reality, that means
+you'll use `git rebase -i` a lot)
+
+Please do not merge master into your branch as you develop your pull
+request; instead, rebase your branch on top of the latest master if your
+pull request branch is long-lived.
+
+We try to keep the hostory of the `master` branch linear, and avoid merge
+commits. Once your pull request is approved, merge it following these
+steps:
+```
+git checkout master
+git pull master
+git rebase master my/branch
+git push -f
+git checkout master
+git merge my/branch
+git push
+```
+
+Allegedly, clicking on the `Rebase and merge` button in the Github UI has
+the same effect.

@@ -1,12 +1,16 @@
+use std::sync::Arc;
+
 use graphql_parser;
 
 use graph::data::graphql::ext::DocumentExt;
 use graph::data::graphql::ext::ObjectTypeExt;
 use graph::data::schema::{ApiSchema, Schema};
 use graph::data::subgraph::DeploymentHash;
-use graph::prelude::s::{Document, ObjectType};
+use graph::prelude::s::Document;
 
 use lazy_static::lazy_static;
+
+use crate::schema::ast as sast;
 
 const INTROSPECTION_SCHEMA: &str = "
 scalar Boolean
@@ -117,8 +121,12 @@ enum __DirectiveLocation {
 lazy_static! {
     pub static ref INTROSPECTION_DOCUMENT: Document =
         graphql_parser::parse_schema(INTROSPECTION_SCHEMA).unwrap();
-    pub static ref INTROSPECTION_QUERY_TYPE: &'static ObjectType =
-        INTROSPECTION_DOCUMENT.get_root_query_type().unwrap();
+    pub static ref INTROSPECTION_QUERY_TYPE: sast::ObjectType = sast::ObjectType::from(Arc::new(
+        INTROSPECTION_DOCUMENT
+            .get_root_query_type()
+            .unwrap()
+            .clone()
+    ));
 }
 
 pub fn introspection_schema(id: DeploymentHash) -> ApiSchema {

@@ -1,19 +1,142 @@
-use graph::prelude::SubgraphStore;
+use async_trait::async_trait;
+use graph::blockchain::BlockPtr;
+use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
+use graph::prelude::{Schema, StopwatchMetrics, StoreError};
 use lazy_static::lazy_static;
-use slog::{o, Logger};
+use slog::Logger;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use graph::{components::store::EntityType, mock::MockStore};
+use graph::components::store::{EntityType, StoredDynamicDataSource, WritableStore};
 use graph::{
     components::store::{DeploymentId, DeploymentLocator},
-    prelude::{DeploymentHash, Entity, EntityCache, EntityKey, EntityModification, Value},
+    prelude::{anyhow, DeploymentHash, Entity, EntityCache, EntityKey, EntityModification, Value},
 };
 
 lazy_static! {
     static ref SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("entity_cache").unwrap();
     static ref DEPLOYMENT: DeploymentLocator =
         DeploymentLocator::new(DeploymentId::new(-12), SUBGRAPH_ID.clone());
+    static ref SCHEMA: Arc<Schema> = Arc::new(
+        Schema::parse(
+            "
+            type Band @entity {
+                id: ID!
+                name: String!
+                founded: Int
+                label: String
+            }
+            ",
+            SUBGRAPH_ID.clone(),
+        )
+        .expect("Test schema invalid")
+    );
+}
+
+struct MockStore {
+    get_many_res: BTreeMap<EntityType, Vec<Entity>>,
+}
+
+impl MockStore {
+    fn new(get_many_res: BTreeMap<EntityType, Vec<Entity>>) -> Self {
+        Self { get_many_res }
+    }
+}
+
+// The store trait must be implemented manually because mockall does not support async_trait, nor borrowing from arguments.
+#[async_trait]
+impl WritableStore for MockStore {
+    fn block_ptr(&self) -> Option<BlockPtr> {
+        unimplemented!()
+    }
+
+    fn block_cursor(&self) -> Option<String> {
+        unimplemented!()
+    }
+
+    fn start_subgraph_deployment(&self, _: &Logger) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn revert_block_operations(&self, _: BlockPtr, _: Option<&str>) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn unfail_deterministic_error(&self, _: &BlockPtr, _: &BlockPtr) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn unfail_non_deterministic_error(&self, _: &BlockPtr) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    async fn fail_subgraph(&self, _: SubgraphError) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError> {
+        unimplemented!()
+    }
+
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+        match self.get_many_res.get(&key.entity_type) {
+            Some(entities) => Ok(entities
+                .iter()
+                .find(|entity| entity.id().ok().as_ref() == Some(&key.entity_id))
+                .cloned()),
+            None => Err(StoreError::Unknown(anyhow!(
+                "nothing for type {}",
+                key.entity_type
+            ))),
+        }
+    }
+
+    fn transact_block_operations(
+        &self,
+        _: BlockPtr,
+        _: Option<String>,
+        _: Vec<EntityModification>,
+        _: StopwatchMetrics,
+        _: Vec<StoredDynamicDataSource>,
+        _: Vec<SubgraphError>,
+    ) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn get_many(
+        &self,
+        _ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+        Ok(self.get_many_res.clone())
+    }
+
+    async fn is_deployment_synced(&self) -> Result<bool, StoreError> {
+        unimplemented!()
+    }
+
+    fn unassign_subgraph(&self) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    async fn load_dynamic_data_sources(&self) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
+        unimplemented!()
+    }
+
+    fn deployment_synced(&self) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    fn shard(&self) -> &str {
+        unimplemented!()
+    }
+
+    async fn health(&self, _: &DeploymentHash) -> Result<SubgraphHealth, StoreError> {
+        unimplemented!()
+    }
+
+    fn input_schema(&self) -> Arc<Schema> {
+        SCHEMA.clone()
+    }
 }
 
 fn make_band(id: &'static str, data: Vec<(&str, Value)>) -> (EntityKey, Entity) {
@@ -30,11 +153,7 @@ fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModificati
 
 #[tokio::test]
 async fn empty_cache_modifications() {
-    let logger = Logger::root(slog::Discard, o!());
-    let store = Arc::new(MockStore::new())
-        .writable(logger, DEPLOYMENT.id)
-        .await
-        .unwrap();
+    let store = Arc::new(MockStore::new(BTreeMap::new()));
     let cache = EntityCache::new(store.clone());
     let result = cache.as_modifications();
     assert_eq!(result.unwrap().modifications, vec![]);
@@ -42,13 +161,9 @@ async fn empty_cache_modifications() {
 
 #[test]
 fn insert_modifications() {
-    let mut store = MockStore::new();
-
     // Return no entities from the store, forcing the cache to treat any `set`
     // operation as an insert.
-    store
-        .expect_get_many_mock()
-        .returning(|_| Ok(BTreeMap::new()));
+    let store = MockStore::new(BTreeMap::new());
 
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store.clone());
@@ -57,13 +172,15 @@ fn insert_modifications() {
         "mogwai",
         vec![("id", "mogwai".into()), ("name", "Mogwai".into())],
     );
-    cache.set(mogwai_key.clone(), mogwai_data.clone());
+    cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
 
     let (sigurros_key, sigurros_data) = make_band(
         "sigurros",
         vec![("id", "sigurros".into()), ("name", "Sigur Ros".into())],
     );
-    cache.set(sigurros_key.clone(), sigurros_data.clone());
+    cache
+        .set(sigurros_key.clone(), sigurros_data.clone())
+        .unwrap();
 
     let result = cache.as_modifications();
     assert_eq!(
@@ -81,33 +198,34 @@ fn insert_modifications() {
     );
 }
 
+fn entity_version_map(
+    entity_type: &str,
+    entities: Vec<Entity>,
+) -> BTreeMap<EntityType, Vec<Entity>> {
+    let mut map = BTreeMap::new();
+    map.insert(EntityType::from(entity_type), entities);
+    map
+}
+
 #[test]
 fn overwrite_modifications() {
-    let mut store = MockStore::new();
-
     // Pre-populate the store with entities so that the cache treats
     // every set operation as an overwrite.
-    store.expect_get_many_mock().returning(|_| {
-        let mut map = BTreeMap::new();
-
-        map.insert(
-            EntityType::from("Band"),
-            vec![
-                make_band(
-                    "mogwai",
-                    vec![("id", "mogwai".into()), ("name", "Mogwai".into())],
-                )
-                .1,
-                make_band(
-                    "sigurros",
-                    vec![("id", "sigurros".into()), ("name", "Sigur Ros".into())],
-                )
-                .1,
-            ],
-        );
-
-        Ok(map)
-    });
+    let store = {
+        let entities = vec![
+            make_band(
+                "mogwai",
+                vec![("id", "mogwai".into()), ("name", "Mogwai".into())],
+            )
+            .1,
+            make_band(
+                "sigurros",
+                vec![("id", "sigurros".into()), ("name", "Sigur Ros".into())],
+            )
+            .1,
+        ];
+        MockStore::new(entity_version_map("Band", entities))
+    };
 
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store.clone());
@@ -120,7 +238,7 @@ fn overwrite_modifications() {
             ("founded", 1995.into()),
         ],
     );
-    cache.set(mogwai_key.clone(), mogwai_data.clone());
+    cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
 
     let (sigurros_key, sigurros_data) = make_band(
         "sigurros",
@@ -130,7 +248,9 @@ fn overwrite_modifications() {
             ("founded", 1994.into()),
         ],
     );
-    cache.set(sigurros_key.clone(), sigurros_data.clone());
+    cache
+        .set(sigurros_key.clone(), sigurros_data.clone())
+        .unwrap();
 
     let result = cache.as_modifications();
     assert_eq!(
@@ -150,30 +270,23 @@ fn overwrite_modifications() {
 
 #[test]
 fn consecutive_modifications() {
-    let mut store = MockStore::new();
-
     // Pre-populate the store with data so that we can test setting a field to
     // `Value::Null`.
-    store.expect_get_many_mock().returning(|_| {
-        let mut map = BTreeMap::new();
+    let store = {
+        let entities = vec![
+            make_band(
+                "mogwai",
+                vec![
+                    ("id", "mogwai".into()),
+                    ("name", "Mogwai".into()),
+                    ("label", "Chemikal Underground".into()),
+                ],
+            )
+            .1,
+        ];
 
-        map.insert(
-            EntityType::from("Band"),
-            vec![
-                make_band(
-                    "mogwai",
-                    vec![
-                        ("id", "mogwai".into()),
-                        ("name", "Mogwai".into()),
-                        ("label", "Chemikal Underground".into()),
-                    ],
-                )
-                .1,
-            ],
-        );
-
-        Ok(map)
-    });
+        MockStore::new(entity_version_map("Band", entities))
+    };
 
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store.clone());
@@ -187,14 +300,14 @@ fn consecutive_modifications() {
             ("label", "Rock Action Records".into()),
         ],
     );
-    cache.set(update_key.clone(), update_data.clone());
+    cache.set(update_key.clone(), update_data.clone()).unwrap();
 
     // Then, just reset the "label".
     let (update_key, update_data) = make_band(
         "mogwai",
         vec![("id", "mogwai".into()), ("label", Value::Null)],
     );
-    cache.set(update_key.clone(), update_data.clone());
+    cache.set(update_key.clone(), update_data.clone()).unwrap();
 
     // We expect a single overwrite modification for the above that leaves "id"
     // and "name" untouched, sets "founded" and removes the "label" field.

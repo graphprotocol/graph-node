@@ -663,7 +663,7 @@ impl ToAscObj<AscBlockIDFlagEnum> for BlockIDKind {
             2 => AscBlockIDFlag::BlockIdFlagCommit,
             3 => AscBlockIDFlag::BlockIdFlagNil,
             _ => {
-                return Err(DeterministicHostError(anyhow::format_err!(
+                return Err(DeterministicHostError::from(anyhow!(
                     "Invalid direction value {}",
                     self.0
                 )))
@@ -691,7 +691,7 @@ impl ToAscObj<AscSignedMsgTypeEnum> for SignedMessageTypeKind {
             2 => AscSignedMsgType::SignedMsgTypePrecommit,
             3 => AscSignedMsgType::SignedMsgTypeProposal,
             _ => {
-                return Err(DeterministicHostError(anyhow!(
+                return Err(DeterministicHostError::from(anyhow!(
                     "Invalid direction value {}",
                     self.0
                 )))
@@ -735,7 +735,7 @@ where
 
 /// Create an error for a missing field in a type.
 fn missing_field_error(type_name: &str, field_name: &str) -> DeterministicHostError {
-    DeterministicHostError(anyhow::anyhow!("{} missing {}", type_name, field_name))
+    DeterministicHostError::from(anyhow!("{} missing {}", type_name, field_name))
 }
 
 /// Map an optional object to its Asc equivalent if Some, otherwise return a missing field error.

@@ -136,7 +136,7 @@ where
         let logger = self.logger.clone();
 
         self.subscription_manager
-            .subscribe(vec![SubscriptionFilter::Assignment])
+            .subscribe(FromIterator::from_iter([SubscriptionFilter::Assignment]))
             .map_err(|()| anyhow!("Entity change stream failed"))
             .map(|event| {
                 // We're only interested in the SubgraphDeploymentAssignment change; we
@@ -424,7 +424,7 @@ async fn start_subgraph(
     trace!(logger, "Start subgraph");
 
     let start_time = Instant::now();
-    let result = provider.start(deployment.clone()).await;
+    let result = provider.start(deployment.clone(), None).await;
 
     debug!(
         logger,

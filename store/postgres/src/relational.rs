@@ -9,6 +9,7 @@
 use diesel::{connection::SimpleConnection, Connection};
 use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
 use graph::cheap_clone::CheapClone;
+use graph::data::graphql::TypeExt as _;
 use graph::prelude::{q, s, StopwatchMetrics};
 use graph::slog::warn;
 use inflector::Inflector;
@@ -546,7 +547,7 @@ impl Layout {
             tables.push(self.table_for_entity(entity_type)?.as_ref());
         }
         let query = FindManyQuery {
-            namespace: &self.catalog.site.namespace,
+            _namespace: &self.catalog.site.namespace,
             ids_for_type,
             tables,
             block,
@@ -658,12 +659,18 @@ impl Layout {
                 }
                 query.load::<EntityData>(conn)
             })
-            .map_err(|e| {
-                QueryExecutionError::ResolveEntitiesError(format!(
+            .map_err(|e| match e {
+                diesel::result::Error::DatabaseError(
+                    diesel::result::DatabaseErrorKind::__Unknown,
+                    ref info,
+                ) if info.message().starts_with("syntax error in tsquery") => {
+                    QueryExecutionError::FulltextQueryInvalidSyntax(info.message().to_string())
+                }
+                _ => QueryExecutionError::ResolveEntitiesError(format!(
                     "{}, query = {:?}",
                     e,
                     debug_query(&query_clone).to_string()
-                ))
+                )),
             })?;
         log_query_timing(logger, &query_clone, start.elapsed(), values.len());
         values
@@ -1034,9 +1041,7 @@ impl Column {
     }
 
     pub fn is_list(&self) -> bool {
-        use graph_graphql::prelude::is_list as type_is_list;
-
-        type_is_list(&self.field_type)
+        self.field_type.is_list()
     }
 
     pub fn is_enum(&self) -> bool {

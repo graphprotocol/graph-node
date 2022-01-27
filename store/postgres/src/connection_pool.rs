@@ -503,8 +503,14 @@ impl ConnectionPool {
     /// # Panics
     ///
     /// If any errors happen during the migration, the process panics
-    pub fn setup(&self) {
-        self.get_ready().ok();
+    pub async fn setup(&self) {
+        let pool = self.clone();
+        graph::spawn_blocking_allow_panic(move || {
+            pool.get_ready().ok();
+        })
+        .await
+        // propagate panics
+        .unwrap();
     }
 
     pub(crate) async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {

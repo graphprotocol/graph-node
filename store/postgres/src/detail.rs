@@ -1,9 +1,12 @@
+// For git_testament_macros
+#![allow(unused_macros)]
+
 //! Queries to support the index node API
 use crate::primary::Site;
 use crate::{
     deployment::{
-        graph_node_versions, subgraph_deployment, subgraph_error, subgraph_manifest,
-        SubgraphHealth as HealthType,
+        get_fatal_error_id, graph_node_versions, subgraph_deployment, subgraph_error,
+        subgraph_manifest, SubgraphHealth as HealthType,
     },
     primary::DeploymentId,
 };
@@ -11,6 +14,7 @@ use diesel::pg::PgConnection;
 use diesel::prelude::{
     ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl, RunQueryDsl,
 };
+use diesel::OptionalExtension;
 use diesel_derives::Associations;
 use git_testament::{git_testament, git_testament_macros};
 use graph::{
@@ -80,12 +84,26 @@ pub(crate) struct ErrorDetail {
     pub block_range: (Bound<i32>, Bound<i32>),
 }
 
-pub(crate) fn error(conn: &PgConnection, error_id: &str) -> Result<ErrorDetail, StoreError> {
+fn error(conn: &PgConnection, error_id: &str) -> Result<Option<ErrorDetail>, StoreError> {
     use subgraph_error as e;
     e::table
         .filter(e::id.eq(error_id))
         .get_result(conn)
+        .optional()
         .map_err(StoreError::from)
+}
+
+pub(crate) fn fatal_error(
+    conn: &PgConnection,
+    deployment_id: &DeploymentHash,
+) -> Result<Option<ErrorDetail>, StoreError> {
+    let fatal_error_id = match get_fatal_error_id(conn, deployment_id)? {
+        Some(fatal_error_id) => fatal_error_id,
+        // No fatal error found.
+        None => return Ok(None),
+    };
+
+    error(conn, &fatal_error_id)
 }
 
 struct DetailAndError<'a>(DeploymentDetail, Option<ErrorDetail>, &'a Vec<Arc<Site>>);

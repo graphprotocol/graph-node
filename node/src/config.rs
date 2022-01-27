@@ -1,16 +1,21 @@
 use graph::{
-    blockchain::{block_ingestor::CLEANUP_BLOCKS, BlockchainKind},
+    anyhow::Error,
+    blockchain::BlockchainKind,
     prelude::{
         anyhow::{anyhow, bail, Context, Result},
-        info, serde_json, Logger, NodeId,
+        info,
+        serde::{
+            de::{self, value, SeqAccess, Visitor},
+            Deserialize, Deserializer, Serialize,
+        },
+        serde_json, Logger, NodeId, StoreError,
     },
 };
-use graph_chain_ethereum::NodeCapabilities;
+use graph_chain_ethereum::{NodeCapabilities, CLEANUP_BLOCKS};
 use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
 use http::{HeaderMap, Uri};
 use regex::Regex;
-use serde::{Deserialize, Serialize};
 use std::fs::read_to_string;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -109,12 +114,10 @@ impl Config {
 
         // Check that deployment rules only reference existing stores and chains
         for (i, rule) in self.deployment.rules.iter().enumerate() {
-            if !self.stores.contains_key(&rule.shard) {
-                return Err(anyhow!(
-                    "unknown shard {} in deployment rule {}",
-                    rule.shard,
-                    i
-                ));
+            for shard in &rule.shards {
+                if !self.stores.contains_key(shard) {
+                    return Err(anyhow!("unknown shard {} in deployment rule {}", shard, i));
+                }
             }
             if let Some(networks) = &rule.pred.network {
                 for network in networks.to_vec() {
@@ -798,14 +801,18 @@ impl Deployment {
 }
 
 impl DeploymentPlacer for Deployment {
-    fn place(&self, name: &str, network: &str) -> Result<Option<(ShardName, Vec<NodeId>)>, String> {
+    fn place(
+        &self,
+        name: &str,
+        network: &str,
+    ) -> Result<Option<(Vec<ShardName>, Vec<NodeId>)>, String> {
         // Errors here are really programming errors. We should have validated
         // everything already so that the various conversions can't fail. We
         // still return errors so that they bubble up to the deployment request
         // rather than crashing the node and burying the crash in the logs
         let placement = match self.rules.iter().find(|rule| rule.matches(name, network)) {
             Some(rule) => {
-                let shard = ShardName::new(rule.shard.clone()).map_err(|e| e.to_string())?;
+                let shards = rule.shard_names().map_err(|e| e.to_string())?;
                 let indexers: Vec<_> = rule
                     .indexers
                     .iter()
@@ -814,7 +821,7 @@ impl DeploymentPlacer for Deployment {
                             .map_err(|()| format!("{} is not a valid node name", idx))
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                Some((shard, indexers))
+                Some((shards, indexers))
             }
             None => None,
         };
@@ -826,8 +833,13 @@ impl DeploymentPlacer for Deployment {
 struct Rule {
     #[serde(rename = "match", default)]
     pred: Predicate,
-    #[serde(default = "primary_store")]
-    shard: String,
+    // For backwards compatibility, we also accept 'shard' for the shards
+    #[serde(
+        alias = "shard",
+        default = "primary_store",
+        deserialize_with = "string_or_vec"
+    )]
+    shards: Vec<String>,
     indexers: Vec<String>,
 }
 
@@ -840,6 +852,14 @@ impl Rule {
         self.pred.matches(name, network)
     }
 
+    fn shard_names(&self) -> Result<Vec<ShardName>, StoreError> {
+        self.shards
+            .iter()
+            .cloned()
+            .map(ShardName::new)
+            .collect::<Result<_, _>>()
+    }
+
     fn validate(&self) -> Result<()> {
         if self.indexers.is_empty() {
             return Err(anyhow!("useless rule without indexers"));
@@ -847,8 +867,7 @@ impl Rule {
         for indexer in &self.indexers {
             NodeId::new(indexer).map_err(|()| anyhow!("invalid node id {}", &indexer))?;
         }
-        ShardName::new(self.shard.clone())
-            .map_err(|e| anyhow!("illegal name for store shard `{}`: {}", &self.shard, e))?;
+        self.shard_names().map_err(Error::from)?;
         Ok(())
     }
 }
@@ -939,12 +958,44 @@ fn no_name() -> Regex {
     Regex::new(NO_NAME).unwrap()
 }
 
-fn primary_store() -> String {
-    PRIMARY_SHARD.to_string()
+fn primary_store() -> Vec<String> {
+    vec![PRIMARY_SHARD.to_string()]
 }
 
 fn one() -> usize {
     1
+}
+
+// From https://github.com/serde-rs/serde/issues/889#issuecomment-295988865
+fn string_or_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct StringOrVec;
+
+    impl<'de> Visitor<'de> for StringOrVec {
+        type Value = Vec<String>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("string or list of strings")
+        }
+
+        fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(vec![s.to_owned()])
+        }
+
+        fn visit_seq<S>(self, seq: S) -> Result<Self::Value, S::Error>
+        where
+            S: SeqAccess<'de>,
+        {
+            Deserialize::deserialize(value::SeqAccessDeserializer::new(seq))
+        }
+    }
+
+    deserializer.deserialize_any(StringOrVec)
 }
 
 #[cfg(test)]
