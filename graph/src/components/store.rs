@@ -1037,7 +1037,11 @@ pub trait WritableStore: Send + Sync + 'static {
     /// subgraph block pointer to `block_ptr_to`.
     ///
     /// `block_ptr_to` must point to the parent block of the subgraph block pointer.
-    fn revert_block_operations(&self, block_ptr_to: BlockPtr) -> Result<(), StoreError>;
+    fn revert_block_operations(
+        &self,
+        block_ptr_to: BlockPtr,
+        firehose_cursor: Option<&str>,
+    ) -> Result<(), StoreError>;
 
     /// If a deterministic error happened, this function reverts the block operations from the
     /// current block to the previous block.
@@ -1169,6 +1173,9 @@ pub trait ChainStore: Send + Sync + 'static {
     ///
     /// The head block pointer will be None on initial set up.
     fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
+
+    /// In-memory time cached version of `chain_head_ptr`.
+    fn cached_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 
     /// Get the current head block cursor for this chain.
     ///
@@ -1706,12 +1713,11 @@ impl AttributeNames {
         }
     }
 
-    /// Adds a attribute name. Ignores meta fields.
-    pub fn add(&mut self, field: &q::Field) {
-        if Self::is_meta_field(&field.name) {
+    pub fn update(&mut self, field_name: &str) {
+        if Self::is_meta_field(field_name) {
             return;
         }
-        self.insert(&field.name)
+        self.insert(&field_name)
     }
 
     /// Adds a attribute name. Ignores meta fields.

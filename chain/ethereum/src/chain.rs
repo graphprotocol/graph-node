@@ -232,7 +232,6 @@ impl Blockchain for Chain {
     async fn new_polling_block_stream(
         &self,
         deployment: DeploymentLocator,
-        writable: Arc<dyn WritableStore>,
         start_blocks: Vec<BlockNumber>,
         subgraph_start_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
@@ -272,7 +271,6 @@ impl Blockchain for Chain {
         };
 
         Ok(Box::new(PollingBlockStream::new(
-            writable,
             chain_store,
             chain_head_update_stream,
             adapter,
@@ -575,8 +573,8 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 
                 Ok(BlockStreamEvent::Revert(
                     block.ptr(),
+                    parent_ptr,
                     FirehoseCursor::Some(response.cursor.clone()),
-                    Some(parent_ptr),
                 ))
             }
 

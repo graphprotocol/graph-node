@@ -1,13 +1,13 @@
+use crate::data::value::Object;
 use crate::prelude::q;
 use crate::prelude::r;
-use std::collections::BTreeMap;
 use std::iter::FromIterator;
 
 /// Creates a `graphql_parser::query::Value::Object` from key/value pairs.
 /// If you don't need to determine which keys are included dynamically at runtime
 /// consider using the `object! {}` macro instead.
 pub fn object_value(data: Vec<(&str, r::Value)>) -> r::Value {
-    r::Value::Object(BTreeMap::from_iter(
+    r::Value::Object(Object::from_iter(
         data.into_iter().map(|(k, v)| (k.to_string(), v)),
     ))
 }
@@ -83,12 +83,12 @@ macro_rules! impl_into_values {
 
 impl_into_values![(String, String), (f64, Float), (bool, Boolean)];
 
-/// Creates a `graphql_parser::query::Value::Object` from key/value pairs.
+/// Creates a `data::value::Value::Object` from key/value pairs.
 #[macro_export]
 macro_rules! object {
     ($($name:ident: $value:expr,)*) => {
         {
-            let mut result = ::std::collections::BTreeMap::new();
+            let mut result = $crate::data::value::Object::new();
             $(
                 let value = $crate::data::graphql::object_macro::IntoValue::into_value($value);
                 result.insert(stringify!($name).to_string(), value);

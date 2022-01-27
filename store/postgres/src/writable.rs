@@ -163,11 +163,17 @@ impl WritableStore {
         })
     }
 
-    fn revert_block_operations(&self, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
+    fn revert_block_operations(
+        &self,
+        block_ptr_to: BlockPtr,
+        firehose_cursor: Option<&str>,
+    ) -> Result<(), StoreError> {
         self.retry("revert_block_operations", || {
-            let event = self
-                .writable
-                .revert_block_operations(self.site.clone(), block_ptr_to.clone())?;
+            let event = self.writable.revert_block_operations(
+                self.site.clone(),
+                block_ptr_to.clone(),
+                firehose_cursor.clone(),
+            )?;
             self.try_send_store_event(event)
         })
     }
@@ -363,13 +369,16 @@ impl WritableStoreTrait for WritableAgent {
         self.store.start_subgraph_deployment(logger)
     }
 
-    fn revert_block_operations(&self, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
+    fn revert_block_operations(
+        &self,
+        block_ptr_to: BlockPtr,
+        firehose_cursor: Option<&str>,
+    ) -> Result<(), StoreError> {
         *self.block_ptr.lock().unwrap() = Some(block_ptr_to.clone());
-        // FIXME: What about the firehose cursor? Why doesn't that get updated?
-
         // TODO: If we haven't written the block yet, revert in memory. If
         // we have, revert in the database
-        self.store.revert_block_operations(block_ptr_to)
+        self.store
+            .revert_block_operations(block_ptr_to, firehose_cursor)
     }
 
     fn unfail_deterministic_error(

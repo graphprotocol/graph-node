@@ -1,19 +1,16 @@
 use super::cache::{QueryBlockCache, QueryCache};
 use crossbeam::atomic::AtomicCell;
 use graph::{
-    data::schema::META_FIELD_NAME,
+    data::{schema::META_FIELD_NAME, value::Object},
     prelude::{s, CheapClone},
     util::timed_rw_lock::TimedMutex,
 };
-use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use stable_hash::crypto::SetHasher;
 use stable_hash::prelude::*;
 use stable_hash::utils::stable_hash;
-use std::borrow::ToOwned;
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::iter;
 use std::time::Instant;
+use std::{borrow::ToOwned, collections::HashSet};
 
 use graph::data::graphql::*;
 use graph::data::query::CacheStatus;
@@ -21,13 +18,10 @@ use graph::prelude::*;
 use graph::util::lfu_cache::LfuCache;
 
 use super::QueryHash;
-use crate::introspection::{
-    is_introspection_field, INTROSPECTION_DOCUMENT, INTROSPECTION_QUERY_TYPE,
-};
+use crate::execution::ast as a;
+use crate::introspection::{is_introspection_field, INTROSPECTION_QUERY_TYPE};
 use crate::prelude::*;
-use crate::query::ast as qast;
 use crate::schema::ast as sast;
-use crate::values::coercion;
 
 lazy_static! {
     // Comma separated subgraph ids to cache queries for.
@@ -128,7 +122,7 @@ impl CacheWeight for WeightedResult {
 impl Default for WeightedResult {
     fn default() -> Self {
         WeightedResult {
-            result: Arc::new(QueryResult::new(BTreeMap::default())),
+            result: Arc::new(QueryResult::new(Object::default())),
             weight: 0,
         }
     }
@@ -136,9 +130,7 @@ impl Default for WeightedResult {
 
 struct HashableQuery<'a> {
     query_schema_id: &'a DeploymentHash,
-    query_variables: &'a HashMap<String, r::Value>,
-    query_fragments: &'a HashMap<String, q::FragmentDefinition>,
-    selection_set: &'a q::SelectionSet,
+    selection_set: &'a a::SelectionSet,
     block_ptr: &'a BlockPtr,
 }
 
@@ -163,24 +155,8 @@ impl StableHash for HashableQuery<'_> {
         self.query_schema_id
             .stable_hash(sequence_number.next_child(), state);
 
-        // Not stable! Uses to_string()
-        self.query_variables
-            .iter()
-            .map(|(k, v)| (k, v.to_string()))
-            .collect::<HashMap<_, _>>()
-            .stable_hash(sequence_number.next_child(), state);
-
-        // Not stable! Uses to_string()
-        self.query_fragments
-            .iter()
-            .map(|(k, v)| (k, v.to_string()))
-            .collect::<HashMap<_, _>>()
-            .stable_hash(sequence_number.next_child(), state);
-
         // Not stable! Uses to_string
-        self.selection_set
-            .to_string()
-            .stable_hash(sequence_number.next_child(), state);
+        format!("{:?}", self.selection_set).stable_hash(sequence_number.next_child(), state);
 
         self.block_ptr
             .stable_hash(sequence_number.next_child(), state);
@@ -190,15 +166,13 @@ impl StableHash for HashableQuery<'_> {
 // The key is: subgraph id + selection set + variables + fragment definitions
 fn cache_key(
     ctx: &ExecutionContext<impl Resolver>,
-    selection_set: &q::SelectionSet,
+    selection_set: &a::SelectionSet,
     block_ptr: &BlockPtr,
 ) -> QueryHash {
     // It is very important that all data used for the query is included.
     // Otherwise, incorrect results may be returned.
     let query = HashableQuery {
         query_schema_id: ctx.query.schema.id(),
-        query_variables: &ctx.query.variables,
-        query_fragments: &ctx.query.fragments,
         selection_set,
         block_ptr,
     };
@@ -232,35 +206,15 @@ where
     pub(crate) cache_status: AtomicCell<CacheStatus>,
 }
 
-// Helpers to look for types and fields on both the introspection and regular schemas.
-pub(crate) fn get_named_type(schema: &s::Document, name: &str) -> Option<s::TypeDefinition> {
-    if name.starts_with("__") {
-        INTROSPECTION_DOCUMENT.get_named_type(name).cloned()
-    } else {
-        schema.get_named_type(name).cloned()
-    }
-}
-
 pub(crate) fn get_field<'a>(
     object_type: impl Into<ObjectOrInterface<'a>>,
     name: &str,
 ) -> Option<s::Field> {
     if name == "__schema" || name == "__type" {
-        let object_type = *INTROSPECTION_QUERY_TYPE;
+        let object_type = &*INTROSPECTION_QUERY_TYPE;
         sast::get_field(object_type, name).cloned()
     } else {
         sast::get_field(object_type, name).cloned()
-    }
-}
-
-pub(crate) fn object_or_interface<'a>(
-    schema: &'a s::Document,
-    name: &str,
-) -> Option<ObjectOrInterface<'a>> {
-    if name.starts_with("__") {
-        INTROSPECTION_DOCUMENT.object_or_interface(name)
-    } else {
-        schema.object_or_interface(name)
     }
 }
 
@@ -275,7 +229,7 @@ where
         ExecutionContext {
             logger: self.logger.cheap_clone(),
             resolver: introspection_resolver,
-            query: self.query.as_introspection_query(),
+            query: self.query.cheap_clone(),
             deadline: self.deadline,
             max_first: std::u32::MAX,
             max_skip: std::u32::MAX,
@@ -286,54 +240,46 @@ where
     }
 }
 
-pub fn execute_root_selection_set_uncached(
+pub(crate) fn execute_root_selection_set_uncached(
     ctx: &ExecutionContext<impl Resolver>,
-    selection_set: &q::SelectionSet,
-    root_type: &s::ObjectType,
-) -> Result<BTreeMap<String, r::Value>, Vec<QueryExecutionError>> {
+    selection_set: &a::SelectionSet,
+    root_type: &sast::ObjectType,
+) -> Result<Object, Vec<QueryExecutionError>> {
     // Split the top-level fields into introspection fields and
     // regular data fields
-    let mut data_set = q::SelectionSet {
-        span: selection_set.span,
-        items: Vec::new(),
-    };
-    let mut intro_set = q::SelectionSet {
-        span: selection_set.span,
-        items: Vec::new(),
-    };
+    let mut data_set = a::SelectionSet::empty_from(selection_set);
+    let mut intro_set = a::SelectionSet::empty_from(selection_set);
     let mut meta_items = Vec::new();
 
-    for (_, fields) in collect_fields(ctx, root_type, iter::once(selection_set)) {
-        let name = fields[0].name.clone();
-        let selections = fields.into_iter().map(|f| q::Selection::Field(f.clone()));
+    for field in selection_set.fields_for(root_type)? {
         // See if this is an introspection or data field. We don't worry about
         // non-existent fields; those will cause an error later when we execute
         // the data_set SelectionSet
-        if is_introspection_field(&name) {
-            intro_set.items.extend(selections)
-        } else if &name == META_FIELD_NAME {
-            meta_items.extend(selections)
+        if is_introspection_field(&field.name) {
+            intro_set.push(field)?
+        } else if &field.name == META_FIELD_NAME {
+            meta_items.push(field)
         } else {
-            data_set.items.extend(selections)
+            data_set.push(field)?
         }
     }
 
     // If we are getting regular data, prefetch it from the database
-    let mut values = if data_set.items.is_empty() && meta_items.is_empty() {
-        BTreeMap::default()
+    let mut values = if data_set.is_empty() && meta_items.is_empty() {
+        Object::default()
     } else {
         let initial_data = ctx.resolver.prefetch(&ctx, &data_set)?;
-        data_set.items.extend(meta_items);
-        execute_selection_set_to_map(&ctx, iter::once(&data_set), root_type, initial_data)?
+        data_set.push_fields(meta_items)?;
+        execute_selection_set_to_map(&ctx, &data_set, root_type, initial_data)?
     };
 
     // Resolve introspection fields, if there are any
-    if !intro_set.items.is_empty() {
+    if !intro_set.is_empty() {
         let ictx = ctx.as_introspection_context();
 
         values.extend(execute_selection_set_to_map(
             &ictx,
-            iter::once(&intro_set),
+            ctx.query.selection_set.as_ref(),
             &*INTROSPECTION_QUERY_TYPE,
             None,
         )?);
@@ -343,10 +289,10 @@ pub fn execute_root_selection_set_uncached(
 }
 
 /// Executes the root selection set of a query.
-pub async fn execute_root_selection_set<R: Resolver>(
+pub(crate) async fn execute_root_selection_set<R: Resolver>(
     ctx: Arc<ExecutionContext<R>>,
-    selection_set: Arc<q::SelectionSet>,
-    root_type: Arc<s::ObjectType>,
+    selection_set: Arc<a::SelectionSet>,
+    root_type: sast::ObjectType,
     block_ptr: Option<BlockPtr>,
 ) -> Arc<QueryResult> {
     // Cache the cache key to not have to calculate it twice - once for lookup
@@ -489,13 +435,13 @@ pub async fn execute_root_selection_set<R: Resolver>(
 /// Allows passing in a parent value during recursive processing of objects and their fields.
 fn execute_selection_set<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
-    selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
-    object_type: &s::ObjectType,
+    selection_set: &'a a::SelectionSet,
+    object_type: &sast::ObjectType,
     prefetched_value: Option<r::Value>,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     Ok(r::Value::Object(execute_selection_set_to_map(
         ctx,
-        selection_sets,
+        selection_set,
         object_type,
         prefetched_value,
     )?))
@@ -503,26 +449,23 @@ fn execute_selection_set<'a>(
 
 fn execute_selection_set_to_map<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
-    selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
-    object_type: &s::ObjectType,
+    selection_set: &'a a::SelectionSet,
+    object_type: &sast::ObjectType,
     prefetched_value: Option<r::Value>,
-) -> Result<BTreeMap<String, r::Value>, Vec<QueryExecutionError>> {
+) -> Result<Object, Vec<QueryExecutionError>> {
     let mut prefetched_object = match prefetched_value {
         Some(r::Value::Object(object)) => Some(object),
         Some(_) => unreachable!(),
         None => None,
     };
     let mut errors: Vec<QueryExecutionError> = Vec::new();
-    let mut result_map: BTreeMap<String, r::Value> = BTreeMap::new();
-
-    // Group fields with the same response key, so we can execute them together
-    let grouped_field_set = collect_fields(ctx, object_type, selection_sets);
+    let mut result_map = Object::new();
 
     // Gather fields that appear more than once with the same response key.
     let multiple_response_keys = {
         let mut multiple_response_keys = HashSet::new();
         let mut fields = HashSet::new();
-        for field in grouped_field_set.iter().map(|(_, f)| f.iter()).flatten() {
+        for field in selection_set.fields_for(object_type)? {
             if !fields.insert(field.name.as_str()) {
                 multiple_response_keys.insert(field.name.as_str());
             }
@@ -531,7 +474,7 @@ fn execute_selection_set_to_map<'a>(
     };
 
     // Process all field groups in order
-    for (response_key, fields) in grouped_field_set {
+    for field in selection_set.fields_for(object_type)? {
         match ctx.deadline {
             Some(deadline) if deadline < Instant::now() => {
                 errors.push(QueryExecutionError::Timeout);
@@ -540,8 +483,10 @@ fn execute_selection_set_to_map<'a>(
             _ => (),
         }
 
+        let response_key = field.response_key();
+
         // Unwrap: The query was validated to contain only valid fields.
-        let field = sast::get_field(object_type, &fields[0].name).unwrap();
+        let field_type = sast::get_field(object_type, &field.name).unwrap();
 
         // Check if we have the value already.
         let field_value = prefetched_object
@@ -554,13 +499,13 @@ fn execute_selection_set_to_map<'a>(
 
                 // Scalars and scalar lists are associated to the field name.
                 // If the field has more than one response key, we have to clone.
-                match multiple_response_keys.contains(fields[0].name.as_str()) {
-                    false => o.remove(&fields[0].name),
-                    true => o.get(&fields[0].name).cloned(),
+                match multiple_response_keys.contains(field.name.as_str()) {
+                    false => o.remove(&field.name),
+                    true => o.get(&field.name).cloned(),
                 }
             })
             .flatten();
-        match execute_field(&ctx, object_type, field_value, &fields[0], field, fields) {
+        match execute_field(&ctx, object_type, field_value, field, field_type) {
             Ok(v) => {
                 result_map.insert(response_key.to_owned(), v);
             }
@@ -577,144 +522,23 @@ fn execute_selection_set_to_map<'a>(
     }
 }
 
-/// Collects fields from selection sets. Returns a map from response key to fields. There will
-/// typically be a single field for a response key. If there are multiple, the overall execution
-/// logic will effectively merged them into the output for the response key.
-pub fn collect_fields<'a>(
-    ctx: &'a ExecutionContext<impl Resolver>,
-    object_type: &s::ObjectType,
-    selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
-) -> IndexMap<&'a str, Vec<&'a q::Field>> {
-    let mut grouped_fields = IndexMap::new();
-    collect_fields_inner(
-        ctx,
-        object_type,
-        selection_sets,
-        &mut HashSet::new(),
-        &mut grouped_fields,
-    );
-    grouped_fields
-}
-
-pub fn collect_fields_inner<'a>(
-    ctx: &'a ExecutionContext<impl Resolver>,
-    object_type: &s::ObjectType,
-    selection_sets: impl Iterator<Item = &'a q::SelectionSet>,
-    visited_fragments: &mut HashSet<&'a str>,
-    output: &mut IndexMap<&'a str, Vec<&'a q::Field>>,
-) {
-    for selection_set in selection_sets {
-        // Only consider selections that are not skipped and should be included
-        let selections = selection_set
-            .items
-            .iter()
-            .filter(|selection| !qast::skip_selection(selection, &ctx.query.variables))
-            .filter(|selection| qast::include_selection(selection, &ctx.query.variables));
-
-        for selection in selections {
-            match selection {
-                q::Selection::Field(ref field) => {
-                    let response_key = qast::get_response_key(field);
-                    output.entry(response_key).or_default().push(field);
-                }
-
-                q::Selection::FragmentSpread(spread) => {
-                    // Only consider the fragment if it hasn't already been included,
-                    // as would be the case if the same fragment spread ...Foo appeared
-                    // twice in the same selection set.
-                    //
-                    // Note: This will skip both duplicate fragments and will break cycles,
-                    // so we support fragments even though the GraphQL spec prohibits them.
-                    if visited_fragments.insert(&spread.fragment_name) {
-                        let fragment = ctx.query.get_fragment(&spread.fragment_name);
-                        if does_fragment_type_apply(ctx, object_type, &fragment.type_condition) {
-                            // We have a fragment that applies to the current object type,
-                            // collect fields recursively
-                            collect_fields_inner(
-                                ctx,
-                                object_type,
-                                iter::once(&fragment.selection_set),
-                                visited_fragments,
-                                output,
-                            );
-                        }
-                    }
-                }
-
-                q::Selection::InlineFragment(fragment) => {
-                    let applies = match &fragment.type_condition {
-                        Some(cond) => does_fragment_type_apply(ctx, object_type, &cond),
-                        None => true,
-                    };
-
-                    if applies {
-                        collect_fields_inner(
-                            ctx,
-                            object_type,
-                            iter::once(&fragment.selection_set),
-                            visited_fragments,
-                            output,
-                        )
-                    }
-                }
-            };
-        }
-    }
-}
-
-/// Determines whether a fragment is applicable to the given object type.
-fn does_fragment_type_apply(
-    ctx: &ExecutionContext<impl Resolver>,
-    object_type: &s::ObjectType,
-    fragment_type: &q::TypeCondition,
-) -> bool {
-    // This is safe to do, as TypeCondition only has a single `On` variant.
-    let q::TypeCondition::On(ref name) = fragment_type;
-
-    // Resolve the type the fragment applies to based on its name
-    let named_type = ctx.query.schema.document().get_named_type(name);
-
-    match named_type {
-        // The fragment applies to the object type if its type is the same object type
-        Some(s::TypeDefinition::Object(ot)) => object_type == ot,
-
-        // The fragment also applies to the object type if its type is an interface
-        // that the object type implements
-        Some(s::TypeDefinition::Interface(it)) => {
-            object_type.implements_interfaces.contains(&it.name)
-        }
-
-        // The fragment also applies to an object type if its type is a union that
-        // the object type is one of the possible types for
-        Some(s::TypeDefinition::Union(ut)) => ut.types.contains(&object_type.name),
-
-        // In all other cases, the fragment does not apply
-        _ => false,
-    }
-}
-
 /// Executes a field.
 fn execute_field(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     field_value: Option<r::Value>,
-    field: &q::Field,
+    field: &a::Field,
     field_definition: &s::Field,
-    fields: Vec<&q::Field>,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
-    coerce_argument_values(&ctx.query, object_type, field)
-        .and_then(|argument_values| {
-            resolve_field_value(
-                ctx,
-                object_type,
-                field_value,
-                field,
-                field_definition,
-                &field_definition.field_type,
-                &argument_values,
-            )
-        })
-        .and_then(|value| complete_value(ctx, field, &field_definition.field_type, &fields, value))
+    resolve_field_value(
+        ctx,
+        object_type,
+        field_value,
+        field,
+        field_definition,
+        &field_definition.field_type,
+    )
+    .and_then(|value| complete_value(ctx, field, &field_definition.field_type, value))
 }
 
 /// Resolves the value of a field.
@@ -722,10 +546,9 @@ fn resolve_field_value(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     field_value: Option<r::Value>,
-    field: &q::Field,
+    field: &a::Field,
     field_definition: &s::Field,
     field_type: &s::Type,
-    argument_values: &HashMap<&str, r::Value>,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     match field_type {
         s::Type::NonNullType(inner_type) => resolve_field_value(
@@ -735,7 +558,6 @@ fn resolve_field_value(
             field,
             field_definition,
             inner_type.as_ref(),
-            argument_values,
         ),
 
         s::Type::NamedType(ref name) => resolve_field_value_for_named_type(
@@ -745,7 +567,6 @@ fn resolve_field_value(
             field,
             field_definition,
             name,
-            argument_values,
         ),
 
         s::Type::ListType(inner_type) => resolve_field_value_for_list_type(
@@ -755,7 +576,6 @@ fn resolve_field_value(
             field,
             field_definition,
             inner_type.as_ref(),
-            argument_values,
         ),
     }
 }
@@ -765,27 +585,22 @@ fn resolve_field_value_for_named_type(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     field_value: Option<r::Value>,
-    field: &q::Field,
+    field: &a::Field,
     field_definition: &s::Field,
     type_name: &str,
-    argument_values: &HashMap<&str, r::Value>,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     // Try to resolve the type name into the actual type
     let named_type = ctx
         .query
         .schema
-        .document()
         .get_named_type(type_name)
         .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
     match named_type {
         // Let the resolver decide how the field (with the given object type) is resolved
-        s::TypeDefinition::Object(t) => ctx.resolver.resolve_object(
-            field_value,
-            field,
-            field_definition,
-            t.into(),
-            argument_values,
-        ),
+        s::TypeDefinition::Object(t) => {
+            ctx.resolver
+                .resolve_object(field_value, field, field_definition, t.into())
+        }
 
         // Let the resolver decide how values in the resolved object value
         // map to values of GraphQL enums
@@ -795,16 +610,13 @@ fn resolve_field_value_for_named_type(
         // map to values of GraphQL scalars
         s::TypeDefinition::Scalar(t) => {
             ctx.resolver
-                .resolve_scalar_value(object_type, field, t, field_value, argument_values)
+                .resolve_scalar_value(object_type, field, t, field_value)
         }
 
-        s::TypeDefinition::Interface(i) => ctx.resolver.resolve_object(
-            field_value,
-            field,
-            field_definition,
-            i.into(),
-            argument_values,
-        ),
+        s::TypeDefinition::Interface(i) => {
+            ctx.resolver
+                .resolve_object(field_value, field, field_definition, i.into())
+        }
 
         s::TypeDefinition::Union(_) => Err(QueryExecutionError::Unimplemented("unions".to_owned())),
 
@@ -818,10 +630,9 @@ fn resolve_field_value_for_list_type(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     field_value: Option<r::Value>,
-    field: &q::Field,
+    field: &a::Field,
     field_definition: &s::Field,
     inner_type: &s::Type,
-    argument_values: &HashMap<&str, r::Value>,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     match inner_type {
         s::Type::NonNullType(inner_type) => resolve_field_value_for_list_type(
@@ -831,14 +642,12 @@ fn resolve_field_value_for_list_type(
             field,
             field_definition,
             inner_type,
-            argument_values,
         ),
 
         s::Type::NamedType(ref type_name) => {
             let named_type = ctx
                 .query
                 .schema
-                .document()
                 .get_named_type(type_name)
                 .ok_or_else(|| QueryExecutionError::NamedTypeError(type_name.to_string()))?;
 
@@ -847,13 +656,7 @@ fn resolve_field_value_for_list_type(
                 // is resolved into a entities based on the (potential) parent object
                 s::TypeDefinition::Object(t) => ctx
                     .resolver
-                    .resolve_objects(
-                        field_value,
-                        field,
-                        field_definition,
-                        t.into(),
-                        argument_values,
-                    )
+                    .resolve_objects(field_value, field, field_definition, t.into())
                     .map_err(|e| vec![e]),
 
                 // Let the resolver decide how values in the resolved object value
@@ -870,13 +673,7 @@ fn resolve_field_value_for_list_type(
 
                 s::TypeDefinition::Interface(t) => ctx
                     .resolver
-                    .resolve_objects(
-                        field_value,
-                        field,
-                        field_definition,
-                        t.into(),
-                        argument_values,
-                    )
+                    .resolve_objects(field_value, field, field_definition, t.into())
                     .map_err(|e| vec![e]),
 
                 s::TypeDefinition::Union(_) => Err(vec![QueryExecutionError::Unimplemented(
@@ -899,15 +696,14 @@ fn resolve_field_value_for_list_type(
 /// Ensures that a value matches the expected return type.
 fn complete_value(
     ctx: &ExecutionContext<impl Resolver>,
-    field: &q::Field,
+    field: &a::Field,
     field_type: &s::Type,
-    fields: &Vec<&q::Field>,
     resolved_value: r::Value,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     match field_type {
         // Fail if the field type is non-null but the value is null
         s::Type::NonNullType(inner_type) => {
-            return match complete_value(ctx, field, inner_type, fields, resolved_value)? {
+            return match complete_value(ctx, field, inner_type, resolved_value)? {
                 r::Value::Null => Err(vec![QueryExecutionError::NonNullError(
                     field.position,
                     field.name.to_string(),
@@ -931,7 +727,7 @@ fn complete_value(
                     for value_place in &mut values {
                         // Put in a placeholder, complete the value, put the completed value back.
                         let value = std::mem::replace(value_place, r::Value::Null);
-                        match complete_value(ctx, field, inner_type, fields, value) {
+                        match complete_value(ctx, field, inner_type, value) {
                             Ok(value) => {
                                 *value_place = value;
                             }
@@ -953,7 +749,7 @@ fn complete_value(
         }
 
         s::Type::NamedType(name) => {
-            let named_type = ctx.query.schema.document().get_named_type(name).unwrap();
+            let named_type = ctx.query.schema.get_named_type(name).unwrap();
 
             match named_type {
                 // Complete scalar values
@@ -986,12 +782,15 @@ fn complete_value(
                 }
 
                 // Complete object types recursively
-                s::TypeDefinition::Object(object_type) => execute_selection_set(
-                    ctx,
-                    fields.iter().map(|f| &f.selection_set),
-                    object_type,
-                    Some(resolved_value),
-                ),
+                s::TypeDefinition::Object(object_type) => {
+                    let object_type = ctx.query.schema.object_type(object_type).into();
+                    execute_selection_set(
+                        ctx,
+                        &field.selection_set,
+                        &object_type,
+                        Some(resolved_value),
+                    )
+                }
 
                 // Resolve interface types using the resolved value and complete the value recursively
                 s::TypeDefinition::Interface(_) => {
@@ -999,8 +798,8 @@ fn complete_value(
 
                     execute_selection_set(
                         ctx,
-                        fields.iter().map(|f| &f.selection_set),
-                        object_type,
+                        &field.selection_set,
+                        &object_type,
                         Some(resolved_value),
                     )
                 }
@@ -1011,8 +810,8 @@ fn complete_value(
 
                     execute_selection_set(
                         ctx,
-                        fields.iter().map(|f| &f.selection_set),
-                        object_type,
+                        &field.selection_set,
+                        &object_type,
                         Some(resolved_value),
                     )
                 }
@@ -1030,53 +829,16 @@ fn resolve_abstract_type<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     abstract_type: &s::TypeDefinition,
     object_value: &r::Value,
-) -> Result<&'a s::ObjectType, Vec<QueryExecutionError>> {
+) -> Result<sast::ObjectType, Vec<QueryExecutionError>> {
     // Let the resolver handle the type resolution, return an error if the resolution
     // yields nothing
-    ctx.resolver
-        .resolve_abstract_type(ctx.query.schema.document(), abstract_type, object_value)
+    let obj_type = ctx
+        .resolver
+        .resolve_abstract_type(&ctx.query.schema, abstract_type, object_value)
         .ok_or_else(|| {
             vec![QueryExecutionError::AbstractTypeError(
                 sast::get_type_name(abstract_type).to_string(),
             )]
-        })
-}
-
-/// Coerces argument values into GraphQL values.
-pub fn coerce_argument_values<'a>(
-    query: &crate::execution::Query,
-    ty: impl Into<ObjectOrInterface<'a>>,
-    field: &q::Field,
-) -> Result<HashMap<&'a str, r::Value>, Vec<QueryExecutionError>> {
-    let mut coerced_values = HashMap::new();
-    let mut errors = vec![];
-
-    let resolver = |name: &str| query.schema.document().get_named_type(name);
-
-    for argument_def in sast::get_argument_definitions(ty, &field.name)
-        .into_iter()
-        .flatten()
-    {
-        let value = qast::get_argument_value(&field.arguments, &argument_def.name).cloned();
-        match coercion::coerce_input_value(value, &argument_def, &resolver, &query.variables) {
-            Ok(Some(value)) => {
-                if argument_def.name == "text".to_string() {
-                    coerced_values.insert(
-                        argument_def.name.as_str(),
-                        r::Value::Object(BTreeMap::from_iter(vec![(field.name.clone(), value)])),
-                    );
-                } else {
-                    coerced_values.insert(&argument_def.name, value);
-                }
-            }
-            Ok(None) => {}
-            Err(e) => errors.push(e),
-        }
-    }
-
-    if errors.is_empty() {
-        Ok(coerced_values)
-    } else {
-        Err(errors)
-    }
+        })?;
+    Ok(ctx.query.schema.object_type(obj_type).into())
 }

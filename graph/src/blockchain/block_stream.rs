@@ -177,7 +177,7 @@ pub enum BlockStreamEvent<C: Blockchain> {
     // The payload is the current subgraph head pointer, which should be reverted, such that the
     // parent of the current subgraph head becomes the new subgraph head.
     // An optional pointer to the parent block will save a round trip operation when reverting.
-    Revert(BlockPtr, FirehoseCursor, Option<BlockPtr>),
+    Revert(BlockPtr, BlockPtr, FirehoseCursor),
 
     ProcessBlock(BlockWithTriggers<C>, FirehoseCursor),
 }

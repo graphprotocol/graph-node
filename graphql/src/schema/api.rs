@@ -73,9 +73,8 @@ impl TryFrom<&r::Value> for ErrorPolicy {
 /// Derives a full-fledged GraphQL API schema from an input schema.
 ///
 /// The input schema should only have type/enum/interface/union definitions
-/// and must not include a root Query type. This Query type is derived,
-/// with all its fields and their input arguments, based on the existing
-/// types.
+/// and must not include a root Query type. This Query type is derived, with
+/// all its fields and their input arguments, based on the existing types.
 pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
     // Refactor: Take `input_schema` by value.
     let object_types = input_schema.get_object_type_definitions();
@@ -531,9 +530,9 @@ fn add_query_type(
 
     let mut fields = object_types
         .iter()
-        .map(|t| &t.name)
+        .map(|t| t.name.as_str())
         .filter(|name| !name.eq(&SCHEMA_TYPE_NAME))
-        .chain(interface_types.iter().map(|t| &t.name))
+        .chain(interface_types.iter().map(|t| t.name.as_str()))
         .flat_map(|name| query_fields_for_type(name))
         .collect::<Vec<Field>>();
     let mut fulltext_fields = schema

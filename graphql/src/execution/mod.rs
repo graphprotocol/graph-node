@@ -5,6 +5,9 @@ mod query;
 /// Common trait for field resolvers used in the execution.
 mod resolver;
 
+/// Our representation of a query AST
+pub mod ast;
+
 use stable_hash::{crypto::SetHasher, StableHasher};
 
 pub use self::execution::*;

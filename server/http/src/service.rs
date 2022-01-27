@@ -387,10 +387,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use graph::data::value::Object;
     use http::status::StatusCode;
     use hyper::service::Service;
     use hyper::{Body, Method, Request};
-    use std::collections::BTreeMap;
 
     use graph::data::{
         graphql::effort::LoadManager,
@@ -426,7 +426,7 @@ mod tests {
         }
 
         async fn run_query(self: Arc<Self>, _query: Query, _target: QueryTarget) -> QueryResults {
-            QueryResults::from(BTreeMap::from_iter(
+            QueryResults::from(Object::from_iter(
                 vec![(
                     String::from("name"),
                     r::Value::String(String::from("Jordi")),

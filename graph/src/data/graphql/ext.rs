@@ -66,6 +66,13 @@ pub trait DocumentExt {
     fn get_named_type(&self, name: &str) -> Option<&TypeDefinition>;
 
     fn scalar_value_type(&self, field_type: &Type) -> ValueType;
+
+    /// Return `true` if the type does not allow selection of child fields.
+    ///
+    /// # Panics
+    ///
+    /// If `field_type` names an unknown type
+    fn is_leaf_type(&self, field_type: &Type) -> bool;
 }
 
 impl DocumentExt for Document {
@@ -219,6 +226,19 @@ impl DocumentExt for Document {
             Type::ListType(inner) => self.scalar_value_type(inner),
         }
     }
+
+    fn is_leaf_type(&self, field_type: &Type) -> bool {
+        match self
+            .get_named_type(field_type.get_base_type())
+            .expect("names of field types have been validated")
+        {
+            TypeDefinition::Enum(_) | TypeDefinition::Scalar(_) => true,
+            TypeDefinition::Object(_)
+            | TypeDefinition::Interface(_)
+            | TypeDefinition::Union(_)
+            | TypeDefinition::InputObject(_) => false,
+        }
+    }
 }
 
 pub trait TypeExt {
@@ -345,6 +365,41 @@ impl DirectiveFinder for Vec<Directive> {
         let is_derived = |directive: &Directive| directive.name.eq("derivedFrom");
 
         self.iter().any(is_derived)
+    }
+}
+
+pub trait TypeDefinitionExt {
+    fn name(&self) -> &str;
+
+    // Return `true` if this is the definition of a type from the
+    // introspection schema
+    fn is_introspection(&self) -> bool {
+        self.name().starts_with("__")
+    }
+}
+
+impl TypeDefinitionExt for TypeDefinition {
+    fn name(&self) -> &str {
+        match self {
+            TypeDefinition::Scalar(t) => &t.name,
+            TypeDefinition::Object(t) => &t.name,
+            TypeDefinition::Interface(t) => &t.name,
+            TypeDefinition::Union(t) => &t.name,
+            TypeDefinition::Enum(t) => &t.name,
+            TypeDefinition::InputObject(t) => &t.name,
+        }
+    }
+}
+
+pub trait FieldExt {
+    // Return `true` if this is the name of one of the query fields from the
+    // introspection schema
+    fn is_introspection(&self) -> bool;
+}
+
+impl FieldExt for Field {
+    fn is_introspection(&self) -> bool {
+        &self.name == "__schema" || &self.name == "__type"
     }
 }
 

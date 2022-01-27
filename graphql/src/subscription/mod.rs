@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-use std::iter;
 use std::result::Result;
 use std::time::{Duration, Instant};
 
@@ -8,6 +6,7 @@ use graph::{components::store::SubscriptionManager, prelude::*};
 
 use crate::runner::ResultSizeMetrics;
 use crate::{
+    execution::ast as a,
     execution::*,
     prelude::{BlockConstraint, StoreResolver},
     schema::api::ErrorPolicy,
@@ -106,35 +105,29 @@ fn create_source_event_stream(
         .as_ref()
         .ok_or(QueryExecutionError::NoRootSubscriptionObjectType)?;
 
-    let grouped_field_set = collect_fields(
-        &ctx,
-        &subscription_type,
-        iter::once(ctx.query.selection_set.as_ref()),
-    );
-
-    if grouped_field_set.is_empty() {
+    let field = if ctx.query.selection_set.is_empty() {
         return Err(SubscriptionError::from(QueryExecutionError::EmptyQuery));
-    } else if grouped_field_set.len() > 1 {
-        return Err(SubscriptionError::from(
-            QueryExecutionError::MultipleSubscriptionFields,
-        ));
-    }
+    } else {
+        match ctx.query.selection_set.single_field() {
+            Some(field) => field,
+            None => {
+                return Err(SubscriptionError::from(
+                    QueryExecutionError::MultipleSubscriptionFields,
+                ));
+            }
+        }
+    };
 
-    let fields = grouped_field_set.get_index(0).unwrap();
-    let field = fields.1[0];
-    let argument_values = coerce_argument_values(&ctx.query, subscription_type.as_ref(), field)?;
-
-    resolve_field_stream(&ctx, &subscription_type, field, argument_values)
+    resolve_field_stream(&ctx, &subscription_type, field)
 }
 
 fn resolve_field_stream(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
-    field: &q::Field,
-    _argument_values: HashMap<&str, r::Value>,
+    field: &a::Field,
 ) -> Result<UnitStream, SubscriptionError> {
     ctx.resolver
-        .resolve_field_stream(&ctx.query.schema.document(), object_type, field)
+        .resolve_field_stream(&ctx.query.schema, object_type, field)
         .map_err(SubscriptionError::from)
 }
 
@@ -226,7 +219,7 @@ async fn execute_subscription_event(
     execute_root_selection_set(
         ctx.cheap_clone(),
         ctx.query.selection_set.cheap_clone(),
-        subscription_type,
+        subscription_type.into(),
         block_ptr,
     )
     .await

@@ -121,7 +121,6 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     async fn new_polling_block_stream(
         &self,
         deployment: DeploymentLocator,
-        writable: Arc<dyn WritableStore>,
         start_blocks: Vec<BlockNumber>,
         subgraph_start_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
