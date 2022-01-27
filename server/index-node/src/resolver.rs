@@ -100,9 +100,7 @@ where
 
         let block_hash = field
             .get_required::<H256>("blockHash")
-            .expect("Valid blockHash required")
-            .try_into()
-            .unwrap();
+            .expect("Valid blockHash required");
 
         let block = BlockPtr::from((block_hash, block_number));
 

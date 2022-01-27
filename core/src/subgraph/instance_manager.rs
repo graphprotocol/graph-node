@@ -209,7 +209,9 @@ where
                 }
                 BlockchainKind::Tendermint => {
                     instance_manager
-                        .start_subgraph_inner::<graph_chain_tendermint::Chain>(logger, loc, manifest)
+                        .start_subgraph_inner::<graph_chain_tendermint::Chain>(
+                            logger, loc, manifest, stop_block,
+                        )
                         .await
                 }
             }

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use graph::cheap_clone::CheapClone;
+use graph::components::store::WritableStore;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::{
     anyhow,
@@ -97,8 +98,8 @@ impl Blockchain for Chain {
     async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
+        store: Arc<dyn WritableStore>,
         start_blocks: Vec<BlockNumber>,
-        firehose_cursor: Option<String>,
         filter: Arc<TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -123,6 +124,7 @@ impl Blockchain for Chain {
             .new(o!("component" => "FirehoseBlockStream"));
 
         let firehose_mapper = Arc::new(FirehoseMapper {});
+        let firehose_cursor = store.block_cursor();
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,
@@ -265,14 +267,17 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 let block = piece.block.as_ref().unwrap();
                 let header = block.header.as_ref().unwrap();
                 let block_id = piece.block_id.as_ref().unwrap();
+                let parent_ptr = sp
+                    .parent_ptr()
+                    .expect("Genesis block should never be reverted");
 
                 Ok(BlockStreamEvent::Revert(
                     BlockPtr {
                         hash: BlockHash::from(block_id.hash.clone()),
                         number: header.height as i32,
                     },
+                    parent_ptr,
                     Some(response.cursor.clone()),
-                    None, // FIXME: we should get the parent block pointer when we have access to parent block height
                 ))
             }
 
