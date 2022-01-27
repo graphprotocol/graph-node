@@ -201,7 +201,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             .map(|event| {
                 TendermintTrigger::Event(Arc::new(trigger::EventData {
                     event,
-                    block: shared_block.cheap_clone(),
+                    block_header: block.header().clone(),
                 }))
             })
             .collect();
