@@ -1,19 +1,21 @@
-use std::{collections::HashMap, env, num::ParseIntError, sync::Arc, time::Duration};
-
 use config::PoolSize;
 use git_testament::{git_testament, render_testament};
 use graph::{data::graphql::effort::LoadManager, prelude::chrono, prometheus::Registry};
-use graph_core::MetricsRegistry;
-use graph_graphql::prelude::GraphQlRunner;
-use lazy_static::lazy_static;
-use structopt::StructOpt;
-
 use graph::{
     log::logger,
-    prelude::{info, o, slog, tokio, Logger, NodeId, ENV_VARS},
+    prelude::{
+        anyhow::{self, Context as AnyhowContextTrait},
+        info, o, slog, tokio, Logger, NodeId, ENV_VARS,
+    },
     url::Url,
 };
+use graph_chain_ethereum::EthereumNetworks;
+use graph_core::MetricsRegistry;
+use graph_graphql::prelude::GraphQlRunner;
+use graph_node::config::{self, Config as Cfg};
+use graph_node::manager::commands;
 use graph_node::{
+    chain::create_ethereum_networks,
     manager::{deployment::DeploymentSearch, PanicSubscriptionManager},
     store_builder::StoreBuilder,
     MetricsContext,
@@ -22,21 +24,13 @@ use graph_store_postgres::{
     connection_pool::ConnectionPool, BlockStore, Shard, Store, SubgraphStore, SubscriptionManager,
     PRIMARY_SHARD,
 };
-
-use graph_node::config::{self, Config as Cfg};
-use graph_node::manager::commands;
+use lazy_static::lazy_static;
+use std::{collections::HashMap, env, num::ParseIntError, sync::Arc, time::Duration};
+use structopt::StructOpt;
 
 const VERSION_LABEL_KEY: &str = "version";
 
 git_testament!(TESTAMENT);
-
-macro_rules! die {
-    ($fmt:expr, $($arg:tt)*) => {{
-        use std::io::Write;
-        writeln!(&mut ::std::io::stderr(), $fmt, $($arg)*).unwrap();
-        ::std::process::exit(1)
-    }}
-}
 
 lazy_static! {
     static ref RENDERED_TESTAMENT: String = render_testament!(TESTAMENT);
@@ -207,6 +201,9 @@ pub enum Command {
 
     /// Manage database indexes
     Index(IndexCommand),
+
+    /// Compares cached blocks with fresh ones and report any differences and affected subgraphs.
+    FixBlock(FixBlockCommand),
 }
 
 impl Command {
@@ -445,6 +442,36 @@ pub enum IndexCommand {
     },
 }
 
+#[derive(Clone, Debug, StructOpt)]
+pub struct FixBlockCommand {
+    /// Network name (must fit one of the chain)
+    #[structopt(empty_values = false)]
+    network_name: String,
+    #[structopt(subcommand)]
+    method: FixBlockSubCommand,
+}
+
+#[derive(Clone, Debug, StructOpt)]
+enum FixBlockSubCommand {
+    /// The number of the target block
+    ByHash { hash: String },
+
+    /// The hash of the target block
+    ByNumber { number: i32 },
+
+    /// A block number range in the form: `start..end`
+    ///
+    /// All valid [`std::ops::Range`] definitions are accepted.
+    ByRange { range: String },
+
+    /// Truncates the whole block cache for the given chain.
+    TruncateCache {
+        /// Skips prompt for confirming the operation.
+        #[structopt(long)]
+        no_confirm: bool,
+    },
+}
+
 impl From<Opt> for config::Opt {
     fn from(opt: Opt) -> Self {
         let mut config_opt = config::Opt::default();
@@ -514,21 +541,21 @@ impl Context {
         self.node_id.clone()
     }
 
-    fn primary_pool(self) -> ConnectionPool {
+    fn primary_pool(&self) -> ConnectionPool {
         let primary = self.config.primary_store();
         let pool = StoreBuilder::main_pool(
             &self.logger,
             &self.node_id,
             PRIMARY_SHARD.as_str(),
             primary,
-            self.registry,
+            self.metrics_registry(),
             Arc::new(vec![]),
         );
         pool.skip_setup();
         pool
     }
 
-    fn subgraph_store(self) -> Arc<SubgraphStore> {
+    fn subgraph_store(&self) -> Arc<SubgraphStore> {
         self.store_and_pools().0.subgraph_store()
     }
 
@@ -549,12 +576,12 @@ impl Context {
         (primary_pool, mgr)
     }
 
-    fn store(self) -> Arc<Store> {
+    fn store(&self) -> Arc<Store> {
         let (store, _) = self.store_and_pools();
         store
     }
 
-    fn pools(self) -> HashMap<Shard, ConnectionPool> {
+    fn pools(&self) -> HashMap<Shard, ConnectionPool> {
         let (_, pools) = self.store_and_pools();
         pools
     }
@@ -570,13 +597,13 @@ impl Context {
         .await
     }
 
-    fn store_and_pools(self) -> (Arc<Store>, HashMap<Shard, ConnectionPool>) {
+    fn store_and_pools(&self) -> (Arc<Store>, HashMap<Shard, ConnectionPool>) {
         let (subgraph_store, pools) = StoreBuilder::make_subgraph_store_and_pools(
             &self.logger,
             &self.node_id,
             &self.config,
-            self.fork_base,
-            self.registry,
+            self.fork_base.clone(),
+            self.registry.clone(),
         );
 
         for pool in pools.values() {
@@ -594,20 +621,20 @@ impl Context {
         (store, pools)
     }
 
-    fn store_and_primary(self) -> (Arc<Store>, ConnectionPool) {
+    fn store_and_primary(&self) -> (Arc<Store>, ConnectionPool) {
         let (store, pools) = self.store_and_pools();
         let primary = pools.get(&*PRIMARY_SHARD).expect("there is a primary pool");
         (store, primary.clone())
     }
 
-    fn block_store_and_primary_pool(self) -> (Arc<BlockStore>, ConnectionPool) {
+    fn block_store_and_primary_pool(&self) -> (Arc<BlockStore>, ConnectionPool) {
         let (store, pools) = self.store_and_pools();
 
         let primary = pools.get(&*PRIMARY_SHARD).unwrap();
         (store.block_store(), primary.clone())
     }
 
-    fn graphql_runner(self) -> Arc<GraphQlRunner<Store, PanicSubscriptionManager>> {
+    fn graphql_runner(&self) -> Arc<GraphQlRunner<Store, PanicSubscriptionManager>> {
         let logger = self.logger.clone();
         let registry = self.registry.clone();
 
@@ -624,10 +651,16 @@ impl Context {
             registry,
         ))
     }
+
+    async fn ethereum_networks(&self) -> anyhow::Result<EthereumNetworks> {
+        let logger = self.logger.clone();
+        let registry = self.metrics_registry();
+        create_ethereum_networks(logger, registry, &self.config).await
+    }
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     let opt = Opt::from_args();
 
     let version_label = opt.version_label.clone();
@@ -644,13 +677,8 @@ async fn main() {
         render_testament!(TESTAMENT)
     );
 
-    let mut config = match Cfg::load(&logger, &opt.clone().into()) {
-        Err(e) => {
-            eprintln!("configuration error: {}", e);
-            std::process::exit(1);
-        }
-        Ok(config) => config,
-    };
+    let mut config = Cfg::load(&logger, &opt.clone().into()).context("Configuration error")?;
+
     if opt.pool_size > 0 && !opt.cmd.use_configured_pool_size() {
         // Override pool size from configuration
         for shard in config.stores.values_mut() {
@@ -701,7 +729,7 @@ async fn main() {
     );
 
     use Command::*;
-    let result = match opt.cmd {
+    match opt.cmd {
         TxnSpeed { delay } => commands::txn_speed::run(ctx.primary_pool(), delay),
         Info {
             deployment,
@@ -916,9 +944,42 @@ async fn main() {
                 }
             }
         }
-    };
-    if let Err(e) = result {
-        die!("error: {}", e)
+        FixBlock(cmd) => {
+            use commands::fix_block::{by_hash, by_number, by_range, truncate};
+            use graph::components::store::BlockStore as BlockStoreTrait;
+            use FixBlockSubCommand::*;
+
+            if let Some(chain_store) = ctx.store().block_store().chain_store(&cmd.network_name) {
+                let ethereum_networks = ctx.ethereum_networks().await?;
+                let ethereum_adapter = ethereum_networks
+                    .networks
+                    .get(&cmd.network_name)
+                    .map(|adapters| adapters.cheapest())
+                    .flatten()
+                    .ok_or(anyhow::anyhow!(
+                        "Failed to obtain an Ethereum adapter for chain '{}'",
+                        cmd.network_name
+                    ))?;
+
+                match cmd.method {
+                    ByHash { hash } => {
+                        by_hash(&hash, chain_store, &ethereum_adapter, &ctx.logger).await
+                    }
+                    ByNumber { number } => {
+                        by_number(number, chain_store, &ethereum_adapter, &ctx.logger).await
+                    }
+                    ByRange { range } => {
+                        by_range(chain_store, &ethereum_adapter, &range, &ctx.logger).await
+                    }
+                    TruncateCache { no_confirm } => truncate(chain_store, no_confirm),
+                }
+            } else {
+                Err(anyhow::anyhow!(
+                    "Could not find a network named '{}'",
+                    &cmd.network_name
+                ))
+            }
+        }
     }
 }
 
