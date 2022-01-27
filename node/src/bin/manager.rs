@@ -55,7 +55,7 @@ pub struct Opt {
         default_value = "default",
         value_name = "NODE_ID",
         env = "GRAPH_NODE_ID",
-        help = "a unique identifier for this node\n"
+        help = "a unique identifier for this node.\nShould have the same value between consecutive node restarts\n"
     )]
     pub node_id: String,
     #[structopt(
