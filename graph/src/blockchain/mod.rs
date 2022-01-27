@@ -22,7 +22,7 @@ use crate::{
 };
 use crate::{
     components::{
-        store::{BlockNumber, ChainStore, WritableStore},
+        store::{BlockNumber, ChainStore},
         subgraph::DataSourceTemplateInfo,
     },
     prelude::{thiserror::Error, LinkResolver},
@@ -111,7 +111,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
-        store: Arc<dyn WritableStore>,
+        block_cursor: Option<String>,
         start_blocks: Vec<BlockNumber>,
         filter: Arc<Self::TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,

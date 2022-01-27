@@ -478,7 +478,7 @@ async fn new_block_stream<C: Blockchain>(
     let block_stream = match is_firehose {
         true => chain.new_firehose_block_stream(
             inputs.deployment.clone(),
-            inputs.store.clone(),
+            inputs.store.block_cursor(),
             inputs.start_blocks.clone(),
             Arc::new(filter.clone()),
             block_stream_metrics.clone(),
