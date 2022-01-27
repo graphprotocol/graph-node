@@ -269,14 +269,22 @@ impl ForeignKeyClauses for Column {
     }
 }
 
-pub trait FromEntityData: Default {
+pub trait FromEntityData {
     type Value: FromColumnValue;
+
+    fn new_entity(typename: String) -> Self;
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value);
 }
 
 impl FromEntityData for Entity {
     type Value = graph::prelude::Value;
+
+    fn new_entity(typename: String) -> Self {
+        let mut entity = Entity::new();
+        entity.insert("__typename".to_string(), Self::Value::String(typename));
+        entity
+    }
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value) {
         self.insert(key, v);
@@ -285,6 +293,12 @@ impl FromEntityData for Entity {
 
 impl FromEntityData for BTreeMap<String, r::Value> {
     type Value = r::Value;
+
+    fn new_entity(typename: String) -> Self {
+        let mut map = BTreeMap::new();
+        map.insert("__typename".to_string(), Self::Value::from_string(typename));
+        map
+    }
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value) {
         self.insert(key, v);
@@ -481,11 +495,7 @@ impl EntityData {
         use serde_json::Value as j;
         match self.data {
             j::Object(map) => {
-                let mut out = T::default();
-                out.insert_entity_data(
-                    "__typename".to_owned(),
-                    T::Value::from_string(entity_type.into_string()),
-                );
+                let mut out = T::new_entity(entity_type.into_string());
                 for (key, json) in map {
                     // Simply ignore keys that do not have an underlying table
                     // column; those will be things like the block_range that

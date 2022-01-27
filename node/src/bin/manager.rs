@@ -144,6 +144,17 @@ pub enum Command {
         /// The deployments to rewind
         names: Vec<String>,
     },
+    /// Deploy and run an arbitrary subgraph, up to a certain block (for dev and testing purposes) -- WARNING: WILL RUN MIGRATIONS ON THE DB, DO NOT USE IN PRODUCTION
+    Run {
+        /// Network name (must fit one of the chain)
+        network_name: String,
+
+        /// Subgraph in the form `<IPFS Hash>` or `<name>:<IPFS Hash>`
+        subgraph: String,
+
+        /// Highest block number to process before stopping (inclusive)
+        stop_block: i32,
+    },
     /// Check and interrogate the configuration
     ///
     /// Print information about a configuration file without
@@ -374,6 +385,18 @@ impl Context {
         }
     }
 
+    fn metrics_registry(&self) -> Arc<MetricsRegistry> {
+        self.registry.clone()
+    }
+
+    fn config(&self) -> Cfg {
+        self.config.clone()
+    }
+
+    fn node_id(&self) -> NodeId {
+        self.node_id.clone()
+    }
+
     fn primary_pool(self) -> ConnectionPool {
         let primary = self.config.primary_store();
         let pool = StoreBuilder::main_pool(
@@ -409,6 +432,10 @@ impl Context {
     fn pools(self) -> HashMap<Shard, ConnectionPool> {
         let (_, pools) = self.store_and_pools();
         pools
+    }
+
+    async fn store_builder(self) -> StoreBuilder {
+        StoreBuilder::new(&self.logger, &self.node_id, &self.config, self.registry).await
     }
 
     fn store_and_pools(self) -> (Arc<Store>, HashMap<Shard, ConnectionPool>) {
@@ -581,6 +608,29 @@ async fn main() {
                 force,
                 sleep,
             )
+        }
+        Run {
+            network_name,
+            subgraph,
+            stop_block,
+        } => {
+            let logger = ctx.logger.clone();
+            let config = ctx.config();
+            let registry = ctx.metrics_registry().clone();
+            let node_id = ctx.node_id().clone();
+            let store_builder = ctx.store_builder().await;
+
+            commands::run::run(
+                logger,
+                store_builder,
+                network_name,
+                config,
+                registry,
+                node_id,
+                subgraph,
+                stop_block,
+            )
+            .await
         }
         Listen(cmd) => {
             use ListenCommand::*;

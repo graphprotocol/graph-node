@@ -16,7 +16,7 @@ use graph_store_postgres::{command_support::catalog as store_catalog, Shard, Sub
 use crate::manager::deployment;
 use crate::manager::display::List;
 
-#[derive(Queryable, PartialEq, Eq, Hash)]
+#[derive(Queryable, PartialEq, Eq, Hash, Debug)]
 pub struct Deployment {
     pub name: String,
     pub status: String,

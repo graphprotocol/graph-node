@@ -29,7 +29,7 @@ pub mod prelude {
     pub use super::execution::{ExecutionContext, Query, Resolver};
     pub use super::introspection::{introspection_schema, IntrospectionResolver};
     pub use super::query::{execute_query, ext::BlockConstraint, QueryExecutionOptions};
-    pub use super::schema::{api_schema, ast::is_list, ast::validate_entity, APISchemaError};
+    pub use super::schema::{api_schema, APISchemaError};
     pub use super::store::{build_query, StoreResolver};
     pub use super::subscription::SubscriptionExecutionOptions;
     pub use super::values::MaybeCoercible;

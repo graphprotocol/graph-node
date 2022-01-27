@@ -27,11 +27,6 @@ pub mod firehose;
 /// Helpers for parsing environment variables.
 pub mod env;
 
-/// Module with mocks for different parts of the system.
-pub mod mock {
-    pub use crate::components::store::MockStore;
-}
-
 /// Wrapper for spawning tasks that abort on panic, which is our default.
 mod task_spawn;
 pub use task_spawn::{
@@ -40,7 +35,6 @@ pub use task_spawn::{
 
 pub use anyhow;
 pub use bytes;
-pub use mockall;
 pub use parking_lot;
 pub use petgraph;
 pub use prometheus;

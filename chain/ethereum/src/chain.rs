@@ -1,7 +1,9 @@
 use anyhow::{Context, Error};
 use graph::blockchain::BlockchainKind;
+use graph::components::store::WritableStore;
 use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::firehose::FirehoseEndpoints;
+use graph::env::env_var;
+use graph::firehose::{FirehoseEndpoints, ForkStep};
 use graph::prelude::{
     EthereumBlock, EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, StopwatchMetrics,
 };
@@ -22,7 +24,6 @@ use graph::{
     prelude::{
         async_trait, lazy_static, o, serde_json as json, BlockNumber, ChainStore,
         EthereumBlockWithCalls, Future01CompatExt, Logger, LoggerFactory, MetricsRegistry, NodeId,
-        SubgraphStore,
     },
 };
 use prost::Message;
@@ -48,16 +49,14 @@ use graph::blockchain::block_stream::{BlockStream, FirehoseCursor};
 
 lazy_static! {
     /// Maximum number of blocks to request in each chunk.
-    static ref MAX_BLOCK_RANGE_SIZE: BlockNumber = std::env::var("GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE")
-        .unwrap_or("2000".into())
-        .parse::<BlockNumber>()
-        .expect("invalid GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE");
+    static ref MAX_BLOCK_RANGE_SIZE: BlockNumber = env_var("GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE", 2000);
 
     /// Ideal number of triggers in a range. The range size will adapt to try to meet this.
-    static ref TARGET_TRIGGERS_PER_BLOCK_RANGE: u64 = std::env::var("GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE")
-        .unwrap_or("100".into())
-        .parse::<u64>()
-        .expect("invalid GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE");
+    static ref TARGET_TRIGGERS_PER_BLOCK_RANGE: u64 = env_var("GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE", 100);
+
+    /// Controls if firehose should be preferred over RPC if Firehose endpoints are present, if not set, the default behavior is
+    /// is kept which is to automatically favor Firehose.
+    static ref IS_FIREHOSE_PREFERRED: bool = env_var("GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED", true);
 }
 
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
@@ -72,7 +71,6 @@ pub struct Chain {
     eth_adapters: Arc<EthereumNetworkAdapters>,
     chain_store: Arc<dyn ChainStore>,
     call_cache: Arc<dyn EthereumCallCache>,
-    subgraph_store: Arc<dyn SubgraphStore>,
     chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
     reorg_threshold: BlockNumber,
     pub is_ingestible: bool,
@@ -92,7 +90,6 @@ impl Chain {
         registry: Arc<dyn MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
         call_cache: Arc<dyn EthereumCallCache>,
-        subgraph_store: Arc<dyn SubgraphStore>,
         firehose_endpoints: FirehoseEndpoints,
         eth_adapters: EthereumNetworkAdapters,
         chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
@@ -108,7 +105,6 @@ impl Chain {
             eth_adapters: Arc::new(eth_adapters),
             chain_store,
             call_cache,
-            subgraph_store,
             chain_head_update_listener,
             reorg_threshold,
             is_ingestible,
@@ -190,8 +186,8 @@ impl Blockchain for Chain {
     async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
+        writable: Arc<dyn WritableStore>,
         start_blocks: Vec<BlockNumber>,
-        firehose_cursor: Option<String>,
         filter: Arc<Self::TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -220,6 +216,7 @@ impl Blockchain for Chain {
             .new(o!("component" => "FirehoseBlockStream"));
 
         let firehose_mapper = Arc::new(FirehoseMapper {});
+        let firehose_cursor = writable.block_cursor();
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,
@@ -235,6 +232,7 @@ impl Blockchain for Chain {
     async fn new_polling_block_stream(
         &self,
         deployment: DeploymentLocator,
+        writable: Arc<dyn WritableStore>,
         start_blocks: Vec<BlockNumber>,
         subgraph_start_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
@@ -259,12 +257,6 @@ impl Blockchain for Chain {
             .subgraph_logger(&deployment)
             .new(o!("component" => "BlockStream"));
         let chain_store = self.chain_store().clone();
-        let writable = self
-            .subgraph_store
-            .cheap_clone()
-            .writable(logger.clone(), deployment.id)
-            .await
-            .with_context(|| format!("no store for deployment `{}`", deployment.hash))?;
         let chain_head_update_stream = self
             .chain_head_update_listener
             .subscribe(self.name.clone(), logger.clone());
@@ -326,7 +318,7 @@ impl Blockchain for Chain {
     }
 
     fn is_firehose_supported(&self) -> bool {
-        self.firehose_endpoints.len() > 0
+        *IS_FIREHOSE_PREFERRED && self.firehose_endpoints.len() > 0
     }
 }
 
@@ -542,8 +534,6 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         adapter: &TriggersAdapter,
         filter: &TriggerFilter,
     ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
-        use firehose::ForkStep;
-
         let step = ForkStep::from_i32(response.step).unwrap_or_else(|| {
             panic!(
                 "unknown step i32 value {}, maybe you forgot update & re-regenerate the protobuf definitions?",
