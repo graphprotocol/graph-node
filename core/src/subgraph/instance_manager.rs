@@ -651,7 +651,7 @@ where
             if should_try_unfail_deterministic {
                 should_try_unfail_deterministic = false;
 
-                if let Some(current_ptr) = inputs.store.block_ptr() {
+                if let Some(current_ptr) = deployment_head {
                     if let Some(parent_ptr) =
                         inputs.triggers_adapter.parent_ptr(&current_ptr).await?
                     {
