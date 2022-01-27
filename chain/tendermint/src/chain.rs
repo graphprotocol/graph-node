@@ -272,10 +272,6 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             )),
 
             ForkStep::StepUndo => {
-                let piece = sp.new_block.as_ref().unwrap();
-                let block = piece.block.as_ref().unwrap();
-                let header = block.header.as_ref().unwrap();
-                let block_id = piece.block_id.as_ref().unwrap();
                 let parent_ptr = sp
                     .parent_ptr()
                     .expect("Genesis block should never be reverted");
