@@ -276,10 +276,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 let block_id = piece.block_id.as_ref().unwrap();
 
                 Ok(BlockStreamEvent::Revert(
-                    BlockPtr {
-                        hash: BlockHash::from(block_id.hash.clone()),
-                        number: header.height as i32,
-                    },
+                    sp.into(),
                     Some(response.cursor.clone()),
                     sp.parent_ptr(),
                 ))
