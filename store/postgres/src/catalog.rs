@@ -414,3 +414,33 @@ pub(crate) fn check_index_is_valid(
         .map(|check| check.is_valid);
     Ok(matches!(result, Some(true)))
 }
+
+pub(crate) fn indexes_for_table(
+    conn: &PgConnection,
+    schema_name: &str,
+    table_name: &str,
+) -> Result<Vec<String>, StoreError> {
+    #[derive(Queryable, QueryableByName)]
+    struct IndexName {
+        #[sql_type = "Text"]
+        #[column_name = "indexdef"]
+        def: String,
+    }
+
+    let query = "
+        select
+            indexdef
+        from
+            pg_indexes
+        where
+            schemaname = $1
+            and tablename = $2
+        order by indexname";
+    let results = sql_query(query)
+        .bind::<Text, _>(schema_name)
+        .bind::<Text, _>(table_name)
+        .load::<IndexName>(conn)
+        .map_err::<StoreError, _>(Into::into)?;
+
+    Ok(results.into_iter().map(|i| i.def).collect())
+}

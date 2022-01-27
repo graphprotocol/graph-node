@@ -41,3 +41,20 @@ pub async fn create(
         Err(other) => Err(anyhow::anyhow!(other)),
     }
 }
+
+pub async fn list(
+    store: Arc<SubgraphStore>,
+    id: String,
+    entity_name: String,
+) -> Result<(), anyhow::Error> {
+    let deployment_hash = DeploymentHash::new(id)
+        .map_err(|e| anyhow::anyhow!("Subgraph hash must be a valid IPFS hash: {}", e))?;
+    let entity_type = EntityType::new(entity_name);
+    let indexes: Vec<String> = store
+        .indexes_for_entity(&deployment_hash, entity_type)
+        .await?;
+    for index in &indexes {
+        println!("{index}")
+    }
+    Ok(())
+}

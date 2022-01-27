@@ -400,6 +400,15 @@ pub enum IndexCommand {
         )]
         method: String,
     },
+    /// Lists existing indexes for a given Entity
+    List {
+        /// The id of the deployment
+        #[structopt(empty_values = false)]
+        id: String,
+        /// The Entity name, in camel case.
+        #[structopt(empty_values = false)]
+        entity: String,
+    },
 }
 
 impl From<Opt> for config::Opt {
@@ -821,17 +830,16 @@ async fn main() {
         }
         Index(cmd) => {
             use IndexCommand::*;
+            let store = ctx.store();
+            let subgraph_store = store.subgraph_store();
             match cmd {
                 Create {
                     id,
                     entity,
                     fields,
                     method,
-                } => {
-                    let store = ctx.store();
-                    let subgraph_store = store.subgraph_store();
-                    commands::index::create(subgraph_store, id, entity, fields, method).await
-                }
+                } => commands::index::create(subgraph_store, id, entity, fields, method).await,
+                List { id, entity } => commands::index::list(subgraph_store, id, entity).await,
             }
         }
     };

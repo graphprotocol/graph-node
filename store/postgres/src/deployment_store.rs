@@ -752,6 +752,24 @@ impl DeploymentStore {
         })
         .await
     }
+
+    /// Returns a list of all existing indexes for the specified Entity table.
+    pub(crate) async fn indexes_for_entity(
+        &self,
+        site: Arc<Site>,
+        entity_type: EntityType,
+    ) -> Result<Vec<String>, StoreError> {
+        let store = self.clone();
+        self.with_conn(move |conn, _| {
+            let schema_name = site.namespace.clone();
+            let layout = store.layout(conn, site)?;
+            let table = layout.table_for_entity(&entity_type)?;
+            let table_name = &table.name;
+            catalog::indexes_for_table(conn, schema_name.as_str(), table_name.as_str())
+                .map_err(Into::into)
+        })
+        .await
+    }
 }
 
 /// Methods that back the trait `graph::components::Store`, but have small
