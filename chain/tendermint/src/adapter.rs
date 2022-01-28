@@ -2,8 +2,6 @@ use crate::capabilities::NodeCapabilities;
 use crate::{data_source::DataSource, Chain};
 use graph::blockchain as bc;
 use graph::prelude::*;
-use mockall::automock;
-use mockall::predicate::*;
 
 #[derive(Clone, Debug, Default)]
 pub struct TriggerFilter {
@@ -41,11 +39,4 @@ impl TendermintBlockFilter {
     pub fn extend(&mut self, other: TendermintBlockFilter) {
         self.trigger_every_block = self.trigger_every_block || other.trigger_every_block;
     }
-}
-
-#[automock]
-#[async_trait]
-pub trait TendermintAdapter: Send + Sync + 'static {
-    /// The `provider.label` from the adapter's configuration
-    fn provider(&self) -> &str;
 }
