@@ -31,23 +31,15 @@ enum BlockIDFlag {
   BLOCK_ID_FLAG_NIL     = 3 [(gogoproto.enumvalue_customname) = "BlockIDFlagNil"];
 }
 
-// EventData
-message EventData {
-  Event     event = 1;
-  EventList block = 2;
-}
-
-// EventList
 message EventList {
   EventBlock                new_block             = 1;
   repeated EventTx          transaction           = 2;
   EventValidatorSetUpdates  validator_set_updates = 3;
 }
 
-// Reward
-message Reward {
-  string amount = 1;
-  string validator = 2;
+message EventData {
+  Event       event = 1;
+  EventBlock  block = 2;
 }
 
 message Block {
@@ -261,7 +253,7 @@ message Validator {
   int64     proposer_priority = 4;
 }
 
-message ValidatorParams { 
+message ValidatorParams {
   option (gogoproto.populate) = true;
   option (gogoproto.equal)    = true;
 

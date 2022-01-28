@@ -8,21 +8,8 @@ use graph::runtime::{
 use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, EnumPayload, Uint8Array};
 
 use crate::codec;
-use crate::trigger::EventData;
 
 pub(crate) use super::generated::*;
-
-impl ToAscObj<AscEventData> for EventData {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-    ) -> Result<AscEventData, DeterministicHostError> {
-        Ok(AscEventData {
-            event: asc_new(heap, &self.event)?,
-            block_header: asc_new(heap, &self.block_header)?,
-        })
-    }
-}
 
 impl ToAscObj<AscEventList> for codec::EventList {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -33,6 +20,18 @@ impl ToAscObj<AscEventList> for codec::EventList {
             new_block: asc_new_or_null(heap, &self.new_block)?,
             transaction: asc_new(heap, &self.transaction)?,
             validator_set_updates: asc_new_or_null(heap, &self.validator_set_updates)?,
+        })
+    }
+}
+
+impl ToAscObj<AscEventData> for codec::EventData {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+    ) -> Result<AscEventData, DeterministicHostError> {
+        Ok(AscEventData {
+            event: asc_new_or_null(heap, &self.event)?,
+            block: asc_new_or_null(heap, &self.block)?,
         })
     }
 }

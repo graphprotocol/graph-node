@@ -58,7 +58,7 @@ impl blockchain::DataSource<Chain> for DataSource {
                 None => return Ok(None),
             },
 
-            TendermintTrigger::Event(data) => match self.handler_for_event(&data.event) {
+            TendermintTrigger::Event(event_data) => match self.handler_for_event(event_data.event()) {
                 Some(handler) => handler.handler,
                 None => return Ok(None),
             },
