@@ -297,8 +297,10 @@ pub trait NodeCapabilities<C: Blockchain> {
 pub enum BlockchainKind {
     /// Ethereum itself or chains that are compatible.
     Ethereum,
+
     /// NEAR chains (Mainnet, Testnet) or chains that are compatible
     Near,
+
     /// Tendermint chains including cosmoshub
     Tendermint,
 }
