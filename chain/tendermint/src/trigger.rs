@@ -11,14 +11,16 @@ use crate::codec;
 impl std::fmt::Debug for TendermintTrigger {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         #[derive(Debug)]
-        pub enum MappingTriggerWithoutBlock {
+        pub enum MappingTriggerWithoutBlock<'e> {
             Block,
-            Event,
+            Event { event_type: &'e str },
         }
 
         let trigger_without_block = match self {
             TendermintTrigger::Block(_) => MappingTriggerWithoutBlock::Block,
-            TendermintTrigger::Event(_) => MappingTriggerWithoutBlock::Event,
+            TendermintTrigger::Event(event) => MappingTriggerWithoutBlock::Event {
+                event_type: &event.event().event_type,
+            },
         };
 
         write!(f, "{:?}", trigger_without_block)
