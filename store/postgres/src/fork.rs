@@ -94,11 +94,19 @@ impl SubgraphFork {
         schema: Arc<Schema>,
         logger: Logger,
     ) -> Result<Self, StoreError> {
+        let domain = match base.domain() {
+            Some(domain) => domain,
+            None => return Err(StoreError::ForkFailure(format!("invalid base URL: {}", base))),
+        };
+
         Ok(Self {
             client: reqwest::Client::new(),
-            endpoint: base
-                .join(id.as_str())
-                .map_err(|e| StoreError::ForkFailure(format!("failed to join fork base: {}", e)))?,
+            endpoint: Url::parse(
+                format!("https://{}{}/{}", domain, base.path(), id).as_str(),
+            )
+            .map_err(|e| {
+                StoreError::ForkFailure(format!("failed to parse fork endpoint `{}`: {}", base, e))
+            })?,
             schema,
             fetched_ids: Mutex::new(HashSet::new()),
             logger,
