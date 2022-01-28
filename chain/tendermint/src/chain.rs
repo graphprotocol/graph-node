@@ -74,13 +74,13 @@ impl Blockchain for Chain {
 
     type TriggersAdapter = TriggersAdapter;
 
-    type TriggerData = crate::trigger::TendermintTrigger;
+    type TriggerData = TendermintTrigger;
 
-    type MappingTrigger = crate::trigger::TendermintTrigger;
+    type MappingTrigger = TendermintTrigger;
 
-    type TriggerFilter = crate::adapter::TriggerFilter;
+    type TriggerFilter = TriggerFilter;
 
-    type NodeCapabilities = crate::capabilities::NodeCapabilities;
+    type NodeCapabilities = NodeCapabilities;
 
     type RuntimeAdapter = RuntimeAdapter;
 
@@ -184,27 +184,35 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         _to: BlockNumber,
         _filter: &TriggerFilter,
     ) -> Result<Vec<BlockWithTriggers<Chain>>, Error> {
-        Ok(vec![])
+        panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
     async fn triggers_in_block(
         &self,
         _logger: &Logger,
-        _block: codec::EventList,
+        block: codec::EventList,
         _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
-        //  let block_ptr = BlockPtr::from(&block);
-        todo!()
-        // FIXME (NEAR): Share implementation with FirehoseMapper::triggers_in_block version
-        // Ok(BlockWithTriggers {
-        //     block,
-        //     trigger_data: vec![TendermintTrigger::Block(block_ptr, TendermintBlockTriggerType::Every)],
-        // })
+        let shared_block = Arc::new(block.clone());
+
+        let mut triggers: Vec<_> = shared_block
+            .events()
+            .into_iter()
+            .map(|event| {
+                TendermintTrigger::Event(Arc::new(trigger::EventData {
+                    event,
+                    block_header: block.header().clone(),
+                }))
+            })
+            .collect();
+
+        triggers.push(TendermintTrigger::Block(shared_block.cheap_clone()));
+
+        Ok(BlockWithTriggers::new(block, triggers))
     }
 
     async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
-        // FIXME (NEAR): Might not be necessary for NEAR support for now
-        Ok(true)
+        panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
     fn ancestor_block(
@@ -212,7 +220,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         _ptr: BlockPtr,
         _offset: BlockNumber,
     ) -> Result<Option<codec::EventList>, Error> {
-        Ok(None)
+        panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
     /// Panics if `block` is genesis.
@@ -231,9 +239,9 @@ pub struct FirehoseMapper {}
 impl FirehoseMapperTrait<Chain> for FirehoseMapper {
     async fn to_block_stream_event(
         &self,
-        _logger: &Logger,
+        logger: &Logger,
         response: &firehose::Response,
-        _adapter: &TriggersAdapter,
+        adapter: &TriggersAdapter,
         filter: &TriggerFilter,
     ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
         let step = ForkStep::from_i32(response.step).unwrap_or_else(|| {
@@ -242,6 +250,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 response.step
             )
         });
+
         let any_block = response
             .block
             .as_ref()
@@ -258,24 +267,17 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 
         match step {
             ForkStep::StepNew => Ok(BlockStreamEvent::ProcessBlock(
-                self.firehose_triggers_in_block(&sp, filter)?,
+                adapter.triggers_in_block(logger, sp, filter).await?,
                 Some(response.cursor.clone()),
             )),
 
             ForkStep::StepUndo => {
-                let piece = sp.new_block.as_ref().unwrap();
-                let block = piece.block.as_ref().unwrap();
-                let header = block.header.as_ref().unwrap();
-                let block_id = piece.block_id.as_ref().unwrap();
                 let parent_ptr = sp
                     .parent_ptr()
                     .expect("Genesis block should never be reverted");
 
                 Ok(BlockStreamEvent::Revert(
-                    BlockPtr {
-                        hash: BlockHash::from(block_id.hash.clone()),
-                        number: header.height as i32,
-                    },
+                    sp.into(),
                     parent_ptr,
                     Some(response.cursor.clone()),
                 ))
@@ -289,36 +291,5 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 panic!("unknown step should not happen in the Firehose response")
             }
         }
-    }
-}
-
-impl FirehoseMapper {
-    // FIXME: This should be replaced by using the `TriggersAdapter` struct directly. However, the TriggersAdapter trait
-    //        is async. It's actual async usage is done inside a manual `poll` implementation in `firehose_block_stream#poll_next`
-    //        value. An upcoming improvement will be to remove this `poll_next`. Once the refactor occurs, this should be
-    //        removed and TriggersAdapter::triggers_in_block should be use straight.
-    fn firehose_triggers_in_block(
-        &self,
-        el: &codec::EventList,
-        _filter: &TriggerFilter,
-    ) -> Result<BlockWithTriggers<Chain>, FirehoseError> {
-        // TODO: Find the best place to introduce an `Arc` and avoid this clone.
-        let el = Arc::new(el.clone());
-
-        let mut triggers: Vec<_> = el
-            .events()
-            .into_iter()
-            .map(|event| {
-                TendermintTrigger::Event(Arc::new(trigger::EventData {
-                    event,
-                    block_header: el.header().clone(),
-                }))
-            })
-            .collect();
-
-        triggers.push(TendermintTrigger::Block(el.cheap_clone()));
-
-        // TODO: `block` should probably be an `Arc` in `BlockWithTriggers` to avoid this clone.
-        Ok(BlockWithTriggers::new(el.as_ref().clone(), triggers))
     }
 }
