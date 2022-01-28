@@ -112,12 +112,7 @@ impl EventBlock {
     }
 
     pub fn header(&self) -> &Header {
-        self.block
-            .as_ref()
-            .unwrap()
-            .header
-            .as_ref()
-            .unwrap()
+        self.block.as_ref().unwrap().header.as_ref().unwrap()
     }
 
     pub fn parent_ptr(&self) -> Option<BlockPtr> {

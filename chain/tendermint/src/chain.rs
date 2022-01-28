@@ -25,7 +25,7 @@ use crate::capabilities::NodeCapabilities;
 use crate::data_source::{
     DataSource, DataSourceTemplate, UnresolvedDataSource, UnresolvedDataSourceTemplate,
 };
-use crate::trigger::{TendermintTrigger};
+use crate::trigger::TendermintTrigger;
 use crate::RuntimeAdapter;
 use crate::{codec, TriggerFilter};
 

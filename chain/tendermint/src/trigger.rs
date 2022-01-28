@@ -43,8 +43,12 @@ pub enum TendermintTrigger {
 impl CheapClone for TendermintTrigger {
     fn cheap_clone(&self) -> TendermintTrigger {
         match self {
-            TendermintTrigger::Block(event_list) => TendermintTrigger::Block(event_list.cheap_clone()),
-            TendermintTrigger::Event(event_data) => TendermintTrigger::Event(event_data.cheap_clone()),
+            TendermintTrigger::Block(event_list) => {
+                TendermintTrigger::Block(event_list.cheap_clone())
+            }
+            TendermintTrigger::Event(event_data) => {
+                TendermintTrigger::Event(event_data.cheap_clone())
+            }
         }
     }
 }
