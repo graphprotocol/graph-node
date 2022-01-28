@@ -31,6 +31,7 @@ use std::fmt::{self, Display};
 use std::iter::FromIterator;
 use std::str::FromStr;
 
+use crate::block_range::BLOCK_COLUMN;
 use crate::relational::{
     Column, ColumnType, IdType, Layout, SqlName, Table, PRIMARY_KEY_COLUMN, STRING_PREFIX_SIZE,
 };
@@ -2881,8 +2882,12 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
             out.push_identifier(column.name.as_str())?;
             out.push_sql(", ");
         }
-        out.push_sql("block_range)");
-        out.push_sql("\nselect ");
+        if self.dst.immutable {
+            out.push_sql(BLOCK_COLUMN);
+        } else {
+            out.push_sql(BLOCK_RANGE_COLUMN);
+        }
+        out.push_sql(")\nselect ");
         for column in &self.columns {
             out.push_identifier(column.name.as_str())?;
             if let ColumnType::Enum(enum_type) = &column.column_type {
@@ -2898,7 +2903,37 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
             }
             out.push_sql(", ");
         }
-        out.push_sql("block_range from ");
+        // Try to convert back and forth between mutable and immutable,
+        // though that can go wrong during the actual copying when going
+        // from mutable to immutable if any entity has ever been updated or
+        // deleted
+        match (self.src.immutable, self.dst.immutable) {
+            (true, true) => out.push_sql(BLOCK_COLUMN),
+            (true, false) => {
+                out.push_sql("int4range(");
+                out.push_sql(BLOCK_COLUMN);
+                out.push_sql(", null)");
+            }
+            (false, true) => {
+                // If this entity was mutated, we will find one version
+                // where the upper end of the block range will be finite.
+                // This check is necessary in case source entities were ony
+                // ever deleted, never updated. In that case we would
+                // erroneously undelete entities without this check
+                let checked_conversion = format!(
+                    r#"
+                case when upper_inf({BLOCK_RANGE_COLUMN})
+                     then lower({BLOCK_RANGE_COLUMN})
+                     else length(raise_exception_bytea('table {} for entity type {} can not be made immutable since it contains at least one mutated entity. vid = ' || vid)) end
+                "#,
+                    self.src.qualified_name,
+                    self.src.object.as_str()
+                );
+                out.push_sql(&checked_conversion);
+            }
+            (false, false) => out.push_sql(BLOCK_RANGE_COLUMN),
+        }
+        out.push_sql(" from ");
         out.push_sql(self.src.qualified_name.as_str());
         out.push_sql(" where vid >= ");
         out.push_bind_param::<BigInt, _>(&self.first_vid)?;
