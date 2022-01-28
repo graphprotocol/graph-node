@@ -209,6 +209,17 @@ impl AscIndexId for AscEventList {
 
 #[repr(C)]
 #[derive(AscType)]
+pub(crate) struct AscEventData {
+    pub event: AscPtr<AscEvent>,
+    pub block: AscPtr<AscEventBlock>,
+}
+
+impl AscIndexId for AscEventData {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventData;
+}
+
+#[repr(C)]
+#[derive(AscType)]
 pub(crate) struct AscEventBlock {
     pub block: AscPtr<AscBlock>,
     pub block_id: AscPtr<AscBlockID>,
@@ -679,15 +690,4 @@ pub(crate) struct AscTimestamp {
 
 impl AscIndexId for AscTimestamp {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintTimestamp;
-}
-
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscEventData {
-    pub event: AscPtr<AscEvent>,
-    pub block_header: AscPtr<AscHeader>,
-}
-
-impl AscIndexId for AscEventData {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventData;
 }

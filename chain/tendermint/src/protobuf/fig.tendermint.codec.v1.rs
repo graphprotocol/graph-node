@@ -1,12 +1,3 @@
-/// EventData
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct EventData {
-    #[prost(message, optional, tag = "1")]
-    pub event: ::core::option::Option<Event>,
-    #[prost(message, optional, tag = "2")]
-    pub block: ::core::option::Option<EventList>,
-}
-/// EventList
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventList {
     #[prost(message, optional, tag = "1")]
@@ -16,13 +7,12 @@ pub struct EventList {
     #[prost(message, optional, tag = "3")]
     pub validator_set_updates: ::core::option::Option<EventValidatorSetUpdates>,
 }
-/// Reward
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Reward {
-    #[prost(string, tag = "1")]
-    pub amount: ::prost::alloc::string::String,
-    #[prost(string, tag = "2")]
-    pub validator: ::prost::alloc::string::String,
+pub struct EventData {
+    #[prost(message, optional, tag = "1")]
+    pub event: ::core::option::Option<Event>,
+    #[prost(message, optional, tag = "2")]
+    pub block: ::core::option::Option<EventBlock>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Block {

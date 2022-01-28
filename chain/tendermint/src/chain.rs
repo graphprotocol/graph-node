@@ -25,7 +25,7 @@ use crate::capabilities::NodeCapabilities;
 use crate::data_source::{
     DataSource, DataSourceTemplate, UnresolvedDataSource, UnresolvedDataSourceTemplate,
 };
-use crate::trigger::{self, TendermintTrigger};
+use crate::trigger::TendermintTrigger;
 use crate::RuntimeAdapter;
 use crate::{codec, TriggerFilter};
 
@@ -199,9 +199,9 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             .events()
             .into_iter()
             .map(|event| {
-                TendermintTrigger::Event(Arc::new(trigger::EventData {
-                    event,
-                    block_header: block.header().clone(),
+                TendermintTrigger::Event(Arc::new(codec::EventData {
+                    event: Some(event),
+                    block: Some(block.block().clone()),
                 }))
             })
             .collect();

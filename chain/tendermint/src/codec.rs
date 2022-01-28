@@ -13,14 +13,12 @@ impl EventList {
         self.new_block.as_ref().unwrap()
     }
 
+    pub fn block_id(&self) -> &BlockId {
+        self.block().block_id()
+    }
+
     pub fn header(&self) -> &Header {
-        self.block()
-            .block
-            .as_ref()
-            .unwrap()
-            .header
-            .as_ref()
-            .unwrap()
+        self.block().header()
     }
 
     pub fn events(&self) -> Vec<Event> {
@@ -80,7 +78,7 @@ impl From<EventList> for BlockPtr {
 
 impl<'a> From<&'a EventList> for BlockPtr {
     fn from(b: &'a EventList) -> BlockPtr {
-        BlockPtr::from((b.header().data_hash.clone(), b.header().height))
+        BlockPtr::from((b.block_id().hash.clone(), b.header().height))
     }
 }
 
@@ -98,29 +96,47 @@ impl BlockchainBlock for EventList {
     }
 }
 
-impl Header {
-    pub fn parent_ptr(&self) -> Option<BlockPtr> {
-        self.last_block_id
-            .as_ref()
-            .map(|last_block_id| BlockPtr::from((last_block_id.hash.clone(), self.height - 1)))
+impl EventData {
+    pub fn event(&self) -> &Event {
+        self.event.as_ref().unwrap()
+    }
+
+    pub fn block(&self) -> &EventBlock {
+        self.block.as_ref().unwrap()
     }
 }
 
-impl From<Header> for BlockPtr {
-    fn from(b: Header) -> BlockPtr {
+impl EventBlock {
+    pub fn block_id(&self) -> &BlockId {
+        self.block_id.as_ref().unwrap()
+    }
+
+    pub fn header(&self) -> &Header {
+        self.block.as_ref().unwrap().header.as_ref().unwrap()
+    }
+
+    pub fn parent_ptr(&self) -> Option<BlockPtr> {
+        self.header().last_block_id.as_ref().map(|last_block_id| {
+            BlockPtr::from((last_block_id.hash.clone(), self.header().height - 1))
+        })
+    }
+}
+
+impl From<EventBlock> for BlockPtr {
+    fn from(b: EventBlock) -> BlockPtr {
         (&b).into()
     }
 }
 
-impl<'a> From<&'a Header> for BlockPtr {
-    fn from(b: &'a Header) -> BlockPtr {
-        BlockPtr::from((b.data_hash.clone(), b.height))
+impl<'a> From<&'a EventBlock> for BlockPtr {
+    fn from(b: &'a EventBlock) -> BlockPtr {
+        BlockPtr::from((b.block_id().hash.clone(), b.header().height))
     }
 }
 
-impl BlockchainBlock for Header {
+impl BlockchainBlock for EventBlock {
     fn number(&self) -> i32 {
-        BlockNumber::try_from(self.height).unwrap()
+        BlockNumber::try_from(self.header().height).unwrap()
     }
 
     fn ptr(&self) -> BlockPtr {

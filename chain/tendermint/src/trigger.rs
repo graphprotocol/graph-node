@@ -28,8 +28,8 @@ impl std::fmt::Debug for TendermintTrigger {
 impl MappingTrigger for TendermintTrigger {
     fn to_asc_ptr<H: AscHeap>(self, heap: &mut H) -> Result<AscPtr<()>, DeterministicHostError> {
         Ok(match self {
-            TendermintTrigger::Block(block) => asc_new(heap, block.as_ref())?.erase(),
-            TendermintTrigger::Event(data) => asc_new(heap, data.as_ref())?.erase(),
+            TendermintTrigger::Block(event_list) => asc_new(heap, event_list.as_ref())?.erase(),
+            TendermintTrigger::Event(event_data) => asc_new(heap, event_data.as_ref())?.erase(),
         })
     }
 }
@@ -37,14 +37,18 @@ impl MappingTrigger for TendermintTrigger {
 #[derive(Clone)]
 pub enum TendermintTrigger {
     Block(Arc<codec::EventList>),
-    Event(Arc<EventData>),
+    Event(Arc<codec::EventData>),
 }
 
 impl CheapClone for TendermintTrigger {
     fn cheap_clone(&self) -> TendermintTrigger {
         match self {
-            TendermintTrigger::Block(block) => TendermintTrigger::Block(block.cheap_clone()),
-            TendermintTrigger::Event(data) => TendermintTrigger::Event(data.cheap_clone()),
+            TendermintTrigger::Block(event_list) => {
+                TendermintTrigger::Block(event_list.cheap_clone())
+            }
+            TendermintTrigger::Event(event_data) => {
+                TendermintTrigger::Event(event_data.cheap_clone())
+            }
         }
     }
 }
@@ -53,7 +57,7 @@ impl PartialEq for TendermintTrigger {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Block(a_ptr), Self::Block(b_ptr)) => a_ptr == b_ptr,
-            (Self::Event(a), Self::Event(b)) => a.event.event_type == b.event.event_type,
+            (Self::Event(a), Self::Event(b)) => a.event().event_type == b.event().event_type,
             _ => false,
         }
     }
@@ -64,15 +68,15 @@ impl Eq for TendermintTrigger {}
 impl TendermintTrigger {
     pub fn block_number(&self) -> BlockNumber {
         match self {
-            TendermintTrigger::Block(block_ptr) => block_ptr.number(),
-            TendermintTrigger::Event(data) => data.block_header.number(),
+            TendermintTrigger::Block(event_list) => event_list.block().number(),
+            TendermintTrigger::Event(event_data) => event_data.block().number(),
         }
     }
 
     pub fn block_hash(&self) -> BlockHash {
         match self {
-            TendermintTrigger::Block(block_ptr) => block_ptr.hash(),
-            TendermintTrigger::Event(data) => data.block_header.hash(),
+            TendermintTrigger::Block(event_list) => event_list.block().hash(),
+            TendermintTrigger::Event(event_data) => event_data.block().hash(),
         }
     }
 }
@@ -106,19 +110,14 @@ impl TriggerData for TendermintTrigger {
             TendermintTrigger::Block(..) => {
                 format!("block #{}, hash {}", self.block_number(), self.block_hash())
             }
-            TendermintTrigger::Event(data) => {
+            TendermintTrigger::Event(event_data) => {
                 format!(
                     "event type {}, block #{}, hash {}",
-                    data.event.event_type,
+                    event_data.event().event_type,
                     self.block_number(),
                     self.block_hash(),
                 )
             }
         }
     }
-}
-
-pub struct EventData {
-    pub event: codec::Event,
-    pub block_header: codec::Header,
 }
