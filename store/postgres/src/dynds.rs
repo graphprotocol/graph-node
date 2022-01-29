@@ -12,7 +12,7 @@ use diesel::{insert_into, pg::PgConnection};
 use graph::{
     components::store::StoredDynamicDataSource,
     constraint_violation,
-    data::subgraph::Source,
+    data::subgraph::{EthereumSource, NearSource},
     prelude::{
         bigdecimal::ToPrimitive, web3::types::H160, BigDecimal, BlockNumber, BlockPtr,
         DeploymentHash, StoreError,
@@ -37,13 +37,14 @@ table! {
     }
 }
 
-fn to_source(
+#[allow(dead_code)]
+fn to_ethereum_source(
     deployment: &str,
     vid: i64,
     address: Vec<u8>,
     abi: String,
     start_block: BlockNumber,
-) -> Result<Source, StoreError> {
+) -> Result<EthereumSource, StoreError> {
     if address.len() != 20 {
         return Err(constraint_violation!(
             "Data source address 0x`{:?}` for dynamic data source {} in deployment {} should have be 20 bytes long but is {} bytes long",
@@ -53,9 +54,31 @@ fn to_source(
     }
     let address = Some(H160::from_slice(address.as_slice()));
 
-    Ok(Source {
+    Ok(EthereumSource {
         address,
         abi,
+        start_block,
+    })
+}
+
+fn to_near_source(
+    _deployment: &str,
+    _vid: i64,
+    address: Vec<u8>,
+    _abi: String,
+    start_block: BlockNumber,
+) -> Result<NearSource, StoreError> {
+    // FIXME (matt): This is wrong, we are currently hijacking the address field to store the account,
+    //               this whole file will need a overhaul to support all protocols.
+    //
+    // FIXME (matt): If we continue using Vec<u8> to store the account, turn the `expect` call into
+    //               a proper `StoreError` instead.
+    let account: String = std::str::from_utf8(address.as_ref())
+        .expect("account should have been a valid UTF-8 String")
+        .to_string();
+
+    Ok(NearSource {
+        account,
         start_block,
     })
 }
@@ -90,11 +113,15 @@ pub fn load(conn: &PgConnection, id: &str) -> Result<Vec<StoredDynamicDataSource
 
     let mut data_sources: Vec<StoredDynamicDataSource> = Vec::new();
     for (vid, name, context, address, abi, start_block, creation_block) in dds.into_iter() {
-        let source = to_source(id, vid, address, abi, start_block)?;
+        // FIMXE (matt): Don't forget to uncomment this and refactoring is done!
+        // let ethereum_source = to_ethereum_source(id, vid, address, abi, start_block)?;
+        let near_source = to_near_source(id, vid, address, abi, start_block)?;
+
         let creation_block = creation_block.to_i32();
         let data_source = StoredDynamicDataSource {
             name,
-            source,
+            source: None,
+            near_source: Some(near_source),
             context,
             creation_block,
         };
@@ -128,24 +155,34 @@ pub(crate) fn insert(
         .map(|ds| {
             let StoredDynamicDataSource {
                 name,
-                source:
-                    Source {
-                        address,
-                        abi,
-                        start_block,
-                    },
+                source,
+                near_source,
                 context,
                 creation_block: _,
             } = ds;
-            let address = match address {
-                Some(address) => address.as_bytes().to_vec(),
-                None => {
-                    return Err(constraint_violation!(
-                        "dynamic data sources must have an address, but `{}` has none",
-                        name
-                    ));
+            let (address, abi, start_block) = match (source, near_source) {
+                (None, None) => panic!("At least one source should be set"),
+                (None, Some(near)) => (
+                    near.account.as_bytes().to_vec(),
+                    "".to_string(),
+                    near.start_block,
+                ),
+                (Some(ethereum), None) => {
+                    let address = match ethereum.address {
+                        Some(address) => address.as_bytes().to_vec(),
+                        None => {
+                            return Err(constraint_violation!(
+                                "dynamic data sources must have an address, but `{}` has none",
+                                name
+                            ));
+                        }
+                    };
+
+                    (address, ethereum.abi.clone(), ethereum.start_block)
                 }
+                (Some(_), Some(_)) => panic!("At most one source should be set"),
             };
+
             Ok((
                 decds::deployment.eq(deployment.as_str()),
                 decds::name.eq(name),

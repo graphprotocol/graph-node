@@ -25,7 +25,7 @@ use graph::{
     },
 };
 
-use graph::data::subgraph::{calls_host_fn, DataSourceContext, Source};
+use graph::data::subgraph::{calls_host_fn, DataSourceContext, EthereumSource};
 
 use crate::chain::Chain;
 use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger, MappingTrigger};
@@ -41,7 +41,7 @@ pub struct DataSource {
     pub kind: String,
     pub network: Option<String>,
     pub name: String,
-    pub source: Source,
+    pub source: EthereumSource,
     pub mapping: Mapping,
     pub context: Arc<Option<DataSourceContext>>,
     pub creation_block: Option<BlockNumber>,
@@ -119,7 +119,8 @@ impl blockchain::DataSource<Chain> for DataSource {
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
         StoredDynamicDataSource {
             name: self.name.to_owned(),
-            source: self.source.clone(),
+            source: Some(self.source.clone()),
+            near_source: None,
             context: self
                 .context
                 .as_ref()
@@ -136,6 +137,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         let StoredDynamicDataSource {
             name,
             source,
+            near_source: _,
             context,
             creation_block,
         } = stored;
@@ -152,7 +154,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             kind: template.kind.to_string(),
             network: template.network.as_ref().map(|s| s.to_string()),
             name,
-            source,
+            source: source.expect("ethereum source must be set here"),
             mapping: template.mapping.clone(),
             context: Arc::new(context),
             creation_block,
@@ -215,7 +217,7 @@ impl DataSource {
         kind: String,
         network: Option<String>,
         name: String,
-        source: Source,
+        source: EthereumSource,
         mapping: Mapping,
         context: Option<DataSourceContext>,
     ) -> Result<Self, Error> {
@@ -684,7 +686,7 @@ pub struct UnresolvedDataSource {
     pub kind: String,
     pub network: Option<String>,
     pub name: String,
-    pub source: Source,
+    pub source: EthereumSource,
     pub mapping: UnresolvedMapping,
     pub context: Option<DataSourceContext>,
 }
@@ -751,7 +753,7 @@ impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
             kind: template.kind,
             network: template.network,
             name: template.name,
-            source: Source {
+            source: EthereumSource {
                 address: Some(address),
                 abi: template.source.abi,
                 start_block: 0,

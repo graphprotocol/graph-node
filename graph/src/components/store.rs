@@ -19,8 +19,8 @@ use web3::types::{Address, H256};
 use crate::blockchain::{Block, Blockchain};
 use crate::components::server::index_node::VersionInfo;
 use crate::components::transaction_receipt;
-use crate::data::subgraph::status;
-use crate::data::{store::*, subgraph::Source};
+use crate::data::store::*;
+use crate::data::subgraph::{status, EthereumSource, NearSource};
 use crate::prelude::*;
 use crate::util::lfu_cache::LfuCache;
 use crate::{
@@ -853,7 +853,8 @@ impl From<std::fmt::Error> for StoreError {
 
 pub struct StoredDynamicDataSource {
     pub name: String,
-    pub source: Source,
+    pub source: Option<EthereumSource>,
+    pub near_source: Option<NearSource>,
     pub context: Option<String>,
     pub creation_block: Option<BlockNumber>,
 }

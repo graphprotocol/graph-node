@@ -116,7 +116,7 @@ pub fn mock_data_source(path: &str, api_version: Version) -> DataSource {
         kind: String::from("ethereum/contract"),
         name: String::from("example data source"),
         network: Some(String::from("mainnet")),
-        source: Source {
+        source: EthereumSource {
             address: Some(Address::from_str("0123123123012312312301231231230123123123").unwrap()),
             abi: String::from("123123"),
             start_block: 0,

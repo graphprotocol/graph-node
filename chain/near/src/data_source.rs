@@ -1,7 +1,8 @@
+use graph::anyhow::Context;
 use graph::blockchain::{Block, TriggerWithHandler};
 use graph::components::store::StoredDynamicDataSource;
-use graph::data::subgraph::DataSourceContext;
-use graph::prelude::SubgraphManifestValidationError;
+use graph::data::subgraph::{DataSourceContext, NearSource};
+use graph::prelude::{serde_json, Entity, SubgraphManifestValidationError};
 use graph::{
     anyhow::{anyhow, Error},
     blockchain::{self, Blockchain},
@@ -123,16 +124,58 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
-        // FIXME (NEAR): Implement me!
-        todo!()
+        StoredDynamicDataSource {
+            name: self.name.to_owned(),
+            source: None,
+            near_source: Some(NearSource {
+                account: self
+                    .source
+                    .account
+                    .clone()
+                    .expect("near dynamic data source account should be set"),
+                start_block: self.source.start_block,
+            }),
+            context: self
+                .context
+                .as_ref()
+                .as_ref()
+                .map(|ctx| serde_json::to_string(&ctx).unwrap()),
+            creation_block: self.creation_block,
+        }
     }
 
     fn from_stored_dynamic_data_source(
-        _templates: &BTreeMap<&str, &DataSourceTemplate>,
-        _stored: StoredDynamicDataSource,
+        templates: &BTreeMap<&str, &DataSourceTemplate>,
+        stored: StoredDynamicDataSource,
     ) -> Result<Self, Error> {
-        // FIXME (NEAR): Implement me correctly
-        todo!()
+        let StoredDynamicDataSource {
+            name,
+            source: _,
+            near_source,
+            context,
+            creation_block,
+        } = stored;
+        let template = templates
+            .get(name.as_str())
+            .ok_or_else(|| anyhow!("no template named `{}` was found", name))?;
+        let context = context
+            .map(|ctx| serde_json::from_str::<Entity>(&ctx))
+            .transpose()?;
+
+        Ok(DataSource {
+            kind: template.kind.to_string(),
+            network: template.network.as_ref().map(|s| s.to_string()),
+            name,
+            source: near_source
+                .map(|v| Source {
+                    account: Some(v.account),
+                    start_block: v.start_block,
+                })
+                .expect("near source must be set here"),
+            mapping: template.mapping.clone(),
+            context: Arc::new(context),
+            creation_block,
+        })
     }
 
     fn validate(&self) -> Vec<Error> {
@@ -242,39 +285,36 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
 impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
     type Error = Error;
 
-    fn try_from(_info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
-        Err(anyhow!("Near subgraphs do not support templates"))
+    fn try_from(info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
+        let DataSourceTemplateInfo {
+            template,
+            params,
+            context,
+            creation_block,
+        } = info;
 
-        // How this might be implemented if/when Near gets support for templates:
-        // let DataSourceTemplateInfo {
-        //     template,
-        //     params,
-        //     context,
-        //     creation_block,
-        // } = info;
+        let account = params
+            .get(0)
+            .with_context(|| {
+                format!(
+                    "Failed to create data source from template `{}`: account parameter is missing",
+                    template.name
+                )
+            })?
+            .clone();
 
-        // let account = params
-        //     .get(0)
-        //     .with_context(|| {
-        //         format!(
-        //             "Failed to create data source from template `{}`: account parameter is missing",
-        //             template.name
-        //         )
-        //     })?
-        //     .clone();
-
-        // Ok(DataSource {
-        //     kind: template.kind,
-        //     network: template.network,
-        //     name: template.name,
-        //     source: Source {
-        //         account,
-        //         start_block: 0,
-        //     },
-        //     mapping: template.mapping,
-        //     context: Arc::new(context),
-        //     creation_block: Some(creation_block),
-        // })
+        Ok(DataSource {
+            kind: template.kind,
+            network: template.network,
+            name: template.name,
+            source: Source {
+                account: Some(account),
+                start_block: 0,
+            },
+            mapping: template.mapping,
+            context: Arc::new(context),
+            creation_block: Some(creation_block),
+        })
     }
 }
 

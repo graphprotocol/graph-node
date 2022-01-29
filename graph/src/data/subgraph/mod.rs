@@ -413,7 +413,14 @@ impl UnresolvedSchema {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct Source {
+pub struct NearSource {
+    pub account: String,
+    #[serde(rename = "startBlock", default)]
+    pub start_block: BlockNumber,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub struct EthereumSource {
     /// The contract address for the data source. We allow data sources
     /// without an address for 'wildcard' triggers that catch all possible
     /// events with the given `abi`
