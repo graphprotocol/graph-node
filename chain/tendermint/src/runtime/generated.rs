@@ -1,9 +1,11 @@
 use graph_runtime_derive::AscType;
 use graph::runtime::{AscType, AscIndexId, DeterministicHostError, IndexForAscTypeId, AscValue, AscPtr};
-use graph::{semver, anyhow, semver::Version};
-use std::mem::size_of;
+use graph::{semver::Version};
 use graph_runtime_wasm::asc_abi::class::{AscEnum, Array, AscString, Uint8Array};
 
+pub(crate) type AscBytes = Uint8Array;
+pub(crate) type AscHash = Uint8Array;
+pub(crate) type AscGas = i64;
 
 pub struct AscEventTxArray(pub(crate) Array<AscPtr<AscEventTx>>);
 
@@ -37,7 +39,7 @@ impl AscIndexId for AscCommitSigArray {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintArrayCommitSig;
 }
 
-pub struct AscBytesArray(pub(crate) Array<AscPtr<Uint8Array>>);
+pub struct AscBytesArray(pub(crate) Array<AscPtr<AscBytes>>);
 
 impl AscType for AscBytesArray {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
@@ -207,7 +209,7 @@ impl Default for AscBlockIDFlag {
 #[derive(AscType)]
 pub(crate) struct AscEventData {
     pub event: AscPtr<AscEvent>,
-    pub block: AscPtr<AscEventList>,
+    pub block: AscPtr<AscEventBlock>,
 }
 
 impl AscIndexId for AscEventData {
@@ -230,18 +232,6 @@ impl AscIndexId for AscEventList {
 
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscReward {
-    pub amount: AscPtr<AscString>,
-    pub validator: AscPtr<AscString>,
-}
-
-impl AscIndexId for AscReward {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintReward;
-}
-
-
-#[repr(C)]
-#[derive(AscType)]
 pub(crate) struct AscBlock {
     pub header: AscPtr<AscHeader>,
     pub data: AscPtr<AscData>,
@@ -257,7 +247,7 @@ impl AscIndexId for AscBlock {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscBlockID {
-    pub hash: AscPtr<Uint8Array>,
+    pub hash: AscPtr<AscHash>,
     pub part_set_header: AscPtr<AscPartSetHeader>,
 }
 
@@ -270,7 +260,7 @@ impl AscIndexId for AscBlockID {
 #[derive(AscType)]
 pub(crate) struct AscBlockParams {
     pub max_bytes: i64,
-    pub max_gas: i64,
+    pub max_gas: AscGas,
 }
 
 impl AscIndexId for AscBlockParams {
@@ -285,6 +275,7 @@ pub(crate) struct AscCommit {
     pub round: i32,
     pub block_id: AscPtr<AscBlockID>,
     pub signatures: AscPtr<AscCommitSigArray>,
+    pub _padding: u32,
 }
 
 impl AscIndexId for AscCommit {
@@ -296,9 +287,9 @@ impl AscIndexId for AscCommit {
 #[derive(AscType)]
 pub(crate) struct AscCommitSig {
     pub block_id_flag: AscPtr<AscBlockIDFlagEnum>,
-    pub validator_address: AscPtr<Uint8Array>,
+    pub validator_address: AscPtr<AscHash>,
     pub timestamp: AscPtr<AscTimestamp>,
-    pub signature: AscPtr<Uint8Array>,
+    pub signature: AscPtr<AscBytes>,
 }
 
 impl AscIndexId for AscCommitSig {
@@ -348,6 +339,7 @@ impl AscIndexId for AscData {
 pub(crate) struct AscDuration {
     pub seconds: i64,
     pub nanos: i32,
+    pub _padding: u32,
 }
 
 impl AscIndexId for AscDuration {
@@ -388,6 +380,8 @@ pub(crate) struct AscEventAttribute {
     pub key: AscPtr<AscString>,
     pub value: AscPtr<AscString>,
     pub index: bool,
+    pub _padding: u8,
+    pub _padding2: u16,
 }
 
 impl AscIndexId for AscEventAttribute {
@@ -439,9 +433,9 @@ pub(crate) struct AscEventVote {
     pub round: i32,
     pub block_id: AscPtr<AscBlockID>,
     pub timestamp: AscPtr<AscTimestamp>,
-    pub validator_address: AscPtr<Uint8Array>,
+    pub validator_address: AscPtr<AscHash>,
     pub validator_index: i32,
-    pub signature: AscPtr<Uint8Array>,
+    pub signature: AscPtr<AscBytes>,
 }
 
 impl AscIndexId for AscEventVote {
@@ -493,15 +487,16 @@ pub(crate) struct AscHeader {
     pub height: u64,
     pub time: AscPtr<AscTimestamp>,
     pub last_block_id: AscPtr<AscBlockID>,
-    pub last_commit_hash: AscPtr<Uint8Array>,
-    pub data_hash: AscPtr<Uint8Array>,
-    pub validators_hash: AscPtr<Uint8Array>,
-    pub next_validators_hash: AscPtr<Uint8Array>,
-    pub consensus_hash: AscPtr<Uint8Array>,
-    pub app_hash: AscPtr<Uint8Array>,
-    pub last_results_hash: AscPtr<Uint8Array>,
-    pub evidence_hash: AscPtr<Uint8Array>,
-    pub proposer_address: AscPtr<Uint8Array>,
+    pub last_commit_hash: AscPtr<AscHash>,
+    pub data_hash: AscPtr<AscHash>,
+    pub validators_hash: AscPtr<AscHash>,
+    pub next_validators_hash: AscPtr<AscHash>,
+    pub consensus_hash: AscPtr<AscHash>,
+    pub app_hash: AscPtr<AscHash>,
+    pub last_results_hash: AscPtr<AscHash>,
+    pub evidence_hash: AscPtr<AscHash>,
+    pub proposer_address: AscPtr<AscHash>,
+    pub _padding: u32,
 }
 
 impl AscIndexId for AscHeader {
@@ -539,8 +534,8 @@ impl AscIndexId for AscLightClientAttackEvidence {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscPublicKey {
-    pub ed25519: AscPtr<Uint8Array>,
-    pub secp256k1: AscPtr<Uint8Array>,
+    pub ed25519: AscPtr<AscBytes>,
+    pub secp256k1: AscPtr<AscBytes>,
 }
 
 impl AscIndexId for AscPublicKey {
@@ -552,7 +547,7 @@ impl AscIndexId for AscPublicKey {
 #[derive(AscType)]
 pub(crate) struct AscPartSetHeader {
     pub total: u32,
-    pub hash: AscPtr<Uint8Array>,
+    pub hash: AscPtr<AscHash>,
 }
 
 impl AscIndexId for AscPartSetHeader {
@@ -588,11 +583,11 @@ impl AscIndexId for AscResponseEndBlock {
 #[derive(AscType)]
 pub(crate) struct AscResponseDeliverTx {
     pub code: u32,
-    pub data: AscPtr<Uint8Array>,
+    pub data: AscPtr<AscBytes>,
     pub log: AscPtr<AscString>,
     pub info: AscPtr<AscString>,
-    pub gas_wanted: i64,
-    pub gas_used: i64,
+    pub gas_wanted: AscGas,
+    pub gas_used: AscGas,
     pub events: AscPtr<AscEventArray>,
     pub codespace: AscPtr<AscString>,
 }
@@ -619,6 +614,7 @@ impl AscIndexId for AscSignedHeader {
 pub(crate) struct AscTimestamp {
     pub seconds: i64,
     pub nanos: i32,
+    pub _padding: u32,
 }
 
 impl AscIndexId for AscTimestamp {
@@ -631,8 +627,9 @@ impl AscIndexId for AscTimestamp {
 pub(crate) struct AscTxResult {
     pub height: u64,
     pub index: u32,
-    pub tx: AscPtr<Uint8Array>,
+    pub tx: AscPtr<AscBytes>,
     pub result: AscPtr<AscResponseDeliverTx>,
+    pub _padding: u32,
 }
 
 impl AscIndexId for AscTxResult {
@@ -643,7 +640,7 @@ impl AscIndexId for AscTxResult {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscValidator {
-    pub address: AscPtr<Uint8Array>,
+    pub address: AscPtr<AscHash>,
     pub pub_key: AscPtr<AscPublicKey>,
     pub voting_power: i64,
     pub proposer_priority: i64,
