@@ -58,7 +58,7 @@ pub struct Commit {
 pub struct CommitSig {
     /// must match those in the enum above
     #[prost(enumeration = "BlockIdFlag", tag = "1")]
-    pub block_id_flag: i32,
+    pub r#type: i32,
     /// hash 256 20 bytes - this is the first 20 characters of a 32-byte key - SHA256(pubkey)[:20]
     #[prost(bytes = "vec", tag = "2")]
     pub validator_address: ::prost::alloc::vec::Vec<u8>,
@@ -154,7 +154,7 @@ pub struct EventValidatorSetUpdates {
 pub struct EventVote {
     /// should be present in the enum at the top of this file
     #[prost(enumeration = "SignedMsgType", tag = "1")]
-    pub event_vote_type: i32,
+    pub r#type: i32,
     /// must be > 0
     #[prost(uint64, tag = "2")]
     pub height: u64,

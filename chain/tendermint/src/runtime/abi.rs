@@ -378,7 +378,18 @@ impl ToAscObj<AscCommitSig> for codec::CommitSig {
         heap: &mut H,
     ) -> Result<AscCommitSig, DeterministicHostError> {
         Ok(AscCommitSig {
-            block_id_flag: asc_new(heap, &BlockIDKind(self.block_id_flag))?,
+            block_id_flag: match self.r#type {
+                0 => 0,
+                1 => 1,
+                2 => 2,
+                3 => 3,
+                value => {
+                    return Err(DeterministicHostError::from(anyhow!(
+                        "Invalid direction value {}",
+                        value
+                    )))
+                }
+            },
             validator_address: asc_new(heap, &Bytes(&self.validator_address))?,
             timestamp: asc_new_or_missing(heap, &self.timestamp, "CommitSig", "timestamp")?,
             signature: asc_new(heap, &Bytes(&self.signature))?,
@@ -560,7 +571,18 @@ impl ToAscObj<AscEventVote> for codec::EventVote {
         heap: &mut H,
     ) -> Result<AscEventVote, DeterministicHostError> {
         Ok(AscEventVote {
-            event_vote_type: asc_new(heap, &SignedMessageTypeKind(self.event_vote_type))?,
+            event_vote_type: match self.r#type {
+                0 => 0,
+                1 => 1,
+                2 => 2,
+                32 => 32,
+                value => {
+                    return Err(DeterministicHostError::from(anyhow!(
+                        "Invalid event vote type value {}",
+                        value
+                    )))
+                }
+            },
             height: self.height,
             round: self.round,
             block_id: asc_new_or_missing(heap, &self.block_id, "EventVote", "block_id")?,
@@ -646,62 +668,6 @@ impl ToAscObj<AscEventValidatorSetUpdates> for codec::EventValidatorSetUpdates {
         Ok(AscEventValidatorSetUpdates {
             validator_updates: asc_new(heap, &self.validator_updates)?,
         })
-    }
-}
-
-struct BlockIDKind(i32);
-
-impl ToAscObj<AscBlockIDFlagEnum> for BlockIDKind {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        _heap: &mut H,
-    ) -> Result<AscBlockIDFlagEnum, DeterministicHostError> {
-        let value = match self.0 {
-            0 => AscBlockIDFlag::BlockIdFlagUnknown,
-            1 => AscBlockIDFlag::BlockIdFlagAbsent,
-            2 => AscBlockIDFlag::BlockIdFlagCommit,
-            3 => AscBlockIDFlag::BlockIdFlagNil,
-            _ => {
-                return Err(DeterministicHostError::from(anyhow!(
-                    "Invalid direction value {}",
-                    self.0
-                )))
-            }
-        };
-
-        Ok(AscBlockIDFlagEnum(AscEnum {
-            _padding: 0,
-            kind: value,
-            payload: EnumPayload(self.0 as u64),
-        }))
-    }
-}
-
-struct SignedMessageTypeKind(i32);
-
-impl ToAscObj<AscSignedMsgTypeEnum> for SignedMessageTypeKind {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        _heap: &mut H,
-    ) -> Result<AscSignedMsgTypeEnum, DeterministicHostError> {
-        let value = match self.0 {
-            0 => AscSignedMsgType::SignedMsgTypeUnknown,
-            1 => AscSignedMsgType::SignedMsgTypePrevote,
-            2 => AscSignedMsgType::SignedMsgTypePrecommit,
-            3 => AscSignedMsgType::SignedMsgTypeProposal,
-            _ => {
-                return Err(DeterministicHostError::from(anyhow!(
-                    "Invalid direction value {}",
-                    self.0
-                )))
-            }
-        };
-
-        Ok(AscSignedMsgTypeEnum(AscEnum {
-            _padding: 0,
-            kind: value,
-            payload: EnumPayload(self.0 as u64),
-        }))
     }
 }
 
