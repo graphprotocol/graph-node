@@ -111,7 +111,7 @@ source = "git+https://github.com/async-email/async-native-tls.git?rev=b5b5562d6c
 dependencies = [
  "native-tls",
  "thiserror",
- "tokio 1.15.0",
+ "tokio 1.16.1",
  "url",
 ]
 
@@ -298,7 +298,7 @@ dependencies = [
  "serde_json",
  "serde_urlencoded",
  "thiserror",
- "tokio 1.15.0",
+ "tokio 1.16.1",
  "tokio-util",
  "url",
  "winapi 0.3.9",
@@ -1467,7 +1467,7 @@ dependencies = [
  "test-store",
  "thiserror",
  "tiny-keccak 1.5.0",
- "tokio 1.15.0",
+ "tokio 1.16.1",
  "tokio-retry",
  "tokio-stream",
  "tonic",
@@ -1783,7 +1783,7 @@ dependencies = [
  "futures 0.3.16",
  "lazy_static",
  "port_check",
- "tokio 1.15.0",
+ "tokio 1.16.1",
  "tokio-stream",
 ]
 
@@ -1840,7 +1840,7 @@ dependencies = [
  "http 0.2.5",
  "indexmap",
  "slab",
- "tokio 1.15.0",
+ "tokio 1.16.1",
  "tokio-util",
  "tracing",
 ]
@@ -2042,7 +2042,7 @@ dependencies = [
  "itoa",
  "pin-project-lite",
  "socket2",
- "tokio 1.15.0",
+ "tokio 1.16.1",
  "tower-service",
  "tracing",
  "want 0.3.0",
@@ -2061,7 +2061,7 @@ dependencies = [
  "hyper 0.14.11",
  "hyper-tls",
  "native-tls",
- "tokio 1.15.0",
+ "tokio 1.16.1",
  "tokio-native-tls",
  "tower-service",
 ]
@@ -2074,7 +2074,7 @@ checksum = "bbb958482e8c7be4bc3cf272a766a2b0bf1a6755e7a6ae777f017a31d11b13b1"
 dependencies = [
  "hyper 0.14.11",
  "pin-project-lite",
- "tokio 1.15.0",
+ "tokio 1.16.1",
  "tokio-io-timeout",
 ]
 
@@ -2087,7 +2087,7 @@ dependencies = [
  "bytes 1.0.1",
  "hyper 0.14.11",
  "native-tls",
- "tokio 1.15.0",
+ "tokio 1.16.1",
  "tokio-native-tls",
 ]
 
@@ -2101,7 +2101,7 @@ dependencies = [
  "hex",
  "hyper 0.14.11",
  "pin-project",
- "tokio 1.15.0",
+ "tokio 1.16.1",
 ]
 
 [[package]]
@@ -2992,7 +2992,7 @@ dependencies = [
  "fallible-iterator",
  "futures 0.3.16",
  "log",
- "tokio 1.15.0",
+ "tokio 1.16.1",
  "tokio-postgres",
 ]
 
@@ -3617,7 +3617,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
- "tokio 1.15.0",
+ "tokio 1.16.1",
  "tokio-native-tls",
  "url",
  "wasm-bindgen",
@@ -4446,9 +4446,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.15.0"
+version = "1.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbbf1c778ec206785635ce8ad57fe52b3009ae9e0c9f574a728f3049d3e55838"
+checksum = "0c27a64b625de6d309e8c57716ba93021dccf1b3b5c97edd6d3dd2d2135afc0a"
 dependencies = [
  "bytes 1.0.1",
  "libc",
@@ -4534,7 +4534,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90c49f106be240de154571dd31fbe48acb10ba6c6dd6f6517ad603abffa42de9"
 dependencies = [
  "pin-project-lite",
- "tokio 1.15.0",
+ "tokio 1.16.1",
 ]
 
 [[package]]
@@ -4555,7 +4555,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7d995660bd2b7f8c1568414c1126076c13fbb725c40112dc0120b78eb9b717b"
 dependencies = [
  "native-tls",
- "tokio 1.15.0",
+ "tokio 1.16.1",
 ]
 
 [[package]]
@@ -4577,7 +4577,7 @@ dependencies = [
  "postgres-protocol",
  "postgres-types",
  "socket2",
- "tokio 1.15.0",
+ "tokio 1.16.1",
  "tokio-util",
 ]
 
@@ -4608,7 +4608,7 @@ checksum = "7f57eb36ecbe0fc510036adff84824dd3c24bb781e21bfa67b69d556aa85214f"
 dependencies = [
  "pin-project",
  "rand 0.8.4",
- "tokio 1.15.0",
+ "tokio 1.16.1",
 ]
 
 [[package]]
@@ -4618,7 +4618,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc6844de72e57df1980054b38be3a9f4702aba4858be64dd700181a8a6d0e1b6"
 dependencies = [
  "rustls",
- "tokio 1.15.0",
+ "tokio 1.16.1",
  "webpki",
 ]
 
@@ -4630,7 +4630,7 @@ checksum = "50145484efff8818b5ccd256697f36863f587da82cf8b409c53adf1e840798e3"
 dependencies = [
  "futures-core",
  "pin-project-lite",
- "tokio 1.15.0",
+ "tokio 1.16.1",
  "tokio-util",
 ]
 
@@ -4696,7 +4696,7 @@ dependencies = [
  "futures-util",
  "log",
  "pin-project",
- "tokio 1.15.0",
+ "tokio 1.16.1",
  "tungstenite",
 ]
 
@@ -4745,7 +4745,7 @@ dependencies = [
  "futures-sink",
  "log",
  "pin-project-lite",
- "tokio 1.15.0",
+ "tokio 1.16.1",
 ]
 
 [[package]]
@@ -4779,7 +4779,7 @@ dependencies = [
  "prost",
  "prost-derive",
  "rustls-native-certs",
- "tokio 1.15.0",
+ "tokio 1.16.1",
  "tokio-rustls",
  "tokio-stream",
  "tokio-util",
@@ -4814,7 +4814,7 @@ dependencies = [
  "pin-project",
  "rand 0.8.4",
  "slab",
- "tokio 1.15.0",
+ "tokio 1.16.1",
  "tokio-stream",
  "tokio-util",
  "tower-layer",
@@ -5427,7 +5427,7 @@ dependencies = [
  "serde_json",
  "soketto",
  "tiny-keccak 2.0.2",
- "tokio 1.15.0",
+ "tokio 1.16.1",
  "tokio-stream",
  "tokio-util",
  "url",
