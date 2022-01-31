@@ -197,7 +197,7 @@ query Query ($id: String) {{
             let mut map = HashMap::new();
             for f in fields {
                 if f.is_derived() {
-                    // Derived fields cannot be store.set'ed.
+                    // Derived fields are not resolved, so it's safe to ignore them.
                     continue;
                 }
 

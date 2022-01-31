@@ -891,13 +891,13 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             }
             None => match &self.ctx.debug_fork {
                 Some(fork) => {
-                    let entity = fork.fetch(entity_type, id).map_err(|e| {
+                    let entity_option = fork.fetch(entity_type, id).map_err(|e| {
                         HostExportError::Unknown(anyhow!(
                             "store_get: failed to fetch entity from the debug fork: {}",
                             e
                         ))
                     })?;
-                    match entity {
+                    match entity_option {
                         Some(entity) => {
                             let _section = self
                                 .host_metrics
