@@ -717,32 +717,11 @@ impl DeploymentStore {
             let schema_name = site.namespace.clone();
             let layout = store.layout(conn, site)?;
             let table = resolve_table_name(&layout, &entity_name)?;
-
-            // Resolve column names.
-            //
-            // Since we allow our input to be either camel-case or snake-case, we must retry the
-            // search using the latter if the search for the former fails.
-            let column_names = field_names
-                .iter()
-                .map(|f| {
-                    table
-                        .column_for_field(f)
-                        .or_else(|_error| {
-                            let sql_name = SqlName::from(f.as_ref());
-                            table
-                                .column(&sql_name)
-                                .ok_or_else(|| StoreError::UnknownField(f.clone()))
-                        })
-                        .map(|column| column.name.as_str())
-                })
-                .collect::<Result<Vec<&str>, StoreError>>()?;
-
+            let column_names = resolve_column_names(table, &field_names)?;
             let column_names_sep_by_underscores = column_names.join("_");
             let column_names_sep_by_commas = column_names.join(", ");
-
             let table_name = &table.name;
             let index_name = format!("manual_{table_name}_{column_names_sep_by_underscores}");
-
             let sql = format!(
                 "create index concurrently if not exists {index_name} \
                  on {schema_name}.{table_name} using {index_method} \
@@ -750,7 +729,6 @@ impl DeploymentStore {
             );
             // This might take a long time.
             conn.execute(&sql)?;
-
             // check if the index creation was successfull
             let index_is_valid =
                 catalog::check_index_is_valid(conn, schema_name.as_str(), &index_name)?;
@@ -1513,4 +1491,28 @@ fn resolve_table_name<'a>(layout: &'a Layout, name: &'_ str) -> Result<&'a Table
                 .table(&sql_name)
                 .ok_or_else(|| StoreError::UnknownTable(name.to_owned()))
         })
+}
+
+// Resolves column names.
+//
+// Since we allow our input to be either camel-case or snake-case, we must retry the
+// search using the latter if the search for the former fails.
+fn resolve_column_names<'a, T: AsRef<str>>(
+    table: &'a Table,
+    field_names: &[T],
+) -> Result<Vec<&'a str>, StoreError> {
+    field_names
+        .iter()
+        .map(|f| {
+            table
+                .column_for_field(f.as_ref())
+                .or_else(|_error| {
+                    let sql_name = SqlName::from(f.as_ref());
+                    table
+                        .column(&sql_name)
+                        .ok_or_else(|| StoreError::UnknownField(f.as_ref().to_string()))
+                })
+                .map(|column| column.name.as_str())
+        })
+        .collect()
 }
