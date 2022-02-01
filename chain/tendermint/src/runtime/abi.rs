@@ -378,7 +378,7 @@ impl ToAscObj<AscCommitSig> for codec::CommitSig {
         heap: &mut H,
     ) -> Result<AscCommitSig, DeterministicHostError> {
         Ok(AscCommitSig {
-            block_id_flag: match self.r#type {
+            block_id_flag: match self.block_id_flag {
                 0 => 0,
                 1 => 1,
                 2 => 2,
@@ -571,7 +571,7 @@ impl ToAscObj<AscEventVote> for codec::EventVote {
         heap: &mut H,
     ) -> Result<AscEventVote, DeterministicHostError> {
         Ok(AscEventVote {
-            event_vote_type: match self.r#type {
+            event_vote_type: match self.event_vote_type {
                 0 => 0,
                 1 => 1,
                 2 => 2,

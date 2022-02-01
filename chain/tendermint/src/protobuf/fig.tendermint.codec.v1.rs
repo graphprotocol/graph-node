@@ -1,12 +1,3 @@
-/// EventData
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct EventData {
-    #[prost(message, optional, tag = "1")]
-    pub event: ::core::option::Option<Event>,
-    #[prost(message, optional, tag = "2")]
-    pub block: ::core::option::Option<EventBlock>,
-}
-/// EventList
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventList {
     #[prost(message, optional, tag = "1")]
@@ -15,6 +6,13 @@ pub struct EventList {
     pub transaction: ::prost::alloc::vec::Vec<EventTx>,
     #[prost(message, optional, tag = "3")]
     pub validator_set_updates: ::core::option::Option<EventValidatorSetUpdates>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EventData {
+    #[prost(message, optional, tag = "1")]
+    pub event: ::core::option::Option<Event>,
+    #[prost(message, optional, tag = "2")]
+    pub block: ::core::option::Option<EventBlock>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Block {
@@ -60,11 +58,10 @@ pub struct Commit {
 pub struct CommitSig {
     /// must match those in the enum above
     #[prost(enumeration = "BlockIdFlag", tag = "1")]
-    pub r#type: i32,
-    /// hash 256 20 bytes - this is the first 20 characters of a 32-byte key -
+    pub block_id_flag: i32,
+    /// hash 256 20 bytes - this is the first 20 characters of a 32-byte key - SHA256(pubkey)[:20]
     #[prost(bytes = "vec", tag = "2")]
     pub validator_address: ::prost::alloc::vec::Vec<u8>,
-    /// SHA256(pubkey)[:20]
     #[prost(message, optional, tag = "3")]
     pub timestamp: ::core::option::Option<Timestamp>,
     /// length should be > 0 and < 64
@@ -157,7 +154,7 @@ pub struct EventValidatorSetUpdates {
 pub struct EventVote {
     /// should be present in the enum at the top of this file
     #[prost(enumeration = "SignedMsgType", tag = "1")]
-    pub r#type: i32,
+    pub event_vote_type: i32,
     /// must be > 0
     #[prost(uint64, tag = "2")]
     pub height: u64,
@@ -243,7 +240,7 @@ pub struct Header {
     /// hash sha256 32 bytes
     #[prost(bytes = "vec", tag = "13")]
     pub evidence_hash: ::prost::alloc::vec::Vec<u8>,
-    /// hash 256 20 bytes - this is the first 20 characters of a 32-byte key -
+    /// hash 256 20 bytes - this is the first 20 characters of a 32-byte key - SHA256(pubkey)[:20]
     #[prost(bytes = "vec", tag = "14")]
     pub proposer_address: ::prost::alloc::vec::Vec<u8>,
 }
