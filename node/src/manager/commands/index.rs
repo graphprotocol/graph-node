@@ -1,11 +1,7 @@
-use graph::{
-    components::store::DeploymentLocator,
-    prelude::{anyhow, StoreError},
-};
+use crate::manager::deployment::find_single_deployment_locator;
+use graph::prelude::{anyhow, StoreError};
 use graph_store_postgres::{connection_pool::ConnectionPool, SubgraphStore};
 use std::{collections::HashSet, sync::Arc};
-
-use crate::manager::deployment::Deployment;
 
 fn validate_fields<T: AsRef<str>>(fields: &[T]) -> Result<(), anyhow::Error> {
     // Must be non-empty. Double checking, since [`StructOpt`] already checks this.
@@ -28,7 +24,7 @@ pub async fn create(
     index_method: String,
 ) -> Result<(), anyhow::Error> {
     validate_fields(&field_names)?;
-    let deployment_locator = find(&pool, &id)?;
+    let deployment_locator = find_single_deployment_locator(&pool, &id)?;
     println!("Index creation started. Please wait.");
     match store
         .create_manual_index(&deployment_locator, entity_name, field_names, index_method)
@@ -49,7 +45,7 @@ pub async fn list(
     id: String,
     entity_name: &str,
 ) -> Result<(), anyhow::Error> {
-    let deployment_locator = find(&pool, &id)?;
+    let deployment_locator = find_single_deployment_locator(&pool, &id)?;
     let indexes: Vec<String> = store
         .indexes_for_entity(&deployment_locator, entity_name)
         .await?;
@@ -65,20 +61,10 @@ pub async fn drop(
     id: &str,
     index_name: &str,
 ) -> Result<(), anyhow::Error> {
-    let deployment_locator = find(&pool, &id)?;
+    let deployment_locator = find_single_deployment_locator(&pool, &id)?;
     store
         .drop_index_for_deployment(&deployment_locator, &index_name)
         .await?;
     println!("Dropped index {index_name}");
     Ok(())
-}
-
-pub(super) fn find(pool: &ConnectionPool, name: &str) -> anyhow::Result<DeploymentLocator> {
-    let deployment_locator = match &Deployment::lookup(pool, name)?[..] {
-        [] => anyhow::bail!("Found no deployment for the given ID"),
-        [deployment_locator] => deployment_locator,
-        _ => anyhow::bail!("Found multiplle deployments for given identifier"),
-    }
-    .locator();
-    Ok(deployment_locator)
 }

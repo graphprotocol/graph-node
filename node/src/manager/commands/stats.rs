@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::index::find;
+use crate::manager::deployment::find_single_deployment_locator;
 use diesel::r2d2::ConnectionManager;
 use diesel::r2d2::PooledConnection;
 use diesel::sql_query;
@@ -162,7 +162,7 @@ pub async fn analyze(
     entity_name: &str,
 ) -> Result<(), anyhow::Error> {
     println!("Running ANALYZE for {entity_name} entity");
-    let deployment_locator = find(&pool, &deployment_id)?;
+    let deployment_locator = find_single_deployment_locator(&pool, &deployment_id)?;
     store
         .analyze(&deployment_locator, entity_name)
         .await

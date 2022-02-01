@@ -173,3 +173,17 @@ pub fn locate(
 pub fn as_hash(hash: String) -> Result<DeploymentHash, Error> {
     DeploymentHash::new(hash).map_err(|s| anyhow!("illegal deployment hash `{}`", s))
 }
+
+/// Finds a single deployment locator for the given deployment identifier.
+pub fn find_single_deployment_locator(
+    pool: &ConnectionPool,
+    name: &str,
+) -> anyhow::Result<DeploymentLocator> {
+    let deployment_locator = match &Deployment::lookup(pool, name)?[..] {
+        [] => anyhow::bail!("Found no deployment for the given ID"),
+        [deployment_locator] => deployment_locator,
+        _ => anyhow::bail!("Found multiplle deployments for given identifier"),
+    }
+    .locator();
+    Ok(deployment_locator)
+}
