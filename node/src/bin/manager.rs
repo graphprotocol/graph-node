@@ -848,9 +848,9 @@ async fn main() {
                 }
                 Show { nsp, table } => commands::stats::show(ctx.pools(), nsp, table),
                 Analyze { id, entity } => {
-                    let store = ctx.store();
+                    let (store, primary_pool) = ctx.store_and_primary();
                     let subgraph_store = store.subgraph_store();
-                    commands::stats::analyze(subgraph_store, id, entity).await
+                    commands::stats::analyze(subgraph_store, primary_pool, id, &entity).await
                 }
             }
         }

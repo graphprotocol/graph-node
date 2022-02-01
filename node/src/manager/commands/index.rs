@@ -73,7 +73,7 @@ pub async fn drop(
     Ok(())
 }
 
-fn find(pool: &ConnectionPool, name: &str) -> anyhow::Result<DeploymentLocator> {
+pub(super) fn find(pool: &ConnectionPool, name: &str) -> anyhow::Result<DeploymentLocator> {
     let deployment_locator = match &Deployment::lookup(pool, name)?[..] {
         [] => anyhow::bail!("Found no deployment for the given ID"),
         [deployment_locator] => deployment_locator,
