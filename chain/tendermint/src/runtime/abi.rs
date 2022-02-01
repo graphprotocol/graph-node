@@ -5,7 +5,7 @@ use anyhow::anyhow;
 use graph::runtime::{
     asc_new, AscHeap, AscIndexId, AscPtr, AscType, DeterministicHostError, ToAscObj,
 };
-use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, EnumPayload, Uint8Array};
+use graph_runtime_wasm::asc_abi::class::{Array, Uint8Array};
 
 use crate::codec;
 
