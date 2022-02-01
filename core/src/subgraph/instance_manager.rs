@@ -523,6 +523,12 @@ where
     loop {
         debug!(logger, "Starting or restarting subgraph");
 
+        // Clear entity cache when subgraph starts.
+        //
+        // This is done to be safe and sure that there's no state that's
+        // out of sync from the database.
+        ctx.state.entity_lfu_cache = LfuCache::new();
+
         let block_stream_canceler = CancelGuard::new();
         let block_stream_cancel_handle = block_stream_canceler.handle();
 
@@ -732,6 +738,12 @@ where
 
                 // Handle unexpected stream errors by marking the subgraph as failed.
                 Err(e) => {
+                    // Clear entity cache when a subgraph fails.
+                    //
+                    // This is done to be safe and sure that there's no state that's
+                    // out of sync from the database.
+                    ctx.state.entity_lfu_cache = LfuCache::new();
+
                     deployment_failed.set(1.0);
 
                     let message = format!("{:#}", e).replace("\n", "\t");
