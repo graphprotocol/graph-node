@@ -968,32 +968,32 @@ impl SubgraphStoreInner {
 
     pub async fn create_manual_index(
         &self,
-        id: &DeploymentHash,
-        entity_type: EntityType,
+        deployment: &DeploymentLocator,
+        entity_name: &str,
         field_names: Vec<String>,
         index_method: String,
     ) -> Result<(), StoreError> {
-        let (store, site) = self.store(&id)?;
+        let (store, site) = self.store(&deployment.hash)?;
         store
-            .create_manual_index(site, entity_type, field_names, index_method)
+            .create_manual_index(site, entity_name, field_names, index_method)
             .await
     }
 
     pub async fn indexes_for_entity(
         &self,
-        id: &DeploymentHash,
-        entity_type: EntityType,
+        deployment: &DeploymentLocator,
+        entity_name: &str,
     ) -> Result<Vec<String>, StoreError> {
-        let (store, site) = self.store(&id)?;
-        store.indexes_for_entity(site, entity_type).await
+        let (store, site) = self.store(&deployment.hash)?;
+        store.indexes_for_entity(site, entity_name).await
     }
 
     pub async fn drop_index_for_deployment(
         &self,
-        id: &DeploymentHash,
+        deployment: &DeploymentLocator,
         index_name: &str,
     ) -> Result<(), StoreError> {
-        let (store, site) = self.store(&id)?;
+        let (store, site) = self.store(&deployment.hash)?;
         store.drop_index(site, index_name).await
     }
 }

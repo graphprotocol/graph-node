@@ -40,7 +40,7 @@ use web3::types::Address;
 use crate::block_range::block_number;
 use crate::catalog;
 use crate::deployment;
-use crate::relational::{Layout, LayoutCache};
+use crate::relational::{Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::FromEntityData;
 use crate::{connection_pool::ConnectionPool, detail};
 use crate::{dynds, primary::Site};
@@ -706,26 +706,41 @@ impl DeploymentStore {
     pub(crate) async fn create_manual_index(
         &self,
         site: Arc<Site>,
-        entity_type: EntityType,
+        entity_name: &str,
         field_names: Vec<String>,
         index_method: String,
     ) -> Result<(), StoreError> {
         let store = self.clone();
-
+        let entity_name = entity_name.to_owned();
         self.with_conn(move |conn, _| {
             let schema_name = site.namespace.clone();
             let layout = store.layout(conn, site)?;
-            let table = layout.table_for_entity(&entity_type)?;
-            let table_name = &table.name;
 
-            // resolve column names
+            let table = resolve_table_name(&layout, &entity_name)?;
+
+            // Resolve column names.
+            //
+            // Since we allow our input to be either camel-case or snake-case, we must retry the
+            // search using the latter if the search for the former fails.
             let column_names = field_names
                 .iter()
-                .map(|f| table.column_for_field(f).map(|column| column.name.as_str()))
-                .collect::<Result<Vec<_>, _>>()?;
+                .map(|f| {
+                    table
+                        .column_for_field(f)
+                        .or_else(|_error| {
+                            let sql_name = SqlName::from(f.as_ref());
+                            table
+                                .column(&sql_name)
+                                .ok_or_else(|| StoreError::UnknownField(f.clone()))
+                        })
+                        .map(|column| column.name.as_str())
+                })
+                .collect::<Result<Vec<&str>, StoreError>>()?;
 
             let column_names_sep_by_underscores = column_names.join("_");
             let column_names_sep_by_commas = column_names.join(", ");
+
+            let table_name = &table.name;
             let index_name = format!("manual_{table_name}_{column_names_sep_by_underscores}");
 
             let sql = format!(
@@ -757,13 +772,14 @@ impl DeploymentStore {
     pub(crate) async fn indexes_for_entity(
         &self,
         site: Arc<Site>,
-        entity_type: EntityType,
+        entity_name: &str,
     ) -> Result<Vec<String>, StoreError> {
         let store = self.clone();
+        let entity_name = entity_name.to_owned();
         self.with_conn(move |conn, _| {
             let schema_name = site.namespace.clone();
             let layout = store.layout(conn, site)?;
-            let table = layout.table_for_entity(&entity_type)?;
+            let table = resolve_table_name(&layout, &entity_name)?;
             let table_name = &table.name;
             catalog::indexes_for_table(conn, schema_name.as_str(), table_name.as_str())
                 .map_err(Into::into)
@@ -1481,4 +1497,20 @@ impl DeploymentStore {
         self.with_conn(move |conn, _| deployment::health(&conn, &id).map_err(Into::into))
             .await
     }
+}
+
+/// Tries to fetch a [`Table`] either by its Entity name or its SQL name.
+///
+/// Since we allow our input to be either camel-case or snake-case, we must retry the
+/// search using the latter if the search for the former fails.
+fn resolve_table_name<'a>(layout: &'a Layout, name: &'_ str) -> Result<&'a Table, StoreError> {
+    layout
+        .table_for_entity(&EntityType::new(name.to_owned()))
+        .map(Deref::deref)
+        .or_else(|_error| {
+            let sql_name = SqlName::from(name);
+            layout
+                .table(&sql_name)
+                .ok_or_else(|| StoreError::UnknownTable(name.to_owned()))
+        })
 }
