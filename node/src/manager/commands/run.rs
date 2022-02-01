@@ -177,7 +177,7 @@ pub async fn run(
     )
     .await?;
 
-    let deployments = Deployment::lookup(&primary_pool, name.to_string())?;
+    let deployments = Deployment::lookup(&primary_pool, name)?;
     let deployment = deployments
         .first()
         .expect("At least one deployment should exist");

@@ -71,7 +71,7 @@ pub fn run(
 
     let deployments = names
         .iter()
-        .map(|name| Deployment::lookup(&primary, name.clone()))
+        .map(|name| Deployment::lookup(&primary, name))
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .flatten()
