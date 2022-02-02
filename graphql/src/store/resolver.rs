@@ -324,7 +324,59 @@ impl Resolver for StoreResolver {
         if let Some(meta) = meta {
             return Ok(meta);
         }
+
         if let Some(r::Value::List(children)) = prefetched_object {
+            // If we encounter a Connection type, we can safely resolve it as an object
+            // while using the same prefetched objects, since it's fetched before.
+            if object_type.name().ends_with("Connection") {
+              let mut page_info_map = BTreeMap::new();
+              page_info_map.insert(
+                    "hasNextPage".into(),
+                    graph::data::value::Value::Boolean(false),
+                );
+                page_info_map.insert(
+                    "hasPreviousPage".into(),
+                    graph::data::value::Value::Boolean(false),
+                );
+                page_info_map.insert(
+                    "startCursor".into(),
+                    graph::data::value::Value::String("".to_string()),
+                );
+                page_info_map.insert(
+                    "endCursor".into(),
+                    graph::data::value::Value::String("".to_string()),
+                );
+                let page_info = graph::data::value::Value::object(page_info_map);
+
+              let mut connection_response_map = BTreeMap::new();
+
+                let as_edges = children
+                    .iter()
+                    .map(|child| {
+                        let mut edge_map = BTreeMap::new();
+                        edge_map.insert("node".into(), child.clone());
+                        edge_map.insert(
+                            "cursor".into(),
+                            graph::data::value::Value::String("".to_string()),
+                        );
+                        graph::data::value::Value::object(edge_map)
+                    })
+                    .collect();
+
+                    connection_response_map.insert(
+                    "edges".into(),
+                    graph::data::value::Value::List(as_edges),
+                );
+                connection_response_map.insert(
+                    "pageInfo".into(),
+                    page_info,
+                );
+
+                let connection_response = graph::data::value::Value::object(connection_response_map);
+
+                return Ok(connection_response);
+            }
+
             if children.len() > 1 {
                 let derived_from_field =
                     sast::get_derived_from_field(object_type, field_definition)
@@ -339,9 +391,12 @@ impl Resolver for StoreResolver {
             } else {
                 Ok(children.into_iter().next().unwrap_or(r::Value::Null))
             }
+        } else if let Some(prefetched_object) = prefetched_object {
+            Ok(prefetched_object)
         } else {
+            println!("oops, prefetched_object: {:?}", prefetched_object);
             return Err(QueryExecutionError::ResolveEntitiesError(format!(
-                "internal error resolving {}.{}: \
+                "internal error resolving {}.{}: resolve_object \
                  expected prefetched result, but found nothing",
                 object_type.name(),
                 &field.name,

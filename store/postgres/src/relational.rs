@@ -471,9 +471,19 @@ impl Layout {
     }
 
     pub fn table_for_entity(&self, entity: &EntityType) -> Result<&Arc<Table>, StoreError> {
+        let temp_new;
+        let actual_entity = match entity.as_str().ends_with("Connection") {
+            true => {
+                temp_new =
+                    EntityType::new(entity.as_str().trim_end_matches("Connection").to_owned());
+                &temp_new
+            }
+            false => entity,
+        };
+
         self.tables
-            .get(entity)
-            .ok_or_else(|| StoreError::UnknownTable(entity.to_string()))
+            .get(&actual_entity)
+            .ok_or_else(|| StoreError::UnknownTable(actual_entity.to_string()))
     }
 
     pub fn find(

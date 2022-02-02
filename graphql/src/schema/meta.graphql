@@ -87,3 +87,11 @@ enum OrderDirection {
   asc
   desc
 }
+
+"Pagination information for the current connection"
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}

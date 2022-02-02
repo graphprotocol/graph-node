@@ -25,6 +25,7 @@ pub enum APISchemaError {
 }
 
 // The followoing types are defined in meta.graphql
+const PAGEINFO_TYPE_NAME: &str = "PageInfo";
 const BLOCK_HEIGHT: &str = "Block_height";
 const CHANGE_BLOCK_FILTER_NAME: &str = "BlockChangedFilter";
 const ERROR_POLICY_TYPE: &str = "_SubgraphErrorPolicy_";
@@ -83,6 +84,7 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
 
     // Refactor: Don't clone the schema.
     let mut schema = input_schema.clone();
+    add_connection_types(&mut schema, &object_types);
     add_meta_field_type(&mut schema);
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
@@ -128,6 +130,98 @@ fn add_types_for_object_types(
         }
     }
     Ok(())
+}
+
+fn add_connection_type(schema: &mut Document, object_type: &ObjectType) -> () {
+    let edge_type_name = format!("{}Edge", object_type.name);
+
+    schema
+        .definitions
+        .push(Definition::TypeDefinition(TypeDefinition::Object(
+            ObjectType {
+                name: edge_type_name.clone(),
+                description: Some(format!(
+                    "Edge type for wrapping {} with a the matching cursor.",
+                    object_type.name
+                )),
+                directives: vec![],
+                fields: vec![
+                    Field {
+                        arguments: vec![],
+                        description: Some(format!(
+                            "A cursor for the {} object, within the current connection.",
+                            object_type.name
+                        )),
+                        directives: vec![],
+                        name: "cursor".to_string(),
+                        field_type: Type::NonNullType(Box::new(Type::NamedType(
+                            "String".to_string(),
+                        ))),
+                        position: Pos::default(),
+                    },
+                    Field {
+                        arguments: vec![],
+                        description: Some(format!(
+                            "The actual {} object, within the current edge.",
+                            object_type.name
+                        )),
+                        directives: vec![],
+                        name: "node".to_string(),
+                        field_type: Type::NonNullType(Box::new(Type::NamedType(
+                            object_type.name.clone(),
+                        ))),
+                        position: Pos::default(),
+                    },
+                ],
+                implements_interfaces: vec![],
+                position: Pos::default(),
+            },
+        )));
+
+    schema
+        .definitions
+        .push(Definition::TypeDefinition(TypeDefinition::Object(
+            ObjectType {
+                name: format!("{}Connection", object_type.name),
+                description: Some(format!("Connection type for {}", object_type.name)),
+                directives: vec![],
+                fields: vec![
+                    Field {
+                        arguments: vec![],
+                        description: Some(format!(
+                            "The total count of all {} objects",
+                            object_type.name
+                        )),
+                        directives: vec![],
+                        name: "edges".to_string(),
+                        field_type: Type::NonNullType(Box::new(Type::ListType(Box::new(
+                            Type::NonNullType(Box::new(Type::NamedType(edge_type_name.clone()))),
+                        )))),
+                        position: Pos::default(),
+                    },
+                    Field {
+                        arguments: vec![],
+                        description: None,
+                        directives: vec![],
+                        name: "pageInfo".to_string(),
+                        field_type: Type::NonNullType(Box::new(Type::NamedType(
+                            PAGEINFO_TYPE_NAME.to_string(),
+                        ))),
+                        position: Pos::default(),
+                    },
+                ],
+                position: Pos::default(),
+                implements_interfaces: vec![],
+            },
+        )));
+}
+
+fn add_connection_types(schema: &mut Document, object_types: &Vec<&ObjectType>) -> () {
+    for object_type in object_types {
+        if !object_type.name.eq(SCHEMA_TYPE_NAME) {
+            add_connection_type(schema, &object_type);
+        }
+    }
 }
 
 /// Adds `*_orderBy` and `*_filter` enum types for the given interfaces to the schema.
@@ -617,6 +711,8 @@ fn subgraph_error_argument() -> InputValue {
 
 /// Generates `Query` fields for the given type name (e.g. `users` and `user`).
 fn query_fields_for_type(type_name: &str) -> Vec<Field> {
+    let mut connection_collection_arguments =
+        connection_collection_arguments_for_named_type(type_name);
     let mut collection_arguments = collection_arguments_for_named_type(type_name);
     collection_arguments.push(block_argument());
 
@@ -632,6 +728,7 @@ fn query_fields_for_type(type_name: &str) -> Vec<Field> {
         block_argument(),
     ];
 
+    connection_collection_arguments.push(subgraph_error_argument());
     collection_arguments.push(subgraph_error_argument());
     by_id_arguments.push(subgraph_error_argument());
 
@@ -652,6 +749,17 @@ fn query_fields_for_type(type_name: &str) -> Vec<Field> {
             field_type: Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
                 Box::new(Type::NamedType(type_name.to_owned())),
             ))))),
+            directives: vec![],
+        },
+        Field {
+            position: Pos::default(),
+            description: None,
+            name: format!("{}Connection", type_name.to_plural().to_camel_case()),
+            arguments: connection_collection_arguments,
+            field_type: Type::NonNullType(Box::new(Type::NamedType(format!(
+                "{}Connection",
+                type_name
+            )))),
             directives: vec![],
         },
     ]
@@ -713,6 +821,39 @@ fn collection_arguments_for_named_type(type_name: &str) -> Vec<InputValue> {
     ];
 
     args
+}
+
+/// Generates arguments for Connection-collection queries of a named type (e.g. User).
+fn connection_collection_arguments_for_named_type(type_name: &str) -> Vec<InputValue> {
+    vec![
+        input_value(&"first".to_string(), "", Type::NamedType("Int".to_string())),
+        input_value(&"last".to_string(), "", Type::NamedType("Int".to_string())),
+        input_value(
+            &"after".to_string(),
+            "",
+            Type::NamedType("String".to_string()),
+        ),
+        input_value(
+            &"before".to_string(),
+            "",
+            Type::NamedType("String".to_string()),
+        ),
+        input_value(
+            &"orderBy".to_string(),
+            "",
+            Type::NamedType(format!("{}_orderBy", type_name)),
+        ),
+        input_value(
+            &"orderDirection".to_string(),
+            "",
+            Type::NamedType("OrderDirection".to_string()),
+        ),
+        input_value(
+            &"where".to_string(),
+            "",
+            Type::NamedType(format!("{}_filter", type_name)),
+        ),
+    ]
 }
 
 fn add_field_arguments(
