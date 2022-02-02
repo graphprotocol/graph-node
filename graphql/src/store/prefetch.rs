@@ -574,6 +574,8 @@ fn execute_selection_set<'a>(
                 &field.name,
             );
 
+            println!("created Join for field {}, join={:?}", field.name, join);
+
             // "Select by Specific Attribute Names" is an experimental feature and can be disabled completely.
             // If this environment variable is set, the program will use an empty collection that,
             // effectively, causes the `AttributeNames::All` variant to be used as a fallback value for all
