@@ -673,6 +673,17 @@ where
 
                 // Handle unexpected stream errors by marking the subgraph as failed.
                 Err(e) => {
+                    // Clear entity cache when a subgraph fails.
+                    //
+                    // This is done to be safe and sure that there's no state that's
+                    // out of sync from the database.
+                    //
+                    // Without it, POI changes on failure would be kept in the entity cache
+                    // and be transacted incorrectly in the next run.
+                    ctx.state.entity_lfu_cache = LfuCache::new();
+
+                    deployment_failed.set(1.0);
+
                     let message = format!("{:#}", e).replace("\n", "\t");
                     let err = anyhow!("{}, code: {}", message, LogCode::SubgraphSyncingFailure);
 
@@ -683,7 +694,6 @@ where
                         handler: None,
                         deterministic: e.is_deterministic(),
                     };
-                    deployment_failed.set(1.0);
 
                     store_for_err
                         .fail_subgraph(error)
