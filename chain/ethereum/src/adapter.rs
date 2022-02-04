@@ -303,24 +303,31 @@ impl EthereumCallFilter {
             return false;
         }
 
-        // Ensure the call is to a contract the filter expressed an interest in
-        match self.contract_addresses_function_signatures.get(&call.to) {
-            None => false,
-            Some(v) => {
-                let signature = &v.1;
+        let v = self.contract_addresses_function_signatures.get(&call.to);
 
-                // If the call is to a contract with no specified functions, keep the call
-                //
-                // Allows the ability to genericly match on all calls to a contract.
-                // Caveat is this catch all clause limits you from matching with a specific call
-                // on the same address
-                if signature.is_empty() {
-                    true
-                } else {
-                    // Ensure the call is to run a function the filter expressed an interest in
-                    signature.contains(&call.input.0[..4])
-                }
-            }
+        // Ensure the call is to a contract the filter expressed an interest in
+        if let None = v {
+            return false;
+        }
+
+        let signature = &v.unwrap().1;
+
+        // If the call is to a contract with no specified functions, keep the call
+        //
+        // Allows the ability to genericly match on all calls to a contract.
+        // Caveat is this catch all clause limits you from matching with a specific call
+        // on the same address
+        if signature.is_empty() {
+            true
+        } else {
+            // Ensure the call is to run a function the filter expressed an interest in
+            let correct_fn = signature.contains(&call.input.0[..4]);
+            // Not multiple of 32, wrong length to decode parameters.
+            // This is probably a delegatecall disguised as a regular call
+            // via fallback.
+            let wrong_input_size = (call.input.0.len() - 4) % 32 != 0;
+
+            correct_fn && !wrong_input_size
         }
     }
 
@@ -717,6 +724,12 @@ mod tests {
             true,
             filter.matches(&call(address(1), vec![1; 36])),
             "call with correct address & signature should match"
+        );
+
+        assert_eq!(
+            false,
+            filter.matches(&call(address(1), vec![1; 32])),
+            "call with correct address & signature, but with incorrect input size should be ignored"
         );
 
         assert_eq!(
