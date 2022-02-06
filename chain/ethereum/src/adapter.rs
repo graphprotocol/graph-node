@@ -303,14 +303,11 @@ impl EthereumCallFilter {
             return false;
         }
 
-        let v = self.contract_addresses_function_signatures.get(&call.to);
-
         // Ensure the call is to a contract the filter expressed an interest in
-        if let None = v {
-            return false;
-        }
-
-        let signature = &v.unwrap().1;
+        let signature = match self.contract_addresses_function_signatures.get(&call.to) {
+            None => return false,
+            Some(v) => &v.1,
+        };
 
         // If the call is to a contract with no specified functions, keep the call
         //
@@ -325,9 +322,9 @@ impl EthereumCallFilter {
             // Not multiple of 32, wrong length to decode parameters.
             // This is probably a delegatecall disguised as a regular call
             // via fallback.
-            let wrong_input_size = (call.input.0.len() - 4) % 32 != 0;
+            let correct_input_size = (call.input.0.len() - 4) % 32 == 0;
 
-            correct_fn && !wrong_input_size
+            correct_fn && correct_input_size
         }
     }
 
