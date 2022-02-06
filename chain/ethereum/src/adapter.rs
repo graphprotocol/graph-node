@@ -319,9 +319,17 @@ impl EthereumCallFilter {
         } else {
             // Ensure the call is to run a function the filter expressed an interest in
             let correct_fn = signature.contains(&call.input.0[..4]);
-            // Not multiple of 32, wrong length to decode parameters.
-            // This is probably a delegatecall disguised as a regular call
-            // via fallback.
+            // Make sure the call input size is multiple of 32, otherwise we can't decode it.
+            // This is due to the Ethereum ABI spec: https://docs.soliditylang.org/en/v0.8.11/abi-spec.html
+            //
+            // A scenario where the input could have the wrong size is when a `delegatecall` is
+            // "disguised" as a `call`. For example for this couple of transactions/calls:
+            // 1. https://etherscan.io/tx/0x8e992eeb40e18703dd8169a8031e2113311985f1c20e0723a2dc362df40bafb0
+            // 2. https://etherscan.io/tx/0x7c391bcfa2007f84e123ad47ea72e2d6ffb2fbab81deff0990b0c499e0664a92
+            //
+            // The first one is acting as a proxy to the second one (an atomicMatch_).
+            // If you try to decode the first call as it is/comes from a `traces` RPC request, it
+            // will fail because it has a smaller size/length.
             let correct_input_size = (call.input.0.len() - 4) % 32 == 0;
 
             correct_fn && correct_input_size
