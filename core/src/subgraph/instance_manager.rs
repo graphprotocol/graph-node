@@ -523,12 +523,6 @@ where
     loop {
         debug!(logger, "Starting or restarting subgraph");
 
-        // Clear entity cache when subgraph starts.
-        //
-        // This is done to be safe and sure that there's no state that's
-        // out of sync from the database.
-        ctx.state.entity_lfu_cache = LfuCache::new();
-
         let block_stream_canceler = CancelGuard::new();
         let block_stream_cancel_handle = block_stream_canceler.handle();
 
@@ -742,6 +736,9 @@ where
                     //
                     // This is done to be safe and sure that there's no state that's
                     // out of sync from the database.
+                    //
+                    // Without it, POI changes on failure would be kept in the entity cache
+                    // and be transacted incorrectly in the next run.
                     ctx.state.entity_lfu_cache = LfuCache::new();
 
                     deployment_failed.set(1.0);
