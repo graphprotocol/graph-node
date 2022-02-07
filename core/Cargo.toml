@@ -23,6 +23,7 @@ serde_yaml = "0.8"
 fail = "0.5"
 
 graph-runtime-wasm = { path = "../runtime/wasm" }
+fluvio = "0.12.3"
 
 [dev-dependencies]
 graph-mock = { path = "../mock" }
