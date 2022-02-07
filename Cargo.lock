@@ -1543,7 +1543,7 @@ dependencies = [
  "hex",
  "lazy_static",
  "lru_time_cache",
- "pretty_assertions 1.0.0",
+ "pretty_assertions 1.1.0",
  "semver 1.0.4",
  "serde",
  "serde_json",
@@ -1569,7 +1569,7 @@ dependencies = [
  "lazy_static",
  "once_cell",
  "parking_lot 0.11.2",
- "pretty_assertions 1.0.0",
+ "pretty_assertions 1.1.0",
  "stable-hash",
  "test-store",
 ]
@@ -3084,9 +3084,9 @@ dependencies = [
 
 [[package]]
 name = "pretty_assertions"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec0cfe1b2403f172ba0f234e500906ee0a3e493fb81092dac23ebefe129301cc"
+checksum = "76d5b548b725018ab5496482b45cb8bef21e9fed1858a6d674e3a8a0f0bb5d50"
 dependencies = [
  "ansi_term",
  "ctor",
