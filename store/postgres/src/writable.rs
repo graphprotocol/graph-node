@@ -366,7 +366,12 @@ impl WritableStoreTrait for WritableAgent {
 
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
         // TODO: Spin up a background writer thread and establish a channel
-        self.store.start_subgraph_deployment(logger)
+        self.store.start_subgraph_deployment(logger)?;
+
+        // Refresh all in memory state in case this instance was used before
+        *self.block_ptr.lock().unwrap() = self.store.block_ptr()?;
+        *self.block_cursor.lock().unwrap() = self.store.block_cursor()?;
+        Ok(())
     }
 
     fn revert_block_operations(
