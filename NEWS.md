@@ -1,5 +1,14 @@
 # NEWS
 
+## 0.25.1
+
+This release only adds two fixes:
+
+- The first is to address an issue with decoding the input of some calls [#3194](https://github.com/graphprotocol/graph-node/issues/3194) where subgraphs that would try to index contracts related to those would fail. Now they can advance normally.
+- The second one is to fix a non-determinism issue with the retry mechanism for errors. Whenever a non-deterministic error happened, we would keep retrying to process the block, however we should've clear the `EntityCache` on each run so that the error entity changes don't get transacted/saved in the database in the next run. This could make the POI generation non-deterministic for subgraphs that failed and retried for non-deterministic reasons, adding a new entry to the database for the POI.
+
+We strongly recommend updating to this version as quickly as possible.
+
 ## 0.25.0
 
 ### Api Version 0.0.6
