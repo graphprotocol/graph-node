@@ -8,30 +8,20 @@ pub use pbcodec::*;
 
 impl Block {
     pub fn parent_ptr(&self) -> Option<BlockPtr> {
-        return None;
-        // if self.previous_id.len() == 0 {
-        //     return None;
-        // }
-        //
-        // Some(
-        //     BlockPtr::try_from((self.previous_id.as_ref(), self.number))
-        //         .expect("invalid block's hash"),
-        // )
-        //todo: ^^^^^
-    }
-}
+        if self.previous_id.len() == 0 {
+            return None;
+        }
 
-impl From<Block> for BlockPtr {
-    fn from(b: Block) -> BlockPtr {
-        (&b).into()
+        let hash = String::from_utf8(self.previous_id.clone()).expect("could not decode block hash");
+        Some(
+            BlockPtr::try_from((hash.as_str(), self.number))
+                .expect("invalid block hash"),
+        )
     }
 }
 
 impl<'a> From<&'a Block> for BlockPtr {
     fn from(b: &'a Block) -> BlockPtr {
-        // let hash = BlockHash::from(b.id)
-        //     .expect(&format!("id {} should be a valid BlockHash", &b.id,));
-
         BlockPtr::try_from((b.id.as_slice(), i64::try_from(b.number).unwrap()))
             .expect("invalid block's hash")
     }

@@ -96,8 +96,7 @@ impl FirehoseEndpoint {
 
         let response_stream = client
             .blocks(firehose::Request {
-                start_block_num: 118081400,
-                stop_block_num: 119081400,
+                start_block_num: 0,
                 fork_steps: vec![ForkStep::StepIrreversible as i32],
                 ..Default::default()
             })

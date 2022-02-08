@@ -260,7 +260,6 @@ impl ToAscObj<AscHashArray> for Vec<Vec<u8>> {
             .iter()
             .map(|x| {
                 asc_new(heap, x.as_slice())
-                // asc_new(heap, slice.as_ref())?
             })
             .collect();
         let content = content?;

@@ -87,10 +87,10 @@ impl blockchain::DataSource<Chain> for DataSource {
             },
 
             SolanaTrigger::Instruction(instruction_with_block) => {
-                let pid = &instruction_with_block.instruction.program_id;
-                let encoded_instruction_pid = pid.as_slice().to_base58();
+                let program_id = &instruction_with_block.instruction.program_id;
+                let encoded_program_id = program_id.as_slice().to_base58();
 
-                if Some(encoded_instruction_pid) != self.source.program_id {
+                if Some(encoded_program_id) != self.source.program_id {
                     return Ok(None);
                 }
 
@@ -245,38 +245,7 @@ impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
     type Error = Error;
 
     fn try_from(_info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
-        Err(anyhow!("Near subgraphs do not support templates"))
-
-        // How this might be implemented if/when Near gets support for templates:
-        // let DataSourceTemplateInfo {
-        //     template,
-        //     params,
-        //     context,
-        //     creation_block,
-        // } = info;
-
-        // let account = params
-        //     .get(0)
-        //     .with_context(|| {
-        //         format!(
-        //             "Failed to create data source from template `{}`: account parameter is missing",
-        //             template.name
-        //         )
-        //     })?
-        //     .clone();
-
-        // Ok(DataSource {
-        //     kind: template.kind,
-        //     network: template.network,
-        //     name: template.name,
-        //     source: Source {
-        //         account,
-        //         start_block: 0,
-        //     },
-        //     mapping: template.mapping,
-        //     context: Arc::new(context),
-        //     creation_block: Some(creation_block),
-        // })
+        Err(anyhow!("Solana subgraphs do not support templates"))
     }
 }
 

@@ -41,7 +41,7 @@ pub struct Chain {
 
 impl std::fmt::Debug for Chain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "chain: near")
+        write!(f, "chain: solana")
     }
 }
 
@@ -139,7 +139,7 @@ impl Blockchain for Chain {
         _metrics: Arc<BlockStreamMetrics>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        panic!("SOLANA does not support polling block stream")
+        panic!("Solana does not support polling block stream")
     }
 
     fn chain_store(&self) -> Arc<dyn ChainStore> {
@@ -151,7 +151,17 @@ impl Blockchain for Chain {
         _logger: &Logger,
         _number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
-        // FIXME (Solana): Hmmm, what to do with this?
+        // FIXME (Solana): Once https://github.com/graphprotocol/graph-node/pull/3174/ is merged, we can rebase and do:
+        // let firehose_endpoint = match self.firehose_endpoints.random() {
+        //     Some(e) => e.clone(),
+        //     None => return Err(anyhow::format_err!("no firehose endpoint available").into()),
+        // };
+        //
+        // firehose_endpoint
+        //     .block_ptr_for_number::<codec::HeaderOnlyBlock>(logger, number)
+        //     .map_err(Into::into)
+        //     .await
+
         Ok(BlockPtr {
             hash: BlockHash::from(vec![0xff; 32]),
             number: 0,
@@ -176,8 +186,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         _ptr: BlockPtr,
         _offset: BlockNumber,
     ) -> Result<Option<codec::Block>, Error> {
-        // FIXME (Solana):  Might not be necessary for Solana support for now
-        Ok(None)
+        panic!("Should never be called since FirehoseBlockStream cannot resolve it")
     }
 
     async fn scan_triggers(
@@ -186,8 +195,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         _to: BlockNumber,
         _filter: &TriggerFilter,
     ) -> Result<Vec<BlockWithTriggers<Chain>>, Error> {
-        // FIXME (Solana): Scanning triggers makes little sense in Firehose approach, let's see
-        Ok(vec![])
+        panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
     async fn triggers_in_block(
@@ -198,7 +206,6 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         let shared_block = Arc::new(block.clone());
         let instructions = block.transactions.iter().flat_map(|transaction| {
-            //let transaction_id = transaction.id.clone();
             let b = shared_block.clone();
             let tx = transaction.clone();
             transaction.instructions.iter().flat_map(move |instruction| {
@@ -220,14 +227,12 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     }
 
     async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
-        // FIXME (Solana): Might not be necessary for Solana support for now
-        Ok(true)
+        panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
     /// Panics if `block` is genesis.
     /// But that's ok since this is only called when reverting `block`.
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
-        // FIXME (NEAR):  Might not be necessary for NEAR support for now
         Ok(Some(BlockPtr {
             hash: BlockHash::from(vec![0xff; 32]),
             number: block.number.saturating_sub(1),
@@ -274,16 +279,11 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             )),
 
             StepUndo => {
-                // let header = block.header();
-                // let parent_ptr = header
-                //     .parent_ptr()
-                //     .expect("Genesis block should never be reverted");
-                //todo: ^^^^^^^^^^^^^^^^^^^^^^^^^
-
+                let parent_ptr = block.parent_ptr().expect("Genesis block should never be reverted");
                 Ok(BlockStreamEvent::Revert(
                     block.ptr(),
                     Some(response.cursor.clone()),
-                    None, //Some(parent_ptr), //todo: <----???
+                    Some(parent_ptr),
                 ))
             }
 
