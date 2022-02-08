@@ -24,6 +24,7 @@ fail = "0.5"
 
 graph-runtime-wasm = { path = "../runtime/wasm" }
 fluvio = "0.12.3"
+fluvio-sc-schema = "0.12.2"
 
 [dev-dependencies]
 graph-mock = { path = "../mock" }

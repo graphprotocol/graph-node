@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context};
+use serde::Serialize;
 use stable_hash::prelude::*;
 use stable_hash::utils::AsBytes;
 use std::convert::TryFrom;
@@ -8,7 +9,7 @@ use web3::types::{Block, H256};
 use crate::{cheap_clone::CheapClone, components::store::BlockNumber};
 
 /// A simple marker for byte arrays that are really block hashes
-#[derive(Clone, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Default, PartialEq, Eq, Hash, Serialize)]
 pub struct BlockHash(pub Box<[u8]>);
 
 impl BlockHash {
@@ -66,7 +67,7 @@ impl TryFrom<&str> for BlockHash {
 /// A block hash and block number from a specific Ethereum block.
 ///
 /// Block numbers are signed 32 bit integers
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct BlockPtr {
     pub hash: BlockHash,
     pub number: BlockNumber,

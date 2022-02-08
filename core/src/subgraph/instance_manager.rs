@@ -1,5 +1,5 @@
 use super::loader::load_dynamic_data_sources;
-use super::SubgraphInstance;
+use super::{SubgraphInstance, SubgraphOutputStream};
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
 use graph::blockchain::{BlockchainKind, DataSource};
@@ -55,6 +55,7 @@ struct IndexingInputs<C: Blockchain> {
     chain: Arc<C>,
     templates: Arc<Vec<C::DataSourceTemplate>>,
     unified_api_version: UnifiedMappingApiVersion,
+    output_stream: SubgraphOutputStream,
 }
 
 struct IndexingState<T: RuntimeHostBuilder<C>, C: Blockchain> {
@@ -407,6 +408,8 @@ where
                 chain,
                 templates,
                 unified_api_version,
+                output_stream: SubgraphOutputStream::new(logger.clone(), deployment.hash.clone())
+                    .await?,
             },
             state: IndexingState {
                 logger: logger.cheap_clone(),
@@ -547,6 +550,11 @@ where
                             }
                         }
                     }
+
+                    ctx.inputs
+                        .output_stream
+                        .write_revert_block(subgraph_ptr.clone())
+                        .await?;
 
                     ctx.block_stream_metrics
                         .reverted_blocks
@@ -986,12 +994,19 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
     match store.transact_block_operations(
         block_ptr,
         firehose_cursor,
-        mods,
+        mods.clone(),
         stopwatch,
         data_sources,
         deterministic_errors,
     ) {
         Ok(_) => {
+            for modification in mods {
+                ctx.inputs
+                    .output_stream
+                    .write_entity_modification(modification)
+                    .await?;
+            }
+
             // For subgraphs with `nonFatalErrors` feature disabled, we consider
             // any error as fatal.
             //

@@ -95,7 +95,7 @@ impl CheapClone for EntityType {}
 // Note: Do not modify fields without making a backward compatible change to
 // the StableHash impl (below)
 /// Key by which an individual entity in the store can be accessed.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct EntityKey {
     /// ID of the subgraph.
     pub subgraph_id: DeploymentHash,
@@ -1446,7 +1446,8 @@ pub trait StatusStore: Send + Sync + 'static {
 /// An entity operation that can be transacted into the store; as opposed to
 /// `EntityOperation`, we already know whether a `Set` should be an `Insert`
 /// or `Update`
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum EntityModification {
     /// Insert the entity
     Insert { key: EntityKey, data: Entity },
