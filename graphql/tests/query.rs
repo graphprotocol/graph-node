@@ -1980,3 +1980,19 @@ fn non_fatal_errors() {
         assert_eq!(expected, serde_json::to_value(&result).unwrap());
     })
 }
+
+#[test]
+fn can_query_root_typename() {
+    run_test_sequentially(|store| async move {
+        let query = "query { __typename }";
+        let query = graphql_parser::parse_query(query)
+            .expect("invalid test query")
+            .into_static();
+        let deployment = setup(store.as_ref());
+        let result = execute_query_document(&deployment.hash, query).await;
+        let exp = object! {
+            __typename: "Query"
+        };
+        assert_eq!(extract_data!(result), Some(exp));
+    })
+}

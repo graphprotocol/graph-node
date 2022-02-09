@@ -257,7 +257,7 @@ pub(crate) fn execute_root_selection_set_uncached(
         // the data_set SelectionSet
         if is_introspection_field(&field.name) {
             intro_set.push(field)?
-        } else if &field.name == META_FIELD_NAME {
+        } else if &field.name == META_FIELD_NAME || &field.name == "__typename" {
             meta_items.push(field)
         } else {
             data_set.push(field)?
@@ -505,12 +505,20 @@ fn execute_selection_set_to_map<'a>(
                 }
             })
             .flatten();
-        match execute_field(&ctx, object_type, field_value, field, field_type) {
-            Ok(v) => {
-                result_map.insert(response_key.to_owned(), v);
-            }
-            Err(mut e) => {
-                errors.append(&mut e);
+
+        if field.name.as_str() == "__typename" && field_value.is_none() {
+            result_map.insert(
+                response_key.to_owned(),
+                r::Value::String(object_type.name.clone()),
+            );
+        } else {
+            match execute_field(&ctx, object_type, field_value, field, field_type) {
+                Ok(v) => {
+                    result_map.insert(response_key.to_owned(), v);
+                }
+                Err(mut e) => {
+                    errors.append(&mut e);
+                }
             }
         }
     }
