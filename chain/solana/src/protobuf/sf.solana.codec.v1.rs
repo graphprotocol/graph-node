@@ -128,6 +128,8 @@ pub struct Instruction {
     pub balance_changes: ::prost::alloc::vec::Vec<BalanceChange>,
     #[prost(message, repeated, tag = "10")]
     pub account_changes: ::prost::alloc::vec::Vec<AccountChange>,
+    #[prost(string, repeated, tag = "11")]
+    pub logs: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(bool, tag = "15")]
     pub failed: bool,
     #[prost(message, optional, tag = "16")]

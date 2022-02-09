@@ -108,6 +108,8 @@ message Instruction {
   repeated BalanceChange balance_changes = 9;
   repeated AccountChange account_changes = 10;
 
+  repeated string logs = 11;
+
   bool failed = 15;
   InstructionError error = 16;
 }

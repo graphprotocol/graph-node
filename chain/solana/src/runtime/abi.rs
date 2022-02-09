@@ -46,6 +46,7 @@ impl ToAscObj<AscInstruction> for codec::Instruction {
             depth: self.depth,
             balance_changes: asc_new(heap, &self.balance_changes)?,
             account_changes: asc_new(heap, &self.account_changes)?,
+            log_messages: asc_new(heap, &self.logs)?,
             error: asc_new(heap, &self.error)?,
             failed: false,
             _padding: Padding3::new(),
@@ -256,12 +257,7 @@ impl ToAscObj<AscHashArray> for Vec<Vec<u8>> {
         &self,
         heap: &mut H,
     ) -> Result<AscHashArray, DeterministicHostError> {
-        let content: Result<Vec<_>, _> = self
-            .iter()
-            .map(|x| {
-                asc_new(heap, x.as_slice())
-            })
-            .collect();
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x.as_slice())).collect();
         let content = content?;
         Ok(AscHashArray(Array::new(&*content, heap)?))
     }

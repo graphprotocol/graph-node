@@ -40,10 +40,12 @@ pub(crate) struct AscInstruction {
     pub data: AscPtr<AscHash>,
     pub balance_changes: AscPtr<AscBalanceChangeArray>,
     pub account_changes: AscPtr<AscAccountChangeArray>,
+    pub log_messages: AscPtr<AscStringArray>,
     pub error: AscPtr<AscInstructionError>,
     pub failed: bool,
     pub _padding: Padding3,
 }
+
 
 // special type for the rare occurance where we need to pad three bytes
 pub(crate) struct Padding3([u8; 3]);
