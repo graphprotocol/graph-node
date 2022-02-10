@@ -562,6 +562,7 @@ impl DataSource {
                 let logging_extras = Arc::new(o! {
                     "signature" => event_handler.event.to_string(),
                     "address" => format!("{}", &log.address),
+                    "transaction" => format!("{}", &transaction.hash),
                 });
                 Ok(Some(TriggerWithHandler::new_with_logging_extras(
                     MappingTrigger::Log {
@@ -662,6 +663,7 @@ impl DataSource {
                 let logging_extras = Arc::new(o! {
                     "function" => handler.function.to_string(),
                     "to" => format!("{}", &call.to),
+                    "transaction" => format!("{}", &transaction.hash),
                 });
                 Ok(Some(TriggerWithHandler::new_with_logging_extras(
                     MappingTrigger::Call {
