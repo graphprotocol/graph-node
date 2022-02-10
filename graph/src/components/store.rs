@@ -1175,7 +1175,7 @@ pub trait ChainStore: Send + Sync + 'static {
     fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 
     /// In-memory time cached version of `chain_head_ptr`.
-    fn cached_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
+    fn cached_head_ptr(&self, logger: &Logger) -> Result<Option<BlockPtr>, Error>;
 
     /// Get the current head block cursor for this chain.
     ///

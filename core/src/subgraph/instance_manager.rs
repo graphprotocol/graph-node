@@ -685,8 +685,17 @@ where
 
             match res {
                 Ok(needs_restart) => {
+                    debug!(
+                        logger,
+                        "Sync status before if";
+                        "synced" => format!("{}", synced),
+                        "block_ptr" => format!("{}", block_ptr),
+                    );
                     // Once synced, no need to try to update the status again.
-                    if !synced && is_deployment_synced(&block_ptr, chain_store.cached_head_ptr()?) {
+                    if !synced
+                        && is_deployment_synced(&block_ptr, chain_store.cached_head_ptr(&logger)?)
+                    {
+                        debug!(logger, "Sync status inside if",);
                         // Updating the sync status is an one way operation.
                         // This state change exists: not synced -> synced
                         // This state change does NOT: synced -> not synced
@@ -698,6 +707,7 @@ where
                         // Stop recording time-to-sync metrics.
                         ctx.block_stream_metrics.stopwatch.disable();
                     }
+                    debug!(logger, "Sync status after if",);
 
                     // Keep trying to unfail subgraph for everytime it advances block(s) until it's
                     // health is not Failed anymore.

@@ -5,6 +5,7 @@ use diesel::sql_types::Text;
 use diesel::{insert_into, update};
 use graph::blockchain::{Block, ChainIdentifier};
 use graph::prelude::web3::types::H256;
+use graph::prelude::{debug, Logger};
 use graph::util::timed_cache::TimedCache;
 use graph::{
     constraint_violation,
@@ -1421,10 +1422,24 @@ impl ChainStoreTrait for ChainStore {
             .map_err(Error::from)
     }
 
-    fn cached_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
-        match self.block_cache.get("head") {
+    fn cached_head_ptr(&self, logger: &Logger) -> Result<Option<BlockPtr>, Error> {
+        let cached_head = self.block_cache.get("head");
+        debug!(
+            logger,
+            "Sync status cached head";
+            "cached_head" => format!("{:?}", cached_head),
+        );
+        match cached_head {
             Some(head) => Ok(Some(head.as_ref().clone())),
-            None => self.chain_head_ptr(),
+            None => {
+                let head = self.chain_head_ptr();
+                debug!(
+                    logger,
+                    "Sync status head";
+                    "head" => format!("{:?}", head),
+                );
+                head
+            }
         }
     }
 
