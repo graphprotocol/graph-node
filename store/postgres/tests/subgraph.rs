@@ -287,11 +287,13 @@ fn create_subgraph() {
         assert_eq!(&deployment3, &deployment3_again);
         let versions2 = subgraph_versions(&primary);
         assert_eq!(versions, versions2);
+        let (current, pending) = subgraph_deployments(&primary);
+        assert_eq!(Some(ID2), current.as_deref());
+        assert_eq!(Some(ID3), pending.as_deref());
 
-        // Deploy the current version once more; we wind up with current and pending
-        // pointing to ID2. That's not ideal, but will be rectified when the
-        // next block gets processed and the pending version is promoted to
-        // current
+        // Deploy the current version `ID2` once more; since it is synced,
+        // it will displace the non-synced version `ID3` and remain the
+        // current version
         let mut expected = HashSet::new();
         expected.insert(unassigned(&deployment3));
 
@@ -301,7 +303,18 @@ fn create_subgraph() {
 
         let (current, pending) = subgraph_deployments(&primary);
         assert_eq!(Some(ID2), current.as_deref());
-        assert_eq!(Some(ID2), pending.as_deref());
+        assert_eq!(None, pending.as_deref());
+
+        // Mark `ID3` as synced and deploy that again
+        deployment_synced(&store, &deployment3);
+        let expected = HashSet::from([unassigned(&deployment2), assigned(&deployment3)]);
+        let (deployment3_again, events) = deploy(store.as_ref(), ID3, MODE);
+        assert_eq!(&deployment3, &deployment3_again);
+        assert_eq!(expected, events);
+
+        let (current, pending) = subgraph_deployments(&primary);
+        assert_eq!(Some(ID3), current.as_deref());
+        assert_eq!(None, pending.as_deref());
     })
 }
 

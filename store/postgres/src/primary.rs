@@ -841,7 +841,7 @@ impl<'a> Connection<'a> {
         exists_and_synced: F,
     ) -> Result<Vec<EntityChange>, StoreError>
     where
-        F: FnOnce(&DeploymentHash) -> Result<bool, StoreError>,
+        F: Fn(&DeploymentHash) -> Result<bool, StoreError>,
     {
         use subgraph as s;
         use subgraph_deployment_assignment as a;
@@ -927,8 +927,11 @@ impl<'a> Connection<'a> {
 
         // See if we should make this the current or pending version
         let subgraph_row = update(s::table.filter(s::id.eq(&subgraph_id)));
-        match (mode, current_exists_and_synced) {
-            (Instant, _) | (Synced, false) => {
+        // When the new deployment is also synced already, we always want to
+        // overwrite the current version
+        let new_exists_and_synced = exists_and_synced(&site.deployment)?;
+        match (mode, current_exists_and_synced, new_exists_and_synced) {
+            (Instant, _, _) | (Synced, false, _) | (Synced, true, true) => {
                 subgraph_row
                     .set((
                         s::current_version.eq(&version_id),
@@ -936,7 +939,7 @@ impl<'a> Connection<'a> {
                     ))
                     .execute(conn)?;
             }
-            (Synced, true) => {
+            (Synced, true, false) => {
                 subgraph_row
                     .set(s::pending_version.eq(&version_id))
                     .execute(conn)?;
