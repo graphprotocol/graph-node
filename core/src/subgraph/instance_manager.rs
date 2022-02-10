@@ -47,6 +47,14 @@ lazy_static! {
             .parse::<u64>()
             .map(Duration::from_secs)
             .expect("invalid GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS");
+
+    /// How many blocks behind chain head should be the buffer we will consider
+    /// that a subgraph is synced.
+    pub static ref SYNC_STATUS_BUFFER: u64 =
+        std::env::var("GRAPH_SUBGRAPH_SYNC_BUFFER")
+            .unwrap_or(2.to_string())
+            .parse()
+            .expect("invalid GRAPH_SUBGRAPH_SYNC_BUFFER");
 }
 
 type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<DeploymentId, CancelGuard>>>;
@@ -1288,9 +1296,11 @@ fn persist_dynamic_data_sources<T: RuntimeHostBuilder<C>, C: Blockchain>(
     ctx.state.filter.extend(data_sources.iter());
 }
 
-/// Checks if the Deployment BlockPtr is at least one block behind to the chain head.
+/// Checks if the Deployment BlockPtr is at least two blocks behind to the chain head.
+/// We have this buffer because the chain head can advance when we're checking if a subgraph
+/// is synced or not.
 fn is_deployment_synced(deployment_head_ptr: &BlockPtr, chain_head_ptr: Option<BlockPtr>) -> bool {
-    matches!((deployment_head_ptr, &chain_head_ptr), (b1, Some(b2)) if b1.number >= (b2.number - 1))
+    matches!((deployment_head_ptr, &chain_head_ptr), (b1, Some(b2)) if b1.number >= (b2.number - *SYNC_STATUS_BUFFER as i32))
 }
 
 #[test]
@@ -1310,12 +1320,18 @@ fn test_is_deployment_synced() {
         2,
     ))
     .unwrap();
+    // Chain head
+    let block_3 = BlockPtr::try_from((
+        "4499dc75facb4cd27894196aac00bcb0ffbe3d64de87105878451d5637662f90",
+        3,
+    ))
+    .unwrap();
 
     assert!(!is_deployment_synced(&block_0, None));
-    assert!(!is_deployment_synced(&block_2, None));
+    assert!(!is_deployment_synced(&block_3, None));
 
-    assert!(!is_deployment_synced(&block_0, Some(block_2.clone())));
-
-    assert!(is_deployment_synced(&block_1, Some(block_2.clone())));
-    assert!(is_deployment_synced(&block_2, Some(block_2.clone())));
+    assert!(!is_deployment_synced(&block_0, Some(block_3.clone())));
+    assert!(is_deployment_synced(&block_1, Some(block_3.clone())));
+    assert!(is_deployment_synced(&block_2, Some(block_3.clone())));
+    assert!(is_deployment_synced(&block_3, Some(block_3.clone())));
 }
