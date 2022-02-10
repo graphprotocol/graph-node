@@ -802,6 +802,8 @@ pub enum StoreError {
     Canceled,
     #[error("database unavailable")]
     DatabaseUnavailable,
+    #[error("subgraph forking failed: {0}")]
+    ForkFailure(String),
 }
 
 // Convenience to report a constraint violation
@@ -922,6 +924,12 @@ impl Display for DeploymentLocator {
     }
 }
 
+/// Subgraph forking is the process of lazily fetching entities
+/// from another subgraph's store (usually a remote one).
+pub trait SubgraphFork: Send + Sync + 'static {
+    fn fetch(&self, entity_type: String, id: String) -> Result<Option<Entity>, StoreError>;
+}
+
 /// A special trait to handle looking up ENS names from special rainbow
 /// tables that need to be manually loaded into the system
 pub trait EnsLookup: Send + Sync + 'static {
@@ -986,6 +994,14 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// Return the GraphQL schema that was derived from the user's schema by
     /// adding a root query type etc. to it
     fn api_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError>;
+
+    /// Return a `SubgraphFork`, derived from the user's `debug-fork` deployment argument,
+    /// that is used for debugging purposes only.
+    fn debug_fork(
+        &self,
+        subgraph_id: &DeploymentHash,
+        logger: Logger,
+    ) -> Result<Option<Arc<dyn SubgraphFork>>, StoreError>;
 
     /// Return a `WritableStore` that is used for indexing subgraphs. Only
     /// code that is part of indexing a subgraph should ever use this. The

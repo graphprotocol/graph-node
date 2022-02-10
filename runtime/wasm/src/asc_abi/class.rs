@@ -1,5 +1,6 @@
-use crate::asc_abi::{v0_0_4, v0_0_5};
 use ethabi;
+use semver::Version;
+
 use graph::{
     data::store,
     runtime::{AscHeap, AscIndexId, AscType, AscValue, IndexForAscTypeId},
@@ -7,7 +8,8 @@ use graph::{
 use graph::{prelude::serde_json, runtime::DeterministicHostError};
 use graph::{prelude::slog, runtime::AscPtr};
 use graph_runtime_derive::AscType;
-use semver::Version;
+
+use crate::asc_abi::{v0_0_4, v0_0_5};
 
 ///! Rust types that have with a direct correspondence to an Asc class,
 ///! with their `AscType` implementations.

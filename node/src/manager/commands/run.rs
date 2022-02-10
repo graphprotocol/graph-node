@@ -171,6 +171,7 @@ pub async fn run(
         subgraph_name.clone(),
         subgraph_hash.clone(),
         node_id.clone(),
+        None,
     )
     .await?;
 

@@ -111,6 +111,7 @@ pub struct SubgraphDeploymentEntity {
     pub latest_block: Option<BlockPtr>,
     pub graft_base: Option<DeploymentHash>,
     pub graft_block: Option<BlockPtr>,
+    pub debug_fork: Option<DeploymentHash>,
     pub reorg_count: i32,
     pub current_reorg_depth: i32,
     pub max_reorg_depth: i32,
@@ -133,6 +134,7 @@ impl SubgraphDeploymentEntity {
             latest_block: earliest_block,
             graft_base: None,
             graft_block: None,
+            debug_fork: None,
             reorg_count: 0,
             current_reorg_depth: 0,
             max_reorg_depth: 0,
@@ -147,6 +149,11 @@ impl SubgraphDeploymentEntity {
             // from the base subgraph finished successfully
             self.latest_block = None;
         }
+        self
+    }
+
+    pub fn debug(mut self, fork: Option<DeploymentHash>) -> Self {
+        self.debug_fork = fork;
         self
     }
 }

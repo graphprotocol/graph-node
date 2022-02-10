@@ -40,6 +40,7 @@ struct SubgraphDeployParams {
     name: SubgraphName,
     ipfs_hash: DeploymentHash,
     node_id: Option<NodeId>,
+    debug_fork: Option<DeploymentHash>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -94,7 +95,12 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
         let routes = subgraph_routes(&params.name, self.http_port, self.ws_port);
         match self
             .registrar
-            .create_subgraph_version(params.name.clone(), params.ipfs_hash.clone(), node_id)
+            .create_subgraph_version(
+                params.name.clone(),
+                params.ipfs_hash.clone(),
+                node_id,
+                params.debug_fork.clone(),
+            )
             .await
         {
             Ok(_) => Ok(routes),
@@ -232,7 +238,6 @@ where
 
         let me = arc_self.clone();
         let sender = task_sender.clone();
-
         handler.add_method("subgraph_deploy", move |params: Params| {
             let me = me.clone();
             Box::pin(tokio02_spawn(

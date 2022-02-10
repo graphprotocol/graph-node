@@ -16,7 +16,7 @@ use graph::{
     components::{
         server::index_node::VersionInfo,
         store::{
-            self, DeploymentLocator, EnsLookup as EnsLookupTrait, EntityType,
+            self, DeploymentLocator, EnsLookup as EnsLookupTrait, EntityType, SubgraphFork,
             WritableStore as WritableStoreTrait,
         },
     },
@@ -30,9 +30,11 @@ use graph::{
         BlockPtr, DeploymentHash, Logger, NodeId, Schema, StoreError, SubgraphName,
         SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
+    url::Url,
     util::timed_cache::TimedCache,
 };
 
+use crate::fork;
 use crate::{
     connection_pool::ConnectionPool,
     primary,
@@ -194,6 +196,10 @@ pub mod unused {
 #[derive(Clone)]
 pub struct SubgraphStore {
     inner: Arc<SubgraphStoreInner>,
+    /// Base URL for the GraphQL endpoint from which
+    /// subgraph forks will fetch entities.
+    /// Example: https://api.thegraph.com/subgraphs/
+    fork_base: Option<Url>,
 }
 
 impl SubgraphStore {
@@ -216,9 +222,11 @@ impl SubgraphStore {
         stores: Vec<(Shard, ConnectionPool, Vec<ConnectionPool>, Vec<usize>)>,
         placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
         sender: Arc<NotificationSender>,
+        fork_base: Option<Url>,
     ) -> Self {
         Self {
             inner: Arc::new(SubgraphStoreInner::new(logger, stores, placer, sender)),
+            fork_base,
         }
     }
 
@@ -591,6 +599,7 @@ impl SubgraphStoreInner {
             latest_block: deployment.earliest_block,
             graft_base: Some(src.deployment.clone()),
             graft_block: Some(block),
+            debug_fork: deployment.debug_fork,
             reorg_count: 0,
             current_reorg_depth: 0,
             max_reorg_depth: 0,
@@ -1054,7 +1063,7 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     fn input_schema(&self, id: &DeploymentHash) -> Result<Arc<Schema>, StoreError> {
         let (store, site) = self.store(&id)?;
-        let info = store.subgraph_info(site.as_ref())?;
+        let info = store.subgraph_info(&site)?;
         Ok(info.input)
     }
 
@@ -1062,6 +1071,27 @@ impl SubgraphStoreTrait for SubgraphStore {
         let (store, site) = self.store(&id)?;
         let info = store.subgraph_info(&site)?;
         Ok(info.api)
+    }
+
+    fn debug_fork(
+        &self,
+        id: &DeploymentHash,
+        logger: Logger,
+    ) -> Result<Option<Arc<dyn SubgraphFork>>, StoreError> {
+        let (store, site) = self.store(&id)?;
+        let info = store.subgraph_info(&site)?;
+        let fork_id = info.debug_fork;
+        let schema = info.input;
+
+        match (self.fork_base.as_ref(), fork_id) {
+            (Some(base), Some(id)) => Ok(Some(Arc::new(fork::SubgraphFork::new(
+                base.clone(),
+                id,
+                schema,
+                logger,
+            )?))),
+            _ => Ok(None),
+        }
     }
 
     async fn writable(

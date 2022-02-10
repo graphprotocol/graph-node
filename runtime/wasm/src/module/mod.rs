@@ -5,35 +5,35 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
-use graph::blockchain::{Blockchain, HostFnCtx, TriggerWithHandler};
-use graph::runtime::HostExportError;
+use anyhow::anyhow;
+use anyhow::Error;
 use never::Never;
 use semver::Version;
 use wasmtime::{Memory, Trap};
 
-use crate::error::DeterminismLevel;
-pub use crate::host_exports;
-use crate::mapping::MappingContext;
-use anyhow::Error;
+use graph::blockchain::{Blockchain, HostFnCtx, TriggerWithHandler};
 use graph::data::store;
 use graph::prelude::*;
 use graph::runtime::gas::{self, Gas, GasCounter, SaturatingInto};
+use graph::runtime::HostExportError;
 use graph::runtime::{AscHeap, IndexForAscTypeId};
 use graph::{components::subgraph::MappingError, runtime::AscPtr};
 use graph::{
     data::subgraph::schema::SubgraphError,
     runtime::{asc_get, asc_new, try_asc_get, DeterministicHostError},
 };
+pub use into_wasm_ret::IntoWasmRet;
+pub use stopwatch::TimeoutStopwatch;
 
 use crate::asc_abi::class::*;
+use crate::error::DeterminismLevel;
+pub use crate::host_exports;
 use crate::host_exports::HostExports;
+use crate::mapping::MappingContext;
 use crate::mapping::ValidModule;
 
 mod into_wasm_ret;
 pub mod stopwatch;
-
-pub use into_wasm_ret::IntoWasmRet;
-pub use stopwatch::TimeoutStopwatch;
 
 pub const TRAP_TIMEOUT: &str = "trap: interrupt";
 
@@ -408,7 +408,7 @@ impl<C: Blockchain> WasmInstance<C> {
                                 "{} is not allowed in global variables",
                                 host_fn.name
                             )
-                            .into())
+                            .into());
                         }
                     };
 
@@ -837,6 +837,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             stopwatch,
             gas,
         )?;
+
         Ok(())
     }
 
@@ -870,12 +871,15 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             .host_metrics
             .cheap_clone()
             .time_host_fn_execution_region("store_get");
-        let entity_ptr = asc_get(self, entity_ptr)?;
-        let id_ptr = asc_get(self, id_ptr)?;
-        let entity_option =
-            self.ctx
-                .host_exports
-                .store_get(&mut self.ctx.state, entity_ptr, id_ptr, gas)?;
+
+        let entity_type: String = asc_get(self, entity_ptr)?;
+        let id: String = asc_get(self, id_ptr)?;
+        let entity_option = self.ctx.host_exports.store_get(
+            &mut self.ctx.state,
+            entity_type.clone(),
+            id.clone(),
+            gas,
+        )?;
 
         let ret = match entity_option {
             Some(entity) => {
@@ -885,7 +889,29 @@ impl<C: Blockchain> WasmInstanceContext<C> {
                     .start_section("store_get_asc_new");
                 asc_new(self, &entity.sorted())?
             }
-            None => AscPtr::null(),
+            None => match &self.ctx.debug_fork {
+                Some(fork) => {
+                    let entity_option = fork.fetch(entity_type, id).map_err(|e| {
+                        HostExportError::Unknown(anyhow!(
+                            "store_get: failed to fetch entity from the debug fork: {}",
+                            e
+                        ))
+                    })?;
+                    match entity_option {
+                        Some(entity) => {
+                            let _section = self
+                                .host_metrics
+                                .stopwatch
+                                .start_section("store_get_asc_new");
+                            let entity = asc_new(self, &entity.sorted())?;
+                            self.store_set(gas, entity_ptr, id_ptr, entity)?;
+                            entity
+                        }
+                        None => AscPtr::null(),
+                    }
+                }
+                None => AscPtr::null(),
+            },
         };
 
         Ok(ret)

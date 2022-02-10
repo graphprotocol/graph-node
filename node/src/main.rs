@@ -8,6 +8,7 @@ use graph::firehose::{FirehoseEndpoints, FirehoseNetworks};
 use graph::log::logger;
 use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
 use graph::prometheus::Registry;
+use graph::url::Url;
 use graph_chain_ethereum as ethereum;
 use graph_chain_near::{self as near, HeaderOnlyBlock as NearFirehoseHeaderOnlyBlock};
 use graph_core::{
@@ -129,6 +130,18 @@ async fn main() {
     // Obtain metrics server port
     let metrics_port = opt.metrics_port;
 
+    // Obtain the fork base URL
+    let fork_base = match &opt.fork_base {
+        Some(url) => Some(Url::parse(url).expect("Failed to parse the fork base URL")),
+        None => {
+            warn!(
+                logger,
+                "No fork base URL specified, subgraph forking is disabled"
+            );
+            None
+        }
+    };
+
     info!(logger, "Starting up");
 
     // Optionally, identify the Elasticsearch logging configuration
@@ -184,8 +197,14 @@ async fn main() {
 
     let expensive_queries = read_expensive_queries().unwrap();
 
-    let store_builder =
-        StoreBuilder::new(&logger, &node_id, &config, metrics_registry.cheap_clone()).await;
+    let store_builder = StoreBuilder::new(
+        &logger,
+        &node_id,
+        &config,
+        fork_base,
+        metrics_registry.cheap_clone(),
+    )
+    .await;
 
     let launch_services = |logger: Logger| async move {
         let subscription_manager = store_builder.subscription_manager();
@@ -364,7 +383,8 @@ async fn main() {
                 async move {
                     subgraph_registrar.create_subgraph(name.clone()).await?;
                     subgraph_registrar
-                        .create_subgraph_version(name, subgraph_id, node_id)
+                        // TODO: Add support for `debug_fork` parameter
+                        .create_subgraph_version(name, subgraph_id, node_id, None)
                         .await
                 }
                 .map_err(|e| panic!("Failed to deploy subgraph from `--subgraph` flag: {}", e)),
