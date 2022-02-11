@@ -1,6 +1,5 @@
 use graph::blockchain::BlockchainKind;
 use graph::cheap_clone::CheapClone;
-use graph::components::store::WritableStore;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::FirehoseEndpoints;
 use graph::prelude::StopwatchMetrics;
@@ -101,7 +100,7 @@ impl Blockchain for Chain {
     async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
-        store: Arc<dyn WritableStore>,
+        block_cursor: Option<String>,
         start_blocks: Vec<BlockNumber>,
         filter: Arc<Self::TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
@@ -127,11 +126,10 @@ impl Blockchain for Chain {
             .new(o!("component" => "FirehoseBlockStream"));
 
         let firehose_mapper = Arc::new(FirehoseMapper {});
-        let firehose_cursor = store.block_cursor();
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,
-            firehose_cursor,
+            block_cursor,
             firehose_mapper,
             adapter,
             filter,

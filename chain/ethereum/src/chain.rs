@@ -1,6 +1,5 @@
 use anyhow::{Context, Error};
 use graph::blockchain::BlockchainKind;
-use graph::components::store::WritableStore;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::env::env_var;
 use graph::firehose::{FirehoseEndpoints, ForkStep};
@@ -186,7 +185,7 @@ impl Blockchain for Chain {
     async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
-        writable: Arc<dyn WritableStore>,
+        block_cursor: Option<String>,
         start_blocks: Vec<BlockNumber>,
         filter: Arc<Self::TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
@@ -216,11 +215,10 @@ impl Blockchain for Chain {
             .new(o!("component" => "FirehoseBlockStream"));
 
         let firehose_mapper = Arc::new(FirehoseMapper {});
-        let firehose_cursor = writable.block_cursor();
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,
-            firehose_cursor,
+            block_cursor,
             firehose_mapper,
             adapter,
             filter,
