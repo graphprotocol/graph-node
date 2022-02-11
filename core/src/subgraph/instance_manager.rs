@@ -1,14 +1,15 @@
-use super::loader::load_dynamic_data_sources;
-use super::SubgraphInstance;
+use crate::subgraph::inputs::IndexingInputs;
+use crate::subgraph::loader::load_dynamic_data_sources;
+use crate::subgraph::SubgraphInstance;
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
+use graph::blockchain::block_stream::BlockStreamMetrics;
 use graph::blockchain::block_stream::{BlockStream, BufferedBlockStream};
 use graph::blockchain::{BlockchainKind, DataSource};
 use graph::data::store::scalar::Bytes;
-use graph::data::subgraph::{UnifiedMappingApiVersion, MAX_SPEC_VERSION};
+use graph::data::subgraph::MAX_SPEC_VERSION;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
-use graph::{blockchain::block_stream::BlockStreamMetrics, components::store::WritableStore};
 use graph::{blockchain::block_stream::BlockWithTriggers, data::subgraph::SubgraphFeature};
 use graph::{
     blockchain::NodeCapabilities,
@@ -24,7 +25,7 @@ use graph::{
     components::store::{DeploymentId, DeploymentLocator, ModificationsAndCache, SubgraphFork},
 };
 use lazy_static::lazy_static;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use tokio::task;
@@ -50,19 +51,6 @@ lazy_static! {
 }
 
 type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<DeploymentId, CancelGuard>>>;
-
-struct IndexingInputs<C: Blockchain> {
-    deployment: DeploymentLocator,
-    features: BTreeSet<SubgraphFeature>,
-    start_blocks: Vec<BlockNumber>,
-    stop_block: Option<BlockNumber>,
-    store: Arc<dyn WritableStore>,
-    debug_fork: Option<Arc<dyn SubgraphFork>>,
-    triggers_adapter: Arc<C::TriggersAdapter>,
-    chain: Arc<C>,
-    templates: Arc<Vec<C::DataSourceTemplate>>,
-    unified_api_version: UnifiedMappingApiVersion,
-}
 
 struct IndexingState<T: RuntimeHostBuilder<C>, C: Blockchain> {
     logger: Logger,

@@ -1,3 +1,4 @@
+mod inputs;
 mod instance;
 mod instance_manager;
 mod loader;
