@@ -13,7 +13,7 @@ use graph::{
     prelude::{info, o, slog, tokio, Logger, NodeId},
     url::Url,
 };
-use graph_node::{manager::PanicSubscriptionManager, store_builder::StoreBuilder};
+use graph_node::{manager::PanicSubscriptionManager, store_builder::StoreBuilder, MetricsContext};
 use graph_store_postgres::{
     connection_pool::ConnectionPool, BlockStore, Shard, Store, SubgraphStore, SubscriptionManager,
     PRIMARY_SHARD,
@@ -21,6 +21,8 @@ use graph_store_postgres::{
 
 use graph_node::config::{self, Config as Cfg};
 use graph_node::manager::commands;
+
+const VERSION_LABEL_KEY: &str = "version";
 
 git_testament!(TESTAMENT);
 
@@ -67,6 +69,8 @@ pub struct Opt {
     pub pool_size: u32,
     #[structopt(long, value_name = "URL", help = "Base URL for forking subgraphs")]
     pub fork_base: Option<String>,
+    #[structopt(long, help = "version label, used for prometheus metrics")]
+    pub version_label: Option<String>,
     #[structopt(subcommand)]
     pub cmd: Command,
 }
@@ -159,6 +163,9 @@ pub enum Command {
 
         /// Highest block number to process before stopping (inclusive)
         stop_block: i32,
+
+        /// Prometheus push gateway endpoint.
+        prometheus_host: Option<String>,
     },
     /// Check and interrogate the configuration
     ///
@@ -412,11 +419,28 @@ struct Context {
     config: Cfg,
     fork_base: Option<Url>,
     registry: Arc<MetricsRegistry>,
+    pub prometheus_registry: Arc<Registry>,
 }
 
 impl Context {
-    fn new(logger: Logger, node_id: NodeId, config: Cfg, fork_base: Option<Url>) -> Self {
-        let prometheus_registry = Arc::new(Registry::new());
+    fn new(
+        logger: Logger,
+        node_id: NodeId,
+        config: Cfg,
+        fork_base: Option<Url>,
+        version_label: Option<String>,
+    ) -> Self {
+        let prometheus_registry = Arc::new(
+            Registry::new_custom(
+                None,
+                version_label.map(|label| {
+                    let mut m = HashMap::<String, String>::new();
+                    m.insert(VERSION_LABEL_KEY.into(), label);
+                    m
+                }),
+            )
+            .expect("unable to build prometheus registry"),
+        );
         let registry = Arc::new(MetricsRegistry::new(
             logger.clone(),
             prometheus_registry.clone(),
@@ -428,6 +452,7 @@ impl Context {
             config,
             fork_base,
             registry,
+            prometheus_registry,
         }
     }
 
@@ -480,13 +505,13 @@ impl Context {
         pools
     }
 
-    async fn store_builder(self) -> StoreBuilder {
+    async fn store_builder(&self) -> StoreBuilder {
         StoreBuilder::new(
             &self.logger,
             &self.node_id,
             &self.config,
-            self.fork_base,
-            self.registry,
+            self.fork_base.clone(),
+            self.registry.clone(),
         )
         .await
     }
@@ -551,6 +576,7 @@ impl Context {
 async fn main() {
     let opt = Opt::from_args();
 
+    let version_label = opt.version_label.clone();
     // Set up logger
     let logger = match env::var_os("GRAPH_LOG") {
         Some(_) => logger(false),
@@ -600,7 +626,13 @@ async fn main() {
         None => None,
     };
 
-    let ctx = Context::new(logger.clone(), node, config, fork_base);
+    let ctx = Context::new(
+        logger.clone(),
+        node,
+        config,
+        fork_base,
+        version_label.clone(),
+    );
 
     use Command::*;
     let result = match opt.cmd {
@@ -679,19 +711,27 @@ async fn main() {
             network_name,
             subgraph,
             stop_block,
+            prometheus_host,
         } => {
             let logger = ctx.logger.clone();
             let config = ctx.config();
             let registry = ctx.metrics_registry().clone();
             let node_id = ctx.node_id().clone();
             let store_builder = ctx.store_builder().await;
+            let job_name = version_label.clone();
+            let metrics_ctx = MetricsContext {
+                prometheus: ctx.prometheus_registry.clone(),
+                registry: registry.clone(),
+                prometheus_host,
+                job_name,
+            };
 
             commands::run::run(
                 logger,
                 store_builder,
                 network_name,
                 config,
-                registry,
+                metrics_ctx,
                 node_id,
                 subgraph,
                 stop_block,
