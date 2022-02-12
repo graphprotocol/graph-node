@@ -1,4 +1,5 @@
 use crate::subgraph::context::{IndexingContext, IndexingState, SharedInstanceKeepAliveMap};
+use crate::subgraph::error::BlockProcessingError;
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
 use crate::subgraph::metrics::{SubgraphInstanceManagerMetrics, SubgraphInstanceMetrics};
@@ -702,38 +703,6 @@ where
                 }
             }
         }
-    }
-}
-
-#[derive(thiserror::Error, Debug)]
-enum BlockProcessingError {
-    #[error("{0:#}")]
-    Unknown(Error),
-
-    // The error had a deterministic cause but, for a possibly non-deterministic reason, we chose to
-    // halt processing due to the error.
-    #[error("{0}")]
-    Deterministic(SubgraphError),
-
-    #[error("subgraph stopped while processing triggers")]
-    Canceled,
-}
-
-impl BlockProcessingError {
-    fn is_deterministic(&self) -> bool {
-        matches!(self, BlockProcessingError::Deterministic(_))
-    }
-}
-
-impl From<Error> for BlockProcessingError {
-    fn from(e: Error) -> Self {
-        BlockProcessingError::Unknown(e)
-    }
-}
-
-impl From<StoreError> for BlockProcessingError {
-    fn from(e: StoreError) -> Self {
-        BlockProcessingError::Unknown(e.into())
     }
 }
 

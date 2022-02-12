@@ -1,4 +1,5 @@
 mod context;
+mod error;
 mod inputs;
 mod instance;
 mod instance_manager;
