@@ -2,6 +2,7 @@ mod inputs;
 mod instance;
 mod instance_manager;
 mod loader;
+mod metrics;
 mod provider;
 mod registrar;
 
