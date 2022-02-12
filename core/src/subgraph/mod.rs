@@ -7,6 +7,7 @@ mod loader;
 mod metrics;
 mod provider;
 mod registrar;
+mod runner;
 
 pub use self::instance::SubgraphInstance;
 pub use self::instance_manager::SubgraphInstanceManager;
