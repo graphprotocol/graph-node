@@ -1,3 +1,4 @@
+use crate::subgraph::context::{IndexingContext, IndexingState, SharedInstanceKeepAliveMap};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
 use crate::subgraph::metrics::{SubgraphInstanceManagerMetrics, SubgraphInstanceMetrics};
@@ -23,11 +24,9 @@ use graph::{
 };
 use graph::{
     blockchain::{Block, BlockchainMap},
-    components::store::{DeploymentId, DeploymentLocator, ModificationsAndCache, SubgraphFork},
+    components::store::{DeploymentLocator, ModificationsAndCache, SubgraphFork},
 };
 use lazy_static::lazy_static;
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use tokio::task;
 
@@ -49,29 +48,6 @@ lazy_static! {
             .parse::<u64>()
             .map(Duration::from_secs)
             .expect("invalid GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS");
-}
-
-type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<DeploymentId, CancelGuard>>>;
-
-struct IndexingState<T: RuntimeHostBuilder<C>, C: Blockchain> {
-    logger: Logger,
-    instance: SubgraphInstance<C, T>,
-    instances: SharedInstanceKeepAliveMap,
-    filter: C::TriggerFilter,
-    entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
-}
-
-struct IndexingContext<T: RuntimeHostBuilder<C>, C: Blockchain> {
-    /// Mutable state that may be modified while indexing a subgraph.
-    pub state: IndexingState<T, C>,
-
-    /// Sensors to measure the execution of the subgraph instance
-    pub subgraph_metrics: Arc<SubgraphInstanceMetrics>,
-
-    /// Sensors to measure the execution of the subgraph's runtime hosts
-    pub host_metrics: Arc<HostMetrics>,
-
-    pub block_stream_metrics: Arc<BlockStreamMetrics>,
 }
 
 pub struct SubgraphInstanceManager<S, M, L> {
