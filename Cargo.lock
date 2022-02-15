@@ -1450,7 +1450,7 @@ dependencies = [
  "prost-types",
  "rand 0.6.5",
  "reqwest",
- "semver 1.0.4",
+ "semver 1.0.5",
  "serde",
  "serde_derive",
  "serde_json",
@@ -1496,7 +1496,7 @@ dependencies = [
  "mockall",
  "prost",
  "prost-types",
- "semver 1.0.4",
+ "semver 1.0.5",
  "serde",
  "test-store",
  "tiny-keccak 1.5.0",
@@ -1544,7 +1544,7 @@ dependencies = [
  "lazy_static",
  "lru_time_cache",
  "pretty_assertions 1.1.0",
- "semver 1.0.4",
+ "semver 1.0.5",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1636,7 +1636,7 @@ dependencies = [
  "graph-core",
  "graph-mock",
  "graph-runtime-wasm",
- "semver 1.0.4",
+ "semver 1.0.5",
  "test-store",
  "wasmtime",
 ]
@@ -1661,7 +1661,7 @@ dependencies = [
  "never",
  "parity-wasm",
  "pwasm-utils",
- "semver 1.0.4",
+ "semver 1.0.5",
  "strum",
  "strum_macros",
  "uuid 0.8.2",
@@ -3687,7 +3687,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bfa0f585226d2e68097d4f95d113b15b83a82e819ab25717ec0590d9584ef366"
 dependencies = [
- "semver 1.0.4",
+ "semver 1.0.5",
 ]
 
 [[package]]
@@ -3843,9 +3843,9 @@ dependencies = [
 
 [[package]]
 name = "semver"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "568a8e6258aa33c13358f81fd834adb854c6f7c9468520910a9b1e8fac068012"
+checksum = "0486718e92ec9a68fbed73bb5ef687d71103b142595b406835649bebd33f72c7"
 dependencies = [
  "serde",
 ]
