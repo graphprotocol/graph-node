@@ -1690,11 +1690,6 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
         bail!("failed to find transactions in block for the given call triggers")
     }
 
-    // Return early if there are no transactions to inspect
-    if transactions.is_empty() {
-        return Ok(block);
-    }
-
     // We'll also need the receipts for those transactions. In this step we collect all receipts
     // we have in store for the current block.
     let mut receipts = chain_store
