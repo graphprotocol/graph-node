@@ -1,4 +1,4 @@
-use std::cmp::{Ordering, PartialOrd};
+use std::cmp::PartialOrd;
 use std::fmt;
 use std::str::FromStr;
 
@@ -7,14 +7,8 @@ use graph::impl_slog_value;
 
 use crate::DataSource;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd)]
 pub struct NodeCapabilities {}
-
-impl PartialOrd for NodeCapabilities {
-    fn partial_cmp(&self, _other: &Self) -> Option<Ordering> {
-        None
-    }
-}
 
 impl FromStr for NodeCapabilities {
     type Err = Error;
