@@ -158,7 +158,7 @@ impl Blockchain for Chain {
         _logger: &Logger,
         _number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
-        // FIXME (NEAR): Hmmm, what to do with this?
+        // FIXME (Tendermint): Hmmm, what to do with this?
         Ok(BlockPtr {
             hash: BlockHash::from(vec![0xff; 32]),
             number: 0,

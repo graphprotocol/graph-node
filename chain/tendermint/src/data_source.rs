@@ -132,7 +132,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         _templates: &BTreeMap<&str, &DataSourceTemplate>,
         _stored: StoredDynamicDataSource,
     ) -> Result<Self> {
-        // FIXME (NEAR): Implement me correctly
+        // FIXME (Tendermint): Implement me correctly
         todo!()
     }
 
