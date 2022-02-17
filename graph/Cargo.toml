@@ -55,7 +55,6 @@ wasmparser = "0.78.2"
 thiserror = "1.0.25"
 parking_lot = "0.11.2"
 itertools = "0.10.3"
-subtle-encoding = {version = "0.5", features = ["bech32-preview"]}
 
 # Our fork contains patches for custom http headers and to make some block fields optional.
 # Without the "arbitrary_precision" feature, we get the error `data did not match any variant of untagged enum Response`.
