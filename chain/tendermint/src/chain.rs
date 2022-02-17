@@ -201,6 +201,9 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             .map(|event| {
                 TendermintTrigger::Event(Arc::new(codec::EventData {
                     event: Some(event),
+                    // FIXME (Tendermint): Optimize. Should use an Arc instead of cloning the
+                    // block. This is not currently possible because EventData is automatically
+                    // generated.
                     block: Some(block.block().clone()),
                 }))
             })
