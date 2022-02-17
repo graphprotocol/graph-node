@@ -21,46 +21,41 @@ impl EventList {
         self.block().header()
     }
 
-    pub fn events(&self) -> Vec<Event> {
+    pub fn events(&self) -> impl Iterator<Item = &Event> {
         self.begin_block_events()
-            .into_iter()
-            .chain(self.tx_events().into_iter())
-            .chain(self.end_block_events().into_iter())
-            .collect()
+            .chain(self.tx_events())
+            .chain(self.end_block_events())
     }
 
-    pub fn begin_block_events(&self) -> Vec<Event> {
+    pub fn begin_block_events(&self) -> impl Iterator<Item = &Event> {
         self.block()
             .result_begin_block
             .as_ref()
             .unwrap()
             .events
-            .clone()
-    }
-
-    pub fn tx_events(&self) -> Vec<Event> {
-        self.transaction
             .iter()
-            .flat_map(|tx| {
-                tx.tx_result
-                    .as_ref()
-                    .unwrap()
-                    .result
-                    .as_ref()
-                    .unwrap()
-                    .events
-                    .clone()
-            })
-            .collect()
     }
 
-    pub fn end_block_events(&self) -> Vec<Event> {
+    pub fn tx_events(&self) -> impl Iterator<Item = &Event> {
+        self.transaction.iter().flat_map(|tx| {
+            tx.tx_result
+                .as_ref()
+                .unwrap()
+                .result
+                .as_ref()
+                .unwrap()
+                .events
+                .iter()
+        })
+    }
+
+    pub fn end_block_events(&self) -> impl Iterator<Item = &Event> {
         self.block()
             .result_end_block
             .as_ref()
             .unwrap()
             .events
-            .clone()
+            .iter()
     }
 
     pub fn parent_ptr(&self) -> Option<BlockPtr> {

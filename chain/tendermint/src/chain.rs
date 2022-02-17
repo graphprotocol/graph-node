@@ -197,7 +197,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
 
         let mut triggers: Vec<_> = shared_block
             .events()
-            .into_iter()
+            .cloned()
             .map(|event| {
                 TendermintTrigger::Event(Arc::new(codec::EventData {
                     event: Some(event),
