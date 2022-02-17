@@ -108,7 +108,7 @@ impl Blockchain for Chain {
             .triggers_adapter(
                 &deployment,
                 &NodeCapabilities {},
-                unified_api_version.clone(),
+                unified_api_version,
                 metrics.stopwatch.clone(),
             )
             .unwrap_or_else(|_| panic!("no adapter for network {}", self.name));
