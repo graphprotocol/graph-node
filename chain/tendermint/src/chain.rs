@@ -150,7 +150,7 @@ impl Blockchain for Chain {
     }
 
     fn chain_store(&self) -> Arc<dyn ChainStore> {
-        self.chain_store.clone()
+        self.chain_store.cheap_clone()
     }
 
     async fn block_pointer_from_number(
