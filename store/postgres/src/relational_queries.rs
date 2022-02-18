@@ -2968,7 +2968,7 @@ fn write_column_names(
     match column_names {
         AttributeNames::All => out.push_sql(" * "),
         AttributeNames::Select(column_names) => {
-            let mut iterator = iter_column_names(column_names, table, false).peekable();
+            let mut iterator = iter_column_names(column_names, table, true).peekable();
             while let Some(column_name) = iterator.next() {
                 out.push_identifier(&column_name)?;
                 if iterator.peek().is_some() {
