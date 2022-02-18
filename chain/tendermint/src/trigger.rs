@@ -36,7 +36,7 @@ impl MappingTrigger for TendermintTrigger {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialOrd)]
 pub enum TendermintTrigger {
     Block(Arc<codec::EventList>),
     Event(Arc<codec::EventData>),
@@ -97,12 +97,6 @@ impl Ord for TendermintTrigger {
             // which they are included in the `events` field
             (Self::Event(..), Self::Event(..)) => Ordering::Equal,
         }
-    }
-}
-
-impl PartialOrd for TendermintTrigger {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
     }
 }
 
