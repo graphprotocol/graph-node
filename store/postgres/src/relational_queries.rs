@@ -2994,7 +2994,7 @@ fn jsonb_build_object(
         }
         AttributeNames::Select(column_names) => {
             out.push_sql("jsonb_build_object(");
-            let mut iterator = iter_column_names(column_names, table, true).peekable();
+            let mut iterator = iter_column_names(column_names, table, false).peekable();
             while let Some(column_name) = iterator.next() {
                 // field name as json key
                 out.push_sql("'");
