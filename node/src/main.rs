@@ -573,7 +573,7 @@ fn tendermint_networks_as_chains(
     HashMap::from_iter(chains)
 }
 
-/// Return the hashmap of ethereum chains and also add them to `blockchain_map`.
+/// Return the hashmap of NEAR chains and also add them to `blockchain_map`.
 fn near_networks_as_chains(
     blockchain_map: &mut BlockchainMap,
     logger: &Logger,
