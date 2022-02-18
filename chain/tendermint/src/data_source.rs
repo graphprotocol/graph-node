@@ -6,7 +6,7 @@ use anyhow::{Error, Result};
 use graph::{
     blockchain::{self, Block, Blockchain, TriggerWithHandler},
     components::store::StoredDynamicDataSource,
-    data::subgraph::{DataSourceContext, Source},
+    data::subgraph::DataSourceContext,
     prelude::{
         anyhow, async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize,
         Link, LinkResolver, Logger,
@@ -18,6 +18,8 @@ use crate::codec;
 use crate::trigger::TendermintTrigger;
 
 pub const TENDERMINT_KIND: &str = "tendermint";
+
+const DYNAMIC_DATA_SOURCE_ERROR: &str = "Tendermint subgraphs do not support dynamic data sources";
 
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
@@ -35,7 +37,7 @@ pub struct DataSource {
 
 impl blockchain::DataSource<Chain> for DataSource {
     fn address(&self) -> Option<&[u8]> {
-        self.source.address.as_ref().map(|x| x.as_bytes())
+        None
     }
 
     fn start_block(&self) -> BlockNumber {
@@ -119,21 +121,14 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
-        StoredDynamicDataSource {
-            name: self.name.clone(),
-            source: self.source.clone(),
-            // one as_ref for Arc, another one for Option
-            context: self.context().as_ref().as_ref().and_then(|c| c.id().ok()),
-            creation_block: self.creation_block,
-        }
+        unimplemented!("{}", DYNAMIC_DATA_SOURCE_ERROR);
     }
 
     fn from_stored_dynamic_data_source(
         _templates: &BTreeMap<&str, &DataSourceTemplate>,
         _stored: StoredDynamicDataSource,
     ) -> Result<Self> {
-        // FIXME (Tendermint): Implement me correctly
-        todo!()
+        Err(anyhow!(DYNAMIC_DATA_SOURCE_ERROR))
     }
 
     fn validate(&self) -> Vec<Error> {
@@ -365,4 +360,10 @@ pub struct MappingBlockHandler {
 pub struct MappingEventHandler {
     pub event: String,
     pub handler: String,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub struct Source {
+    #[serde(rename = "startBlock", default)]
+    pub start_block: BlockNumber,
 }
