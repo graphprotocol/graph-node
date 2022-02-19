@@ -5,7 +5,7 @@ use graph_store_postgres::SubgraphStore;
 
 pub fn run(store: Arc<SubgraphStore>, name: String) -> Result<(), Error> {
     let name = SubgraphName::new(name.clone())
-        .map_err(|()| anyhow!("illegal subgraph name `{}`", name))?;
+        .map_err(|err| anyhow!("illegal subgraph name `{}` with error `{}`", name, err))?;
 
     println!("Removing subgraph {}", name);
     store.remove_subgraph(name)?;

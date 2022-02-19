@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use graph::{
-    prelude::{anyhow::anyhow, Error, NodeId, SubgraphStore as _},
+    prelude::{anyhow::Context, Error, NodeId, SubgraphStore as _},
     slog::Logger,
 };
 use graph_store_postgres::SubgraphStore;
@@ -31,7 +31,8 @@ pub fn reassign(
     node: String,
     shard: Option<String>,
 ) -> Result<(), Error> {
-    let node = NodeId::new(node.clone()).map_err(|()| anyhow!("illegal node id `{}`", node))?;
+    let node =
+        NodeId::new(node.clone()).with_context(|| format!("illegal node id `{:#}`", node))?;
     let deployment = locate(store.as_ref(), hash, shard)?;
 
     println!("reassigning {} to {}", deployment, node.as_str());

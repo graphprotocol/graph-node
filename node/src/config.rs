@@ -381,7 +381,7 @@ pub struct ChainSection {
 impl ChainSection {
     fn validate(&mut self) -> Result<()> {
         NodeId::new(&self.ingestor)
-            .map_err(|()| anyhow!("invalid node id for ingestor {}", &self.ingestor))?;
+            .with_context(|| format!("invalid node id for ingestor {:#}", &self.ingestor))?;
         for (_, chain) in self.chains.iter_mut() {
             chain.validate()?
         }
@@ -838,8 +838,9 @@ impl DeploymentPlacer for Deployment {
                     .indexers
                     .iter()
                     .map(|idx| {
-                        NodeId::new(idx.clone())
-                            .map_err(|()| format!("{} is not a valid node name", idx))
+                        NodeId::new(idx.clone()).map_err(|err| {
+                            format!("{} is not a valid node name with error `{}`", idx, err)
+                        })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 Some((shards, indexers))
@@ -886,7 +887,7 @@ impl Rule {
             return Err(anyhow!("useless rule without indexers"));
         }
         for indexer in &self.indexers {
-            NodeId::new(indexer).map_err(|()| anyhow!("invalid node id {}", &indexer))?;
+            NodeId::new(indexer).with_context(|| format!("invalid node id {:#}", &indexer))?;
         }
         self.shard_names().map_err(Error::from)?;
         Ok(())

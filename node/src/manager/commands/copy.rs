@@ -4,7 +4,7 @@ use std::{collections::HashMap, sync::Arc, time::SystemTime};
 use graph::{
     components::store::BlockStore as _,
     prelude::{
-        anyhow::{anyhow, bail, Error},
+        anyhow::{anyhow, bail, Context, Error},
         chrono::{DateTime, Duration, SecondsFormat, Utc},
         BlockPtr, ChainStore, NodeId, QueryStoreManager,
     },
@@ -119,7 +119,8 @@ pub async fn create(
     let base_ptr = BlockPtr::from((hash, src_number));
 
     let shard = Shard::new(shard)?;
-    let node = NodeId::new(node.clone()).map_err(|()| anyhow!("invalid node id `{}`", node))?;
+    let node =
+        NodeId::new(node.clone()).with_context(|| format!("invalid node id `{:#}`", node))?;
 
     let dst = subgraph_store.copy_deployment(&src, shard, node, base_ptr)?;
 

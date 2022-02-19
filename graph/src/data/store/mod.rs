@@ -60,18 +60,24 @@ impl SubscriptionFilter {
 pub struct NodeId(String);
 
 impl NodeId {
-    pub fn new(s: impl Into<String>) -> Result<Self, ()> {
+    pub fn new(s: impl Into<String>) -> Result<Self, anyhow::Error> {
         let s = s.into();
 
         // Enforce length limit
         if s.len() > 63 {
-            return Err(());
+            return Err(anyhow!(
+                "NodeId's name cannot be greater than 63 characters {}",
+                s
+            ));
         }
 
         // Check that the ID contains only allowed characters.
         // Note: these restrictions are relied upon to prevent SQL injection
         if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-            return Err(());
+            return Err(anyhow!(
+                "Only alphanumeric and \"_\" characters are allowed {}",
+                s
+            ));
         }
 
         Ok(NodeId(s))
@@ -106,7 +112,7 @@ impl<'de> de::Deserialize<'de> for NodeId {
     {
         let s: String = de::Deserialize::deserialize(deserializer)?;
         NodeId::new(s.clone())
-            .map_err(|()| de::Error::invalid_value(de::Unexpected::Str(&s), &"valid node ID"))
+            .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(&s), &"valid node ID"))
     }
 }
 

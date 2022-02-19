@@ -654,8 +654,8 @@ async fn main() {
     }
 
     let node = match NodeId::new(&opt.node_id) {
-        Err(()) => {
-            eprintln!("invalid node id: {}", opt.node_id);
+        Err(err) => {
+            eprintln!("invalid node id: {} with error `{}`", opt.node_id, err);
             std::process::exit(1);
         }
         Ok(node) => node,

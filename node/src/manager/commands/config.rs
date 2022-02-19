@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use graph::prelude::{
-    anyhow::{anyhow, Error},
+    anyhow::{anyhow, Context, Error},
     NodeId,
 };
 use graph_store_postgres::DeploymentPlacer;
@@ -48,7 +48,7 @@ pub fn pools(config: &Config, nodes: Vec<String>, shard: bool) -> Result<(), Err
         .into_iter()
         .map(|name| {
             NodeId::new(name.replace("-", "_"))
-                .map_err(|()| anyhow!("illegal node name `{}`", name))
+                .with_context(|| format!("illegal node name `{:#}`", name))
         })
         .collect::<Result<_, _>>()?;
     // node -> shard_name -> size

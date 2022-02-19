@@ -608,11 +608,12 @@ mod queries {
             .first::<String>(conn)
             .optional()?
             .map(|node| {
-                NodeId::new(&node).map_err(|()| {
+                NodeId::new(&node).map_err(|err| {
                     constraint_violation!(
-                        "invalid node id `{}` in assignment for `{}`",
+                        "invalid node id `{}` in assignment for `{}` with error `{}`",
                         node,
-                        site.deployment
+                        site.deployment,
+                        err
                     )
                 })
             })
@@ -1233,7 +1234,7 @@ impl<'a> Connection<'a> {
             .map(|(node, count)| (node.as_str(), *count))
             .chain(missing)
             .min_by_key(|(_, count)| *count)
-            .map(|(node, _)| NodeId::new(node).map_err(|()| node))
+            .map(|(node, _)| NodeId::new(node).map_err(|_| node))
             .transpose()
             // This can't really happen since we filtered by valid NodeId's
             .map_err(|node| {

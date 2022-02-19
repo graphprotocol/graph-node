@@ -26,7 +26,7 @@ pub async fn run(
         QueryTarget::Deployment(id)
     } else {
         let name = SubgraphName::new(target.clone())
-            .map_err(|()| anyhow!("illegal subgraph name `{}`", target))?;
+            .map_err(|err| anyhow!("illegal subgraph name `{}` with error `{}`", target, err))?;
         QueryTarget::Name(name)
     };
 

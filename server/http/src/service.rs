@@ -154,8 +154,11 @@ where
         subgraph_name: String,
         request: Request<Body>,
     ) -> GraphQLServiceResult {
-        let subgraph_name = SubgraphName::new(subgraph_name.as_str()).map_err(|()| {
-            GraphQLServerError::ClientError(format!("Invalid subgraph name {:?}", subgraph_name))
+        let subgraph_name = SubgraphName::new(subgraph_name.as_str()).map_err(|err| {
+            GraphQLServerError::ClientError(format!(
+                "Invalid subgraph name {:?} with error `{}`",
+                subgraph_name, err
+            ))
         })?;
 
         self.handle_graphql_query(subgraph_name.into(), request.into_body())
