@@ -1,10 +1,11 @@
 use crate::cheap_clone::CheapClone;
-use crate::components::store::{EntityType, SubgraphStore};
+use crate::components::store::{EntityKey, EntityType, SubgraphStore};
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
-use crate::data::store::ValueType;
+use crate::data::graphql::ObjectTypeExt;
+use crate::data::store::{self, ValueType};
 use crate::data::subgraph::{DeploymentHash, SubgraphName};
 use crate::prelude::{
-    lazy_static,
+    anyhow, lazy_static,
     q::Value,
     s::{self, Definition, InterfaceType, ObjectType, TypeDefinition, *},
 };
@@ -24,6 +25,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use super::graphql::ObjectOrInterface;
+use super::store::scalar;
 
 pub const SCHEMA_TYPE_NAME: &str = "_Schema_";
 
@@ -586,6 +588,33 @@ impl Schema {
             document,
             interfaces_for_type: BTreeMap::new(),
             types_for_interface: BTreeMap::new(),
+        }
+    }
+
+    /// Construct a value for the entity type's id attribute
+    pub fn id_value(&self, key: &EntityKey) -> Result<store::Value, Error> {
+        let base_type = self
+            .document
+            .get_object_type_definition(key.entity_type.as_str())
+            .ok_or_else(|| {
+                anyhow!(
+                    "Entity {}[{}]: unknown entity type `{}`",
+                    key.entity_type,
+                    key.entity_id,
+                    key.entity_type
+                )
+            })?
+            .field("id")
+            .unwrap()
+            .field_type
+            .get_base_type();
+
+        match base_type {
+            "String" => Ok(store::Value::String(key.entity_id.clone())),
+            "Bytes" => Ok(store::Value::Bytes(scalar::Bytes::from_str(
+                &key.entity_id,
+            )?)),
+            _ => todo!(),
         }
     }
 

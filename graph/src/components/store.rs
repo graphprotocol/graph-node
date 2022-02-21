@@ -1521,7 +1521,36 @@ impl EntityCache {
     /// with existing data. The entity will be validated against the
     /// subgraph schema, and any errors will result in an `Err` being
     /// returned.
-    pub fn set(&mut self, key: EntityKey, entity: Entity) -> Result<(), anyhow::Error> {
+    pub fn set(&mut self, key: EntityKey, mut entity: Entity) -> Result<(), anyhow::Error> {
+        fn check_id(key: &EntityKey, prev_id: &str) -> Result<(), anyhow::Error> {
+            if prev_id != key.entity_id {
+                return Err(anyhow!(
+                    "Value of {} attribute 'id' conflicts with ID passed to `store.set()`: \
+                {} != {}",
+                    key.entity_type,
+                    prev_id,
+                    key.entity_id,
+                ));
+            } else {
+                return Ok(());
+            }
+        }
+
+        // Set the id if there isn't one yet, and make sure that a
+        // previously set id agrees with the one in the `key`
+        match entity.get("id") {
+            Some(Value::String(s)) => check_id(&key, &s)?,
+            Some(Value::Bytes(b)) => check_id(&key, &b.to_string())?,
+            Some(_) => {
+                // The validation will catch the type mismatch
+                ()
+            }
+            None => {
+                let value = self.store.input_schema().id_value(&key)?;
+                entity.set("id", value);
+            }
+        }
+
         let is_valid = entity
             .validate(&self.store.input_schema().document, &key)
             .is_ok();
