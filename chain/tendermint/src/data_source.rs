@@ -20,6 +20,7 @@ use crate::trigger::TendermintTrigger;
 pub const TENDERMINT_KIND: &str = "tendermint";
 
 const DYNAMIC_DATA_SOURCE_ERROR: &str = "Tendermint subgraphs do not support dynamic data sources";
+const TEMPLATE_ERROR: &str = "Tendermint subgraphs do not support templates";
 
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
@@ -241,7 +242,7 @@ impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
     type Error = Error;
 
     fn try_from(_info: DataSourceTemplateInfo<Chain>) -> Result<Self> {
-        Err(anyhow!("Tendermint subgraphs do not support templates"))
+        Err(anyhow!(TEMPLATE_ERROR))
     }
 }
 
@@ -260,38 +261,24 @@ pub type DataSourceTemplate = BaseDataSourceTemplate<Mapping>;
 impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTemplate {
     async fn resolve(
         self,
-        resolver: &impl LinkResolver,
-        logger: &Logger,
+        _resolver: &impl LinkResolver,
+        _logger: &Logger,
     ) -> Result<DataSourceTemplate> {
-        let UnresolvedDataSourceTemplate {
-            kind,
-            network,
-            name,
-            mapping,
-        } = self;
-
-        info!(logger, "Resolve data source template"; "name" => &name);
-
-        Ok(DataSourceTemplate {
-            kind,
-            network,
-            name,
-            mapping: mapping.resolve(resolver, logger).await?,
-        })
+        Err(anyhow!(TEMPLATE_ERROR))
     }
 }
 
 impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
     fn name(&self) -> &str {
-        &self.name
+        unimplemented!("{}", TEMPLATE_ERROR);
     }
 
     fn api_version(&self) -> semver::Version {
-        self.mapping.api_version.clone()
+        unimplemented!("{}", TEMPLATE_ERROR);
     }
 
     fn runtime(&self) -> &[u8] {
-        self.mapping.runtime.as_ref()
+        unimplemented!("{}", TEMPLATE_ERROR);
     }
 }
 
