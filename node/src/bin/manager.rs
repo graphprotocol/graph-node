@@ -615,14 +615,25 @@ async fn main() {
         Ok(node) => node,
     };
 
-    let fork_base = match opt.fork_base {
-        Some(url) => match Url::parse(&url) {
-            Err(e) => {
-                eprintln!("invalid fork base URL: {}", e);
-                std::process::exit(1);
+    let fork_base = match &opt.fork_base {
+        Some(url) => {
+            // Make sure the endpoint ends with a terminating slash.
+            let url = if !url.ends_with("/") {
+                let mut url = url.clone();
+                url.push('/');
+                Url::parse(&url)
+            } else {
+                Url::parse(url)
+            };
+
+            match url {
+                Err(e) => {
+                    eprintln!("invalid fork base URL: {}", e);
+                    std::process::exit(1);
+                }
+                Ok(url) => Some(url),
             }
-            Ok(url) => Some(url),
-        },
+        }
         None => None,
     };
 

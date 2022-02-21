@@ -33,7 +33,7 @@ struct Variables {
 
 /// SubgraphFork represents a simple subgraph forking mechanism
 /// which lazily fetches entities from a remote subgraph's store
-/// associated with a GraphQL endpoint at `fork_url`.
+/// associated with a GraphQL `endpoint`.
 ///
 /// Since this mechanism is used for debug forks, entities are
 /// fetched only once per id in order to avoid fetching an entity

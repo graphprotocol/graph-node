@@ -132,7 +132,18 @@ async fn main() {
 
     // Obtain the fork base URL
     let fork_base = match &opt.fork_base {
-        Some(url) => Some(Url::parse(url).expect("Failed to parse the fork base URL")),
+        Some(url) => {
+            // Make sure the endpoint ends with a terminating slash.
+            let url = if !url.ends_with("/") {
+                let mut url = url.clone();
+                url.push('/');
+                Url::parse(&url)
+            } else {
+                Url::parse(url)
+            };
+
+            Some(url.expect("Failed to parse the fork base URL"))
+        }
         None => {
             warn!(
                 logger,
