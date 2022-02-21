@@ -27,7 +27,7 @@ num-bigint = { version = "^0.2.6", features = ["serde"] }
 num_cpus = "1.13.1"
 num-traits = "0.2.14"
 rand = "0.6.1"
-semver = {version = "1.0.5", features = ["serde"]}
+semver = {version = "1.0.6", features = ["serde"]}
 serde = { version = "1.0.126", features = ["rc"] }
 serde_derive = "1.0.125"
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
