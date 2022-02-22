@@ -325,7 +325,7 @@ impl PoolSize {
                 .map(|rule| rule.size)
                 .ok_or_else(|| {
                     anyhow!(
-                        "no rule matches `{}` for the pool of shard {}",
+                        "no rule matches node id `{}` for the pool of shard {}",
                         node.as_str(),
                         name
                     )
