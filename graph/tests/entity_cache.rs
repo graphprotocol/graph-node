@@ -150,7 +150,7 @@ impl WritableStore for MockStore {
         SCHEMA.clone()
     }
 
-    async fn wait(&self) -> Result<(), StoreError> {
+    async fn flush(&self) -> Result<(), StoreError> {
         unimplemented!()
     }
 }

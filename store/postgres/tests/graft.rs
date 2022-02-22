@@ -329,14 +329,14 @@ async fn check_graft(
         .revert_block_operations(BLOCKS[1].clone(), None)
         .await
         .expect("We can revert a block we just created");
-    writable.wait().await.expect("we can revert to BLOCKS[1]");
+    writable.flush().await.expect("we can revert to BLOCKS[1]");
 
     let err = {
         match writable
             .revert_block_operations(BLOCKS[0].clone(), None)
             .await
         {
-            Ok(()) => writable.wait().await,
+            Ok(()) => writable.flush().await,
             Err(e) => Err(e),
         }
     }

@@ -232,7 +232,7 @@ pub async fn transact_errors(
             errs,
         )
         .await?;
-    wait(deployment).await
+    flush(deployment).await
 }
 
 /// Convenience to transact EntityOperation instead of EntityModification
@@ -261,7 +261,7 @@ pub async fn transact_and_wait(
         ops,
     )
     .await?;
-    wait(deployment).await
+    flush(deployment).await
 }
 
 pub async fn transact_entities_and_dynamic_data_sources(
@@ -307,7 +307,7 @@ pub async fn revert_block(store: &Arc<Store>, deployment: &DeploymentLocator, pt
         .revert_block_operations(ptr.clone(), None)
         .await
         .unwrap();
-    wait(deployment).await.unwrap();
+    flush(deployment).await.unwrap();
 }
 
 pub fn insert_ens_name(hash: &str, name: &str) {
@@ -349,17 +349,17 @@ pub async fn insert_entities(
     )
     .await?;
 
-    wait(deployment).await
+    flush(deployment).await
 }
 
 /// Wait until all pending writes have been processed
-pub async fn wait(deployment: &DeploymentLocator) -> Result<(), StoreError> {
+pub async fn flush(deployment: &DeploymentLocator) -> Result<(), StoreError> {
     let writable = SUBGRAPH_STORE
         .cheap_clone()
         .writable(LOGGER.clone(), deployment.id)
         .await
         .expect("we can get a writable");
-    writable.wait().await
+    writable.flush().await
 }
 
 /// Tap into store events sent when running `f` and return those events. This

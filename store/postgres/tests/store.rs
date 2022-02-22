@@ -145,7 +145,7 @@ where
         // Run test and wait for the background writer to finish its work so
         // it won't conflict with the next test
         test(store, writable.clone(), deployment).await;
-        writable.wait().await.unwrap();
+        writable.flush().await.unwrap();
     });
 }
 
@@ -1569,7 +1569,7 @@ fn handle_large_string_with_index() {
             )
             .await
             .expect("Failed to insert large text");
-        writable.wait().await.unwrap();
+        writable.flush().await.unwrap();
 
         let query = user_query()
             .first(5)
