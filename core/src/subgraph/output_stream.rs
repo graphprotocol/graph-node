@@ -2,15 +2,19 @@ use fluvio::{self, metadata::topic::TopicSpec, FluvioError, RecordKey};
 use graph::{
     blockchain::BlockPtr,
     prelude::{DeploymentHash, EntityModification, Error},
-    slog::Logger,
 };
 use serde::Serialize;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum Event {
-    RevertBlock { block: BlockPtr },
-    EntityModification { modification: EntityModification },
+    RevertBlock {
+        block: BlockPtr,
+    },
+    EntityModification {
+        block: BlockPtr,
+        modification: EntityModification,
+    },
 }
 
 pub struct SubgraphOutputStream {
@@ -18,7 +22,7 @@ pub struct SubgraphOutputStream {
 }
 
 impl SubgraphOutputStream {
-    pub async fn new(logger: Logger, deployment: DeploymentHash) -> Result<Self, Error> {
+    pub async fn new(deployment: DeploymentHash) -> Result<Self, Error> {
         let topic = deployment.as_str().to_lowercase();
 
         // Ensure that the topic exists so we can write events to it
@@ -59,9 +63,14 @@ impl SubgraphOutputStream {
 
     pub async fn write_entity_modification(
         &self,
+        block: BlockPtr,
         modification: EntityModification,
     ) -> Result<(), Error> {
-        self.send(Event::EntityModification { modification }).await
+        self.send(Event::EntityModification {
+            block,
+            modification,
+        })
+        .await
     }
 
     pub async fn write_revert_block(&self, block: BlockPtr) -> Result<(), Error> {

@@ -16,6 +16,8 @@ members = [
     "store/test-store",
     "graph",
     "tests",
+    "stream-node/streams/block-range-filter",
+    "stream-node",
 ]
 
 

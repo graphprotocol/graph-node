@@ -1,0 +1,21 @@
+[package]
+name = "graph-stream-node"
+version = "0.25.0"
+edition = "2021"
+default-run = "graph-stream-node"
+
+[[bin]]
+name = "graph-stream-node"
+path = "src/main.rs"
+
+[dependencies]
+env_logger = "0.9.0"
+git-testament = "0.2"
+flate2 = "1.0"
+fluvio = "0.12.3"
+fluvio-sc-schema = "0.12.2"
+futures = { version = "0.3.1", features = ["compat"] }
+lazy_static = "1.2.0"
+graph = { path = "../graph" }
+serde = { version = "1.0.126", features = ["derive", "rc"] }
+structopt = { version = "0.3.25", features = ["wrap_help"] }

@@ -1,0 +1,16 @@
+[package]
+name = "block-range-filter"
+version = "0.1.0"
+authors = ["Jannis Pohlmann <jannis@edgeandnode.com>"]
+edition = "2018"
+
+[lib]
+crate-type = ['cdylib']
+
+[dependencies]
+fluvio-smartmodule = { version = "0.1" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# [profile.release]
+# lto = true

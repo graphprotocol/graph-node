@@ -408,8 +408,7 @@ where
                 chain,
                 templates,
                 unified_api_version,
-                output_stream: SubgraphOutputStream::new(logger.clone(), deployment.hash.clone())
-                    .await?,
+                output_stream: SubgraphOutputStream::new(deployment.hash.clone()).await?,
             },
             state: IndexingState {
                 logger: logger.cheap_clone(),
@@ -992,7 +991,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
     let first_error = deterministic_errors.first().cloned();
 
     match store.transact_block_operations(
-        block_ptr,
+        block_ptr.clone(),
         firehose_cursor,
         mods.clone(),
         stopwatch,
@@ -1003,7 +1002,7 @@ async fn process_block<T: RuntimeHostBuilder<C>, C: Blockchain>(
             for modification in mods {
                 ctx.inputs
                     .output_stream
-                    .write_entity_modification(modification)
+                    .write_entity_modification(block_ptr.clone(), modification)
                     .await?;
             }
 

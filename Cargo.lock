@@ -440,6 +440,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "block-range-filter"
+version = "0.1.0"
+dependencies = [
+ "fluvio-smartmodule",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "blocking"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1587,13 +1596,13 @@ dependencies = [
  "derive_builder",
  "dirs",
  "event-listener",
- "fluvio-dataplane-protocol",
+ "fluvio-dataplane-protocol 0.9.1",
  "fluvio-future",
- "fluvio-protocol",
+ "fluvio-protocol 0.7.2",
  "fluvio-sc-schema",
  "fluvio-socket",
- "fluvio-spu-schema",
- "fluvio-types",
+ "fluvio-spu-schema 0.9.1",
+ "fluvio-types 0.3.1",
  "futures-util",
  "instant",
  "once_cell",
@@ -1617,12 +1626,33 @@ checksum = "61c238786baddfd253b920ab424d1ca25df5bafd9c3064bb5bd9de52f32e64b0"
 dependencies = [
  "async-trait",
  "base64 0.13.0",
- "fluvio-dataplane-protocol",
+ "fluvio-dataplane-protocol 0.9.1",
  "fluvio-future",
- "fluvio-protocol",
+ "fluvio-protocol 0.7.2",
  "fluvio-stream-model",
- "fluvio-types",
+ "fluvio-types 0.3.1",
  "flv-util",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
+name = "fluvio-dataplane-protocol"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "525dc979551bd6848de9100b06544f40bbcc9993d0501bac2405b8410f20ecdb"
+dependencies = [
+ "bytes 1.1.0",
+ "cfg-if 1.0.0",
+ "content_inspector",
+ "crc32c",
+ "eyre",
+ "fluvio-future",
+ "fluvio-protocol 0.6.3",
+ "flv-util",
+ "futures-util",
+ "once_cell",
+ "semver 1.0.4",
  "thiserror",
  "tracing",
 ]
@@ -1639,7 +1669,7 @@ dependencies = [
  "crc32c",
  "eyre",
  "fluvio-future",
- "fluvio-protocol",
+ "fluvio-protocol 0.7.2",
  "flv-util",
  "futures-util",
  "once_cell",
@@ -1673,14 +1703,37 @@ dependencies = [
 
 [[package]]
 name = "fluvio-protocol"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f044f00e9dd25f19d820b5a6ae2d33024d71bce84b116a37b60e34dd101baf8"
+dependencies = [
+ "bytes 1.1.0",
+ "fluvio-protocol-derive 0.3.2",
+ "tracing",
+]
+
+[[package]]
+name = "fluvio-protocol"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7460c0d9256be1ec86a8b4004ed768fd78206d9ff0134b1003c9b69896609ffc"
 dependencies = [
  "bytes 1.1.0",
  "fluvio-future",
- "fluvio-protocol-derive",
+ "fluvio-protocol-derive 0.4.0",
  "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "fluvio-protocol-derive"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72a044c3c9abee81fd343a1dcc7f3a2886a68482b5ce1800a1d42e7881aa3da7"
+dependencies = [
+ "proc-macro2 1.0.28",
+ "quote 1.0.9",
+ "syn 1.0.74",
  "tracing",
 ]
 
@@ -1703,14 +1756,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2403f17f8f1640c112f6e4cf0b5114a3f03bb1639082a26d84d4f7b85c9e4cb"
 dependencies = [
  "fluvio-controlplane-metadata",
- "fluvio-dataplane-protocol",
- "fluvio-protocol",
- "fluvio-types",
+ "fluvio-dataplane-protocol 0.9.1",
+ "fluvio-protocol 0.7.2",
+ "fluvio-types 0.3.1",
  "log 0.4.14",
  "paste",
  "static_assertions",
  "thiserror",
  "tracing",
+]
+
+[[package]]
+name = "fluvio-smartmodule"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a376d2a5acac77600394a06ed686278516644db686234b48b70a52472519163d"
+dependencies = [
+ "eyre",
+ "fluvio-dataplane-protocol 0.8.0",
+ "fluvio-smartmodule-derive",
+ "fluvio-spu-schema 0.8.6",
+]
+
+[[package]]
+name = "fluvio-smartmodule-derive"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b55e184da8730feca9fbe353bc8f097a6cbfcc62dc27797b91ce9d6b705d372"
+dependencies = [
+ "proc-macro2 1.0.28",
+ "quote 1.0.9",
+ "syn 1.0.74",
 ]
 
 [[package]]
@@ -1726,7 +1802,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "event-listener",
  "fluvio-future",
- "fluvio-protocol",
+ "fluvio-protocol 0.7.2",
  "futures-util",
  "once_cell",
  "pin-project",
@@ -1738,15 +1814,32 @@ dependencies = [
 
 [[package]]
 name = "fluvio-spu-schema"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ac6c6c22106ea3d57a9303ed3c8f4c64ca3ae3d8f72312a5c3084c725044aa9"
+dependencies = [
+ "bytes 1.1.0",
+ "flate2",
+ "fluvio-dataplane-protocol 0.8.0",
+ "fluvio-protocol 0.6.3",
+ "fluvio-types 0.2.7",
+ "log 0.4.14",
+ "serde",
+ "static_assertions",
+ "tracing",
+]
+
+[[package]]
+name = "fluvio-spu-schema"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e29bc078df0da8f25779945b6de2d5e0ee7d43943cb801cda5cb8a4ae179d5eb"
 dependencies = [
  "bytes 1.1.0",
  "flate2",
- "fluvio-dataplane-protocol",
- "fluvio-protocol",
- "fluvio-types",
+ "fluvio-dataplane-protocol 0.9.1",
+ "fluvio-protocol 0.7.2",
+ "fluvio-types 0.3.1",
  "log 0.4.14",
  "serde",
  "static_assertions",
@@ -1763,6 +1856,17 @@ dependencies = [
  "event-listener",
  "once_cell",
  "tracing",
+]
+
+[[package]]
+name = "fluvio-types"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff53bb9bb6f69ea84cbfa76f5c8f8b49b5d9e7e38b29b0f00049d139b51584e9"
+dependencies = [
+ "thiserror",
+ "tracing",
+ "tracing-futures",
 ]
 
 [[package]]
@@ -2471,6 +2575,22 @@ dependencies = [
  "stable-hash",
  "test-store",
  "uuid 0.8.2",
+]
+
+[[package]]
+name = "graph-stream-node"
+version = "0.25.0"
+dependencies = [
+ "env_logger 0.9.0",
+ "flate2",
+ "fluvio",
+ "fluvio-sc-schema",
+ "futures 0.3.16",
+ "git-testament",
+ "graph",
+ "lazy_static",
+ "serde",
+ "structopt",
 ]
 
 [[package]]
