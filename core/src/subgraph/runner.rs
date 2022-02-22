@@ -26,6 +26,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 const MINUTE: Duration = Duration::from_secs(60);
+const SKIP_PTR_UPDATES_THRESHOLD: Duration = Duration::from_secs(60 * 5);
+
 const BUFFERED_BLOCK_STREAM_SIZE: usize = 100;
 const BUFFERED_FIREHOSE_STREAM_SIZE: usize = 1;
 
@@ -113,6 +115,7 @@ where
         let mut should_try_unfail_deterministic = true;
         let mut should_try_unfail_non_deterministic = true;
         let mut synced = false;
+        let mut skip_ptr_updates_timer = Instant::now();
 
         // Exponential backoff that starts with two minutes and keeps
         // increasing its timeout exponentially until it reaches the ceiling.
@@ -226,6 +229,14 @@ where
                     subgraph_metrics
                         .block_trigger_count
                         .observe(block.trigger_count() as f64);
+                }
+
+                if block.trigger_count() == 0
+                    && skip_ptr_updates_timer.elapsed() <= SKIP_PTR_UPDATES_THRESHOLD
+                {
+                    continue;
+                } else {
+                    skip_ptr_updates_timer = Instant::now();
                 }
 
                 let start = Instant::now();
