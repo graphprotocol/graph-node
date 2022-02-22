@@ -194,11 +194,11 @@ impl StoreBuilder {
     ) -> ConnectionPool {
         let logger = logger.new(o!("pool" => "main"));
         let pool_size = shard.pool_size.size_for(node, name).expect(&format!(
-            "we can determine the pool size for store {}",
+            "cannot determine the pool size for store {}",
             name
         ));
         let fdw_pool_size = shard.fdw_pool_size.size_for(node, name).expect(&format!(
-            "we can determine the fdw pool size for store {}",
+            "cannot determine the fdw pool size for store {}",
             name
         ));
         info!(
