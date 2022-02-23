@@ -92,9 +92,9 @@ impl ToSql<Range<Integer>, Pg> for BlockRange {
     }
 }
 
-/// Generate the clause that checks whether `block` is in the block range
-/// of an entity
-#[derive(Debug, Clone)]
+/// Helper for generating various SQL fragments for handling the block range
+/// of entity versions
+#[derive(Debug, Clone, Copy)]
 pub enum BlockRangeColumn<'a> {
     Mutable {
         table: &'a Table,
@@ -181,8 +181,9 @@ impl<'a> BlockRangeColumn<'a> {
         }
     }
 
-    /// Output the literal value of the block range `[block,..)`
-    pub fn value(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    /// Output the literal value of the block range `[block,..)`, mostly for
+    /// generating an insert statement containing the block range column
+    pub fn literal_value(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match self {
             BlockRangeColumn::Mutable { block, .. } => {
                 let block_range: BlockRange = (*block..).into();

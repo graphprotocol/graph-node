@@ -1370,7 +1370,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
                 }
                 out.push_sql(", ");
             }
-            self.br_column.value(&mut out)?;
+            self.br_column.literal_value(&mut out)?;
             out.push_sql(")");
 
             // finalize line according to remaining entities to insert
@@ -2009,7 +2009,7 @@ impl<'a> FilterCollection<'a> {
 
 /// Convenience to pass the name of the column to order by around. If `name`
 /// is `None`, the sort key should be ignored
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum SortKey<'a> {
     None,
     /// Order by `id asc`
