@@ -30,12 +30,12 @@ pub struct Deployment {
 }
 
 impl Deployment {
-    pub fn lookup(primary: &ConnectionPool, name: String) -> Result<Vec<Self>, anyhow::Error> {
+    pub fn lookup(primary: &ConnectionPool, name: &str) -> Result<Vec<Self>, anyhow::Error> {
         let conn = primary.get()?;
         Self::lookup_with_conn(&conn, name)
     }
 
-    pub fn lookup_with_conn(conn: &PgConnection, name: String) -> Result<Vec<Self>, anyhow::Error> {
+    pub fn lookup_with_conn(conn: &PgConnection, name: &str) -> Result<Vec<Self>, anyhow::Error> {
         use store_catalog::deployment_schemas as ds;
         use store_catalog::subgraph as s;
         use store_catalog::subgraph_deployment_assignment as a;
@@ -172,4 +172,18 @@ pub fn locate(
 
 pub fn as_hash(hash: String) -> Result<DeploymentHash, Error> {
     DeploymentHash::new(hash).map_err(|s| anyhow!("illegal deployment hash `{}`", s))
+}
+
+/// Finds a single deployment locator for the given deployment identifier.
+pub fn find_single_deployment_locator(
+    pool: &ConnectionPool,
+    name: &str,
+) -> anyhow::Result<DeploymentLocator> {
+    let deployment_locator = match &Deployment::lookup(pool, name)?[..] {
+        [] => anyhow::bail!("Found no deployment for the given ID"),
+        [deployment_locator] => deployment_locator,
+        _ => anyhow::bail!("Found multiplle deployments for given identifier"),
+    }
+    .locator();
+    Ok(deployment_locator)
 }

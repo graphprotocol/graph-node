@@ -1,8 +1,6 @@
-use graph::{
-    components::store::EntityType,
-    prelude::{anyhow, DeploymentHash, StoreError},
-};
-use graph_store_postgres::SubgraphStore;
+use crate::manager::deployment::find_single_deployment_locator;
+use graph::prelude::{anyhow, StoreError};
+use graph_store_postgres::{connection_pool::ConnectionPool, SubgraphStore};
 use std::{collections::HashSet, sync::Arc};
 
 fn validate_fields<T: AsRef<str>>(fields: &[T]) -> Result<(), anyhow::Error> {
@@ -19,18 +17,17 @@ fn validate_fields<T: AsRef<str>>(fields: &[T]) -> Result<(), anyhow::Error> {
 }
 pub async fn create(
     store: Arc<SubgraphStore>,
-    id: String,
-    entity_name: String,
+    pool: ConnectionPool,
+    id: &str,
+    entity_name: &str,
     field_names: Vec<String>,
     index_method: String,
 ) -> Result<(), anyhow::Error> {
     validate_fields(&field_names)?;
-    let deployment_hash = DeploymentHash::new(id)
-        .map_err(|e| anyhow::anyhow!("Subgraph hash must be a valid IPFS hash: {}", e))?;
-    let entity_type = EntityType::new(entity_name);
+    let deployment_locator = find_single_deployment_locator(&pool, &id)?;
     println!("Index creation started. Please wait.");
     match store
-        .create_manual_index(&deployment_hash, entity_type, field_names, index_method)
+        .create_manual_index(&deployment_locator, entity_name, field_names, index_method)
         .await
     {
         Ok(()) => Ok(()),
@@ -40,4 +37,34 @@ pub async fn create(
         }
         Err(other) => Err(anyhow::anyhow!(other)),
     }
+}
+
+pub async fn list(
+    store: Arc<SubgraphStore>,
+    pool: ConnectionPool,
+    id: String,
+    entity_name: &str,
+) -> Result<(), anyhow::Error> {
+    let deployment_locator = find_single_deployment_locator(&pool, &id)?;
+    let indexes: Vec<String> = store
+        .indexes_for_entity(&deployment_locator, entity_name)
+        .await?;
+    for index in &indexes {
+        println!("{index}")
+    }
+    Ok(())
+}
+
+pub async fn drop(
+    store: Arc<SubgraphStore>,
+    pool: ConnectionPool,
+    id: &str,
+    index_name: &str,
+) -> Result<(), anyhow::Error> {
+    let deployment_locator = find_single_deployment_locator(&pool, &id)?;
+    store
+        .drop_index_for_deployment(&deployment_locator, &index_name)
+        .await?;
+    println!("Dropped index {index_name}");
+    Ok(())
 }
