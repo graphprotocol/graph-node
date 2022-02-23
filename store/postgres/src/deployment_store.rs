@@ -1090,10 +1090,17 @@ impl DeploymentStore {
     ) -> Result<StoreEvent, StoreError> {
         let conn = self.get_conn()?;
         // Unwrap: If we are reverting then the block ptr is not `None`.
-        let block_ptr_from = Self::block_ptr_with_conn(&site.deployment, &conn)?.unwrap();
+        let deployment_head = Self::block_ptr_with_conn(&site.deployment, &conn)?.unwrap();
+
+        // Early return to cover scenario where the BlockStream advanced more than
+        // the deployment head (database). In this case, revert_block_operations shouldn't
+        // do anything, there's nothing to be reverted.
+        if block_ptr_to.number >= deployment_head.number {
+            return Ok(StoreEvent::default());
+        }
 
         // Sanity check on block numbers
-        if block_ptr_from.number != block_ptr_to.number + 1 {
+        if deployment_head.number != block_ptr_to.number + 1 {
             panic!("revert_block_operations must revert a single block only");
         }
 
