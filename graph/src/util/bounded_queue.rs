@@ -124,4 +124,19 @@ impl<T: Clone> BoundedQueue<T> {
         let queue = self.queue.lock().unwrap();
         queue.iter().rev().fold(init, f)
     }
+
+    pub async fn clear(&self) {
+        let pushed = {
+            let mut queue = self.queue.lock().unwrap();
+            let pushed = queue.len();
+            queue.clear();
+            pushed
+        };
+        self.push_semaphore.add_permits(pushed);
+        let _permits = self
+            .pop_semaphore
+            .acquire_many(pushed as u32)
+            .await
+            .expect("we never close the pop_semaphore");
+    }
 }

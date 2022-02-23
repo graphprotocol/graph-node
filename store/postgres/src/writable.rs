@@ -487,6 +487,7 @@ impl Queue {
                 if let Err(e) = res {
                     *queue.write_err.lock().unwrap() = Some(e);
                     queue.poisoned.store(true, Ordering::SeqCst);
+                    queue.queue.clear().await;
                     return;
                 }
             }
