@@ -7,9 +7,8 @@ use std::sync::Arc;
 
 use graph::data::graphql::ext::DirectiveFinder;
 use graph::data::graphql::{DocumentExt, ObjectOrInterface};
-use graph::data::store;
-use graph::prelude::anyhow::{anyhow, Context};
-use graph::prelude::{s, Entity, EntityKey, Error, ValueType};
+use graph::prelude::anyhow::anyhow;
+use graph::prelude::{s, Error, ValueType};
 
 use crate::query::ast as qast;
 
@@ -375,23 +374,6 @@ pub fn get_derived_from_field<'a>(
         .and_then(|derived_from_field_name| get_field(object_type, derived_from_field_name))
 }
 
-fn scalar_value_type(schema: &s::Document, field_type: &s::Type) -> ValueType {
-    use s::TypeDefinition as t;
-    match field_type {
-        s::Type::NamedType(name) => {
-            ValueType::from_str(&name).unwrap_or_else(|_| match schema.get_named_type(name) {
-                Some(t::Object(_)) | Some(t::Interface(_)) | Some(t::Enum(_)) => ValueType::String,
-                Some(t::Scalar(_)) => unreachable!("user-defined scalars are not used"),
-                Some(t::Union(_)) => unreachable!("unions are not used"),
-                Some(t::InputObject(_)) => unreachable!("inputObjects are not used"),
-                None => unreachable!("names of field types have been validated"),
-            })
-        }
-        s::Type::NonNullType(inner) => scalar_value_type(schema, inner),
-        s::Type::ListType(inner) => scalar_value_type(schema, inner),
-    }
-}
-
 pub fn is_list(field_type: &s::Type) -> bool {
     match field_type {
         s::Type::NamedType(_) => false,
@@ -400,106 +382,10 @@ pub fn is_list(field_type: &s::Type) -> bool {
     }
 }
 
-fn is_assignable(value: &store::Value, scalar_type: &ValueType, is_list: bool) -> bool {
-    match (value, scalar_type) {
-        (store::Value::String(_), ValueType::String)
-        | (store::Value::BigDecimal(_), ValueType::BigDecimal)
-        | (store::Value::BigInt(_), ValueType::BigInt)
-        | (store::Value::Bool(_), ValueType::Boolean)
-        | (store::Value::Bytes(_), ValueType::Bytes)
-        | (store::Value::Int(_), ValueType::Int)
-        | (store::Value::Null, _) => true,
-        (store::Value::List(values), _) if is_list => values
-            .iter()
-            .all(|value| is_assignable(value, scalar_type, false)),
-        _ => false,
-    }
-}
-
-pub fn validate_entity(
-    schema: &s::Document,
-    key: &EntityKey,
-    entity: &Entity,
-) -> Result<(), anyhow::Error> {
-    let object_type_definitions = schema.get_object_type_definitions();
-    let object_type = object_type_definitions
-        .iter()
-        .find(|object_type| key.entity_type.as_str() == &object_type.name)
-        .with_context(|| {
-            format!(
-                "Entity {}[{}]: unknown entity type `{}`",
-                key.entity_type, key.entity_id, key.entity_type
-            )
-        })?;
-
-    for field in &object_type.fields {
-        let is_derived = field.is_derived();
-        match (entity.get(&field.name), is_derived) {
-            (Some(value), false) => {
-                let scalar_type = scalar_value_type(schema, &field.field_type);
-                if is_list(&field.field_type) {
-                    // Check for inhomgeneous lists to produce a better
-                    // error message for them; other problems, like
-                    // assigning a scalar to a list will be caught below
-                    if let store::Value::List(elts) = value {
-                        for (index, elt) in elts.iter().enumerate() {
-                            if !is_assignable(elt, &scalar_type, false) {
-                                anyhow::bail!(
-                                    "Entity {}[{}]: field `{}` is of type {}, but the value `{}` \
-                                    contains a {} at index {}",
-                                    key.entity_type,
-                                    key.entity_id,
-                                    field.name,
-                                    &field.field_type,
-                                    value,
-                                    elt.type_name(),
-                                    index
-                                );
-                            }
-                        }
-                    }
-                }
-                if !is_assignable(value, &scalar_type, is_list(&field.field_type)) {
-                    anyhow::bail!(
-                        "Entity {}[{}]: the value `{}` for field `{}` must have type {} but has type {}",
-                        key.entity_type,
-                        key.entity_id,
-                        value,
-                        field.name,
-                        &field.field_type,
-                        value.type_name()
-                    );
-                }
-            }
-            (None, false) => {
-                if is_non_null_type(&field.field_type) {
-                    anyhow::bail!(
-                        "Entity {}[{}]: missing value for non-nullable field `{}`",
-                        key.entity_type,
-                        key.entity_id,
-                        field.name,
-                    );
-                }
-            }
-            (Some(_), true) => {
-                anyhow::bail!(
-                    "Entity {}[{}]: field `{}` is derived and can not be set",
-                    key.entity_type,
-                    key.entity_id,
-                    field.name,
-                );
-            }
-            (None, true) => {
-                // derived fields should not be set
-            }
-        }
-    }
-    Ok(())
-}
-
 #[test]
 fn entity_validation() {
-    use graph::prelude::DeploymentHash;
+    use graph::data::store;
+    use graph::prelude::{DeploymentHash, Entity, EntityKey};
 
     fn make_thing(name: &str) -> Entity {
         let mut thing = Entity::new();
@@ -539,7 +425,7 @@ fn entity_validation() {
             id.to_owned(),
         );
 
-        let err = validate_entity(&schema.document, &key, &thing);
+        let err = thing.validate(&schema.document, &key);
         if errmsg == "" {
             assert!(
                 err.is_ok(),
