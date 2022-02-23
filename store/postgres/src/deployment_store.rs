@@ -1087,7 +1087,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
         firehose_cursor: Option<&str>,
-    ) -> Result<StoreEvent, StoreError> {
+    ) -> Result<Option<StoreEvent>, StoreError> {
         let conn = self.get_conn()?;
         // Unwrap: If we are reverting then the block ptr is not `None`.
         let deployment_head = Self::block_ptr_with_conn(&site.deployment, &conn)?.unwrap();
@@ -1096,7 +1096,7 @@ impl DeploymentStore {
         // the deployment head (database). In this case, revert_block_operations shouldn't
         // do anything, there's nothing to be reverted.
         if block_ptr_to.number >= deployment_head.number {
-            return Ok(StoreEvent::default());
+            return Ok(None);
         }
 
         // Sanity check on block numbers
@@ -1105,6 +1105,7 @@ impl DeploymentStore {
         }
 
         self.rewind_with_conn(&conn, site, block_ptr_to, firehose_cursor)
+            .map(|event| Some(event))
     }
 
     pub(crate) async fn deployment_state_from_id(

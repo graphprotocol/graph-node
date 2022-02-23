@@ -540,7 +540,7 @@ impl EntityChange {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 /// The store emits `StoreEvents` to indicate that some entities have changed.
 /// For block-related data, at most one `StoreEvent` is emitted for each block
 /// that is processed. The `changes` vector contains the details of what changes
