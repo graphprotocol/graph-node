@@ -506,8 +506,12 @@ impl Queue {
         // Use a separate instance of the `StopwatchMetrics` for background
         // work since that has its own call hierarchy, and using the
         // foreground metrics will lead to incorrect nesting of sections
-        let stopwatch =
-            StopwatchMetrics::new(logger, queue.store.site.deployment.clone(), registry);
+        let stopwatch = StopwatchMetrics::new(
+            logger,
+            queue.store.site.deployment.clone(),
+            "writer",
+            registry,
+        );
         graph::spawn(start_writer(queue.cheap_clone(), stopwatch));
 
         queue

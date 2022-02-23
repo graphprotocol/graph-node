@@ -44,15 +44,17 @@ impl StopwatchMetrics {
     pub fn new(
         logger: Logger,
         subgraph_id: DeploymentHash,
+        stage: &str,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
+        let stage = stage.to_owned();
         let mut inner = StopwatchInner {
             counter: *registry
                 .new_deployment_counter_vec(
                     "deployment_sync_secs",
                     "total time spent syncing",
                     subgraph_id.as_str(),
-                    vec!["section".to_owned()],
+                    vec!["section".to_owned(), stage.clone()],
                 )
                 .unwrap_or_else(|_| {
                     panic!(
@@ -61,6 +63,7 @@ impl StopwatchMetrics {
                     )
                 }),
             logger,
+            stage,
             section_stack: Vec::new(),
             timer: Instant::now(),
         };
@@ -113,6 +116,10 @@ struct StopwatchInner {
 
     // The timer is reset whenever a section starts or ends.
     timer: Instant,
+
+    // The processing stage the metrics belong to; for pipelined uses, the
+    // pipeline stage
+    stage: String,
 }
 
 impl StopwatchInner {
@@ -121,7 +128,7 @@ impl StopwatchInner {
             // Register the current timer.
             let elapsed = self.timer.elapsed().as_secs_f64();
             self.counter
-                .get_metric_with_label_values(&[section])
+                .get_metric_with_label_values(&[section, &self.stage])
                 .map(|counter| counter.inc_by(elapsed))
                 .unwrap_or_else(|e| {
                     error!(self.logger, "failed to find counter for section";

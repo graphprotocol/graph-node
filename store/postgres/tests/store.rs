@@ -1552,6 +1552,7 @@ fn handle_large_string_with_index() {
         let stopwatch_metrics = StopwatchMetrics::new(
             Logger::root(slog::Discard, o!()),
             deployment.hash.clone(),
+            "test",
             metrics_registry.clone(),
         );
 

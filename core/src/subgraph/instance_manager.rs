@@ -203,6 +203,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let stopwatch_metrics = StopwatchMetrics::new(
             logger.clone(),
             deployment.hash.clone(),
+            "process",
             self.metrics_registry.clone(),
         );
 

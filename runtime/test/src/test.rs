@@ -82,6 +82,7 @@ async fn test_valid_module_and_store_with_timeout(
     let stopwatch_metrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),
         deployment_id.clone(),
+        "test",
         metrics_registry.clone(),
     );
     let host_metrics = Arc::new(HostMetrics::new(
