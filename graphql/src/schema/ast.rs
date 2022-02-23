@@ -425,7 +425,7 @@ fn entity_validation() {
             id.to_owned(),
         );
 
-        let err = thing.validate(&schema.document, &key);
+        let err = thing.validate(&schema, &key);
         if errmsg == "" {
             assert!(
                 err.is_ok(),

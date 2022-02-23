@@ -1,6 +1,7 @@
 use crate::{
     components::store::{DeploymentLocator, EntityType},
-    prelude::{anyhow::Context, q, r, s, CacheWeight, EntityKey, QueryExecutionError},
+    data::graphql::ObjectTypeExt,
+    prelude::{anyhow::Context, q, r, s, CacheWeight, EntityKey, QueryExecutionError, Schema},
     runtime::gas::{Gas, GasSizeOf},
 };
 use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
@@ -605,14 +606,58 @@ impl Entity {
     /// Validate that this entity matches the object type definition in the
     /// schema. An entity that passes these checks can be stored
     /// successfully in the subgraph's database schema
-    pub fn validate(&self, schema: &s::Document, key: &EntityKey) -> Result<(), anyhow::Error> {
+    pub fn validate(&self, schema: &Schema, key: &EntityKey) -> Result<(), anyhow::Error> {
+        fn scalar_value_type(schema: &Schema, field_type: &s::Type) -> ValueType {
+            use s::TypeDefinition as t;
+            match field_type {
+                s::Type::NamedType(name) => ValueType::from_str(&name).unwrap_or_else(|_| {
+                    match schema.document.get_named_type(name) {
+                        Some(t::Object(obj_type)) => {
+                            let id = obj_type.field("id").expect("all object types have an id");
+                            scalar_value_type(schema, &id.field_type)
+                        }
+                        Some(t::Interface(intf)) => {
+                            // Validation checks that all implementors of an
+                            // interface use the same type for `id`. It is
+                            // therefore enough to use the id type of one of
+                            // the implementors
+                            match schema
+                                .types_for_interface()
+                                .get(&EntityType::new(intf.name.clone()))
+                                .expect("interface type names are known")
+                                .first()
+                            {
+                                None => {
+                                    // Nothing is implementing this interface; we assume it's of type string
+                                    // see also: id-type-for-unimplemented-interfaces
+                                    ValueType::String
+                                }
+                                Some(obj_type) => {
+                                    let id =
+                                        obj_type.field("id").expect("all object types have an id");
+                                    scalar_value_type(schema, &id.field_type)
+                                }
+                            }
+                        }
+                        Some(t::Enum(_)) => ValueType::String,
+                        Some(t::Scalar(_)) => unreachable!("user-defined scalars are not used"),
+                        Some(t::Union(_)) => unreachable!("unions are not used"),
+                        Some(t::InputObject(_)) => unreachable!("inputObjects are not used"),
+                        None => unreachable!("names of field types have been validated"),
+                    }
+                }),
+                s::Type::NonNullType(inner) => scalar_value_type(schema, inner),
+                s::Type::ListType(inner) => scalar_value_type(schema, inner),
+            }
+        }
+
         if key.entity_type.is_poi() {
             // Users can't modify Poi entities, and therefore they do not
             // need to be validated. In addition, the schema has no object
             // type for them, and validation would therefore fail
             return Ok(());
         }
-        let object_type_definitions = schema.get_object_type_definitions();
+        let object_type_definitions = schema.document.get_object_type_definitions();
         let object_type = object_type_definitions
             .iter()
             .find(|object_type| key.entity_type.as_str() == &object_type.name)
@@ -627,7 +672,7 @@ impl Entity {
             let is_derived = field.is_derived();
             match (self.get(&field.name), is_derived) {
                 (Some(value), false) => {
-                    let scalar_type = schema.scalar_value_type(&field.field_type);
+                    let scalar_type = scalar_value_type(schema, &field.field_type);
                     if field.field_type.is_list() {
                         // Check for inhomgeneous lists to produce a better
                         // error message for them; other problems, like
@@ -815,7 +860,7 @@ fn entity_validation() {
             id.to_owned(),
         );
 
-        let err = thing.validate(&schema.document, &key);
+        let err = thing.validate(&schema, &key);
         if errmsg == "" {
             assert!(
                 err.is_ok(),

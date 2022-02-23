@@ -1551,9 +1551,7 @@ impl EntityCache {
             }
         }
 
-        let is_valid = entity
-            .validate(&self.store.input_schema().document, &key)
-            .is_ok();
+        let is_valid = entity.validate(&self.store.input_schema(), &key).is_ok();
 
         self.entity_op(key.clone(), EntityOp::Update(entity));
 
@@ -1568,7 +1566,7 @@ impl EntityCache {
                     key.entity_id
                 )
             })?;
-            entity.validate(&self.store.input_schema().document, &key)?;
+            entity.validate(&self.store.input_schema(), &key)?;
         }
 
         Ok(())

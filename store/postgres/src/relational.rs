@@ -291,6 +291,7 @@ impl Layout {
                     } else {
                         // For interfaces that are not implemented at all, pretend
                         // they have a String `id` field
+                        // see also: id-type-for-unimplemented-interfaces
                         let id_type = types.iter().next().cloned().unwrap_or(IdType::String);
                         Ok((interface.to_owned(), id_type))
                     }
