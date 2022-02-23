@@ -426,10 +426,11 @@ enum Request {
 /// of queued changes and changes already committed to the store.
 struct Queue {
     store: Arc<SyncStore>,
-    /// A queue of pending requests. New requests are appended at the
-    /// back, and popped off the front for processing. That means that
-    /// going front-to-back, block numbers in the requests are
-    /// increasing.
+    /// A queue of pending requests. New requests are appended at the back,
+    /// and popped off the front for processing. When the queue only
+    /// contains `Write` requests block numbers in the requests are
+    /// increasing going front-to-back. When `Revert` requests are queued,
+    /// that is not true anymore
     queue: BoundedQueue<Arc<Request>>,
 
     /// The write task puts errors from `transact_block_operations` here so
@@ -452,6 +453,12 @@ impl Queue {
     ) -> Arc<Self> {
         async fn start_writer(queue: Arc<Queue>, stopwatch: StopwatchMetrics) {
             loop {
+                // We peek at the front of the queue, rather than pop it
+                // right away, so that query methods like `get` have access
+                // to the data while it is being written. If we popped here,
+                // these methods would not be able to see that data until
+                // the write transaction commits, causing them to return
+                // incorrect results.
                 let res = match queue.queue.peek().await.as_ref() {
                     Request::Write {
                         block_ptr: block_ptr_to,
@@ -500,7 +507,7 @@ impl Queue {
         // foreground metrics will lead to incorrect nesting of sections
         let stopwatch =
             StopwatchMetrics::new(logger, queue.store.site.deployment.clone(), registry);
-        graph::spawn(start_writer(queue.clone(), stopwatch));
+        graph::spawn(start_writer(queue.cheap_clone(), stopwatch));
 
         queue
     }
@@ -514,14 +521,8 @@ impl Queue {
 
     /// Wait for the background writer to finish processing queued entries
     async fn flush(&self) -> Result<(), StoreError> {
-        self.queue
-            .wait_empty()
-            .await
-            .map_err(|()| StoreError::Canceled)?;
-        match self.write_err.lock().unwrap().take() {
-            Some(err) => Err(err),
-            None => Ok(()),
-        }
+        self.queue.wait_empty().await;
+        self.check_err()
     }
 
     fn check_err(&self) -> Result<(), StoreError> {

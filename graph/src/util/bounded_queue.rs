@@ -77,12 +77,12 @@ impl<T: Clone> BoundedQueue<T> {
         self.pop_semaphore.add_permits(1);
     }
 
-    pub async fn wait_empty(&self) -> Result<(), ()> {
+    pub async fn wait_empty(&self) {
         self.push_semaphore
             .acquire_many(self.capacity as u32)
             .await
             .map(|_| ())
-            .map_err(|_| ())
+            .expect("we never close the push_semaphore")
     }
 
     pub fn len(&self) -> usize {
