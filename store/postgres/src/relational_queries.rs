@@ -3022,7 +3022,7 @@ fn iter_column_names<'a, 'b>(
     include_block_range_column: bool,
 ) -> impl Iterator<Item = &'b str> {
     let extra = if include_block_range_column {
-        ["block_range"].iter()
+        [BLOCK_RANGE_COLUMN].iter()
     } else {
         [].iter()
     }
