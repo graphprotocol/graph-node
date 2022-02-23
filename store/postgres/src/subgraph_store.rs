@@ -5,7 +5,7 @@ use diesel::{
     types::{FromSql, ToSql},
 };
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     sync::{Arc, Mutex},
 };
 use std::{fmt, io::Write};
@@ -16,20 +16,20 @@ use graph::{
     components::{
         server::index_node::VersionInfo,
         store::{
-            self, DeploymentLocator, EnsLookup as EnsLookupTrait, SubgraphFork,
+            self, DeploymentLocator, EnsLookup as EnsLookupTrait, EntityType, SubgraphFork,
             WritableStore as WritableStoreTrait,
         },
     },
     constraint_violation,
     data::query::QueryTarget,
     data::subgraph::status,
-    prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        BlockPtr, DeploymentHash, Logger, NodeId, Schema, StoreError, SubgraphName,
+        BlockNumber, BlockPtr, DeploymentHash, Logger, NodeId, Schema, StoreError, SubgraphName,
         SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
+    prelude::{Entity, StoreEvent},
     url::Url,
     util::timed_cache::TimedCache,
 };
@@ -1077,6 +1077,16 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
         self.mirror.subgraph_exists(name)
+    }
+
+    fn changed_entities_in_block(
+        &self,
+        subgraph_id: &DeploymentHash,
+        block: BlockNumber,
+    ) -> Result<BTreeMap<EntityType, Entity>, StoreError> {
+        let (store, site) = self.store(subgraph_id)?;
+        let changes = store.get_changes(site, block)?;
+        Ok(changes)
     }
 
     fn input_schema(&self, id: &DeploymentHash) -> Result<Arc<Schema>, StoreError> {

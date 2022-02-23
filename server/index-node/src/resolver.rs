@@ -87,6 +87,38 @@ where
         Ok(infos.into_value())
     }
 
+    fn resolve_entities_changed_in_block(
+        &self,
+        field: &a::Field,
+    ) -> Result<r::Value, QueryExecutionError> {
+        let block_number = field
+            .get_required::<BlockNumber>("blockNumber")
+            .expect("Valid blockNumber required")
+            .try_into()
+            .unwrap();
+
+        let subgraph_id = field
+            .get_required::<DeploymentHash>("subgraphId")
+            .expect("Valid subgraphId not provided");
+
+        let entities = self
+            .subgraph_store
+            .changed_entities_in_block(&subgraph_id, block_number)?;
+
+        let response = r::Value::object(
+            entities
+                .into_iter()
+                .map(|(entity_type, _entity)| {
+                    let entity_type = entity_type.to_string();
+                    let value = r::Value::Null; // FIXME
+                    (entity_type, value)
+                })
+                .collect(),
+        );
+
+        Ok(response)
+    }
+
     fn resolve_proof_of_indexing(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
         let deployment_id = field
             .get_required::<DeploymentHash>("subgraph")
@@ -441,6 +473,9 @@ where
 
             // The top-level `indexingStatusForPendingVersion` field
             (None, "subgraphFeatures") => graph::block_on(self.resolve_subgraph_features(field)),
+
+            // The top-level `entityChangesInBlock` field
+            (None, "entitiesChangedInBlock") => self.resolve_entities_changed_in_block(field),
 
             // Resolve fields of `Object` values (e.g. the `latestBlock` field of `EthereumBlock`)
             (value, _) => Ok(value.unwrap_or(r::Value::Null)),

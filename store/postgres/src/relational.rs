@@ -28,7 +28,8 @@ use crate::{
     primary::{Namespace, Site},
     relational_queries::{
         ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterCollection, FilterQuery,
-        FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
+        FindChangesQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery,
+        RevertRemoveQuery,
     },
 };
 use graph::components::store::EntityType;
@@ -570,6 +571,34 @@ impl Layout {
                 .push(data.deserialize_with_layout(self)?);
         }
         Ok(entities_for_type)
+    }
+
+    pub fn find_changes(
+        &self,
+        conn: &PgConnection,
+        block: BlockNumber,
+    ) -> Result<BTreeMap<EntityType, Entity>, StoreError> {
+        let mut tables = Vec::new();
+        for table in self.tables.values() {
+            tables.push(&**table);
+        }
+
+        let rows = FindChangesQuery {
+            _namespace: &self.catalog.site.namespace,
+            tables: &tables[..],
+            block,
+        }
+        .load::<EntityData>(conn)?;
+
+        let mut entities = BTreeMap::new();
+        for entity_data in rows {
+            entities.insert(
+                entity_data.entity_type(),
+                entity_data.deserialize_with_layout(self)?,
+            );
+        }
+
+        Ok(entities)
     }
 
     pub fn insert<'a>(

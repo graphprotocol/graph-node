@@ -31,7 +31,7 @@ use std::fmt::{self, Display};
 use std::iter::FromIterator;
 use std::str::FromStr;
 
-use crate::block_range::BLOCK_COLUMN;
+use crate::block_range::{BlockBoundsMatchClause, BLOCK_COLUMN};
 use crate::relational::{
     Column, ColumnType, IdType, Layout, SqlName, Table, PRIMARY_KEY_COLUMN, STRING_PREFIX_SIZE,
 };
@@ -1204,6 +1204,48 @@ impl<'a> LoadQuery<PgConnection, EntityData> for FindQuery<'a> {
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
+
+#[derive(Debug, Clone, Constructor)]
+pub struct FindChangesQuery<'a> {
+    pub(crate) _namespace: &'a Namespace,
+    pub(crate) tables: &'a [&'a Table],
+    pub(crate) block: BlockNumber,
+}
+
+impl<'a> QueryFragment<Pg> for FindChangesQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        for (i, table) in self.tables.iter().enumerate() {
+            if i > 0 {
+                out.push_sql("\nunion all\n");
+            }
+            out.push_sql("select ");
+            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+            out.push_sql(" as entity, to_jsonb(e.*) as data\n");
+            out.push_sql("  from ");
+            out.push_sql(table.qualified_name.as_str());
+            out.push_sql(" e\n where ");
+            BlockBoundsMatchClause::new("e.", self.block).walk_ast(out.reborrow())?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a> QueryId for FindChangesQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a> LoadQuery<PgConnection, EntityData> for FindChangesQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
+        conn.query_by_name(&self)
+    }
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for FindChangesQuery<'a> {}
 
 #[derive(Debug, Clone, Constructor)]
 pub struct FindManyQuery<'a> {

@@ -1,5 +1,5 @@
 use diesel::pg::Pg;
-use diesel::query_builder::AstPass;
+use diesel::query_builder::{AstPass, QueryFragment};
 use diesel::result::QueryResult;
 ///! Utilities to deal with block numbers and block ranges
 use diesel::serialize::{Output, ToSql};
@@ -89,6 +89,31 @@ impl ToSql<Range<Integer>, Pg> for BlockRange {
     fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
         let pair = (self.0, self.1);
         ToSql::<Range<Integer>, Pg>::to_sql(&pair, out)
+    }
+}
+
+#[derive(Constructor)]
+pub struct BlockBoundsMatchClause<'a> {
+    table_prefix: &'a str,
+    block: BlockNumber,
+}
+
+impl<'a> QueryFragment<Pg> for BlockBoundsMatchClause<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        out.push_sql("lower(");
+        out.push_sql(self.table_prefix);
+        out.push_identifier(BLOCK_RANGE_COLUMN)?;
+        out.push_sql(") = ");
+        out.push_bind_param::<Integer, _>(&self.block)?;
+        out.push_sql(" or upper(");
+        out.push_sql(self.table_prefix);
+        out.push_identifier(BLOCK_RANGE_COLUMN)?;
+        out.push_sql(") = ");
+        out.push_bind_param::<Integer, _>(&self.block)?;
+
+        Ok(())
     }
 }
 

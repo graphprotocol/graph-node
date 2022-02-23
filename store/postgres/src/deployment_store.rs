@@ -931,6 +931,18 @@ impl DeploymentStore {
         layout.find_many(&conn, ids_for_type, BLOCK_NUMBER_MAX)
     }
 
+    pub(crate) fn get_changes(
+        &self,
+        site: Arc<Site>,
+        block: BlockNumber,
+    ) -> Result<BTreeMap<EntityType, Entity>, StoreError> {
+        let conn = self.get_conn()?;
+        let layout = self.layout(&conn, site)?;
+        let changes = layout.find_changes(&conn, block)?;
+
+        Ok(changes)
+    }
+
     // Only used by tests
     #[cfg(debug_assertions)]
     pub(crate) fn find(
