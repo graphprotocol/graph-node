@@ -13,6 +13,7 @@ use crate::prelude::{
 use anyhow::{Context, Error};
 use graphql_parser::{self, Pos};
 use inflector::Inflector;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -57,6 +58,8 @@ pub enum SchemaValidationError {
          the following fields: {2}"
     )]
     InterfaceFieldsMissing(String, String, Strings), // (type, interface, missing_fields)
+    #[error("Implementors of interface `{0}` use different id types `{1}`. They must all use the same type")]
+    InterfaceImplementorsMixId(String, String),
     #[error("Field `{1}` in type `{0}` has invalid @derivedFrom: {2}")]
     InvalidDerivedFrom(String, String, String), // (type, field, reason)
     #[error("The following type names are reserved: `{0}`")]
@@ -844,6 +847,7 @@ impl Schema {
             self.validate_schema_type_has_no_fields(),
             self.validate_directives_on_schema_type(),
             self.validate_reserved_types_usage(),
+            self.validate_interface_id_type(),
         ]
         .into_iter()
         .filter(Result::is_err)
@@ -1508,6 +1512,25 @@ impl Schema {
         }
     }
 
+    fn validate_interface_id_type(&self) -> Result<(), SchemaValidationError> {
+        for (intf, obj_types) in &self.types_for_interface {
+            let id_types: HashSet<&str> = HashSet::from_iter(
+                obj_types
+                    .iter()
+                    .filter_map(|obj_type| obj_type.field("id"))
+                    .map(|f| f.field_type.get_base_type())
+                    .map(|name| if name == "ID" { "String" } else { name }),
+            );
+            if id_types.len() > 1 {
+                return Err(SchemaValidationError::InterfaceImplementorsMixId(
+                    intf.to_string(),
+                    id_types.iter().join(", "),
+                ));
+            }
+        }
+        Ok(())
+    }
+
     fn subgraph_schema_object_type(&self) -> Option<&ObjectType> {
         self.document
             .get_object_type_definitions()
@@ -1574,6 +1597,39 @@ fn invalid_interface_implementation() {
         "Entity type `Bar` does not satisfy interface `Foo` because it is missing \
          the following fields: x: Int, y: Int",
     );
+}
+
+#[test]
+fn interface_implementations_id_type() {
+    fn check_schema(bar_id: &str, baz_id: &str, ok: bool) {
+        let schema = format!(
+            "interface Foo {{ x: Int }}
+             type Bar implements Foo @entity {{
+                id: {bar_id}!
+                x: Int
+             }}
+
+             type Baz implements Foo @entity {{
+                id: {baz_id}!
+                x: Int
+            }}"
+        );
+        let schema = Schema::parse(&schema, DeploymentHash::new("dummy").unwrap()).unwrap();
+        let res = schema.validate(&HashMap::new());
+        if ok {
+            assert!(matches!(res, Ok(_)));
+        } else {
+            assert!(matches!(res, Err(_)));
+            assert!(matches!(
+                res.unwrap_err()[0],
+                SchemaValidationError::InterfaceImplementorsMixId(_, _)
+            ));
+        }
+    }
+    check_schema("ID", "ID", true);
+    check_schema("ID", "String", true);
+    check_schema("ID", "Bytes", false);
+    check_schema("Bytes", "String", false);
 }
 
 #[test]
