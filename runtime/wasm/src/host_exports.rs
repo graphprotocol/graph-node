@@ -213,7 +213,7 @@ impl<C: Blockchain> HostExports<C> {
         let result = state.entity_cache.get(&store_key)?;
         gas.consume_host_fn(gas::STORE_GET.with_args(complexity::Linear, (&store_key, &result)))?;
 
-        Ok(state.entity_cache.get(&store_key)?)
+        Ok(result)
     }
 
     /// Prints the module of `n` in hex.
