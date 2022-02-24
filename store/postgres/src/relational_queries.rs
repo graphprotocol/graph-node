@@ -367,8 +367,9 @@ pub trait FromColumnValue: Sized {
             (j::String(s), ColumnType::String) | (j::String(s), ColumnType::Enum(_)) => {
                 Ok(Self::from_string(s))
             }
-            (j::String(s), ColumnType::Bytes) => Self::from_bytes(s.trim_start_matches("\\x")),
-            (j::String(s), ColumnType::BytesId) => Ok(Self::from_string(bytes_as_str(&s))),
+            (j::String(s), ColumnType::Bytes) | (j::String(s), ColumnType::BytesId) => {
+                Self::from_bytes(s.trim_start_matches("\\x"))
+            }
             (j::String(s), column_type) => Err(StoreError::Unknown(anyhow!(
                 "can not convert string {} to {:?}",
                 s,

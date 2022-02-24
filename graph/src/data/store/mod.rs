@@ -564,11 +564,15 @@ impl Entity {
         v
     }
 
-    /// Try to get this entity's ID
+    /// Return the ID of this entity. If the ID is a string, return the
+    /// string. If it is `Bytes`, return it as a hex string with a `0x`
+    /// prefix. If the ID is not set or anything but a `String` or `Bytes`,
+    /// return an error
     pub fn id(&self) -> Result<String, Error> {
         match self.get("id") {
             None => Err(anyhow!("Entity is missing an `id` attribute")),
             Some(Value::String(s)) => Ok(s.to_owned()),
+            Some(Value::Bytes(b)) => Ok(b.to_string()),
             _ => Err(anyhow!("Entity has non-string `id` attribute")),
         }
     }
