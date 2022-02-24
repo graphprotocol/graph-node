@@ -1796,21 +1796,7 @@ async fn fetch_transaction_receipts_in_batch_with_retry(
             fetch_transaction_receipts_in_batch(web3, hashes, block_hash, logger).boxed()
         })
         .await
-        .map_err(|timeout| {
-            anyhow::format_err!(
-                "batch eth_getTransactionReceipt RPC call at {}: {:?}",
-                block_hash,
-                timeout
-            )
-            .into()
-
-            // Error::new(timeout)
-            //     .context(format!(
-            //         "batch eth_getTransactionReceipt RPC call at {}",
-            //         block_hash
-            //     ))
-            //     .into()
-        })
+        .map_err(|_timeout| anyhow!(block_hash).into())
 }
 
 /// Deprecated. Attempts to fetch multiple transaction receipts in a batching contex.
@@ -1860,21 +1846,7 @@ async fn fetch_transaction_receipt_with_retry(
         .timeout_secs(*JSON_RPC_TIMEOUT)
         .run(move || web3.eth().transaction_receipt(transaction_hash).boxed())
         .await
-        .map_err(|timeout| {
-            anyhow::format_err!(
-                "eth_getTransactionReceipt RPC call at {}: {:?}",
-                block_hash,
-                timeout
-            )
-            .into()
-
-            // Error::new(timeout)
-            //     .context(format!(
-            //         "eth_getTransactionReceipt RPC call at {}",
-            //         block_hash
-            //     ))
-            //     .into()
-        })
+        .map_err(|_timeout| anyhow!(block_hash).into())
         .and_then(move |some_receipt| {
             resolve_transaction_receipt(some_receipt, transaction_hash, block_hash, logger)
         })

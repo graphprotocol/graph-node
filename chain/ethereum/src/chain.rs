@@ -187,7 +187,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         block_cursor: Option<String>,
         start_blocks: Vec<BlockNumber>,
-        subgraph_start_block: Option<BlockPtr>,
+        subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -221,7 +221,7 @@ impl Blockchain for Chain {
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,
-            subgraph_start_block,
+            subgraph_current_block,
             block_cursor,
             firehose_mapper,
             adapter,
@@ -235,7 +235,7 @@ impl Blockchain for Chain {
         &self,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        subgraph_start_block: Option<BlockPtr>,
+        subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
         metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -286,7 +286,7 @@ impl Blockchain for Chain {
             *MAX_BLOCK_RANGE_SIZE,
             *TARGET_TRIGGERS_PER_BLOCK_RANGE,
             unified_api_version,
-            subgraph_start_block,
+            subgraph_current_block,
         )))
     }
 
