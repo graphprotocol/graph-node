@@ -22,7 +22,7 @@ where
 {
     pub fn new<F>(
         endpoint: Arc<FirehoseEndpoint>,
-        subgraph_start_block: Option<BlockPtr>,
+        subgraph_current_block: Option<BlockPtr>,
         cursor: Option<String>,
         mapper: Arc<F>,
         adapter: Arc<C::TriggersAdapter>,
@@ -48,7 +48,7 @@ where
                 adapter,
                 filter,
                 manifest_start_block_num,
-                subgraph_start_block,
+                subgraph_current_block,
                 logger,
             )),
         }
@@ -62,18 +62,18 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
     adapter: Arc<C::TriggersAdapter>,
     filter: Arc<C::TriggerFilter>,
     manifest_start_block_num: BlockNumber,
-    subgraph_start_block: Option<BlockPtr>,
+    subgraph_current_block: Option<BlockPtr>,
     logger: Logger,
 ) -> impl Stream<Item = Result<BlockStreamEvent<C>, Error>> {
     use firehose::ForkStep::*;
 
     let mut latest_cursor = cursor.unwrap_or_else(|| "".to_string());
     let mut backoff = ExponentialBackoff::new(Duration::from_millis(500), Duration::from_secs(45));
-    let mut subgraph_start_block = subgraph_start_block;
-    let mut start_block_num = subgraph_start_block
+    let mut subgraph_current_block = subgraph_current_block;
+    let mut start_block_num = subgraph_current_block
         .as_ref()
         .map(|ptr| {
-            // Firehose start block is inclusive while the subgraph_start_block is where the actual
+            // Firehose start block is inclusive while the subgraph_current_block is where the actual
             // subgraph is currently at. So to process the actual next block, we must start one block
             // further in the chain.
             ptr.block_number() + 1 as BlockNumber
@@ -101,7 +101,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
     // and no Firehose cursor was present. If a Firehose cursor is present, it's used to
     // resume and as such, there is no need to perform this check (at the same time, it's
     // not a bad check to make).
-    let mut check_subgraph_continuity = latest_cursor == "" && subgraph_start_block.is_some();
+    let mut check_subgraph_continuity = latest_cursor == "" && subgraph_current_block.is_some();
 
     try_stream! {
         loop {
@@ -135,7 +135,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                             response,
                             &mut check_subgraph_continuity,
                             manifest_start_block_num,
-                            subgraph_start_block.as_ref(),
+                            subgraph_current_block.as_ref(),
                             mapper.as_ref(),
                             &adapter,
                             &filter,
@@ -147,7 +147,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                                 latest_cursor = cursor;
                             },
                             Ok(BlockResponse::Rewind(revert_to)) => {
-                                let subgraph_block = subgraph_start_block
+                                let subgraph_block = subgraph_current_block
                                     .as_ref()
                                     .cloned()
                                     .expect("Rewinding means there is an inconsistency when starting from subgraph block ptr, so it must be defined");
@@ -163,7 +163,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                                 // and we add + 1 to start block num because Firehose is inclusive and as such,
                                 // we need to move to "next" block.
                                 start_block_num = revert_to.number + 1;
-                                subgraph_start_block = Some(revert_to);
+                                subgraph_current_block = Some(revert_to);
                                 expected_stream_end = true;
                                 break;
                             },
@@ -201,7 +201,7 @@ async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
     result: Result<firehose::Response, Status>,
     check_subgraph_continuity: &mut bool,
     manifest_start_block_num: BlockNumber,
-    subgraph_start_block: Option<&BlockPtr>,
+    subgraph_current_block: Option<&BlockPtr>,
     mapper: &F,
     adapter: &C::TriggersAdapter,
     filter: &C::TriggerFilter,
@@ -222,10 +222,11 @@ async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
 
         if let BlockStreamEvent::ProcessBlock(ref block, _) = event {
             let previous_block_ptr = block.parent_ptr();
-            if previous_block_ptr.is_some() && previous_block_ptr.as_ref() != subgraph_start_block {
+            if previous_block_ptr.is_some() && previous_block_ptr.as_ref() != subgraph_current_block
+            {
                 warn!(&logger,
                     "Firehose selected first streamed block's parent should match subgraph start block, reverting to last know final chain segment";
-                    "subgraph_start_block" => &subgraph_start_block.unwrap(),
+                    "subgraph_current_block" => &subgraph_current_block.unwrap(),
                     "firehose_start_block" => &previous_block_ptr.unwrap(),
                 );
 
