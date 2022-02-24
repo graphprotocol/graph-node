@@ -3,8 +3,16 @@ use ethabi::{Error as ABIError, Function, ParamType, Token};
 use futures::Future;
 use graph::blockchain::ChainIdentifier;
 use graph::env::env_var;
+use graph::firehose::CallToFilter;
+use graph::firehose::LogFilter;
+use graph::firehose::MultiCallToFilter;
+use graph::firehose::MultiLogFilter;
+use hex::ToHex;
+use itertools::Itertools;
 use mockall::automock;
 use mockall::predicate::*;
+use prost::Message;
+use prost_types::Any;
 use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -19,6 +27,9 @@ use graph::{
     components::metrics::{CounterVec, GaugeVec, HistogramVec},
     petgraph::{self, graphmap::GraphMap},
 };
+
+const MULTI_LOG_FILTER_TYPE_URL: &str = "sf.ethereum.transform.v1.MultiLogFilter";
+const MULTI_CALL_TO_FILTER_TYPE_URL: &str = "sf.ethereum.transform.v1.MultiCallToFilter";
 
 use crate::capabilities::NodeCapabilities;
 use crate::data_source::BlockHandlerFilter;
@@ -160,6 +171,39 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
                 .extend(EthereumBlockFilter::from_mapping(&data_source.mapping));
         }
     }
+
+    fn to_firehose_filter(&self) -> Vec<prost_types::Any> {
+        let EthereumBlockFilter {
+            contract_addresses: _contract_addresses,
+            trigger_every_block,
+        } = self.block.clone();
+
+        if trigger_every_block {
+            return Vec::new();
+        }
+
+        let mut filters = vec![];
+
+        let mut call_filters: Vec<CallToFilter> = self.call.clone().into();
+        call_filters.extend(Into::<Vec<CallToFilter>>::into(self.block.clone()));
+
+        if !call_filters.is_empty() {
+            filters.push(Any {
+                type_url: MULTI_CALL_TO_FILTER_TYPE_URL.into(),
+                value: MultiCallToFilter { call_filters }.encode_to_vec(),
+            });
+        }
+
+        let log_filters: Vec<LogFilter> = self.log.clone().into();
+        if !log_filters.is_empty() {
+            filters.push(Any {
+                type_url: MULTI_LOG_FILTER_TYPE_URL.into(),
+                value: MultiLogFilter { log_filters }.encode_to_vec(),
+            })
+        }
+
+        filters
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -171,6 +215,28 @@ pub(crate) struct EthereumLogFilter {
 
     // Event sigs with no associated address, matching on all addresses.
     wildcard_events: HashSet<EventSignature>,
+}
+
+impl Into<Vec<LogFilter>> for EthereumLogFilter {
+    fn into(self) -> Vec<LogFilter> {
+        self.eth_get_logs_filters()
+            .map(
+                |EthGetLogsFilter {
+                     contracts,
+                     event_signatures,
+                 }| LogFilter {
+                    addresses: contracts
+                        .iter()
+                        .map(|addr| addr.encode_hex::<String>().into())
+                        .collect_vec(),
+                    event_signatures: event_signatures
+                        .iter()
+                        .map(|sig| sig.encode_hex::<String>().into())
+                        .collect_vec(),
+                },
+            )
+            .collect_vec()
+    }
 }
 
 impl EthereumLogFilter {
@@ -258,12 +324,12 @@ impl EthereumLogFilter {
     /// to balance between having granular filters but too many calls and having few calls but too
     /// broad filters causing the Ethereum endpoint to timeout.
     pub fn eth_get_logs_filters(self) -> impl Iterator<Item = EthGetLogsFilter> {
-        let mut filters = Vec::new();
-
-        // First add the wildcard event filters.
-        for wildcard_event in self.wildcard_events {
-            filters.push(EthGetLogsFilter::from_event(wildcard_event))
-        }
+        // Start with the wildcard event filters.
+        let mut filters = self
+            .wildcard_events
+            .into_iter()
+            .map(EthGetLogsFilter::from_event)
+            .collect_vec();
 
         // The current algorithm is to repeatedly find the maximum cardinality vertex and turn all
         // of its edges into a filter. This is nice because it is neutral between filtering by
@@ -325,6 +391,42 @@ pub(crate) struct EthereumCallFilter {
         HashMap<Address, (BlockNumber, HashSet<FunctionSelector>)>,
 
     pub wildcard_signatures: HashSet<FunctionSelector>,
+}
+
+impl Into<Vec<CallToFilter>> for EthereumCallFilter {
+    fn into(self) -> Vec<CallToFilter> {
+        if self.is_empty() {
+            return Vec::new();
+        }
+
+        let EthereumCallFilter {
+            contract_addresses_function_signatures,
+            wildcard_signatures,
+        } = self;
+
+        let mut filters: Vec<CallToFilter> = contract_addresses_function_signatures
+            .into_iter()
+            .map(|(addr, (_, sigs))| CallToFilter {
+                addresses: vec![addr.encode_hex::<String>().into()],
+                signatures: sigs
+                    .into_iter()
+                    .map(|x| Into::<Vec<u8>>::into(hex::encode(x.to_vec())))
+                    .collect_vec(),
+            })
+            .collect();
+
+        if !wildcard_signatures.is_empty() {
+            filters.push(CallToFilter {
+                addresses: vec![],
+                signatures: wildcard_signatures
+                    .into_iter()
+                    .map(|x| x.to_vec())
+                    .collect_vec(),
+            });
+        }
+
+        filters
+    }
 }
 
 impl EthereumCallFilter {
@@ -498,6 +600,19 @@ impl From<&EthereumBlockFilter> for EthereumCallFilter {
 pub(crate) struct EthereumBlockFilter {
     pub contract_addresses: HashSet<(BlockNumber, Address)>,
     pub trigger_every_block: bool,
+}
+
+impl Into<Vec<CallToFilter>> for EthereumBlockFilter {
+    fn into(self) -> Vec<CallToFilter> {
+        self.contract_addresses
+            .iter()
+            .dedup_by(|x, y| x.1 == y.1)
+            .map(|x| CallToFilter {
+                addresses: vec![x.1.encode_hex::<String>().into()],
+                signatures: vec![],
+            })
+            .collect_vec()
+    }
 }
 
 impl EthereumBlockFilter {
@@ -773,14 +888,158 @@ pub trait EthereumAdapter: Send + Sync + 'static {
 
 #[cfg(test)]
 mod tests {
-    use super::EthereumCallFilter;
+    use super::{
+        EthereumBlockFilter, LogFilterNode, MULTI_CALL_TO_FILTER_TYPE_URL,
+        MULTI_LOG_FILTER_TYPE_URL,
+    };
+    use super::{EthereumCallFilter, EthereumLogFilter, TriggerFilter};
 
+    use graph::blockchain::TriggerFilter as _;
+    use graph::firehose::{CallToFilter, LogFilter, MultiCallToFilter, MultiLogFilter};
+    use graph::petgraph::graphmap::GraphMap;
+    use graph::prelude::ethabi::ethereum_types::H256;
     use graph::prelude::web3::types::Address;
     use graph::prelude::web3::types::Bytes;
     use graph::prelude::EthereumCall;
+    use hex::ToHex;
+    use itertools::Itertools;
+    use prost::Message;
+    use prost_types::Any;
 
     use std::collections::{HashMap, HashSet};
     use std::iter::FromIterator;
+
+    #[test]
+    fn ethereum_trigger_filter_to_firehose() {
+        let address = Address::from_low_u64_be;
+        let sig = H256::from_low_u64_le;
+        let mut filter = TriggerFilter {
+            log: EthereumLogFilter {
+                contracts_and_events_graph: GraphMap::new(),
+                wildcard_events: HashSet::new(),
+            },
+            call: EthereumCallFilter {
+                contract_addresses_function_signatures: HashMap::from_iter(vec![
+                    (address(0), (0, HashSet::from_iter(vec![[0u8; 4]]))),
+                    (address(1), (1, HashSet::from_iter(vec![[1u8; 4]]))),
+                    (address(2), (2, HashSet::new())),
+                ]),
+                wildcard_signatures: HashSet::new(),
+            },
+            block: EthereumBlockFilter {
+                contract_addresses: HashSet::from_iter([(100, address(1000))]),
+                trigger_every_block: false,
+            },
+        };
+
+        let expected_call = MultiCallToFilter {
+            call_filters: vec![
+                CallToFilter {
+                    addresses: vec![address(0).encode_hex::<String>().into()],
+                    signatures: vec![hex::encode([0u8; 4].to_vec()).into()],
+                },
+                CallToFilter {
+                    addresses: vec![address(1).encode_hex::<String>().into()],
+                    signatures: vec![hex::encode([1u8; 4].to_vec()).into()],
+                },
+                CallToFilter {
+                    addresses: vec![address(2).encode_hex::<String>().into()],
+                    signatures: vec![],
+                },
+                CallToFilter {
+                    addresses: vec![address(1000).encode_hex::<String>().into()],
+                    signatures: vec![],
+                },
+            ],
+        };
+        let mut bs = &expected_call.encode_to_vec()[..];
+        let expected_call =
+            MultiCallToFilter::decode(&mut bs).expect("unable to decode multi call_to filter");
+
+        filter.log.contracts_and_events_graph.add_edge(
+            LogFilterNode::Contract(address(10)),
+            LogFilterNode::Event(sig(100)),
+            (),
+        );
+        filter.log.contracts_and_events_graph.add_edge(
+            LogFilterNode::Contract(address(10)),
+            LogFilterNode::Event(sig(101)),
+            (),
+        );
+        filter.log.contracts_and_events_graph.add_edge(
+            LogFilterNode::Contract(address(20)),
+            LogFilterNode::Event(sig(100)),
+            (),
+        );
+
+        println!(
+            "{:?}",
+            filter.log.clone().eth_get_logs_filters().collect_vec()
+        );
+
+        let expected_log = MultiLogFilter {
+            log_filters: vec![
+                LogFilter {
+                    addresses: vec![address(10).encode_hex::<String>().into()],
+                    event_signatures: vec![sig(101).encode_hex::<String>().into()],
+                },
+                LogFilter {
+                    addresses: vec![
+                        address(10).encode_hex::<String>().into(),
+                        address(20).encode_hex::<String>().into(),
+                    ],
+                    event_signatures: vec![sig(100).encode_hex::<String>().into()],
+                },
+            ],
+        };
+
+        let mut bs = &expected_log.encode_to_vec()[..];
+        let expected_log =
+            MultiLogFilter::decode(&mut bs).expect("unable to decode multi log filter");
+
+        let firehose_filter = filter.to_firehose_filter();
+        assert_eq!(2, firehose_filter.len());
+
+        let firehose_filter: HashMap<_, _> = HashMap::from_iter::<Vec<(String, Any)>>(
+            firehose_filter
+                .into_iter()
+                .map(|any| (any.type_url.clone(), any))
+                .collect_vec(),
+        );
+        let mut actual_call_filter = &firehose_filter
+            .get(MULTI_CALL_TO_FILTER_TYPE_URL.into())
+            .unwrap()
+            .value[..];
+
+        let mut actual_log_filter = &firehose_filter
+            .get(MULTI_LOG_FILTER_TYPE_URL.into())
+            .unwrap()
+            .value[..];
+
+        let mut actual_call_filter = MultiCallToFilter::decode(&mut actual_call_filter)
+            .expect("unable to decode multi call filter");
+        actual_call_filter
+            .call_filters
+            .sort_by(|a, b| a.addresses.cmp(&b.addresses));
+        for filter in actual_call_filter.call_filters.iter_mut() {
+            filter.signatures.sort();
+        }
+        assert_eq!(expected_call, actual_call_filter);
+
+        let mut actual_log_filter = MultiLogFilter::decode(&mut actual_log_filter)
+            .expect("unable to decode multi log filter");
+        actual_log_filter
+            .log_filters
+            .sort_by(|a, b| a.addresses.cmp(&b.addresses));
+        for filter in actual_log_filter.log_filters.iter_mut() {
+            filter.event_signatures.sort();
+        }
+        assert_eq!(expected_log, actual_log_filter);
+
+        filter.block.trigger_every_block = true;
+        let firehose_filter = filter.to_firehose_filter();
+        assert_eq!(firehose_filter.len(), 0);
+    }
 
     #[test]
     fn matching_ethereum_call_filter() {

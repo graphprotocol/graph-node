@@ -20,4 +20,5 @@ pub struct IndexingInputs<C: Blockchain> {
     pub templates: Arc<Vec<C::DataSourceTemplate>>,
     pub unified_api_version: UnifiedMappingApiVersion,
     pub static_filters: bool,
+    pub firehose_grpc_filters: bool,
 }

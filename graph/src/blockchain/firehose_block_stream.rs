@@ -5,6 +5,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 use tonic::Status;
 
+use crate::blockchain::TriggerFilter;
 use crate::prelude::*;
 use crate::util::backoff::ExponentialBackoff;
 
@@ -29,6 +30,7 @@ where
         filter: Arc<C::TriggerFilter>,
         start_blocks: Vec<BlockNumber>,
         logger: Logger,
+        grpc_filters: bool,
     ) -> Self
     where
         F: FirehoseMapper<C> + 'static,
@@ -49,6 +51,7 @@ where
                 filter,
                 manifest_start_block_num,
                 subgraph_current_block,
+                grpc_filters,
                 logger,
             )),
         }
@@ -63,6 +66,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
     filter: Arc<C::TriggerFilter>,
     manifest_start_block_num: BlockNumber,
     subgraph_current_block: Option<BlockPtr>,
+    grpc_filters: bool,
     logger: Logger,
 ) -> impl Stream<Item = Result<BlockStreamEvent<C>, Error>> {
     use firehose::ForkStep::*;
@@ -114,14 +118,20 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
             );
             skip_backoff = false;
 
-            let result = endpoint
-            .clone()
-            .stream_blocks(firehose::Request {
+            let mut request = firehose::Request {
                 start_block_num: start_block_num as i64,
                 start_cursor: latest_cursor.clone(),
                 fork_steps: vec![StepNew as i32, StepUndo as i32],
                 ..Default::default()
-            }).await;
+            };
+
+            if grpc_filters {
+                request.transforms = filter.to_firehose_filter();
+            }
+
+            let result = endpoint
+            .clone()
+            .stream_blocks(request).await;
 
             match result {
                 Ok(stream) => {

@@ -112,6 +112,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
+        grpc_filters: bool,
     ) -> Result<Box<dyn BlockStream<Self>>, Error>;
 
     async fn new_polling_block_stream(
@@ -179,6 +180,8 @@ pub trait TriggerFilter<C: Blockchain>: Default + Clone + Send + Sync {
     fn extend<'a>(&mut self, data_sources: impl Iterator<Item = &'a C::DataSource> + Clone);
 
     fn node_capabilities(&self) -> C::NodeCapabilities;
+
+    fn to_firehose_filter(&self) -> Vec<prost_types::Any>;
 }
 
 pub trait DataSource<C: Blockchain>:
