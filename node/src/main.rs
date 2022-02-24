@@ -320,6 +320,7 @@ async fn main() {
             );
             graph::spawn_blocking(job_runner.start());
         }
+        let static_filters = env::var_os("EXPERIMENTAL_STATIC_FILTERS").is_some();
 
         let subgraph_instance_manager = SubgraphInstanceManager::new(
             &logger_factory,
@@ -327,6 +328,7 @@ async fn main() {
             blockchain_map.cheap_clone(),
             metrics_registry.clone(),
             link_resolver.cheap_clone(),
+            static_filters,
         );
 
         // Create IPFS-based subgraph provider

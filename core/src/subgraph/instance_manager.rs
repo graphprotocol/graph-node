@@ -5,9 +5,9 @@ use crate::subgraph::metrics::{SubgraphInstanceManagerMetrics, SubgraphInstanceM
 use crate::subgraph::runner::SubgraphRunner;
 use crate::subgraph::SubgraphInstance;
 use graph::blockchain::block_stream::BlockStreamMetrics;
-use graph::blockchain::BlockchainKind;
+use graph::blockchain::Blockchain;
 use graph::blockchain::NodeCapabilities;
-use graph::blockchain::{Blockchain, TriggerFilter as _};
+use graph::blockchain::{BlockchainKind, TriggerFilter};
 use graph::data::subgraph::MAX_SPEC_VERSION;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::util::lfu_cache::LfuCache;
@@ -22,6 +22,7 @@ pub struct SubgraphInstanceManager<S, M, L> {
     manager_metrics: SubgraphInstanceManagerMetrics,
     instances: SharedInstanceKeepAliveMap,
     link_resolver: Arc<L>,
+    static_filters: bool,
 }
 
 #[async_trait]
@@ -102,6 +103,7 @@ where
         chains: Arc<BlockchainMap>,
         metrics_registry: Arc<M>,
         link_resolver: Arc<L>,
+        static_filters: bool,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
@@ -114,6 +116,7 @@ where
             metrics_registry,
             instances: SharedInstanceKeepAliveMap::default(),
             link_resolver,
+            static_filters,
         }
     }
 
@@ -197,7 +200,12 @@ where
             .clone();
 
         // Obtain filters from the manifest
-        let filter = C::TriggerFilter::from_data_sources(manifest.data_sources.iter());
+        let mut filter = C::TriggerFilter::from_data_sources(manifest.data_sources.iter());
+
+        if self.static_filters {
+            filter.extend_with_template(manifest.templates.clone().into_iter());
+        }
+
         let start_blocks = manifest.start_blocks();
 
         let templates = Arc::new(manifest.templates.clone());
@@ -267,6 +275,7 @@ where
             chain,
             templates,
             unified_api_version,
+            static_filters: self.static_filters,
         };
 
         // The subgraph state tracks the state of the subgraph instance over time

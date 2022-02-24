@@ -310,7 +310,7 @@ where
                             }
                         }
 
-                        if needs_restart {
+                        if needs_restart && !self.inputs.static_filters {
                             // Cancel the stream for real
                             self.ctx
                                 .state

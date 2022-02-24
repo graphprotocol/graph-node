@@ -17,6 +17,13 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
     fn node_capabilities(&self) -> NodeCapabilities {
         NodeCapabilities {}
     }
+
+    fn extend_with_template(
+        &mut self,
+        _data_source: impl Iterator<Item = <Chain as bc::Blockchain>::DataSourceTemplate>,
+    ) {
+        todo!()
+    }
 }
 
 #[derive(Clone, Debug, Default)]

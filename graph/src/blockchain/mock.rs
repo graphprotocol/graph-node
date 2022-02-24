@@ -234,6 +234,13 @@ impl<C: Blockchain> TriggerFilter<C> for MockTriggerFilter {
     fn node_capabilities(&self) -> C::NodeCapabilities {
         todo!()
     }
+
+    fn extend_with_template(
+        &mut self,
+        _data_source: impl Iterator<Item = <C as Blockchain>::DataSourceTemplate>,
+    ) {
+        todo!()
+    }
 }
 
 #[derive(Debug)]
