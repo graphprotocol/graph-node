@@ -425,7 +425,8 @@ where
                                     .unwrap()
                                     .remove(&self.inputs.deployment.id);
 
-                                error!(logger, "Subgraph failed with non-deterministic error: {}", e;
+                                let message = format!("{:#}", e).replace("\n", "\t");
+                                error!(logger, "Subgraph failed with non-deterministic error: {}", message;
                                     "attempt" => backoff.attempt,
                                     "retry_delay_s" => backoff.delay().as_secs());
 

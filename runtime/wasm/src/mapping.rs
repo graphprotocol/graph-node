@@ -61,25 +61,15 @@ pub fn spawn_module<C: Blockchain>(
                     trigger,
                     result_sender,
                 } = request;
-                let logger = ctx.logger.cheap_clone();
 
-                // Start the WASM module runtime.
-                let section = host_metrics.stopwatch.start_section("module_init");
-                let module = WasmInstance::from_valid_module_with_ctx(
+                let result = instantiate_module_and_handle_trigger(
                     valid_module.cheap_clone(),
                     ctx,
+                    trigger,
                     host_metrics.cheap_clone(),
                     timeout,
                     experimental_features,
-                )?;
-                section.end();
-
-                let section = host_metrics.stopwatch.start_section("run_handler");
-                if *LOG_TRIGGER_DATA {
-                    debug!(logger, "trigger data: {:?}", trigger);
-                }
-                let result = module.handle_trigger(trigger);
-                section.end();
+                );
 
                 result_sender
                     .send(result)
@@ -96,6 +86,34 @@ pub fn spawn_module<C: Blockchain>(
     .context("Spawning WASM runtime thread failed")?;
 
     Ok(mapping_request_sender)
+}
+
+fn instantiate_module_and_handle_trigger<C: Blockchain>(
+    valid_module: Arc<ValidModule>,
+    ctx: MappingContext<C>,
+    trigger: TriggerWithHandler<C>,
+    host_metrics: Arc<HostMetrics>,
+    timeout: Option<Duration>,
+    experimental_features: ExperimentalFeatures,
+) -> Result<(BlockState<C>, Gas), MappingError> {
+    let logger = ctx.logger.cheap_clone();
+
+    // Start the WASM module runtime.
+    let section = host_metrics.stopwatch.start_section("module_init");
+    let module = WasmInstance::from_valid_module_with_ctx(
+        valid_module,
+        ctx,
+        host_metrics.cheap_clone(),
+        timeout,
+        experimental_features,
+    )?;
+    section.end();
+
+    let _section = host_metrics.stopwatch.start_section("run_handler");
+    if *LOG_TRIGGER_DATA {
+        debug!(logger, "trigger data: {:?}", trigger);
+    }
+    module.handle_trigger(trigger)
 }
 
 pub struct MappingRequest<C: Blockchain> {
