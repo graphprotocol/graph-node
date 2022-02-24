@@ -613,11 +613,17 @@ impl Schema {
             .get_base_type();
 
         match base_type {
-            "String" => Ok(store::Value::String(key.entity_id.clone())),
+            "ID" | "String" => Ok(store::Value::String(key.entity_id.clone())),
             "Bytes" => Ok(store::Value::Bytes(scalar::Bytes::from_str(
                 &key.entity_id,
             )?)),
-            _ => todo!(),
+            s => {
+                return Err(anyhow!(
+                    "Entity type {} uses illegal type {} for id column",
+                    key.entity_type,
+                    s
+                ))
+            }
         }
     }
 
