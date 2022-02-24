@@ -481,7 +481,8 @@ impl Queue {
                         .store
                         .revert_block_operations(block_ptr.clone(), firehose_cursor.as_deref()),
                 };
-                // Remove the tombstone that take_front left in place
+                // The request has been handled. It's now safe to remove it
+                // from the queue
                 queue.queue.pop().await;
 
                 if let Err(e) = res {

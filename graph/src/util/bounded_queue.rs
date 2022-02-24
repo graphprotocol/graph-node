@@ -138,5 +138,6 @@ impl<T: Clone> BoundedQueue<T> {
             .acquire_many(pushed as u32)
             .await
             .expect("we never close the pop_semaphore");
+        _permits.forget();
     }
 }
