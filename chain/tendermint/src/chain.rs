@@ -108,7 +108,7 @@ impl Blockchain for Chain {
             .triggers_adapter(
                 &deployment,
                 &NodeCapabilities {},
-                unified_api_version.clone(),
+                unified_api_version,
                 metrics.stopwatch.clone(),
             )
             .unwrap_or_else(|_| panic!("no adapter for network {}", self.name));
@@ -150,7 +150,7 @@ impl Blockchain for Chain {
     }
 
     fn chain_store(&self) -> Arc<dyn ChainStore> {
-        self.chain_store.clone()
+        self.chain_store.cheap_clone()
     }
 
     async fn block_pointer_from_number(
@@ -158,7 +158,7 @@ impl Blockchain for Chain {
         _logger: &Logger,
         _number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
-        // FIXME (NEAR): Hmmm, what to do with this?
+        // FIXME (Tendermint): Hmmm, what to do with this?
         Ok(BlockPtr {
             hash: BlockHash::from(vec![0xff; 32]),
             number: 0,
@@ -197,10 +197,13 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
 
         let mut triggers: Vec<_> = shared_block
             .events()
-            .into_iter()
+            .cloned()
             .map(|event| {
                 TendermintTrigger::Event(Arc::new(codec::EventData {
                     event: Some(event),
+                    // FIXME (Tendermint): Optimize. Should use an Arc instead of cloning the
+                    // block. This is not currently possible because EventData is automatically
+                    // generated.
                     block: Some(block.block().clone()),
                 }))
             })

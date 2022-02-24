@@ -4,5 +4,5 @@ fn main() {
         .out_dir("src/protobuf")
         .format(true)
         .compile(&["proto/codec.proto"], &["proto"])
-        .expect("Failed to compile Figment's Tendermint proto(s)");
+        .expect("Failed to compile Firehose Tendermint proto(s)");
 }
