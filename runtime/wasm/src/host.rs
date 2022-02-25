@@ -222,7 +222,7 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
     fn match_and_decode(
         &self,
         trigger: &C::TriggerData,
-        block: Arc<C::Block>,
+        block: &Arc<C::Block>,
         logger: &Logger,
     ) -> Result<Option<TriggerWithHandler<C>>, Error> {
         self.data_source.match_and_decode(trigger, block, logger)

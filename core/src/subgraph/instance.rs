@@ -4,6 +4,7 @@ use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::env;
 use std::str::FromStr;
+use std::time::Instant;
 
 use graph::{blockchain::DataSource, prelude::*};
 use graph::{
@@ -13,6 +14,8 @@ use graph::{
         subgraph::{MappingError, SharedProofOfIndexing},
     },
 };
+
+use super::metrics::SubgraphInstanceMetrics;
 
 lazy_static! {
     static ref MAX_DATA_SOURCES: Option<usize> = env::var("GRAPH_SUBGRAPH_MAX_DATA_SOURCES")
@@ -114,9 +117,10 @@ where
         block: &Arc<C::Block>,
         trigger: &C::TriggerData,
         state: BlockState<C>,
-        proof_of_indexing: SharedProofOfIndexing,
+        proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
     ) -> Result<BlockState<C>, MappingError> {
         Self::process_trigger_in_runtime_hosts(
             logger,
@@ -127,6 +131,7 @@ where
             proof_of_indexing,
             causality_region,
             debug_fork,
+            subgraph_metrics,
         )
         .await
     }
@@ -137,28 +142,29 @@ where
         block: &Arc<C::Block>,
         trigger: &C::TriggerData,
         mut state: BlockState<C>,
-        proof_of_indexing: SharedProofOfIndexing,
+        proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
     ) -> Result<BlockState<C>, MappingError> {
         let error_count = state.deterministic_errors.len();
 
-        if let Some(proof_of_indexing) = &proof_of_indexing {
+        if let Some(proof_of_indexing) = proof_of_indexing {
             proof_of_indexing
                 .borrow_mut()
                 .start_handler(causality_region);
         }
 
         for host in hosts {
-            let mapping_trigger =
-                match host.match_and_decode(trigger, block.cheap_clone(), logger)? {
-                    // Trigger matches and was decoded as a mapping trigger.
-                    Some(mapping_trigger) => mapping_trigger,
+            let mapping_trigger = match host.match_and_decode(trigger, block, logger)? {
+                // Trigger matches and was decoded as a mapping trigger.
+                Some(mapping_trigger) => mapping_trigger,
 
-                    // Trigger does not match, do not process it.
-                    None => continue,
-                };
+                // Trigger does not match, do not process it.
+                None => continue,
+            };
 
+            let start = Instant::now();
             state = host
                 .process_mapping_trigger(
                     logger,
@@ -169,9 +175,11 @@ where
                     debug_fork,
                 )
                 .await?;
+            let elapsed = start.elapsed().as_secs_f64();
+            subgraph_metrics.observe_trigger_processing_duration(elapsed);
         }
 
-        if let Some(proof_of_indexing) = &proof_of_indexing {
+        if let Some(proof_of_indexing) = proof_of_indexing {
             if state.deterministic_errors.len() != error_count {
                 assert!(state.deterministic_errors.len() == error_count + 1);
 

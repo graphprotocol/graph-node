@@ -91,7 +91,7 @@ impl<C: Blockchain> DataSource<C> for MockDataSource {
     fn match_and_decode(
         &self,
         _trigger: &C::TriggerData,
-        _block: std::sync::Arc<C::Block>,
+        _block: &std::sync::Arc<C::Block>,
         _logger: &slog::Logger,
     ) -> Result<Option<TriggerWithHandler<C>>, anyhow::Error> {
         todo!()
