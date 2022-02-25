@@ -233,6 +233,7 @@ where
 
                 if block.trigger_count() == 0
                     && skip_ptr_updates_timer.elapsed() <= SKIP_PTR_UPDATES_THRESHOLD
+                    && !synced
                 {
                     continue;
                 } else {
