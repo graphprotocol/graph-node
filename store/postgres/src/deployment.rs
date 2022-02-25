@@ -138,7 +138,7 @@ fn graft(
     // The name of the base subgraph, the hash, and block number
     let graft: (Option<String>, Option<Vec<u8>>, Option<BigDecimal>) = if pending_only {
         graft_query
-            .filter(sd::graft_block_number.gt(sql("coalesce(latest_ethereum_block_number, 0)")))
+            .filter(sd::latest_ethereum_block_number.is_null())
             .first(conn)
             .optional()?
             .unwrap_or((None, None, None))
