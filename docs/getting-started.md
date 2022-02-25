@@ -49,7 +49,7 @@ Three repositories are relevant to building on The Graph:
 ### 0.4 Getting Started Overview
 Below, we outline the required steps to build a subgraph from scratch, which will serve queries from a GraphQL endpoint. The three major steps are:
 
-1. [Define the subgraph](#1-defining-the-subgraph)
+1. [Define the subgraph](#1-define-the-subgraph)
     1. [Define the data sources and create a manifest](#11-define-the-data-sources-and-create-a-manifest)
 
     2. [Create the GraphQL schema](#12-create-the-graphql-schema-for-the-data-source)
