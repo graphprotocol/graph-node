@@ -101,7 +101,7 @@ impl<T: AscValue> TypedArray<T> {
         }
     }
 
-    pub(crate) fn to_vec<H: AscHeap + ?Sized>(
+    pub fn to_vec<H: AscHeap + ?Sized>(
         &self,
         heap: &H,
         gas: &GasCounter,
