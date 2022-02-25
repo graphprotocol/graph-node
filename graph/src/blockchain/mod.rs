@@ -199,10 +199,19 @@ pub trait DataSource<C: Blockchain>:
 
     /// Checks if `trigger` matches this data source, and if so decodes it into a `MappingTrigger`.
     /// A return of `Ok(None)` mean the trigger does not match.
+    ///
+    /// Performance note: This is very hot code, because in the worst case it could be called a
+    /// quadratic T*D times where T is the total number of triggers in the chain and D is the number
+    /// of data sources in the subgraph. So it could be called billions, or even trillions, of times
+    /// in the sync time of a subgraph.
+    ///
+    /// This is typicaly reduced by the triggers being pre-filtered in the block stream. But with
+    /// dynamic data sources the block stream does not filter on the dynamic parameters, so the
+    /// matching should efficently discard false positives.
     fn match_and_decode(
         &self,
         trigger: &C::TriggerData,
-        block: Arc<C::Block>,
+        block: &Arc<C::Block>,
         logger: &Logger,
     ) -> Result<Option<TriggerWithHandler<C>>, Error>;
 

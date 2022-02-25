@@ -500,8 +500,8 @@ where
                 self.inputs.store.clone(),
                 std::mem::take(&mut self.ctx.state.entity_lfu_cache),
             ),
-            proof_of_indexing.cheap_clone(),
-            self.ctx.subgraph_metrics.clone(),
+            &proof_of_indexing,
+            &self.ctx.subgraph_metrics,
             &self.ctx.state.instance,
             &block,
             triggers,
@@ -592,9 +592,10 @@ where
                     &block,
                     &trigger,
                     block_state,
-                    proof_of_indexing.cheap_clone(),
+                    &proof_of_indexing,
                     &causality_region,
                     &self.inputs.debug_fork,
+                    &self.ctx.subgraph_metrics,
                 )
                 .await
                 .map_err(|e| {
@@ -746,8 +747,8 @@ where
     async fn process_triggers(
         logger: &Logger,
         mut block_state: BlockState<C>,
-        proof_of_indexing: SharedProofOfIndexing,
-        subgraph_metrics: Arc<SubgraphInstanceMetrics>,
+        proof_of_indexing: &SharedProofOfIndexing,
+        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
         instance: &SubgraphInstance<C, impl RuntimeHostBuilder<C>>,
         block: &Arc<C::Block>,
         triggers: Vec<C::TriggerData>,
@@ -756,17 +757,17 @@ where
     ) -> Result<BlockState<C>, MappingError> {
         use graph::blockchain::TriggerData;
 
-        for trigger in triggers.into_iter() {
-            let start = Instant::now();
+        for trigger in triggers {
             block_state = instance
                 .process_trigger(
                     &logger,
                     block,
                     &trigger,
                     block_state,
-                    proof_of_indexing.cheap_clone(),
+                    proof_of_indexing,
                     causality_region,
                     debug_fork,
+                    subgraph_metrics,
                 )
                 .await
                 .map_err(move |mut e| {
@@ -776,8 +777,6 @@ where
                     }
                     e.context("failed to process trigger".to_string())
                 })?;
-            let elapsed = start.elapsed().as_secs_f64();
-            subgraph_metrics.observe_trigger_processing_duration(elapsed);
         }
         Ok(block_state)
     }

@@ -60,7 +60,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     fn match_and_decode(
         &self,
         trigger: &<Chain as Blockchain>::TriggerData,
-        block: Arc<<Chain as Blockchain>::Block>,
+        block: &Arc<<Chain as Blockchain>::Block>,
         logger: &Logger,
     ) -> Result<Option<TriggerWithHandler<Chain>>, Error> {
         let block = block.light_block();
@@ -447,7 +447,7 @@ impl DataSource {
     fn match_and_decode(
         &self,
         trigger: &EthereumTrigger,
-        block: Arc<LightEthereumBlock>,
+        block: &Arc<LightEthereumBlock>,
         logger: &Logger,
     ) -> Result<Option<TriggerWithHandler<Chain>>, Error> {
         if !self.matches_trigger_address(&trigger) {
@@ -465,7 +465,9 @@ impl DataSource {
                     None => return Ok(None),
                 };
                 Ok(Some(TriggerWithHandler::new(
-                    MappingTrigger::Block { block },
+                    MappingTrigger::Block {
+                        block: block.cheap_clone(),
+                    },
                     handler.handler,
                 )))
             }
@@ -566,7 +568,7 @@ impl DataSource {
                 });
                 Ok(Some(TriggerWithHandler::new_with_logging_extras(
                     MappingTrigger::Log {
-                        block,
+                        block: block.cheap_clone(),
                         transaction: Arc::new(transaction),
                         log: log.cheap_clone(),
                         params,
@@ -667,7 +669,7 @@ impl DataSource {
                 });
                 Ok(Some(TriggerWithHandler::new_with_logging_extras(
                     MappingTrigger::Call {
-                        block,
+                        block: block.cheap_clone(),
                         transaction,
                         call: call.cheap_clone(),
                         inputs,

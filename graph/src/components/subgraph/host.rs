@@ -47,7 +47,7 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
     fn match_and_decode(
         &self,
         trigger: &C::TriggerData,
-        block: Arc<C::Block>,
+        block: &Arc<C::Block>,
         logger: &Logger,
     ) -> Result<Option<TriggerWithHandler<C>>, Error>;
 
