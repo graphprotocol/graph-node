@@ -1009,10 +1009,12 @@ impl<'a> QueryFilter<'a> {
             out.push_identifier(column.name.as_str())?;
             out.push_sql(op.as_str());
             match value {
-                Value::BigInt(_) | Value::BigDecimal(_) | Value::Int(_) | Value::String(_) => {
-                    QueryValue(value, &column.column_type).walk_ast(out)?
-                }
-                Value::Bool(_) | Value::Bytes(_) | Value::List(_) | Value::Null => {
+                Value::BigInt(_)
+                | Value::Bytes(_)
+                | Value::BigDecimal(_)
+                | Value::Int(_)
+                | Value::String(_) => QueryValue(value, &column.column_type).walk_ast(out)?,
+                Value::Bool(_) | Value::List(_) | Value::Null => {
                     return Err(UnsupportedFilter {
                         filter: op.as_str().to_owned(),
                         value: value.clone(),
