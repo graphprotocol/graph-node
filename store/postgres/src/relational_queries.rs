@@ -1370,7 +1370,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
                 }
                 out.push_sql(", ");
             }
-            self.br_column.literal_value(&mut out)?;
+            self.br_column.literal_range_current(&mut out)?;
             out.push_sql(")");
 
             // finalize line according to remaining entities to insert

@@ -183,7 +183,7 @@ impl<'a> BlockRangeColumn<'a> {
 
     /// Output the literal value of the block range `[block,..)`, mostly for
     /// generating an insert statement containing the block range column
-    pub fn literal_value(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    pub fn literal_range_current(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match self {
             BlockRangeColumn::Mutable { block, .. } => {
                 let block_range: BlockRange = (*block..).into();
