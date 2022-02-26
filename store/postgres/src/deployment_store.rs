@@ -1008,12 +1008,6 @@ impl DeploymentStore {
                 &block_ptr_to,
                 stopwatch,
             )?;
-            deployment::update_entity_count(
-                &conn,
-                site.as_ref(),
-                layout.count_query.as_str(),
-                count,
-            )?;
             section.end();
 
             dynds::insert(&conn, &site.deployment, data_sources, &block_ptr_to)?;
@@ -1027,13 +1021,14 @@ impl DeploymentStore {
                 )?;
             }
 
-            deployment::forward_block_ptr(&conn, &site.deployment, block_ptr_to)?;
-
-            if let Some(cursor) = firehose_cursor {
-                if cursor != "" {
-                    deployment::update_firehose_cursor(&conn, &site.deployment, cursor)?;
-                }
-            }
+            deployment::transact_block(
+                &conn,
+                &site,
+                block_ptr_to,
+                firehose_cursor,
+                layout.count_query.as_str(),
+                count,
+            )?;
 
             Ok(event)
         })?;
