@@ -425,13 +425,31 @@ async fn main() {
                 .debug_fork
                 .map(DeploymentHash::new)
                 .map(|h| h.expect("Debug fork hash must be a valid IPFS hash"));
+            let start_block = opt
+                .start_block
+                .map(|block| {
+                    let mut split = block.split(":");
+                    (
+                        // BlockHash
+                        split.next().unwrap().to_owned(),
+                        // BlockNumber
+                        split.next().unwrap().parse::<i64>().unwrap(),
+                    )
+                })
+                .map(|(hash, number)| BlockPtr::try_from((hash.as_str(), number)))
+                .map(Result::unwrap);
 
             graph::spawn(
                 async move {
                     subgraph_registrar.create_subgraph(name.clone()).await?;
                     subgraph_registrar
-                        // TODO: Add support for `debug_fork` parameter
-                        .create_subgraph_version(name, subgraph_id, node_id, debug_fork)
+                        .create_subgraph_version(
+                            name,
+                            subgraph_id,
+                            node_id,
+                            debug_fork,
+                            start_block,
+                        )
                         .await
                 }
                 .map_err(|e| panic!("Failed to deploy subgraph from `--subgraph` flag: {}", e)),

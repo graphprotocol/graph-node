@@ -267,6 +267,7 @@ where
         hash: DeploymentHash,
         node_id: NodeId,
         debug_fork: Option<DeploymentHash>,
+        start_block: Option<BlockPtr>,
     ) -> Result<(), SubgraphRegistrarError> {
         // We don't have a location for the subgraph yet; that will be
         // assigned when we deploy for real. For logging purposes, make up a
@@ -302,6 +303,7 @@ where
                     self.chains.cheap_clone(),
                     name.clone(),
                     hash.cheap_clone(),
+                    start_block,
                     raw,
                     node_id,
                     debug_fork,
@@ -318,6 +320,7 @@ where
                     self.chains.cheap_clone(),
                     name.clone(),
                     hash.cheap_clone(),
+                    start_block,
                     raw,
                     node_id,
                     debug_fork,
@@ -334,6 +337,7 @@ where
                     self.chains.cheap_clone(),
                     name.clone(),
                     hash.cheap_clone(),
+                    start_block,
                     raw,
                     node_id,
                     debug_fork,
@@ -510,6 +514,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolve
     chains: Arc<BlockchainMap>,
     name: SubgraphName,
     deployment: DeploymentHash,
+    start_block_ptr: Option<BlockPtr>,
     raw: serde_yaml::Mapping,
     node_id: NodeId,
     debug_fork: Option<DeploymentHash>,
@@ -550,8 +555,13 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolve
         return Err(SubgraphRegistrarError::NameNotFound(name.to_string()));
     }
 
-    let (start_block, base_block) =
+    let (manifest_start_block, base_block) =
         resolve_subgraph_chain_blocks(&manifest, chain, &logger.clone()).await?;
+
+    let start_block = match start_block_ptr {
+        Some(block) => Some(block),
+        None => manifest_start_block,
+    };
 
     info!(
         logger,

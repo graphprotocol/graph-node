@@ -180,6 +180,7 @@ pub async fn run(
         subgraph_hash.clone(),
         node_id.clone(),
         None,
+        None,
     )
     .await?;
 

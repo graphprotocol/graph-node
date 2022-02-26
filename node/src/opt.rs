@@ -34,6 +34,14 @@ pub struct Opt {
         help = "name and IPFS hash of the subgraph manifest"
     )]
     pub subgraph: Option<String>,
+
+    #[structopt(
+        long,
+        value_name = "BLOCK_HASH:BLOCK_NUMBER",
+        help = "block hash and number that the subgraph passed will start indexing at"
+    )]
+    pub start_block: Option<String>,
+
     #[structopt(
         long,
         value_name = "URL",

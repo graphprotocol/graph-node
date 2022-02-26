@@ -98,6 +98,9 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
                 params.ipfs_hash.clone(),
                 node_id,
                 params.debug_fork.clone(),
+                // Here it doesn't make sense to receive another
+                // startBlock, we'll use the one from the manifest.
+                None,
             )
             .await
         {
