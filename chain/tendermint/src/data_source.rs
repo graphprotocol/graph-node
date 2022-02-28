@@ -285,7 +285,6 @@ impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnresolvedMapping {
-    pub kind: String,
     pub api_version: String,
     pub language: String,
     pub entities: Vec<String>,
@@ -299,7 +298,6 @@ pub struct UnresolvedMapping {
 impl UnresolvedMapping {
     pub async fn resolve(self, resolver: &impl LinkResolver, logger: &Logger) -> Result<Mapping> {
         let UnresolvedMapping {
-            kind,
             api_version,
             language,
             entities,
@@ -314,7 +312,6 @@ impl UnresolvedMapping {
         let module_bytes = resolver.cat(logger, &link).await?;
 
         Ok(Mapping {
-            kind,
             api_version,
             language,
             entities,
@@ -328,7 +325,6 @@ impl UnresolvedMapping {
 
 #[derive(Clone, Debug)]
 pub struct Mapping {
-    pub kind: String,
     pub api_version: semver::Version,
     pub language: String,
     pub entities: Vec<String>,
