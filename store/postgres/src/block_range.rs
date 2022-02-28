@@ -125,10 +125,6 @@ impl<'a> QueryFragment<Pg> for BlockRangeUpperBoundClause<'a> {
         out.push_identifier(BLOCK_RANGE_COLUMN)?;
         out.push_sql("), 2147483647) = ");
         out.push_bind_param::<Integer, _>(&self.block)?;
-        out.push_sql(" and lower(");
-        out.push_identifier(BLOCK_RANGE_COLUMN)?;
-        out.push_sql(") !=");
-        out.push_bind_param::<Integer, _>(&self.block)?;
 
         Ok(())
     }
