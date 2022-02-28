@@ -36,6 +36,7 @@ pub async fn run(
     logger: Logger,
     store_builder: StoreBuilder,
     network_name: String,
+    ipfs_url: Vec<String>,
     config: Config,
     metrics_ctx: MetricsContext,
     node_id: NodeId,
@@ -51,8 +52,7 @@ pub async fn run(
     let logger_factory = LoggerFactory::new(logger.clone(), None);
 
     // FIXME: Hard-coded IPFS config, take it from config file instead?
-    let ipfs_clients: Vec<_> =
-        create_ipfs_clients(&logger, &vec!["https://api.thegraph.com/ipfs/".to_string()]);
+    let ipfs_clients: Vec<_> = create_ipfs_clients(&logger, &ipfs_url);
 
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry

@@ -63,6 +63,14 @@ pub struct Opt {
     pub node_id: String,
     #[structopt(
         long,
+        value_name = "{HOST:PORT|URL}",
+        default_value = "https://api.thegraph.com/ipfs/",
+        env = "IPFS",
+        help = "HTTP addresses of IPFS nodes"
+    )]
+    pub ipfs: Vec<String>,
+    #[structopt(
+        long,
         default_value = "3",
         help = "the size for connection pools. Set to 0\n to use pool size from configuration file\n corresponding to NODE_ID"
     )]
@@ -452,6 +460,7 @@ struct Context {
     logger: Logger,
     node_id: NodeId,
     config: Cfg,
+    ipfs_url: Vec<String>,
     fork_base: Option<Url>,
     registry: Arc<MetricsRegistry>,
     pub prometheus_registry: Arc<Registry>,
@@ -462,6 +471,7 @@ impl Context {
         logger: Logger,
         node_id: NodeId,
         config: Cfg,
+        ipfs_url: Vec<String>,
         fork_base: Option<Url>,
         version_label: Option<String>,
     ) -> Self {
@@ -485,6 +495,7 @@ impl Context {
             logger,
             node_id,
             config,
+            ipfs_url,
             fork_base,
             registry,
             prometheus_registry,
@@ -676,6 +687,7 @@ async fn main() {
         logger.clone(),
         node,
         config,
+        opt.ipfs,
         fork_base,
         version_label.clone(),
     );
@@ -765,6 +777,7 @@ async fn main() {
             let node_id = ctx.node_id().clone();
             let store_builder = ctx.store_builder().await;
             let job_name = version_label.clone();
+            let ipfs_url = ctx.ipfs_url.clone();
             let metrics_ctx = MetricsContext {
                 prometheus: ctx.prometheus_registry.clone(),
                 registry: registry.clone(),
@@ -776,6 +789,7 @@ async fn main() {
                 logger,
                 store_builder,
                 network_name,
+                ipfs_url,
                 config,
                 metrics_ctx,
                 node_id,
