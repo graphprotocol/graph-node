@@ -93,24 +93,41 @@ impl ToSql<Range<Integer>, Pg> for BlockRange {
 }
 
 #[derive(Constructor)]
-pub struct BlockBoundsMatchClause<'a> {
-    table_prefix: &'a str,
+pub struct BlockRangeLowerBoundClause<'a> {
+    _table_prefix: &'a str,
     block: BlockNumber,
 }
 
-impl<'a> QueryFragment<Pg> for BlockBoundsMatchClause<'a> {
+impl<'a> QueryFragment<Pg> for BlockRangeLowerBoundClause<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         out.push_sql("lower(");
-        out.push_sql(self.table_prefix);
         out.push_identifier(BLOCK_RANGE_COLUMN)?;
         out.push_sql(") = ");
         out.push_bind_param::<Integer, _>(&self.block)?;
-        out.push_sql(" or upper(");
-        out.push_sql(self.table_prefix);
+
+        Ok(())
+    }
+}
+
+#[derive(Constructor)]
+pub struct BlockRangeUpperBoundClause<'a> {
+    _table_prefix: &'a str,
+    block: BlockNumber,
+}
+
+impl<'a> QueryFragment<Pg> for BlockRangeUpperBoundClause<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        out.push_sql("coalesce(upper(");
         out.push_identifier(BLOCK_RANGE_COLUMN)?;
-        out.push_sql(") = ");
+        out.push_sql("), 2147483647) = ");
+        out.push_bind_param::<Integer, _>(&self.block)?;
+        out.push_sql(" and lower(");
+        out.push_identifier(BLOCK_RANGE_COLUMN)?;
+        out.push_sql(") !=");
         out.push_bind_param::<Integer, _>(&self.block)?;
 
         Ok(())

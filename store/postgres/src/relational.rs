@@ -24,12 +24,12 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use crate::relational_queries::{FindChangesQuery, FindDeletesQuery};
 use crate::{
     primary::{Namespace, Site},
     relational_queries::{
         ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterCollection, FilterQuery,
-        FindChangesQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery,
-        RevertRemoveQuery,
+        FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
     },
 };
 use graph::components::store::EntityType;
@@ -39,8 +39,8 @@ use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{
     anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityCollection,
-    EntityFilter, EntityKey, EntityOrder, EntityRange, Logger, QueryExecutionError, StoreError,
-    StoreEvent, ValueType, BLOCK_NUMBER_MAX,
+    EntityFilter, EntityKey, EntityModification, EntityOrder, EntityRange, Logger,
+    QueryExecutionError, StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,
 };
 
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
@@ -577,28 +577,43 @@ impl Layout {
         &self,
         conn: &PgConnection,
         block: BlockNumber,
-    ) -> Result<BTreeMap<EntityType, Entity>, StoreError> {
+    ) -> Result<Vec<EntityModification<EntityType>>, StoreError> {
         let mut tables = Vec::new();
         for table in self.tables.values() {
             tables.push(&**table);
         }
 
-        let rows = FindChangesQuery {
-            _namespace: &self.catalog.site.namespace,
-            tables: &tables[..],
-            block,
-        }
-        .load::<EntityData>(conn)?;
+        let inserts_or_updates =
+            FindChangesQuery::new(&self.catalog.site.namespace, &tables[..], block)
+                .load::<EntityData>(conn)?;
+        let deletes = FindDeletesQuery::new(&self.catalog.site.namespace, &tables[..], block)
+            .load::<EntityData>(conn)?;
 
-        let mut entities = BTreeMap::new();
-        for entity_data in rows {
-            entities.insert(
-                entity_data.entity_type(),
-                entity_data.deserialize_with_layout(self)?,
-            );
+        let mut changes = Vec::new();
+
+        for data in deletes.into_iter() {
+            // The complexity is bad here (we're iterating over the set of
+            // updated entities for every deletion). This query, however, is
+            // not particularly performance-sensitive
+            if !inserts_or_updates
+                .iter()
+                .any(|update| update.entity_type() == data.entity_type())
+            {
+                changes.push(EntityModification::Remove {
+                    key: data.entity_type(),
+                });
+            }
+        }
+        for data in inserts_or_updates.into_iter() {
+            // We don't differentiate between [`EntityModification::Insert`]
+            // and [`EntityModification::Overwrite`] here.
+            changes.push(EntityModification::Insert {
+                key: data.entity_type(),
+                data: data.deserialize_with_layout(self)?,
+            });
         }
 
-        Ok(entities)
+        Ok(changes)
     }
 
     pub fn insert<'a>(

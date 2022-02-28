@@ -935,7 +935,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
         block: BlockNumber,
-    ) -> Result<BTreeMap<EntityType, Entity>, StoreError> {
+    ) -> Result<Vec<EntityModification<EntityType>>, StoreError> {
         let conn = self.get_conn()?;
         let layout = self.layout(&conn, site)?;
         let changes = layout.find_changes(&conn, block)?;

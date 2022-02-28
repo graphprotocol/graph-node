@@ -5,7 +5,7 @@ use diesel::{
     types::{FromSql, ToSql},
 };
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     sync::{Arc, Mutex},
 };
 use std::{fmt, io::Write};
@@ -23,13 +23,14 @@ use graph::{
     constraint_violation,
     data::query::QueryTarget,
     data::subgraph::status,
+    prelude::StoreEvent,
     prelude::SubgraphDeploymentEntity,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        BlockNumber, BlockPtr, DeploymentHash, Logger, NodeId, Schema, StoreError, SubgraphName,
-        SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
+        BlockNumber, BlockPtr, DeploymentHash, EntityModification, Logger, NodeId, Schema,
+        StoreError, SubgraphName, SubgraphStore as SubgraphStoreTrait,
+        SubgraphVersionSwitchingMode,
     },
-    prelude::{Entity, StoreEvent},
     url::Url,
     util::timed_cache::TimedCache,
 };
@@ -1079,11 +1080,11 @@ impl SubgraphStoreTrait for SubgraphStore {
         self.mirror.subgraph_exists(name)
     }
 
-    fn changed_entities_in_block(
+    fn entity_changes_in_block(
         &self,
         subgraph_id: &DeploymentHash,
         block: BlockNumber,
-    ) -> Result<BTreeMap<EntityType, Entity>, StoreError> {
+    ) -> Result<Vec<EntityModification<EntityType>>, StoreError> {
         let (store, site) = self.store(subgraph_id)?;
         let changes = store.get_changes(site, block)?;
         Ok(changes)

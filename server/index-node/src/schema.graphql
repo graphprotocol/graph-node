@@ -18,11 +18,9 @@ type Query {
     blockHash: Bytes!
     indexer: Bytes
   ): Bytes
-  entitiesChangedInBlock(
-    subgraphName: String!
-    blockNumber: Int!
-  ): [EntityData!]!
   subgraphFeatures(subgraphId: String!): SubgraphFeatures!
+  subgraph(subgraphId: String!): SubgraphFeatures!
+  entityChangesInBlock(subgraphId: String!, blockNumber: Int!): EntityChanges!
 }
 
 type SubgraphIndexingStatus {
@@ -61,9 +59,19 @@ type EthereumIndexingStatus implements ChainIndexingStatus {
   lastHealthyBlock: Block
 }
 
+type EntityChanges {
+  updates: [EntityData!]!
+  deletes: [String!]!
+}
+
 type EntityData {
   name: String!
-  fields: [String!]!
+  fields: [EntityField!]!
+}
+
+type EntityField {
+  field: String!
+  valueAsJSON: String!
 }
 
 type Block {

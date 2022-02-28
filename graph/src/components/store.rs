@@ -988,11 +988,15 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// subgraph has any deployments attached to it
     fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError>;
 
-    fn changed_entities_in_block(
+    /// Returns a collection of all [`EntityModification`] items in relation to
+    /// the given [`BlockNumber`]. No distinction is made between inserts and
+    /// updates, which may be returned as either [`EntityModification::Insert`]
+    /// or [`EntityModification::Overwrite`].
+    fn entity_changes_in_block(
         &self,
         subgraph_id: &DeploymentHash,
         block_number: BlockNumber,
-    ) -> Result<BTreeMap<EntityType, Entity>, StoreError>;
+    ) -> Result<Vec<EntityModification<EntityType>>, StoreError>;
 
     /// Return the GraphQL schema supplied by the user
     fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<Schema>, StoreError>;
@@ -1350,13 +1354,13 @@ pub trait StatusStore: Send + Sync + 'static {
 /// `EntityOperation`, we already know whether a `Set` should be an `Insert`
 /// or `Update`
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum EntityModification {
+pub enum EntityModification<K = EntityKey> {
     /// Insert the entity
-    Insert { key: EntityKey, data: Entity },
+    Insert { key: K, data: Entity },
     /// Update the entity by overwriting it
-    Overwrite { key: EntityKey, data: Entity },
+    Overwrite { key: K, data: Entity },
     /// Remove the entity
-    Remove { key: EntityKey },
+    Remove { key: K },
 }
 
 impl EntityModification {
