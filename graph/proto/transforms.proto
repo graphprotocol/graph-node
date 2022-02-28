@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package sf.ethereum.transforms.v1;
+option go_package = "github.com/streamingfast/sf-ethereum/pb/sf/ethereum/transforms/v1;pbtransforms";
+
+message MultiLogFilter {
+  repeated BasicLogFilter basic_log_filters = 1;
+}
+
+message BasicLogFilter {
+  repeated bytes addresses = 1;
+  repeated bytes event_signatures = 2; // corresponds to the keccak of the event signature which is stores in topic.0
+}
+
+message LightBlock {
+}
