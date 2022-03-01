@@ -68,7 +68,7 @@ impl<C: Blockchain> BlockState<C> {
 
     pub fn drain_created_data_sources(&mut self) -> Vec<DataSourceTemplateInfo<C>> {
         assert!(!self.in_handler);
-        std::mem::replace(&mut self.created_data_sources, Vec::new())
+        std::mem::take(&mut self.created_data_sources)
     }
 
     pub fn enter_handler(&mut self) {
@@ -81,7 +81,7 @@ impl<C: Blockchain> BlockState<C> {
         assert!(self.in_handler);
         self.in_handler = false;
         self.created_data_sources
-            .extend(self.handler_created_data_sources.drain(..));
+            .append(&mut self.handler_created_data_sources);
         self.entity_cache.exit_handler()
     }
 

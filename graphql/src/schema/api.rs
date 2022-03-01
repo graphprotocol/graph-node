@@ -117,7 +117,7 @@ fn add_meta_field_type(schema: &mut Document) {
 
 fn add_types_for_object_types(
     schema: &mut Document,
-    object_types: &Vec<&ObjectType>,
+    object_types: &[&ObjectType],
 ) -> Result<(), APISchemaError> {
     for object_type in object_types {
         if !object_type.name.eq(SCHEMA_TYPE_NAME) {
@@ -146,7 +146,7 @@ fn add_order_by_type(
     type_name: &str,
     fields: &[Field],
 ) -> Result<(), APISchemaError> {
-    let type_name = format!("{}_orderBy", type_name).to_string();
+    let type_name = format!("{}_orderBy", type_name);
 
     match schema.get_named_type(&type_name) {
         None => {
@@ -180,7 +180,7 @@ fn add_filter_type(
     type_name: &str,
     fields: &[Field],
 ) -> Result<(), APISchemaError> {
-    let filter_type_name = format!("{}_filter", type_name).to_string();
+    let filter_type_name = format!("{}_filter", type_name);
     match schema.get_named_type(&filter_type_name) {
         None => {
             let typedef = TypeDefinition::InputObject(InputObjectType {
@@ -246,7 +246,7 @@ fn field_filter_input_values(
             })
         }
         Type::ListType(ref t) => {
-            Ok(field_list_filter_input_values(schema, field, t).unwrap_or(vec![]))
+            Ok(field_list_filter_input_values(schema, field, t).unwrap_or_default())
         }
         Type::NonNullType(ref t) => field_filter_input_values(schema, field, t),
     }
@@ -390,7 +390,7 @@ fn add_query_type(
         .map(|t| t.name.as_str())
         .filter(|name| !name.eq(&SCHEMA_TYPE_NAME))
         .chain(interface_types.iter().map(|t| t.name.as_str()))
-        .flat_map(|name| query_fields_for_type(name))
+        .flat_map(query_fields_for_type)
         .collect::<Vec<Field>>();
     let mut fulltext_fields = schema
         .get_fulltext_directives()
@@ -407,7 +407,7 @@ fn add_query_type(
         name: type_name,
         implements_interfaces: vec![],
         directives: vec![],
-        fields: fields,
+        fields,
     });
     let def = Definition::TypeDefinition(typedef);
     schema.definitions.push(def);
@@ -461,7 +461,7 @@ fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
         position: Pos::default(),
         description: None,
         name,
-        arguments: arguments,
+        arguments,
         field_type: Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
             Box::new(Type::NamedType(entity_name.into())),
         ))))), // included entity type name
@@ -678,9 +678,9 @@ fn add_field_arguments(
     for input_interface_type in input_schema.get_interface_type_definitions() {
         for input_field in &input_interface_type.fields {
             if let Some(input_reference_type) =
-                ast::get_referenced_entity_type(input_schema, &input_field)
+                ast::get_referenced_entity_type(input_schema, input_field)
             {
-                if ast::is_list_or_non_null_list_field(&input_field) {
+                if ast::is_list_or_non_null_list_field(input_field) {
                     // Get corresponding interface type and field in the output schema
                     let interface_type =
                         ast::get_interface_type_mut(schema, &input_interface_type.name)

@@ -133,6 +133,6 @@ pub fn introspection_schema(id: DeploymentHash) -> ApiSchema {
     ApiSchema::from_api_schema(Schema::new(id, INTROSPECTION_DOCUMENT.clone())).unwrap()
 }
 
-pub fn is_introspection_field(name: &String) -> bool {
+pub fn is_introspection_field(name: &str) -> bool {
     INTROSPECTION_QUERY_TYPE.field(name).is_some()
 }

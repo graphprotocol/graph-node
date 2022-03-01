@@ -1,4 +1,4 @@
-use std::{collections::HashSet, ops::Deref};
+use std::collections::HashSet;
 
 use graph::{
     components::store::EntityType,
@@ -78,7 +78,7 @@ impl SelectionSet {
                 return None;
             }
         }
-        return Some(field);
+        Some(field)
     }
 
     /// Iterate over all types and the fields for those types
@@ -240,10 +240,7 @@ impl Field {
     /// Returns the response key of a field, which is either its name or its
     /// alias (if there is one).
     pub fn response_key(&self) -> &str {
-        self.alias
-            .as_ref()
-            .map(Deref::deref)
-            .unwrap_or(self.name.as_str())
+        self.alias.as_deref().unwrap_or(self.name.as_str())
     }
 
     /// Looks up the value of an argument for this field
@@ -270,7 +267,7 @@ impl ValueMap for Field {
     fn get_required<T: graph::prelude::TryFromValue>(&self, key: &str) -> Result<T, anyhow::Error> {
         self.argument_value(key)
             .ok_or_else(|| anyhow!("Required field `{}` not set", key))
-            .and_then(|value| T::try_from_value(value).map_err(|e| e.into()))
+            .and_then(T::try_from_value)
     }
 
     fn get_optional<T: graph::prelude::TryFromValue>(
@@ -280,7 +277,7 @@ impl ValueMap for Field {
         self.argument_value(key)
             .map_or(Ok(None), |value| match value {
                 r::Value::Null => Ok(None),
-                _ => T::try_from_value(value).map(Some).map_err(Into::into),
+                _ => T::try_from_value(value).map(Some),
             })
     }
 }

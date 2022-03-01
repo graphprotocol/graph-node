@@ -19,7 +19,7 @@ impl SqlValue {
 impl ToSql<Bool, Pg> for SqlValue {
     fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
         match &self.0 {
-            Value::Bool(b) => <bool as ToSql<Bool, Pg>>::to_sql(&b, out),
+            Value::Bool(b) => <bool as ToSql<Bool, Pg>>::to_sql(b, out),
             v => Err(anyhow!(
                 "Failed to convert non-boolean attribute value to boolean in SQL: {}",
                 v
@@ -32,7 +32,7 @@ impl ToSql<Bool, Pg> for SqlValue {
 impl ToSql<Integer, Pg> for SqlValue {
     fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
         match &self.0 {
-            Value::Int(i) => <i32 as ToSql<Integer, Pg>>::to_sql(&i, out),
+            Value::Int(i) => <i32 as ToSql<Integer, Pg>>::to_sql(i, out),
             v => Err(anyhow!(
                 "Failed to convert non-int attribute value to int in SQL: {}",
                 v
@@ -45,7 +45,7 @@ impl ToSql<Integer, Pg> for SqlValue {
 impl ToSql<Text, Pg> for SqlValue {
     fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
         match &self.0 {
-            Value::String(s) => <String as ToSql<Text, Pg>>::to_sql(&s, out),
+            Value::String(s) => <String as ToSql<Text, Pg>>::to_sql(s, out),
             Value::Bytes(h) => <String as ToSql<Text, Pg>>::to_sql(&h.to_string(), out),
             v => Err(anyhow!(
                 "Failed to convert attribute value to String or Bytes in SQL: {}",

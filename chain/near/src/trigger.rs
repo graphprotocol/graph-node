@@ -162,7 +162,8 @@ mod tests {
         let mut heap = BytesHeap::new(API_VERSION_0_0_5);
         let trigger = NearTrigger::Block(Arc::new(block()));
 
-        let result = blockchain::MappingTrigger::to_asc_ptr(trigger, &mut heap, &GasCounter::new());
+        let result =
+            blockchain::MappingTrigger::to_asc_ptr(trigger, &mut heap, &GasCounter::default());
         assert!(result.is_ok());
     }
 
@@ -175,7 +176,8 @@ mod tests {
             receipt: receipt().unwrap(),
         }));
 
-        let result = blockchain::MappingTrigger::to_asc_ptr(trigger, &mut heap, &GasCounter::new());
+        let result =
+            blockchain::MappingTrigger::to_asc_ptr(trigger, &mut heap, &GasCounter::default());
         assert!(result.is_ok());
     }
 

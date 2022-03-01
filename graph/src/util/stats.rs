@@ -171,9 +171,9 @@ impl MovingStats {
             .map(|existing| now.saturating_duration_since(existing.start) >= self.window_size)
             .unwrap_or(false)
         {
-            self.bins.pop_front().map(|existing| {
+            if let Some(existing) = self.bins.pop_front() {
                 self.total.remove(&existing);
-            });
+            }
         }
     }
 

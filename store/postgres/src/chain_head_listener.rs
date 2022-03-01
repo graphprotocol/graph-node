@@ -221,7 +221,7 @@ impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
                 self.watchers
                     .write(&logger)
                     .entry(network_name)
-                    .or_insert_with(|| Watcher::new())
+                    .or_insert_with(Watcher::new)
                     .receiver
                     .clone()
             }

@@ -219,7 +219,7 @@ pub fn schema(conn: &PgConnection, site: &Site) -> Result<Schema, StoreError> {
         .select(sm::schema)
         .filter(sm::id.eq(site.id))
         .first(conn)?;
-    Schema::parse(s.as_str(), site.deployment.clone()).map_err(|e| StoreError::Unknown(e))
+    Schema::parse(s.as_str(), site.deployment.clone()).map_err(StoreError::Unknown)
 }
 
 pub fn manifest_info(
@@ -354,7 +354,7 @@ pub fn forward_block_ptr(
 
         // No matching rows were found. This is an error. By the filter conditions, this can only be
         // due to a missing deployment (which `block_ptr` catches) or duplicate block processing.
-        0 => match block_ptr(&conn, id)? {
+        0 => match block_ptr(conn, id)? {
             Some(block_ptr_from) if block_ptr_from.number >= ptr.number => {
                 Err(StoreError::DuplicateBlockProcessing(id.clone(), ptr.number))
             }
@@ -393,7 +393,7 @@ pub fn get_subgraph_firehose_cursor(
         .filter(d::deployment.eq(deployment_hash.as_str()))
         .select(d::firehose_cursor)
         .first::<Option<String>>(conn)
-        .map_err(|e| StoreError::from(e));
+        .map_err(StoreError::from);
     res
 }
 
@@ -924,7 +924,7 @@ pub fn create_deployment(
         d::debug_fork.eq(debug_fork.as_ref().map(|s| s.as_str())),
     );
 
-    let graph_node_version_id = GraphNodeVersion::create_or_get(&conn)?;
+    let graph_node_version_id = GraphNodeVersion::create_or_get(conn)?;
 
     let manifest_values = (
         m::id.eq(site.id),

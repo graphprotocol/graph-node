@@ -333,7 +333,7 @@ impl TableState {
             id: i32,
         ) -> Result<Arc<Table>, StoreError> {
             layout
-                .table_for_entity(&entity_type)
+                .table_for_entity(entity_type)
                 .map_err(|e| {
                     constraint_violation!(
                         "invalid {} table {} in CopyState {} (table {}): {}",

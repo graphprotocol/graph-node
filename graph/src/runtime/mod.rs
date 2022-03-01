@@ -76,7 +76,7 @@ impl<T> AscType for std::marker::PhantomData<T> {
         asc_obj: &[u8],
         _api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
-        assert!(asc_obj.len() == 0);
+        assert!(asc_obj.is_empty());
 
         Ok(Self)
     }

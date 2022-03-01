@@ -279,7 +279,7 @@ impl Layout {
         let id_types_for_interface = schema.types_for_interface.iter().map(|(interface, types)| {
             types
                 .iter()
-                .map(|obj_type| IdType::try_from(obj_type))
+                .map(IdType::try_from)
                 .collect::<Result<HashSet<_>, _>>()
                 .and_then(move |types| {
                     if types.len() > 1 {
@@ -327,7 +327,7 @@ impl Layout {
             tables.push(Self::make_poi_table(&catalog, tables.len()))
         }
 
-        let tables: Vec<_> = tables.into_iter().map(|table| Arc::new(table)).collect();
+        let tables: Vec<_> = tables.into_iter().map(Arc::new).collect();
 
         let count_query = tables
             .iter()
@@ -543,7 +543,7 @@ impl Layout {
             .transpose()
     }
 
-    pub fn find_many<'a>(
+    pub fn find_many(
         &self,
         conn: &PgConnection,
         ids_for_type: &BTreeMap<&EntityType, Vec<&str>>,
@@ -713,7 +713,7 @@ impl Layout {
             );
         }
 
-        let filter_collection = FilterCollection::new(&self, collection, filter.as_ref())?;
+        let filter_collection = FilterCollection::new(self, collection, filter.as_ref())?;
         let query = FilterQuery::new(
             &filter_collection,
             filter.as_ref(),
@@ -764,7 +764,7 @@ impl Layout {
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(&entity_type)?;
+        let table = self.table_for_entity(entity_type)?;
         if table.immutable {
             return Err(constraint_violation!(
                 "entities of type `{}` can not be updated since they are immutable",
@@ -803,7 +803,7 @@ impl Layout {
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(&entity_type)?;
+        let table = self.table_for_entity(entity_type)?;
         if table.immutable {
             return Err(constraint_violation!(
                 "entities of type `{}` can not be deleted since they are immutable",
@@ -888,8 +888,8 @@ impl Layout {
         subgraph: &DeploymentHash,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
-        crate::dynds::revert(conn, &subgraph, block)?;
-        crate::deployment::revert_subgraph_errors(conn, &subgraph, block)?;
+        crate::dynds::revert(conn, subgraph, block)?;
+        crate::deployment::revert_subgraph_errors(conn, subgraph, block)?;
 
         Ok(())
     }
@@ -1113,7 +1113,7 @@ impl Column {
         Ok(Column {
             name: sql_name,
             field: def.name.to_string(),
-            field_type: q::Type::NamedType(String::from("fulltext".to_string())),
+            field_type: q::Type::NamedType("fulltext".to_string()),
             column_type: ColumnType::TSVector(def.config.clone()),
             fulltext_fields: Some(def.included_fields.clone()),
             is_reference: false,
@@ -1260,7 +1260,7 @@ impl Table {
             .iter()
             .filter(|field| !field.is_derived())
             .map(|field| Column::new(&table_name, field, catalog, enums, id_types))
-            .chain(fulltexts.iter().map(|def| Column::new_fulltext(def)))
+            .chain(fulltexts.iter().map(Column::new_fulltext))
             .collect::<Result<Vec<Column>, StoreError>>()?;
         let qualified_name = SqlName::qualified_name(&catalog.site.namespace, &table_name);
         let is_account_like = ACCOUNT_TABLES.contains(qualified_name.as_str());
@@ -1276,7 +1276,7 @@ impl Table {
 
         let table = Table {
             object: EntityType::from(defn),
-            name: table_name.clone(),
+            name: table_name,
             qualified_name,
             is_account_like,
             columns,
@@ -1303,7 +1303,7 @@ impl Table {
     pub fn column_for_field(&self, field: &str) -> Result<&Column, StoreError> {
         self.columns
             .iter()
-            .find(|column| &column.field == field)
+            .find(|column| column.field == field)
             .ok_or_else(|| StoreError::UnknownField(field.to_string()))
     }
 
@@ -1622,8 +1622,8 @@ impl LayoutCache {
                     // simultaneously. It's easiest to refresh at most one
                     // layout globally
                     let refresh = self.refresh.try_lock();
-                    if let Err(_) = refresh {
-                        return Ok(value.clone());
+                    if refresh.is_err() {
+                        return Ok(value);
                     }
                     match value.cheap_clone().refresh(conn, site) {
                         Err(e) => {

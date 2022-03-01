@@ -394,7 +394,7 @@ impl Resolver for IntrospectionResolver {
                                 _ => None,
                             })
                             .filter_map(|type_name| self.type_objects.get(type_name).cloned())
-                            .map(|v| r::Value::try_from(v))
+                            .map(r::Value::try_from)
                             .collect::<Result<_, _>>()
                             .map_err(|v| {
                                 QueryExecutionError::ValueParseError(

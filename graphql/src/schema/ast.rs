@@ -164,14 +164,14 @@ pub fn get_field<'a>(
         };
     }
 
-    if name == &TYPENAME_FIELD.name {
+    if name == TYPENAME_FIELD.name {
         Some(&TYPENAME_FIELD)
     } else {
         object_type
             .into()
             .fields()
             .iter()
-            .find(|field| &field.name == name)
+            .find(|field| field.name == name)
     }
 }
 
@@ -188,8 +188,8 @@ pub fn get_field_value_type(field_type: &s::Type) -> Result<ValueType, Error> {
 pub fn get_field_name(field_type: &s::Type) -> String {
     match field_type {
         s::Type::NamedType(name) => name.to_string(),
-        s::Type::NonNullType(inner) => get_field_name(&inner),
-        s::Type::ListType(inner) => get_field_name(&inner),
+        s::Type::NonNullType(inner) => get_field_name(inner),
+        s::Type::ListType(inner) => get_field_name(inner),
     }
 }
 
@@ -205,14 +205,7 @@ fn get_named_type_definition_mut<'a>(
             s::Definition::TypeDefinition(typedef) => Some(typedef),
             _ => None,
         })
-        .find(|typedef| match typedef {
-            s::TypeDefinition::Object(t) => &t.name == name,
-            s::TypeDefinition::Enum(t) => &t.name == name,
-            s::TypeDefinition::InputObject(t) => &t.name == name,
-            s::TypeDefinition::Interface(t) => &t.name == name,
-            s::TypeDefinition::Scalar(t) => &t.name == name,
-            s::TypeDefinition::Union(t) => &t.name == name,
-        })
+        .find(|typedef| get_type_name(typedef) == name)
 }
 
 /// Returns the name of a type.
@@ -305,7 +298,7 @@ pub fn is_input_type(schema: &s::Document, t: &s::Type) -> bool {
 pub fn is_entity_type(schema: &s::Document, t: &s::Type) -> bool {
     match t {
         s::Type::NamedType(name) => schema
-            .get_named_type(&name)
+            .get_named_type(name)
             .map_or(false, is_entity_type_definition),
         s::Type::ListType(inner_type) => is_entity_type(schema, inner_type),
         s::Type::NonNullType(inner_type) => is_entity_type(schema, inner_type),
@@ -342,7 +335,7 @@ pub fn is_list_or_non_null_list_field(field: &s::Field) -> bool {
 
 fn unpack_type<'a>(schema: &'a s::Document, t: &s::Type) -> Option<&'a s::TypeDefinition> {
     match t {
-        s::Type::NamedType(name) => schema.get_named_type(&name),
+        s::Type::NamedType(name) => schema.get_named_type(name),
         s::Type::ListType(inner_type) => unpack_type(schema, inner_type),
         s::Type::NonNullType(inner_type) => unpack_type(schema, inner_type),
     }
@@ -357,7 +350,7 @@ pub fn get_referenced_entity_type<'a>(
 
 /// If the field has a `@derivedFrom(field: "foo")` directive, obtain the
 /// name of the field (e.g. `"foo"`)
-pub fn get_derived_from_directive<'a>(field_definition: &s::Field) -> Option<&s::Directive> {
+pub fn get_derived_from_directive(field_definition: &s::Field) -> Option<&s::Directive> {
     field_definition.find_directive("derivedFrom")
 }
 

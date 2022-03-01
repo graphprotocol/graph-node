@@ -82,7 +82,7 @@ impl BigDecimal {
         let int_val = num_bigint::BigInt::from_radix_be(sign, &digits, 10).unwrap();
         let scale = exp - trailing_count as i64;
 
-        BigDecimal(bigdecimal::BigDecimal::new(int_val.into(), scale))
+        BigDecimal(bigdecimal::BigDecimal::new(int_val, scale))
     }
 }
 
@@ -236,7 +236,7 @@ impl<'a> TryFrom<&'a BigInt> for u64 {
         let mut n = 0u64;
         let mut shift_dist = 0;
         for b in bytes {
-            n = ((b as u64) << shift_dist) | n;
+            n |= (b as u64) << shift_dist;
             shift_dist += 8;
         }
         Ok(n)

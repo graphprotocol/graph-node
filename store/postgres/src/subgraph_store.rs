@@ -379,14 +379,14 @@ impl SubgraphStoreInner {
         let store = self
             .stores
             .get(&site.shard)
-            .ok_or(StoreError::UnknownShard(site.shard.as_str().to_string()))?;
+            .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))?;
         Ok((store, site))
     }
 
     pub(crate) fn for_site(&self, site: &Site) -> Result<&Arc<DeploymentStore>, StoreError> {
         self.stores
             .get(&site.shard)
-            .ok_or(StoreError::UnknownShard(site.shard.as_str().to_string()))
+            .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))
     }
 
     pub(crate) fn layout(&self, id: &DeploymentHash) -> Result<Arc<Layout>, StoreError> {
@@ -496,7 +496,7 @@ impl SubgraphStoreInner {
             //       the same deployment in another shard
             let (shard, node_id) = self.place(&name, &network_name, node_id)?;
             let conn = self.primary_conn()?;
-            let site = conn.allocate_site(shard.clone(), &schema.id, network_name)?;
+            let site = conn.allocate_site(shard, &schema.id, network_name)?;
             let node_id = conn.assigned_node(&site)?.unwrap_or(node_id);
             (site, node_id)
         };
@@ -689,7 +689,7 @@ impl SubgraphStoreInner {
         let (store, site) = self.store(&id)?;
         let replica = store.replica_for_query(for_subscription)?;
 
-        Ok((store.clone(), site.clone(), replica))
+        Ok((store.clone(), site, replica))
     }
 
     /// Delete all entities. This function exists solely for integration tests
@@ -719,7 +719,7 @@ impl SubgraphStoreInner {
         &self,
         sites: Vec<Site>,
     ) -> Result<HashMap<Shard, Vec<Arc<Site>>>, StoreError> {
-        let sites: Vec<_> = sites.into_iter().map(|site| Arc::new(site)).collect();
+        let sites: Vec<_> = sites.into_iter().map(Arc::new).collect();
         for site in &sites {
             self.cache_active(site);
         }
@@ -751,7 +751,7 @@ impl SubgraphStoreInner {
             let store = self
                 .stores
                 .get(&shard)
-                .ok_or(StoreError::UnknownShard(shard.to_string()))?;
+                .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
             let ids = ids
                 .into_iter()
                 .map(|site| site.deployment.to_string())
@@ -839,7 +839,7 @@ impl SubgraphStoreInner {
             let store = self
                 .stores
                 .get(&shard)
-                .ok_or(StoreError::UnknownShard(shard.to_string()))?;
+                .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
             infos.extend(store.deployment_statuses(&sites)?);
         }
         self.mirror.fill_assignments(&mut infos)?;
@@ -860,7 +860,7 @@ impl SubgraphStoreInner {
                 .first()
                 .ok_or_else(|| constraint_violation!("no chain info for {}", deployment_id))?;
             let latest_ethereum_block_number =
-                chain.latest_block.as_ref().map(|ref block| block.number());
+                chain.latest_block.as_ref().map(|block| block.number());
             let subgraph_info = store.subgraph_info(site.as_ref())?;
             let network = site.network.clone();
 
@@ -874,7 +874,7 @@ impl SubgraphStoreInner {
                 description: subgraph_info.description,
                 repository: subgraph_info.repository,
                 schema: subgraph_info.input,
-                network: network.to_string(),
+                network,
             };
             Ok(info)
         } else {
@@ -919,7 +919,7 @@ impl SubgraphStoreInner {
         indexer: &Option<Address>,
         block: BlockPtr,
     ) -> Result<Option<[u8; 32]>, StoreError> {
-        let (store, site) = self.store(&id).unwrap();
+        let (store, site) = self.store(id).unwrap();
         store.get_proof_of_indexing(site, indexer, block).await
     }
 
@@ -1087,13 +1087,13 @@ impl SubgraphStoreTrait for SubgraphStore {
     }
 
     fn input_schema(&self, id: &DeploymentHash) -> Result<Arc<Schema>, StoreError> {
-        let (store, site) = self.store(&id)?;
+        let (store, site) = self.store(id)?;
         let info = store.subgraph_info(&site)?;
         Ok(info.input)
     }
 
     fn api_schema(&self, id: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError> {
-        let (store, site) = self.store(&id)?;
+        let (store, site) = self.store(id)?;
         let info = store.subgraph_info(&site)?;
         Ok(info.api)
     }
@@ -1103,7 +1103,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         id: &DeploymentHash,
         logger: Logger,
     ) -> Result<Option<Arc<dyn SubgraphFork>>, StoreError> {
-        let (store, site) = self.store(&id)?;
+        let (store, site) = self.store(id)?;
         let info = store.subgraph_info(&site)?;
         let fork_id = info.debug_fork;
         let schema = info.input;
@@ -1165,7 +1165,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError> {
         Ok(self
             .mirror
-            .find_sites(&vec![hash.to_string()], false)?
+            .find_sites(&[hash.to_string()], false)?
             .iter()
             .map(|site| site.into())
             .collect())

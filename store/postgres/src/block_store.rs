@@ -268,7 +268,7 @@ impl BlockStore {
                     );
                         return false;
                     }
-                    if &chain.genesis_block != &ident.genesis_block_hash.hash_hex() {
+                    if chain.genesis_block != ident.genesis_block_hash.hash_hex() {
                         error!(logger,
                         "the genesis block hash for chain {} has changed from {} to {} since the last time we ran",
                         chain.name,
@@ -301,11 +301,11 @@ impl BlockStore {
                     } else {
                         ChainStatus::ReadOnly
                     };
-                    block_store.add_chain_store(&chain, status, false)?;
+                    block_store.add_chain_store(chain, status, false)?;
                 }
                 (None, Some(ident)) => {
                     let chain = primary::add_chain(
-                        &block_store.mirror.primary(),
+                        block_store.mirror.primary(),
                         &chain_name,
                         &ident,
                         &shard,
@@ -335,7 +335,7 @@ impl BlockStore {
             .iter()
             .filter(|chain| !configured_chains.contains(&chain.name))
         {
-            block_store.add_chain_store(&chain, ChainStatus::ReadOnly, false)?;
+            block_store.add_chain_store(chain, ChainStatus::ReadOnly, false)?;
         }
         Ok(block_store)
     }
@@ -419,7 +419,7 @@ impl BlockStore {
         // See if we have that chain in the database even if it wasn't one
         // of the configured chains
         self.mirror.read(|conn| {
-            primary::find_chain(&conn, chain).and_then(|chain| {
+            primary::find_chain(conn, chain).and_then(|chain| {
                 chain
                     .map(|chain| self.add_chain_store(&chain, ChainStatus::ReadOnly, false))
                     .transpose()
@@ -454,7 +454,7 @@ impl BlockStore {
 
         // Delete from the primary first since that's where
         // deployment_schemas has a fk constraint on chains
-        primary::drop_chain(&self.mirror.primary(), chain)?;
+        primary::drop_chain(self.mirror.primary(), chain)?;
 
         chain_store.drop_chain()?;
 
@@ -464,7 +464,7 @@ impl BlockStore {
     }
 
     fn truncate_block_caches(&self) -> Result<(), StoreError> {
-        for (_chain, store) in &*self.stores.read().unwrap() {
+        for store in self.stores.read().unwrap().values() {
             store.truncate_block_cache()?
         }
         Ok(())

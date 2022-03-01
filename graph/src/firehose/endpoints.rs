@@ -47,7 +47,7 @@ impl FirehoseEndpoint {
             .parse::<Uri>()
             .expect("the url should have been validated by now, so it is a valid Uri");
 
-        let endpoint = match uri.scheme().unwrap_or_else(|| &Scheme::HTTP).as_str() {
+        let endpoint = match uri.scheme().unwrap_or(&Scheme::HTTP).as_str() {
             "http" => Channel::builder(uri),
             "https" => Channel::builder(uri)
                 .tls_config(ClientTlsConfig::new())
@@ -195,13 +195,9 @@ impl FirehoseEndpoints {
     }
 
     pub fn random(&self) -> Option<&Arc<FirehoseEndpoint>> {
-        if self.0.len() == 0 {
-            return None;
-        }
-
         // Select from the matching adapters randomly
         let mut rng = rand::thread_rng();
-        Some(&self.0.iter().choose(&mut rng).unwrap())
+        self.0.iter().choose(&mut rng)
     }
 
     pub fn remove(&mut self, provider: &str) {
@@ -228,9 +224,9 @@ impl FirehoseNetworks {
         let endpoints = self
             .networks
             .entry(chain_id)
-            .or_insert(FirehoseEndpoints::new());
+            .or_insert_with(FirehoseEndpoints::new);
 
-        endpoints.0.push(endpoint.clone());
+        endpoints.0.push(endpoint);
     }
 
     pub fn remove(&mut self, chain_id: &str, provider: &str) {

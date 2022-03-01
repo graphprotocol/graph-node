@@ -1,5 +1,4 @@
 use graph::prelude::q::*;
-use std::ops::Deref;
 
 use graph::prelude::QueryExecutionError;
 
@@ -39,10 +38,10 @@ pub fn get_operations(document: &Document) -> Vec<&OperationDefinition> {
 /// Returns the name of the given operation (if it has one).
 pub fn get_operation_name(operation: &OperationDefinition) -> Option<&str> {
     match operation {
-        OperationDefinition::Mutation(m) => m.name.as_ref().map(Deref::deref),
-        OperationDefinition::Query(q) => q.name.as_ref().map(Deref::deref),
+        OperationDefinition::Mutation(m) => m.name.as_deref(),
+        OperationDefinition::Query(q) => q.name.as_deref(),
         OperationDefinition::SelectionSet(_) => None,
-        OperationDefinition::Subscription(s) => s.name.as_ref().map(Deref::deref),
+        OperationDefinition::Subscription(s) => s.name.as_deref(),
     }
 }
 

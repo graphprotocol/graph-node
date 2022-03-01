@@ -75,16 +75,12 @@ impl Display for Gas {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct GasCounter(Arc<AtomicU64>);
 
 impl CheapClone for GasCounter {}
 
 impl GasCounter {
-    pub fn new() -> Self {
-        Self(Arc::new(AtomicU64::new(0)))
-    }
-
     /// This should be called once per host export
     pub fn consume_host_fn(&self, mut amount: Gas) -> Result<(), DeterministicHostError> {
         amount += costs::HOST_EXPORT_GAS;

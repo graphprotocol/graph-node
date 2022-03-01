@@ -108,7 +108,7 @@ impl<'a> ObjectOrInterface<'a> {
         }
     }
 
-    pub fn field(&self, name: &String) -> Option<&s::Field> {
+    pub fn field(&self, name: &str) -> Option<&s::Field> {
         self.fields().iter().find(|field| &field.name == name)
     }
 

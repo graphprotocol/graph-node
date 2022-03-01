@@ -71,8 +71,8 @@ pub fn validate_subgraph_features<C: Blockchain>(
     manifest: &SubgraphManifest<C>,
 ) -> Result<BTreeSet<SubgraphFeature>, SubgraphFeatureValidationError> {
     let declared: &BTreeSet<SubgraphFeature> = &manifest.features;
-    let used = detect_features(&manifest)?;
-    let undeclared: BTreeSet<SubgraphFeature> = used.difference(&declared).cloned().collect();
+    let used = detect_features(manifest)?;
+    let undeclared: BTreeSet<SubgraphFeature> = used.difference(declared).cloned().collect();
     if !undeclared.is_empty() {
         Err(SubgraphFeatureValidationError::Undeclared(undeclared))
     } else {
@@ -84,13 +84,13 @@ pub fn detect_features<C: Blockchain>(
     manifest: &SubgraphManifest<C>,
 ) -> Result<BTreeSet<SubgraphFeature>, InvalidMapping> {
     let features = vec![
-        detect_non_fatal_errors(&manifest),
-        detect_grafting(&manifest),
+        detect_non_fatal_errors(manifest),
+        detect_grafting(manifest),
         detect_full_text_search(&manifest.schema),
-        detect_ipfs_on_ethereum_contracts(&manifest)?,
+        detect_ipfs_on_ethereum_contracts(manifest)?,
     ]
     .into_iter()
-    .filter_map(|x| x)
+    .flatten()
     .collect();
     Ok(features)
 }
@@ -152,7 +152,7 @@ mod tests {
         FullTextSearch,
         IpfsOnEthereumContracts,
     ];
-    const STRING: [&'static str; 4] = [
+    const STRING: [&str; 4] = [
         "nonFatalErrors",
         "grafting",
         "fullTextSearch",

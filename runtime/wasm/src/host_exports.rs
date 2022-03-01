@@ -204,8 +204,8 @@ impl<C: Blockchain> HostExports<C> {
     ) -> Result<Option<Entity>, anyhow::Error> {
         let store_key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
-            entity_type: EntityType::new(entity_type.clone()),
-            entity_id: entity_id.clone(),
+            entity_type: EntityType::new(entity_type),
+            entity_id,
         };
 
         let result = state.entity_cache.get(&store_key)?;
@@ -619,7 +619,7 @@ impl<C: Blockchain> HostExports<C> {
                     self.data_source_name,
                     self.templates
                         .iter()
-                        .map(|template| template.name().clone())
+                        .map(|template| template.name())
                         .collect::<Vec<_>>()
                         .join(", ")
                 )
@@ -745,8 +745,8 @@ impl<C: Blockchain> HostExports<C> {
     ) -> Result<Token, anyhow::Error> {
         gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(complexity::Size, &data))?;
 
-        let param_types = Reader::read(&types)
-            .or_else(|e| Err(anyhow::anyhow!("Failed to read types: {}", e)))?;
+        let param_types =
+            Reader::read(&types).map_err(|e| anyhow::anyhow!("Failed to read types: {}", e))?;
 
         decode(&[param_types], &data)
             // The `.pop().unwrap()` here is ok because we're always only passing one
