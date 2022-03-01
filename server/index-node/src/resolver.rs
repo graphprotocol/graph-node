@@ -384,35 +384,33 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
 
     for (entity_type, entities) in updates {
         updates_graphql.push(object! {
-            type: r::Value::String(entity_type.to_string()),
+            type: entity_type.to_string(),
             entities:
-                r::Value::List(
-                    entities
-                        .into_iter()
-                        .map(|e| {
-                            r::Value::object(
-                                e.sorted()
-                                    .into_iter()
-                                    .map(|(name, value)| (name, value.into()))
-                                    .collect(),
-                            )
-                        })
-                        .collect(),
-                ),
+                entities
+                    .into_iter()
+                    .map(|e| {
+                        r::Value::object(
+                            e.sorted()
+                                .into_iter()
+                                .map(|(name, value)| (name, value.into()))
+                                .collect(),
+                        )
+                    })
+                    .collect::<Vec<r::Value>>(),
         });
     }
 
     for (entity_type, ids) in deletions {
         deletions_graphql.push(object! {
-            type: r::Value::String(entity_type.to_string()),
+            type: entity_type.to_string(),
             entities:
-                r::Value::List(ids.into_iter().map(r::Value::String).collect()),
+                ids.into_iter().map(r::Value::String).collect::<Vec<r::Value>>(),
         });
     }
 
     object! {
-        updates:r::Value::List(updates_graphql),
-        deletions:r::Value::List(deletions_graphql),
+        updates: updates_graphql,
+        deletions: deletions_graphql,
     }
 }
 
