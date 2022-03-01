@@ -372,22 +372,14 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
                 let fields = data
                     .sorted()
                     .into_iter()
-                    .map(|(name, value)| {
-                        let json = serde_json::to_string(&value)
-                            .expect("Can't serialize entity data to JSON.");
-
-                        let mut map = BTreeMap::new();
-                        map.insert("field".to_string(), r::Value::String(name));
-                        map.insert("valueAsJSON".to_string(), r::Value::String(json));
-                        r::Value::object(map)
-                    })
+                    .map(|(name, value)| (name, value.into()))
                     .collect();
                 let graphql_object = r::Value::object(BTreeMap::from([
                     (
                         "entityType".to_string(),
                         r::Value::String(key.entity_type.to_string()),
                     ),
-                    ("fields".to_string(), r::Value::List(fields)),
+                    ("fields".to_string(), r::Value::Object(fields)),
                 ]));
 
                 updates.push(graphql_object);

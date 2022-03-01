@@ -4,6 +4,7 @@ scalar Bytes
 scalar ID
 scalar Int
 scalar String
+scalar JSONObject
 
 type Query {
   indexingStatusForCurrentVersion(subgraphName: String!): SubgraphIndexingStatus
@@ -66,12 +67,7 @@ type EntityChanges {
 
 type EntityData {
   entityType: String!
-  fields: [EntityField!]!
-}
-
-type EntityField {
-  field: String!
-  valueAsJSON: String!
+  fields: JSONObject!
 }
 
 type Block {
