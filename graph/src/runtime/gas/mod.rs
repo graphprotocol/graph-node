@@ -81,6 +81,11 @@ pub struct GasCounter(Arc<AtomicU64>);
 impl CheapClone for GasCounter {}
 
 impl GasCounter {
+    /// Alias of [`Default::default`].
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// This should be called once per host export
     pub fn consume_host_fn(&self, mut amount: Gas) -> Result<(), DeterministicHostError> {
         amount += costs::HOST_EXPORT_GAS;
