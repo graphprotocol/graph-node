@@ -16,7 +16,7 @@ use graph::{
     components::{
         server::index_node::VersionInfo,
         store::{
-            self, DeploymentLocator, EnsLookup as EnsLookupTrait, EntityType, SubgraphFork,
+            self, DeploymentLocator, EnsLookup as EnsLookupTrait, SubgraphFork,
             WritableStore as WritableStoreTrait,
         },
     },
@@ -27,9 +27,8 @@ use graph::{
     prelude::SubgraphDeploymentEntity,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        BlockNumber, BlockPtr, DeploymentHash, EntityModification, Logger, NodeId, Schema,
-        StoreError, SubgraphName, SubgraphStore as SubgraphStoreTrait,
-        SubgraphVersionSwitchingMode,
+        BlockNumber, BlockPtr, DeploymentHash, EntityOperation, Logger, NodeId, Schema, StoreError,
+        SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
     url::Url,
     util::timed_cache::TimedCache,
@@ -1084,7 +1083,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         &self,
         subgraph_id: &DeploymentHash,
         block: BlockNumber,
-    ) -> Result<Vec<EntityModification<EntityType>>, StoreError> {
+    ) -> Result<Vec<EntityOperation>, StoreError> {
         let (store, site) = self.store(subgraph_id)?;
         let changes = store.get_changes(site, block)?;
         Ok(changes)

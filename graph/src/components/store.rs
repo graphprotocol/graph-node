@@ -996,7 +996,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
         &self,
         subgraph_id: &DeploymentHash,
         block_number: BlockNumber,
-    ) -> Result<Vec<EntityModification<EntityType>>, StoreError>;
+    ) -> Result<Vec<EntityOperation>, StoreError>;
 
     /// Return the GraphQL schema supplied by the user
     fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<Schema>, StoreError>;
@@ -1354,13 +1354,13 @@ pub trait StatusStore: Send + Sync + 'static {
 /// `EntityOperation`, we already know whether a `Set` should be an `Insert`
 /// or `Update`
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum EntityModification<K = EntityKey> {
+pub enum EntityModification {
     /// Insert the entity
-    Insert { key: K, data: Entity },
+    Insert { key: EntityKey, data: Entity },
     /// Update the entity by overwriting it
-    Overwrite { key: K, data: Entity },
+    Overwrite { key: EntityKey, data: Entity },
     /// Remove the entity
-    Remove { key: K },
+    Remove { key: EntityKey },
 }
 
 impl EntityModification {

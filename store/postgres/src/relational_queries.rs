@@ -470,6 +470,26 @@ impl FromColumnValue for graph::prelude::Value {
     }
 }
 
+/// A [`diesel`] utility `struct` for fetching only [`EntityType`] and entity's
+/// ID. Unlike [`EntityData`], we don't really care about attributes here.
+#[derive(QueryableByName)]
+pub struct EntityDeletion {
+    #[sql_type = "Text"]
+    entity: String,
+    #[sql_type = "Text"]
+    id: String,
+}
+
+impl EntityDeletion {
+    pub fn entity_type(&self) -> EntityType {
+        EntityType::new(self.entity.clone())
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
 /// Helper struct for retrieving entities from the database. With diesel, we
 /// can only run queries that return columns whose number and type are known
 /// at compile time. Because of that, we retrieve the actual data for an
@@ -1256,13 +1276,13 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindChangesQuery<'a> {}
 /// entities; i.e. such that the block range's lower bound is equal to said
 /// block number.
 #[derive(Debug, Clone, Constructor)]
-pub struct FindDeletesQuery<'a> {
+pub struct FindDeletionsQuery<'a> {
     pub(crate) _namespace: &'a Namespace,
     pub(crate) tables: &'a [&'a Table],
     pub(crate) block: BlockNumber,
 }
 
-impl<'a> QueryFragment<Pg> for FindDeletesQuery<'a> {
+impl<'a> QueryFragment<Pg> for FindDeletionsQuery<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
@@ -1272,7 +1292,7 @@ impl<'a> QueryFragment<Pg> for FindDeletesQuery<'a> {
             }
             out.push_sql("select ");
             out.push_bind_param::<Text, _>(&table.object.as_str())?;
-            out.push_sql(" as entity, to_jsonb(e.*) as data\n");
+            out.push_sql(" as entity, e.id\n");
             out.push_sql("  from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" e\n where ");
@@ -1283,19 +1303,19 @@ impl<'a> QueryFragment<Pg> for FindDeletesQuery<'a> {
     }
 }
 
-impl<'a> QueryId for FindDeletesQuery<'a> {
+impl<'a> QueryId for FindDeletionsQuery<'a> {
     type QueryId = ();
 
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, EntityData> for FindDeletesQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
+impl<'a> LoadQuery<PgConnection, EntityDeletion> for FindDeletionsQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityDeletion>> {
         conn.query_by_name(&self)
     }
 }
 
-impl<'a, Conn> RunQueryDsl<Conn> for FindDeletesQuery<'a> {}
+impl<'a, Conn> RunQueryDsl<Conn> for FindDeletionsQuery<'a> {}
 
 #[derive(Debug, Clone, Constructor)]
 pub struct FindManyQuery<'a> {

@@ -24,12 +24,12 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::relational_queries::{FindChangesQuery, FindDeletesQuery};
+use crate::relational_queries::{FindChangesQuery, FindDeletionsQuery};
 use crate::{
     primary::{Namespace, Site},
     relational_queries::{
-        ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterCollection, FilterQuery,
-        FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
+        ClampRangeQuery, ConflictingEntityQuery, EntityData, EntityDeletion, FilterCollection,
+        FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
     },
 };
 use graph::components::store::EntityType;
@@ -39,7 +39,7 @@ use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{
     anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityCollection,
-    EntityFilter, EntityKey, EntityModification, EntityOrder, EntityRange, Logger,
+    EntityFilter, EntityKey, EntityOperation, EntityOrder, EntityRange, Logger,
     QueryExecutionError, StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,
 };
 
@@ -577,7 +577,7 @@ impl Layout {
         &self,
         conn: &PgConnection,
         block: BlockNumber,
-    ) -> Result<Vec<EntityModification<EntityType>>, StoreError> {
+    ) -> Result<Vec<EntityOperation>, StoreError> {
         let mut tables = Vec::new();
         for table in self.tables.values() {
             tables.push(&**table);
@@ -586,30 +586,44 @@ impl Layout {
         let inserts_or_updates =
             FindChangesQuery::new(&self.catalog.site.namespace, &tables[..], block)
                 .load::<EntityData>(conn)?;
-        let deletes = FindDeletesQuery::new(&self.catalog.site.namespace, &tables[..], block)
-            .load::<EntityData>(conn)?;
+        let deletions = FindDeletionsQuery::new(&self.catalog.site.namespace, &tables[..], block)
+            .load::<EntityDeletion>(conn)?;
 
         let mut changes = Vec::new();
 
-        for data in deletes.into_iter() {
+        for del in deletions.into_iter() {
+            let entity_type = del.entity_type();
+            let entity_id = del.id().to_string();
+
             // The complexity is bad here (we're iterating over the set of
             // updated entities for every deletion). This query, however, is
-            // not particularly performance-sensitive
+            // not particularly performance-sensitive and results set are
+            // expected to be relatively small.
             if !inserts_or_updates
                 .iter()
-                .any(|update| update.entity_type() == data.entity_type())
+                .any(|update| update.entity_type() == del.entity_type())
             {
-                changes.push(EntityModification::Remove {
-                    key: data.entity_type(),
+                changes.push(EntityOperation::Remove {
+                    key: EntityKey {
+                        subgraph_id: self.site.deployment.cheap_clone(),
+                        entity_type,
+                        entity_id,
+                    },
                 });
             }
         }
-        for data in inserts_or_updates.into_iter() {
-            // We don't differentiate between [`EntityModification::Insert`]
-            // and [`EntityModification::Overwrite`] here.
-            changes.push(EntityModification::Insert {
-                key: data.entity_type(),
-                data: data.deserialize_with_layout(self)?,
+        for entity_data in inserts_or_updates.into_iter() {
+            let entity_type = entity_data.entity_type();
+            let data: Entity = entity_data.deserialize_with_layout(self)?;
+            let entity_id = data.id().expect("Invalid ID for entity.");
+
+            changes.push(EntityOperation::Set {
+                key: EntityKey {
+                    subgraph_id: self.site.deployment.cheap_clone(),
+                    entity_type,
+                    entity_id,
+                },
+                data,
             });
         }
 

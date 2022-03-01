@@ -6,7 +6,7 @@ use graph::data::subgraph::features::detect_features;
 use graph::data::subgraph::{status, MAX_SPEC_VERSION};
 use graph::prelude::*;
 use graph::{
-    components::store::{EntityType, StatusStore},
+    components::store::StatusStore,
     data::graphql::{IntoValue, ObjectOrInterface, ValueMap},
 };
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
@@ -358,18 +358,17 @@ where
     }
 }
 
-fn entity_changes_to_graphql(entity_changes: Vec<EntityModification<EntityType>>) -> r::Value {
+fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
     // GraphQL subfields of the final object.
     let mut updates = Vec::new();
     let mut deletes = Vec::new();
 
     for change in entity_changes.into_iter() {
         match change {
-            EntityModification::Remove { key } => deletes.push(r::Value::String(key.to_string())),
-            // We can aggregate logic for insertions and updates, as they are
-            // effectively identical.
-            EntityModification::Insert { key, data }
-            | EntityModification::Overwrite { key, data } => {
+            EntityOperation::Remove { key } => {
+                deletes.push(r::Value::String(key.entity_type.to_string()))
+            }
+            EntityOperation::Set { key, data } => {
                 let fields = data
                     .sorted()
                     .into_iter()
@@ -384,7 +383,10 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityModification<EntityType>>
                     })
                     .collect();
                 let graphql_object = r::Value::object(BTreeMap::from([
-                    ("entityType".to_string(), r::Value::String(key.to_string())),
+                    (
+                        "entityType".to_string(),
+                        r::Value::String(key.entity_type.to_string()),
+                    ),
                     ("fields".to_string(), r::Value::List(fields)),
                 ]));
 
