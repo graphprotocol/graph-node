@@ -15,6 +15,7 @@ use crate::trigger::{
 use super::runtime_adapter::UnresolvedContractCall;
 
 type AscH256 = Uint8Array;
+type AscH2048 = Uint8Array;
 
 pub struct AscLogParamArray(Array<AscPtr<AscLogParam>>);
 
@@ -224,6 +225,83 @@ impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_2, AscEthereumBl
 }
 
 impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_6, AscEthereumBlock_0_0_6> {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
+}
+
+#[repr(C)]
+#[derive(AscType)]
+pub(crate) struct AscEthereumLog {
+    pub address: AscPtr<AscH160>,
+    pub topics: AscPtr<Array<AscPtr<AscH256>>>,
+    pub data: AscPtr<Uint8Array>,
+    pub block_hash: AscPtr<AscH256>,
+    pub block_number: AscPtr<AscH256>,
+    pub transaction_hash: AscPtr<AscH256>,
+    pub transaction_index: AscPtr<AscBigInt>,
+    pub log_index: AscPtr<AscBigInt>,
+    pub transaction_log_index: AscPtr<AscBigInt>,
+    pub log_type: AscPtr<AscString>,
+    pub removed: AscPtr<bool>,
+}
+
+impl AscIndexId for AscEthereumLog {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::Log;
+}
+
+#[repr(C)]
+#[derive(AscType)]
+pub(crate) struct AscEthereumTransactionReceipt {
+    pub transaction_hash: AscPtr<AscH256>,
+    pub transaction_index: AscPtr<AscBigInt>,
+    pub block_hash: AscPtr<AscH256>,
+    pub block_number: AscPtr<AscBigInt>,
+    pub from: AscPtr<AscAddress>,
+    pub to: AscPtr<AscAddress>,
+    pub cumulative_gas_used: AscPtr<AscBigInt>,
+    pub gas_used: AscPtr<AscBigInt>,
+    pub contract_address: AscPtr<AscAddress>,
+    pub logs: AscPtr<Array<AscPtr<AscEthereumLog>>>,
+    pub status: AscPtr<AscBigInt>,
+    pub root: AscPtr<AscH256>,
+    pub logs_bloom: AscPtr<AscH2048>,
+    pub transaction_type: AscPtr<AscBigInt>,
+    pub effective_gas_price: AscPtr<AscBigInt>,
+}
+
+impl AscIndexId for AscEthereumTransactionReceipt {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TransactionReceipt;
+}
+
+/// Introduced in API Version 0.0.7, this is the same as [`AscEthereumTransaction`] with an added
+/// `receipt` field.
+#[repr(C)]
+#[derive(AscType)]
+pub(crate) struct AscEthereumEventWithReceipt<T, B>
+where
+    T: AscType,
+    B: AscType,
+{
+    pub address: AscPtr<AscAddress>,
+    pub log_index: AscPtr<AscBigInt>,
+    pub transaction_log_index: AscPtr<AscBigInt>,
+    pub log_type: AscPtr<AscString>,
+    pub block: AscPtr<B>,
+    pub transaction: AscPtr<T>,
+    pub params: AscPtr<AscLogParamArray>,
+    pub receipt: AscPtr<AscEthereumTransactionReceipt>,
+}
+
+impl AscIndexId for AscEthereumEventWithReceipt<AscEthereumTransaction_0_0_1, AscEthereumBlock> {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
+}
+
+impl AscIndexId for AscEthereumEventWithReceipt<AscEthereumTransaction_0_0_2, AscEthereumBlock> {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
+}
+
+impl AscIndexId
+    for AscEthereumEventWithReceipt<AscEthereumTransaction_0_0_6, AscEthereumBlock_0_0_6>
+{
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
 }
 
