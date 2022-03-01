@@ -8,10 +8,10 @@ use graph::data::subgraph::{status, MAX_SPEC_VERSION};
 use graph::prelude::*;
 use graph::{
     components::store::StatusStore,
-    data::graphql::{IntoValue, ObjectOrInterface, ValueMap},
+    data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap},
 };
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::convert::TryInto;
 use web3::types::{Address, H256};
 
@@ -383,13 +383,9 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
     let mut deletions_graphql: Vec<r::Value> = Vec::with_capacity(deletions.len());
 
     for (entity_type, entities) in updates {
-        let map = BTreeMap::from([
-            (
-                "type".to_string(),
-                r::Value::String(entity_type.to_string()),
-            ),
-            (
-                "entities".to_string(),
+        updates_graphql.push(object! {
+            type: r::Value::String(entity_type.to_string()),
+            entities:
                 r::Value::List(
                     entities
                         .into_iter()
@@ -403,29 +399,21 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
                         })
                         .collect(),
                 ),
-            ),
-        ]);
-        updates_graphql.push(r::Value::object(map));
+        });
     }
 
     for (entity_type, ids) in deletions {
-        let map = BTreeMap::from([
-            (
-                "type".to_string(),
-                r::Value::String(entity_type.to_string()),
-            ),
-            (
-                "entities".to_string(),
+        deletions_graphql.push(object! {
+            type: r::Value::String(entity_type.to_string()),
+            entities:
                 r::Value::List(ids.into_iter().map(r::Value::String).collect()),
-            ),
-        ]);
-        deletions_graphql.push(r::Value::object(map));
+        });
     }
 
-    r::Value::object(BTreeMap::from([
-        ("updates".to_string(), r::Value::List(updates_graphql)),
-        ("deletions".to_string(), r::Value::List(deletions_graphql)),
-    ]))
+    object! {
+        updates:r::Value::List(updates_graphql),
+        deletions:r::Value::List(deletions_graphql),
+    }
 }
 
 impl<S, R, St> Clone for IndexNodeResolver<S, R, St>
