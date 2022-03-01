@@ -65,7 +65,7 @@ type EntityChanges {
 }
 
 type EntityData {
-  name: String!
+  entityType: String!
   fields: [EntityField!]!
 }
 

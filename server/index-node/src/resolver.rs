@@ -384,7 +384,7 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityModification<EntityType>>
                     })
                     .collect();
                 let graphql_object = r::Value::object(BTreeMap::from([
-                    ("name".to_string(), r::Value::String(key.to_string())),
+                    ("entityType".to_string(), r::Value::String(key.to_string())),
                     ("fields".to_string(), r::Value::List(fields)),
                 ]));
 
