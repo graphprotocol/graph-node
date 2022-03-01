@@ -24,7 +24,7 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::relational_queries::{FindChangesQuery, FindDeletionsQuery};
+use crate::relational_queries::{FindChangesQuery, FindPossibleDeletionsQuery};
 use crate::{
     primary::{Namespace, Site},
     relational_queries::{
@@ -586,36 +586,18 @@ impl Layout {
         let inserts_or_updates =
             FindChangesQuery::new(&self.catalog.site.namespace, &tables[..], block)
                 .load::<EntityData>(conn)?;
-        let deletions = FindDeletionsQuery::new(&self.catalog.site.namespace, &tables[..], block)
-            .load::<EntityDeletion>(conn)?;
+        let deletions =
+            FindPossibleDeletionsQuery::new(&self.catalog.site.namespace, &tables[..], block)
+                .load::<EntityDeletion>(conn)?;
 
+        let mut processed_entities = HashSet::new();
         let mut changes = Vec::new();
 
-        for del in deletions.into_iter() {
-            let entity_type = del.entity_type();
-            let entity_id = del.id().to_string();
-
-            // The complexity is bad here (we're iterating over the set of
-            // updated entities for every deletion). This query, however, is
-            // not particularly performance-sensitive and results set are
-            // expected to be relatively small.
-            if !inserts_or_updates
-                .iter()
-                .any(|update| update.entity_type() == del.entity_type())
-            {
-                changes.push(EntityOperation::Remove {
-                    key: EntityKey {
-                        subgraph_id: self.site.deployment.cheap_clone(),
-                        entity_type,
-                        entity_id,
-                    },
-                });
-            }
-        }
         for entity_data in inserts_or_updates.into_iter() {
             let entity_type = entity_data.entity_type();
             let data: Entity = entity_data.deserialize_with_layout(self)?;
             let entity_id = data.id().expect("Invalid ID for entity.");
+            processed_entities.insert((entity_type.clone(), entity_id.clone()));
 
             changes.push(EntityOperation::Set {
                 key: EntityKey {
@@ -625,6 +607,23 @@ impl Layout {
                 },
                 data,
             });
+        }
+
+        for del in &deletions {
+            let entity_type = del.entity_type();
+            let entity_id = del.id().to_string();
+
+            // See the doc comment of `FindPossibleDeletionsQuery` for details
+            // about why this check is necessary.
+            if !processed_entities.contains(&(entity_type.clone(), entity_id.clone())) {
+                changes.push(EntityOperation::Remove {
+                    key: EntityKey {
+                        subgraph_id: self.site.deployment.cheap_clone(),
+                        entity_type,
+                        entity_id,
+                    },
+                });
+            }
         }
 
         Ok(changes)

@@ -1275,14 +1275,19 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindChangesQuery<'a> {}
 /// Builds a query over a given set of [`Table`]s in an attempt to find deleted
 /// entities; i.e. such that the block range's lower bound is equal to said
 /// block number.
+///
+/// Please note that the result set from this query is *not* definitive. This
+/// query is intented to be used together with [`FindChangesQuery`]; by
+/// combining the results it's possible to see which entities were *actually*
+/// deleted and which ones were just updated.
 #[derive(Debug, Clone, Constructor)]
-pub struct FindDeletionsQuery<'a> {
+pub struct FindPossibleDeletionsQuery<'a> {
     pub(crate) _namespace: &'a Namespace,
     pub(crate) tables: &'a [&'a Table],
     pub(crate) block: BlockNumber,
 }
 
-impl<'a> QueryFragment<Pg> for FindDeletionsQuery<'a> {
+impl<'a> QueryFragment<Pg> for FindPossibleDeletionsQuery<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
@@ -1303,19 +1308,19 @@ impl<'a> QueryFragment<Pg> for FindDeletionsQuery<'a> {
     }
 }
 
-impl<'a> QueryId for FindDeletionsQuery<'a> {
+impl<'a> QueryId for FindPossibleDeletionsQuery<'a> {
     type QueryId = ();
 
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, EntityDeletion> for FindDeletionsQuery<'a> {
+impl<'a> LoadQuery<PgConnection, EntityDeletion> for FindPossibleDeletionsQuery<'a> {
     fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityDeletion>> {
         conn.query_by_name(&self)
     }
 }
 
-impl<'a, Conn> RunQueryDsl<Conn> for FindDeletionsQuery<'a> {}
+impl<'a, Conn> RunQueryDsl<Conn> for FindPossibleDeletionsQuery<'a> {}
 
 #[derive(Debug, Clone, Constructor)]
 pub struct FindManyQuery<'a> {
