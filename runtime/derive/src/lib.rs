@@ -67,7 +67,7 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
     };
 
     TokenStream::from(quote! {
-        impl#impl_generics graph::runtime::AscType for #struct_name#ty_generics #where_clause {
+        impl #impl_generics graph::runtime::AscType for #struct_name #ty_generics #where_clause {
             fn to_asc_bytes(&self) -> Result<Vec<u8>, graph::runtime::DeterministicHostError> {
                 let in_memory_byte_count = std::mem::size_of::<Self>();
                 let mut bytes = Vec::with_capacity(in_memory_byte_count);
@@ -196,7 +196,7 @@ fn asc_type_derive_enum(item_enum: ItemEnum) -> TokenStream {
     let variant_discriminant2 = variant_discriminant.clone();
 
     TokenStream::from(quote! {
-        impl#impl_generics graph::runtime::AscType for #enum_name#ty_generics #where_clause {
+        impl #impl_generics graph::runtime::AscType for #enum_name #ty_generics #where_clause {
             fn to_asc_bytes(&self) -> Result<Vec<u8>, graph::runtime::DeterministicHostError> {
                 let discriminant: u32 = match self {
                     #(#enum_name_iter::#variant_paths => #variant_discriminant,)*

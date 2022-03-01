@@ -1,7 +1,7 @@
 [package]
 name = "graph-tests"
 version = "0.25.1"
-edition = "2018"
+edition = "2021"
 
 [dev-dependencies]
 bollard = "0.10"

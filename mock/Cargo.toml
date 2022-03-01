@@ -1,7 +1,7 @@
 [package]
 name = "graph-mock"
 version = "0.25.1"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 graph = { path = "../graph" }
