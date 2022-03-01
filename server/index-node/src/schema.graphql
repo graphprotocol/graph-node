@@ -20,7 +20,6 @@ type Query {
     indexer: Bytes
   ): Bytes
   subgraphFeatures(subgraphId: String!): SubgraphFeatures!
-  subgraph(subgraphId: String!): SubgraphFeatures!
   entityChangesInBlock(subgraphId: String!, blockNumber: Int!): EntityChanges!
 }
 
