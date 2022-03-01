@@ -61,13 +61,18 @@ type EthereumIndexingStatus implements ChainIndexingStatus {
 }
 
 type EntityChanges {
-  updates: [EntityData!]!
-  deletes: [String!]!
+  updates: [EntityTypeUpdates!]!
+  deletions: [EntityTypeDeletions!]!
 }
 
-type EntityData {
-  entityType: String!
-  fields: JSONObject!
+type EntityTypeUpdates {
+  type: String!
+  entities: [JSONObject!]!
+}
+
+type EntityTypeDeletions {
+  type: String!
+  entities: [ID!]!
 }
 
 type Block {

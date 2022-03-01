@@ -1,5 +1,6 @@
 use either::Either;
 use graph::blockchain::{Blockchain, BlockchainKind};
+use graph::components::store::EntityType;
 use graph::data::value::Object;
 
 use graph::data::subgraph::features::detect_features;
@@ -10,7 +11,7 @@ use graph::{
     data::graphql::{IntoValue, ObjectOrInterface, ValueMap},
 };
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use web3::types::{Address, H256};
 
@@ -359,37 +360,71 @@ where
 }
 
 fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
-    // GraphQL subfields of the final object.
-    let mut updates = Vec::new();
-    let mut deletes = Vec::new();
+    // First, we isolate updates and deletions with the same entity type.
+    let mut updates: HashMap<EntityType, Vec<Entity>> = HashMap::new();
+    let mut deletions: HashMap<EntityType, Vec<String>> = HashMap::new();
 
-    for change in entity_changes.into_iter() {
+    for change in entity_changes {
         match change {
             EntityOperation::Remove { key } => {
-                deletes.push(r::Value::String(key.entity_type.to_string()))
+                deletions
+                    .entry(key.entity_type)
+                    .or_default()
+                    .push(key.entity_id);
             }
             EntityOperation::Set { key, data } => {
-                let fields = data
-                    .sorted()
-                    .into_iter()
-                    .map(|(name, value)| (name, value.into()))
-                    .collect();
-                let graphql_object = r::Value::object(BTreeMap::from([
-                    (
-                        "entityType".to_string(),
-                        r::Value::String(key.entity_type.to_string()),
-                    ),
-                    ("fields".to_string(), r::Value::Object(fields)),
-                ]));
-
-                updates.push(graphql_object);
+                updates.entry(key.entity_type).or_default().push(data);
             }
         }
     }
 
+    // Now we're ready for GraphQL type conversions.
+    let mut updates_graphql: Vec<r::Value> = Vec::with_capacity(updates.len());
+    let mut deletions_graphql: Vec<r::Value> = Vec::with_capacity(deletions.len());
+
+    for (entity_type, entities) in updates {
+        let map = BTreeMap::from([
+            (
+                "type".to_string(),
+                r::Value::String(entity_type.to_string()),
+            ),
+            (
+                "entities".to_string(),
+                r::Value::List(
+                    entities
+                        .into_iter()
+                        .map(|e| {
+                            r::Value::object(
+                                e.sorted()
+                                    .into_iter()
+                                    .map(|(name, value)| (name, value.into()))
+                                    .collect(),
+                            )
+                        })
+                        .collect(),
+                ),
+            ),
+        ]);
+        updates_graphql.push(r::Value::object(map));
+    }
+
+    for (entity_type, ids) in deletions {
+        let map = BTreeMap::from([
+            (
+                "type".to_string(),
+                r::Value::String(entity_type.to_string()),
+            ),
+            (
+                "entities".to_string(),
+                r::Value::List(ids.into_iter().map(r::Value::String).collect()),
+            ),
+        ]);
+        deletions_graphql.push(r::Value::object(map));
+    }
+
     r::Value::object(BTreeMap::from([
-        ("updates".to_string(), r::Value::List(updates)),
-        ("deletes".to_string(), r::Value::List(deletes)),
+        ("updates".to_string(), r::Value::List(updates_graphql)),
+        ("deletions".to_string(), r::Value::List(deletions_graphql)),
     ]))
 }
 
