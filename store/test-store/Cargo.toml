@@ -2,7 +2,7 @@
 name = "test-store"
 version = "0.25.1"
 authors = ["Leonardo Yvens <leoyvens@gmail.com>"]
-edition = "2018"
+edition = "2021"
 description = "Provides static store instance for tests."
 
 [dependencies]
