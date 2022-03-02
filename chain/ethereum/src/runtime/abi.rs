@@ -232,7 +232,7 @@ impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_6, AscEthereumBl
 #[derive(AscType)]
 pub(crate) struct AscEthereumLog {
     pub address: AscPtr<AscH160>,
-    pub topics: AscPtr<Array<AscPtr<AscH256>>>,
+    pub topics: Array<AscPtr<AscH256>>,
     pub data: AscPtr<Uint8Array>,
     pub block_hash: AscPtr<AscH256>,
     pub block_number: AscPtr<AscH256>,
@@ -241,7 +241,7 @@ pub(crate) struct AscEthereumLog {
     pub log_index: AscPtr<AscBigInt>,
     pub transaction_log_index: AscPtr<AscBigInt>,
     pub log_type: AscPtr<AscString>,
-    pub removed: AscPtr<bool>,
+    pub removed: AscPtr<AscWrapped<bool>>,
 }
 
 impl AscIndexId for AscEthereumLog {
@@ -258,7 +258,7 @@ pub(crate) struct AscEthereumTransactionReceipt {
     pub cumulative_gas_used: AscPtr<AscBigInt>,
     pub gas_used: AscPtr<AscBigInt>,
     pub contract_address: AscPtr<AscAddress>,
-    pub logs: AscPtr<Array<AscPtr<AscEthereumLog>>>,
+    pub logs: Array<AscPtr<AscEthereumLog>>,
     pub status: AscPtr<AscBigInt>,
     pub root: AscPtr<AscH256>,
     pub logs_bloom: AscPtr<AscH2048>,
