@@ -147,6 +147,15 @@ jobs:
           toolchain: ${{ matrix.rust }}
           components: clippy
           override: true
+      # Unlike rustfmt, Clippy actually compiles stuff so it benefits from
+      # caching.
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: check-cargo-${{ hashFiles('**/Cargo.toml') }}
 
       - name: Run Clippy
         uses: actions-rs/cargo@v1
