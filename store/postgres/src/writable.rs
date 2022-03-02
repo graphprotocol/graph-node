@@ -396,6 +396,8 @@ impl WritableStoreTrait for WritableAgent {
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
+        *self.block_ptr.lock().unwrap() = Some(parent_ptr.clone());
+
         self.store
             .unfail_deterministic_error(current_ptr, parent_ptr)
     }
