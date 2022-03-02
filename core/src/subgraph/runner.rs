@@ -264,7 +264,8 @@ where
                             // There's no point in calling it if we have no current or parent block
                             // pointers, because there would be: no block to revert to or to search
                             // errors from (first execution).
-                            self.inputs
+                            let _outcome = self
+                                .inputs
                                 .store
                                 .unfail_deterministic_error(&current_ptr, &parent_ptr)?;
                         }
@@ -307,7 +308,8 @@ where
                         if should_try_unfail_non_deterministic {
                             // If the deployment head advanced, we can unfail
                             // the non-deterministic error (if there's any).
-                            self.inputs
+                            let _outcome = self
+                                .inputs
                                 .store
                                 .unfail_non_deterministic_error(&block_ptr)?;
 
