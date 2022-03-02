@@ -464,7 +464,7 @@ where
 
         if triggers.len() == 1 {
             debug!(&logger, "1 candidate trigger in this block");
-        } else if triggers.len() > 1 {
+        } else {
             debug!(
                 &logger,
                 "{} candidate triggers in this block",
