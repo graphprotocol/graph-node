@@ -424,7 +424,7 @@ impl<'a> Join<'a> {
             // query are always joined first, and may then be overwritten by the merged selection
             // set under the object type condition. See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
             let values = parent.id().ok().and_then(|id| grouped.get(&*id).cloned());
-            parent.set_children(response_key.to_owned(), values.unwrap_or_default());
+            parent.set_children(response_key.to_owned(), values.unwrap_or(vec![]));
         }
     }
 
