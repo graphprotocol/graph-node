@@ -308,29 +308,17 @@ where
                         if should_try_unfail_non_deterministic {
                             // If the deployment head advanced, we can unfail
                             // the non-deterministic error (if there's any).
-                            let _outcome = self
+                            let outcome = self
                                 .inputs
                                 .store
                                 .unfail_non_deterministic_error(&block_ptr)?;
 
-                            match self
-                                .inputs
-                                .store
-                                .health(&self.inputs.deployment.hash)
-                                .await?
-                            {
-                                SubgraphHealth::Failed => {
-                                    // If the unfail call didn't change the subgraph health, we keep
-                                    // `should_try_unfail_non_deterministic` as `true` until it's
-                                    // actually unfailed.
-                                }
-                                SubgraphHealth::Healthy | SubgraphHealth::Unhealthy => {
-                                    // Stop trying to unfail.
-                                    should_try_unfail_non_deterministic = false;
-                                    deployment_failed.set(0.0);
-                                    backoff.reset();
-                                }
-                            };
+                            if let UnfailOutcome::Unfailed = outcome {
+                                // Stop trying to unfail.
+                                should_try_unfail_non_deterministic = false;
+                                deployment_failed.set(0.0);
+                                backoff.reset();
+                            }
                         }
 
                         if needs_restart {
