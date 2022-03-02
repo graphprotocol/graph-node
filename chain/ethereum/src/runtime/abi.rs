@@ -5,7 +5,7 @@ use crate::trigger::{
 use graph::{
     prelude::{
         ethabi,
-        web3::types::{Log, TransactionReceipt},
+        web3::types::{Log, TransactionReceipt, H256},
         BigInt,
     },
     runtime::{
@@ -51,6 +51,72 @@ impl ToAscObj<AscLogParamArray> for Vec<ethabi::LogParam> {
 
 impl AscIndexId for AscLogParamArray {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::ArrayEventParam;
+}
+
+pub struct AscTopicArray(Array<AscPtr<AscH256>>);
+
+impl AscType for AscTopicArray {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        self.0.to_asc_bytes()
+    }
+
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
+        Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
+    }
+}
+
+impl ToAscObj<AscTopicArray> for Vec<H256> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscTopicArray, DeterministicHostError> {
+        let topics = self
+            .iter()
+            .map(|topic| asc_new(heap, topic, gas))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(AscTopicArray(Array::new(&topics, heap, gas)?))
+    }
+}
+
+impl AscIndexId for AscTopicArray {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::ArrayH256;
+}
+
+pub struct AscLogArray(Array<AscPtr<AscEthereumLog>>);
+
+impl AscType for AscLogArray {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        self.0.to_asc_bytes()
+    }
+
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
+        Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
+    }
+}
+
+impl ToAscObj<AscLogArray> for Vec<Log> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscLogArray, DeterministicHostError> {
+        let logs = self
+            .iter()
+            .map(|log| asc_new(heap, &log, gas))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(AscLogArray(Array::new(&logs, heap, gas)?))
+    }
+}
+
+impl AscIndexId for AscLogArray {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::ArrayLog;
 }
 
 #[repr(C)]
@@ -238,7 +304,7 @@ impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_6, AscEthereumBl
 #[derive(AscType)]
 pub(crate) struct AscEthereumLog {
     pub address: AscPtr<AscH160>,
-    pub topics: Array<AscPtr<AscH256>>,
+    pub topics: AscPtr<AscTopicArray>,
     pub data: AscPtr<Uint8Array>,
     pub block_hash: AscPtr<AscH256>,
     pub block_number: AscPtr<AscH256>,
@@ -264,7 +330,7 @@ pub(crate) struct AscEthereumTransactionReceipt {
     pub cumulative_gas_used: AscPtr<AscBigInt>,
     pub gas_used: AscPtr<AscBigInt>,
     pub contract_address: AscPtr<AscAddress>,
-    pub logs: Array<AscPtr<AscEthereumLog>>,
+    pub logs: AscPtr<AscLogArray>,
     pub status: AscPtr<AscBigInt>,
     pub root: AscPtr<AscH256>,
     pub logs_bloom: AscPtr<AscH2048>,
@@ -529,14 +595,7 @@ impl ToAscObj<AscEthereumLog> for Log {
     ) -> Result<AscEthereumLog, DeterministicHostError> {
         Ok(AscEthereumLog {
             address: asc_new(heap, &self.address, gas)?,
-            topics: {
-                let asc_ptrs: Vec<AscPtr<AscH256>> = self
-                    .topics
-                    .iter()
-                    .map(|x| asc_new(heap, x, gas))
-                    .collect::<Result<Vec<AscPtr<AscH256>>, _>>()?;
-                Array::new(&asc_ptrs, heap, gas)?
-            },
+            topics: asc_new(heap, &self.topics, gas)?,
             data: asc_new(heap, self.data.0.as_slice(), gas)?,
             block_hash: self
                 .block_hash
@@ -605,17 +664,7 @@ impl ToAscObj<AscEthereumTransactionReceipt> for TransactionReceipt {
                 .contract_address
                 .map(|contract_address| asc_new(heap, &contract_address, gas))
                 .unwrap_or(Ok(AscPtr::null()))?,
-            logs: {
-                let asc_ptrs: Vec<AscPtr<AscEthereumLog>> = self
-                    .logs
-                    .iter()
-                    .map(|log| {
-                        log.to_asc_obj(heap, gas)
-                            .and_then(|asc_log| AscPtr::alloc_obj(asc_log, heap, gas))
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                Array::new(&asc_ptrs, heap, gas)?
-            },
+            logs: asc_new(heap, &self.logs, gas)?,
             status: self
                 .status
                 .map(|status| asc_new(heap, &BigInt::from(status), gas))
