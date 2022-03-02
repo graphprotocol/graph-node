@@ -133,6 +133,29 @@ jobs:
           command: test
           args: --verbose --package graph-tests -- --nocapture
 
+  rustfmt:
+    name: Check rustfmt style
+    strategy:
+      matrix:
+        rust: ["stable"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          components: rustfmt
+          override: true
+
+      - name: Check formatting
+        uses: actions-rs/cargo@v1
+        env:
+          RUSTFLAGS: "-D warnings"
+        with:
+          command: fmt
+          args: --all -- --check
+
   clippy:
     name: Report Clippy warnings
     strategy:
@@ -164,29 +187,6 @@ jobs:
         continue-on-error: true
         with:
           command: clippy
-
-  rustfmt:
-    name: Check rustfmt style
-    strategy:
-      matrix:
-        rust: ["stable"]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.rust }}
-          components: rustfmt
-          override: true
-
-      - name: Check formatting
-        uses: actions-rs/cargo@v1
-        env:
-          RUSTFLAGS: "-D warnings"
-        with:
-          command: fmt
-          args: --all -- --check
 
   release-check:
     name: Build in release mode
