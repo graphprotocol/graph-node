@@ -1,18 +1,24 @@
-use graph::prelude::{ethabi, BigInt};
-use graph::runtime::gas::GasCounter;
-use graph::runtime::{asc_get, asc_new, AscPtr, DeterministicHostError, FromAscObj, ToAscObj};
-use graph::runtime::{AscHeap, AscIndexId, AscType, IndexForAscTypeId};
-use graph_runtime_derive::AscType;
-use graph_runtime_wasm::asc_abi::class::{
-    Array, AscAddress, AscBigInt, AscEnum, AscH160, AscString, EthereumValueKind, Uint8Array,
-};
-use semver::Version;
-
+use super::runtime_adapter::UnresolvedContractCall;
 use crate::trigger::{
     EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
 };
-
-use super::runtime_adapter::UnresolvedContractCall;
+use graph::{
+    prelude::{
+        ethabi,
+        web3::types::{Log, TransactionReceipt},
+        BigInt,
+    },
+    runtime::{
+        asc_get, asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType,
+        DeterministicHostError, FromAscObj, IndexForAscTypeId, ToAscObj,
+    },
+};
+use graph_runtime_derive::AscType;
+use graph_runtime_wasm::asc_abi::class::{
+    Array, AscAddress, AscBigInt, AscEnum, AscH160, AscString, AscWrapped, EthereumValueKind,
+    Uint8Array,
+};
+use semver::Version;
 
 type AscH256 = Uint8Array;
 type AscH2048 = Uint8Array;
@@ -511,6 +517,114 @@ where
             block: asc_new::<B, EthereumBlockData, _>(heap, &self.block, gas)?,
             transaction: asc_new::<T, EthereumTransactionData, _>(heap, &self.transaction, gas)?,
             params: asc_new(heap, &self.params, gas)?,
+        })
+    }
+}
+
+impl ToAscObj<AscEthereumLog> for Log {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscEthereumLog, DeterministicHostError> {
+        Ok(AscEthereumLog {
+            address: asc_new(heap, &self.address, gas)?,
+            topics: {
+                let asc_ptrs: Vec<AscPtr<AscH256>> = self
+                    .topics
+                    .iter()
+                    .map(|x| asc_new(heap, x, gas))
+                    .collect::<Result<Vec<AscPtr<AscH256>>, _>>()?;
+                Array::new(&asc_ptrs, heap, gas)?
+            },
+            data: asc_new(heap, self.data.0.as_slice(), gas)?,
+            block_hash: self
+                .block_hash
+                .map(|block_hash| asc_new(heap, &block_hash, gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            block_number: self
+                .block_number
+                .map(|block_number| asc_new(heap, &BigInt::from(block_number), gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            transaction_hash: self
+                .transaction_hash
+                .map(|txn_hash| asc_new(heap, &txn_hash, gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            transaction_index: self
+                .transaction_index
+                .map(|txn_index| asc_new(heap, &BigInt::from(txn_index), gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            log_index: self
+                .log_index
+                .map(|log_index| asc_new(heap, &BigInt::from_unsigned_u256(&log_index), gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            transaction_log_index: self
+                .transaction_log_index
+                .map(|index| asc_new(heap, &BigInt::from_unsigned_u256(&index), gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            log_type: self
+                .log_type
+                .as_ref()
+                .map(|log_type| asc_new(heap, &log_type, gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            removed: self
+                .removed
+                .map(|removed| asc_new(heap, &AscWrapped { inner: removed }, gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+        })
+    }
+}
+
+impl ToAscObj<AscEthereumTransactionReceipt> for TransactionReceipt {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscEthereumTransactionReceipt, DeterministicHostError> {
+        Ok(AscEthereumTransactionReceipt {
+            transaction_hash: asc_new(heap, &self.transaction_hash, gas)?,
+            transaction_index: asc_new(heap, &BigInt::from(self.transaction_index), gas)?,
+            block_hash: self
+                .block_hash
+                .map(|block_hash| asc_new(heap, &block_hash, gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            block_number: self
+                .block_number
+                .map(|block_number| asc_new(heap, &BigInt::from(block_number), gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            cumulative_gas_used: asc_new(
+                heap,
+                &BigInt::from_unsigned_u256(&self.cumulative_gas_used),
+                gas,
+            )?,
+            gas_used: self
+                .gas_used
+                .map(|gas_used| asc_new(heap, &BigInt::from_unsigned_u256(&gas_used), gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            contract_address: self
+                .contract_address
+                .map(|contract_address| asc_new(heap, &contract_address, gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            logs: {
+                let asc_ptrs: Vec<AscPtr<AscEthereumLog>> = self
+                    .logs
+                    .iter()
+                    .map(|log| {
+                        log.to_asc_obj(heap, gas)
+                            .and_then(|asc_log| AscPtr::alloc_obj(asc_log, heap, gas))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Array::new(&asc_ptrs, heap, gas)?
+            },
+            status: self
+                .status
+                .map(|status| asc_new(heap, &BigInt::from(status), gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            root: self
+                .root
+                .map(|root| asc_new(heap, &root, gas))
+                .unwrap_or(Ok(AscPtr::null()))?,
+            logs_bloom: asc_new(heap, self.logs_bloom.as_bytes(), gas)?,
         })
     }
 }
