@@ -7,7 +7,8 @@ use diesel::r2d2::{ConnectionManager, PooledConnection};
 use graph::components::store::{EntityType, StoredDynamicDataSource};
 use graph::data::subgraph::status;
 use graph::prelude::{
-    tokio, CancelHandle, CancelToken, CancelableError, PoolWaitStats, SubgraphDeploymentEntity,
+    tokio, CancelHandle, CancelToken, CancelableError, EntityOperation, PoolWaitStats,
+    SubgraphDeploymentEntity,
 };
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
@@ -929,6 +930,18 @@ impl DeploymentStore {
         let layout = self.layout(&conn, site)?;
 
         layout.find_many(&conn, ids_for_type, BLOCK_NUMBER_MAX)
+    }
+
+    pub(crate) fn get_changes(
+        &self,
+        site: Arc<Site>,
+        block: BlockNumber,
+    ) -> Result<Vec<EntityOperation>, StoreError> {
+        let conn = self.get_conn()?;
+        let layout = self.layout(&conn, site)?;
+        let changes = layout.find_changes(&conn, block)?;
+
+        Ok(changes)
     }
 
     // Only used by tests

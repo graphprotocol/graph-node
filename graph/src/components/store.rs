@@ -988,6 +988,16 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// subgraph has any deployments attached to it
     fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError>;
 
+    /// Returns a collection of all [`EntityModification`] items in relation to
+    /// the given [`BlockNumber`]. No distinction is made between inserts and
+    /// updates, which may be returned as either [`EntityModification::Insert`]
+    /// or [`EntityModification::Overwrite`].
+    fn entity_changes_in_block(
+        &self,
+        subgraph_id: &DeploymentHash,
+        block_number: BlockNumber,
+    ) -> Result<Vec<EntityOperation>, StoreError>;
+
     /// Return the GraphQL schema supplied by the user
     fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<Schema>, StoreError>;
 

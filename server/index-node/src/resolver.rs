@@ -1,5 +1,6 @@
 use either::Either;
 use graph::blockchain::{Blockchain, BlockchainKind};
+use graph::components::store::EntityType;
 use graph::data::value::Object;
 
 use graph::data::subgraph::features::detect_features;
@@ -7,9 +8,10 @@ use graph::data::subgraph::{status, MAX_SPEC_VERSION};
 use graph::prelude::*;
 use graph::{
     components::store::StatusStore,
-    data::graphql::{IntoValue, ObjectOrInterface, ValueMap},
+    data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap},
 };
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
+use std::collections::BTreeMap;
 use std::convert::TryInto;
 use web3::types::{Address, H256};
 
@@ -85,6 +87,25 @@ where
             .status(status::Filter::SubgraphName(subgraph_name))?;
 
         Ok(infos.into_value())
+    }
+
+    fn resolve_entity_changes_in_block(
+        &self,
+        field: &a::Field,
+    ) -> Result<r::Value, QueryExecutionError> {
+        let subgraph_id = field
+            .get_required::<DeploymentHash>("subgraphId")
+            .expect("Valid subgraphId required");
+
+        let block_number = field
+            .get_required::<BlockNumber>("blockNumber")
+            .expect("Valid blockNumber required");
+
+        let entity_changes = self
+            .subgraph_store
+            .entity_changes_in_block(&subgraph_id, block_number)?;
+
+        Ok(entity_changes_to_graphql(entity_changes))
     }
 
     fn resolve_proof_of_indexing(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
@@ -338,6 +359,66 @@ where
     }
 }
 
+fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
+    // Results are sorted first alphabetically by entity type, then by entity
+    // ID, and then aphabetically by field name.
+
+    // First, we isolate updates and deletions with the same entity type.
+    let mut updates: BTreeMap<EntityType, Vec<Entity>> = BTreeMap::new();
+    let mut deletions: BTreeMap<EntityType, Vec<String>> = BTreeMap::new();
+
+    for change in entity_changes {
+        match change {
+            EntityOperation::Remove { key } => {
+                deletions
+                    .entry(key.entity_type)
+                    .or_default()
+                    .push(key.entity_id);
+            }
+            EntityOperation::Set { key, data } => {
+                updates.entry(key.entity_type).or_default().push(data);
+            }
+        }
+    }
+
+    // Now we're ready for GraphQL type conversions.
+    let mut updates_graphql: Vec<r::Value> = Vec::with_capacity(updates.len());
+    let mut deletions_graphql: Vec<r::Value> = Vec::with_capacity(deletions.len());
+
+    for (entity_type, mut entities) in updates {
+        entities.sort_unstable_by_key(|e| e.id().unwrap_or("no-id".to_string()));
+        updates_graphql.push(object! {
+            type: entity_type.to_string(),
+            entities:
+                entities
+                    .into_iter()
+                    .map(|e| {
+                        r::Value::object(
+                            e.sorted()
+                                .into_iter()
+                                .map(|(name, value)| (name, value.into()))
+                                .collect(),
+                        )
+                    })
+                    .collect::<Vec<r::Value>>(),
+        });
+    }
+
+    for (entity_type, mut ids) in deletions {
+        ids.sort_unstable();
+        deletions_graphql.push(object! {
+            type: entity_type.to_string(),
+            entities:
+                ids.into_iter().map(r::Value::String).collect::<Vec<r::Value>>(),
+        });
+    }
+
+    object! {
+        updates: updates_graphql,
+        deletions: deletions_graphql,
+    }
+}
+
 impl<S, R, St> Clone for IndexNodeResolver<S, R, St>
 where
     S: SubgraphStore,
@@ -441,6 +522,9 @@ where
 
             // The top-level `indexingStatusForPendingVersion` field
             (None, "subgraphFeatures") => graph::block_on(self.resolve_subgraph_features(field)),
+
+            // The top-level `entityChangesInBlock` field
+            (None, "entityChangesInBlock") => self.resolve_entity_changes_in_block(field),
 
             // Resolve fields of `Object` values (e.g. the `latestBlock` field of `EthereumBlock`)
             (value, _) => Ok(value.unwrap_or(r::Value::Null)),

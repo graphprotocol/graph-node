@@ -24,11 +24,12 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use crate::relational_queries::{FindChangesQuery, FindPossibleDeletionsQuery};
 use crate::{
     primary::{Namespace, Site},
     relational_queries::{
-        ClampRangeQuery, ConflictingEntityQuery, EntityData, FilterCollection, FilterQuery,
-        FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
+        ClampRangeQuery, ConflictingEntityQuery, EntityData, EntityDeletion, FilterCollection,
+        FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
     },
 };
 use graph::components::store::EntityType;
@@ -38,8 +39,8 @@ use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{
     anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityCollection,
-    EntityFilter, EntityKey, EntityOrder, EntityRange, Logger, QueryExecutionError, StoreError,
-    StoreEvent, ValueType, BLOCK_NUMBER_MAX,
+    EntityFilter, EntityKey, EntityOperation, EntityOrder, EntityRange, Logger,
+    QueryExecutionError, StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,
 };
 
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
@@ -570,6 +571,68 @@ impl Layout {
                 .push(data.deserialize_with_layout(self)?);
         }
         Ok(entities_for_type)
+    }
+
+    pub fn find_changes(
+        &self,
+        conn: &PgConnection,
+        block: BlockNumber,
+    ) -> Result<Vec<EntityOperation>, StoreError> {
+        let mut tables = Vec::new();
+        for table in self.tables.values() {
+            if table.name.as_str() != POI_TABLE {
+                tables.push(&**table);
+            }
+        }
+
+        let inserts_or_updates =
+            FindChangesQuery::new(&self.catalog.site.namespace, &tables[..], block)
+                .load::<EntityData>(conn)?;
+        let deletions =
+            FindPossibleDeletionsQuery::new(&self.catalog.site.namespace, &tables[..], block)
+                .load::<EntityDeletion>(conn)?;
+
+        let mut processed_entities = HashSet::new();
+        let mut changes = Vec::new();
+
+        for entity_data in inserts_or_updates.into_iter() {
+            let entity_type = entity_data.entity_type();
+            let mut data: Entity = entity_data.deserialize_with_layout(self)?;
+            let entity_id = data.id().expect("Invalid ID for entity.");
+            processed_entities.insert((entity_type.clone(), entity_id.clone()));
+
+            // `__typename` is not a real field.
+            data.remove("__typename")
+                .expect("__typename expected; this is a bug");
+
+            changes.push(EntityOperation::Set {
+                key: EntityKey {
+                    subgraph_id: self.site.deployment.cheap_clone(),
+                    entity_type,
+                    entity_id,
+                },
+                data,
+            });
+        }
+
+        for del in &deletions {
+            let entity_type = del.entity_type();
+            let entity_id = del.id().to_string();
+
+            // See the doc comment of `FindPossibleDeletionsQuery` for details
+            // about why this check is necessary.
+            if !processed_entities.contains(&(entity_type.clone(), entity_id.clone())) {
+                changes.push(EntityOperation::Remove {
+                    key: EntityKey {
+                        subgraph_id: self.site.deployment.cheap_clone(),
+                        entity_type,
+                        entity_id,
+                    },
+                });
+            }
+        }
+
+        Ok(changes)
     }
 
     pub fn insert<'a>(

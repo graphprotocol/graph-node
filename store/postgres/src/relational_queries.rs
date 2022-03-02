@@ -31,13 +31,15 @@ use std::fmt::{self, Display};
 use std::iter::FromIterator;
 use std::str::FromStr;
 
-use crate::block_range::BLOCK_COLUMN;
 use crate::relational::{
     Column, ColumnType, IdType, Layout, SqlName, Table, PRIMARY_KEY_COLUMN, STRING_PREFIX_SIZE,
 };
 use crate::sql_value::SqlValue;
 use crate::{
-    block_range::{BlockRangeColumn, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT},
+    block_range::{
+        BlockRangeColumn, BlockRangeLowerBoundClause, BlockRangeUpperBoundClause, BLOCK_COLUMN,
+        BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT,
+    },
     primary::Namespace,
 };
 
@@ -465,6 +467,26 @@ impl FromColumnValue for graph::prelude::Value {
 
     fn from_vec(v: Vec<Self>) -> Self {
         graph::prelude::Value::List(v)
+    }
+}
+
+/// A [`diesel`] utility `struct` for fetching only [`EntityType`] and entity's
+/// ID. Unlike [`EntityData`], we don't really care about attributes here.
+#[derive(QueryableByName)]
+pub struct EntityDeletion {
+    #[sql_type = "Text"]
+    entity: String,
+    #[sql_type = "Text"]
+    id: String,
+}
+
+impl EntityDeletion {
+    pub fn entity_type(&self) -> EntityType {
+        EntityType::new(self.entity.clone())
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
     }
 }
 
@@ -1204,6 +1226,101 @@ impl<'a> LoadQuery<PgConnection, EntityData> for FindQuery<'a> {
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
+
+/// Builds a query over a given set of [`Table`]s in an attempt to find updated
+/// and/or newly inserted entities at a given block number; i.e. such that the
+/// block range's lower bound is equal to said block number.
+#[derive(Debug, Clone, Constructor)]
+pub struct FindChangesQuery<'a> {
+    pub(crate) _namespace: &'a Namespace,
+    pub(crate) tables: &'a [&'a Table],
+    pub(crate) block: BlockNumber,
+}
+
+impl<'a> QueryFragment<Pg> for FindChangesQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        for (i, table) in self.tables.iter().enumerate() {
+            if i > 0 {
+                out.push_sql("\nunion all\n");
+            }
+            out.push_sql("select ");
+            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+            out.push_sql(" as entity, to_jsonb(e.*) as data\n");
+            out.push_sql("  from ");
+            out.push_sql(table.qualified_name.as_str());
+            out.push_sql(" e\n where ");
+            BlockRangeLowerBoundClause::new("e.", self.block).walk_ast(out.reborrow())?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a> QueryId for FindChangesQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a> LoadQuery<PgConnection, EntityData> for FindChangesQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
+        conn.query_by_name(&self)
+    }
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for FindChangesQuery<'a> {}
+
+/// Builds a query over a given set of [`Table`]s in an attempt to find deleted
+/// entities; i.e. such that the block range's lower bound is equal to said
+/// block number.
+///
+/// Please note that the result set from this query is *not* definitive. This
+/// query is intented to be used together with [`FindChangesQuery`]; by
+/// combining the results it's possible to see which entities were *actually*
+/// deleted and which ones were just updated.
+#[derive(Debug, Clone, Constructor)]
+pub struct FindPossibleDeletionsQuery<'a> {
+    pub(crate) _namespace: &'a Namespace,
+    pub(crate) tables: &'a [&'a Table],
+    pub(crate) block: BlockNumber,
+}
+
+impl<'a> QueryFragment<Pg> for FindPossibleDeletionsQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        for (i, table) in self.tables.iter().enumerate() {
+            if i > 0 {
+                out.push_sql("\nunion all\n");
+            }
+            out.push_sql("select ");
+            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+            out.push_sql(" as entity, e.id\n");
+            out.push_sql("  from ");
+            out.push_sql(table.qualified_name.as_str());
+            out.push_sql(" e\n where ");
+            BlockRangeUpperBoundClause::new("e.", self.block).walk_ast(out.reborrow())?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a> QueryId for FindPossibleDeletionsQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a> LoadQuery<PgConnection, EntityDeletion> for FindPossibleDeletionsQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityDeletion>> {
+        conn.query_by_name(&self)
+    }
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for FindPossibleDeletionsQuery<'a> {}
 
 #[derive(Debug, Clone, Constructor)]
 pub struct FindManyQuery<'a> {

@@ -27,8 +27,8 @@ use graph::{
     prelude::SubgraphDeploymentEntity,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        BlockPtr, DeploymentHash, Logger, NodeId, Schema, StoreError, SubgraphName,
-        SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
+        BlockNumber, BlockPtr, DeploymentHash, EntityOperation, Logger, NodeId, Schema, StoreError,
+        SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
     url::Url,
     util::timed_cache::TimedCache,
@@ -1077,6 +1077,16 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
         self.mirror.subgraph_exists(name)
+    }
+
+    fn entity_changes_in_block(
+        &self,
+        subgraph_id: &DeploymentHash,
+        block: BlockNumber,
+    ) -> Result<Vec<EntityOperation>, StoreError> {
+        let (store, site) = self.store(subgraph_id)?;
+        let changes = store.get_changes(site, block)?;
+        Ok(changes)
     }
 
     fn input_schema(&self, id: &DeploymentHash) -> Result<Arc<Schema>, StoreError> {
