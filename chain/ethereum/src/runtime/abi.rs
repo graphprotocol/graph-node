@@ -255,8 +255,6 @@ pub(crate) struct AscEthereumTransactionReceipt {
     pub transaction_index: AscPtr<AscBigInt>,
     pub block_hash: AscPtr<AscH256>,
     pub block_number: AscPtr<AscBigInt>,
-    pub from: AscPtr<AscAddress>,
-    pub to: AscPtr<AscAddress>,
     pub cumulative_gas_used: AscPtr<AscBigInt>,
     pub gas_used: AscPtr<AscBigInt>,
     pub contract_address: AscPtr<AscAddress>,
@@ -264,8 +262,6 @@ pub(crate) struct AscEthereumTransactionReceipt {
     pub status: AscPtr<AscBigInt>,
     pub root: AscPtr<AscH256>,
     pub logs_bloom: AscPtr<AscH2048>,
-    pub transaction_type: AscPtr<AscBigInt>,
-    pub effective_gas_price: AscPtr<AscBigInt>,
 }
 
 impl AscIndexId for AscEthereumTransactionReceipt {
