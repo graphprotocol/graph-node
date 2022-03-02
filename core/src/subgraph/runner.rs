@@ -112,10 +112,32 @@ where
         let store_for_err = self.inputs.store.cheap_clone();
         let logger = self.ctx.state.logger.cheap_clone();
         let id_for_err = self.inputs.deployment.hash.clone();
-        let mut should_try_unfail_deterministic = true;
         let mut should_try_unfail_non_deterministic = true;
         let mut synced = false;
         let mut skip_ptr_updates_timer = Instant::now();
+
+        // If a subgraph failed for deterministic reasons, before start indexing, we first
+        // revert the deployment head. It should lead to the same result since the error was
+        // deterministic.
+        if let Some(current_ptr) = self.inputs.store.block_ptr() {
+            if let Some(parent_ptr) = self
+                .inputs
+                .triggers_adapter
+                .parent_ptr(&current_ptr)
+                .await?
+            {
+                // This reverts the deployment head to the parent_ptr if
+                // deterministic errors happened.
+                //
+                // There's no point in calling it if we have no current or parent block
+                // pointers, because there would be: no block to revert to or to search
+                // errors from (first execution).
+                let _outcome = self
+                    .inputs
+                    .store
+                    .unfail_deterministic_error(&current_ptr, &parent_ptr)?;
+            }
+        }
 
         // Exponential backoff that starts with two minutes and keeps
         // increasing its timeout exponentially until it reaches the ceiling.
@@ -242,41 +264,6 @@ where
 
                 let start = Instant::now();
                 let deployment_failed = self.ctx.block_stream_metrics.deployment_failed.clone();
-
-                // If a subgraph failed for deterministic reasons, before processing a new block, we
-                // revert the deployment head. It should lead to the same result since the error was
-                // deterministic.
-                //
-                // As an optimization we check this only on the first run.
-                if should_try_unfail_deterministic {
-                    should_try_unfail_deterministic = false;
-
-                    if let Some(current_ptr) = self.inputs.store.block_ptr() {
-                        if let Some(parent_ptr) = self
-                            .inputs
-                            .triggers_adapter
-                            .parent_ptr(&current_ptr)
-                            .await?
-                        {
-                            // This reverts the deployment head to the parent_ptr if
-                            // deterministic errors happened.
-                            //
-                            // There's no point in calling it if we have no current or parent block
-                            // pointers, because there would be: no block to revert to or to search
-                            // errors from (first execution).
-                            let outcome = self
-                                .inputs
-                                .store
-                                .unfail_deterministic_error(&current_ptr, &parent_ptr)?;
-
-                            if let UnfailOutcome::Unfailed = outcome {
-                                // If the unfail happened, we must restart the BlockStream so the
-                                // reverted block isn't skipped.
-                                break;
-                            }
-                        }
-                    }
-                }
 
                 let res = self
                     .process_block(
