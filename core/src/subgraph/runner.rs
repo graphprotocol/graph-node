@@ -264,10 +264,16 @@ where
                             // There's no point in calling it if we have no current or parent block
                             // pointers, because there would be: no block to revert to or to search
                             // errors from (first execution).
-                            let _outcome = self
+                            let outcome = self
                                 .inputs
                                 .store
                                 .unfail_deterministic_error(&current_ptr, &parent_ptr)?;
+
+                            if let UnfailOutcome::Unfailed = outcome {
+                                // If the unfail happened, we must restart the BlockStream so the
+                                // reverted block isn't skipped.
+                                break;
+                            }
                         }
                     }
                 }
