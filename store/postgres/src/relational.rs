@@ -580,7 +580,9 @@ impl Layout {
     ) -> Result<Vec<EntityOperation>, StoreError> {
         let mut tables = Vec::new();
         for table in self.tables.values() {
-            tables.push(&**table);
+            if table.name.as_str() != POI_TABLE {
+                tables.push(&**table);
+            }
         }
 
         let inserts_or_updates =
@@ -595,9 +597,13 @@ impl Layout {
 
         for entity_data in inserts_or_updates.into_iter() {
             let entity_type = entity_data.entity_type();
-            let data: Entity = entity_data.deserialize_with_layout(self)?;
+            let mut data: Entity = entity_data.deserialize_with_layout(self)?;
             let entity_id = data.id().expect("Invalid ID for entity.");
             processed_entities.insert((entity_type.clone(), entity_id.clone()));
+
+            // `__typename` is not a real field.
+            data.remove("__typename")
+                .expect("__typename expected; this is a bug");
 
             changes.push(EntityOperation::Set {
                 key: EntityKey {
