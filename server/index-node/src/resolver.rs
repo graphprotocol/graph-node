@@ -11,7 +11,7 @@ use graph::{
     data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap},
 };
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::convert::TryInto;
 use web3::types::{Address, H256};
 
@@ -360,9 +360,12 @@ where
 }
 
 fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
+    // Results are sorted first alphabetically by entity type, then by entity
+    // ID, and then aphabetically by field name.
+
     // First, we isolate updates and deletions with the same entity type.
-    let mut updates: HashMap<EntityType, Vec<Entity>> = HashMap::new();
-    let mut deletions: HashMap<EntityType, Vec<String>> = HashMap::new();
+    let mut updates: BTreeMap<EntityType, Vec<Entity>> = BTreeMap::new();
+    let mut deletions: BTreeMap<EntityType, Vec<String>> = BTreeMap::new();
 
     for change in entity_changes {
         match change {
@@ -382,7 +385,8 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
     let mut updates_graphql: Vec<r::Value> = Vec::with_capacity(updates.len());
     let mut deletions_graphql: Vec<r::Value> = Vec::with_capacity(deletions.len());
 
-    for (entity_type, entities) in updates {
+    for (entity_type, mut entities) in updates {
+        entities.sort_unstable_by_key(|e| e.id().unwrap_or("no-id".to_string()));
         updates_graphql.push(object! {
             type: entity_type.to_string(),
             entities:
@@ -400,7 +404,8 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
         });
     }
 
-    for (entity_type, ids) in deletions {
+    for (entity_type, mut ids) in deletions {
+        ids.sort_unstable();
         deletions_graphql.push(object! {
             type: entity_type.to_string(),
             entities:
