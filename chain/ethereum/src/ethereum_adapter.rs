@@ -7,7 +7,6 @@ use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::prelude::ethabi::ParamType;
 use graph::prelude::ethabi::Token;
 use graph::prelude::tokio::try_join;
-use graph::prelude::StopwatchMetrics;
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
@@ -1339,7 +1338,6 @@ pub(crate) async fn blocks_with_triggers(
     logger: Logger,
     chain_store: Arc<dyn ChainStore>,
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-    stopwatch_metrics: StopwatchMetrics,
     from: BlockNumber,
     to: BlockNumber,
     filter: &TriggerFilter,
@@ -1470,14 +1468,10 @@ pub(crate) async fn blocks_with_triggers(
     let mut blocks = if unified_api_version
         .equal_or_greater_than(&graph::data::subgraph::API_VERSION_0_0_5)
     {
-        let section =
-            stopwatch_metrics.start_section("filter_call_triggers_from_unsuccessful_transactions");
         let futures = blocks.into_iter().map(|block| {
             filter_call_triggers_from_unsuccessful_transactions(block, &eth, &chain_store, &logger)
         });
-        let blocks = futures03::future::try_join_all(futures).await?;
-        section.end();
-        blocks
+        futures03::future::try_join_all(futures).await?
     } else {
         blocks
     };

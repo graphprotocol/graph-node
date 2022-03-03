@@ -290,7 +290,6 @@ impl Blockchain for MockBlockchain {
         _loc: &crate::components::store::DeploymentLocator,
         _capabilities: &Self::NodeCapabilities,
         _unified_api_version: crate::data::subgraph::UnifiedMappingApiVersion,
-        _stopwatch_metrics: crate::components::metrics::stopwatch::StopwatchMetrics,
     ) -> Result<std::sync::Arc<Self::TriggersAdapter>, anyhow::Error> {
         todo!()
     }
@@ -302,7 +301,6 @@ impl Blockchain for MockBlockchain {
         _start_blocks: Vec<crate::components::store::BlockNumber>,
         _subgraph_current_block: Option<BlockPtr>,
         _filter: std::sync::Arc<Self::TriggerFilter>,
-        _metrics: std::sync::Arc<block_stream::BlockStreamMetrics>,
         _unified_api_version: crate::data::subgraph::UnifiedMappingApiVersion,
     ) -> Result<Box<dyn block_stream::BlockStream<Self>>, anyhow::Error> {
         todo!()
@@ -314,7 +312,6 @@ impl Blockchain for MockBlockchain {
         _start_blocks: Vec<crate::components::store::BlockNumber>,
         _subgraph_current_block: Option<BlockPtr>,
         _filter: std::sync::Arc<Self::TriggerFilter>,
-        _metrics: std::sync::Arc<block_stream::BlockStreamMetrics>,
         _unified_api_version: crate::data::subgraph::UnifiedMappingApiVersion,
     ) -> Result<Box<dyn block_stream::BlockStream<Self>>, anyhow::Error> {
         todo!()

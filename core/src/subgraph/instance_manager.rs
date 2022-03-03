@@ -216,7 +216,7 @@ where
         );
 
         let unified_mapping_api_version = manifest.unified_mapping_api_version()?;
-        let triggers_adapter = chain.triggers_adapter(&deployment, &required_capabilities, unified_mapping_api_version ,stopwatch_metrics.clone()).map_err(|e|
+        let triggers_adapter = chain.triggers_adapter(&deployment, &required_capabilities, unified_mapping_api_version).map_err(|e|
                 anyhow!(
                 "expected triggers adapter that matches deployment {} with required capabilities: {}: {}",
                 &deployment,

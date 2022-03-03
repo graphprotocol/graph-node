@@ -2,12 +2,12 @@ use graph::blockchain::BlockchainKind;
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
-use graph::prelude::{StopwatchMetrics, TryFutureExt};
+use graph::prelude::TryFutureExt;
 use graph::{
     anyhow,
     blockchain::{
         block_stream::{
-            BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers, FirehoseError,
+            BlockStreamEvent, BlockWithTriggers, FirehoseError,
             FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
         },
         firehose_block_stream::FirehoseBlockStream,
@@ -91,7 +91,6 @@ impl Blockchain for Chain {
         _loc: &DeploymentLocator,
         _capabilities: &Self::NodeCapabilities,
         _unified_api_version: UnifiedMappingApiVersion,
-        _stopwatch_metrics: StopwatchMetrics,
     ) -> Result<Arc<Self::TriggersAdapter>, Error> {
         let adapter = TriggersAdapter {};
         Ok(Arc::new(adapter))
@@ -104,16 +103,10 @@ impl Blockchain for Chain {
         start_blocks: Vec<BlockNumber>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
-        metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let adapter = self
-            .triggers_adapter(
-                &deployment,
-                &NodeCapabilities {},
-                unified_api_version.clone(),
-                metrics.stopwatch.clone(),
-            )
+            .triggers_adapter(&deployment, &NodeCapabilities {}, unified_api_version)
             .expect(&format!("no adapter for network {}", self.name,));
 
         let firehose_endpoint = match self.firehose_endpoints.random() {
@@ -148,7 +141,6 @@ impl Blockchain for Chain {
         _start_blocks: Vec<BlockNumber>,
         _subgraph_current_block: Option<BlockPtr>,
         _filter: Arc<Self::TriggerFilter>,
-        _metrics: Arc<BlockStreamMetrics>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         panic!("NEAR does not support polling block stream")
