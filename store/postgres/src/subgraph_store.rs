@@ -24,7 +24,7 @@ use graph::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
         BlockPtr, DeploymentHash, Entity, EntityKey, EntityModification, Error, Logger, NodeId,
         Schema, StopwatchMetrics, StoreError, SubgraphName, SubgraphStore as SubgraphStoreTrait,
-        SubgraphVersionSwitchingMode,
+        SubgraphVersionSwitchingMode, UnfailOutcome,
     },
     slog::{error, warn},
     util::{backoff::ExponentialBackoff, timed_cache::TimedCache},
@@ -1192,14 +1192,17 @@ impl WritableStoreTrait for WritableStore {
         &self,
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
-    ) -> Result<(), StoreError> {
+    ) -> Result<UnfailOutcome, StoreError> {
         self.retry("unfail_deterministic_error", || {
             self.writable
                 .unfail_deterministic_error(self.site.clone(), current_ptr, parent_ptr)
         })
     }
 
-    fn unfail_non_deterministic_error(&self, current_ptr: &BlockPtr) -> Result<(), StoreError> {
+    fn unfail_non_deterministic_error(
+        &self,
+        current_ptr: &BlockPtr,
+    ) -> Result<UnfailOutcome, StoreError> {
         self.retry("unfail_non_deterministic_error", || {
             self.writable
                 .unfail_non_deterministic_error(self.site.clone(), current_ptr)

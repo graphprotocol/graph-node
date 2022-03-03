@@ -31,7 +31,7 @@ use graph::prelude::{
     anyhow, debug, info, lazy_static, o, warn, web3, ApiSchema, AttributeNames, BlockNumber,
     BlockPtr, CheapClone, DeploymentHash, DeploymentState, Entity, EntityKey, EntityModification,
     EntityQuery, Error, Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError,
-    StoreEvent, Value, BLOCK_NUMBER_MAX,
+    StoreEvent, UnfailOutcome, Value, BLOCK_NUMBER_MAX,
 };
 use graph_graphql::prelude::api_schema;
 use web3::types::Address;
@@ -1185,7 +1185,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
-    ) -> Result<(), StoreError> {
+    ) -> Result<UnfailOutcome, StoreError> {
         let conn = &self.get_conn()?;
         let deployment_id = &site.deployment;
 
@@ -1194,12 +1194,12 @@ impl DeploymentStore {
             let subgraph_error = match detail::fatal_error(conn, deployment_id)? {
                 Some(fatal_error) => fatal_error,
                 // If the subgraph is not failed then there is nothing to do.
-                None => return Ok(()),
+                None => return Ok(UnfailOutcome::Noop),
             };
 
             // Confidence check
             if !subgraph_error.deterministic {
-                return Ok(()); // Nothing to do
+                return Ok(UnfailOutcome::Noop); // Nothing to do
             }
 
             use deployment::SubgraphHealth::*;
@@ -1231,6 +1231,8 @@ impl DeploymentStore {
 
                     // Unfail the deployment.
                     deployment::update_deployment_status(conn, deployment_id, prev_health, None)?;
+
+                    Ok(UnfailOutcome::Unfailed)
                 }
                 // Found error, but not for deployment head, we don't need to
                 // revert the block operations.
@@ -1244,6 +1246,8 @@ impl DeploymentStore {
                         "error_block_hash" => format!("0x{}", hex::encode(&hash_bytes)),
                         "deployment_head" => format!("{}", current_ptr.hash),
                     );
+
+                    Ok(UnfailOutcome::Noop)
                 }
                 // Same as branch above, if you find this warning in the logs,
                 // something is wrong, this shouldn't happen.
@@ -1252,10 +1256,10 @@ impl DeploymentStore {
                         "subgraph_id" => deployment_id,
                         "error_id" => &subgraph_error.id,
                     );
-                }
-            };
 
-            Ok(())
+                    Ok(UnfailOutcome::Noop)
+                }
+            }
         })
     }
 
@@ -1273,7 +1277,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
         current_ptr: &BlockPtr,
-    ) -> Result<(), StoreError> {
+    ) -> Result<UnfailOutcome, StoreError> {
         let conn = &self.get_conn()?;
         let deployment_id = &site.deployment;
 
@@ -1282,12 +1286,12 @@ impl DeploymentStore {
             let subgraph_error = match detail::fatal_error(conn, deployment_id)? {
                 Some(fatal_error) => fatal_error,
                 // If the subgraph is not failed then there is nothing to do.
-                None => return Ok(()),
+                None => return Ok(UnfailOutcome::Noop),
             };
 
             // Confidence check
             if subgraph_error.deterministic {
-                return Ok(()); // Nothing to do
+                return Ok(UnfailOutcome::Noop); // Nothing to do
             }
 
             match subgraph_error.block_range {
@@ -1314,7 +1318,7 @@ impl DeploymentStore {
                         // Delete the fatal error.
                         deployment::delete_error(conn, &subgraph_error.id)?;
 
-                        Ok(())
+                        Ok(UnfailOutcome::Unfailed)
                     }
                 // NOOP, the deployment head is still before where non-deterministic error happened.
                 block_range => {
@@ -1328,7 +1332,7 @@ impl DeploymentStore {
                         "error_block_hash" => subgraph_error.block_hash.as_ref().map(|hash| format!("0x{}", hex::encode(hash))),
                     );
 
-                    Ok(())
+                    Ok(UnfailOutcome::Noop)
                 }
             }
         })
