@@ -150,6 +150,8 @@ impl StopwatchInner {
     }
 
     fn start_section(&mut self, id: String) {
+        #[cfg(debug_assertions)]
+        self.record_section_relation(&id);
         self.record_and_reset();
         self.section_stack.push(id);
     }
@@ -166,6 +168,70 @@ impl StopwatchInner {
                                                         "received" => id),
             None => error!(self.logger, "`end_section` with no current section";
                                         "received" => id),
+        }
+    }
+
+    /// In debug builds, allow recording the relation between sections to
+    /// build a tree of how sections are nested. The resulting JSON file can
+    /// be turned into a graph with Graphviz's `dot` command using this
+    /// shell script:
+    ///
+    /// ```sh
+    /// #! /bin/bash
+    ///
+    /// src=/tmp/sections.txt # GRAPH_SECTION_MAP
+    /// out=/tmp/sections.dot
+    ///
+    /// echo 'digraph { node [shape="box"];' > $out
+    /// jq -r '.[] | "\"\(.parent)[\(.stage)]\" -> \"\(.child)[\(.stage)]\";"' $src >> $out
+    /// echo "}" >> $out
+    ///
+    /// dot -Tpng -O $out
+    /// ```
+    #[cfg(debug_assertions)]
+    fn record_section_relation(&self, child: &str) {
+        use std::fs;
+        use std::fs::OpenOptions;
+
+        lazy_static! {
+            static ref FILE_LOCK: Mutex<()> = Mutex::new(());
+        }
+
+        #[derive(PartialEq, Serialize, Deserialize)]
+        struct Entry {
+            parent: String,
+            child: String,
+            stage: String,
+        }
+
+        if let Some(section_map) = &ENV_VARS.section_map {
+            let _guard = FILE_LOCK.lock().unwrap();
+            let prev = self
+                .section_stack
+                .last()
+                .map(|s| s.as_str())
+                .unwrap_or("none");
+
+            let mut entries: Vec<Entry> = match fs::read_to_string(section_map) {
+                Ok(existing) => serde_json::from_str(&existing).expect("can parse json"),
+                Err(_) => Vec::new(),
+            };
+            let new_entry = Entry {
+                parent: prev.to_string(),
+                child: child.to_string(),
+                stage: self.stage.to_string(),
+            };
+            if !entries.contains(&new_entry) {
+                entries.push(new_entry);
+            }
+            let file = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .append(false)
+                .create(true)
+                .open(section_map)
+                .expect("can open file");
+            serde_json::to_writer(&file, &entries).expect("can write json");
         }
     }
 }
