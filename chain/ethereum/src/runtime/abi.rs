@@ -587,6 +587,41 @@ where
     }
 }
 
+impl<T, B> ToAscObj<AscEthereumEventWithReceipt<T, B>> for (EthereumEventData, TransactionReceipt)
+where
+    T: AscType + AscIndexId,
+    B: AscType + AscIndexId,
+    EthereumTransactionData: ToAscObj<T>,
+    EthereumBlockData: ToAscObj<B>,
+{
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscEthereumEventWithReceipt<T, B>, DeterministicHostError> {
+        let (event_data, receipt) = self;
+        let AscEthereumEvent {
+            address,
+            log_index,
+            transaction_log_index,
+            log_type,
+            block,
+            transaction,
+            params,
+        } = event_data.to_asc_obj(heap, gas)?;
+        Ok(AscEthereumEventWithReceipt {
+            address,
+            log_index,
+            transaction_log_index,
+            log_type,
+            block,
+            transaction,
+            params,
+            receipt: asc_new(heap, receipt, gas)?,
+        })
+    }
+}
+
 impl ToAscObj<AscEthereumLog> for Log {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
