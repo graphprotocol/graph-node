@@ -1,13 +1,12 @@
 use either::Either;
 use graph::blockchain::{Blockchain, BlockchainKind};
-use graph::components::store::EntityType;
 use graph::data::value::Object;
 
 use graph::data::subgraph::features::detect_features;
 use graph::data::subgraph::{status, MAX_SPEC_VERSION};
 use graph::prelude::*;
 use graph::{
-    components::store::StatusStore,
+    components::store::{BlockStore, EntityType, StatusStore},
     data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap},
 };
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
@@ -16,30 +15,34 @@ use std::convert::TryInto;
 use web3::types::{Address, H256};
 
 /// Resolver for the index node GraphQL API.
-pub struct IndexNodeResolver<S, R, St> {
+pub struct IndexNodeResolver<S, R, BStore, SgStore> {
     logger: Logger,
     store: Arc<S>,
     link_resolver: Arc<R>,
-    subgraph_store: Arc<St>,
+    block_store: Arc<BStore>,
+    subgraph_store: Arc<SgStore>,
 }
 
-impl<S, R, St> IndexNodeResolver<S, R, St>
+impl<S, R, BStore, SgStore> IndexNodeResolver<S, R, BStore, SgStore>
 where
     S: StatusStore,
     R: LinkResolver,
-    St: SubgraphStore,
+    BStore: BlockStore,
+    SgStore: SubgraphStore,
 {
     pub fn new(
         logger: &Logger,
         store: Arc<S>,
         link_resolver: Arc<R>,
-        subgraph_store: Arc<St>,
+        block_store: Arc<BStore>,
+        subgraph_store: Arc<SgStore>,
     ) -> Self {
         let logger = logger.new(o!("component" => "IndexNodeResolver"));
         Self {
             logger,
             store,
             link_resolver,
+            block_store,
             subgraph_store,
         }
     }
@@ -106,6 +109,29 @@ where
             .entity_changes_in_block(&subgraph_id, block_number)?;
 
         Ok(entity_changes_to_graphql(entity_changes))
+    }
+
+    fn resolve_block_data(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
+        let network = field
+            .get_required::<String>("network")
+            .expect("Valid network required");
+
+        let block_number = field
+            .get_required::<BlockNumber>("blockNumber")
+            .expect("Valid blockNumber required");
+
+        let chain_store = self.block_store.chain_store(&network).expect("TODO");
+
+        let block_hashes = chain_store
+            .block_hashes_by_block_number(block_number)
+            .expect("TODO");
+
+        let mut block_data = chain_store.blocks(&block_hashes[..]).unwrap();
+        Ok(match block_data.len() {
+            0 => r::Value::Null,
+            1 => block_data.pop().unwrap().into(),
+            _ => panic!("Multiple blocks found for block number"),
+        })
     }
 
     fn resolve_proof_of_indexing(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
@@ -274,13 +300,13 @@ struct ValidationPostProcessResult {
     network: r::Value,
 }
 
-fn validate_and_extract_features<C, St>(
-    subgraph_store: &Arc<St>,
+fn validate_and_extract_features<C, SgStore>(
+    subgraph_store: &Arc<SgStore>,
     unvalidated_subgraph_manifest: UnvalidatedSubgraphManifest<C>,
 ) -> Result<ValidationPostProcessResult, QueryExecutionError>
 where
     C: Blockchain,
-    St: SubgraphStore,
+    SgStore: SubgraphStore,
 {
     // Validate the subgraph we've just obtained.
     //
@@ -419,28 +445,31 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
     }
 }
 
-impl<S, R, St> Clone for IndexNodeResolver<S, R, St>
+impl<S, R, BStore, SgStore> Clone for IndexNodeResolver<S, R, BStore, SgStore>
 where
-    S: SubgraphStore,
-    R: LinkResolver,
-    St: SubgraphStore,
+    S: Clone,
+    R: Clone,
+    BStore: Clone,
+    SgStore: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
             store: self.store.clone(),
             link_resolver: self.link_resolver.clone(),
+            block_store: self.block_store.clone(),
             subgraph_store: self.subgraph_store.clone(),
         }
     }
 }
 
 #[async_trait]
-impl<S, R, St> Resolver for IndexNodeResolver<S, R, St>
+impl<S, R, BStore, SgStore> Resolver for IndexNodeResolver<S, R, BStore, SgStore>
 where
     S: StatusStore,
     R: LinkResolver,
-    St: SubgraphStore,
+    BStore: BlockStore,
+    SgStore: SubgraphStore,
 {
     const CACHEABLE: bool = false;
 
@@ -464,19 +493,20 @@ where
         scalar_type: &s::ScalarType,
         value: Option<r::Value>,
     ) -> Result<r::Value, QueryExecutionError> {
-        // Check if we are resolving the proofOfIndexing bytes
-        if &parent_object_type.name == "Query"
-            && &field.name == "proofOfIndexing"
-            && &scalar_type.name == "Bytes"
-        {
-            return self.resolve_proof_of_indexing(field);
-        }
+        match (
+            parent_object_type.name.as_str(),
+            field.name.as_str(),
+            scalar_type.name.as_str(),
+        ) {
+            ("Query", "proofOfIndexing", "Bytes") => self.resolve_proof_of_indexing(field),
+            ("Query", "blockData", "JSONObject") => self.resolve_block_data(field),
 
-        // Fallback to the same as is in the default trait implementation. There
-        // is no way to call back into the default implementation for the trait.
-        // So, note that this is duplicated.
-        // See also c2112309-44fd-4a84-92a0-5a651e6ed548
-        Ok(value.unwrap_or(r::Value::Null))
+            // Fallback to the same as is in the default trait implementation. There
+            // is no way to call back into the default implementation for the trait.
+            // So, note that this is duplicated.
+            // See also c2112309-44fd-4a84-92a0-5a651e6ed548
+            _ => Ok(value.unwrap_or(r::Value::Null)),
+        }
     }
 
     fn resolve_objects(

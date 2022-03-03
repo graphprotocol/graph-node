@@ -21,6 +21,7 @@ type Query {
   ): Bytes
   subgraphFeatures(subgraphId: String!): SubgraphFeatures!
   entityChangesInBlock(subgraphId: String!, blockNumber: Int!): EntityChanges!
+  blockData(network: String!, blockNumber: Int!): JSONObject
 }
 
 type SubgraphIndexingStatus {

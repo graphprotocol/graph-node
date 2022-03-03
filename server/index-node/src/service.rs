@@ -8,7 +8,10 @@ use std::task::Context;
 use std::task::Poll;
 
 use graph::{components::server::query::GraphQLServerError, data::query::QueryResults};
-use graph::{components::store::StatusStore, prelude::*};
+use graph::{
+    components::store::{BlockStore, StatusStore},
+    prelude::*,
+};
 use graph_graphql::prelude::{execute_query, Query as PreparedQuery, QueryExecutionOptions};
 
 use crate::explorer::Explorer;
@@ -21,16 +24,17 @@ pub type IndexNodeServiceResponse = DynTryFuture<'static, Response<Body>, GraphQ
 
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
-pub struct IndexNodeService<Q, S, R, St> {
+pub struct IndexNodeService<Q, S, R, BStore, St> {
     logger: Logger,
     graphql_runner: Arc<Q>,
     store: Arc<S>,
     explorer: Arc<Explorer<S>>,
     link_resolver: Arc<R>,
+    block_store: Arc<BStore>,
     subgraph_store: Arc<St>,
 }
 
-impl<Q, S, R, St> Clone for IndexNodeService<Q, S, R, St> {
+impl<Q, S, R, BStore, St> Clone for IndexNodeService<Q, S, R, BStore, St> {
     fn clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
@@ -38,18 +42,20 @@ impl<Q, S, R, St> Clone for IndexNodeService<Q, S, R, St> {
             store: self.store.clone(),
             explorer: self.explorer.clone(),
             link_resolver: self.link_resolver.clone(),
+            block_store: self.block_store.clone(),
             subgraph_store: self.subgraph_store.clone(),
         }
     }
 }
 
-impl<Q, S, R, St> CheapClone for IndexNodeService<Q, S, R, St> {}
+impl<Q, S, R, BStore, St> CheapClone for IndexNodeService<Q, S, R, BStore, St> {}
 
-impl<Q, S, R, St> IndexNodeService<Q, S, R, St>
+impl<Q, S, R, BStore, St> IndexNodeService<Q, S, R, BStore, St>
 where
     Q: GraphQlRunner,
     S: StatusStore,
     R: LinkResolver,
+    BStore: BlockStore,
     St: SubgraphStore,
 {
     /// Creates a new GraphQL service.
@@ -58,6 +64,7 @@ where
         graphql_runner: Arc<Q>,
         store: Arc<S>,
         link_resolver: Arc<R>,
+        block_store: Arc<BStore>,
         subgraph_store: Arc<St>,
     ) -> Self {
         let explorer = Arc::new(Explorer::new(store.clone()));
@@ -68,6 +75,7 @@ where
             store,
             explorer,
             link_resolver,
+            block_store,
             subgraph_store,
         }
     }
@@ -129,6 +137,7 @@ where
                     &logger,
                     store,
                     self.link_resolver.clone(),
+                    self.block_store.clone(),
                     self.subgraph_store.clone(),
                 ),
                 deadline: None,
@@ -226,11 +235,12 @@ where
     }
 }
 
-impl<Q, S, R, St> Service<Request<Body>> for IndexNodeService<Q, S, R, St>
+impl<Q, S, R, BStore, St> Service<Request<Body>> for IndexNodeService<Q, S, R, BStore, St>
 where
     Q: GraphQlRunner,
     S: StatusStore,
     R: LinkResolver,
+    BStore: BlockStore,
     St: SubgraphStore,
 {
     type Response = Response<Body>;

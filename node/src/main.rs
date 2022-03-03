@@ -289,7 +289,8 @@ async fn main() {
             graphql_runner.clone(),
             network_store.clone(),
             link_resolver.clone(),
-            network_store.subgraph_store().clone(),
+            network_store.block_store(),
+            network_store.subgraph_store(),
         );
 
         if !opt.disable_block_ingestor {
