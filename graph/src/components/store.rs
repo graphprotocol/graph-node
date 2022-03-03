@@ -763,6 +763,12 @@ pub enum EntityOperation {
     Remove { key: EntityKey },
 }
 
+#[derive(Debug, PartialEq)]
+pub enum UnfailOutcome {
+    Noop,
+    Unfailed,
+}
+
 #[derive(Error, Debug)]
 pub enum StoreError {
     #[error("store error: {0}")]
@@ -1078,11 +1084,14 @@ pub trait WritableStore: Send + Sync + 'static {
         &self,
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
-    ) -> Result<(), StoreError>;
+    ) -> Result<UnfailOutcome, StoreError>;
 
     /// If a non-deterministic error happened and the current deployment head is past the error
     /// block range, this function unfails the subgraph and deletes the error.
-    fn unfail_non_deterministic_error(&self, current_ptr: &BlockPtr) -> Result<(), StoreError>;
+    fn unfail_non_deterministic_error(
+        &self,
+        current_ptr: &BlockPtr,
+    ) -> Result<UnfailOutcome, StoreError>;
 
     /// Set subgraph status to failed with the given error as the cause.
     async fn fail_subgraph(&self, error: SubgraphError) -> Result<(), StoreError>;

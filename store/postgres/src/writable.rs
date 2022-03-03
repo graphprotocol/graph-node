@@ -11,7 +11,7 @@ use graph::{
     prelude::StoreEvent,
     prelude::{
         lazy_static, BlockPtr, DeploymentHash, EntityKey, EntityModification, Error, Logger,
-        StopwatchMetrics, StoreError,
+        StopwatchMetrics, StoreError, UnfailOutcome,
     },
     slog::{error, warn},
     util::backoff::ExponentialBackoff,
@@ -188,14 +188,17 @@ impl WritableStore {
         &self,
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
-    ) -> Result<(), StoreError> {
+    ) -> Result<UnfailOutcome, StoreError> {
         self.retry("unfail_deterministic_error", || {
             self.writable
                 .unfail_deterministic_error(self.site.clone(), current_ptr, parent_ptr)
         })
     }
 
-    fn unfail_non_deterministic_error(&self, current_ptr: &BlockPtr) -> Result<(), StoreError> {
+    fn unfail_non_deterministic_error(
+        &self,
+        current_ptr: &BlockPtr,
+    ) -> Result<UnfailOutcome, StoreError> {
         self.retry("unfail_non_deterministic_error", || {
             self.writable
                 .unfail_non_deterministic_error(self.site.clone(), current_ptr)
@@ -402,12 +405,17 @@ impl WritableStoreTrait for WritableAgent {
         &self,
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
-    ) -> Result<(), StoreError> {
+    ) -> Result<UnfailOutcome, StoreError> {
+        *self.block_ptr.lock().unwrap() = Some(parent_ptr.clone());
+
         self.store
             .unfail_deterministic_error(current_ptr, parent_ptr)
     }
 
-    fn unfail_non_deterministic_error(&self, current_ptr: &BlockPtr) -> Result<(), StoreError> {
+    fn unfail_non_deterministic_error(
+        &self,
+        current_ptr: &BlockPtr,
+    ) -> Result<UnfailOutcome, StoreError> {
         self.store.unfail_non_deterministic_error(current_ptr)
     }
 
