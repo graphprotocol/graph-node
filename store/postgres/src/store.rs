@@ -16,15 +16,16 @@ use graph::{
 
 use crate::{block_store::BlockStore, query_store::QueryStore, SubgraphStore};
 
-/// The overall store of the system, consisting of a [SubgraphStore] and a
-/// [BlockStore], each of which multiplex across multiple database shards.
+/// The overall store of the system, consisting of a [`SubgraphStore`] and a
+/// [`BlockStore`], each of which multiplex across multiple database shards.
 /// The `SubgraphStore` is responsible for storing all data and metadata related
 /// to individual subgraphs, and the `BlockStore` does the same for data belonging
 /// to the chains that are being processed.
 ///
 /// This struct should only be used during configuration and setup of `graph-node`.
-/// Code that needs to access the store should use the traits from [graph::components::store]
-/// and only require the smallest traits that are suitable for their purpose
+/// Code that needs to access the store should use the traits from
+/// [`graph::components::store`] and only require the smallest traits that are
+/// suitable for their purpose.
 pub struct Store {
     subgraph_store: Arc<SubgraphStore>,
     block_store: Arc<BlockStore>,
