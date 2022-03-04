@@ -8,8 +8,8 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use super::block_stream::{
-    BlockStream, BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers, ChainHeadUpdateStream,
-    FirehoseCursor, TriggersAdapter,
+    BlockStream, BlockStreamEvent, BlockWithTriggers, ChainHeadUpdateStream, FirehoseCursor,
+    TriggersAdapter,
 };
 use super::{Block, BlockPtr, Blockchain};
 
@@ -91,7 +91,6 @@ where
     filter: Arc<C::TriggerFilter>,
     start_blocks: Vec<BlockNumber>,
     logger: Logger,
-    metrics: Arc<BlockStreamMetrics>,
     previous_triggers_per_block: f64,
     // Not a BlockNumber, but the difference between two block numbers
     previous_block_range_size: BlockNumber,
@@ -113,7 +112,6 @@ impl<C: Blockchain> Clone for PollingBlockStreamContext<C> {
             filter: self.filter.clone(),
             start_blocks: self.start_blocks.clone(),
             logger: self.logger.clone(),
-            metrics: self.metrics.clone(),
             previous_triggers_per_block: self.previous_triggers_per_block,
             previous_block_range_size: self.previous_block_range_size,
             max_block_range_size: self.max_block_range_size,
@@ -159,7 +157,6 @@ where
         start_blocks: Vec<BlockNumber>,
         reorg_threshold: BlockNumber,
         logger: Logger,
-        metrics: Arc<BlockStreamMetrics>,
         max_block_range_size: BlockNumber,
         target_triggers_per_block_range: u64,
         unified_api_version: UnifiedMappingApiVersion,
@@ -179,7 +176,6 @@ where
                 logger,
                 filter,
                 start_blocks,
-                metrics,
                 previous_triggers_per_block: STARTING_PREVIOUS_TRIGGERS_PER_BLOCK,
                 previous_block_range_size: 1,
                 max_block_range_size,
@@ -259,8 +255,6 @@ where
             if ptr.number >= head_ptr.number {
                 return Ok(ReconciliationStep::Done);
             }
-
-            self.metrics.deployment_head.set(ptr.number as f64);
         }
 
         // Subgraph ptr is behind head ptr.
