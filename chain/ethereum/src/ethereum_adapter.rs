@@ -1,5 +1,6 @@
 use futures::future;
 use futures::prelude::*;
+use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
 use graph::components::transaction_receipt::LightTransactionReceipt;
@@ -10,7 +11,7 @@ use graph::prelude::tokio::try_join;
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
-        anyhow::{self, anyhow, bail},
+        anyhow::{self, anyhow, bail, ensure},
         async_trait, debug, error, ethabi,
         futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
         hex, info, retry, serde_json as json, stream, tiny_keccak, trace, warn,
@@ -1284,87 +1285,83 @@ pub(crate) async fn blocks_with_triggers(
     let eth = adapter.clone();
     let call_filter = EthereumCallFilter::from(&filter.block);
 
-    let mut trigger_futs: futures::stream::FuturesUnordered<
-        Box<dyn Future<Item = Vec<EthereumTrigger>, Error = Error> + Send>,
-    > = futures::stream::FuturesUnordered::new();
+    // Scan the block range to find relevant triggers
+    let trigger_futs: FuturesUnordered<BoxFuture<Result<Vec<EthereumTrigger>, anyhow::Error>>> =
+        FuturesUnordered::new();
 
-    // Scan the block range from triggers to find relevant blocks
+    // Scan for Logs
     if !filter.log.is_empty() {
-        trigger_futs.push(Box::new(
-            eth.logs_in_block_range(
-                &logger,
-                subgraph_metrics.clone(),
-                from,
-                to,
-                filter.log.clone(),
-            )
-            .map_ok(|logs: Vec<Log>| {
-                logs.into_iter()
-                    .map(Arc::new)
-                    .map(EthereumTrigger::Log)
+        let logs_future = get_logs_and_transactions(
+            eth.clone(),
+            &logger,
+            subgraph_metrics.clone(),
+            from,
+            to,
+            filter.log.clone(),
+        )
+        .boxed();
+        trigger_futs.push(logs_future)
+    }
+    // Scan for Calls
+    if !filter.call.is_empty() {
+        let calls_future = eth
+            .calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, &filter.call)
+            .map(Arc::new)
+            .map(EthereumTrigger::Call)
+            .collect()
+            .compat()
+            .boxed();
+        trigger_futs.push(calls_future)
+    }
+
+    // Scan for Blocks
+    if filter.block.trigger_every_block {
+        let block_future = adapter
+            .block_range_to_ptrs(logger.clone(), from, to)
+            .map(move |ptrs| {
+                ptrs.into_iter()
+                    .map(|ptr| EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every))
                     .collect()
             })
-            .compat(),
-        ))
-    }
-
-    if !filter.call.is_empty() {
-        trigger_futs.push(Box::new(
-            eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, &filter.call)
-                .map(Arc::new)
-                .map(EthereumTrigger::Call)
-                .collect(),
-        ));
-    }
-
-    if filter.block.trigger_every_block {
-        trigger_futs.push(Box::new(
-            adapter
-                .block_range_to_ptrs(logger.clone(), from, to)
-                .map(move |ptrs| {
-                    ptrs.into_iter()
-                        .map(|ptr| EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every))
-                        .collect()
-                }),
-        ))
+            .compat()
+            .boxed();
+        trigger_futs.push(block_future)
     } else if !filter.block.contract_addresses.is_empty() {
         // To determine which blocks include a call to addresses
         // in the block filter, transform the `block_filter` into
         // a `call_filter` and run `blocks_with_calls`
-        trigger_futs.push(Box::new(
-            eth.calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, &call_filter)
-                .map(|call| {
-                    EthereumTrigger::Block(
-                        BlockPtr::from(&call),
-                        EthereumBlockTriggerType::WithCallTo(call.to),
-                    )
-                })
-                .collect(),
-        ));
+        let block_future = eth
+            .calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, &call_filter)
+            .map(|call| {
+                EthereumTrigger::Block(
+                    BlockPtr::from(&call),
+                    EthereumBlockTriggerType::WithCallTo(call.to),
+                )
+            })
+            .collect()
+            .compat()
+            .boxed();
+        trigger_futs.push(block_future)
     }
 
-    let logger1 = logger.cheap_clone();
-    let logger2 = logger.cheap_clone();
-    let eth_clone = eth.cheap_clone();
-    let (triggers, to_hash) = trigger_futs
-        .concat2()
-        .join(
-            adapter
-                .clone()
-                .block_hash_by_block_number(&logger, to)
-                .then(move |to_hash| match to_hash {
-                    Ok(n) => n.ok_or_else(|| {
-                        warn!(logger2,
-                                "Ethereum endpoint is behind";
-                                "url" => eth_clone.url_hostname()
-                        );
-                        anyhow!("Block {} not found in the chain", to)
-                    }),
-                    Err(e) => Err(e),
-                }),
-        )
+    // join on triger futures
+    let triggers: Vec<EthereumTrigger> = trigger_futs.try_concat().await?;
+
+    // get hash for "to" block
+    let to_hash = match adapter
+        .block_hash_by_block_number(&logger, to)
         .compat()
-        .await?;
+        .await?
+    {
+        Some(hash) => hash,
+        None => {
+            warn!(logger,
+            "Ethereum endpoint is behind";
+            "url" => eth.url_hostname()
+            );
+            bail!("Block {} not found in the chain", to)
+        }
+    };
 
     let mut block_hashes: HashSet<H256> =
         triggers.iter().map(EthereumTrigger::block_hash).collect();
@@ -1381,7 +1378,7 @@ pub(crate) async fn blocks_with_triggers(
     triggers_by_block.entry(to).or_insert(Vec::new());
 
     let blocks = adapter
-        .load_blocks(logger1, chain_store.clone(), block_hashes)
+        .load_blocks(logger.cheap_clone(), chain_store.clone(), block_hashes)
         .and_then(
             move |block| match triggers_by_block.remove(&(block.number() as BlockNumber)) {
                 Some(triggers) => Ok(BlockWithTriggers::new(
@@ -1399,7 +1396,6 @@ pub(crate) async fn blocks_with_triggers(
         .await?;
 
     // Filter out call triggers that come from unsuccessful transactions
-
     let mut blocks = if unified_api_version
         .equal_or_greater_than(&graph::data::subgraph::API_VERSION_0_0_5)
     {
@@ -1492,7 +1488,7 @@ pub(crate) fn parse_log_triggers(
                 .logs
                 .iter()
                 .filter(move |log| log_filter.matches(log))
-                .map(move |log| EthereumTrigger::Log(Arc::new(log.clone())))
+                .map(move |log| EthereumTrigger::Log(Arc::new(log.clone()), Some(receipt.clone())))
         })
         .collect()
 }
@@ -1828,4 +1824,88 @@ fn resolve_transaction_receipt(
             ))
         }
     }
+}
+
+/// Retrieves logs and the associated transact receipts, if required by the [`EthereumLogFilter`].
+pub(super) async fn get_logs_and_transactions(
+    adapter: Arc<EthereumAdapter>,
+    logger: &Logger,
+    subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
+    from: BlockNumber,
+    to: BlockNumber,
+    log_filter: EthereumLogFilter,
+) -> Result<Vec<EthereumTrigger>, anyhow::Error> {
+    // obtain logs externally
+    let logs = adapter
+        .logs_in_block_range(logger, subgraph_metrics, from, to, log_filter)
+        .await?;
+
+    todo!(
+            "transaction receipts should be conditionally collected  considering the API Version and the manifest. \
+             we should early return here with only the logs and without attempting to fetch the receipts."
+        );
+
+    // not all logs have transaction hashes
+    let transaction_hashes: Vec<_> = logs.iter().filter_map(|log| log.transaction_hash).collect();
+
+    // obtain receipts externally
+    let transaction_receipts_by_hash =
+        get_transaction_receipts_for_transaction_hashes(&adapter, &transaction_hashes).await?;
+
+    // associate each log with its receipt, when possible
+    let mut log_and_receipt_pairs = Vec::new();
+    for log in logs.into_iter() {
+        let optional_receipt = log
+            .transaction_hash
+            .and_then(|txn| transaction_receipts_by_hash.get(&txn).cloned());
+        let value = EthereumTrigger::Log(Arc::new(log), optional_receipt);
+        log_and_receipt_pairs.push(value);
+    }
+
+    Ok(log_and_receipt_pairs)
+}
+
+pub(super) async fn get_transaction_receipts_for_transaction_hashes(
+    adapter: &EthereumAdapter,
+    transaction_hashes: &[H256],
+) -> Result<HashMap<H256, TransactionReceipt>, anyhow::Error> {
+    use std::collections::hash_map::Entry::Vacant;
+
+    let mut receipts_by_hash: HashMap<H256, TransactionReceipt> = HashMap::new();
+
+    // return early if input set is empty
+    if transaction_hashes.is_empty() {
+        return Ok(receipts_by_hash);
+    }
+
+    // Keep record of all unique transact hashes that we'll request receipts for.
+    let mut unique_hashes: HashSet<&H256> = transaction_hashes.iter().collect();
+
+    // Request transact receipts concurrently
+    let receipt_futures = FuturesUnordered::new();
+    for &hash in &unique_hashes {
+        let receipt_future = fetch_receipt_from_ethereum_client(adapter, hash);
+        receipt_futures.push(receipt_future)
+    }
+    let receipts: Vec<_> = receipt_futures.try_collect().await?;
+
+    // build a map between transaction hashes and their receipts
+    for receipt in receipts.into_iter() {
+        if !unique_hashes.remove(&receipt.transaction_hash) {
+            bail!("Received a receipt for a different transaction hash")
+        }
+        if let Vacant(entry) = receipts_by_hash.entry(receipt.transaction_hash.clone()) {
+            entry.insert(receipt);
+        } else {
+            bail!("Received a duplicate transaction receipt")
+        }
+    }
+
+    // confidence check: all unique hashes should have been used
+    ensure!(
+        unique_hashes.is_empty(),
+        "Didn't receive all necessary transaction receipts"
+    );
+
+    Ok(receipts_by_hash)
 }

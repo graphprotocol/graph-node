@@ -11,6 +11,7 @@ use graph::prelude::ethabi::LogParam;
 use graph::prelude::web3::types::Block;
 use graph::prelude::web3::types::Log;
 use graph::prelude::web3::types::Transaction;
+use graph::prelude::web3::types::TransactionReceipt;
 use graph::prelude::BlockNumber;
 use graph::prelude::BlockPtr;
 use graph::prelude::{CheapClone, EthereumCall};
@@ -42,6 +43,7 @@ pub enum MappingTrigger {
         transaction: Arc<Transaction>,
         log: Arc<Log>,
         params: Vec<LogParam>,
+        receipt: Option<TransactionReceipt>,
     },
     Call {
         block: Arc<LightEthereumBlock>,
@@ -80,6 +82,7 @@ impl std::fmt::Debug for MappingTrigger {
                 transaction,
                 log,
                 params,
+                receipt: _,
             } => MappingTriggerWithoutBlock::Log {
                 _transaction: transaction.cheap_clone(),
                 _log: log.cheap_clone(),
@@ -116,7 +119,14 @@ impl blockchain::MappingTrigger for MappingTrigger {
                 transaction,
                 log,
                 params,
+                receipt,
             } => {
+                // TODO:
+                // match receipt {
+                //     Some(_) => todo!(),
+                //     None => todo!(),
+                // }
+
                 let ethereum_event_data = EthereumEventData {
                     block: EthereumBlockData::from(block.as_ref()),
                     transaction: EthereumTransactionData::from(transaction.deref()),
@@ -199,7 +209,7 @@ impl blockchain::MappingTrigger for MappingTrigger {
 pub enum EthereumTrigger {
     Block(BlockPtr, EthereumBlockTriggerType),
     Call(Arc<EthereumCall>),
-    Log(Arc<Log>),
+    Log(Arc<Log>, Option<TransactionReceipt>),
 }
 
 impl PartialEq for EthereumTrigger {
@@ -211,8 +221,10 @@ impl PartialEq for EthereumTrigger {
 
             (Self::Call(a), Self::Call(b)) => a == b,
 
-            (Self::Log(a), Self::Log(b)) => {
-                a.transaction_hash == b.transaction_hash && a.log_index == b.log_index
+            (Self::Log(a, a_receipt), Self::Log(b, b_receipt)) => {
+                a.transaction_hash == b.transaction_hash
+                    && a.log_index == b.log_index
+                    && a_receipt == b_receipt
             }
 
             _ => false,
@@ -233,7 +245,9 @@ impl EthereumTrigger {
         match self {
             EthereumTrigger::Block(block_ptr, _) => block_ptr.number,
             EthereumTrigger::Call(call) => call.block_number,
-            EthereumTrigger::Log(log) => i32::try_from(log.block_number.unwrap().as_u64()).unwrap(),
+            EthereumTrigger::Log(log, _) => {
+                i32::try_from(log.block_number.unwrap().as_u64()).unwrap()
+            }
         }
     }
 
@@ -241,7 +255,7 @@ impl EthereumTrigger {
         match self {
             EthereumTrigger::Block(block_ptr, _) => block_ptr.hash_as_h256(),
             EthereumTrigger::Call(call) => call.block_hash,
-            EthereumTrigger::Log(log) => log.block_hash.unwrap(),
+            EthereumTrigger::Log(log, _) => log.block_hash.unwrap(),
         }
     }
 }
@@ -260,24 +274,24 @@ impl Ord for EthereumTrigger {
             (Self::Call(a), Self::Call(b)) => a.transaction_index.cmp(&b.transaction_index),
 
             // Events are ordered by their log index
-            (Self::Log(a), Self::Log(b)) => a.log_index.cmp(&b.log_index),
+            (Self::Log(a, _), Self::Log(b, _)) => a.log_index.cmp(&b.log_index),
 
             // Calls vs. events are logged by their tx index;
             // if they are from the same transaction, events come first
-            (Self::Call(a), Self::Log(b))
+            (Self::Call(a), Self::Log(b, _))
                 if a.transaction_index == b.transaction_index.unwrap().as_u64() =>
             {
                 Ordering::Greater
             }
-            (Self::Log(a), Self::Call(b))
+            (Self::Log(a, _), Self::Call(b))
                 if a.transaction_index.unwrap().as_u64() == b.transaction_index =>
             {
                 Ordering::Less
             }
-            (Self::Call(a), Self::Log(b)) => a
+            (Self::Call(a), Self::Log(b, _)) => a
                 .transaction_index
                 .cmp(&b.transaction_index.unwrap().as_u64()),
-            (Self::Log(a), Self::Call(b)) => a
+            (Self::Log(a, _), Self::Call(b)) => a
                 .transaction_index
                 .unwrap()
                 .as_u64()
@@ -295,7 +309,7 @@ impl PartialOrd for EthereumTrigger {
 impl TriggerData for EthereumTrigger {
     fn error_context(&self) -> std::string::String {
         let transaction_id = match self {
-            EthereumTrigger::Log(log) => log.transaction_hash,
+            EthereumTrigger::Log(log, _) => log.transaction_hash,
             EthereumTrigger::Call(call) => call.transaction_hash,
             EthereumTrigger::Block(..) => None,
         };

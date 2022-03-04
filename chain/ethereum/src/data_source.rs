@@ -433,7 +433,7 @@ impl DataSource {
         let trigger_address = match trigger {
             EthereumTrigger::Block(_, EthereumBlockTriggerType::WithCallTo(address)) => address,
             EthereumTrigger::Call(call) => &call.to,
-            EthereumTrigger::Log(log) => &log.address,
+            EthereumTrigger::Log(log, _) => &log.address,
 
             // Unfiltered block triggers match any data source address.
             EthereumTrigger::Block(_, EthereumBlockTriggerType::Every) => return true,
@@ -471,7 +471,7 @@ impl DataSource {
                     handler.handler,
                 )))
             }
-            EthereumTrigger::Log(log) => {
+            EthereumTrigger::Log(log, receipt) => {
                 let potential_handlers = self.handlers_for_log(log)?;
 
                 // Map event handlers to (event handler, event ABI) pairs; fail if there are
@@ -572,6 +572,7 @@ impl DataSource {
                         transaction: Arc::new(transaction),
                         log: log.cheap_clone(),
                         params,
+                        receipt: receipt.clone(),
                     },
                     event_handler.handler,
                     logging_extras,

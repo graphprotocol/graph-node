@@ -1153,7 +1153,7 @@ mod data {
                 .unwrap();
         }
 
-        /// Queries the database for all the transaction receipts in a given block range.
+        /// Queries the database for all the transaction receipts in a given block.
         pub(crate) fn find_transaction_receipts_in_block(
             &self,
             conn: &PgConnection,
