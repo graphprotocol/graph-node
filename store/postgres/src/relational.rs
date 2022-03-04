@@ -766,9 +766,15 @@ impl Layout {
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(entity_type)?;
         if table.immutable {
+            let ids = entities
+                .into_iter()
+                .map(|(key, _)| key.entity_id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
             return Err(constraint_violation!(
-                "entities of type `{}` can not be updated since they are immutable",
-                entity_type
+                "entities of type `{}` can not be updated since they are immutable. Entity ids are [{}]",
+                entity_type,
+                ids
             ));
         }
 
@@ -806,8 +812,8 @@ impl Layout {
         let table = self.table_for_entity(entity_type)?;
         if table.immutable {
             return Err(constraint_violation!(
-                "entities of type `{}` can not be deleted since they are immutable",
-                entity_type
+                "entities of type `{}` can not be deleted since they are immutable. Entity ids are [{}]",
+                entity_type, entity_ids.join(", ")
             ));
         }
 
