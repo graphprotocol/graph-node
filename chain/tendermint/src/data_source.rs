@@ -61,8 +61,8 @@ impl blockchain::DataSource<Chain> for DataSource {
                 None => return Ok(None),
             },
 
-            TendermintTrigger::Event(event_data) => {
-                match self.handler_for_event(event_data.event()) {
+            TendermintTrigger::Event { event_data, origin } => {
+                match self.handler_for_event(event_data.event(), *origin) {
                     Some(handler) => handler.handler,
                     None => return Ok(None),
                 }
@@ -199,11 +199,23 @@ impl DataSource {
         self.mapping.block_handlers.first().cloned()
     }
 
-    fn handler_for_event(&self, event: &codec::Event) -> Option<MappingEventHandler> {
+    fn handler_for_event(
+        &self,
+        event: &codec::Event,
+        event_origin: EventOrigin,
+    ) -> Option<MappingEventHandler> {
         self.mapping
             .event_handlers
             .iter()
-            .find(|handler| event.event_type == handler.event)
+            .find(|handler| {
+                let event_type_matches = event.event_type == handler.event;
+
+                if let Some(handler_origin) = handler.origin {
+                    event_type_matches && event_origin == handler_origin
+                } else {
+                    event_type_matches
+                }
+            })
             .cloned()
     }
 }
@@ -342,6 +354,7 @@ pub struct MappingBlockHandler {
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct MappingEventHandler {
     pub event: String,
+    pub origin: Option<EventOrigin>,
     pub handler: String,
 }
 
@@ -349,4 +362,11 @@ pub struct MappingEventHandler {
 pub struct Source {
     #[serde(rename = "startBlock", default)]
     pub start_block: BlockNumber,
+}
+
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub enum EventOrigin {
+    BeginBlock,
+    DeliverTx,
+    EndBlock,
 }

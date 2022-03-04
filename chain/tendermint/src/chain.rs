@@ -23,7 +23,7 @@ use prost::Message;
 
 use crate::capabilities::NodeCapabilities;
 use crate::data_source::{
-    DataSource, DataSourceTemplate, UnresolvedDataSource, UnresolvedDataSourceTemplate,
+    DataSource, DataSourceTemplate, EventOrigin, UnresolvedDataSource, UnresolvedDataSourceTemplate,
 };
 use crate::trigger::TendermintTrigger;
 use crate::RuntimeAdapter;
@@ -196,17 +196,20 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         let shared_block = Arc::new(block.clone());
 
         let mut triggers: Vec<_> = shared_block
-            .events()
+            .begin_block_events()
             .cloned()
+            // FIXME (Tendermint): Optimize. Should use an Arc instead of cloning the
+            // block. This is not currently possible because EventData is automatically
+            // generated.
             .map(|event| {
-                TendermintTrigger::Event(Arc::new(codec::EventData {
-                    event: Some(event),
-                    // FIXME (Tendermint): Optimize. Should use an Arc instead of cloning the
-                    // block. This is not currently possible because EventData is automatically
-                    // generated.
-                    block: Some(block.block().clone()),
-                }))
+                TendermintTrigger::with_event(event, block.block().clone(), EventOrigin::BeginBlock)
             })
+            .chain(shared_block.tx_events().cloned().map(|event| {
+                TendermintTrigger::with_event(event, block.block().clone(), EventOrigin::DeliverTx)
+            }))
+            .chain(shared_block.end_block_events().cloned().map(|event| {
+                TendermintTrigger::with_event(event, block.block().clone(), EventOrigin::EndBlock)
+            }))
             .collect();
 
         triggers.push(TendermintTrigger::Block(shared_block.cheap_clone()));
