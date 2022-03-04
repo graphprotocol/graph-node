@@ -115,6 +115,8 @@ pub async fn run(
     let mut blockchain_map = BlockchainMap::new();
     blockchain_map.insert(network_name.clone(), Arc::new(chain));
 
+    let static_filters = env::var_os("EXPERIMENTAL_STATIC_FILTERS").is_some();
+
     let blockchain_map = Arc::new(blockchain_map);
     let subgraph_instance_manager = SubgraphInstanceManager::new(
         &logger_factory,
@@ -122,6 +124,7 @@ pub async fn run(
         blockchain_map.clone(),
         metrics_registry.clone(),
         link_resolver.cheap_clone(),
+        static_filters,
     );
 
     // Create IPFS-based subgraph provider
