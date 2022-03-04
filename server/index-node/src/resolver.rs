@@ -11,7 +11,6 @@ use graph::{
 };
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
 use std::collections::BTreeMap;
-use std::convert::TryInto;
 use web3::types::{Address, H256};
 
 /// Resolver for the index node GraphQL API.
@@ -105,9 +104,9 @@ where
             .get_required::<String>("network")
             .expect("Valid network required");
 
-        let block_number = field
-            .get_required::<BlockNumber>("blockNumber")
-            .expect("Valid blockNumber required");
+        let block_hash = field
+            .get_required::<H256>("blockHash")
+            .expect("Valid blockHash required");
 
         let chain_store = if let Some(cs) = self.store.block_store().chain_store(&network) {
             cs
@@ -116,7 +115,7 @@ where
                 self.logger,
                 "Failed to fetch block data; nonexistant network";
                 "network" => network,
-                "block_number" => format!("{}", block_number),
+                "block_hash" => format!("{}", block_hash),
             );
             return Ok(r::Value::Null);
         };
@@ -126,41 +125,24 @@ where
                 self.logger,
                 "Failed to fetch block data; storage error";
                 "network" => network.as_str(),
-                "block_number" => format!("{}", block_number),
+                "block_hash" => format!("{}", block_hash),
                 "error" => e.to_string(),
             );
         };
 
-        let block_hashes = match chain_store.block_hashes_by_block_number(block_number) {
-            Ok(hashes) => hashes,
-            Err(e) => {
-                log_store_err(e);
-                return Ok(r::Value::Null);
-            }
-        };
-
-        let blocks_res = chain_store.blocks(&block_hashes[..]);
+        let blocks_res = chain_store.blocks(&[block_hash]);
         Ok(match blocks_res {
             Ok(blocks) if blocks.is_empty() => {
                 error!(
                     self.logger,
                     "Failed to fetch block data; block not found";
                     "network" => network,
-                    "block_number" => format!("{}", block_number),
+                    "block_hash" => format!("{}", block_hash),
                 );
                 r::Value::Null
             }
             Ok(mut blocks) => {
-                if blocks.len() > 1 {
-                    warn!(
-                        self.logger,
-                        "Found multiple blocks with the given block number";
-                        "network" => network,
-                        "count" => blocks.len(),
-                        "block_number" => format!("{}", block_number),
-                        "block_hashes" => format!("{:?}", block_hashes),
-                    );
-                }
+                assert!(blocks.len() == 1, "Multiple blocks with the same hash");
                 blocks.pop().unwrap().into()
             }
             Err(e) => {
@@ -177,15 +159,11 @@ where
 
         let block_number: u64 = field
             .get_required::<u64>("blockNumber")
-            .expect("Valid blockNumber required")
-            .try_into()
-            .unwrap();
+            .expect("Valid blockNumber required");
 
         let block_hash = field
             .get_required::<H256>("blockHash")
-            .expect("Valid blockHash required")
-            .try_into()
-            .unwrap();
+            .expect("Valid blockHash required");
 
         let block = BlockPtr::from((block_hash, block_number));
 
