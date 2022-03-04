@@ -150,7 +150,6 @@ impl<C: Blockchain> HostExports<C> {
         );
         poi_section.end();
 
-        let validation_section = stopwatch.start_section("host_export_store_set");
         let key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
             entity_type: EntityType::new(entity_type),
@@ -161,7 +160,6 @@ impl<C: Blockchain> HostExports<C> {
 
         let entity = Entity::from(data);
         state.entity_cache.set(key.clone(), entity)?;
-        validation_section.end();
 
         Ok(())
     }
