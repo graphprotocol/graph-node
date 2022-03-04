@@ -185,8 +185,20 @@ where
 
                 let (block, cursor) = match event {
                     Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => (block, cursor),
-                    Some(Ok(BlockStreamEvent::Revert(subgraph_ptr, revert_to_ptr, cursor))) => {
-                        info!(&logger, "Reverting block to get back to main chain"; "current" => &subgraph_ptr, "revert_to" => &revert_to_ptr);
+                    // In the case of the PollingBlockStream, the stream_ptr can be ahead of the
+                    // subgraph's deployment head (database), because this component is pipelined.
+                    Some(Ok(BlockStreamEvent::Revert(stream_ptr, revert_to_ptr, cursor))) => {
+                        // Current deployment head in the database / WritableAgent Mutex cache.
+                        //
+                        // Safe unwrap because in a Revert event we're sure the subgraph has
+                        // advanced at least once.
+                        let subgraph_ptr = self.inputs.store.block_ptr().unwrap();
+                        if revert_to_ptr.number >= subgraph_ptr.number {
+                            info!(&logger, "Block to revert is higher than subgraph pointer, nothing to do"; "subgraph_ptr" => &subgraph_ptr, "stream_ptr" => &stream_ptr, "revert_to_ptr" => &revert_to_ptr);
+                            continue;
+                        }
+
+                        info!(&logger, "Reverting block to get back to main chain"; "subgraph_ptr" => &subgraph_ptr, "stream_ptr" => &stream_ptr, "revert_to_ptr" => &revert_to_ptr);
 
                         if let Err(e) = self
                             .inputs

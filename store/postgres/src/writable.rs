@@ -173,14 +173,13 @@ impl WritableStore {
         firehose_cursor: Option<&str>,
     ) -> Result<(), StoreError> {
         self.retry("revert_block_operations", || {
-            match self.writable.revert_block_operations(
+            let event = self.writable.revert_block_operations(
                 self.site.clone(),
                 block_ptr_to.clone(),
                 firehose_cursor.clone(),
-            )? {
-                Some(event) => self.try_send_store_event(event),
-                None => Ok(()),
-            }
+            )?;
+
+            self.try_send_store_event(event)
         })
     }
 
