@@ -7,9 +7,13 @@ use graph::log;
 use graph::prelude::{QueryStoreManager as _, SubgraphStore as _, *};
 use graph::semver::Version;
 use graph::{
-    blockchain::ChainIdentifier, components::store::DeploymentLocator,
-    components::store::EntityType, components::store::StatusStore,
-    components::store::StoredDynamicDataSource, data::subgraph::status, prelude::NodeId,
+    blockchain::ChainIdentifier,
+    components::store::DeploymentLocator,
+    components::store::EntityType,
+    components::store::StoredDynamicDataSource,
+    components::store::{StatusStore, Store as StoreTrait},
+    data::subgraph::status,
+    prelude::NodeId,
 };
 use graph_graphql::prelude::{
     execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
@@ -388,11 +392,10 @@ async fn execute_subgraph_query_internal(
         _ => unreachable!("tests do not use this"),
     };
     let schema = SUBGRAPH_STORE.api_schema(&id).unwrap();
-    let status = StatusStore::status(
-        STORE.as_ref(),
-        status::Filter::Deployments(vec![id.to_string()]),
-    )
-    .unwrap();
+    let status = STORE
+        .as_ref()
+        .status(status::Filter::Deployments(vec![id.to_string()]))
+        .unwrap();
     let network = Some(status[0].chains[0].network.clone());
     let query = return_err!(PreparedQuery::new(
         &logger,

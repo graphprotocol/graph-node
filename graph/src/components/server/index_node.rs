@@ -4,8 +4,8 @@ use futures::prelude::*;
 
 use crate::prelude::{BlockNumber, Schema};
 
-#[derive(Debug)]
 /// This is only needed to support the explorer API
+#[derive(Debug)]
 pub struct VersionInfo {
     pub created_at: String,
     pub deployment_id: String,

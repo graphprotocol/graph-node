@@ -6,7 +6,7 @@ use graph::data::subgraph::features::detect_features;
 use graph::data::subgraph::{status, MAX_SPEC_VERSION};
 use graph::prelude::*;
 use graph::{
-    components::store::{BlockStore, EntityType, StatusStore},
+    components::store::{BlockStore, EntityType, Store},
     data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap},
 };
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
@@ -15,35 +15,23 @@ use std::convert::TryInto;
 use web3::types::{Address, H256};
 
 /// Resolver for the index node GraphQL API.
-pub struct IndexNodeResolver<S, R, BStore, SgStore> {
+pub struct IndexNodeResolver<S, R> {
     logger: Logger,
     store: Arc<S>,
     link_resolver: Arc<R>,
-    block_store: Arc<BStore>,
-    subgraph_store: Arc<SgStore>,
 }
 
-impl<S, R, BStore, SgStore> IndexNodeResolver<S, R, BStore, SgStore>
+impl<S, R> IndexNodeResolver<S, R>
 where
-    S: StatusStore,
+    S: Store,
     R: LinkResolver,
-    BStore: BlockStore,
-    SgStore: SubgraphStore,
 {
-    pub fn new(
-        logger: &Logger,
-        store: Arc<S>,
-        link_resolver: Arc<R>,
-        block_store: Arc<BStore>,
-        subgraph_store: Arc<SgStore>,
-    ) -> Self {
+    pub fn new(logger: &Logger, store: Arc<S>, link_resolver: Arc<R>) -> Self {
         let logger = logger.new(o!("component" => "IndexNodeResolver"));
         Self {
             logger,
             store,
             link_resolver,
-            block_store,
-            subgraph_store,
         }
     }
 
@@ -105,7 +93,8 @@ where
             .expect("Valid blockNumber required");
 
         let entity_changes = self
-            .subgraph_store
+            .store
+            .subgraph_store()
             .entity_changes_in_block(&subgraph_id, block_number)?;
 
         Ok(entity_changes_to_graphql(entity_changes))
@@ -120,17 +109,64 @@ where
             .get_required::<BlockNumber>("blockNumber")
             .expect("Valid blockNumber required");
 
-        let chain_store = self.block_store.chain_store(&network).expect("TODO");
+        let chain_store = if let Some(cs) = self.store.block_store().chain_store(&network) {
+            cs
+        } else {
+            error!(
+                self.logger,
+                "Failed to fetch block data; nonexistant network";
+                "network" => network,
+                "block_number" => format!("{}", block_number),
+            );
+            return Ok(r::Value::Null);
+        };
 
-        let block_hashes = chain_store
-            .block_hashes_by_block_number(block_number)
-            .expect("TODO");
+        let log_store_err = |e: Error| {
+            error!(
+                self.logger,
+                "Failed to fetch block data; storage error";
+                "network" => network.as_str(),
+                "block_number" => format!("{}", block_number),
+                "error" => e.to_string(),
+            );
+        };
 
-        let mut block_data = chain_store.blocks(&block_hashes[..]).unwrap();
-        Ok(match block_data.len() {
-            0 => r::Value::Null,
-            1 => block_data.pop().unwrap().into(),
-            _ => panic!("Multiple blocks found for block number"),
+        let block_hashes = match chain_store.block_hashes_by_block_number(block_number) {
+            Ok(hashes) => hashes,
+            Err(e) => {
+                log_store_err(e);
+                return Ok(r::Value::Null);
+            }
+        };
+
+        let blocks_res = chain_store.blocks(&block_hashes[..]);
+        Ok(match blocks_res {
+            Ok(blocks) if blocks.is_empty() => {
+                error!(
+                    self.logger,
+                    "Failed to fetch block data; block not found";
+                    "network" => network,
+                    "block_number" => format!("{}", block_number),
+                );
+                r::Value::Null
+            }
+            Ok(mut blocks) => {
+                if blocks.len() > 1 {
+                    warn!(
+                        self.logger,
+                        "Found multiple blocks with the given block number";
+                        "network" => network,
+                        "count" => blocks.len(),
+                        "block_number" => format!("{}", block_number),
+                        "block_hashes" => format!("{:?}", block_hashes),
+                    );
+                }
+                blocks.pop().unwrap().into()
+            }
+            Err(e) => {
+                log_store_err(e);
+                r::Value::Null
+            }
         })
     }
 
@@ -259,7 +295,7 @@ where
                         .await?;
 
                     validate_and_extract_features(
-                        &self.subgraph_store,
+                        &self.store.subgraph_store(),
                         unvalidated_subgraph_manifest,
                     )?
                 }
@@ -276,7 +312,7 @@ where
                         .await?;
 
                     validate_and_extract_features(
-                        &self.subgraph_store,
+                        &self.store.subgraph_store(),
                         unvalidated_subgraph_manifest,
                     )?
                 }
@@ -445,31 +481,25 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
     }
 }
 
-impl<S, R, BStore, SgStore> Clone for IndexNodeResolver<S, R, BStore, SgStore>
+impl<S, R> Clone for IndexNodeResolver<S, R>
 where
     S: Clone,
     R: Clone,
-    BStore: Clone,
-    SgStore: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
             store: self.store.clone(),
             link_resolver: self.link_resolver.clone(),
-            block_store: self.block_store.clone(),
-            subgraph_store: self.subgraph_store.clone(),
         }
     }
 }
 
 #[async_trait]
-impl<S, R, BStore, SgStore> Resolver for IndexNodeResolver<S, R, BStore, SgStore>
+impl<S, R> Resolver for IndexNodeResolver<S, R>
 where
-    S: StatusStore,
+    S: Store,
     R: LinkResolver,
-    BStore: BlockStore,
-    SgStore: SubgraphStore,
 {
     const CACHEABLE: bool = false;
 

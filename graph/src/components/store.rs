@@ -1161,6 +1161,20 @@ pub trait BlockStore: Send + Sync + 'static {
     fn chain_store(&self, network: &str) -> Option<Arc<Self::ChainStore>>;
 }
 
+/// An entry point for all operations that require access to the node's storage
+/// layer. It provides access to a [`BlockStore`] and a [`SubgraphStore`].
+pub trait Store: Clone + StatusStore + Send + Sync + 'static {
+    /// The [`BlockStore`] implementor used by this [`Store`].
+    type BlockStore: BlockStore;
+
+    /// The [`SubgraphStore`] implementor used by this [`Store`].
+    type SubgraphStore: SubgraphStore;
+
+    fn block_store(&self) -> Arc<Self::BlockStore>;
+
+    fn subgraph_store(&self) -> Arc<Self::SubgraphStore>;
+}
+
 /// Common trait for blockchain store implementations.
 #[async_trait]
 pub trait ChainStore: Send + Sync + 'static {
