@@ -6,7 +6,7 @@ use anyhow::{Error, Result};
 use graph::{
     blockchain::{self, Block, Blockchain, TriggerWithHandler},
     components::store::StoredDynamicDataSource,
-    data::subgraph::{DataSourceContext, Source},
+    data::subgraph::DataSourceContext,
     prelude::{
         anyhow, async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize,
         Link, LinkResolver, Logger,
@@ -18,6 +18,9 @@ use crate::codec;
 use crate::trigger::TendermintTrigger;
 
 pub const TENDERMINT_KIND: &str = "tendermint";
+
+const DYNAMIC_DATA_SOURCE_ERROR: &str = "Tendermint subgraphs do not support dynamic data sources";
+const TEMPLATE_ERROR: &str = "Tendermint subgraphs do not support templates";
 
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
@@ -35,7 +38,7 @@ pub struct DataSource {
 
 impl blockchain::DataSource<Chain> for DataSource {
     fn address(&self) -> Option<&[u8]> {
-        self.source.address.as_ref().map(|x| x.as_bytes())
+        None
     }
 
     fn start_block(&self) -> BlockNumber {
@@ -119,21 +122,14 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
-        StoredDynamicDataSource {
-            name: self.name.clone(),
-            source: self.source.clone(),
-            // one as_ref for Arc, another one for Option
-            context: self.context().as_ref().as_ref().and_then(|c| c.id().ok()),
-            creation_block: self.creation_block,
-        }
+        unimplemented!("{}", DYNAMIC_DATA_SOURCE_ERROR);
     }
 
     fn from_stored_dynamic_data_source(
         _templates: &BTreeMap<&str, &DataSourceTemplate>,
         _stored: StoredDynamicDataSource,
     ) -> Result<Self> {
-        // FIXME (Tendermint): Implement me correctly
-        todo!()
+        Err(anyhow!(DYNAMIC_DATA_SOURCE_ERROR))
     }
 
     fn validate(&self) -> Vec<Error> {
@@ -246,7 +242,7 @@ impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
     type Error = Error;
 
     fn try_from(_info: DataSourceTemplateInfo<Chain>) -> Result<Self> {
-        Err(anyhow!("Tendermint subgraphs do not support templates"))
+        Err(anyhow!(TEMPLATE_ERROR))
     }
 }
 
@@ -265,45 +261,30 @@ pub type DataSourceTemplate = BaseDataSourceTemplate<Mapping>;
 impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTemplate {
     async fn resolve(
         self,
-        resolver: &impl LinkResolver,
-        logger: &Logger,
+        _resolver: &impl LinkResolver,
+        _logger: &Logger,
     ) -> Result<DataSourceTemplate> {
-        let UnresolvedDataSourceTemplate {
-            kind,
-            network,
-            name,
-            mapping,
-        } = self;
-
-        info!(logger, "Resolve data source template"; "name" => &name);
-
-        Ok(DataSourceTemplate {
-            kind,
-            network,
-            name,
-            mapping: mapping.resolve(resolver, logger).await?,
-        })
+        Err(anyhow!(TEMPLATE_ERROR))
     }
 }
 
 impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
     fn name(&self) -> &str {
-        &self.name
+        unimplemented!("{}", TEMPLATE_ERROR);
     }
 
     fn api_version(&self) -> semver::Version {
-        self.mapping.api_version.clone()
+        unimplemented!("{}", TEMPLATE_ERROR);
     }
 
     fn runtime(&self) -> &[u8] {
-        self.mapping.runtime.as_ref()
+        unimplemented!("{}", TEMPLATE_ERROR);
     }
 }
 
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnresolvedMapping {
-    pub kind: String,
     pub api_version: String,
     pub language: String,
     pub entities: Vec<String>,
@@ -317,7 +298,6 @@ pub struct UnresolvedMapping {
 impl UnresolvedMapping {
     pub async fn resolve(self, resolver: &impl LinkResolver, logger: &Logger) -> Result<Mapping> {
         let UnresolvedMapping {
-            kind,
             api_version,
             language,
             entities,
@@ -332,7 +312,6 @@ impl UnresolvedMapping {
         let module_bytes = resolver.cat(logger, &link).await?;
 
         Ok(Mapping {
-            kind,
             api_version,
             language,
             entities,
@@ -346,7 +325,6 @@ impl UnresolvedMapping {
 
 #[derive(Clone, Debug)]
 pub struct Mapping {
-    pub kind: String,
     pub api_version: semver::Version,
     pub language: String,
     pub entities: Vec<String>,
@@ -365,4 +343,10 @@ pub struct MappingBlockHandler {
 pub struct MappingEventHandler {
     pub event: String,
     pub handler: String,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub struct Source {
+    #[serde(rename = "startBlock", default)]
+    pub start_block: BlockNumber,
 }
