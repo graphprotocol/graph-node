@@ -9,41 +9,29 @@ use graph::data::subgraph::{status, MAX_SPEC_VERSION};
 use graph::data::value::Object;
 use graph::prelude::*;
 use graph::{
-    components::store::{BlockStore, EntityType, StatusStore},
+    components::store::{BlockStore, EntityType, Store},
     data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap},
 };
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
 
 /// Resolver for the index node GraphQL API.
-pub struct IndexNodeResolver<S, R, Bt, SgStore> {
+pub struct IndexNodeResolver<S, R> {
     logger: Logger,
     store: Arc<S>,
     link_resolver: Arc<R>,
-    block_store: Arc<Bt>,
-    subgraph_store: Arc<SgStore>,
 }
 
-impl<S, R, Bt, SgStore> IndexNodeResolver<S, R, Bt, SgStore>
+impl<S, R> IndexNodeResolver<S, R>
 where
-    S: StatusStore,
+    S: Store,
     R: LinkResolver,
-    Bt: BlockStore,
-    SgStore: SubgraphStore,
 {
-    pub fn new(
-        logger: &Logger,
-        store: Arc<S>,
-        link_resolver: Arc<R>,
-        block_store: Arc<Bt>,
-        subgraph_store: Arc<SgStore>,
-    ) -> Self {
+    pub fn new(logger: &Logger, store: Arc<S>, link_resolver: Arc<R>) -> Self {
         let logger = logger.new(o!("component" => "IndexNodeResolver"));
         Self {
             logger,
             store,
             link_resolver,
-            block_store,
-            subgraph_store,
         }
     }
 
@@ -105,7 +93,8 @@ where
             .expect("Valid blockNumber required");
 
         let entity_changes = self
-            .subgraph_store
+            .store
+            .subgraph_store()
             .entity_changes_in_block(&subgraph_id, block_number)?;
 
         Ok(entity_changes_to_graphql(entity_changes))
@@ -120,7 +109,7 @@ where
             .get_required::<H256>("blockHash")
             .expect("Valid blockHash required");
 
-        let chain_store = if let Some(cs) = self.block_store.chain_store(&network) {
+        let chain_store = if let Some(cs) = self.store.block_store().chain_store(&network) {
             cs
         } else {
             error!(
@@ -285,7 +274,7 @@ where
                         .await?;
 
                     validate_and_extract_features(
-                        &self.subgraph_store,
+                        &self.store.subgraph_store(),
                         unvalidated_subgraph_manifest,
                     )?
                 }
@@ -302,7 +291,7 @@ where
                         .await?;
 
                     validate_and_extract_features(
-                        &self.subgraph_store,
+                        &self.store.subgraph_store(),
                         unvalidated_subgraph_manifest,
                     )?
                 }
@@ -471,31 +460,25 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
     }
 }
 
-impl<S, R, Bt, SgStore> Clone for IndexNodeResolver<S, R, Bt, SgStore>
+impl<S, R> Clone for IndexNodeResolver<S, R>
 where
     S: Clone,
     R: Clone,
-    Bt: Clone,
-    SgStore: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
             store: self.store.clone(),
             link_resolver: self.link_resolver.clone(),
-            block_store: self.block_store.clone(),
-            subgraph_store: self.subgraph_store.clone(),
         }
     }
 }
 
 #[async_trait]
-impl<S, R, Bt, SgStore> Resolver for IndexNodeResolver<S, R, Bt, SgStore>
+impl<S, R> Resolver for IndexNodeResolver<S, R>
 where
-    S: StatusStore,
+    S: Store,
     R: LinkResolver,
-    Bt: BlockStore,
-    SgStore: SubgraphStore,
 {
     const CACHEABLE: bool = false;
 
