@@ -4,7 +4,7 @@ use hyper::Server;
 use std::net::{Ipv4Addr, SocketAddrV4};
 
 use graph::{
-    components::store::StatusStore,
+    components::store::{BlockStore, StatusStore},
     prelude::{IndexNodeServer as IndexNodeServerTrait, *},
 };
 
@@ -25,21 +25,23 @@ impl From<hyper::Error> for IndexNodeServeError {
 }
 
 /// A GraphQL server based on Hyper.
-pub struct IndexNodeServer<Q, S, R, St> {
+pub struct IndexNodeServer<Q, S, R, Bt, St> {
     logger: Logger,
     graphql_runner: Arc<Q>,
     store: Arc<S>,
     link_resolver: Arc<R>,
+    block_store: Arc<Bt>,
     subgraph_store: Arc<St>,
 }
 
-impl<Q, S, R, St> IndexNodeServer<Q, S, R, St> {
+impl<Q, S, R, Bt, St> IndexNodeServer<Q, S, R, Bt, St> {
     /// Creates a new GraphQL server.
     pub fn new(
         logger_factory: &LoggerFactory,
         graphql_runner: Arc<Q>,
         store: Arc<S>,
         link_resolver: Arc<R>,
+        block_store: Arc<Bt>,
         subgraph_store: Arc<St>,
     ) -> Self {
         let logger = logger_factory.component_logger(
@@ -56,16 +58,18 @@ impl<Q, S, R, St> IndexNodeServer<Q, S, R, St> {
             graphql_runner,
             store,
             link_resolver,
+            block_store,
             subgraph_store,
         }
     }
 }
 
-impl<Q, S, R, St> IndexNodeServerTrait for IndexNodeServer<Q, S, R, St>
+impl<Q, S, R, Bt, St> IndexNodeServerTrait for IndexNodeServer<Q, S, R, Bt, St>
 where
     Q: GraphQlRunner,
     S: StatusStore,
     R: LinkResolver,
+    Bt: BlockStore,
     St: SubgraphStore,
 {
     type ServeError = IndexNodeServeError;
@@ -93,6 +97,7 @@ where
             graphql_runner.clone(),
             store.clone(),
             self.link_resolver.clone(),
+            self.block_store.clone(),
             self.subgraph_store.clone(),
         );
         let new_service =
