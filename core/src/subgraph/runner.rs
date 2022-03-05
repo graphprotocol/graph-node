@@ -30,6 +30,7 @@ const SKIP_PTR_UPDATES_THRESHOLD: Duration = Duration::from_secs(60 * 5);
 pub struct SubgraphRunner<C: Blockchain, T: RuntimeHostBuilder<C>> {
     ctx: IndexingContext<T, C>,
     inputs: Arc<IndexingInputs<C>>,
+    logger: Logger,
 }
 
 impl<C, T> SubgraphRunner<C, T>
@@ -37,10 +38,11 @@ where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
 {
-    pub fn new(inputs: IndexingInputs<C>, ctx: IndexingContext<T, C>) -> Self {
+    pub fn new(inputs: IndexingInputs<C>, ctx: IndexingContext<T, C>, logger: Logger) -> Self {
         Self {
             inputs: Arc::new(inputs),
             ctx,
+            logger,
         }
     }
 
@@ -48,7 +50,7 @@ where
         // Clone a few things for different parts of the async processing
         let subgraph_metrics = self.ctx.subgraph_metrics.cheap_clone();
         let store_for_err = self.inputs.store.cheap_clone();
-        let logger = self.ctx.state.logger.cheap_clone();
+        let logger = self.logger.cheap_clone();
         let id_for_err = self.inputs.deployment.hash.clone();
         let mut should_try_unfail_non_deterministic = true;
         let mut synced = false;
@@ -206,7 +208,6 @@ where
 
                 let res = self
                     .process_block(
-                        &logger,
                         self.inputs.triggers_adapter.cheap_clone(),
                         block_stream_cancel_handle.clone(),
                         block,
@@ -375,7 +376,6 @@ where
     /// whether new dynamic data sources have been added to the subgraph.
     async fn process_block(
         &mut self,
-        logger: &Logger,
         triggers_adapter: Arc<C::TriggersAdapter>,
         block_stream_cancel_handle: CancelHandle,
         block: BlockWithTriggers<C>,
@@ -385,7 +385,7 @@ where
         let block = Arc::new(block.block);
         let block_ptr = block.ptr();
 
-        let logger = logger.new(o!(
+        let logger = self.logger.new(o!(
                 "block_number" => format!("{:?}", block_ptr.number),
                 "block_hash" => format!("{}", block_ptr.hash)
         ));

@@ -3,7 +3,7 @@ use crate::subgraph::SubgraphInstance;
 use graph::{
     blockchain::{block_stream::BlockStreamMetrics, Blockchain},
     components::store::DeploymentId,
-    prelude::{CancelGuard, Entity, EntityKey, HostMetrics, Logger, RuntimeHostBuilder},
+    prelude::{CancelGuard, Entity, EntityKey, HostMetrics, RuntimeHostBuilder},
     util::lfu_cache::LfuCache,
 };
 use std::collections::HashMap;
@@ -12,7 +12,6 @@ use std::sync::{Arc, RwLock};
 pub type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<DeploymentId, CancelGuard>>>;
 
 pub struct IndexingState<T: RuntimeHostBuilder<C>, C: Blockchain> {
-    pub logger: Logger,
     pub instance: SubgraphInstance<C, T>,
     pub instances: SharedInstanceKeepAliveMap,
     pub filter: C::TriggerFilter,

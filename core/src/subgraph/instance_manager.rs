@@ -273,7 +273,6 @@ where
         // The subgraph state tracks the state of the subgraph instance over time
         let ctx = IndexingContext {
             state: IndexingState {
-                logger: logger.cheap_clone(),
                 instance,
                 instances: self.instances.cheap_clone(),
                 filter,
@@ -298,7 +297,7 @@ where
         // it has a dedicated OS thread so the OS will handle the preemption. See
         // https://github.com/tokio-rs/tokio/issues/3493.
         graph::spawn_thread(deployment.to_string(), move || {
-            let runner = SubgraphRunner::new(inputs, ctx);
+            let runner = SubgraphRunner::new(inputs, ctx, logger.cheap_clone());
             if let Err(e) = graph::block_on(task::unconstrained(runner.run())) {
                 error!(
                     &logger,
