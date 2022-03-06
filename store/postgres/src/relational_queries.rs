@@ -830,9 +830,9 @@ impl<'a> QueryFilter<'a> {
             }
 
             Contains(attr, _)
-            | ContainsInsensitive(attr, _)
+            | ContainsNoCase(attr, _)
             | NotContains(attr, _)
-            | NotContainsInsensitive(attr, _)
+            | NotContainsNoCase(attr, _)
             | Equal(attr, _)
             | Not(attr, _)
             | GreaterThan(attr, _)
@@ -842,13 +842,13 @@ impl<'a> QueryFilter<'a> {
             | In(attr, _)
             | NotIn(attr, _)
             | StartsWith(attr, _)
-            | StartsWithInsensitive(attr, _)
+            | StartsWithNoCase(attr, _)
             | NotStartsWith(attr, _)
-            | NotStartsWithInsensitive(attr, _)
+            | NotStartsWithNoCase(attr, _)
             | EndsWith(attr, _)
-            | EndsWithInsensitive(attr, _)
+            | EndsWithNoCase(attr, _)
             | NotEndsWith(attr, _)
-            | NotEndsWithInsensitive(attr, _) => {
+            | NotEndsWithNoCase(attr, _) => {
                 table.column_for_field(attr)?;
             }
         }
@@ -1167,9 +1167,9 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
             Or(filters) => self.binary_op(filters, " or ", " false ", out)?,
 
             Contains(attr, value) => self.contains(attr, value, false, true, out)?,
-            ContainsInsensitive(attr, value) => self.contains(attr, value, false, false, out)?,
+            ContainsNoCase(attr, value) => self.contains(attr, value, false, false, out)?,
             NotContains(attr, value) => self.contains(attr, value, true, true, out)?,
-            NotContainsInsensitive(attr, value) => self.contains(attr, value, true, false, out)?,
+            NotContainsNoCase(attr, value) => self.contains(attr, value, true, false, out)?,
 
             Equal(attr, value) => self.equals(attr, value, c::Equal, out)?,
             Not(attr, value) => self.equals(attr, value, c::NotEqual, out)?,
@@ -1185,23 +1185,23 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
             StartsWith(attr, value) => {
                 self.starts_or_ends_with(attr, value, " like ", true, out)?
             }
-            StartsWithInsensitive(attr, value) => {
+            StartsWithNoCase(attr, value) => {
                 self.starts_or_ends_with(attr, value, " ilike ", true, out)?
             }
             NotStartsWith(attr, value) => {
                 self.starts_or_ends_with(attr, value, " not like ", true, out)?
             }
-            NotStartsWithInsensitive(attr, value) => {
+            NotStartsWithNoCase(attr, value) => {
                 self.starts_or_ends_with(attr, value, " not ilike ", true, out)?
             }
             EndsWith(attr, value) => self.starts_or_ends_with(attr, value, " like ", false, out)?,
-            EndsWithInsensitive(attr, value) => {
+            EndsWithNoCase(attr, value) => {
                 self.starts_or_ends_with(attr, value, " ilike ", false, out)?
             }
             NotEndsWith(attr, value) => {
                 self.starts_or_ends_with(attr, value, " not like ", false, out)?
             }
-            NotEndsWithInsensitive(attr, value) => {
+            NotEndsWithNoCase(attr, value) => {
                 self.starts_or_ends_with(attr, value, " not ilike ", false, out)?
             }
         }
