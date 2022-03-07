@@ -185,8 +185,6 @@ where
 
                 let (block, cursor) = match event {
                     Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => (block, cursor),
-                    // In the case of the PollingBlockStream, the stream_ptr can be ahead of the
-                    // subgraph's deployment head (database), because this component is pipelined.
                     Some(Ok(BlockStreamEvent::Revert(revert_to_ptr, cursor))) => {
                         // Current deployment head in the database / WritableAgent Mutex cache.
                         //

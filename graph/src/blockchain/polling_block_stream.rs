@@ -61,9 +61,8 @@ enum ReconciliationStep<C>
 where
     C: Blockchain,
 {
-    /// Revert(to) the current block pointed at by the subgraph pointer. The pointer is to the current
-    /// subgraph head, and a single block will be reverted so the new head will be the parent of the
-    /// current one. The second BlockPtr is the parent.
+    /// Revert(to) the block the subgraph should be reverted to, so it becomes the new subgraph
+    /// head.
     Revert(BlockPtr),
 
     /// Move forwards, processing one or more blocks. Second element is the block range size.
@@ -137,8 +136,7 @@ where
     /// Blocks and range size
     Blocks(VecDeque<BlockWithTriggers<C>>, BlockNumber),
 
-    // The payload is the current subgraph head pointer, which should be reverted and its parent, such that the
-    // parent of the current subgraph head becomes the new subgraph head.
+    // The payload is block the subgraph should be reverted to, so it becomes the new subgraph head.
     Revert(BlockPtr),
     Done,
 }
