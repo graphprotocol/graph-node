@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::{convert::TryFrom, sync::Arc};
 
 use anyhow::{Error, Result};
@@ -148,15 +148,34 @@ impl blockchain::DataSource<Chain> for DataSource {
             errors.push(anyhow!("data source has duplicated block handlers"));
         }
 
-        // Ensure there is only one event handler for each event type
-        let mut event_types = HashSet::with_capacity(self.mapping.event_handlers.len());
+        // Ensure that each event type + origin filter combination has only one handler
+
+        // group handler origin filters by event type
+        let mut event_types = HashMap::with_capacity(self.mapping.event_handlers.len());
         for event_handler in self.mapping.event_handlers.iter() {
+            let origins = event_types
+                .entry(&event_handler.event)
+                // 3 is the maximum number of valid handlers for an event type (1 for each origin)
+                .or_insert(HashSet::with_capacity(3));
+
             // insert returns false if value was already in the set
-            if !event_types.insert(event_handler.event.clone()) {
-                errors.push(anyhow!(
-                    "data source has multiple {} event handlers",
-                    event_handler.event
-                ));
+            if !origins.insert(event_handler.origin) {
+                errors.push(multiple_origin_err(
+                    &event_handler.event,
+                    event_handler.origin,
+                ))
+            }
+        }
+
+        // Ensure each event type either has:
+        // 1 handler with no origin filter
+        // OR
+        // 1 or more handlers with origin filter
+        for (event_type, origins) in event_types.iter() {
+            if origins.len() > 1 {
+                if !origins.iter().all(Option::is_some) {
+                    errors.push(combined_origins_err(event_type))
+                }
             }
         }
 
@@ -369,4 +388,119 @@ pub enum EventOrigin {
     BeginBlock,
     DeliverTx,
     EndBlock,
+}
+
+fn multiple_origin_err(event_type: &str, origin: Option<EventOrigin>) -> Error {
+    let origin_err_name = match origin {
+        Some(origin) => format!("{:?}", origin),
+        None => "no".to_string(),
+    };
+
+    anyhow!(
+        "data source has multiple {} event handlers with {} origin",
+        event_type,
+        origin_err_name,
+    )
+}
+
+fn combined_origins_err(event_type: &str) -> Error {
+    anyhow!(
+        "data source has combined origin and no-origin {} event handlers",
+        event_type
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use graph::blockchain::DataSource as _;
+
+    #[test]
+    fn test_event_handlers_origin_validation() {
+        let cases = [
+            (
+                DataSource::with_event_handlers(vec![
+                    MappingEventHandler::with_origin("event_1", None),
+                    MappingEventHandler::with_origin("event_2", None),
+                    MappingEventHandler::with_origin("event_3", None),
+                ]),
+                vec![],
+            ),
+            (
+                DataSource::with_event_handlers(vec![
+                    MappingEventHandler::with_origin("event_1", Some(EventOrigin::BeginBlock)),
+                    MappingEventHandler::with_origin("event_2", Some(EventOrigin::BeginBlock)),
+                    MappingEventHandler::with_origin("event_1", Some(EventOrigin::DeliverTx)),
+                    MappingEventHandler::with_origin("event_1", Some(EventOrigin::EndBlock)),
+                    MappingEventHandler::with_origin("event_2", Some(EventOrigin::DeliverTx)),
+                    MappingEventHandler::with_origin("event_2", Some(EventOrigin::EndBlock)),
+                ]),
+                vec![],
+            ),
+            (
+                DataSource::with_event_handlers(vec![
+                    MappingEventHandler::with_origin("event_1", None),
+                    MappingEventHandler::with_origin("event_1", None),
+                    MappingEventHandler::with_origin("event_2", None),
+                    MappingEventHandler::with_origin("event_2", Some(EventOrigin::BeginBlock)),
+                    MappingEventHandler::with_origin("event_3", Some(EventOrigin::EndBlock)),
+                    MappingEventHandler::with_origin("event_3", Some(EventOrigin::EndBlock)),
+                ]),
+                vec![
+                    multiple_origin_err("event_1", None),
+                    combined_origins_err("event_2"),
+                    multiple_origin_err("event_3s", Some(EventOrigin::EndBlock)),
+                ],
+            ),
+        ];
+
+        for (data_source, errors) in &cases {
+            let validation_errors = data_source.validate();
+
+            assert_eq!(errors.len(), validation_errors.len());
+
+            for error in errors.iter() {
+                assert!(
+                    validation_errors
+                        .iter()
+                        .any(|validation_error| validation_error.to_string() == error.to_string()),
+                    r#"expected "{}" to be in validation errors, but it wasn't"#,
+                    error
+                );
+            }
+        }
+    }
+
+    impl DataSource {
+        fn with_event_handlers(event_handlers: Vec<MappingEventHandler>) -> DataSource {
+            DataSource {
+                kind: "tendermint".to_string(),
+                network: None,
+                name: "Test".to_string(),
+                source: Source { start_block: 1 },
+                mapping: Mapping {
+                    api_version: semver::Version::new(0, 0, 0),
+                    language: "".to_string(),
+                    entities: vec![],
+                    block_handlers: vec![],
+                    event_handlers,
+                    runtime: Arc::new(vec![]),
+                    link: "test".to_string().into(),
+                },
+                context: Arc::new(None),
+                creation_block: None,
+            }
+        }
+    }
+
+    impl MappingEventHandler {
+        fn with_origin(event_type: &str, origin: Option<EventOrigin>) -> MappingEventHandler {
+            MappingEventHandler {
+                event: event_type.to_string(),
+                origin,
+                handler: "handler".to_string(),
+            }
+        }
+    }
 }
