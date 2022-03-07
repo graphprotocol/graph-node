@@ -167,6 +167,7 @@ specVersion: 0.0.2
         // graft-related checks work
         let msg = unvalidated
             .validate(store.clone(), true)
+            .await
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| matches!(e, SubgraphManifestValidationError::GraftBaseInvalid(_)))
@@ -187,6 +188,7 @@ specVersion: 0.0.2
         let unvalidated = resolve_unvalidated(YAML).await;
         let msg = unvalidated
             .validate(store, true)
+            .await
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| matches!(e, SubgraphManifestValidationError::GraftBaseInvalid(_)))
@@ -255,6 +257,7 @@ graft:
         let unvalidated = resolve_unvalidated(YAML).await;
         let error_msg = unvalidated
             .validate(store.clone(), true)
+            .await
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| {
@@ -291,6 +294,7 @@ graft:
         let unvalidated = resolve_unvalidated(YAML).await;
         assert!(unvalidated
             .validate(store.clone(), true)
+            .await
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| {
@@ -321,6 +325,7 @@ schema:
         let unvalidated = resolve_unvalidated(YAML).await;
         assert!(unvalidated
             .validate(store.clone(), true)
+            .await
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| {
@@ -371,6 +376,7 @@ schema:
 
         assert!(unvalidated
             .validate(store.clone(), true)
+            .await
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| {
@@ -420,6 +426,7 @@ schema:
 
         let error_msg = unvalidated
             .validate(store.clone(), true)
+            .await
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| {
@@ -493,6 +500,7 @@ dataSources:
 
         let error_msg = unvalidated
             .validate(store.clone(), true)
+            .await
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| {
@@ -568,6 +576,7 @@ dataSources:
 
         assert!(unvalidated
             .validate(store.clone(), true)
+            .await
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| {
@@ -596,6 +605,7 @@ schema:
         let unvalidated = resolve_unvalidated(YAML).await;
         assert!(unvalidated
             .validate(store.clone(), true)
+            .await
             .expect_err("Validation must fail")
             .into_iter()
             .find(|e| {

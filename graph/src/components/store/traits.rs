@@ -133,7 +133,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// that we would use to query or copy from; in particular, this will
     /// ignore any instances of this deployment that are in the process of
     /// being set up
-    fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError>;
+    async fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError>;
 
     /// Find the deployment locators for the subgraph with the given hash
     fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError>;
@@ -146,17 +146,17 @@ pub trait SubgraphStore: Send + Sync + 'static {
 #[async_trait]
 pub trait WritableStore: Send + Sync + 'static {
     /// Get a pointer to the most recently processed block in the subgraph.
-    fn block_ptr(&self) -> Option<BlockPtr>;
+    async fn block_ptr(&self) -> Option<BlockPtr>;
 
     /// Returns the Firehose `cursor` this deployment is currently at in the block stream of events. This
     /// is used when re-connecting a Firehose stream to start back exactly where we left off.
-    fn block_cursor(&self) -> Option<String>;
+    async fn block_cursor(&self) -> Option<String>;
 
     /// Deletes the current Firehose `cursor` this deployment is currently at.
-    fn delete_block_cursor(&self) -> Result<(), StoreError>;
+    async fn delete_block_cursor(&self) -> Result<(), StoreError>;
 
     /// Start an existing subgraph deployment.
-    fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError>;
+    async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError>;
 
     /// Revert the entity changes from a single block atomically in the store, and update the
     /// subgraph block pointer to `block_ptr_to`.
@@ -386,7 +386,7 @@ pub trait QueryStore: Send + Sync {
 
     async fn is_deployment_synced(&self) -> Result<bool, Error>;
 
-    fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError>;
+    async fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError>;
 
     fn block_number(&self, block_hash: H256) -> Result<Option<BlockNumber>, StoreError>;
 

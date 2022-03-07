@@ -449,7 +449,10 @@ pub struct Graft {
 }
 
 impl Graft {
-    fn validate<S: SubgraphStore>(&self, store: Arc<S>) -> Vec<SubgraphManifestValidationError> {
+    async fn validate<S: SubgraphStore>(
+        &self,
+        store: Arc<S>,
+    ) -> Vec<SubgraphManifestValidationError> {
         fn gbi(msg: String) -> Vec<SubgraphManifestValidationError> {
             vec![SubgraphManifestValidationError::GraftBaseInvalid(msg)]
         }
@@ -460,7 +463,7 @@ impl Graft {
         // between this check and when the graft actually happens when the
         // subgraph is started. We therefore check that any instance of the
         // base subgraph is suitable.
-        match store.least_block_ptr(&self.base) {
+        match store.least_block_ptr(&self.base).await {
             Err(e) => gbi(e.to_string()),
             Ok(None) => gbi(format!(
                 "failed to graft onto `{}` since it has not processed any blocks",
@@ -537,7 +540,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
     /// Validates the subgraph manifest file.
     ///
     /// Graft base validation will be skipped if the parameter `validate_graft_base` is false.
-    pub fn validate<S: SubgraphStore>(
+    pub async fn validate<S: SubgraphStore>(
         self,
         store: Arc<S>,
         validate_graft_base: bool,
@@ -594,7 +597,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
                 ));
             }
             if validate_graft_base {
-                errors.extend(graft.validate(store));
+                errors.extend(graft.validate(store).await);
             }
         }
 

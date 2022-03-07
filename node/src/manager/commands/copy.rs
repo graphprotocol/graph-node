@@ -92,7 +92,7 @@ pub async fn create(
     let query_store = store.query_store(src.hash.clone().into(), true).await?;
     let network = query_store.network_name();
 
-    let src_ptr = query_store.block_ptr()?.ok_or_else(|| anyhow!("subgraph {} has not indexed any blocks yet and can not be used as the source of a copy", src))?;
+    let src_ptr = query_store.block_ptr().await?.ok_or_else(|| anyhow!("subgraph {} has not indexed any blocks yet and can not be used as the source of a copy", src))?;
     let src_number = if src_ptr.number <= block_offset {
         bail!("subgraph {} has only indexed up to block {}, but we need at least block {} before we can copy from it", src, src_ptr.number, block_offset);
     } else {

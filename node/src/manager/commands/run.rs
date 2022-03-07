@@ -200,6 +200,7 @@ pub async fn run(
 
         let block_ptr = subgraph_store
             .least_block_ptr(&subgraph_hash)
+            .await
             .unwrap()
             .unwrap();
 

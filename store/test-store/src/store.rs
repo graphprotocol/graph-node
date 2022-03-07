@@ -180,12 +180,12 @@ pub fn create_subgraph(
         NETWORK_NAME.to_string(),
         SubgraphVersionSwitchingMode::Instant,
     )?;
-    futures03::executor::block_on(
+    let writable = futures03::executor::block_on(
         SUBGRAPH_STORE
             .cheap_clone()
             .writable(LOGGER.clone(), deployment.id),
-    )?
-    .start_subgraph_deployment(&*LOGGER)?;
+    )?;
+    futures03::executor::block_on(writable.start_subgraph_deployment(&*LOGGER))?;
     Ok(deployment)
 }
 

@@ -23,8 +23,8 @@ use graph::prelude::{
     DeploymentHash, DeploymentState, Schema, StoreError,
 };
 use stable_hash::crypto::SetHasher;
-use std::str::FromStr;
 use std::{collections::BTreeSet, convert::TryFrom, ops::Bound};
+use std::{str::FromStr, sync::Arc};
 
 use crate::connection_pool::ForeignServer;
 use crate::{block_range::BLOCK_RANGE_COLUMN, primary::Site};
@@ -375,11 +375,11 @@ pub fn forward_block_ptr(
 
 pub fn delete_subgraph_firehose_cursor(
     conn: &PgConnection,
-    id: &DeploymentHash,
+    site: Arc<Site>,
 ) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
-    update(d::table.filter(d::deployment.eq(id.as_str())))
+    update(d::table.filter(d::deployment.eq(site.deployment.as_str())))
         .set(d::firehose_cursor.eq::<Option<&str>>(None))
         .execute(conn)
         .map(|_| ())
@@ -388,12 +388,12 @@ pub fn delete_subgraph_firehose_cursor(
 
 pub fn get_subgraph_firehose_cursor(
     conn: &PgConnection,
-    deployment_hash: &DeploymentHash,
+    site: Arc<Site>,
 ) -> Result<Option<String>, StoreError> {
     use subgraph_deployment as d;
 
     let res = d::table
-        .filter(d::deployment.eq(deployment_hash.as_str()))
+        .filter(d::deployment.eq(site.deployment.as_str()))
         .select(d::firehose_cursor)
         .first::<Option<String>>(conn)
         .map_err(StoreError::from);

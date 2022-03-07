@@ -414,7 +414,8 @@ fn copy() {
             .cheap_clone()
             .writable(LOGGER.clone(), deployment.id)
             .await?
-            .start_subgraph_deployment(&*LOGGER)?;
+            .start_subgraph_deployment(&*LOGGER)
+            .await?;
 
         store.activate(&deployment)?;
 

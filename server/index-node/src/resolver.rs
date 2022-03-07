@@ -274,7 +274,8 @@ where
                     validate_and_extract_features(
                         &self.store.subgraph_store(),
                         unvalidated_subgraph_manifest,
-                    )?
+                    )
+                    .await?
                 }
 
                 BlockchainKind::Tendermint => {
@@ -291,7 +292,8 @@ where
                     validate_and_extract_features(
                         &self.store.subgraph_store(),
                         unvalidated_subgraph_manifest,
-                    )?
+                    )
+                    .await?
                 }
 
                 BlockchainKind::Near => {
@@ -308,7 +310,8 @@ where
                     validate_and_extract_features(
                         &self.store.subgraph_store(),
                         unvalidated_subgraph_manifest,
-                    )?
+                    )
+                    .await?
                 }
             }
         };
@@ -330,7 +333,7 @@ struct ValidationPostProcessResult {
     network: r::Value,
 }
 
-fn validate_and_extract_features<C, SgStore>(
+async fn validate_and_extract_features<C, SgStore>(
     subgraph_store: &Arc<SgStore>,
     unvalidated_subgraph_manifest: UnvalidatedSubgraphManifest<C>,
 ) -> Result<ValidationPostProcessResult, QueryExecutionError>
@@ -343,34 +346,36 @@ where
     // Note that feature valiadation errors will be inside the error variant vector (because
     // `validate` also validates subgraph features), so we must filter them out to build our
     // response.
-    let subgraph_validation: Either<_, _> =
-        match unvalidated_subgraph_manifest.validate(subgraph_store.clone(), false) {
-            Ok(subgraph_manifest) => Either::Left(subgraph_manifest),
-            Err(validation_errors) => {
-                // We must ensure that all the errors are of the `FeatureValidationError`
-                // variant and that there is at least one error of that kind.
-                let feature_validation_errors: Vec<_> = validation_errors
-                    .into_iter()
-                    .filter(|error| {
-                        matches!(
-                            error,
-                            SubgraphManifestValidationError::FeatureValidationError(_)
-                        )
-                    })
-                    .collect();
+    let subgraph_validation: Either<_, _> = match unvalidated_subgraph_manifest
+        .validate(subgraph_store.clone(), false)
+        .await
+    {
+        Ok(subgraph_manifest) => Either::Left(subgraph_manifest),
+        Err(validation_errors) => {
+            // We must ensure that all the errors are of the `FeatureValidationError`
+            // variant and that there is at least one error of that kind.
+            let feature_validation_errors: Vec<_> = validation_errors
+                .into_iter()
+                .filter(|error| {
+                    matches!(
+                        error,
+                        SubgraphManifestValidationError::FeatureValidationError(_)
+                    )
+                })
+                .collect();
 
-                if !feature_validation_errors.is_empty() {
-                    Either::Right(feature_validation_errors)
-                } else {
-                    // If other error variants are present or there are no feature validation
-                    // errors, we must return early with an error.
-                    //
-                    // It might be useful to return a more thoughtful error, but that is not the
-                    // purpose of this endpoint.
-                    return Err(QueryExecutionError::InvalidSubgraphManifest);
-                }
+            if !feature_validation_errors.is_empty() {
+                Either::Right(feature_validation_errors)
+            } else {
+                // If other error variants are present or there are no feature validation
+                // errors, we must return early with an error.
+                //
+                // It might be useful to return a more thoughtful error, but that is not the
+                // purpose of this endpoint.
+                return Err(QueryExecutionError::InvalidSubgraphManifest);
             }
-        };
+        }
+    };
 
     // At this point, we have either:
     // 1. A valid subgraph manifest with no errors.

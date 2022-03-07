@@ -46,19 +46,19 @@ impl MockStore {
 // The store trait must be implemented manually because mockall does not support async_trait, nor borrowing from arguments.
 #[async_trait]
 impl WritableStore for MockStore {
-    fn block_ptr(&self) -> Option<BlockPtr> {
+    async fn block_ptr(&self) -> Option<BlockPtr> {
         unimplemented!()
     }
 
-    fn block_cursor(&self) -> Option<String> {
+    async fn block_cursor(&self) -> Option<String> {
         unimplemented!()
     }
 
-    fn delete_block_cursor(&self) -> Result<(), StoreError> {
+    async fn delete_block_cursor(&self) -> Result<(), StoreError> {
         unimplemented!()
     }
 
-    fn start_subgraph_deployment(&self, _: &Logger) -> Result<(), StoreError> {
+    async fn start_subgraph_deployment(&self, _: &Logger) -> Result<(), StoreError> {
         unimplemented!()
     }
 
