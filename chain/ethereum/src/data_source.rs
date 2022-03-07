@@ -614,13 +614,9 @@ impl DataSource {
                       Ok(val) => val,
                       Err(err) => {
                         warn!(logger, "Failed parsing inputs, skipping"; "error" => &err.to_string());
-                        Vec::new()
+                        return Ok(None)
                       },
                     };
-                
-                if tokens.len() == 0 {
-                  return Ok(None)
-                }
 
                 ensure!(
                     tokens.len() == function_abi.inputs.len(),
