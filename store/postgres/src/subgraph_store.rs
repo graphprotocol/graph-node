@@ -15,10 +15,7 @@ use graph::{
     cheap_clone::CheapClone,
     components::{
         server::index_node::VersionInfo,
-        store::{
-            self, DeploymentLocator, EnsLookup as EnsLookupTrait, SubgraphFork,
-            WritableStore as WritableStoreTrait,
-        },
+        store::{self, DeploymentLocator, EnsLookup as EnsLookupTrait, SubgraphFork},
     },
     constraint_violation,
     data::query::QueryTarget,
@@ -1149,15 +1146,6 @@ impl SubgraphStoreTrait for SubgraphStore {
             .unwrap()
             .insert(deployment, writable.cheap_clone());
         Ok(writable)
-    }
-
-    fn writable_for_network_indexer(
-        &self,
-        logger: Logger,
-        id: &DeploymentHash,
-    ) -> Result<Arc<dyn WritableStoreTrait>, StoreError> {
-        let site = self.site(id)?;
-        Ok(Arc::new(WritableAgent::new(self.clone(), logger, site)?))
     }
 
     fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError> {

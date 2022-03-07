@@ -129,16 +129,6 @@ pub trait SubgraphStore: Send + Sync + 'static {
         deployment: DeploymentId,
     ) -> Result<Arc<dyn WritableStore>, StoreError>;
 
-    /// The network indexer does not follow the normal flow of how subgraphs
-    /// are indexed, and therefore needs a special way to get a
-    /// `WritableStore`. This method should not be used outside of that, and
-    /// `writable` should be used instead
-    fn writable_for_network_indexer(
-        &self,
-        logger: Logger,
-        id: &DeploymentHash,
-    ) -> Result<Arc<dyn WritableStore>, StoreError>;
-
     /// Return the minimum block pointer of all deployments with this `id`
     /// that we would use to query or copy from; in particular, this will
     /// ignore any instances of this deployment that are in the process of
