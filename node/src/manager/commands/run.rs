@@ -255,19 +255,11 @@ enum ProviderNetworkStatus {
 const NET_VERSION_WAIT_TIME: Duration = Duration::from_secs(30);
 
 lazy_static! {
-    // Default to an Ethereum reorg threshold to 50 blocks
     static ref REORG_THRESHOLD: BlockNumber = env::var("ETHEREUM_REORG_THRESHOLD")
         .ok()
         .map(|s| BlockNumber::from_str(&s)
             .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_REORG_THRESHOLD")))
-        .unwrap_or(50);
-
-    // Default to an ancestor count of 50 blocks
-    static ref ANCESTOR_COUNT: BlockNumber = env::var("ETHEREUM_ANCESTOR_COUNT")
-        .ok()
-        .map(|s| BlockNumber::from_str(&s)
-             .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_ANCESTOR_COUNT")))
-        .unwrap_or(50);
+        .unwrap_or(250);
 }
 
 fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<IpfsClient> {
