@@ -556,7 +556,6 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                     .expect("Genesis block should never be reverted");
 
                 Ok(BlockStreamEvent::Revert(
-                    block.ptr(),
                     parent_ptr,
                     FirehoseCursor::Some(response.cursor.clone()),
                 ))

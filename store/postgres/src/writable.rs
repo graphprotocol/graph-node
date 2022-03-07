@@ -173,14 +173,13 @@ impl WritableStore {
         firehose_cursor: Option<&str>,
     ) -> Result<(), StoreError> {
         self.retry("revert_block_operations", || {
-            match self.writable.revert_block_operations(
+            let event = self.writable.revert_block_operations(
                 self.site.clone(),
                 block_ptr_to.clone(),
                 firehose_cursor.clone(),
-            )? {
-                Some(event) => self.try_send_store_event(event),
-                None => Ok(()),
-            }
+            )?;
+
+            self.try_send_store_event(event)
         })
     }
 
@@ -406,16 +405,24 @@ impl WritableStoreTrait for WritableAgent {
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
-        *self.block_ptr.lock().unwrap() = Some(parent_ptr.clone());
+        let outcome = self
+            .store
+            .unfail_deterministic_error(current_ptr, parent_ptr)?;
 
-        self.store
-            .unfail_deterministic_error(current_ptr, parent_ptr)
+        if let UnfailOutcome::Unfailed = outcome {
+            *self.block_ptr.lock().unwrap() = Some(parent_ptr.clone());
+        }
+
+        Ok(outcome)
     }
 
     fn unfail_non_deterministic_error(
         &self,
         current_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
+        // We don't have to update in memory self.block_ptr
+        // because the method call below doesn't rewind/revert
+        // any block.
         self.store.unfail_non_deterministic_error(current_ptr)
     }
 

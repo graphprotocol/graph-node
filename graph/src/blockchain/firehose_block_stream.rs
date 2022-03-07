@@ -147,14 +147,9 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                                 latest_cursor = cursor;
                             },
                             Ok(BlockResponse::Rewind(revert_to)) => {
-                                let subgraph_block = subgraph_current_block
-                                    .as_ref()
-                                    .cloned()
-                                    .expect("Rewinding means there is an inconsistency when starting from subgraph block ptr, so it must be defined");
-
                                 // It's totally correct to pass the None as the cursor here, if we are here, there
                                 // was no cursor before anyway, so it's totally fine to pass `None`
-                                yield BlockStreamEvent::Revert(subgraph_block, revert_to.clone(), None);
+                                yield BlockStreamEvent::Revert(revert_to.clone(), None);
 
                                 latest_cursor = "".to_string();
                                 skip_backoff = true;
