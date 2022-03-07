@@ -505,12 +505,16 @@ impl EthereumAdapter {
 
                 async move {
                     let req = CallRequest {
-                        from: None,
                         to: Some(contract_address),
                         gas: Some(web3::types::U256::from(ETH_CALL_GAS)),
+                        data: Some(call_data.clone()),
+                        from: None,
                         gas_price: None,
                         value: None,
-                        data: Some(call_data.clone()),
+                        access_list: None,
+                        max_fee_per_gas: None,
+                        max_priority_fee_per_gas: None,
+                        transaction_type: None,
                     };
                     let result = web3.eth().call(req, Some(block_id)).boxed().await;
 

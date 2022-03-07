@@ -6,11 +6,10 @@ edition = "2021"
 [dependencies]
 async-trait = "0.1.50"
 atomic_refcell = "0.1.8"
-ethabi = "16.0"
+ethabi = "17.0"
 futures = "0.1.21"
 hex = "0.4.3"
 graph = { path = "../../graph" }
-graph-graphql = { path = "../../graphql" }
 bs58 = "0.4.0"
 graph-runtime-derive = { path = "../derive" }
 semver = "1.0.6"

@@ -4,8 +4,8 @@ use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 
 use graph::prelude::{lazy_static, q};
+use rand::SeedableRng;
 use rand::{rngs::SmallRng, Rng};
-use rand::{FromEntropy, SeedableRng};
 use structopt::StructOpt;
 
 use graph::util::cache_weight::CacheWeight;
@@ -254,7 +254,7 @@ impl ValueMap {
         for i in 0..size {
             let kind = rng
                 .as_deref_mut()
-                .map(|rng| rng.gen_range(0, modulus))
+                .map(|rng| rng.gen_range(0..modulus))
                 .unwrap_or(i % modulus);
 
             let value = match kind {
@@ -455,7 +455,7 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
         let size = if opt.fixed || opt.obj_size == 0 {
             opt.obj_size
         } else {
-            rng.gen_range(0, opt.obj_size)
+            rng.gen_range(0..opt.obj_size)
         };
         let before = ALLOCATED.load(SeqCst);
         let sample = cacheable.sample(size, maybe_rng(opt, &mut rng));

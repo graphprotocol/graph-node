@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 futures = "0.1.21"
 http = "0.2.4"
-jsonrpc-core = "17.0.0"
+jsonrpc-core = "18.0.0"
 graph = { path = "../../graph" }
 lazy_static = "1.2.0"
 mockall = "0.9.1"
