@@ -44,14 +44,7 @@ lazy_static! {
         .ok()
         .map(|s| BlockNumber::from_str(&s)
             .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_REORG_THRESHOLD")))
-        .unwrap_or(50);
-
-    // Default to an ancestor count of 50 blocks
-    pub static ref ANCESTOR_COUNT: BlockNumber = env::var("ETHEREUM_ANCESTOR_COUNT")
-        .ok()
-        .map(|s| BlockNumber::from_str(&s)
-             .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_ANCESTOR_COUNT")))
-        .unwrap_or(50);
+        .unwrap_or(250);
 }
 
 pub fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<IpfsClient> {

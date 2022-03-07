@@ -8,8 +8,10 @@ they have. Some environment variables can be used instead of command line flags.
 Those are not listed here, please consult `graph-node --help` for details on
 those.
 
-## Getting blocks from Ethereum
+## JSON-RPC configuration for EVM chains
 
+- `ETHEREUM_REORG_THRESHOLD`: Maximum expected reorg size, if a larger reorg
+happens, subgraphs might process inconsistent data. Defaults to 250.
 - `ETHEREUM_POLLING_INTERVAL`: how often to poll Ethereum for new blocks (in ms,
   defaults to 500ms)
 - `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`: The ideal amount of triggers

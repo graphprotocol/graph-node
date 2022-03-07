@@ -18,7 +18,7 @@ use graph_core::{
 use graph_graphql::prelude::GraphQlRunner;
 use graph_node::chain::{
     connect_ethereum_networks, connect_firehose_networks, create_ethereum_networks,
-    create_firehose_networks, create_ipfs_clients, ANCESTOR_COUNT, REORG_THRESHOLD,
+    create_firehose_networks, create_ipfs_clients, REORG_THRESHOLD,
 };
 use graph_node::config::Config;
 use graph_node::opt;
@@ -582,12 +582,6 @@ fn start_block_ingestor(
     block_polling_interval: Duration,
     chains: HashMap<String, Arc<ethereum::Chain>>,
 ) {
-    // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
-    // otherwise BlockStream will not work properly.
-    // BlockStream expects the blocks after the reorg threshold to be present in the
-    // database.
-    assert!(*ANCESTOR_COUNT >= *REORG_THRESHOLD);
-
     info!(
         logger,
         "Starting block ingestors with {} chains [{}]",
@@ -627,9 +621,12 @@ fn start_block_ingestor(
                     )
                     .new(o!("provider" => eth_adapter.provider().to_string()));
 
+            // The block ingestor must be configured to keep at least REORG_THRESHOLD ancestors,
+            // because the json-rpc BlockStream expects blocks after the reorg threshold to be
+            // present in the DB.
             let block_ingestor = EthereumBlockIngestor::new(
                 logger,
-                *ANCESTOR_COUNT,
+                *REORG_THRESHOLD,
                 eth_adapter,
                 chain.chain_store(),
                 block_polling_interval,
