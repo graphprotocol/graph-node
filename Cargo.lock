@@ -182,10 +182,10 @@ dependencies = [
  "serde",
  "sync_wrapper",
  "tokio",
- "tower",
+ "tower 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "tower-http",
- "tower-layer",
- "tower-service",
+ "tower-layer 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tower-service 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1650,6 +1650,8 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "test-store",
+ "tower 0.4.12 (git+https://github.com/leoyvens/tower.git?branch=fix-call-all-pending-stream)",
+ "tower-test",
  "walkdir",
 ]
 
@@ -2094,7 +2096,7 @@ dependencies = [
  "pin-project-lite",
  "socket2",
  "tokio",
- "tower-service",
+ "tower-service 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "tracing",
  "want",
 ]
@@ -4378,6 +4380,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-test"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53474327ae5e166530d17f2d956afcb4f8a004de581b3cae10f12006bc8163e3"
+dependencies = [
+ "async-stream",
+ "bytes",
+ "futures-core",
+ "tokio",
+ "tokio-stream",
+]
+
+[[package]]
 name = "tokio-tungstenite"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4456,9 +4471,9 @@ dependencies = [
  "tokio-rustls",
  "tokio-stream",
  "tokio-util 0.7.1",
- "tower",
- "tower-layer",
- "tower-service",
+ "tower 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tower-layer 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tower-service 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "tracing",
  "tracing-futures",
 ]
@@ -4491,8 +4506,23 @@ dependencies = [
  "slab",
  "tokio",
  "tokio-util 0.7.1",
- "tower-layer",
- "tower-service",
+ "tower-layer 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tower-service 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tracing",
+]
+
+[[package]]
+name = "tower"
+version = "0.4.12"
+source = "git+https://github.com/leoyvens/tower.git?branch=fix-call-all-pending-stream#b8f0301c7511595846c10507501ec74ecabb3294"
+dependencies = [
+ "futures-core",
+ "futures-util",
+ "pin-project-lite",
+ "tokio",
+ "tokio-util 0.7.1",
+ "tower-layer 0.3.1 (git+https://github.com/leoyvens/tower.git?branch=fix-call-all-pending-stream)",
+ "tower-service 0.3.1 (git+https://github.com/leoyvens/tower.git?branch=fix-call-all-pending-stream)",
  "tracing",
 ]
 
@@ -4510,9 +4540,9 @@ dependencies = [
  "http-body",
  "http-range-header",
  "pin-project-lite",
- "tower",
- "tower-layer",
- "tower-service",
+ "tower 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tower-layer 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tower-service 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -4522,10 +4552,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "343bc9466d3fe6b0f960ef45960509f84480bf4fd96f92901afe7ff3df9d3a62"
 
 [[package]]
+name = "tower-layer"
+version = "0.3.1"
+source = "git+https://github.com/leoyvens/tower.git?branch=fix-call-all-pending-stream#1772376a26b52cad3ef7a1c060a807f9b4276aae"
+
+[[package]]
 name = "tower-service"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "360dfd1d6d30e05fda32ace2c8c70e9c0a9da713275777f5a4dbb8a1893930c6"
+
+[[package]]
+name = "tower-service"
+version = "0.3.1"
+source = "git+https://github.com/leoyvens/tower.git?branch=fix-call-all-pending-stream#1772376a26b52cad3ef7a1c060a807f9b4276aae"
+
+[[package]]
+name = "tower-test"
+version = "0.4.0"
+source = "git+https://github.com/leoyvens/tower.git?branch=fix-call-all-pending-stream#1772376a26b52cad3ef7a1c060a807f9b4276aae"
+dependencies = [
+ "futures-util",
+ "pin-project-lite",
+ "tokio",
+ "tokio-test",
+ "tower-layer 0.3.1 (git+https://github.com/leoyvens/tower.git?branch=fix-call-all-pending-stream)",
+ "tower-service 0.3.1 (git+https://github.com/leoyvens/tower.git?branch=fix-call-all-pending-stream)",
+]
 
 [[package]]
 name = "tracing"

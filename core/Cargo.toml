@@ -23,8 +23,11 @@ semver = "1.0.12"
 serde = "1.0"
 serde_json = "1.0"
 serde_yaml = "0.8"
-
+# tower = { git = "https://github.com/tower-rs/tower.git", features = ["util"] } # SOON 0.5
+tower = { git = "https://github.com/leoyvens/tower.git", features = ["util", "limit"], branch = "fix-call-all-pending-stream" } # SOON 0.5
 graph-runtime-wasm = { path = "../runtime/wasm" }
+# tower-test = { git = "https://github.com/tower-rs/tower.git" } # DEV DEP
+tower-test = { git = "https://github.com/leoyvens/tower.git", branch = "fix-call-all-pending-stream"} # DEV DEP
 
 [dev-dependencies]
 graph-mock = { path = "../mock" }
