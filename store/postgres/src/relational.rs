@@ -977,15 +977,12 @@ pub enum ColumnType {
     String,
     TSVector(FulltextConfig),
     Enum(EnumType),
-    /// A `bytea` in SQL, represented as a ValueType::String; this is
-    /// used for `id` columns of type `Bytes`
-    BytesId,
 }
 
 impl From<IdType> for ColumnType {
     fn from(id_type: IdType) -> Self {
         match id_type {
-            IdType::Bytes => ColumnType::BytesId,
+            IdType::Bytes => ColumnType::Bytes,
             IdType::String => ColumnType::String,
         }
     }
@@ -1048,7 +1045,6 @@ impl ColumnType {
             ColumnType::String => "text",
             ColumnType::TSVector(_) => "tsvector",
             ColumnType::Enum(enum_type) => enum_type.name.as_str(),
-            ColumnType::BytesId => "bytea",
         }
     }
 
@@ -1057,7 +1053,7 @@ impl ColumnType {
     pub(crate) fn id_type(&self) -> IdType {
         match self {
             ColumnType::String => IdType::String,
-            ColumnType::BytesId => IdType::Bytes,
+            ColumnType::Bytes => IdType::Bytes,
             _ => unreachable!(
                 "only String and BytesId are allowed as primary keys but not {:?}",
                 self

@@ -369,9 +369,7 @@ pub trait FromColumnValue: Sized {
             (j::String(s), ColumnType::String) | (j::String(s), ColumnType::Enum(_)) => {
                 Ok(Self::from_string(s))
             }
-            (j::String(s), ColumnType::Bytes) | (j::String(s), ColumnType::BytesId) => {
-                Self::from_bytes(s.trim_start_matches("\\x"))
-            }
+            (j::String(s), ColumnType::Bytes) => Self::from_bytes(s.trim_start_matches("\\x")),
             (j::String(s), column_type) => Err(StoreError::Unknown(anyhow!(
                 "can not convert string {} to {:?}",
                 s,
@@ -567,7 +565,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     out.push_sql(")");
                     Ok(())
                 }
-                ColumnType::Bytes | ColumnType::BytesId => {
+                ColumnType::Bytes => {
                     let bytes = scalar::Bytes::from_str(s)
                         .map_err(|e| DieselError::SerializationError(Box::new(e)))?;
                     out.push_bind_param::<Binary, _>(&bytes.as_slice())
@@ -625,7 +623,6 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
 
                         Ok(())
                     }
-                    ColumnType::BytesId => out.push_bind_param::<Array<Binary>, _>(&sql_values),
                 }
             }
             Value::Null => {
