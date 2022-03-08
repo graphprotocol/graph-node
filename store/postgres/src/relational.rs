@@ -739,8 +739,11 @@ impl Layout {
                 ) if info.message().starts_with("syntax error in tsquery") => {
                     QueryExecutionError::FulltextQueryInvalidSyntax(info.message().to_string())
                 }
+                diesel::result::Error::QueryBuilderError(e) => {
+                    QueryExecutionError::ResolveEntitiesError(e.to_string())
+                }
                 _ => QueryExecutionError::ResolveEntitiesError(format!(
-                    "{}, query = {:?}",
+                    "{}, query = {}",
                     e,
                     debug_query(&query_clone).to_string()
                 )),
