@@ -1159,7 +1159,7 @@ impl Column {
     /// Return `true` if this column stores user-supplied text of arbitrary
     /// lengths. Such columns may contain very large values and need to be
     /// handled specially for indexing
-    pub fn is_text(&self) -> bool {
+    pub fn has_arbitrary_size(&self) -> bool {
         !self.is_primary_key() && !self.is_list() && self.column_type == ColumnType::String
     }
 
@@ -1487,7 +1487,7 @@ impl Table {
                     // they can be too large for Postgres' limit on values that can go
                     // into a BTree. For those attributes, only index the first
                     // STRING_PREFIX_SIZE characters
-                    let index_expr = if column.is_text() {
+                    let index_expr = if column.has_arbitrary_size() {
                         format!("left({}, {})", column.name.quoted(), STRING_PREFIX_SIZE)
                     } else {
                         column.name.quoted()

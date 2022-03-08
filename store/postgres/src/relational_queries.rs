@@ -961,7 +961,7 @@ impl<'a> QueryFilter<'a> {
     ) -> QueryResult<()> {
         let column = self.column(attribute);
 
-        if column.is_text() {
+        if column.has_arbitrary_size() {
             PrefixComparison::new(op, column, value).walk_ast(out.reborrow())?;
         } else if column.is_fulltext() {
             out.push_identifier(column.name.as_str())?;
@@ -1003,7 +1003,7 @@ impl<'a> QueryFilter<'a> {
     ) -> QueryResult<()> {
         let column = self.column(attribute);
 
-        if column.is_text() {
+        if column.has_arbitrary_size() {
             PrefixComparison::new(op, column, value).walk_ast(out.reborrow())?;
         } else {
             out.push_identifier(column.name.as_str())?;
@@ -1072,7 +1072,7 @@ impl<'a> QueryFilter<'a> {
         }
 
         if have_non_nulls {
-            if column.is_text()
+            if column.has_arbitrary_size()
                 && values.iter().all(|v| match v {
                     Value::String(s) => s.len() <= STRING_PREFIX_SIZE - 1,
                     _ => false,
