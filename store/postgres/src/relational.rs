@@ -58,6 +58,7 @@ const DELETE_OPERATION_CHUNK_SIZE: usize = 1_000;
 /// This also makes sure that we do not put strings into a BTree index that's
 /// bigger than Postgres' limit on such strings which is about 2k
 pub const STRING_PREFIX_SIZE: usize = 256;
+pub const BYTE_ARRAY_PREFIX_SIZE: usize = 64;
 
 lazy_static! {
     /// Deprecated; use 'graphman stats account-like' instead. A list of
@@ -1163,7 +1164,9 @@ impl Column {
     /// lengths. Such columns may contain very large values and need to be
     /// handled specially for indexing
     pub fn has_arbitrary_size(&self) -> bool {
-        !self.is_primary_key() && !self.is_list() && self.column_type == ColumnType::String
+        !self.is_primary_key()
+            && !self.is_list()
+            && (self.column_type == ColumnType::String || self.column_type == ColumnType::Bytes)
     }
 
     pub fn is_assignable_from(&self, source: &Self, object: &EntityType) -> Option<String> {
@@ -1486,12 +1489,23 @@ impl Table {
                         ("gist", index_expr)
                     }
                 } else {
-                    // Attributes that are plain strings are indexed with a BTree; but
-                    // they can be too large for Postgres' limit on values that can go
-                    // into a BTree. For those attributes, only index the first
-                    // STRING_PREFIX_SIZE characters
+                    // Attributes that are plain strings or bytes are
+                    // indexed with a BTree; but they can be too large for
+                    // Postgres' limit on values that can go into a BTree.
+                    // For those attributes, only index the first
+                    // STRING_PREFIX_SIZE or BYTE_ARRAY_PREFIX_SIZE characters
                     let index_expr = if column.has_arbitrary_size() {
-                        format!("left({}, {})", column.name.quoted(), STRING_PREFIX_SIZE)
+                        match column.column_type {
+                            ColumnType::String => {
+                                format!("left({}, {})", column.name.quoted(), STRING_PREFIX_SIZE)
+                            }
+                            ColumnType::Bytes => format!(
+                                "substring({}, 1, {})",
+                                column.name.quoted(),
+                                BYTE_ARRAY_PREFIX_SIZE
+                            ),
+                            _ => unreachable!("only String and Bytes can have arbitrary size"),
+                        }
                     } else {
                         column.name.quoted()
                     };
@@ -1895,7 +1909,7 @@ create index attr_1_3_scalar_big_decimal
 create index attr_1_4_scalar_string
     on sgd0815.\"scalar\" using btree(left(\"string\", 256));
 create index attr_1_5_scalar_bytes
-    on sgd0815.\"scalar\" using btree(\"bytes\");
+    on sgd0815.\"scalar\" using btree(substring(\"bytes\", 1, 64));
 create index attr_1_6_scalar_big_int
     on sgd0815.\"scalar\" using btree(\"big_int\");
 create index attr_1_7_scalar_color

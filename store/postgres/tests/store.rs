@@ -1594,6 +1594,99 @@ fn handle_large_string_with_index() {
     })
 }
 
+#[test]
+fn handle_large_bytea_with_index() {
+    const NAME: &str = "bin_name";
+    const ONE: &str = "large_string_one";
+    const TWO: &str = "large_string_two";
+
+    fn make_insert_op(id: &str, name: &[u8]) -> EntityModification {
+        let mut data = Entity::new();
+        data.set("id", id);
+        data.set(NAME, scalar::Bytes::from(name));
+
+        let key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), id.to_owned());
+
+        EntityModification::Insert { key, data }
+    }
+
+    run_test(|store, writable, deployment| async move {
+        // We have to produce a massive bytea (240_000 bytes) because the
+        // repeated text compresses so well. This leads to an error 'index
+        // row size 2784 exceeds btree version 4 maximum 2704' if used with
+        // a btree index without size limitation
+        let long_bytea = std::iter::repeat("Quo usque tandem")
+            .take(15000)
+            .collect::<String>()
+            .into_bytes();
+        let other_bytea = {
+            let mut other_bytea = long_bytea.clone();
+            other_bytea.push(b'X');
+            scalar::Bytes::from(other_bytea.as_slice())
+        };
+        let long_bytea = scalar::Bytes::from(long_bytea.as_slice());
+
+        let metrics_registry = Arc::new(MockMetricsRegistry::new());
+        let stopwatch_metrics = StopwatchMetrics::new(
+            Logger::root(slog::Discard, o!()),
+            deployment.hash.clone(),
+            metrics_registry.clone(),
+        );
+
+        writable
+            .transact_block_operations(
+                TEST_BLOCK_3_PTR.clone(),
+                None,
+                vec![
+                    make_insert_op(ONE, &long_bytea),
+                    make_insert_op(TWO, &other_bytea),
+                ],
+                stopwatch_metrics,
+                Vec::new(),
+                Vec::new(),
+            )
+            .expect("Failed to insert large text");
+
+        let query = user_query()
+            .first(5)
+            .filter(EntityFilter::Equal(
+                NAME.to_owned(),
+                long_bytea.clone().into(),
+            ))
+            .asc(NAME);
+
+        let ids = store
+            .subgraph_store()
+            .find(query)
+            .expect("Could not find entity")
+            .iter()
+            .map(|e| e.id())
+            .collect::<Result<Vec<_>, _>>()
+            .expect("Found entities without an id");
+
+        assert_eq!(vec![ONE], ids);
+
+        // Make sure we check the full string and not just a prefix
+        let prefix = scalar::Bytes::from(&long_bytea.as_slice()[..64]);
+        let query = user_query()
+            .first(5)
+            .filter(EntityFilter::LessOrEqual(NAME.to_owned(), prefix.into()))
+            .asc(NAME);
+
+        let ids = store
+            .subgraph_store()
+            .find(query)
+            .expect("Could not find entity")
+            .iter()
+            .map(|e| e.id())
+            .collect::<Result<Vec<_>, _>>()
+            .expect("Found entities without an id");
+
+        // Users with name 'Cindini' and 'Johnton'
+        assert_eq!(vec!["2", "1"], ids);
+    })
+}
+
 #[derive(Clone)]
 struct WindowQuery(EntityQuery, Arc<DieselSubgraphStore>);
 

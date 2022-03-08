@@ -32,7 +32,8 @@ use std::iter::FromIterator;
 use std::str::FromStr;
 
 use crate::relational::{
-    Column, ColumnType, IdType, Layout, SqlName, Table, PRIMARY_KEY_COLUMN, STRING_PREFIX_SIZE,
+    Column, ColumnType, IdType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
+    STRING_PREFIX_SIZE,
 };
 use crate::sql_value::SqlValue;
 use crate::{
@@ -665,40 +666,110 @@ impl Comparison {
     }
 }
 
+enum PrefixType<'a> {
+    String(&'a Column),
+    Bytes(&'a Column),
+}
+
+impl<'a> PrefixType<'a> {
+    fn new(column: &'a Column) -> QueryResult<Self> {
+        match column.column_type {
+            ColumnType::String => Ok(PrefixType::String(column)),
+            ColumnType::Bytes => Ok(PrefixType::Bytes(column)),
+            _ => Err(constraint_violation!(
+                "cannot setup prefix comparison for column {} of type {}",
+                column.name(),
+                column.column_type().sql_type()
+            )),
+        }
+    }
+
+    /// Push the SQL expression for a prefix of values in our column. That
+    /// should be the same expression that we used when creating an index
+    /// for the column
+    fn push_column_prefix(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        match self {
+            PrefixType::String(column) => {
+                out.push_sql("left(");
+                out.push_identifier(column.name.as_str())?;
+                out.push_sql(", ");
+                out.push_sql(&STRING_PREFIX_SIZE.to_string());
+                out.push_sql(")");
+            }
+            PrefixType::Bytes(column) => {
+                out.push_sql("substring(");
+                out.push_identifier(column.name.as_str())?;
+                out.push_sql(", 1, ");
+                out.push_sql(&BYTE_ARRAY_PREFIX_SIZE.to_string());
+                out.push_sql(")");
+            }
+        }
+        Ok(())
+    }
+
+    fn is_large(&self, value: &Value) -> Result<bool, ()> {
+        match (self, value) {
+            (PrefixType::String(_), Value::String(s)) => Ok(s.len() > STRING_PREFIX_SIZE - 1),
+            (PrefixType::Bytes(_), Value::Bytes(b)) => Ok(b.len() > BYTE_ARRAY_PREFIX_SIZE - 1),
+            (PrefixType::Bytes(_), Value::String(s)) => {
+                let len = if s.starts_with("0x") {
+                    (s.len() - 2) / 2
+                } else {
+                    s.len() / 2
+                };
+                Ok(len > BYTE_ARRAY_PREFIX_SIZE - 1)
+            }
+            _ => Err(()),
+        }
+    }
+}
+
 /// Produce a comparison between the string column `column` and the string
 /// value `text` that makes it obvious to Postgres' optimizer that it can
 /// first consult the partial index on `left(column, STRING_PREFIX_SIZE)`
 /// instead of going straight to a sequential scan of the underlying table.
 /// We do this by writing the comparison `column op text` in a way that
 /// involves `left(column, STRING_PREFIX_SIZE)`
-#[derive(Constructor)]
 struct PrefixComparison<'a> {
     op: Comparison,
+    kind: PrefixType<'a>,
     column: &'a Column,
     text: &'a Value,
 }
 
 impl<'a> PrefixComparison<'a> {
-    fn push_column_prefix(column: &Column, mut out: AstPass<Pg>) -> QueryResult<()> {
-        out.push_sql("left(");
-        out.push_identifier(column.name.as_str())?;
-        out.push_sql(", ");
-        out.push_sql(&STRING_PREFIX_SIZE.to_string());
-        out.push_sql(")");
-        Ok(())
+    fn new(op: Comparison, column: &'a Column, text: &'a Value) -> QueryResult<Self> {
+        let kind = PrefixType::new(column)?;
+        Ok(Self {
+            op,
+            kind,
+            column,
+            text,
+        })
     }
 
     fn push_value_prefix(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
-        out.push_sql("left(");
-        QueryValue(self.text, &self.column.column_type).walk_ast(out.reborrow())?;
-        out.push_sql(", ");
-        out.push_sql(&STRING_PREFIX_SIZE.to_string());
-        out.push_sql(")");
+        match self.kind {
+            PrefixType::String(column) => {
+                out.push_sql("left(");
+                QueryValue(self.text, &column.column_type).walk_ast(out.reborrow())?;
+                out.push_sql(", ");
+                out.push_sql(&STRING_PREFIX_SIZE.to_string());
+                out.push_sql(")");
+            }
+            PrefixType::Bytes(column) => {
+                out.push_sql("substring(");
+                QueryValue(self.text, &column.column_type).walk_ast(out.reborrow())?;
+                out.push_sql(", 1, ");
+                out.push_sql(&BYTE_ARRAY_PREFIX_SIZE.to_string());
+                out.push_sql(")");
+            }
+        }
         Ok(())
     }
 
     fn push_prefix_cmp(&self, op: Comparison, mut out: AstPass<Pg>) -> QueryResult<()> {
-        Self::push_column_prefix(self.column, out.reborrow())?;
+        self.kind.push_column_prefix(&mut out)?;
         out.push_sql(op.as_str());
         self.push_value_prefix(out.reborrow())
     }
@@ -749,18 +820,16 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
         //
         // For `op` either `<=` or `>=`, we can write (using '<=' as an example)
         //   uv <= st <=> u < s || u = s && uv <= st
-        let large = if let Value::String(s) = self.text {
-            // We need to check the entire string
-            s.len() > STRING_PREFIX_SIZE - 1
-        } else {
-            return Err(constraint_violation!(
+        let large = self.kind.is_large(&self.text).map_err(|()| {
+            constraint_violation!(
                 "column {} has type {} and can't be compared with the value `{}` using {}",
                 self.column.name(),
                 self.column.column_type().sql_type(),
                 self.text,
                 self.op.as_str()
-            ));
-        };
+            )
+        })?;
+
         match self.op {
             Equal => {
                 if large {
@@ -961,35 +1030,25 @@ impl<'a> QueryFilter<'a> {
     ) -> QueryResult<()> {
         let column = self.column(attribute);
 
-        if column.has_arbitrary_size() {
-            PrefixComparison::new(op, column, value).walk_ast(out.reborrow())?;
+        if matches!(value, Value::Null) {
+            // Deal with nulls first since they always need special
+            // treatment
+            out.push_identifier(column.name.as_str())?;
+            match op {
+                Comparison::Equal => out.push_sql(" is null"),
+                Comparison::NotEqual => out.push_sql(" is not null"),
+                _ => unreachable!("we only call equals with '=' or '!='"),
+            }
+        } else if column.has_arbitrary_size() {
+            PrefixComparison::new(op, column, value)?.walk_ast(out.reborrow())?;
         } else if column.is_fulltext() {
             out.push_identifier(column.name.as_str())?;
             out.push_sql(Comparison::Match.as_str());
             QueryValue(value, &column.column_type).walk_ast(out)?;
         } else {
             out.push_identifier(column.name.as_str())?;
-
-            match value {
-                Value::String(_)
-                | Value::BigInt(_)
-                | Value::Bool(_)
-                | Value::Bytes(_)
-                | Value::BigDecimal(_)
-                | Value::Int(_)
-                | Value::List(_) => {
-                    out.push_sql(op.as_str());
-                    QueryValue(value, &column.column_type).walk_ast(out)?;
-                }
-                Value::Null => {
-                    use Comparison as c;
-                    match op {
-                        c::Equal => out.push_sql(" is null"),
-                        c::NotEqual => out.push_sql(" is not null"),
-                        _ => unreachable!("we only call equals with '=' or '!='"),
-                    }
-                }
-            }
+            out.push_sql(op.as_str());
+            QueryValue(value, &column.column_type).walk_ast(out)?;
         }
         Ok(())
     }
@@ -1004,7 +1063,7 @@ impl<'a> QueryFilter<'a> {
         let column = self.column(attribute);
 
         if column.has_arbitrary_size() {
-            PrefixComparison::new(op, column, value).walk_ast(out.reborrow())?;
+            PrefixComparison::new(op, column, value)?.walk_ast(out.reborrow())?;
         } else {
             out.push_identifier(column.name.as_str())?;
             out.push_sql(op.as_str());
@@ -1086,7 +1145,7 @@ impl<'a> QueryFilter<'a> {
                 // Postgres' query optimizer
                 // See PrefixComparison for a more detailed discussion of what
                 // is happening here
-                PrefixComparison::push_column_prefix(column, out.reborrow())?;
+                PrefixType::new(column)?.push_column_prefix(&mut out)?;
             } else {
                 out.push_identifier(column.name.as_str())?;
             }
