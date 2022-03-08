@@ -126,7 +126,7 @@ macro_rules! constraint_violation {
         diesel::result::Error::QueryBuilderError(anyhow!("{}", $msg).into())
     }};
     ($fmt:expr, $($arg:tt)*) => {{
-        diesel::result::Error::QueryBuilderError(anyhow!("{}", $fmt, $($arg)*))
+        diesel::result::Error::QueryBuilderError(anyhow!($fmt, $($arg)*).into())
     }}
 }
 
@@ -753,7 +753,13 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
             // We need to check the entire string
             s.len() > STRING_PREFIX_SIZE - 1
         } else {
-            unreachable!("text columns are only ever compared to strings");
+            return Err(constraint_violation!(
+                "column {} has type {} and can't be compared with the value `{}` using {}",
+                self.column.name(),
+                self.column.column_type().sql_type(),
+                self.text,
+                self.op.as_str()
+            ));
         };
         match self.op {
             Equal => {
@@ -955,7 +961,7 @@ impl<'a> QueryFilter<'a> {
     ) -> QueryResult<()> {
         let column = self.column(attribute);
 
-        if column.is_text() && value.is_string() {
+        if column.is_text() {
             PrefixComparison::new(op, column, value).walk_ast(out.reborrow())?;
         } else if column.is_fulltext() {
             out.push_identifier(column.name.as_str())?;
@@ -997,7 +1003,7 @@ impl<'a> QueryFilter<'a> {
     ) -> QueryResult<()> {
         let column = self.column(attribute);
 
-        if column.is_text() && value.is_string() {
+        if column.is_text() {
             PrefixComparison::new(op, column, value).walk_ast(out.reborrow())?;
         } else {
             out.push_identifier(column.name.as_str())?;
