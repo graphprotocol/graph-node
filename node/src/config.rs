@@ -8,7 +8,7 @@ use graph::{
             de::{self, value, SeqAccess, Visitor},
             Deserialize, Deserializer, Serialize,
         },
-        serde_json, Logger, NodeId, StoreError,
+        serde_json, Logger, NodeId, StoreError, BlockNumber,
     },
 };
 use graph_chain_ethereum::{self as ethereum, NodeCapabilities};
@@ -16,6 +16,7 @@ use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
 use http::{HeaderMap, Uri};
 use regex::Regex;
+use std::convert::TryFrom;
 use std::fs::read_to_string;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -443,12 +444,23 @@ impl ChainSection {
                     );
                 })?;
 
-                let (features, url_str) = rest.split_at(colon);
-                let (url, features) = if vec!["http", "https", "ws", "wss"].contains(&features) {
+                let (features, end_str) = rest.split_at(colon);
+                let (end, features) = if vec!["http", "https", "ws", "wss"].contains(&features) {
                     (rest, DEFAULT_PROVIDER_FEATURES.to_vec())
                 } else {
-                    (&url_str[1..], features.split(',').collect())
+                    (&end_str[1..], features.split(',').collect())
                 };
+
+                let comma = end.find(',');
+
+                let (url, genesis_block_number) = if comma.is_some() {
+                    let (url, genesis_block_number_with_delim) = end.split_at(comma.unwrap());
+                    let genesis_block_number_str = &genesis_block_number_with_delim[1..];
+                    (url, genesis_block_number_str.parse::<u64>().expect("invalid block number"))
+                } else {
+                    (end, 0)
+                };
+
                 let features = features.into_iter().map(|s| s.to_string()).collect();
                 let provider = Provider {
                     label: format!("{}-{}-{}", name, transport, nr),
@@ -462,6 +474,7 @@ impl ChainSection {
                 let entry = chains.entry(name.to_string()).or_insert_with(|| Chain {
                     shard: PRIMARY_SHARD.to_string(),
                     protocol: BlockchainKind::Ethereum,
+                    genesis_block_number: BlockNumber::try_from(genesis_block_number).unwrap(),
                     providers: vec![],
                 });
                 entry.providers.push(provider);
@@ -476,6 +489,7 @@ pub struct Chain {
     pub shard: String,
     #[serde(default = "default_blockchain_kind")]
     pub protocol: BlockchainKind,
+    pub genesis_block_number: BlockNumber,
     #[serde(rename = "provider")]
     pub providers: Vec<Provider>,
 }

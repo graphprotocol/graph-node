@@ -369,6 +369,7 @@ async fn create_ethereum_networks(
                     capabilities,
                     Arc::new(
                         graph_chain_ethereum::EthereumAdapter::new(
+                            chain.genesis_block_number,
                             logger,
                             provider.label.clone(),
                             &web3.url,
