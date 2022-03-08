@@ -91,7 +91,7 @@ fn create_source_event_stream(
     let ctx = ExecutionContext {
         logger: options.logger.cheap_clone(),
         resolver,
-        query: query.clone(),
+        query,
         deadline: None,
         max_first: options.max_first,
         max_skip: options.max_skip,
@@ -118,7 +118,7 @@ fn create_source_event_stream(
         }
     };
 
-    resolve_field_stream(&ctx, &subscription_type, field)
+    resolve_field_stream(&ctx, subscription_type, field)
 }
 
 fn resolve_field_stream(

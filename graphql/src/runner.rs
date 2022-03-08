@@ -315,7 +315,7 @@ where
         let query = crate::execution::Query::new(
             &self.logger,
             schema,
-            Some(network.clone()),
+            Some(network),
             subscription.query,
             *GRAPHQL_MAX_COMPLEXITY,
             *GRAPHQL_MAX_DEPTH,

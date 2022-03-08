@@ -217,7 +217,7 @@ where
             }
         });
 
-        let me = arc_self.clone();
+        let me = arc_self;
         handler.add_method("subgraph_reassign", move |params: Params| {
             let me = me.clone();
             async move {

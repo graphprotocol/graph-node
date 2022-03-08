@@ -100,7 +100,7 @@ impl<C: Blockchain> WasmInstance<C> {
         value: &serde_json::Value,
         user_data: &store::Value,
     ) -> Result<BlockState<C>, anyhow::Error> {
-        let gas = GasCounter::new();
+        let gas = GasCounter::default();
         let value = asc_new(&mut self, value, &gas)?;
         let user_data = asc_new(&mut self, user_data, &gas)?;
 
@@ -318,7 +318,7 @@ impl<C: Blockchain> WasmInstance<C> {
 
         // Because `gas` and `deterministic_host_trap` need to be accessed from the gas
         // host fn, they need to be separate from the rest of the context.
-        let gas = GasCounter::new();
+        let gas = GasCounter::default();
         let deterministic_host_trap = Rc::new(AtomicBool::new(false));
 
         macro_rules! link {

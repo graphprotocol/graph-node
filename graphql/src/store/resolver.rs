@@ -146,10 +146,8 @@ impl StoreResolver {
                             .map(|number| BlockPtr::from((hash, number as u64)))
                     })
             }
-            BlockConstraint::Number(number) => store
-                .block_ptr()
-                .map_err(|e| StoreError::from(e).into())
-                .and_then(|ptr| {
+            BlockConstraint::Number(number) => {
+                store.block_ptr().map_err(Into::into).and_then(|ptr| {
                     check_ptr(subgraph, ptr, number)?;
                     // We don't have a way here to look the block hash up from
                     // the database, and even if we did, there is no guarantee
@@ -158,18 +156,16 @@ impl StoreResolver {
                     // a block number
                     // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
                     Ok(BlockPtr::from((web3::types::H256::zero(), number as u64)))
-                }),
+                })
+            }
             BlockConstraint::Min(number) => store
                 .block_ptr()
-                .map_err(|e| StoreError::from(e).into())
+                .map_err(Into::into)
                 .and_then(|ptr| check_ptr(subgraph, ptr, number)),
             BlockConstraint::Latest => store
                 .block_ptr()
-                .map_err(|e| StoreError::from(e).into())
-                .and_then(|ptr| {
-                    let ptr = ptr.expect("we should have already checked that the subgraph exists");
-                    Ok(ptr)
-                }),
+                .map_err(Into::into)
+                .map(|ptr| ptr.expect("we should have already checked that the subgraph exists")),
         }
     }
 

@@ -257,7 +257,7 @@ pub(crate) fn execute_root_selection_set_uncached(
         // the data_set SelectionSet
         if is_introspection_field(&field.name) {
             intro_set.push(field)?
-        } else if &field.name == META_FIELD_NAME || &field.name == "__typename" {
+        } else if field.name == META_FIELD_NAME || field.name == "__typename" {
             meta_items.push(field)
         } else {
             data_set.push(field)?
@@ -268,9 +268,9 @@ pub(crate) fn execute_root_selection_set_uncached(
     let mut values = if data_set.is_empty() && meta_items.is_empty() {
         Object::default()
     } else {
-        let initial_data = ctx.resolver.prefetch(&ctx, &data_set)?;
+        let initial_data = ctx.resolver.prefetch(ctx, &data_set)?;
         data_set.push_fields(meta_items)?;
-        execute_selection_set_to_map(&ctx, &data_set, root_type, initial_data)?
+        execute_selection_set_to_map(ctx, &data_set, root_type, initial_data)?
     };
 
     // Resolve introspection fields, if there are any
@@ -306,7 +306,7 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
             // - Caching `BLOCK_NUMBER_MAX` would make this cache think all other blocks are old.
             if block_ptr.number != BLOCK_NUMBER_MAX {
                 // Calculate the hash outside of the lock
-                let cache_key = cache_key(&ctx, &selection_set, &block_ptr);
+                let cache_key = cache_key(&ctx, &selection_set, block_ptr);
                 let shard = (cache_key[0] as usize) % QUERY_BLOCK_CACHE.len();
 
                 // Check if the response is cached, first in the recent blocks cache,
@@ -314,7 +314,7 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
                 // The blocks are used to delimit how long locks need to be held
                 {
                     let cache = QUERY_BLOCK_CACHE[shard].lock(&ctx.logger);
-                    if let Some(result) = cache.get(network, &block_ptr, &cache_key) {
+                    if let Some(result) = cache.get(network, block_ptr, &cache_key) {
                         ctx.cache_status.store(CacheStatus::Hit);
                         return result;
                     }
@@ -402,7 +402,7 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
         let shard = (key[0] as usize) % QUERY_BLOCK_CACHE.len();
         let inserted = QUERY_BLOCK_CACHE[shard].lock(&ctx.logger).insert(
             network,
-            block_ptr.clone(),
+            block_ptr,
             key,
             result.cheap_clone(),
             weight,
@@ -512,7 +512,7 @@ fn execute_selection_set_to_map<'a>(
                 r::Value::String(object_type.name.clone()),
             );
         } else {
-            match execute_field(&ctx, object_type, field_value, field, field_type) {
+            match execute_field(ctx, object_type, field_value, field, field_type) {
                 Ok(v) => {
                     result_map.insert(response_key.to_owned(), v);
                 }
@@ -670,13 +670,13 @@ fn resolve_field_value_for_list_type(
                 // Let the resolver decide how values in the resolved object value
                 // map to values of GraphQL enums
                 s::TypeDefinition::Enum(t) => {
-                    ctx.resolver.resolve_enum_values(field, &t, field_value)
+                    ctx.resolver.resolve_enum_values(field, t, field_value)
                 }
 
                 // Let the resolver decide how values in the resolved object value
                 // map to values of GraphQL scalars
                 s::TypeDefinition::Scalar(t) => {
-                    ctx.resolver.resolve_scalar_values(field, &t, field_value)
+                    ctx.resolver.resolve_scalar_values(field, t, field_value)
                 }
 
                 s::TypeDefinition::Interface(t) => ctx
@@ -711,14 +711,14 @@ fn complete_value(
     match field_type {
         // Fail if the field type is non-null but the value is null
         s::Type::NonNullType(inner_type) => {
-            return match complete_value(ctx, field, inner_type, resolved_value)? {
+            match complete_value(ctx, field, inner_type, resolved_value)? {
                 r::Value::Null => Err(vec![QueryExecutionError::NonNullError(
                     field.position,
                     field.name.to_string(),
                 )]),
 
                 v => Ok(v),
-            };
+            }
         }
 
         // If the resolved value is null, return null

@@ -354,7 +354,7 @@ impl JsonNotification {
         notification: &Notification,
         conn: &mut Client,
     ) -> Result<JsonNotification, StoreError> {
-        let value = serde_json::from_str(&notification.payload())?;
+        let value = serde_json::from_str(notification.payload())?;
 
         match value {
             serde_json::Value::Number(n) => {
@@ -472,7 +472,7 @@ impl NotificationSender {
 
             // If we can't get the lock, another thread in this process is
             // already checking, and we can just skip checking
-            if let Some(mut last_check) = LAST_CLEANUP_CHECK.try_lock().ok() {
+            if let Ok(mut last_check) = LAST_CLEANUP_CHECK.try_lock() {
                 if last_check.elapsed() > *LARGE_NOTIFICATION_CLEANUP_INTERVAL {
                     diesel::sql_query(format!(
                         "delete from large_notifications

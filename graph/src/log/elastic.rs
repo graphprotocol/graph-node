@@ -352,7 +352,7 @@ impl Drain for ElasticDrain {
         // Prepare log document
         let log = ElasticLog {
             id,
-            custom_id: custom_id,
+            custom_id,
             arguments,
             timestamp,
             text,

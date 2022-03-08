@@ -82,7 +82,7 @@ impl QueryEffort {
         }
     }
 
-    pub fn add(&self, shape_hash: u64, duration: Duration, gauge: &Box<Gauge>) {
+    pub fn add(&self, shape_hash: u64, duration: Duration, gauge: &Gauge) {
         let mut inner = self.inner.write().unwrap();
         inner.add(shape_hash, duration);
         gauge.set(inner.total.average().unwrap_or(ZERO_DURATION).as_millis() as f64);

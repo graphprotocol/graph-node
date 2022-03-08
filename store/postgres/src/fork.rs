@@ -184,7 +184,7 @@ query Query ($id: String) {{
     fn extract_entity(
         raw_json: &str,
         entity_type: &str,
-        fields: &Vec<Field>,
+        fields: &[Field],
     ) -> Result<Option<Entity>, StoreError> {
         let json: serde_json::Value = serde_json::from_str(raw_json).unwrap();
         let entity = &json["data"][entity_type.to_lowercase()];

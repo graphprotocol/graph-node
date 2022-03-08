@@ -1190,7 +1190,7 @@ impl ChainStore {
         chain_head_update_sender: ChainHeadUpdateSender,
         pool: ConnectionPool,
     ) -> Self {
-        let store = ChainStore {
+        ChainStore {
             pool,
             chain,
             storage,
@@ -1198,9 +1198,7 @@ impl ChainStore {
             status,
             chain_head_update_sender,
             block_cache: TimedCache::new(Duration::from_secs(5)),
-        };
-
-        store
+        }
     }
 
     pub fn is_ingestible(&self) -> bool {
@@ -1320,7 +1318,7 @@ impl ChainStoreTrait for ChainStore {
         pool.with_conn(move |conn, _| {
             conn.transaction(|| {
                 storage
-                    .upsert_block(&conn, &network, block.as_ref(), true)
+                    .upsert_block(conn, &network, block.as_ref(), true)
                     .map_err(CancelableError::from)
             })
         })
@@ -1349,7 +1347,7 @@ impl ChainStoreTrait for ChainStore {
                 .with_conn(move |conn, _| {
                     let candidate = chain_store
                         .storage
-                        .chain_head_candidate(&conn, &chain_store.chain)
+                        .chain_head_candidate(conn, &chain_store.chain)
                         .map_err(CancelableError::from)?;
                     let (ptr, first_block) = match &candidate {
                         None => return Ok((None, None)),
@@ -1359,7 +1357,7 @@ impl ChainStoreTrait for ChainStore {
                     match chain_store
                         .storage
                         .missing_parent(
-                            &conn,
+                            conn,
                             &chain_store.chain,
                             first_block as i64,
                             ptr.hash_as_h256(),
@@ -1437,7 +1435,7 @@ impl ChainStoreTrait for ChainStore {
             .load::<Option<String>>(&*self.get_conn()?)
             .map(|rows| {
                 rows.first()
-                    .map(|cursor_opt| cursor_opt.as_ref().map(|cursor| cursor.clone()))
+                    .map(|cursor_opt| cursor_opt.as_ref().cloned())
                     .and_then(|opt| opt)
             })
             .map_err(Error::from)
@@ -1461,7 +1459,7 @@ impl ChainStoreTrait for ChainStore {
         pool.with_conn(move |conn, _| {
             conn.transaction(|| -> Result<(), StoreError> {
                 storage
-                    .upsert_block(&conn, &network, block.as_ref(), true)
+                    .upsert_block(conn, &network, block.as_ref(), true)
                     .map_err(CancelableError::from)?;
 
                 update(n::table.filter(n::name.eq(&self.chain)))
@@ -1547,8 +1545,6 @@ impl ChainStoreTrait for ChainStore {
                    and a.id = d.id
                    and not d.failed
                    and ds.network = $2) a;";
-        let ancestor_count = i32::try_from(ancestor_count)
-            .expect("ancestor_count fits into a signed 32 bit integer");
         diesel::sql_query(query)
             .bind::<Integer, _>(ancestor_count)
             .bind::<Text, _>(&self.chain)
@@ -1567,7 +1563,7 @@ impl ChainStoreTrait for ChainStore {
                 }
             })
             .unwrap_or(Ok(None))
-            .map_err(|e| e.into())
+            .map_err(Into::into)
     }
 
     fn block_hashes_by_block_number(&self, number: BlockNumber) -> Result<Vec<H256>, Error> {

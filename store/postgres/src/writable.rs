@@ -176,7 +176,7 @@ impl WritableStore {
             let event = self.writable.revert_block_operations(
                 self.site.clone(),
                 block_ptr_to.clone(),
-                firehose_cursor.clone(),
+                firehose_cursor,
             )?;
 
             self.try_send_store_event(event)

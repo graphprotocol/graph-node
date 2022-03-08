@@ -75,14 +75,15 @@ impl Display for Gas {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct GasCounter(Arc<AtomicU64>);
 
 impl CheapClone for GasCounter {}
 
 impl GasCounter {
+    /// Alias of [`Default::default`].
     pub fn new() -> Self {
-        Self(Arc::new(AtomicU64::new(0)))
+        Self::default()
     }
 
     /// This should be called once per host export

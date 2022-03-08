@@ -22,7 +22,7 @@ pub trait ObjectTypeExt {
 
 impl ObjectTypeExt for ObjectType {
     fn field(&self, name: &str) -> Option<&Field> {
-        self.fields.iter().find(|field| &field.name == name)
+        self.fields.iter().find(|field| field.name == name)
     }
 
     fn is_meta(&self) -> bool {
@@ -32,7 +32,7 @@ impl ObjectTypeExt for ObjectType {
 
 impl ObjectTypeExt for InterfaceType {
     fn field(&self, name: &str) -> Option<&Field> {
-        self.fields.iter().find(|field| &field.name == name)
+        self.fields.iter().find(|field| field.name == name)
     }
 
     fn is_meta(&self) -> bool {
@@ -53,7 +53,7 @@ pub trait DocumentExt {
 
     fn find_interface(&self, name: &str) -> Option<&InterfaceType>;
 
-    fn get_fulltext_directives<'a>(&'a self) -> Result<Vec<&'a Directive>, anyhow::Error>;
+    fn get_fulltext_directives(&self) -> Result<Vec<&Directive>, anyhow::Error>;
 
     fn get_root_query_type(&self) -> Option<&ObjectType>;
 
@@ -195,12 +195,12 @@ impl DocumentExt for Document {
                 _ => None,
             })
             .find(|typedef| match typedef {
-                TypeDefinition::Object(t) => &t.name == name,
-                TypeDefinition::Enum(t) => &t.name == name,
-                TypeDefinition::InputObject(t) => &t.name == name,
-                TypeDefinition::Interface(t) => &t.name == name,
-                TypeDefinition::Scalar(t) => &t.name == name,
-                TypeDefinition::Union(t) => &t.name == name,
+                TypeDefinition::Object(t) => t.name == name,
+                TypeDefinition::Enum(t) => t.name == name,
+                TypeDefinition::InputObject(t) => t.name == name,
+                TypeDefinition::Interface(t) => t.name == name,
+                TypeDefinition::Scalar(t) => t.name == name,
+                TypeDefinition::Union(t) => t.name == name,
             })
     }
 

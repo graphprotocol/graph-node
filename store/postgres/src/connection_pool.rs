@@ -546,7 +546,7 @@ fn brief_error_msg(error: &dyn std::error::Error) -> String {
     // Connection refused.."))`
     error
         .to_string()
-        .split("\n")
+        .split('\n')
         .next()
         .unwrap_or("no error details provided")
         .to_string()
@@ -640,7 +640,7 @@ impl EventHandler {
             .global_gauge(
                 "store_connection_pool_size_count",
                 "Overall size of the connection pool",
-                const_labels.clone(),
+                const_labels,
             )
             .expect("failed to create `store_connection_pool_size_count` counter");
         EventHandler {
@@ -805,7 +805,7 @@ impl PoolInner {
             logger: logger_pool,
             shard: Shard::new(shard_name.to_string())
                 .expect("shard_name is a valid name for a shard"),
-            postgres_url: postgres_url.clone(),
+            postgres_url,
             pool,
             fdw_pool,
             limiter,
@@ -1014,7 +1014,7 @@ impl PoolInner {
         permit.unwrap()
     }
 
-    fn configure_fdw(&self, servers: &Vec<ForeignServer>) -> Result<(), StoreError> {
+    fn configure_fdw(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
         info!(&self.logger, "Setting up fdw");
         let conn = self.get()?;
         conn.batch_execute("create extension if not exists postgres_fdw")?;
@@ -1045,12 +1045,12 @@ impl PoolInner {
     /// Copy the data from key tables in the primary into our local schema
     /// so it can be used as a fallback when the primary goes down
     pub async fn mirror_primary_tables(&self) -> Result<(), StoreError> {
-        if &self.shard == &*PRIMARY_SHARD {
+        if self.shard == *PRIMARY_SHARD {
             return Ok(());
         }
         self.with_conn(|conn, handle| {
             conn.transaction(|| {
-                primary::Mirror::refresh_tables(&conn, handle).map_err(CancelableError::from)
+                primary::Mirror::refresh_tables(conn, handle).map_err(CancelableError::from)
             })
         })
         .await
@@ -1059,7 +1059,7 @@ impl PoolInner {
     // Map some tables from the `subgraphs` metadata schema from foreign
     // servers to ourselves. The mapping is recreated on every server start
     // so that we pick up possible schema changes in the mappings
-    fn map_metadata(&self, servers: &Vec<ForeignServer>) -> Result<(), StoreError> {
+    fn map_metadata(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
         let conn = self.get()?;
         conn.transaction(|| {
             for server in servers.iter().filter(|server| server.shard != self.shard) {

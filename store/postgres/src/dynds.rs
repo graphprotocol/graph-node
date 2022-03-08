@@ -99,7 +99,7 @@ pub fn load(conn: &PgConnection, id: &str) -> Result<Vec<StoredDynamicDataSource
             creation_block,
         };
 
-        if !(data_sources.last().and_then(|d| d.creation_block) <= data_source.creation_block) {
+        if data_sources.last().and_then(|d| d.creation_block) > data_source.creation_block {
             return Err(StoreError::ConstraintViolation(
                 "data sources not ordered by creation block".to_string(),
             ));

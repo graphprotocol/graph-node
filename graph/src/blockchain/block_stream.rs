@@ -46,14 +46,7 @@ impl<C: Blockchain + 'static> BufferedBlockStream<C> {
         mut stream: Box<dyn BlockStream<C>>,
         sender: Sender<Result<BlockStreamEvent<C>, Error>>,
     ) -> Result<(), Error> {
-        loop {
-            let event = match stream.next().await {
-                Some(evt) => evt,
-                None => {
-                    break;
-                }
-            };
-
+        while let Some(event) = stream.next().await {
             match sender.send(event).await {
                 Ok(_) => continue,
                 Err(err) => {

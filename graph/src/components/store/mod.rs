@@ -922,7 +922,7 @@ impl AttributeNames {
         if Self::is_meta_field(field_name) {
             return;
         }
-        self.insert(&field_name)
+        self.insert(field_name)
     }
 
     /// Adds a attribute name. Ignores meta fields.

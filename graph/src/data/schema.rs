@@ -194,7 +194,7 @@ pub enum FulltextAlgorithm {
 impl TryFrom<&str> for FulltextAlgorithm {
     type Error = String;
     fn try_from(algorithm: &str) -> Result<Self, Self::Error> {
-        match &algorithm[..] {
+        match algorithm {
             "rank" => Ok(FulltextAlgorithm::Rank),
             "proximityRank" => Ok(FulltextAlgorithm::ProximityRank),
             invalid => Err(format!(
@@ -832,10 +832,9 @@ impl Schema {
                 };
 
                 if !name.eq(SCHEMA_TYPE_NAME)
-                    && directives
+                    && !directives
                         .iter()
-                        .find(|directive| directive.name.eq("subgraphId"))
-                        .is_none()
+                        .any(|directive| directive.name.eq("subgraphId"))
                 {
                     directives.push(subgraph_id_directive);
                 }
@@ -898,8 +897,8 @@ impl Schema {
                     .filter(|directive| {
                         !directive.name.eq("import") && !directive.name.eq("fulltext")
                     })
-                    .collect::<Vec<&Directive>>()
-                    .is_empty()
+                    .next()
+                    .is_none()
                 {
                     Some(SchemaValidationError::InvalidSchemaTypeDirectives)
                 } else {
@@ -1026,20 +1025,13 @@ impl Schema {
         // Validate that the fulltext field doesn't collide with any top-level Query fields
         // generated for entity types. The field name conversions should always align with those used
         // to create the field names in `graphql::schema::api::query_fields_for_type()`.
-        if local_types
-            .iter()
-            .find(|typ| {
-                typ.fields
-                    .iter()
-                    .find(|field| {
-                        name == &field.name.as_str().to_camel_case()
-                            || name == &field.name.to_plural().to_camel_case()
-                            || field.name.eq(name)
-                    })
-                    .is_some()
+        if local_types.iter().any(|typ| {
+            typ.fields.iter().any(|field| {
+                name == &field.name.as_str().to_camel_case()
+                    || name == &field.name.to_plural().to_camel_case()
+                    || field.name.eq(name)
             })
-            .is_some()
-        {
+        }) {
             return vec![SchemaValidationError::FulltextNameCollision(
                 name.to_string(),
             )];
@@ -1059,8 +1051,7 @@ impl Schema {
                     _ => None,
                 }
             })
-            .collect::<Vec<&_>>()
-            .len()
+            .count()
             > 1
         {
             return vec![SchemaValidationError::FulltextNameConflict(
@@ -1155,11 +1146,10 @@ impl Schema {
                         if !&entity_type
                             .fields
                             .iter()
-                            .find(|field| {
-                                let base_type: &str = field.field_type.get_base_type().as_ref();
+                            .any(|field| {
+                                let base_type: &str = field.field_type.get_base_type();
                                 matches!(ValueType::from_str(base_type), Ok(ValueType::String) if field.name.eq(field_name))
                             })
-                            .is_some()
                         {
                             return vec![SchemaValidationError::FulltextIncludedFieldInvalid(
                                 field_name.clone(),
@@ -1245,7 +1235,7 @@ impl Schema {
             .fold(vec![], |errors, (type_name, fields)| {
                 fields.iter().fold(errors, |mut errors, field| {
                     let base = field.field_type.get_base_type();
-                    if ValueType::is_scalar(base.as_ref()) {
+                    if ValueType::is_scalar(base) {
                         return errors;
                     }
                     if local_types.contains_key(base) {
@@ -1455,7 +1445,7 @@ impl Schema {
             // For that, we will wind up comparing the `id`s of the two types
             // when we query, and just assume that that's ok.
             let target_field_type = target_field.field_type.get_base_type();
-            if target_field_type != &object_type.name
+            if target_field_type != object_type.name
                 && target_field_type != "ID"
                 && !interface_types
                     .iter()
@@ -1498,11 +1488,10 @@ impl Schema {
         // Check that all fields in the interface exist in the object with same name and type.
         let mut missing_fields = vec![];
         for i in &interface.fields {
-            if object
+            if !object
                 .fields
                 .iter()
-                .find(|o| o.name.eq(&i.name) && o.field_type.eq(&i.field_type))
-                .is_none()
+                .any(|o| o.name.eq(&i.name) && o.field_type.eq(&i.field_type))
             {
                 missing_fields.push(i.to_string().trim().to_owned());
             }
@@ -1544,17 +1533,16 @@ impl Schema {
             .find(|object_type| object_type.name.eq(SCHEMA_TYPE_NAME))
     }
 
-    pub fn entity_fulltext_definitions<'a>(
+    pub fn entity_fulltext_definitions(
         entity: &str,
-        document: &'a Document,
+        document: &Document,
     ) -> Result<Vec<FulltextDefinition>, anyhow::Error> {
         Ok(document
             .get_fulltext_directives()?
             .into_iter()
             .filter(|directive| match directive.argument("include") {
-                Some(Value::List(includes)) if !includes.is_empty() => includes
-                    .iter()
-                    .find(|include| match include {
+                Some(Value::List(includes)) if !includes.is_empty() => {
+                    includes.iter().any(|include| match include {
                         Value::Object(include) => match include.get("entity") {
                             Some(Value::String(fulltext_entity)) if fulltext_entity == entity => {
                                 true
@@ -1563,7 +1551,7 @@ impl Schema {
                         },
                         _ => false,
                     })
-                    .is_some(),
+                }
                 _ => false,
             })
             .map(FulltextDefinition::from)

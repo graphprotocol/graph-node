@@ -303,7 +303,7 @@ pub(crate) mod table_schema {
                 _ => ci.data_type.clone(),
             };
             Self {
-                column_name: ci.column_name.clone(),
+                column_name: ci.column_name,
                 data_type,
             }
         }

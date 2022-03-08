@@ -194,9 +194,8 @@ impl StableHash for Value {
         use Value::*;
 
         // This is the default, so write nothing.
-        match self {
-            Null => return,
-            _ => {}
+        if self == &Null {
+            return;
         }
 
         self.as_static()
@@ -614,7 +613,7 @@ impl Entity {
         fn scalar_value_type(schema: &Schema, field_type: &s::Type) -> ValueType {
             use s::TypeDefinition as t;
             match field_type {
-                s::Type::NamedType(name) => ValueType::from_str(&name).unwrap_or_else(|_| {
+                s::Type::NamedType(name) => ValueType::from_str(name).unwrap_or_else(|_| {
                     match schema.document.get_named_type(name) {
                         Some(t::Object(obj_type)) => {
                             let id = obj_type.field("id").expect("all object types have an id");
@@ -664,7 +663,7 @@ impl Entity {
         let object_type_definitions = schema.document.get_object_type_definitions();
         let object_type = object_type_definitions
             .iter()
-            .find(|object_type| key.entity_type.as_str() == &object_type.name)
+            .find(|object_type| key.entity_type.as_str() == object_type.name)
             .with_context(|| {
                 format!(
                     "Entity {}[{}]: unknown entity type `{}`",

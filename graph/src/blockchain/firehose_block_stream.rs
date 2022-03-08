@@ -264,7 +264,7 @@ impl<C: Blockchain> Stream for FirehoseBlockStream<C> {
     type Item = Result<BlockStreamEvent<C>, Error>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        return self.stream.poll_next_unpin(cx);
+        self.stream.poll_next_unpin(cx)
     }
 }
 

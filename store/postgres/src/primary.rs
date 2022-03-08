@@ -483,7 +483,7 @@ mod queries {
             .select(ds::all_columns)
             .load::<Schema>(conn)?
             .into_iter()
-            .map(|schema| Site::try_from(schema))
+            .map(Site::try_from)
             .collect::<Result<Vec<Site>, _>>()
     }
 
@@ -509,10 +509,7 @@ mod queries {
                 .filter(ds::active)
                 .first::<Schema>(conn)
         };
-        deployment
-            .optional()?
-            .map(|schema| Site::try_from(schema))
-            .transpose()
+        deployment.optional()?.map(Site::try_from).transpose()
     }
 
     /// Find sites by their subgraph deployment hashes. If `ids` is empty,
@@ -579,7 +576,7 @@ mod queries {
             .select(ds::all_columns)
             .load::<Schema>(conn)?
             .into_iter()
-            .map(|schema| Site::try_from(schema))
+            .map(Site::try_from)
             .collect::<Result<Vec<Site>, _>>()
     }
 
@@ -596,7 +593,7 @@ mod queries {
             .into_iter()
             .collect();
         for mut info in infos {
-            info.node = nodes.get(&info.subgraph).map(|s| s.clone());
+            info.node = nodes.get(&info.subgraph).cloned()
         }
         Ok(())
     }
@@ -882,7 +879,7 @@ impl<'a> Connection<'a> {
             .as_deref()
             .map(|id| {
                 DeploymentHash::new(id)
-                    .map_err(|e| StoreError::DeploymentNotFound(e))
+                    .map_err(StoreError::DeploymentNotFound)
                     .and_then(|id| exists_and_synced(&id))
             })
             .transpose()?
@@ -1213,7 +1210,7 @@ impl<'a> Connection<'a> {
 
     /// Return the name of the node that has the fewest assignments out of the
     /// given `nodes`. If `nodes` is empty, return `None`
-    pub fn least_assigned_node(&self, nodes: &Vec<NodeId>) -> Result<Option<NodeId>, StoreError> {
+    pub fn least_assigned_node(&self, nodes: &[NodeId]) -> Result<Option<NodeId>, StoreError> {
         use subgraph_deployment_assignment as a;
 
         let nodes: Vec<_> = nodes.iter().map(|n| n.as_str()).collect();
@@ -1379,14 +1376,14 @@ impl<'a> Connection<'a> {
             .select(ds::all_columns)
             .load::<Schema>(self.conn.as_ref())?
             .into_iter()
-            .map(|schema| Site::try_from(schema))
+            .map(Site::try_from)
             .collect()
     }
 
     /// Add details from the deployment shard to unused deployments
     pub fn update_unused_deployments(
         &self,
-        details: &Vec<DeploymentDetail>,
+        details: &[DeploymentDetail],
     ) -> Result<(), StoreError> {
         use crate::detail::block;
         use unused_deployments as u;
@@ -1668,7 +1665,7 @@ impl Mirror {
         &self,
         name: &SubgraphName,
     ) -> Result<DeploymentHash, StoreError> {
-        self.read(|conn| queries::current_deployment_for_subgraph(conn, &name))
+        self.read(|conn| queries::current_deployment_for_subgraph(conn, name))
     }
 
     pub fn deployments_for_subgraph(&self, name: &str) -> Result<Vec<Site>, StoreError> {

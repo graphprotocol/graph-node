@@ -13,7 +13,7 @@ struct Entry {
     value: Value,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Default)]
 pub struct Object(Vec<Entry>);
 
 impl Object {
@@ -51,7 +51,7 @@ impl Object {
     }
 
     pub fn insert(&mut self, key: String, value: Value) -> Option<Value> {
-        match self.0.iter_mut().find(|entry| &entry.key == &key) {
+        match self.0.iter_mut().find(|entry| entry.key == key) {
             Some(entry) => Some(std::mem::replace(&mut entry.value, value)),
             None => {
                 self.0.push(Entry { key, value });
@@ -116,7 +116,7 @@ impl<'a> Iterator for ObjectIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(entry) = self.iter.next() {
-            if &entry.key != TOMBSTONE_KEY {
+            if entry.key != TOMBSTONE_KEY {
                 return Some((&entry.key, &entry.value));
             }
         }
@@ -143,12 +143,6 @@ impl CacheWeight for Entry {
 impl CacheWeight for Object {
     fn indirect_weight(&self) -> usize {
         self.0.indirect_weight()
-    }
-}
-
-impl Default for Object {
-    fn default() -> Self {
-        Self(Vec::default())
     }
 }
 
