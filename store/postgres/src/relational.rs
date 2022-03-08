@@ -1156,11 +1156,11 @@ impl Column {
         self.name.as_str() == PRIMARY_KEY_COLUMN
     }
 
-    /// Return `true` if this column stores user-supplied text. Such
-    /// columns may contain very large values and need to be handled
-    /// specially for indexing
+    /// Return `true` if this column stores user-supplied text of arbitrary
+    /// lengths. Such columns may contain very large values and need to be
+    /// handled specially for indexing
     pub fn is_text(&self) -> bool {
-        named_type(&self.field_type) == "String" && !self.is_list()
+        !self.is_primary_key() && !self.is_list() && self.column_type == ColumnType::String
     }
 
     pub fn is_assignable_from(&self, source: &Self, object: &EntityType) -> Option<String> {
