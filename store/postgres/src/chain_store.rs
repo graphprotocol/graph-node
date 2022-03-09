@@ -348,6 +348,7 @@ mod data {
 	              contract_address bytea not null,
 	              block_number     int4 not null
                 );
+                create index call_cache_block_number_idx ON {nsp}.call_cache(block_number);
 
                 create table {nsp}.call_meta (
                     contract_address bytea not null primary key,
