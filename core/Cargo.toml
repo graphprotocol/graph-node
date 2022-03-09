@@ -1,7 +1,7 @@
 [package]
 name = "graph-core"
 version = "0.25.1"
-edition = "2021"
+edition = "2018"
 
 [dependencies]
 async-trait = "0.1.50"
