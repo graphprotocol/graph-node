@@ -317,6 +317,7 @@ async fn main() {
 
         let mut index_node_server = IndexNodeServer::new(
             &logger_factory,
+            blockchain_map.clone(),
             graphql_runner.clone(),
             network_store.clone(),
             link_resolver.clone(),

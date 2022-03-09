@@ -362,7 +362,7 @@ impl BlockchainKind {
 }
 
 /// A collection of blockchains, keyed by `BlockchainKind` and network.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct BlockchainMap(HashMap<(BlockchainKind, String), Arc<dyn Any + Send + Sync>>);
 
 impl BlockchainMap {
