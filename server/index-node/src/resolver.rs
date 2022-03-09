@@ -124,7 +124,7 @@ where
         } else {
             error!(
                 self.logger,
-                "Failed to fetch block data; nonexistant network";
+                "Failed to fetch block data; nonexistent network";
                 "network" => network,
                 "block_hash" => format!("{}", block_hash),
             );
