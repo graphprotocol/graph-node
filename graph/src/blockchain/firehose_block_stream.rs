@@ -126,7 +126,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
             };
 
             if grpc_filters {
-                request.transforms = filter.to_firehose_filter();
+                request.transforms = filter.as_ref().clone().to_firehose_filter();
             }
 
             let result = endpoint

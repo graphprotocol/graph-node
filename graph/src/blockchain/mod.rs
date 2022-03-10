@@ -181,7 +181,7 @@ pub trait TriggerFilter<C: Blockchain>: Default + Clone + Send + Sync {
 
     fn node_capabilities(&self) -> C::NodeCapabilities;
 
-    fn to_firehose_filter(&self) -> Vec<prost_types::Any>;
+    fn to_firehose_filter(self) -> Vec<prost_types::Any>;
 }
 
 pub trait DataSource<C: Blockchain>:

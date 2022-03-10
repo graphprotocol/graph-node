@@ -172,7 +172,7 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
         }
     }
 
-    fn to_firehose_filter(&self) -> Vec<prost_types::Any> {
+    fn to_firehose_filter(self) -> Vec<prost_types::Any> {
         let EthereumBlockFilter {
             contract_addresses: _contract_addresses,
             trigger_every_block,
@@ -184,8 +184,8 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
 
         let mut filters = vec![];
 
-        let mut call_filters: Vec<CallToFilter> = self.call.clone().into();
-        call_filters.extend(Into::<Vec<CallToFilter>>::into(self.block.clone()));
+        let mut call_filters: Vec<CallToFilter> = self.call.into();
+        call_filters.extend(Into::<Vec<CallToFilter>>::into(self.block));
 
         if !call_filters.is_empty() {
             filters.push(Any {
@@ -194,7 +194,7 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
             });
         }
 
-        let log_filters: Vec<LogFilter> = self.log.clone().into();
+        let log_filters: Vec<LogFilter> = self.log.into();
         if !log_filters.is_empty() {
             filters.push(Any {
                 type_url: MULTI_LOG_FILTER_TYPE_URL.into(),
@@ -605,10 +605,12 @@ pub(crate) struct EthereumBlockFilter {
 impl Into<Vec<CallToFilter>> for EthereumBlockFilter {
     fn into(self) -> Vec<CallToFilter> {
         self.contract_addresses
-            .iter()
-            .dedup_by(|x, y| x.1 == y.1)
-            .map(|x| CallToFilter {
-                addresses: vec![x.1.encode_hex::<String>().into()],
+            .into_iter()
+            .map(|(_, addr)| addr)
+            .sorted()
+            .dedup_by(|x, y| x == y)
+            .map(|addr| CallToFilter {
+                addresses: vec![addr.encode_hex::<String>().into()],
                 signatures: vec![],
             })
             .collect_vec()
@@ -927,7 +929,13 @@ mod tests {
                 wildcard_signatures: HashSet::new(),
             },
             block: EthereumBlockFilter {
-                contract_addresses: HashSet::from_iter([(100, address(1000))]),
+                contract_addresses: HashSet::from_iter([
+                    (100, address(1000)),
+                    (200, address(2000)),
+                    (300, address(3000)),
+                    (400, address(1000)),
+                    (500, address(1000)),
+                ]),
                 trigger_every_block: false,
             },
         };
@@ -948,6 +956,14 @@ mod tests {
                 },
                 CallToFilter {
                     addresses: vec![address(1000).encode_hex::<String>().into()],
+                    signatures: vec![],
+                },
+                CallToFilter {
+                    addresses: vec![address(2000).encode_hex::<String>().into()],
+                    signatures: vec![],
+                },
+                CallToFilter {
+                    addresses: vec![address(3000).encode_hex::<String>().into()],
                     signatures: vec![],
                 },
             ],
@@ -997,7 +1013,7 @@ mod tests {
         let expected_log =
             MultiLogFilter::decode(&mut bs).expect("unable to decode multi log filter");
 
-        let firehose_filter = filter.to_firehose_filter();
+        let firehose_filter = filter.clone().to_firehose_filter();
         assert_eq!(2, firehose_filter.len());
 
         let firehose_filter: HashMap<_, _> = HashMap::from_iter::<Vec<(String, Any)>>(
