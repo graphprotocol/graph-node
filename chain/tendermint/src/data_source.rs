@@ -450,7 +450,7 @@ mod tests {
                 vec![
                     multiple_origin_err("event_1", None),
                     combined_origins_err("event_2"),
-                    multiple_origin_err("event_3s", Some(EventOrigin::EndBlock)),
+                    multiple_origin_err("event_3", Some(EventOrigin::EndBlock)),
                 ],
             ),
         ];
