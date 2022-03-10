@@ -95,6 +95,13 @@ async fn main() {
         graph::env::UNSAFE_CONFIG.store(true, atomic::Ordering::SeqCst);
     }
 
+    if !graph_server_index_node::POI_PROTECTION.is_active() {
+        warn!(
+            logger,
+            "GRAPH_POI_ACCESS_TOKEN not set; might leak POIs to the public via GraphQL"
+        );
+    }
+
     let config = match Config::load(&logger, &opt.clone().into()) {
         Err(e) => {
             eprintln!("configuration error: {}", e);

@@ -18,6 +18,7 @@ type Query {
     blockNumber: Int!
     blockHash: Bytes!
     indexer: Bytes
+    accessToken: String
   ): Bytes
   subgraphFeatures(subgraphId: String!): SubgraphFeatures!
   entityChangesInBlock(subgraphId: String!, blockNumber: Int!): EntityChanges!

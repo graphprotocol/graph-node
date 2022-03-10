@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use std::convert::TryInto;
 use web3::types::{Address, H256};
 
+use crate::POI_PROTECTION;
 use graph::blockchain::{Blockchain, BlockchainKind};
 use graph::data::subgraph::features::detect_features;
 use graph::data::subgraph::{status, MAX_SPEC_VERSION};
@@ -166,9 +167,18 @@ where
 
         let block = BlockPtr::from((block_hash, block_number));
 
-        let indexer = field
+        let mut indexer = field
             .get_optional::<Address>("indexer")
             .expect("Invalid indexer");
+        let access_token = field
+            .get_optional::<String>("accessToken")
+            .expect("Invalid accessToken");
+
+        if !POI_PROTECTION.validate_access_token(access_token.as_deref()) {
+            // Let's sign the POI with a zero'd address when the access token is
+            // invalid.
+            indexer = Some(Address::zero());
+        }
 
         let poi_fut = self
             .store

@@ -4,6 +4,8 @@ version = "0.25.2"
 edition = "2021"
 
 [dependencies]
+blake3 = "0.3.8"
+either = "1.6.1"
 futures = "0.3.4"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
@@ -13,5 +15,5 @@ graph-chain-tendermint = { path = "../../chain/tendermint" }
 graphql-parser = "0.4.0"
 http = "0.2"
 hyper = "0.14"
+lazy_static = "1.2.0"
 serde = "1.0"
-either = "1.6.1"
