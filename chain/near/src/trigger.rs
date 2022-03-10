@@ -6,6 +6,7 @@ use graph::prelude::hex;
 use graph::prelude::web3::types::H256;
 use graph::prelude::BlockNumber;
 use graph::runtime::asc_new;
+use graph::runtime::gas::GasCounter;
 use graph::runtime::AscHeap;
 use graph::runtime::AscPtr;
 use graph::runtime::DeterministicHostError;
@@ -39,10 +40,14 @@ impl std::fmt::Debug for NearTrigger {
 }
 
 impl blockchain::MappingTrigger for NearTrigger {
-    fn to_asc_ptr<H: AscHeap>(self, heap: &mut H) -> Result<AscPtr<()>, DeterministicHostError> {
+    fn to_asc_ptr<H: AscHeap>(
+        self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscPtr<()>, DeterministicHostError> {
         Ok(match self {
-            NearTrigger::Block(block) => asc_new(heap, block.as_ref())?.erase(),
-            NearTrigger::Receipt(receipt) => asc_new(heap, receipt.as_ref())?.erase(),
+            NearTrigger::Block(block) => asc_new(heap, block.as_ref(), gas)?.erase(),
+            NearTrigger::Receipt(receipt) => asc_new(heap, receipt.as_ref(), gas)?.erase(),
         })
     }
 }
@@ -149,6 +154,7 @@ mod tests {
         anyhow::anyhow,
         data::subgraph::API_VERSION_0_0_5,
         prelude::{hex, BigInt},
+        runtime::gas::GasCounter,
     };
 
     #[test]
@@ -156,7 +162,8 @@ mod tests {
         let mut heap = BytesHeap::new(API_VERSION_0_0_5);
         let trigger = NearTrigger::Block(Arc::new(block()));
 
-        let result = blockchain::MappingTrigger::to_asc_ptr(trigger, &mut heap);
+        let result =
+            blockchain::MappingTrigger::to_asc_ptr(trigger, &mut heap, &GasCounter::default());
         assert!(result.is_ok());
     }
 
@@ -169,7 +176,8 @@ mod tests {
             receipt: receipt().unwrap(),
         }));
 
-        let result = blockchain::MappingTrigger::to_asc_ptr(trigger, &mut heap);
+        let result =
+            blockchain::MappingTrigger::to_asc_ptr(trigger, &mut heap, &GasCounter::default());
         assert!(result.is_ok());
     }
 
@@ -431,12 +439,21 @@ mod tests {
     }
 
     impl AscHeap for BytesHeap {
-        fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, DeterministicHostError> {
+        fn raw_new(
+            &mut self,
+            bytes: &[u8],
+            _gas: &GasCounter,
+        ) -> Result<u32, DeterministicHostError> {
             self.memory.extend_from_slice(bytes);
             Ok((self.memory.len() - bytes.len()) as u32)
         }
 
-        fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, DeterministicHostError> {
+        fn get(
+            &self,
+            offset: u32,
+            size: u32,
+            _gas: &GasCounter,
+        ) -> Result<Vec<u8>, DeterministicHostError> {
             let memory_byte_count = self.memory.len();
             if memory_byte_count == 0 {
                 return Err(DeterministicHostError::from(anyhow!(

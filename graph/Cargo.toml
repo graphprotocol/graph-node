@@ -1,7 +1,7 @@
 [package]
 name = "graph"
-version = "0.25.0"
-edition = "2018"
+version = "0.25.1"
+edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
@@ -27,7 +27,7 @@ num-bigint = { version = "^0.2.6", features = ["serde"] }
 num_cpus = "1.13.1"
 num-traits = "0.2.14"
 rand = "0.6.1"
-semver = {version = "1.0.3", features = ["serde"]}
+semver = {version = "1.0.6", features = ["serde"]}
 serde = { version = "1.0.126", features = ["rc"] }
 serde_derive = "1.0.125"
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
@@ -41,7 +41,7 @@ slog-envlogger = "2.1.0"
 slog-term = "2.7.0"
 petgraph = "0.6.0"
 tiny-keccak = "1.5.0"
-tokio = { version = "1.15.0", features = ["time", "sync", "macros", "test-util", "rt-multi-thread", "parking_lot"] }
+tokio = { version = "1.16.1", features = ["time", "sync", "macros", "test-util", "rt-multi-thread", "parking_lot"] }
 tokio-stream = { version = "0.1.8", features = ["sync"] }
 tokio-retry = "0.3.0"
 url = "2.2.1"

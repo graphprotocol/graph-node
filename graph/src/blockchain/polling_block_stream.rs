@@ -8,8 +8,8 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use super::block_stream::{
-    BlockStream, BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers, ChainHeadUpdateStream,
-    FirehoseCursor, TriggersAdapter,
+    BlockStream, BlockStreamEvent, BlockWithTriggers, ChainHeadUpdateStream, FirehoseCursor,
+    TriggersAdapter,
 };
 use super::{Block, BlockPtr, Blockchain};
 
@@ -61,10 +61,9 @@ enum ReconciliationStep<C>
 where
     C: Blockchain,
 {
-    /// Revert(from, to) the current block pointed at by the subgraph pointer. The pointer is to the current
-    /// subgraph head, and a single block will be reverted so the new head will be the parent of the
-    /// current one. The second BlockPtr is the parent.
-    Revert(BlockPtr, BlockPtr),
+    /// Revert(to) the block the subgraph should be reverted to, so it becomes the new subgraph
+    /// head.
+    Revert(BlockPtr),
 
     /// Move forwards, processing one or more blocks. Second element is the block range size.
     ProcessDescendantBlocks(Vec<BlockWithTriggers<C>>, BlockNumber),
@@ -91,7 +90,6 @@ where
     filter: Arc<C::TriggerFilter>,
     start_blocks: Vec<BlockNumber>,
     logger: Logger,
-    metrics: Arc<BlockStreamMetrics>,
     previous_triggers_per_block: f64,
     // Not a BlockNumber, but the difference between two block numbers
     previous_block_range_size: BlockNumber,
@@ -113,7 +111,6 @@ impl<C: Blockchain> Clone for PollingBlockStreamContext<C> {
             filter: self.filter.clone(),
             start_blocks: self.start_blocks.clone(),
             logger: self.logger.clone(),
-            metrics: self.metrics.clone(),
             previous_triggers_per_block: self.previous_triggers_per_block,
             previous_block_range_size: self.previous_block_range_size,
             max_block_range_size: self.max_block_range_size,
@@ -139,9 +136,8 @@ where
     /// Blocks and range size
     Blocks(VecDeque<BlockWithTriggers<C>>, BlockNumber),
 
-    // The payload is the current subgraph head pointer, which should be reverted and its parent, such that the
-    // parent of the current subgraph head becomes the new subgraph head.
-    Revert(BlockPtr, BlockPtr),
+    // The payload is block the subgraph should be reverted to, so it becomes the new subgraph head.
+    Revert(BlockPtr),
     Done,
 }
 
@@ -159,7 +155,6 @@ where
         start_blocks: Vec<BlockNumber>,
         reorg_threshold: BlockNumber,
         logger: Logger,
-        metrics: Arc<BlockStreamMetrics>,
         max_block_range_size: BlockNumber,
         target_triggers_per_block_range: u64,
         unified_api_version: UnifiedMappingApiVersion,
@@ -179,7 +174,6 @@ where
                 logger,
                 filter,
                 start_blocks,
-                metrics,
                 previous_triggers_per_block: STARTING_PREVIOUS_TRIGGERS_PER_BLOCK,
                 previous_block_range_size: 1,
                 max_block_range_size,
@@ -212,8 +206,8 @@ where
                 ReconciliationStep::Done => {
                     return Ok(NextBlocks::Done);
                 }
-                ReconciliationStep::Revert(from, parent_ptr) => {
-                    return Ok(NextBlocks::Revert(from, parent_ptr))
+                ReconciliationStep::Revert(parent_ptr) => {
+                    return Ok(NextBlocks::Revert(parent_ptr))
                 }
             }
         }
@@ -259,8 +253,6 @@ where
             if ptr.number >= head_ptr.number {
                 return Ok(ReconciliationStep::Done);
             }
-
-            self.metrics.deployment_head.set(ptr.number as f64);
         }
 
         // Subgraph ptr is behind head ptr.
@@ -318,7 +310,7 @@ where
                 let from = subgraph_ptr.unwrap();
                 let parent = self.parent_ptr(&from).await?;
 
-                return Ok(ReconciliationStep::Revert(from, parent));
+                return Ok(ReconciliationStep::Revert(parent));
             }
 
             // The subgraph ptr points to a block on the main chain.
@@ -422,7 +414,7 @@ where
             #[cfg(debug_assertions)]
             if test_reorg(subgraph_ptr.clone()) {
                 let parent = self.parent_ptr(&subgraph_ptr).await?;
-                return Ok(ReconciliationStep::Revert(subgraph_ptr.clone(), parent));
+                return Ok(ReconciliationStep::Revert(parent));
             }
 
             // Precondition: subgraph_ptr.number < head_ptr.number
@@ -462,7 +454,7 @@ where
                         // The subgraph ptr is not on the main chain.
                         // We will need to step back (possibly repeatedly) one block at a time
                         // until we are back on the main chain.
-                        Ok(ReconciliationStep::Revert(subgraph_ptr, parent))
+                        Ok(ReconciliationStep::Revert(parent))
                     }
                 }
             }
@@ -540,12 +532,11 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
                                 // Poll for chain head update
                                 continue;
                             }
-                            NextBlocks::Revert(from, parent_ptr) => {
+                            NextBlocks::Revert(parent_ptr) => {
                                 self.ctx.current_block = Some(parent_ptr.clone());
 
                                 self.state = BlockStreamState::BeginReconciliation;
                                 break Poll::Ready(Some(Ok(BlockStreamEvent::Revert(
-                                    from,
                                     parent_ptr,
                                     FirehoseCursor::None,
                                 ))));

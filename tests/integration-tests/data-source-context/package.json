@@ -9,8 +9,8 @@
     "deploy:test": "graph deploy test/data-source-context --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
   "devDependencies": {
-    "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#master",
-    "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#master",
+    "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#main",
+    "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#main",
     "solc": "^0.8.2"
   },
   "dependencies": {

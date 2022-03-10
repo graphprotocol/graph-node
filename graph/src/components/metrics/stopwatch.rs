@@ -15,8 +15,7 @@ impl Section {
 
 impl Drop for Section {
     fn drop(&mut self) {
-        self.stopwatch
-            .end_section(std::mem::replace(&mut self.id, String::new()))
+        self.stopwatch.end_section(std::mem::take(&mut self.id))
     }
 }
 

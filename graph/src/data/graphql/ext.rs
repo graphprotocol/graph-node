@@ -4,10 +4,8 @@ use crate::prelude::s::{
     Definition, Directive, Document, EnumType, Field, InterfaceType, ObjectType, Type,
     TypeDefinition, Value,
 };
-use crate::prelude::ValueType;
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap};
-use std::str::FromStr;
 
 lazy_static! {
     static ref ALLOW_NON_DETERMINISTIC_FULLTEXT_SEARCH: bool = if cfg!(debug_assertions) {
@@ -24,7 +22,7 @@ pub trait ObjectTypeExt {
 
 impl ObjectTypeExt for ObjectType {
     fn field(&self, name: &str) -> Option<&Field> {
-        self.fields.iter().find(|field| &field.name == name)
+        self.fields.iter().find(|field| field.name == name)
     }
 
     fn is_meta(&self) -> bool {
@@ -34,7 +32,7 @@ impl ObjectTypeExt for ObjectType {
 
 impl ObjectTypeExt for InterfaceType {
     fn field(&self, name: &str) -> Option<&Field> {
-        self.fields.iter().find(|field| &field.name == name)
+        self.fields.iter().find(|field| field.name == name)
     }
 
     fn is_meta(&self) -> bool {
@@ -55,7 +53,7 @@ pub trait DocumentExt {
 
     fn find_interface(&self, name: &str) -> Option<&InterfaceType>;
 
-    fn get_fulltext_directives<'a>(&'a self) -> Result<Vec<&'a Directive>, anyhow::Error>;
+    fn get_fulltext_directives(&self) -> Result<Vec<&Directive>, anyhow::Error>;
 
     fn get_root_query_type(&self) -> Option<&ObjectType>;
 
@@ -64,8 +62,6 @@ pub trait DocumentExt {
     fn object_or_interface(&self, name: &str) -> Option<ObjectOrInterface<'_>>;
 
     fn get_named_type(&self, name: &str) -> Option<&TypeDefinition>;
-
-    fn scalar_value_type(&self, field_type: &Type) -> ValueType;
 
     /// Return `true` if the type does not allow selection of child fields.
     ///
@@ -199,32 +195,13 @@ impl DocumentExt for Document {
                 _ => None,
             })
             .find(|typedef| match typedef {
-                TypeDefinition::Object(t) => &t.name == name,
-                TypeDefinition::Enum(t) => &t.name == name,
-                TypeDefinition::InputObject(t) => &t.name == name,
-                TypeDefinition::Interface(t) => &t.name == name,
-                TypeDefinition::Scalar(t) => &t.name == name,
-                TypeDefinition::Union(t) => &t.name == name,
+                TypeDefinition::Object(t) => t.name == name,
+                TypeDefinition::Enum(t) => t.name == name,
+                TypeDefinition::InputObject(t) => t.name == name,
+                TypeDefinition::Interface(t) => t.name == name,
+                TypeDefinition::Scalar(t) => t.name == name,
+                TypeDefinition::Union(t) => t.name == name,
             })
-    }
-
-    fn scalar_value_type(&self, field_type: &Type) -> ValueType {
-        use TypeDefinition as t;
-        match field_type {
-            Type::NamedType(name) => {
-                ValueType::from_str(&name).unwrap_or_else(|_| match self.get_named_type(name) {
-                    Some(t::Object(_)) | Some(t::Interface(_)) | Some(t::Enum(_)) => {
-                        ValueType::String
-                    }
-                    Some(t::Scalar(_)) => unreachable!("user-defined scalars are not used"),
-                    Some(t::Union(_)) => unreachable!("unions are not used"),
-                    Some(t::InputObject(_)) => unreachable!("inputObjects are not used"),
-                    None => unreachable!("names of field types have been validated"),
-                })
-            }
-            Type::NonNullType(inner) => self.scalar_value_type(inner),
-            Type::ListType(inner) => self.scalar_value_type(inner),
-        }
     }
 
     fn is_leaf_type(&self, field_type: &Type) -> bool {

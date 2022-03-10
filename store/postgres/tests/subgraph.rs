@@ -13,6 +13,7 @@ use graph::{
     prelude::SubgraphManifest,
     prelude::SubgraphName,
     prelude::SubgraphVersionSwitchingMode,
+    prelude::UnfailOutcome,
     prelude::{futures03, StoreEvent},
     prelude::{CheapClone, DeploymentHash, NodeId, SubgraphStore as _},
     semver::Version,
@@ -287,11 +288,13 @@ fn create_subgraph() {
         assert_eq!(&deployment3, &deployment3_again);
         let versions2 = subgraph_versions(&primary);
         assert_eq!(versions, versions2);
+        let (current, pending) = subgraph_deployments(&primary);
+        assert_eq!(Some(ID2), current.as_deref());
+        assert_eq!(Some(ID3), pending.as_deref());
 
-        // Deploy the current version once more; we wind up with current and pending
-        // pointing to ID2. That's not ideal, but will be rectified when the
-        // next block gets processed and the pending version is promoted to
-        // current
+        // Deploy the current version `ID2` once more; since it is synced,
+        // it will displace the non-synced version `ID3` and remain the
+        // current version
         let mut expected = HashSet::new();
         expected.insert(unassigned(&deployment3));
 
@@ -301,7 +304,18 @@ fn create_subgraph() {
 
         let (current, pending) = subgraph_deployments(&primary);
         assert_eq!(Some(ID2), current.as_deref());
-        assert_eq!(Some(ID2), pending.as_deref());
+        assert_eq!(None, pending.as_deref());
+
+        // Mark `ID3` as synced and deploy that again
+        deployment_synced(&store, &deployment3);
+        let expected = HashSet::from([unassigned(&deployment2), assigned(&deployment3)]);
+        let (deployment3_again, events) = deploy(store.as_ref(), ID3, MODE);
+        assert_eq!(&deployment3, &deployment3_again);
+        assert_eq!(expected, events);
+
+        let (current, pending) = subgraph_deployments(&primary);
+        assert_eq!(Some(ID3), current.as_deref());
+        assert_eq!(None, pending.as_deref());
     })
 }
 
@@ -630,11 +644,12 @@ fn fail_unfail_deterministic_error() {
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
 
         // Unfail the subgraph.
-        writable
+        let outcome = writable
             .unfail_deterministic_error(&BLOCKS[1], &BLOCKS[0])
             .unwrap();
 
         // We don't have fatal errors anymore and the block got reverted.
+        assert_eq!(outcome, UnfailOutcome::Unfailed);
         assert!(!query_store.has_non_fatal_errors(None).await.unwrap());
         let vi = get_version_info(&store, NAME);
         assert_eq!(&*NAME, vi.deployment_id.as_str());
@@ -702,11 +717,12 @@ fn fail_unfail_deterministic_error_noop() {
             .expect("can get writable");
 
         // Run unfail with no errors results in NOOP.
-        writable
+        let outcome = writable
             .unfail_deterministic_error(&BLOCKS[1], &BLOCKS[0])
             .unwrap();
 
         // Nothing to unfail, state continues the same.
+        assert_eq!(outcome, UnfailOutcome::Noop);
         assert_eq!(count(), 0);
         let vi = get_version_info(&store, NAME);
         assert_eq!(&*NAME, vi.deployment_id.as_str());
@@ -732,12 +748,13 @@ fn fail_unfail_deterministic_error_noop() {
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
 
         // Running unfail_deterministic_error against a NON-deterministic error will do nothing.
-        writable
+        let outcome = writable
             .unfail_deterministic_error(&BLOCKS[1], &BLOCKS[0])
             .unwrap();
 
         // State continues the same, nothing happened.
         // Neither the block got reverted or error deleted.
+        assert_eq!(outcome, UnfailOutcome::Noop);
         assert_eq!(count(), 1);
         let vi = get_version_info(&store, NAME);
         assert_eq!(&*NAME, vi.deployment_id.as_str());
@@ -757,12 +774,13 @@ fn fail_unfail_deterministic_error_noop() {
 
         // Running unfail_deterministic_error won't do anything,
         // the hashes won't match and there's nothing to revert.
-        writable
+        let outcome = writable
             .unfail_deterministic_error(&BLOCKS[1], &BLOCKS[0])
             .unwrap();
 
         // State continues the same.
         // Neither the block got reverted or error deleted.
+        assert_eq!(outcome, UnfailOutcome::Noop);
         assert_eq!(count(), 2);
         let vi = get_version_info(&store, NAME);
         assert_eq!(&*NAME, vi.deployment_id.as_str());
@@ -848,9 +866,10 @@ fn fail_unfail_non_deterministic_error() {
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
 
         // Unfail the subgraph and delete the fatal error.
-        writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
+        let outcome = writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
 
         // We don't have fatal errors anymore and the subgraph is healthy.
+        assert_eq!(outcome, UnfailOutcome::Unfailed);
         assert_eq!(count(), 0);
         let vi = get_version_info(&store, NAME);
         assert_eq!(&*NAME, vi.deployment_id.as_str());
@@ -918,9 +937,10 @@ fn fail_unfail_non_deterministic_error_noop() {
             .expect("can get writable");
 
         // Running unfail without any errors will do nothing.
-        writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
+        let outcome = writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
 
         // State continues the same, nothing happened.
+        assert_eq!(outcome, UnfailOutcome::Noop);
         assert_eq!(count(), 0);
         let vi = get_version_info(&store, NAME);
         assert_eq!(&*NAME, vi.deployment_id.as_str());
@@ -946,9 +966,10 @@ fn fail_unfail_non_deterministic_error_noop() {
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
 
         // Running unfail_non_deterministic_error will be NOOP, the error is deterministic.
-        writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
+        let outcome = writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
 
         // Nothing happeened, state continues the same.
+        assert_eq!(outcome, UnfailOutcome::Noop);
         assert_eq!(count(), 1);
         let vi = get_version_info(&store, NAME);
         assert_eq!(&*NAME, vi.deployment_id.as_str());
@@ -967,9 +988,10 @@ fn fail_unfail_non_deterministic_error_noop() {
         writable.fail_subgraph(error).await.unwrap();
 
         // Since the block range of the block won't match the deployment head, this will be NOOP.
-        writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
+        let outcome = writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
 
         // State continues the same besides a new error added to the database.
+        assert_eq!(outcome, UnfailOutcome::Noop);
         assert_eq!(count(), 2);
         let vi = get_version_info(&store, NAME);
         assert_eq!(&*NAME, vi.deployment_id.as_str());

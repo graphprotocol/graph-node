@@ -9,7 +9,7 @@ use diesel::pg::{Pg, PgConnection};
 use diesel::query_builder::{AstPass, QueryFragment, QueryId};
 use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::{Error as DieselError, QueryResult};
-use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Range, Text};
+use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text};
 use diesel::Connection;
 use lazy_static::lazy_static;
 
@@ -36,7 +36,10 @@ use crate::relational::{
 };
 use crate::sql_value::SqlValue;
 use crate::{
-    block_range::{BlockRange, BlockRangeContainsClause, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT},
+    block_range::{
+        BlockRangeColumn, BlockRangeLowerBoundClause, BlockRangeUpperBoundClause, BLOCK_COLUMN,
+        BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT,
+    },
     primary::Namespace,
 };
 
@@ -128,7 +131,7 @@ macro_rules! constraint_violation {
 }
 
 fn str_as_bytes(id: &str) -> QueryResult<scalar::Bytes> {
-    scalar::Bytes::from_str(&id).map_err(|e| DieselError::SerializationError(Box::new(e)))
+    scalar::Bytes::from_str(id).map_err(|e| DieselError::SerializationError(Box::new(e)))
 }
 
 /// Convert Postgres string representation of bytes "\xdeadbeef"
@@ -155,7 +158,7 @@ trait ForeignKeyClauses {
     fn bind_id(&self, id: &str, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match self.column_type().id_type() {
             IdType::String => out.push_bind_param::<Text, _>(&id)?,
-            IdType::Bytes => out.push_bind_param::<Binary, _>(&str_as_bytes(&id)?.as_slice())?,
+            IdType::Bytes => out.push_bind_param::<Binary, _>(&str_as_bytes(id)?.as_slice())?,
         }
         // Generate '::text' or '::bytea'
         out.push_sql("::");
@@ -172,7 +175,7 @@ trait ForeignKeyClauses {
             IdType::String => out.push_bind_param::<Array<Text>, _>(&ids)?,
             IdType::Bytes => {
                 let ids = ids
-                    .into_iter()
+                    .iter()
                     .map(|id| str_as_bytes(id.as_ref()))
                     .collect::<Result<Vec<scalar::Bytes>, _>>()?;
                 let id_slices = ids.iter().map(|id| id.as_slice()).collect::<Vec<_>>();
@@ -214,7 +217,7 @@ trait ForeignKeyClauses {
     /// we have to manually serialize the `ids` as literal SQL.
     fn push_matrix(
         &self,
-        matrix: &Vec<Vec<Option<SafeString>>>,
+        matrix: &[Vec<Option<SafeString>>],
         out: &mut AstPass<Pg>,
     ) -> QueryResult<()> {
         out.push_sql("array[");
@@ -242,7 +245,7 @@ trait ForeignKeyClauses {
                             }
                             IdType::Bytes => {
                                 out.push_sql("'\\x");
-                                out.push_sql(&id.0.trim_start_matches("0x"));
+                                out.push_sql(id.0.trim_start_matches("0x"));
                                 out.push_sql("'");
                             }
                         },
@@ -366,8 +369,9 @@ pub trait FromColumnValue: Sized {
             (j::String(s), ColumnType::String) | (j::String(s), ColumnType::Enum(_)) => {
                 Ok(Self::from_string(s))
             }
-            (j::String(s), ColumnType::Bytes) => Self::from_bytes(s.trim_start_matches("\\x")),
-            (j::String(s), ColumnType::BytesId) => Ok(Self::from_string(bytes_as_str(&s))),
+            (j::String(s), ColumnType::Bytes) | (j::String(s), ColumnType::BytesId) => {
+                Self::from_bytes(s.trim_start_matches("\\x"))
+            }
             (j::String(s), column_type) => Err(StoreError::Unknown(anyhow!(
                 "can not convert string {} to {:?}",
                 s,
@@ -466,6 +470,26 @@ impl FromColumnValue for graph::prelude::Value {
     }
 }
 
+/// A [`diesel`] utility `struct` for fetching only [`EntityType`] and entity's
+/// ID. Unlike [`EntityData`], we don't really care about attributes here.
+#[derive(QueryableByName)]
+pub struct EntityDeletion {
+    #[sql_type = "Text"]
+    entity: String,
+    #[sql_type = "Text"]
+    id: String,
+}
+
+impl EntityDeletion {
+    pub fn entity_type(&self) -> EntityType {
+        EntityType::new(self.entity.clone())
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
 /// Helper struct for retrieving entities from the database. With diesel, we
 /// can only run queries that return columns whose number and type are known
 /// at compile time. Because of that, we retrieve the actual data for an
@@ -544,7 +568,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     Ok(())
                 }
                 ColumnType::Bytes | ColumnType::BytesId => {
-                    let bytes = scalar::Bytes::from_str(&s)
+                    let bytes = scalar::Bytes::from_str(s)
                         .map_err(|e| DieselError::SerializationError(Box::new(e)))?;
                     out.push_bind_param::<Binary, _>(&bytes.as_slice())
                 }
@@ -840,7 +864,7 @@ impl<'a> QueryFilter<'a> {
 
     fn binary_op(
         &self,
-        filters: &Vec<EntityFilter>,
+        filters: &[EntityFilter],
         op: &str,
         on_empty: &str,
         mut out: AstPass<Pg>,
@@ -851,7 +875,7 @@ impl<'a> QueryFilter<'a> {
                 if i > 0 {
                     out.push_sql(op);
                 }
-                self.with(&filter).walk_ast(out.reborrow())?;
+                self.with(filter).walk_ast(out.reborrow())?;
             }
             out.push_sql(")");
         } else {
@@ -1000,7 +1024,7 @@ impl<'a> QueryFilter<'a> {
     fn in_array(
         &self,
         attribute: &Attribute,
-        values: &Vec<Value>,
+        values: &[Value],
         negated: bool,
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
@@ -1057,7 +1081,7 @@ impl<'a> QueryFilter<'a> {
                 // Postgres' query optimizer
                 // See PrefixComparison for a more detailed discussion of what
                 // is happening here
-                PrefixComparison::push_column_prefix(&column, out.reborrow())?;
+                PrefixComparison::push_column_prefix(column, out.reborrow())?;
             } else {
                 out.push_identifier(column.name.as_str())?;
             }
@@ -1074,7 +1098,7 @@ impl<'a> QueryFilter<'a> {
                 if i > 0 {
                     out.push_sql(", ");
                 }
-                QueryValue(&value, &column.column_type).walk_ast(out.reborrow())?;
+                QueryValue(value, &column.column_type).walk_ast(out.reborrow())?;
             }
             out.push_sql(")");
         }
@@ -1183,9 +1207,9 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
         out.push_sql("  from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" e\n where ");
-        self.table.primary_key().eq(&self.id, &mut out)?;
+        self.table.primary_key().eq(self.id, &mut out)?;
         out.push_sql(" and ");
-        BlockRangeContainsClause::new(&self.table, "e.", self.block).walk_ast(out)
+        BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out)
     }
 }
 
@@ -1202,6 +1226,101 @@ impl<'a> LoadQuery<PgConnection, EntityData> for FindQuery<'a> {
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
+
+/// Builds a query over a given set of [`Table`]s in an attempt to find updated
+/// and/or newly inserted entities at a given block number; i.e. such that the
+/// block range's lower bound is equal to said block number.
+#[derive(Debug, Clone, Constructor)]
+pub struct FindChangesQuery<'a> {
+    pub(crate) _namespace: &'a Namespace,
+    pub(crate) tables: &'a [&'a Table],
+    pub(crate) block: BlockNumber,
+}
+
+impl<'a> QueryFragment<Pg> for FindChangesQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        for (i, table) in self.tables.iter().enumerate() {
+            if i > 0 {
+                out.push_sql("\nunion all\n");
+            }
+            out.push_sql("select ");
+            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+            out.push_sql(" as entity, to_jsonb(e.*) as data\n");
+            out.push_sql("  from ");
+            out.push_sql(table.qualified_name.as_str());
+            out.push_sql(" e\n where ");
+            BlockRangeLowerBoundClause::new("e.", self.block).walk_ast(out.reborrow())?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a> QueryId for FindChangesQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a> LoadQuery<PgConnection, EntityData> for FindChangesQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
+        conn.query_by_name(&self)
+    }
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for FindChangesQuery<'a> {}
+
+/// Builds a query over a given set of [`Table`]s in an attempt to find deleted
+/// entities; i.e. such that the block range's lower bound is equal to said
+/// block number.
+///
+/// Please note that the result set from this query is *not* definitive. This
+/// query is intented to be used together with [`FindChangesQuery`]; by
+/// combining the results it's possible to see which entities were *actually*
+/// deleted and which ones were just updated.
+#[derive(Debug, Clone, Constructor)]
+pub struct FindPossibleDeletionsQuery<'a> {
+    pub(crate) _namespace: &'a Namespace,
+    pub(crate) tables: &'a [&'a Table],
+    pub(crate) block: BlockNumber,
+}
+
+impl<'a> QueryFragment<Pg> for FindPossibleDeletionsQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        for (i, table) in self.tables.iter().enumerate() {
+            if i > 0 {
+                out.push_sql("\nunion all\n");
+            }
+            out.push_sql("select ");
+            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+            out.push_sql(" as entity, e.id\n");
+            out.push_sql("  from ");
+            out.push_sql(table.qualified_name.as_str());
+            out.push_sql(" e\n where ");
+            BlockRangeUpperBoundClause::new("e.", self.block).walk_ast(out.reborrow())?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a> QueryId for FindPossibleDeletionsQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a> LoadQuery<PgConnection, EntityDeletion> for FindPossibleDeletionsQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityDeletion>> {
+        conn.query_by_name(&self)
+    }
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for FindPossibleDeletionsQuery<'a> {}
 
 #[derive(Debug, Clone, Constructor)]
 pub struct FindManyQuery<'a> {
@@ -1239,7 +1358,7 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
                 .primary_key()
                 .is_in(&self.ids_for_type[&table.object], &mut out)?;
             out.push_sql(" and ");
-            BlockRangeContainsClause::new(&table, "e.", self.block).walk_ast(out.reborrow())?;
+            BlockRangeColumn::new(table, "e.", self.block).contains(&mut out)?;
         }
         Ok(())
     }
@@ -1264,7 +1383,7 @@ pub struct InsertQuery<'a> {
     table: &'a Table,
     entities: &'a [(&'a EntityKey, Cow<'a, Entity>)],
     unique_columns: Vec<&'a Column>,
-    block: BlockNumber,
+    br_column: BlockRangeColumn<'a>,
 }
 
 impl<'a> InsertQuery<'a> {
@@ -1275,21 +1394,17 @@ impl<'a> InsertQuery<'a> {
     ) -> Result<InsertQuery<'a>, StoreError> {
         for (entity_key, entity) in entities.iter_mut() {
             for column in table.columns.iter() {
-                match column.fulltext_fields.as_ref() {
-                    Some(fields) => {
-                        let fulltext_field_values = fields
-                            .iter()
-                            .filter_map(|field| entity.get(field))
-                            .cloned()
-                            .collect::<Vec<Value>>();
-                        if !fulltext_field_values.is_empty() {
-                            entity.to_mut().insert(
-                                column.field.to_string(),
-                                Value::List(fulltext_field_values),
-                            );
-                        }
+                if let Some(fields) = column.fulltext_fields.as_ref() {
+                    let fulltext_field_values = fields
+                        .iter()
+                        .filter_map(|field| entity.get(field))
+                        .cloned()
+                        .collect::<Vec<Value>>();
+                    if !fulltext_field_values.is_empty() {
+                        entity
+                            .to_mut()
+                            .insert(column.field.to_string(), Value::List(fulltext_field_values));
                     }
-                    None => (),
                 }
                 if !column.is_nullable() && !entity.contains_key(&column.field) {
                     return Err(StoreError::QueryExecutionError(format!(
@@ -1302,12 +1417,13 @@ impl<'a> InsertQuery<'a> {
             }
         }
         let unique_columns = InsertQuery::unique_columns(table, entities);
+        let br_column = BlockRangeColumn::new(table, "", block);
 
         Ok(InsertQuery {
             table,
             entities,
             unique_columns,
-            block,
+            br_column,
         })
     }
 
@@ -1350,7 +1466,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
             out.push_identifier(column.name.as_str())?;
             out.push_sql(", ");
         }
-        out.push_identifier(BLOCK_RANGE_COLUMN)?;
+        self.br_column.name(&mut out);
 
         out.push_sql(") values\n");
 
@@ -1368,8 +1484,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
                 }
                 out.push_sql(", ");
             }
-            let block_range: BlockRange = (self.block..).into();
-            out.push_bind_param::<Range<Integer>, _>(&block_range)?;
+            self.br_column.literal_range_current(&mut out)?;
             out.push_sql(")");
 
             // finalize line according to remaining entities to insert
@@ -1394,7 +1509,7 @@ impl<'a> QueryId for InsertQuery<'a> {
 impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for InsertQuery<'a> {
     fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
         conn.query_by_name(&self)
-            .map(|data| ReturnedEntityData::bytes_as_str(&self.table, data))
+            .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
     }
 }
 
@@ -1623,7 +1738,7 @@ impl<'a> FilterWindow<'a> {
         // Confidence check: ensure that all selected column names exist in the table
         if let AttributeNames::Select(ref selected_field_names) = column_names {
             for field in selected_field_names {
-                let _ = table.column_for_field(&field)?;
+                let _ = table.column_for_field(field)?;
             }
         }
 
@@ -1671,11 +1786,11 @@ impl<'a> FilterWindow<'a> {
         out.push_sql("\n/* children_type_a */  from unnest(");
         column.bind_ids(&self.ids, out)?;
         out.push_sql(") as p(id) cross join lateral (select ");
-        write_column_names(&self.column_names, &self.table, out)?;
+        write_column_names(&self.column_names, self.table, out)?;
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
+        BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
         limit.filter(out);
         out.push_sql(" and p.id = any(c.");
         out.push_identifier(column.name.as_str())?;
@@ -1711,7 +1826,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(") as p(id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
+        BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
         limit.filter(out);
         out.push_sql(" and c.");
         out.push_identifier(column.name.as_str())?;
@@ -1750,11 +1865,11 @@ impl<'a> FilterWindow<'a> {
         out.push_sql("\n/* children_type_b */  from unnest(");
         column.bind_ids(&self.ids, out)?;
         out.push_sql(") as p(id) cross join lateral (select ");
-        write_column_names(&self.column_names, &self.table, out)?;
+        write_column_names(&self.column_names, self.table, out)?;
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
+        BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
         limit.filter(out);
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
@@ -1784,7 +1899,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(") as p(id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
+        BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
         limit.filter(out);
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
@@ -1795,7 +1910,7 @@ impl<'a> FilterWindow<'a> {
 
     fn children_type_c(
         &self,
-        child_ids: &Vec<Vec<Option<SafeString>>>,
+        child_ids: &[Vec<Option<SafeString>>],
         limit: ParentLimit<'_>,
         block: BlockNumber,
         out: &mut AstPass<Pg>,
@@ -1816,14 +1931,14 @@ impl<'a> FilterWindow<'a> {
         out.push_sql("rows from (unnest(");
         out.push_bind_param::<Array<Text>, _>(&self.ids)?;
         out.push_sql("), reduce_dim(");
-        self.table.primary_key().push_matrix(&child_ids, out)?;
+        self.table.primary_key().push_matrix(child_ids, out)?;
         out.push_sql(")) as p(id, child_ids)");
         out.push_sql(" cross join lateral (select ");
-        write_column_names(&self.column_names, &self.table, out)?;
+        write_column_names(&self.column_names, self.table, out)?;
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
+        BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
         limit.filter(out);
         out.push_sql(" and c.id = any(p.child_ids)");
         self.and_filter(out.reborrow())?;
@@ -1834,7 +1949,7 @@ impl<'a> FilterWindow<'a> {
 
     fn child_type_d(
         &self,
-        child_ids: &Vec<String>,
+        child_ids: &[String],
         limit: ParentLimit<'_>,
         block: BlockNumber,
         out: &mut AstPass<Pg>,
@@ -1848,15 +1963,15 @@ impl<'a> FilterWindow<'a> {
         out.push_sql("\n/* child_type_d */ from rows from (unnest(");
         out.push_bind_param::<Array<Text>, _>(&self.ids)?;
         out.push_sql("), unnest(");
-        self.table.primary_key().bind_ids(&child_ids, out)?;
+        self.table.primary_key().bind_ids(child_ids, out)?;
         out.push_sql(")) as p(id, child_id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeContainsClause::new(&self.table, "c.", block).walk_ast(out.reborrow())?;
+        BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
         limit.filter(out);
         if *TYPED_CHILDREN_SET_SIZE > 0 {
             let mut child_set: Vec<&str> = child_ids.iter().map(|id| id.as_str()).collect();
-            child_set.sort();
+            child_set.sort_unstable();
             child_set.dedup();
 
             if child_set.len() <= *TYPED_CHILDREN_SET_SIZE {
@@ -1919,7 +2034,7 @@ impl<'a> FilterWindow<'a> {
     }
 
     /// Collect all the parent id's from all windows
-    fn collect_parents(windows: &Vec<FilterWindow>) -> Vec<String> {
+    fn collect_parents(windows: &[FilterWindow]) -> Vec<String> {
         let parent_ids: HashSet<String> = HashSet::from_iter(
             windows
                 .iter()
@@ -1958,7 +2073,7 @@ impl<'a> FilterCollection<'a> {
                     .iter()
                     .map(|(entity, column_names)| {
                         layout
-                            .table_for_entity(&entity)
+                            .table_for_entity(entity)
                             .map(|rc| rc.as_ref())
                             .and_then(|table| {
                                 filter
@@ -2008,13 +2123,13 @@ impl<'a> FilterCollection<'a> {
 
 /// Convenience to pass the name of the column to order by around. If `name`
 /// is `None`, the sort key should be ignored
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Copy, Clone)]
 pub enum SortKey<'a> {
     None,
     /// Order by `id asc`
-    IdAsc,
+    IdAsc(Option<BlockRangeColumn<'a>>),
     /// Order by `id desc`
-    IdDesc,
+    IdDesc(Option<BlockRangeColumn<'a>>),
     /// Order by some other column; `column` will never be `id`
     Key {
         column: &'a Column,
@@ -2028,6 +2143,7 @@ impl<'a> SortKey<'a> {
         order: EntityOrder,
         table: &'a Table,
         filter: Option<&'a EntityFilter>,
+        block: BlockNumber,
     ) -> Result<Self, QueryExecutionError> {
         const ASC: &str = "asc";
         const DESC: &str = "desc";
@@ -2037,28 +2153,26 @@ impl<'a> SortKey<'a> {
             attribute: String,
             filter: Option<&'a EntityFilter>,
             direction: &'static str,
+            br_column: Option<BlockRangeColumn<'a>>,
         ) -> Result<SortKey<'a>, QueryExecutionError> {
             let column = table.column_for_field(&attribute)?;
             if column.is_fulltext() {
                 match filter {
-                    Some(entity_filter) => match entity_filter {
-                        EntityFilter::Equal(_, value) => {
-                            let sort_value = value.as_str();
+                    Some(EntityFilter::Equal(_, value)) => {
+                        let sort_value = value.as_str();
 
-                            Ok(SortKey::Key {
-                                column,
-                                value: sort_value,
-                                direction,
-                            })
-                        }
-                        _ => unreachable!(),
-                    },
-                    None => unreachable!(),
+                        Ok(SortKey::Key {
+                            column,
+                            value: sort_value,
+                            direction,
+                        })
+                    }
+                    _ => unreachable!(),
                 }
             } else if column.is_primary_key() {
                 match direction {
-                    ASC => Ok(SortKey::IdAsc),
-                    DESC => Ok(SortKey::IdDesc),
+                    ASC => Ok(SortKey::IdAsc(br_column)),
+                    DESC => Ok(SortKey::IdDesc(br_column)),
                     _ => unreachable!("direction is 'asc' or 'desc'"),
                 }
             } else {
@@ -2070,10 +2184,16 @@ impl<'a> SortKey<'a> {
             }
         }
 
+        let br_column = if *ORDER_BY_BLOCK_RANGE {
+            Some(BlockRangeColumn::new(table, "c.", block))
+        } else {
+            None
+        };
+
         match order {
-            EntityOrder::Ascending(attr, _) => with_key(table, attr, filter, ASC),
-            EntityOrder::Descending(attr, _) => with_key(table, attr, filter, DESC),
-            EntityOrder::Default => Ok(SortKey::IdAsc),
+            EntityOrder::Ascending(attr, _) => with_key(table, attr, filter, ASC, br_column),
+            EntityOrder::Descending(attr, _) => with_key(table, attr, filter, DESC, br_column),
+            EntityOrder::Default => Ok(SortKey::IdAsc(br_column)),
             EntityOrder::Unordered => Ok(SortKey::None),
         }
     }
@@ -2082,10 +2202,10 @@ impl<'a> SortKey<'a> {
     fn select(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match self {
             SortKey::None => Ok(()),
-            SortKey::IdAsc | SortKey::IdDesc => {
-                if *ORDER_BY_BLOCK_RANGE {
-                    out.push_sql(", c.");
-                    out.push_sql(BLOCK_RANGE_COLUMN);
+            SortKey::IdAsc(br_column) | SortKey::IdDesc(br_column) => {
+                if let Some(br_column) = br_column {
+                    out.push_sql(", ");
+                    br_column.name(out);
                 }
                 Ok(())
             }
@@ -2109,22 +2229,22 @@ impl<'a> SortKey<'a> {
     fn order_by(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match self {
             SortKey::None => Ok(()),
-            SortKey::IdAsc => {
+            SortKey::IdAsc(br_column) => {
                 out.push_sql("order by ");
                 out.push_identifier(PRIMARY_KEY_COLUMN)?;
-                if *ORDER_BY_BLOCK_RANGE {
+                if let Some(br_column) = br_column {
                     out.push_sql(", ");
-                    out.push_sql(BLOCK_RANGE_COLUMN);
+                    br_column.bare_name(out);
                 }
                 Ok(())
             }
-            SortKey::IdDesc => {
+            SortKey::IdDesc(br_column) => {
                 out.push_sql("order by ");
                 out.push_identifier(PRIMARY_KEY_COLUMN)?;
                 out.push_sql(" desc");
-                if *ORDER_BY_BLOCK_RANGE {
+                if let Some(br_column) = br_column {
                     out.push_sql(", ");
-                    out.push_sql(BLOCK_RANGE_COLUMN);
+                    br_column.bare_name(out);
                     out.push_sql(" desc");
                 }
                 Ok(())
@@ -2145,11 +2265,11 @@ impl<'a> SortKey<'a> {
     fn order_by_parent(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         match self {
             SortKey::None => Ok(()),
-            SortKey::IdAsc => {
+            SortKey::IdAsc(_) => {
                 out.push_sql("order by g$parent_id, ");
                 out.push_identifier(PRIMARY_KEY_COLUMN)
             }
-            SortKey::IdDesc => {
+            SortKey::IdDesc(_) => {
                 out.push_sql("order by g$parent_id, ");
                 out.push_identifier(PRIMARY_KEY_COLUMN)?;
                 out.push_sql(" desc");
@@ -2267,7 +2387,7 @@ impl<'a> FilterQuery<'a> {
         let first_table = collection
             .first_table()
             .expect("an entity query always contains at least one entity type/table");
-        let sort_key = SortKey::new(order, first_table, filter)?;
+        let sort_key = SortKey::new(order, first_table, filter, block)?;
 
         Ok(FilterQuery {
             collection,
@@ -2294,7 +2414,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql(table.qualified_name.as_str());
         out.push_sql(" c");
         out.push_sql("\n where ");
-        BlockRangeContainsClause::new(&table, "c.", self.block).walk_ast(out.reborrow())?;
+        BlockRangeColumn::new(&table, "c.", self.block).contains(&mut out)?;
         if let Some(filter) = table_filter {
             out.push_sql(" and ");
             filter.walk_ast(out.reborrow())?;
@@ -2330,7 +2450,7 @@ impl<'a> FilterQuery<'a> {
     ) -> QueryResult<()> {
         Self::select_entity_and_data(table, &mut out);
         out.push_sql(" from (select ");
-        write_column_names(&column_names, &table, &mut out)?;
+        write_column_names(column_names, table, &mut out)?;
         self.filtered_rows(table, filter, out.reborrow())?;
         out.push_sql("\n ");
         self.sort_key.order_by(&mut out)?;
@@ -2367,7 +2487,7 @@ impl<'a> FilterQuery<'a> {
     /// No windowing, but multiple entity types
     fn query_no_window(
         &self,
-        entities: &Vec<(&Table, Option<QueryFilter>, AttributeNames)>,
+        entities: &[(&Table, Option<QueryFilter>, AttributeNames)],
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
         // We have multiple tables which might have different schemas since
@@ -2406,7 +2526,7 @@ impl<'a> FilterQuery<'a> {
             //        c.vid,
             //        c.${sort_key}
             out.push_sql("select '");
-            out.push_sql(&table.object.as_str());
+            out.push_sql(table.object.as_str());
             out.push_sql("' as entity, c.id, c.vid");
             self.sort_key.select(&mut out)?;
             self.filtered_rows(table, filter, out.reborrow())?;
@@ -2423,7 +2543,7 @@ impl<'a> FilterQuery<'a> {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select m.entity, ");
-            jsonb_build_object(column_names, "c", &table, &mut out)?;
+            jsonb_build_object(column_names, "c", table, &mut out)?;
             out.push_sql(" as data, c.id");
             self.sort_key.select(&mut out)?;
             out.push_sql("\n  from ");
@@ -2441,8 +2561,8 @@ impl<'a> FilterQuery<'a> {
     /// Multiple windows
     fn query_window(
         &self,
-        windows: &Vec<FilterWindow>,
-        parent_ids: &Vec<String>,
+        windows: &[FilterWindow],
+        parent_ids: &[String],
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
         // Note that a CTE is an optimization fence, and since we use
@@ -2474,7 +2594,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql("with matches as (");
         out.push_sql("select c.* from ");
         out.push_sql("unnest(");
-        out.push_bind_param::<Array<Text>, _>(parent_ids)?;
+        out.push_bind_param::<Array<Text>, _>(&parent_ids)?;
         out.push_sql("::text[]) as q(id)\n");
         out.push_sql(" cross join lateral (");
         for (i, window) in windows.iter().enumerate() {
@@ -2513,12 +2633,12 @@ impl<'a> FilterQuery<'a> {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select m.*, ");
-            jsonb_build_object(&window.column_names, "c", &window.table, &mut out)?;
+            jsonb_build_object(&window.column_names, "c", window.table, &mut out)?;
             out.push_sql("|| jsonb_build_object('g$parent_id', m.g$parent_id) as data");
             out.push_sql("\n  from ");
-            out.push_sql(&window.table.qualified_name.as_str());
+            out.push_sql(window.table.qualified_name.as_str());
             out.push_sql(" c, matches m\n where c.vid = m.vid and m.entity = '");
-            out.push_sql(&window.table.object.as_str());
+            out.push_sql(window.table.object.as_str());
             out.push_sql("'");
         }
         out.push_sql("\n ");
@@ -2581,13 +2701,33 @@ impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}
 
 /// Reduce the upper bound of the current entry's block range to `block` as
 /// long as that does not result in an empty block range
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug)]
 pub struct ClampRangeQuery<'a, S> {
     table: &'a Table,
-    #[allow(dead_code)]
-    entity_type: &'a EntityType,
     entity_ids: &'a [S],
-    block: BlockNumber,
+    br_column: BlockRangeColumn<'a>,
+}
+
+impl<'a, S> ClampRangeQuery<'a, S> {
+    pub fn new(
+        table: &'a Table,
+        entity_ids: &'a [S],
+        block: BlockNumber,
+    ) -> Result<Self, StoreError> {
+        if table.immutable {
+            Err(graph::constraint_violation!(
+                "immutable entities can not be deleted or updated (table `{}`)",
+                table.qualified_name
+            ))
+        } else {
+            let br_column = BlockRangeColumn::new(table, "", block);
+            Ok(Self {
+                table,
+                entity_ids,
+                br_column,
+            })
+        }
+    }
 }
 
 impl<'a, S> QueryFragment<Pg> for ClampRangeQuery<'a, S>
@@ -2603,16 +2743,12 @@ where
         out.push_sql("update ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql("\n   set ");
-        out.push_identifier(BLOCK_RANGE_COLUMN)?;
-        out.push_sql(" = int4range(lower(");
-        out.push_identifier(BLOCK_RANGE_COLUMN)?;
-        out.push_sql("), ");
-        out.push_bind_param::<Integer, _>(&self.block)?;
-        out.push_sql(")\n where ");
+        self.br_column.clamp(&mut out)?;
+        out.push_sql("\n where ");
 
         self.table.primary_key().is_in(self.entity_ids, &mut out)?;
         out.push_sql(" and (");
-        out.push_sql(BLOCK_RANGE_CURRENT);
+        self.br_column.latest(&mut out);
         out.push_sql(")");
 
         Ok(())
@@ -2656,10 +2792,17 @@ impl ReturnedEntityData {
 
 /// A query that removes all versions whose block range lies entirely
 /// beyond `block`.
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug, Clone)]
 pub struct RevertRemoveQuery<'a> {
     table: &'a Table,
-    block: BlockNumber,
+    br_column: BlockRangeColumn<'a>,
+}
+
+impl<'a> RevertRemoveQuery<'a> {
+    pub fn new(table: &'a Table, block: BlockNumber) -> Self {
+        let br_column = BlockRangeColumn::new(table, "", block);
+        Self { table, br_column }
+    }
 }
 
 impl<'a> QueryFragment<Pg> for RevertRemoveQuery<'a> {
@@ -2672,10 +2815,8 @@ impl<'a> QueryFragment<Pg> for RevertRemoveQuery<'a> {
         //   returning id
         out.push_sql("delete from ");
         out.push_sql(self.table.qualified_name.as_str());
-        out.push_sql("\n where lower(");
-        out.push_identifier(BLOCK_RANGE_COLUMN)?;
-        out.push_sql(") >= ");
-        out.push_bind_param::<Integer, _>(&self.block)?;
+        out.push_sql("\n where ");
+        self.br_column.changed_since(&mut out)?;
         out.push_sql("\nreturning ");
         out.push_sql(PRIMARY_KEY_COLUMN);
         out.push_sql("::text");
@@ -2692,7 +2833,7 @@ impl<'a> QueryId for RevertRemoveQuery<'a> {
 impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for RevertRemoveQuery<'a> {
     fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
         conn.query_by_name(&self)
-            .map(|data| ReturnedEntityData::bytes_as_str(&self.table, data))
+            .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
     }
 }
 
@@ -2700,10 +2841,22 @@ impl<'a, Conn> RunQueryDsl<Conn> for RevertRemoveQuery<'a> {}
 
 /// A query that unclamps the block range of all versions that contain
 /// `block` by setting the upper bound of the block range to infinity.
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug, Clone)]
 pub struct RevertClampQuery<'a> {
     table: &'a Table,
     block: BlockNumber,
+}
+impl<'a> RevertClampQuery<'a> {
+    pub(crate) fn new(table: &'a Table, block: BlockNumber) -> Result<Self, StoreError> {
+        if table.immutable {
+            Err(graph::constraint_violation!(
+                "can not revert clamping in immutable table `{}`",
+                table.qualified_name
+            ))
+        } else {
+            Ok(Self { table, block })
+        }
+    }
 }
 
 impl<'a> QueryFragment<Pg> for RevertClampQuery<'a> {
@@ -2763,7 +2916,7 @@ impl<'a> QueryId for RevertClampQuery<'a> {
 impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for RevertClampQuery<'a> {
     fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
         conn.query_by_name(&self)
-            .map(|data| ReturnedEntityData::bytes_as_str(&self.table, data))
+            .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
     }
 }
 
@@ -2840,8 +2993,12 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
             out.push_identifier(column.name.as_str())?;
             out.push_sql(", ");
         }
-        out.push_sql("block_range)");
-        out.push_sql("\nselect ");
+        if self.dst.immutable {
+            out.push_sql(BLOCK_COLUMN);
+        } else {
+            out.push_sql(BLOCK_RANGE_COLUMN);
+        }
+        out.push_sql(")\nselect ");
         for column in &self.columns {
             out.push_identifier(column.name.as_str())?;
             if let ColumnType::Enum(enum_type) = &column.column_type {
@@ -2857,7 +3014,37 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
             }
             out.push_sql(", ");
         }
-        out.push_sql("block_range from ");
+        // Try to convert back and forth between mutable and immutable,
+        // though that can go wrong during the actual copying when going
+        // from mutable to immutable if any entity has ever been updated or
+        // deleted
+        match (self.src.immutable, self.dst.immutable) {
+            (true, true) => out.push_sql(BLOCK_COLUMN),
+            (true, false) => {
+                out.push_sql("int4range(");
+                out.push_sql(BLOCK_COLUMN);
+                out.push_sql(", null)");
+            }
+            (false, true) => {
+                // If this entity was mutated, we will find one version
+                // where the upper end of the block range will be finite.
+                // This check is necessary in case source entities were ony
+                // ever deleted, never updated. In that case we would
+                // erroneously undelete entities without this check
+                let checked_conversion = format!(
+                    r#"
+                case when upper_inf({BLOCK_RANGE_COLUMN})
+                     then lower({BLOCK_RANGE_COLUMN})
+                     else length(raise_exception_bytea('table {} for entity type {} can not be made immutable since it contains at least one mutated entity. vid = ' || vid)) end
+                "#,
+                    self.src.qualified_name,
+                    self.src.object.as_str()
+                );
+                out.push_sql(&checked_conversion);
+            }
+            (false, false) => out.push_sql(BLOCK_RANGE_COLUMN),
+        }
+        out.push_sql(" from ");
         out.push_sql(self.src.qualified_name.as_str());
         out.push_sql(" where vid >= ");
         out.push_bind_param::<BigInt, _>(&self.first_vid)?;
@@ -2893,7 +3080,7 @@ fn write_column_names(
         AttributeNames::Select(column_names) => {
             let mut iterator = iter_column_names(column_names, table).peekable();
             while let Some(column_name) = iterator.next() {
-                out.push_identifier(&column_name)?;
+                out.push_identifier(column_name)?;
                 if iterator.peek().is_some() {
                     out.push_sql(", ");
                 }

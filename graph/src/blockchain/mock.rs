@@ -1,12 +1,13 @@
 use crate::{
     components::{link_resolver::LinkResolver, store::BlockNumber},
     prelude::DataSourceTemplateInfo,
+    runtime::gas::GasCounter,
 };
 use anyhow::Error;
 use async_trait::async_trait;
 use core::fmt;
 use serde::Deserialize;
-use std::{convert::TryFrom, sync::Arc};
+use std::convert::TryFrom;
 
 use super::{block_stream, HostFn, IngestorError, TriggerWithHandler};
 
@@ -90,7 +91,7 @@ impl<C: Blockchain> DataSource<C> for MockDataSource {
     fn match_and_decode(
         &self,
         _trigger: &C::TriggerData,
-        _block: std::sync::Arc<C::Block>,
+        _block: &std::sync::Arc<C::Block>,
         _logger: &slog::Logger,
     ) -> Result<Option<TriggerWithHandler<C>>, anyhow::Error> {
         todo!()
@@ -216,6 +217,7 @@ impl MappingTrigger for MockMappingTrigger {
     fn to_asc_ptr<H: crate::runtime::AscHeap>(
         self,
         _heap: &mut H,
+        _gas: &GasCounter,
     ) -> Result<crate::runtime::AscPtr<()>, crate::runtime::DeterministicHostError> {
         todo!()
     }
@@ -230,6 +232,13 @@ impl<C: Blockchain> TriggerFilter<C> for MockTriggerFilter {
     }
 
     fn node_capabilities(&self) -> C::NodeCapabilities {
+        todo!()
+    }
+
+    fn extend_with_template(
+        &mut self,
+        _data_source: impl Iterator<Item = <C as Blockchain>::DataSourceTemplate>,
+    ) {
         todo!()
     }
 }
@@ -288,7 +297,6 @@ impl Blockchain for MockBlockchain {
         _loc: &crate::components::store::DeploymentLocator,
         _capabilities: &Self::NodeCapabilities,
         _unified_api_version: crate::data::subgraph::UnifiedMappingApiVersion,
-        _stopwatch_metrics: crate::components::metrics::stopwatch::StopwatchMetrics,
     ) -> Result<std::sync::Arc<Self::TriggersAdapter>, anyhow::Error> {
         todo!()
     }
@@ -296,10 +304,10 @@ impl Blockchain for MockBlockchain {
     async fn new_firehose_block_stream(
         &self,
         _deployment: crate::components::store::DeploymentLocator,
-        _store: Arc<dyn crate::components::store::WritableStore>,
+        _block_cursor: Option<String>,
         _start_blocks: Vec<crate::components::store::BlockNumber>,
+        _subgraph_current_block: Option<BlockPtr>,
         _filter: std::sync::Arc<Self::TriggerFilter>,
-        _metrics: std::sync::Arc<block_stream::BlockStreamMetrics>,
         _unified_api_version: crate::data::subgraph::UnifiedMappingApiVersion,
     ) -> Result<Box<dyn block_stream::BlockStream<Self>>, anyhow::Error> {
         todo!()
@@ -309,9 +317,8 @@ impl Blockchain for MockBlockchain {
         &self,
         _deployment: crate::components::store::DeploymentLocator,
         _start_blocks: Vec<crate::components::store::BlockNumber>,
-        _subgraph_start_block: Option<BlockPtr>,
+        _subgraph_current_block: Option<BlockPtr>,
         _filter: std::sync::Arc<Self::TriggerFilter>,
-        _metrics: std::sync::Arc<block_stream::BlockStreamMetrics>,
         _unified_api_version: crate::data::subgraph::UnifiedMappingApiVersion,
     ) -> Result<Box<dyn block_stream::BlockStream<Self>>, anyhow::Error> {
         todo!()

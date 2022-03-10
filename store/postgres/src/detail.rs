@@ -62,6 +62,7 @@ pub struct DeploymentDetail {
     graft_base: Option<String>,
     graft_block_hash: Option<Bytes>,
     graft_block_number: Option<BigDecimal>,
+    debug_fork: Option<String>,
     reorg_count: i32,
     current_reorg_depth: i32,
     max_reorg_depth: i32,
@@ -106,7 +107,7 @@ pub(crate) fn fatal_error(
     error(conn, &fatal_error_id)
 }
 
-struct DetailAndError<'a>(DeploymentDetail, Option<ErrorDetail>, &'a Vec<Arc<Site>>);
+struct DetailAndError<'a>(DeploymentDetail, Option<ErrorDetail>, &'a [Arc<Site>]);
 
 pub(crate) fn block(
     id: &str,
@@ -204,7 +205,7 @@ impl<'a> TryFrom<DetailAndError<'a>> for status::Info {
 
         let site = sites
             .iter()
-            .find(|site| site.deployment.as_str() == &deployment)
+            .find(|site| site.deployment.as_str() == deployment)
             .ok_or_else(|| constraint_violation!("missing site for subgraph `{}`", deployment))?;
 
         // This needs to be filled in later since it lives in a
@@ -235,7 +236,7 @@ impl<'a> TryFrom<DetailAndError<'a>> for status::Info {
                 deployment
             )
         })?;
-        let fatal_error = error.map(|e| SubgraphError::try_from(e)).transpose()?;
+        let fatal_error = error.map(SubgraphError::try_from).transpose()?;
         // 'node' needs to be filled in later from a different shard
         Ok(status::Info {
             id: id.into(),
@@ -271,7 +272,7 @@ pub(crate) fn deployment_details(
 
 pub(crate) fn deployment_statuses(
     conn: &PgConnection,
-    sites: &Vec<Arc<Site>>,
+    sites: &[Arc<Site>],
 ) -> Result<Vec<status::Info>, StoreError> {
     use subgraph_deployment as d;
     use subgraph_error as e;
@@ -359,9 +360,15 @@ impl TryFrom<StoredDeploymentEntity> for SubgraphDeploymentEntity {
 
         let graft_base = detail
             .graft_base
-            .map(|b| DeploymentHash::new(b))
+            .map(DeploymentHash::new)
             .transpose()
             .map_err(|b| constraint_violation!("invalid graft base `{}`", b))?;
+
+        let debug_fork = detail
+            .debug_fork
+            .map(DeploymentHash::new)
+            .transpose()
+            .map_err(|b| constraint_violation!("invalid debug fork `{}`", b))?;
 
         Ok(SubgraphDeploymentEntity {
             manifest,
@@ -374,6 +381,7 @@ impl TryFrom<StoredDeploymentEntity> for SubgraphDeploymentEntity {
             latest_block,
             graft_base,
             graft_block,
+            debug_fork,
             reorg_count: detail.reorg_count,
             current_reorg_depth: detail.current_reorg_depth,
             max_reorg_depth: detail.max_reorg_depth,

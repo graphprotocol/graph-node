@@ -1,10 +1,12 @@
 //! Test relational schemas that use `Bytes` to store ids
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
+use graph::data::store::scalar;
 use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::borrow::Cow;
+use std::str::FromStr;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::prelude::{
@@ -63,7 +65,7 @@ lazy_static! {
         "977c084229c72a0fa377cae304eda9099b6a2cb5d83b25cdf0f0969b69874255"
     ));
     static ref BEEF_ENTITY: Entity = entity! {
-        id: "deadbeef",
+        id: scalar::Bytes::from_str("deadbeef").unwrap(),
         name: "Beef",
         __typename: "Thing"
     };
@@ -247,9 +249,9 @@ fn find() {
 #[test]
 fn find_many() {
     run_test(|conn, layout| {
-        const ID: &str = "deadbeef";
+        const ID: &str = "0xdeadbeef";
         const NAME: &str = "Beef";
-        const ID2: &str = "deadbeef02";
+        const ID2: &str = "0xdeadbeef02";
         const NAME2: &str = "Moo";
         insert_thing(&conn, &layout, ID, NAME);
         insert_thing(&conn, &layout, ID2, NAME2);
@@ -343,11 +345,11 @@ fn delete() {
 //
 // Test Layout::query to check that query generation is syntactically sound
 //
-const ROOT: &str = "dead00";
-const CHILD1: &str = "babe01";
-const CHILD2: &str = "babe02";
-const GRANDCHILD1: &str = "fafa01";
-const GRANDCHILD2: &str = "fafa02";
+const ROOT: &str = "0xdead00";
+const CHILD1: &str = "0xbabe01";
+const CHILD2: &str = "0xbabe02";
+const GRANDCHILD1: &str = "0xfafa01";
+const GRANDCHILD2: &str = "0xfafa02";
 
 /// Create a set of test data that forms a tree through the `parent` and `children` attributes.
 /// The tree has this form:

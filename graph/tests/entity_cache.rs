@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use graph::blockchain::BlockPtr;
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
-use graph::prelude::{Schema, StopwatchMetrics, StoreError};
+use graph::prelude::{Schema, StopwatchMetrics, StoreError, UnfailOutcome};
 use lazy_static::lazy_static;
 use slog::Logger;
 use std::collections::BTreeMap;
@@ -54,6 +54,10 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
+    fn delete_block_cursor(&self) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
     fn start_subgraph_deployment(&self, _: &Logger) -> Result<(), StoreError> {
         unimplemented!()
     }
@@ -62,11 +66,15 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn unfail_deterministic_error(&self, _: &BlockPtr, _: &BlockPtr) -> Result<(), StoreError> {
+    fn unfail_deterministic_error(
+        &self,
+        _: &BlockPtr,
+        _: &BlockPtr,
+    ) -> Result<UnfailOutcome, StoreError> {
         unimplemented!()
     }
 
-    fn unfail_non_deterministic_error(&self, _: &BlockPtr) -> Result<(), StoreError> {
+    fn unfail_non_deterministic_error(&self, _: &BlockPtr) -> Result<UnfailOutcome, StoreError> {
         unimplemented!()
     }
 

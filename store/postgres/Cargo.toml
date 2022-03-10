@@ -1,7 +1,7 @@
 [package]
 name = "graph-store-postgres"
-version = "0.25.0"
-edition = "2018"
+version = "0.25.1"
+edition = "2021"
 
 [dependencies]
 async-trait = "0.1.50"
@@ -29,7 +29,7 @@ uuid = { version = "0.8.1", features = ["v4"] }
 stable-hash = { git = "https://github.com/graphprotocol/stable-hash" }
 backtrace = "0.3"
 diesel_derives = "1.4.1"
-anyhow = "1.0.53"
+anyhow = "1.0.54"
 git-testament = "0.2.0"
 itertools = "0.10.3"
 pin-utils = "0.1"

@@ -13,7 +13,7 @@ struct Entry {
     value: Value,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Default)]
 pub struct Object(Vec<Entry>);
 
 impl Object {
@@ -51,7 +51,7 @@ impl Object {
     }
 
     pub fn insert(&mut self, key: String, value: Value) -> Option<Value> {
-        match self.0.iter_mut().find(|entry| &entry.key == &key) {
+        match self.0.iter_mut().find(|entry| entry.key == key) {
             Some(entry) => Some(std::mem::replace(&mut entry.value, value)),
             None => {
                 self.0.push(Entry { key, value });
@@ -116,7 +116,7 @@ impl<'a> Iterator for ObjectIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(entry) = self.iter.next() {
-            if &entry.key != TOMBSTONE_KEY {
+            if entry.key != TOMBSTONE_KEY {
                 return Some((&entry.key, &entry.value));
             }
         }
@@ -143,12 +143,6 @@ impl CacheWeight for Entry {
 impl CacheWeight for Object {
     fn indirect_weight(&self) -> usize {
         self.0.indirect_weight()
-    }
-}
-
-impl Default for Object {
-    fn default() -> Self {
-        Self(Vec::default())
     }
 }
 
@@ -215,6 +209,7 @@ impl Value {
             ("Bytes", Value::String(s)) => Ok(Value::String(s)),
             ("BigInt", Value::String(s)) => Ok(Value::String(s)),
             ("BigInt", Value::Int(n)) => Ok(Value::String(n.to_string())),
+            ("JSONObject", Value::Object(obj)) => Ok(Value::Object(obj)),
             (_, v) => Err(v),
         }
     }
@@ -327,6 +322,32 @@ impl TryFrom<q::Value> for Value {
                     rmap.insert(key, value);
                 }
                 Ok(Value::object(rmap))
+            }
+        }
+    }
+}
+
+impl From<serde_json::Value> for Value {
+    fn from(value: serde_json::Value) -> Self {
+        match value {
+            serde_json::Value::Null => Value::Null,
+            serde_json::Value::Bool(b) => Value::Boolean(b),
+            serde_json::Value::Number(n) => match n.as_i64() {
+                Some(i) => Value::Int(i),
+                None => Value::Float(n.as_f64().unwrap()),
+            },
+            serde_json::Value::String(s) => Value::String(s),
+            serde_json::Value::Array(vals) => {
+                let vals: Vec<_> = vals.into_iter().map(Value::from).collect::<Vec<_>>();
+                Value::List(vals)
+            }
+            serde_json::Value::Object(map) => {
+                let mut rmap = Object::new();
+                for (key, value) in map.into_iter() {
+                    let value = Value::from(value);
+                    rmap.insert(key, value);
+                }
+                Value::Object(rmap)
             }
         }
     }

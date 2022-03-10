@@ -311,7 +311,7 @@ impl<'a> JoinCond<'a> {
                             .filter_map(|(id, node)| {
                                 node.get(*child_field)
                                     .and_then(|value| value.as_str())
-                                    .and_then(|child_id| Some((id, child_id.to_owned())))
+                                    .map(|child_id| (id, child_id.to_owned()))
                             })
                             .unzip();
 
@@ -341,7 +341,7 @@ impl<'a> JoinCond<'a> {
                                         }
                                         _ => None,
                                     })
-                                    .and_then(|child_ids| Some((id, child_ids)))
+                                    .map(|child_ids| (id, child_ids))
                             })
                             .unzip();
                         (ids, ParentLink::List(child_ids))
@@ -409,7 +409,7 @@ impl<'a> Join<'a> {
                 .get("g$parent_id")
                 .expect("the query that produces 'child' ensures there is always a g$parent_id")
             {
-                r::Value::String(key) => grouped.entry(&key).or_default().push(child.clone()),
+                r::Value::String(key) => grouped.entry(key).or_default().push(child.clone()),
                 _ => unreachable!("the parent_id returned by the query is always a string"),
             }
         }
@@ -430,7 +430,7 @@ impl<'a> Join<'a> {
 
     fn windows(
         &self,
-        parents: &Vec<&mut Node>,
+        parents: &[&mut Node],
         multiplicity: ChildMultiplicity,
         previous_collection: &EntityCollection,
     ) -> Vec<EntityWindow> {
@@ -580,7 +580,7 @@ fn execute_selection_set<'a>(
 
             match execute_field(
                 resolver,
-                &ctx,
+                ctx,
                 &parents,
                 &join,
                 field,
@@ -616,7 +616,7 @@ fn execute_selection_set<'a>(
 fn execute_field(
     resolver: &StoreResolver,
     ctx: &ExecutionContext<impl Resolver>,
-    parents: &Vec<&mut Node>,
+    parents: &[&mut Node],
     join: &Join<'_>,
     field: &a::Field,
     field_definition: &s::Field,
@@ -632,7 +632,7 @@ fn execute_field(
         ctx.logger.clone(),
         resolver.store.as_ref(),
         parents,
-        &join,
+        join,
         field,
         multiplicity,
         ctx.query.schema.types_for_interface(),
@@ -651,7 +651,7 @@ fn execute_field(
 fn fetch(
     logger: Logger,
     store: &(impl QueryStore + ?Sized),
-    parents: &Vec<&mut Node>,
+    parents: &[&mut Node],
     join: &Join<'_>,
     field: &a::Field,
     multiplicity: ChildMultiplicity,
@@ -718,7 +718,13 @@ impl SelectedAttributes {
                         .map(|field_type| !field_type.is_derived())
                         .unwrap_or(false)
                 })
-                .map(|field| field.name.clone())
+                .filter_map(|field| {
+                    if field.name.starts_with("__") {
+                        None
+                    } else {
+                        Some(field.name.clone())
+                    }
+                })
                 .collect();
             map.insert(
                 object_type.name().to_string(),

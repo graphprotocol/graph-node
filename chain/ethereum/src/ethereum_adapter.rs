@@ -7,7 +7,6 @@ use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::prelude::ethabi::ParamType;
 use graph::prelude::ethabi::Token;
 use graph::prelude::tokio::try_join;
-use graph::prelude::StopwatchMetrics;
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
@@ -114,9 +113,20 @@ lazy_static! {
         .unwrap_or("1000".into())
         .parse::<usize>()
         .expect("invalid GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS env var");
+}
 
+#[cfg(not(target_os = "macos"))]
+lazy_static! {
+    /// Regular GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES env var.
     static ref FETCH_RECEIPTS_IN_BATCHES: bool =
         matches!(std::env::var("GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES").as_deref(), Ok("true"));
+}
+
+#[cfg(target_os = "macos")]
+lazy_static! {
+    /// Set to true by default in MacOS to avoid DNS issues.
+    static ref FETCH_RECEIPTS_IN_BATCHES: bool =
+        matches!(std::env::var("GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES").as_deref().unwrap_or("true"), "true");
 }
 
 /// Gas limit for `eth_call`. The value of 50_000_000 is a protocol-wide parameter so this
@@ -1328,7 +1338,6 @@ pub(crate) async fn blocks_with_triggers(
     logger: Logger,
     chain_store: Arc<dyn ChainStore>,
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
-    stopwatch_metrics: StopwatchMetrics,
     from: BlockNumber,
     to: BlockNumber,
     filter: &TriggerFilter,
@@ -1459,14 +1468,10 @@ pub(crate) async fn blocks_with_triggers(
     let mut blocks = if unified_api_version
         .equal_or_greater_than(&graph::data::subgraph::API_VERSION_0_0_5)
     {
-        let section =
-            stopwatch_metrics.start_section("filter_call_triggers_from_unsuccessful_transactions");
         let futures = blocks.into_iter().map(|block| {
             filter_call_triggers_from_unsuccessful_transactions(block, &eth, &chain_store, &logger)
         });
-        let blocks = futures03::future::try_join_all(futures).await?;
-        section.end();
-        blocks
+        futures03::future::try_join_all(futures).await?
     } else {
         blocks
     };
@@ -1653,6 +1658,11 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
             "failed to obtain transaction hash from call triggers"
         ))?;
 
+    // Return early if there are no transaction hashes
+    if transaction_hashes.is_empty() {
+        return Ok(block);
+    }
+
     // And obtain all Transaction values for the calls in this block.
     let transactions: Vec<&Transaction> = {
         match &block.block {
@@ -1672,11 +1682,6 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     // Confidence check: Did we collect all transactions for the current call triggers?
     if transactions.len() != transaction_hashes.len() {
         bail!("failed to find transactions in block for the given call triggers")
-    }
-
-    // Return early if there are no transactions to inspect
-    if transactions.is_empty() {
-        return Ok(block);
     }
 
     // We'll also need the receipts for those transactions. In this step we collect all receipts

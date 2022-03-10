@@ -15,10 +15,7 @@ use graph::{
     cheap_clone::CheapClone,
     components::{
         server::index_node::VersionInfo,
-        store::{
-            self, DeploymentLocator, EnsLookup as EnsLookupTrait, EntityType,
-            WritableStore as WritableStoreTrait,
-        },
+        store::{self, DeploymentLocator, EnsLookup as EnsLookupTrait, SubgraphFork},
     },
     constraint_violation,
     data::query::QueryTarget,
@@ -27,12 +24,14 @@ use graph::{
     prelude::SubgraphDeploymentEntity,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        BlockPtr, DeploymentHash, Logger, NodeId, Schema, StoreError, SubgraphName,
-        SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
+        BlockNumber, BlockPtr, DeploymentHash, EntityOperation, Logger, NodeId, Schema, StoreError,
+        SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
+    url::Url,
     util::timed_cache::TimedCache,
 };
 
+use crate::fork;
 use crate::{
     connection_pool::ConnectionPool,
     primary,
@@ -194,6 +193,10 @@ pub mod unused {
 #[derive(Clone)]
 pub struct SubgraphStore {
     inner: Arc<SubgraphStoreInner>,
+    /// Base URL for the GraphQL endpoint from which
+    /// subgraph forks will fetch entities.
+    /// Example: https://api.thegraph.com/subgraphs/
+    fork_base: Option<Url>,
 }
 
 impl SubgraphStore {
@@ -216,9 +219,11 @@ impl SubgraphStore {
         stores: Vec<(Shard, ConnectionPool, Vec<ConnectionPool>, Vec<usize>)>,
         placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
         sender: Arc<NotificationSender>,
+        fork_base: Option<Url>,
     ) -> Self {
         Self {
             inner: Arc::new(SubgraphStoreInner::new(logger, stores, placer, sender)),
+            fork_base,
         }
     }
 
@@ -374,14 +379,14 @@ impl SubgraphStoreInner {
         let store = self
             .stores
             .get(&site.shard)
-            .ok_or(StoreError::UnknownShard(site.shard.as_str().to_string()))?;
+            .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))?;
         Ok((store, site))
     }
 
     pub(crate) fn for_site(&self, site: &Site) -> Result<&Arc<DeploymentStore>, StoreError> {
         self.stores
             .get(&site.shard)
-            .ok_or(StoreError::UnknownShard(site.shard.as_str().to_string()))
+            .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))
     }
 
     pub(crate) fn layout(&self, id: &DeploymentHash) -> Result<Arc<Layout>, StoreError> {
@@ -491,7 +496,7 @@ impl SubgraphStoreInner {
             //       the same deployment in another shard
             let (shard, node_id) = self.place(&name, &network_name, node_id)?;
             let conn = self.primary_conn()?;
-            let site = conn.allocate_site(shard.clone(), &schema.id, network_name)?;
+            let site = conn.allocate_site(shard, &schema.id, network_name)?;
             let node_id = conn.assigned_node(&site)?.unwrap_or(node_id);
             (site, node_id)
         };
@@ -591,6 +596,7 @@ impl SubgraphStoreInner {
             latest_block: deployment.earliest_block,
             graft_base: Some(src.deployment.clone()),
             graft_block: Some(block),
+            debug_fork: deployment.debug_fork,
             reorg_count: 0,
             current_reorg_depth: 0,
             max_reorg_depth: 0,
@@ -683,7 +689,7 @@ impl SubgraphStoreInner {
         let (store, site) = self.store(&id)?;
         let replica = store.replica_for_query(for_subscription)?;
 
-        Ok((store.clone(), site.clone(), replica))
+        Ok((store.clone(), site, replica))
     }
 
     /// Delete all entities. This function exists solely for integration tests
@@ -713,7 +719,7 @@ impl SubgraphStoreInner {
         &self,
         sites: Vec<Site>,
     ) -> Result<HashMap<Shard, Vec<Arc<Site>>>, StoreError> {
-        let sites: Vec<_> = sites.into_iter().map(|site| Arc::new(site)).collect();
+        let sites: Vec<_> = sites.into_iter().map(Arc::new).collect();
         for site in &sites {
             self.cache_active(site);
         }
@@ -745,7 +751,7 @@ impl SubgraphStoreInner {
             let store = self
                 .stores
                 .get(&shard)
-                .ok_or(StoreError::UnknownShard(shard.to_string()))?;
+                .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
             let ids = ids
                 .into_iter()
                 .map(|site| site.deployment.to_string())
@@ -833,7 +839,7 @@ impl SubgraphStoreInner {
             let store = self
                 .stores
                 .get(&shard)
-                .ok_or(StoreError::UnknownShard(shard.to_string()))?;
+                .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
             infos.extend(store.deployment_statuses(&sites)?);
         }
         self.mirror.fill_assignments(&mut infos)?;
@@ -854,7 +860,7 @@ impl SubgraphStoreInner {
                 .first()
                 .ok_or_else(|| constraint_violation!("no chain info for {}", deployment_id))?;
             let latest_ethereum_block_number =
-                chain.latest_block.as_ref().map(|ref block| block.number());
+                chain.latest_block.as_ref().map(|block| block.number());
             let subgraph_info = store.subgraph_info(site.as_ref())?;
             let network = site.network.clone();
 
@@ -868,7 +874,7 @@ impl SubgraphStoreInner {
                 description: subgraph_info.description,
                 repository: subgraph_info.repository,
                 schema: subgraph_info.input,
-                network: network.to_string(),
+                network,
             };
             Ok(info)
         } else {
@@ -913,7 +919,7 @@ impl SubgraphStoreInner {
         indexer: &Option<Address>,
         block: BlockPtr,
     ) -> Result<Option<[u8; 32]>, StoreError> {
-        let (store, site) = self.store(&id).unwrap();
+        let (store, site) = self.store(id).unwrap();
         store.get_proof_of_indexing(site, indexer, block).await
     }
 
@@ -950,24 +956,42 @@ impl SubgraphStoreInner {
 
     pub async fn analyze(
         &self,
-        id: &DeploymentHash,
-        entity_type: EntityType,
+        deployment: &DeploymentLocator,
+        entity_name: &str,
     ) -> Result<(), StoreError> {
-        let (store, site) = self.store(&id)?;
-        store.analyze(site, entity_type).await
+        let (store, site) = self.store(&deployment.hash)?;
+        store.analyze(site, entity_name).await
     }
 
     pub async fn create_manual_index(
         &self,
-        id: &DeploymentHash,
-        entity_type: EntityType,
+        deployment: &DeploymentLocator,
+        entity_name: &str,
         field_names: Vec<String>,
         index_method: String,
     ) -> Result<(), StoreError> {
-        let (store, site) = self.store(&id)?;
+        let (store, site) = self.store(&deployment.hash)?;
         store
-            .create_manual_index(site, entity_type, field_names, index_method)
+            .create_manual_index(site, entity_name, field_names, index_method)
             .await
+    }
+
+    pub async fn indexes_for_entity(
+        &self,
+        deployment: &DeploymentLocator,
+        entity_name: &str,
+    ) -> Result<Vec<String>, StoreError> {
+        let (store, site) = self.store(&deployment.hash)?;
+        store.indexes_for_entity(site, entity_name).await
+    }
+
+    pub async fn drop_index_for_deployment(
+        &self,
+        deployment: &DeploymentLocator,
+        index_name: &str,
+    ) -> Result<(), StoreError> {
+        let (store, site) = self.store(&deployment.hash)?;
+        store.drop_index(site, index_name).await
     }
 }
 
@@ -1052,16 +1076,47 @@ impl SubgraphStoreTrait for SubgraphStore {
         self.mirror.subgraph_exists(name)
     }
 
+    fn entity_changes_in_block(
+        &self,
+        subgraph_id: &DeploymentHash,
+        block: BlockNumber,
+    ) -> Result<Vec<EntityOperation>, StoreError> {
+        let (store, site) = self.store(subgraph_id)?;
+        let changes = store.get_changes(site, block)?;
+        Ok(changes)
+    }
+
     fn input_schema(&self, id: &DeploymentHash) -> Result<Arc<Schema>, StoreError> {
-        let (store, site) = self.store(&id)?;
-        let info = store.subgraph_info(site.as_ref())?;
+        let (store, site) = self.store(id)?;
+        let info = store.subgraph_info(&site)?;
         Ok(info.input)
     }
 
     fn api_schema(&self, id: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError> {
-        let (store, site) = self.store(&id)?;
+        let (store, site) = self.store(id)?;
         let info = store.subgraph_info(&site)?;
         Ok(info.api)
+    }
+
+    fn debug_fork(
+        &self,
+        id: &DeploymentHash,
+        logger: Logger,
+    ) -> Result<Option<Arc<dyn SubgraphFork>>, StoreError> {
+        let (store, site) = self.store(id)?;
+        let info = store.subgraph_info(&site)?;
+        let fork_id = info.debug_fork;
+        let schema = info.input;
+
+        match (self.fork_base.as_ref(), fork_id) {
+            (Some(base), Some(id)) => Ok(Some(Arc::new(fork::SubgraphFork::new(
+                base.clone(),
+                id,
+                schema,
+                logger,
+            )?))),
+            _ => Ok(None),
+        }
     }
 
     async fn writable(
@@ -1093,15 +1148,6 @@ impl SubgraphStoreTrait for SubgraphStore {
         Ok(writable)
     }
 
-    fn writable_for_network_indexer(
-        &self,
-        logger: Logger,
-        id: &DeploymentHash,
-    ) -> Result<Arc<dyn WritableStoreTrait>, StoreError> {
-        let site = self.site(id)?;
-        Ok(Arc::new(WritableAgent::new(self.clone(), logger, site)?))
-    }
-
     fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
         match self.site(id) {
             Ok(_) => Ok(true),
@@ -1119,7 +1165,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError> {
         Ok(self
             .mirror
-            .find_sites(&vec![hash.to_string()], false)?
+            .find_sites(&[hash.to_string()], false)?
             .iter()
             .map(|site| site.into())
             .collect())

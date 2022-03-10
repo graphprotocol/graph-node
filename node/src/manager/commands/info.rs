@@ -7,7 +7,7 @@ use crate::manager::deployment::Deployment;
 
 fn find(
     pool: ConnectionPool,
-    name: String,
+    name: &str,
     current: bool,
     pending: bool,
     used: bool,
@@ -38,7 +38,7 @@ pub fn run(
     pending: bool,
     used: bool,
 ) -> Result<(), anyhow::Error> {
-    let deployments = find(pool, name, current, pending, used)?;
+    let deployments = find(pool, &name, current, pending, used)?;
     let ids: Vec<_> = deployments.iter().map(|d| d.locator().id).collect();
     let statuses = match store {
         Some(store) => store.status(status::Filter::DeploymentIds(ids))?,

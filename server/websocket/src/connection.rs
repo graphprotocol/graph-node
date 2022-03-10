@@ -53,9 +53,10 @@ impl IncomingMessage {
     pub fn from_ws_message(msg: WsMessage) -> Result<Self, WsError> {
         let text = msg.into_text()?;
         serde_json::from_str(text.as_str()).map_err(|e| {
-            WsError::Http(http::Response::new(Some(
-                format!("Invalid GraphQL over WebSocket message: {}: {}", text, e).into(),
-            )))
+            WsError::Http(http::Response::new(Some(format!(
+                "Invalid GraphQL over WebSocket message: {}: {}",
+                text, e
+            ))))
         })
     }
 }
@@ -81,7 +82,7 @@ enum OutgoingMessage {
 impl OutgoingMessage {
     pub fn from_query_result(id: String, result: Arc<QueryResult>) -> Self {
         OutgoingMessage::Data {
-            id: id,
+            id,
             payload: result,
         }
     }
@@ -266,7 +267,7 @@ where
                         if operations.operations.len() >= max_ops {
                             return send_error_string(
                                 &msg_sink,
-                                id.clone(),
+                                id,
                                 format!(
                                     "Reached the limit of {} operations per connection",
                                     max_ops
@@ -282,7 +283,7 @@ where
                         Err(e) => {
                             return send_error_string(
                                 &msg_sink,
-                                id.clone(),
+                                id,
                                 format!("Invalid query: {}: {}", payload.query, e),
                             );
                         }
@@ -297,7 +298,7 @@ where
                                 Err(e) => {
                                     return send_error_string(
                                         &msg_sink,
-                                        id.clone(),
+                                        id,
                                         format!("Invalid variables provided: {}", e),
                                     );
                                 }
@@ -306,7 +307,7 @@ where
                         _ => {
                             return send_error_string(
                                 &msg_sink,
-                                id.clone(),
+                                id,
                                 format!("Invalid variables provided (must be an object)"),
                             );
                         }

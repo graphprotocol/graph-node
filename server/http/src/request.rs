@@ -1,5 +1,4 @@
 use graph::prelude::serde_json;
-use graphql_parser;
 use hyper::body::Bytes;
 
 use graph::components::server::query::GraphQLServerError;

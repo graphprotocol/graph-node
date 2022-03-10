@@ -1,28 +1,29 @@
-use crate::{error::DeterminismLevel, module::IntoTrap};
+use std::collections::HashMap;
+use std::ops::Deref;
+use std::str::FromStr;
+use std::time::{Duration, Instant};
+
+use never::Never;
+use semver::Version;
+use wasmtime::Trap;
+use web3::types::H160;
+
 use graph::blockchain::DataSource;
 use graph::blockchain::{Blockchain, DataSourceTemplate as _};
 use graph::components::store::EntityType;
 use graph::components::store::{EnsLookup, EntityKey};
 use graph::components::subgraph::{CausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::data::store;
+use graph::ensure;
 use graph::prelude::ethabi::param_type::Reader;
 use graph::prelude::ethabi::{decode, encode, Token};
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
 use graph::runtime::gas::{self, complexity, Gas, GasCounter};
 pub use graph::runtime::{DeterministicHostError, HostExportError};
-use never::Never;
-use semver::Version;
-use std::collections::HashMap;
-use std::ops::Deref;
-use std::str::FromStr;
-use std::time::{Duration, Instant};
-use web3::types::H160;
-
-use graph::ensure;
-use wasmtime::Trap;
 
 use crate::module::{WasmInstance, WasmInstanceContext};
+use crate::{error::DeterminismLevel, module::IntoTrap};
 
 fn write_poi_event(
     proof_of_indexing: &SharedProofOfIndexing,
@@ -132,7 +133,7 @@ impl<C: Blockchain> HostExports<C> {
         proof_of_indexing: &SharedProofOfIndexing,
         entity_type: String,
         entity_id: String,
-        mut data: HashMap<String, Value>,
+        data: HashMap<String, Value>,
         stopwatch: &StopwatchMetrics,
         gas: &GasCounter,
     ) -> Result<(), anyhow::Error> {
@@ -149,23 +150,6 @@ impl<C: Blockchain> HostExports<C> {
         );
         poi_section.end();
 
-        let id_insert_section = stopwatch.start_section("host_export_store_set__insert_id");
-        // Automatically add an "id" value
-        match data.insert("id".to_string(), Value::String(entity_id.clone())) {
-            Some(ref v) if v != &Value::String(entity_id.clone()) => {
-                return Err(anyhow!(
-                    "Value of {} attribute 'id' conflicts with ID passed to `store.set()`: \
-                     {} != {}",
-                    entity_type,
-                    v,
-                    entity_id,
-                ));
-            }
-            _ => (),
-        }
-
-        id_insert_section.end();
-        let validation_section = stopwatch.start_section("host_export_store_set");
         let key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
             entity_type: EntityType::new(entity_type),
@@ -176,7 +160,6 @@ impl<C: Blockchain> HostExports<C> {
 
         let entity = Entity::from(data);
         state.entity_cache.set(key.clone(), entity)?;
-        validation_section.end();
 
         Ok(())
     }
@@ -221,14 +204,14 @@ impl<C: Blockchain> HostExports<C> {
     ) -> Result<Option<Entity>, anyhow::Error> {
         let store_key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
-            entity_type: EntityType::new(entity_type.clone()),
-            entity_id: entity_id.clone(),
+            entity_type: EntityType::new(entity_type),
+            entity_id,
         };
 
         let result = state.entity_cache.get(&store_key)?;
         gas.consume_host_fn(gas::STORE_GET.with_args(complexity::Linear, (&store_key, &result)))?;
 
-        Ok(state.entity_cache.get(&store_key)?)
+        Ok(result)
     }
 
     /// Prints the module of `n` in hex.
@@ -636,7 +619,7 @@ impl<C: Blockchain> HostExports<C> {
                     self.data_source_name,
                     self.templates
                         .iter()
-                        .map(|template| template.name().clone())
+                        .map(|template| template.name())
                         .collect::<Vec<_>>()
                         .join(", ")
                 )
@@ -762,8 +745,8 @@ impl<C: Blockchain> HostExports<C> {
     ) -> Result<Token, anyhow::Error> {
         gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(complexity::Size, &data))?;
 
-        let param_types = Reader::read(&types)
-            .or_else(|e| Err(anyhow::anyhow!("Failed to read types: {}", e)))?;
+        let param_types =
+            Reader::read(&types).map_err(|e| anyhow::anyhow!("Failed to read types: {}", e))?;
 
         decode(&[param_types], &data)
             // The `.pop().unwrap()` here is ok because we're always only passing one
@@ -819,7 +802,7 @@ fn bytes_to_string_is_lossy() {
         "Downcoin WETH-USDT",
         bytes_to_string(
             &graph::log::logger(true),
-            vec![68, 111, 119, 110, 99, 111, 105, 110, 32, 87, 69, 84, 72, 45, 85, 83, 68, 84]
+            vec![68, 111, 119, 110, 99, 111, 105, 110, 32, 87, 69, 84, 72, 45, 85, 83, 68, 84],
         )
     );
 
@@ -830,7 +813,7 @@ fn bytes_to_string_is_lossy() {
             vec![
                 68, 111, 119, 110, 99, 111, 105, 110, 32, 87, 69, 84, 72, 45, 85, 83, 68, 84, 160,
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-            ]
+            ],
         )
     )
 }

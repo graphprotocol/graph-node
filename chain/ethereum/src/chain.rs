@@ -1,17 +1,14 @@
 use anyhow::{Context, Error};
 use graph::blockchain::BlockchainKind;
-use graph::components::store::WritableStore;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::env::env_var;
-use graph::firehose::{FirehoseEndpoints, ForkStep};
-use graph::prelude::{
-    EthereumBlock, EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, StopwatchMetrics,
-};
+use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, ForkStep};
+use graph::prelude::{EthereumBlock, EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt};
 use graph::slog::debug;
 use graph::{
     blockchain::{
         block_stream::{
-            BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers, FirehoseError,
+            BlockStreamEvent, BlockWithTriggers, FirehoseError,
             FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
         },
         firehose_block_stream::FirehoseBlockStream,
@@ -149,7 +146,6 @@ impl Blockchain for Chain {
         loc: &DeploymentLocator,
         capabilities: &Self::NodeCapabilities,
         unified_api_version: UnifiedMappingApiVersion,
-        stopwatch_metrics: StopwatchMetrics,
     ) -> Result<Arc<Self::TriggersAdapter>, Error> {
         let logger = self
             .logger_factory
@@ -176,7 +172,6 @@ impl Blockchain for Chain {
             logger,
             ethrpc_metrics,
             eth_adapter,
-            stopwatch_metrics,
             chain_store: self.chain_store.cheap_clone(),
             unified_api_version,
         };
@@ -186,20 +181,15 @@ impl Blockchain for Chain {
     async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
-        writable: Arc<dyn WritableStore>,
+        block_cursor: Option<String>,
         start_blocks: Vec<BlockNumber>,
+        subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
-        metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let requirements = filter.node_capabilities();
         let adapter = self
-            .triggers_adapter(
-                &deployment,
-                &requirements,
-                unified_api_version.clone(),
-                metrics.stopwatch.clone(),
-            )
+            .triggers_adapter(&deployment, &requirements, unified_api_version)
             .expect(&format!(
                 "no adapter for network {} with capabilities {}",
                 self.name, requirements
@@ -215,12 +205,14 @@ impl Blockchain for Chain {
             .subgraph_logger(&deployment)
             .new(o!("component" => "FirehoseBlockStream"));
 
-        let firehose_mapper = Arc::new(FirehoseMapper {});
-        let firehose_cursor = writable.block_cursor();
+        let firehose_mapper = Arc::new(FirehoseMapper {
+            endpoint: firehose_endpoint.cheap_clone(),
+        });
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,
-            firehose_cursor,
+            subgraph_current_block,
+            block_cursor,
             firehose_mapper,
             adapter,
             filter,
@@ -233,19 +225,13 @@ impl Blockchain for Chain {
         &self,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        subgraph_start_block: Option<BlockPtr>,
+        subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
-        metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let requirements = filter.node_capabilities();
         let adapter = self
-            .triggers_adapter(
-                &deployment,
-                &requirements,
-                unified_api_version.clone(),
-                metrics.stopwatch.clone(),
-            )
+            .triggers_adapter(&deployment, &requirements, unified_api_version.clone())
             .expect(&format!(
                 "no adapter for network {} with capabilities {}",
                 self.name, requirements
@@ -280,11 +266,10 @@ impl Blockchain for Chain {
             start_blocks,
             reorg_threshold,
             logger,
-            metrics,
             *MAX_BLOCK_RANGE_SIZE,
             *TARGET_TRIGGERS_PER_BLOCK_RANGE,
             unified_api_version,
-            subgraph_start_block,
+            subgraph_current_block,
         )))
     }
 
@@ -333,10 +318,10 @@ pub enum BlockFinality {
 }
 
 impl BlockFinality {
-    pub(crate) fn light_block(&self) -> Arc<LightEthereumBlock> {
+    pub(crate) fn light_block(&self) -> &Arc<LightEthereumBlock> {
         match self {
-            BlockFinality::Final(block) => block.cheap_clone(),
-            BlockFinality::NonFinal(block) => block.ethereum_block.block.cheap_clone(),
+            BlockFinality::Final(block) => block,
+            BlockFinality::NonFinal(block) => &block.ethereum_block.block,
         }
     }
 }
@@ -403,7 +388,6 @@ pub struct DummyDataSourceTemplate;
 pub struct TriggersAdapter {
     logger: Logger,
     ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
-    stopwatch_metrics: StopwatchMetrics,
     chain_store: Arc<dyn ChainStore>,
     eth_adapter: Arc<EthereumAdapter>,
     unified_api_version: UnifiedMappingApiVersion,
@@ -422,7 +406,6 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             self.logger.clone(),
             self.chain_store.clone(),
             self.ethrpc_metrics.clone(),
-            self.stopwatch_metrics.clone(),
             from,
             to,
             filter,
@@ -454,7 +437,6 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                     logger.clone(),
                     self.chain_store.clone(),
                     self.ethrpc_metrics.clone(),
-                    self.stopwatch_metrics.clone(),
                     block_number,
                     block_number,
                     filter,
@@ -521,7 +503,9 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     }
 }
 
-pub struct FirehoseMapper {}
+pub struct FirehoseMapper {
+    endpoint: Arc<FirehoseEndpoint>,
+}
 
 #[async_trait]
 impl FirehoseMapperTrait<Chain> for FirehoseMapper {
@@ -572,7 +556,6 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                     .expect("Genesis block should never be reverted");
 
                 Ok(BlockStreamEvent::Revert(
-                    block.ptr(),
                     parent_ptr,
                     FirehoseCursor::Some(response.cursor.clone()),
                 ))
@@ -586,5 +569,33 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 unreachable!("unknown step should not happen in the Firehose response")
             }
         }
+    }
+
+    async fn block_ptr_for_number(
+        &self,
+        logger: &Logger,
+        number: BlockNumber,
+    ) -> Result<BlockPtr, Error> {
+        self.endpoint
+            .block_ptr_for_number::<codec::HeaderOnlyBlock>(logger, number)
+            .await
+    }
+
+    async fn final_block_ptr_for(
+        &self,
+        logger: &Logger,
+        block: &BlockFinality,
+    ) -> Result<BlockPtr, Error> {
+        // Firehose for Ethereum has an hard-coded confirmations for finality sets to 200 block
+        // behind the current block. The magic value 200 here comes from this hard-coded Firehose
+        // value.
+        let final_block_number = match block.number() {
+            x if x >= 200 => x - 200,
+            _ => 0,
+        };
+
+        self.endpoint
+            .block_ptr_for_number::<codec::HeaderOnlyBlock>(logger, final_block_number)
+            .await
     }
 }

@@ -12,17 +12,14 @@ mod types;
 // Try to reexport most of the necessary types
 use crate::{
     cheap_clone::CheapClone,
-    components::{
-        metrics::stopwatch::StopwatchMetrics,
-        store::{DeploymentLocator, StoredDynamicDataSource},
-    },
+    components::store::{DeploymentLocator, StoredDynamicDataSource},
     data::subgraph::UnifiedMappingApiVersion,
     prelude::DataSourceContext,
     runtime::{gas::GasCounter, AscHeap, AscPtr, DeterministicHostError, HostExportError},
 };
 use crate::{
     components::{
-        store::{BlockNumber, ChainStore, WritableStore},
+        store::{BlockNumber, ChainStore},
         subgraph::DataSourceTemplateInfo,
     },
     prelude::{thiserror::Error, LinkResolver},
@@ -46,7 +43,7 @@ use web3::types::H256;
 pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
 pub use types::{BlockHash, BlockPtr, ChainIdentifier};
 
-use self::block_stream::{BlockStream, BlockStreamMetrics};
+use self::block_stream::BlockStream;
 
 pub trait Block: Send + Sync {
     fn ptr(&self) -> BlockPtr;
@@ -105,16 +102,15 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         loc: &DeploymentLocator,
         capabilities: &Self::NodeCapabilities,
         unified_api_version: UnifiedMappingApiVersion,
-        stopwatch_metrics: StopwatchMetrics,
     ) -> Result<Arc<Self::TriggersAdapter>, Error>;
 
     async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
-        store: Arc<dyn WritableStore>,
+        block_cursor: Option<String>,
         start_blocks: Vec<BlockNumber>,
+        subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
-        metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error>;
 
@@ -122,9 +118,8 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         &self,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        subgraph_start_block: Option<BlockPtr>,
+        subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
-        metrics: Arc<BlockStreamMetrics>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error>;
 
@@ -179,6 +174,8 @@ pub trait TriggerFilter<C: Blockchain>: Default + Clone + Send + Sync {
         this
     }
 
+    fn extend_with_template(&mut self, data_source: impl Iterator<Item = C::DataSourceTemplate>);
+
     fn extend<'a>(&mut self, data_sources: impl Iterator<Item = &'a C::DataSource> + Clone);
 
     fn node_capabilities(&self) -> C::NodeCapabilities;
@@ -199,10 +196,19 @@ pub trait DataSource<C: Blockchain>:
 
     /// Checks if `trigger` matches this data source, and if so decodes it into a `MappingTrigger`.
     /// A return of `Ok(None)` mean the trigger does not match.
+    ///
+    /// Performance note: This is very hot code, because in the worst case it could be called a
+    /// quadratic T*D times where T is the total number of triggers in the chain and D is the number
+    /// of data sources in the subgraph. So it could be called billions, or even trillions, of times
+    /// in the sync time of a subgraph.
+    ///
+    /// This is typicaly reduced by the triggers being pre-filtered in the block stream. But with
+    /// dynamic data sources the block stream does not filter on the dynamic parameters, so the
+    /// matching should efficently discard false positives.
     fn match_and_decode(
         &self,
         trigger: &C::TriggerData,
-        block: Arc<C::Block>,
+        block: &Arc<C::Block>,
         logger: &Logger,
     ) -> Result<Option<TriggerWithHandler<C>>, Error>;
 
@@ -256,7 +262,11 @@ pub trait TriggerData {
 pub trait MappingTrigger: Send + Sync {
     /// A flexible interface for writing a type to AS memory, any pointer can be returned.
     /// Use `AscPtr::erased` to convert `AscPtr<T>` into `AscPtr<()>`.
-    fn to_asc_ptr<H: AscHeap>(self, heap: &mut H) -> Result<AscPtr<()>, DeterministicHostError>;
+    fn to_asc_ptr<H: AscHeap>(
+        self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscPtr<()>, DeterministicHostError>;
 }
 
 pub struct HostFnCtx<'a> {
@@ -420,7 +430,8 @@ impl<C: Blockchain> TriggerWithHandler<C> {
     pub fn to_asc_ptr<H: AscHeap>(
         self,
         heap: &mut H,
+        gas: &GasCounter,
     ) -> Result<AscPtr<()>, DeterministicHostError> {
-        self.trigger.to_asc_ptr(heap)
+        self.trigger.to_asc_ptr(heap, gas)
     }
 }

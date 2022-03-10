@@ -113,7 +113,7 @@ pub(crate) fn coerce_input_value<'a>(
         None => def
             .default_value
             .clone()
-            .map(|val| r::Value::try_from(val))
+            .map(r::Value::try_from)
             .transpose()
             .map_err(|value| {
                 QueryExecutionError::Panic(format!(

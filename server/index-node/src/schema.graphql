@@ -4,6 +4,7 @@ scalar Bytes
 scalar ID
 scalar Int
 scalar String
+scalar JSONObject
 
 type Query {
   indexingStatusForCurrentVersion(subgraphName: String!): SubgraphIndexingStatus
@@ -19,6 +20,8 @@ type Query {
     indexer: Bytes
   ): Bytes
   subgraphFeatures(subgraphId: String!): SubgraphFeatures!
+  entityChangesInBlock(subgraphId: String!, blockNumber: Int!): EntityChanges!
+  blockData(network: String!, blockHash: Bytes!): JSONObject
 }
 
 type SubgraphIndexingStatus {
@@ -57,6 +60,21 @@ type EthereumIndexingStatus implements ChainIndexingStatus {
   lastHealthyBlock: Block
 }
 
+type EntityChanges {
+  updates: [EntityTypeUpdates!]!
+  deletions: [EntityTypeDeletions!]!
+}
+
+type EntityTypeUpdates {
+  type: String!
+  entities: [JSONObject!]!
+}
+
+type EntityTypeDeletions {
+  type: String!
+  entities: [ID!]!
+}
+
 type Block {
   hash: Bytes!
   number: BigInt!
@@ -82,7 +100,6 @@ enum Health {
   failed
 }
 
-
 type SubgraphFeatures {
   features: [Feature!]!
   errors: [String!]!
@@ -90,8 +107,8 @@ type SubgraphFeatures {
 }
 
 enum Feature {
-  nonFatalErrors,
-  grafting,
-  fullTextSearch,
-  ipfsOnEthereumContracts,
+  nonFatalErrors
+  grafting
+  fullTextSearch
+  ipfsOnEthereumContracts
 }

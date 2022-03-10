@@ -25,7 +25,7 @@ lazy_static! {
         .ok()
         .and_then(|api_version_str| Version::parse(&api_version_str).ok())
         .unwrap_or(SPEC_VERSION_0_0_4);
-    pub(super) static ref MAX_API_VERSION: semver::Version = std::env::var("GRAPH_MAX_API_VERSION")
+    pub static ref MAX_API_VERSION: semver::Version = std::env::var("GRAPH_MAX_API_VERSION")
         .ok()
         .and_then(|api_version_str| semver::Version::parse(&api_version_str).ok())
         .unwrap_or(semver::Version::new(0, 0, 6));

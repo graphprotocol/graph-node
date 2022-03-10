@@ -1,44 +1,37 @@
 use either::Either;
-use graph::blockchain::{Blockchain, BlockchainKind};
-use graph::data::value::Object;
-
-use graph::data::subgraph::features::detect_features;
-use graph::data::subgraph::{status, MAX_SPEC_VERSION};
-use graph::prelude::*;
-use graph::{
-    components::store::StatusStore,
-    data::graphql::{IntoValue, ObjectOrInterface, ValueMap},
-};
-use graph_graphql::prelude::{a, ExecutionContext, Resolver};
+use std::collections::BTreeMap;
 use std::convert::TryInto;
 use web3::types::{Address, H256};
 
+use graph::blockchain::{Blockchain, BlockchainKind};
+use graph::data::subgraph::features::detect_features;
+use graph::data::subgraph::{status, MAX_SPEC_VERSION};
+use graph::data::value::Object;
+use graph::prelude::*;
+use graph::{
+    components::store::{BlockStore, EntityType, Store},
+    data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap},
+};
+use graph_graphql::prelude::{a, ExecutionContext, Resolver};
+
 /// Resolver for the index node GraphQL API.
-pub struct IndexNodeResolver<S, R, St> {
+pub struct IndexNodeResolver<S, R> {
     logger: Logger,
     store: Arc<S>,
     link_resolver: Arc<R>,
-    subgraph_store: Arc<St>,
 }
 
-impl<S, R, St> IndexNodeResolver<S, R, St>
+impl<S, R> IndexNodeResolver<S, R>
 where
-    S: StatusStore,
+    S: Store,
     R: LinkResolver,
-    St: SubgraphStore,
 {
-    pub fn new(
-        logger: &Logger,
-        store: Arc<S>,
-        link_resolver: Arc<R>,
-        subgraph_store: Arc<St>,
-    ) -> Self {
+    pub fn new(logger: &Logger, store: Arc<S>, link_resolver: Arc<R>) -> Self {
         let logger = logger.new(o!("component" => "IndexNodeResolver"));
         Self {
             logger,
             store,
             link_resolver,
-            subgraph_store,
         }
     }
 
@@ -85,6 +78,75 @@ where
             .status(status::Filter::SubgraphName(subgraph_name))?;
 
         Ok(infos.into_value())
+    }
+
+    fn resolve_entity_changes_in_block(
+        &self,
+        field: &a::Field,
+    ) -> Result<r::Value, QueryExecutionError> {
+        let subgraph_id = field
+            .get_required::<DeploymentHash>("subgraphId")
+            .expect("Valid subgraphId required");
+
+        let block_number = field
+            .get_required::<BlockNumber>("blockNumber")
+            .expect("Valid blockNumber required");
+
+        let entity_changes = self
+            .store
+            .subgraph_store()
+            .entity_changes_in_block(&subgraph_id, block_number)?;
+
+        Ok(entity_changes_to_graphql(entity_changes))
+    }
+
+    fn resolve_block_data(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
+        let network = field
+            .get_required::<String>("network")
+            .expect("Valid network required");
+
+        let block_hash = field
+            .get_required::<H256>("blockHash")
+            .expect("Valid blockHash required");
+
+        let chain_store = if let Some(cs) = self.store.block_store().chain_store(&network) {
+            cs
+        } else {
+            error!(
+                self.logger,
+                "Failed to fetch block data; nonexistant network";
+                "network" => network,
+                "block_hash" => format!("{}", block_hash),
+            );
+            return Ok(r::Value::Null);
+        };
+
+        let blocks_res = chain_store.blocks(&[block_hash]);
+        Ok(match blocks_res {
+            Ok(blocks) if blocks.is_empty() => {
+                error!(
+                    self.logger,
+                    "Failed to fetch block data; block not found";
+                    "network" => network,
+                    "block_hash" => format!("{}", block_hash),
+                );
+                r::Value::Null
+            }
+            Ok(mut blocks) => {
+                assert!(blocks.len() == 1, "Multiple blocks with the same hash");
+                blocks.pop().unwrap().into()
+            }
+            Err(e) => {
+                error!(
+                    self.logger,
+                    "Failed to fetch block data; storage error";
+                    "network" => network.as_str(),
+                    "block_hash" => format!("{}", block_hash),
+                    "error" => e.to_string(),
+                );
+                r::Value::Null
+            }
+        })
     }
 
     fn resolve_proof_of_indexing(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
@@ -210,7 +272,7 @@ where
                         .await?;
 
                     validate_and_extract_features(
-                        &self.subgraph_store,
+                        &self.store.subgraph_store(),
                         unvalidated_subgraph_manifest,
                     )?
                 }
@@ -244,7 +306,7 @@ where
                         .await?;
 
                     validate_and_extract_features(
-                        &self.subgraph_store,
+                        &self.store.subgraph_store(),
                         unvalidated_subgraph_manifest,
                     )?
                 }
@@ -268,13 +330,13 @@ struct ValidationPostProcessResult {
     network: r::Value,
 }
 
-fn validate_and_extract_features<C, St>(
-    subgraph_store: &Arc<St>,
+fn validate_and_extract_features<C, SgStore>(
+    subgraph_store: &Arc<SgStore>,
     unvalidated_subgraph_manifest: UnvalidatedSubgraphManifest<C>,
 ) -> Result<ValidationPostProcessResult, QueryExecutionError>
 where
     C: Blockchain,
-    St: SubgraphStore,
+    SgStore: SubgraphStore,
 {
     // Validate the subgraph we've just obtained.
     //
@@ -353,28 +415,85 @@ where
     }
 }
 
-impl<S, R, St> Clone for IndexNodeResolver<S, R, St>
+fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
+    // Results are sorted first alphabetically by entity type, then by entity
+    // ID, and then aphabetically by field name.
+
+    // First, we isolate updates and deletions with the same entity type.
+    let mut updates: BTreeMap<EntityType, Vec<Entity>> = BTreeMap::new();
+    let mut deletions: BTreeMap<EntityType, Vec<String>> = BTreeMap::new();
+
+    for change in entity_changes {
+        match change {
+            EntityOperation::Remove { key } => {
+                deletions
+                    .entry(key.entity_type)
+                    .or_default()
+                    .push(key.entity_id);
+            }
+            EntityOperation::Set { key, data } => {
+                updates.entry(key.entity_type).or_default().push(data);
+            }
+        }
+    }
+
+    // Now we're ready for GraphQL type conversions.
+    let mut updates_graphql: Vec<r::Value> = Vec::with_capacity(updates.len());
+    let mut deletions_graphql: Vec<r::Value> = Vec::with_capacity(deletions.len());
+
+    for (entity_type, mut entities) in updates {
+        entities.sort_unstable_by_key(|e| e.id().unwrap_or("no-id".to_string()));
+        updates_graphql.push(object! {
+            type: entity_type.to_string(),
+            entities:
+                entities
+                    .into_iter()
+                    .map(|e| {
+                        r::Value::object(
+                            e.sorted()
+                                .into_iter()
+                                .map(|(name, value)| (name, value.into()))
+                                .collect(),
+                        )
+                    })
+                    .collect::<Vec<r::Value>>(),
+        });
+    }
+
+    for (entity_type, mut ids) in deletions {
+        ids.sort_unstable();
+        deletions_graphql.push(object! {
+            type: entity_type.to_string(),
+            entities:
+                ids.into_iter().map(r::Value::String).collect::<Vec<r::Value>>(),
+        });
+    }
+
+    object! {
+        updates: updates_graphql,
+        deletions: deletions_graphql,
+    }
+}
+
+impl<S, R> Clone for IndexNodeResolver<S, R>
 where
-    S: SubgraphStore,
-    R: LinkResolver,
-    St: SubgraphStore,
+    S: Clone,
+    R: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
             store: self.store.clone(),
             link_resolver: self.link_resolver.clone(),
-            subgraph_store: self.subgraph_store.clone(),
         }
     }
 }
 
 #[async_trait]
-impl<S, R, St> Resolver for IndexNodeResolver<S, R, St>
+impl<S, R> Resolver for IndexNodeResolver<S, R>
 where
-    S: StatusStore,
+    S: Store,
     R: LinkResolver,
-    St: SubgraphStore,
 {
     const CACHEABLE: bool = false;
 
@@ -398,19 +517,20 @@ where
         scalar_type: &s::ScalarType,
         value: Option<r::Value>,
     ) -> Result<r::Value, QueryExecutionError> {
-        // Check if we are resolving the proofOfIndexing bytes
-        if &parent_object_type.name == "Query"
-            && &field.name == "proofOfIndexing"
-            && &scalar_type.name == "Bytes"
-        {
-            return self.resolve_proof_of_indexing(field);
-        }
+        match (
+            parent_object_type.name.as_str(),
+            field.name.as_str(),
+            scalar_type.name.as_str(),
+        ) {
+            ("Query", "proofOfIndexing", "Bytes") => self.resolve_proof_of_indexing(field),
+            ("Query", "blockData", "JSONObject") => self.resolve_block_data(field),
 
-        // Fallback to the same as is in the default trait implementation. There
-        // is no way to call back into the default implementation for the trait.
-        // So, note that this is duplicated.
-        // See also c2112309-44fd-4a84-92a0-5a651e6ed548
-        Ok(value.unwrap_or(r::Value::Null))
+            // Fallback to the same as is in the default trait implementation. There
+            // is no way to call back into the default implementation for the trait.
+            // So, note that this is duplicated.
+            // See also c2112309-44fd-4a84-92a0-5a651e6ed548
+            _ => Ok(value.unwrap_or(r::Value::Null)),
+        }
     }
 
     fn resolve_objects(
@@ -456,6 +576,9 @@ where
 
             // The top-level `indexingStatusForPendingVersion` field
             (None, "subgraphFeatures") => graph::block_on(self.resolve_subgraph_features(field)),
+
+            // The top-level `entityChangesInBlock` field
+            (None, "entityChangesInBlock") => self.resolve_entity_changes_in_block(field),
 
             // Resolve fields of `Object` values (e.g. the `latestBlock` field of `EthereumBlock`)
             (value, _) => Ok(value.unwrap_or(r::Value::Null)),

@@ -17,6 +17,8 @@ use std::convert::TryInto;
 use std::fmt;
 use std::mem::size_of;
 
+use self::gas::GasCounter;
+
 /// Marker trait for AssemblyScript types that the id should
 /// be in the header.
 pub trait AscIndexId {
@@ -57,6 +59,7 @@ pub trait AscType: Sized {
     fn asc_size<H: AscHeap + ?Sized>(
         _ptr: AscPtr<Self>,
         _heap: &H,
+        _gas: &GasCounter,
     ) -> Result<u32, DeterministicHostError> {
         Ok(std::mem::size_of::<Self>() as u32)
     }
@@ -73,7 +76,7 @@ impl<T> AscType for std::marker::PhantomData<T> {
         asc_obj: &[u8],
         _api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
-        assert!(asc_obj.len() == 0);
+        assert!(asc_obj.is_empty());
 
         Ok(Self)
     }
@@ -304,6 +307,7 @@ impl ToAscObj<u32> for IndexForAscTypeId {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         _heap: &mut H,
+        _gas: &GasCounter,
     ) -> Result<u32, DeterministicHostError> {
         Ok(*self as u32)
     }

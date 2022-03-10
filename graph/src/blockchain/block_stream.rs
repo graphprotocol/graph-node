@@ -46,14 +46,7 @@ impl<C: Blockchain + 'static> BufferedBlockStream<C> {
         mut stream: Box<dyn BlockStream<C>>,
         sender: Sender<Result<BlockStreamEvent<C>, Error>>,
     ) -> Result<(), Error> {
-        loop {
-            let event = match stream.next().await {
-                Some(evt) => evt,
-                None => {
-                    break;
-                }
-            };
-
+        while let Some(event) = stream.next().await {
             match sender.send(event).await {
                 Ok(_) => continue,
                 Err(err) => {
@@ -111,6 +104,10 @@ impl<C: Blockchain> BlockWithTriggers<C> {
     pub fn ptr(&self) -> BlockPtr {
         self.block.ptr()
     }
+
+    pub fn parent_ptr(&self) -> Option<BlockPtr> {
+        self.block.parent_ptr()
+    }
 }
 
 #[async_trait]
@@ -160,6 +157,34 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
         adapter: &C::TriggersAdapter,
         filter: &C::TriggerFilter,
     ) -> Result<BlockStreamEvent<C>, FirehoseError>;
+
+    /// Returns the [BlockPtr] value for this given block number. This is the block pointer
+    /// of the longuest according to Firehose view of the blockchain state.
+    ///
+    /// This is a thin wrapper around [FirehoseEndpoint#block_ptr_for_number] to make
+    /// it chain agnostic and callable from chain agnostic [FirehoseBlockStream].
+    async fn block_ptr_for_number(
+        &self,
+        logger: &Logger,
+        number: BlockNumber,
+    ) -> Result<BlockPtr, Error>;
+
+    /// Returns the closest final block ptr to the block ptr received.
+    /// On probablitics chain like Ethereum, final is determined by
+    /// the confirmations threshold configured for the Firehose stack (currently
+    /// hard-coded to 200).
+    ///
+    /// On some other chain like NEAR, the actual final block number is determined
+    /// from the block itself since it contains information about which block number
+    /// is final against the current block.
+    ///
+    /// To take an example, assuming we are on Ethereum, the final block pointer
+    /// for block #10212 would be the determined final block #10012 (10212 - 200 = 10012).
+    async fn final_block_ptr_for(
+        &self,
+        logger: &Logger,
+        block: &C::Block,
+    ) -> Result<BlockPtr, Error>;
 }
 
 #[derive(Error, Debug)]
@@ -174,10 +199,8 @@ pub enum FirehoseError {
 }
 
 pub enum BlockStreamEvent<C: Blockchain> {
-    // The payload is the current subgraph head pointer, which should be reverted, such that the
-    // parent of the current subgraph head becomes the new subgraph head.
-    // An optional pointer to the parent block will save a round trip operation when reverting.
-    Revert(BlockPtr, BlockPtr, FirehoseCursor),
+    // The payload is the block the subgraph should revert to, so it becomes the new subgraph head.
+    Revert(BlockPtr, FirehoseCursor),
 
     ProcessBlock(BlockWithTriggers<C>, FirehoseCursor),
 }

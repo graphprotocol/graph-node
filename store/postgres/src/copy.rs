@@ -287,9 +287,15 @@ impl TableState {
             max_vid: i64,
         }
 
+        let max_block_clause = if src.immutable {
+            "block$ <= $1"
+        } else {
+            "lower(block_range) <= $1"
+        };
         let target_vid = sql_query(&format!(
-            "select coalesce(max(vid), -1) as max_vid from {} where lower(block_range) <= $1",
-            src.qualified_name.as_str()
+            "select coalesce(max(vid), -1) as max_vid from {} where {}",
+            src.qualified_name.as_str(),
+            max_block_clause
         ))
         .bind::<Integer, _>(&target_block.number)
         .load::<MaxVid>(conn)?
@@ -327,7 +333,7 @@ impl TableState {
             id: i32,
         ) -> Result<Arc<Table>, StoreError> {
             layout
-                .table_for_entity(&entity_type)
+                .table_for_entity(entity_type)
                 .map_err(|e| {
                     constraint_violation!(
                         "invalid {} table {} in CopyState {} (table {}): {}",

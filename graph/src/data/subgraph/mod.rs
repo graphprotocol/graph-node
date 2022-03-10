@@ -661,12 +661,8 @@ impl<C: Blockchain> SubgraphManifest<C> {
     pub fn api_versions(&self) -> impl Iterator<Item = semver::Version> + '_ {
         self.templates
             .iter()
-            .map(|template| template.api_version().clone())
-            .chain(
-                self.data_sources
-                    .iter()
-                    .map(|source| source.api_version().clone()),
-            )
+            .map(|template| template.api_version())
+            .chain(self.data_sources.iter().map(|source| source.api_version()))
     }
 
     pub fn runtimes(&self) -> impl Iterator<Item = &[u8]> + '_ {
@@ -781,7 +777,7 @@ impl DeploymentState {
     }
 }
 
-fn display_vector(input: &Vec<impl std::fmt::Display>) -> impl std::fmt::Display {
+fn display_vector(input: &[impl std::fmt::Display]) -> impl std::fmt::Display {
     let formatted_errors = input
         .iter()
         .map(ToString::to_string)

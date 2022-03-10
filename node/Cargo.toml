@@ -1,7 +1,7 @@
 [package]
 name = "graph-node"
-version = "0.25.0"
-edition = "2018"
+version = "0.25.1"
+edition = "2021"
 default-run = "graph-node"
 
 [[bin]]
@@ -43,6 +43,7 @@ shellexpand = "2.1.0"
 diesel = "1.4.8"
 fail = "0.5"
 http = "0.2.5" # must be compatible with the version rust-web3 uses
+prometheus = { version ="0.13.0", features = ["push"] }
 
 [dev-dependencies]
 assert_cli = "0.6"

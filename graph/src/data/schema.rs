@@ -1,10 +1,11 @@
 use crate::cheap_clone::CheapClone;
-use crate::components::store::{EntityType, SubgraphStore};
+use crate::components::store::{EntityKey, EntityType, SubgraphStore};
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
-use crate::data::store::ValueType;
+use crate::data::graphql::ObjectTypeExt;
+use crate::data::store::{self, ValueType};
 use crate::data::subgraph::{DeploymentHash, SubgraphName};
 use crate::prelude::{
-    lazy_static,
+    anyhow, lazy_static,
     q::Value,
     s::{self, Definition, InterfaceType, ObjectType, TypeDefinition, *},
 };
@@ -12,6 +13,7 @@ use crate::prelude::{
 use anyhow::{Context, Error};
 use graphql_parser::{self, Pos};
 use inflector::Inflector;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -24,6 +26,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use super::graphql::ObjectOrInterface;
+use super::store::scalar;
 
 pub const SCHEMA_TYPE_NAME: &str = "_Schema_";
 
@@ -55,6 +58,8 @@ pub enum SchemaValidationError {
          the following fields: {2}"
     )]
     InterfaceFieldsMissing(String, String, Strings), // (type, interface, missing_fields)
+    #[error("Implementors of interface `{0}` use different id types `{1}`. They must all use the same type")]
+    InterfaceImplementorsMixId(String, String),
     #[error("Field `{1}` in type `{0}` has invalid @derivedFrom: {2}")]
     InvalidDerivedFrom(String, String, String), // (type, field, reason)
     #[error("The following type names are reserved: `{0}`")]
@@ -189,7 +194,7 @@ pub enum FulltextAlgorithm {
 impl TryFrom<&str> for FulltextAlgorithm {
     type Error = String;
     fn try_from(algorithm: &str) -> Result<Self, Self::Error> {
-        match &algorithm[..] {
+        match algorithm {
             "rank" => Ok(FulltextAlgorithm::Rank),
             "proximityRank" => Ok(FulltextAlgorithm::ProximityRank),
             invalid => Err(format!(
@@ -589,6 +594,39 @@ impl Schema {
         }
     }
 
+    /// Construct a value for the entity type's id attribute
+    pub fn id_value(&self, key: &EntityKey) -> Result<store::Value, Error> {
+        let base_type = self
+            .document
+            .get_object_type_definition(key.entity_type.as_str())
+            .ok_or_else(|| {
+                anyhow!(
+                    "Entity {}[{}]: unknown entity type `{}`",
+                    key.entity_type,
+                    key.entity_id,
+                    key.entity_type
+                )
+            })?
+            .field("id")
+            .unwrap()
+            .field_type
+            .get_base_type();
+
+        match base_type {
+            "ID" | "String" => Ok(store::Value::String(key.entity_id.clone())),
+            "Bytes" => Ok(store::Value::Bytes(scalar::Bytes::from_str(
+                &key.entity_id,
+            )?)),
+            s => {
+                return Err(anyhow!(
+                    "Entity type {} uses illegal type {} for id column",
+                    key.entity_type,
+                    s
+                ))
+            }
+        }
+    }
+
     pub fn resolve_schema_references<S: SubgraphStore>(
         &self,
         store: Arc<S>,
@@ -794,10 +832,9 @@ impl Schema {
                 };
 
                 if !name.eq(SCHEMA_TYPE_NAME)
-                    && directives
+                    && !directives
                         .iter()
-                        .find(|directive| directive.name.eq("subgraphId"))
-                        .is_none()
+                        .any(|directive| directive.name.eq("subgraphId"))
                 {
                     directives.push(subgraph_id_directive);
                 }
@@ -809,15 +846,15 @@ impl Schema {
         &self,
         schemas: &HashMap<SchemaReference, Arc<Schema>>,
     ) -> Result<(), Vec<SchemaValidationError>> {
-        // Using this since std::array's .into_iter() doesn't work
-        // as expected (at least as of rustc 1.53)
-        let mut errors: Vec<SchemaValidationError> = std::array::IntoIter::new([
+        let mut errors: Vec<SchemaValidationError> = [
             self.validate_schema_types(),
             self.validate_derived_from(),
             self.validate_schema_type_has_no_fields(),
             self.validate_directives_on_schema_type(),
             self.validate_reserved_types_usage(),
-        ])
+            self.validate_interface_id_type(),
+        ]
+        .into_iter()
         .filter(Result::is_err)
         // Safe unwrap due to the filter above
         .map(Result::unwrap_err)
@@ -860,8 +897,8 @@ impl Schema {
                     .filter(|directive| {
                         !directive.name.eq("import") && !directive.name.eq("fulltext")
                     })
-                    .collect::<Vec<&Directive>>()
-                    .is_empty()
+                    .next()
+                    .is_none()
                 {
                     Some(SchemaValidationError::InvalidSchemaTypeDirectives)
                 } else {
@@ -988,20 +1025,13 @@ impl Schema {
         // Validate that the fulltext field doesn't collide with any top-level Query fields
         // generated for entity types. The field name conversions should always align with those used
         // to create the field names in `graphql::schema::api::query_fields_for_type()`.
-        if local_types
-            .iter()
-            .find(|typ| {
-                typ.fields
-                    .iter()
-                    .find(|field| {
-                        name == &field.name.as_str().to_camel_case()
-                            || name == &field.name.to_plural().to_camel_case()
-                            || field.name.eq(name)
-                    })
-                    .is_some()
+        if local_types.iter().any(|typ| {
+            typ.fields.iter().any(|field| {
+                name == &field.name.as_str().to_camel_case()
+                    || name == &field.name.to_plural().to_camel_case()
+                    || field.name.eq(name)
             })
-            .is_some()
-        {
+        }) {
             return vec![SchemaValidationError::FulltextNameCollision(
                 name.to_string(),
             )];
@@ -1021,8 +1051,7 @@ impl Schema {
                     _ => None,
                 }
             })
-            .collect::<Vec<&_>>()
-            .len()
+            .count()
             > 1
         {
             return vec![SchemaValidationError::FulltextNameConflict(
@@ -1117,11 +1146,10 @@ impl Schema {
                         if !&entity_type
                             .fields
                             .iter()
-                            .find(|field| {
-                                let base_type: &str = field.field_type.get_base_type().as_ref();
+                            .any(|field| {
+                                let base_type: &str = field.field_type.get_base_type();
                                 matches!(ValueType::from_str(base_type), Ok(ValueType::String) if field.name.eq(field_name))
                             })
-                            .is_some()
                         {
                             return vec![SchemaValidationError::FulltextIncludedFieldInvalid(
                                 field_name.clone(),
@@ -1207,7 +1235,7 @@ impl Schema {
             .fold(vec![], |errors, (type_name, fields)| {
                 fields.iter().fold(errors, |mut errors, field| {
                     let base = field.field_type.get_base_type();
-                    if ValueType::is_scalar(base.as_ref()) {
+                    if ValueType::is_scalar(base) {
                         return errors;
                     }
                     if local_types.contains_key(base) {
@@ -1417,7 +1445,7 @@ impl Schema {
             // For that, we will wind up comparing the `id`s of the two types
             // when we query, and just assume that that's ok.
             let target_field_type = target_field.field_type.get_base_type();
-            if target_field_type != &object_type.name
+            if target_field_type != object_type.name
                 && target_field_type != "ID"
                 && !interface_types
                     .iter()
@@ -1460,11 +1488,10 @@ impl Schema {
         // Check that all fields in the interface exist in the object with same name and type.
         let mut missing_fields = vec![];
         for i in &interface.fields {
-            if object
+            if !object
                 .fields
                 .iter()
-                .find(|o| o.name.eq(&i.name) && o.field_type.eq(&i.field_type))
-                .is_none()
+                .any(|o| o.name.eq(&i.name) && o.field_type.eq(&i.field_type))
             {
                 missing_fields.push(i.to_string().trim().to_owned());
             }
@@ -1480,6 +1507,25 @@ impl Schema {
         }
     }
 
+    fn validate_interface_id_type(&self) -> Result<(), SchemaValidationError> {
+        for (intf, obj_types) in &self.types_for_interface {
+            let id_types: HashSet<&str> = HashSet::from_iter(
+                obj_types
+                    .iter()
+                    .filter_map(|obj_type| obj_type.field("id"))
+                    .map(|f| f.field_type.get_base_type())
+                    .map(|name| if name == "ID" { "String" } else { name }),
+            );
+            if id_types.len() > 1 {
+                return Err(SchemaValidationError::InterfaceImplementorsMixId(
+                    intf.to_string(),
+                    id_types.iter().join(", "),
+                ));
+            }
+        }
+        Ok(())
+    }
+
     fn subgraph_schema_object_type(&self) -> Option<&ObjectType> {
         self.document
             .get_object_type_definitions()
@@ -1487,17 +1533,16 @@ impl Schema {
             .find(|object_type| object_type.name.eq(SCHEMA_TYPE_NAME))
     }
 
-    pub fn entity_fulltext_definitions<'a>(
+    pub fn entity_fulltext_definitions(
         entity: &str,
-        document: &'a Document,
+        document: &Document,
     ) -> Result<Vec<FulltextDefinition>, anyhow::Error> {
         Ok(document
             .get_fulltext_directives()?
             .into_iter()
             .filter(|directive| match directive.argument("include") {
-                Some(Value::List(includes)) if !includes.is_empty() => includes
-                    .iter()
-                    .find(|include| match include {
+                Some(Value::List(includes)) if !includes.is_empty() => {
+                    includes.iter().any(|include| match include {
                         Value::Object(include) => match include.get("entity") {
                             Some(Value::String(fulltext_entity)) if fulltext_entity == entity => {
                                 true
@@ -1506,7 +1551,7 @@ impl Schema {
                         },
                         _ => false,
                     })
-                    .is_some(),
+                }
                 _ => false,
             })
             .map(FulltextDefinition::from)
@@ -1546,6 +1591,39 @@ fn invalid_interface_implementation() {
         "Entity type `Bar` does not satisfy interface `Foo` because it is missing \
          the following fields: x: Int, y: Int",
     );
+}
+
+#[test]
+fn interface_implementations_id_type() {
+    fn check_schema(bar_id: &str, baz_id: &str, ok: bool) {
+        let schema = format!(
+            "interface Foo {{ x: Int }}
+             type Bar implements Foo @entity {{
+                id: {bar_id}!
+                x: Int
+             }}
+
+             type Baz implements Foo @entity {{
+                id: {baz_id}!
+                x: Int
+            }}"
+        );
+        let schema = Schema::parse(&schema, DeploymentHash::new("dummy").unwrap()).unwrap();
+        let res = schema.validate(&HashMap::new());
+        if ok {
+            assert!(matches!(res, Ok(_)));
+        } else {
+            assert!(matches!(res, Err(_)));
+            assert!(matches!(
+                res.unwrap_err()[0],
+                SchemaValidationError::InterfaceImplementorsMixId(_, _)
+            ));
+        }
+    }
+    check_schema("ID", "ID", true);
+    check_schema("ID", "String", true);
+    check_schema("ID", "Bytes", false);
+    check_schema("Bytes", "String", false);
 }
 
 #[test]

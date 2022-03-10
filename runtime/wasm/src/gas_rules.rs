@@ -4,6 +4,9 @@ use graph::runtime::gas::CONST_MAX_GAS_PER_HANDLER;
 use parity_wasm::elements::Instruction;
 use pwasm_utils::rules::{MemoryGrowCost, Rules};
 
+pub const GAS_COST_STORE: u32 = 2263;
+pub const GAS_COST_LOAD: u32 = 1573;
+
 pub struct GasRules;
 
 impl Rules for GasRules {
@@ -14,8 +17,8 @@ impl Rules for GasRules {
             // from the table under the "Schedule" dropdown. Each decimal is multiplied by 10.
             // Note that those were calculated for wasi, not wasmtime, so they are likely very conservative.
             I64Const(_) => 16,
-            I64Load(_, _) => 1573,
-            I64Store(_, _) => 2263,
+            I64Load(_, _) => GAS_COST_LOAD,
+            I64Store(_, _) => GAS_COST_STORE,
             Select => 61,
             Instruction::If(_) => 79,
             Br(_) => 30,
@@ -78,7 +81,7 @@ impl Rules for GasRules {
             | I64Load16S(_, _)
             | I64Load16U(_, _)
             | I64Load32S(_, _)
-            | I64Load32U(_, _) => 1573,
+            | I64Load32U(_, _) => GAS_COST_LOAD,
 
             I32Store(_, _)
             | F32Store(_, _)
@@ -87,7 +90,7 @@ impl Rules for GasRules {
             | I32Store16(_, _)
             | I64Store8(_, _)
             | I64Store16(_, _)
-            | I64Store32(_, _) => 2263,
+            | I64Store32(_, _) => GAS_COST_STORE,
 
             I32Const(_) | F32Const(_) | F64Const(_) => 16,
             I32Eqz => 26,

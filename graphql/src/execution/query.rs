@@ -29,26 +29,30 @@ lazy_static! {
             vec![]
         } else {
             vec![
-                Box::new(UniqueOperationNames {}),
-                Box::new(LoneAnonymousOperation {}),
-                Box::new(SingleFieldSubscriptions {}),
-                Box::new(KnownTypeNames {}),
-                Box::new(FragmentsOnCompositeTypes {}),
-                Box::new(VariablesAreInputTypes {}),
-                Box::new(LeafFieldSelections {}),
-                Box::new(FieldsOnCorrectType {}),
-                Box::new(UniqueFragmentNames {}),
-                Box::new(KnownFragmentNames {}),
-                Box::new(NoUnusedFragments {}),
-                Box::new(OverlappingFieldsCanBeMerged {}),
-                Box::new(NoFragmentsCycle {}),
-                Box::new(PossibleFragmentSpreads {}),
-                Box::new(NoUnusedVariables {}),
-                Box::new(NoUndefinedVariables {}),
-                Box::new(KnownArgumentNames {}),
-                Box::new(UniqueArgumentNames {}),
-                Box::new(UniqueVariableNames {}),
-                Box::new(ProvidedRequiredArguments {}),
+                Box::new(UniqueOperationNames::new()),
+                Box::new(LoneAnonymousOperation::new()),
+                Box::new(SingleFieldSubscriptions::new()),
+                Box::new(KnownTypeNames::new()),
+                Box::new(FragmentsOnCompositeTypes::new()),
+                Box::new(VariablesAreInputTypes::new()),
+                Box::new(LeafFieldSelections::new()),
+                Box::new(FieldsOnCorrectType::new()),
+                Box::new(UniqueFragmentNames::new()),
+                Box::new(KnownFragmentNames::new()),
+                Box::new(NoUnusedFragments::new()),
+                Box::new(OverlappingFieldsCanBeMerged::new()),
+                Box::new(NoFragmentsCycle::new()),
+                Box::new(PossibleFragmentSpreads::new()),
+                Box::new(NoUnusedVariables::new()),
+                Box::new(NoUndefinedVariables::new()),
+                Box::new(KnownArgumentNames::new()),
+                Box::new(UniqueArgumentNames::new()),
+                Box::new(UniqueVariableNames::new()),
+                Box::new(ProvidedRequiredArguments::new()),
+                Box::new(KnownDirectives::new()),
+                Box::new(VariablesInAllowedPosition::new()),
+                Box::new(ValuesOfCorrectType::new()),
+                Box::new(UniqueDirectivesPerLocation::new()),
             ]
         }
     );
@@ -145,13 +149,10 @@ impl Query {
         max_complexity: Option<u64>,
         max_depth: u8,
     ) -> Result<Arc<Self>, Vec<QueryExecutionError>> {
-        let validation_errors = validate(
-            &schema.document(),
-            &query.document,
-            &GRAPHQL_VALIDATION_PLAN,
-        );
+        let validation_errors =
+            validate(schema.document(), &query.document, &GRAPHQL_VALIDATION_PLAN);
 
-        if validation_errors.len() > 0 {
+        if !validation_errors.is_empty() {
             return Err(validation_errors
                 .into_iter()
                 .map(|e| {
@@ -402,7 +403,7 @@ pub fn coerce_variables(
         // of the variable definition
         coerced_values.insert(
             variable_def.name.to_owned(),
-            coerce_variable(schema, variable_def, value.into())?,
+            coerce_variable(schema, variable_def, value)?,
         );
     }
 
@@ -532,7 +533,7 @@ impl<'s> RawQuery<'s> {
                     q::Selection::FragmentSpread(fragment) => {
                         let def = self.fragments.get(&fragment.fragment_name).unwrap();
                         let q::TypeCondition::On(type_name) = &def.type_condition;
-                        let ty = self.schema.get_named_type(&type_name).ok_or(Invalid)?;
+                        let ty = self.schema.get_named_type(type_name).ok_or(Invalid)?;
 
                         // Copy `visited_fragments` on write.
                         let mut visited_fragments = visited_fragments.clone();
@@ -540,7 +541,7 @@ impl<'s> RawQuery<'s> {
                             return Err(CyclicalFragment(fragment.fragment_name.clone()));
                         }
                         self.complexity_inner(
-                            &ty,
+                            ty,
                             &def.selection_set,
                             max_depth,
                             depth + 1,
@@ -598,7 +599,7 @@ impl<'s> RawQuery<'s> {
 
         let errors =
             self.validate_fields_inner(&"Query".to_owned(), root_type.into(), &self.selection_set);
-        if errors.len() == 0 {
+        if errors.is_empty() {
             Ok(())
         } else {
             Err(errors)
@@ -709,10 +710,7 @@ impl Transform {
     // graphql-bug-compat: Once queries are fully validated, all variables
     // will be defined
     fn variable(&self, name: &str) -> r::Value {
-        self.variables
-            .get(name)
-            .map(|value| value.clone())
-            .unwrap_or(r::Value::Null)
+        self.variables.get(name).cloned().unwrap_or(r::Value::Null)
     }
 
     /// Interpolate variable references in the arguments `args`
@@ -804,18 +802,18 @@ impl Transform {
         {
             let arg_value = arguments
                 .iter_mut()
-                .find(|arg| &arg.0 == &argument_def.name)
+                .find(|arg| arg.0 == argument_def.name)
                 .map(|arg| &mut arg.1);
             if arg_value.is_some() {
                 defined_args += 1;
             }
             match coercion::coerce_input_value(
                 arg_value.as_deref().cloned(),
-                &argument_def,
+                argument_def,
                 &resolver,
             ) {
                 Ok(Some(value)) => {
-                    let value = if argument_def.name == "text".to_string() {
+                    let value = if argument_def.name == *"text" {
                         r::Value::Object(Object::from_iter(vec![(field_name.to_string(), value)]))
                     } else {
                         value

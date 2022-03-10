@@ -74,6 +74,7 @@ table! {
         graft_base -> Nullable<Text>,
         graft_block_hash -> Nullable<Binary>,
         graft_block_number -> Nullable<Numeric>,
+        debug_fork -> Nullable<Text>,
         reorg_count -> Integer,
         current_reorg_depth -> Integer,
         max_reorg_depth -> Integer,
@@ -137,7 +138,7 @@ fn graft(
     // The name of the base subgraph, the hash, and block number
     let graft: (Option<String>, Option<Vec<u8>>, Option<BigDecimal>) = if pending_only {
         graft_query
-            .filter(sd::graft_block_number.ge(sql("coalesce(latest_ethereum_block_number, 0)")))
+            .filter(sd::latest_ethereum_block_number.is_null())
             .first(conn)
             .optional()?
             .unwrap_or((None, None, None))
@@ -179,12 +180,37 @@ pub fn graft_pending(
 
 /// Look up the graft point for the given subgraph in the database and
 /// return it. Returns `None` if the deployment does not have
-/// a graft
+/// a graft.
 pub fn graft_point(
     conn: &PgConnection,
     id: &DeploymentHash,
 ) -> Result<Option<(DeploymentHash, BlockPtr)>, StoreError> {
     graft(conn, id, false)
+}
+
+/// Look up the debug fork for the given subgraph in the database and
+/// return it. Returns `None` if the deployment does not have
+/// a debug fork.
+pub fn debug_fork(
+    conn: &PgConnection,
+    id: &DeploymentHash,
+) -> Result<Option<DeploymentHash>, StoreError> {
+    use subgraph_deployment as sd;
+
+    let debug_fork: Option<String> = sd::table
+        .select(sd::debug_fork)
+        .filter(sd::deployment.eq(id.as_str()))
+        .first(conn)?;
+
+    match debug_fork {
+        Some(fork) => Ok(Some(DeploymentHash::new(fork.clone()).map_err(|_| {
+            StoreError::Unknown(anyhow!(
+                "the debug fork for a subgraph must be a valid subgraph id but is `{}`",
+                fork
+            ))
+        })?)),
+        None => Ok(None),
+    }
 }
 
 pub fn schema(conn: &PgConnection, site: &Site) -> Result<Schema, StoreError> {
@@ -193,7 +219,7 @@ pub fn schema(conn: &PgConnection, site: &Site) -> Result<Schema, StoreError> {
         .select(sm::schema)
         .filter(sm::id.eq(site.id))
         .first(conn)?;
-    Schema::parse(s.as_str(), site.deployment.clone()).map_err(|e| StoreError::Unknown(e))
+    Schema::parse(s.as_str(), site.deployment.clone()).map_err(StoreError::Unknown)
 }
 
 pub fn manifest_info(
@@ -223,6 +249,76 @@ pub fn features(conn: &PgConnection, site: &Site) -> Result<BTreeSet<SubgraphFea
         .iter()
         .map(|f| SubgraphFeature::from_str(f).map_err(StoreError::from))
         .collect()
+}
+
+pub fn transact_block(
+    conn: &PgConnection,
+    site: &Site,
+    ptr: &BlockPtr,
+    firehose_cursor: Option<&str>,
+    full_count_query: &str,
+    count: i32,
+) -> Result<(), StoreError> {
+    use crate::diesel::BoolExpressionMethods;
+    use subgraph_deployment as d;
+
+    // Work around a Diesel issue with serializing BigDecimals to numeric
+    let number = format!("{}::numeric", ptr.number);
+
+    let count_sql = if count == 0 {
+        // This amounts to a noop - the entity count does not change
+        "entity_count".to_string()
+    } else {
+        entity_count_sql(full_count_query, count)
+    };
+
+    // Treat a cursor of "" as null; not absolutely necessary for
+    // correctness since the firehose treats both as the same, but makes it
+    // a little clearer.
+    let firehose_cursor = if firehose_cursor == Some("") {
+        None
+    } else {
+        firehose_cursor
+    };
+
+    let row_count = update(
+        d::table.filter(d::id.eq(site.id)).filter(
+            // Asserts that the processing direction is forward.
+            d::latest_ethereum_block_number
+                .lt(sql(&number))
+                .or(d::latest_ethereum_block_number.is_null()),
+        ),
+    )
+    .set((
+        d::latest_ethereum_block_number.eq(sql(&number)),
+        d::latest_ethereum_block_hash.eq(ptr.hash_slice()),
+        d::firehose_cursor.eq(firehose_cursor),
+        d::entity_count.eq(sql(&count_sql)),
+        d::current_reorg_depth.eq(0),
+    ))
+    .execute(conn)
+    .map_err(StoreError::from)?;
+
+    match row_count {
+        // Common case: A single row was updated.
+        1 => Ok(()),
+
+        // No matching rows were found. This is an error. By the filter conditions, this can only be
+        // due to a missing deployment (which `block_ptr` catches) or duplicate block processing.
+        0 => match block_ptr(&conn, &site.deployment)? {
+            Some(block_ptr_from) if block_ptr_from.number >= ptr.number => Err(
+                StoreError::DuplicateBlockProcessing(site.deployment.clone(), ptr.number),
+            ),
+            None | Some(_) => Err(StoreError::Unknown(anyhow!(
+                "unknown error forwarding block ptr"
+            ))),
+        },
+
+        // More than one matching row was found.
+        _ => Err(StoreError::ConstraintViolation(
+            "duplicate deployments in shard".to_owned(),
+        )),
+    }
 }
 
 pub fn forward_block_ptr(
@@ -258,7 +354,7 @@ pub fn forward_block_ptr(
 
         // No matching rows were found. This is an error. By the filter conditions, this can only be
         // due to a missing deployment (which `block_ptr` catches) or duplicate block processing.
-        0 => match block_ptr(&conn, id)? {
+        0 => match block_ptr(conn, id)? {
             Some(block_ptr_from) if block_ptr_from.number >= ptr.number => {
                 Err(StoreError::DuplicateBlockProcessing(id.clone(), ptr.number))
             }
@@ -274,6 +370,19 @@ pub fn forward_block_ptr(
     }
 }
 
+pub fn delete_subgraph_firehose_cursor(
+    conn: &PgConnection,
+    id: &DeploymentHash,
+) -> Result<(), StoreError> {
+    use subgraph_deployment as d;
+
+    update(d::table.filter(d::deployment.eq(id.as_str())))
+        .set(d::firehose_cursor.eq::<Option<&str>>(None))
+        .execute(conn)
+        .map(|_| ())
+        .map_err(|e| e.into())
+}
+
 pub fn get_subgraph_firehose_cursor(
     conn: &PgConnection,
     deployment_hash: &DeploymentHash,
@@ -284,7 +393,7 @@ pub fn get_subgraph_firehose_cursor(
         .filter(d::deployment.eq(deployment_hash.as_str()))
         .select(d::firehose_cursor)
         .first::<Option<String>>(conn)
-        .map_err(|e| StoreError::from(e));
+        .map_err(StoreError::from);
     res
 }
 
@@ -296,7 +405,7 @@ pub fn update_firehose_cursor(
     use subgraph_deployment as d;
 
     update(d::table.filter(d::deployment.eq(id.as_str())))
-        .set((d::firehose_cursor.eq(cursor),))
+        .set(d::firehose_cursor.eq(cursor))
         .execute(conn)
         .map(|_| ())
         .map_err(|e| e.into())
@@ -790,6 +899,7 @@ pub fn create_deployment(
         latest_block,
         graft_base,
         graft_block,
+        debug_fork,
         reorg_count: _,
         current_reorg_depth: _,
         max_reorg_depth: _,
@@ -811,9 +921,10 @@ pub fn create_deployment(
         d::graft_base.eq(graft_base.as_ref().map(|s| s.as_str())),
         d::graft_block_hash.eq(b(&graft_block)),
         d::graft_block_number.eq(n(&graft_block)),
+        d::debug_fork.eq(debug_fork.as_ref().map(|s| s.as_str())),
     );
 
-    let graph_node_version_id = GraphNodeVersion::create_or_get(&conn)?;
+    let graph_node_version_id = GraphNodeVersion::create_or_get(conn)?;
 
     let manifest_values = (
         m::id.eq(site.id),
@@ -845,18 +956,7 @@ pub fn create_deployment(
     Ok(())
 }
 
-pub fn update_entity_count(
-    conn: &PgConnection,
-    site: &Site,
-    full_count_query: &str,
-    count: i32,
-) -> Result<(), StoreError> {
-    use subgraph_deployment as d;
-
-    if count == 0 {
-        return Ok(());
-    }
-
+fn entity_count_sql(full_count_query: &str, count: i32) -> String {
     // The big complication in this query is how to determine what the
     // new entityCount should be. We want to make sure that if the entityCount
     // is NULL or the special value `-1`, it gets recomputed. Using `-1` here
@@ -871,14 +971,29 @@ pub fn update_entity_count(
     // is `NULL` or `-1`, forcing `coalesce` to evaluate its second
     // argument, the query to count entities. In all other cases,
     // `coalesce` does not evaluate its second argument
-    let count_update = format!(
+    format!(
         "coalesce((nullif(entity_count, -1)) + ({count}),
                   ({full_count_query}))",
         full_count_query = full_count_query,
         count = count
-    );
+    )
+}
+
+pub fn update_entity_count(
+    conn: &PgConnection,
+    site: &Site,
+    full_count_query: &str,
+    count: i32,
+) -> Result<(), StoreError> {
+    use subgraph_deployment as d;
+
+    if count == 0 {
+        return Ok(());
+    }
+
+    let count_sql = entity_count_sql(full_count_query, count);
     update(d::table.filter(d::id.eq(site.id)))
-        .set(d::entity_count.eq(sql(&count_update)))
+        .set(d::entity_count.eq(sql(&count_sql)))
         .execute(conn)?;
     Ok(())
 }

@@ -8,8 +8,10 @@ they have. Some environment variables can be used instead of command line flags.
 Those are not listed here, please consult `graph-node --help` for details on
 those.
 
-## Getting blocks from Ethereum
+## JSON-RPC configuration for EVM chains
 
+- `ETHEREUM_REORG_THRESHOLD`: Maximum expected reorg size, if a larger reorg
+happens, subgraphs might process inconsistent data. Defaults to 250.
 - `ETHEREUM_POLLING_INTERVAL`: how often to poll Ethereum for new blocks (in ms,
   defaults to 500ms)
 - `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`: The ideal amount of triggers
@@ -40,7 +42,8 @@ those.
    Defaults to 1,000.
 - `GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES`: Set to `true` to
   disable fetching receipts from the Ethereum node concurrently during
-  block ingestion. This will use fewer, batched requests.
+  block ingestion. This will use fewer, batched requests. This is always set to `true`
+  on MacOS to avoid DNS issues.
 - `GRAPH_ETHEREUM_CLEANUP_BLOCKS` : Set to `true` to clean up unneeded
   blocks from the cache in the database. When this is `false` or unset (the
   default), blocks will never be removed from the block cache. This setting
@@ -125,7 +128,8 @@ those.
 
 - `GRAPH_NODE_ID`: sets the node ID, allowing to run multiple Graph Nodes
   in parallel and deploy to specific nodes; each ID must be unique among the set
-  of nodes.
+  of nodes. A single node should have the same value between consecutive restarts.
+  Subgraphs get assigned to node IDs and are not reassigned to other nodes automatically.
 - `GRAPH_LOG`: control log levels, the same way that `RUST_LOG` is described
   [here](https://docs.rs/env_logger/0.6.0/env_logger/)
 - `THEGRAPH_STORE_POSTGRES_DIESEL_URL`: postgres instance used when running

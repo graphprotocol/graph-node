@@ -266,6 +266,7 @@ where
         name: SubgraphName,
         hash: DeploymentHash,
         node_id: NodeId,
+        debug_fork: Option<DeploymentHash>,
     ) -> Result<(), SubgraphRegistrarError> {
         // We don't have a location for the subgraph yet; that will be
         // assigned when we deploy for real. For logging purposes, make up a
@@ -303,6 +304,7 @@ where
                     hash.cheap_clone(),
                     raw,
                     node_id,
+                    debug_fork,
                     self.version_switching_mode,
                     self.resolver.cheap_clone(),
                 )
@@ -318,6 +320,7 @@ where
                     hash.cheap_clone(),
                     raw,
                     node_id,
+                    debug_fork,
                     self.version_switching_mode,
                     self.resolver.cheap_clone(),
                 )
@@ -508,6 +511,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolve
     deployment: DeploymentHash,
     raw: serde_yaml::Mapping,
     node_id: NodeId,
+    debug_fork: Option<DeploymentHash>,
     version_switching_mode: SubgraphVersionSwitchingMode,
     resolver: Arc<L>,
 ) -> Result<(), SubgraphRegistrarError> {
@@ -563,7 +567,9 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolve
 
     // Apply the subgraph versioning and deployment operations,
     // creating a new subgraph deployment if one doesn't exist.
-    let deployment = SubgraphDeploymentEntity::new(&manifest, false, start_block).graft(base_block);
+    let deployment = SubgraphDeploymentEntity::new(&manifest, false, start_block)
+        .graft(base_block)
+        .debug(debug_fork);
     deployment_store
         .create_subgraph_deployment(
             name,

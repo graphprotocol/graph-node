@@ -4,6 +4,7 @@ use std::{collections::HashMap, sync::Arc};
 use futures::future::join_all;
 use graph::blockchain::ChainIdentifier;
 use graph::prelude::{o, MetricsRegistry, NodeId};
+use graph::url::Url;
 use graph::{
     prelude::{info, CheapClone, Logger},
     util::security::SafeDisplay,
@@ -35,6 +36,7 @@ impl StoreBuilder {
         logger: &Logger,
         node: &NodeId,
         config: &Config,
+        fork_base: Option<Url>,
         registry: Arc<impl MetricsRegistry>,
     ) -> Self {
         let primary_shard = config.primary_store().clone();
@@ -45,8 +47,13 @@ impl StoreBuilder {
             registry.clone(),
         ));
 
-        let (store, pools) =
-            Self::make_subgraph_store_and_pools(logger, node, config, registry.cheap_clone());
+        let (store, pools) = Self::make_subgraph_store_and_pools(
+            logger,
+            node,
+            config,
+            fork_base,
+            registry.cheap_clone(),
+        );
 
         // Try to perform setup (migrations etc.) for all the pools. If this
         // attempt doesn't work for all of them because the database is
@@ -83,6 +90,7 @@ impl StoreBuilder {
         logger: &Logger,
         node: &NodeId,
         config: &Config,
+        fork_base: Option<Url>,
         registry: Arc<impl MetricsRegistry>,
     ) -> (Arc<SubgraphStore>, HashMap<ShardName, ConnectionPool>) {
         let notification_sender = Arc::new(NotificationSender::new(registry.cheap_clone()));
@@ -135,6 +143,7 @@ impl StoreBuilder {
             shards,
             Arc::new(config.deployment.clone()),
             notification_sender,
+            fork_base,
         ));
 
         (store, pools)
@@ -185,11 +194,11 @@ impl StoreBuilder {
     ) -> ConnectionPool {
         let logger = logger.new(o!("pool" => "main"));
         let pool_size = shard.pool_size.size_for(node, name).expect(&format!(
-            "we can determine the pool size for store {}",
+            "cannot determine the pool size for store {}",
             name
         ));
         let fdw_pool_size = shard.fdw_pool_size.size_for(node, name).expect(&format!(
-            "we can determine the fdw pool size for store {}",
+            "cannot determine the fdw pool size for store {}",
             name
         ));
         info!(

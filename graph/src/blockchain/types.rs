@@ -118,6 +118,17 @@ impl fmt::Debug for BlockPtr {
     }
 }
 
+impl slog::Value for BlockPtr {
+    fn serialize(
+        &self,
+        record: &slog::Record,
+        key: slog::Key,
+        serializer: &mut dyn slog::Serializer,
+    ) -> slog::Result {
+        slog::Value::serialize(&self.to_string(), record, key, serializer)
+    }
+}
+
 impl<T> From<Block<T>> for BlockPtr {
     fn from(b: Block<T>) -> BlockPtr {
         BlockPtr::from((b.hash.unwrap(), b.number.unwrap().as_u64()))

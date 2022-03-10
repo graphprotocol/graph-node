@@ -8,6 +8,7 @@ use graph::firehose::{FirehoseEndpoints, FirehoseNetworks};
 use graph::log::logger;
 use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
 use graph::prometheus::Registry;
+use graph::url::Url;
 use graph_chain_ethereum as ethereum;
 use graph_chain_near::{self as near, HeaderOnlyBlock as NearFirehoseHeaderOnlyBlock};
 use graph_chain_tendermint::{self as tendermint, EventList as TendermintFirehoseEventList};
@@ -18,7 +19,7 @@ use graph_core::{
 use graph_graphql::prelude::GraphQlRunner;
 use graph_node::chain::{
     connect_ethereum_networks, connect_firehose_networks, create_ethereum_networks,
-    create_firehose_networks, create_ipfs_clients, ANCESTOR_COUNT, REORG_THRESHOLD,
+    create_firehose_networks, create_ipfs_clients, REORG_THRESHOLD,
 };
 use graph_node::config::Config;
 use graph_node::opt;
@@ -130,6 +131,29 @@ async fn main() {
     // Obtain metrics server port
     let metrics_port = opt.metrics_port;
 
+    // Obtain the fork base URL
+    let fork_base = match &opt.fork_base {
+        Some(url) => {
+            // Make sure the endpoint ends with a terminating slash.
+            let url = if !url.ends_with("/") {
+                let mut url = url.clone();
+                url.push('/');
+                Url::parse(&url)
+            } else {
+                Url::parse(url)
+            };
+
+            Some(url.expect("Failed to parse the fork base URL"))
+        }
+        None => {
+            warn!(
+                logger,
+                "No fork base URL specified, subgraph forking is disabled"
+            );
+            None
+        }
+    };
+
     info!(logger, "Starting up");
 
     // Optionally, identify the Elasticsearch logging configuration
@@ -185,8 +209,14 @@ async fn main() {
 
     let expensive_queries = read_expensive_queries().unwrap();
 
-    let store_builder =
-        StoreBuilder::new(&logger, &node_id, &config, metrics_registry.cheap_clone()).await;
+    let store_builder = StoreBuilder::new(
+        &logger,
+        &node_id,
+        &config,
+        fork_base,
+        metrics_registry.cheap_clone(),
+    )
+    .await;
 
     let launch_services = |logger: Logger| async move {
         let subscription_manager = store_builder.subscription_manager();
@@ -283,7 +313,6 @@ async fn main() {
             graphql_runner.clone(),
             network_store.clone(),
             link_resolver.clone(),
-            network_store.subgraph_store().clone(),
         );
 
         if !opt.disable_block_ingestor {
@@ -319,6 +348,7 @@ async fn main() {
             );
             graph::spawn_blocking(job_runner.start());
         }
+        let static_filters = env::var_os("EXPERIMENTAL_STATIC_FILTERS").is_some();
 
         let subgraph_instance_manager = SubgraphInstanceManager::new(
             &logger_factory,
@@ -326,6 +356,7 @@ async fn main() {
             blockchain_map.cheap_clone(),
             metrics_registry.clone(),
             link_resolver.cheap_clone(),
+            static_filters,
         );
 
         // Create IPFS-based subgraph provider
@@ -393,7 +424,8 @@ async fn main() {
                 async move {
                     subgraph_registrar.create_subgraph(name.clone()).await?;
                     subgraph_registrar
-                        .create_subgraph_version(name, subgraph_id, node_id)
+                        // TODO: Add support for `debug_fork` parameter
+                        .create_subgraph_version(name, subgraph_id, node_id, None)
                         .await
                 }
                 .map_err(|e| panic!("Failed to deploy subgraph from `--subgraph` flag: {}", e)),
@@ -627,12 +659,6 @@ fn start_block_ingestor(
     block_polling_interval: Duration,
     chains: HashMap<String, Arc<ethereum::Chain>>,
 ) {
-    // BlockIngestor must be configured to keep at least REORG_THRESHOLD ancestors,
-    // otherwise BlockStream will not work properly.
-    // BlockStream expects the blocks after the reorg threshold to be present in the
-    // database.
-    assert!(*ANCESTOR_COUNT >= *REORG_THRESHOLD);
-
     info!(
         logger,
         "Starting block ingestors with {} chains [{}]",
@@ -672,9 +698,12 @@ fn start_block_ingestor(
                     )
                     .new(o!("provider" => eth_adapter.provider().to_string()));
 
+            // The block ingestor must be configured to keep at least REORG_THRESHOLD ancestors,
+            // because the json-rpc BlockStream expects blocks after the reorg threshold to be
+            // present in the DB.
             let block_ingestor = EthereumBlockIngestor::new(
                 logger,
-                *ANCESTOR_COUNT,
+                *REORG_THRESHOLD,
                 eth_adapter,
                 chain.chain_store(),
                 block_polling_interval,

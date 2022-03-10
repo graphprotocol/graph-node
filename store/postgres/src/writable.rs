@@ -11,7 +11,7 @@ use graph::{
     prelude::StoreEvent,
     prelude::{
         lazy_static, BlockPtr, DeploymentHash, EntityKey, EntityModification, Error, Logger,
-        StopwatchMetrics, StoreError,
+        StopwatchMetrics, StoreError, UnfailOutcome,
     },
     slog::{error, warn},
     util::backoff::ExponentialBackoff,
@@ -147,6 +147,10 @@ impl WritableStore {
         self.writable.block_cursor(self.site.as_ref())
     }
 
+    fn delete_block_cursor(&self) -> Result<(), StoreError> {
+        self.writable.delete_block_cursor(self.site.as_ref())
+    }
+
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
         self.retry("start_subgraph_deployment", || {
             let store = &self.writable;
@@ -172,8 +176,9 @@ impl WritableStore {
             let event = self.writable.revert_block_operations(
                 self.site.clone(),
                 block_ptr_to.clone(),
-                firehose_cursor.clone(),
+                firehose_cursor,
             )?;
+
             self.try_send_store_event(event)
         })
     }
@@ -182,14 +187,17 @@ impl WritableStore {
         &self,
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
-    ) -> Result<(), StoreError> {
+    ) -> Result<UnfailOutcome, StoreError> {
         self.retry("unfail_deterministic_error", || {
             self.writable
                 .unfail_deterministic_error(self.site.clone(), current_ptr, parent_ptr)
         })
     }
 
-    fn unfail_non_deterministic_error(&self, current_ptr: &BlockPtr) -> Result<(), StoreError> {
+    fn unfail_non_deterministic_error(
+        &self,
+        current_ptr: &BlockPtr,
+    ) -> Result<UnfailOutcome, StoreError> {
         self.retry("unfail_non_deterministic_error", || {
             self.writable
                 .unfail_non_deterministic_error(self.site.clone(), current_ptr)
@@ -364,9 +372,20 @@ impl WritableStoreTrait for WritableAgent {
         self.block_cursor.lock().unwrap().clone()
     }
 
+    fn delete_block_cursor(&self) -> Result<(), StoreError> {
+        self.store.delete_block_cursor()?;
+        *self.block_cursor.lock().unwrap() = None;
+        Ok(())
+    }
+
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
         // TODO: Spin up a background writer thread and establish a channel
-        self.store.start_subgraph_deployment(logger)
+        self.store.start_subgraph_deployment(logger)?;
+
+        // Refresh all in memory state in case this instance was used before
+        *self.block_ptr.lock().unwrap() = self.store.block_ptr()?;
+        *self.block_cursor.lock().unwrap() = self.store.block_cursor()?;
+        Ok(())
     }
 
     fn revert_block_operations(
@@ -385,12 +404,25 @@ impl WritableStoreTrait for WritableAgent {
         &self,
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
-    ) -> Result<(), StoreError> {
-        self.store
-            .unfail_deterministic_error(current_ptr, parent_ptr)
+    ) -> Result<UnfailOutcome, StoreError> {
+        let outcome = self
+            .store
+            .unfail_deterministic_error(current_ptr, parent_ptr)?;
+
+        if let UnfailOutcome::Unfailed = outcome {
+            *self.block_ptr.lock().unwrap() = Some(parent_ptr.clone());
+        }
+
+        Ok(outcome)
     }
 
-    fn unfail_non_deterministic_error(&self, current_ptr: &BlockPtr) -> Result<(), StoreError> {
+    fn unfail_non_deterministic_error(
+        &self,
+        current_ptr: &BlockPtr,
+    ) -> Result<UnfailOutcome, StoreError> {
+        // We don't have to update in memory self.block_ptr
+        // because the method call below doesn't rewind/revert
+        // any block.
         self.store.unfail_non_deterministic_error(current_ptr)
     }
 
