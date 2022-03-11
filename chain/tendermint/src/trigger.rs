@@ -33,9 +33,15 @@ impl std::fmt::Debug for TendermintTrigger {
 }
 
 impl MappingTrigger for TendermintTrigger {
-    fn to_asc_ptr<H: AscHeap>(self, heap: &mut H, gas: &GasCounter) -> Result<AscPtr<()>, DeterministicHostError> {
+    fn to_asc_ptr<H: AscHeap>(
+        self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscPtr<()>, DeterministicHostError> {
         Ok(match self {
-            TendermintTrigger::Block(event_list) => asc_new(heap, event_list.as_ref(), gas)?.erase(),
+            TendermintTrigger::Block(event_list) => {
+                asc_new(heap, event_list.as_ref(), gas)?.erase()
+            }
             TendermintTrigger::Event { event_data, .. } => {
                 asc_new(heap, event_data.as_ref(), gas)?.erase()
             }

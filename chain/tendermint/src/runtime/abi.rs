@@ -3,7 +3,8 @@ mod pbcodec;
 
 use anyhow::anyhow;
 use graph::runtime::{
-    asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, DeterministicHostError, ToAscObj,
+    asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, DeterministicHostError,
+    ToAscObj,
 };
 use graph_runtime_wasm::asc_abi::class::{Array, Uint8Array};
 
@@ -191,7 +192,8 @@ impl ToAscObj<AscBytesArray> for Vec<Vec<u8>> {
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscBytesArray, DeterministicHostError> {
-        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, &Bytes(x), gas)).collect();
+        let content: Result<Vec<_>, _> =
+            self.iter().map(|x| asc_new(heap, &Bytes(x), gas)).collect();
 
         Ok(AscBytesArray(Array::new(&content?, heap, gas)?))
     }

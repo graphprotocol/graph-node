@@ -14,9 +14,7 @@ use graph::{
     },
     components::store::DeploymentLocator,
     firehose::{self, FirehoseEndpoint, FirehoseEndpoints, ForkStep},
-    prelude::{
-        async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory,
-    },
+    prelude::{async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory},
 };
 use prost::Message;
 
@@ -103,11 +101,7 @@ impl Blockchain for Chain {
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let adapter = self
-            .triggers_adapter(
-                &deployment,
-                &NodeCapabilities {},
-                unified_api_version,
-            )
+            .triggers_adapter(&deployment, &NodeCapabilities {}, unified_api_version)
             .unwrap_or_else(|_| panic!("no adapter for network {}", self.name));
 
         let firehose_endpoint = match self.firehose_endpoints.random() {
