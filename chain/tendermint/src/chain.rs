@@ -3,7 +3,7 @@ use std::sync::Arc;
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::{
-    anyhow,
+    anyhow::anyhow,
     blockchain::{
         block_stream::{
             BlockStream, BlockStreamEvent, BlockWithTriggers, FirehoseError,
@@ -106,7 +106,7 @@ impl Blockchain for Chain {
 
         let firehose_endpoint = match self.firehose_endpoints.random() {
             Some(e) => e.clone(),
-            None => return Err(anyhow::format_err!("no firehose endpoint available",)),
+            None => return Err(anyhow!("no firehose endpoint available",)),
         };
 
         let logger = self
@@ -152,7 +152,7 @@ impl Blockchain for Chain {
     ) -> Result<BlockPtr, IngestorError> {
         let firehose_endpoint = match self.firehose_endpoints.random() {
             Some(e) => e.clone(),
-            None => return Err(anyhow::format_err!("no firehose endpoint available").into()),
+            None => return Err(anyhow!("no firehose endpoint available").into()),
         };
 
         firehose_endpoint
