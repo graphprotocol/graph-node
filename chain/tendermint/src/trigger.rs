@@ -3,7 +3,7 @@ use std::{cmp::Ordering, sync::Arc};
 use graph::blockchain::{Block, BlockHash, MappingTrigger, TriggerData};
 use graph::cheap_clone::CheapClone;
 use graph::prelude::BlockNumber;
-use graph::runtime::{asc_new, AscHeap, AscPtr, DeterministicHostError};
+use graph::runtime::{asc_new, gas::GasCounter, AscHeap, AscPtr, DeterministicHostError};
 
 use crate::codec;
 use crate::data_source::EventOrigin;
@@ -33,11 +33,11 @@ impl std::fmt::Debug for TendermintTrigger {
 }
 
 impl MappingTrigger for TendermintTrigger {
-    fn to_asc_ptr<H: AscHeap>(self, heap: &mut H) -> Result<AscPtr<()>, DeterministicHostError> {
+    fn to_asc_ptr<H: AscHeap>(self, heap: &mut H, gas: &GasCounter) -> Result<AscPtr<()>, DeterministicHostError> {
         Ok(match self {
-            TendermintTrigger::Block(event_list) => asc_new(heap, event_list.as_ref())?.erase(),
+            TendermintTrigger::Block(event_list) => asc_new(heap, event_list.as_ref(), gas)?.erase(),
             TendermintTrigger::Event { event_data, .. } => {
-                asc_new(heap, event_data.as_ref())?.erase()
+                asc_new(heap, event_data.as_ref(), gas)?.erase()
             }
         })
     }

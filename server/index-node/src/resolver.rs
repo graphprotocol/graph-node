@@ -289,7 +289,7 @@ where
                         .await?;
 
                     validate_and_extract_features(
-                        &self.subgraph_store,
+                        &self.store.subgraph_store(),
                         unvalidated_subgraph_manifest,
                     )?
                 }

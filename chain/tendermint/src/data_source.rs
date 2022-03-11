@@ -48,7 +48,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     fn match_and_decode(
         &self,
         trigger: &<Chain as Blockchain>::TriggerData,
-        block: Arc<<Chain as Blockchain>::Block>,
+        block: &Arc<<Chain as Blockchain>::Block>,
         _logger: &Logger,
     ) -> Result<Option<TriggerWithHandler<Chain>>> {
         if self.source.start_block > block.number() {

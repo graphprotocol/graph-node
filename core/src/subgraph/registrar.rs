@@ -336,6 +336,7 @@ where
                     hash.cheap_clone(),
                     raw,
                     node_id,
+                    debug_fork,
                     self.version_switching_mode,
                     self.resolver.cheap_clone(),
                 )

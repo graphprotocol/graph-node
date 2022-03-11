@@ -1450,7 +1450,7 @@ dependencies = [
  "pretty_assertions 0.7.2",
  "prost",
  "prost-types",
- "semver 1.0.4",
+ "semver",
  "serde",
  "test-store",
  "tonic-build",

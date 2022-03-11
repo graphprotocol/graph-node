@@ -1,22 +1,21 @@
 use std::sync::Arc;
 
 use graph::cheap_clone::CheapClone;
-use graph::components::store::WritableStore;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::{
     anyhow,
     blockchain::{
         block_stream::{
-            BlockStream, BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers, FirehoseError,
+            BlockStream, BlockStreamEvent, BlockWithTriggers, FirehoseError,
             FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
         },
         firehose_block_stream::FirehoseBlockStream,
         BlockHash, BlockPtr, Blockchain, BlockchainKind, IngestorError,
     },
     components::store::DeploymentLocator,
-    firehose::{self, FirehoseEndpoints, ForkStep},
+    firehose::{self, FirehoseEndpoint, FirehoseEndpoints, ForkStep},
     prelude::{
-        async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory, StopwatchMetrics,
+        async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory,
     },
 };
 use prost::Message;
@@ -89,7 +88,6 @@ impl Blockchain for Chain {
         _loc: &DeploymentLocator,
         _capabilities: &Self::NodeCapabilities,
         _unified_api_version: UnifiedMappingApiVersion,
-        _stopwatch_metrics: StopwatchMetrics,
     ) -> Result<Arc<Self::TriggersAdapter>, Error> {
         let adapter = TriggersAdapter {};
         Ok(Arc::new(adapter))
@@ -98,10 +96,10 @@ impl Blockchain for Chain {
     async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
-        store: Arc<dyn WritableStore>,
+        block_cursor: Option<String>,
         start_blocks: Vec<BlockNumber>,
-        filter: Arc<TriggerFilter>,
-        metrics: Arc<BlockStreamMetrics>,
+        subgraph_current_block: Option<BlockPtr>,
+        filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let adapter = self
@@ -109,7 +107,6 @@ impl Blockchain for Chain {
                 &deployment,
                 &NodeCapabilities {},
                 unified_api_version,
-                metrics.stopwatch.clone(),
             )
             .unwrap_or_else(|_| panic!("no adapter for network {}", self.name));
 
@@ -123,12 +120,14 @@ impl Blockchain for Chain {
             .subgraph_logger(&deployment)
             .new(o!("component" => "FirehoseBlockStream"));
 
-        let firehose_mapper = Arc::new(FirehoseMapper {});
-        let firehose_cursor = store.block_cursor();
+        let firehose_mapper = Arc::new(FirehoseMapper {
+            endpoint: firehose_endpoint.cheap_clone(),
+        });
 
         Ok(Box::new(FirehoseBlockStream::new(
             firehose_endpoint,
-            firehose_cursor,
+            subgraph_current_block,
+            block_cursor,
             firehose_mapper,
             adapter,
             filter,
@@ -143,7 +142,6 @@ impl Blockchain for Chain {
         _start_blocks: Vec<BlockNumber>,
         _subgraph_start_block: Option<BlockPtr>,
         _filter: Arc<Self::TriggerFilter>,
-        _metrics: Arc<BlockStreamMetrics>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         panic!("Tendermint does not support polling block stream")
@@ -155,14 +153,18 @@ impl Blockchain for Chain {
 
     async fn block_pointer_from_number(
         &self,
-        _logger: &Logger,
-        _number: BlockNumber,
+        logger: &Logger,
+        number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
-        // FIXME (Tendermint): Hmmm, what to do with this?
-        Ok(BlockPtr {
-            hash: BlockHash::from(vec![0xff; 32]),
-            number: 0,
-        })
+        let firehose_endpoint = match self.firehose_endpoints.random() {
+            Some(e) => e.clone(),
+            None => return Err(anyhow::format_err!("no firehose endpoint available").into()),
+        };
+
+        firehose_endpoint
+            .block_ptr_for_number::<codec::EventList>(logger, number)
+            .await
+            .map_err(Into::into)
     }
 
     fn runtime_adapter(&self) -> Arc<Self::RuntimeAdapter> {
@@ -239,7 +241,9 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     }
 }
 
-pub struct FirehoseMapper {}
+pub struct FirehoseMapper {
+    endpoint: Arc<FirehoseEndpoint>,
+}
 
 #[async_trait]
 impl FirehoseMapperTrait<Chain> for FirehoseMapper {
@@ -283,7 +287,6 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                     .expect("Genesis block should never be reverted");
 
                 Ok(BlockStreamEvent::Revert(
-                    sp.into(),
                     parent_ptr,
                     Some(response.cursor.clone()),
                 ))
@@ -297,5 +300,23 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 panic!("unknown step should not happen in the Firehose response")
             }
         }
+    }
+
+    async fn block_ptr_for_number(
+        &self,
+        logger: &Logger,
+        number: BlockNumber,
+    ) -> Result<BlockPtr, Error> {
+        self.endpoint
+            .block_ptr_for_number::<codec::EventList>(logger, number)
+            .await
+    }
+
+    async fn final_block_ptr_for(
+        &self,
+        _logger: &Logger,
+        _block: &codec::EventList,
+    ) -> Result<BlockPtr, Error> {
+        unimplemented!()
     }
 }
