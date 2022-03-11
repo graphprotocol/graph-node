@@ -5,8 +5,8 @@
 use crate::primary::Site;
 use crate::{
     deployment::{
-        get_fatal_error_id, graph_node_versions, subgraph_deployment, subgraph_error,
-        subgraph_manifest, SubgraphHealth as HealthType,
+        graph_node_versions, subgraph_deployment, subgraph_error, subgraph_manifest,
+        SubgraphHealth as HealthType,
     },
     primary::DeploymentId,
 };
@@ -85,26 +85,24 @@ pub(crate) struct ErrorDetail {
     pub block_range: (Bound<i32>, Bound<i32>),
 }
 
-fn error(conn: &PgConnection, error_id: &str) -> Result<Option<ErrorDetail>, StoreError> {
-    use subgraph_error as e;
-    e::table
-        .filter(e::id.eq(error_id))
-        .get_result(conn)
-        .optional()
-        .map_err(StoreError::from)
-}
+impl ErrorDetail {
+    /// Fetches the fatal error, if present, associated with the given
+    /// [`DeploymentHash`].
+    pub fn fatal(
+        conn: &PgConnection,
+        deployment_id: &DeploymentHash,
+    ) -> Result<Option<Self>, StoreError> {
+        use subgraph_deployment as d;
+        use subgraph_error as e;
 
-pub(crate) fn fatal_error(
-    conn: &PgConnection,
-    deployment_id: &DeploymentHash,
-) -> Result<Option<ErrorDetail>, StoreError> {
-    let fatal_error_id = match get_fatal_error_id(conn, deployment_id)? {
-        Some(fatal_error_id) => fatal_error_id,
-        // No fatal error found.
-        None => return Ok(None),
-    };
-
-    error(conn, &fatal_error_id)
+        d::table
+            .filter(d::deployment.eq(deployment_id.as_str()))
+            .inner_join(e::table.on(e::id.nullable().eq(d::fatal_error)))
+            .select(e::all_columns)
+            .get_result(conn)
+            .optional()
+            .map_err(StoreError::from)
+    }
 }
 
 struct DetailAndError<'a>(DeploymentDetail, Option<ErrorDetail>, &'a [Arc<Site>]);
