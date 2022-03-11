@@ -653,18 +653,6 @@ pub(crate) fn has_non_fatal_errors(
     .map_err(|e| e.into())
 }
 
-pub fn get_fatal_error_id(
-    conn: &PgConnection,
-    deployment_id: &DeploymentHash,
-) -> Result<Option<String>, StoreError> {
-    use subgraph_deployment as d;
-    d::table
-        .filter(d::deployment.eq(deployment_id.as_str()))
-        .select(d::fatal_error)
-        .get_result(conn)
-        .map_err(StoreError::from)
-}
-
 pub fn update_deployment_status(
     conn: &PgConnection,
     deployment_id: &DeploymentHash,
