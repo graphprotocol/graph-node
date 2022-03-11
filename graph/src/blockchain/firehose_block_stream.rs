@@ -101,11 +101,32 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
     // block of the longuest chain creating inconsistencies in the data (because it would
     // not revert the forked the block).
     //
-    // We should perform that only if subgraph actually started from a subgraph block ptr
-    // and no Firehose cursor was present. If a Firehose cursor is present, it's used to
-    // resume and as such, there is no need to perform this check (at the same time, it's
-    // not a bad check to make).
-    let mut check_subgraph_continuity = latest_cursor == "" && subgraph_current_block.is_some();
+    // If a Firehose cursor is present, it's used to resume the stream and as such, there is no need to
+    // perform the chain continuity check.
+    //
+    // If there was no cursor, now we need to check if the subgraph current block is set to something.
+    // When the graph node deploys a new subgraph, it always create a subgraph ptr for this subgraph, the
+    // initial subgraph block pointer points to the parent block of the manifest's start block, which is usually
+    // equivalent (but not always) to manifest's start block number - 1.
+    //
+    // Hence, we only need to check the chain continuiy if the subgraph block ptr is higher or equal to the
+    // subgraph actual block pointer, indeed, only in this case (and there is no firehose cursor) it means the
+    // subgraph was started and advanced with something else than Firehose and as such, chain continuity check
+    // needs to be performed.
+    let mut check_subgraph_continuity = false;
+    if latest_cursor == "" {
+        if let Some(ref subgraph_current_block) = subgraph_current_block {
+            debug!(&logger, "Checking if subgraph current block is after manifest start block";
+                "subgraph_current_block_number" => subgraph_current_block.number,
+                "manifest_start_block_number" => manifest_start_block_num,
+            );
+
+            if subgraph_current_block.number >= manifest_start_block_num {
+                debug!(&logger, "Going to check continuity of chain on first block");
+                check_subgraph_continuity = true
+            }
+        }
+    }
 
     try_stream! {
         loop {
