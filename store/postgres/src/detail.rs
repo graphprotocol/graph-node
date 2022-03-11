@@ -1,36 +1,29 @@
+//! Queries to support the index node API
+//!
 // For git_testament_macros
 #![allow(unused_macros)]
-
-//! Queries to support the index node API
-use crate::primary::Site;
-use crate::{
-    deployment::{
-        graph_node_versions, subgraph_deployment, subgraph_error, subgraph_manifest,
-        SubgraphHealth as HealthType,
-    },
-    primary::DeploymentId,
-};
 use diesel::dsl;
-use diesel::pg::PgConnection;
 use diesel::prelude::{
-    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl,
-    RunQueryDsl,
+    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods,
+    OptionalExtension, PgConnection, QueryDsl, RunQueryDsl,
 };
-use diesel::OptionalExtension;
 use diesel_derives::Associations;
 use git_testament::{git_testament, git_testament_macros};
-use graph::{
-    constraint_violation,
-    data::subgraph::schema::{SubgraphError, SubgraphManifestEntity},
-    prelude::{
-        bigdecimal::ToPrimitive, BigDecimal, BlockPtr, DeploymentHash, StoreError,
-        SubgraphDeploymentEntity,
-    },
+use graph::data::subgraph::schema::{SubgraphError, SubgraphManifestEntity};
+use graph::prelude::{
+    bigdecimal::ToPrimitive, BigDecimal, BlockPtr, DeploymentHash, StoreError,
+    SubgraphDeploymentEntity,
 };
-use graph::{data::subgraph::status, prelude::web3::types::H256};
+use graph::{constraint_violation, data::subgraph::status, prelude::web3::types::H256};
 use itertools::Itertools;
 use std::convert::TryFrom;
 use std::{ops::Bound, sync::Arc};
+
+use crate::deployment::{
+    graph_node_versions, subgraph_deployment, subgraph_error, subgraph_manifest,
+    SubgraphHealth as HealthType,
+};
+use crate::primary::{DeploymentId, Site};
 
 git_testament_macros!(version);
 git_testament!(TESTAMENT);
