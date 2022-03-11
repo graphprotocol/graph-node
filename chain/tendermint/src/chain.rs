@@ -10,7 +10,7 @@ use graph::{
             FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
         },
         firehose_block_stream::FirehoseBlockStream,
-        BlockHash, BlockPtr, Blockchain, BlockchainKind, IngestorError,
+        Block as _, BlockHash, BlockPtr, Blockchain, BlockchainKind, IngestorError,
     },
     components::store::DeploymentLocator,
     firehose::{self, FirehoseEndpoint, FirehoseEndpoints, ForkStep},
@@ -308,9 +308,12 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 
     async fn final_block_ptr_for(
         &self,
-        _logger: &Logger,
-        _block: &codec::EventList,
+        logger: &Logger,
+        block: &codec::EventList,
     ) -> Result<BlockPtr, Error> {
-        unimplemented!()
+        // Tendermint provides instant block finality.
+        self.endpoint
+            .block_ptr_for_number::<codec::EventList>(logger, block.number())
+            .await
     }
 }
