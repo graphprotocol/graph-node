@@ -9,7 +9,6 @@ use graph::blockchain::block_stream::{
     BlockStream, BlockStreamEvent, BlockWithTriggers, BufferedBlockStream,
 };
 use graph::blockchain::{Block, Blockchain, DataSource, TriggerFilter as _, TriggersAdapter};
-use graph::components::store::WritableStore;
 use graph::components::{
     store::{ModificationsAndCache, SubgraphFork},
     subgraph::{CausalityRegion, MappingError, ProofOfIndexing, SharedProofOfIndexing},
@@ -26,7 +25,6 @@ use std::convert::TryFrom;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-const SECOND: Duration = Duration::from_secs(1);
 const MINUTE: Duration = Duration::from_secs(60);
 const SKIP_PTR_UPDATES_THRESHOLD: Duration = Duration::from_secs(60 * 5);
 
@@ -141,13 +139,6 @@ where
         // Exponential backoff that starts with two minutes and keeps
         // increasing its timeout exponentially until it reaches the ceiling.
         let mut backoff = ExponentialBackoff::new(MINUTE * 2, *SUBGRAPH_ERROR_RETRY_CEIL_SECS);
-
-        // This ensures that any existing Firehose cursor is deleted prior starting using a
-        // non-Firehose block stream so that if we ever resume again the Firehose block stream,
-        // we will not start from a stalled cursor.
-        if !self.inputs.chain.is_firehose_supported() {
-            delete_subgraph_firehose_cursor(&logger, self.inputs.store.as_ref()).await;
-        }
 
         loop {
             debug!(logger, "Starting or restarting subgraph");
@@ -893,24 +884,6 @@ async fn update_proof_of_indexing(
     }
 
     Ok(())
-}
-
-async fn delete_subgraph_firehose_cursor(logger: &Logger, store: &dyn WritableStore) {
-    debug!(logger, "Deleting any existing Firehose cursor");
-    let mut backoff = ExponentialBackoff::new(30 * SECOND, *SUBGRAPH_ERROR_RETRY_CEIL_SECS);
-
-    loop {
-        match store.delete_block_cursor() {
-            Ok(_) => return,
-            Err(_) => {
-                error!(
-                    logger,
-                    "Unable to delete firehose cursor, waiting and retrying again"
-                );
-                backoff.sleep_async().await;
-            }
-        }
-    }
 }
 
 /// Checks if the Deployment BlockPtr is at least one block behind to the chain head.
