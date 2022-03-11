@@ -24,6 +24,10 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
     ) {
         todo!()
     }
+
+    fn to_firehose_filter(self) -> Vec<prost_types::Any> {
+        todo!()
+    }
 }
 
 #[derive(Clone, Debug, Default)]

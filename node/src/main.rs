@@ -320,6 +320,7 @@ async fn main() {
             graph::spawn_blocking(job_runner.start());
         }
         let static_filters = env::var_os("EXPERIMENTAL_STATIC_FILTERS").is_some();
+        let firehose_filters = env::var_os("DISABLE_FIREHOSE_FILTERS").is_none();
 
         let subgraph_instance_manager = SubgraphInstanceManager::new(
             &logger_factory,
@@ -328,6 +329,7 @@ async fn main() {
             metrics_registry.clone(),
             link_resolver.cheap_clone(),
             static_filters,
+            firehose_filters,
         );
 
         // Create IPFS-based subgraph provider

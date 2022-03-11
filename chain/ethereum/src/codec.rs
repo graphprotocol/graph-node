@@ -286,6 +286,8 @@ impl Into<EthereumBlockWithCalls> for &Block {
                     })
                     .collect(),
             },
+            // Comment (437a9f17-67cc-478f-80a3-804fe554b227): This Some() will avoid calls in the triggers_in_block
+            // TODO: Refactor in a way that this is no longer needed.
             calls: Some(
                 self.transaction_traces
                     .iter()
