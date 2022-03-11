@@ -140,15 +140,38 @@ impl FirehoseEndpoint {
 
         debug!(logger, "Retrieving block(s) from firehose");
 
-        let mut block_in_longuest_chain: Option<BlockPtr> = None;
+        let mut latest_received_block: Option<BlockPtr> = None;
         while let Some(message) = block_stream.next().await {
             match message {
-                Ok(v) => block_in_longuest_chain = Some(decode_firehose_block::<M>(&v)?.ptr()),
+                Ok(v) => {
+                    let block = decode_firehose_block::<M>(&v)?.ptr();
+
+                    match latest_received_block {
+                        None => {
+                            latest_received_block = Some(block);
+                        }
+                        Some(ref actual_ptr) => {
+                            // We want to receive all events related to a specific block number,
+                            // however, in some circumstances, it seems Firehose would not stop sending
+                            // blocks (`start_block_num: 0 and stop_block_num: 0` on NEAR seems to trigger
+                            // this).
+                            //
+                            // To prevent looping infinitely, we stop as soon as a new received block's
+                            // number is higher than the latest received block's number, in which case it
+                            // means it's an event for a block we are not interested in.
+                            if block.number > actual_ptr.number {
+                                break;
+                            }
+
+                            latest_received_block = Some(block);
+                        }
+                    }
+                }
                 Err(e) => return Err(anyhow::format_err!("firehose error {}", e)),
             };
         }
 
-        match block_in_longuest_chain {
+        match latest_received_block {
             Some(block_ptr) => Ok(block_ptr),
             None => Err(anyhow::format_err!(
                 "Firehose should have returned at least one block for request"
