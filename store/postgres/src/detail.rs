@@ -10,9 +10,11 @@ use crate::{
     },
     primary::DeploymentId,
 };
+use diesel::dsl;
 use diesel::pg::PgConnection;
 use diesel::prelude::{
-    ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl, RunQueryDsl,
+    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl,
+    RunQueryDsl,
 };
 use diesel::OptionalExtension;
 use diesel_derives::Associations;
@@ -26,6 +28,7 @@ use graph::{
     },
 };
 use graph::{data::subgraph::status, prelude::web3::types::H256};
+use itertools::Itertools;
 use std::convert::TryFrom;
 use std::{ops::Bound, sync::Arc};
 
@@ -105,8 +108,6 @@ impl ErrorDetail {
     }
 }
 
-struct DetailAndError<'a>(DeploymentDetail, Option<ErrorDetail>, &'a [Arc<Site>]);
-
 pub(crate) fn block(
     id: &str,
     name: &str,
@@ -176,78 +177,82 @@ impl TryFrom<ErrorDetail> for SubgraphError {
     }
 }
 
-impl<'a> TryFrom<DetailAndError<'a>> for status::Info {
-    type Error = StoreError;
+pub(crate) fn info_from_details(
+    detail: DeploymentDetail,
+    fatal: Option<ErrorDetail>,
+    non_fatal: Vec<ErrorDetail>,
+    sites: &[Arc<Site>],
+) -> Result<status::Info, StoreError> {
+    let DeploymentDetail {
+        id,
+        deployment,
+        failed: _,
+        health,
+        synced,
+        fatal_error: _,
+        non_fatal_errors: _,
+        earliest_ethereum_block_hash,
+        earliest_ethereum_block_number,
+        latest_ethereum_block_hash,
+        latest_ethereum_block_number,
+        entity_count,
+        graft_base: _,
+        graft_block_hash: _,
+        graft_block_number: _,
+        ..
+    } = detail;
 
-    fn try_from(detail_and_error: DetailAndError) -> Result<Self, Self::Error> {
-        let DetailAndError(detail, error, sites) = detail_and_error;
+    let site = sites
+        .iter()
+        .find(|site| site.deployment.as_str() == deployment)
+        .ok_or_else(|| constraint_violation!("missing site for subgraph `{}`", deployment))?;
 
-        let DeploymentDetail {
-            id,
-            deployment,
-            failed: _,
-            health,
-            synced,
-            fatal_error: _,
-            non_fatal_errors: _,
-            earliest_ethereum_block_hash,
-            earliest_ethereum_block_number,
-            latest_ethereum_block_hash,
-            latest_ethereum_block_number,
-            entity_count,
-            graft_base: _,
-            graft_block_hash: _,
-            graft_block_number: _,
-            ..
-        } = detail;
+    // This needs to be filled in later since it lives in a
+    // different shard
+    let chain_head_block = None;
+    let earliest_block = block(
+        &deployment,
+        "earliest_ethereum_block",
+        earliest_ethereum_block_hash,
+        earliest_ethereum_block_number,
+    )?;
+    let latest_block = block(
+        &deployment,
+        "latest_ethereum_block",
+        latest_ethereum_block_hash,
+        latest_ethereum_block_number,
+    )?;
+    let health = health.into();
+    let chain = status::ChainInfo {
+        network: site.network.clone(),
+        chain_head_block,
+        earliest_block,
+        latest_block,
+    };
+    let entity_count = entity_count.to_u64().ok_or_else(|| {
+        constraint_violation!(
+            "the entityCount for {} is not representable as a u64",
+            deployment
+        )
+    })?;
+    let fatal_error = fatal.map(SubgraphError::try_from).transpose()?;
+    let non_fatal_errors = non_fatal
+        .into_iter()
+        .map(SubgraphError::try_from)
+        .collect::<Result<Vec<SubgraphError>, StoreError>>()?;
 
-        let site = sites
-            .iter()
-            .find(|site| site.deployment.as_str() == deployment)
-            .ok_or_else(|| constraint_violation!("missing site for subgraph `{}`", deployment))?;
-
-        // This needs to be filled in later since it lives in a
-        // different shard
-        let chain_head_block = None;
-        let earliest_block = block(
-            &deployment,
-            "earliest_ethereum_block",
-            earliest_ethereum_block_hash,
-            earliest_ethereum_block_number,
-        )?;
-        let latest_block = block(
-            &deployment,
-            "latest_ethereum_block",
-            latest_ethereum_block_hash,
-            latest_ethereum_block_number,
-        )?;
-        let health = health.into();
-        let chain = status::ChainInfo {
-            network: site.network.clone(),
-            chain_head_block,
-            earliest_block,
-            latest_block,
-        };
-        let entity_count = entity_count.to_u64().ok_or_else(|| {
-            constraint_violation!(
-                "the entityCount for {} is not representable as a u64",
-                deployment
-            )
-        })?;
-        let fatal_error = error.map(SubgraphError::try_from).transpose()?;
-        // 'node' needs to be filled in later from a different shard
-        Ok(status::Info {
-            id: id.into(),
-            subgraph: deployment,
-            synced,
-            health,
-            fatal_error,
-            non_fatal_errors: vec![],
-            chains: vec![chain],
-            entity_count,
-            node: None,
-        })
-    }
+    // 'node' needs to be filled in later from a different shard
+    Ok(status::Info {
+        id: id.into(),
+        subgraph: deployment,
+        synced,
+        health,
+        fatal_error,
+        non_fatal_errors,
+        chains: vec![chain],
+        entity_count,
+        node: None,
+    })
 }
 
 /// Return the details for `deployments`
@@ -275,25 +280,57 @@ pub(crate) fn deployment_statuses(
     use subgraph_deployment as d;
     use subgraph_error as e;
 
-    // Empty deployments means 'all of them'
-    if sites.is_empty() {
-        d::table
-            .left_outer_join(e::table.on(d::fatal_error.eq(e::id.nullable())))
-            .load::<(DeploymentDetail, Option<ErrorDetail>)>(conn)?
-            .into_iter()
-            .map(|(detail, error)| status::Info::try_from(DetailAndError(detail, error, sites)))
-            .collect()
-    } else {
-        let ids: Vec<_> = sites.into_iter().map(|site| site.id).collect();
+    // First, we fetch all deployment information along with any fatal errors.
+    // Subsequently, we fetch non-fatal errors and we group them by deployment
+    // ID.
 
-        d::table
-            .left_outer_join(e::table.on(d::fatal_error.eq(e::id.nullable())))
-            .filter(d::id.eq_any(&ids))
-            .load::<(DeploymentDetail, Option<ErrorDetail>)>(conn)?
-            .into_iter()
-            .map(|(detail, error)| status::Info::try_from(DetailAndError(detail, error, sites)))
-            .collect()
-    }
+    let details_with_fatal_error = {
+        let join = e::table.on(e::id
+            .nullable()
+            .eq(d::fatal_error)
+            .and(e::subgraph_id.eq(d::deployment)));
+
+        // Empty deployments means 'all of them'
+        if sites.is_empty() {
+            d::table
+                .left_outer_join(join)
+                .load::<(DeploymentDetail, Option<ErrorDetail>)>(conn)?
+        } else {
+            d::table
+                .left_outer_join(join)
+                .filter(d::id.eq_any(sites.iter().map(|site| site.id)))
+                .load::<(DeploymentDetail, Option<ErrorDetail>)>(conn)?
+        }
+    };
+
+    let mut non_fatal_errors = {
+        let join = e::table.on(e::id
+            .eq(dsl::any(d::non_fatal_errors))
+            .and(e::subgraph_id.eq(d::deployment)));
+
+        if sites.is_empty() {
+            d::table
+                .inner_join(join)
+                .select((d::id, e::all_columns))
+                .load::<(DeploymentId, ErrorDetail)>(conn)?
+        } else {
+            d::table
+                .inner_join(join)
+                .filter(d::id.eq_any(sites.iter().map(|site| site.id)))
+                .select((d::id, e::all_columns))
+                .load::<(DeploymentId, ErrorDetail)>(conn)?
+        }
+        .into_iter()
+        .into_group_map()
+    };
+
+    details_with_fatal_error
+        .into_iter()
+        .map(|(detail, fatal)| {
+            let non_fatal = non_fatal_errors.remove(&detail.id).unwrap_or(vec![]);
+            info_from_details(detail, fatal, non_fatal, sites)
+        })
+        .collect()
 }
 
 #[derive(Queryable, QueryableByName, Identifiable, Associations)]
