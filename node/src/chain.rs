@@ -332,7 +332,7 @@ where
                     // on the URL)
                     Ok(Err(e)) | Err(e) => {
                         error!(logger, "Connection to provider failed. Not using this provider";
-                                       "error" =>  e.to_string());
+                                       "error" =>  format!("{:#}", e));
                         ProviderNetworkStatus::Broken {
                             chain_id,
                             provider: endpoint.provider.to_string(),
