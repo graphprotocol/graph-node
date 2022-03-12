@@ -7,7 +7,6 @@ use graph::firehose::CallToFilter;
 use graph::firehose::LogFilter;
 use graph::firehose::MultiCallToFilter;
 use graph::firehose::MultiLogFilter;
-use hex::ToHex;
 use itertools::Itertools;
 use mockall::automock;
 use mockall::predicate::*;
@@ -28,8 +27,10 @@ use graph::{
     petgraph::{self, graphmap::GraphMap},
 };
 
-const MULTI_LOG_FILTER_TYPE_URL: &str = "sf.ethereum.transform.v1.MultiLogFilter";
-const MULTI_CALL_TO_FILTER_TYPE_URL: &str = "sf.ethereum.transform.v1.MultiCallToFilter";
+const MULTI_LOG_FILTER_TYPE_URL: &str =
+    "type.googleapis.com/sf.ethereum.transform.v1.MultiLogFilter";
+const MULTI_CALL_TO_FILTER_TYPE_URL: &str =
+    "type.googleapis.com/sf.ethereum.transform.v1.MultiCallToFilter";
 
 use crate::capabilities::NodeCapabilities;
 use crate::data_source::BlockHandlerFilter;
@@ -227,11 +228,11 @@ impl Into<Vec<LogFilter>> for EthereumLogFilter {
                  }| LogFilter {
                     addresses: contracts
                         .iter()
-                        .map(|addr| addr.encode_hex::<String>().into())
+                        .map(|addr| addr.to_fixed_bytes().to_vec())
                         .collect_vec(),
                     event_signatures: event_signatures
                         .iter()
-                        .map(|sig| sig.encode_hex::<String>().into())
+                        .map(|sig| sig.to_fixed_bytes().to_vec())
                         .collect_vec(),
                 },
             )
@@ -407,11 +408,8 @@ impl Into<Vec<CallToFilter>> for EthereumCallFilter {
         let mut filters: Vec<CallToFilter> = contract_addresses_function_signatures
             .into_iter()
             .map(|(addr, (_, sigs))| CallToFilter {
-                addresses: vec![addr.encode_hex::<String>().into()],
-                signatures: sigs
-                    .into_iter()
-                    .map(|x| Into::<Vec<u8>>::into(hex::encode(x.to_vec())))
-                    .collect_vec(),
+                addresses: vec![addr.to_fixed_bytes().to_vec()],
+                signatures: sigs.into_iter().map(|x| x.to_vec()).collect_vec(),
             })
             .collect();
 
@@ -610,7 +608,7 @@ impl Into<Vec<CallToFilter>> for EthereumBlockFilter {
             .sorted()
             .dedup_by(|x, y| x == y)
             .map(|addr| CallToFilter {
-                addresses: vec![addr.encode_hex::<String>().into()],
+                addresses: vec![addr.to_fixed_bytes().to_vec()],
                 signatures: vec![],
             })
             .collect_vec()
@@ -890,6 +888,8 @@ pub trait EthereumAdapter: Send + Sync + 'static {
 
 #[cfg(test)]
 mod tests {
+    use crate::adapter::FunctionSelector;
+
     use super::{
         EthereumBlockFilter, LogFilterNode, MULTI_CALL_TO_FILTER_TYPE_URL,
         MULTI_LOG_FILTER_TYPE_URL,
@@ -910,6 +910,85 @@ mod tests {
 
     use std::collections::{HashMap, HashSet};
     use std::iter::FromIterator;
+    use std::str::FromStr;
+
+    #[test]
+    fn ethereum_log_filter_codec() {
+        let hex_addr = "0x4c7b8591c50f4ad308d07d6294f2945e074420f5";
+        let address = Address::from_str(hex_addr).expect("unable to parse addr");
+        assert_eq!(hex_addr, format!("0x{}", address.encode_hex::<String>()));
+
+        let event_sigs = vec![
+            "0xafb42f194014ece77df0f9e4bc3ced9757555dc1fe7dc803161a2de3b7c4839a",
+            "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+        ];
+
+        let hex_sigs = event_sigs
+            .iter()
+            .map(|addr| {
+                format!(
+                    "0x{}",
+                    H256::from_str(addr)
+                        .expect("unable to parse addr")
+                        .encode_hex::<String>()
+                )
+            })
+            .collect_vec();
+
+        assert_eq!(event_sigs, hex_sigs);
+
+        let sigs = event_sigs
+            .iter()
+            .map(|addr| {
+                H256::from_str(addr)
+                    .expect("unable to parse addr")
+                    .to_fixed_bytes()
+                    .to_vec()
+            })
+            .collect_vec();
+
+        let filter = LogFilter {
+            addresses: vec![address.to_fixed_bytes().to_vec()],
+            event_signatures: sigs,
+        };
+        // This base64 was provided by Streamingfast as a binding example of the expected encoded for the
+        // addresses and signatures above.
+        let expected_base64 = "CloKFEx7hZHFD0rTCNB9YpTylF4HRCD1EiCvtC8ZQBTs533w+eS8PO2XV1Vdwf59yAMWGi3jt8SDmhIg3fJSrRviyJtpwrBo/DeNqpUrp/FjxKEWKPVaTfUjs+8=";
+
+        let filter = MultiLogFilter {
+            log_filters: vec![filter],
+        };
+
+        let output = base64::encode(filter.encode_to_vec());
+        assert_eq!(expected_base64, output);
+    }
+
+    #[test]
+    fn ethereum_call_filter_codec() {
+        let hex_addr = "0xeed2b7756e295a9300e53dd049aeb0751899bae3";
+        let sig = "a9059cbb";
+        let mut fs: FunctionSelector = [0u8; 4];
+        let hex_sig = hex::decode(sig).expect("failed to parse sig");
+        fs.copy_from_slice(&hex_sig[..]);
+
+        let actual_sig = hex::encode(fs);
+        assert_eq!(sig, actual_sig);
+
+        let filter = LogFilter {
+            addresses: vec![Address::from_str(hex_addr)
+                .expect("failed to parse address")
+                .to_fixed_bytes()
+                .to_vec()],
+            event_signatures: vec![fs.to_vec()],
+        };
+
+        // This base64 was provided by Streamingfast as a binding example of the expected encoded for the
+        // addresses and signatures above.
+        let expected_base64 = "ChTu0rd1bilakwDlPdBJrrB1GJm64xIEqQWcuw==";
+
+        let output = base64::encode(filter.encode_to_vec());
+        assert_eq!(expected_base64, output);
+    }
 
     #[test]
     fn ethereum_trigger_filter_to_firehose() {
@@ -943,27 +1022,27 @@ mod tests {
         let expected_call = MultiCallToFilter {
             call_filters: vec![
                 CallToFilter {
-                    addresses: vec![address(0).encode_hex::<String>().into()],
-                    signatures: vec![hex::encode([0u8; 4].to_vec()).into()],
+                    addresses: vec![address(0).to_fixed_bytes().to_vec()],
+                    signatures: vec![[0u8; 4].to_vec()],
                 },
                 CallToFilter {
-                    addresses: vec![address(1).encode_hex::<String>().into()],
-                    signatures: vec![hex::encode([1u8; 4].to_vec()).into()],
+                    addresses: vec![address(1).to_fixed_bytes().to_vec()],
+                    signatures: vec![[1u8; 4].to_vec()],
                 },
                 CallToFilter {
-                    addresses: vec![address(2).encode_hex::<String>().into()],
+                    addresses: vec![address(2).to_fixed_bytes().to_vec()],
                     signatures: vec![],
                 },
                 CallToFilter {
-                    addresses: vec![address(1000).encode_hex::<String>().into()],
+                    addresses: vec![address(1000).to_fixed_bytes().to_vec()],
                     signatures: vec![],
                 },
                 CallToFilter {
-                    addresses: vec![address(2000).encode_hex::<String>().into()],
+                    addresses: vec![address(2000).to_fixed_bytes().to_vec()],
                     signatures: vec![],
                 },
                 CallToFilter {
-                    addresses: vec![address(3000).encode_hex::<String>().into()],
+                    addresses: vec![address(3000).to_fixed_bytes().to_vec()],
                     signatures: vec![],
                 },
             ],
@@ -988,23 +1067,18 @@ mod tests {
             (),
         );
 
-        println!(
-            "{:?}",
-            filter.log.clone().eth_get_logs_filters().collect_vec()
-        );
-
         let expected_log = MultiLogFilter {
             log_filters: vec![
                 LogFilter {
-                    addresses: vec![address(10).encode_hex::<String>().into()],
-                    event_signatures: vec![sig(101).encode_hex::<String>().into()],
+                    addresses: vec![address(10).to_fixed_bytes().to_vec()],
+                    event_signatures: vec![sig(101).to_fixed_bytes().to_vec()],
                 },
                 LogFilter {
                     addresses: vec![
-                        address(10).encode_hex::<String>().into(),
-                        address(20).encode_hex::<String>().into(),
+                        address(10).to_fixed_bytes().to_vec(),
+                        address(20).to_fixed_bytes().to_vec(),
                     ],
-                    event_signatures: vec![sig(100).encode_hex::<String>().into()],
+                    event_signatures: vec![sig(100).to_fixed_bytes().to_vec()],
                 },
             ],
         };
