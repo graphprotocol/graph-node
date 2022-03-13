@@ -89,7 +89,7 @@ where
             let block_stream_canceler = CancelGuard::new();
             let block_stream_cancel_handle = block_stream_canceler.handle();
 
-            let metrics = self.ctx.block_stream_metrics.clone();
+            let stream_metrics = self.ctx.block_stream_metrics.clone();
             let filter = self.ctx.state.filter.clone();
             let stream_inputs = self.inputs.clone();
             let mut block_stream = new_block_stream(stream_inputs, filter)
@@ -113,7 +113,7 @@ where
             // Process events from the stream as long as no restart is needed
             loop {
                 let event = {
-                    let _section = metrics.stopwatch.start_section("scan_blocks");
+                    let _section = stream_metrics.stopwatch.start_section("scan_blocks");
 
                     block_stream.next().await
                 };
@@ -144,11 +144,12 @@ where
                             break;
                         }
 
-                        self.ctx
-                            .block_stream_metrics
+                        stream_metrics
                             .reverted_blocks
                             .set(subgraph_ptr.number as f64);
-                        metrics.deployment_head.set(subgraph_ptr.number as f64);
+                        stream_metrics
+                            .deployment_head
+                            .set(subgraph_ptr.number as f64);
 
                         // Revert the in-memory state:
                         // - Remove hosts for reverted dynamic data sources.
@@ -186,7 +187,7 @@ where
                 };
 
                 let block_ptr = block.ptr();
-                metrics.deployment_head.set(block_ptr.number as f64);
+                stream_metrics.deployment_head.set(block_ptr.number as f64);
 
                 if block.trigger_count() > 0 {
                     subgraph_metrics
@@ -204,7 +205,7 @@ where
                 }
 
                 let start = Instant::now();
-                let deployment_failed = self.ctx.block_stream_metrics.deployment_failed.clone();
+                let deployment_failed = stream_metrics.deployment_failed.clone();
 
                 let res = self
                     .process_block(
@@ -236,7 +237,7 @@ where
                             synced = true;
 
                             // Stop recording time-to-sync metrics.
-                            self.ctx.block_stream_metrics.stopwatch.disable();
+                            stream_metrics.stopwatch.disable();
                         }
 
                         // Keep trying to unfail subgraph for everytime it advances block(s) until it's
@@ -400,7 +401,7 @@ where
             );
         }
 
-        let metrics = self.ctx.subgraph_metrics.clone();
+        let subgraph_metrics = self.ctx.subgraph_metrics.clone();
 
         let proof_of_indexing = if self
             .inputs
@@ -556,18 +557,14 @@ where
             let proof_of_indexing = Arc::try_unwrap(proof_of_indexing).unwrap().into_inner();
             update_proof_of_indexing(
                 proof_of_indexing,
-                &self.ctx.host_metrics.stopwatch,
+                &host_metrics.stopwatch,
                 &self.inputs.deployment.hash,
                 &mut block_state.entity_cache,
             )
             .await?;
         }
 
-        let section = self
-            .ctx
-            .host_metrics
-            .stopwatch
-            .start_section("as_modifications");
+        let section = host_metrics.stopwatch.start_section("as_modifications");
         let ModificationsAndCache {
             modifications: mut mods,
             data_sources,
@@ -597,12 +594,8 @@ where
 
         // Transact entity operations into the store and update the
         // subgraph's block stream pointer
-        let _section = self
-            .ctx
-            .host_metrics
-            .stopwatch
-            .start_section("transact_block");
-        let stopwatch = self.ctx.host_metrics.stopwatch.clone();
+        let _section = host_metrics.stopwatch.start_section("transact_block");
+        let stopwatch = host_metrics.stopwatch.clone();
         let start = Instant::now();
 
         let store = &self.inputs.store;
@@ -648,7 +641,9 @@ where
                 }
 
                 let elapsed = start.elapsed().as_secs_f64();
-                metrics.block_ops_transaction_duration.observe(elapsed);
+                subgraph_metrics
+                    .block_ops_transaction_duration
+                    .observe(elapsed);
 
                 // To prevent a buggy pending version from replacing a current version, if errors are
                 // present the subgraph will be unassigned.
