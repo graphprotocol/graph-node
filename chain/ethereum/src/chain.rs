@@ -186,6 +186,7 @@ impl Blockchain for Chain {
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
+        grpc_filters: bool,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let requirements = filter.node_capabilities();
         let adapter = self
@@ -218,6 +219,7 @@ impl Blockchain for Chain {
             filter,
             start_blocks,
             logger,
+            grpc_filters,
         )))
     }
 
@@ -539,7 +541,12 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         use firehose::ForkStep::*;
         match step {
             StepNew => {
+                // See comment(437a9f17-67cc-478f-80a3-804fe554b227) ethereum_block.calls is always Some even if calls
+                // is empty
                 let ethereum_block: EthereumBlockWithCalls = (&block).into();
+
+                // triggers in block never actually calls the ethereum traces api.
+                // TODO: Split the trigger parsing from call retrieving.
                 let block_with_triggers = adapter
                     .triggers_in_block(logger, BlockFinality::NonFinal(ethereum_block), filter)
                     .await?;

@@ -22,7 +22,10 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
         &mut self,
         _data_source: impl Iterator<Item = <Chain as bc::Blockchain>::DataSourceTemplate>,
     ) {
-        todo!()
+    }
+
+    fn to_firehose_filter(self) -> Vec<prost_types::Any> {
+        vec![]
     }
 }
 

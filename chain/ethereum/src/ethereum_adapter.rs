@@ -256,15 +256,12 @@ impl EthereumAdapter {
                     let elapsed = start.elapsed().as_secs_f64();
                     provider_metrics.observe_request(elapsed, "trace_filter", &provider);
                     subgraph_metrics.observe_request(elapsed, "trace_filter", &provider);
-                    if result.is_err() {
+                    if let Err(e) = &result {
                         provider_metrics.add_error("trace_filter", &provider);
                         subgraph_metrics.add_error("trace_filter", &provider);
                         debug!(
                             logger_for_error,
-                            "Error querying traces error = {:?} from = {:?} to = {:?}",
-                            result,
-                            from,
-                            to
+                            "Error querying traces error = {:#} from = {} to = {}", e, from, to
                         );
                     }
                     result
