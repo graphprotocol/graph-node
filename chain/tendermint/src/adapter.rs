@@ -18,4 +18,8 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
         _data_source: impl Iterator<Item = <Chain as bc::Blockchain>::DataSourceTemplate>,
     ) {
     }
+
+    fn to_firehose_filter(self) -> Vec<prost_types::Any> {
+        vec![]
+    }
 }
