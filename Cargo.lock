@@ -1418,6 +1418,7 @@ version = "0.25.1"
 dependencies = [
  "anyhow",
  "dirs-next",
+ "envconfig",
  "futures 0.1.31",
  "graph",
  "graph-core",

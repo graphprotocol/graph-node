@@ -1,7 +1,6 @@
 use anyhow::{Context, Error};
 use graph::blockchain::BlockchainKind;
 use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::env::env_var;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, ForkStep};
 use graph::prelude::{EthereumBlock, EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt};
 use graph::slog::debug;
@@ -19,8 +18,8 @@ use graph::{
     components::store::DeploymentLocator,
     firehose,
     prelude::{
-        async_trait, lazy_static, o, serde_json as json, BlockNumber, ChainStore,
-        EthereumBlockWithCalls, Future01CompatExt, Logger, LoggerFactory, MetricsRegistry, NodeId,
+        async_trait, o, serde_json as json, BlockNumber, ChainStore, EthereumBlockWithCalls,
+        Future01CompatExt, Logger, LoggerFactory, MetricsRegistry, NodeId,
     },
 };
 use prost::Message;
@@ -39,22 +38,10 @@ use crate::{
         blocks_with_triggers, get_calls, parse_block_triggers, parse_call_triggers,
         parse_log_triggers,
     },
-    SubgraphEthRpcMetrics, TriggerFilter,
+    SubgraphEthRpcMetrics, TriggerFilter, ENV_VARS,
 };
 use crate::{network::EthereumNetworkAdapters, EthereumAdapter};
 use graph::blockchain::block_stream::{BlockStream, FirehoseCursor};
-
-lazy_static! {
-    /// Maximum number of blocks to request in each chunk.
-    static ref MAX_BLOCK_RANGE_SIZE: BlockNumber = env_var("GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE", 2000);
-
-    /// Ideal number of triggers in a range. The range size will adapt to try to meet this.
-    static ref TARGET_TRIGGERS_PER_BLOCK_RANGE: u64 = env_var("GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE", 100);
-
-    /// Controls if firehose should be preferred over RPC if Firehose endpoints are present, if not set, the default behavior is
-    /// is kept which is to automatically favor Firehose.
-    static ref IS_FIREHOSE_PREFERRED: bool = env_var("GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED", true);
-}
 
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
 const CELO_CHAIN_IDS: [u64; 3] = [42220, 44787, 62320];
@@ -268,8 +255,8 @@ impl Blockchain for Chain {
             start_blocks,
             reorg_threshold,
             logger,
-            *MAX_BLOCK_RANGE_SIZE,
-            *TARGET_TRIGGERS_PER_BLOCK_RANGE,
+            ENV_VARS.max_block_range_size(),
+            ENV_VARS.target_triggers_per_block_range(),
             unified_api_version,
             subgraph_current_block,
         )))
@@ -303,7 +290,7 @@ impl Blockchain for Chain {
     }
 
     fn is_firehose_supported(&self) -> bool {
-        *IS_FIREHOSE_PREFERRED && self.firehose_endpoints.len() > 0
+        ENV_VARS.is_firehose_preferred() && self.firehose_endpoints.len() > 0
     }
 }
 

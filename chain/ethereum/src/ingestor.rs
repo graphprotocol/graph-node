@@ -1,22 +1,13 @@
-use crate::{chain::BlockFinality, EthereumAdapter, EthereumAdapterTrait};
+use crate::{chain::BlockFinality, EthereumAdapter, EthereumAdapterTrait, ENV_VARS};
 use graph::{
     blockchain::{BlockHash, BlockPtr, IngestorError},
     cheap_clone::CheapClone,
     prelude::{
-        error, ethabi::ethereum_types::H256, info, lazy_static, tokio, trace, warn, ChainStore,
-        Error, EthereumBlockWithCalls, Future01CompatExt, LogCode, Logger,
+        error, ethabi::ethereum_types::H256, info, tokio, trace, warn, ChainStore, Error,
+        EthereumBlockWithCalls, Future01CompatExt, LogCode, Logger,
     },
 };
 use std::{sync::Arc, time::Duration};
-
-lazy_static! {
-    // graph_node::config disallows setting this in a store with multiple
-    // shards. See 8b6ad0c64e244023ac20ced7897fe666 for the reason
-    pub static ref CLEANUP_BLOCKS: bool = std::env::var("GRAPH_ETHEREUM_CLEANUP_BLOCKS")
-        .ok()
-        .map(|s| s.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-}
 
 pub struct BlockIngestor {
     logger: Logger,
@@ -68,7 +59,7 @@ impl BlockIngestor {
                 Ok(()) => (),
             }
 
-            if *CLEANUP_BLOCKS {
+            if ENV_VARS.cleanup_blocks() {
                 self.cleanup_cached_blocks()
             }
 
