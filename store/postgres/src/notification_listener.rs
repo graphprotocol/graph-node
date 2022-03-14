@@ -6,8 +6,6 @@ use graph::util::backoff::ExponentialBackoff;
 use lazy_static::lazy_static;
 use postgres::Notification;
 use postgres::{fallible_iterator::FallibleIterator, Client, NoTls};
-use std::env;
-use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
@@ -17,26 +15,7 @@ use tokio::sync::mpsc::{channel, Receiver};
 use graph::prelude::serde_json;
 use graph::prelude::*;
 
-lazy_static! {
-    static ref LARGE_NOTIFICATION_CLEANUP_INTERVAL: Duration =
-        env::var("LARGE_NOTIFICATION_CLEANUP_INTERVAL")
-            .ok()
-            .map(
-                |s| Duration::from_secs(u64::from_str(&s).unwrap_or_else(|_| panic!(
-                    "failed to parse env var LARGE_NOTIFICATION_CLEANUP_INTERVAL"
-                )))
-            )
-            .unwrap_or(Duration::from_secs(300));
-    static ref NOTIFICATION_BROADCAST_TIMEOUT: Duration =
-        env::var("GRAPH_NOTIFICATION_BROADCAST_TIMEOUT")
-            .ok()
-            .map(
-                |s| Duration::from_secs(u64::from_str(&s).unwrap_or_else(|_| panic!(
-                    "failed to parse env var GRAPH_NOTIFICATION_BROADCAST_TIMEOUT"
-                )))
-            )
-            .unwrap_or(Duration::from_secs(60));
-}
+use crate::ENV_VARS;
 
 #[cfg(debug_assertions)]
 lazy_static::lazy_static! {
@@ -171,7 +150,7 @@ impl NotificationListener {
         debug!(
             logger,
             "Cleaning up large notifications after about {}s",
-            LARGE_NOTIFICATION_CLEANUP_INTERVAL.as_secs()
+            ENV_VARS.large_notification_cleanup_interval().as_secs(),
         );
 
         // Create two ends of a boolean variable for signalling when the worker
@@ -260,7 +239,7 @@ impl NotificationListener {
 
                         match JsonNotification::parse(&notification, &mut conn) {
                             Ok(json_notification) => {
-                                let timeout = *NOTIFICATION_BROADCAST_TIMEOUT;
+                                let timeout = ENV_VARS.notification_broadcast_timeout();
                                 match graph::block_on(
                                     sender.send_timeout(json_notification, timeout),
                                 ) {
@@ -473,11 +452,11 @@ impl NotificationSender {
             // If we can't get the lock, another thread in this process is
             // already checking, and we can just skip checking
             if let Ok(mut last_check) = LAST_CLEANUP_CHECK.try_lock() {
-                if last_check.elapsed() > *LARGE_NOTIFICATION_CLEANUP_INTERVAL {
+                if last_check.elapsed() > ENV_VARS.large_notification_cleanup_interval() {
                     diesel::sql_query(format!(
                         "delete from large_notifications
                          where created_at < current_timestamp - interval '{}s'",
-                        LARGE_NOTIFICATION_CLEANUP_INTERVAL.as_secs()
+                        ENV_VARS.large_notification_cleanup_interval().as_secs()
                     ))
                     .execute(conn)?;
                     *last_check = Instant::now();

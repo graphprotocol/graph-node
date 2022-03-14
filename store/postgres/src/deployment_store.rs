@@ -15,13 +15,10 @@ use rand::{seq::SliceRandom, thread_rng};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Into;
-use std::env;
 use std::iter::FromIterator;
 use std::ops::Bound;
 use std::ops::Deref;
-use std::str::FromStr;
 use std::sync::{atomic::AtomicUsize, Arc, Mutex};
-use std::time::Duration;
 use std::time::Instant;
 
 use graph::components::store::EntityCollection;
@@ -29,8 +26,8 @@ use graph::components::subgraph::ProofOfIndexingFinisher;
 use graph::constraint_violation;
 use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
 use graph::prelude::{
-    anyhow, debug, info, lazy_static, o, warn, web3, ApiSchema, AttributeNames, BlockNumber,
-    BlockPtr, CheapClone, DeploymentHash, DeploymentState, Entity, EntityKey, EntityModification,
+    anyhow, debug, info, o, warn, web3, ApiSchema, AttributeNames, BlockNumber, BlockPtr,
+    CheapClone, DeploymentHash, DeploymentState, Entity, EntityKey, EntityModification,
     EntityQuery, Error, Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError,
     StoreEvent, UnfailOutcome, Value, BLOCK_NUMBER_MAX,
 };
@@ -42,24 +39,9 @@ use crate::catalog;
 use crate::deployment;
 use crate::relational::{Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::FromEntityData;
+use crate::ENV_VARS;
 use crate::{connection_pool::ConnectionPool, detail};
 use crate::{dynds, primary::Site};
-
-lazy_static! {
-    /// `GRAPH_QUERY_STATS_REFRESH_INTERVAL` is how long statistics that
-    /// influence query execution are cached in memory (in seconds) before
-    /// they are reloaded from the database. Defaults to 300s (5 minutes).
-    static ref STATS_REFRESH_INTERVAL: Duration = {
-        env::var("GRAPH_QUERY_STATS_REFRESH_INTERVAL")
-        .ok()
-        .map(|s| {
-            let secs = u64::from_str(&s).unwrap_or_else(|_| {
-                panic!("GRAPH_QUERY_STATS_REFRESH_INTERVAL must be a number, but is `{}`", s)
-            });
-            Duration::from_secs(secs)
-        }).unwrap_or(Duration::from_secs(300))
-    };
-}
 
 /// When connected to read replicas, this allows choosing which DB server to use for an operation.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -166,7 +148,7 @@ impl DeploymentStore {
             replica_order,
             conn_round_robin_counter: AtomicUsize::new(0),
             subgraph_cache: Mutex::new(LruCache::with_capacity(100)),
-            layout_cache: LayoutCache::new(*STATS_REFRESH_INTERVAL),
+            layout_cache: LayoutCache::new(ENV_VARS.query_stats_refresh_interval()),
         };
 
         DeploymentStore(Arc::new(store))

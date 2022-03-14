@@ -6,20 +6,12 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use diesel::{prelude::RunQueryDsl, sql_query, sql_types::Double};
 
-use graph::env::env_var;
-use graph::prelude::{chrono, error, lazy_static, Logger, MetricsRegistry, StoreError};
+use graph::prelude::{error, Logger, MetricsRegistry, StoreError};
 use graph::prometheus::Gauge;
 use graph::util::jobs::{Job, Runner};
 
 use crate::connection_pool::ConnectionPool;
-use crate::{unused, Store, SubgraphStore};
-
-lazy_static! {
-    static ref UNUSED_INTERVAL: chrono::Duration = {
-        let interval: u32 = env_var("GRAPH_REMOVE_UNUSED_INTERVAL", 360);
-        chrono::Duration::minutes(interval as i64)
-    };
-}
+use crate::{unused, Store, SubgraphStore, ENV_VARS};
 
 pub fn register(
     runner: &mut Runner,
@@ -187,7 +179,7 @@ impl Job for UnusedJob {
 
         let remove = match self
             .store
-            .list_unused_deployments(unused::Filter::UnusedLongerThan(*UNUSED_INTERVAL))
+            .list_unused_deployments(unused::Filter::UnusedLongerThan(ENV_VARS.unused_interval()))
         {
             Ok(remove) => remove,
             Err(e) => {

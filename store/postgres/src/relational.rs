@@ -14,11 +14,9 @@ use graph::data::graphql::{DirectiveExt, TypeExt as _};
 use graph::prelude::{q, s, StopwatchMetrics};
 use graph::slog::warn;
 use inflector::Inflector;
-use lazy_static::lazy_static;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::{From, TryFrom};
-use std::env;
 use std::fmt::{self, Write};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -46,7 +44,7 @@ use graph::prelude::{
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 pub use crate::catalog::Catalog;
 use crate::connection_pool::ForeignServer;
-use crate::{catalog, deployment};
+use crate::{catalog, deployment, ENV_VARS};
 
 const POSTGRES_MAX_PARAMETERS: usize = u16::MAX as usize; // 65535
 const DELETE_OPERATION_CHUNK_SIZE: usize = 1_000;
@@ -58,41 +56,6 @@ const DELETE_OPERATION_CHUNK_SIZE: usize = 1_000;
 /// This also makes sure that we do not put strings into a BTree index that's
 /// bigger than Postgres' limit on such strings which is about 2k
 pub const STRING_PREFIX_SIZE: usize = 256;
-
-lazy_static! {
-    /// Deprecated; use 'graphman stats account-like' instead. A list of
-    /// fully qualified table names that contain entities that are like
-    /// accounts in that they have a relatively small number of entities,
-    /// with a large number of change for each entity. It is useful to treat
-    /// such tables special in queries by changing the clause that selects
-    /// for a specific block range in a way that makes the BRIN index on
-    /// block_range usable
-    ///
-    /// Example: GRAPH_ACCOUNT_TABLES=sgd21902.pair,sgd1708.things
-    static ref ACCOUNT_TABLES: HashSet<String> = {
-            // Transform the entries in the form `schema.table` into
-            // `"schema"."table"` so that we can compare to a table's
-            // qualified name
-            env::var("GRAPH_ACCOUNT_TABLES")
-                .ok()
-                .map(|v| v.split(',').map(|s| format!("\"{}\"", s.replace(".", "\".\""))).collect())
-                .unwrap_or(HashSet::new())
-    };
-
-    /// `GRAPH_SQL_STATEMENT_TIMEOUT` is the timeout for queries in seconds.
-    /// If it is not set, no statement timeout will be enforced. The statement
-    /// timeout is local, i.e., can only be used within a transaction and
-    /// will be cleared at the end of the transaction
-    static ref STATEMENT_TIMEOUT: Option<String> = {
-        env::var("GRAPH_SQL_STATEMENT_TIMEOUT")
-        .ok()
-        .map(|s| {
-            u64::from_str(&s).unwrap_or_else(|_| {
-                panic!("GRAPH_SQL_STATEMENT_TIMEOUT must be a number, but is `{}`", s)
-            })
-        }).map(|timeout| format!("set local statement_timeout={}", timeout * 1000))
-    };
-}
 
 /// A string we use as a SQL name for a table or column. The important thing
 /// is that SQL names are snake cased. Using this type makes it easier to
@@ -727,7 +690,7 @@ impl Layout {
         let start = Instant::now();
         let values = conn
             .transaction(|| {
-                if let Some(ref timeout_sql) = *STATEMENT_TIMEOUT {
+                if let Some(timeout_sql) = ENV_VARS.sql_statement_timeout() {
                     conn.batch_execute(timeout_sql)?;
                 }
                 query.load::<EntityData>(conn)
@@ -918,7 +881,9 @@ impl Layout {
         let account_like = crate::catalog::account_like(conn, &self.site)?;
         let is_account_like = {
             |table: &Table| {
-                ACCOUNT_TABLES.contains(table.qualified_name.as_str())
+                ENV_VARS
+                    .account_tables()
+                    .contains(table.qualified_name.as_str())
                     || account_like.contains(table.name.as_str())
             }
         };
@@ -1269,7 +1234,7 @@ impl Table {
             .chain(fulltexts.iter().map(Column::new_fulltext))
             .collect::<Result<Vec<Column>, StoreError>>()?;
         let qualified_name = SqlName::qualified_name(&catalog.site.namespace, &table_name);
-        let is_account_like = ACCOUNT_TABLES.contains(qualified_name.as_str());
+        let is_account_like = ENV_VARS.account_tables().contains(qualified_name.as_str());
 
         let immutable = defn
             .find_directive("entity")
