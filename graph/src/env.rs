@@ -1,3 +1,5 @@
+use envconfig::Envconfig;
+use lazy_static::lazy_static;
 use std::{
     env::VarError,
     str::FromStr,
@@ -5,6 +7,10 @@ use std::{
 };
 
 pub static UNSAFE_CONFIG: AtomicBool = AtomicBool::new(false);
+
+lazy_static! {
+    pub static ref ENV_VARS: EnvVars = EnvVars::from_env().unwrap();
+}
 
 // This is currently unusued but is kept as a potentially useful mechanism.
 /// Panics if:
@@ -53,3 +59,18 @@ pub fn env_var<E: std::error::Error + Send + Sync, T: FromStr<Err = E> + Eq>(
     var.parse::<T>()
         .unwrap_or_else(|e| panic!("failed to parse environment variable {}: {}", name, e))
 }
+
+pub struct EnvVars {
+    inner: Inner,
+}
+
+impl EnvVars {
+    pub fn from_env() -> Result<Self, envconfig::Error> {
+        let inner = Inner::init_from_env()?;
+
+        Ok(Self { inner })
+    }
+}
+
+#[derive(Clone, Debug, Envconfig)]
+struct Inner {}
