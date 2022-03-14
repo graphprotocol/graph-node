@@ -1,6 +1,5 @@
 use envconfig::Envconfig;
-use graph::prelude::chrono;
-use lazy_static::lazy_static;
+use graph::prelude::{chrono, lazy_static};
 use std::{collections::HashSet, str::FromStr, time::Duration};
 
 lazy_static! {
