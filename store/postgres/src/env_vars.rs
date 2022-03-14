@@ -19,8 +19,8 @@ struct Inner {
     connection_min_idle: Option<u32>,
     #[envconfig(from = "GRAPH_STORE_CONNECTION_MIN_IDLE_TIMEOUT", default = "600")]
     connection_min_idle_timeout_in_sec: u64,
-    #[envconfig(from = "GRAPH_STORE_CONNECTION_TRY_ALWAYS")]
-    connection_try_always: Option<EnvVarBoolean>,
+    #[envconfig(from = "GRAPH_STORE_CONNECTION_TRY_ALWAYS", default = "false")]
+    connection_try_always: EnvVarBoolean,
     #[envconfig(from = "GRAPH_QUERY_STATS_REFRESH_INTERVAL", default = "300")]
     query_stats_refresh_interval_in_sec: u64,
     #[envconfig(from = "LARGE_NOTIFICATION_CLEANUP_INTERVAL", default = "300")]
@@ -31,16 +31,16 @@ struct Inner {
     typea_batch_size: usize,
     #[envconfig(from = "TYPED_CHILDREN_SET_SIZE", default = "150")]
     typed_children_set_size: usize,
-    #[envconfig(from = "ORDER_BY_BLOCK_RANGE")]
-    order_by_block_range: Option<EnvVarBoolean>,
-    #[envconfig(from = "REVERSIBLE_ORDER_BY_OFF")]
-    reservible_order_by_off: Option<EnvVarBoolean>,
+    #[envconfig(from = "ORDER_BY_BLOCK_RANGE", default = "false")]
+    order_by_block_range: EnvVarBoolean,
+    #[envconfig(from = "REVERSIBLE_ORDER_BY_OFF", default = "false")]
+    reservible_order_by_off: EnvVarBoolean,
     #[envconfig(from = "GRAPH_ACCOUNT_TABLES", default = "")]
     account_tables: String,
     #[envconfig(from = "GRAPH_SQL_STATEMENT_TIMEOUT")]
     sql_statement_timeout_in_sec: Option<u64>,
-    #[envconfig(from = "GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATION")]
-    disable_subscription_notification: Option<EnvVarBoolean>,
+    #[envconfig(from = "GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATION", default = "false")]
+    disable_subscription_notification: EnvVarBoolean,
     #[envconfig(from = "GRAPH_REMOVE_UNUSED_INTERVAL", default = "360")]
     remove_unused_interval_in_minutes: u32,
 }
@@ -105,10 +105,7 @@ impl EnvVars {
     /// wrong; when this is set, we always try to get a connection and never
     /// use the availability state we remembered.
     pub fn connection_try_always(&self) -> bool {
-        self.inner
-            .connection_try_always
-            .map(|x| x.0)
-            .unwrap_or(false)
+        self.inner.connection_try_always.0
     }
 
     /// `GRAPH_QUERY_STATS_REFRESH_INTERVAL` is how long statistics that
@@ -144,20 +141,14 @@ impl EnvVars {
     /// When we add `order by id` to a query should we add instead
     /// `order by id, block_range`
     pub fn order_by_block_range(&self) -> bool {
-        self.inner
-            .order_by_block_range
-            .map(|x| x.0)
-            .unwrap_or(false)
+        self.inner.order_by_block_range.0
     }
 
     /// Reversible order by. Change our `order by` clauses so that `asc`
     /// and `desc` ordering produce reverse orders. Setting this
     /// turns the new, correct behavior off
     pub fn reservible_order_by_off(&self) -> bool {
-        self.inner
-            .reservible_order_by_off
-            .map(|x| x.0)
-            .unwrap_or(false)
+        self.inner.reservible_order_by_off.0
     }
 
     /// Deprecated; use 'graphman stats account-like' instead. A list of
@@ -185,11 +176,7 @@ impl EnvVars {
     /// subscriptions; when the environment variable is set, no updates
     /// about entity changes will be sent to query nodes
     pub fn send_subscription_notifications(&self) -> bool {
-        let disabled = self
-            .inner
-            .disable_subscription_notification
-            .map(|x| x.0)
-            .unwrap_or(false);
+        let disabled = self.inner.disable_subscription_notification.0;
         !disabled
     }
 
