@@ -13,12 +13,15 @@ use diesel::{
     sql_query,
     sql_types::{Nullable, Text},
 };
-use graph::data::subgraph::{schema::SubgraphManifestEntity, SubgraphFeature};
+use graph::data::subgraph::schema::SubgraphError;
+use graph::data::subgraph::{
+    schema::{DeploymentCreate, SubgraphManifestEntity},
+    SubgraphFeature,
+};
 use graph::prelude::{
     anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr,
     DeploymentHash, DeploymentState, Schema, StoreError,
 };
-use graph::{data::subgraph::schema::SubgraphError, prelude::SubgraphDeploymentEntity};
 use stable_hash::crypto::SetHasher;
 use std::str::FromStr;
 use std::{collections::BTreeSet, convert::TryFrom, ops::Bound};
@@ -863,7 +866,7 @@ pub fn drop_metadata(conn: &PgConnection, site: &Site) -> Result<(), StoreError>
 pub fn create_deployment(
     conn: &PgConnection,
     site: &Site,
-    deployment: SubgraphDeploymentEntity,
+    deployment: DeploymentCreate,
     exists: bool,
     replace: bool,
 ) -> Result<(), StoreError> {
@@ -881,7 +884,7 @@ pub fn create_deployment(
         }
     }
 
-    let SubgraphDeploymentEntity {
+    let DeploymentCreate {
         manifest:
             SubgraphManifestEntity {
                 spec_version,
@@ -890,33 +893,24 @@ pub fn create_deployment(
                 features,
                 schema,
             },
-        failed,
-        health: _,
-        synced,
-        fatal_error: _,
-        non_fatal_errors: _,
         earliest_block,
-        latest_block,
         graft_base,
         graft_block,
         debug_fork,
-        reorg_count: _,
-        current_reorg_depth: _,
-        max_reorg_depth: _,
     } = deployment;
 
     let deployment_values = (
         d::id.eq(site.id),
         d::deployment.eq(site.deployment.as_str()),
-        d::failed.eq(failed),
-        d::synced.eq(synced),
+        d::failed.eq(false),
+        d::synced.eq(false),
         d::health.eq(SubgraphHealth::Healthy),
         d::fatal_error.eq::<Option<String>>(None),
         d::non_fatal_errors.eq::<Vec<String>>(vec![]),
         d::earliest_ethereum_block_hash.eq(b(&earliest_block)),
         d::earliest_ethereum_block_number.eq(n(&earliest_block)),
-        d::latest_ethereum_block_hash.eq(b(&latest_block)),
-        d::latest_ethereum_block_number.eq(n(&latest_block)),
+        d::latest_ethereum_block_hash.eq(sql("null")),
+        d::latest_ethereum_block_number.eq(sql("null")),
         d::entity_count.eq(sql("0")),
         d::graft_base.eq(graft_base.as_ref().map(|s| s.as_str())),
         d::graft_block_hash.eq(b(&graft_block)),

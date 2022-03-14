@@ -6,7 +6,7 @@ use graph::blockchain::Blockchain;
 use graph::blockchain::BlockchainKind;
 use graph::blockchain::BlockchainMap;
 use graph::components::store::{DeploymentId, DeploymentLocator, SubscriptionManager};
-use graph::data::subgraph::schema::SubgraphDeploymentEntity;
+use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data::subgraph::MAX_SPEC_VERSION;
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
@@ -568,7 +568,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolve
 
     // Apply the subgraph versioning and deployment operations,
     // creating a new subgraph deployment if one doesn't exist.
-    let deployment = SubgraphDeploymentEntity::new(&manifest, false, start_block)
+    let deployment = DeploymentCreate::new(&manifest, start_block)
         .graft(base_block)
         .debug(debug_fork);
     deployment_store

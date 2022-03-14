@@ -19,9 +19,8 @@ use graph::{
     },
     constraint_violation,
     data::query::QueryTarget,
-    data::subgraph::status,
+    data::subgraph::{schema::DeploymentCreate, status},
     prelude::StoreEvent,
-    prelude::SubgraphDeploymentEntity,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
         BlockNumber, BlockPtr, DeploymentHash, EntityOperation, Logger, NodeId, Schema, StoreError,
@@ -472,7 +471,7 @@ impl SubgraphStoreInner {
         &self,
         name: SubgraphName,
         schema: &Schema,
-        deployment: SubgraphDeploymentEntity,
+        deployment: DeploymentCreate,
         node_id: NodeId,
         network_name: String,
         mode: SubgraphVersionSwitchingMode,
@@ -585,21 +584,12 @@ impl SubgraphStoreInner {
         }
 
         // Transmogrify the deployment into a new one
-        let deployment = SubgraphDeploymentEntity {
+        let deployment = DeploymentCreate {
             manifest: deployment.manifest,
-            failed: false,
-            health: deployment.health,
-            synced: false,
-            fatal_error: None,
-            non_fatal_errors: vec![],
             earliest_block: deployment.earliest_block.clone(),
-            latest_block: None,
             graft_base: Some(src.deployment.clone()),
             graft_block: Some(block),
             debug_fork: deployment.debug_fork,
-            reorg_count: 0,
-            current_reorg_depth: 0,
-            max_reorg_depth: 0,
         };
 
         let graft_base = self.layout(&src.deployment)?;
@@ -652,7 +642,7 @@ impl SubgraphStoreInner {
         &self,
         name: SubgraphName,
         schema: &Schema,
-        deployment: SubgraphDeploymentEntity,
+        deployment: DeploymentCreate,
         node_id: NodeId,
         network_name: String,
         mode: SubgraphVersionSwitchingMode,
@@ -1019,7 +1009,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         &self,
         name: SubgraphName,
         schema: &Schema,
-        deployment: SubgraphDeploymentEntity,
+        deployment: DeploymentCreate,
         node_id: NodeId,
         network_name: String,
         mode: SubgraphVersionSwitchingMode,

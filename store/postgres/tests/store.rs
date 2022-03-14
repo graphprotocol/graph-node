@@ -1,4 +1,5 @@
 use graph::data::graphql::ext::TypeDefinitionExt;
+use graph::data::subgraph::schema::DeploymentCreate;
 use graph_chain_ethereum::{Mapping, MappingABI};
 use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
@@ -165,7 +166,7 @@ fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator {
     };
 
     // Create SubgraphDeploymentEntity
-    let deployment = SubgraphDeploymentEntity::new(&manifest, false, None);
+    let deployment = DeploymentCreate::new(&manifest, None);
     let name = SubgraphName::new("test/store").unwrap();
     let node_id = NodeId::new("test").unwrap();
     let deployment = store
@@ -1278,9 +1279,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             chain: PhantomData,
         };
 
-        // Create SubgraphDeploymentEntity
-        let deployment_entity =
-            SubgraphDeploymentEntity::new(&manifest, false, Some(TEST_BLOCK_0_PTR.clone()));
+        let deployment = DeploymentCreate::new(&manifest, Some(TEST_BLOCK_0_PTR.clone()));
         let name = SubgraphName::new("test/entity-changes-are-fired").unwrap();
         let node_id = NodeId::new("test").unwrap();
         let deployment = store
@@ -1288,7 +1287,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             .create_subgraph_deployment(
                 name,
                 &schema,
-                deployment_entity,
+                deployment,
                 node_id,
                 NETWORK_NAME.to_string(),
                 SubgraphVersionSwitchingMode::Instant,

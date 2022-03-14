@@ -3,13 +3,12 @@ use graph::{
         server::index_node::VersionInfo,
         store::{DeploymentLocator, StatusStore},
     },
-    data::subgraph::schema::SubgraphError,
     data::subgraph::schema::SubgraphHealth,
+    data::subgraph::schema::{DeploymentCreate, SubgraphError},
     prelude::EntityChange,
     prelude::EntityChangeOperation,
     prelude::QueryStoreManager,
     prelude::Schema,
-    prelude::SubgraphDeploymentEntity,
     prelude::SubgraphManifest,
     prelude::SubgraphName,
     prelude::SubgraphVersionSwitchingMode,
@@ -137,7 +136,7 @@ fn create_subgraph() {
             templates: vec![],
             chain: PhantomData,
         };
-        let deployment = SubgraphDeploymentEntity::new(&manifest, false, None);
+        let deployment = DeploymentCreate::new(&manifest, None);
         let node_id = NodeId::new("left").unwrap();
 
         let (deployment, events) = tap_store_events(|| {

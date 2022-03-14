@@ -2,7 +2,7 @@ use diesel::{self, PgConnection};
 use graph::data::graphql::effort::LoadManager;
 use graph::data::query::QueryResults;
 use graph::data::query::QueryTarget;
-use graph::data::subgraph::schema::SubgraphError;
+use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};
 use graph::log;
 use graph::prelude::{QueryStoreManager as _, SubgraphStore as _, *};
 use graph::semver::Version;
@@ -166,7 +166,7 @@ pub fn create_subgraph(
         chain: PhantomData,
     };
 
-    let deployment = SubgraphDeploymentEntity::new(&manifest, false, None).graft(base);
+    let deployment = DeploymentCreate::new(&manifest, None).graft(base);
     let name = {
         let mut name = subgraph_id.to_string();
         name.truncate(32);

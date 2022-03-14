@@ -27,7 +27,7 @@ use std::time::Instant;
 use graph::components::store::EntityCollection;
 use graph::components::subgraph::ProofOfIndexingFinisher;
 use graph::constraint_violation;
-use graph::data::subgraph::schema::{SubgraphError, POI_OBJECT};
+use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, POI_OBJECT};
 use graph::prelude::{
     anyhow, debug, info, lazy_static, o, warn, web3, ApiSchema, AttributeNames, BlockNumber,
     BlockPtr, CheapClone, DeploymentHash, DeploymentState, Entity, EntityKey, EntityModification,
@@ -175,7 +175,7 @@ impl DeploymentStore {
     pub(crate) fn create_deployment(
         &self,
         schema: &Schema,
-        deployment: SubgraphDeploymentEntity,
+        deployment: DeploymentCreate,
         site: Arc<Site>,
         graft_base: Option<Arc<Layout>>,
         replace: bool,

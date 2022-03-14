@@ -62,7 +62,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
         &self,
         name: SubgraphName,
         schema: &Schema,
-        deployment: SubgraphDeploymentEntity,
+        deployment: DeploymentCreate,
         node_id: NodeId,
         network: String,
         mode: SubgraphVersionSwitchingMode,

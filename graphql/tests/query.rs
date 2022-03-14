@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate pretty_assertions;
 
+use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data::value::Object;
 use graphql_parser::Pos;
 use std::iter::FromIterator;
@@ -23,8 +24,8 @@ use graph::{
         futures03::stream::StreamExt, o, q, r, serde_json, slog, BlockPtr, DeploymentHash, Entity,
         EntityKey, EntityOperation, FutureExtension, GraphQlRunner as _, Logger, NodeId, Query,
         QueryError, QueryExecutionError, QueryResult, QueryStoreManager, QueryVariables, Schema,
-        SubgraphDeploymentEntity, SubgraphManifest, SubgraphName, SubgraphStore,
-        SubgraphVersionSwitchingMode, Subscription, SubscriptionError, Value,
+        SubgraphManifest, SubgraphName, SubgraphStore, SubgraphVersionSwitchingMode, Subscription,
+        SubscriptionError, Value,
     },
     semver::Version,
 };
@@ -112,7 +113,7 @@ fn insert_test_entities(
     store: &impl SubgraphStore,
     manifest: SubgraphManifest<graph_chain_ethereum::Chain>,
 ) -> DeploymentLocator {
-    let deployment = SubgraphDeploymentEntity::new(&manifest, false, None);
+    let deployment = DeploymentCreate::new(&manifest, None);
     let name = SubgraphName::new("test/query").unwrap();
     let node_id = NodeId::new("test").unwrap();
     let deployment = store
