@@ -1,4 +1,3 @@
-mod context;
 mod error;
 mod inputs;
 mod instance;
@@ -8,6 +7,7 @@ mod metrics;
 mod provider;
 mod registrar;
 mod runner;
+mod state;
 mod stream;
 
 pub use self::instance::SubgraphInstance;
