@@ -7,44 +7,6 @@ lazy_static! {
     pub static ref ENV_VARS: EnvVars = EnvVars::from_env().unwrap();
 }
 
-#[derive(Clone, Debug, Envconfig)]
-struct Inner {
-    #[envconfig(from = "GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT", default = "30")]
-    chain_head_watcher_timeout_in_sec: u64,
-    #[envconfig(from = "GRAPH_EXTRA_QUERY_PERMITS", default = "0")]
-    extra_query_permits: u64,
-    #[envconfig(from = "GRAPH_STORE_CONNECTION_TIMEOUT", default = "5000")]
-    connection_timeout_in_msec: u64,
-    #[envconfig(from = "GRAPH_STORE_CONNECTION_MIN_IDLE")]
-    connection_min_idle: Option<u32>,
-    #[envconfig(from = "GRAPH_STORE_CONNECTION_MIN_IDLE_TIMEOUT", default = "600")]
-    connection_min_idle_timeout_in_sec: u64,
-    #[envconfig(from = "GRAPH_STORE_CONNECTION_TRY_ALWAYS", default = "false")]
-    connection_try_always: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_QUERY_STATS_REFRESH_INTERVAL", default = "300")]
-    query_stats_refresh_interval_in_sec: u64,
-    #[envconfig(from = "LARGE_NOTIFICATION_CLEANUP_INTERVAL", default = "300")]
-    large_notification_cleanup_interval_in_sec: u64,
-    #[envconfig(from = "GRAPH_NOTIFICATION_BROADCAST_TIMEOUT", default = "60")]
-    notification_broadcast_timeout_in_sec: u64,
-    #[envconfig(from = "TYPEA_BATCH_SIZE", default = "150")]
-    typea_batch_size: usize,
-    #[envconfig(from = "TYPED_CHILDREN_SET_SIZE", default = "150")]
-    typed_children_set_size: usize,
-    #[envconfig(from = "ORDER_BY_BLOCK_RANGE", default = "false")]
-    order_by_block_range: EnvVarBoolean,
-    #[envconfig(from = "REVERSIBLE_ORDER_BY_OFF", default = "false")]
-    reservible_order_by_off: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_ACCOUNT_TABLES", default = "")]
-    account_tables: String,
-    #[envconfig(from = "GRAPH_SQL_STATEMENT_TIMEOUT")]
-    sql_statement_timeout_in_sec: Option<u64>,
-    #[envconfig(from = "GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATION", default = "false")]
-    disable_subscription_notification: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_REMOVE_UNUSED_INTERVAL", default = "360")]
-    remove_unused_interval_in_minutes: u32,
-}
-
 /// Some of these environment variables should really be set through the
 /// configuration file:
 ///  - [`EnvVars::connection_timeout`].
@@ -183,6 +145,44 @@ impl EnvVars {
     pub fn unused_interval(&self) -> chrono::Duration {
         chrono::Duration::minutes(self.inner.remove_unused_interval_in_minutes.into())
     }
+}
+
+#[derive(Clone, Debug, Envconfig)]
+struct Inner {
+    #[envconfig(from = "GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT", default = "30")]
+    chain_head_watcher_timeout_in_sec: u64,
+    #[envconfig(from = "GRAPH_EXTRA_QUERY_PERMITS", default = "0")]
+    extra_query_permits: u64,
+    #[envconfig(from = "GRAPH_STORE_CONNECTION_TIMEOUT", default = "5000")]
+    connection_timeout_in_msec: u64,
+    #[envconfig(from = "GRAPH_STORE_CONNECTION_MIN_IDLE")]
+    connection_min_idle: Option<u32>,
+    #[envconfig(from = "GRAPH_STORE_CONNECTION_MIN_IDLE_TIMEOUT", default = "600")]
+    connection_min_idle_timeout_in_sec: u64,
+    #[envconfig(from = "GRAPH_STORE_CONNECTION_TRY_ALWAYS", default = "false")]
+    connection_try_always: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_QUERY_STATS_REFRESH_INTERVAL", default = "300")]
+    query_stats_refresh_interval_in_sec: u64,
+    #[envconfig(from = "LARGE_NOTIFICATION_CLEANUP_INTERVAL", default = "300")]
+    large_notification_cleanup_interval_in_sec: u64,
+    #[envconfig(from = "GRAPH_NOTIFICATION_BROADCAST_TIMEOUT", default = "60")]
+    notification_broadcast_timeout_in_sec: u64,
+    #[envconfig(from = "TYPEA_BATCH_SIZE", default = "150")]
+    typea_batch_size: usize,
+    #[envconfig(from = "TYPED_CHILDREN_SET_SIZE", default = "150")]
+    typed_children_set_size: usize,
+    #[envconfig(from = "ORDER_BY_BLOCK_RANGE", default = "false")]
+    order_by_block_range: EnvVarBoolean,
+    #[envconfig(from = "REVERSIBLE_ORDER_BY_OFF", default = "false")]
+    reservible_order_by_off: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_ACCOUNT_TABLES", default = "")]
+    account_tables: String,
+    #[envconfig(from = "GRAPH_SQL_STATEMENT_TIMEOUT")]
+    sql_statement_timeout_in_sec: Option<u64>,
+    #[envconfig(from = "GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATION", default = "false")]
+    disable_subscription_notification: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_REMOVE_UNUSED_INTERVAL", default = "360")]
+    remove_unused_interval_in_minutes: u32,
 }
 
 #[derive(Copy, Clone, Debug)]
