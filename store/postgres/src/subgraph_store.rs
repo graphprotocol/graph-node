@@ -593,7 +593,7 @@ impl SubgraphStoreInner {
             fatal_error: None,
             non_fatal_errors: vec![],
             earliest_block: deployment.earliest_block.clone(),
-            latest_block: deployment.earliest_block,
+            latest_block: None,
             graft_base: Some(src.deployment.clone()),
             graft_block: Some(block),
             debug_fork: deployment.debug_fork,
