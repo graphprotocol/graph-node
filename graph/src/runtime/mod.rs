@@ -243,6 +243,64 @@ pub enum IndexForAscTypeId {
     NearChunkHeader = 84,
     NearBlock = 85,
     NearReceiptWithOutcome = 86,
+
+    // Tendermint Type IDs
+    //
+    // Generated with the following shell script:
+    //
+    // ```
+    // cat chain/tendermint/src/runtime/generated.rs | grep IndexForAscTypeId::Tendermint | grep -Eo "Tendermint[a-zA-Z0-9]+" | awk '{for(x=1;x<=NF;x++)sub(/$/,"="++i+86",")}1' | sed 's/=/ = /'
+    // ```
+    //
+    // The `86` literal at the end in the `awk` should be replaced with the last element
+    // value in the list above.
+    TendermintArrayEventTx = 87,
+    TendermintArrayEvent = 88,
+    TendermintArrayCommitSig = 89,
+    TendermintArrayBytes = 90,
+    TendermintArrayEvidence = 91,
+    TendermintArrayEventAttribute = 92,
+    TendermintBlockIDFlagEnum = 93,
+    TendermintSignedMsgTypeEnum = 94,
+    TendermintEventList = 95,
+    TendermintEventBlock = 96,
+    TendermintResponseBeginBlock = 97,
+    TendermintResponseEndBlock = 98,
+    TendermintValidatorUpdate = 99,
+    TendermintArrayValidatorUpdate = 100,
+    TendermintConsensusParams = 101,
+    TendermintBlockParams = 102,
+    TendermintEvidenceParams = 103,
+    TendermintValidatorParams = 104,
+    TendermintVersionParams = 105,
+    TendermintBlock = 106,
+    TendermintCommit = 107,
+    TendermintCommitSig = 108,
+    TendermintHeader = 109,
+    TendermintConsensus = 110,
+    TendermintBlockID = 111,
+    TendermintPartSetHeader = 112,
+    TendermintData = 113,
+    TendermintEvidence = 114,
+    TendermintDuplicateVoteEvidence = 115,
+    TendermintEventTx = 116,
+    TendermintEventVote = 117,
+    TendermintLightClientAttackEvidence = 118,
+    TendermintLightBlock = 119,
+    TendermintValidatorSet = 120,
+    TendermintSignedHeader = 121,
+    TendermintEvidenceList = 122,
+    TendermintValidator = 123,
+    TendermintArrayValidator = 124,
+    TendermintPublicKey = 125,
+    TendermintTxResult = 126,
+    TendermintResponseDeliverTx = 127,
+    TendermintEvent = 128,
+    TendermintEventAttribute = 129,
+    TendermintEventValidatorSetUpdates = 130,
+    TendermintDuration = 131,
+    TendermintTimestamp = 132,
+    TendermintEventData = 133,
 }
 
 impl ToAscObj<u32> for IndexForAscTypeId {

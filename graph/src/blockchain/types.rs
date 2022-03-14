@@ -159,6 +159,16 @@ impl From<(H256, i32)> for BlockPtr {
     }
 }
 
+impl From<(Vec<u8>, u64)> for BlockPtr {
+    fn from((bytes, number): (Vec<u8>, u64)) -> Self {
+        let number = i32::try_from(number).unwrap();
+        BlockPtr {
+            hash: BlockHash::from(bytes),
+            number,
+        }
+    }
+}
+
 impl From<(H256, u64)> for BlockPtr {
     fn from((hash, number): (H256, u64)) -> BlockPtr {
         let number = i32::try_from(number).unwrap();

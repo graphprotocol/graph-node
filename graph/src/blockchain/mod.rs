@@ -313,6 +313,9 @@ pub enum BlockchainKind {
 
     /// NEAR chains (Mainnet, Testnet) or chains that are compatible
     Near,
+
+    /// Tendermint chains including cosmoshub
+    Tendermint,
 }
 
 impl fmt::Display for BlockchainKind {
@@ -320,6 +323,7 @@ impl fmt::Display for BlockchainKind {
         let value = match self {
             BlockchainKind::Ethereum => "ethereum",
             BlockchainKind::Near => "near",
+            BlockchainKind::Tendermint => "tendermint",
         };
         write!(f, "{}", value)
     }
@@ -332,6 +336,7 @@ impl FromStr for BlockchainKind {
         match s {
             "ethereum" => Ok(BlockchainKind::Ethereum),
             "near" => Ok(BlockchainKind::Near),
+            "tendermint" => Ok(BlockchainKind::Tendermint),
             _ => Err(anyhow!("unknown blockchain kind {}", s)),
         }
     }

@@ -326,6 +326,22 @@ where
                 )
                 .await?
             }
+
+            BlockchainKind::Tendermint => {
+                create_subgraph_version::<graph_chain_tendermint::Chain, _, _>(
+                    &logger,
+                    self.store.clone(),
+                    self.chains.cheap_clone(),
+                    name.clone(),
+                    hash.cheap_clone(),
+                    raw,
+                    node_id,
+                    debug_fork,
+                    self.version_switching_mode,
+                    self.resolver.cheap_clone(),
+                )
+                .await?
+            }
         };
 
         debug!(

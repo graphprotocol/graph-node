@@ -11,6 +11,7 @@ use graph::prometheus::Registry;
 use graph::url::Url;
 use graph_chain_ethereum as ethereum;
 use graph_chain_near::{self as near, HeaderOnlyBlock as NearFirehoseHeaderOnlyBlock};
+use graph_chain_tendermint::{self as tendermint, EventList as TendermintFirehoseEventList};
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -229,6 +230,7 @@ async fn main() {
 
         let (eth_networks, ethereum_idents) =
             connect_ethereum_networks(&logger, eth_networks).await;
+
         let (near_networks, near_idents) =
             connect_firehose_networks::<NearFirehoseHeaderOnlyBlock>(
                 &logger,
@@ -238,7 +240,21 @@ async fn main() {
             )
             .await;
 
-        let network_identifiers = ethereum_idents.into_iter().chain(near_idents).collect();
+        let (tendermint_networks, tendermint_idents) =
+            connect_firehose_networks::<TendermintFirehoseEventList>(
+                &logger,
+                firehose_networks_by_kind
+                    .remove(&BlockchainKind::Tendermint)
+                    .unwrap_or_else(|| FirehoseNetworks::new()),
+            )
+            .await;
+
+        let network_identifiers = ethereum_idents
+            .into_iter()
+            .chain(near_idents)
+            .chain(tendermint_idents)
+            .collect();
+
         let network_store = store_builder.network_store(network_identifiers);
 
         let ethereum_chains = ethereum_networks_as_chains(
@@ -257,6 +273,14 @@ async fn main() {
             &mut blockchain_map,
             &logger,
             &near_networks,
+            network_store.as_ref(),
+            &logger_factory,
+        );
+
+        let tendermint_chains = tendermint_networks_as_chains(
+            &mut blockchain_map,
+            &logger,
+            &tendermint_networks,
             network_store.as_ref(),
             &logger_factory,
         );
@@ -307,6 +331,11 @@ async fn main() {
                 &logger,
                 &network_store,
                 near_chains,
+            );
+            start_firehose_block_ingestor::<_, TendermintFirehoseEventList>(
+                &logger,
+                &network_store,
+                tendermint_chains,
             );
 
             // Start a task runner
@@ -525,6 +554,54 @@ fn ethereum_networks_as_chains(
 
     for (network_name, chain) in chains.iter().cloned() {
         blockchain_map.insert::<graph_chain_ethereum::Chain>(network_name, chain)
+    }
+
+    HashMap::from_iter(chains)
+}
+
+fn tendermint_networks_as_chains(
+    blockchain_map: &mut BlockchainMap,
+    logger: &Logger,
+    firehose_networks: &FirehoseNetworks,
+    store: &Store,
+    logger_factory: &LoggerFactory,
+) -> HashMap<String, FirehoseChain<tendermint::Chain>> {
+    let chains: Vec<_> = firehose_networks
+        .networks
+        .iter()
+        .filter_map(|(network_name, firehose_endpoints)| {
+            store
+                .block_store()
+                .chain_store(network_name)
+                .map(|chain_store| (network_name, chain_store, firehose_endpoints))
+                .or_else(|| {
+                    error!(
+                        logger,
+                        "No store configured for Tendermint chain {}; ignoring this chain",
+                        network_name
+                    );
+                    None
+                })
+        })
+        .map(|(network_name, chain_store, firehose_endpoints)| {
+            (
+                network_name.clone(),
+                FirehoseChain {
+                    chain: Arc::new(tendermint::Chain::new(
+                        logger_factory.clone(),
+                        network_name.clone(),
+                        chain_store,
+                        firehose_endpoints.clone(),
+                    )),
+                    firehose_endpoints: firehose_endpoints.clone(),
+                },
+            )
+        })
+        .collect();
+
+    for (network_name, firehose_chain) in chains.iter() {
+        blockchain_map
+            .insert::<tendermint::Chain>(network_name.clone(), firehose_chain.chain.clone())
     }
 
     HashMap::from_iter(chains)

@@ -162,9 +162,7 @@ where
 
         let block_hash = field
             .get_required::<H256>("blockHash")
-            .expect("Valid blockHash required")
-            .try_into()
-            .unwrap();
+            .expect("Valid blockHash required");
 
         let block = BlockPtr::from((block_hash, block_number));
 
@@ -265,6 +263,23 @@ where
                 BlockchainKind::Ethereum => {
                     let unvalidated_subgraph_manifest =
                         UnvalidatedSubgraphManifest::<graph_chain_ethereum::Chain>::resolve(
+                            deployment_hash,
+                            raw,
+                            self.link_resolver.clone(),
+                            &self.logger,
+                            MAX_SPEC_VERSION.clone(),
+                        )
+                        .await?;
+
+                    validate_and_extract_features(
+                        &self.store.subgraph_store(),
+                        unvalidated_subgraph_manifest,
+                    )?
+                }
+
+                BlockchainKind::Tendermint => {
+                    let unvalidated_subgraph_manifest =
+                        UnvalidatedSubgraphManifest::<graph_chain_tendermint::Chain>::resolve(
                             deployment_hash,
                             raw,
                             self.link_resolver.clone(),
