@@ -318,7 +318,7 @@ impl Query {
 
     /// Log details about the overall execution of the query
     pub fn log_execution(&self, block: BlockNumber) {
-        if *graph::log::LOG_GQL_TIMING {
+        if graph::ENV_VARS.log_gql_timing() {
             info!(
                 &self.logger,
                 "Query timing (GraphQL)";
@@ -339,7 +339,7 @@ impl Query {
         start: Instant,
         cache_status: String,
     ) {
-        if *graph::log::LOG_GQL_CACHE_TIMING {
+        if graph::ENV_VARS.log_gql_cache_timing() {
             info!(
                 &self.logger,
                 "Query caching";

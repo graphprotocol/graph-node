@@ -7,7 +7,6 @@ use graph::blockchain::BlockchainKind;
 use graph::blockchain::BlockchainMap;
 use graph::components::store::{DeploymentId, DeploymentLocator, SubscriptionManager};
 use graph::data::subgraph::schema::SubgraphDeploymentEntity;
-use graph::data::subgraph::MAX_SPEC_VERSION;
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
@@ -505,7 +504,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolve
         raw,
         resolver,
         &logger,
-        MAX_SPEC_VERSION.clone(),
+        graph::ENV_VARS.max_spec_version(),
     )
     .map_err(SubgraphRegistrarError::ResolveError)
     .await?;

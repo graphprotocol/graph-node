@@ -27,6 +27,9 @@ pub mod firehose;
 /// Helpers for parsing environment variables.
 pub mod env;
 
+mod env_vars;
+pub use env_vars::{EnvVars, ENV_VARS};
+
 /// Wrapper for spawning tasks that abort on panic, which is our default.
 mod task_spawn;
 pub use task_spawn::{
@@ -118,7 +121,7 @@ pub mod prelude {
         EntityModification, EntityOperation, EntityOrder, EntityQuery, EntityRange, EntityWindow,
         EthereumCallCache, ParentLink, PoolWaitStats, QueryStore, QueryStoreManager, StoreError,
         StoreEvent, StoreEventStream, StoreEventStreamBox, SubgraphStore, UnfailOutcome,
-        WindowAttribute, BLOCK_NUMBER_MAX, SUBSCRIPTION_THROTTLE_INTERVAL,
+        WindowAttribute, BLOCK_NUMBER_MAX,
     };
     pub use crate::components::subgraph::{
         BlockState, DataSourceTemplateInfo, HostMetrics, RuntimeHost, RuntimeHostBuilder,

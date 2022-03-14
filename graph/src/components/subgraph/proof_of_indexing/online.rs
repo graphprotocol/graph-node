@@ -6,8 +6,8 @@ use super::ProofOfIndexingEvent;
 use crate::{
     blockchain::BlockPtr,
     prelude::{debug, BlockNumber, DeploymentHash, Logger},
+    ENV_VARS,
 };
-use lazy_static::lazy_static;
 use stable_hash::crypto::{Blake3SeqNo, SetHasher};
 use stable_hash::prelude::*;
 use stable_hash::utils::AsBytes;
@@ -15,13 +15,6 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fmt;
 use web3::types::Address;
-
-lazy_static! {
-    static ref LOG_EVENTS: bool = std::env::var("GRAPH_LOG_POI_EVENTS")
-        .unwrap_or_else(|_| "false".into())
-        .parse::<bool>()
-        .expect("invalid GRAPH_LOG_POI_EVENTS");
-}
 
 pub struct BlockEventStream {
     vec_length: u64,
@@ -150,7 +143,7 @@ impl ProofOfIndexing {
         causality_region: &str,
         event: &ProofOfIndexingEvent<'_>,
     ) {
-        if *LOG_EVENTS {
+        if ENV_VARS.log_poi_events() {
             debug!(
                 logger,
                 "Proof of indexing event";

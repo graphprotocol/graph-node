@@ -5,7 +5,7 @@ use web3::types::{Address, H256};
 
 use graph::blockchain::{Blockchain, BlockchainKind};
 use graph::data::subgraph::features::detect_features;
-use graph::data::subgraph::{status, MAX_SPEC_VERSION};
+use graph::data::subgraph::status;
 use graph::data::value::Object;
 use graph::prelude::*;
 use graph::{
@@ -269,7 +269,7 @@ where
                             raw,
                             self.link_resolver.clone(),
                             &self.logger,
-                            MAX_SPEC_VERSION.clone(),
+                            graph::ENV_VARS.max_spec_version(),
                         )
                         .await?;
 
@@ -286,7 +286,7 @@ where
                             raw,
                             self.link_resolver.clone(),
                             &self.logger,
-                            MAX_SPEC_VERSION.clone(),
+                            graph::ENV_VARS.max_spec_version(),
                         )
                         .await?;
 

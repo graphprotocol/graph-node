@@ -13,7 +13,6 @@ pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 use anyhow::ensure;
 use anyhow::{anyhow, Error};
 use futures03::{future::try_join3, stream::FuturesOrdered, TryStreamExt as _};
-use lazy_static::lazy_static;
 use semver::Version;
 use serde::de;
 use serde::ser;
@@ -39,6 +38,7 @@ use crate::{
         link_resolver::LinkResolver,
         store::{DeploymentLocator, StoreError, SubgraphStore},
     },
+    ENV_VARS,
 };
 
 use crate::prelude::{impl_slog_value, BlockNumber, Deserialize, Serialize};
@@ -47,13 +47,6 @@ use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
-
-lazy_static! {
-    static ref DISABLE_GRAFTS: bool = std::env::var("GRAPH_DISABLE_GRAFTS")
-        .ok()
-        .map(|s| s.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-}
 
 /// Deserialize an Address (with or without '0x' prefix).
 fn deserialize_address<'de, D>(deserializer: D) -> Result<Option<Address>, D::Error>
@@ -588,7 +581,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             });
 
         if let Some(graft) = &self.0.graft {
-            if *DISABLE_GRAFTS {
+            if ENV_VARS.disable_grafts() {
                 errors.push(SubgraphManifestValidationError::GraftBaseInvalid(
                     "Grafting of subgraphs is currently disabled".to_owned(),
                 ));
@@ -726,11 +719,11 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
 
         for ds in &data_sources {
             ensure!(
-                semver::VersionReq::parse(&format!("<= {}", *MAX_API_VERSION))
+                semver::VersionReq::parse(&format!("<= {}", ENV_VARS.max_api_version()))
                     .unwrap()
                     .matches(&ds.api_version()),
                 "The maximum supported mapping API version of this indexer is {}, but `{}` was found",
-                *MAX_API_VERSION,
+                ENV_VARS.max_api_version(),
                 ds.api_version()
             );
         }

@@ -8,7 +8,6 @@ use graph::blockchain::block_stream::BlockStreamMetrics;
 use graph::blockchain::Blockchain;
 use graph::blockchain::NodeCapabilities;
 use graph::blockchain::{BlockchainKind, TriggerFilter};
-use graph::data::subgraph::MAX_SPEC_VERSION;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::util::lfu_cache::LfuCache;
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
@@ -166,7 +165,7 @@ where
                 // Allow for infinite retries for subgraph definition files.
                 &self.link_resolver.as_ref().clone().with_retries(),
                 &logger,
-                MAX_SPEC_VERSION.clone(),
+                graph::ENV_VARS.max_spec_version(),
             )
             .await
             .context("Failed to resolve subgraph from IPFS")?;

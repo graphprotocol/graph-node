@@ -655,7 +655,7 @@ impl Layout {
             // 20kB
             const MAXLEN: usize = 20_480;
 
-            if !*graph::log::LOG_SQL_TIMING {
+            if !graph::ENV_VARS.log_sql_timing() {
                 return;
             }
 

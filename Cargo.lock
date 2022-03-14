@@ -1363,6 +1363,7 @@ dependencies = [
  "chrono",
  "diesel",
  "diesel_derives",
+ "envconfig",
  "ethabi",
  "fail",
  "futures 0.1.31",
