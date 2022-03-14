@@ -23,6 +23,7 @@ use graph::{
 };
 
 use crate::execution::{ast as a, ExecutionContext, Resolver};
+use crate::prelude::ENV_VARS;
 use crate::runner::ResultSizeMetrics;
 use crate::schema::ast as sast;
 use crate::store::query::build_query;
@@ -32,19 +33,6 @@ lazy_static! {
     static ref ARG_FIRST: String = String::from("first");
     static ref ARG_SKIP: String = String::from("skip");
     static ref ARG_ID: String = String::from("id");
-
-    /// Setting this environment variable to any value will enable the experimental feature "Select
-    /// by Specific Attributes".
-    static ref DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES: bool =
-        !std::env::var("GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES").is_ok();
-
-    static ref RESULT_SIZE_WARN: usize = std::env::var("GRAPH_GRAPHQL_WARN_RESULT_SIZE")
-        .map(|s| s.parse::<usize>().expect("`GRAPH_GRAPHQL_WARN_RESULT_SIZE` is a number"))
-        .unwrap_or(std::usize::MAX);
-
-    static ref RESULT_SIZE_ERROR: usize = std::env::var("GRAPH_GRAPHQL_ERROR_RESULT_SIZE")
-        .map(|s| s.parse::<usize>().expect("`GRAPH_GRAPHQL_ERROR_RESULT_SIZE` is a number"))
-        .unwrap_or(std::usize::MAX);
 }
 
 /// Intermediate data structure to hold the results of prefetching entities
@@ -511,10 +499,13 @@ fn execute_root_selection_set(
 }
 
 fn check_result_size(logger: &Logger, size: usize) -> Result<(), QueryExecutionError> {
-    if size > *RESULT_SIZE_ERROR {
-        return Err(QueryExecutionError::ResultTooBig(size, *RESULT_SIZE_ERROR));
+    if size > ENV_VARS.graphql_error_result_size() {
+        return Err(QueryExecutionError::ResultTooBig(
+            size,
+            ENV_VARS.graphql_error_result_size(),
+        ));
     }
-    if size > *RESULT_SIZE_WARN {
+    if size > ENV_VARS.graphql_warn_result_size() {
         warn!(logger, "Large query result"; "size" => size);
     }
     Ok(())
@@ -572,7 +563,7 @@ fn execute_selection_set<'a>(
             // effectively, causes the `AttributeNames::All` variant to be used as a fallback value for all
             // queries.
             let collected_columns =
-                if *DISABLE_EXPERIMENTAL_FEATURE_SELECT_BY_SPECIFIC_ATTRIBUTE_NAMES {
+                if ENV_VARS.disable_experimental_feature_select_by_specific_attribute_names() {
                     SelectedAttributes(BTreeMap::new())
                 } else {
                     SelectedAttributes::for_field(field)?

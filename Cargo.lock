@@ -1498,6 +1498,7 @@ dependencies = [
  "anyhow",
  "crossbeam",
  "defer",
+ "envconfig",
  "futures 0.1.31",
  "graph",
  "graph-chain-ethereum",

@@ -5,7 +5,8 @@ edition = "2021"
 
 [dependencies]
 crossbeam = "0.8"
-futures01 = { package="futures", version="0.1.29" }
+envconfig = "0.10.0"
+futures01 = { package = "futures", version = "0.1.29" }
 graph = { path = "../graph" }
 graphql-parser = "0.4.0"
 graphql-tools = "0.0.19"

@@ -24,8 +24,11 @@ mod store;
 /// The external interface for actually running queries
 mod runner;
 
+mod env_vars;
+
 /// Prelude that exports the most important traits and types.
 pub mod prelude {
+    pub use super::env_vars::{EnvVars, ENV_VARS};
     pub use super::execution::{ast as a, ExecutionContext, Query, Resolver};
     pub use super::introspection::{introspection_schema, IntrospectionResolver};
     pub use super::query::{execute_query, ext::BlockConstraint, QueryExecutionOptions};

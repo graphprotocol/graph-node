@@ -21,11 +21,11 @@ use crate::execution::ast as a;
 use crate::query::{ast as qast, ext::BlockConstraint};
 use crate::schema::ast::{self as sast};
 use crate::values::coercion;
-use crate::{execution::get_field, schema::api::ErrorPolicy};
+use crate::{execution::get_field, prelude::ENV_VARS, schema::api::ErrorPolicy};
 
 lazy_static! {
-    static ref GRAPHQL_VALIDATION_PLAN: ValidationPlan = ValidationPlan::from(
-        if std::env::var("ENABLE_GRAPHQL_VALIDATIONS").ok().is_none() {
+    static ref GRAPHQL_VALIDATION_PLAN: ValidationPlan =
+        ValidationPlan::from(if ENV_VARS.enable_graphql_validations() {
             vec![]
         } else {
             vec![
@@ -54,8 +54,7 @@ lazy_static! {
                 Box::new(ValuesOfCorrectType::new()),
                 Box::new(UniqueDirectivesPerLocation::new()),
             ]
-        }
-    );
+        });
 }
 
 #[derive(Clone, Debug)]
