@@ -1591,6 +1591,7 @@ dependencies = [
  "bs58",
  "bytes 1.0.1",
  "defer",
+ "envconfig",
  "ethabi",
  "futures 0.1.31",
  "graph",

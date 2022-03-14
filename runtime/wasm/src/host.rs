@@ -1,6 +1,5 @@
 use std::cmp::PartialEq;
-use std::str::FromStr;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use async_trait::async_trait;
 use futures::sync::mpsc::Sender;
@@ -16,17 +15,9 @@ use graph::prelude::{
 };
 
 use crate::mapping::{MappingContext, MappingRequest};
+use crate::ENV_VARS;
 use crate::{host_exports::HostExports, module::ExperimentalFeatures};
 use graph::runtime::gas::Gas;
-
-lazy_static! {
-    static ref TIMEOUT: Option<Duration> = std::env::var("GRAPH_MAPPING_HANDLER_TIMEOUT")
-        .ok()
-        .map(|s| u64::from_str(&s).expect("Invalid value for GRAPH_MAPPING_HANDLER_TIMEOUT"))
-        .map(Duration::from_secs);
-    static ref ALLOW_NON_DETERMINISTIC_IPFS: bool =
-        std::env::var("GRAPH_ALLOW_NON_DETERMINISTIC_IPFS").is_ok();
-}
 
 pub struct RuntimeHostBuilder<C: Blockchain> {
     runtime_adapter: Arc<C::RuntimeAdapter>,
@@ -69,7 +60,7 @@ impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C> {
         metrics: Arc<HostMetrics>,
     ) -> Result<Sender<Self::Req>, Error> {
         let experimental_features = ExperimentalFeatures {
-            allow_non_deterministic_ipfs: *ALLOW_NON_DETERMINISTIC_IPFS,
+            allow_non_deterministic_ipfs: ENV_VARS.allow_non_deterministic_ipfs(),
         };
         crate::mapping::spawn_module(
             raw_module,
@@ -77,7 +68,7 @@ impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C> {
             subgraph_id,
             metrics,
             tokio::runtime::Handle::current(),
-            *TIMEOUT,
+            ENV_VARS.mapping_handler_timeout(),
             experimental_features,
         )
     }
