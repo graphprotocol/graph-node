@@ -27,9 +27,6 @@ pub mod firehose;
 /// Helpers for parsing environment variables.
 pub mod env;
 
-mod env_vars;
-pub use env_vars::{EnvVars, ENV_VARS};
-
 /// Wrapper for spawning tasks that abort on panic, which is our default.
 mod task_spawn;
 pub use task_spawn::{

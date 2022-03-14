@@ -1,6 +1,5 @@
 use crate::gas_rules::GasRules;
 use crate::module::{ExperimentalFeatures, WasmInstance};
-use crate::ENV_VARS;
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
 use graph::blockchain::{Blockchain, HostFn, TriggerWithHandler};
@@ -8,6 +7,7 @@ use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::prelude::*;
 use graph::runtime::gas::Gas;
+use graph_env_vars::ENV_VARS;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::thread;

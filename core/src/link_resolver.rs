@@ -14,8 +14,7 @@ use graph::{
     ipfs_client::{IpfsClient, ObjectStatResponse},
     prelude::{LinkResolver as LinkResolverTrait, *},
 };
-
-use crate::ENV_VARS;
+use graph_env_vars::ENV_VARS;
 
 fn retry_policy<I: Send + Sync>(
     always_retry: bool,

@@ -11,9 +11,9 @@ use graph::{
         subgraph::{MappingError, SharedProofOfIndexing},
     },
 };
+use graph_env_vars::ENV_VARS;
 
 use super::metrics::SubgraphInstanceMetrics;
-use crate::ENV_VARS;
 
 pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     subgraph_id: DeploymentHash,

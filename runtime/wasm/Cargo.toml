@@ -11,6 +11,7 @@ ethabi = "16.0"
 futures = "0.1.21"
 hex = "0.4.3"
 graph = { path = "../../graph" }
+graph-env-vars = { path = "../../env-vars" }
 graph-graphql = { path = "../../graphql" }
 bs58 = "0.4.0"
 graph-runtime-derive = { path = "../derive" }

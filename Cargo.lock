@@ -1368,6 +1368,7 @@ dependencies = [
  "fail",
  "futures 0.1.31",
  "futures 0.3.16",
+ "graph-env-vars",
  "graphql-parser",
  "hex",
  "http",
@@ -1468,13 +1469,13 @@ dependencies = [
  "async-trait",
  "atomic_refcell",
  "bytes 0.5.6",
- "envconfig",
  "fail",
  "futures 0.1.31",
  "futures 0.3.16",
  "graph",
  "graph-chain-ethereum",
  "graph-chain-near",
+ "graph-env-vars",
  "graph-mock",
  "graph-runtime-wasm",
  "graphql-parser",
@@ -1488,6 +1489,14 @@ dependencies = [
  "serde_yaml",
  "test-store",
  "walkdir",
+]
+
+[[package]]
+name = "graph-env-vars"
+version = "0.25.1"
+dependencies = [
+ "envconfig",
+ "lazy_static",
 ]
 
 [[package]]
@@ -1595,6 +1604,7 @@ dependencies = [
  "ethabi",
  "futures 0.1.31",
  "graph",
+ "graph-env-vars",
  "graph-graphql",
  "graph-runtime-derive",
  "hex",

@@ -3,7 +3,6 @@ use crate::subgraph::error::BlockProcessingError;
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::metrics::SubgraphInstanceMetrics;
 use crate::subgraph::SubgraphInstance;
-use crate::ENV_VARS;
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
 use graph::blockchain::block_stream::{
@@ -22,6 +21,7 @@ use graph::data::subgraph::{
 };
 use graph::prelude::*;
 use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
+use graph::ENV_VARS;
 use std::convert::TryFrom;
 use std::sync::Arc;
 use std::time::{Duration, Instant};

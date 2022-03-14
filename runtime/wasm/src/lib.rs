@@ -3,9 +3,6 @@ pub mod asc_abi;
 mod host;
 pub mod to_from;
 
-mod env_vars;
-pub use env_vars::{EnvVars, ENV_VARS};
-
 /// Public interface of the crate, receives triggers to be processed.
 
 /// Pre-processes modules and manages their threads. Serves as an interface from `host` to `module`.

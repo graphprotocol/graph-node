@@ -15,9 +15,9 @@ use graph::prelude::{
 };
 
 use crate::mapping::{MappingContext, MappingRequest};
-use crate::ENV_VARS;
 use crate::{host_exports::HostExports, module::ExperimentalFeatures};
 use graph::runtime::gas::Gas;
+use graph_env_vars::ENV_VARS;
 
 pub struct RuntimeHostBuilder<C: Blockchain> {
     runtime_adapter: Arc<C::RuntimeAdapter>,
