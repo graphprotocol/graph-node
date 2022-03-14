@@ -1397,6 +1397,7 @@ name = "graph-chain-ethereum"
 version = "0.25.1"
 dependencies = [
  "anyhow",
+ "base64 0.13.0",
  "dirs-next",
  "futures 0.1.31",
  "graph",
