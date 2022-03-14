@@ -13,6 +13,9 @@ pub mod store_builder;
 
 pub mod manager;
 
+mod env_vars;
+pub use env_vars::{EnvVars, ENV_VARS};
+
 pub struct MetricsContext {
     pub prometheus: Arc<Registry>,
     pub registry: Arc<MetricsRegistry>,

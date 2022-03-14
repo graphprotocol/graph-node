@@ -18,11 +18,12 @@ use graph_core::{
 use graph_graphql::prelude::GraphQlRunner;
 use graph_node::chain::{
     connect_ethereum_networks, connect_firehose_networks, create_ethereum_networks,
-    create_firehose_networks, create_ipfs_clients, REORG_THRESHOLD,
+    create_firehose_networks, create_ipfs_clients,
 };
 use graph_node::config::Config;
 use graph_node::opt;
 use graph_node::store_builder::StoreBuilder;
+use graph_node::ENV_VARS;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;
 use graph_server_json_rpc::JsonRpcServer;
@@ -319,8 +320,8 @@ async fn main() {
             );
             graph::spawn_blocking(job_runner.start());
         }
-        let static_filters = env::var_os("EXPERIMENTAL_STATIC_FILTERS").is_some();
-        let firehose_filters = env::var_os("DISABLE_FIREHOSE_FILTERS").is_none();
+        let static_filters = ENV_VARS.experimental_static_filter();
+        let firehose_filters = !ENV_VARS.disable_firehose_filters();
 
         let subgraph_instance_manager = SubgraphInstanceManager::new(
             &logger_factory,
@@ -339,13 +340,7 @@ async fn main() {
             subgraph_instance_manager,
         );
 
-        // Check version switching mode environment variable
-        let version_switching_mode = SubgraphVersionSwitchingMode::parse(
-            env::var_os("EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE")
-                .unwrap_or_else(|| "instant".into())
-                .to_str()
-                .expect("invalid version switching mode"),
-        );
+        let version_switching_mode = ENV_VARS.experimental_subgraph_version_switching_mode();
 
         // Create named subgraph provider for resolving subgraph name->ID mappings
         let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
@@ -460,7 +455,7 @@ async fn main() {
                                      "code" => LogCode::TokioContention);
             if timeout < Duration::from_secs(10) {
                 timeout *= 10;
-            } else if std::env::var_os("GRAPH_KILL_IF_UNRESPONSIVE").is_some() {
+            } else if ENV_VARS.kill_node_if_unresponsive() {
                 // The node is unresponsive, kill it in hopes it will be restarted.
                 crit!(contention_logger, "Node is unresponsive, killing process");
                 std::process::abort()
@@ -516,7 +511,7 @@ fn ethereum_networks_as_chains(
                 firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
                 eth_adapters.clone(),
                 chain_head_update_listener.clone(),
-                *REORG_THRESHOLD,
+                ENV_VARS.reorg_threshold(),
                 is_ingestible,
             );
             (network_name.clone(), Arc::new(chain))
@@ -628,7 +623,7 @@ fn start_block_ingestor(
             // present in the DB.
             let block_ingestor = EthereumBlockIngestor::new(
                 logger,
-                *REORG_THRESHOLD,
+                ENV_VARS.reorg_threshold(),
                 eth_adapter,
                 chain.chain_store(),
                 block_polling_interval,
