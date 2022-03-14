@@ -3,6 +3,7 @@ use crate::subgraph::error::BlockProcessingError;
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::metrics::SubgraphInstanceMetrics;
 use crate::subgraph::SubgraphInstance;
+use crate::ENV_VARS;
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
 use graph::blockchain::block_stream::{
@@ -21,7 +22,6 @@ use graph::data::subgraph::{
 };
 use graph::prelude::*;
 use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
-use lazy_static::lazy_static;
 use std::convert::TryFrom;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -32,21 +32,6 @@ const SKIP_PTR_UPDATES_THRESHOLD: Duration = Duration::from_secs(60 * 5);
 
 const BUFFERED_BLOCK_STREAM_SIZE: usize = 100;
 const BUFFERED_FIREHOSE_STREAM_SIZE: usize = 1;
-
-lazy_static! {
-    // Keep deterministic errors non-fatal even if the subgraph is pending.
-    // Used for testing Graph Node itself.
-    pub static ref DISABLE_FAIL_FAST: bool =
-        std::env::var("GRAPH_DISABLE_FAIL_FAST").is_ok();
-
-    /// Ceiling for the backoff retry of non-deterministic errors, in seconds.
-    pub static ref SUBGRAPH_ERROR_RETRY_CEIL_SECS: Duration =
-        std::env::var("GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS")
-            .unwrap_or((MINUTE * 30).as_secs().to_string())
-            .parse::<u64>()
-            .map(Duration::from_secs)
-            .expect("invalid GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS");
-}
 
 async fn new_block_stream<C: Blockchain>(
     inputs: Arc<IndexingInputs<C>>,
@@ -140,7 +125,7 @@ where
 
         // Exponential backoff that starts with two minutes and keeps
         // increasing its timeout exponentially until it reaches the ceiling.
-        let mut backoff = ExponentialBackoff::new(MINUTE * 2, *SUBGRAPH_ERROR_RETRY_CEIL_SECS);
+        let mut backoff = ExponentialBackoff::new(MINUTE * 2, ENV_VARS.subgraph_error_retry_ceil());
 
         // This ensures that any existing Firehose cursor is deleted prior starting using a
         // non-Firehose block stream so that if we ever resume again the Firehose block stream,
@@ -717,7 +702,10 @@ where
 
                 // To prevent a buggy pending version from replacing a current version, if errors are
                 // present the subgraph will be unassigned.
-                if has_errors && !*DISABLE_FAIL_FAST && !store.is_deployment_synced().await? {
+                if has_errors
+                    && !ENV_VARS.disable_fail_fast()
+                    && !store.is_deployment_synced().await?
+                {
                     store
                         .unassign_subgraph()
                         .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
@@ -897,7 +885,7 @@ async fn update_proof_of_indexing(
 
 async fn delete_subgraph_firehose_cursor(logger: &Logger, store: &dyn WritableStore) {
     debug!(logger, "Deleting any existing Firehose cursor");
-    let mut backoff = ExponentialBackoff::new(30 * SECOND, *SUBGRAPH_ERROR_RETRY_CEIL_SECS);
+    let mut backoff = ExponentialBackoff::new(30 * SECOND, ENV_VARS.subgraph_error_retry_ceil());
 
     loop {
         match store.delete_block_cursor() {

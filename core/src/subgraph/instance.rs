@@ -1,9 +1,6 @@
 use futures01::sync::mpsc::Sender;
-use lazy_static::lazy_static;
 
 use std::collections::HashMap;
-use std::env;
-use std::str::FromStr;
 use std::time::Instant;
 
 use graph::{blockchain::DataSource, prelude::*};
@@ -16,13 +13,7 @@ use graph::{
 };
 
 use super::metrics::SubgraphInstanceMetrics;
-
-lazy_static! {
-    static ref MAX_DATA_SOURCES: Option<usize> = env::var("GRAPH_SUBGRAPH_MAX_DATA_SOURCES")
-        .ok()
-        .map(|s| usize::from_str(&s)
-            .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_SUBGRAPH_MAX_DATA_SOURCES")));
-}
+use crate::ENV_VARS;
 
 pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     subgraph_id: DeploymentHash,
@@ -202,7 +193,7 @@ where
         metrics: Arc<HostMetrics>,
     ) -> Result<Option<Arc<T::Host>>, Error> {
         // Protect against creating more than the allowed maximum number of data sources
-        if let Some(max_data_sources) = *MAX_DATA_SOURCES {
+        if let Some(max_data_sources) = ENV_VARS.max_data_sources() {
             if self.hosts.len() >= max_data_sources {
                 anyhow::bail!(
                     "Limit of {} data sources per subgraph exceeded",
