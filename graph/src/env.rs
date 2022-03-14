@@ -70,7 +70,18 @@ impl EnvVars {
 
         Ok(Self { inner })
     }
+
+    /// Size limit of the entity LFU cache.
+    ///
+    /// Set by the environment variable `GRAPH_ENTITY_CACHE_SIZE` (expressed in
+    /// kilobytes). The default value is 10 megabytes.
+    pub fn entity_cache_size(&self) -> usize {
+        self.inner.entity_cache_size_in_kb * 1000
+    }
 }
 
 #[derive(Clone, Debug, Envconfig)]
-struct Inner {}
+struct Inner {
+    #[envconfig(from = "GRAPH_ENTITY_CACHE_SIZE", default = "10000")]
+    entity_cache_size_in_kb: usize,
+}

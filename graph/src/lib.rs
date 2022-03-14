@@ -127,6 +127,7 @@ pub mod prelude {
         SubgraphVersionSwitchingMode,
     };
     pub use crate::components::{transaction_receipt, EventConsumer, EventProducer};
+    pub use crate::env::ENV_VARS;
 
     pub use crate::cheap_clone::CheapClone;
     pub use crate::data::graphql::{
