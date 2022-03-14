@@ -4,8 +4,8 @@
 #![allow(unused_macros)]
 use diesel::dsl;
 use diesel::prelude::{
-    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods,
-    OptionalExtension, PgConnection, QueryDsl, RunQueryDsl,
+    ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, PgConnection,
+    QueryDsl, RunQueryDsl,
 };
 use diesel_derives::Associations;
 use git_testament::{git_testament, git_testament_macros};
@@ -278,10 +278,7 @@ pub(crate) fn deployment_statuses(
     // ID.
 
     let details_with_fatal_error = {
-        let join = e::table.on(e::id
-            .nullable()
-            .eq(d::fatal_error)
-            .and(e::subgraph_id.eq(d::deployment)));
+        let join = e::table.on(e::id.nullable().eq(d::fatal_error));
 
         // Empty deployments means 'all of them'
         if sites.is_empty() {
@@ -297,9 +294,7 @@ pub(crate) fn deployment_statuses(
     };
 
     let mut non_fatal_errors = {
-        let join = e::table.on(e::id
-            .eq(dsl::any(d::non_fatal_errors))
-            .and(e::subgraph_id.eq(d::deployment)));
+        let join = e::table.on(e::id.eq(dsl::any(d::non_fatal_errors)));
 
         if sites.is_empty() {
             d::table
