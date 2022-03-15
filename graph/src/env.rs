@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use crate::components::store::BlockNumber;
+use crate::components::{store::BlockNumber, subgraph::SubgraphVersionSwitchingMode};
 
 pub static UNSAFE_CONFIG: AtomicBool = AtomicBool::new(false);
 
@@ -409,6 +409,13 @@ impl EnvVars {
     pub fn experimental_static_filters(&self) -> bool {
         self.inner.experimental_static_filters.0
     }
+
+    /// Set by the environment variable
+    /// `EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE`. The default value is
+    /// "instant".
+    pub fn subgraph_version_switching_mode(&self) -> SubgraphVersionSwitchingMode {
+        self.inner.subgraph_version_switching_mode
+    }
 }
 
 impl Default for EnvVars {
@@ -493,6 +500,11 @@ struct Inner {
     ethereum_reorg_threshold: BlockNumber,
     #[envconfig(from = "EXPERIMENTAL_STATIC_FILTERS", default = "false")]
     experimental_static_filters: EnvVarBoolean,
+    #[envconfig(
+        from = "EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE",
+        default = "instant"
+    )]
+    subgraph_version_switching_mode: SubgraphVersionSwitchingMode,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and

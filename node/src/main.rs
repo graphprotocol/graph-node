@@ -375,12 +375,7 @@ async fn main() {
         );
 
         // Check version switching mode environment variable
-        let version_switching_mode = SubgraphVersionSwitchingMode::parse(
-            env::var_os("EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE")
-                .unwrap_or_else(|| "instant".into())
-                .to_str()
-                .expect("invalid version switching mode"),
-        );
+        let version_switching_mode = ENV_VARS.subgraph_version_switching_mode();
 
         // Create named subgraph provider for resolving subgraph name->ID mappings
         let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
