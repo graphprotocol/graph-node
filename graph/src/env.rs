@@ -352,6 +352,16 @@ impl EnvVars {
             .sql_statement_timeout_in_secs
             .map(Duration::from_secs)
     }
+
+    /// Whether to disable the notifications that feed GraphQL
+    /// subscriptions. When the flag is set, no updates
+    /// about entity changes will be sent to query nodes.
+    ///
+    /// Set by the flag `GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATION`. Not set
+    /// by default.
+    pub fn disable_subscription_notifications(&self) -> bool {
+        self.inner.disable_subscription_notifications.0
+    }
 }
 
 impl Default for EnvVars {
@@ -426,6 +436,8 @@ struct Inner {
     account_tables: String,
     #[envconfig(from = "GRAPH_SQL_STATEMENT_TIMEOUT")]
     sql_statement_timeout_in_secs: Option<u64>,
+    #[envconfig(from = "GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS", default = "false")]
+    disable_subscription_notifications: EnvVarBoolean,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to

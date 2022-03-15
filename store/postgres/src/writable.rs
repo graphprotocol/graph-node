@@ -8,10 +8,9 @@ use graph::{
     cheap_clone::CheapClone,
     components::store::{self, EntityType, WritableStore as WritableStoreTrait},
     data::subgraph::schema::SubgraphError,
-    prelude::StoreEvent,
     prelude::{
-        lazy_static, BlockPtr, DeploymentHash, EntityKey, EntityModification, Error, Logger,
-        StopwatchMetrics, StoreError, UnfailOutcome,
+        BlockPtr, DeploymentHash, EntityKey, EntityModification, Error, Logger, StopwatchMetrics,
+        StoreError, StoreEvent, UnfailOutcome, ENV_VARS,
     },
     slog::{error, warn},
     util::backoff::ExponentialBackoff,
@@ -20,15 +19,6 @@ use store::StoredDynamicDataSource;
 
 use crate::deployment_store::DeploymentStore;
 use crate::{primary, primary::Site, relational::Layout, SubgraphStore};
-
-lazy_static! {
-    /// Whether to disable the notifications that feed GraphQL
-    /// subscriptions; when the environment variable is set, no updates
-    /// about entity changes will be sent to query nodes
-    pub static ref SEND_SUBSCRIPTION_NOTIFICATIONS: bool = {
-      std::env::var("GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS").ok().is_none()
-    };
-}
 
 /// A wrapper around `SubgraphStore` that only exposes functions that are
 /// safe to call from `WritableStore`, i.e., functions that either do not
@@ -126,7 +116,7 @@ impl WritableStore {
     /// Try to send a `StoreEvent`; if sending fails, log the error but
     /// return `Ok(())`
     fn try_send_store_event(&self, event: StoreEvent) -> Result<(), StoreError> {
-        if *SEND_SUBSCRIPTION_NOTIFICATIONS {
+        if !ENV_VARS.disable_subscription_notifications() {
             let _ = self.store.send_store_event(&event).map_err(
                 |e| error!(self.logger, "Could not send store event"; "error" => e.to_string()),
             );

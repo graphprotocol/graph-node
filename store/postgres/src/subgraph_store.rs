@@ -52,12 +52,6 @@ pub struct Shard(String);
 lazy_static! {
     /// The name of the primary shard that contains all instance-wide data
     pub static ref PRIMARY_SHARD: Shard = Shard("primary".to_string());
-    /// Whether to disable the notifications that feed GraphQL
-    /// subscriptions; when the environment variable is set, no updates
-    /// about entity changes will be sent to query nodes
-    pub static ref SEND_SUBSCRIPTION_NOTIFICATIONS: bool = {
-      std::env::var("GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS").ok().is_none()
-    };
 }
 
 /// How long to cache information about a deployment site
