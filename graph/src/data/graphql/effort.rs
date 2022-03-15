@@ -15,24 +15,10 @@ use crate::components::store::PoolWaitStats;
 use crate::data::graphql::shape_hash::shape_hash;
 use crate::data::query::{CacheStatus, QueryExecutionError};
 use crate::prelude::q;
-use crate::prelude::{async_trait, debug, info, o, warn, Logger, QueryLoadManager};
+use crate::prelude::{async_trait, debug, info, o, warn, Logger, QueryLoadManager, ENV_VARS};
 use crate::util::stats::{MovingStats, BIN_SIZE, WINDOW_SIZE};
 
-const ZERO_DURATION: Duration = Duration::from_millis(0);
-
 lazy_static! {
-    static ref LOAD_THRESHOLD: Duration = {
-        let threshold = env::var("GRAPH_LOAD_THRESHOLD")
-            .ok()
-            .map(|s| {
-                u64::from_str(&s).unwrap_or_else(|_| {
-                    panic!("GRAPH_LOAD_THRESHOLD must be a number, but is `{}`", s)
-                })
-            })
-            .unwrap_or(0);
-        Duration::from_millis(threshold)
-    };
-
     static ref JAIL_QUERIES: bool = env::var("GRAPH_LOAD_JAIL_THRESHOLD").is_ok();
 
     static ref JAIL_THRESHOLD: f64 = {
@@ -49,7 +35,7 @@ lazy_static! {
     // Load management can be disabled by setting the threshold to 0. This
     // makes sure in particular that we never take any of the locks
     // associated with it
-    static ref LOAD_MANAGEMENT_DISABLED: bool = *LOAD_THRESHOLD == ZERO_DURATION;
+    static ref LOAD_MANAGEMENT_DISABLED: bool = ENV_VARS.load_threshold().is_zero();
 
     static ref SIMULATE: bool = env::var("GRAPH_LOAD_SIMULATE").is_ok();
 }
@@ -85,7 +71,7 @@ impl QueryEffort {
     pub fn add(&self, shape_hash: u64, duration: Duration, gauge: &Gauge) {
         let mut inner = self.inner.write().unwrap();
         inner.add(shape_hash, duration);
-        gauge.set(inner.total.average().unwrap_or(ZERO_DURATION).as_millis() as f64);
+        gauge.set(inner.total.average().unwrap_or(Duration::ZERO).as_millis() as f64);
     }
 
     /// Return what we know right now about the effort for the query
@@ -382,9 +368,9 @@ impl LoadManager {
         }
 
         let (query_effort, total_effort) = self.effort.current_effort(shape_hash);
-        // When `total_effort` is `ZERO_DURATION`, we haven't done any work. All are
+        // When `total_effort` is `Duratino::ZERO`, we haven't done any work. All are
         // welcome
-        if total_effort == ZERO_DURATION {
+        if total_effort.is_zero() {
             return Proceed;
         }
 
@@ -433,9 +419,9 @@ impl LoadManager {
     fn overloaded(&self, wait_stats: &PoolWaitStats) -> (bool, Duration) {
         let store_avg = wait_stats.read().unwrap().average();
         let overloaded = store_avg
-            .map(|average| average > *LOAD_THRESHOLD)
+            .map(|average| average > ENV_VARS.load_threshold())
             .unwrap_or(false);
-        (overloaded, store_avg.unwrap_or(ZERO_DURATION))
+        (overloaded, store_avg.unwrap_or(Duration::ZERO))
     }
 
     fn kill_state(&self) -> (f64, Instant) {

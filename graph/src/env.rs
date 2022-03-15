@@ -83,6 +83,10 @@ impl EnvVars {
     pub fn subscription_throttle_interval(&self) -> Duration {
         Duration::from_millis(self.inner.subscription_throttle_interval_in_ms)
     }
+
+    pub fn load_threshold(&self) -> Duration {
+        Duration::from_millis(self.inner.load_threshold_in_ms)
+    }
 }
 
 #[derive(Clone, Debug, Envconfig)]
@@ -91,4 +95,6 @@ struct Inner {
     entity_cache_size_in_kb: usize,
     #[envconfig(from = "SUBSCRIPTION_THROTTLE_INTERVAL", default = "1000")]
     subscription_throttle_interval_in_ms: u64,
+    #[envconfig(from = "GRAPH_LOAD_THRESHOLD", default = "0")]
+    load_threshold_in_ms: u64,
 }
