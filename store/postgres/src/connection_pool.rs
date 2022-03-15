@@ -23,7 +23,6 @@ use graph::{
 };
 
 use std::fmt::{self, Write};
-use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -36,14 +35,6 @@ use crate::{advisory_lock, catalog};
 use crate::{Shard, PRIMARY_SHARD};
 
 lazy_static::lazy_static! {
-    // These environment variables should really be set through the
-    // configuration file; especially for idle_timeout, it's
-    // likely that they should be configured differently for each pool
-    static ref IDLE_TIMEOUT: Duration = {
-        std::env::var("GRAPH_STORE_CONNECTION_IDLE_TIMEOUT").ok().map(|s| Duration::from_secs(u64::from_str(&s).unwrap_or_else(|_| {
-            panic!("GRAPH_STORE_CONNECTION_IDLE_TIMEOUT must be a positive number, but is `{}`", s)
-        }))).unwrap_or(Duration::from_secs(600))
-    };
     // A fallback in case the logic to remember database availability goes
     // wrong; when this is set, we always try to get a connection and never
     // use the availability state we remembered
@@ -751,7 +742,7 @@ impl PoolInner {
             .connection_timeout(ENV_VARS.store_connection_timeout())
             .max_size(pool_size)
             .min_idle(ENV_VARS.store_connection_min_idle())
-            .idle_timeout(Some(*IDLE_TIMEOUT));
+            .idle_timeout(Some(ENV_VARS.store_connection_idle_timeout()));
         let pool = builder.build_unchecked(conn_manager);
         let fdw_pool = fdw_pool_size.map(|pool_size| {
             let conn_manager = ConnectionManager::new(postgres_url.clone());

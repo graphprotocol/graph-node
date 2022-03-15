@@ -374,6 +374,12 @@ impl EnvVars {
     pub fn store_connection_min_idle(&self) -> Option<u32> {
         self.inner.store_connection_min_idle
     }
+
+    /// Set by the environment variable `GRAPH_STORE_CONNECTION_IDLE_TIMEOUT`
+    /// (expressed in seconds). The default value is 600s.
+    pub fn store_connection_idle_timeout(&self) -> Duration {
+        Duration::from_secs(self.inner.store_connection_idle_timeout_in_secs)
+    }
 }
 
 impl Default for EnvVars {
@@ -450,13 +456,17 @@ struct Inner {
     sql_statement_timeout_in_secs: Option<u64>,
     #[envconfig(from = "GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS", default = "false")]
     disable_subscription_notifications: EnvVarBoolean,
+
     // These should really be set through the configuration file, especially for
-    // `store_connection_min_idle`. It's likely that they should be configured
-    // differently for each pool.
+    // `GRAPH_STORE_CONNECTION_MIN_IDLE` and
+    // `GRAPH_STORE_CONNECTION_IDLE_TIMEOUT`. It's likely that they should be
+    // configured differently for each pool.
     #[envconfig(from = "GRAPH_STORE_CONNECTION_TIMEOUT", default = "5000")]
     store_connection_timeout_in_millis: u64,
     #[envconfig(from = "GRAPH_STORE_CONNECTION_MIN_IDLE")]
     store_connection_min_idle: Option<u32>,
+    #[envconfig(from = "GRAPH_STORE_CONNECTION_IDLE_TIMEOUT", default = "600")]
+    store_connection_idle_timeout_in_secs: u64,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
