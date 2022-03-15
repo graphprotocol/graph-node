@@ -205,10 +205,12 @@ pub(crate) struct EthereumLogFilter {
     /// Log filters can be represented as a bipartite graph between contracts and events. An edge
     /// exists between a contract and an event if a data source for the contract has a trigger for
     /// the event.
-    contracts_and_events_graph: GraphMap<LogFilterNode, (), petgraph::Undirected>,
+    /// Edges are of `bool` type and indicates when a trigger requires a transaction receipt.
+    contracts_and_events_graph: GraphMap<LogFilterNode, bool, petgraph::Undirected>,
 
-    // Event sigs with no associated address, matching on all addresses.
-    wildcard_events: HashSet<EventSignature>,
+    /// Event sigs with no associated address, matching on all addresses.
+    /// Maps to a boolean representing if a trigger requires a transaction receipt.
+    wildcard_events: HashMap<EventSignature, bool>,
 }
 
 impl Into<Vec<LogFilter>> for EthereumLogFilter {
@@ -248,10 +250,8 @@ impl EthereumLogFilter {
                 let event = LogFilterNode::Event(*sig);
                 self.contracts_and_events_graph
                     .all_edges()
-                    .any(|(s, t, ())| {
-                        (s == contract && t == event) || (t == contract && s == event)
-                    })
-                    || self.wildcard_events.contains(sig)
+                    .any(|(s, t, _)| (s == contract && t == event) || (t == contract && s == event))
+                    || self.wildcard_events.contains_key(sig)
             }
         }
     }
@@ -259,17 +259,19 @@ impl EthereumLogFilter {
     pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
         let mut this = EthereumLogFilter::default();
         for ds in iter {
-            for event_sig in ds.mapping.event_handlers.iter().map(|e| e.topic0()) {
+            for event_handler in ds.mapping.event_handlers.iter() {
+                let event_sig = event_handler.topic0();
                 match ds.source.address {
                     Some(contract) => {
                         this.contracts_and_events_graph.add_edge(
                             LogFilterNode::Contract(contract),
                             LogFilterNode::Event(event_sig),
-                            (),
+                            event_handler.receipt,
                         );
                     }
                     None => {
-                        this.wildcard_events.insert(event_sig);
+                        this.wildcard_events
+                            .insert(event_sig, event_handler.receipt);
                     }
                 }
             }
@@ -298,8 +300,8 @@ impl EthereumLogFilter {
             contracts_and_events_graph,
             wildcard_events,
         } = other;
-        for (s, t, ()) in contracts_and_events_graph.all_edges() {
-            self.contracts_and_events_graph.add_edge(s, t, ());
+        for (s, t, e) in contracts_and_events_graph.all_edges() {
+            self.contracts_and_events_graph.add_edge(s, t, *e);
         }
         self.wildcard_events.extend(wildcard_events);
     }
@@ -322,7 +324,7 @@ impl EthereumLogFilter {
         let mut filters = self
             .wildcard_events
             .into_iter()
-            .map(EthGetLogsFilter::from_event)
+            .map(|(event, _)| EthGetLogsFilter::from_event(event))
             .collect_vec();
 
         // The current algorithm is to repeatedly find the maximum cardinality vertex and turn all

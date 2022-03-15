@@ -997,6 +997,8 @@ pub struct MappingEventHandler {
     pub event: String,
     pub topic0: Option<H256>,
     pub handler: String,
+    #[serde(default)]
+    pub receipt: bool,
 }
 
 impl MappingEventHandler {
