@@ -250,6 +250,15 @@ impl EnvVars {
     pub fn chain_head_watcher_timeout(&self) -> Duration {
         Duration::from_secs(self.inner.chain_head_watcher_timeout_in_secs)
     }
+
+    /// This is how long statistics that influence query execution are cached in
+    /// memory before they are reloaded from the database.
+    ///
+    /// Set by the environment variable `GRAPH_QUERY_STATS_REFRESH_INTERVAL`
+    /// (expressed in seconds). The default value is 300 seconds.
+    pub fn query_stats_refresh_interval(&self) -> Duration {
+        Duration::from_secs(self.inner.query_stats_refresh_interval_in_secs)
+    }
 }
 
 impl Default for EnvVars {
@@ -304,6 +313,8 @@ struct Inner {
     log_levels: String,
     #[envconfig(from = "GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT", default = "30")]
     chain_head_watcher_timeout_in_secs: u64,
+    #[envconfig(from = "GRAPH_QUERY_STATS_REFRESH_INTERVAL", default = "300")]
+    query_stats_refresh_interval_in_secs: u64,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
