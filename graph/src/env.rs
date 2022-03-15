@@ -2,7 +2,7 @@ use envconfig::Envconfig;
 use lazy_static::lazy_static;
 use semver::Version;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     env::VarError,
     str::FromStr,
     sync::atomic::{AtomicBool, Ordering},
@@ -66,6 +66,7 @@ pub fn env_var<E: std::error::Error + Send + Sync, T: FromStr<Err = E> + Eq>(
 pub struct EnvVars {
     inner: Inner,
     log_query_timing: Vec<String>,
+    account_tables: HashSet<String>,
 }
 
 impl EnvVars {
@@ -80,10 +81,16 @@ impl EnvVars {
             .split(',')
             .map(str::to_string)
             .collect();
+        let account_tables = inner
+            .account_tables
+            .split(',')
+            .map(|s| format!("\"{}\"", s.replace(".", "\".\"")))
+            .collect();
 
         Self {
             inner,
             log_query_timing,
+            account_tables,
         }
     }
 
@@ -314,6 +321,23 @@ impl EnvVars {
     pub fn reversible_order_by_off(&self) -> bool {
         self.inner.reversible_order_by_off.0
     }
+
+    /// A list of fully qualified table names that contain entities that are
+    /// like accounts in that they have a relatively small number of entities,
+    /// with a large number of change for each entity. It is useful to treat
+    /// such tables special in queries by changing the clause that selects
+    /// for a specific block range in a way that makes the BRIN index on
+    /// block_range usable.
+    ///
+    /// The use of this environment variable is deprecated; use `graphman stats
+    /// account-like` instead.
+    ///
+    /// Set by the environment variable `GRAPH_ACCOUNT_TABLES` (comma
+    /// separated). Empty by default. E.g.
+    /// `GRAPH_ACCOUNT_TABLES=sgd21902.pair,sgd1708.things`.
+    pub fn account_tables(&self) -> &HashSet<String> {
+        &self.account_tables
+    }
 }
 
 impl Default for EnvVars {
@@ -384,6 +408,8 @@ struct Inner {
     order_by_block_range: EnvVarBoolean,
     #[envconfig(from = "REVERSIBLE_ORDER_BY_OFF", default = "false")]
     reversible_order_by_off: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_ACCOUNT_TABLES", default = "")]
+    account_tables: String,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
