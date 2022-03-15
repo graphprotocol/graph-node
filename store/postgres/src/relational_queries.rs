@@ -16,7 +16,7 @@ use lazy_static::lazy_static;
 use graph::prelude::{
     anyhow, r, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
     EntityFilter, EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink,
-    QueryExecutionError, StoreError, Value,
+    QueryExecutionError, StoreError, Value, ENV_VARS,
 };
 use graph::{
     components::store::{AttributeNames, EntityType},
@@ -45,19 +45,6 @@ use crate::{
 };
 
 lazy_static! {
-    /// Use a variant of the query for child_type_a when we are looking up
-    /// fewer than this many entities. This variable is only here temporarily
-    /// until we can settle on the right batch size through experimentation
-    /// and should then just become an ordinary constant
-    static ref TYPEA_BATCH_SIZE: usize = {
-        env::var("TYPEA_BATCH_SIZE")
-            .ok()
-            .map(|s| {
-                usize::from_str(&s)
-                    .unwrap_or_else(|_| panic!("TYPE_BATCH_SIZE must be a number, but is `{}`", s))
-            })
-            .unwrap_or(150)
-    };
     /// Include a constraint on the child ids as a set in child_type_d
     /// queries if the size of the set is below this threshold. Set this to
     /// 0 to turn off this optimization
@@ -1917,7 +1904,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" and c.");
         out.push_identifier(column.name.as_str())?;
         out.push_sql(" @> array[p.id]");
-        if self.ids.len() < *TYPEA_BATCH_SIZE {
+        if self.ids.len() < ENV_VARS.typea_batch_size() {
             out.push_sql(" and c.");
             out.push_identifier(column.name.as_str())?;
             out.push_sql(" && ");

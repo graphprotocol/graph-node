@@ -280,6 +280,15 @@ impl EnvVars {
     pub fn notification_broacast_timeout(&self) -> Duration {
         Duration::from_secs(self.inner.notification_broacast_timeout_in_secs)
     }
+
+    /// This variable is only here temporarily until we can settle on the right
+    /// batch size through experimentation, and should then just become an
+    /// ordinary constant.
+    ///
+    /// Set by the environment variable `TYPEA_BATCH_SIZE`.
+    pub fn typea_batch_size(&self) -> usize {
+        self.inner.typea_batch_size
+    }
 }
 
 impl Default for EnvVars {
@@ -342,6 +351,8 @@ struct Inner {
     large_notification_cleanup_interval_in_secs: u64,
     #[envconfig(from = "GRAPH_NOTIFICATION_BROADCAST_TIMEOUT", default = "60")]
     notification_broacast_timeout_in_secs: u64,
+    #[envconfig(from = "TYPEA_BATCH_SIZE", default = "150")]
+    typea_batch_size: usize,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
