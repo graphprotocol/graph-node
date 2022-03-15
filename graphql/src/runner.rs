@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::env;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::prelude::{QueryExecutionOptions, StoreResolver, SubscriptionExecutionOptions};
 use crate::query::execute_query;
@@ -13,7 +13,7 @@ use graph::{
     components::store::SubscriptionManager,
     prelude::{
         async_trait, o, CheapClone, DeploymentState, GraphQlRunner as GraphQlRunnerTrait, Logger,
-        Query, QueryExecutionError, Subscription, SubscriptionError, SubscriptionResult,
+        Query, QueryExecutionError, Subscription, SubscriptionError, SubscriptionResult, ENV_VARS,
     },
 };
 use graph::{data::graphql::effort::LoadManager, prelude::QueryStoreManager};
@@ -80,12 +80,6 @@ pub struct GraphQlRunner<S, SM> {
 }
 
 lazy_static! {
-    static ref GRAPHQL_QUERY_TIMEOUT: Option<Duration> = env::var("GRAPH_GRAPHQL_QUERY_TIMEOUT")
-        .ok()
-        .map(|s| Duration::from_secs(
-            u64::from_str(&s)
-                .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_GRAPHQL_QUERY_TIMEOUT"))
-        ));
     static ref GRAPHQL_MAX_COMPLEXITY: Option<u64> = env::var("GRAPH_GRAPHQL_MAX_COMPLEXITY")
         .ok()
         .map(|s| u64::from_str(&s)
@@ -245,7 +239,7 @@ where
                 resolver.block_ptr.clone(),
                 QueryExecutionOptions {
                     resolver,
-                    deadline: GRAPHQL_QUERY_TIMEOUT.map(|t| Instant::now() + t),
+                    deadline: ENV_VARS.graphql_query_timeout().map(|t| Instant::now() + t),
                     max_first: max_first.unwrap_or(*GRAPHQL_MAX_FIRST),
                     max_skip: max_skip.unwrap_or(*GRAPHQL_MAX_SKIP),
                     load_manager: self.load_manager.clone(),
@@ -339,7 +333,7 @@ where
                 logger: self.logger.clone(),
                 store,
                 subscription_manager: self.subscription_manager.cheap_clone(),
-                timeout: *GRAPHQL_QUERY_TIMEOUT,
+                timeout: ENV_VARS.graphql_query_timeout(),
                 max_complexity: *GRAPHQL_MAX_COMPLEXITY,
                 max_depth: *GRAPHQL_MAX_DEPTH,
                 max_first: *GRAPHQL_MAX_FIRST,

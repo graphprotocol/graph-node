@@ -570,6 +570,14 @@ impl EnvVars {
     pub fn max_ipfs_file_bytes(&self) -> Option<usize> {
         self.inner.max_ipfs_file_bytes
     }
+
+    /// Set by the environment varible `GRAPH_GRAPHQL_QUERY_TIMEOUT` (expressed in
+    /// seconds). No default value is provided.
+    pub fn graphql_query_timeout(&self) -> Option<Duration> {
+        self.inner
+            .graphql_query_timeout_in_secs
+            .map(Duration::from_secs)
+    }
 }
 
 impl Default for EnvVars {
@@ -702,6 +710,9 @@ struct Inner {
     ethereum_fetch_receipts_in_batches: Option<EnvVarBoolean>,
     #[envconfig(from = "GRAPH_ETHEREUM_CLEANUP_BLOCKS", default = "false")]
     ethereum_cleanup_blocks: EnvVarBoolean,
+
+    #[envconfig(from = "GRAPH_GRAPHQL_QUERY_TIMEOUT")]
+    graphql_query_timeout_in_secs: Option<u64>,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and
