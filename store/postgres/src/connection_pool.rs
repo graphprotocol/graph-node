@@ -37,13 +37,8 @@ use crate::{Shard, PRIMARY_SHARD};
 
 lazy_static::lazy_static! {
     // These environment variables should really be set through the
-    // configuration file; especially for min_idle and idle_timeout, it's
+    // configuration file; especially for idle_timeout, it's
     // likely that they should be configured differently for each pool
-    static ref MIN_IDLE: Option<u32> = {
-        std::env::var("GRAPH_STORE_CONNECTION_MIN_IDLE").ok().map(|s| u32::from_str(&s).unwrap_or_else(|_| {
-           panic!("GRAPH_STORE_CONNECTION_MIN_IDLE must be a positive number but is `{}`", s)
-        }))
-    };
     static ref IDLE_TIMEOUT: Duration = {
         std::env::var("GRAPH_STORE_CONNECTION_IDLE_TIMEOUT").ok().map(|s| Duration::from_secs(u64::from_str(&s).unwrap_or_else(|_| {
             panic!("GRAPH_STORE_CONNECTION_IDLE_TIMEOUT must be a positive number, but is `{}`", s)
@@ -755,7 +750,7 @@ impl PoolInner {
             .event_handler(event_handler.clone())
             .connection_timeout(ENV_VARS.store_connection_timeout())
             .max_size(pool_size)
-            .min_idle(*MIN_IDLE)
+            .min_idle(ENV_VARS.store_connection_min_idle())
             .idle_timeout(Some(*IDLE_TIMEOUT));
         let pool = builder.build_unchecked(conn_manager);
         let fdw_pool = fdw_pool_size.map(|pool_size| {
