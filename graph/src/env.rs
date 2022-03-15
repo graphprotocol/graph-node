@@ -426,6 +426,15 @@ impl EnvVars {
         self.inner.ethereum_reorg_threshold
     }
 
+    /// Controls if firehose should be preferred over RPC if Firehose endpoints
+    /// are present, if not set, the default behavior is is kept which is to
+    /// automatically favor Firehose.
+    ///
+    /// Set by the flag `GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED`. On by default.
+    pub fn ethereum_is_firehose_preferred(&self) -> bool {
+        self.inner.ethereum_is_firehose_preferred.0
+    }
+
     /// Ideal number of triggers in a range. The range size will adapt to try to
     /// meet this.
     ///
@@ -963,6 +972,8 @@ struct Inner {
     ethereum_fetch_receipts_in_batches: Option<EnvVarBoolean>,
     #[envconfig(from = "GRAPH_ETHEREUM_CLEANUP_BLOCKS", default = "false")]
     ethereum_cleanup_blocks: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED", default = "true")]
+    ethereum_is_firehose_preferred: EnvVarBoolean,
     #[envconfig(from = "GRAPH_ETH_GET_LOGS_MAX_CONTRACTS", default = "2000")]
     ethereum_get_logs_max_contracts: usize,
     #[envconfig(

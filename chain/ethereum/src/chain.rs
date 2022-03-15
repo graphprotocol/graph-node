@@ -1,7 +1,6 @@
 use anyhow::{Context, Error};
 use graph::blockchain::BlockchainKind;
 use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::env::env_var;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, ForkStep};
 use graph::prelude::{EthereumBlock, EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt};
 use graph::slog::debug;
@@ -19,9 +18,8 @@ use graph::{
     components::store::DeploymentLocator,
     firehose,
     prelude::{
-        async_trait, lazy_static, o, serde_json as json, BlockNumber, ChainStore,
-        EthereumBlockWithCalls, Future01CompatExt, Logger, LoggerFactory, MetricsRegistry, NodeId,
-        ENV_VARS,
+        async_trait, o, serde_json as json, BlockNumber, ChainStore, EthereumBlockWithCalls,
+        Future01CompatExt, Logger, LoggerFactory, MetricsRegistry, NodeId, ENV_VARS,
     },
 };
 use prost::Message;
@@ -44,12 +42,6 @@ use crate::{
 };
 use crate::{network::EthereumNetworkAdapters, EthereumAdapter};
 use graph::blockchain::block_stream::{BlockStream, FirehoseCursor};
-
-lazy_static! {
-    /// Controls if firehose should be preferred over RPC if Firehose endpoints are present, if not set, the default behavior is
-    /// is kept which is to automatically favor Firehose.
-    static ref IS_FIREHOSE_PREFERRED: bool = env_var("GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED", true);
-}
 
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
 const CELO_CHAIN_IDS: [u64; 3] = [42220, 44787, 62320];
@@ -300,7 +292,7 @@ impl Blockchain for Chain {
     }
 
     fn is_firehose_supported(&self) -> bool {
-        *IS_FIREHOSE_PREFERRED && self.firehose_endpoints.len() > 0
+        ENV_VARS.ethereum_is_firehose_preferred() && self.firehose_endpoints.len() > 0
     }
 }
 
