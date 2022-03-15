@@ -737,6 +737,12 @@ impl EnvVars {
         self.inner.external_http_base_url.as_deref()
     }
 
+    /// Set by the environment variable `EXTERNAL_WS_BASE_URL`. No default
+    /// value is provided.
+    pub fn external_ws_base_url(&self) -> Option<&str> {
+        self.inner.external_ws_base_url.as_deref()
+    }
+
     /// Experimental feature.
     ///
     /// Set by the flag `GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES`. Off by
@@ -886,6 +892,8 @@ struct Inner {
     explorer_query_threshold_in_msec: u64,
     #[envconfig(from = "EXTERNAL_HTTP_BASE_URL")]
     external_http_base_url: Option<String>,
+    #[envconfig(from = "EXTERNAL_WS_BASE_URL")]
+    external_ws_base_url: Option<String>,
 
     // 1MiB
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "1048576")]

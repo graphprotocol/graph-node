@@ -9,17 +9,10 @@ use jsonrpc_http_server::{
     jsonrpc_core::{self, Compatibility, IoHandler, Params, Value},
     RestApi, Server, ServerBuilder,
 };
-use lazy_static::lazy_static;
 
 use std::collections::BTreeMap;
-use std::env;
 use std::io;
 use std::net::{Ipv4Addr, SocketAddrV4};
-
-lazy_static! {
-    static ref EXTERNAL_WS_BASE_URL: Option<String> = env::var_os("EXTERNAL_WS_BASE_URL")
-        .map(|s| s.into_string().expect("invalid external WS base URL"));
-}
 
 const JSON_RPC_DEPLOY_ERROR: i64 = 0;
 const JSON_RPC_REMOVE_ERROR: i64 = 1;
@@ -276,8 +269,9 @@ fn subgraph_routes(name: &SubgraphName, http_port: u16, ws_port: u16) -> Value {
         .external_http_base_url()
         .map(str::to_string)
         .unwrap_or_else(|| format!(":{}", http_port));
-    let ws_base_url = EXTERNAL_WS_BASE_URL
-        .clone()
+    let ws_base_url = ENV_VARS
+        .external_ws_base_url()
+        .map(str::to_string)
         .unwrap_or_else(|| format!(":{}", ws_port));
 
     let mut map = BTreeMap::new();
