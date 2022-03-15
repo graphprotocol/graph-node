@@ -13,7 +13,7 @@ use crate::data::graphql::shape_hash::shape_hash;
 use crate::data::query::{CacheStatus, QueryExecutionError};
 use crate::prelude::q;
 use crate::prelude::{async_trait, debug, info, o, warn, Logger, QueryLoadManager, ENV_VARS};
-use crate::util::stats::{MovingStats, BIN_SIZE, WINDOW_SIZE};
+use crate::util::stats::{MovingStats, BIN_SIZE};
 
 struct QueryEffort {
     inner: Arc<RwLock<QueryEffortInner>>,
@@ -32,7 +32,7 @@ struct QueryEffortInner {
 /// the environment
 impl Default for QueryEffort {
     fn default() -> Self {
-        Self::new(*WINDOW_SIZE, *BIN_SIZE)
+        Self::new(ENV_VARS.load_window_size(), *BIN_SIZE)
     }
 }
 

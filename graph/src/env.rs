@@ -130,12 +130,14 @@ impl EnvVars {
         self.inner.allow_non_deterministic_fulltext_search.0 || cfg!(debug_assertions)
     }
 
-    /// Set by the environment variable `GRAPH_MAX_SPEC_VERSION`.
+    /// Set by the environment variable `GRAPH_MAX_SPEC_VERSION`. The default
+    /// value is `0.0.4`.
     pub fn max_spec_version(&self) -> Version {
         self.inner.max_spec_version.clone()
     }
 
-    /// Set by the environment variable `GRAPH_MAX_API_VERSION`.
+    /// Set by the environment variable `GRAPH_MAX_API_VERSION`. The default
+    /// value is `0.0.6`.
     pub fn max_api_version(&self) -> Version {
         self.inner.max_api_version.clone()
     }
@@ -143,6 +145,12 @@ impl EnvVars {
     /// Set by the flag `GRAPH_DISABLE_GRAFTS`.
     pub fn disable_grafts(&self) -> bool {
         self.inner.disable_grafts.0
+    }
+
+    /// Set by the flag `GRAPH_LOAD_WINDOW_SIZE` (expressed in seconds). The
+    /// default value is 300 seconds.
+    pub fn load_window_size(&self) -> Duration {
+        Duration::from_secs(self.inner.load_window_size_in_secs)
     }
 }
 
@@ -169,6 +177,8 @@ struct Inner {
     max_api_version: Version,
     #[envconfig(from = "GRAPH_DISABLE_GRAFTS", default = "false")]
     disable_grafts: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_LOAD_WINDOW_SIZE", default = "300")]
+    load_window_size_in_secs: u64,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to

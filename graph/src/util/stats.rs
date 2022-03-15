@@ -6,18 +6,9 @@ use std::time::{Duration, Instant};
 use lazy_static::lazy_static;
 use prometheus::Gauge;
 
+use crate::prelude::ENV_VARS;
+
 lazy_static! {
-    pub static ref WINDOW_SIZE: Duration = {
-        let window_size = env::var("GRAPH_LOAD_WINDOW_SIZE")
-            .ok()
-            .map(|s| {
-                u64::from_str(&s).unwrap_or_else(|_| {
-                    panic!("GRAPH_LOAD_WINDOW_SIZE must be a number, but is `{}`", s)
-                })
-            })
-            .unwrap_or(300);
-        Duration::from_secs(window_size)
-    };
     pub static ref BIN_SIZE: Duration = {
         let bin_size = env::var("GRAPH_LOAD_BIN_SIZE")
             .ok()
@@ -95,7 +86,7 @@ pub struct MovingStats {
 /// the environment
 impl Default for MovingStats {
     fn default() -> Self {
-        Self::new(*WINDOW_SIZE, *BIN_SIZE)
+        Self::new(ENV_VARS.load_window_size(), *BIN_SIZE)
     }
 }
 
