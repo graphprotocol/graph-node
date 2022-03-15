@@ -661,6 +661,12 @@ impl EnvVars {
         self.inner.query_cache_stale_period
     }
 
+    /// Set by the environment variable `GRAPH_GRAPHQL_WARN_RESULT_SIZE`. The
+    /// default value is 18446744073709551615.
+    pub fn graphql_warn_result_size(&self) -> usize {
+        self.inner.graphql_warn_result_size.0
+    }
+
     /// In how many shards (mutexes) the query block cache is split.
     /// Ideally this should divide 256 so that the distribution of queries to
     /// shards is even.
@@ -855,6 +861,12 @@ struct Inner {
     graphql_max_skip: u32,
     #[envconfig(from = "GRAPHQL_ALLOW_DEPLOYMENT_CHANGE", default = "false")]
     graphql_allow_deployment_change: EnvVarBoolean,
+    // usize::MAX
+    #[envconfig(
+        from = "GRAPH_GRAPHQL_WARN_RESULT_SIZE",
+        default = "18446744073709551615"
+    )]
+    graphql_warn_result_size: WithoutUnderscores<usize>,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and
