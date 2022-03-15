@@ -295,6 +295,10 @@ impl LinkResolverTrait for LinkResolver {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::env;
+
+    const MAX_IPFS_MAP_FILE_SIZE_VAR: &'static str = "GRAPH_MAX_IPFS_MAP_FILE_SIZE";
+    const MAX_IPFS_FILE_SIZE_VAR: &'static str = "GRAPH_MAX_IPFS_FILE_BYTES";
 
     #[tokio::test]
     async fn max_file_size() {

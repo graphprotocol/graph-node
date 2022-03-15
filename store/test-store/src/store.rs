@@ -26,9 +26,9 @@ use graph_store_postgres::{
 };
 use hex_literal::hex;
 use lazy_static::lazy_static;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::time::Instant;
-use std::{collections::BTreeSet, env};
 use std::{marker::PhantomData, sync::Mutex};
 use tokio::runtime::{Builder, Runtime};
 use web3::types::H256;

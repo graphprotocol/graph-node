@@ -1329,7 +1329,7 @@ fn complete_log_filter() {
 
             // Assert that chunking works.
             for filter in logs_filters {
-                assert!(filter.contracts.len() <= *ETH_GET_LOGS_MAX_CONTRACTS);
+                assert!(filter.contracts.len() <= ENV_VARS.ethereum_get_logs_max_contracts());
             }
         }
     }
