@@ -101,11 +101,27 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
     // block of the longuest chain creating inconsistencies in the data (because it would
     // not revert the forked the block).
     //
-    // We should perform that only if subgraph actually started from a subgraph block ptr
-    // and no Firehose cursor was present. If a Firehose cursor is present, it's used to
-    // resume and as such, there is no need to perform this check (at the same time, it's
-    // not a bad check to make).
-    let mut check_subgraph_continuity = latest_cursor == "" && subgraph_current_block.is_some();
+    // If a Firehose cursor is present, it's used to resume the stream and as such, there is no need to
+    // perform the chain continuity check.
+    //
+    // If there was no cursor, now we need to check if the subgraph current block is set to something.
+    // When the graph node deploys a new subgraph, it always create a subgraph ptr for this subgraph, the
+    // initial subgraph block pointer points to the parent block of the manifest's start block, which is usually
+    // equivalent (but not always) to manifest's start block number - 1.
+    //
+    // Hence, we only need to check the chain continuity if the subgraph current block ptr is higher or equal
+    // to the subgraph manifest's start block number. Indeed, only in this case (and when there is no firehose
+    // cursor) it means the subgraph was started and advanced with something else than Firehose and as such,
+    // chain continuity check needs to be performed.
+    let mut check_subgraph_continuity = must_check_subgraph_continuity(
+        &logger,
+        &subgraph_current_block,
+        &latest_cursor,
+        manifest_start_block_num,
+    );
+    if check_subgraph_continuity {
+        debug!(&logger, "Going to check continuity of chain on first block");
+    }
 
     try_stream! {
         loop {
@@ -279,3 +295,88 @@ impl<C: Blockchain> Stream for FirehoseBlockStream<C> {
 }
 
 impl<C: Blockchain> BlockStream<C> for FirehoseBlockStream<C> {}
+
+fn must_check_subgraph_continuity(
+    logger: &Logger,
+    subgraph_current_block: &Option<BlockPtr>,
+    subgraph_cursor: &String,
+    subgraph_manifest_start_block_number: i32,
+) -> bool {
+    match subgraph_current_block {
+        Some(current_block) if subgraph_cursor.is_empty() => {
+            debug!(&logger, "Checking if subgraph current block is after manifest start block";
+                "subgraph_current_block_number" => current_block.number,
+                "manifest_start_block_number" => subgraph_manifest_start_block_number,
+            );
+
+            current_block.number >= subgraph_manifest_start_block_number
+        }
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::blockchain::{firehose_block_stream::must_check_subgraph_continuity, BlockPtr};
+    use slog::{o, Logger};
+
+    #[test]
+    fn check_continuity() {
+        let logger = Logger::root(slog::Discard, o!());
+        let no_current_block: Option<BlockPtr> = None;
+        let no_cursor = "".to_string();
+        let some_cursor = "abc".to_string();
+        let some_current_block = |number: i32| -> Option<BlockPtr> {
+            Some(BlockPtr {
+                hash: vec![0xab, 0xcd].into(),
+                number,
+            })
+        };
+
+        // Nothing
+
+        assert_eq!(
+            must_check_subgraph_continuity(&logger, &no_current_block, &no_cursor, 10),
+            false,
+        );
+
+        // No cursor, subgraph current block ptr <, ==, > than manifest start block num
+
+        assert_eq!(
+            must_check_subgraph_continuity(&logger, &some_current_block(9), &no_cursor, 10),
+            false,
+        );
+
+        assert_eq!(
+            must_check_subgraph_continuity(&logger, &some_current_block(10), &no_cursor, 10),
+            true,
+        );
+
+        assert_eq!(
+            must_check_subgraph_continuity(&logger, &some_current_block(11), &no_cursor, 10),
+            true,
+        );
+
+        // Some cursor, subgraph current block ptr <, ==, > than manifest start block num
+
+        assert_eq!(
+            must_check_subgraph_continuity(&logger, &no_current_block, &some_cursor, 10),
+            false,
+        );
+
+        assert_eq!(
+            must_check_subgraph_continuity(&logger, &some_current_block(9), &some_cursor, 10),
+            false,
+        );
+
+        assert_eq!(
+            must_check_subgraph_continuity(&logger, &some_current_block(10), &some_cursor, 10),
+            false,
+        );
+
+        assert_eq!(
+            must_check_subgraph_continuity(&logger, &some_current_block(11), &some_cursor, 10),
+            false,
+        );
+    }
+}
