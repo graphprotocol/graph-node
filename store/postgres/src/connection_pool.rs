@@ -17,7 +17,7 @@ use graph::{
         crit, debug, error, info, o,
         tokio::sync::Semaphore,
         CancelGuard, CancelHandle, CancelToken as _, CancelableError, Counter, Gauge, Logger,
-        MetricsRegistry, MovingStats, PoolWaitStats, StoreError,
+        MetricsRegistry, MovingStats, PoolWaitStats, StoreError, ENV_VARS,
     },
     util::security::SafeDisplay,
 };
@@ -36,19 +36,6 @@ use crate::{advisory_lock, catalog};
 use crate::{Shard, PRIMARY_SHARD};
 
 lazy_static::lazy_static! {
-    // There is typically no need to configure this. But this can be used to effectivey disable the
-    // query semaphore by setting it to a high number.
-    static ref EXTRA_QUERY_PERMITS: usize = {
-        std::env::var("GRAPH_EXTRA_QUERY_PERMITS")
-            .ok()
-            .map(|s| {
-                usize::from_str(&s).unwrap_or_else(|_| {
-                    panic!("GRAPH_EXTRA_QUERY_PERMITS must be a number, but is `{}`", s)
-                })
-            })
-            .unwrap_or(0)
-    };
-
     // These environment variables should really be set through the
     // configuration file; especially for min_idle and idle_timeout, it's
     // likely that they should be configured differently for each pool
@@ -799,7 +786,7 @@ impl PoolInner {
                 const_labels,
             )
             .expect("failed to create `query_effort_ms` counter");
-        let max_concurrent_queries = pool_size as usize + *EXTRA_QUERY_PERMITS;
+        let max_concurrent_queries = pool_size as usize + ENV_VARS.extra_query_permits();
         let query_semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_queries));
         PoolInner {
             logger: logger_pool,

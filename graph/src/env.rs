@@ -259,6 +259,15 @@ impl EnvVars {
     pub fn query_stats_refresh_interval(&self) -> Duration {
         Duration::from_secs(self.inner.query_stats_refresh_interval_in_secs)
     }
+
+    /// This can be used to effectively disable the query semaphore by setting
+    /// it to a high number, but there's typically no need to configure this.
+    ///
+    /// Set by the environment variable `GRAPH_EXTRA_QUERY_PERMITS`. The default
+    /// value is 0.
+    pub fn extra_query_permits(&self) -> usize {
+        self.inner.extra_query_permits
+    }
 }
 
 impl Default for EnvVars {
@@ -315,6 +324,8 @@ struct Inner {
     chain_head_watcher_timeout_in_secs: u64,
     #[envconfig(from = "GRAPH_QUERY_STATS_REFRESH_INTERVAL", default = "300")]
     query_stats_refresh_interval_in_secs: u64,
+    #[envconfig(from = "GRAPH_EXTRA_QUERY_PERMITS", default = "0")]
+    extra_query_permits: usize,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
