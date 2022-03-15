@@ -509,6 +509,12 @@ impl EnvVars {
     pub fn kill_if_unresponsive(&self) -> bool {
         self.inner.kill_if_unresponsive.0
     }
+
+    /// Set by the environment variable `GRAPH_SUBGRAPH_MAX_DATA_SOURCES`. No
+    /// default value is provided.
+    pub fn subgraph_max_data_sources(&self) -> Option<usize> {
+        self.inner.subgraph_max_data_sources
+    }
 }
 
 impl Default for EnvVars {
@@ -598,6 +604,8 @@ struct Inner {
     subgraph_version_switching_mode: SubgraphVersionSwitchingMode,
     #[envconfig(from = "GRAPH_KILL_IF_UNRESPONSIVE", default = "false")]
     kill_if_unresponsive: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_SUBGRAPH_MAX_DATA_SOURCES")]
+    subgraph_max_data_sources: Option<usize>,
 
     #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
     ethereum_reorg_threshold: BlockNumber,
