@@ -17,12 +17,13 @@ macro_rules! impl_slog_value {
     };
 }
 
+use crate::prelude::ENV_VARS;
 use isatty;
 use slog::*;
 use slog_async;
 use slog_envlogger;
 use slog_term::*;
-use std::{env, fmt, io, result};
+use std::{fmt, io, result};
 
 use crate::env::ENV_VARS;
 
@@ -44,12 +45,7 @@ pub fn logger(show_debug: bool) -> Logger {
                 FilterLevel::Info
             },
         )
-        .parse(
-            env::var_os("GRAPH_LOG")
-                .unwrap_or_else(|| "".into())
-                .to_str()
-                .unwrap(),
-        )
+        .parse(ENV_VARS.log_levels())
         .build();
     let drain = slog_async::Async::new(drain)
         .chan_size(20000)

@@ -239,6 +239,11 @@ impl EnvVars {
     pub fn log_poi_events(&self) -> bool {
         self.inner.log_poi_events.0
     }
+
+    /// Set by the environment variable `GRAPH_LOG`.
+    pub fn log_levels(&self) -> &str {
+        &self.inner.log_levels
+    }
 }
 
 impl Default for EnvVars {
@@ -289,6 +294,8 @@ struct Inner {
     log_time_format: String,
     #[envconfig(from = "GRAPH_LOG_POI_EVENTS", default = "false")]
     log_poi_events: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_LOG", default = "")]
+    log_levels: String,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
