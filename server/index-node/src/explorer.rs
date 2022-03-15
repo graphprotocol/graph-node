@@ -27,20 +27,6 @@ use graph::{
 };
 
 lazy_static! {
-    static ref LOCK_THRESHOLD: Duration = {
-        let duration = env::var("GRAPH_EXPLORER_LOCK_THRESHOLD")
-            .ok()
-            .map(|s| {
-                u64::from_str(&s).unwrap_or_else(|_| {
-                    panic!(
-                        "GRAPH_EXPLORER_LOCK_THRESHOLD must be a number, but is `{}`",
-                        s
-                    )
-                })
-            })
-            .unwrap_or(100);
-        Duration::from_millis(duration)
-    };
     static ref QUERY_THRESHOLD: Duration = {
         let duration = env::var("GRAPH_EXPLORER_QUERY_THRESHOLD")
             .ok()
@@ -158,7 +144,7 @@ where
     ) -> Result<Response<Body>, GraphQLServerError> {
         let start = Instant::now();
         let count = self.entity_counts.get(deployment);
-        if start.elapsed() > *LOCK_THRESHOLD {
+        if start.elapsed() > ENV_VARS.explorer_lock_threshold() {
             let action = match count {
                 Some(_) => "cache_hit",
                 None => "cache_miss",
@@ -195,7 +181,7 @@ where
         };
         let start = Instant::now();
         let resp = as_http_response(&value);
-        if start.elapsed() > *LOCK_THRESHOLD {
+        if start.elapsed() > ENV_VARS.explorer_lock_threshold() {
             warn!(logger, "Getting entity_count takes too long";
             "action" => "as_http_response",
             "deployment" => deployment,
@@ -204,7 +190,7 @@ where
         let start = Instant::now();
         self.entity_counts
             .set(deployment.to_string(), Arc::new(value));
-        if start.elapsed() > *LOCK_THRESHOLD {
+        if start.elapsed() > ENV_VARS.explorer_lock_threshold() {
             warn!(logger, "Getting entity_count takes too long";
                 "action" => "cache_set",
                 "deployment" => deployment,

@@ -719,6 +719,12 @@ impl EnvVars {
         Duration::from_secs(self.inner.explorer_ttl_in_secs)
     }
 
+    /// Set by the environment variable `GRAPH_EXPLORER_LOCK_THRESHOLD`
+    /// (expressed in milliseconds). The default value is 100ms.
+    pub fn explorer_lock_threshold(&self) -> Duration {
+        Duration::from_millis(self.inner.explorer_lock_threshold_in_msec)
+    }
+
     /// Experimental feature.
     ///
     /// Set by the flag `GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES`. Off by
@@ -862,6 +868,8 @@ struct Inner {
     runtime_max_stack_size: WithoutUnderscores<usize>,
     #[envconfig(from = "GRAPH_EXPLORER_TTL", default = "10")]
     explorer_ttl_in_secs: u64,
+    #[envconfig(from = "GRAPH_EXPLORER_LOCK_THRESHOLD", default = "100")]
+    explorer_lock_threshold_in_msec: u64,
 
     // 1MiB
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "1048576")]
