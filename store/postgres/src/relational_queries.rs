@@ -3078,7 +3078,7 @@ fn write_column_names(
     match column_names {
         AttributeNames::All => out.push_sql(" * "),
         AttributeNames::Select(column_names) => {
-            let mut iterator = iter_column_names(column_names, table).peekable();
+            let mut iterator = iter_column_names(column_names, table, true).peekable();
             while let Some(column_name) = iterator.next() {
                 out.push_identifier(column_name)?;
                 if iterator.peek().is_some() {
@@ -3104,7 +3104,7 @@ fn jsonb_build_object(
         }
         AttributeNames::Select(column_names) => {
             out.push_sql("jsonb_build_object(");
-            let mut iterator = iter_column_names(column_names, table).peekable();
+            let mut iterator = iter_column_names(column_names, table, false).peekable();
             while let Some(column_name) = iterator.next() {
                 // field name as json key
                 out.push_sql("'");
@@ -3129,7 +3129,15 @@ fn jsonb_build_object(
 fn iter_column_names<'a, 'b>(
     attribute_names: &'a BTreeSet<String>,
     table: &'b Table,
+    include_block_range_column: bool,
 ) -> impl Iterator<Item = &'b str> {
+    let extra = if include_block_range_column {
+        [BLOCK_RANGE_COLUMN].iter()
+    } else {
+        [].iter()
+    }
+    .copied();
+
     attribute_names
         .iter()
         .map(|attribute_name| {
@@ -3138,6 +3146,7 @@ fn iter_column_names<'a, 'b>(
         })
         .map(|column| column.name.as_str())
         .chain(BASE_SQL_COLUMNS.iter().copied())
+        .chain(extra)
         .sorted()
         .dedup()
 }
