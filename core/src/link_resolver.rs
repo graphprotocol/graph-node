@@ -28,10 +28,6 @@ const DEFAULT_MAX_IPFS_MAP_FILE_SIZE: u64 = 256 * 1024 * 1024;
 const MAX_IPFS_FILE_SIZE_VAR: &'static str = "GRAPH_MAX_IPFS_FILE_BYTES";
 
 lazy_static! {
-    /// The default file size limit for the IPFS cache is 1MiB.
-    static ref MAX_IPFS_CACHE_FILE_SIZE: u64 = read_u64_from_env("GRAPH_MAX_IPFS_CACHE_FILE_SIZE")
-        .unwrap_or(1024 * 1024);
-
     /// The default size limit for the IPFS cache is 50 items.
     static ref MAX_IPFS_CACHE_SIZE: u64 = read_u64_from_env("GRAPH_MAX_IPFS_CACHE_SIZE")
         .unwrap_or(50);
@@ -233,7 +229,7 @@ impl LinkResolverTrait for LinkResolver {
                     let data = client.cat_all(path.clone(), timeout).await?.to_vec();
 
                     // Only cache files if they are not too large
-                    if data.len() <= *MAX_IPFS_CACHE_FILE_SIZE as usize {
+                    if data.len() <= ENV_VARS.max_ipfs_cache_file_size() {
                         let mut cache = this.cache.lock().unwrap();
                         if !cache.contains_key(&path) {
                             cache.insert(path.to_owned(), data.clone());

@@ -531,6 +531,12 @@ impl EnvVars {
     pub fn subgraph_error_retry_ceil(&self) -> Duration {
         Duration::from_secs(self.inner.subgraph_error_retry_ceil_in_secs)
     }
+
+    /// Set by the environment varible `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`
+    /// (expressed in bytes). The default value is 1MiB.
+    pub fn max_ipfs_cache_file_size(&self) -> usize {
+        self.inner.max_ipfs_cache_file_size
+    }
 }
 
 impl Default for EnvVars {
@@ -626,6 +632,9 @@ struct Inner {
     disable_fail_fast: EnvVarBoolean,
     #[envconfig(from = "GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS", default = "1800")]
     subgraph_error_retry_ceil_in_secs: u64,
+    // 1048576 = 1024 * 1024
+    #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "1048576")]
+    max_ipfs_cache_file_size: usize,
 
     #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
     ethereum_reorg_threshold: BlockNumber,
