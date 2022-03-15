@@ -405,6 +405,12 @@ impl EnvVars {
         self.inner.ethereum_reorg_threshold
     }
 
+    /// Set by the environment variable `ETHEREUM_TRACE_STREAM_STEP_SIZE`. The
+    /// default value is 50 blocks.
+    pub fn ethereum_trace_stream_step_size(&self) -> BlockNumber {
+        self.inner.ethereum_trace_stream_step_size
+    }
+
     /// Set by the flag `EXPERIMENTAL_STATIC_FILTERS`. Off by default.
     pub fn experimental_static_filters(&self) -> bool {
         self.inner.experimental_static_filters.0
@@ -503,6 +509,9 @@ struct Inner {
     remove_unused_interval_in_minutes: u64,
     #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
     ethereum_reorg_threshold: BlockNumber,
+    #[envconfig(from = "ETHEREUM_TRACE_STREAM_STEP_SIZE", default = "50")]
+    ethereum_trace_stream_step_size: BlockNumber,
+
     #[envconfig(from = "EXPERIMENTAL_STATIC_FILTERS", default = "false")]
     experimental_static_filters: EnvVarBoolean,
     #[envconfig(

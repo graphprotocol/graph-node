@@ -22,7 +22,7 @@ use graph::{
             },
         },
         BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger,
-        TimeoutError, TryFutureExt,
+        TimeoutError, TryFutureExt, ENV_VARS,
     },
 };
 use graph::{
@@ -64,11 +64,6 @@ pub struct EthereumAdapter {
 }
 
 lazy_static! {
-    static ref TRACE_STREAM_STEP_SIZE: BlockNumber = std::env::var("ETHEREUM_TRACE_STREAM_STEP_SIZE")
-        .unwrap_or("50".into())
-        .parse::<BlockNumber>()
-        .expect("invalid trace stream step size");
-
     /// Maximum range size for `eth.getLogs` requests that dont filter on
     /// contract address, only event signature, and are therefore expensive.
     ///
@@ -348,7 +343,7 @@ impl EthereumAdapter {
             );
         }
 
-        let step_size = *TRACE_STREAM_STEP_SIZE;
+        let step_size = ENV_VARS.ethereum_trace_stream_step_size();
 
         let eth = self.clone();
         let logger = logger.to_owned();
