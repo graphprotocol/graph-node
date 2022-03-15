@@ -670,6 +670,15 @@ impl EnvVars {
     pub fn query_block_cache_shards(&self) -> u8 {
         self.inner.query_block_cache_shards
     }
+
+    /// Set by the environment variable `GRAPH_QUERY_LFU_CACHE_SHARDS`. The
+    /// default value is set to whatever `GRAPH_QUERY_BLOCK_CACHE_SHARDS` is set
+    /// to.
+    pub fn query_lfu_cache_shards(&self) -> u8 {
+        self.inner
+            .query_lfu_cache_shards
+            .unwrap_or_else(|| self.query_block_cache_shards())
+    }
 }
 
 impl Default for EnvVars {
@@ -775,6 +784,8 @@ struct Inner {
     query_cache_stale_period: u64,
     #[envconfig(from = "GRAPH_QUERY_BLOCK_CACHE_SHARDS", default = "128")]
     query_block_cache_shards: u8,
+    #[envconfig(from = "GRAPH_QUERY_LFU_CACHE_SHARDS")]
+    query_lfu_cache_shards: Option<u8>,
 
     // 1MiB
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "1048576")]
