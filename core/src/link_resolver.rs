@@ -1,5 +1,3 @@
-use std::env;
-use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -16,20 +14,6 @@ use graph::{
     ipfs_client::{IpfsClient, ObjectStatResponse},
     prelude::{LinkResolver as LinkResolverTrait, *},
 };
-
-/// Environment variable for limiting the `ipfs.cat` file size limit.
-const MAX_IPFS_FILE_SIZE_VAR: &'static str = "GRAPH_MAX_IPFS_FILE_BYTES";
-
-fn read_u64_from_env(name: &str) -> Option<u64> {
-    env::var(name).ok().map(|s| {
-        u64::from_str(&s).unwrap_or_else(|_| {
-            panic!(
-                "expected env var {} to contain a number (unsigned 64-bit integer), but got '{}'",
-                name, s
-            )
-        })
-    })
-}
 
 fn retry_policy<I: Send + Sync>(
     always_retry: bool,
@@ -192,9 +176,7 @@ impl LinkResolverTrait for LinkResolver {
         )
         .await?;
 
-        // FIXME: Having an env variable here is a problem for consensus.
-        // Index Nodes should not disagree on whether the file should be read.
-        let max_file_size: Option<u64> = read_u64_from_env(MAX_IPFS_FILE_SIZE_VAR);
+        let max_file_size = ENV_VARS.max_ipfs_file_bytes().map(|n| n as u64);
         restrict_file_size(&path, &stat, &max_file_size)?;
 
         let path = path.clone();

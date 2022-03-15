@@ -559,6 +559,17 @@ impl EnvVars {
     pub fn max_ipfs_map_file_size(&self) -> usize {
         self.inner.max_ipfs_map_file_size
     }
+
+    /// Sets the `ipfs.cat` file size limit.
+    ///
+    /// Set by the environment varible `GRAPH_MAX_IPFS_FILE_BYTES` (expressed in
+    /// bytes). No default value is provided.
+    ///
+    /// FIXME: Having an env variable here is a problem for consensus.
+    /// Index Nodes should not disagree on whether the file should be read.
+    pub fn max_ipfs_file_bytes(&self) -> Option<usize> {
+        self.inner.max_ipfs_file_bytes
+    }
 }
 
 impl Default for EnvVars {
@@ -665,6 +676,8 @@ struct Inner {
     // 256MiB
     #[envconfig(from = "GRAPH_MAX_IPFS_MAP_FILE_SIZE", default = "268435456")]
     max_ipfs_map_file_size: usize,
+    #[envconfig(from = "GRAPH_MAX_IPFS_FILE_BYTES")]
+    max_ipfs_file_bytes: Option<usize>,
 
     #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
     ethereum_reorg_threshold: BlockNumber,
