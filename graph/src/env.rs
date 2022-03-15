@@ -130,8 +130,14 @@ impl EnvVars {
         self.inner.allow_non_deterministic_fulltext_search.0 || cfg!(debug_assertions)
     }
 
+    /// Set by the environment variable `GRAPH_MAX_SPEC_VERSION`.
     pub fn max_spec_version(&self) -> Version {
         self.inner.max_spec_version.clone()
+    }
+
+    /// Set by the environment variable `GRAPH_MAX_API_VERSION`.
+    pub fn max_api_version(&self) -> Version {
+        self.inner.max_api_version.clone()
     }
 }
 
@@ -154,6 +160,8 @@ struct Inner {
     allow_non_deterministic_fulltext_search: EnvVarBoolean,
     #[envconfig(from = "GRAPH_MAX_SPEC_VERSION", default = "0.0.4")]
     max_spec_version: Version,
+    #[envconfig(from = "GRAPH_MAX_API_VERSION", default = "0.0.6")]
+    max_api_version: Version,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to

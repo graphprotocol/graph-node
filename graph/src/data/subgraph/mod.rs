@@ -30,7 +30,7 @@ use crate::data::{
     schema::{Schema, SchemaImportError, SchemaValidationError},
     subgraph::features::validate_subgraph_features,
 };
-use crate::prelude::{r, CheapClone};
+use crate::prelude::{r, CheapClone, ENV_VARS};
 use crate::{blockchain::DataSource, data::graphql::TryFromValue};
 use crate::{blockchain::DataSourceTemplate as _, data::query::QueryExecutionError};
 use crate::{
@@ -729,11 +729,11 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
 
         for ds in &data_sources {
             ensure!(
-                semver::VersionReq::parse(&format!("<= {}", *MAX_API_VERSION))
+                semver::VersionReq::parse(&format!("<= {}", ENV_VARS.max_api_version()))
                     .unwrap()
                     .matches(&ds.api_version()),
                 "The maximum supported mapping API version of this indexer is {}, but `{}` was found",
-                *MAX_API_VERSION,
+                ENV_VARS.max_api_version(),
                 ds.api_version()
             );
         }
