@@ -380,6 +380,16 @@ impl EnvVars {
     pub fn store_connection_idle_timeout(&self) -> Duration {
         Duration::from_secs(self.inner.store_connection_idle_timeout_in_secs)
     }
+
+    /// A fallback in case the logic to remember database availability goes
+    /// wrong; when this is set, we always try to get a connection and never
+    /// use the availability state we remembered.
+    ///
+    /// Set by the flag `GRAPH_STORE_CONNECTION_TRY_ALWAYS`. Disabled by
+    /// default.
+    pub fn store_connection_try_always(&self) -> bool {
+        self.inner.store_connection_try_always.0
+    }
 }
 
 impl Default for EnvVars {
@@ -456,6 +466,8 @@ struct Inner {
     sql_statement_timeout_in_secs: Option<u64>,
     #[envconfig(from = "GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS", default = "false")]
     disable_subscription_notifications: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_STORE_CONNECTION_TRY_ALWAYS", default = "false")]
+    store_connection_try_always: EnvVarBoolean,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and

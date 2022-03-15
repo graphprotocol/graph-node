@@ -34,15 +34,6 @@ use crate::primary::{self, NAMESPACE_PUBLIC};
 use crate::{advisory_lock, catalog};
 use crate::{Shard, PRIMARY_SHARD};
 
-lazy_static::lazy_static! {
-    // A fallback in case the logic to remember database availability goes
-    // wrong; when this is set, we always try to get a connection and never
-    // use the availability state we remembered
-    static ref TRY_ALWAYS: bool = {
-        std::env::var("GRAPH_STORE_CONNECTION_TRY_ALWAYS").ok().map(|_| true).unwrap_or(false)
-    };
-}
-
 pub struct ForeignServer {
     pub name: String,
     pub shard: Shard,
@@ -357,7 +348,7 @@ impl ConnectionPool {
     /// `StoreError::DatabaseUnavailable`
     fn get_ready(&self) -> Result<Arc<PoolInner>, StoreError> {
         let mut guard = self.inner.lock(&self.logger);
-        if !self.state_tracker.is_available() && !*TRY_ALWAYS {
+        if !self.state_tracker.is_available() && !ENV_VARS.store_connection_try_always() {
             // We know that trying to use this pool is pointless since the
             // database is not available, and will only lead to other
             // operations having to wait until the connection timeout is
