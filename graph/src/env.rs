@@ -70,6 +70,7 @@ pub struct EnvVars {
     log_query_timing: Vec<String>,
     account_tables: HashSet<String>,
     geth_eth_call_errors: Vec<String>,
+    cached_subgraph_ids: Option<Vec<String>>,
 }
 
 impl EnvVars {
@@ -95,12 +96,24 @@ impl EnvVars {
             .filter(|s| !s.is_empty())
             .map(str::to_string)
             .collect();
+        let cached_subgraph_ids = if inner.cached_subgraph_ids == "*" {
+            None
+        } else {
+            Some(
+                inner
+                    .cached_subgraph_ids
+                    .split(',')
+                    .map(str::to_string)
+                    .collect(),
+            )
+        };
 
         Self {
             inner,
             log_query_timing,
             account_tables,
             geth_eth_call_errors,
+            cached_subgraph_ids,
         }
     }
 
@@ -611,6 +624,14 @@ impl EnvVars {
     pub fn graphql_allow_deployment_change(&self) -> bool {
         self.inner.graphql_allow_deployment_change.0
     }
+
+    /// Set by the environment variable `GRAPH_CACHED_SUBGRAPH_IDS` (comma
+    /// separated). When the value of the variable is `*`, queries are cached
+    /// for all subgraphs and this method returns [`None`], which is the default
+    /// behavior.
+    pub fn cached_subgraph_ids(&self) -> Option<&[String]> {
+        self.cached_subgraph_ids.as_deref()
+    }
 }
 
 impl Default for EnvVars {
@@ -706,6 +727,8 @@ struct Inner {
     disable_fail_fast: EnvVarBoolean,
     #[envconfig(from = "GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS", default = "1800")]
     subgraph_error_retry_ceil_in_secs: u64,
+    #[envconfig(from = "GRAPH_CACHED_SUBGRAPH_IDS", default = "*")]
+    cached_subgraph_ids: String,
 
     // 1MiB
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "1048576")]

@@ -24,19 +24,6 @@ use crate::prelude::*;
 use crate::schema::ast as sast;
 
 lazy_static! {
-    // Comma separated subgraph ids to cache queries for.
-    // If `*` is present in the list, queries are cached for all subgraphs.
-    // Defaults to "*".
-    static ref CACHED_SUBGRAPH_IDS: Vec<String> = {
-        std::env::var("GRAPH_CACHED_SUBGRAPH_IDS")
-        .unwrap_or("*".to_string())
-        .split(',')
-        .map(ToOwned::to_owned)
-        .collect()
-    };
-
-    static ref CACHE_ALL: bool = CACHED_SUBGRAPH_IDS.contains(&"*".to_string());
-
     // How many blocks per network should be kept in the query cache. When the limit is reached,
     // older blocks are evicted. This should be kept small since a lookup to the cache is O(n) on
     // this value, and the cache memory usage also increases with larger number. Set to 0 to disable
@@ -299,34 +286,36 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
     // and once for insert.
     let mut key: Option<QueryHash> = None;
 
-    if R::CACHEABLE && (*CACHE_ALL || CACHED_SUBGRAPH_IDS.contains(ctx.query.schema.id())) {
-        if let (Some(block_ptr), Some(network)) = (block_ptr.as_ref(), &ctx.query.network) {
-            // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two reasons:
-            // - Metadata queries are not cacheable.
-            // - Caching `BLOCK_NUMBER_MAX` would make this cache think all other blocks are old.
-            if block_ptr.number != BLOCK_NUMBER_MAX {
-                // Calculate the hash outside of the lock
-                let cache_key = cache_key(&ctx, &selection_set, block_ptr);
-                let shard = (cache_key[0] as usize) % QUERY_BLOCK_CACHE.len();
+    if let Some(cached_subgraph_ids) = ENV_VARS.cached_subgraph_ids() {
+        if R::CACHEABLE && cached_subgraph_ids.contains(ctx.query.schema.id()) {
+            if let (Some(block_ptr), Some(network)) = (block_ptr.as_ref(), &ctx.query.network) {
+                // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two reasons:
+                // - Metadata queries are not cacheable.
+                // - Caching `BLOCK_NUMBER_MAX` would make this cache think all other blocks are old.
+                if block_ptr.number != BLOCK_NUMBER_MAX {
+                    // Calculate the hash outside of the lock
+                    let cache_key = cache_key(&ctx, &selection_set, block_ptr);
+                    let shard = (cache_key[0] as usize) % QUERY_BLOCK_CACHE.len();
 
-                // Check if the response is cached, first in the recent blocks cache,
-                // and then in the LfuCache for historical queries
-                // The blocks are used to delimit how long locks need to be held
-                {
-                    let cache = QUERY_BLOCK_CACHE[shard].lock(&ctx.logger);
-                    if let Some(result) = cache.get(network, block_ptr, &cache_key) {
-                        ctx.cache_status.store(CacheStatus::Hit);
-                        return result;
+                    // Check if the response is cached, first in the recent blocks cache,
+                    // and then in the LfuCache for historical queries
+                    // The blocks are used to delimit how long locks need to be held
+                    {
+                        let cache = QUERY_BLOCK_CACHE[shard].lock(&ctx.logger);
+                        if let Some(result) = cache.get(network, block_ptr, &cache_key) {
+                            ctx.cache_status.store(CacheStatus::Hit);
+                            return result;
+                        }
                     }
-                }
-                {
-                    let mut cache = QUERY_LFU_CACHE[shard].lock(&ctx.logger);
-                    if let Some(weighted) = cache.get(&cache_key) {
-                        ctx.cache_status.store(CacheStatus::Hit);
-                        return weighted.result.cheap_clone();
+                    {
+                        let mut cache = QUERY_LFU_CACHE[shard].lock(&ctx.logger);
+                        if let Some(weighted) = cache.get(&cache_key) {
+                            ctx.cache_status.store(CacheStatus::Hit);
+                            return weighted.result.cheap_clone();
+                        }
                     }
+                    key = Some(cache_key);
                 }
-                key = Some(cache_key);
             }
         }
     }
