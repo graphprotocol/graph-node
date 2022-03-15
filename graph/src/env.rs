@@ -644,6 +644,16 @@ impl EnvVars {
     pub fn query_cache_blocks(&self) -> usize {
         self.inner.query_cache_blocks
     }
+
+    /// Maximum total memory to be used by the cache. Each block has a max size of
+    /// `QUERY_CACHE_MAX_MEM` / (`QUERY_CACHE_BLOCKS` *
+    /// `GRAPH_QUERY_BLOCK_CACHE_SHARDS`).
+    ///
+    /// Set by the environment variable `GRAPH_QUERY_CACHE_MAX_MEM` (expressed
+    /// in MB). The default value is 1GB.
+    pub fn query_cache_max_mem(&self) -> usize {
+        self.inner.query_cache_max_mem_in_mb.0 * 1_000_000
+    }
 }
 
 impl Default for EnvVars {
@@ -743,6 +753,8 @@ struct Inner {
     cached_subgraph_ids: String,
     #[envconfig(from = "GRAPH_QUERY_CACHE_BLOCKS", default = "2")]
     query_cache_blocks: usize,
+    #[envconfig(from = "GRAPH_QUERY_CACHE_MAX_MEM", default = "1000")]
+    query_cache_max_mem_in_mb: WithoutUnderscores<usize>,
 
     // 1MiB
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "1048576")]

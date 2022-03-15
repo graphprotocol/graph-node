@@ -24,17 +24,6 @@ use crate::prelude::*;
 use crate::schema::ast as sast;
 
 lazy_static! {
-    /// Maximum total memory to be used by the cache. Each block has a max size of
-    /// `QUERY_CACHE_MAX_MEM` / (`QUERY_CACHE_BLOCKS` * `GRAPH_QUERY_BLOCK_CACHE_SHARDS`).
-    /// The env var is in MB.
-    static ref QUERY_CACHE_MAX_MEM: usize = {
-        1_000_000 *
-        std::env::var("GRAPH_QUERY_CACHE_MAX_MEM")
-        .unwrap_or("1000".to_string())
-        .parse::<usize>()
-        .expect("Invalid value for GRAPH_QUERY_CACHE_MAX_MEM environment variable")
-    };
-
     static ref QUERY_CACHE_STALE_PERIOD: u64 = {
         std::env::var("GRAPH_QUERY_CACHE_STALE_PERIOD")
         .unwrap_or("100".to_string())
@@ -69,7 +58,7 @@ lazy_static! {
             let blocks = ENV_VARS.query_cache_blocks();
 
             // The memory budget is evenly divided among blocks and their shards.
-            let max_weight = *QUERY_CACHE_MAX_MEM / (blocks * shards as usize);
+            let max_weight = ENV_VARS.query_cache_max_mem() / (blocks * shards as usize);
             let mut caches = Vec::new();
             for i in 0..shards {
                 let id = format!("query_block_cache_{}", i);
@@ -392,7 +381,7 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
         } else {
             // Results that are too old for the QUERY_BLOCK_CACHE go into the QUERY_LFU_CACHE
             let mut cache = QUERY_LFU_CACHE[shard].lock(&ctx.logger);
-            let max_mem = *QUERY_CACHE_MAX_MEM / (*QUERY_BLOCK_CACHE_SHARDS as usize);
+            let max_mem = ENV_VARS.query_cache_max_mem() / (*QUERY_BLOCK_CACHE_SHARDS as usize);
             cache.evict_with_period(max_mem, *QUERY_CACHE_STALE_PERIOD);
             cache.insert(
                 key,
