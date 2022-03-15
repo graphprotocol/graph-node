@@ -7,7 +7,7 @@ use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::store::{BlockStore, EntityType, Store};
 use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
 use graph::data::subgraph::features::detect_features;
-use graph::data::subgraph::{status, MAX_SPEC_VERSION};
+use graph::data::subgraph::status;
 use graph::data::value::Object;
 use graph::prelude::*;
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
@@ -368,7 +368,7 @@ where
                             raw,
                             self.link_resolver.clone(),
                             &self.logger,
-                            MAX_SPEC_VERSION.clone(),
+                            ENV_VARS.max_spec_version(),
                         )
                         .await?;
 
@@ -386,7 +386,7 @@ where
                             raw,
                             self.link_resolver.clone(),
                             &self.logger,
-                            MAX_SPEC_VERSION.clone(),
+                            ENV_VARS.max_spec_version(),
                         )
                         .await?;
 
@@ -404,7 +404,7 @@ where
                             raw,
                             self.link_resolver.clone(),
                             &self.logger,
-                            MAX_SPEC_VERSION.clone(),
+                            ENV_VARS.max_spec_version(),
                         )
                         .await?;
 

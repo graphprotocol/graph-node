@@ -1,5 +1,6 @@
 use envconfig::Envconfig;
 use lazy_static::lazy_static;
+use semver::Version;
 use std::{
     env::VarError,
     str::FromStr,
@@ -128,6 +129,10 @@ impl EnvVars {
     pub fn allow_non_deterministic_fulltext_search(&self) -> bool {
         self.inner.allow_non_deterministic_fulltext_search.0 || cfg!(debug_assertions)
     }
+
+    pub fn max_spec_version(&self) -> Version {
+        self.inner.max_spec_version.clone()
+    }
 }
 
 #[derive(Clone, Debug, Envconfig)]
@@ -147,6 +152,8 @@ struct Inner {
         default = "false"
     )]
     allow_non_deterministic_fulltext_search: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_MAX_SPEC_VERSION", default = "0.0.4")]
+    max_spec_version: Version,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
