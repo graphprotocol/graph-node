@@ -632,6 +632,18 @@ impl EnvVars {
     pub fn cached_subgraph_ids(&self) -> Option<&[String]> {
         self.cached_subgraph_ids.as_deref()
     }
+
+    /// How many blocks per network should be kept in the query cache. When the
+    /// limit is reached, older blocks are evicted. This should be kept small
+    /// since a lookup to the cache is O(n) on this value, and the cache memory
+    /// usage also increases with larger number. Set to 0 to disable
+    /// the cache.
+    ///
+    /// Set by the environment variable `GRAPH_QUERY_CACHE_BLOCKS`. The default
+    /// value is 2.
+    pub fn query_cache_blocks(&self) -> usize {
+        self.inner.query_cache_blocks
+    }
 }
 
 impl Default for EnvVars {
@@ -729,6 +741,8 @@ struct Inner {
     subgraph_error_retry_ceil_in_secs: u64,
     #[envconfig(from = "GRAPH_CACHED_SUBGRAPH_IDS", default = "*")]
     cached_subgraph_ids: String,
+    #[envconfig(from = "GRAPH_QUERY_CACHE_BLOCKS", default = "2")]
+    query_cache_blocks: usize,
 
     // 1MiB
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "1048576")]

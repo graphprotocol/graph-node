@@ -24,17 +24,6 @@ use crate::prelude::*;
 use crate::schema::ast as sast;
 
 lazy_static! {
-    // How many blocks per network should be kept in the query cache. When the limit is reached,
-    // older blocks are evicted. This should be kept small since a lookup to the cache is O(n) on
-    // this value, and the cache memory usage also increases with larger number. Set to 0 to disable
-    // the cache. Defaults to 2.
-    static ref QUERY_CACHE_BLOCKS: usize = {
-        std::env::var("GRAPH_QUERY_CACHE_BLOCKS")
-        .unwrap_or("2".to_string())
-        .parse::<usize>()
-        .expect("Invalid value for GRAPH_QUERY_CACHE_BLOCKS environment variable")
-    };
-
     /// Maximum total memory to be used by the cache. Each block has a max size of
     /// `QUERY_CACHE_MAX_MEM` / (`QUERY_CACHE_BLOCKS` * `GRAPH_QUERY_BLOCK_CACHE_SHARDS`).
     /// The env var is in MB.
@@ -77,7 +66,7 @@ lazy_static! {
     // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
     static ref QUERY_BLOCK_CACHE: Vec<TimedMutex<QueryBlockCache>> = {
             let shards = *QUERY_BLOCK_CACHE_SHARDS;
-            let blocks = *QUERY_CACHE_BLOCKS;
+            let blocks = ENV_VARS.query_cache_blocks();
 
             // The memory budget is evenly divided among blocks and their shards.
             let max_weight = *QUERY_CACHE_MAX_MEM / (blocks * shards as usize);
