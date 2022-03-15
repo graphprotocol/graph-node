@@ -412,9 +412,14 @@ impl EnvVars {
 
     /// Set by the environment variable
     /// `EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE`. The default value is
-    /// "instant".
+    /// `"instant"`.
     pub fn subgraph_version_switching_mode(&self) -> SubgraphVersionSwitchingMode {
         self.inner.subgraph_version_switching_mode
+    }
+
+    /// Set by the flag `GRAPH_KILL_IF_UNRESPONSIVE`. Off by default.
+    pub fn kill_if_unresponsive(&self) -> bool {
+        self.inner.kill_if_unresponsive.0
     }
 }
 
@@ -505,6 +510,8 @@ struct Inner {
         default = "instant"
     )]
     subgraph_version_switching_mode: SubgraphVersionSwitchingMode,
+    #[envconfig(from = "GRAPH_KILL_IF_UNRESPONSIVE", default = "false")]
+    kill_if_unresponsive: EnvVarBoolean,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and

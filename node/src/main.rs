@@ -512,7 +512,7 @@ async fn main() {
                                      "code" => LogCode::TokioContention);
             if timeout < Duration::from_secs(10) {
                 timeout *= 10;
-            } else if std::env::var_os("GRAPH_KILL_IF_UNRESPONSIVE").is_some() {
+            } else if ENV_VARS.kill_if_unresponsive() {
                 // The node is unresponsive, kill it in hopes it will be restarted.
                 crit!(contention_logger, "Node is unresponsive, killing process");
                 std::process::abort()
