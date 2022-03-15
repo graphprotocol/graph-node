@@ -1,6 +1,5 @@
 use std::cmp::PartialEq;
-use std::str::FromStr;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use async_trait::async_trait;
 use futures::sync::mpsc::Sender;
@@ -20,10 +19,6 @@ use crate::{host_exports::HostExports, module::ExperimentalFeatures};
 use graph::runtime::gas::Gas;
 
 lazy_static! {
-    static ref TIMEOUT: Option<Duration> = std::env::var("GRAPH_MAPPING_HANDLER_TIMEOUT")
-        .ok()
-        .map(|s| u64::from_str(&s).expect("Invalid value for GRAPH_MAPPING_HANDLER_TIMEOUT"))
-        .map(Duration::from_secs);
     static ref ALLOW_NON_DETERMINISTIC_IPFS: bool =
         std::env::var("GRAPH_ALLOW_NON_DETERMINISTIC_IPFS").is_ok();
 }
@@ -77,7 +72,7 @@ impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C> {
             subgraph_id,
             metrics,
             tokio::runtime::Handle::current(),
-            *TIMEOUT,
+            ENV_VARS.mapping_handler_timeout(),
             experimental_features,
         )
     }

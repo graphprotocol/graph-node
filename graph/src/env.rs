@@ -697,6 +697,14 @@ impl EnvVars {
         self.inner.enable_graphql_validations.0
     }
 
+    /// Set by the environment variable `GRAPH_MAPPING_HANDLER_TIMEOUT`
+    /// (expressed in seconds). No default is provided.
+    pub fn mapping_handler_timeout(&self) -> Option<Duration> {
+        self.inner
+            .mapping_handler_timeout_in_secs
+            .map(Duration::from_secs)
+    }
+
     /// Experimental feature.
     ///
     /// Set by the flag `GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES`. Off by
@@ -815,6 +823,8 @@ struct Inner {
     enable_graphql_validations: EnvVarBoolean,
     #[envconfig(from = "GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES", default = "false")]
     enable_select_by_specific_attributes: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_MAPPING_HANDLER_TIMEOUT")]
+    mapping_handler_timeout_in_secs: Option<u64>,
 
     // 1MiB
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "1048576")]
