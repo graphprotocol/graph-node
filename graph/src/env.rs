@@ -705,6 +705,14 @@ impl EnvVars {
             .map(Duration::from_secs)
     }
 
+    /// Maximum stack size for the WASM runtime.
+    ///
+    /// Set by the environment variable `GRAPH_RUNTIME_MAX_STACK_SIZE`
+    /// (expressed in bytes). The default value is 512KiB.
+    pub fn runtime_max_stack_size(&self) -> usize {
+        self.inner.runtime_max_stack_size.0
+    }
+
     /// Experimental feature.
     ///
     /// Set by the flag `GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES`. Off by
@@ -843,6 +851,9 @@ struct Inner {
     allow_non_deterministic_ipfs: EnvVarBoolean,
     #[envconfig(from = "GRAPH_LOG_TRIGGER_DATA", default = "false")]
     log_trigger_data: EnvVarBoolean,
+    // 512KiB
+    #[envconfig(from = "GRAPH_RUNTIME_MAX_STACK_SIZE", default = "524288")]
+    runtime_max_stack_size: WithoutUnderscores<usize>,
 
     // 1MiB
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "1048576")]
