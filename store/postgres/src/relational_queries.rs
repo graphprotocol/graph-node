@@ -45,16 +45,6 @@ use crate::{
 };
 
 lazy_static! {
-    /// When we add `order by id` to a query should we add instead
-    /// `order by id, block_range`
-    static ref ORDER_BY_BLOCK_RANGE: bool = {
-        env::var("ORDER_BY_BLOCK_RANGE")
-            .ok()
-            .map(|s| {
-                s == "1"
-            })
-            .unwrap_or(false)
-    };
     /// Reversible order by. Change our `order by` clauses so that `asc`
     /// and `desc` ordering produce reverse orders. Setting this
     /// turns the new, correct behavior off
@@ -2249,7 +2239,7 @@ impl<'a> SortKey<'a> {
             }
         }
 
-        let br_column = if *ORDER_BY_BLOCK_RANGE {
+        let br_column = if ENV_VARS.order_by_block_range() {
             Some(BlockRangeColumn::new(table, "c.", block))
         } else {
             None

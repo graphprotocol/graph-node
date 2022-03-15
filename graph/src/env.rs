@@ -297,6 +297,14 @@ impl EnvVars {
     pub fn typed_children_set_size(&self) -> usize {
         self.inner.typed_children_set_size
     }
+
+    /// When enabled, turns `ORDER BY id` into `ORDER BY id, block_range` in
+    /// some relational queries.
+    ///
+    /// Set by the flag `ORDER_BY_BLOCK_RANGE`.
+    pub fn order_by_block_range(&self) -> bool {
+        self.inner.order_by_block_range.0
+    }
 }
 
 impl Default for EnvVars {
@@ -363,6 +371,8 @@ struct Inner {
     typea_batch_size: usize,
     #[envconfig(from = "TYPED_CHILDREN_SET_SIZE", default = "150")]
     typed_children_set_size: usize,
+    #[envconfig(from = "ORDER_BY_BLOCK_RANGE", default = "false")]
+    order_by_block_range: EnvVarBoolean,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
