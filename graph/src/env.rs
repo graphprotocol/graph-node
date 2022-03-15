@@ -578,6 +578,12 @@ impl EnvVars {
             .graphql_query_timeout_in_secs
             .map(Duration::from_secs)
     }
+
+    /// Set by the environment varible `GRAPH_GRAPHQL_MAX_COMPLEXITY`. No
+    /// default value is provided.
+    pub fn graphql_max_complexity(&self) -> Option<u64> {
+        self.inner.graphql_max_complexity.map(|x| x.0)
+    }
 }
 
 impl Default for EnvVars {
@@ -713,6 +719,8 @@ struct Inner {
 
     #[envconfig(from = "GRAPH_GRAPHQL_QUERY_TIMEOUT")]
     graphql_query_timeout_in_secs: Option<u64>,
+    #[envconfig(from = "GRAPH_GRAPHQL_MAX_COMPLEXITY")]
+    graphql_max_complexity: Option<WithoutUnderscores<u64>>,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and

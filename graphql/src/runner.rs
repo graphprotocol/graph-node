@@ -80,10 +80,6 @@ pub struct GraphQlRunner<S, SM> {
 }
 
 lazy_static! {
-    static ref GRAPHQL_MAX_COMPLEXITY: Option<u64> = env::var("GRAPH_GRAPHQL_MAX_COMPLEXITY")
-        .ok()
-        .map(|s| u64::from_str(&s)
-            .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_GRAPHQL_MAX_COMPLEXITY")));
     static ref GRAPHQL_MAX_DEPTH: u8 = env::var("GRAPH_GRAPHQL_MAX_DEPTH")
         .ok()
         .map(|s| u8::from_str(&s)
@@ -267,7 +263,7 @@ where
         self.run_query_with_complexity(
             query,
             target,
-            *GRAPHQL_MAX_COMPLEXITY,
+            ENV_VARS.graphql_max_complexity(),
             Some(*GRAPHQL_MAX_DEPTH),
             Some(*GRAPHQL_MAX_FIRST),
             Some(*GRAPHQL_MAX_SKIP),
@@ -311,7 +307,7 @@ where
             schema,
             Some(network),
             subscription.query,
-            *GRAPHQL_MAX_COMPLEXITY,
+            ENV_VARS.graphql_max_complexity(),
             *GRAPHQL_MAX_DEPTH,
         )?;
 
@@ -334,7 +330,7 @@ where
                 store,
                 subscription_manager: self.subscription_manager.cheap_clone(),
                 timeout: ENV_VARS.graphql_query_timeout(),
-                max_complexity: *GRAPHQL_MAX_COMPLEXITY,
+                max_complexity: ENV_VARS.graphql_max_complexity(),
                 max_depth: *GRAPHQL_MAX_DEPTH,
                 max_first: *GRAPHQL_MAX_FIRST,
                 max_skip: *GRAPHQL_MAX_SKIP,
