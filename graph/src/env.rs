@@ -596,6 +596,12 @@ impl EnvVars {
     pub fn graphql_max_first(&self) -> u32 {
         self.inner.graphql_max_first
     }
+
+    /// Set by the environment varible `4294967295`. The default
+    /// value is 4294967295 ([`u32::MAX`]).
+    pub fn graphql_max_skip(&self) -> u32 {
+        self.inner.graphql_max_skip
+    }
 }
 
 impl Default for EnvVars {
@@ -738,6 +744,9 @@ struct Inner {
     graphql_max_depth: u8,
     #[envconfig(from = "GRAPH_GRAPHQL_MAX_FIRST", default = "1000")]
     graphql_max_first: u32,
+    // u32::MAX
+    #[envconfig(from = "GRAPH_GRAPHQL_MAX_SKIP", default = "4294967295")]
+    graphql_max_skip: u32,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and
@@ -809,5 +818,11 @@ mod tests {
             env_vars.max_gas_per_handler(),
             crate::runtime::gas::CONST_MAX_GAS_PER_HANDLER
         );
+    }
+
+    #[test]
+    fn default_graphql_max_skip() {
+        let env_vars = EnvVars::default();
+        assert_eq!(env_vars.graphql_max_skip(), u32::MAX);
     }
 }

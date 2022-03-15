@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::env;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -80,11 +79,6 @@ pub struct GraphQlRunner<S, SM> {
 }
 
 lazy_static! {
-    static ref GRAPHQL_MAX_SKIP: u32 = env::var("GRAPH_GRAPHQL_MAX_SKIP")
-        .ok()
-        .map(|s| u32::from_str(&s)
-            .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_GRAPHQL_MAX_SKIP")))
-        .unwrap_or(std::u32::MAX);
     // Allow skipping the check whether a deployment has changed while
     // we were running a query. Once we are sure that the check mechanism
     // is reliable, this variable should be removed
@@ -227,7 +221,7 @@ where
                     resolver,
                     deadline: ENV_VARS.graphql_query_timeout().map(|t| Instant::now() + t),
                     max_first: max_first.unwrap_or(ENV_VARS.graphql_max_first()),
-                    max_skip: max_skip.unwrap_or(*GRAPHQL_MAX_SKIP),
+                    max_skip: max_skip.unwrap_or(ENV_VARS.graphql_max_skip()),
                     load_manager: self.load_manager.clone(),
                 },
             )
@@ -256,7 +250,7 @@ where
             ENV_VARS.graphql_max_complexity(),
             Some(ENV_VARS.graphql_max_depth()),
             Some(ENV_VARS.graphql_max_first()),
-            Some(*GRAPHQL_MAX_SKIP),
+            Some(ENV_VARS.graphql_max_skip()),
         )
         .await
     }
@@ -323,7 +317,7 @@ where
                 max_complexity: ENV_VARS.graphql_max_complexity(),
                 max_depth: ENV_VARS.graphql_max_depth(),
                 max_first: ENV_VARS.graphql_max_first(),
-                max_skip: *GRAPHQL_MAX_SKIP,
+                max_skip: ENV_VARS.graphql_max_skip(),
                 result_size: self.result_size.clone(),
             },
         )
