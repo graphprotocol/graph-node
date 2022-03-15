@@ -18,7 +18,6 @@ use lazy_static::lazy_static;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::{From, TryFrom};
-use std::env;
 use std::fmt::{self, Write};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -61,19 +60,9 @@ pub const STRING_PREFIX_SIZE: usize = 256;
 pub const BYTE_ARRAY_PREFIX_SIZE: usize = 64;
 
 lazy_static! {
-    /// `GRAPH_SQL_STATEMENT_TIMEOUT` is the timeout for queries in seconds.
-    /// If it is not set, no statement timeout will be enforced. The statement
-    /// timeout is local, i.e., can only be used within a transaction and
-    /// will be cleared at the end of the transaction
-    static ref STATEMENT_TIMEOUT: Option<String> = {
-        env::var("GRAPH_SQL_STATEMENT_TIMEOUT")
-        .ok()
-        .map(|s| {
-            u64::from_str(&s).unwrap_or_else(|_| {
-                panic!("GRAPH_SQL_STATEMENT_TIMEOUT must be a number, but is `{}`", s)
-            })
-        }).map(|timeout| format!("set local statement_timeout={}", timeout * 1000))
-    };
+    static ref STATEMENT_TIMEOUT: Option<String> = ENV_VARS
+        .sql_statement_timeout()
+        .map(|duration| format!("set local statement_timeout={}", duration.as_millis()));
 }
 
 /// A string we use as a SQL name for a table or column. The important thing

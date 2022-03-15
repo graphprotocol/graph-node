@@ -338,6 +338,20 @@ impl EnvVars {
     pub fn account_tables(&self) -> &HashSet<String> {
         &self.account_tables
     }
+
+    /// This is the timeout duration for SQL queries.
+    ///
+    /// If it is not set, no statement timeout will be enforced. The statement
+    /// timeout is local, i.e., can only be used within a transaction and
+    /// will be cleared at the end of the transaction.
+    ///
+    /// Set by the environment variable `GRAPH_SQL_STATEMENT_TIMEOUT` (expressed
+    /// in seconds). No default value is provided.
+    pub fn sql_statement_timeout(&self) -> Option<Duration> {
+        self.inner
+            .sql_statement_timeout_in_secs
+            .map(Duration::from_secs)
+    }
 }
 
 impl Default for EnvVars {
@@ -410,6 +424,8 @@ struct Inner {
     reversible_order_by_off: EnvVarBoolean,
     #[envconfig(from = "GRAPH_ACCOUNT_TABLES", default = "")]
     account_tables: String,
+    #[envconfig(from = "GRAPH_SQL_STATEMENT_TIMEOUT")]
+    sql_statement_timeout_in_secs: Option<u64>,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
