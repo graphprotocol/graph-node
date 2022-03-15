@@ -18,15 +18,6 @@ use graph::prelude::serde_json;
 use graph::prelude::*;
 
 lazy_static! {
-    static ref LARGE_NOTIFICATION_CLEANUP_INTERVAL: Duration =
-        env::var("LARGE_NOTIFICATION_CLEANUP_INTERVAL")
-            .ok()
-            .map(
-                |s| Duration::from_secs(u64::from_str(&s).unwrap_or_else(|_| panic!(
-                    "failed to parse env var LARGE_NOTIFICATION_CLEANUP_INTERVAL"
-                )))
-            )
-            .unwrap_or(Duration::from_secs(300));
     static ref NOTIFICATION_BROADCAST_TIMEOUT: Duration =
         env::var("GRAPH_NOTIFICATION_BROADCAST_TIMEOUT")
             .ok()
@@ -171,7 +162,7 @@ impl NotificationListener {
         debug!(
             logger,
             "Cleaning up large notifications after about {}s",
-            LARGE_NOTIFICATION_CLEANUP_INTERVAL.as_secs()
+            ENV_VARS.large_notification_cleanup_interval().as_secs(),
         );
 
         // Create two ends of a boolean variable for signalling when the worker
@@ -473,11 +464,11 @@ impl NotificationSender {
             // If we can't get the lock, another thread in this process is
             // already checking, and we can just skip checking
             if let Ok(mut last_check) = LAST_CLEANUP_CHECK.try_lock() {
-                if last_check.elapsed() > *LARGE_NOTIFICATION_CLEANUP_INTERVAL {
+                if last_check.elapsed() > ENV_VARS.large_notification_cleanup_interval() {
                     diesel::sql_query(format!(
                         "delete from large_notifications
                          where created_at < current_timestamp - interval '{}s'",
-                        LARGE_NOTIFICATION_CLEANUP_INTERVAL.as_secs()
+                        ENV_VARS.large_notification_cleanup_interval().as_secs(),
                     ))
                     .execute(conn)?;
                     *last_check = Instant::now();

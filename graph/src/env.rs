@@ -268,6 +268,12 @@ impl EnvVars {
     pub fn extra_query_permits(&self) -> usize {
         self.inner.extra_query_permits
     }
+
+    /// Set by the environment variable `LARGE_NOTIFICATION_CLEANUP_INTERVAL`
+    /// (expressed in seconds). The default value is 300 seconds.
+    pub fn large_notification_cleanup_interval(&self) -> Duration {
+        Duration::from_secs(self.inner.large_notification_cleanup_interval_in_secs)
+    }
 }
 
 impl Default for EnvVars {
@@ -326,6 +332,8 @@ struct Inner {
     query_stats_refresh_interval_in_secs: u64,
     #[envconfig(from = "GRAPH_EXTRA_QUERY_PERMITS", default = "0")]
     extra_query_permits: usize,
+    #[envconfig(from = "LARGE_NOTIFICATION_CLEANUP_INTERVAL", default = "300")]
+    large_notification_cleanup_interval_in_secs: u64,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
