@@ -584,6 +584,12 @@ impl EnvVars {
     pub fn graphql_max_complexity(&self) -> Option<u64> {
         self.inner.graphql_max_complexity.map(|x| x.0)
     }
+
+    /// Set by the environment varible `GRAPH_GRAPHQL_MAX_DEPTH`. The default
+    /// value is 255.
+    pub fn graphql_max_depth(&self) -> u8 {
+        self.inner.graphql_max_depth
+    }
 }
 
 impl Default for EnvVars {
@@ -721,6 +727,9 @@ struct Inner {
     graphql_query_timeout_in_secs: Option<u64>,
     #[envconfig(from = "GRAPH_GRAPHQL_MAX_COMPLEXITY")]
     graphql_max_complexity: Option<WithoutUnderscores<u64>>,
+    // u8::MAX
+    #[envconfig(from = "GRAPH_GRAPHQL_MAX_DEPTH", default = "255")]
+    graphql_max_depth: u8,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and

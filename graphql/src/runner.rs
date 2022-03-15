@@ -80,11 +80,6 @@ pub struct GraphQlRunner<S, SM> {
 }
 
 lazy_static! {
-    static ref GRAPHQL_MAX_DEPTH: u8 = env::var("GRAPH_GRAPHQL_MAX_DEPTH")
-        .ok()
-        .map(|s| u8::from_str(&s)
-            .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_GRAPHQL_MAX_DEPTH")))
-        .unwrap_or(u8::max_value());
     static ref GRAPHQL_MAX_FIRST: u32 = env::var("GRAPH_GRAPHQL_MAX_FIRST")
         .ok()
         .map(|s| u32::from_str(&s)
@@ -196,7 +191,7 @@ where
             .clone()
             .unwrap_or(state);
 
-        let max_depth = max_depth.unwrap_or(*GRAPHQL_MAX_DEPTH);
+        let max_depth = max_depth.unwrap_or(ENV_VARS.graphql_max_depth());
         let query = crate::execution::Query::new(
             &self.logger,
             schema,
@@ -264,7 +259,7 @@ where
             query,
             target,
             ENV_VARS.graphql_max_complexity(),
-            Some(*GRAPHQL_MAX_DEPTH),
+            Some(ENV_VARS.graphql_max_depth()),
             Some(*GRAPHQL_MAX_FIRST),
             Some(*GRAPHQL_MAX_SKIP),
         )
@@ -308,7 +303,7 @@ where
             Some(network),
             subscription.query,
             ENV_VARS.graphql_max_complexity(),
-            *GRAPHQL_MAX_DEPTH,
+            ENV_VARS.graphql_max_depth(),
         )?;
 
         if let Err(err) = self
@@ -331,7 +326,7 @@ where
                 subscription_manager: self.subscription_manager.cheap_clone(),
                 timeout: ENV_VARS.graphql_query_timeout(),
                 max_complexity: ENV_VARS.graphql_max_complexity(),
-                max_depth: *GRAPHQL_MAX_DEPTH,
+                max_depth: ENV_VARS.graphql_max_depth(),
                 max_first: *GRAPHQL_MAX_FIRST,
                 max_skip: *GRAPHQL_MAX_SKIP,
                 result_size: self.result_size.clone(),
