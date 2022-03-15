@@ -19,7 +19,7 @@ use graph_core::{
 use graph_graphql::prelude::GraphQlRunner;
 use graph_node::chain::{
     connect_ethereum_networks, connect_firehose_networks, create_ethereum_networks,
-    create_firehose_networks, create_ipfs_clients, REORG_THRESHOLD,
+    create_firehose_networks, create_ipfs_clients,
 };
 use graph_node::config::Config;
 use graph_node::opt;
@@ -573,7 +573,7 @@ fn ethereum_networks_as_chains(
                 firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
                 eth_adapters.clone(),
                 chain_head_update_listener.clone(),
-                *REORG_THRESHOLD,
+                ENV_VARS.ethereum_reorg_threshold(),
                 is_ingestible,
             );
             (network_name.clone(), Arc::new(chain))
@@ -733,7 +733,7 @@ fn start_block_ingestor(
             // present in the DB.
             let block_ingestor = EthereumBlockIngestor::new(
                 logger,
-                *REORG_THRESHOLD,
+                ENV_VARS.ethereum_reorg_threshold(),
                 eth_adapter,
                 chain.chain_store(),
                 block_polling_interval,

@@ -20,7 +20,7 @@ use graph::ipfs_client::IpfsClient;
 use graph::prelude::MetricsRegistry as MetricsRegistryTrait;
 use graph::prelude::{
     anyhow, tokio, BlockNumber, DeploymentHash, LoggerFactory, NodeId, SubgraphAssignmentProvider,
-    SubgraphName, SubgraphRegistrar, SubgraphStore, SubgraphVersionSwitchingMode,
+    SubgraphName, SubgraphRegistrar, SubgraphStore, SubgraphVersionSwitchingMode, ENV_VARS,
 };
 use graph::slog::{debug, error, info, o, Logger};
 use graph::util::security::SafeDisplay;
@@ -29,8 +29,6 @@ use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
-use lazy_static::lazy_static;
-use std::str::FromStr;
 use url::Url;
 
 pub async fn run(
@@ -108,7 +106,7 @@ pub async fn run(
         firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
         eth_adapters,
         chain_head_update_listener,
-        *REORG_THRESHOLD,
+        ENV_VARS.ethereum_reorg_threshold(),
         // We assume the tested chain is always ingestible for now
         true,
     );
@@ -259,14 +257,6 @@ enum ProviderNetworkStatus {
 /// hash from the client. If we can't get it within that time, we'll try and
 /// continue regardless.
 const NET_VERSION_WAIT_TIME: Duration = Duration::from_secs(30);
-
-lazy_static! {
-    static ref REORG_THRESHOLD: BlockNumber = env::var("ETHEREUM_REORG_THRESHOLD")
-        .ok()
-        .map(|s| BlockNumber::from_str(&s)
-            .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_REORG_THRESHOLD")))
-        .unwrap_or(250);
-}
 
 fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<IpfsClient> {
     // Parse the IPFS URL from the `--ipfs` command line argument

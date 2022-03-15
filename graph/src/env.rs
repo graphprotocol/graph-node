@@ -9,6 +9,8 @@ use std::{
     time::Duration,
 };
 
+use crate::components::store::BlockNumber;
+
 pub static UNSAFE_CONFIG: AtomicBool = AtomicBool::new(false);
 
 lazy_static! {
@@ -396,6 +398,12 @@ impl EnvVars {
     pub fn remove_unused_interval(&self) -> chrono::Duration {
         chrono::Duration::minutes(self.inner.remove_unused_interval_in_minutes as i64)
     }
+
+    /// Set by the environment variable `ETHEREUM_REORG_THRESHOLD`. The default
+    /// value is 250 blocks.
+    pub fn ethereum_reorg_threshold(&self) -> BlockNumber {
+        self.inner.ethereum_reorg_threshold
+    }
 }
 
 impl Default for EnvVars {
@@ -476,6 +484,8 @@ struct Inner {
     store_connection_try_always: EnvVarBoolean,
     #[envconfig(from = "GRAPH_REMOVE_UNUSED_INTERVAL", default = "360")]
     remove_unused_interval_in_minutes: u64,
+    #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
+    ethereum_reorg_threshold: BlockNumber,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and
