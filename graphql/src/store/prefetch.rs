@@ -33,11 +33,6 @@ lazy_static! {
     static ref ARG_FIRST: String = String::from("first");
     static ref ARG_SKIP: String = String::from("skip");
     static ref ARG_ID: String = String::from("id");
-    static ref RESULT_SIZE_ERROR: usize = std::env::var("GRAPH_GRAPHQL_ERROR_RESULT_SIZE")
-        .map(|s| s
-            .parse::<usize>()
-            .expect("`GRAPH_GRAPHQL_ERROR_RESULT_SIZE` is a number"))
-        .unwrap_or(std::usize::MAX);
 }
 
 /// Intermediate data structure to hold the results of prefetching entities
@@ -504,8 +499,11 @@ fn execute_root_selection_set(
 }
 
 fn check_result_size(logger: &Logger, size: usize) -> Result<(), QueryExecutionError> {
-    if size > *RESULT_SIZE_ERROR {
-        return Err(QueryExecutionError::ResultTooBig(size, *RESULT_SIZE_ERROR));
+    if size > ENV_VARS.graphql_error_result_size() {
+        return Err(QueryExecutionError::ResultTooBig(
+            size,
+            ENV_VARS.graphql_error_result_size(),
+        ));
     }
     if size > ENV_VARS.graphql_warn_result_size() {
         warn!(logger, "Large query result"; "size" => size);

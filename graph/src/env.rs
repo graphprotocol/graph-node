@@ -667,6 +667,12 @@ impl EnvVars {
         self.inner.graphql_warn_result_size.0
     }
 
+    /// Set by the environment variable `GRAPH_GRAPHQL_ERROR_RESULT_SIZE`. The
+    /// default value is 18446744073709551615.
+    pub fn graphql_error_result_size(&self) -> usize {
+        self.inner.graphql_error_result_size.0
+    }
+
     /// In how many shards (mutexes) the query block cache is split.
     /// Ideally this should divide 256 so that the distribution of queries to
     /// shards is even.
@@ -867,6 +873,12 @@ struct Inner {
         default = "18446744073709551615"
     )]
     graphql_warn_result_size: WithoutUnderscores<usize>,
+    // usize::MAX
+    #[envconfig(
+        from = "GRAPH_GRAPHQL_ERROR_RESULT_SIZE",
+        default = "18446744073709551615"
+    )]
+    graphql_error_result_size: WithoutUnderscores<usize>,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and
