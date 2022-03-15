@@ -17,8 +17,6 @@ use std::io;
 use std::net::{Ipv4Addr, SocketAddrV4};
 
 lazy_static! {
-    static ref EXTERNAL_HTTP_BASE_URL: Option<String> = env::var_os("EXTERNAL_HTTP_BASE_URL")
-        .map(|s| s.into_string().expect("invalid external HTTP base URL"));
     static ref EXTERNAL_WS_BASE_URL: Option<String> = env::var_os("EXTERNAL_WS_BASE_URL")
         .map(|s| s.into_string().expect("invalid external WS base URL"));
 }
@@ -274,8 +272,9 @@ pub fn parse_response(response: Value) -> Result<(), jsonrpc_core::Error> {
 }
 
 fn subgraph_routes(name: &SubgraphName, http_port: u16, ws_port: u16) -> Value {
-    let http_base_url = EXTERNAL_HTTP_BASE_URL
-        .clone()
+    let http_base_url = ENV_VARS
+        .external_http_base_url()
+        .map(str::to_string)
         .unwrap_or_else(|| format!(":{}", http_port));
     let ws_base_url = EXTERNAL_WS_BASE_URL
         .clone()
