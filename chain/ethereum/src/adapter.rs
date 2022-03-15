@@ -256,6 +256,24 @@ impl EthereumLogFilter {
         }
     }
 
+    /// Similar to [`matches`], checks if a transaction receipt is required for this log filter.
+    pub fn requires_transaction_receipt(&self, log: &Log) -> bool {
+        // First topic should be event sig
+        if let Some(sig) = log.topics.first() {
+            let contract = LogFilterNode::Contract(log.address);
+            let event = LogFilterNode::Event(*sig);
+            matches!(self.wildcard_events.get(sig), Some(true))
+                || self
+                    .contracts_and_events_graph
+                    .all_edges()
+                    .any(|(s, t, r)| {
+                        *r && (s == contract && t == event) || (t == contract && s == event)
+                    })
+        } else {
+            false
+        }
+    }
+
     pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
         let mut this = EthereumLogFilter::default();
         for ds in iter {

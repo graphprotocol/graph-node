@@ -1840,13 +1840,14 @@ pub(super) async fn get_logs_and_transactions(
         .logs_in_block_range(logger, subgraph_metrics, from, to, log_filter)
         .await?;
 
-    todo!(
-            "transaction receipts should be conditionally collected  considering the API Version and the manifest. \
-             we should early return here with only the logs and without attempting to fetch the receipts."
-        );
+    todo!("transaction receipts should be conditionally collected considering the API Version.");
 
-    // not all logs have transaction hashes
-    let transaction_hashes: Vec<_> = logs.iter().filter_map(|log| log.transaction_hash).collect();
+    // not all logs have associated transaction hashes, nor do all triggers require them.
+    let transaction_hashes: Vec<_> = logs
+        .iter()
+        .filter(|log| log_filter.requires_transaction_receipt(log))
+        .filter_map(|log| log.transaction_hash)
+        .collect();
 
     // obtain receipts externally
     let transaction_receipts_by_hash =
