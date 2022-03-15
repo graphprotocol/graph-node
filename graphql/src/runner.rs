@@ -80,11 +80,6 @@ pub struct GraphQlRunner<S, SM> {
 }
 
 lazy_static! {
-    static ref GRAPHQL_MAX_FIRST: u32 = env::var("GRAPH_GRAPHQL_MAX_FIRST")
-        .ok()
-        .map(|s| u32::from_str(&s)
-            .unwrap_or_else(|_| panic!("failed to parse env var GRAPH_GRAPHQL_MAX_FIRST")))
-        .unwrap_or(1000);
     static ref GRAPHQL_MAX_SKIP: u32 = env::var("GRAPH_GRAPHQL_MAX_SKIP")
         .ok()
         .map(|s| u32::from_str(&s)
@@ -231,7 +226,7 @@ where
                 QueryExecutionOptions {
                     resolver,
                     deadline: ENV_VARS.graphql_query_timeout().map(|t| Instant::now() + t),
-                    max_first: max_first.unwrap_or(*GRAPHQL_MAX_FIRST),
+                    max_first: max_first.unwrap_or(ENV_VARS.graphql_max_first()),
                     max_skip: max_skip.unwrap_or(*GRAPHQL_MAX_SKIP),
                     load_manager: self.load_manager.clone(),
                 },
@@ -260,7 +255,7 @@ where
             target,
             ENV_VARS.graphql_max_complexity(),
             Some(ENV_VARS.graphql_max_depth()),
-            Some(*GRAPHQL_MAX_FIRST),
+            Some(ENV_VARS.graphql_max_first()),
             Some(*GRAPHQL_MAX_SKIP),
         )
         .await
@@ -327,7 +322,7 @@ where
                 timeout: ENV_VARS.graphql_query_timeout(),
                 max_complexity: ENV_VARS.graphql_max_complexity(),
                 max_depth: ENV_VARS.graphql_max_depth(),
-                max_first: *GRAPHQL_MAX_FIRST,
+                max_first: ENV_VARS.graphql_max_first(),
                 max_skip: *GRAPHQL_MAX_SKIP,
                 result_size: self.result_size.clone(),
             },
