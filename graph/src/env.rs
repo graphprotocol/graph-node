@@ -147,10 +147,16 @@ impl EnvVars {
         self.inner.disable_grafts.0
     }
 
-    /// Set by the flag `GRAPH_LOAD_WINDOW_SIZE` (expressed in seconds). The
-    /// default value is 300 seconds.
+    /// Set by the environment variable `GRAPH_LOAD_WINDOW_SIZE` (expressed in
+    /// seconds). The default value is 300 seconds.
     pub fn load_window_size(&self) -> Duration {
         Duration::from_secs(self.inner.load_window_size_in_secs)
+    }
+
+    /// Set by the environment variable `GRAPH_LOAD_BIN_SIZE` (expressed in
+    /// seconds). The default value is 1 second.
+    pub fn load_bin_size(&self) -> Duration {
+        Duration::from_secs(self.inner.load_bin_size_in_secs)
     }
 }
 
@@ -179,6 +185,8 @@ struct Inner {
     disable_grafts: EnvVarBoolean,
     #[envconfig(from = "GRAPH_LOAD_WINDOW_SIZE", default = "300")]
     load_window_size_in_secs: u64,
+    #[envconfig(from = "GRAPH_LOAD_BIN_SIZE", default = "1")]
+    load_bin_size_in_secs: u64,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
