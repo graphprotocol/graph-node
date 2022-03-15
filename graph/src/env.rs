@@ -165,6 +165,12 @@ impl EnvVars {
     pub fn elastic_search_flush_interval(&self) -> Duration {
         Duration::from_secs(self.inner.elastic_search_flush_interval_in_secs)
     }
+
+    /// Set by the environment variable
+    /// `GRAPH_ELASTIC_SEARCH_MAX_RETRIES`. The default value is 5.
+    pub fn elastic_search_max_retries(&self) -> usize {
+        self.inner.elastic_search_max_retries
+    }
 }
 
 #[derive(Clone, Debug, Envconfig)]
@@ -196,6 +202,8 @@ struct Inner {
     load_bin_size_in_secs: u64,
     #[envconfig(from = "GRAPH_ELASTIC_SEARCH_FLUSH_INTERVAL_SECS", default = "5")]
     elastic_search_flush_interval_in_secs: u64,
+    #[envconfig(from = "GRAPH_ELASTIC_SEARCH_MAX_RETRIES", default = "5")]
+    elastic_search_max_retries: usize,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to

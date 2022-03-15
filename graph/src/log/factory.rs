@@ -5,14 +5,6 @@ use crate::log::elastic::*;
 use crate::log::split::*;
 use crate::prelude::ENV_VARS;
 
-lazy_static::lazy_static! {
-    static ref ES_MAX_RETRIES: usize =
-        std::env::var("GRAPH_ELASTIC_SEARCH_MAX_RETRIES")
-        .unwrap_or("5".into())
-        .parse::<usize>()
-        .expect("invalid GRAPH_ELASTIC_SEARCH_MAX_RETRIES");
-}
-
 /// Configuration for component-specific logging to Elasticsearch.
 pub struct ElasticComponentLoggerConfig {
     pub index: String,
@@ -73,7 +65,7 @@ impl LoggerFactory {
                                     custom_id_key: String::from("componentId"),
                                     custom_id_value: component.to_string(),
                                     flush_interval: ENV_VARS.elastic_search_flush_interval(),
-                                    max_retries: *ES_MAX_RETRIES,
+                                    max_retries: ENV_VARS.elastic_search_max_retries(),
                                 },
                                 term_logger.clone(),
                             ),
@@ -103,7 +95,7 @@ impl LoggerFactory {
                             custom_id_key: String::from("subgraphId"),
                             custom_id_value: loc.hash.to_string(),
                             flush_interval: ENV_VARS.elastic_search_flush_interval(),
-                            max_retries: *ES_MAX_RETRIES,
+                            max_retries: ENV_VARS.elastic_search_max_retries(),
                         },
                         term_logger.clone(),
                     ),
