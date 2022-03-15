@@ -6,8 +6,6 @@ use graph::util::backoff::ExponentialBackoff;
 use lazy_static::lazy_static;
 use postgres::Notification;
 use postgres::{fallible_iterator::FallibleIterator, Client, NoTls};
-use std::env;
-use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
@@ -16,18 +14,6 @@ use tokio::sync::mpsc::{channel, Receiver};
 
 use graph::prelude::serde_json;
 use graph::prelude::*;
-
-lazy_static! {
-    static ref NOTIFICATION_BROADCAST_TIMEOUT: Duration =
-        env::var("GRAPH_NOTIFICATION_BROADCAST_TIMEOUT")
-            .ok()
-            .map(
-                |s| Duration::from_secs(u64::from_str(&s).unwrap_or_else(|_| panic!(
-                    "failed to parse env var GRAPH_NOTIFICATION_BROADCAST_TIMEOUT"
-                )))
-            )
-            .unwrap_or(Duration::from_secs(60));
-}
 
 #[cfg(debug_assertions)]
 lazy_static::lazy_static! {
@@ -251,7 +237,7 @@ impl NotificationListener {
 
                         match JsonNotification::parse(&notification, &mut conn) {
                             Ok(json_notification) => {
-                                let timeout = *NOTIFICATION_BROADCAST_TIMEOUT;
+                                let timeout = ENV_VARS.notification_broacast_timeout();
                                 match graph::block_on(
                                     sender.send_timeout(json_notification, timeout),
                                 ) {

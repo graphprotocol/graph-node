@@ -274,6 +274,12 @@ impl EnvVars {
     pub fn large_notification_cleanup_interval(&self) -> Duration {
         Duration::from_secs(self.inner.large_notification_cleanup_interval_in_secs)
     }
+
+    /// Set by the environment variable `GRAPH_NOTIFICATION_BROADCAST_TIMEOUT`
+    /// (expressed in seconds). The default value is 60 seconds.
+    pub fn notification_broacast_timeout(&self) -> Duration {
+        Duration::from_secs(self.inner.notification_broacast_timeout_in_secs)
+    }
 }
 
 impl Default for EnvVars {
@@ -334,6 +340,8 @@ struct Inner {
     extra_query_permits: usize,
     #[envconfig(from = "LARGE_NOTIFICATION_CLEANUP_INTERVAL", default = "300")]
     large_notification_cleanup_interval_in_secs: u64,
+    #[envconfig(from = "GRAPH_NOTIFICATION_BROADCAST_TIMEOUT", default = "60")]
+    notification_broacast_timeout_in_secs: u64,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
