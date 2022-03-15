@@ -87,6 +87,18 @@ impl EnvVars {
     pub fn load_threshold(&self) -> Duration {
         Duration::from_millis(self.inner.load_threshold_in_ms)
     }
+
+    /// When the system is overloaded, any query that causes more than this
+    /// fraction of the effort will be rejected for as long as the process is
+    /// running (i.e. even after the overload situation is resolved).
+    ///
+    /// Set by the environment variable `GRAPH_LOAD_THRESHOLD`
+    /// (expressed as a number). No default value is provided. When *not* set,
+    /// no queries will ever be jailed, even though they will still be subject
+    /// to normal load management when the system is overloaded.
+    pub fn load_jail_threshold(&self) -> Option<f64> {
+        self.inner.load_jail_threshold
+    }
 }
 
 #[derive(Clone, Debug, Envconfig)]
@@ -97,4 +109,6 @@ struct Inner {
     subscription_throttle_interval_in_ms: u64,
     #[envconfig(from = "GRAPH_LOAD_THRESHOLD", default = "0")]
     load_threshold_in_ms: u64,
+    #[envconfig(from = "GRAPH_LOAD_JAIL_THRESHOLD")]
+    load_jail_threshold: Option<f64>,
 }

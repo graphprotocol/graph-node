@@ -6,7 +6,6 @@ use rand::{prelude::Rng, thread_rng};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::iter::FromIterator;
-use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
@@ -19,19 +18,6 @@ use crate::prelude::{async_trait, debug, info, o, warn, Logger, QueryLoadManager
 use crate::util::stats::{MovingStats, BIN_SIZE, WINDOW_SIZE};
 
 lazy_static! {
-    static ref JAIL_QUERIES: bool = env::var("GRAPH_LOAD_JAIL_THRESHOLD").is_ok();
-
-    static ref JAIL_THRESHOLD: f64 = {
-        env::var("GRAPH_LOAD_JAIL_THRESHOLD")
-            .ok()
-            .map(|s| {
-                f64::from_str(&s).unwrap_or_else(|_| {
-                    panic!("GRAPH_LOAD_JAIL_THRESHOLD must be a number, but is `{}`", s)
-                })
-            })
-            .unwrap_or(1e9)
-    };
-
     // Load management can be disabled by setting the threshold to 0. This
     // makes sure in particular that we never take any of the locks
     // associated with it
@@ -326,7 +312,7 @@ impl LoadManager {
     ///
     /// We detect whether we are in an overloaded situation by looking at
     /// the average wait time for connection checkouts. If that exceeds
-    /// `GRAPH_LOAD_THRESHOLD`, we consider ourselves to be in an overload
+    /// [`ENV_VARS.load_threshold`], we consider ourselves to be in an overload
     /// situation.
     ///
     /// There are several criteria that will lead to us declining to run
@@ -342,8 +328,8 @@ impl LoadManager {
     ///    queries randomly with a probability of
     ///    kill_rate * query_effort / total_effort
     ///
-    /// If `GRAPH_LOAD_THRESHOLD` is set to 0, we bypass all this logic, and
-    /// only ever decline to run statically configured queries (1). In that
+    /// If [`ENV_VARS.load_threshold`] is set to 0, we bypass all this logic,
+    /// and only ever decline to run statically configured queries (1). In that
     /// case, we also do not take any locks when asked to update statistics,
     /// or to check whether we are overloaded; these operations amount to
     /// noops.
@@ -382,17 +368,20 @@ impl LoadManager {
         let query_effort = query_effort.unwrap_or(total_effort).as_millis() as f64;
         let total_effort = total_effort.as_millis() as f64;
 
-        if known_query && *JAIL_QUERIES && query_effort / total_effort > *JAIL_THRESHOLD {
-            // Any single query that causes at least JAIL_THRESHOLD of the
-            // effort in an overload situation gets killed
-            warn!(self.logger, "Jailing query";
+        // When this variable is not set, we never jail any queries.
+        if let Some(jail_threshold) = ENV_VARS.load_jail_threshold() {
+            if known_query && query_effort / total_effort > jail_threshold {
+                // Any single query that causes at least JAIL_THRESHOLD of the
+                // effort in an overload situation gets killed
+                warn!(self.logger, "Jailing query";
                 "query" => query,
                 "wait_ms" => wait_ms.as_millis(),
                 "query_effort_ms" => query_effort,
                 "total_effort_ms" => total_effort,
                 "ratio" => format!("{:.4}", query_effort/total_effort));
-            self.jailed_queries.write().unwrap().insert(shape_hash);
-            return if *SIMULATE { Proceed } else { TooExpensive };
+                self.jailed_queries.write().unwrap().insert(shape_hash);
+                return if *SIMULATE { Proceed } else { TooExpensive };
+            }
         }
 
         // Kill random queries in case we have no queries, or not enough queries
