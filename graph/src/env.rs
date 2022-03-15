@@ -139,6 +139,11 @@ impl EnvVars {
     pub fn max_api_version(&self) -> Version {
         self.inner.max_api_version.clone()
     }
+
+    /// Set by the flag `GRAPH_DISABLE_GRAFTS`.
+    pub fn disable_grafts(&self) -> bool {
+        self.inner.disable_grafts.0
+    }
 }
 
 #[derive(Clone, Debug, Envconfig)]
@@ -162,6 +167,8 @@ struct Inner {
     max_spec_version: Version,
     #[envconfig(from = "GRAPH_MAX_API_VERSION", default = "0.0.6")]
     max_api_version: Version,
+    #[envconfig(from = "GRAPH_DISABLE_GRAFTS", default = "false")]
+    disable_grafts: EnvVarBoolean,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
