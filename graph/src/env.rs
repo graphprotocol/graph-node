@@ -158,6 +158,13 @@ impl EnvVars {
     pub fn load_bin_size(&self) -> Duration {
         Duration::from_secs(self.inner.load_bin_size_in_secs)
     }
+
+    /// Set by the environment variable
+    /// `GRAPH_ELASTIC_SEARCH_FLUSH_INTERVAL_SECS` (expressed in seconds). The
+    /// default value is 5 seconds.
+    pub fn elastic_search_flush_interval(&self) -> Duration {
+        Duration::from_secs(self.inner.elastic_search_flush_interval_in_secs)
+    }
 }
 
 #[derive(Clone, Debug, Envconfig)]
@@ -187,6 +194,8 @@ struct Inner {
     load_window_size_in_secs: u64,
     #[envconfig(from = "GRAPH_LOAD_BIN_SIZE", default = "1")]
     load_bin_size_in_secs: u64,
+    #[envconfig(from = "GRAPH_ELASTIC_SEARCH_FLUSH_INTERVAL_SECS", default = "5")]
+    elastic_search_flush_interval_in_secs: u64,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
