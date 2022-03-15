@@ -39,12 +39,6 @@ lazy_static::lazy_static! {
     // These environment variables should really be set through the
     // configuration file; especially for min_idle and idle_timeout, it's
     // likely that they should be configured differently for each pool
-
-    static ref CONNECTION_TIMEOUT: Duration = {
-        std::env::var("GRAPH_STORE_CONNECTION_TIMEOUT").ok().map(|s| Duration::from_millis(u64::from_str(&s).unwrap_or_else(|_| {
-            panic!("GRAPH_STORE_CONNECTION_TIMEOUT must be a positive number, but is `{}`", s)
-        }))).unwrap_or(Duration::from_secs(5))
-    };
     static ref MIN_IDLE: Option<u32> = {
         std::env::var("GRAPH_STORE_CONNECTION_MIN_IDLE").ok().map(|s| u32::from_str(&s).unwrap_or_else(|_| {
            panic!("GRAPH_STORE_CONNECTION_MIN_IDLE must be a positive number but is `{}`", s)
@@ -759,7 +753,7 @@ impl PoolInner {
         let builder: Builder<ConnectionManager<PgConnection>> = Pool::builder()
             .error_handler(error_handler.clone())
             .event_handler(event_handler.clone())
-            .connection_timeout(*CONNECTION_TIMEOUT)
+            .connection_timeout(ENV_VARS.store_connection_timeout())
             .max_size(pool_size)
             .min_idle(*MIN_IDLE)
             .idle_timeout(Some(*IDLE_TIMEOUT));
@@ -769,7 +763,7 @@ impl PoolInner {
             let builder: Builder<ConnectionManager<PgConnection>> = Pool::builder()
                 .error_handler(error_handler)
                 .event_handler(event_handler)
-                .connection_timeout(*CONNECTION_TIMEOUT)
+                .connection_timeout(ENV_VARS.store_connection_timeout())
                 .max_size(pool_size)
                 .min_idle(Some(1))
                 .idle_timeout(Some(FDW_IDLE_TIMEOUT));
@@ -900,7 +894,7 @@ impl PoolInner {
         logger: &Logger,
     ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
         loop {
-            match self.pool.get_timeout(*CONNECTION_TIMEOUT) {
+            match self.pool.get_timeout(ENV_VARS.store_connection_timeout()) {
                 Ok(conn) => return Ok(conn),
                 Err(e) => error!(logger, "Error checking out connection, retrying";
                    "error" => brief_error_msg(&e),

@@ -362,6 +362,12 @@ impl EnvVars {
     pub fn disable_subscription_notifications(&self) -> bool {
         self.inner.disable_subscription_notifications.0
     }
+
+    /// Set by the environment variable `GRAPH_STORE_CONNECTION_TIMEOUT` (expressed
+    /// in milliseconds). The default value is 5000ms.
+    pub fn store_connection_timeout(&self) -> Duration {
+        Duration::from_millis(self.inner.store_connection_timeout_in_millis)
+    }
 }
 
 impl Default for EnvVars {
@@ -438,6 +444,11 @@ struct Inner {
     sql_statement_timeout_in_secs: Option<u64>,
     #[envconfig(from = "GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS", default = "false")]
     disable_subscription_notifications: EnvVarBoolean,
+    // These should really be set through the
+    // configuration file. It's likely that they should be configured
+    // differently for each pool.
+    #[envconfig(from = "GRAPH_STORE_CONNECTION_TIMEOUT", default = "5000")]
+    store_connection_timeout_in_millis: u64,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
