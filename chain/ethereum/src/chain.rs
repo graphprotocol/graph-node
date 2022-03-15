@@ -21,6 +21,7 @@ use graph::{
     prelude::{
         async_trait, lazy_static, o, serde_json as json, BlockNumber, ChainStore,
         EthereumBlockWithCalls, Future01CompatExt, Logger, LoggerFactory, MetricsRegistry, NodeId,
+        ENV_VARS,
     },
 };
 use prost::Message;
@@ -45,9 +46,6 @@ use crate::{network::EthereumNetworkAdapters, EthereumAdapter};
 use graph::blockchain::block_stream::{BlockStream, FirehoseCursor};
 
 lazy_static! {
-    /// Maximum number of blocks to request in each chunk.
-    static ref MAX_BLOCK_RANGE_SIZE: BlockNumber = env_var("GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE", 2000);
-
     /// Ideal number of triggers in a range. The range size will adapt to try to meet this.
     static ref TARGET_TRIGGERS_PER_BLOCK_RANGE: u64 = env_var("GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE", 100);
 
@@ -270,7 +268,7 @@ impl Blockchain for Chain {
             start_blocks,
             reorg_threshold,
             logger,
-            *MAX_BLOCK_RANGE_SIZE,
+            ENV_VARS.ethereum_max_block_range_size(),
             *TARGET_TRIGGERS_PER_BLOCK_RANGE,
             unified_api_version,
             subgraph_current_block,

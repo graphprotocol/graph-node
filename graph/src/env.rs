@@ -426,6 +426,14 @@ impl EnvVars {
         self.inner.ethereum_reorg_threshold
     }
 
+    /// Maximum number of blocks to request in each chunk.
+    ///
+    /// Set by the environment variable `GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE`.
+    /// The default value is 2000 blocks.
+    pub fn ethereum_max_block_range_size(&self) -> BlockNumber {
+        self.inner.ethereum_max_block_range_size
+    }
+
     /// Set by the environment variable `ETHEREUM_TRACE_STREAM_STEP_SIZE`. The
     /// default value is 50 blocks.
     pub fn ethereum_trace_stream_step_size(&self) -> BlockNumber {
@@ -928,6 +936,8 @@ struct Inner {
     ethereum_max_event_only_range: BlockNumber,
     #[envconfig(from = "ETHEREUM_BLOCK_BATCH_SIZE", default = "10")]
     ethereum_block_batch_size: usize,
+    #[envconfig(from = "GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE", default = "2000")]
+    ethereum_max_block_range_size: BlockNumber,
     #[envconfig(from = "GRAPH_ETHEREUM_JSON_RPC_TIMEOUT", default = "180")]
     ethereum_json_rpc_timeout_in_secs: u64,
     #[envconfig(from = "GRAPH_ETHEREUM_REQUEST_RETRIES", default = "10")]
