@@ -18,11 +18,6 @@ use crate::mapping::{MappingContext, MappingRequest};
 use crate::{host_exports::HostExports, module::ExperimentalFeatures};
 use graph::runtime::gas::Gas;
 
-lazy_static! {
-    static ref ALLOW_NON_DETERMINISTIC_IPFS: bool =
-        std::env::var("GRAPH_ALLOW_NON_DETERMINISTIC_IPFS").is_ok();
-}
-
 pub struct RuntimeHostBuilder<C: Blockchain> {
     runtime_adapter: Arc<C::RuntimeAdapter>,
     link_resolver: Arc<dyn LinkResolver>,
@@ -64,7 +59,7 @@ impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C> {
         metrics: Arc<HostMetrics>,
     ) -> Result<Sender<Self::Req>, Error> {
         let experimental_features = ExperimentalFeatures {
-            allow_non_deterministic_ipfs: *ALLOW_NON_DETERMINISTIC_IPFS,
+            allow_non_deterministic_ipfs: ENV_VARS.allow_non_deterministic_ipfs(),
         };
         crate::mapping::spawn_module(
             raw_module,

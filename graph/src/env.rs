@@ -712,6 +712,12 @@ impl EnvVars {
     pub fn enable_select_by_specific_attributes(&self) -> bool {
         self.inner.enable_select_by_specific_attributes.0
     }
+
+    /// Set by the flag `GRAPH_ALLOW_NON_DETERMINISTIC_IPFS`. Off by
+    /// default.
+    pub fn allow_non_deterministic_ipfs(&self) -> bool {
+        self.inner.allow_non_deterministic_ipfs.0
+    }
 }
 
 impl Default for EnvVars {
@@ -825,6 +831,8 @@ struct Inner {
     enable_select_by_specific_attributes: EnvVarBoolean,
     #[envconfig(from = "GRAPH_MAPPING_HANDLER_TIMEOUT")]
     mapping_handler_timeout_in_secs: Option<u64>,
+    #[envconfig(from = "GRAPH_ALLOW_NON_DETERMINISTIC_IPFS", default = "false")]
+    allow_non_deterministic_ipfs: EnvVarBoolean,
 
     // 1MiB
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "1048576")]
