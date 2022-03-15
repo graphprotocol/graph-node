@@ -485,6 +485,14 @@ impl EnvVars {
             .unwrap_or(default)
     }
 
+    /// `graph_node::config` disallows setting this in a store with multiple
+    /// shards. See 8b6ad0c64e244023ac20ced7897fe666 for the reason.
+    ///
+    /// Set by the flag `GRAPH_ETHEREUM_CLEANUP_BLOCKS`. Off by default.
+    pub fn ethereum_cleanup_blocks(&self) -> bool {
+        self.inner.ethereum_cleanup_blocks.0
+    }
+
     /// Set by the flag `EXPERIMENTAL_STATIC_FILTERS`. Off by default.
     pub fn experimental_static_filters(&self) -> bool {
         self.inner.experimental_static_filters.0
@@ -612,6 +620,8 @@ struct Inner {
     ethereum_block_ingestor_max_concurrent_json_rpc_calls: usize,
     #[envconfig(from = "GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES")]
     ethereum_fetch_receipts_in_batches: Option<EnvVarBoolean>,
+    #[envconfig(from = "GRAPH_ETHEREUM_CLEANUP_BLOCKS", default = "false")]
+    ethereum_cleanup_blocks: EnvVarBoolean,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and

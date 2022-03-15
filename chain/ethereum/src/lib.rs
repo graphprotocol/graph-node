@@ -27,7 +27,7 @@ pub use crate::adapter::{
 };
 pub use crate::chain::Chain;
 pub use crate::network::EthereumNetworks;
-pub use ingestor::{BlockIngestor, CLEANUP_BLOCKS};
+pub use ingestor::BlockIngestor;
 
 #[cfg(test)]
 mod tests;
