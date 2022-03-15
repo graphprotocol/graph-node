@@ -457,6 +457,14 @@ impl EnvVars {
         self.inner.ethereum_request_retries
     }
 
+    /// Additional deterministic errors that have not yet been hardcoded.
+    ///
+    /// Set by the environment variable `GRAPH_GETH_ETH_CALL_ERRORS`, separated
+    /// by `;`.
+    pub fn geth_eth_call_errors(&self) -> &[String] {
+        &self.geth_eth_call_errors
+    }
+
     /// Set by the environment variable
     /// `GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS`.
     /// The default value is 1000.
@@ -465,12 +473,16 @@ impl EnvVars {
             .ethereum_block_ingestor_max_concurrent_json_rpc_calls
     }
 
-    /// Additional deterministic errors that have not yet been hardcoded.
-    ///
-    /// Set by the environment variable `GRAPH_GETH_ETH_CALL_ERRORS`, separated
-    /// by `;`.
-    pub fn geth_eth_call_errors(&self) -> &[String] {
-        &self.geth_eth_call_errors
+    /// Set by the flag `GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES`. Enabled
+    /// by default on macOS (to avoid DNS issues) and disabled by default on all
+    /// other systems.
+    pub fn ethereum_fetch_receipts_in_batches(&self) -> bool {
+        let default = cfg!(target_os = "macos");
+
+        self.inner
+            .ethereum_fetch_receipts_in_batches
+            .map(|x| x.0)
+            .unwrap_or(default)
     }
 
     /// Set by the flag `EXPERIMENTAL_STATIC_FILTERS`. Off by default.
@@ -598,6 +610,8 @@ struct Inner {
         default = "1000"
     )]
     ethereum_block_ingestor_max_concurrent_json_rpc_calls: usize,
+    #[envconfig(from = "GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES")]
+    ethereum_fetch_receipts_in_batches: Option<EnvVarBoolean>,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and

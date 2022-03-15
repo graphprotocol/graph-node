@@ -32,7 +32,6 @@ use graph::{
     prelude::web3::types::{Trace, TraceFilter, TraceFilterBuilder, H160},
 };
 use itertools::Itertools;
-use lazy_static::lazy_static;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
@@ -61,20 +60,6 @@ pub struct EthereumAdapter {
     web3: Arc<Web3<Transport>>,
     metrics: Arc<ProviderEthRpcMetrics>,
     supports_eip_1898: bool,
-}
-
-#[cfg(not(target_os = "macos"))]
-lazy_static! {
-    /// Regular GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES env var.
-    static ref FETCH_RECEIPTS_IN_BATCHES: bool =
-        matches!(std::env::var("GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES").as_deref(), Ok("true"));
-}
-
-#[cfg(target_os = "macos")]
-lazy_static! {
-    /// Set to true by default in MacOS to avoid DNS issues.
-    static ref FETCH_RECEIPTS_IN_BATCHES: bool =
-        matches!(std::env::var("GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES").as_deref().unwrap_or("true"), "true");
 }
 
 /// Gas limit for `eth_call`. The value of 50_000_000 is a protocol-wide parameter so this
@@ -1045,7 +1030,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             })));
         }
         let hashes: Vec<_> = block.transactions.iter().map(|txn| txn.hash).collect();
-        let receipts_future = if *FETCH_RECEIPTS_IN_BATCHES {
+        let receipts_future = if ENV_VARS.ethereum_fetch_receipts_in_batches() {
             // Deprecated batching retrieval of transaction receipts.
             fetch_transaction_receipts_in_batch_with_retry(web3, hashes, block_hash, logger).boxed()
         } else {
