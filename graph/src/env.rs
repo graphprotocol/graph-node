@@ -244,6 +244,12 @@ impl EnvVars {
     pub fn log_levels(&self) -> &str {
         &self.inner.log_levels
     }
+
+    /// Set by the environment variable `GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT`
+    /// (expressed in seconds). The default value is 30 seconds.
+    pub fn chain_head_watcher_timeout(&self) -> Duration {
+        Duration::from_secs(self.inner.chain_head_watcher_timeout_in_secs)
+    }
 }
 
 impl Default for EnvVars {
@@ -296,6 +302,8 @@ struct Inner {
     log_poi_events: EnvVarBoolean,
     #[envconfig(from = "GRAPH_LOG", default = "")]
     log_levels: String,
+    #[envconfig(from = "GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT", default = "30")]
+    chain_head_watcher_timeout_in_secs: u64,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
