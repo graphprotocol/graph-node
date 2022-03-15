@@ -9,7 +9,6 @@ use bytes::BytesMut;
 use futures01::{stream::poll_fn, try_ready};
 use futures03::stream::FuturesUnordered;
 use graph::util::futures::RetryConfigNoTimeout;
-use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
 use serde_json::Value;
 
@@ -26,13 +25,6 @@ const DEFAULT_MAX_IPFS_MAP_FILE_SIZE: u64 = 256 * 1024 * 1024;
 
 /// Environment variable for limiting the `ipfs.cat` file size limit.
 const MAX_IPFS_FILE_SIZE_VAR: &'static str = "GRAPH_MAX_IPFS_FILE_BYTES";
-
-lazy_static! {
-    /// The timeout for IPFS requests in seconds
-    static ref IPFS_TIMEOUT: Duration = Duration::from_secs(
-        read_u64_from_env("GRAPH_IPFS_TIMEOUT").unwrap_or(30)
-    );
-}
 
 fn read_u64_from_env(name: &str) -> Option<u64> {
     env::var(name).ok().map(|s| {
@@ -168,7 +160,7 @@ impl From<Vec<IpfsClient>> for LinkResolver {
             cache: Arc::new(Mutex::new(LruCache::with_capacity(
                 ENV_VARS.max_ipfs_cache_size() as usize,
             ))),
-            timeout: *IPFS_TIMEOUT,
+            timeout: ENV_VARS.ipfs_timeout(),
             retry: false,
         }
     }

@@ -543,6 +543,14 @@ impl EnvVars {
     pub fn max_ipfs_cache_size(&self) -> u64 {
         self.inner.max_ipfs_cache_size
     }
+
+    /// The timeout for all IPFS requests.
+    ///
+    /// Set by the environment varible `GRAPH_IPFS_TIMEOUT` (expressed in
+    /// seconds). The default value is 30s.
+    pub fn ipfs_timeout(&self) -> Duration {
+        Duration::from_secs(self.inner.ipfs_timeout_in_secs)
+    }
 }
 
 impl Default for EnvVars {
@@ -643,6 +651,8 @@ struct Inner {
     max_ipfs_cache_file_size: usize,
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_SIZE", default = "50")]
     max_ipfs_cache_size: u64,
+    #[envconfig(from = "GRAPH_IPFS_TIMEOUT", default = "30")]
+    ipfs_timeout_in_secs: u64,
 
     #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
     ethereum_reorg_threshold: BlockNumber,
