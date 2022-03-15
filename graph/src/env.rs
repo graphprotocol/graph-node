@@ -684,6 +684,14 @@ impl EnvVars {
     pub fn enable_graphql_validations(&self) -> bool {
         self.inner.enable_graphql_validations.0
     }
+
+    /// Experimental feature.
+    ///
+    /// Set by the flag `GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES`. Off by
+    /// default.
+    pub fn enable_select_by_specific_attributes(&self) -> bool {
+        self.inner.enable_select_by_specific_attributes.0
+    }
 }
 
 impl Default for EnvVars {
@@ -793,6 +801,8 @@ struct Inner {
     query_lfu_cache_shards: Option<u8>,
     #[envconfig(from = "ENABLE_GRAPHQL_VALIDATIONS", default = "false")]
     enable_graphql_validations: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES", default = "false")]
+    enable_select_by_specific_attributes: EnvVarBoolean,
 
     // 1MiB
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "1048576")]
