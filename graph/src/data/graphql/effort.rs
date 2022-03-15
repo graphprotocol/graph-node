@@ -1,10 +1,8 @@
 //! Utilities to keep moving statistics about queries
 
-use lazy_static::lazy_static;
 use prometheus::core::GenericCounter;
 use rand::{prelude::Rng, thread_rng};
 use std::collections::{HashMap, HashSet};
-use std::env;
 use std::iter::FromIterator;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -16,10 +14,6 @@ use crate::data::query::{CacheStatus, QueryExecutionError};
 use crate::prelude::q;
 use crate::prelude::{async_trait, debug, info, o, warn, Logger, QueryLoadManager, ENV_VARS};
 use crate::util::stats::{MovingStats, BIN_SIZE, WINDOW_SIZE};
-
-lazy_static! {
-    static ref SIMULATE: bool = env::var("GRAPH_LOAD_SIMULATE").is_ok();
-}
 
 struct QueryEffort {
     inner: Arc<RwLock<QueryEffortInner>>,
@@ -223,7 +217,7 @@ impl LoadManager {
 
         let mode = if ENV_VARS.load_management_is_disabled() {
             "disabled"
-        } else if *SIMULATE {
+        } else if ENV_VARS.load_simulate() {
             "simulation"
         } else {
             "enabled"
@@ -339,7 +333,11 @@ impl LoadManager {
         }
 
         if self.jailed_queries.read().unwrap().contains(&shape_hash) {
-            return if *SIMULATE { Proceed } else { TooExpensive };
+            return if ENV_VARS.load_simulate() {
+                Proceed
+            } else {
+                TooExpensive
+            };
         }
 
         let (overloaded, wait_ms) = self.overloaded(wait_stats);
@@ -375,7 +373,11 @@ impl LoadManager {
                 "total_effort_ms" => total_effort,
                 "ratio" => format!("{:.4}", query_effort/total_effort));
                 self.jailed_queries.write().unwrap().insert(shape_hash);
-                return if *SIMULATE { Proceed } else { TooExpensive };
+                return if ENV_VARS.load_simulate() {
+                    Proceed
+                } else {
+                    TooExpensive
+                };
             }
         }
 
@@ -385,7 +387,7 @@ impl LoadManager {
         let decline =
             thread_rng().gen_bool((kill_rate * query_effort / total_effort).min(1.0).max(0.0));
         if decline {
-            if *SIMULATE {
+            if ENV_VARS.load_simulate() {
                 debug!(self.logger, "Declining query";
                     "query" => query,
                     "wait_ms" => wait_ms.as_millis(),

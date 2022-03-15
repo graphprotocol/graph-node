@@ -110,6 +110,16 @@ impl EnvVars {
     pub fn load_jail_threshold(&self) -> Option<f64> {
         self.inner.load_jail_threshold
     }
+
+    /// When this is active, the system will trigger all the steps that the load
+    /// manager would given the other load management configuration settings,
+    /// but never actually decline to run a query; instead, log about load
+    /// management decisions.
+    ///
+    /// Set by the flag `GRAPH_LOAD_SIMULATE`.
+    pub fn load_simulate(&self) -> bool {
+        self.inner.load_simulate.0
+    }
 }
 
 #[derive(Clone, Debug, Envconfig)]
@@ -122,4 +132,27 @@ struct Inner {
     load_threshold_in_ms: u64,
     #[envconfig(from = "GRAPH_LOAD_JAIL_THRESHOLD")]
     load_jail_threshold: Option<f64>,
+    #[envconfig(from = "GRAPH_LOAD_SIMULATE", default = "false")]
+    load_simulate: EnvVarBoolean,
+}
+
+/// When reading [`bool`] values from environment variables, we must be able to
+/// parse many different ways to specify booleans:
+///
+///  - Empty strings, i.e. as a flag.
+///  - `true` or `false`.
+///  - `1` or `0`.
+#[derive(Copy, Clone, Debug)]
+struct EnvVarBoolean(pub bool);
+
+impl FromStr for EnvVarBoolean {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "" | "true" | "1" => Ok(Self(true)),
+            "false" | "0" => Ok(Self(false)),
+            _ => Err("Invalid env. var. flag, expected true / false / 1 / 0".to_string()),
+        }
+    }
 }
