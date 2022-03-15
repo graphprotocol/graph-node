@@ -171,6 +171,15 @@ impl EnvVars {
     pub fn elastic_search_max_retries(&self) -> usize {
         self.inner.elastic_search_max_retries
     }
+
+    /// If an instrumented lock is contended for longer than the specified
+    /// duration, a warning will be logged.
+    ///
+    /// Set by the environment variable `GRAPH_LOCK_CONTENTION_LOG_THRESHOLD_MS`
+    /// (expressed in milliseconds). The default value is 100ms.
+    pub fn lock_contention_log_threshold(&self) -> Duration {
+        Duration::from_millis(self.inner.lock_contention_log_threshold_in_ms)
+    }
 }
 
 #[derive(Clone, Debug, Envconfig)]
@@ -204,6 +213,8 @@ struct Inner {
     elastic_search_flush_interval_in_secs: u64,
     #[envconfig(from = "GRAPH_ELASTIC_SEARCH_MAX_RETRIES", default = "5")]
     elastic_search_max_retries: usize,
+    #[envconfig(from = "GRAPH_LOCK_CONTENTION_LOG_THRESHOLD_MS", default = "100")]
+    lock_contention_log_threshold_in_ms: u64,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
