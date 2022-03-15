@@ -679,6 +679,11 @@ impl EnvVars {
             .query_lfu_cache_shards
             .unwrap_or_else(|| self.query_block_cache_shards())
     }
+
+    /// Set by the flag `ENABLE_GRAPHQL_VALIDATIONS`. Off by default.
+    pub fn enable_graphql_validations(&self) -> bool {
+        self.inner.enable_graphql_validations.0
+    }
 }
 
 impl Default for EnvVars {
@@ -786,6 +791,8 @@ struct Inner {
     query_block_cache_shards: u8,
     #[envconfig(from = "GRAPH_QUERY_LFU_CACHE_SHARDS")]
     query_lfu_cache_shards: Option<u8>,
+    #[envconfig(from = "ENABLE_GRAPHQL_VALIDATIONS", default = "false")]
+    enable_graphql_validations: EnvVarBoolean,
 
     // 1MiB
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "1048576")]
