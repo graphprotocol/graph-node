@@ -15,7 +15,7 @@ use graph::data::graphql::{ext::TypeExt, ObjectOrInterface};
 use graph::data::query::QueryExecutionError;
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::ApiSchema;
-use graph::prelude::{info, o, q, r, s, BlockNumber, CheapClone, Logger, TryFromValue};
+use graph::prelude::{info, o, q, r, s, BlockNumber, CheapClone, Logger, TryFromValue, ENV_VARS};
 
 use crate::execution::ast as a;
 use crate::query::{ast as qast, ext::BlockConstraint};
@@ -318,7 +318,7 @@ impl Query {
 
     /// Log details about the overall execution of the query
     pub fn log_execution(&self, block: BlockNumber) {
-        if *graph::log::LOG_GQL_TIMING {
+        if ENV_VARS.log_gql_timing() {
             info!(
                 &self.logger,
                 "Query timing (GraphQL)";
@@ -339,7 +339,7 @@ impl Query {
         start: Instant,
         cache_status: String,
     ) {
-        if *graph::log::LOG_GQL_CACHE_TIMING {
+        if ENV_VARS.log_gql_cache_timing() {
             info!(
                 &self.logger,
                 "Query caching";

@@ -65,13 +65,26 @@ pub fn env_var<E: std::error::Error + Send + Sync, T: FromStr<Err = E> + Eq>(
 
 pub struct EnvVars {
     inner: Inner,
+    log_query_timing: Vec<String>,
 }
 
 impl EnvVars {
     pub fn from_env() -> Result<Self, envconfig::Error> {
         let inner = Inner::init_from_env()?;
+        Ok(Self::from_inner(inner))
+    }
 
-        Ok(Self { inner })
+    fn from_inner(inner: Inner) -> Self {
+        let log_query_timing = inner
+            .log_query_timing
+            .split(',')
+            .map(str::to_string)
+            .collect();
+
+        Self {
+            inner,
+            log_query_timing,
+        }
     }
 
     /// Size limit of the entity LFU cache.
@@ -190,13 +203,42 @@ impl EnvVars {
     pub fn max_gas_per_handler(&self) -> u64 {
         self.inner.max_gas_per_handler.0
     }
+
+    pub fn log_query_timing(&self) -> &[String] {
+        &self.log_query_timing
+    }
+
+    fn log_query_timing_contains(&self, kind: &str) -> bool {
+        self.log_query_timing().iter().any(|s| s == kind)
+    }
+
+    pub fn log_sql_timing(&self) -> bool {
+        self.log_query_timing_contains("sql")
+    }
+
+    pub fn log_gql_timing(&self) -> bool {
+        self.log_query_timing_contains("gql")
+    }
+
+    pub fn log_gql_cache_timing(&self) -> bool {
+        self.log_query_timing_contains("cache") && self.log_gql_timing()
+    }
+
+    /// A
+    /// [`chrono`](https://docs.rs/chrono/latest/chrono/#formatting-and-parsing)
+    /// -like format string for logs.
+    ///
+    /// Set by the environment variable `GRAPH_LOG_TIME_FORMAT`. The default
+    /// value is `%b %d %H:%M:%S%.3f`.
+    pub fn log_time_format(&self) -> &str {
+        self.inner.log_time_format.as_str()
+    }
 }
 
 impl Default for EnvVars {
     fn default() -> Self {
         let inner = Inner::init_from_hashmap(&HashMap::new()).unwrap();
-
-        Self { inner }
+        Self::from_inner(inner)
     }
 }
 
@@ -235,6 +277,10 @@ struct Inner {
     lock_contention_log_threshold_in_ms: u64,
     #[envconfig(from = "GRAPH_MAX_GAS_PER_HANDLER", default = "10_000_000_000_000")]
     max_gas_per_handler: WithoutUnderscores<u64>,
+    #[envconfig(from = "GRAPH_LOG_QUERY_TIMING", default = "")]
+    log_query_timing: String,
+    #[envconfig(from = "GRAPH_LOG_TIME_FORMAT", default = "%b %d %H:%M:%S%.3f")]
+    log_time_format: String,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to

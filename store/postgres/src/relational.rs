@@ -11,7 +11,7 @@ use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
 use graph::cheap_clone::CheapClone;
 use graph::constraint_violation;
 use graph::data::graphql::{DirectiveExt, TypeExt as _};
-use graph::prelude::{q, s, StopwatchMetrics};
+use graph::prelude::{q, s, StopwatchMetrics, ENV_VARS};
 use graph::slog::warn;
 use inflector::Inflector;
 use lazy_static::lazy_static;
@@ -690,7 +690,7 @@ impl Layout {
             // 20kB
             const MAXLEN: usize = 20_480;
 
-            if !*graph::log::LOG_SQL_TIMING {
+            if !ENV_VARS.log_sql_timing() {
                 return;
             }
 
