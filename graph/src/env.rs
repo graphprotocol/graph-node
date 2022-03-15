@@ -411,6 +411,16 @@ impl EnvVars {
         self.inner.ethereum_trace_stream_step_size
     }
 
+    /// Maximum range size for `eth.getLogs` requests that don't filter on
+    /// contract address, only event signature, and are therefore expensive.
+    ///
+    /// Set by the environment variable `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`. The
+    /// default value is 500 blocks, which is reasonable according to Ethereum
+    /// node operators.
+    pub fn ethereum_max_event_only_range(&self) -> BlockNumber {
+        self.inner.ethereum_max_event_only_range
+    }
+
     /// Set by the flag `EXPERIMENTAL_STATIC_FILTERS`. Off by default.
     pub fn experimental_static_filters(&self) -> bool {
         self.inner.experimental_static_filters.0
@@ -507,11 +517,6 @@ struct Inner {
     store_connection_try_always: EnvVarBoolean,
     #[envconfig(from = "GRAPH_REMOVE_UNUSED_INTERVAL", default = "360")]
     remove_unused_interval_in_minutes: u64,
-    #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
-    ethereum_reorg_threshold: BlockNumber,
-    #[envconfig(from = "ETHEREUM_TRACE_STREAM_STEP_SIZE", default = "50")]
-    ethereum_trace_stream_step_size: BlockNumber,
-
     #[envconfig(from = "EXPERIMENTAL_STATIC_FILTERS", default = "false")]
     experimental_static_filters: EnvVarBoolean,
     #[envconfig(
@@ -521,6 +526,13 @@ struct Inner {
     subgraph_version_switching_mode: SubgraphVersionSwitchingMode,
     #[envconfig(from = "GRAPH_KILL_IF_UNRESPONSIVE", default = "false")]
     kill_if_unresponsive: EnvVarBoolean,
+
+    #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
+    ethereum_reorg_threshold: BlockNumber,
+    #[envconfig(from = "ETHEREUM_TRACE_STREAM_STEP_SIZE", default = "50")]
+    ethereum_trace_stream_step_size: BlockNumber,
+    #[envconfig(from = "GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE", default = "500")]
+    ethereum_max_event_only_range: BlockNumber,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and

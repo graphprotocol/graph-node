@@ -64,15 +64,6 @@ pub struct EthereumAdapter {
 }
 
 lazy_static! {
-    /// Maximum range size for `eth.getLogs` requests that dont filter on
-    /// contract address, only event signature, and are therefore expensive.
-    ///
-    /// According to Ethereum node operators, size 500 is reasonable here.
-    static ref MAX_EVENT_ONLY_RANGE: BlockNumber = std::env::var("GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE")
-        .unwrap_or("500".into())
-        .parse::<BlockNumber>()
-        .expect("invalid number of parallel Ethereum block ranges to scan");
-
     static ref BLOCK_BATCH_SIZE: usize = std::env::var("ETHEREUM_BLOCK_BATCH_SIZE")
             .unwrap_or("10".into())
             .parse::<usize>()
@@ -407,7 +398,7 @@ impl EthereumAdapter {
         let step = match filter.contracts.is_empty() {
             // `to - from + 1`  blocks will be scanned.
             false => to - from,
-            true => (to - from).min(*MAX_EVENT_ONLY_RANGE - 1),
+            true => (to - from).min(ENV_VARS.ethereum_max_event_only_range() - 1),
         };
 
         // Typically this will loop only once and fetch the entire range in one request. But if the
