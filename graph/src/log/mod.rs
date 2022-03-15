@@ -17,7 +17,6 @@ macro_rules! impl_slog_value {
     };
 }
 
-use crate::prelude::ENV_VARS;
 use isatty;
 use slog::*;
 use slog_async;

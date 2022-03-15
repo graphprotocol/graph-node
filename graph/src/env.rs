@@ -404,6 +404,11 @@ impl EnvVars {
     pub fn ethereum_reorg_threshold(&self) -> BlockNumber {
         self.inner.ethereum_reorg_threshold
     }
+
+    /// Set by the flag `EXPERIMENTAL_STATIC_FILTERS`. Off by default.
+    pub fn experimental_static_filters(&self) -> bool {
+        self.inner.experimental_static_filters.0
+    }
 }
 
 impl Default for EnvVars {
@@ -486,6 +491,8 @@ struct Inner {
     remove_unused_interval_in_minutes: u64,
     #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
     ethereum_reorg_threshold: BlockNumber,
+    #[envconfig(from = "EXPERIMENTAL_STATIC_FILTERS", default = "false")]
+    experimental_static_filters: EnvVarBoolean,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and
