@@ -69,6 +69,7 @@ pub struct EnvVars {
     inner: Inner,
     log_query_timing: Vec<String>,
     account_tables: HashSet<String>,
+    geth_eth_call_errors: Vec<String>,
 }
 
 impl EnvVars {
@@ -88,11 +89,18 @@ impl EnvVars {
             .split(',')
             .map(|s| format!("\"{}\"", s.replace(".", "\".\"")))
             .collect();
+        let geth_eth_call_errors = inner
+            .geth_eth_call_errors
+            .split(';')
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect();
 
         Self {
             inner,
             log_query_timing,
             account_tables,
+            geth_eth_call_errors,
         }
     }
 
@@ -449,6 +457,14 @@ impl EnvVars {
         self.inner.ethereum_request_retries
     }
 
+    /// Additional deterministic errors that have not yet been hardcoded.
+    ///
+    /// Set by the environment variable `GRAPH_GETH_ETH_CALL_ERRORS`, separated
+    /// by `;`.
+    pub fn geth_eth_call_errors(&self) -> &[String] {
+        &self.geth_eth_call_errors
+    }
+
     /// Set by the flag `EXPERIMENTAL_STATIC_FILTERS`. Off by default.
     pub fn experimental_static_filters(&self) -> bool {
         self.inner.experimental_static_filters.0
@@ -567,6 +583,8 @@ struct Inner {
     ethereum_json_rpc_timeout_in_secs: u64,
     #[envconfig(from = "GRAPH_ETHEREUM_REQUEST_RETRIES", default = "10")]
     ethereum_request_retries: usize,
+    #[envconfig(from = "GRAPH_GETH_ETH_CALL_ERRORS", default = "")]
+    geth_eth_call_errors: String,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and

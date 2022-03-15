@@ -64,13 +64,6 @@ pub struct EthereumAdapter {
 }
 
 lazy_static! {
-    /// Additional deterministic errors that have not yet been hardcoded. Separated by `;`.
-    static ref GETH_ETH_CALL_ERRORS_ENV: Vec<String> = {
-        std::env::var("GRAPH_GETH_ETH_CALL_ERRORS")
-        .map(|s| s.split(';').filter(|s| s.len() > 0).map(ToOwned::to_owned).collect())
-        .unwrap_or(Vec::new())
-    };
-
     static ref MAX_CONCURRENT_JSON_RPC_CALLS: usize = std::env::var(
         "GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS"
     )
@@ -523,7 +516,7 @@ impl EthereumAdapter {
                     let mut geth_execution_errors = GETH_EXECUTION_ERRORS
                         .iter()
                         .map(|s| *s)
-                        .chain(GETH_ETH_CALL_ERRORS_ENV.iter().map(|s| s.as_str()));
+                        .chain(ENV_VARS.geth_eth_call_errors().iter().map(|s| s.as_str()));
 
                     let as_solidity_revert_with_reason = |bytes: &[u8]| {
                         let solidity_revert_function_selector =
