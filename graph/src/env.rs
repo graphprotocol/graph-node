@@ -660,6 +660,16 @@ impl EnvVars {
     pub fn query_cache_stale_period(&self) -> u64 {
         self.inner.query_cache_stale_period
     }
+
+    /// In how many shards (mutexes) the query block cache is split.
+    /// Ideally this should divide 256 so that the distribution of queries to
+    /// shards is even.
+    ///
+    /// Set by the environment variable `GRAPH_QUERY_BLOCK_CACHE_SHARDS`. The
+    /// default value is 128.
+    pub fn query_block_cache_shards(&self) -> u8 {
+        self.inner.query_block_cache_shards
+    }
 }
 
 impl Default for EnvVars {
@@ -763,6 +773,8 @@ struct Inner {
     query_cache_max_mem_in_mb: WithoutUnderscores<usize>,
     #[envconfig(from = "GRAPH_QUERY_CACHE_STALE_PERIOD", default = "100")]
     query_cache_stale_period: u64,
+    #[envconfig(from = "GRAPH_QUERY_BLOCK_CACHE_SHARDS", default = "128")]
+    query_block_cache_shards: u8,
 
     // 1MiB
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "1048576")]

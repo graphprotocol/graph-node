@@ -24,22 +24,13 @@ use crate::prelude::*;
 use crate::schema::ast as sast;
 
 lazy_static! {
-    /// In how many shards (mutexes) the query block cache is split.
-    /// Ideally this should divide 256 so that the distribution of queries to shards is even.
-    static ref QUERY_BLOCK_CACHE_SHARDS: u8 = {
-        std::env::var("GRAPH_QUERY_BLOCK_CACHE_SHARDS")
-        .unwrap_or("128".to_string())
-        .parse::<u8>()
-        .expect("Invalid value for GRAPH_QUERY_BLOCK_CACHE_SHARDS environment variable, max is 255")
-    };
-
     static ref QUERY_LFU_CACHE_SHARDS: u8 = {
         std::env::var("GRAPH_QUERY_LFU_CACHE_SHARDS")
         .map(|s| {
             s.parse::<u8>()
              .expect("Invalid value for GRAPH_QUERY_LFU_CACHE_SHARDS environment variable, max is 255")
         })
-        .unwrap_or(*QUERY_BLOCK_CACHE_SHARDS)
+        .unwrap_or(ENV_VARS.query_block_cache_shards())
     };
 
 
@@ -47,7 +38,7 @@ lazy_static! {
     // Sharded query results cache for recent blocks by network.
     // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
     static ref QUERY_BLOCK_CACHE: Vec<TimedMutex<QueryBlockCache>> = {
-            let shards = *QUERY_BLOCK_CACHE_SHARDS;
+            let shards = ENV_VARS.query_block_cache_shards();
             let blocks = ENV_VARS.query_cache_blocks();
 
             // The memory budget is evenly divided among blocks and their shards.
@@ -374,7 +365,8 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
         } else {
             // Results that are too old for the QUERY_BLOCK_CACHE go into the QUERY_LFU_CACHE
             let mut cache = QUERY_LFU_CACHE[shard].lock(&ctx.logger);
-            let max_mem = ENV_VARS.query_cache_max_mem() / (*QUERY_BLOCK_CACHE_SHARDS as usize);
+            let max_mem =
+                ENV_VARS.query_cache_max_mem() / (ENV_VARS.query_block_cache_shards() as usize);
             cache.evict_with_period(max_mem, ENV_VARS.query_cache_stale_period());
             cache.insert(
                 key,
