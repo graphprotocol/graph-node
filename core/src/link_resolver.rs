@@ -17,12 +17,6 @@ use graph::{
     prelude::{LinkResolver as LinkResolverTrait, *},
 };
 
-/// Environment variable for limiting the `ipfs.map` file size limit.
-const MAX_IPFS_MAP_FILE_SIZE_VAR: &'static str = "GRAPH_MAX_IPFS_MAP_FILE_SIZE";
-
-/// The default file size limit for `ipfs.map` is 256MiB.
-const DEFAULT_MAX_IPFS_MAP_FILE_SIZE: u64 = 256 * 1024 * 1024;
-
 /// Environment variable for limiting the `ipfs.cat` file size limit.
 const MAX_IPFS_FILE_SIZE_VAR: &'static str = "GRAPH_MAX_IPFS_FILE_BYTES";
 
@@ -249,8 +243,7 @@ impl LinkResolverTrait for LinkResolver {
         )
         .await?;
 
-        let max_file_size =
-            read_u64_from_env(MAX_IPFS_MAP_FILE_SIZE_VAR).or(Some(DEFAULT_MAX_IPFS_MAP_FILE_SIZE));
+        let max_file_size = Some(ENV_VARS.max_ipfs_map_file_size() as u64);
         restrict_file_size(path, &stat, &max_file_size)?;
 
         let mut stream = client.cat(path.to_string()).await?.fuse().boxed().compat();
