@@ -427,6 +427,17 @@ impl EnvVars {
         self.inner.ethereum_block_batch_size
     }
 
+    /// This should not be too large that it causes requests to timeout without
+    /// us catching it, nor too small that it causes us to timeout requests that
+    /// would've succeeded. We've seen successful `eth_getLogs` requests take
+    /// over 120 seconds.
+    ///
+    /// Set by the environment variable `GRAPH_ETHEREUM_JSON_RPC_TIMEOUT`
+    /// (expressed in seconds). The default value is 180s.
+    pub fn ethereum_json_rpc_timeout(&self) -> Duration {
+        Duration::from_secs(self.inner.ethereum_json_rpc_timeout_in_secs)
+    }
+
     /// Set by the flag `EXPERIMENTAL_STATIC_FILTERS`. Off by default.
     pub fn experimental_static_filters(&self) -> bool {
         self.inner.experimental_static_filters.0
@@ -541,6 +552,8 @@ struct Inner {
     ethereum_max_event_only_range: BlockNumber,
     #[envconfig(from = "ETHEREUM_BLOCK_BATCH_SIZE", default = "10")]
     ethereum_block_batch_size: usize,
+    #[envconfig(from = "GRAPH_ETHEREUM_JSON_RPC_TIMEOUT", default = "180")]
+    ethereum_json_rpc_timeout_in_secs: u64,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and

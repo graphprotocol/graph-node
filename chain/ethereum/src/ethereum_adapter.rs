@@ -64,15 +64,6 @@ pub struct EthereumAdapter {
 }
 
 lazy_static! {
-    /// This should not be too large that it causes requests to timeout without us catching it, nor
-    /// too small that it causes us to timeout requests that would've succeeded. We've seen
-    /// successful `eth_getLogs` requests take over 120 seconds.
-    static ref JSON_RPC_TIMEOUT: u64 = std::env::var("GRAPH_ETHEREUM_JSON_RPC_TIMEOUT")
-            .unwrap_or("180".into())
-            .parse::<u64>()
-            .expect("invalid GRAPH_ETHEREUM_JSON_RPC_TIMEOUT env var");
-
-
     /// This is used for requests that will not fail the subgraph if the limit is reached, but will
     /// simply restart the syncing step, so it can be low. This limit guards against scenarios such
     /// as requesting a block hash that has been reorged.
@@ -183,7 +174,7 @@ impl EthereumAdapter {
             format!("trace_filter RPC call for block range: [{}..{}]", from, to);
         retry(retry_log_message, &logger)
             .limit(*REQUEST_RETRIES)
-            .timeout_secs(*JSON_RPC_TIMEOUT)
+            .timeout_secs(ENV_VARS.ethereum_json_rpc_timeout().as_secs())
             .run(move || {
                 let trace_filter: TraceFilter = match addresses.len() {
                     0 => TraceFilterBuilder::default()
@@ -280,7 +271,7 @@ impl EthereumAdapter {
                     .any(|f| e.to_string().contains(f)),
             })
             .limit(*REQUEST_RETRIES)
-            .timeout_secs(*JSON_RPC_TIMEOUT)
+            .timeout_secs(ENV_VARS.ethereum_json_rpc_timeout().as_secs())
             .run(move || {
                 let eth_adapter = eth_adapter.cheap_clone();
                 let subgraph_metrics = subgraph_metrics.clone();
@@ -479,7 +470,7 @@ impl EthereumAdapter {
                 Err(_) => true,
             })
             .limit(*REQUEST_RETRIES)
-            .timeout_secs(*JSON_RPC_TIMEOUT)
+            .timeout_secs(ENV_VARS.ethereum_json_rpc_timeout().as_secs())
             .run(move || {
                 let call_data = call_data.clone();
                 let web3 = web3.cheap_clone();
@@ -622,7 +613,7 @@ impl EthereumAdapter {
             let web3 = web3.clone();
             retry(format!("load block {}", hash), &logger)
                 .limit(*REQUEST_RETRIES)
-                .timeout_secs(*JSON_RPC_TIMEOUT)
+                .timeout_secs(ENV_VARS.ethereum_json_rpc_timeout().as_secs())
                 .run(move || {
                     Box::pin(web3.eth().block_with_txs(BlockId::Hash(hash)))
                         .compat()
@@ -655,7 +646,7 @@ impl EthereumAdapter {
             let web3 = web3.clone();
             retry(format!("load block ptr {}", block_num), &logger)
                 .no_limit()
-                .timeout_secs(*JSON_RPC_TIMEOUT)
+                .timeout_secs(ENV_VARS.ethereum_json_rpc_timeout().as_secs())
                 .run(move || {
                     let web3 = web3.clone();
                     async move {
@@ -839,7 +830,7 @@ impl EthereumAdapter {
         u64::try_from(
             retry("chain_id RPC call", &logger)
                 .no_limit()
-                .timeout_secs(*JSON_RPC_TIMEOUT)
+                .timeout_secs(ENV_VARS.ethereum_json_rpc_timeout().as_secs())
                 .run(move || {
                     let web3 = web3.cheap_clone();
                     async move { web3.eth().chain_id().await }
@@ -913,7 +904,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         Box::new(
             retry("eth_getBlockByNumber(latest) no txs RPC call", logger)
                 .no_limit()
-                .timeout_secs(*JSON_RPC_TIMEOUT)
+                .timeout_secs(ENV_VARS.ethereum_json_rpc_timeout().as_secs())
                 .run(move || {
                     let web3 = web3.cheap_clone();
                     async move {
@@ -947,7 +938,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         Box::new(
             retry("eth_getBlockByNumber(latest) with txs RPC call", logger)
                 .no_limit()
-                .timeout_secs(*JSON_RPC_TIMEOUT)
+                .timeout_secs(ENV_VARS.ethereum_json_rpc_timeout().as_secs())
                 .run(move || {
                     let web3 = web3.cheap_clone();
                     async move {
@@ -1004,7 +995,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         Box::new(
             retry(retry_log_message, &logger)
                 .limit(*REQUEST_RETRIES)
-                .timeout_secs(*JSON_RPC_TIMEOUT)
+                .timeout_secs(ENV_VARS.ethereum_json_rpc_timeout().as_secs())
                 .run(move || {
                     Box::pin(web3.eth().block_with_txs(BlockId::Hash(block_hash)))
                         .compat()
@@ -1035,7 +1026,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         Box::new(
             retry(retry_log_message, &logger)
                 .no_limit()
-                .timeout_secs(*JSON_RPC_TIMEOUT)
+                .timeout_secs(ENV_VARS.ethereum_json_rpc_timeout().as_secs())
                 .run(move || {
                     let web3 = web3.cheap_clone();
                     async move {
@@ -1141,7 +1132,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         Box::new(
             retry(retry_log_message, &logger)
                 .no_limit()
-                .timeout_secs(*JSON_RPC_TIMEOUT)
+                .timeout_secs(ENV_VARS.ethereum_json_rpc_timeout().as_secs())
                 .run(move || {
                     let web3 = web3.cheap_clone();
                     async move {
@@ -1764,7 +1755,7 @@ async fn fetch_transaction_receipts_in_batch_with_retry(
     retry(retry_log_message, &logger)
         .limit(*REQUEST_RETRIES)
         .no_logging()
-        .timeout_secs(*JSON_RPC_TIMEOUT)
+        .timeout_secs(ENV_VARS.ethereum_json_rpc_timeout().as_secs())
         .run(move || {
             let web3 = web3.cheap_clone();
             let hashes = hashes.clone();
@@ -1819,7 +1810,7 @@ async fn fetch_transaction_receipt_with_retry(
     );
     retry(retry_log_message, &logger)
         .limit(*REQUEST_RETRIES)
-        .timeout_secs(*JSON_RPC_TIMEOUT)
+        .timeout_secs(ENV_VARS.ethereum_json_rpc_timeout().as_secs())
         .run(move || web3.eth().transaction_receipt(transaction_hash).boxed())
         .await
         .map_err(|_timeout| anyhow!(block_hash).into())
