@@ -625,6 +625,12 @@ impl EnvVars {
         self.inner.graphql_allow_deployment_change.0
     }
 
+    /// Set by the flag `GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION`. No
+    /// default is provided.
+    pub fn graphql_max_operations_per_connection(&self) -> Option<usize> {
+        self.inner.graphql_max_operations_per_connection
+    }
+
     /// Set by the environment variable `GRAPH_CACHED_SUBGRAPH_IDS` (comma
     /// separated). When the value of the variable is `*`, queries are cached
     /// for all subgraphs and this method returns [`None`], which is the default
@@ -958,6 +964,8 @@ struct Inner {
         default = "18446744073709551615"
     )]
     graphql_error_result_size: WithoutUnderscores<usize>,
+    #[envconfig(from = "GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION")]
+    graphql_max_operations_per_connection: Option<usize>,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and
