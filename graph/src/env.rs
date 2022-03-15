@@ -537,6 +537,12 @@ impl EnvVars {
     pub fn max_ipfs_cache_file_size(&self) -> usize {
         self.inner.max_ipfs_cache_file_size
     }
+
+    /// Set by the environment varible `GRAPH_MAX_IPFS_CACHE_SIZE`. The default
+    /// value is 50 items.
+    pub fn max_ipfs_cache_size(&self) -> u64 {
+        self.inner.max_ipfs_cache_size
+    }
 }
 
 impl Default for EnvVars {
@@ -635,6 +641,8 @@ struct Inner {
     // 1048576 = 1024 * 1024
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "1048576")]
     max_ipfs_cache_file_size: usize,
+    #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_SIZE", default = "50")]
+    max_ipfs_cache_size: u64,
 
     #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
     ethereum_reorg_threshold: BlockNumber,

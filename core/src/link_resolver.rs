@@ -28,10 +28,6 @@ const DEFAULT_MAX_IPFS_MAP_FILE_SIZE: u64 = 256 * 1024 * 1024;
 const MAX_IPFS_FILE_SIZE_VAR: &'static str = "GRAPH_MAX_IPFS_FILE_BYTES";
 
 lazy_static! {
-    /// The default size limit for the IPFS cache is 50 items.
-    static ref MAX_IPFS_CACHE_SIZE: u64 = read_u64_from_env("GRAPH_MAX_IPFS_CACHE_SIZE")
-        .unwrap_or(50);
-
     /// The timeout for IPFS requests in seconds
     static ref IPFS_TIMEOUT: Duration = Duration::from_secs(
         read_u64_from_env("GRAPH_IPFS_TIMEOUT").unwrap_or(30)
@@ -170,7 +166,7 @@ impl From<Vec<IpfsClient>> for LinkResolver {
         Self {
             clients: Arc::new(clients.into_iter().map(Arc::new).collect()),
             cache: Arc::new(Mutex::new(LruCache::with_capacity(
-                *MAX_IPFS_CACHE_SIZE as usize,
+                ENV_VARS.max_ipfs_cache_size() as usize,
             ))),
             timeout: *IPFS_TIMEOUT,
             retry: false,
