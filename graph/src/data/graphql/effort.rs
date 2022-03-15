@@ -18,11 +18,6 @@ use crate::prelude::{async_trait, debug, info, o, warn, Logger, QueryLoadManager
 use crate::util::stats::{MovingStats, BIN_SIZE, WINDOW_SIZE};
 
 lazy_static! {
-    // Load management can be disabled by setting the threshold to 0. This
-    // makes sure in particular that we never take any of the locks
-    // associated with it
-    static ref LOAD_MANAGEMENT_DISABLED: bool = ENV_VARS.load_threshold().is_zero();
-
     static ref SIMULATE: bool = env::var("GRAPH_LOAD_SIMULATE").is_ok();
 }
 
@@ -226,7 +221,7 @@ impl LoadManager {
             .map(|doc| shape_hash(&doc))
             .collect::<HashSet<_>>();
 
-        let mode = if *LOAD_MANAGEMENT_DISABLED {
+        let mode = if ENV_VARS.load_management_is_disabled() {
             "disabled"
         } else if *SIMULATE {
             "simulation"
@@ -282,7 +277,7 @@ impl LoadManager {
         self.query_counters
             .get(&cache_status)
             .map(GenericCounter::inc);
-        if !*LOAD_MANAGEMENT_DISABLED {
+        if !ENV_VARS.load_management_is_disabled() {
             self.effort.add(shape_hash, duration, &self.effort_gauge);
         }
     }
@@ -339,7 +334,7 @@ impl LoadManager {
         if self.blocked_queries.contains(&shape_hash) {
             return TooExpensive;
         }
-        if *LOAD_MANAGEMENT_DISABLED {
+        if ENV_VARS.load_management_is_disabled() {
             return Proceed;
         }
 
@@ -500,7 +495,7 @@ impl QueryLoadManager for LoadManager {
         self.query_counters
             .get(&cache_status)
             .map(|counter| counter.inc());
-        if !*LOAD_MANAGEMENT_DISABLED {
+        if !ENV_VARS.load_management_is_disabled() {
             self.effort.add(shape_hash, duration, &self.effort_gauge);
         }
     }

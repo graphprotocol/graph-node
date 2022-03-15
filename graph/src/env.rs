@@ -84,8 +84,19 @@ impl EnvVars {
         Duration::from_millis(self.inner.subscription_throttle_interval_in_ms)
     }
 
+    /// Enables query throttling when getting database connections goes over this value.
+    /// Load management can be disabled by setting this to 0.
+    ///
+    /// Set by the environment variable `GRAPH_LOAD_THRESHOLD` (expressed in
+    /// milliseconds). The default value is 0.
     pub fn load_threshold(&self) -> Duration {
         Duration::from_millis(self.inner.load_threshold_in_ms)
+    }
+
+    /// Equivalent to checking if [`EnvVar::load_threshold`] is set to
+    /// [`Duration::ZERO`].
+    pub fn load_management_is_disabled(&self) -> bool {
+        self.load_threshold().is_zero()
     }
 
     /// When the system is overloaded, any query that causes more than this
