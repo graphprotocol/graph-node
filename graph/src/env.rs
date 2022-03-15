@@ -654,6 +654,12 @@ impl EnvVars {
     pub fn query_cache_max_mem(&self) -> usize {
         self.inner.query_cache_max_mem_in_mb.0 * 1_000_000
     }
+
+    /// Set by the environment variable `GRAPH_QUERY_CACHE_STALE_PERIOD`. The
+    /// default value is 100.
+    pub fn query_cache_stale_period(&self) -> u64 {
+        self.inner.query_cache_stale_period
+    }
 }
 
 impl Default for EnvVars {
@@ -755,6 +761,8 @@ struct Inner {
     query_cache_blocks: usize,
     #[envconfig(from = "GRAPH_QUERY_CACHE_MAX_MEM", default = "1000")]
     query_cache_max_mem_in_mb: WithoutUnderscores<usize>,
+    #[envconfig(from = "GRAPH_QUERY_CACHE_STALE_PERIOD", default = "100")]
+    query_cache_stale_period: u64,
 
     // 1MiB
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "1048576")]

@@ -24,13 +24,6 @@ use crate::prelude::*;
 use crate::schema::ast as sast;
 
 lazy_static! {
-    static ref QUERY_CACHE_STALE_PERIOD: u64 = {
-        std::env::var("GRAPH_QUERY_CACHE_STALE_PERIOD")
-        .unwrap_or("100".to_string())
-        .parse::<u64>()
-        .expect("Invalid value for GRAPH_QUERY_CACHE_STALE_PERIOD environment variable")
-    };
-
     /// In how many shards (mutexes) the query block cache is split.
     /// Ideally this should divide 256 so that the distribution of queries to shards is even.
     static ref QUERY_BLOCK_CACHE_SHARDS: u8 = {
@@ -382,7 +375,7 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
             // Results that are too old for the QUERY_BLOCK_CACHE go into the QUERY_LFU_CACHE
             let mut cache = QUERY_LFU_CACHE[shard].lock(&ctx.logger);
             let max_mem = ENV_VARS.query_cache_max_mem() / (*QUERY_BLOCK_CACHE_SHARDS as usize);
-            cache.evict_with_period(max_mem, *QUERY_CACHE_STALE_PERIOD);
+            cache.evict_with_period(max_mem, ENV_VARS.query_cache_stale_period());
             cache.insert(
                 key,
                 WeightedResult {
