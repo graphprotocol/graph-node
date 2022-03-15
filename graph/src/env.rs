@@ -4,6 +4,7 @@ use std::{
     env::VarError,
     str::FromStr,
     sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
 };
 
 pub static UNSAFE_CONFIG: AtomicBool = AtomicBool::new(false);
@@ -78,10 +79,16 @@ impl EnvVars {
     pub fn entity_cache_size(&self) -> usize {
         self.inner.entity_cache_size_in_kb * 1000
     }
+
+    pub fn subscription_throttle_interval(&self) -> Duration {
+        Duration::from_millis(self.inner.subscription_throttle_interval_in_ms)
+    }
 }
 
 #[derive(Clone, Debug, Envconfig)]
 struct Inner {
     #[envconfig(from = "GRAPH_ENTITY_CACHE_SIZE", default = "10000")]
     entity_cache_size_in_kb: usize,
+    #[envconfig(from = "SUBSCRIPTION_THROTTLE_INTERVAL", default = "1000")]
+    subscription_throttle_interval_in_ms: u64,
 }
