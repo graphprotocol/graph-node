@@ -120,6 +120,14 @@ impl EnvVars {
     pub fn load_simulate(&self) -> bool {
         self.inner.load_simulate.0
     }
+
+    /// Set by the flag `GRAPH_ALLOW_NON_DETERMINISTIC_FULLTEXT_SEARCH`, but
+    /// enabled anyway (overridden) if [debug
+    /// assertions](https://doc.rust-lang.org/reference/conditional-compilation.html#debug_assertions)
+    /// are enabled.
+    pub fn allow_non_deterministic_fulltext_search(&self) -> bool {
+        self.inner.allow_non_deterministic_fulltext_search.0 || cfg!(debug_assertions)
+    }
 }
 
 #[derive(Clone, Debug, Envconfig)]
@@ -134,6 +142,11 @@ struct Inner {
     load_jail_threshold: Option<f64>,
     #[envconfig(from = "GRAPH_LOAD_SIMULATE", default = "false")]
     load_simulate: EnvVarBoolean,
+    #[envconfig(
+        from = "GRAPH_ALLOW_NON_DETERMINISTIC_FULLTEXT_SEARCH",
+        default = "false"
+    )]
+    allow_non_deterministic_fulltext_search: EnvVarBoolean,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
