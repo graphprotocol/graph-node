@@ -123,7 +123,7 @@ async fn test_module(
 
 // A test module using the latest API version
 async fn test_module_latest(subgraph_id: &str, wasm_file: &str) -> WasmInstance<Chain> {
-    let version = MAX_API_VERSION.clone();
+    let version = ENV_VARS.max_api_version();
     let ds = mock_data_source(
         &wasm_file_path(wasm_file, API_VERSION_0_0_5.clone()),
         version.clone(),

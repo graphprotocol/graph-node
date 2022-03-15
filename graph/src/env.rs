@@ -2,6 +2,7 @@ use envconfig::Envconfig;
 use lazy_static::lazy_static;
 use semver::Version;
 use std::{
+    collections::HashMap,
     env::VarError,
     str::FromStr,
     sync::atomic::{AtomicBool, Ordering},
@@ -180,6 +181,23 @@ impl EnvVars {
     pub fn lock_contention_log_threshold(&self) -> Duration {
         Duration::from_millis(self.inner.lock_contention_log_threshold_in_ms)
     }
+
+    /// This is configurable only for debugging purposes. This value is set by
+    /// the protocol, so indexers running in the network should never set this
+    /// config.
+    ///
+    /// Set by the environment variable `GRAPH_MAX_GAS_PER_HANDLER`.
+    pub fn max_gas_per_handler(&self) -> u64 {
+        self.inner.max_gas_per_handler.0
+    }
+}
+
+impl Default for EnvVars {
+    fn default() -> Self {
+        let inner = Inner::init_from_hashmap(&HashMap::new()).unwrap();
+
+        Self { inner }
+    }
 }
 
 #[derive(Clone, Debug, Envconfig)]
@@ -215,6 +233,8 @@ struct Inner {
     elastic_search_max_retries: usize,
     #[envconfig(from = "GRAPH_LOCK_CONTENTION_LOG_THRESHOLD_MS", default = "100")]
     lock_contention_log_threshold_in_ms: u64,
+    #[envconfig(from = "GRAPH_MAX_GAS_PER_HANDLER", default = "10_000_000_000_000")]
+    max_gas_per_handler: WithoutUnderscores<u64>,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to
@@ -235,5 +255,45 @@ impl FromStr for EnvVarBoolean {
             "false" | "0" => Ok(Self(false)),
             _ => Err("Invalid env. var. flag, expected true / false / 1 / 0".to_string()),
         }
+    }
+}
+
+/// Allows us to parse stuff ignoring underscores, notably big numbers.
+#[derive(Copy, Clone, Debug)]
+struct WithoutUnderscores<T>(pub T);
+
+impl<T> FromStr for WithoutUnderscores<T>
+where
+    T: FromStr,
+    T::Err: ToString,
+{
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match T::from_str(s.replace('_', "").as_str()) {
+            Ok(x) => Ok(Self(x)),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn env_vars_default() {
+        // Let's see if `.default()` panics.
+        EnvVars::default();
+    }
+
+    #[test]
+    fn default_max_gas_per_handler() {
+        let env_vars = EnvVars::default();
+
+        assert_eq!(
+            env_vars.max_gas_per_handler(),
+            crate::runtime::gas::CONST_MAX_GAS_PER_HANDLER
+        );
     }
 }

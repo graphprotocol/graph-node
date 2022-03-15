@@ -2,8 +2,6 @@
 //! Determinism: Once deployed, none of these values can be changed without a version upgrade.
 
 use super::*;
-use lazy_static::lazy_static;
-use std::str::FromStr;
 
 /// Using 10 gas = ~1ns for WASM instructions.
 const GAS_PER_SECOND: u64 = 10_000_000_000;
@@ -14,19 +12,6 @@ const GAS_PER_SECOND: u64 = 10_000_000_000;
 /// blocks via https://docs.rs/pwasm-utils/0.16.0/pwasm_utils/fn.inject_gas_counter.html But we can
 /// still charge very high numbers for other things.
 pub const CONST_MAX_GAS_PER_HANDLER: u64 = 1000 * GAS_PER_SECOND;
-
-lazy_static! {
-    /// This is configurable only for debugging purposes. This value is set by the protocol,
-    /// so indexers running in the network should never set this config.
-    pub static ref MAX_GAS_PER_HANDLER: u64 = std::env::var("GRAPH_MAX_GAS_PER_HANDLER")
-        .ok()
-        .map(|s| {
-            u64::from_str(&s.replace("_", "")).unwrap_or_else(|_| {
-                panic!("GRAPH_LOAD_WINDOW_SIZE must be a number, but is `{}`", s)
-            })
-        })
-        .unwrap_or(CONST_MAX_GAS_PER_HANDLER);
-}
 
 /// Gas for instructions are aggregated into blocks, so hopefully gas calls each have relatively
 /// large gas. But in the case they don't, we don't want the overhead of calling out into a host
