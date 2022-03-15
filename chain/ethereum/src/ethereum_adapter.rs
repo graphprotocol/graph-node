@@ -63,15 +63,6 @@ pub struct EthereumAdapter {
     supports_eip_1898: bool,
 }
 
-lazy_static! {
-    static ref MAX_CONCURRENT_JSON_RPC_CALLS: usize = std::env::var(
-        "GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS"
-    )
-        .unwrap_or("1000".into())
-        .parse::<usize>()
-        .expect("invalid GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS env var");
-}
-
 #[cfg(not(target_os = "macos"))]
 lazy_static! {
     /// Regular GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES env var.
@@ -699,7 +690,7 @@ impl EthereumAdapter {
             )
         }))
         // Real limits on the number of parallel requests are imposed within the adapter.
-        .buffered(*MAX_CONCURRENT_JSON_RPC_CALLS)
+        .buffered(ENV_VARS.ethereum_block_ingestor_max_concurrent_json_rpc_calls())
         .try_concat()
         .boxed()
     }
@@ -1067,7 +1058,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     logger.cheap_clone(),
                 )
             })
-            .buffered(*MAX_CONCURRENT_JSON_RPC_CALLS);
+            .buffered(ENV_VARS.ethereum_block_ingestor_max_concurrent_json_rpc_calls());
             graph::tokio_stream::StreamExt::collect::<Result<Vec<TransactionReceipt>, IngestorError>>(
                 receipt_stream,
             ).boxed()

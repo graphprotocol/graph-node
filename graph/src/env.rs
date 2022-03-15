@@ -457,6 +457,14 @@ impl EnvVars {
         self.inner.ethereum_request_retries
     }
 
+    /// Set by the environment variable
+    /// `GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS`.
+    /// The default value is 1000.
+    pub fn ethereum_block_ingestor_max_concurrent_json_rpc_calls(&self) -> usize {
+        self.inner
+            .ethereum_block_ingestor_max_concurrent_json_rpc_calls
+    }
+
     /// Additional deterministic errors that have not yet been hardcoded.
     ///
     /// Set by the environment variable `GRAPH_GETH_ETH_CALL_ERRORS`, separated
@@ -585,6 +593,11 @@ struct Inner {
     ethereum_request_retries: usize,
     #[envconfig(from = "GRAPH_GETH_ETH_CALL_ERRORS", default = "")]
     geth_eth_call_errors: String,
+    #[envconfig(
+        from = "GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS",
+        default = "1000"
+    )]
+    ethereum_block_ingestor_max_concurrent_json_rpc_calls: usize,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and
