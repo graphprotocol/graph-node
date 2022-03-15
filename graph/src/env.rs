@@ -289,6 +289,14 @@ impl EnvVars {
     pub fn typea_batch_size(&self) -> usize {
         self.inner.typea_batch_size
     }
+
+    /// Allows for some optimizations when running relational queries. Set this
+    /// to 0 to turn off this optimization.
+    ///
+    /// Set by the environment variable `TYPED_CHILDREN_SET_SIZE`.
+    pub fn typed_children_set_size(&self) -> usize {
+        self.inner.typed_children_set_size
+    }
 }
 
 impl Default for EnvVars {
@@ -353,6 +361,8 @@ struct Inner {
     notification_broacast_timeout_in_secs: u64,
     #[envconfig(from = "TYPEA_BATCH_SIZE", default = "150")]
     typea_batch_size: usize,
+    #[envconfig(from = "TYPED_CHILDREN_SET_SIZE", default = "150")]
+    typed_children_set_size: usize,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to

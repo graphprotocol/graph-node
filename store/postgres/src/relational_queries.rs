@@ -45,18 +45,6 @@ use crate::{
 };
 
 lazy_static! {
-    /// Include a constraint on the child ids as a set in child_type_d
-    /// queries if the size of the set is below this threshold. Set this to
-    /// 0 to turn off this optimization
-    static ref TYPED_CHILDREN_SET_SIZE: usize = {
-        env::var("TYPED_CHILDREN_SET_SIZE")
-            .ok()
-            .map(|s| {
-                usize::from_str(&s)
-                    .unwrap_or_else(|_| panic!("TYPED_CHILDREN_SET_SIZE must be a number, but is `{}`", s))
-            })
-            .unwrap_or(150)
-    };
     /// When we add `order by id` to a query should we add instead
     /// `order by id, block_range`
     static ref ORDER_BY_BLOCK_RANGE: bool = {
@@ -2042,12 +2030,16 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" c where ");
         BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
         limit.filter(out);
-        if *TYPED_CHILDREN_SET_SIZE > 0 {
+
+        // Include a constraint on the child IDs as a set if the size of the set
+        // is below the threshold set by environment variable. Set it to
+        // 0 to turn off this optimization.
+        if ENV_VARS.typed_children_set_size() > 0 {
             let mut child_set: Vec<&str> = child_ids.iter().map(|id| id.as_str()).collect();
             child_set.sort_unstable();
             child_set.dedup();
 
-            if child_set.len() <= *TYPED_CHILDREN_SET_SIZE {
+            if child_set.len() <= ENV_VARS.typed_children_set_size() {
                 out.push_sql(" and c.id = any(");
                 self.table.primary_key().bind_ids(&child_set, out)?;
                 out.push_sql(")");
