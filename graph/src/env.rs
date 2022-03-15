@@ -438,6 +438,17 @@ impl EnvVars {
         Duration::from_secs(self.inner.ethereum_json_rpc_timeout_in_secs)
     }
 
+    /// This is used for requests that will not fail the subgraph if the limit
+    /// is reached, but will simply restart the syncing step, so it can be low.
+    /// This limit guards against scenarios such as requesting a block hash that
+    /// has been reorged.
+    ///
+    /// Set by the environment variable `GRAPH_ETHEREUM_REQUEST_RETRIES`. The
+    /// default value is 10.
+    pub fn ethereum_request_retries(&self) -> usize {
+        self.inner.ethereum_request_retries
+    }
+
     /// Set by the flag `EXPERIMENTAL_STATIC_FILTERS`. Off by default.
     pub fn experimental_static_filters(&self) -> bool {
         self.inner.experimental_static_filters.0
@@ -554,6 +565,8 @@ struct Inner {
     ethereum_block_batch_size: usize,
     #[envconfig(from = "GRAPH_ETHEREUM_JSON_RPC_TIMEOUT", default = "180")]
     ethereum_json_rpc_timeout_in_secs: u64,
+    #[envconfig(from = "GRAPH_ETHEREUM_REQUEST_RETRIES", default = "10")]
+    ethereum_request_retries: usize,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and
