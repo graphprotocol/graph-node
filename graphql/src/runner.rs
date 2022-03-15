@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::env;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -20,8 +19,6 @@ use graph::{
     data::query::{QueryResults, QueryTarget},
     prelude::QueryStore,
 };
-
-use lazy_static::lazy_static;
 
 pub struct ResultSizeMetrics {
     histogram: Box<Histogram>,
@@ -78,18 +75,8 @@ pub struct GraphQlRunner<S, SM> {
     result_size: Arc<ResultSizeMetrics>,
 }
 
-lazy_static! {
-    // Allow skipping the check whether a deployment has changed while
-    // we were running a query. Once we are sure that the check mechanism
-    // is reliable, this variable should be removed
-    static ref GRAPHQL_ALLOW_DEPLOYMENT_CHANGE: bool = env::var("GRAPHQL_ALLOW_DEPLOYMENT_CHANGE")
-        .ok()
-        .map(|s| s == "true")
-        .unwrap_or(false);
-}
-
 #[cfg(debug_assertions)]
-lazy_static! {
+lazy_static::lazy_static! {
     // Test only, see c435c25decbc4ad7bbbadf8e0ced0ff2
     pub static ref INITIAL_DEPLOYMENT_STATE_FOR_TESTS: std::sync::Mutex<Option<DeploymentState>> = std::sync::Mutex::new(None);
 }
@@ -128,7 +115,7 @@ where
         state: DeploymentState,
         latest_block: u64,
     ) -> Result<(), QueryExecutionError> {
-        if *GRAPHQL_ALLOW_DEPLOYMENT_CHANGE {
+        if ENV_VARS.graphql_allow_deployment_change() {
             return Ok(());
         }
         let new_state = store.deployment_state().await?;

@@ -602,6 +602,15 @@ impl EnvVars {
     pub fn graphql_max_skip(&self) -> u32 {
         self.inner.graphql_max_skip
     }
+
+    /// Allow skipping the check whether a deployment has changed while
+    /// we were running a query. Once we are sure that the check mechanism
+    /// is reliable, this variable should be removed.
+    ///
+    /// Set by the flag `GRAPHQL_ALLOW_DEPLOYMENT_CHANGE`. Off by default.
+    pub fn graphql_allow_deployment_change(&self) -> bool {
+        self.inner.graphql_allow_deployment_change.0
+    }
 }
 
 impl Default for EnvVars {
@@ -747,6 +756,8 @@ struct Inner {
     // u32::MAX
     #[envconfig(from = "GRAPH_GRAPHQL_MAX_SKIP", default = "4294967295")]
     graphql_max_skip: u32,
+    #[envconfig(from = "GRAPHQL_ALLOW_DEPLOYMENT_CHANGE", default = "false")]
+    graphql_allow_deployment_change: EnvVarBoolean,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and
