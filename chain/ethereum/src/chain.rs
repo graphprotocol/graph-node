@@ -46,9 +46,6 @@ use crate::{network::EthereumNetworkAdapters, EthereumAdapter};
 use graph::blockchain::block_stream::{BlockStream, FirehoseCursor};
 
 lazy_static! {
-    /// Ideal number of triggers in a range. The range size will adapt to try to meet this.
-    static ref TARGET_TRIGGERS_PER_BLOCK_RANGE: u64 = env_var("GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE", 100);
-
     /// Controls if firehose should be preferred over RPC if Firehose endpoints are present, if not set, the default behavior is
     /// is kept which is to automatically favor Firehose.
     static ref IS_FIREHOSE_PREFERRED: bool = env_var("GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED", true);
@@ -269,7 +266,7 @@ impl Blockchain for Chain {
             reorg_threshold,
             logger,
             ENV_VARS.ethereum_max_block_range_size(),
-            *TARGET_TRIGGERS_PER_BLOCK_RANGE,
+            ENV_VARS.ethereum_target_triggers_per_block_range(),
             unified_api_version,
             subgraph_current_block,
         )))

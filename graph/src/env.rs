@@ -426,6 +426,16 @@ impl EnvVars {
         self.inner.ethereum_reorg_threshold
     }
 
+    /// Ideal number of triggers in a range. The range size will adapt to try to
+    /// meet this.
+    ///
+    /// Set by the environment variable
+    /// `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`. The default value is
+    /// 100.
+    pub fn ethereum_target_triggers_per_block_range(&self) -> u64 {
+        self.inner.ethereum_target_triggers_per_block_range
+    }
+
     /// Maximum number of blocks to request in each chunk.
     ///
     /// Set by the environment variable `GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE`.
@@ -955,6 +965,11 @@ struct Inner {
     ethereum_cleanup_blocks: EnvVarBoolean,
     #[envconfig(from = "GRAPH_ETH_GET_LOGS_MAX_CONTRACTS", default = "2000")]
     ethereum_get_logs_max_contracts: usize,
+    #[envconfig(
+        from = "GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE",
+        default = "100"
+    )]
+    ethereum_target_triggers_per_block_range: u64,
 
     #[envconfig(from = "GRAPH_GRAPHQL_QUERY_TIMEOUT")]
     graphql_query_timeout_in_secs: Option<u64>,
