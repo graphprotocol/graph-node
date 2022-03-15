@@ -523,6 +523,14 @@ impl EnvVars {
     pub fn disable_fail_fast(&self) -> bool {
         self.inner.disable_fail_fast.0
     }
+
+    /// Ceiling for the backoff retry of non-deterministic errors.
+    ///
+    /// Set by the environment varible `GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS`
+    /// (expressed in seconds). The default value is 1800s (30 minutes).
+    pub fn subgraph_error_retry_ceil(&self) -> Duration {
+        Duration::from_secs(self.inner.subgraph_error_retry_ceil_in_secs)
+    }
 }
 
 impl Default for EnvVars {
@@ -616,6 +624,8 @@ struct Inner {
     subgraph_max_data_sources: Option<usize>,
     #[envconfig(from = "GRAPH_DISABLE_FAIL_FAST", default = "false")]
     disable_fail_fast: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS", default = "1800")]
+    subgraph_error_retry_ceil_in_secs: u64,
 
     #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
     ethereum_reorg_threshold: BlockNumber,
