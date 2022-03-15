@@ -718,6 +718,14 @@ impl EnvVars {
     pub fn allow_non_deterministic_ipfs(&self) -> bool {
         self.inner.allow_non_deterministic_ipfs.0
     }
+
+    /// Verbose logging of mapping inputs.
+    ///
+    /// Set by the flag `GRAPH_LOG_TRIGGER_DATA`. Off by
+    /// default.
+    pub fn log_trigger_data(&self) -> bool {
+        self.inner.log_trigger_data.0
+    }
 }
 
 impl Default for EnvVars {
@@ -833,6 +841,8 @@ struct Inner {
     mapping_handler_timeout_in_secs: Option<u64>,
     #[envconfig(from = "GRAPH_ALLOW_NON_DETERMINISTIC_IPFS", default = "false")]
     allow_non_deterministic_ipfs: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_LOG_TRIGGER_DATA", default = "false")]
+    log_trigger_data: EnvVarBoolean,
 
     // 1MiB
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "1048576")]
