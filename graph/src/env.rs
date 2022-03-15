@@ -390,6 +390,12 @@ impl EnvVars {
     pub fn store_connection_try_always(&self) -> bool {
         self.inner.store_connection_try_always.0
     }
+
+    /// Set by the environment variable `GRAPH_REMOVE_UNUSED_INTERVAL`
+    /// (expressed in minutes). The default value is 360 minutes.
+    pub fn remove_unused_interval(&self) -> chrono::Duration {
+        chrono::Duration::minutes(self.inner.remove_unused_interval_in_minutes as i64)
+    }
 }
 
 impl Default for EnvVars {
@@ -468,6 +474,8 @@ struct Inner {
     disable_subscription_notifications: EnvVarBoolean,
     #[envconfig(from = "GRAPH_STORE_CONNECTION_TRY_ALWAYS", default = "false")]
     store_connection_try_always: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_REMOVE_UNUSED_INTERVAL", default = "360")]
+    remove_unused_interval_in_minutes: u64,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and
