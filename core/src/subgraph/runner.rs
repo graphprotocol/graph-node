@@ -32,11 +32,6 @@ const BUFFERED_BLOCK_STREAM_SIZE: usize = 100;
 const BUFFERED_FIREHOSE_STREAM_SIZE: usize = 1;
 
 lazy_static! {
-    // Keep deterministic errors non-fatal even if the subgraph is pending.
-    // Used for testing Graph Node itself.
-    pub static ref DISABLE_FAIL_FAST: bool =
-        std::env::var("GRAPH_DISABLE_FAIL_FAST").is_ok();
-
     /// Ceiling for the backoff retry of non-deterministic errors, in seconds.
     pub static ref SUBGRAPH_ERROR_RETRY_CEIL_SECS: Duration =
         std::env::var("GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS")
@@ -710,7 +705,10 @@ where
 
                 // To prevent a buggy pending version from replacing a current version, if errors are
                 // present the subgraph will be unassigned.
-                if has_errors && !*DISABLE_FAIL_FAST && !store.is_deployment_synced().await? {
+                if has_errors
+                    && !ENV_VARS.disable_fail_fast()
+                    && !store.is_deployment_synced().await?
+                {
                     store
                         .unassign_subgraph()
                         .map_err(|e| BlockProcessingError::Unknown(e.into()))?;

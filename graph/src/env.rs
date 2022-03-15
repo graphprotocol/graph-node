@@ -515,6 +515,14 @@ impl EnvVars {
     pub fn subgraph_max_data_sources(&self) -> Option<usize> {
         self.inner.subgraph_max_data_sources
     }
+
+    /// Keep deterministic errors non-fatal even if the subgraph is pending.
+    /// Used for testing Graph Node itself.
+    ///
+    /// Set by the flag `GRAPH_DISABLE_FAIL_FAST`. Off by default.
+    pub fn disable_fail_fast(&self) -> bool {
+        self.inner.disable_fail_fast.0
+    }
 }
 
 impl Default for EnvVars {
@@ -606,6 +614,8 @@ struct Inner {
     kill_if_unresponsive: EnvVarBoolean,
     #[envconfig(from = "GRAPH_SUBGRAPH_MAX_DATA_SOURCES")]
     subgraph_max_data_sources: Option<usize>,
+    #[envconfig(from = "GRAPH_DISABLE_FAIL_FAST", default = "false")]
+    disable_fail_fast: EnvVarBoolean,
 
     #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
     ethereum_reorg_threshold: BlockNumber,
