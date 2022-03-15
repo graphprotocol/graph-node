@@ -2,7 +2,6 @@ use anyhow::Error;
 use ethabi::{Error as ABIError, Function, ParamType, Token};
 use futures::Future;
 use graph::blockchain::ChainIdentifier;
-use graph::env::env_var;
 use graph::firehose::CallToFilter;
 use graph::firehose::LogFilter;
 use graph::firehose::MultiCallToFilter;
@@ -39,11 +38,6 @@ use crate::{data_source::DataSource, Chain};
 
 pub type EventSignature = H256;
 pub type FunctionSelector = [u8; 4];
-
-lazy_static! {
-    static ref ETH_GET_LOGS_MAX_CONTRACTS: usize =
-        env_var("GRAPH_ETH_GET_LOGS_MAX_CONTRACTS", 2000);
-}
 
 #[derive(Clone, Debug)]
 pub struct EthereumContractCall {
@@ -365,7 +359,7 @@ impl EthereumLogFilter {
             for neighbor in g.neighbors(max_vertex) {
                 match neighbor {
                     LogFilterNode::Contract(address) => {
-                        if filter.contracts.len() == *ETH_GET_LOGS_MAX_CONTRACTS {
+                        if filter.contracts.len() == ENV_VARS.ethereum_get_logs_max_contracts() {
                             // The batch size was reached, register the filter and start a new one.
                             let event = filter.event_signatures[0];
                             push_filter(filter);

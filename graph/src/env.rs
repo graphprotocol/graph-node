@@ -271,8 +271,8 @@ impl EnvVars {
     }
 
     /// Set by the environment variable `GRAPH_LOG`.
-    pub fn log_levels(&self) -> &str {
-        &self.inner.log_levels
+    pub fn log_levels(&self) -> Option<&str> {
+        self.inner.log_levels.as_deref()
     }
 
     /// Set by the environment variable `GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT`
@@ -476,6 +476,12 @@ impl EnvVars {
     /// by `;`.
     pub fn geth_eth_call_errors(&self) -> &[String] {
         &self.geth_eth_call_errors
+    }
+
+    /// Set by the environment variable `GRAPH_ETH_GET_LOGS_MAX_CONTRACTS`. The
+    /// default value is 2000.
+    pub fn ethereum_get_logs_max_contracts(&self) -> usize {
+        self.inner.ethereum_get_logs_max_contracts
     }
 
     /// Set by the environment variable
@@ -820,8 +826,8 @@ struct Inner {
     log_time_format: String,
     #[envconfig(from = "GRAPH_LOG_POI_EVENTS", default = "false")]
     log_poi_events: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_LOG", default = "")]
-    log_levels: String,
+    #[envconfig(from = "GRAPH_LOG")]
+    log_levels: Option<String>,
     #[envconfig(from = "GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT", default = "30")]
     chain_head_watcher_timeout_in_secs: u64,
     #[envconfig(from = "GRAPH_QUERY_STATS_REFRESH_INTERVAL", default = "300")]
@@ -937,6 +943,8 @@ struct Inner {
     ethereum_fetch_receipts_in_batches: Option<EnvVarBoolean>,
     #[envconfig(from = "GRAPH_ETHEREUM_CLEANUP_BLOCKS", default = "false")]
     ethereum_cleanup_blocks: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_ETH_GET_LOGS_MAX_CONTRACTS", default = "2000")]
+    ethereum_get_logs_max_contracts: usize,
 
     #[envconfig(from = "GRAPH_GRAPHQL_QUERY_TIMEOUT")]
     graphql_query_timeout_in_secs: Option<u64>,
