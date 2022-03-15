@@ -22,22 +22,11 @@ use graph::{
     },
     data::subgraph::status,
     object,
-    prelude::{lazy_static, serde_json, warn, Logger},
+    prelude::{lazy_static, serde_json, warn, Logger, ENV_VARS},
     util::timed_cache::TimedCache,
 };
 
 lazy_static! {
-    static ref TTL: Duration = {
-        let ttl = env::var("GRAPH_EXPLORER_TTL")
-            .ok()
-            .map(|s| {
-                u64::from_str(&s).unwrap_or_else(|_| {
-                    panic!("GRAPH_EXPLORER_TTL must be a number, but is `{}`", s)
-                })
-            })
-            .unwrap_or(10);
-        Duration::from_secs(ttl)
-    };
     static ref LOCK_THRESHOLD: Duration = {
         let duration = env::var("GRAPH_EXPLORER_LOCK_THRESHOLD")
             .ok()
@@ -88,9 +77,9 @@ where
     pub fn new(store: Arc<S>) -> Self {
         Self {
             store,
-            versions: TimedCache::new(*TTL),
-            version_infos: TimedCache::new(*TTL),
-            entity_counts: TimedCache::new(*TTL),
+            versions: TimedCache::new(ENV_VARS.explorer_ttl()),
+            version_infos: TimedCache::new(ENV_VARS.explorer_ttl()),
+            entity_counts: TimedCache::new(ENV_VARS.explorer_ttl()),
         }
     }
 

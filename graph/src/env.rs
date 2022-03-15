@@ -713,6 +713,12 @@ impl EnvVars {
         self.inner.runtime_max_stack_size.0
     }
 
+    /// Set by the environment variable `GRAPH_EXPLORER_TTL`
+    /// (expressed in seconds). The default value is 10s.
+    pub fn explorer_ttl(&self) -> Duration {
+        Duration::from_secs(self.inner.explorer_ttl_in_secs)
+    }
+
     /// Experimental feature.
     ///
     /// Set by the flag `GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES`. Off by
@@ -854,6 +860,8 @@ struct Inner {
     // 512KiB
     #[envconfig(from = "GRAPH_RUNTIME_MAX_STACK_SIZE", default = "524288")]
     runtime_max_stack_size: WithoutUnderscores<usize>,
+    #[envconfig(from = "GRAPH_EXPLORER_TTL", default = "10")]
+    explorer_ttl_in_secs: u64,
 
     // 1MiB
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "1048576")]
