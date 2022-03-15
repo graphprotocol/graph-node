@@ -64,11 +64,6 @@ pub struct EthereumAdapter {
 }
 
 lazy_static! {
-    static ref BLOCK_BATCH_SIZE: usize = std::env::var("ETHEREUM_BLOCK_BATCH_SIZE")
-            .unwrap_or("10".into())
-            .parse::<usize>()
-            .expect("invalid ETHEREUM_BLOCK_BATCH_SIZE env var");
-
     /// This should not be too large that it causes requests to timeout without us catching it, nor
     /// too small that it causes us to timeout requests that would've succeeded. We've seen
     /// successful `eth_getLogs` requests take over 120 seconds.
@@ -363,7 +358,7 @@ impl EthereumAdapter {
                 new_start,
             )))
         })
-        .buffered(*BLOCK_BATCH_SIZE)
+        .buffered(ENV_VARS.ethereum_block_batch_size())
         .map(stream::iter_ok)
         .flatten()
     }
@@ -643,7 +638,7 @@ impl EthereumAdapter {
                 .compat()
                 .from_err()
         }))
-        .buffered(*BLOCK_BATCH_SIZE)
+        .buffered(ENV_VARS.ethereum_block_batch_size())
     }
 
     /// Request blocks ptrs for numbers through JSON-RPC.
@@ -679,7 +674,7 @@ impl EthereumAdapter {
                 .compat()
                 .from_err()
         }))
-        .buffered(*BLOCK_BATCH_SIZE)
+        .buffered(ENV_VARS.ethereum_block_batch_size())
         .map(|b| b.into())
     }
 

@@ -421,6 +421,12 @@ impl EnvVars {
         self.inner.ethereum_max_event_only_range
     }
 
+    /// Set by the environment variable `ETHEREUM_BLOCK_BATCH_SIZE`. The
+    /// default value is 10 blocks.
+    pub fn ethereum_block_batch_size(&self) -> usize {
+        self.inner.ethereum_block_batch_size
+    }
+
     /// Set by the flag `EXPERIMENTAL_STATIC_FILTERS`. Off by default.
     pub fn experimental_static_filters(&self) -> bool {
         self.inner.experimental_static_filters.0
@@ -533,6 +539,8 @@ struct Inner {
     ethereum_trace_stream_step_size: BlockNumber,
     #[envconfig(from = "GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE", default = "500")]
     ethereum_max_event_only_range: BlockNumber,
+    #[envconfig(from = "ETHEREUM_BLOCK_BATCH_SIZE", default = "10")]
+    ethereum_block_batch_size: usize,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and
