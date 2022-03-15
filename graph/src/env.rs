@@ -305,6 +305,15 @@ impl EnvVars {
     pub fn order_by_block_range(&self) -> bool {
         self.inner.order_by_block_range.0
     }
+
+    /// When the flag is present, `ORDER BY` clauses are changed so that `asc`
+    /// and `desc` ordering produces reverse orders. Setting the flag turns the
+    /// new, correct behavior off.
+    ///
+    /// Set by the flag `REVERSIBLE_ORDER_BY_OFF`.
+    pub fn reversible_order_by_off(&self) -> bool {
+        self.inner.reversible_order_by_off.0
+    }
 }
 
 impl Default for EnvVars {
@@ -373,6 +382,8 @@ struct Inner {
     typed_children_set_size: usize,
     #[envconfig(from = "ORDER_BY_BLOCK_RANGE", default = "false")]
     order_by_block_range: EnvVarBoolean,
+    #[envconfig(from = "REVERSIBLE_ORDER_BY_OFF", default = "false")]
+    reversible_order_by_off: EnvVarBoolean,
 }
 
 /// When reading [`bool`] values from environment variables, we must be able to

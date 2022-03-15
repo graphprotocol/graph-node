@@ -11,7 +11,6 @@ use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text};
 use diesel::Connection;
-use lazy_static::lazy_static;
 
 use graph::prelude::{
     anyhow, r, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
@@ -26,7 +25,6 @@ use itertools::Itertools;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
-use std::env;
 use std::fmt::{self, Display};
 use std::iter::FromIterator;
 use std::str::FromStr;
@@ -43,20 +41,6 @@ use crate::{
     },
     primary::Namespace,
 };
-
-lazy_static! {
-    /// Reversible order by. Change our `order by` clauses so that `asc`
-    /// and `desc` ordering produce reverse orders. Setting this
-    /// turns the new, correct behavior off
-    static ref REVERSIBLE_ORDER_BY_OFF: bool = {
-        env::var("REVERSIBLE_ORDER_BY_OFF")
-            .ok()
-            .map(|s| {
-                s == "1"
-            })
-            .unwrap_or(false)
-    };
-}
 
 /// Those are columns that we always want to fetch from the database.
 const BASE_SQL_COLUMNS: [&'static str; 2] = ["id", "vid"];
@@ -2375,7 +2359,7 @@ impl<'a> SortKey<'a> {
                 out.push_identifier(name)?;
             }
         }
-        if *REVERSIBLE_ORDER_BY_OFF {
+        if ENV_VARS.reversible_order_by_off() {
             // Old behavior
             out.push_sql(" ");
             out.push_sql(direction);
