@@ -23,11 +23,10 @@ lazy_static = "1.1"
 lru_time_cache = "0.11"
 maybe-owned = "0.3.4"
 postgres = "0.19.1"
-rand = "0.6.1"
+rand = "0.8.4"
 serde = "1.0"
 uuid = { version = "0.8.1", features = ["v4"] }
 stable-hash = { git = "https://github.com/graphprotocol/stable-hash" }
-backtrace = "0.3"
 diesel_derives = "1.4.1"
 anyhow = "1.0.54"
 git-testament = "0.2.0"

@@ -7,7 +7,7 @@ edition = "2021"
 async-trait = "0.1.50"
 atomic_refcell = "0.1.8"
 async-stream = "0.3"
-bytes = "0.5"
+bytes = "1.0"
 futures01 = { package="futures", version="0.1.31" }
 futures = { version="0.3.4", features=["compat"] }
 graph = { path = "../graph" }

@@ -10,6 +10,7 @@ use graph::ipfs_client::IpfsClient;
 use graph::prelude::{anyhow, tokio, BlockNumber};
 use graph::prelude::{prost, MetricsRegistry as MetricsRegistryTrait};
 use graph::slog::{debug, error, info, o, Logger};
+use graph::url::Url;
 use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{self as ethereum, EthereumAdapterTrait, Transport};
 use graph_core::MetricsRegistry;
@@ -142,7 +143,7 @@ pub async fn create_ethereum_networks(
                 use crate::config::Transport::*;
 
                 let transport = match web3.transport {
-                    Rpc => Transport::new_rpc(&web3.url, web3.headers.clone()),
+                    Rpc => Transport::new_rpc(Url::parse(&web3.url)?, web3.headers.clone()),
                     Ipc => Transport::new_ipc(&web3.url).await,
                     Ws => Transport::new_ws(&web3.url).await,
                 };

@@ -165,22 +165,18 @@ impl<'a> Into<web3::types::Transaction> for TransactionTraceAt<'a> {
             transaction_index: Some(U64::from(self.trace.index as u64)),
             from: Some(H160::from_slice(&self.trace.from)),
             to: Some(H160::from_slice(&self.trace.to)),
-            value: self
-                .trace
-                .value
-                .as_ref()
-                .map_or_else(|| U256::from(0), |x| x.into()),
-            gas_price: self
-                .trace
-                .gas_price
-                .as_ref()
-                .map_or_else(|| U256::from(0), |x| x.into()),
+            value: self.trace.value.as_ref().map_or(U256::zero(), |x| x.into()),
+            gas_price: self.trace.gas_price.as_ref().map(|x| x.into()),
             gas: U256::from(self.trace.gas_used),
             input: Bytes::from(self.trace.input.clone()),
             v: None,
             r: None,
             s: None,
             raw: None,
+            access_list: None,
+            max_fee_per_gas: None,
+            max_priority_fee_per_gas: None,
+            transaction_type: None,
         }
     }
 }
@@ -282,6 +278,10 @@ impl Into<EthereumBlockWithCalls> for &Block {
                                 _ => Some(H256::from_slice(&r.state_root)),
                             },
                             logs_bloom: H2048::from_slice(&r.logs_bloom),
+                            from: H160::from_slice(&t.from),
+                            to: Some(H160::from_slice(&t.to)),
+                            transaction_type: None,
+                            effective_gas_price: None,
                         })
                     })
                     .collect(),

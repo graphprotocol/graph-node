@@ -31,6 +31,7 @@ use graph_core::{
 };
 use lazy_static::lazy_static;
 use std::str::FromStr;
+use url::Url;
 
 pub async fn run(
     logger: Logger,
@@ -362,7 +363,7 @@ async fn create_ethereum_networks(
                 use crate::config::Transport::*;
 
                 let transport = match web3.transport {
-                    Rpc => Transport::new_rpc(&web3.url, web3.headers.clone()),
+                    Rpc => Transport::new_rpc(Url::parse(&web3.url)?, web3.headers.clone()),
                     Ipc => Transport::new_ipc(&web3.url).await,
                     Ws => Transport::new_ws(&web3.url).await,
                 };

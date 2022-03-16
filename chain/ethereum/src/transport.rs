@@ -5,6 +5,7 @@ use web3::transports::{http, ipc, ws};
 use web3::RequestId;
 
 use graph::prelude::*;
+use graph::url::Url;
 use std::future::Future;
 
 /// Abstraction over the different web3 transports.
@@ -37,10 +38,13 @@ impl Transport {
     ///
     /// Note: JSON-RPC over HTTP doesn't always support subscribing to new
     /// blocks (one such example is Infura's HTTP endpoint).
-    pub fn new_rpc(rpc: &str, headers: ::http::HeaderMap) -> Self {
-        http::Http::with_headers(rpc, headers)
-            .map(|transport| Transport::RPC(transport))
-            .expect("Failed to connect to Ethereum RPC")
+    pub fn new_rpc(rpc: Url, headers: ::http::HeaderMap) -> Self {
+        // Unwrap: This only fails if something is wrong with the system's TLS config.
+        let client = reqwest::Client::builder()
+            .default_headers(headers)
+            .build()
+            .unwrap();
+        Transport::RPC(http::Http::with_client(client, rpc))
     }
 }
 

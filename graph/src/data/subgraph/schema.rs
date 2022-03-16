@@ -220,7 +220,7 @@ impl StableHash for SubgraphError {
 
 pub fn generate_entity_id() -> String {
     // Fast crypto RNG from operating system
-    let mut rng = OsRng::new().unwrap();
+    let mut rng = OsRng::default();
 
     // 128 random bits
     let id_bytes: [u8; 16] = rng.gen();
