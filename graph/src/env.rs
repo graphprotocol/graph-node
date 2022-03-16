@@ -2,14 +2,17 @@ use envconfig::Envconfig;
 use lazy_static::lazy_static;
 use semver::Version;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     env::VarError,
     str::FromStr,
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 
-use crate::components::{store::BlockNumber, subgraph::SubgraphVersionSwitchingMode};
+use crate::{
+    components::{store::BlockNumber, subgraph::SubgraphVersionSwitchingMode},
+    runtime::gas::CONST_MAX_GAS_PER_HANDLER,
+};
 
 pub static UNSAFE_CONFIG: AtomicBool = AtomicBool::new(false);
 
@@ -231,7 +234,7 @@ impl EnvVars {
     ///
     /// Set by the environment variable `GRAPH_MAX_GAS_PER_HANDLER`.
     pub fn max_gas_per_handler(&self) -> u64 {
-        self.inner.max_gas_per_handler.0
+        self.inner.max_gas_per_handler.0 .0
     }
 
     /// Set by the environment variable `GRAPH_LOG_QUERY_TIMING`.
@@ -581,7 +584,7 @@ impl EnvVars {
     /// Set by the environment varible `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`
     /// (expressed in bytes). The default value is 1MiB.
     pub fn max_ipfs_cache_file_size(&self) -> usize {
-        self.inner.max_ipfs_cache_file_size
+        self.inner.max_ipfs_cache_file_size.0
     }
 
     /// Set by the environment varible `GRAPH_MAX_IPFS_CACHE_SIZE`. The default
@@ -603,7 +606,7 @@ impl EnvVars {
     /// Set by the environment varible `GRAPH_MAX_IPFS_MAP_FILE_SIZE_LIMIT`
     /// (expressed in bytes). The default value is 256MiB.
     pub fn max_ipfs_map_file_size(&self) -> usize {
-        self.inner.max_ipfs_map_file_size
+        self.inner.max_ipfs_map_file_size.0
     }
 
     /// Sets the `ipfs.cat` file size limit.
@@ -634,7 +637,7 @@ impl EnvVars {
     /// Set by the environment varible `GRAPH_GRAPHQL_MAX_DEPTH`. The default
     /// value is 255.
     pub fn graphql_max_depth(&self) -> u8 {
-        self.inner.graphql_max_depth
+        self.inner.graphql_max_depth.0
     }
 
     /// Set by the environment varible `GRAPH_GRAPHQL_MAX_FIRST`. The default
@@ -646,7 +649,7 @@ impl EnvVars {
     /// Set by the environment varible `4294967295`. The default
     /// value is 4294967295 ([`u32::MAX`]).
     pub fn graphql_max_skip(&self) -> u32 {
-        self.inner.graphql_max_skip
+        self.inner.graphql_max_skip.0
     }
 
     /// Allow skipping the check whether a deployment has changed while
@@ -701,15 +704,15 @@ impl EnvVars {
     }
 
     /// Set by the environment variable `GRAPH_GRAPHQL_WARN_RESULT_SIZE`. The
-    /// default value is 18446744073709551615.
+    /// default value is [`usize::MAX`].
     pub fn graphql_warn_result_size(&self) -> usize {
-        self.inner.graphql_warn_result_size.0
+        self.inner.graphql_warn_result_size.0 .0
     }
 
     /// Set by the environment variable `GRAPH_GRAPHQL_ERROR_RESULT_SIZE`. The
-    /// default value is 18446744073709551615.
+    /// default value is [`usize::MAX`].
     pub fn graphql_error_result_size(&self) -> usize {
-        self.inner.graphql_error_result_size.0
+        self.inner.graphql_error_result_size.0 .0
     }
 
     /// In how many shards (mutexes) the query block cache is split.
@@ -749,7 +752,7 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_RUNTIME_MAX_STACK_SIZE`
     /// (expressed in bytes). The default value is 512KiB.
     pub fn runtime_max_stack_size(&self) -> usize {
-        self.inner.runtime_max_stack_size.0
+        self.inner.runtime_max_stack_size.0 .0
     }
 
     /// Set by the environment variable `GRAPH_EXPLORER_TTL`
@@ -805,13 +808,6 @@ impl EnvVars {
     }
 }
 
-impl Default for EnvVars {
-    fn default() -> Self {
-        let inner = Inner::init_from_hashmap(&HashMap::new()).unwrap();
-        Self::from_inner(inner)
-    }
-}
-
 #[derive(Clone, Debug, Envconfig)]
 struct Inner {
     #[envconfig(from = "GRAPH_ENTITY_CACHE_SIZE", default = "10000")]
@@ -845,8 +841,9 @@ struct Inner {
     elastic_search_max_retries: usize,
     #[envconfig(from = "GRAPH_LOCK_CONTENTION_LOG_THRESHOLD_MS", default = "100")]
     lock_contention_log_threshold_in_ms: u64,
-    #[envconfig(from = "GRAPH_MAX_GAS_PER_HANDLER", default = "10_000_000_000_000")]
-    max_gas_per_handler: WithoutUnderscores<u64>,
+    #[envconfig(from = "GRAPH_MAX_GAS_PER_HANDLER", default = "")]
+    max_gas_per_handler:
+        WithDefaultUsize<NoUnderscores<u64>, { CONST_MAX_GAS_PER_HANDLER as usize }>,
     #[envconfig(from = "GRAPH_LOG_QUERY_TIMING", default = "")]
     log_query_timing: String,
     #[envconfig(from = "GRAPH_LOG_TIME_FORMAT", default = "%b %d %H:%M:%S%.3f")]
@@ -903,7 +900,7 @@ struct Inner {
     #[envconfig(from = "GRAPH_QUERY_CACHE_BLOCKS", default = "2")]
     query_cache_blocks: usize,
     #[envconfig(from = "GRAPH_QUERY_CACHE_MAX_MEM", default = "1000")]
-    query_cache_max_mem_in_mb: WithoutUnderscores<usize>,
+    query_cache_max_mem_in_mb: NoUnderscores<usize>,
     #[envconfig(from = "GRAPH_QUERY_CACHE_STALE_PERIOD", default = "100")]
     query_cache_stale_period: u64,
     #[envconfig(from = "GRAPH_QUERY_BLOCK_CACHE_SHARDS", default = "128")]
@@ -920,9 +917,8 @@ struct Inner {
     allow_non_deterministic_ipfs: EnvVarBoolean,
     #[envconfig(from = "GRAPH_LOG_TRIGGER_DATA", default = "false")]
     log_trigger_data: EnvVarBoolean,
-    // 512KiB
-    #[envconfig(from = "GRAPH_RUNTIME_MAX_STACK_SIZE", default = "524288")]
-    runtime_max_stack_size: WithoutUnderscores<usize>,
+    #[envconfig(from = "GRAPH_RUNTIME_MAX_STACK_SIZE", default = "")]
+    runtime_max_stack_size: WithDefaultUsize<NoUnderscores<usize>, { 512 * 1024 }>,
     #[envconfig(from = "GRAPH_EXPLORER_TTL", default = "10")]
     explorer_ttl_in_secs: u64,
     #[envconfig(from = "GRAPH_EXPLORER_LOCK_THRESHOLD", default = "100")]
@@ -934,16 +930,14 @@ struct Inner {
     #[envconfig(from = "EXTERNAL_WS_BASE_URL")]
     external_ws_base_url: Option<String>,
 
-    // 1MiB
-    #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "1048576")]
-    max_ipfs_cache_file_size: usize,
+    #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "")]
+    max_ipfs_cache_file_size: WithDefaultUsize<usize, { 1024 * 1024 }>,
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_SIZE", default = "50")]
     max_ipfs_cache_size: u64,
     #[envconfig(from = "GRAPH_IPFS_TIMEOUT", default = "30")]
     ipfs_timeout_in_secs: u64,
-    // 256MiB
-    #[envconfig(from = "GRAPH_MAX_IPFS_MAP_FILE_SIZE", default = "268435456")]
-    max_ipfs_map_file_size: usize,
+    #[envconfig(from = "GRAPH_MAX_IPFS_MAP_FILE_SIZE", default = "")]
+    max_ipfs_map_file_size: WithDefaultUsize<usize, { 256 * 1024 * 1024 }>,
     #[envconfig(from = "GRAPH_MAX_IPFS_FILE_BYTES")]
     max_ipfs_file_bytes: Option<usize>,
 
@@ -985,29 +979,19 @@ struct Inner {
     #[envconfig(from = "GRAPH_GRAPHQL_QUERY_TIMEOUT")]
     graphql_query_timeout_in_secs: Option<u64>,
     #[envconfig(from = "GRAPH_GRAPHQL_MAX_COMPLEXITY")]
-    graphql_max_complexity: Option<WithoutUnderscores<u64>>,
-    // u8::MAX
-    #[envconfig(from = "GRAPH_GRAPHQL_MAX_DEPTH", default = "255")]
-    graphql_max_depth: u8,
+    graphql_max_complexity: Option<NoUnderscores<u64>>,
+    #[envconfig(from = "GRAPH_GRAPHQL_MAX_DEPTH", default = "")]
+    graphql_max_depth: WithDefaultUsize<u8, { u8::MAX as usize }>,
     #[envconfig(from = "GRAPH_GRAPHQL_MAX_FIRST", default = "1000")]
     graphql_max_first: u32,
-    // u32::MAX
-    #[envconfig(from = "GRAPH_GRAPHQL_MAX_SKIP", default = "4294967295")]
-    graphql_max_skip: u32,
+    #[envconfig(from = "GRAPH_GRAPHQL_MAX_SKIP", default = "")]
+    graphql_max_skip: WithDefaultUsize<u32, { u32::MAX as usize }>,
     #[envconfig(from = "GRAPHQL_ALLOW_DEPLOYMENT_CHANGE", default = "false")]
     graphql_allow_deployment_change: EnvVarBoolean,
-    // usize::MAX
-    #[envconfig(
-        from = "GRAPH_GRAPHQL_WARN_RESULT_SIZE",
-        default = "18446744073709551615"
-    )]
-    graphql_warn_result_size: WithoutUnderscores<usize>,
-    // usize::MAX
-    #[envconfig(
-        from = "GRAPH_GRAPHQL_ERROR_RESULT_SIZE",
-        default = "18446744073709551615"
-    )]
-    graphql_error_result_size: WithoutUnderscores<usize>,
+    #[envconfig(from = "GRAPH_GRAPHQL_WARN_RESULT_SIZE", default = "")]
+    graphql_warn_result_size: WithDefaultUsize<NoUnderscores<usize>, { usize::MAX }>,
+    #[envconfig(from = "GRAPH_GRAPHQL_ERROR_RESULT_SIZE", default = "")]
+    graphql_error_result_size: WithDefaultUsize<NoUnderscores<usize>, { usize::MAX }>,
     #[envconfig(from = "GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION")]
     graphql_max_operations_per_connection: Option<usize>,
 
@@ -1046,9 +1030,9 @@ impl FromStr for EnvVarBoolean {
 
 /// Allows us to parse stuff ignoring underscores, notably big numbers.
 #[derive(Copy, Clone, Debug)]
-struct WithoutUnderscores<T>(pub T);
+struct NoUnderscores<T>(T);
 
-impl<T> FromStr for WithoutUnderscores<T>
+impl<T> FromStr for NoUnderscores<T>
 where
     T: FromStr,
     T::Err: ToString,
@@ -1063,29 +1047,27 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Provide a numeric ([`usize`]) default value if the environment flag is
+/// empty.
+#[derive(Copy, Clone, Debug)]
+struct WithDefaultUsize<T, const N: usize>(T);
 
-    #[test]
-    fn env_vars_default() {
-        // Let's see if `.default()` panics.
-        EnvVars::default();
-    }
+impl<T, const N: usize> FromStr for WithDefaultUsize<T, N>
+where
+    T: FromStr,
+    T::Err: ToString,
+{
+    type Err = String;
 
-    #[test]
-    fn default_max_gas_per_handler() {
-        let env_vars = EnvVars::default();
-
-        assert_eq!(
-            env_vars.max_gas_per_handler(),
-            crate::runtime::gas::CONST_MAX_GAS_PER_HANDLER
-        );
-    }
-
-    #[test]
-    fn default_graphql_max_skip() {
-        let env_vars = EnvVars::default();
-        assert_eq!(env_vars.graphql_max_skip(), u32::MAX);
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let x = if s.is_empty() {
+            T::from_str(N.to_string().as_str())
+        } else {
+            T::from_str(s)
+        };
+        match x {
+            Ok(x) => Ok(Self(x)),
+            Err(e) => Err(e.to_string()),
+        }
     }
 }
