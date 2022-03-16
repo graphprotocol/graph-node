@@ -5,6 +5,7 @@ use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
 use graph::components::transaction_receipt::LightTransactionReceipt;
 use graph::data::subgraph::UnifiedMappingApiVersion;
+use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::prelude::ethabi::ParamType;
 use graph::prelude::ethabi::Token;
 use graph::prelude::tokio::try_join;
@@ -1298,6 +1299,7 @@ pub(crate) async fn blocks_with_triggers(
             from,
             to,
             filter.log.clone(),
+            &unified_api_version,
         )
         .boxed();
         trigger_futs.push(logs_future)
@@ -1834,17 +1836,18 @@ pub(super) async fn get_logs_and_transactions(
     from: BlockNumber,
     to: BlockNumber,
     log_filter: EthereumLogFilter,
+    unified_api_version: &UnifiedMappingApiVersion,
 ) -> Result<Vec<EthereumTrigger>, anyhow::Error> {
     // obtain logs externally
     let logs = adapter
-        .logs_in_block_range(logger, subgraph_metrics, from, to, log_filter)
+        .logs_in_block_range(logger, subgraph_metrics, from, to, log_filter.clone())
         .await?;
 
-    todo!("transaction receipts should be conditionally collected considering the API Version.");
-
     // not all logs have associated transaction hashes, nor do all triggers require them.
+    // we also restrict receipts retrieval for some api versions.
     let transaction_hashes: Vec<_> = logs
         .iter()
+        .filter(|_| unified_api_version.equal_or_greater_than(&API_VERSION_0_0_7))
         .filter(|log| log_filter.requires_transaction_receipt(log))
         .filter_map(|log| log.transaction_hash)
         .collect();
