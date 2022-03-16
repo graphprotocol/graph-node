@@ -5,6 +5,7 @@ use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
 use graph::components::transaction_receipt::LightTransactionReceipt;
 use graph::data::subgraph::UnifiedMappingApiVersion;
+use graph::data::subgraph::API_VERSION_0_0_5;
 use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::prelude::ethabi::ParamType;
 use graph::prelude::ethabi::Token;
@@ -1398,9 +1399,9 @@ pub(crate) async fn blocks_with_triggers(
         .await?;
 
     // Filter out call triggers that come from unsuccessful transactions
-    let mut blocks = if unified_api_version
-        .equal_or_greater_than(&graph::data::subgraph::API_VERSION_0_0_5)
-    {
+    let mut blocks = if unified_api_version.equal_or_greater_than(&API_VERSION_0_0_5) {
+        let section =
+            stopwatch_metrics.start_section("filter_call_triggers_from_unsuccessful_transactions");
         let futures = blocks.into_iter().map(|block| {
             filter_call_triggers_from_unsuccessful_transactions(block, &eth, &chain_store, &logger)
         });
@@ -1857,16 +1858,16 @@ pub(super) async fn get_logs_and_transactions(
         get_transaction_receipts_for_transaction_hashes(&adapter, &transaction_hashes).await?;
 
     // associate each log with its receipt, when possible
-    let mut log_and_receipt_pairs = Vec::new();
+    let mut log_triggers = Vec::new();
     for log in logs.into_iter() {
         let optional_receipt = log
             .transaction_hash
             .and_then(|txn| transaction_receipts_by_hash.get(&txn).cloned());
         let value = EthereumTrigger::Log(Arc::new(log), optional_receipt);
-        log_and_receipt_pairs.push(value);
+        log_triggers.push(value);
     }
 
-    Ok(log_and_receipt_pairs)
+    Ok(log_triggers)
 }
 
 pub(super) async fn get_transaction_receipts_for_transaction_hashes(
