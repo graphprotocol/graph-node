@@ -6,7 +6,7 @@ use crate::prelude::QueryExecutionError;
 
 #[derive(Error, Debug)]
 pub enum StoreError {
-    #[error("store error: {0}")]
+    #[error("store error: {0:#}")]
     Unknown(Error),
     #[error(
         "tried to set entity of type `{0}` with ID \"{1}\" but an entity of type `{2}`, \

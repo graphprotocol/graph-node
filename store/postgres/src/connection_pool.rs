@@ -983,7 +983,7 @@ impl PoolInner {
     /// If any errors happen during the migration, the process panics
     pub fn setup(&self, servers: Arc<Vec<ForeignServer>>) -> Result<(), StoreError> {
         fn die(logger: &Logger, msg: &'static str, err: &dyn std::fmt::Display) -> ! {
-            crit!(logger, "{}", msg; "error" => err.to_string());
+            crit!(logger, "{}", msg; "error" => format!("{:#}", err));
             panic!("{}: {}", msg, err);
         }
 
