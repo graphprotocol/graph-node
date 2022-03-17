@@ -72,6 +72,7 @@ pub fn env_var<E: std::error::Error + Send + Sync, T: FromStr<Err = E> + Eq>(
 
 struct EnvVarsWrapped {
     inner: Inner,
+    graphql: InnerGraphQl,
     mapping_handlers: InnerMappingHandlers,
     ethereum: InnerEthereum,
     store: InnerStore,
@@ -84,6 +85,7 @@ struct EnvVarsWrapped {
 impl EnvVarsWrapped {
     fn from_env() -> Result<Self, envconfig::Error> {
         let inner = Inner::init_from_env()?;
+        let graphql = InnerGraphQl::init_from_env()?;
         let mapping_handlers = InnerMappingHandlers::init_from_env()?;
         let ethereum = InnerEthereum::init_from_env()?;
         let store = InnerStore::init_from_env()?;
@@ -118,6 +120,7 @@ impl EnvVarsWrapped {
 
         Ok(Self {
             inner,
+            graphql,
             mapping_handlers,
             ethereum,
             store,
@@ -337,54 +340,6 @@ impl EnvVars {
         Duration::from_secs(self.wrapped().inner.subgraph_error_retry_ceil_in_secs)
     }
 
-    /// Set by the environment variable `GRAPH_GRAPHQL_QUERY_TIMEOUT` (expressed in
-    /// seconds). No default value is provided.
-    pub fn graphql_query_timeout(&self) -> Option<Duration> {
-        self.wrapped()
-            .inner
-            .graphql_query_timeout_in_secs
-            .map(Duration::from_secs)
-    }
-
-    /// Set by the environment variable `GRAPH_GRAPHQL_MAX_COMPLEXITY`. No
-    /// default value is provided.
-    pub fn graphql_max_complexity(&self) -> Option<u64> {
-        self.wrapped().inner.graphql_max_complexity.map(|x| x.0)
-    }
-
-    /// Set by the environment variable `GRAPH_GRAPHQL_MAX_DEPTH`. The default
-    /// value is 255.
-    pub fn graphql_max_depth(&self) -> u8 {
-        self.wrapped().inner.graphql_max_depth.0
-    }
-
-    /// Set by the environment variable `GRAPH_GRAPHQL_MAX_FIRST`. The default
-    /// value is 1000.
-    pub fn graphql_max_first(&self) -> u32 {
-        self.wrapped().inner.graphql_max_first
-    }
-
-    /// Set by the environment variable `4294967295`. The default
-    /// value is 4294967295 ([`u32::MAX`]).
-    pub fn graphql_max_skip(&self) -> u32 {
-        self.wrapped().inner.graphql_max_skip.0
-    }
-
-    /// Allow skipping the check whether a deployment has changed while
-    /// we were running a query. Once we are sure that the check mechanism
-    /// is reliable, this variable should be removed.
-    ///
-    /// Set by the flag `GRAPHQL_ALLOW_DEPLOYMENT_CHANGE`. Off by default.
-    pub fn graphql_allow_deployment_change(&self) -> bool {
-        self.wrapped().inner.graphql_allow_deployment_change.0
-    }
-
-    /// Set by the flag `GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION`. No
-    /// default is provided.
-    pub fn graphql_max_operations_per_connection(&self) -> Option<usize> {
-        self.wrapped().inner.graphql_max_operations_per_connection
-    }
-
     /// Set by the environment variable `GRAPH_CACHED_SUBGRAPH_IDS` (comma
     /// separated). When the value of the variable is `*`, queries are cached
     /// for all subgraphs and this method returns [`None`], which is the default
@@ -397,18 +352,6 @@ impl EnvVars {
                 x.cached_subgraph_ids.as_deref().unwrap_or(&[])
             }))
         }
-    }
-
-    /// Set by the environment variable `GRAPH_GRAPHQL_WARN_RESULT_SIZE`. The
-    /// default value is [`usize::MAX`].
-    pub fn graphql_warn_result_size(&self) -> usize {
-        self.wrapped().inner.graphql_warn_result_size.0 .0
-    }
-
-    /// Set by the environment variable `GRAPH_GRAPHQL_ERROR_RESULT_SIZE`. The
-    /// default value is [`usize::MAX`].
-    pub fn graphql_error_result_size(&self) -> usize {
-        self.wrapped().inner.graphql_error_result_size.0 .0
     }
 
     /// In how many shards (mutexes) the query block cache is split.
@@ -430,11 +373,6 @@ impl EnvVars {
             .inner
             .query_lfu_cache_shards
             .unwrap_or(default)
-    }
-
-    /// Set by the flag `ENABLE_GRAPHQL_VALIDATIONS`. Off by default.
-    pub fn enable_graphql_validations(&self) -> bool {
-        self.wrapped().inner.enable_graphql_validations.0
     }
 
     /// Set by the environment variable `GRAPH_EXPLORER_TTL`
@@ -543,8 +481,6 @@ struct Inner {
     query_block_cache_shards: u8,
     #[envconfig(from = "GRAPH_QUERY_LFU_CACHE_SHARDS")]
     query_lfu_cache_shards: Option<u8>,
-    #[envconfig(from = "ENABLE_GRAPHQL_VALIDATIONS", default = "false")]
-    enable_graphql_validations: EnvVarBoolean,
     #[envconfig(from = "GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES", default = "false")]
     enable_select_by_specific_attributes: EnvVarBoolean,
     #[envconfig(from = "GRAPH_LOG_TRIGGER_DATA", default = "false")]
@@ -559,6 +495,103 @@ struct Inner {
     external_http_base_url: Option<String>,
     #[envconfig(from = "EXTERNAL_WS_BASE_URL")]
     external_ws_base_url: Option<String>,
+}
+
+/// GraphQL.
+impl EnvVars {
+    /// Set by the flag `ENABLE_GRAPHQL_VALIDATIONS`. Off by default.
+    pub fn enable_graphql_validations(&self) -> bool {
+        self.wrapped().graphql.enable_graphql_validations.0
+    }
+
+    pub fn subscription_throttle_interval(&self) -> Duration {
+        Duration::from_millis(self.wrapped().graphql.subscription_throttle_interval_in_ms)
+    }
+
+    /// This is the timeout duration for SQL queries.
+    ///
+    /// If it is not set, no statement timeout will be enforced. The statement
+    /// timeout is local, i.e., can only be used within a transaction and
+    /// will be cleared at the end of the transaction.
+    ///
+    /// Set by the environment variable `GRAPH_SQL_STATEMENT_TIMEOUT` (expressed
+    /// in seconds). No default value is provided.
+    pub fn sql_statement_timeout(&self) -> Option<Duration> {
+        self.wrapped()
+            .graphql
+            .sql_statement_timeout_in_secs
+            .map(Duration::from_secs)
+    }
+
+    /// Set by the environment variable `GRAPH_GRAPHQL_QUERY_TIMEOUT` (expressed in
+    /// seconds). No default value is provided.
+    pub fn graphql_query_timeout(&self) -> Option<Duration> {
+        self.wrapped()
+            .graphql
+            .graphql_query_timeout_in_secs
+            .map(Duration::from_secs)
+    }
+
+    /// Set by the environment variable `GRAPH_GRAPHQL_MAX_COMPLEXITY`. No
+    /// default value is provided.
+    pub fn graphql_max_complexity(&self) -> Option<u64> {
+        self.wrapped().graphql.graphql_max_complexity.map(|x| x.0)
+    }
+
+    /// Set by the environment variable `GRAPH_GRAPHQL_MAX_DEPTH`. The default
+    /// value is 255.
+    pub fn graphql_max_depth(&self) -> u8 {
+        self.wrapped().graphql.graphql_max_depth.0
+    }
+
+    /// Set by the environment variable `GRAPH_GRAPHQL_MAX_FIRST`. The default
+    /// value is 1000.
+    pub fn graphql_max_first(&self) -> u32 {
+        self.wrapped().graphql.graphql_max_first
+    }
+
+    /// Set by the environment variable `4294967295`. The default
+    /// value is 4294967295 ([`u32::MAX`]).
+    pub fn graphql_max_skip(&self) -> u32 {
+        self.wrapped().graphql.graphql_max_skip.0
+    }
+
+    /// Allow skipping the check whether a deployment has changed while
+    /// we were running a query. Once we are sure that the check mechanism
+    /// is reliable, this variable should be removed.
+    ///
+    /// Set by the flag `GRAPHQL_ALLOW_DEPLOYMENT_CHANGE`. Off by default.
+    pub fn graphql_allow_deployment_change(&self) -> bool {
+        self.wrapped().graphql.graphql_allow_deployment_change.0
+    }
+
+    /// Set by the flag `GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION`. No
+    /// default is provided.
+    pub fn graphql_max_operations_per_connection(&self) -> Option<usize> {
+        self.wrapped().graphql.graphql_max_operations_per_connection
+    }
+
+    /// Set by the environment variable `GRAPH_GRAPHQL_WARN_RESULT_SIZE`. The
+    /// default value is [`usize::MAX`].
+    pub fn graphql_warn_result_size(&self) -> usize {
+        self.wrapped().graphql.graphql_warn_result_size.0 .0
+    }
+
+    /// Set by the environment variable `GRAPH_GRAPHQL_ERROR_RESULT_SIZE`. The
+    /// default value is [`usize::MAX`].
+    pub fn graphql_error_result_size(&self) -> usize {
+        self.wrapped().graphql.graphql_error_result_size.0 .0
+    }
+}
+
+#[derive(Clone, Debug, Envconfig)]
+struct InnerGraphQl {
+    #[envconfig(from = "ENABLE_GRAPHQL_VALIDATIONS", default = "false")]
+    enable_graphql_validations: EnvVarBoolean,
+    #[envconfig(from = "SUBSCRIPTION_THROTTLE_INTERVAL", default = "1000")]
+    subscription_throttle_interval_in_ms: u64,
+    #[envconfig(from = "GRAPH_SQL_STATEMENT_TIMEOUT")]
+    sql_statement_timeout_in_secs: Option<u64>,
 
     #[envconfig(from = "GRAPH_GRAPHQL_QUERY_TIMEOUT")]
     graphql_query_timeout_in_secs: Option<u64>,
@@ -727,10 +760,6 @@ struct InnerMappingHandlers {
 
 /// Store.
 impl EnvVars {
-    pub fn subscription_throttle_interval(&self) -> Duration {
-        Duration::from_millis(self.wrapped().store.subscription_throttle_interval_in_ms)
-    }
-
     /// Set by the environment variable `GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT`
     /// (expressed in seconds). The default value is 30 seconds.
     pub fn chain_head_watcher_timeout(&self) -> Duration {
@@ -822,21 +851,6 @@ impl EnvVars {
         RwLockReadGuard::map(self.wrapped(), |x| &x.account_tables)
     }
 
-    /// This is the timeout duration for SQL queries.
-    ///
-    /// If it is not set, no statement timeout will be enforced. The statement
-    /// timeout is local, i.e., can only be used within a transaction and
-    /// will be cleared at the end of the transaction.
-    ///
-    /// Set by the environment variable `GRAPH_SQL_STATEMENT_TIMEOUT` (expressed
-    /// in seconds). No default value is provided.
-    pub fn sql_statement_timeout(&self) -> Option<Duration> {
-        self.wrapped()
-            .store
-            .sql_statement_timeout_in_secs
-            .map(Duration::from_secs)
-    }
-
     /// Whether to disable the notifications that feed GraphQL
     /// subscriptions. When the flag is set, no updates
     /// about entity changes will be sent to query nodes.
@@ -884,8 +898,6 @@ impl EnvVars {
 
 #[derive(Clone, Debug, Envconfig)]
 struct InnerStore {
-    #[envconfig(from = "SUBSCRIPTION_THROTTLE_INTERVAL", default = "1000")]
-    subscription_throttle_interval_in_ms: u64,
     #[envconfig(from = "GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT", default = "30")]
     chain_head_watcher_timeout_in_secs: u64,
     #[envconfig(from = "GRAPH_QUERY_STATS_REFRESH_INTERVAL", default = "300")]
@@ -906,8 +918,6 @@ struct InnerStore {
     reversible_order_by_off: EnvVarBoolean,
     #[envconfig(from = "GRAPH_ACCOUNT_TABLES", default = "")]
     account_tables: String,
-    #[envconfig(from = "GRAPH_SQL_STATEMENT_TIMEOUT")]
-    sql_statement_timeout_in_secs: Option<u64>,
     #[envconfig(from = "GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS", default = "false")]
     disable_subscription_notifications: EnvVarBoolean,
     #[envconfig(from = "GRAPH_STORE_CONNECTION_TRY_ALWAYS", default = "false")]
