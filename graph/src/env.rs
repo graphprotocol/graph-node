@@ -72,6 +72,7 @@ pub fn env_var<E: std::error::Error + Send + Sync, T: FromStr<Err = E> + Eq>(
 
 struct EnvVarsWrapped {
     inner: Inner,
+    mapping_handlers: InnerMappingHandlers,
     ethereum: InnerEthereum,
     store: InnerStore,
     log_query_timing: Vec<String>,
@@ -83,6 +84,7 @@ struct EnvVarsWrapped {
 impl EnvVarsWrapped {
     fn from_env() -> Result<Self, envconfig::Error> {
         let inner = Inner::init_from_env()?;
+        let mapping_handlers = InnerMappingHandlers::init_from_env()?;
         let ethereum = InnerEthereum::init_from_env()?;
         let store = InnerStore::init_from_env()?;
 
@@ -116,6 +118,7 @@ impl EnvVarsWrapped {
 
         Ok(Self {
             inner,
+            mapping_handlers,
             ethereum,
             store,
             log_query_timing,
@@ -149,14 +152,6 @@ impl EnvVars {
 
     fn wrapped(&self) -> RwLockReadGuard<EnvVarsWrapped> {
         self.wrapped.read()
-    }
-
-    /// Size limit of the entity LFU cache.
-    ///
-    /// Set by the environment variable `GRAPH_ENTITY_CACHE_SIZE` (expressed in
-    /// kilobytes). The default value is 10 megabytes.
-    pub fn entity_cache_size(&self) -> usize {
-        self.wrapped().inner.entity_cache_size_in_kb * 1000
     }
 
     /// Enables query throttling when getting database connections goes over this value.
@@ -212,12 +207,6 @@ impl EnvVars {
     /// value is `0.0.4`.
     pub fn max_spec_version(&self) -> Version {
         self.wrapped().inner.max_spec_version.clone()
-    }
-
-    /// Set by the environment variable `GRAPH_MAX_API_VERSION`. The default
-    /// value is `0.0.6`.
-    pub fn max_api_version(&self) -> Version {
-        self.wrapped().inner.max_api_version.clone()
     }
 
     /// Set by the flag `GRAPH_DISABLE_GRAFTS`.
@@ -348,45 +337,6 @@ impl EnvVars {
         Duration::from_secs(self.wrapped().inner.subgraph_error_retry_ceil_in_secs)
     }
 
-    /// Set by the environment variable `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`
-    /// (expressed in bytes). The default value is 1MiB.
-    pub fn max_ipfs_cache_file_size(&self) -> usize {
-        self.wrapped().inner.max_ipfs_cache_file_size.0
-    }
-
-    /// Set by the environment variable `GRAPH_MAX_IPFS_CACHE_SIZE`. The default
-    /// value is 50 items.
-    pub fn max_ipfs_cache_size(&self) -> u64 {
-        self.wrapped().inner.max_ipfs_cache_size
-    }
-
-    /// The timeout for all IPFS requests.
-    ///
-    /// Set by the environment variable `GRAPH_IPFS_TIMEOUT` (expressed in
-    /// seconds). The default value is 30s.
-    pub fn ipfs_timeout(&self) -> Duration {
-        Duration::from_secs(self.wrapped().inner.ipfs_timeout_in_secs)
-    }
-
-    /// Sets the `ipfs.map` file size limit.
-    ///
-    /// Set by the environment variable `GRAPH_MAX_IPFS_MAP_FILE_SIZE_LIMIT`
-    /// (expressed in bytes). The default value is 256MiB.
-    pub fn max_ipfs_map_file_size(&self) -> usize {
-        self.wrapped().inner.max_ipfs_map_file_size.0
-    }
-
-    /// Sets the `ipfs.cat` file size limit.
-    ///
-    /// Set by the environment variable `GRAPH_MAX_IPFS_FILE_BYTES` (expressed in
-    /// bytes). No default value is provided.
-    ///
-    /// FIXME: Having an env variable here is a problem for consensus.
-    /// Index Nodes should not disagree on whether the file should be read.
-    pub fn max_ipfs_file_bytes(&self) -> Option<usize> {
-        self.wrapped().inner.max_ipfs_file_bytes
-    }
-
     /// Set by the environment variable `GRAPH_GRAPHQL_QUERY_TIMEOUT` (expressed in
     /// seconds). No default value is provided.
     pub fn graphql_query_timeout(&self) -> Option<Duration> {
@@ -449,34 +399,6 @@ impl EnvVars {
         }
     }
 
-    /// How many blocks per network should be kept in the query cache. When the
-    /// limit is reached, older blocks are evicted. This should be kept small
-    /// since a lookup to the cache is O(n) on this value, and the cache memory
-    /// usage also increases with larger number. Set to 0 to disable
-    /// the cache.
-    ///
-    /// Set by the environment variable `GRAPH_QUERY_CACHE_BLOCKS`. The default
-    /// value is 2.
-    pub fn query_cache_blocks(&self) -> usize {
-        self.wrapped().inner.query_cache_blocks
-    }
-
-    /// Maximum total memory to be used by the cache. Each block has a max size of
-    /// `QUERY_CACHE_MAX_MEM` / (`QUERY_CACHE_BLOCKS` *
-    /// `GRAPH_QUERY_BLOCK_CACHE_SHARDS`).
-    ///
-    /// Set by the environment variable `GRAPH_QUERY_CACHE_MAX_MEM` (expressed
-    /// in MB). The default value is 1GB.
-    pub fn query_cache_max_mem(&self) -> usize {
-        self.wrapped().inner.query_cache_max_mem_in_mb.0 * 1_000_000
-    }
-
-    /// Set by the environment variable `GRAPH_QUERY_CACHE_STALE_PERIOD`. The
-    /// default value is 100.
-    pub fn query_cache_stale_period(&self) -> u64 {
-        self.wrapped().inner.query_cache_stale_period
-    }
-
     /// Set by the environment variable `GRAPH_GRAPHQL_WARN_RESULT_SIZE`. The
     /// default value is [`usize::MAX`].
     pub fn graphql_warn_result_size(&self) -> usize {
@@ -513,23 +435,6 @@ impl EnvVars {
     /// Set by the flag `ENABLE_GRAPHQL_VALIDATIONS`. Off by default.
     pub fn enable_graphql_validations(&self) -> bool {
         self.wrapped().inner.enable_graphql_validations.0
-    }
-
-    /// Set by the environment variable `GRAPH_MAPPING_HANDLER_TIMEOUT`
-    /// (expressed in seconds). No default is provided.
-    pub fn mapping_handler_timeout(&self) -> Option<Duration> {
-        self.wrapped()
-            .inner
-            .mapping_handler_timeout_in_secs
-            .map(Duration::from_secs)
-    }
-
-    /// Maximum stack size for the WASM runtime.
-    ///
-    /// Set by the environment variable `GRAPH_RUNTIME_MAX_STACK_SIZE`
-    /// (expressed in bytes). The default value is 512KiB.
-    pub fn runtime_max_stack_size(&self) -> usize {
-        self.wrapped().inner.runtime_max_stack_size.0 .0
     }
 
     /// Set by the environment variable `GRAPH_EXPLORER_TTL`
@@ -570,12 +475,6 @@ impl EnvVars {
         self.wrapped().inner.enable_select_by_specific_attributes.0
     }
 
-    /// Set by the flag `GRAPH_ALLOW_NON_DETERMINISTIC_IPFS`. Off by
-    /// default.
-    pub fn allow_non_deterministic_ipfs(&self) -> bool {
-        self.wrapped().inner.allow_non_deterministic_ipfs.0
-    }
-
     /// Verbose logging of mapping inputs.
     ///
     /// Set by the flag `GRAPH_LOG_TRIGGER_DATA`. Off by
@@ -587,8 +486,6 @@ impl EnvVars {
 
 #[derive(Clone, Debug, Envconfig)]
 struct Inner {
-    #[envconfig(from = "GRAPH_ENTITY_CACHE_SIZE", default = "10000")]
-    entity_cache_size_in_kb: usize,
     #[envconfig(from = "GRAPH_LOAD_THRESHOLD", default = "0")]
     load_threshold_in_ms: u64,
     #[envconfig(from = "GRAPH_LOAD_JAIL_THRESHOLD")]
@@ -602,8 +499,6 @@ struct Inner {
     allow_non_deterministic_fulltext_search: EnvVarBoolean,
     #[envconfig(from = "GRAPH_MAX_SPEC_VERSION", default = "0.0.4")]
     max_spec_version: Version,
-    #[envconfig(from = "GRAPH_MAX_API_VERSION", default = "0.0.6")]
-    max_api_version: Version,
     #[envconfig(from = "GRAPH_DISABLE_GRAFTS", default = "false")]
     disable_grafts: EnvVarBoolean,
     #[envconfig(from = "GRAPH_LOAD_WINDOW_SIZE", default = "300")]
@@ -644,12 +539,6 @@ struct Inner {
     subgraph_error_retry_ceil_in_secs: u64,
     #[envconfig(from = "GRAPH_CACHED_SUBGRAPH_IDS", default = "*")]
     cached_subgraph_ids: String,
-    #[envconfig(from = "GRAPH_QUERY_CACHE_BLOCKS", default = "2")]
-    query_cache_blocks: usize,
-    #[envconfig(from = "GRAPH_QUERY_CACHE_MAX_MEM", default = "1000")]
-    query_cache_max_mem_in_mb: NoUnderscores<usize>,
-    #[envconfig(from = "GRAPH_QUERY_CACHE_STALE_PERIOD", default = "100")]
-    query_cache_stale_period: u64,
     #[envconfig(from = "GRAPH_QUERY_BLOCK_CACHE_SHARDS", default = "128")]
     query_block_cache_shards: u8,
     #[envconfig(from = "GRAPH_QUERY_LFU_CACHE_SHARDS")]
@@ -658,14 +547,8 @@ struct Inner {
     enable_graphql_validations: EnvVarBoolean,
     #[envconfig(from = "GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES", default = "false")]
     enable_select_by_specific_attributes: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_MAPPING_HANDLER_TIMEOUT")]
-    mapping_handler_timeout_in_secs: Option<u64>,
-    #[envconfig(from = "GRAPH_ALLOW_NON_DETERMINISTIC_IPFS", default = "false")]
-    allow_non_deterministic_ipfs: EnvVarBoolean,
     #[envconfig(from = "GRAPH_LOG_TRIGGER_DATA", default = "false")]
     log_trigger_data: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_RUNTIME_MAX_STACK_SIZE", default = "")]
-    runtime_max_stack_size: WithDefaultUsize<NoUnderscores<usize>, { 512 * 1024 }>,
     #[envconfig(from = "GRAPH_EXPLORER_TTL", default = "10")]
     explorer_ttl_in_secs: u64,
     #[envconfig(from = "GRAPH_EXPLORER_LOCK_THRESHOLD", default = "100")]
@@ -676,17 +559,6 @@ struct Inner {
     external_http_base_url: Option<String>,
     #[envconfig(from = "EXTERNAL_WS_BASE_URL")]
     external_ws_base_url: Option<String>,
-
-    #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "")]
-    max_ipfs_cache_file_size: WithDefaultUsize<usize, { 1024 * 1024 }>,
-    #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_SIZE", default = "50")]
-    max_ipfs_cache_size: u64,
-    #[envconfig(from = "GRAPH_IPFS_TIMEOUT", default = "30")]
-    ipfs_timeout_in_secs: u64,
-    #[envconfig(from = "GRAPH_MAX_IPFS_MAP_FILE_SIZE", default = "")]
-    max_ipfs_map_file_size: WithDefaultUsize<usize, { 256 * 1024 * 1024 }>,
-    #[envconfig(from = "GRAPH_MAX_IPFS_FILE_BYTES")]
-    max_ipfs_file_bytes: Option<usize>,
 
     #[envconfig(from = "GRAPH_GRAPHQL_QUERY_TIMEOUT")]
     graphql_query_timeout_in_secs: Option<u64>,
@@ -706,6 +578,151 @@ struct Inner {
     graphql_error_result_size: WithDefaultUsize<NoUnderscores<usize>, { usize::MAX }>,
     #[envconfig(from = "GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION")]
     graphql_max_operations_per_connection: Option<usize>,
+}
+
+/// Mapping handlers.
+impl EnvVars {
+    /// Size limit of the entity LFU cache.
+    ///
+    /// Set by the environment variable `GRAPH_ENTITY_CACHE_SIZE` (expressed in
+    /// kilobytes). The default value is 10 megabytes.
+    pub fn entity_cache_size(&self) -> usize {
+        self.wrapped().mapping_handlers.entity_cache_size_in_kb * 1000
+    }
+
+    /// Set by the environment variable `GRAPH_MAX_API_VERSION`. The default
+    /// value is `0.0.6`.
+    pub fn max_api_version(&self) -> Version {
+        self.wrapped().mapping_handlers.max_api_version.clone()
+    }
+
+    /// How many blocks per network should be kept in the query cache. When the
+    /// limit is reached, older blocks are evicted. This should be kept small
+    /// since a lookup to the cache is O(n) on this value, and the cache memory
+    /// usage also increases with larger number. Set to 0 to disable
+    /// the cache.
+    ///
+    /// Set by the environment variable `GRAPH_QUERY_CACHE_BLOCKS`. The default
+    /// value is 2.
+    pub fn query_cache_blocks(&self) -> usize {
+        self.wrapped().mapping_handlers.query_cache_blocks
+    }
+
+    /// Set by the environment variable `GRAPH_MAPPING_HANDLER_TIMEOUT`
+    /// (expressed in seconds). No default is provided.
+    pub fn mapping_handler_timeout(&self) -> Option<Duration> {
+        self.wrapped()
+            .mapping_handlers
+            .mapping_handler_timeout_in_secs
+            .map(Duration::from_secs)
+    }
+
+    /// Maximum stack size for the WASM runtime.
+    ///
+    /// Set by the environment variable `GRAPH_RUNTIME_MAX_STACK_SIZE`
+    /// (expressed in bytes). The default value is 512KiB.
+    pub fn runtime_max_stack_size(&self) -> usize {
+        self.wrapped().mapping_handlers.runtime_max_stack_size.0 .0
+    }
+
+    /// Maximum total memory to be used by the cache. Each block has a max size of
+    /// `QUERY_CACHE_MAX_MEM` / (`QUERY_CACHE_BLOCKS` *
+    /// `GRAPH_QUERY_BLOCK_CACHE_SHARDS`).
+    ///
+    /// Set by the environment variable `GRAPH_QUERY_CACHE_MAX_MEM` (expressed
+    /// in MB). The default value is 1GB.
+    pub fn query_cache_max_mem(&self) -> usize {
+        self.wrapped().mapping_handlers.query_cache_max_mem_in_mb.0 * 1_000_000
+    }
+
+    /// Set by the environment variable `GRAPH_QUERY_CACHE_STALE_PERIOD`. The
+    /// default value is 100.
+    pub fn query_cache_stale_period(&self) -> u64 {
+        self.wrapped().mapping_handlers.query_cache_stale_period
+    }
+
+    // IPFS
+    // ----
+
+    /// Set by the environment variable `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`
+    /// (expressed in bytes). The default value is 1MiB.
+    pub fn max_ipfs_cache_file_size(&self) -> usize {
+        self.wrapped().mapping_handlers.max_ipfs_cache_file_size.0
+    }
+
+    /// Set by the environment variable `GRAPH_MAX_IPFS_CACHE_SIZE`. The default
+    /// value is 50 items.
+    pub fn max_ipfs_cache_size(&self) -> u64 {
+        self.wrapped().mapping_handlers.max_ipfs_cache_size
+    }
+
+    /// The timeout for all IPFS requests.
+    ///
+    /// Set by the environment variable `GRAPH_IPFS_TIMEOUT` (expressed in
+    /// seconds). The default value is 30s.
+    pub fn ipfs_timeout(&self) -> Duration {
+        Duration::from_secs(self.wrapped().mapping_handlers.ipfs_timeout_in_secs)
+    }
+
+    /// Sets the `ipfs.map` file size limit.
+    ///
+    /// Set by the environment variable `GRAPH_MAX_IPFS_MAP_FILE_SIZE_LIMIT`
+    /// (expressed in bytes). The default value is 256MiB.
+    pub fn max_ipfs_map_file_size(&self) -> usize {
+        self.wrapped().mapping_handlers.max_ipfs_map_file_size.0
+    }
+
+    /// Sets the `ipfs.cat` file size limit.
+    ///
+    /// Set by the environment variable `GRAPH_MAX_IPFS_FILE_BYTES` (expressed in
+    /// bytes). No default value is provided.
+    ///
+    /// FIXME: Having an env variable here is a problem for consensus.
+    /// Index Nodes should not disagree on whether the file should be read.
+    pub fn max_ipfs_file_bytes(&self) -> Option<usize> {
+        self.wrapped().mapping_handlers.max_ipfs_file_bytes
+    }
+
+    /// Set by the flag `GRAPH_ALLOW_NON_DETERMINISTIC_IPFS`. Off by
+    /// default.
+    pub fn allow_non_deterministic_ipfs(&self) -> bool {
+        self.wrapped()
+            .mapping_handlers
+            .allow_non_deterministic_ipfs
+            .0
+    }
+}
+
+#[derive(Clone, Debug, Envconfig)]
+struct InnerMappingHandlers {
+    #[envconfig(from = "GRAPH_ENTITY_CACHE_SIZE", default = "10000")]
+    entity_cache_size_in_kb: usize,
+    #[envconfig(from = "GRAPH_MAX_API_VERSION", default = "0.0.6")]
+    max_api_version: Version,
+    #[envconfig(from = "GRAPH_MAPPING_HANDLER_TIMEOUT")]
+    mapping_handler_timeout_in_secs: Option<u64>,
+    #[envconfig(from = "GRAPH_RUNTIME_MAX_STACK_SIZE", default = "")]
+    runtime_max_stack_size: WithDefaultUsize<NoUnderscores<usize>, { 512 * 1024 }>,
+    #[envconfig(from = "GRAPH_QUERY_CACHE_BLOCKS", default = "2")]
+    query_cache_blocks: usize,
+    #[envconfig(from = "GRAPH_QUERY_CACHE_MAX_MEM", default = "1000")]
+    query_cache_max_mem_in_mb: NoUnderscores<usize>,
+    #[envconfig(from = "GRAPH_QUERY_CACHE_STALE_PERIOD", default = "100")]
+    query_cache_stale_period: u64,
+
+    // IPFS.
+    #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "")]
+    max_ipfs_cache_file_size: WithDefaultUsize<usize, { 1024 * 1024 }>,
+    #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_SIZE", default = "50")]
+    max_ipfs_cache_size: u64,
+    #[envconfig(from = "GRAPH_IPFS_TIMEOUT", default = "30")]
+    ipfs_timeout_in_secs: u64,
+    #[envconfig(from = "GRAPH_MAX_IPFS_MAP_FILE_SIZE", default = "")]
+    max_ipfs_map_file_size: WithDefaultUsize<usize, { 256 * 1024 * 1024 }>,
+    #[envconfig(from = "GRAPH_MAX_IPFS_FILE_BYTES")]
+    max_ipfs_file_bytes: Option<usize>,
+    #[envconfig(from = "GRAPH_ALLOW_NON_DETERMINISTIC_IPFS", default = "false")]
+    allow_non_deterministic_ipfs: EnvVarBoolean,
 }
 
 /// Store.
