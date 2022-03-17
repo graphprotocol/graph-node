@@ -70,25 +70,26 @@ pub fn env_var<E: std::error::Error + Send + Sync, T: FromStr<Err = E> + Eq>(
         .unwrap_or_else(|e| panic!("failed to parse environment variable {}: {}", name, e))
 }
 
-struct EnvVarsWrapped {
-    inner: Inner,
-    graphql: InnerGraphQl,
-    mapping_handlers: InnerMappingHandlers,
-    ethereum: InnerEthereum,
-    store: InnerStore,
+struct Inner {
+    misc: EnvVarsMisc,
+    graphql: EnvVarsGraphQl,
+    mapping_handlers: EnvVarsMappingHandlers,
+    ethereum: EnvVarsEthereum,
+    store: EnvVarsStore,
+
     log_query_timing: Vec<String>,
     account_tables: HashSet<String>,
     geth_eth_call_errors: Vec<String>,
     cached_subgraph_ids: Option<Vec<String>>,
 }
 
-impl EnvVarsWrapped {
+impl Inner {
     fn from_env() -> Result<Self, envconfig::Error> {
-        let inner = Inner::init_from_env()?;
-        let graphql = InnerGraphQl::init_from_env()?;
-        let mapping_handlers = InnerMappingHandlers::init_from_env()?;
-        let ethereum = InnerEthereum::init_from_env()?;
-        let store = InnerStore::init_from_env()?;
+        let inner = EnvVarsMisc::init_from_env()?;
+        let graphql = EnvVarsGraphQl::init_from_env()?;
+        let mapping_handlers = EnvVarsMappingHandlers::init_from_env()?;
+        let ethereum = EnvVarsEthereum::init_from_env()?;
+        let store = EnvVarsStore::init_from_env()?;
 
         let log_query_timing = inner
             .log_query_timing
@@ -119,7 +120,7 @@ impl EnvVarsWrapped {
         };
 
         Ok(Self {
-            inner,
+            misc: inner,
             graphql,
             mapping_handlers,
             ethereum,
@@ -133,13 +134,13 @@ impl EnvVarsWrapped {
 }
 
 pub struct EnvVars {
-    wrapped: RwLock<EnvVarsWrapped>,
+    inner: RwLock<Inner>,
 }
 
 impl EnvVars {
     pub fn from_env() -> Result<Self, envconfig::Error> {
         Ok(Self {
-            wrapped: RwLock::new(EnvVarsWrapped::from_env()?),
+            inner: RwLock::new(Inner::from_env()?),
         })
     }
 
@@ -149,21 +150,24 @@ impl EnvVars {
     /// Only available in debug builds.
     #[cfg(debug_assertions)]
     pub fn refresh(&self) -> Result<(), envconfig::Error> {
-        *self.wrapped.write() = EnvVarsWrapped::from_env()?;
+        *self.inner.write() = Inner::from_env()?;
         Ok(())
     }
 
-    fn wrapped(&self) -> RwLockReadGuard<EnvVarsWrapped> {
-        self.wrapped.read()
+    fn inner(&self) -> RwLockReadGuard<Inner> {
+        self.inner.read()
     }
+}
 
+/// Miscellaneous.
+impl EnvVars {
     /// Enables query throttling when getting database connections goes over this value.
     /// Load management can be disabled by setting this to 0.
     ///
     /// Set by the environment variable `GRAPH_LOAD_THRESHOLD` (expressed in
     /// milliseconds). The default value is 0.
     pub fn load_threshold(&self) -> Duration {
-        Duration::from_millis(self.wrapped().inner.load_threshold_in_ms)
+        Duration::from_millis(self.inner().misc.load_threshold_in_ms)
     }
 
     /// Equivalent to checking if [`EnvVar::load_threshold`] is set to
@@ -181,7 +185,7 @@ impl EnvVars {
     /// no queries will ever be jailed, even though they will still be subject
     /// to normal load management when the system is overloaded.
     pub fn load_jail_threshold(&self) -> Option<f64> {
-        self.wrapped().inner.load_jail_threshold
+        self.inner().misc.load_jail_threshold
     }
 
     /// When this is active, the system will trigger all the steps that the load
@@ -191,7 +195,7 @@ impl EnvVars {
     ///
     /// Set by the flag `GRAPH_LOAD_SIMULATE`.
     pub fn load_simulate(&self) -> bool {
-        self.wrapped().inner.load_simulate.0
+        self.inner().misc.load_simulate.0
     }
 
     /// Set by the flag `GRAPH_ALLOW_NON_DETERMINISTIC_FULLTEXT_SEARCH`, but
@@ -199,47 +203,43 @@ impl EnvVars {
     /// assertions](https://doc.rust-lang.org/reference/conditional-compilation.html#debug_assertions)
     /// are enabled.
     pub fn allow_non_deterministic_fulltext_search(&self) -> bool {
-        self.wrapped()
-            .inner
-            .allow_non_deterministic_fulltext_search
-            .0
-            || cfg!(debug_assertions)
+        self.inner().misc.allow_non_deterministic_fulltext_search.0 || cfg!(debug_assertions)
     }
 
     /// Set by the environment variable `GRAPH_MAX_SPEC_VERSION`. The default
     /// value is `0.0.4`.
     pub fn max_spec_version(&self) -> Version {
-        self.wrapped().inner.max_spec_version.clone()
+        self.inner().misc.max_spec_version.clone()
     }
 
     /// Set by the flag `GRAPH_DISABLE_GRAFTS`.
     pub fn disable_grafts(&self) -> bool {
-        self.wrapped().inner.disable_grafts.0
+        self.inner().misc.disable_grafts.0
     }
 
     /// Set by the environment variable `GRAPH_LOAD_WINDOW_SIZE` (expressed in
     /// seconds). The default value is 300 seconds.
     pub fn load_window_size(&self) -> Duration {
-        Duration::from_secs(self.wrapped().inner.load_window_size_in_secs)
+        Duration::from_secs(self.inner().misc.load_window_size_in_secs)
     }
 
     /// Set by the environment variable `GRAPH_LOAD_BIN_SIZE` (expressed in
     /// seconds). The default value is 1 second.
     pub fn load_bin_size(&self) -> Duration {
-        Duration::from_secs(self.wrapped().inner.load_bin_size_in_secs)
+        Duration::from_secs(self.inner().misc.load_bin_size_in_secs)
     }
 
     /// Set by the environment variable
     /// `GRAPH_ELASTIC_SEARCH_FLUSH_INTERVAL_SECS` (expressed in seconds). The
     /// default value is 5 seconds.
     pub fn elastic_search_flush_interval(&self) -> Duration {
-        Duration::from_secs(self.wrapped().inner.elastic_search_flush_interval_in_secs)
+        Duration::from_secs(self.inner().misc.elastic_search_flush_interval_in_secs)
     }
 
     /// Set by the environment variable
     /// `GRAPH_ELASTIC_SEARCH_MAX_RETRIES`. The default value is 5.
     pub fn elastic_search_max_retries(&self) -> usize {
-        self.wrapped().inner.elastic_search_max_retries
+        self.inner().misc.elastic_search_max_retries
     }
 
     /// If an instrumented lock is contended for longer than the specified
@@ -248,7 +248,7 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_LOCK_CONTENTION_LOG_THRESHOLD_MS`
     /// (expressed in milliseconds). The default value is 100ms.
     pub fn lock_contention_log_threshold(&self) -> Duration {
-        Duration::from_millis(self.wrapped().inner.lock_contention_log_threshold_in_ms)
+        Duration::from_millis(self.inner().misc.lock_contention_log_threshold_in_ms)
     }
 
     /// This is configurable only for debugging purposes. This value is set by
@@ -257,12 +257,12 @@ impl EnvVars {
     ///
     /// Set by the environment variable `GRAPH_MAX_GAS_PER_HANDLER`.
     pub fn max_gas_per_handler(&self) -> u64 {
-        self.wrapped().inner.max_gas_per_handler.0 .0
+        self.inner().misc.max_gas_per_handler.0 .0
     }
 
     /// Set by the environment variable `GRAPH_LOG_QUERY_TIMING`.
     pub fn log_query_timing(&self) -> impl Deref<Target = [String]> + '_ {
-        RwLockReadGuard::map(self.wrapped(), |x| &x.log_query_timing[..])
+        RwLockReadGuard::map(self.inner(), |x| &x.log_query_timing[..])
     }
 
     fn log_query_timing_contains(&self, kind: &str) -> bool {
@@ -293,35 +293,35 @@ impl EnvVars {
 
     /// Set by the flag `GRAPH_LOG_POI_EVENTS`.
     pub fn log_poi_events(&self) -> bool {
-        self.wrapped().inner.log_poi_events.0
+        self.inner().misc.log_poi_events.0
     }
 
     /// Set by the environment variable `GRAPH_LOG`.
     pub fn log_levels(&self) -> Option<String> {
-        self.wrapped().inner.log_levels.clone()
+        self.inner().misc.log_levels.clone()
     }
 
     /// Set by the flag `EXPERIMENTAL_STATIC_FILTERS`. Off by default.
     pub fn experimental_static_filters(&self) -> bool {
-        self.wrapped().inner.experimental_static_filters.0
+        self.inner().misc.experimental_static_filters.0
     }
 
     /// Set by the environment variable
     /// `EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE`. The default value is
     /// `"instant"`.
     pub fn subgraph_version_switching_mode(&self) -> SubgraphVersionSwitchingMode {
-        self.wrapped().inner.subgraph_version_switching_mode
+        self.inner().misc.subgraph_version_switching_mode
     }
 
     /// Set by the flag `GRAPH_KILL_IF_UNRESPONSIVE`. Off by default.
     pub fn kill_if_unresponsive(&self) -> bool {
-        self.wrapped().inner.kill_if_unresponsive.0
+        self.inner().misc.kill_if_unresponsive.0
     }
 
     /// Set by the environment variable `GRAPH_SUBGRAPH_MAX_DATA_SOURCES`. No
     /// default value is provided.
     pub fn subgraph_max_data_sources(&self) -> Option<usize> {
-        self.wrapped().inner.subgraph_max_data_sources
+        self.inner().misc.subgraph_max_data_sources
     }
 
     /// Keep deterministic errors non-fatal even if the subgraph is pending.
@@ -329,7 +329,7 @@ impl EnvVars {
     ///
     /// Set by the flag `GRAPH_DISABLE_FAIL_FAST`. Off by default.
     pub fn disable_fail_fast(&self) -> bool {
-        self.wrapped().inner.disable_fail_fast.0
+        self.inner().misc.disable_fail_fast.0
     }
 
     /// Ceiling for the backoff retry of non-deterministic errors.
@@ -337,7 +337,7 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS`
     /// (expressed in seconds). The default value is 1800s (30 minutes).
     pub fn subgraph_error_retry_ceil(&self) -> Duration {
-        Duration::from_secs(self.wrapped().inner.subgraph_error_retry_ceil_in_secs)
+        Duration::from_secs(self.inner().misc.subgraph_error_retry_ceil_in_secs)
     }
 
     /// Set by the environment variable `GRAPH_CACHED_SUBGRAPH_IDS` (comma
@@ -345,10 +345,10 @@ impl EnvVars {
     /// for all subgraphs and this method returns [`None`], which is the default
     /// behavior.
     pub fn cached_subgraph_ids(&self) -> Option<impl Deref<Target = [String]> + '_> {
-        if self.wrapped().cached_subgraph_ids.is_none() {
+        if self.inner().cached_subgraph_ids.is_none() {
             None
         } else {
-            Some(RwLockReadGuard::map(self.wrapped(), |x| {
+            Some(RwLockReadGuard::map(self.inner(), |x| {
                 x.cached_subgraph_ids.as_deref().unwrap_or(&[])
             }))
         }
@@ -361,7 +361,7 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_QUERY_BLOCK_CACHE_SHARDS`. The
     /// default value is 128.
     pub fn query_block_cache_shards(&self) -> u8 {
-        self.wrapped().inner.query_block_cache_shards
+        self.inner().misc.query_block_cache_shards
     }
 
     /// Set by the environment variable `GRAPH_QUERY_LFU_CACHE_SHARDS`. The
@@ -369,40 +369,37 @@ impl EnvVars {
     /// to.
     pub fn query_lfu_cache_shards(&self) -> u8 {
         let default = self.query_block_cache_shards();
-        self.wrapped()
-            .inner
-            .query_lfu_cache_shards
-            .unwrap_or(default)
+        self.inner().misc.query_lfu_cache_shards.unwrap_or(default)
     }
 
     /// Set by the environment variable `GRAPH_EXPLORER_TTL`
     /// (expressed in seconds). The default value is 10s.
     pub fn explorer_ttl(&self) -> Duration {
-        Duration::from_secs(self.wrapped().inner.explorer_ttl_in_secs)
+        Duration::from_secs(self.inner().misc.explorer_ttl_in_secs)
     }
 
     /// Set by the environment variable `GRAPH_EXPLORER_LOCK_THRESHOLD`
     /// (expressed in milliseconds). The default value is 100ms.
     pub fn explorer_lock_threshold(&self) -> Duration {
-        Duration::from_millis(self.wrapped().inner.explorer_lock_threshold_in_msec)
+        Duration::from_millis(self.inner().misc.explorer_lock_threshold_in_msec)
     }
 
     /// Set by the environment variable `GRAPH_EXPLORER_QUERY_THRESHOLD`
     /// (expressed in milliseconds). The default value is 500ms.
     pub fn explorer_query_threshold(&self) -> Duration {
-        Duration::from_millis(self.wrapped().inner.explorer_query_threshold_in_msec)
+        Duration::from_millis(self.inner().misc.explorer_query_threshold_in_msec)
     }
 
     /// Set by the environment variable `EXTERNAL_HTTP_BASE_URL`. No default
     /// value is provided.
     pub fn external_http_base_url(&self) -> Option<String> {
-        self.wrapped().inner.external_http_base_url.clone()
+        self.inner().misc.external_http_base_url.clone()
     }
 
     /// Set by the environment variable `EXTERNAL_WS_BASE_URL`. No default
     /// value is provided.
     pub fn external_ws_base_url(&self) -> Option<String> {
-        self.wrapped().inner.external_ws_base_url.clone()
+        self.inner().misc.external_ws_base_url.clone()
     }
 
     /// Experimental feature.
@@ -410,7 +407,7 @@ impl EnvVars {
     /// Set by the flag `GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES`. Off by
     /// default.
     pub fn enable_select_by_specific_attributes(&self) -> bool {
-        self.wrapped().inner.enable_select_by_specific_attributes.0
+        self.inner().misc.enable_select_by_specific_attributes.0
     }
 
     /// Verbose logging of mapping inputs.
@@ -418,12 +415,12 @@ impl EnvVars {
     /// Set by the flag `GRAPH_LOG_TRIGGER_DATA`. Off by
     /// default.
     pub fn log_trigger_data(&self) -> bool {
-        self.wrapped().inner.log_trigger_data.0
+        self.inner().misc.log_trigger_data.0
     }
 }
 
 #[derive(Clone, Debug, Envconfig)]
-struct Inner {
+struct EnvVarsMisc {
     #[envconfig(from = "GRAPH_LOAD_THRESHOLD", default = "0")]
     load_threshold_in_ms: u64,
     #[envconfig(from = "GRAPH_LOAD_JAIL_THRESHOLD")]
@@ -501,11 +498,11 @@ struct Inner {
 impl EnvVars {
     /// Set by the flag `ENABLE_GRAPHQL_VALIDATIONS`. Off by default.
     pub fn enable_graphql_validations(&self) -> bool {
-        self.wrapped().graphql.enable_graphql_validations.0
+        self.inner().graphql.enable_graphql_validations.0
     }
 
     pub fn subscription_throttle_interval(&self) -> Duration {
-        Duration::from_millis(self.wrapped().graphql.subscription_throttle_interval_in_ms)
+        Duration::from_millis(self.inner().graphql.subscription_throttle_interval_in_ms)
     }
 
     /// This is the timeout duration for SQL queries.
@@ -517,7 +514,7 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_SQL_STATEMENT_TIMEOUT` (expressed
     /// in seconds). No default value is provided.
     pub fn sql_statement_timeout(&self) -> Option<Duration> {
-        self.wrapped()
+        self.inner()
             .graphql
             .sql_statement_timeout_in_secs
             .map(Duration::from_secs)
@@ -526,7 +523,7 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_GRAPHQL_QUERY_TIMEOUT` (expressed in
     /// seconds). No default value is provided.
     pub fn graphql_query_timeout(&self) -> Option<Duration> {
-        self.wrapped()
+        self.inner()
             .graphql
             .graphql_query_timeout_in_secs
             .map(Duration::from_secs)
@@ -535,25 +532,25 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_GRAPHQL_MAX_COMPLEXITY`. No
     /// default value is provided.
     pub fn graphql_max_complexity(&self) -> Option<u64> {
-        self.wrapped().graphql.graphql_max_complexity.map(|x| x.0)
+        self.inner().graphql.graphql_max_complexity.map(|x| x.0)
     }
 
     /// Set by the environment variable `GRAPH_GRAPHQL_MAX_DEPTH`. The default
     /// value is 255.
     pub fn graphql_max_depth(&self) -> u8 {
-        self.wrapped().graphql.graphql_max_depth.0
+        self.inner().graphql.graphql_max_depth.0
     }
 
     /// Set by the environment variable `GRAPH_GRAPHQL_MAX_FIRST`. The default
     /// value is 1000.
     pub fn graphql_max_first(&self) -> u32 {
-        self.wrapped().graphql.graphql_max_first
+        self.inner().graphql.graphql_max_first
     }
 
     /// Set by the environment variable `4294967295`. The default
     /// value is 4294967295 ([`u32::MAX`]).
     pub fn graphql_max_skip(&self) -> u32 {
-        self.wrapped().graphql.graphql_max_skip.0
+        self.inner().graphql.graphql_max_skip.0
     }
 
     /// Allow skipping the check whether a deployment has changed while
@@ -562,30 +559,30 @@ impl EnvVars {
     ///
     /// Set by the flag `GRAPHQL_ALLOW_DEPLOYMENT_CHANGE`. Off by default.
     pub fn graphql_allow_deployment_change(&self) -> bool {
-        self.wrapped().graphql.graphql_allow_deployment_change.0
+        self.inner().graphql.graphql_allow_deployment_change.0
     }
 
     /// Set by the flag `GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION`. No
     /// default is provided.
     pub fn graphql_max_operations_per_connection(&self) -> Option<usize> {
-        self.wrapped().graphql.graphql_max_operations_per_connection
+        self.inner().graphql.graphql_max_operations_per_connection
     }
 
     /// Set by the environment variable `GRAPH_GRAPHQL_WARN_RESULT_SIZE`. The
     /// default value is [`usize::MAX`].
     pub fn graphql_warn_result_size(&self) -> usize {
-        self.wrapped().graphql.graphql_warn_result_size.0 .0
+        self.inner().graphql.graphql_warn_result_size.0 .0
     }
 
     /// Set by the environment variable `GRAPH_GRAPHQL_ERROR_RESULT_SIZE`. The
     /// default value is [`usize::MAX`].
     pub fn graphql_error_result_size(&self) -> usize {
-        self.wrapped().graphql.graphql_error_result_size.0 .0
+        self.inner().graphql.graphql_error_result_size.0 .0
     }
 }
 
 #[derive(Clone, Debug, Envconfig)]
-struct InnerGraphQl {
+struct EnvVarsGraphQl {
     #[envconfig(from = "ENABLE_GRAPHQL_VALIDATIONS", default = "false")]
     enable_graphql_validations: EnvVarBoolean,
     #[envconfig(from = "SUBSCRIPTION_THROTTLE_INTERVAL", default = "1000")]
@@ -620,13 +617,13 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_ENTITY_CACHE_SIZE` (expressed in
     /// kilobytes). The default value is 10 megabytes.
     pub fn entity_cache_size(&self) -> usize {
-        self.wrapped().mapping_handlers.entity_cache_size_in_kb * 1000
+        self.inner().mapping_handlers.entity_cache_size_in_kb * 1000
     }
 
     /// Set by the environment variable `GRAPH_MAX_API_VERSION`. The default
     /// value is `0.0.6`.
     pub fn max_api_version(&self) -> Version {
-        self.wrapped().mapping_handlers.max_api_version.clone()
+        self.inner().mapping_handlers.max_api_version.clone()
     }
 
     /// How many blocks per network should be kept in the query cache. When the
@@ -638,13 +635,13 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_QUERY_CACHE_BLOCKS`. The default
     /// value is 2.
     pub fn query_cache_blocks(&self) -> usize {
-        self.wrapped().mapping_handlers.query_cache_blocks
+        self.inner().mapping_handlers.query_cache_blocks
     }
 
     /// Set by the environment variable `GRAPH_MAPPING_HANDLER_TIMEOUT`
     /// (expressed in seconds). No default is provided.
     pub fn mapping_handler_timeout(&self) -> Option<Duration> {
-        self.wrapped()
+        self.inner()
             .mapping_handlers
             .mapping_handler_timeout_in_secs
             .map(Duration::from_secs)
@@ -655,7 +652,7 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_RUNTIME_MAX_STACK_SIZE`
     /// (expressed in bytes). The default value is 512KiB.
     pub fn runtime_max_stack_size(&self) -> usize {
-        self.wrapped().mapping_handlers.runtime_max_stack_size.0 .0
+        self.inner().mapping_handlers.runtime_max_stack_size.0 .0
     }
 
     /// Maximum total memory to be used by the cache. Each block has a max size of
@@ -665,13 +662,13 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_QUERY_CACHE_MAX_MEM` (expressed
     /// in MB). The default value is 1GB.
     pub fn query_cache_max_mem(&self) -> usize {
-        self.wrapped().mapping_handlers.query_cache_max_mem_in_mb.0 * 1_000_000
+        self.inner().mapping_handlers.query_cache_max_mem_in_mb.0 * 1_000_000
     }
 
     /// Set by the environment variable `GRAPH_QUERY_CACHE_STALE_PERIOD`. The
     /// default value is 100.
     pub fn query_cache_stale_period(&self) -> u64 {
-        self.wrapped().mapping_handlers.query_cache_stale_period
+        self.inner().mapping_handlers.query_cache_stale_period
     }
 
     // IPFS
@@ -680,13 +677,13 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`
     /// (expressed in bytes). The default value is 1MiB.
     pub fn max_ipfs_cache_file_size(&self) -> usize {
-        self.wrapped().mapping_handlers.max_ipfs_cache_file_size.0
+        self.inner().mapping_handlers.max_ipfs_cache_file_size.0
     }
 
     /// Set by the environment variable `GRAPH_MAX_IPFS_CACHE_SIZE`. The default
     /// value is 50 items.
     pub fn max_ipfs_cache_size(&self) -> u64 {
-        self.wrapped().mapping_handlers.max_ipfs_cache_size
+        self.inner().mapping_handlers.max_ipfs_cache_size
     }
 
     /// The timeout for all IPFS requests.
@@ -694,7 +691,7 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_IPFS_TIMEOUT` (expressed in
     /// seconds). The default value is 30s.
     pub fn ipfs_timeout(&self) -> Duration {
-        Duration::from_secs(self.wrapped().mapping_handlers.ipfs_timeout_in_secs)
+        Duration::from_secs(self.inner().mapping_handlers.ipfs_timeout_in_secs)
     }
 
     /// Sets the `ipfs.map` file size limit.
@@ -702,7 +699,7 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_MAX_IPFS_MAP_FILE_SIZE_LIMIT`
     /// (expressed in bytes). The default value is 256MiB.
     pub fn max_ipfs_map_file_size(&self) -> usize {
-        self.wrapped().mapping_handlers.max_ipfs_map_file_size.0
+        self.inner().mapping_handlers.max_ipfs_map_file_size.0
     }
 
     /// Sets the `ipfs.cat` file size limit.
@@ -713,21 +710,18 @@ impl EnvVars {
     /// FIXME: Having an env variable here is a problem for consensus.
     /// Index Nodes should not disagree on whether the file should be read.
     pub fn max_ipfs_file_bytes(&self) -> Option<usize> {
-        self.wrapped().mapping_handlers.max_ipfs_file_bytes
+        self.inner().mapping_handlers.max_ipfs_file_bytes
     }
 
     /// Set by the flag `GRAPH_ALLOW_NON_DETERMINISTIC_IPFS`. Off by
     /// default.
     pub fn allow_non_deterministic_ipfs(&self) -> bool {
-        self.wrapped()
-            .mapping_handlers
-            .allow_non_deterministic_ipfs
-            .0
+        self.inner().mapping_handlers.allow_non_deterministic_ipfs.0
     }
 }
 
 #[derive(Clone, Debug, Envconfig)]
-struct InnerMappingHandlers {
+struct EnvVarsMappingHandlers {
     #[envconfig(from = "GRAPH_ENTITY_CACHE_SIZE", default = "10000")]
     entity_cache_size_in_kb: usize,
     #[envconfig(from = "GRAPH_MAX_API_VERSION", default = "0.0.6")]
@@ -763,7 +757,7 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT`
     /// (expressed in seconds). The default value is 30 seconds.
     pub fn chain_head_watcher_timeout(&self) -> Duration {
-        Duration::from_secs(self.wrapped().store.chain_head_watcher_timeout_in_secs)
+        Duration::from_secs(self.inner().store.chain_head_watcher_timeout_in_secs)
     }
 
     /// This is how long statistics that influence query execution are cached in
@@ -772,7 +766,7 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_QUERY_STATS_REFRESH_INTERVAL`
     /// (expressed in seconds). The default value is 300 seconds.
     pub fn query_stats_refresh_interval(&self) -> Duration {
-        Duration::from_secs(self.wrapped().store.query_stats_refresh_interval_in_secs)
+        Duration::from_secs(self.inner().store.query_stats_refresh_interval_in_secs)
     }
 
     /// This can be used to effectively disable the query semaphore by setting
@@ -781,14 +775,14 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_EXTRA_QUERY_PERMITS`. The default
     /// value is 0.
     pub fn extra_query_permits(&self) -> usize {
-        self.wrapped().store.extra_query_permits
+        self.inner().store.extra_query_permits
     }
 
     /// Set by the environment variable `LARGE_NOTIFICATION_CLEANUP_INTERVAL`
     /// (expressed in seconds). The default value is 300 seconds.
     pub fn large_notification_cleanup_interval(&self) -> Duration {
         Duration::from_secs(
-            self.wrapped()
+            self.inner()
                 .store
                 .large_notification_cleanup_interval_in_secs,
         )
@@ -797,7 +791,7 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_NOTIFICATION_BROADCAST_TIMEOUT`
     /// (expressed in seconds). The default value is 60 seconds.
     pub fn notification_broadcast_timeout(&self) -> Duration {
-        Duration::from_secs(self.wrapped().store.notification_broadcast_timeout_in_secs)
+        Duration::from_secs(self.inner().store.notification_broadcast_timeout_in_secs)
     }
 
     /// This variable is only here temporarily until we can settle on the right
@@ -806,7 +800,7 @@ impl EnvVars {
     ///
     /// Set by the environment variable `TYPEA_BATCH_SIZE`.
     pub fn typea_batch_size(&self) -> usize {
-        self.wrapped().store.typea_batch_size
+        self.inner().store.typea_batch_size
     }
 
     /// Allows for some optimizations when running relational queries. Set this
@@ -814,7 +808,7 @@ impl EnvVars {
     ///
     /// Set by the environment variable `TYPED_CHILDREN_SET_SIZE`.
     pub fn typed_children_set_size(&self) -> usize {
-        self.wrapped().store.typed_children_set_size
+        self.inner().store.typed_children_set_size
     }
 
     /// When enabled, turns `ORDER BY id` into `ORDER BY id, block_range` in
@@ -822,7 +816,7 @@ impl EnvVars {
     ///
     /// Set by the flag `ORDER_BY_BLOCK_RANGE`.
     pub fn order_by_block_range(&self) -> bool {
-        self.wrapped().store.order_by_block_range.0
+        self.inner().store.order_by_block_range.0
     }
 
     /// When the flag is present, `ORDER BY` clauses are changed so that `asc`
@@ -831,7 +825,7 @@ impl EnvVars {
     ///
     /// Set by the flag `REVERSIBLE_ORDER_BY_OFF`.
     pub fn reversible_order_by_off(&self) -> bool {
-        self.wrapped().store.reversible_order_by_off.0
+        self.inner().store.reversible_order_by_off.0
     }
 
     /// A list of fully qualified table names that contain entities that are
@@ -848,7 +842,7 @@ impl EnvVars {
     /// separated). Empty by default. E.g.
     /// `GRAPH_ACCOUNT_TABLES=sgd21902.pair,sgd1708.things`.
     pub fn account_tables(&self) -> impl Deref<Target = HashSet<String>> + '_ {
-        RwLockReadGuard::map(self.wrapped(), |x| &x.account_tables)
+        RwLockReadGuard::map(self.inner(), |x| &x.account_tables)
     }
 
     /// Whether to disable the notifications that feed GraphQL
@@ -858,25 +852,25 @@ impl EnvVars {
     /// Set by the flag `GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS`. Not set
     /// by default.
     pub fn disable_subscription_notifications(&self) -> bool {
-        self.wrapped().store.disable_subscription_notifications.0
+        self.inner().store.disable_subscription_notifications.0
     }
 
     /// Set by the environment variable `GRAPH_STORE_CONNECTION_TIMEOUT` (expressed
     /// in milliseconds). The default value is 5000ms.
     pub fn store_connection_timeout(&self) -> Duration {
-        Duration::from_millis(self.wrapped().store.store_connection_timeout_in_millis)
+        Duration::from_millis(self.inner().store.store_connection_timeout_in_millis)
     }
 
     /// Set by the environment variable `GRAPH_STORE_CONNECTION_MIN_IDLE`. No
     /// default value is provided.
     pub fn store_connection_min_idle(&self) -> Option<u32> {
-        self.wrapped().store.store_connection_min_idle
+        self.inner().store.store_connection_min_idle
     }
 
     /// Set by the environment variable `GRAPH_STORE_CONNECTION_IDLE_TIMEOUT`
     /// (expressed in seconds). The default value is 600s.
     pub fn store_connection_idle_timeout(&self) -> Duration {
-        Duration::from_secs(self.wrapped().store.store_connection_idle_timeout_in_secs)
+        Duration::from_secs(self.inner().store.store_connection_idle_timeout_in_secs)
     }
 
     /// A fallback in case the logic to remember database availability goes
@@ -886,18 +880,18 @@ impl EnvVars {
     /// Set by the flag `GRAPH_STORE_CONNECTION_TRY_ALWAYS`. Disabled by
     /// default.
     pub fn store_connection_try_always(&self) -> bool {
-        self.wrapped().store.store_connection_try_always.0
+        self.inner().store.store_connection_try_always.0
     }
 
     /// Set by the environment variable `GRAPH_REMOVE_UNUSED_INTERVAL`
     /// (expressed in minutes). The default value is 360 minutes.
     pub fn remove_unused_interval(&self) -> chrono::Duration {
-        chrono::Duration::minutes(self.wrapped().store.remove_unused_interval_in_minutes as i64)
+        chrono::Duration::minutes(self.inner().store.remove_unused_interval_in_minutes as i64)
     }
 }
 
 #[derive(Clone, Debug, Envconfig)]
-struct InnerStore {
+struct EnvVarsStore {
     #[envconfig(from = "GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT", default = "30")]
     chain_head_watcher_timeout_in_secs: u64,
     #[envconfig(from = "GRAPH_QUERY_STATS_REFRESH_INTERVAL", default = "300")]
@@ -942,7 +936,7 @@ impl EnvVars {
     /// Set by the environment variable `ETHEREUM_REORG_THRESHOLD`. The default
     /// value is 250 blocks.
     pub fn ethereum_reorg_threshold(&self) -> BlockNumber {
-        self.wrapped().ethereum.ethereum_reorg_threshold
+        self.inner().ethereum.ethereum_reorg_threshold
     }
 
     /// Controls if firehose should be preferred over RPC if Firehose endpoints
@@ -951,7 +945,7 @@ impl EnvVars {
     ///
     /// Set by the flag `GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED`. On by default.
     pub fn ethereum_is_firehose_preferred(&self) -> bool {
-        self.wrapped().ethereum.ethereum_is_firehose_preferred.0
+        self.inner().ethereum.ethereum_is_firehose_preferred.0
     }
 
     /// Ideal number of triggers in a range. The range size will adapt to try to
@@ -961,7 +955,7 @@ impl EnvVars {
     /// `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`. The default value is
     /// 100.
     pub fn ethereum_target_triggers_per_block_range(&self) -> u64 {
-        self.wrapped()
+        self.inner()
             .ethereum
             .ethereum_target_triggers_per_block_range
     }
@@ -971,13 +965,13 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE`.
     /// The default value is 2000 blocks.
     pub fn ethereum_max_block_range_size(&self) -> BlockNumber {
-        self.wrapped().ethereum.ethereum_max_block_range_size
+        self.inner().ethereum.ethereum_max_block_range_size
     }
 
     /// Set by the environment variable `ETHEREUM_TRACE_STREAM_STEP_SIZE`. The
     /// default value is 50 blocks.
     pub fn ethereum_trace_stream_step_size(&self) -> BlockNumber {
-        self.wrapped().ethereum.ethereum_trace_stream_step_size
+        self.inner().ethereum.ethereum_trace_stream_step_size
     }
 
     /// Maximum range size for `eth.getLogs` requests that don't filter on
@@ -987,13 +981,13 @@ impl EnvVars {
     /// default value is 500 blocks, which is reasonable according to Ethereum
     /// node operators.
     pub fn ethereum_max_event_only_range(&self) -> BlockNumber {
-        self.wrapped().ethereum.ethereum_max_event_only_range
+        self.inner().ethereum.ethereum_max_event_only_range
     }
 
     /// Set by the environment variable `ETHEREUM_BLOCK_BATCH_SIZE`. The
     /// default value is 10 blocks.
     pub fn ethereum_block_batch_size(&self) -> usize {
-        self.wrapped().ethereum.ethereum_block_batch_size
+        self.inner().ethereum.ethereum_block_batch_size
     }
 
     /// This should not be too large that it causes requests to timeout without
@@ -1004,7 +998,7 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_ETHEREUM_JSON_RPC_TIMEOUT`
     /// (expressed in seconds). The default value is 180s.
     pub fn ethereum_json_rpc_timeout(&self) -> Duration {
-        Duration::from_secs(self.wrapped().ethereum.ethereum_json_rpc_timeout_in_secs)
+        Duration::from_secs(self.inner().ethereum.ethereum_json_rpc_timeout_in_secs)
     }
 
     /// This is used for requests that will not fail the subgraph if the limit
@@ -1015,7 +1009,7 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_ETHEREUM_REQUEST_RETRIES`. The
     /// default value is 10.
     pub fn ethereum_request_retries(&self) -> usize {
-        self.wrapped().ethereum.ethereum_request_retries
+        self.inner().ethereum.ethereum_request_retries
     }
 
     /// Additional deterministic errors that have not yet been hardcoded.
@@ -1023,20 +1017,20 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_GETH_ETH_CALL_ERRORS`, separated
     /// by `;`.
     pub fn geth_eth_call_errors(&self) -> impl Deref<Target = [String]> + '_ {
-        RwLockReadGuard::map(self.wrapped(), |x| &x.geth_eth_call_errors[..])
+        RwLockReadGuard::map(self.inner(), |x| &x.geth_eth_call_errors[..])
     }
 
     /// Set by the environment variable `GRAPH_ETH_GET_LOGS_MAX_CONTRACTS`. The
     /// default value is 2000.
     pub fn ethereum_get_logs_max_contracts(&self) -> usize {
-        self.wrapped().ethereum.ethereum_get_logs_max_contracts
+        self.inner().ethereum.ethereum_get_logs_max_contracts
     }
 
     /// Set by the environment variable
     /// `GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS`.
     /// The default value is 1000.
     pub fn ethereum_block_ingestor_max_concurrent_json_rpc_calls(&self) -> usize {
-        self.wrapped()
+        self.inner()
             .ethereum
             .ethereum_block_ingestor_max_concurrent_json_rpc_calls
     }
@@ -1047,7 +1041,7 @@ impl EnvVars {
     pub fn ethereum_fetch_receipts_in_batches(&self) -> bool {
         let default = cfg!(target_os = "macos");
 
-        self.wrapped()
+        self.inner()
             .ethereum
             .ethereum_fetch_receipts_in_batches
             .map(|x| x.0)
@@ -1059,12 +1053,12 @@ impl EnvVars {
     ///
     /// Set by the flag `GRAPH_ETHEREUM_CLEANUP_BLOCKS`. Off by default.
     pub fn ethereum_cleanup_blocks(&self) -> bool {
-        self.wrapped().ethereum.ethereum_cleanup_blocks.0
+        self.inner().ethereum.ethereum_cleanup_blocks.0
     }
 }
 
 #[derive(Clone, Debug, Envconfig)]
-struct InnerEthereum {
+struct EnvVarsEthereum {
     #[envconfig(from = "GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED", default = "true")]
     ethereum_is_firehose_preferred: EnvVarBoolean,
     #[envconfig(from = "GRAPH_GETH_ETH_CALL_ERRORS", default = "")]
