@@ -185,7 +185,7 @@ pub fn create_subgraph(
             .cheap_clone()
             .writable(LOGGER.clone(), deployment.id),
     )?;
-    futures03::executor::block_on(writable.start_subgraph_deployment(&*LOGGER))?;
+    writable.start_subgraph_deployment(&*LOGGER)?;
     Ok(deployment)
 }
 

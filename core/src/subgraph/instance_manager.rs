@@ -152,11 +152,15 @@ where
             let store = store.clone();
             let logger = logger.clone();
 
-            store
-                .start_subgraph_deployment(&logger)
-                .map_err(Error::from)
-                .await
-                .map_err(Error::from)?
+            // `start_subgraph_deployment` is blocking.
+            task::spawn_blocking(move || {
+                store
+                    .start_subgraph_deployment(&logger)
+                    .map_err(Error::from)
+            })
+            .await
+            .map_err(Error::from)
+            .and_then(|x| x)?;
         }
 
         let manifest: SubgraphManifest<C> = {

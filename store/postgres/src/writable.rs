@@ -3,7 +3,7 @@ use std::time::Duration;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::data::subgraph::schema;
-use graph::prelude::{Entity, Schema, SubgraphStore as _};
+use graph::prelude::{futures03, Entity, Schema, SubgraphStore as _};
 use graph::{
     cheap_clone::CheapClone,
     components::store::{self, EntityType, WritableStore as WritableStoreTrait},
@@ -156,8 +156,8 @@ impl WritableStore {
             .await
     }
 
-    async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
-        self.retry_async("start_subgraph_deployment", || async {
+    fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
+        self.retry("start_subgraph_deployment", || {
             let store = &self.writable;
 
             let graft_base = match store.graft_pending(&self.site.deployment)? {
@@ -170,7 +170,6 @@ impl WritableStore {
             store.start_subgraph(logger, self.site.clone(), graft_base)?;
             self.store.primary_conn()?.copy_finished(self.site.as_ref())
         })
-        .await
     }
 
     fn revert_block_operations(
@@ -384,12 +383,16 @@ impl WritableStoreTrait for WritableAgent {
         Ok(())
     }
 
-    async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
-        self.store.start_subgraph_deployment(logger).await?;
+    fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
+        self.store.start_subgraph_deployment(logger)?;
 
         // Refresh all in memory state in case this instance was used before
-        *self.block_ptr.lock().unwrap() = self.store.block_ptr().await?;
-        *self.block_cursor.lock().unwrap() = self.store.block_cursor().await?;
+        futures03::executor::block_on(async {
+            *self.block_ptr.lock().unwrap() = self.store.block_ptr().await?;
+            *self.block_cursor.lock().unwrap() = self.store.block_cursor().await?;
+
+            Ok::<(), StoreError>(())
+        })?;
 
         Ok(())
     }

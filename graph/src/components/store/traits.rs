@@ -156,7 +156,7 @@ pub trait WritableStore: Send + Sync + 'static {
     async fn delete_block_cursor(&self) -> Result<(), StoreError>;
 
     /// Start an existing subgraph deployment.
-    async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError>;
+    fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError>;
 
     /// Revert the entity changes from a single block atomically in the store, and update the
     /// subgraph block pointer to `block_ptr_to`.
