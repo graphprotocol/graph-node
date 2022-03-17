@@ -73,6 +73,7 @@ pub fn env_var<E: std::error::Error + Send + Sync, T: FromStr<Err = E> + Eq>(
 struct EnvVarsWrapped {
     inner: Inner,
     ethereum: InnerEthereum,
+    store: InnerStore,
     log_query_timing: Vec<String>,
     account_tables: HashSet<String>,
     geth_eth_call_errors: Vec<String>,
@@ -83,13 +84,14 @@ impl EnvVarsWrapped {
     fn from_env() -> Result<Self, envconfig::Error> {
         let inner = Inner::init_from_env()?;
         let ethereum = InnerEthereum::init_from_env()?;
+        let store = InnerStore::init_from_env()?;
 
         let log_query_timing = inner
             .log_query_timing
             .split(',')
             .map(str::to_string)
             .collect();
-        let account_tables = inner
+        let account_tables = store
             .account_tables
             .split(',')
             .map(|s| format!("\"{}\"", s.replace(".", "\".\"")))
@@ -115,6 +117,7 @@ impl EnvVarsWrapped {
         Ok(Self {
             inner,
             ethereum,
+            store,
             log_query_timing,
             account_tables,
             geth_eth_call_errors,
@@ -154,10 +157,6 @@ impl EnvVars {
     /// kilobytes). The default value is 10 megabytes.
     pub fn entity_cache_size(&self) -> usize {
         self.wrapped().inner.entity_cache_size_in_kb * 1000
-    }
-
-    pub fn subscription_throttle_interval(&self) -> Duration {
-        Duration::from_millis(self.wrapped().inner.subscription_throttle_interval_in_ms)
     }
 
     /// Enables query throttling when getting database connections goes over this value.
@@ -308,156 +307,6 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_LOG`.
     pub fn log_levels(&self) -> Option<String> {
         self.wrapped().inner.log_levels.clone()
-    }
-
-    /// Set by the environment variable `GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT`
-    /// (expressed in seconds). The default value is 30 seconds.
-    pub fn chain_head_watcher_timeout(&self) -> Duration {
-        Duration::from_secs(self.wrapped().inner.chain_head_watcher_timeout_in_secs)
-    }
-
-    /// This is how long statistics that influence query execution are cached in
-    /// memory before they are reloaded from the database.
-    ///
-    /// Set by the environment variable `GRAPH_QUERY_STATS_REFRESH_INTERVAL`
-    /// (expressed in seconds). The default value is 300 seconds.
-    pub fn query_stats_refresh_interval(&self) -> Duration {
-        Duration::from_secs(self.wrapped().inner.query_stats_refresh_interval_in_secs)
-    }
-
-    /// This can be used to effectively disable the query semaphore by setting
-    /// it to a high number, but there's typically no need to configure this.
-    ///
-    /// Set by the environment variable `GRAPH_EXTRA_QUERY_PERMITS`. The default
-    /// value is 0.
-    pub fn extra_query_permits(&self) -> usize {
-        self.wrapped().inner.extra_query_permits
-    }
-
-    /// Set by the environment variable `LARGE_NOTIFICATION_CLEANUP_INTERVAL`
-    /// (expressed in seconds). The default value is 300 seconds.
-    pub fn large_notification_cleanup_interval(&self) -> Duration {
-        Duration::from_secs(
-            self.wrapped()
-                .inner
-                .large_notification_cleanup_interval_in_secs,
-        )
-    }
-
-    /// Set by the environment variable `GRAPH_NOTIFICATION_BROADCAST_TIMEOUT`
-    /// (expressed in seconds). The default value is 60 seconds.
-    pub fn notification_broadcast_timeout(&self) -> Duration {
-        Duration::from_secs(self.wrapped().inner.notification_broadcast_timeout_in_secs)
-    }
-
-    /// This variable is only here temporarily until we can settle on the right
-    /// batch size through experimentation, and should then just become an
-    /// ordinary constant.
-    ///
-    /// Set by the environment variable `TYPEA_BATCH_SIZE`.
-    pub fn typea_batch_size(&self) -> usize {
-        self.wrapped().inner.typea_batch_size
-    }
-
-    /// Allows for some optimizations when running relational queries. Set this
-    /// to 0 to turn off this optimization.
-    ///
-    /// Set by the environment variable `TYPED_CHILDREN_SET_SIZE`.
-    pub fn typed_children_set_size(&self) -> usize {
-        self.wrapped().inner.typed_children_set_size
-    }
-
-    /// When enabled, turns `ORDER BY id` into `ORDER BY id, block_range` in
-    /// some relational queries.
-    ///
-    /// Set by the flag `ORDER_BY_BLOCK_RANGE`.
-    pub fn order_by_block_range(&self) -> bool {
-        self.wrapped().inner.order_by_block_range.0
-    }
-
-    /// When the flag is present, `ORDER BY` clauses are changed so that `asc`
-    /// and `desc` ordering produces reverse orders. Setting the flag turns the
-    /// new, correct behavior off.
-    ///
-    /// Set by the flag `REVERSIBLE_ORDER_BY_OFF`.
-    pub fn reversible_order_by_off(&self) -> bool {
-        self.wrapped().inner.reversible_order_by_off.0
-    }
-
-    /// A list of fully qualified table names that contain entities that are
-    /// like accounts in that they have a relatively small number of entities,
-    /// with a large number of change for each entity. It is useful to treat
-    /// such tables special in queries by changing the clause that selects
-    /// for a specific block range in a way that makes the BRIN index on
-    /// block_range usable.
-    ///
-    /// The use of this environment variable is deprecated; use `graphman stats
-    /// account-like` instead.
-    ///
-    /// Set by the environment variable `GRAPH_ACCOUNT_TABLES` (comma
-    /// separated). Empty by default. E.g.
-    /// `GRAPH_ACCOUNT_TABLES=sgd21902.pair,sgd1708.things`.
-    pub fn account_tables(&self) -> impl Deref<Target = HashSet<String>> + '_ {
-        RwLockReadGuard::map(self.wrapped(), |x| &x.account_tables)
-    }
-
-    /// This is the timeout duration for SQL queries.
-    ///
-    /// If it is not set, no statement timeout will be enforced. The statement
-    /// timeout is local, i.e., can only be used within a transaction and
-    /// will be cleared at the end of the transaction.
-    ///
-    /// Set by the environment variable `GRAPH_SQL_STATEMENT_TIMEOUT` (expressed
-    /// in seconds). No default value is provided.
-    pub fn sql_statement_timeout(&self) -> Option<Duration> {
-        self.wrapped()
-            .inner
-            .sql_statement_timeout_in_secs
-            .map(Duration::from_secs)
-    }
-
-    /// Whether to disable the notifications that feed GraphQL
-    /// subscriptions. When the flag is set, no updates
-    /// about entity changes will be sent to query nodes.
-    ///
-    /// Set by the flag `GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATION`. Not set
-    /// by default.
-    pub fn disable_subscription_notifications(&self) -> bool {
-        self.wrapped().inner.disable_subscription_notifications.0
-    }
-
-    /// Set by the environment variable `GRAPH_STORE_CONNECTION_TIMEOUT` (expressed
-    /// in milliseconds). The default value is 5000ms.
-    pub fn store_connection_timeout(&self) -> Duration {
-        Duration::from_millis(self.wrapped().inner.store_connection_timeout_in_millis)
-    }
-
-    /// Set by the environment variable `GRAPH_STORE_CONNECTION_MIN_IDLE`. No
-    /// default value is provided.
-    pub fn store_connection_min_idle(&self) -> Option<u32> {
-        self.wrapped().inner.store_connection_min_idle
-    }
-
-    /// Set by the environment variable `GRAPH_STORE_CONNECTION_IDLE_TIMEOUT`
-    /// (expressed in seconds). The default value is 600s.
-    pub fn store_connection_idle_timeout(&self) -> Duration {
-        Duration::from_secs(self.wrapped().inner.store_connection_idle_timeout_in_secs)
-    }
-
-    /// A fallback in case the logic to remember database availability goes
-    /// wrong; when this is set, we always try to get a connection and never
-    /// use the availability state we remembered.
-    ///
-    /// Set by the flag `GRAPH_STORE_CONNECTION_TRY_ALWAYS`. Disabled by
-    /// default.
-    pub fn store_connection_try_always(&self) -> bool {
-        self.wrapped().inner.store_connection_try_always.0
-    }
-
-    /// Set by the environment variable `GRAPH_REMOVE_UNUSED_INTERVAL`
-    /// (expressed in minutes). The default value is 360 minutes.
-    pub fn remove_unused_interval(&self) -> chrono::Duration {
-        chrono::Duration::minutes(self.wrapped().inner.remove_unused_interval_in_minutes as i64)
     }
 
     /// Set by the flag `EXPERIMENTAL_STATIC_FILTERS`. Off by default.
@@ -740,8 +589,6 @@ impl EnvVars {
 struct Inner {
     #[envconfig(from = "GRAPH_ENTITY_CACHE_SIZE", default = "10000")]
     entity_cache_size_in_kb: usize,
-    #[envconfig(from = "SUBSCRIPTION_THROTTLE_INTERVAL", default = "1000")]
-    subscription_throttle_interval_in_ms: u64,
     #[envconfig(from = "GRAPH_LOAD_THRESHOLD", default = "0")]
     load_threshold_in_ms: u64,
     #[envconfig(from = "GRAPH_LOAD_JAIL_THRESHOLD")]
@@ -780,34 +627,6 @@ struct Inner {
     log_poi_events: EnvVarBoolean,
     #[envconfig(from = "GRAPH_LOG")]
     log_levels: Option<String>,
-    #[envconfig(from = "GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT", default = "30")]
-    chain_head_watcher_timeout_in_secs: u64,
-    #[envconfig(from = "GRAPH_QUERY_STATS_REFRESH_INTERVAL", default = "300")]
-    query_stats_refresh_interval_in_secs: u64,
-    #[envconfig(from = "GRAPH_EXTRA_QUERY_PERMITS", default = "0")]
-    extra_query_permits: usize,
-    #[envconfig(from = "LARGE_NOTIFICATION_CLEANUP_INTERVAL", default = "300")]
-    large_notification_cleanup_interval_in_secs: u64,
-    #[envconfig(from = "GRAPH_NOTIFICATION_BROADCAST_TIMEOUT", default = "60")]
-    notification_broadcast_timeout_in_secs: u64,
-    #[envconfig(from = "TYPEA_BATCH_SIZE", default = "150")]
-    typea_batch_size: usize,
-    #[envconfig(from = "TYPED_CHILDREN_SET_SIZE", default = "150")]
-    typed_children_set_size: usize,
-    #[envconfig(from = "ORDER_BY_BLOCK_RANGE", default = "false")]
-    order_by_block_range: EnvVarBoolean,
-    #[envconfig(from = "REVERSIBLE_ORDER_BY_OFF", default = "false")]
-    reversible_order_by_off: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_ACCOUNT_TABLES", default = "")]
-    account_tables: String,
-    #[envconfig(from = "GRAPH_SQL_STATEMENT_TIMEOUT")]
-    sql_statement_timeout_in_secs: Option<u64>,
-    #[envconfig(from = "GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS", default = "false")]
-    disable_subscription_notifications: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_STORE_CONNECTION_TRY_ALWAYS", default = "false")]
-    store_connection_try_always: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_REMOVE_UNUSED_INTERVAL", default = "360")]
-    remove_unused_interval_in_minutes: u64,
     #[envconfig(from = "EXPERIMENTAL_STATIC_FILTERS", default = "false")]
     experimental_static_filters: EnvVarBoolean,
     #[envconfig(
@@ -887,6 +706,197 @@ struct Inner {
     graphql_error_result_size: WithDefaultUsize<NoUnderscores<usize>, { usize::MAX }>,
     #[envconfig(from = "GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION")]
     graphql_max_operations_per_connection: Option<usize>,
+}
+
+/// Store.
+impl EnvVars {
+    pub fn subscription_throttle_interval(&self) -> Duration {
+        Duration::from_millis(self.wrapped().store.subscription_throttle_interval_in_ms)
+    }
+
+    /// Set by the environment variable `GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT`
+    /// (expressed in seconds). The default value is 30 seconds.
+    pub fn chain_head_watcher_timeout(&self) -> Duration {
+        Duration::from_secs(self.wrapped().store.chain_head_watcher_timeout_in_secs)
+    }
+
+    /// This is how long statistics that influence query execution are cached in
+    /// memory before they are reloaded from the database.
+    ///
+    /// Set by the environment variable `GRAPH_QUERY_STATS_REFRESH_INTERVAL`
+    /// (expressed in seconds). The default value is 300 seconds.
+    pub fn query_stats_refresh_interval(&self) -> Duration {
+        Duration::from_secs(self.wrapped().store.query_stats_refresh_interval_in_secs)
+    }
+
+    /// This can be used to effectively disable the query semaphore by setting
+    /// it to a high number, but there's typically no need to configure this.
+    ///
+    /// Set by the environment variable `GRAPH_EXTRA_QUERY_PERMITS`. The default
+    /// value is 0.
+    pub fn extra_query_permits(&self) -> usize {
+        self.wrapped().store.extra_query_permits
+    }
+
+    /// Set by the environment variable `LARGE_NOTIFICATION_CLEANUP_INTERVAL`
+    /// (expressed in seconds). The default value is 300 seconds.
+    pub fn large_notification_cleanup_interval(&self) -> Duration {
+        Duration::from_secs(
+            self.wrapped()
+                .store
+                .large_notification_cleanup_interval_in_secs,
+        )
+    }
+
+    /// Set by the environment variable `GRAPH_NOTIFICATION_BROADCAST_TIMEOUT`
+    /// (expressed in seconds). The default value is 60 seconds.
+    pub fn notification_broadcast_timeout(&self) -> Duration {
+        Duration::from_secs(self.wrapped().store.notification_broadcast_timeout_in_secs)
+    }
+
+    /// This variable is only here temporarily until we can settle on the right
+    /// batch size through experimentation, and should then just become an
+    /// ordinary constant.
+    ///
+    /// Set by the environment variable `TYPEA_BATCH_SIZE`.
+    pub fn typea_batch_size(&self) -> usize {
+        self.wrapped().store.typea_batch_size
+    }
+
+    /// Allows for some optimizations when running relational queries. Set this
+    /// to 0 to turn off this optimization.
+    ///
+    /// Set by the environment variable `TYPED_CHILDREN_SET_SIZE`.
+    pub fn typed_children_set_size(&self) -> usize {
+        self.wrapped().store.typed_children_set_size
+    }
+
+    /// When enabled, turns `ORDER BY id` into `ORDER BY id, block_range` in
+    /// some relational queries.
+    ///
+    /// Set by the flag `ORDER_BY_BLOCK_RANGE`.
+    pub fn order_by_block_range(&self) -> bool {
+        self.wrapped().store.order_by_block_range.0
+    }
+
+    /// When the flag is present, `ORDER BY` clauses are changed so that `asc`
+    /// and `desc` ordering produces reverse orders. Setting the flag turns the
+    /// new, correct behavior off.
+    ///
+    /// Set by the flag `REVERSIBLE_ORDER_BY_OFF`.
+    pub fn reversible_order_by_off(&self) -> bool {
+        self.wrapped().store.reversible_order_by_off.0
+    }
+
+    /// A list of fully qualified table names that contain entities that are
+    /// like accounts in that they have a relatively small number of entities,
+    /// with a large number of change for each entity. It is useful to treat
+    /// such tables special in queries by changing the clause that selects
+    /// for a specific block range in a way that makes the BRIN index on
+    /// block_range usable.
+    ///
+    /// The use of this environment variable is deprecated; use `graphman stats
+    /// account-like` instead.
+    ///
+    /// Set by the environment variable `GRAPH_ACCOUNT_TABLES` (comma
+    /// separated). Empty by default. E.g.
+    /// `GRAPH_ACCOUNT_TABLES=sgd21902.pair,sgd1708.things`.
+    pub fn account_tables(&self) -> impl Deref<Target = HashSet<String>> + '_ {
+        RwLockReadGuard::map(self.wrapped(), |x| &x.account_tables)
+    }
+
+    /// This is the timeout duration for SQL queries.
+    ///
+    /// If it is not set, no statement timeout will be enforced. The statement
+    /// timeout is local, i.e., can only be used within a transaction and
+    /// will be cleared at the end of the transaction.
+    ///
+    /// Set by the environment variable `GRAPH_SQL_STATEMENT_TIMEOUT` (expressed
+    /// in seconds). No default value is provided.
+    pub fn sql_statement_timeout(&self) -> Option<Duration> {
+        self.wrapped()
+            .store
+            .sql_statement_timeout_in_secs
+            .map(Duration::from_secs)
+    }
+
+    /// Whether to disable the notifications that feed GraphQL
+    /// subscriptions. When the flag is set, no updates
+    /// about entity changes will be sent to query nodes.
+    ///
+    /// Set by the flag `GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS`. Not set
+    /// by default.
+    pub fn disable_subscription_notifications(&self) -> bool {
+        self.wrapped().store.disable_subscription_notifications.0
+    }
+
+    /// Set by the environment variable `GRAPH_STORE_CONNECTION_TIMEOUT` (expressed
+    /// in milliseconds). The default value is 5000ms.
+    pub fn store_connection_timeout(&self) -> Duration {
+        Duration::from_millis(self.wrapped().store.store_connection_timeout_in_millis)
+    }
+
+    /// Set by the environment variable `GRAPH_STORE_CONNECTION_MIN_IDLE`. No
+    /// default value is provided.
+    pub fn store_connection_min_idle(&self) -> Option<u32> {
+        self.wrapped().store.store_connection_min_idle
+    }
+
+    /// Set by the environment variable `GRAPH_STORE_CONNECTION_IDLE_TIMEOUT`
+    /// (expressed in seconds). The default value is 600s.
+    pub fn store_connection_idle_timeout(&self) -> Duration {
+        Duration::from_secs(self.wrapped().store.store_connection_idle_timeout_in_secs)
+    }
+
+    /// A fallback in case the logic to remember database availability goes
+    /// wrong; when this is set, we always try to get a connection and never
+    /// use the availability state we remembered.
+    ///
+    /// Set by the flag `GRAPH_STORE_CONNECTION_TRY_ALWAYS`. Disabled by
+    /// default.
+    pub fn store_connection_try_always(&self) -> bool {
+        self.wrapped().store.store_connection_try_always.0
+    }
+
+    /// Set by the environment variable `GRAPH_REMOVE_UNUSED_INTERVAL`
+    /// (expressed in minutes). The default value is 360 minutes.
+    pub fn remove_unused_interval(&self) -> chrono::Duration {
+        chrono::Duration::minutes(self.wrapped().store.remove_unused_interval_in_minutes as i64)
+    }
+}
+
+#[derive(Clone, Debug, Envconfig)]
+struct InnerStore {
+    #[envconfig(from = "SUBSCRIPTION_THROTTLE_INTERVAL", default = "1000")]
+    subscription_throttle_interval_in_ms: u64,
+    #[envconfig(from = "GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT", default = "30")]
+    chain_head_watcher_timeout_in_secs: u64,
+    #[envconfig(from = "GRAPH_QUERY_STATS_REFRESH_INTERVAL", default = "300")]
+    query_stats_refresh_interval_in_secs: u64,
+    #[envconfig(from = "GRAPH_EXTRA_QUERY_PERMITS", default = "0")]
+    extra_query_permits: usize,
+    #[envconfig(from = "LARGE_NOTIFICATION_CLEANUP_INTERVAL", default = "300")]
+    large_notification_cleanup_interval_in_secs: u64,
+    #[envconfig(from = "GRAPH_NOTIFICATION_BROADCAST_TIMEOUT", default = "60")]
+    notification_broadcast_timeout_in_secs: u64,
+    #[envconfig(from = "TYPEA_BATCH_SIZE", default = "150")]
+    typea_batch_size: usize,
+    #[envconfig(from = "TYPED_CHILDREN_SET_SIZE", default = "150")]
+    typed_children_set_size: usize,
+    #[envconfig(from = "ORDER_BY_BLOCK_RANGE", default = "false")]
+    order_by_block_range: EnvVarBoolean,
+    #[envconfig(from = "REVERSIBLE_ORDER_BY_OFF", default = "false")]
+    reversible_order_by_off: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_ACCOUNT_TABLES", default = "")]
+    account_tables: String,
+    #[envconfig(from = "GRAPH_SQL_STATEMENT_TIMEOUT")]
+    sql_statement_timeout_in_secs: Option<u64>,
+    #[envconfig(from = "GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS", default = "false")]
+    disable_subscription_notifications: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_STORE_CONNECTION_TRY_ALWAYS", default = "false")]
+    store_connection_try_always: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_REMOVE_UNUSED_INTERVAL", default = "360")]
+    remove_unused_interval_in_minutes: u64,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and
@@ -900,6 +910,7 @@ struct Inner {
     store_connection_idle_timeout_in_secs: u64,
 }
 
+/// Ethereum.
 impl EnvVars {
     /// Set by the environment variable `ETHEREUM_REORG_THRESHOLD`. The default
     /// value is 250 blocks.
