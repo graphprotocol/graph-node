@@ -5,14 +5,12 @@ use crate::subgraph::metrics::{
     RunnerMetrics, SubgraphInstanceManagerMetrics, SubgraphInstanceMetrics,
 };
 use crate::subgraph::runner::SubgraphRunner;
-use crate::subgraph::state::IndexingState;
 use crate::subgraph::SubgraphInstance;
 use graph::blockchain::block_stream::BlockStreamMetrics;
 use graph::blockchain::Blockchain;
 use graph::blockchain::NodeCapabilities;
 use graph::blockchain::{BlockchainKind, TriggerFilter};
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
-use graph::util::lfu_cache::LfuCache;
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
 use tokio::task;
 
@@ -280,10 +278,6 @@ where
             filter,
         };
 
-        let state = IndexingState {
-            entity_lfu_cache: LfuCache::new(),
-        };
-
         let metrics = RunnerMetrics {
             subgraph: subgraph_metrics,
             host: host_metrics,
@@ -304,7 +298,7 @@ where
         // it has a dedicated OS thread so the OS will handle the preemption. See
         // https://github.com/tokio-rs/tokio/issues/3493.
         graph::spawn_thread(deployment.to_string(), move || {
-            let runner = SubgraphRunner::new(inputs, ctx, state, logger.cheap_clone(), metrics);
+            let runner = SubgraphRunner::new(inputs, ctx, logger.cheap_clone(), metrics);
             if let Err(e) = graph::block_on(task::unconstrained(runner.run())) {
                 error!(
                     &logger,

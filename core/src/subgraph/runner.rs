@@ -44,14 +44,19 @@ where
     pub fn new(
         inputs: IndexingInputs<C>,
         ctx: IndexingContext<T, C>,
-        state: IndexingState,
         logger: Logger,
         metrics: RunnerMetrics,
     ) -> Self {
         Self {
             inputs: Arc::new(inputs),
             ctx,
-            state,
+            state: IndexingState {
+                should_try_unfail_non_deterministic: true,
+                synced: false,
+                skip_ptr_updates_timer: Instant::now(),
+                backoff: ExponentialBackoff::new(MINUTE * 2, ENV_VARS.subgraph_error_retry_ceil),
+                entity_lfu_cache: LfuCache::new(),
+            },
             logger,
             metrics,
         }
@@ -63,9 +68,6 @@ where
         let store_for_err = self.inputs.store.cheap_clone();
         let logger = self.logger.cheap_clone();
         let id_for_err = self.inputs.deployment.hash.clone();
-        let mut should_try_unfail_non_deterministic = true;
-        let mut synced = false;
-        let mut skip_ptr_updates_timer = Instant::now();
 
         // If a subgraph failed for deterministic reasons, before start indexing, we first
         // revert the deployment head. It should lead to the same result since the error was
@@ -90,10 +92,6 @@ where
             }
         }
 
-        // Exponential backoff that starts with two minutes and keeps
-        // increasing its timeout exponentially until it reaches the ceiling.
-        let mut backoff = ExponentialBackoff::new(MINUTE * 2, ENV_VARS.subgraph_error_retry_ceil);
-
         loop {
             debug!(logger, "Starting or restarting subgraph");
 
@@ -108,7 +106,6 @@ where
                 .map_err(CancelableError::Error)
                 .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
             let chain = self.inputs.chain.clone();
-            let chain_store = chain.chain_store();
 
             // Keep the stream's cancel guard around to be able to shut it down
             // when the subgraph deployment is unassigned
@@ -203,12 +200,12 @@ where
                 }
 
                 if block.trigger_count() == 0
-                    && skip_ptr_updates_timer.elapsed() <= SKIP_PTR_UPDATES_THRESHOLD
-                    && !synced
+                    && self.state.skip_ptr_updates_timer.elapsed() <= SKIP_PTR_UPDATES_THRESHOLD
+                    && !self.state.synced
                 {
                     continue;
                 } else {
-                    skip_ptr_updates_timer = Instant::now();
+                    self.state.skip_ptr_updates_timer = Instant::now();
                 }
 
                 let start = Instant::now();
@@ -229,10 +226,11 @@ where
                 match res {
                     Ok(needs_restart) => {
                         // Once synced, no need to try to update the status again.
-                        if !synced
+
+                        if !self.state.synced
                             && is_deployment_synced(
                                 &block_ptr,
-                                chain_store.cheap_clone().cached_head_ptr().await?,
+                                chain.chain_store().cached_head_ptr().await?,
                             )
                         {
                             // Updating the sync status is an one way operation.
@@ -241,7 +239,7 @@ where
                             self.inputs.store.deployment_synced()?;
 
                             // Stop trying to update the sync status.
-                            synced = true;
+                            self.state.synced = true;
 
                             // Stop recording time-to-sync metrics.
                             stream_metrics.stopwatch.disable();
@@ -249,7 +247,7 @@ where
 
                         // Keep trying to unfail subgraph for everytime it advances block(s) until it's
                         // health is not Failed anymore.
-                        if should_try_unfail_non_deterministic {
+                        if self.state.should_try_unfail_non_deterministic {
                             // If the deployment head advanced, we can unfail
                             // the non-deterministic error (if there's any).
                             let outcome = self
@@ -259,9 +257,9 @@ where
 
                             if let UnfailOutcome::Unfailed = outcome {
                                 // Stop trying to unfail.
-                                should_try_unfail_non_deterministic = false;
+                                self.state.should_try_unfail_non_deterministic = false;
                                 deployment_failed.set(0.0);
-                                backoff.reset();
+                                self.state.backoff.reset();
                             }
                         }
 
@@ -360,13 +358,13 @@ where
 
                                 let message = format!("{:#}", e).replace("\n", "\t");
                                 error!(logger, "Subgraph failed with non-deterministic error: {}", message;
-                                    "attempt" => backoff.attempt,
-                                    "retry_delay_s" => backoff.delay().as_secs());
+                                    "attempt" => self.state.backoff.attempt,
+                                    "retry_delay_s" => self.state.backoff.delay().as_secs());
 
                                 // Sleep before restarting.
-                                backoff.sleep_async().await;
+                                self.state.backoff.sleep_async().await;
 
-                                should_try_unfail_non_deterministic = true;
+                                self.state.should_try_unfail_non_deterministic = true;
 
                                 // And restart the subgraph.
                                 break;
