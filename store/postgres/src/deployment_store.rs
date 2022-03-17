@@ -40,6 +40,7 @@ use web3::types::Address;
 use crate::block_range::block_number;
 use crate::catalog;
 use crate::deployment;
+use crate::detail::ErrorDetail;
 use crate::relational::{Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::FromEntityData;
 use crate::{connection_pool::ConnectionPool, detail};
@@ -1309,7 +1310,7 @@ impl DeploymentStore {
 
         conn.transaction(|| {
             // We'll only unfail subgraphs that had fatal errors
-            let subgraph_error = match detail::fatal_error(conn, deployment_id)? {
+            let subgraph_error = match ErrorDetail::fatal(conn, deployment_id)? {
                 Some(fatal_error) => fatal_error,
                 // If the subgraph is not failed then there is nothing to do.
                 None => return Ok(UnfailOutcome::Noop),
@@ -1405,7 +1406,7 @@ impl DeploymentStore {
 
         conn.transaction(|| {
             // We'll only unfail subgraphs that had fatal errors
-            let subgraph_error = match detail::fatal_error(conn, deployment_id)? {
+            let subgraph_error = match ErrorDetail::fatal(conn, deployment_id)? {
                 Some(fatal_error) => fatal_error,
                 // If the subgraph is not failed then there is nothing to do.
                 None => return Ok(UnfailOutcome::Noop),
