@@ -22,7 +22,7 @@ lazy_static! {
     pub static ref ENV_VARS: EnvVars = EnvVars::from_env().unwrap();
 }
 
-// This is currently unusued but is kept as a potentially useful mechanism.
+// This is currently unused but is kept as a potentially useful mechanism.
 /// Panics if:
 /// - The value is not UTF8.
 /// - The value cannot be parsed as T.
@@ -343,8 +343,8 @@ impl EnvVars {
 
     /// Set by the environment variable `GRAPH_NOTIFICATION_BROADCAST_TIMEOUT`
     /// (expressed in seconds). The default value is 60 seconds.
-    pub fn notification_broacast_timeout(&self) -> Duration {
-        Duration::from_secs(self.wrapped().inner.notification_broacast_timeout_in_secs)
+    pub fn notification_broadcast_timeout(&self) -> Duration {
+        Duration::from_secs(self.wrapped().inner.notification_broadcast_timeout_in_secs)
     }
 
     /// This variable is only here temporarily until we can settle on the right
@@ -613,19 +613,19 @@ impl EnvVars {
 
     /// Ceiling for the backoff retry of non-deterministic errors.
     ///
-    /// Set by the environment varible `GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS`
+    /// Set by the environment variable `GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS`
     /// (expressed in seconds). The default value is 1800s (30 minutes).
     pub fn subgraph_error_retry_ceil(&self) -> Duration {
         Duration::from_secs(self.wrapped().inner.subgraph_error_retry_ceil_in_secs)
     }
 
-    /// Set by the environment varible `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`
+    /// Set by the environment variable `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`
     /// (expressed in bytes). The default value is 1MiB.
     pub fn max_ipfs_cache_file_size(&self) -> usize {
         self.wrapped().inner.max_ipfs_cache_file_size.0
     }
 
-    /// Set by the environment varible `GRAPH_MAX_IPFS_CACHE_SIZE`. The default
+    /// Set by the environment variable `GRAPH_MAX_IPFS_CACHE_SIZE`. The default
     /// value is 50 items.
     pub fn max_ipfs_cache_size(&self) -> u64 {
         self.wrapped().inner.max_ipfs_cache_size
@@ -633,7 +633,7 @@ impl EnvVars {
 
     /// The timeout for all IPFS requests.
     ///
-    /// Set by the environment varible `GRAPH_IPFS_TIMEOUT` (expressed in
+    /// Set by the environment variable `GRAPH_IPFS_TIMEOUT` (expressed in
     /// seconds). The default value is 30s.
     pub fn ipfs_timeout(&self) -> Duration {
         Duration::from_secs(self.wrapped().inner.ipfs_timeout_in_secs)
@@ -641,7 +641,7 @@ impl EnvVars {
 
     /// Sets the `ipfs.map` file size limit.
     ///
-    /// Set by the environment varible `GRAPH_MAX_IPFS_MAP_FILE_SIZE_LIMIT`
+    /// Set by the environment variable `GRAPH_MAX_IPFS_MAP_FILE_SIZE_LIMIT`
     /// (expressed in bytes). The default value is 256MiB.
     pub fn max_ipfs_map_file_size(&self) -> usize {
         self.wrapped().inner.max_ipfs_map_file_size.0
@@ -649,7 +649,7 @@ impl EnvVars {
 
     /// Sets the `ipfs.cat` file size limit.
     ///
-    /// Set by the environment varible `GRAPH_MAX_IPFS_FILE_BYTES` (expressed in
+    /// Set by the environment variable `GRAPH_MAX_IPFS_FILE_BYTES` (expressed in
     /// bytes). No default value is provided.
     ///
     /// FIXME: Having an env variable here is a problem for consensus.
@@ -658,7 +658,7 @@ impl EnvVars {
         self.wrapped().inner.max_ipfs_file_bytes
     }
 
-    /// Set by the environment varible `GRAPH_GRAPHQL_QUERY_TIMEOUT` (expressed in
+    /// Set by the environment variable `GRAPH_GRAPHQL_QUERY_TIMEOUT` (expressed in
     /// seconds). No default value is provided.
     pub fn graphql_query_timeout(&self) -> Option<Duration> {
         self.wrapped()
@@ -667,25 +667,25 @@ impl EnvVars {
             .map(Duration::from_secs)
     }
 
-    /// Set by the environment varible `GRAPH_GRAPHQL_MAX_COMPLEXITY`. No
+    /// Set by the environment variable `GRAPH_GRAPHQL_MAX_COMPLEXITY`. No
     /// default value is provided.
     pub fn graphql_max_complexity(&self) -> Option<u64> {
         self.wrapped().inner.graphql_max_complexity.map(|x| x.0)
     }
 
-    /// Set by the environment varible `GRAPH_GRAPHQL_MAX_DEPTH`. The default
+    /// Set by the environment variable `GRAPH_GRAPHQL_MAX_DEPTH`. The default
     /// value is 255.
     pub fn graphql_max_depth(&self) -> u8 {
         self.wrapped().inner.graphql_max_depth.0
     }
 
-    /// Set by the environment varible `GRAPH_GRAPHQL_MAX_FIRST`. The default
+    /// Set by the environment variable `GRAPH_GRAPHQL_MAX_FIRST`. The default
     /// value is 1000.
     pub fn graphql_max_first(&self) -> u32 {
         self.wrapped().inner.graphql_max_first
     }
 
-    /// Set by the environment varible `4294967295`. The default
+    /// Set by the environment variable `4294967295`. The default
     /// value is 4294967295 ([`u32::MAX`]).
     pub fn graphql_max_skip(&self) -> u32 {
         self.wrapped().inner.graphql_max_skip.0
@@ -909,7 +909,7 @@ struct Inner {
     #[envconfig(from = "LARGE_NOTIFICATION_CLEANUP_INTERVAL", default = "300")]
     large_notification_cleanup_interval_in_secs: u64,
     #[envconfig(from = "GRAPH_NOTIFICATION_BROADCAST_TIMEOUT", default = "60")]
-    notification_broacast_timeout_in_secs: u64,
+    notification_broadcast_timeout_in_secs: u64,
     #[envconfig(from = "TYPEA_BATCH_SIZE", default = "150")]
     typea_batch_size: usize,
     #[envconfig(from = "TYPED_CHILDREN_SET_SIZE", default = "150")]

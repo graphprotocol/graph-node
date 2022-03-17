@@ -237,7 +237,7 @@ impl NotificationListener {
 
                         match JsonNotification::parse(&notification, &mut conn) {
                             Ok(json_notification) => {
-                                let timeout = ENV_VARS.notification_broacast_timeout();
+                                let timeout = ENV_VARS.notification_broadcast_timeout();
                                 match graph::block_on(
                                     sender.send_timeout(json_notification, timeout),
                                 ) {
