@@ -4,6 +4,7 @@ version = "0.25.2"
 edition = "2021"
 
 [dependencies]
+envconfig = "0.10.0"
 futures = "0.1.21"
 http = "0.2.4"
 jsonrpc-core = "18.0.0"
@@ -11,6 +12,7 @@ graph = { path = "../../graph" }
 lazy_static = "1.2.0"
 mockall = "0.9.1"
 serde = "1.0"
+parking_lot = "0.12.0"
 prost = "0.8"
 prost-types = "0.8"
 dirs-next = "2.0"

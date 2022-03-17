@@ -32,9 +32,8 @@ const MULTI_CALL_TO_FILTER_TYPE_URL: &str =
     "type.googleapis.com/sf.ethereum.transform.v1.MultiCallToFilter";
 
 use crate::capabilities::NodeCapabilities;
-use crate::data_source::BlockHandlerFilter;
-use crate::Mapping;
-use crate::{data_source::DataSource, Chain};
+use crate::data_source::{BlockHandlerFilter, DataSource};
+use crate::{Chain, Mapping, ENV_VARS};
 
 pub type EventSignature = H256;
 pub type FunctionSelector = [u8; 4];

@@ -568,7 +568,7 @@ fn ethereum_networks_as_chains(
                 firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
                 eth_adapters.clone(),
                 chain_head_update_listener.clone(),
-                ENV_VARS.ethereum_reorg_threshold(),
+                ethereum::ENV_VARS.ethereum_reorg_threshold(),
                 is_ingestible,
             );
             (network_name.clone(), Arc::new(chain))
@@ -728,7 +728,7 @@ fn start_block_ingestor(
             // present in the DB.
             let block_ingestor = EthereumBlockIngestor::new(
                 logger,
-                ENV_VARS.ethereum_reorg_threshold(),
+                ethereum::ENV_VARS.ethereum_reorg_threshold(),
                 eth_adapter,
                 chain.chain_store(),
                 block_polling_interval,

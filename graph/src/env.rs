@@ -12,8 +12,7 @@ use std::{
 };
 
 use crate::{
-    components::{store::BlockNumber, subgraph::SubgraphVersionSwitchingMode},
-    runtime::gas::CONST_MAX_GAS_PER_HANDLER,
+    components::subgraph::SubgraphVersionSwitchingMode, runtime::gas::CONST_MAX_GAS_PER_HANDLER,
 };
 
 pub static UNSAFE_CONFIG: AtomicBool = AtomicBool::new(false);
@@ -74,12 +73,10 @@ struct Inner {
     misc: EnvVarsMisc,
     graphql: EnvVarsGraphQl,
     mapping_handlers: EnvVarsMappingHandlers,
-    ethereum: EnvVarsEthereum,
     store: EnvVarsStore,
 
     log_query_timing: Vec<String>,
     account_tables: HashSet<String>,
-    geth_eth_call_errors: Vec<String>,
     cached_subgraph_ids: Option<Vec<String>>,
 }
 
@@ -88,7 +85,6 @@ impl Inner {
         let inner = EnvVarsMisc::init_from_env()?;
         let graphql = EnvVarsGraphQl::init_from_env()?;
         let mapping_handlers = EnvVarsMappingHandlers::init_from_env()?;
-        let ethereum = EnvVarsEthereum::init_from_env()?;
         let store = EnvVarsStore::init_from_env()?;
 
         let log_query_timing = inner
@@ -100,12 +96,6 @@ impl Inner {
             .account_tables
             .split(',')
             .map(|s| format!("\"{}\"", s.replace(".", "\".\"")))
-            .collect();
-        let geth_eth_call_errors = ethereum
-            .geth_eth_call_errors
-            .split(';')
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
             .collect();
         let cached_subgraph_ids = if inner.cached_subgraph_ids == "*" {
             None
@@ -123,11 +113,9 @@ impl Inner {
             misc: inner,
             graphql,
             mapping_handlers,
-            ethereum,
             store,
             log_query_timing,
             account_tables,
-            geth_eth_call_errors,
             cached_subgraph_ids,
         })
     }
@@ -931,172 +919,6 @@ struct EnvVarsStore {
     store_connection_idle_timeout_in_secs: u64,
 }
 
-/// Ethereum.
-impl EnvVars {
-    /// Set by the environment variable `ETHEREUM_REORG_THRESHOLD`. The default
-    /// value is 250 blocks.
-    pub fn ethereum_reorg_threshold(&self) -> BlockNumber {
-        self.inner().ethereum.ethereum_reorg_threshold
-    }
-
-    /// Controls if firehose should be preferred over RPC if Firehose endpoints
-    /// are present, if not set, the default behavior is is kept which is to
-    /// automatically favor Firehose.
-    ///
-    /// Set by the flag `GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED`. On by default.
-    pub fn ethereum_is_firehose_preferred(&self) -> bool {
-        self.inner().ethereum.ethereum_is_firehose_preferred.0
-    }
-
-    /// Ideal number of triggers in a range. The range size will adapt to try to
-    /// meet this.
-    ///
-    /// Set by the environment variable
-    /// `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`. The default value is
-    /// 100.
-    pub fn ethereum_target_triggers_per_block_range(&self) -> u64 {
-        self.inner()
-            .ethereum
-            .ethereum_target_triggers_per_block_range
-    }
-
-    /// Maximum number of blocks to request in each chunk.
-    ///
-    /// Set by the environment variable `GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE`.
-    /// The default value is 2000 blocks.
-    pub fn ethereum_max_block_range_size(&self) -> BlockNumber {
-        self.inner().ethereum.ethereum_max_block_range_size
-    }
-
-    /// Set by the environment variable `ETHEREUM_TRACE_STREAM_STEP_SIZE`. The
-    /// default value is 50 blocks.
-    pub fn ethereum_trace_stream_step_size(&self) -> BlockNumber {
-        self.inner().ethereum.ethereum_trace_stream_step_size
-    }
-
-    /// Maximum range size for `eth.getLogs` requests that don't filter on
-    /// contract address, only event signature, and are therefore expensive.
-    ///
-    /// Set by the environment variable `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`. The
-    /// default value is 500 blocks, which is reasonable according to Ethereum
-    /// node operators.
-    pub fn ethereum_max_event_only_range(&self) -> BlockNumber {
-        self.inner().ethereum.ethereum_max_event_only_range
-    }
-
-    /// Set by the environment variable `ETHEREUM_BLOCK_BATCH_SIZE`. The
-    /// default value is 10 blocks.
-    pub fn ethereum_block_batch_size(&self) -> usize {
-        self.inner().ethereum.ethereum_block_batch_size
-    }
-
-    /// This should not be too large that it causes requests to timeout without
-    /// us catching it, nor too small that it causes us to timeout requests that
-    /// would've succeeded. We've seen successful `eth_getLogs` requests take
-    /// over 120 seconds.
-    ///
-    /// Set by the environment variable `GRAPH_ETHEREUM_JSON_RPC_TIMEOUT`
-    /// (expressed in seconds). The default value is 180s.
-    pub fn ethereum_json_rpc_timeout(&self) -> Duration {
-        Duration::from_secs(self.inner().ethereum.ethereum_json_rpc_timeout_in_secs)
-    }
-
-    /// This is used for requests that will not fail the subgraph if the limit
-    /// is reached, but will simply restart the syncing step, so it can be low.
-    /// This limit guards against scenarios such as requesting a block hash that
-    /// has been reorged.
-    ///
-    /// Set by the environment variable `GRAPH_ETHEREUM_REQUEST_RETRIES`. The
-    /// default value is 10.
-    pub fn ethereum_request_retries(&self) -> usize {
-        self.inner().ethereum.ethereum_request_retries
-    }
-
-    /// Additional deterministic errors that have not yet been hardcoded.
-    ///
-    /// Set by the environment variable `GRAPH_GETH_ETH_CALL_ERRORS`, separated
-    /// by `;`.
-    pub fn geth_eth_call_errors(&self) -> impl Deref<Target = [String]> + '_ {
-        RwLockReadGuard::map(self.inner(), |x| &x.geth_eth_call_errors[..])
-    }
-
-    /// Set by the environment variable `GRAPH_ETH_GET_LOGS_MAX_CONTRACTS`. The
-    /// default value is 2000.
-    pub fn ethereum_get_logs_max_contracts(&self) -> usize {
-        self.inner().ethereum.ethereum_get_logs_max_contracts
-    }
-
-    /// Set by the environment variable
-    /// `GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS`.
-    /// The default value is 1000.
-    pub fn ethereum_block_ingestor_max_concurrent_json_rpc_calls(&self) -> usize {
-        self.inner()
-            .ethereum
-            .ethereum_block_ingestor_max_concurrent_json_rpc_calls
-    }
-
-    /// Set by the flag `GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES`. Enabled
-    /// by default on macOS (to avoid DNS issues) and disabled by default on all
-    /// other systems.
-    pub fn ethereum_fetch_receipts_in_batches(&self) -> bool {
-        let default = cfg!(target_os = "macos");
-
-        self.inner()
-            .ethereum
-            .ethereum_fetch_receipts_in_batches
-            .map(|x| x.0)
-            .unwrap_or(default)
-    }
-
-    /// `graph_node::config` disallows setting this in a store with multiple
-    /// shards. See 8b6ad0c64e244023ac20ced7897fe666 for the reason.
-    ///
-    /// Set by the flag `GRAPH_ETHEREUM_CLEANUP_BLOCKS`. Off by default.
-    pub fn ethereum_cleanup_blocks(&self) -> bool {
-        self.inner().ethereum.ethereum_cleanup_blocks.0
-    }
-}
-
-#[derive(Clone, Debug, Envconfig)]
-struct EnvVarsEthereum {
-    #[envconfig(from = "GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED", default = "true")]
-    ethereum_is_firehose_preferred: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_GETH_ETH_CALL_ERRORS", default = "")]
-    geth_eth_call_errors: String,
-    #[envconfig(from = "GRAPH_ETH_GET_LOGS_MAX_CONTRACTS", default = "2000")]
-    ethereum_get_logs_max_contracts: usize,
-
-    // JSON-RPC specific.
-    #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
-    ethereum_reorg_threshold: BlockNumber,
-    #[envconfig(from = "ETHEREUM_TRACE_STREAM_STEP_SIZE", default = "50")]
-    ethereum_trace_stream_step_size: BlockNumber,
-    #[envconfig(from = "GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE", default = "500")]
-    ethereum_max_event_only_range: BlockNumber,
-    #[envconfig(from = "ETHEREUM_BLOCK_BATCH_SIZE", default = "10")]
-    ethereum_block_batch_size: usize,
-    #[envconfig(from = "GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE", default = "2000")]
-    ethereum_max_block_range_size: BlockNumber,
-    #[envconfig(from = "GRAPH_ETHEREUM_JSON_RPC_TIMEOUT", default = "180")]
-    ethereum_json_rpc_timeout_in_secs: u64,
-    #[envconfig(from = "GRAPH_ETHEREUM_REQUEST_RETRIES", default = "10")]
-    ethereum_request_retries: usize,
-    #[envconfig(
-        from = "GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS",
-        default = "1000"
-    )]
-    ethereum_block_ingestor_max_concurrent_json_rpc_calls: usize,
-    #[envconfig(from = "GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES")]
-    ethereum_fetch_receipts_in_batches: Option<EnvVarBoolean>,
-    #[envconfig(from = "GRAPH_ETHEREUM_CLEANUP_BLOCKS", default = "false")]
-    ethereum_cleanup_blocks: EnvVarBoolean,
-    #[envconfig(
-        from = "GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE",
-        default = "100"
-    )]
-    ethereum_target_triggers_per_block_range: u64,
-}
-
 /// When reading [`bool`] values from environment variables, we must be able to
 /// parse many different ways to specify booleans:
 ///
@@ -1104,7 +926,7 @@ struct EnvVarsEthereum {
 ///  - `true` or `false`.
 ///  - `1` or `0`.
 #[derive(Copy, Clone, Debug)]
-struct EnvVarBoolean(pub bool);
+pub struct EnvVarBoolean(pub bool);
 
 impl FromStr for EnvVarBoolean {
     type Err = String;
@@ -1120,7 +942,7 @@ impl FromStr for EnvVarBoolean {
 
 /// Allows us to parse stuff ignoring underscores, notably big numbers.
 #[derive(Copy, Clone, Debug)]
-struct NoUnderscores<T>(T);
+pub struct NoUnderscores<T>(T);
 
 impl<T> FromStr for NoUnderscores<T>
 where
@@ -1140,7 +962,7 @@ where
 /// Provide a numeric ([`usize`]) default value if the environment flag is
 /// empty.
 #[derive(Copy, Clone, Debug)]
-struct WithDefaultUsize<T, const N: usize>(T);
+pub struct WithDefaultUsize<T, const N: usize>(T);
 
 impl<T, const N: usize> FromStr for WithDefaultUsize<T, N>
 where

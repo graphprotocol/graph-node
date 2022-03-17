@@ -22,7 +22,7 @@ use graph::{
             },
         },
         BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger,
-        TimeoutError, TryFutureExt, ENV_VARS,
+        TimeoutError, TryFutureExt,
     },
 };
 use graph::{
@@ -48,7 +48,7 @@ use crate::{
     },
     transport::Transport,
     trigger::{EthereumBlockTriggerType, EthereumTrigger},
-    TriggerFilter,
+    TriggerFilter, ENV_VARS,
 };
 
 #[derive(Clone)]

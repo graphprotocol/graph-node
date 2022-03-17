@@ -1,10 +1,10 @@
-use crate::{chain::BlockFinality, EthereumAdapter, EthereumAdapterTrait};
+use crate::{chain::BlockFinality, EthereumAdapter, EthereumAdapterTrait, ENV_VARS};
 use graph::{
     blockchain::{BlockHash, BlockPtr, IngestorError},
     cheap_clone::CheapClone,
     prelude::{
         error, ethabi::ethereum_types::H256, info, tokio, trace, warn, ChainStore, Error,
-        EthereumBlockWithCalls, Future01CompatExt, LogCode, Logger, ENV_VARS,
+        EthereumBlockWithCalls, Future01CompatExt, LogCode, Logger,
     },
 };
 use std::{sync::Arc, time::Duration};

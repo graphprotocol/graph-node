@@ -8,10 +8,10 @@ use graph::{
             de::{self, value, SeqAccess, Visitor},
             Deserialize, Deserializer, Serialize,
         },
-        serde_json, Logger, NodeId, StoreError, ENV_VARS,
+        serde_json, Logger, NodeId, StoreError,
     },
 };
-use graph_chain_ethereum::NodeCapabilities;
+use graph_chain_ethereum::{self as ethereum, NodeCapabilities};
 use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
 use http::{HeaderMap, Uri};
@@ -101,7 +101,7 @@ impl Config {
         if !self.stores.contains_key(PRIMARY_SHARD.as_str()) {
             return Err(anyhow!("missing a primary store"));
         }
-        if self.stores.len() > 1 && ENV_VARS.ethereum_cleanup_blocks() {
+        if self.stores.len() > 1 && ethereum::ENV_VARS.ethereum_cleanup_blocks() {
             // See 8b6ad0c64e244023ac20ced7897fe666
             return Err(anyhow!(
                 "GRAPH_ETHEREUM_CLEANUP_BLOCKS can not be used with a sharded store"
