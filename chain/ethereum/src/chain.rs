@@ -257,8 +257,8 @@ impl Blockchain for Chain {
             start_blocks,
             reorg_threshold,
             logger,
-            ENV_VARS.ethereum_max_block_range_size(),
-            ENV_VARS.ethereum_target_triggers_per_block_range(),
+            ENV_VARS.max_block_range_size(),
+            ENV_VARS.target_triggers_per_block_range(),
             unified_api_version,
             subgraph_current_block,
         )))
@@ -292,7 +292,7 @@ impl Blockchain for Chain {
     }
 
     fn is_firehose_supported(&self) -> bool {
-        ENV_VARS.ethereum_is_firehose_preferred() && self.firehose_endpoints.len() > 0
+        ENV_VARS.is_firehose_preferred() && self.firehose_endpoints.len() > 0
     }
 }
 

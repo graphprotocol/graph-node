@@ -105,7 +105,7 @@ pub async fn run(
         firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
         eth_adapters,
         chain_head_update_listener,
-        ethereum::ENV_VARS.ethereum_reorg_threshold(),
+        ethereum::ENV_VARS.reorg_threshold(),
         // We assume the tested chain is always ingestible for now
         true,
     );
