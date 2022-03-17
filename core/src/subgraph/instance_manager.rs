@@ -1,7 +1,9 @@
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
-use crate::subgraph::metrics::{SubgraphInstanceManagerMetrics, SubgraphInstanceMetrics};
-use crate::subgraph::runner::{RunnerMetrics, SubgraphRunner};
+use crate::subgraph::metrics::{
+    RunnerMetrics, SubgraphInstanceManagerMetrics, SubgraphInstanceMetrics,
+};
+use crate::subgraph::runner::SubgraphRunner;
 use crate::subgraph::state::{IndexingState, SharedInstanceKeepAliveMap};
 use crate::subgraph::SubgraphInstance;
 use graph::blockchain::block_stream::BlockStreamMetrics;
@@ -278,7 +280,11 @@ where
             entity_lfu_cache: LfuCache::new(),
         };
 
-        let metrics = RunnerMetrics::new(subgraph_metrics, host_metrics, block_stream_metrics);
+        let metrics = RunnerMetrics {
+            subgraph: subgraph_metrics,
+            host: host_metrics,
+            stream: block_stream_metrics,
+        };
 
         // Keep restarting the subgraph until it terminates. The subgraph
         // will usually only run once, but is restarted whenever a block

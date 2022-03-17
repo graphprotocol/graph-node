@@ -1,12 +1,12 @@
 use crate::subgraph::error::BlockProcessingError;
 use crate::subgraph::inputs::IndexingInputs;
-use crate::subgraph::metrics::SubgraphInstanceMetrics;
+use crate::subgraph::metrics::RunnerMetrics;
 use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
 use crate::subgraph::SubgraphInstance;
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
-use graph::blockchain::block_stream::{BlockStreamEvent, BlockStreamMetrics, BlockWithTriggers};
+use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers};
 use graph::blockchain::{Block, Blockchain, DataSource, TriggerFilter as _, TriggersAdapter};
 use graph::components::{
     store::ModificationsAndCache,
@@ -32,29 +32,6 @@ pub struct SubgraphRunner<C: Blockchain, T: RuntimeHostBuilder<C>> {
     inputs: Arc<IndexingInputs<C>>,
     logger: Logger,
     metrics: RunnerMetrics,
-}
-
-pub struct RunnerMetrics {
-    /// Sensors to measure the execution of the subgraph instance
-    subgraph: Arc<SubgraphInstanceMetrics>,
-    /// Sensors to measure the execution of the subgraph's runtime hosts
-    host: Arc<HostMetrics>,
-    /// Sensors to measure the BlockStream metrics
-    stream: Arc<BlockStreamMetrics>,
-}
-
-impl RunnerMetrics {
-    pub fn new(
-        subgraph: Arc<SubgraphInstanceMetrics>,
-        host: Arc<HostMetrics>,
-        stream: Arc<BlockStreamMetrics>,
-    ) -> Self {
-        Self {
-            subgraph,
-            host,
-            stream,
-        }
-    }
 }
 
 impl<C, T> SubgraphRunner<C, T>
