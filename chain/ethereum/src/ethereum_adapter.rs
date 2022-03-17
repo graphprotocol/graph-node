@@ -489,10 +489,11 @@ impl EthereumAdapter {
                         "out of gas",
                     ];
 
+                    let env_geth_call_errors = ENV_VARS.geth_eth_call_errors();
                     let mut geth_execution_errors = GETH_EXECUTION_ERRORS
                         .iter()
                         .map(|s| *s)
-                        .chain(ENV_VARS.geth_eth_call_errors().iter().map(|s| s.as_str()));
+                        .chain(env_geth_call_errors.iter().map(|s| s.as_str()));
 
                     let as_solidity_revert_with_reason = |bytes: &[u8]| {
                         let solidity_revert_function_selector =

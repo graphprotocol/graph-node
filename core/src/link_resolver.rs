@@ -303,6 +303,8 @@ mod tests {
     #[tokio::test]
     async fn max_file_size() {
         env::set_var(MAX_IPFS_FILE_SIZE_VAR, "200");
+        ENV_VARS.refresh().unwrap();
+
         let file: &[u8] = &[0u8; 201];
         let client = IpfsClient::localhost();
         let resolver = super::LinkResolver::from(client.clone());
@@ -356,9 +358,11 @@ mod tests {
     async fn ipfs_map_file_size() {
         let file = "\"small test string that trips the size restriction\"";
         env::set_var(MAX_IPFS_MAP_FILE_SIZE_VAR, (file.len() - 1).to_string());
+        ENV_VARS.refresh().unwrap();
 
         let err = json_round_trip(file).await.unwrap_err();
         env::remove_var(MAX_IPFS_MAP_FILE_SIZE_VAR);
+        ENV_VARS.refresh().unwrap();
 
         assert!(err.to_string().contains(" is too large"));
 

@@ -44,7 +44,7 @@ pub fn logger(show_debug: bool) -> Logger {
                 FilterLevel::Info
             },
         )
-        .parse(ENV_VARS.log_levels().unwrap_or_default())
+        .parse(ENV_VARS.log_levels().as_deref().unwrap_or_default())
         .build();
     let drain = slog_async::Async::new(drain)
         .chan_size(20000)
@@ -374,6 +374,6 @@ fn formatted_timestamp_local(io: &mut impl io::Write) -> io::Result<()> {
     write!(
         io,
         "{}",
-        chrono::Local::now().format(ENV_VARS.log_time_format())
+        chrono::Local::now().format(ENV_VARS.log_time_format().as_str())
     )
 }
