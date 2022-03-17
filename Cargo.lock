@@ -1300,7 +1300,7 @@ dependencies = [
 
 [[package]]
 name = "graph"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "Inflector",
  "anyhow",
@@ -1363,7 +1363,7 @@ dependencies = [
 
 [[package]]
 name = "graph-chain-ethereum"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -1390,7 +1390,7 @@ dependencies = [
 
 [[package]]
 name = "graph-chain-near"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "base64",
  "diesel",
@@ -1409,7 +1409,7 @@ dependencies = [
 
 [[package]]
 name = "graph-chain-tendermint"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "anyhow",
  "graph",
@@ -1428,7 +1428,7 @@ dependencies = [
 
 [[package]]
 name = "graph-core"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -1459,7 +1459,7 @@ dependencies = [
 
 [[package]]
 name = "graph-graphql"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "Inflector",
  "anyhow",
@@ -1480,14 +1480,14 @@ dependencies = [
 
 [[package]]
 name = "graph-mock"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "graph",
 ]
 
 [[package]]
 name = "graph-node"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "assert_cli",
  "clap",
@@ -1525,7 +1525,7 @@ dependencies = [
 
 [[package]]
 name = "graph-runtime-derive"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "quote",
  "syn",
@@ -1533,7 +1533,7 @@ dependencies = [
 
 [[package]]
 name = "graph-runtime-test"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "graph",
  "graph-chain-ethereum",
@@ -1547,7 +1547,7 @@ dependencies = [
 
 [[package]]
 name = "graph-runtime-wasm"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1573,7 +1573,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-http"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "futures 0.1.31",
  "graph",
@@ -1587,7 +1587,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-index-node"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "blake3",
  "either",
@@ -1606,7 +1606,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-json-rpc"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "graph",
  "jsonrpc-http-server",
@@ -1616,7 +1616,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-metrics"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "futures 0.1.31",
  "graph",
@@ -1628,7 +1628,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-websocket"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "anyhow",
  "futures 0.1.31",
@@ -1644,7 +1644,7 @@ dependencies = [
 
 [[package]]
 name = "graph-store-postgres"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "Inflector",
  "anyhow",
@@ -1682,7 +1682,7 @@ dependencies = [
 
 [[package]]
 name = "graph-tests"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "anyhow",
  "bollard",
@@ -3820,7 +3820,7 @@ dependencies = [
 
 [[package]]
 name = "test-store"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "diesel",
  "graph",
