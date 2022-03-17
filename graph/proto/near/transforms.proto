@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package sf.near.transform.v1;
+option go_package = "github.com/streamingfast/sf-near/pb/sf/near/transform/v1;pbtransform";
+
+message BasicReceiptFilter {
+  repeated string accounts = 1;
+}
