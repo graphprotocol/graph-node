@@ -1,10 +1,11 @@
+use crate::subgraph::context::{IndexingContext, SharedInstanceKeepAliveMap};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
 use crate::subgraph::metrics::{
     RunnerMetrics, SubgraphInstanceManagerMetrics, SubgraphInstanceMetrics,
 };
 use crate::subgraph::runner::SubgraphRunner;
-use crate::subgraph::state::{IndexingState, SharedInstanceKeepAliveMap};
+use crate::subgraph::state::IndexingState;
 use crate::subgraph::SubgraphInstance;
 use graph::blockchain::block_stream::BlockStreamMetrics;
 use graph::blockchain::Blockchain;
@@ -273,10 +274,13 @@ where
         };
 
         // The subgraph state tracks the state of the subgraph instance over time
-        let state = IndexingState {
+        let ctx = IndexingContext {
             instance,
             instances: self.instances.cheap_clone(),
             filter,
+        };
+
+        let state = IndexingState {
             entity_lfu_cache: LfuCache::new(),
         };
 
@@ -300,7 +304,7 @@ where
         // it has a dedicated OS thread so the OS will handle the preemption. See
         // https://github.com/tokio-rs/tokio/issues/3493.
         graph::spawn_thread(deployment.to_string(), move || {
-            let runner = SubgraphRunner::new(inputs, state, logger.cheap_clone(), metrics);
+            let runner = SubgraphRunner::new(inputs, ctx, state, logger.cheap_clone(), metrics);
             if let Err(e) = graph::block_on(task::unconstrained(runner.run())) {
                 error!(
                     &logger,
