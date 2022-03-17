@@ -288,7 +288,7 @@ impl EnvVars {
     /// Set by the environment variable `GRAPH_LOG_TIME_FORMAT`. The default
     /// value is `%b %d %H:%M:%S%.3f`.
     pub fn log_time_format(&self) -> String {
-        self.wrapped().inner.log_time_format.clone()
+        self.inner().misc.log_time_format.clone()
     }
 
     /// Set by the flag `GRAPH_LOG_POI_EVENTS`.
