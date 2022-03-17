@@ -1,6 +1,6 @@
 [package]
 name = "graph-store-postgres"
-version = "0.25.2"
+version = "0.26.0"
 edition = "2021"
 
 [dependencies]
