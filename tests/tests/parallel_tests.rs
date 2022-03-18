@@ -24,7 +24,7 @@ lazy_static::lazy_static! {
 }
 
 /// All integration tests subdirectories to run
-pub const INTEGRATION_TESTS_DIRECTORIES: [&str; 11] = [
+pub const INTEGRATION_TESTS_DIRECTORIES: [&str; 12] = [
     "api-version-v0-0-4",
     "data-source-context",
     "data-source-revert",
@@ -35,6 +35,7 @@ pub const INTEGRATION_TESTS_DIRECTORIES: [&str; 11] = [
     "overloaded-contract-functions",
     "poi-for-failed-subgraph",
     "remove-then-update",
+    "start-block",
     "value-roundtrip",
 ];
 
