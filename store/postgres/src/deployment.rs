@@ -1,7 +1,10 @@
 //! Utilities for dealing with deployment metadata. Any connection passed
 //! into these methods must be for the shard that holds the actual
 //! deployment data and metadata
-use crate::detail::GraphNodeVersion;
+use crate::{
+    detail::GraphNodeVersion,
+    functions::{coalesce_binary, coalesce_numeric},
+};
 use diesel::{
     connection::SimpleConnection,
     dsl::{count, delete, insert_into, select, sql, update},
@@ -455,6 +458,35 @@ pub fn block_ptr(conn: &PgConnection, id: &DeploymentHash) -> Result<Option<Bloc
     let ptr = crate::detail::block(id.as_str(), "latest_ethereum_block", hash, number)?
         .map(|block| block.to_ptr());
     Ok(ptr)
+}
+
+/// Initialize the subgraph's block pointer. If the block pointer in
+/// `latest_ethereum_block` is set already, do nothing. If it is still
+/// `null`, set it to `earliest_ethereum_block`
+pub fn initialize_block_ptr(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {
+    use subgraph_deployment as d;
+
+    let init_hash = coalesce_binary(
+        d::latest_ethereum_block_hash,
+        d::earliest_ethereum_block_hash,
+    );
+    let init_number = coalesce_numeric(
+        d::latest_ethereum_block_number,
+        d::earliest_ethereum_block_number,
+    );
+    // Avoid an unnecessary update by filtering for null block pointers
+    update(
+        d::table
+            .filter(d::id.eq(site.id))
+            .filter(d::latest_ethereum_block_hash.is_null()),
+    )
+    .set((
+        d::latest_ethereum_block_hash.eq(init_hash),
+        d::latest_ethereum_block_number.eq(init_number),
+    ))
+    .execute(conn)
+    .map(|_| ())
+    .map_err(|e| e.into())
 }
 
 fn convert_to_u32(number: Option<i32>, field: &str, subgraph: &str) -> Result<u32, StoreError> {

@@ -1286,6 +1286,11 @@ impl DeploymentStore {
                 Ok(())
             })?;
         }
+        // Make sure the block pointer is set. This is important for newly
+        // deployed subgraphs so that we respect the 'startBlock' setting
+        // the first time the subgraph is started
+        let conn = self.get_conn()?;
+        conn.transaction(|| crate::deployment::initialize_block_ptr(&conn, &dst.site))?;
         Ok(())
     }
 
