@@ -1830,7 +1830,7 @@ fn resolve_transaction_receipt(
 }
 
 /// Retrieves logs and the associated transact receipts, if required by the [`EthereumLogFilter`].
-pub(super) async fn get_logs_and_transactions(
+async fn get_logs_and_transactions(
     adapter: Arc<EthereumAdapter>,
     logger: &Logger,
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
@@ -1870,7 +1870,9 @@ pub(super) async fn get_logs_and_transactions(
     Ok(log_triggers)
 }
 
-pub(super) async fn get_transaction_receipts_for_transaction_hashes(
+/// Tries to retrive all transaction receipts for a set of transaction hashes.
+/// Deduplicates input before making requests and returns the results mapped by hash.
+async fn get_transaction_receipts_for_transaction_hashes(
     adapter: &EthereumAdapter,
     transaction_hashes: &[H256],
 ) -> Result<HashMap<H256, TransactionReceipt>, anyhow::Error> {
