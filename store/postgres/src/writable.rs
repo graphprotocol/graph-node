@@ -1,3 +1,4 @@
+use std::panic;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -451,6 +452,33 @@ impl Queue {
         capacity: usize,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Arc<Self> {
+        fn execute(
+            req: Arc<Request>,
+            store: Arc<SyncStore>,
+            stopwatch: StopwatchMetrics,
+        ) -> Result<(), StoreError> {
+            match req.as_ref() {
+                Request::Write {
+                    block_ptr: block_ptr_to,
+                    firehose_cursor,
+                    mods,
+                    data_sources,
+                    deterministic_errors,
+                } => store.transact_block_operations(
+                    block_ptr_to,
+                    firehose_cursor.as_deref(),
+                    mods,
+                    &stopwatch,
+                    data_sources,
+                    deterministic_errors,
+                ),
+                Request::Revert {
+                    block_ptr,
+                    firehose_cursor,
+                } => store.revert_block_operations(block_ptr.clone(), firehose_cursor.as_deref()),
+            }
+        }
+
         async fn start_writer(queue: Arc<Queue>, stopwatch: StopwatchMetrics) {
             loop {
                 // We peek at the front of the queue, rather than pop it
@@ -459,37 +487,27 @@ impl Queue {
                 // these methods would not be able to see that data until
                 // the write transaction commits, causing them to return
                 // incorrect results.
-                let res = match queue.queue.peek().await.as_ref() {
-                    Request::Write {
-                        block_ptr: block_ptr_to,
-                        firehose_cursor,
-                        mods,
-                        data_sources,
-                        deterministic_errors,
-                    } => queue.store.transact_block_operations(
-                        block_ptr_to,
-                        firehose_cursor.as_deref(),
-                        mods,
-                        &stopwatch,
-                        data_sources,
-                        deterministic_errors,
-                    ),
-                    Request::Revert {
-                        block_ptr,
-                        firehose_cursor,
-                    } => queue
-                        .store
-                        .revert_block_operations(block_ptr.clone(), firehose_cursor.as_deref()),
-                };
+                let req = queue.queue.peek().await;
+                let store = queue.store.cheap_clone();
+                let stopwatch = stopwatch.cheap_clone();
+                let res =
+                    graph::spawn_blocking(
+                        async move { execute(req, store, stopwatch.cheap_clone()) },
+                    )
+                    .await;
                 // The request has been handled. It's now safe to remove it
                 // from the queue
                 queue.queue.pop().await;
 
-                if let Err(e) = res {
-                    *queue.write_err.lock().unwrap() = Some(e);
-                    queue.poisoned.store(true, Ordering::SeqCst);
-                    queue.queue.clear();
-                    return;
+                match res {
+                    Ok(Ok(())) => { /* nothing to do  */ }
+                    Ok(Err(e)) => {
+                        *queue.write_err.lock().unwrap() = Some(e);
+                        queue.poisoned.store(true, Ordering::SeqCst);
+                        queue.queue.clear();
+                        return;
+                    }
+                    Err(e) => panic::resume_unwind(e.into_panic()),
                 }
             }
         }
