@@ -387,7 +387,7 @@ impl WritableStoreTrait for WritableAgent {
         self.store.start_subgraph_deployment(logger)?;
 
         // Refresh all in memory state in case this instance was used before
-        futures03::executor::block_on(async {
+        graph::block_on(async {
             *self.block_ptr.lock().unwrap() = self.store.block_ptr().await?;
             *self.block_cursor.lock().unwrap() = self.store.block_cursor().await?;
 
