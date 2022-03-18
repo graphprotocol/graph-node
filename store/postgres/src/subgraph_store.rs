@@ -587,6 +587,7 @@ impl SubgraphStoreInner {
         let deployment = DeploymentCreate {
             manifest: deployment.manifest,
             earliest_block: deployment.earliest_block.clone(),
+            latest_block: deployment.latest_block.clone(),
             graft_base: Some(src.deployment.clone()),
             graft_block: Some(block),
             debug_fork: deployment.debug_fork,

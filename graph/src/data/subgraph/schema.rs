@@ -103,6 +103,7 @@ impl TryFromValue for SubgraphHealth {
 pub struct DeploymentCreate {
     pub manifest: SubgraphManifestEntity,
     pub earliest_block: Option<BlockPtr>,
+    pub latest_block: Option<BlockPtr>,
     pub graft_base: Option<DeploymentHash>,
     pub graft_block: Option<BlockPtr>,
     pub debug_fork: Option<DeploymentHash>,
@@ -112,10 +113,12 @@ impl DeploymentCreate {
     pub fn new(
         source_manifest: &SubgraphManifest<impl Blockchain>,
         earliest_block: Option<BlockPtr>,
+        latest_block: Option<BlockPtr>,
     ) -> Self {
         Self {
             manifest: SubgraphManifestEntity::from(source_manifest),
             earliest_block: earliest_block.cheap_clone(),
+            latest_block: latest_block.cheap_clone(),
             graft_base: None,
             graft_block: None,
             debug_fork: None,

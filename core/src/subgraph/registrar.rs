@@ -568,7 +568,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolve
 
     // Apply the subgraph versioning and deployment operations,
     // creating a new subgraph deployment if one doesn't exist.
-    let deployment = DeploymentCreate::new(&manifest, start_block)
+    let deployment = DeploymentCreate::new(&manifest, start_block.cheap_clone(), start_block)
         .graft(base_block)
         .debug(debug_fork);
     deployment_store
