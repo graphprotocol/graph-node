@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Error};
 use thiserror::Error;
+use tokio::task::JoinError;
 
 use super::{BlockNumber, DeploymentHash};
 use crate::prelude::QueryExecutionError;
@@ -47,6 +48,8 @@ pub enum StoreError {
     ForkFailure(String),
     #[error("subgraph writer poisoned by previous error")]
     Poisoned,
+    #[error("panic in subgraph writer: {0}")]
+    WriterPanic(JoinError),
 }
 
 // Convenience to report a constraint violation

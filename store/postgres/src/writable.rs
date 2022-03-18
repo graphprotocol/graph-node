@@ -1,4 +1,3 @@
-use std::panic;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -490,11 +489,10 @@ impl Queue {
                 let req = queue.queue.peek().await;
                 let store = queue.store.cheap_clone();
                 let stopwatch = stopwatch.cheap_clone();
-                let res =
-                    graph::spawn_blocking(
-                        async move { execute(req, store, stopwatch.cheap_clone()) },
-                    )
-                    .await;
+                let res = graph::spawn_blocking_allow_panic(move || {
+                    execute(req, store, stopwatch.cheap_clone())
+                })
+                .await;
                 // The request has been handled. It's now safe to remove it
                 // from the queue
                 queue.queue.pop().await;
@@ -502,12 +500,13 @@ impl Queue {
                 match res {
                     Ok(Ok(())) => { /* nothing to do  */ }
                     Ok(Err(e)) => {
-                        *queue.write_err.lock().unwrap() = Some(e);
-                        queue.poisoned.store(true, Ordering::SeqCst);
-                        queue.queue.clear();
+                        queue.record_err(e);
                         return;
                     }
-                    Err(e) => panic::resume_unwind(e.into_panic()),
+                    Err(e) => {
+                        queue.record_err(StoreError::WriterPanic(e));
+                        return;
+                    }
                 }
             }
         }
@@ -557,6 +556,12 @@ impl Queue {
             true => Err(StoreError::Poisoned),
             false => Ok(()),
         }
+    }
+
+    fn record_err(&self, e: StoreError) {
+        *self.write_err.lock().unwrap() = Some(e);
+        self.poisoned.store(true, Ordering::SeqCst);
+        self.queue.clear();
     }
 
     /// Get the entity for `key` if it exists by looking at both the queue
