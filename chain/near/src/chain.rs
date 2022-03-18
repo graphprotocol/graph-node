@@ -194,10 +194,15 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         _logger: &Logger,
         block: codec::Block,
-        _filter: &TriggerFilter,
+        filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         // TODO: Find the best place to introduce an `Arc` and avoid this clone.
         let shared_block = Arc::new(block.clone());
+
+        let TriggerFilter {
+            block_filter,
+            receipt_filter,
+        } = filter;
 
         // Filter non-successful or non-action receipts.
         let receipts = block.shards.iter().flat_map(|shard| {
@@ -223,9 +228,14 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                         return None;
                     }
 
+                    let receipt = outcome.receipt.as_ref()?.clone();
+                    if !receipt_filter.matches(&receipt.receiver_id) {
+                        return None;
+                    }
+
                     Some(trigger::ReceiptWithOutcome {
                         outcome: outcome.execution_outcome.as_ref()?.clone(),
-                        receipt: outcome.receipt.as_ref()?.clone(),
+                        receipt,
                         block: shared_block.cheap_clone(),
                     })
                 })
@@ -235,7 +245,9 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             .map(|r| NearTrigger::Receipt(Arc::new(r)))
             .collect();
 
-        trigger_data.push(NearTrigger::Block(shared_block.cheap_clone()));
+        if block_filter.trigger_every_block {
+            trigger_data.push(NearTrigger::Block(shared_block.cheap_clone()));
+        }
 
         Ok(BlockWithTriggers::new(block, trigger_data))
     }
@@ -346,5 +358,148 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         self.endpoint
             .block_ptr_for_number::<codec::HeaderOnlyBlock>(logger, final_block_number)
             .await
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::{collections::HashSet, vec};
+
+    use graph::{
+        blockchain::{block_stream::BlockWithTriggers, TriggersAdapter as _},
+        prelude::tokio,
+        slog::{self, o, Logger},
+    };
+
+    use crate::{
+        adapter::{NearReceiptFilter, TriggerFilter},
+        codec::{
+            self, execution_outcome,
+            receipt::{self},
+            BlockHeader, DataReceiver, ExecutionOutcome, ExecutionOutcomeWithId,
+            IndexerExecutionOutcomeWithReceipt, IndexerShard, ReceiptAction,
+            SuccessValueExecutionStatus,
+        },
+        Chain,
+    };
+
+    use super::TriggersAdapter;
+
+    #[tokio::test]
+    async fn test_trigger_filter_empty() {
+        let account1: String = "account1".into();
+
+        let adapter = TriggersAdapter {};
+
+        let logger = Logger::root(slog::Discard, o!());
+        let block1 = new_success_block(1, &account1);
+
+        let filter = TriggerFilter::default();
+
+        let block_with_triggers: BlockWithTriggers<Chain> = adapter
+            .triggers_in_block(&logger, block1, &filter)
+            .await
+            .expect("failed to execute triggers_in_block");
+        assert_eq!(block_with_triggers.trigger_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_trigger_filter_every_block() {
+        let account1: String = "account1".into();
+
+        let adapter = TriggersAdapter {};
+
+        let logger = Logger::root(slog::Discard, o!());
+        let block1 = new_success_block(1, &account1);
+
+        let filter = TriggerFilter {
+            block_filter: crate::adapter::NearBlockFilter {
+                trigger_every_block: true,
+            },
+            ..Default::default()
+        };
+
+        let block_with_triggers: BlockWithTriggers<Chain> = adapter
+            .triggers_in_block(&logger, block1, &filter)
+            .await
+            .expect("failed to execute triggers_in_block");
+        assert_eq!(block_with_triggers.trigger_count(), 1);
+
+        let height: Vec<u64> = heights_from_triggers(&block_with_triggers);
+        assert_eq!(height, vec![1]);
+    }
+
+    #[tokio::test]
+    async fn test_trigger_filter_every_receipt() {
+        let account1: String = "account1".into();
+
+        let adapter = TriggersAdapter {};
+
+        let logger = Logger::root(slog::Discard, o!());
+        let block1 = new_success_block(1, &account1);
+
+        let filter = TriggerFilter {
+            receipt_filter: NearReceiptFilter {
+                accounts: HashSet::from_iter(vec![account1]),
+            },
+            ..Default::default()
+        };
+
+        let block_with_triggers: BlockWithTriggers<Chain> = adapter
+            .triggers_in_block(&logger, block1, &filter)
+            .await
+            .expect("failed to execute triggers_in_block");
+        assert_eq!(block_with_triggers.trigger_count(), 1);
+
+        let height: Vec<u64> = heights_from_triggers(&block_with_triggers);
+        assert_eq!(height.len(), 0);
+    }
+
+    fn heights_from_triggers(block: &BlockWithTriggers<Chain>) -> Vec<u64> {
+        block
+            .trigger_data
+            .clone()
+            .into_iter()
+            .filter_map(|x| match x {
+                crate::trigger::NearTrigger::Block(b) => b.header.clone().map(|x| x.height),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn new_success_block(height: u64, receiver_id: &String) -> codec::Block {
+        codec::Block {
+            header: Some(BlockHeader {
+                height,
+                ..Default::default()
+            }),
+            shards: vec![IndexerShard {
+                receipt_execution_outcomes: vec![IndexerExecutionOutcomeWithReceipt {
+                    receipt: Some(crate::codec::Receipt {
+                        receipt: Some(receipt::Receipt::Action(ReceiptAction {
+                            output_data_receivers: vec![DataReceiver {
+                                receiver_id: receiver_id.clone(),
+                                ..Default::default()
+                            }],
+                            ..Default::default()
+                        })),
+                        receiver_id: receiver_id.clone(),
+                        ..Default::default()
+                    }),
+                    execution_outcome: Some(ExecutionOutcomeWithId {
+                        outcome: Some(ExecutionOutcome {
+                            status: Some(execution_outcome::Status::SuccessValue(
+                                SuccessValueExecutionStatus::default(),
+                            )),
+
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }),
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
     }
 }
