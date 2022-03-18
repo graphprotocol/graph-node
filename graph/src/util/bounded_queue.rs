@@ -58,6 +58,24 @@ impl<T: Clone> BoundedQueue<T> {
         item
     }
 
+    /// Get an item from the queue without blocking; if the queue is empty,
+    /// return `None`
+    pub fn try_pop(&self) -> Option<T> {
+        let permit = match self.pop_semaphore.try_acquire() {
+            Err(_) => return None,
+            Ok(permit) => permit,
+        };
+        let item = self
+            .queue
+            .lock()
+            .unwrap()
+            .pop_front()
+            .expect("the queue is not empty");
+        permit.forget();
+        self.push_semaphore.add_permits(1);
+        Some(item)
+    }
+
     /// Take an item from the front of the queue and return a copy. If the
     /// queue is currently empty this method blocks until an item is
     /// available.
@@ -125,19 +143,8 @@ impl<T: Clone> BoundedQueue<T> {
         queue.iter().rev().fold(init, f)
     }
 
-    pub async fn clear(&self) {
-        let pushed = {
-            let mut queue = self.queue.lock().unwrap();
-            let pushed = queue.len();
-            queue.clear();
-            pushed
-        };
-        self.push_semaphore.add_permits(pushed);
-        let _permits = self
-            .pop_semaphore
-            .acquire_many(pushed as u32)
-            .await
-            .expect("we never close the pop_semaphore");
-        _permits.forget();
+    /// Clear the queue by popping entries until there are none left
+    pub fn clear(&self) {
+        while let Some(_) = self.try_pop() {}
     }
 }
