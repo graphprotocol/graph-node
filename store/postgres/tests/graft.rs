@@ -138,7 +138,7 @@ fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator {
     };
 
     // Create SubgraphDeploymentEntity
-    let deployment = DeploymentCreate::new(&manifest, None);
+    let deployment = DeploymentCreate::new(&manifest, None, None);
     let name = SubgraphName::new("test/graft").unwrap();
     let node_id = NodeId::new("test").unwrap();
     let deployment = store

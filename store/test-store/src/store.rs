@@ -166,7 +166,7 @@ pub fn create_subgraph(
         chain: PhantomData,
     };
 
-    let deployment = DeploymentCreate::new(&manifest, None).graft(base);
+    let deployment = DeploymentCreate::new(&manifest, None, None).graft(base);
     let name = {
         let mut name = subgraph_id.to_string();
         name.truncate(32);

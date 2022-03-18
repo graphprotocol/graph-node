@@ -113,7 +113,7 @@ fn insert_test_entities(
     store: &impl SubgraphStore,
     manifest: SubgraphManifest<graph_chain_ethereum::Chain>,
 ) -> DeploymentLocator {
-    let deployment = DeploymentCreate::new(&manifest, None);
+    let deployment = DeploymentCreate::new(&manifest, None, None);
     let name = SubgraphName::new("test/query").unwrap();
     let node_id = NodeId::new("test").unwrap();
     let deployment = store

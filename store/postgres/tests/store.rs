@@ -166,7 +166,7 @@ fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator {
     };
 
     // Create SubgraphDeploymentEntity
-    let deployment = DeploymentCreate::new(&manifest, None);
+    let deployment = DeploymentCreate::new(&manifest, None, None);
     let name = SubgraphName::new("test/store").unwrap();
     let node_id = NodeId::new("test").unwrap();
     let deployment = store
@@ -1279,7 +1279,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             chain: PhantomData,
         };
 
-        let deployment = DeploymentCreate::new(&manifest, Some(TEST_BLOCK_0_PTR.clone()));
+        let deployment = DeploymentCreate::new(&manifest, Some(TEST_BLOCK_0_PTR.clone()), None);
         let name = SubgraphName::new("test/entity-changes-are-fired").unwrap();
         let node_id = NodeId::new("test").unwrap();
         let deployment = store
