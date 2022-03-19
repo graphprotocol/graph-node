@@ -148,20 +148,7 @@ where
         // sources; if the subgraph is a graft or a copy, starting it will
         // do the copying and dynamic data sources won't show up until after
         // that is done
-        {
-            let store = store.clone();
-            let logger = logger.clone();
-
-            // `start_subgraph_deployment` is blocking.
-            task::spawn_blocking(move || {
-                store
-                    .start_subgraph_deployment(&logger)
-                    .map_err(Error::from)
-            })
-            .await
-            .map_err(Error::from)
-            .and_then(|x| x)?;
-        }
+        store.start_subgraph_deployment(&logger).await?;
 
         let manifest: SubgraphManifest<C> = {
             info!(logger, "Resolve subgraph files using IPFS");

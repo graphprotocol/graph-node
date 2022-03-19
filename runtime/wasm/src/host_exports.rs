@@ -241,7 +241,7 @@ impl<C: Blockchain> HostExports<C> {
         // Does not consume gas because this is not a part of the deterministic feature set.
         // Ideally this would first consume gas for fetching the file stats, and then again
         // for the bytes of the file.
-        block_on03(self.link_resolver.cat(logger, &Link { link }))
+        graph::block_on(self.link_resolver.cat(logger, &Link { link }))
     }
 
     // Read the IPFS file `link`, split it into JSON objects, and invoke the
@@ -285,9 +285,9 @@ impl<C: Blockchain> HostExports<C> {
 
         let result = {
             let mut stream: JsonValueStream =
-                block_on03(link_resolver.json_stream(&logger, &Link { link }))?;
+                graph::block_on(link_resolver.json_stream(&logger, &Link { link }))?;
             let mut v = Vec::new();
-            while let Some(sv) = block_on03(stream.next()) {
+            while let Some(sv) = graph::block_on(stream.next()) {
                 let sv = sv?;
                 let module = WasmInstance::from_valid_module_with_ctx(
                     valid_module.clone(),
@@ -755,10 +755,6 @@ impl<C: Blockchain> HostExports<C> {
             .map(|mut tokens| tokens.pop().unwrap())
             .context("Failed to decode")
     }
-}
-
-fn block_on03<T>(future: impl futures03::Future<Output = T> + Send) -> T {
-    graph::block_on(future)
 }
 
 fn string_to_h160(string: &str) -> Result<H160, DeterministicHostError> {

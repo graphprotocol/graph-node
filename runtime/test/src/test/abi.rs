@@ -9,7 +9,7 @@ use graph_runtime_wasm::{
 
 use super::*;
 
-fn test_unbounded_loop(api_version: Version) {
+async fn test_unbounded_loop(api_version: Version) {
     // Set handler timeout to 3 seconds.
     let module = test_valid_module_and_store_with_timeout(
         "unboundedLoop",
@@ -20,6 +20,7 @@ fn test_unbounded_loop(api_version: Version) {
         api_version,
         Some(Duration::from_secs(3)),
     )
+    .await
     .0;
     let res: Result<(), _> = module.get_func("loop").typed().unwrap().call(());
     assert!(res.unwrap_err().to_string().contains(TRAP_TIMEOUT));
@@ -27,15 +28,15 @@ fn test_unbounded_loop(api_version: Version) {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn unbounded_loop_v0_0_4() {
-    test_unbounded_loop(API_VERSION_0_0_4);
+    test_unbounded_loop(API_VERSION_0_0_4).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn unbounded_loop_v0_0_5() {
-    test_unbounded_loop(API_VERSION_0_0_5);
+    test_unbounded_loop(API_VERSION_0_0_5).await;
 }
 
-fn test_unbounded_recursion(api_version: Version) {
+async fn test_unbounded_recursion(api_version: Version) {
     let module = test_module(
         "unboundedRecursion",
         mock_data_source(
@@ -43,7 +44,8 @@ fn test_unbounded_recursion(api_version: Version) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
     let res: Result<(), _> = module.get_func("rabbit_hole").typed().unwrap().call(());
     let err_msg = res.unwrap_err().to_string();
     assert!(err_msg.contains("call stack exhausted"), "{:#?}", err_msg);
@@ -51,15 +53,15 @@ fn test_unbounded_recursion(api_version: Version) {
 
 #[tokio::test]
 async fn unbounded_recursion_v0_0_4() {
-    test_unbounded_recursion(API_VERSION_0_0_4);
+    test_unbounded_recursion(API_VERSION_0_0_4).await;
 }
 
 #[tokio::test]
 async fn unbounded_recursion_v0_0_5() {
-    test_unbounded_recursion(API_VERSION_0_0_5);
+    test_unbounded_recursion(API_VERSION_0_0_5).await;
 }
 
-fn test_abi_array(api_version: Version, gas_used: u64) {
+async fn test_abi_array(api_version: Version, gas_used: u64) {
     let mut module = test_module(
         "abiArray",
         mock_data_source(
@@ -67,7 +69,8 @@ fn test_abi_array(api_version: Version, gas_used: u64) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
 
     let vec = vec![
         "1".to_owned(),
@@ -93,15 +96,15 @@ fn test_abi_array(api_version: Version, gas_used: u64) {
 
 #[tokio::test]
 async fn abi_array_v0_0_4() {
-    test_abi_array(API_VERSION_0_0_4, 695935);
+    test_abi_array(API_VERSION_0_0_4, 695935).await;
 }
 
 #[tokio::test]
 async fn abi_array_v0_0_5() {
-    test_abi_array(API_VERSION_0_0_5, 1636130);
+    test_abi_array(API_VERSION_0_0_5, 1636130).await;
 }
 
-fn test_abi_subarray(api_version: Version) {
+async fn test_abi_subarray(api_version: Version) {
     let mut module = test_module(
         "abiSubarray",
         mock_data_source(
@@ -109,7 +112,8 @@ fn test_abi_subarray(api_version: Version) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
 
     let vec: Vec<u8> = vec![1, 2, 3, 4];
     let new_vec_obj: AscPtr<TypedArray<u8>> =
@@ -121,15 +125,15 @@ fn test_abi_subarray(api_version: Version) {
 
 #[tokio::test]
 async fn abi_subarray_v0_0_4() {
-    test_abi_subarray(API_VERSION_0_0_4);
+    test_abi_subarray(API_VERSION_0_0_4).await;
 }
 
 #[tokio::test]
 async fn abi_subarray_v0_0_5() {
-    test_abi_subarray(API_VERSION_0_0_5);
+    test_abi_subarray(API_VERSION_0_0_5).await;
 }
 
-fn test_abi_bytes_and_fixed_bytes(api_version: Version) {
+async fn test_abi_bytes_and_fixed_bytes(api_version: Version) {
     let mut module = test_module(
         "abiBytesAndFixedBytes",
         mock_data_source(
@@ -137,7 +141,8 @@ fn test_abi_bytes_and_fixed_bytes(api_version: Version) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
     let bytes1: Vec<u8> = vec![42, 45, 7, 245, 45];
     let bytes2: Vec<u8> = vec![3, 12, 0, 1, 255];
     let new_vec_obj: AscPtr<Uint8Array> = module.invoke_export2("concat", &*bytes1, &*bytes2);
@@ -152,15 +157,15 @@ fn test_abi_bytes_and_fixed_bytes(api_version: Version) {
 
 #[tokio::test]
 async fn abi_bytes_and_fixed_bytes_v0_0_4() {
-    test_abi_bytes_and_fixed_bytes(API_VERSION_0_0_4);
+    test_abi_bytes_and_fixed_bytes(API_VERSION_0_0_4).await;
 }
 
 #[tokio::test]
 async fn abi_bytes_and_fixed_bytes_v0_0_5() {
-    test_abi_bytes_and_fixed_bytes(API_VERSION_0_0_5);
+    test_abi_bytes_and_fixed_bytes(API_VERSION_0_0_5).await;
 }
 
-fn test_abi_ethabi_token_identity(api_version: Version) {
+async fn test_abi_ethabi_token_identity(api_version: Version) {
     let mut module = test_module(
         "abiEthabiTokenIdentity",
         mock_data_source(
@@ -168,7 +173,8 @@ fn test_abi_ethabi_token_identity(api_version: Version) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
     let gas = module.gas.cheap_clone();
 
     // Token::Address
@@ -246,17 +252,17 @@ fn test_abi_ethabi_token_identity(api_version: Version) {
 /// and assert the final token is the same as the starting one.
 #[tokio::test]
 async fn abi_ethabi_token_identity_v0_0_4() {
-    test_abi_ethabi_token_identity(API_VERSION_0_0_4);
+    test_abi_ethabi_token_identity(API_VERSION_0_0_4).await;
 }
 
 /// Test a roundtrip Token -> Payload -> Token identity conversion through asc,
 /// and assert the final token is the same as the starting one.
 #[tokio::test]
 async fn abi_ethabi_token_identity_v0_0_5() {
-    test_abi_ethabi_token_identity(API_VERSION_0_0_5);
+    test_abi_ethabi_token_identity(API_VERSION_0_0_5).await;
 }
 
-fn test_abi_store_value(api_version: Version) {
+async fn test_abi_store_value(api_version: Version) {
     let mut module = test_module(
         "abiStoreValue",
         mock_data_source(
@@ -264,7 +270,8 @@ fn test_abi_store_value(api_version: Version) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
 
     // Value::Null
     let func = module.get_func("value_null").typed().unwrap().clone();
@@ -352,15 +359,15 @@ fn test_abi_store_value(api_version: Version) {
 
 #[tokio::test]
 async fn abi_store_value_v0_0_4() {
-    test_abi_store_value(API_VERSION_0_0_4);
+    test_abi_store_value(API_VERSION_0_0_4).await;
 }
 
 #[tokio::test]
 async fn abi_store_value_v0_0_5() {
-    test_abi_store_value(API_VERSION_0_0_5);
+    test_abi_store_value(API_VERSION_0_0_5).await;
 }
 
-fn test_abi_h160(api_version: Version) {
+async fn test_abi_h160(api_version: Version) {
     let mut module = test_module(
         "abiH160",
         mock_data_source(
@@ -368,7 +375,8 @@ fn test_abi_h160(api_version: Version) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
     let address = H160::zero();
 
     // As an `Uint8Array`
@@ -385,15 +393,15 @@ fn test_abi_h160(api_version: Version) {
 
 #[tokio::test]
 async fn abi_h160_v0_0_4() {
-    test_abi_h160(API_VERSION_0_0_4);
+    test_abi_h160(API_VERSION_0_0_4).await;
 }
 
 #[tokio::test]
 async fn abi_h160_v0_0_5() {
-    test_abi_h160(API_VERSION_0_0_5);
+    test_abi_h160(API_VERSION_0_0_5).await;
 }
 
-fn test_string(api_version: Version) {
+async fn test_string(api_version: Version) {
     let mut module = test_module(
         "string",
         mock_data_source(
@@ -401,7 +409,8 @@ fn test_string(api_version: Version) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
     let string = "    漢字Double_Me🇧🇷  ";
     let trimmed_string_obj: AscPtr<AscString> = module.invoke_export1("repeat_twice", string);
     let doubled_string: String = asc_get(&module, trimmed_string_obj, &module.gas).unwrap();
@@ -410,15 +419,15 @@ fn test_string(api_version: Version) {
 
 #[tokio::test]
 async fn string_v0_0_4() {
-    test_string(API_VERSION_0_0_4);
+    test_string(API_VERSION_0_0_4).await;
 }
 
 #[tokio::test]
 async fn string_v0_0_5() {
-    test_string(API_VERSION_0_0_5);
+    test_string(API_VERSION_0_0_5).await;
 }
 
-fn test_abi_big_int(api_version: Version) {
+async fn test_abi_big_int(api_version: Version) {
     let mut module = test_module(
         "abiBigInt",
         mock_data_source(
@@ -426,7 +435,8 @@ fn test_abi_big_int(api_version: Version) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
 
     // Test passing in 0 and increment it by 1
     let old_uint = U256::zero();
@@ -448,15 +458,15 @@ fn test_abi_big_int(api_version: Version) {
 
 #[tokio::test]
 async fn abi_big_int_v0_0_4() {
-    test_abi_big_int(API_VERSION_0_0_4);
+    test_abi_big_int(API_VERSION_0_0_4).await;
 }
 
 #[tokio::test]
 async fn abi_big_int_v0_0_5() {
-    test_abi_big_int(API_VERSION_0_0_5);
+    test_abi_big_int(API_VERSION_0_0_5).await;
 }
 
-fn test_big_int_to_string(api_version: Version) {
+async fn test_big_int_to_string(api_version: Version) {
     let mut module = test_module(
         "bigIntToString",
         mock_data_source(
@@ -464,7 +474,8 @@ fn test_big_int_to_string(api_version: Version) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
 
     let big_int_str = "30145144166666665000000000000000000";
     let big_int = BigInt::from_str(big_int_str).unwrap();
@@ -475,15 +486,15 @@ fn test_big_int_to_string(api_version: Version) {
 
 #[tokio::test]
 async fn big_int_to_string_v0_0_4() {
-    test_big_int_to_string(API_VERSION_0_0_4);
+    test_big_int_to_string(API_VERSION_0_0_4).await;
 }
 
 #[tokio::test]
 async fn big_int_to_string_v0_0_5() {
-    test_big_int_to_string(API_VERSION_0_0_5);
+    test_big_int_to_string(API_VERSION_0_0_5).await;
 }
 
-fn test_invalid_discriminant(api_version: Version) {
+async fn test_invalid_discriminant(api_version: Version) {
     let module = test_module(
         "invalidDiscriminant",
         mock_data_source(
@@ -491,7 +502,8 @@ fn test_invalid_discriminant(api_version: Version) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
 
     let func = module
         .get_func("invalid_discriminant")
@@ -507,7 +519,7 @@ fn test_invalid_discriminant(api_version: Version) {
 #[tokio::test]
 #[should_panic]
 async fn invalid_discriminant_v0_0_4() {
-    test_invalid_discriminant(API_VERSION_0_0_4);
+    test_invalid_discriminant(API_VERSION_0_0_4).await;
 }
 
 // This should panic rather than exhibiting UB. It's hard to test for UB, but
@@ -515,5 +527,5 @@ async fn invalid_discriminant_v0_0_4() {
 #[tokio::test]
 #[should_panic]
 async fn invalid_discriminant_v0_0_5() {
-    test_invalid_discriminant(API_VERSION_0_0_5);
+    test_invalid_discriminant(API_VERSION_0_0_5).await;
 }

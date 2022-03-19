@@ -53,10 +53,10 @@ fn get_version_info(store: &Store, subgraph_name: &str) -> VersionInfo {
 
 #[test]
 fn reassign_subgraph() {
-    fn setup() -> DeploymentLocator {
+    async fn setup() -> DeploymentLocator {
         let id = DeploymentHash::new("reassignSubgraph").unwrap();
         remove_subgraphs();
-        create_test_subgraph(&id, SUBGRAPH_GQL)
+        create_test_subgraph(&id, SUBGRAPH_GQL).await
     }
 
     fn find_assignment(store: &SubgraphStore, deployment: &DeploymentLocator) -> Option<String> {
@@ -67,7 +67,7 @@ fn reassign_subgraph() {
     }
 
     run_test_sequentially(|store| async move {
-        let id = setup();
+        let id = setup().await;
         let store = store.subgraph_store();
 
         // Check our setup
@@ -323,18 +323,18 @@ fn status() {
     const NAME: &str = "infoSubgraph";
     const OTHER: &str = "otherInfoSubgraph";
 
-    fn setup() -> DeploymentLocator {
+    async fn setup() -> DeploymentLocator {
         let id = DeploymentHash::new(NAME).unwrap();
         remove_subgraphs();
-        let deployment = create_test_subgraph(&id, SUBGRAPH_GQL);
-        create_test_subgraph(&DeploymentHash::new(OTHER).unwrap(), SUBGRAPH_GQL);
+        let deployment = create_test_subgraph(&id, SUBGRAPH_GQL).await;
+        create_test_subgraph(&DeploymentHash::new(OTHER).unwrap(), SUBGRAPH_GQL).await;
         deployment
     }
 
     run_test_sequentially(|store| async move {
         use graph::data::subgraph::status;
 
-        let deployment = setup();
+        let deployment = setup().await;
         let infos = store
             .status(status::Filter::Deployments(vec![
                 deployment.hash.to_string(),
@@ -432,15 +432,15 @@ fn status() {
 fn version_info() {
     const NAME: &str = "versionInfoSubgraph";
 
-    fn setup() -> DeploymentLocator {
+    async fn setup() -> DeploymentLocator {
         let id = DeploymentHash::new(NAME).unwrap();
         remove_subgraphs();
         block_store::set_chain(vec![], NETWORK_NAME);
-        create_test_subgraph(&id, SUBGRAPH_GQL)
+        create_test_subgraph(&id, SUBGRAPH_GQL).await
     }
 
     run_test_sequentially(|store| async move {
-        let deployment = setup();
+        let deployment = setup().await;
         transact_entity_operations(
             &store.subgraph_store(),
             &deployment,
@@ -473,7 +473,8 @@ fn version_info() {
 fn subgraph_error() {
     test_store::run_test_sequentially(|store| async move {
         let subgraph_id = DeploymentHash::new("testSubgraph").unwrap();
-        let deployment = test_store::create_test_subgraph(&subgraph_id, "type Foo { id: ID! }");
+        let deployment =
+            test_store::create_test_subgraph(&subgraph_id, "type Foo { id: ID! }").await;
 
         let count = || -> usize {
             let store = store.subgraph_store();
@@ -528,14 +529,14 @@ fn subgraph_error() {
 
 #[test]
 fn fatal_vs_non_fatal() {
-    fn setup() -> DeploymentLocator {
+    async fn setup() -> DeploymentLocator {
         let id = DeploymentHash::new("failUnfail").unwrap();
         remove_subgraphs();
-        create_test_subgraph(&id, SUBGRAPH_GQL)
+        create_test_subgraph(&id, SUBGRAPH_GQL).await
     }
 
     run_test_sequentially(|store| async move {
-        let deployment = setup();
+        let deployment = setup().await;
         let query_store = store
             .query_store(deployment.hash.clone().into(), false)
             .await
@@ -572,14 +573,14 @@ fn fatal_vs_non_fatal() {
 fn fail_unfail_deterministic_error() {
     const NAME: &str = "failUnfailDeterministic";
 
-    fn setup() -> DeploymentLocator {
+    async fn setup() -> DeploymentLocator {
         let id = DeploymentHash::new(NAME).unwrap();
         remove_subgraphs();
-        create_test_subgraph(&id, SUBGRAPH_GQL)
+        create_test_subgraph(&id, SUBGRAPH_GQL).await
     }
 
     run_test_sequentially(|store| async move {
-        let deployment = setup();
+        let deployment = setup().await;
 
         let query_store = store
             .query_store(deployment.hash.cheap_clone().into(), false)
@@ -663,14 +664,14 @@ fn fail_unfail_deterministic_error() {
 fn fail_unfail_deterministic_error_noop() {
     const NAME: &str = "failUnfailDeterministicNoop";
 
-    fn setup() -> DeploymentLocator {
+    async fn setup() -> DeploymentLocator {
         let id = DeploymentHash::new(NAME).unwrap();
         remove_subgraphs();
-        create_test_subgraph(&id, SUBGRAPH_GQL)
+        create_test_subgraph(&id, SUBGRAPH_GQL).await
     }
 
     run_test_sequentially(|store| async move {
-        let deployment = setup();
+        let deployment = setup().await;
 
         let count = || -> usize {
             let store = store.subgraph_store();
@@ -794,14 +795,14 @@ fn fail_unfail_deterministic_error_noop() {
 fn fail_unfail_non_deterministic_error() {
     const NAME: &str = "failUnfailNonDeterministic";
 
-    fn setup() -> DeploymentLocator {
+    async fn setup() -> DeploymentLocator {
         let id = DeploymentHash::new(NAME).unwrap();
         remove_subgraphs();
-        create_test_subgraph(&id, SUBGRAPH_GQL)
+        create_test_subgraph(&id, SUBGRAPH_GQL).await
     }
 
     run_test_sequentially(|store| async move {
-        let deployment = setup();
+        let deployment = setup().await;
 
         let count = || -> usize {
             let store = store.subgraph_store();
@@ -883,14 +884,14 @@ fn fail_unfail_non_deterministic_error() {
 fn fail_unfail_non_deterministic_error_noop() {
     const NAME: &str = "failUnfailNonDeterministicNoop";
 
-    fn setup() -> DeploymentLocator {
+    async fn setup() -> DeploymentLocator {
         let id = DeploymentHash::new(NAME).unwrap();
         remove_subgraphs();
-        create_test_subgraph(&id, SUBGRAPH_GQL)
+        create_test_subgraph(&id, SUBGRAPH_GQL).await
     }
 
     run_test_sequentially(|store| async move {
-        let deployment = setup();
+        let deployment = setup().await;
 
         let count = || -> usize {
             let store = store.subgraph_store();

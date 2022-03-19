@@ -76,9 +76,7 @@ impl StoreResolver {
     ) -> Result<Self, QueryExecutionError> {
         let store_clone = store.cheap_clone();
         let deployment2 = deployment.clone();
-        let block_ptr = Self::locate_block(store_clone.as_ref(), bc, deployment2.clone())
-            .await
-            .map_err(|e| QueryExecutionError::Panic(e.to_string()))?;
+        let block_ptr = Self::locate_block(store_clone.as_ref(), bc, deployment2.clone()).await?;
 
         let has_non_fatal_errors = store
             .has_non_fatal_errors(Some(block_ptr.block_number()))

@@ -3,7 +3,7 @@ use std::time::Duration;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::data::subgraph::schema;
-use graph::prelude::{futures03, Entity, Schema, SubgraphStore as _};
+use graph::prelude::{Entity, Schema, SubgraphStore as _};
 use graph::{
     cheap_clone::CheapClone,
     components::store::{self, EntityType, WritableStore as WritableStoreTrait},
@@ -383,16 +383,16 @@ impl WritableStoreTrait for WritableAgent {
         Ok(())
     }
 
-    fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
-        self.store.start_subgraph_deployment(logger)?;
+    async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
+        let store = self.store.cheap_clone();
+        let logger = logger.cheap_clone();
+        graph::spawn_blocking_allow_panic(move || store.start_subgraph_deployment(&logger))
+            .await
+            .map_err(Error::from)??;
 
         // Refresh all in memory state in case this instance was used before
-        graph::block_on(async {
-            *self.block_ptr.lock().unwrap() = self.store.block_ptr().await?;
-            *self.block_cursor.lock().unwrap() = self.store.block_cursor().await?;
-
-            Ok::<(), StoreError>(())
-        })?;
+        *self.block_ptr.lock().unwrap() = self.store.block_ptr().await?;
+        *self.block_cursor.lock().unwrap() = self.store.block_cursor().await?;
 
         Ok(())
     }
