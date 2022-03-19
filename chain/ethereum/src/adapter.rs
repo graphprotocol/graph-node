@@ -297,13 +297,13 @@ impl EthereumLogFilter {
         this
     }
 
-    pub fn from_mapping(iter: &Mapping) -> Self {
+    pub fn from_mapping(mapping: &Mapping) -> Self {
         let mut this = EthereumLogFilter::default();
-
-        for sig in iter.event_handlers.iter().map(|e| e.topic0()) {
-            this.wildcard_events.insert(sig);
+        for event_handler in &mapping.event_handlers {
+            let signature = event_handler.topic0();
+            this.wildcard_events
+                .insert(signature, event_handler.receipt);
         }
-
         this
     }
 
