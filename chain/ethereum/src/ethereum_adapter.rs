@@ -1400,8 +1400,6 @@ pub(crate) async fn blocks_with_triggers(
 
     // Filter out call triggers that come from unsuccessful transactions
     let mut blocks = if unified_api_version.equal_or_greater_than(&API_VERSION_0_0_5) {
-        let section =
-            stopwatch_metrics.start_section("filter_call_triggers_from_unsuccessful_transactions");
         let futures = blocks.into_iter().map(|block| {
             filter_call_triggers_from_unsuccessful_transactions(block, &eth, &chain_store, &logger)
         });
