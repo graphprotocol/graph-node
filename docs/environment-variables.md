@@ -152,6 +152,7 @@ happens, subgraphs might process inconsistent data. Defaults to 250.
   `gql`, also logs information for each toplevel GraphQL query field
   whether that could be retrieved from cache or not. Defaults to no
   logging.
+- `GRAPH_LOG_TIME_FORMAT`: Custom log time format.Default value is `%b %d %H:%M:%S%.3f`.More information [here](https://docs.rs/chrono/latest/chrono/#formatting-and-parsing).
 - `STORE_CONNECTION_POOL_SIZE`: How many simultaneous connections to allow to the store.
   Due to implementation details, this value may not be strictly adhered to. Defaults to 10.
 - `GRAPH_LOG_POI_EVENTS`: Logs Proof of Indexing events deterministically.
