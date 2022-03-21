@@ -5,6 +5,15 @@
   where whitespace characters were part of the terms.
 - Adds support for Solidity Custom Errors (issue #2577)
 
+## 0.25.2
+
+This release includes two changes:
+
+- Bug fix of blocks being skipped from processing when: a deterministic error happens **and** the `index-node` gets restarted. Issue [#3236](https://github.com/graphprotocol/graph-node/issues/3236), Pull Request: [#3316](https://github.com/graphprotocol/graph-node/pull/3316).
+- Automatic retries for non-deterministic errors. Issue [#2945](https://github.com/graphprotocol/graph-node/issues/2945), Pull Request: [#2988](https://github.com/graphprotocol/graph-node/pull/2988).
+
+This is the last patch on the `0.25` minor version, soon `0.26.0` will be released. While that we recommend updating to this version to avoid determinism issues that could be caused on `graph-node` restarts.
+
 ## 0.25.1
 
 This release only adds two fixes:
