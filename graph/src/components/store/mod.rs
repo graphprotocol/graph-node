@@ -163,11 +163,17 @@ pub enum EntityFilter {
     In(Attribute, Vec<Value>),
     NotIn(Attribute, Vec<Value>),
     Contains(Attribute, Value),
+    ContainsNoCase(Attribute, Value),
     NotContains(Attribute, Value),
+    NotContainsNoCase(Attribute, Value),
     StartsWith(Attribute, Value),
+    StartsWithNoCase(Attribute, Value),
     NotStartsWith(Attribute, Value),
+    NotStartsWithNoCase(Attribute, Value),
     EndsWith(Attribute, Value),
+    EndsWithNoCase(Attribute, Value),
     NotEndsWith(Attribute, Value),
+    NotEndsWithNoCase(Attribute, Value),
 }
 
 // Define some convenience methods

@@ -21,11 +21,17 @@ pub(crate) enum FilterOp {
     In,
     NotIn,
     Contains,
+    ContainsNoCase,
     NotContains,
+    NotContainsNoCase,
     StartsWith,
+    StartsWithNoCase,
     NotStartsWith,
+    NotStartsWithNoCase,
     EndsWith,
+    EndsWithNoCase,
     NotEndsWith,
+    NotEndsWithNoCase,
     Equal,
 }
 
@@ -40,11 +46,25 @@ pub(crate) fn parse_field_as_filter(key: &str) -> (String, FilterOp) {
         k if k.ends_with("_not_in") => ("_not_in", FilterOp::NotIn),
         k if k.ends_with("_in") => ("_in", FilterOp::In),
         k if k.ends_with("_not_contains") => ("_not_contains", FilterOp::NotContains),
+        k if k.ends_with("_not_contains_nocase") => {
+            ("_not_contains_nocase", FilterOp::NotContainsNoCase)
+        }
         k if k.ends_with("_contains") => ("_contains", FilterOp::Contains),
+        k if k.ends_with("_contains_nocase") => ("_contains_nocase", FilterOp::ContainsNoCase),
         k if k.ends_with("_not_starts_with") => ("_not_starts_with", FilterOp::NotStartsWith),
+        k if k.ends_with("_not_starts_with_nocase") => {
+            ("_not_starts_with_nocase", FilterOp::NotStartsWithNoCase)
+        }
         k if k.ends_with("_not_ends_with") => ("_not_ends_with", FilterOp::NotEndsWith),
+        k if k.ends_with("_not_ends_with_nocase") => {
+            ("_not_ends_with_nocase", FilterOp::NotEndsWithNoCase)
+        }
         k if k.ends_with("_starts_with") => ("_starts_with", FilterOp::StartsWith),
+        k if k.ends_with("_starts_with_nocase") => {
+            ("_starts_with_nocase", FilterOp::StartsWithNoCase)
+        }
         k if k.ends_with("_ends_with") => ("_ends_with", FilterOp::EndsWith),
+        k if k.ends_with("_ends_with_nocase") => ("_ends_with_nocase", FilterOp::EndsWithNoCase),
         _ => ("", FilterOp::Equal),
     };
 
