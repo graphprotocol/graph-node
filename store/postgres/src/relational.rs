@@ -376,6 +376,7 @@ impl Layout {
                     column_type: ColumnType::Bytes,
                     fulltext_fields: None,
                     is_reference: false,
+                    has_arbitrary_size: false,
                 },
                 Column {
                     name: SqlName::from(PRIMARY_KEY_COLUMN),
@@ -386,6 +387,7 @@ impl Layout {
                     column_type: ColumnType::String,
                     fulltext_fields: None,
                     is_reference: false,
+                    has_arbitrary_size: false,
                 },
             ],
             /// The position of this table in all the tables for this layout; this
@@ -1069,6 +1071,7 @@ pub struct Column {
     pub column_type: ColumnType,
     pub fulltext_fields: Option<HashSet<String>>,
     is_reference: bool,
+    has_arbitrary_size: bool,
 }
 
 impl Column {
@@ -1097,6 +1100,17 @@ impl Column {
                 is_existing_text_column,
             )?
         };
+        let is_primary_key = sql_name.as_str() == PRIMARY_KEY_COLUMN;
+
+        // TODO: Turn this back on for `ColumnType::Bytes`. Before we can do
+        // that, we need to make sure that the generated queries work with
+        // both old (no prefix index) and new schemas
+        // see also: bytes-prefix-ignored-test
+        let has_arbitrary_size = !is_primary_key
+            && !is_reference
+            && !field.field_type.is_list()
+            && column_type == ColumnType::String;
+
         Ok(Column {
             name: sql_name,
             field: field.name.clone(),
@@ -1104,6 +1118,7 @@ impl Column {
             field_type: field.field_type.clone(),
             fulltext_fields: None,
             is_reference,
+            has_arbitrary_size,
         })
     }
 
@@ -1118,6 +1133,7 @@ impl Column {
             column_type: ColumnType::TSVector(def.config.clone()),
             fulltext_fields: Some(def.included_fields.clone()),
             is_reference: false,
+            has_arbitrary_size: false,
         })
     }
 
@@ -1159,14 +1175,7 @@ impl Column {
     /// lengths. Such columns may contain very large values and need to be
     /// handled specially for indexing
     pub fn has_arbitrary_size(&self) -> bool {
-        // TODO: Turn this back on for `ColumnType::Bytes`. Before we can do
-        // that, we need to make sure that the generated queries work with
-        // both old (no prefix index) and new schemas
-        // see also: bytes-prefix-ignored-test
-        !self.is_primary_key()
-            && !self.is_reference()
-            && !self.is_list()
-            && self.column_type == ColumnType::String
+        self.has_arbitrary_size
     }
 
     pub fn is_assignable_from(&self, source: &Self, object: &EntityType) -> Option<String> {
