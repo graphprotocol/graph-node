@@ -117,7 +117,7 @@ pub async fn run(
     blockchain_map.insert(network_name.clone(), Arc::new(chain));
 
     let static_filters = env::var_os("EXPERIMENTAL_STATIC_FILTERS").is_some();
-    let firehose_filters = env::var_os("DISABLE_FIREHOSE_FILTERS").is_none();
+    let firehose_filters = env::var_os("FIREHOSE_FILTERS").is_some();
 
     let blockchain_map = Arc::new(blockchain_map);
     let subgraph_instance_manager = SubgraphInstanceManager::new(
