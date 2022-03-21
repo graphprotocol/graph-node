@@ -60,15 +60,15 @@ fn test_trigger_ordering() {
 
     // Event with transaction_index 1 and log_index 0;
     // should be the first element after sorting
-    let log1 = EthereumTrigger::Log(create_log(1, 0));
+    let log1 = EthereumTrigger::Log(create_log(1, 0), None);
 
     // Event with transaction_index 1 and log_index 1;
     // should be the second element after sorting
-    let log2 = EthereumTrigger::Log(create_log(1, 1));
+    let log2 = EthereumTrigger::Log(create_log(1, 1), None);
 
     // Event with transaction_index 2 and log_index 5;
     // should come after call1 and before call2 after sorting
-    let log3 = EthereumTrigger::Log(create_log(2, 5));
+    let log3 = EthereumTrigger::Log(create_log(2, 5), None);
 
     let triggers = vec![
         // Call triggers; these should be in the order 1, 2, 4, 3 after sorting

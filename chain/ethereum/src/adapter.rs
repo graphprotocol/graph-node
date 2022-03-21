@@ -1010,7 +1010,7 @@ mod tests {
         let mut filter = TriggerFilter {
             log: EthereumLogFilter {
                 contracts_and_events_graph: GraphMap::new(),
-                wildcard_events: HashSet::new(),
+                wildcard_events: HashMap::new(),
             },
             call: EthereumCallFilter {
                 contract_addresses_function_signatures: HashMap::from_iter(vec![
@@ -1067,17 +1067,17 @@ mod tests {
         filter.log.contracts_and_events_graph.add_edge(
             LogFilterNode::Contract(address(10)),
             LogFilterNode::Event(sig(100)),
-            (),
+            false,
         );
         filter.log.contracts_and_events_graph.add_edge(
             LogFilterNode::Contract(address(10)),
             LogFilterNode::Event(sig(101)),
-            (),
+            false,
         );
         filter.log.contracts_and_events_graph.add_edge(
             LogFilterNode::Contract(address(20)),
             LogFilterNode::Event(sig(100)),
-            (),
+            false,
         );
 
         let expected_log = MultiLogFilter {
@@ -1313,7 +1313,7 @@ fn complete_log_filter() {
                     contracts_and_events_graph.add_edge(
                         LogFilterNode::Contract(contract),
                         LogFilterNode::Event(event),
-                        (),
+                        false,
                     );
                 }
             }
@@ -1321,7 +1321,7 @@ fn complete_log_filter() {
             // Run `eth_get_logs_filters`, which is what we want to test.
             let logs_filters: Vec<_> = EthereumLogFilter {
                 contracts_and_events_graph,
-                wildcard_events: HashSet::new(),
+                wildcard_events: HashMap::new(),
             }
             .eth_get_logs_filters()
             .collect();
