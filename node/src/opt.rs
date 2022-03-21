@@ -34,6 +34,14 @@ pub struct Opt {
         help = "name and IPFS hash of the subgraph manifest"
     )]
     pub subgraph: Option<String>,
+
+    #[structopt(
+        long,
+        value_name = "BLOCK_HASH:BLOCK_NUMBER",
+        help = "block hash and number that the subgraph passed will start indexing at"
+    )]
+    pub start_block: Option<String>,
+
     #[structopt(
         long,
         value_name = "URL",
@@ -195,6 +203,13 @@ pub struct Opt {
         help = "Allows setting configurations that may result in incorrect Proofs of Indexing."
     )]
     pub unsafe_config: bool,
+
+    #[structopt(
+        long,
+        value_name = "IPFS_HASH",
+        help = "IPFS hash of the subgraph manifest that you want to fork"
+    )]
+    pub debug_fork: Option<String>,
 
     #[structopt(long, value_name = "URL", help = "Base URL for forking subgraphs")]
     pub fork_base: Option<String>,
