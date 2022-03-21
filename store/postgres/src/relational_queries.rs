@@ -1047,7 +1047,7 @@ impl<'a> QueryFilter<'a> {
                 Comparison::NotEqual => out.push_sql(" is not null"),
                 _ => unreachable!("we only call equals with '=' or '!='"),
             }
-        } else if column.has_arbitrary_size() {
+        } else if column.use_prefix_comparison {
             PrefixComparison::new(op, column, value)?.walk_ast(out.reborrow())?;
         } else if column.is_fulltext() {
             out.push_identifier(column.name.as_str())?;
@@ -1070,7 +1070,7 @@ impl<'a> QueryFilter<'a> {
     ) -> QueryResult<()> {
         let column = self.column(attribute);
 
-        if column.has_arbitrary_size() {
+        if column.use_prefix_comparison {
             PrefixComparison::new(op, column, value)?.walk_ast(out.reborrow())?;
         } else {
             out.push_identifier(column.name.as_str())?;
@@ -1141,7 +1141,7 @@ impl<'a> QueryFilter<'a> {
         }
 
         if have_non_nulls {
-            if column.has_arbitrary_size()
+            if column.use_prefix_comparison
                 && values.iter().all(|v| match v {
                     Value::String(s) => s.len() <= STRING_PREFIX_SIZE - 1,
                     _ => false,

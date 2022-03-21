@@ -376,7 +376,7 @@ impl Layout {
                     column_type: ColumnType::Bytes,
                     fulltext_fields: None,
                     is_reference: false,
-                    has_arbitrary_size: false,
+                    use_prefix_comparison: false,
                 },
                 Column {
                     name: SqlName::from(PRIMARY_KEY_COLUMN),
@@ -387,7 +387,7 @@ impl Layout {
                     column_type: ColumnType::String,
                     fulltext_fields: None,
                     is_reference: false,
-                    has_arbitrary_size: false,
+                    use_prefix_comparison: false,
                 },
             ],
             /// The position of this table in all the tables for this layout; this
@@ -1071,7 +1071,9 @@ pub struct Column {
     pub column_type: ColumnType,
     pub fulltext_fields: Option<HashSet<String>>,
     is_reference: bool,
-    has_arbitrary_size: bool,
+    /// Whether to use a prefix of the column for comparisons and index
+    /// creation, or column values in their entirety
+    pub use_prefix_comparison: bool,
 }
 
 impl Column {
@@ -1106,7 +1108,7 @@ impl Column {
         // that, we need to make sure that the generated queries work with
         // both old (no prefix index) and new schemas
         // see also: bytes-prefix-ignored-test
-        let has_arbitrary_size = !is_primary_key
+        let use_prefix_comparison = !is_primary_key
             && !is_reference
             && !field.field_type.is_list()
             && column_type == ColumnType::String;
@@ -1118,7 +1120,7 @@ impl Column {
             field_type: field.field_type.clone(),
             fulltext_fields: None,
             is_reference,
-            has_arbitrary_size,
+            use_prefix_comparison,
         })
     }
 
@@ -1133,7 +1135,7 @@ impl Column {
             column_type: ColumnType::TSVector(def.config.clone()),
             fulltext_fields: Some(def.included_fields.clone()),
             is_reference: false,
-            has_arbitrary_size: false,
+            use_prefix_comparison: false,
         })
     }
 
@@ -1169,13 +1171,6 @@ impl Column {
 
     pub fn is_primary_key(&self) -> bool {
         self.name.as_str() == PRIMARY_KEY_COLUMN
-    }
-
-    /// Return `true` if this column stores user-supplied text of arbitrary
-    /// lengths. Such columns may contain very large values and need to be
-    /// handled specially for indexing
-    pub fn has_arbitrary_size(&self) -> bool {
-        self.has_arbitrary_size
     }
 
     pub fn is_assignable_from(&self, source: &Self, object: &EntityType) -> Option<String> {
@@ -1503,7 +1498,7 @@ impl Table {
                     // Postgres' limit on values that can go into a BTree.
                     // For those attributes, only index the first
                     // STRING_PREFIX_SIZE or BYTE_ARRAY_PREFIX_SIZE characters
-                    let index_expr = if column.has_arbitrary_size() {
+                    let index_expr = if column.use_prefix_comparison {
                         match column.column_type {
                             ColumnType::String => {
                                 format!("left({}, {})", column.name.quoted(), STRING_PREFIX_SIZE)
