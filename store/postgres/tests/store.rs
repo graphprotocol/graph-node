@@ -1594,7 +1594,10 @@ fn handle_large_string_with_index() {
     })
 }
 
+// remove 'ignore' when reenabling bytes prefix indexing
+// see also: bytes-prefix-ignored-test
 #[test]
+#[ignore]
 fn handle_large_bytea_with_index() {
     const NAME: &str = "bin_name";
     const ONE: &str = "large_string_one";

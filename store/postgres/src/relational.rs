@@ -1164,10 +1164,14 @@ impl Column {
     /// lengths. Such columns may contain very large values and need to be
     /// handled specially for indexing
     pub fn has_arbitrary_size(&self) -> bool {
+        // TODO: Turn this back on for `ColumnType::Bytes`. Before we can do
+        // that, we need to make sure that the generated queries work with
+        // both old (no prefix index) and new schemas
+        // see also: bytes-prefix-ignored-test
         !self.is_primary_key()
             && !self.is_reference()
             && !self.is_list()
-            && (self.column_type == ColumnType::String || self.column_type == ColumnType::Bytes)
+            && self.column_type == ColumnType::String
     }
 
     pub fn is_assignable_from(&self, source: &Self, object: &EntityType) -> Option<String> {
@@ -1910,7 +1914,7 @@ create index attr_1_3_scalar_big_decimal
 create index attr_1_4_scalar_string
     on sgd0815.\"scalar\" using btree(left(\"string\", 256));
 create index attr_1_5_scalar_bytes
-    on sgd0815.\"scalar\" using btree(substring(\"bytes\", 1, 64));
+    on sgd0815.\"scalar\" using btree(\"bytes\");
 create index attr_1_6_scalar_big_int
     on sgd0815.\"scalar\" using btree(\"big_int\");
 create index attr_1_7_scalar_color
