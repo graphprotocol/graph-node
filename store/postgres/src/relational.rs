@@ -1165,6 +1165,7 @@ impl Column {
     /// handled specially for indexing
     pub fn has_arbitrary_size(&self) -> bool {
         !self.is_primary_key()
+            && !self.is_reference()
             && !self.is_list()
             && (self.column_type == ColumnType::String || self.column_type == ColumnType::Bytes)
     }
