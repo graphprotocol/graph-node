@@ -54,8 +54,8 @@ impl QueryStoreTrait for QueryStore {
             .await?)
     }
 
-    fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
-        self.store.block_ptr(&self.site)
+    async fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
+        self.store.block_ptr(self.site.cheap_clone()).await
     }
 
     fn block_number(&self, block_hash: H256) -> Result<Option<BlockNumber>, StoreError> {

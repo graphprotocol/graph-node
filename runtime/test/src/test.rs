@@ -37,7 +37,7 @@ fn subgraph_id_with_api_version(subgraph_id: &str, api_version: Version) -> Stri
     )
 }
 
-fn test_valid_module_and_store(
+async fn test_valid_module_and_store(
     subgraph_id: &str,
     data_source: DataSource,
     api_version: Version,
@@ -46,10 +46,10 @@ fn test_valid_module_and_store(
     Arc<impl SubgraphStore>,
     DeploymentLocator,
 ) {
-    test_valid_module_and_store_with_timeout(subgraph_id, data_source, api_version, None)
+    test_valid_module_and_store_with_timeout(subgraph_id, data_source, api_version, None).await
 }
 
-fn test_valid_module_and_store_with_timeout(
+async fn test_valid_module_and_store_with_timeout(
     subgraph_id: &str,
     data_source: DataSource,
     api_version: Version,
@@ -77,7 +77,8 @@ fn test_valid_module_and_store_with_timeout(
             value: String,
             extra: String
         }",
-    );
+    )
+    .await;
     let stopwatch_metrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),
         deployment_id.clone(),
@@ -110,22 +111,26 @@ fn test_valid_module_and_store_with_timeout(
     (module, store.subgraph_store(), deployment)
 }
 
-fn test_module(
+async fn test_module(
     subgraph_id: &str,
     data_source: DataSource,
     api_version: Version,
 ) -> WasmInstance<Chain> {
-    test_valid_module_and_store(subgraph_id, data_source, api_version).0
+    test_valid_module_and_store(subgraph_id, data_source, api_version)
+        .await
+        .0
 }
 
 // A test module using the latest API version
-fn test_module_latest(subgraph_id: &str, wasm_file: &str) -> WasmInstance<Chain> {
+async fn test_module_latest(subgraph_id: &str, wasm_file: &str) -> WasmInstance<Chain> {
     let version = MAX_API_VERSION.clone();
     let ds = mock_data_source(
         &wasm_file_path(wasm_file, API_VERSION_0_0_5.clone()),
         version.clone(),
     );
-    test_valid_module_and_store(subgraph_id, ds, version).0
+    test_valid_module_and_store(subgraph_id, ds, version)
+        .await
+        .0
 }
 
 trait WasmInstanceExt {
@@ -242,7 +247,7 @@ impl WasmInstanceExt for WasmInstance<Chain> {
     }
 }
 
-fn test_json_conversions(api_version: Version, gas_used: u64) {
+async fn test_json_conversions(api_version: Version, gas_used: u64) {
     let mut module = test_module(
         "jsonConversions",
         mock_data_source(
@@ -250,7 +255,8 @@ fn test_json_conversions(api_version: Version, gas_used: u64) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
 
     // test u64 conversion
     let number = 9223372036850770800;
@@ -282,15 +288,15 @@ fn test_json_conversions(api_version: Version, gas_used: u64) {
 
 #[tokio::test]
 async fn json_conversions_v0_0_4() {
-    test_json_conversions(API_VERSION_0_0_4, 52976429);
+    test_json_conversions(API_VERSION_0_0_4, 52976429).await;
 }
 
 #[tokio::test]
 async fn json_conversions_v0_0_5() {
-    test_json_conversions(API_VERSION_0_0_5, 2289897);
+    test_json_conversions(API_VERSION_0_0_5, 2289897).await;
 }
 
-fn test_json_parsing(api_version: Version, gas_used: u64) {
+async fn test_json_parsing(api_version: Version, gas_used: u64) {
     let mut module = test_module(
         "jsonParsing",
         mock_data_source(
@@ -298,7 +304,8 @@ fn test_json_parsing(api_version: Version, gas_used: u64) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
 
     // Parse invalid JSON and handle the error gracefully
     let s = "foo"; // Invalid because there are no quotes around `foo`
@@ -319,32 +326,32 @@ fn test_json_parsing(api_version: Version, gas_used: u64) {
 
 #[tokio::test]
 async fn json_parsing_v0_0_4() {
-    test_json_parsing(API_VERSION_0_0_4, 2722284);
+    test_json_parsing(API_VERSION_0_0_4, 2722284).await;
 }
 
 #[tokio::test]
 async fn json_parsing_v0_0_5() {
-    test_json_parsing(API_VERSION_0_0_5, 3862933);
+    test_json_parsing(API_VERSION_0_0_5, 3862933).await;
 }
 
 async fn test_ipfs_cat(api_version: Version) {
-    let ipfs = IpfsClient::localhost();
-    let hash = ipfs.add("42".into()).await.unwrap().hash;
-
     // Ipfs host functions use `block_on` which must be called from a sync context,
     // so we replicate what we do `spawn_module`.
     let runtime = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
         let _runtime_guard = runtime.enter();
 
-        let mut module = test_module(
+        let ipfs = IpfsClient::localhost();
+        let hash = graph::block_on(ipfs.add("42".into())).unwrap().hash;
+
+        let mut module = graph::block_on(test_module(
             "ipfsCat",
             mock_data_source(
                 &wasm_file_path("ipfs_cat.wasm", api_version.clone()),
                 api_version.clone(),
             ),
             api_version,
-        );
+        ));
         let converted: AscPtr<AscString> = module.invoke_export1("ipfsCatString", &hash);
         let data: String = asc_get(&module, converted, &module.gas).unwrap();
         assert_eq!(data, "42");
@@ -409,14 +416,14 @@ async fn run_ipfs_map(
     std::thread::spawn(move || {
         let _runtime_guard = runtime.enter();
 
-        let (mut module, _, _) = test_valid_module_and_store(
+        let (mut module, _, _) = graph::block_on(test_valid_module_and_store(
             &subgraph_id,
             mock_data_source(
                 &wasm_file_path("ipfs_map.wasm", api_version.clone()),
                 api_version.clone(),
             ),
             api_version,
-        );
+        ));
         let gas = module.gas.cheap_clone();
         let value = asc_new(&mut module, &hash, &gas).unwrap();
         let user_data = asc_new(&mut module, USER_DATA, &gas).unwrap();
@@ -546,14 +553,15 @@ async fn test_ipfs_fail(api_version: Version) {
     // so we replicate what we do `spawn_module`.
     std::thread::spawn(move || {
         let _runtime_guard = runtime.enter();
-        let mut module = test_module(
+
+        let mut module = graph::block_on(test_module(
             "ipfsFail",
             mock_data_source(
                 &wasm_file_path("ipfs_cat.wasm", api_version.clone()),
                 api_version.clone(),
             ),
             api_version,
-        );
+        ));
 
         assert!(module
             .invoke_export1::<_, _, AscString>("ipfsCat", "invalid hash")
@@ -573,7 +581,7 @@ async fn ipfs_fail_v0_0_5() {
     test_ipfs_fail(API_VERSION_0_0_5).await;
 }
 
-fn test_crypto_keccak256(api_version: Version) {
+async fn test_crypto_keccak256(api_version: Version) {
     let mut module = test_module(
         "cryptoKeccak256",
         mock_data_source(
@@ -581,7 +589,8 @@ fn test_crypto_keccak256(api_version: Version) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
     let input: &[u8] = "eth".as_ref();
 
     let hash: AscPtr<Uint8Array> = module.invoke_export1("hash", input);
@@ -594,15 +603,15 @@ fn test_crypto_keccak256(api_version: Version) {
 
 #[tokio::test]
 async fn crypto_keccak256_v0_0_4() {
-    test_crypto_keccak256(API_VERSION_0_0_4);
+    test_crypto_keccak256(API_VERSION_0_0_4).await;
 }
 
 #[tokio::test]
 async fn crypto_keccak256_v0_0_5() {
-    test_crypto_keccak256(API_VERSION_0_0_5);
+    test_crypto_keccak256(API_VERSION_0_0_5).await;
 }
 
-fn test_big_int_to_hex(api_version: Version, gas_used: u64) {
+async fn test_big_int_to_hex(api_version: Version, gas_used: u64) {
     let mut module = test_module(
         "BigIntToHex",
         mock_data_source(
@@ -610,7 +619,8 @@ fn test_big_int_to_hex(api_version: Version, gas_used: u64) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
 
     // Convert zero to hex
     let zero = BigInt::from_unsigned_u256(&U256::zero());
@@ -638,15 +648,15 @@ fn test_big_int_to_hex(api_version: Version, gas_used: u64) {
 
 #[tokio::test]
 async fn big_int_to_hex_v0_0_4() {
-    test_big_int_to_hex(API_VERSION_0_0_4, 53113760);
+    test_big_int_to_hex(API_VERSION_0_0_4, 53113760).await;
 }
 
 #[tokio::test]
 async fn big_int_to_hex_v0_0_5() {
-    test_big_int_to_hex(API_VERSION_0_0_5, 2858580);
+    test_big_int_to_hex(API_VERSION_0_0_5, 2858580).await;
 }
 
-fn test_big_int_arithmetic(api_version: Version, gas_used: u64) {
+async fn test_big_int_arithmetic(api_version: Version, gas_used: u64) {
     let mut module = test_module(
         "BigIntArithmetic",
         mock_data_source(
@@ -654,7 +664,8 @@ fn test_big_int_arithmetic(api_version: Version, gas_used: u64) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
 
     // 0 + 1 = 1
     let zero = BigInt::from(0);
@@ -703,15 +714,15 @@ fn test_big_int_arithmetic(api_version: Version, gas_used: u64) {
 
 #[tokio::test]
 async fn big_int_arithmetic_v0_0_4() {
-    test_big_int_arithmetic(API_VERSION_0_0_4, 54962411);
+    test_big_int_arithmetic(API_VERSION_0_0_4, 54962411).await;
 }
 
 #[tokio::test]
 async fn big_int_arithmetic_v0_0_5() {
-    test_big_int_arithmetic(API_VERSION_0_0_5, 7318364);
+    test_big_int_arithmetic(API_VERSION_0_0_5, 7318364).await;
 }
 
-fn test_abort(api_version: Version, error_msg: &str) {
+async fn test_abort(api_version: Version, error_msg: &str) {
     let module = test_module(
         "abort",
         mock_data_source(
@@ -719,7 +730,8 @@ fn test_abort(api_version: Version, error_msg: &str) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
     let res: Result<(), _> = module.get_func("abort").typed().unwrap().call(());
     assert!(res.unwrap_err().to_string().contains(error_msg));
 }
@@ -729,7 +741,8 @@ async fn abort_v0_0_4() {
     test_abort(
         API_VERSION_0_0_4,
         "line 6, column 2, with message: not true",
-    );
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -737,10 +750,11 @@ async fn abort_v0_0_5() {
     test_abort(
         API_VERSION_0_0_5,
         "line 4, column 3, with message: not true",
-    );
+    )
+    .await;
 }
 
-fn test_bytes_to_base58(api_version: Version, gas_used: u64) {
+async fn test_bytes_to_base58(api_version: Version, gas_used: u64) {
     let mut module = test_module(
         "bytesToBase58",
         mock_data_source(
@@ -748,7 +762,8 @@ fn test_bytes_to_base58(api_version: Version, gas_used: u64) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
     let bytes = hex::decode("12207D5A99F603F231D53A4F39D1521F98D2E8BB279CF29BEBFD0687DC98458E7F89")
         .unwrap();
     let result_ptr: AscPtr<AscString> = module.invoke_export1("bytes_to_base58", bytes.as_slice());
@@ -760,49 +775,33 @@ fn test_bytes_to_base58(api_version: Version, gas_used: u64) {
 
 #[tokio::test]
 async fn bytes_to_base58_v0_0_4() {
-    test_bytes_to_base58(API_VERSION_0_0_4, 52301689);
+    test_bytes_to_base58(API_VERSION_0_0_4, 52301689).await;
 }
 
 #[tokio::test]
 async fn bytes_to_base58_v0_0_5() {
-    test_bytes_to_base58(API_VERSION_0_0_5, 1310019);
+    test_bytes_to_base58(API_VERSION_0_0_5, 1310019).await;
 }
 
-fn test_data_source_create(api_version: Version, gas_used: u64) {
-    let run_data_source_create =
-        move |name: String,
-              params: Vec<String>|
-              -> Result<Vec<DataSourceTemplateInfo<Chain>>, wasmtime::Trap> {
-            let mut module = test_module(
-                "DataSourceCreate",
-                mock_data_source(
-                    &wasm_file_path("data_source_create.wasm", api_version.clone()),
-                    api_version.clone(),
-                ),
-                api_version.clone(),
-            );
-
-            module.instance_ctx_mut().ctx.state.enter_handler();
-            module.invoke_export2_void("dataSourceCreate", &name, &params)?;
-            module.instance_ctx_mut().ctx.state.exit_handler();
-
-            assert_eq!(module.gas_used(), gas_used);
-
-            Ok(module.take_ctx().ctx.state.drain_created_data_sources())
-        };
-
+async fn test_data_source_create(api_version: Version, gas_used: u64) {
     // Test with a valid template
     let template = String::from("example template");
     let params = vec![String::from("0xc0a47dFe034B400B47bDaD5FecDa2621de6c4d95")];
-    let result = run_data_source_create(template.clone(), params.clone())
-        .expect("unexpected error returned from dataSourceCreate");
+    let result = run_data_source_create(
+        template.clone(),
+        params.clone(),
+        api_version.clone(),
+        gas_used,
+    )
+    .await
+    .expect("unexpected error returned from dataSourceCreate");
     assert_eq!(result[0].params, params.clone());
     assert_eq!(result[0].template.name, template);
 
     // Test with a template that doesn't exist
     let template = String::from("nonexistent template");
     let params = vec![String::from("0xc000000000000000000000000000000000000000")];
-    match run_data_source_create(template.clone(), params.clone()) {
+    match run_data_source_create(template.clone(), params.clone(), api_version, gas_used).await {
         Ok(_) => panic!("expected an error because the template does not exist"),
         Err(e) => assert!(e.to_string().contains(
             "Failed to create data source from name `nonexistent template`: \
@@ -812,17 +811,42 @@ fn test_data_source_create(api_version: Version, gas_used: u64) {
     };
 }
 
+async fn run_data_source_create(
+    name: String,
+    params: Vec<String>,
+    api_version: Version,
+    gas_used: u64,
+) -> Result<Vec<DataSourceTemplateInfo<Chain>>, wasmtime::Trap> {
+    let mut module = test_module(
+        "DataSourceCreate",
+        mock_data_source(
+            &wasm_file_path("data_source_create.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
+        api_version.clone(),
+    )
+    .await;
+
+    module.instance_ctx_mut().ctx.state.enter_handler();
+    module.invoke_export2_void("dataSourceCreate", &name, &params)?;
+    module.instance_ctx_mut().ctx.state.exit_handler();
+
+    assert_eq!(module.gas_used(), gas_used);
+
+    Ok(module.take_ctx().ctx.state.drain_created_data_sources())
+}
+
 #[tokio::test]
 async fn data_source_create_v0_0_4() {
-    test_data_source_create(API_VERSION_0_0_4, 152102833);
+    test_data_source_create(API_VERSION_0_0_4, 152102833).await;
 }
 
 #[tokio::test]
 async fn data_source_create_v0_0_5() {
-    test_data_source_create(API_VERSION_0_0_5, 101450079);
+    test_data_source_create(API_VERSION_0_0_5, 101450079).await;
 }
 
-fn test_ens_name_by_hash(api_version: Version) {
+async fn test_ens_name_by_hash(api_version: Version) {
     let mut module = test_module(
         "EnsNameByHash",
         mock_data_source(
@@ -830,7 +854,8 @@ fn test_ens_name_by_hash(api_version: Version) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
 
     let hash = "0x7f0c1b04d1a4926f9c635a030eeb611d4c26e5e73291b32a1c7a4ac56935b5b3";
     let name = "dealdrafts";
@@ -846,15 +871,15 @@ fn test_ens_name_by_hash(api_version: Version) {
 
 #[tokio::test]
 async fn ens_name_by_hash_v0_0_4() {
-    test_ens_name_by_hash(API_VERSION_0_0_4);
+    test_ens_name_by_hash(API_VERSION_0_0_4).await;
 }
 
 #[tokio::test]
 async fn ens_name_by_hash_v0_0_5() {
-    test_ens_name_by_hash(API_VERSION_0_0_5);
+    test_ens_name_by_hash(API_VERSION_0_0_5).await;
 }
 
-fn test_entity_store(api_version: Version) {
+async fn test_entity_store(api_version: Version) {
     let (mut module, store, deployment) = test_valid_module_and_store(
         "entityStore",
         mock_data_source(
@@ -862,7 +887,8 @@ fn test_entity_store(api_version: Version) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
 
     let mut alex = Entity::new();
     alex.set("id", "alex");
@@ -905,8 +931,7 @@ fn test_entity_store(api_version: Version) {
     load_and_set_user_name(&mut module, "steve", "Steve-O");
 
     // We need to empty the cache for the next test
-    let writable =
-        futures03::executor::block_on(store.writable(LOGGER.clone(), deployment.id)).unwrap();
+    let writable = store.writable(LOGGER.clone(), deployment.id).await.unwrap();
     let cache = std::mem::replace(
         &mut module.instance_ctx_mut().ctx.state.entity_cache,
         EntityCache::new(writable.clone()),
@@ -947,12 +972,12 @@ fn test_entity_store(api_version: Version) {
 
 #[tokio::test]
 async fn entity_store_v0_0_4() {
-    test_entity_store(API_VERSION_0_0_4);
+    test_entity_store(API_VERSION_0_0_4).await;
 }
 
 #[tokio::test]
 async fn entity_store_v0_0_5() {
-    test_entity_store(API_VERSION_0_0_5);
+    test_entity_store(API_VERSION_0_0_5).await;
 }
 
 fn test_detect_contract_calls(api_version: Version) {
@@ -988,7 +1013,7 @@ async fn detect_contract_calls_v0_0_5() {
     test_detect_contract_calls(API_VERSION_0_0_5);
 }
 
-fn test_allocate_global(api_version: Version) {
+async fn test_allocate_global(api_version: Version) {
     let module = test_module(
         "AllocateGlobal",
         mock_data_source(
@@ -996,7 +1021,8 @@ fn test_allocate_global(api_version: Version) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
 
     // Assert globals can be allocated and don't break the heap
     module.invoke_export0_void("assert_global_works").unwrap();
@@ -1009,10 +1035,10 @@ async fn allocate_global_v0_0_5() {
     // variable not being initialized (lazy) before we use it so this test checks
     // that it works (at the moment using __alloc call to force offset to be eagerly
     // evaluated).
-    test_allocate_global(API_VERSION_0_0_5);
+    test_allocate_global(API_VERSION_0_0_5).await;
 }
 
-fn test_null_ptr_read(api_version: Version) {
+async fn test_null_ptr_read(api_version: Version) {
     let module = test_module(
         "NullPtrRead",
         mock_data_source(
@@ -1020,7 +1046,8 @@ fn test_null_ptr_read(api_version: Version) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
 
     module.invoke_export0_void("nullPtrRead").unwrap();
 }
@@ -1028,10 +1055,10 @@ fn test_null_ptr_read(api_version: Version) {
 #[tokio::test]
 #[should_panic(expected = "Tried to read AssemblyScript value that is 'null'")]
 async fn null_ptr_read_0_0_5() {
-    test_null_ptr_read(API_VERSION_0_0_5);
+    test_null_ptr_read(API_VERSION_0_0_5).await;
 }
 
-fn test_safe_null_ptr_read(api_version: Version) {
+async fn test_safe_null_ptr_read(api_version: Version) {
     let module = test_module(
         "SafeNullPtrRead",
         mock_data_source(
@@ -1039,7 +1066,8 @@ fn test_safe_null_ptr_read(api_version: Version) {
             api_version.clone(),
         ),
         api_version,
-    );
+    )
+    .await;
 
     module.invoke_export0_void("safeNullPtrRead").unwrap();
 }
@@ -1047,13 +1075,13 @@ fn test_safe_null_ptr_read(api_version: Version) {
 #[tokio::test]
 #[should_panic(expected = "Failed to sum BigInts because left hand side is 'null'")]
 async fn safe_null_ptr_read_0_0_5() {
-    test_safe_null_ptr_read(API_VERSION_0_0_5);
+    test_safe_null_ptr_read(API_VERSION_0_0_5).await;
 }
 
 #[ignore] // Ignored because of long run time in debug build.
 #[tokio::test]
 async fn test_array_blowup() {
-    let module = test_module_latest("ArrayBlowup", "array_blowup.wasm");
+    let module = test_module_latest("ArrayBlowup", "array_blowup.wasm").await;
 
     assert!(module
         .invoke_export0_void("arrayBlowup")

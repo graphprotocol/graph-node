@@ -263,14 +263,14 @@ fn remove_test_data(store: Arc<DieselSubgraphStore>) {
         .expect("deleting test entities succeeds");
 }
 
-fn create_grafted_subgraph(
+async fn create_grafted_subgraph(
     subgraph_id: &DeploymentHash,
     schema: &str,
     base_id: &str,
     base_block: BlockPtr,
 ) -> Result<DeploymentLocator, StoreError> {
     let base = Some((DeploymentHash::new(base_id).unwrap(), base_block));
-    test_store::create_subgraph(subgraph_id, schema, base)
+    test_store::create_subgraph(subgraph_id, schema, base).await
 }
 
 fn find_entities(
@@ -352,6 +352,7 @@ fn graft() {
             TEST_SUBGRAPH_ID.as_str(),
             BLOCKS[1].clone(),
         )
+        .await
         .expect("can create grafted subgraph");
 
         check_graft(store.clone(), deployment).await.unwrap();
@@ -368,6 +369,7 @@ fn graft() {
             TEST_SUBGRAPH_ID.as_str(),
             BLOCKS[1].clone(),
         )
+        .await
         .expect_err("grafting onto block 1 fails");
         assert!(err.to_string().contains("can not be made immutable"));
 
@@ -378,6 +380,7 @@ fn graft() {
             TEST_SUBGRAPH_ID.as_str(),
             BLOCKS[0].clone(),
         )
+        .await
         .expect("grafting onto block 0 works");
 
         let (entities, ids) = find_entities(store.as_ref(), &deployment);
@@ -414,7 +417,8 @@ fn copy() {
             .cheap_clone()
             .writable(LOGGER.clone(), deployment.id)
             .await?
-            .start_subgraph_deployment(&*LOGGER)?;
+            .start_subgraph_deployment(&*LOGGER)
+            .await?;
 
         store.activate(&deployment)?;
 

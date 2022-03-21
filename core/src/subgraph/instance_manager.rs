@@ -148,20 +148,7 @@ where
         // sources; if the subgraph is a graft or a copy, starting it will
         // do the copying and dynamic data sources won't show up until after
         // that is done
-        {
-            let store = store.clone();
-            let logger = logger.clone();
-
-            // `start_subgraph_deployment` is blocking.
-            task::spawn_blocking(move || {
-                store
-                    .start_subgraph_deployment(&logger)
-                    .map_err(Error::from)
-            })
-            .await
-            .map_err(Error::from)
-            .and_then(|x| x)?;
-        }
+        store.start_subgraph_deployment(&logger).await?;
 
         let manifest: SubgraphManifest<C> = {
             info!(logger, "Resolve subgraph files using IPFS");
@@ -259,7 +246,7 @@ where
 
         // Initialize deployment_head with current deployment head. Any sort of trouble in
         // getting the deployment head ptr leads to initializing with 0
-        let deployment_head = store.block_ptr().map(|ptr| ptr.number).unwrap_or(0) as f64;
+        let deployment_head = store.block_ptr().await.map(|ptr| ptr.number).unwrap_or(0) as f64;
         block_stream_metrics.deployment_head.set(deployment_head);
 
         let host_builder = graph_runtime_wasm::RuntimeHostBuilder::new(

@@ -172,7 +172,7 @@ fn block_number() {
     run_test_async(chain, move |_, subgraph_store| {
         let subgraph = subgraph.cheap_clone();
         async move {
-            create_test_subgraph(&subgraph, "type Dummy @entity { id: ID! }");
+            create_test_subgraph(&subgraph, "type Dummy @entity { id: ID! }").await;
 
             let query_store = subgraph_store
                 .query_store(subgraph.cheap_clone().into(), false)

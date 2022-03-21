@@ -1130,7 +1130,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         .await
         .unwrap()?; // Propagate panics, there shouldn't be any.
 
-        let writable = Arc::new(WritableAgent::new(self.as_ref().clone(), logger, site)?);
+        let writable = Arc::new(WritableAgent::new(self.as_ref().clone(), logger, site).await?);
         self.writables
             .lock()
             .unwrap()
@@ -1146,9 +1146,9 @@ impl SubgraphStoreTrait for SubgraphStore {
         }
     }
 
-    fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError> {
+    async fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError> {
         let (store, site) = self.store(id)?;
-        store.block_ptr(site.as_ref())
+        store.block_ptr(site.cheap_clone()).await
     }
 
     /// Find the deployment locators for the subgraph with the given hash

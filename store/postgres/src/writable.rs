@@ -139,16 +139,21 @@ impl WritableStore {
 
 // Methods that mirror `WritableStoreTrait`
 impl WritableStore {
-    fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
-        self.retry("block_ptr", || self.writable.block_ptr(self.site.as_ref()))
+    async fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
+        self.retry_async("block_ptr", || async {
+            self.writable.block_ptr(self.site.cheap_clone()).await
+        })
+        .await
     }
 
-    fn block_cursor(&self) -> Result<Option<String>, StoreError> {
-        self.writable.block_cursor(self.site.as_ref())
+    async fn block_cursor(&self) -> Result<Option<String>, StoreError> {
+        self.writable.block_cursor(self.site.cheap_clone()).await
     }
 
-    fn delete_block_cursor(&self) -> Result<(), StoreError> {
-        self.writable.delete_block_cursor(self.site.as_ref())
+    async fn delete_block_cursor(&self) -> Result<(), StoreError> {
+        self.writable
+            .delete_block_cursor(self.site.cheap_clone())
+            .await
     }
 
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
@@ -345,14 +350,14 @@ pub struct WritableAgent {
 }
 
 impl WritableAgent {
-    pub(crate) fn new(
+    pub(crate) async fn new(
         subgraph_store: SubgraphStore,
         logger: Logger,
         site: Arc<Site>,
     ) -> Result<Self, StoreError> {
         let store = Arc::new(WritableStore::new(subgraph_store, logger, site)?);
-        let block_ptr = Mutex::new(store.block_ptr()?);
-        let block_cursor = Mutex::new(store.block_cursor()?);
+        let block_ptr = Mutex::new(store.block_ptr().await?);
+        let block_cursor = Mutex::new(store.block_cursor().await?);
         Ok(Self {
             store,
             block_ptr,
@@ -364,27 +369,31 @@ impl WritableAgent {
 #[allow(unused_variables)]
 #[async_trait::async_trait]
 impl WritableStoreTrait for WritableAgent {
-    fn block_ptr(&self) -> Option<BlockPtr> {
+    async fn block_ptr(&self) -> Option<BlockPtr> {
         self.block_ptr.lock().unwrap().clone()
     }
 
-    fn block_cursor(&self) -> Option<String> {
+    async fn block_cursor(&self) -> Option<String> {
         self.block_cursor.lock().unwrap().clone()
     }
 
-    fn delete_block_cursor(&self) -> Result<(), StoreError> {
-        self.store.delete_block_cursor()?;
+    async fn delete_block_cursor(&self) -> Result<(), StoreError> {
+        self.store.delete_block_cursor().await?;
         *self.block_cursor.lock().unwrap() = None;
         Ok(())
     }
 
-    fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
-        // TODO: Spin up a background writer thread and establish a channel
-        self.store.start_subgraph_deployment(logger)?;
+    async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
+        let store = self.store.cheap_clone();
+        let logger = logger.cheap_clone();
+        graph::spawn_blocking_allow_panic(move || store.start_subgraph_deployment(&logger))
+            .await
+            .map_err(Error::from)??;
 
         // Refresh all in memory state in case this instance was used before
-        *self.block_ptr.lock().unwrap() = self.store.block_ptr()?;
-        *self.block_cursor.lock().unwrap() = self.store.block_cursor()?;
+        *self.block_ptr.lock().unwrap() = self.store.block_ptr().await?;
+        *self.block_cursor.lock().unwrap() = self.store.block_cursor().await?;
+
         Ok(())
     }
 

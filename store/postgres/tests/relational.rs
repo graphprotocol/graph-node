@@ -773,43 +773,52 @@ fn insert_many_and_delete_many() {
 
 #[tokio::test]
 async fn layout_cache() {
-    run_test_with_conn(|conn| {
-        let id = DeploymentHash::new("primaryLayoutCache").unwrap();
-        let _loc = create_test_subgraph(&id, THINGS_GQL);
-        let site = Arc::new(primary_mirror().find_active_site(&id).unwrap().unwrap());
-        let table_name = SqlName::verbatim("scalar".to_string());
+    // We need to use `block_on` to call the `create_test_subgraph` function which must be called
+    // from a sync context, so we replicate what we do `spawn_module`.
+    let runtime = tokio::runtime::Handle::current();
+    std::thread::spawn(move || {
+        run_test_with_conn(|conn| {
+            let _runtime_guard = runtime.enter();
 
-        let cache = LayoutCache::new(Duration::from_millis(10));
+            let id = DeploymentHash::new("primaryLayoutCache").unwrap();
+            let _loc = graph::block_on(create_test_subgraph(&id, THINGS_GQL));
+            let site = Arc::new(primary_mirror().find_active_site(&id).unwrap().unwrap());
+            let table_name = SqlName::verbatim("scalar".to_string());
 
-        // Without an entry, account_like is false
-        let layout = cache
-            .get(&*LOGGER, &conn, site.clone())
-            .expect("we can get the layout");
-        let table = layout.table(&table_name).unwrap();
-        assert_eq!(false, table.is_account_like);
+            let cache = LayoutCache::new(Duration::from_millis(10));
 
-        set_account_like(conn, site.as_ref(), &table_name, true)
-            .expect("we can set 'scalar' to account-like");
-        sleep(Duration::from_millis(50));
+            // Without an entry, account_like is false
+            let layout = cache
+                .get(&*LOGGER, &conn, site.clone())
+                .expect("we can get the layout");
+            let table = layout.table(&table_name).unwrap();
+            assert_eq!(false, table.is_account_like);
 
-        // Flip account_like to true
-        let layout = cache
-            .get(&*LOGGER, &conn, site.clone())
-            .expect("we can get the layout");
-        let table = layout.table(&table_name).unwrap();
-        assert_eq!(true, table.is_account_like);
+            set_account_like(conn, site.as_ref(), &table_name, true)
+                .expect("we can set 'scalar' to account-like");
+            sleep(Duration::from_millis(50));
 
-        // Set it back to false
-        set_account_like(conn, site.as_ref(), &table_name, false)
-            .expect("we can set 'scalar' to account-like");
-        sleep(Duration::from_millis(50));
+            // Flip account_like to true
+            let layout = cache
+                .get(&*LOGGER, &conn, site.clone())
+                .expect("we can get the layout");
+            let table = layout.table(&table_name).unwrap();
+            assert_eq!(true, table.is_account_like);
 
-        let layout = cache
-            .get(&*LOGGER, &conn, site.clone())
-            .expect("we can get the layout");
-        let table = layout.table(&table_name).unwrap();
-        assert_eq!(false, table.is_account_like);
+            // Set it back to false
+            set_account_like(conn, site.as_ref(), &table_name, false)
+                .expect("we can set 'scalar' to account-like");
+            sleep(Duration::from_millis(50));
+
+            let layout = cache
+                .get(&*LOGGER, &conn, site.clone())
+                .expect("we can get the layout");
+            let table = layout.table(&table_name).unwrap();
+            assert_eq!(false, table.is_account_like);
+        })
     })
+    .join()
+    .unwrap();
 }
 
 #[test]

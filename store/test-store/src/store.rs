@@ -146,7 +146,7 @@ pub fn place(name: &str) -> Result<Option<(Vec<Shard>, Vec<NodeId>)>, String> {
     CONFIG.deployment.place(name, NETWORK_NAME)
 }
 
-pub fn create_subgraph(
+pub async fn create_subgraph(
     subgraph_id: &DeploymentHash,
     schema: &str,
     base: Option<(DeploymentHash, BlockPtr)>,
@@ -180,17 +180,18 @@ pub fn create_subgraph(
         NETWORK_NAME.to_string(),
         SubgraphVersionSwitchingMode::Instant,
     )?;
-    futures03::executor::block_on(
-        SUBGRAPH_STORE
-            .cheap_clone()
-            .writable(LOGGER.clone(), deployment.id),
-    )?
-    .start_subgraph_deployment(&*LOGGER)?;
+
+    SUBGRAPH_STORE
+        .cheap_clone()
+        .writable(LOGGER.clone(), deployment.id)
+        .await?
+        .start_subgraph_deployment(&*LOGGER)
+        .await?;
     Ok(deployment)
 }
 
-pub fn create_test_subgraph(subgraph_id: &DeploymentHash, schema: &str) -> DeploymentLocator {
-    create_subgraph(subgraph_id, schema, None).unwrap()
+pub async fn create_test_subgraph(subgraph_id: &DeploymentHash, schema: &str) -> DeploymentLocator {
+    create_subgraph(subgraph_id, schema, None).await.unwrap()
 }
 
 pub fn remove_subgraph(id: &DeploymentHash) {

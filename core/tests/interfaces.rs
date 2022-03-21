@@ -14,7 +14,7 @@ async fn insert_and_query(
     query: &str,
 ) -> Result<QueryResult, StoreError> {
     let subgraph_id = DeploymentHash::new(subgraph_id).unwrap();
-    let deployment = create_test_subgraph(&subgraph_id, schema);
+    let deployment = create_test_subgraph(&subgraph_id, schema).await;
 
     let insert_ops = entities
         .into_iter()

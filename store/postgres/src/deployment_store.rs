@@ -596,10 +596,10 @@ impl DeploymentStore {
     }
 
     fn block_ptr_with_conn(
-        subgraph_id: &DeploymentHash,
         conn: &PgConnection,
+        site: Arc<Site>,
     ) -> Result<Option<BlockPtr>, StoreError> {
-        deployment::block_ptr(conn, subgraph_id)
+        deployment::block_ptr(conn, &site.deployment)
     }
 
     pub(crate) fn deployment_details(
@@ -776,24 +776,37 @@ impl DeploymentStore {
 /// Methods that back the trait `graph::components::Store`, but have small
 /// variations in their signatures
 impl DeploymentStore {
-    pub(crate) fn block_ptr(&self, site: &Site) -> Result<Option<BlockPtr>, StoreError> {
-        let conn = self.get_conn()?;
-        Self::block_ptr_with_conn(&site.deployment, &conn)
+    pub(crate) async fn block_ptr(&self, site: Arc<Site>) -> Result<Option<BlockPtr>, StoreError> {
+        let site = site.cheap_clone();
+
+        self.with_conn(|conn, cancel| {
+            cancel.check_cancel()?;
+
+            Self::block_ptr_with_conn(&conn, site).map_err(Into::into)
+        })
+        .await
     }
 
-    pub(crate) fn block_cursor(&self, site: &Site) -> Result<Option<String>, StoreError> {
-        let conn = self.get_conn()?;
+    pub(crate) async fn block_cursor(&self, site: Arc<Site>) -> Result<Option<String>, StoreError> {
+        let site = site.cheap_clone();
 
-        deployment::get_subgraph_firehose_cursor(&conn, &site.deployment)
+        self.with_conn(|conn, cancel| {
+            cancel.check_cancel()?;
+
+            deployment::get_subgraph_firehose_cursor(&conn, site).map_err(Into::into)
+        })
+        .await
     }
 
-    pub(crate) fn delete_block_cursor(&self, site: &Site) -> Result<(), StoreError> {
-        let conn = self.get_conn()?;
+    pub(crate) async fn delete_block_cursor(&self, site: Arc<Site>) -> Result<(), StoreError> {
+        let site = site.cheap_clone();
 
-        Ok(deployment::delete_subgraph_firehose_cursor(
-            &conn,
-            &site.deployment,
-        )?)
+        self.with_conn(|conn, cancel| {
+            cancel.check_cancel()?;
+
+            deployment::delete_subgraph_firehose_cursor(&conn, site).map_err(Into::into)
+        })
+        .await
     }
 
     pub(crate) async fn supports_proof_of_indexing<'a>(
@@ -817,27 +830,27 @@ impl DeploymentStore {
         block: BlockPtr,
     ) -> Result<Option<[u8; 32]>, StoreError> {
         let indexer = *indexer;
-        let site3 = site.clone();
-        let site4 = site.clone();
-        let store = self.clone();
-        let block2 = block.clone();
+        let site3 = site.cheap_clone();
+        let site4 = site.cheap_clone();
+        let store = self.cheap_clone();
+        let block2 = block.cheap_clone();
 
         let entities = self
             .with_conn(move |conn, cancel| {
                 cancel.check_cancel()?;
 
-                let layout = store.layout(conn, site4.clone())?;
+                let layout = store.layout(conn, site4.cheap_clone())?;
 
                 if !layout.supports_proof_of_indexing() {
                     return Ok(None);
                 }
 
                 conn.transaction::<_, CancelableError<anyhow::Error>, _>(move || {
-                    let latest_block_ptr = match Self::block_ptr_with_conn(&site.deployment, conn)?
-                    {
-                        Some(inner) => inner,
-                        None => return Ok(None),
-                    };
+                    let latest_block_ptr =
+                        match Self::block_ptr_with_conn(conn, site4.cheap_clone())? {
+                            Some(inner) => inner,
+                            None => return Ok(None),
+                        };
 
                     cancel.check_cancel()?;
 
@@ -853,7 +866,7 @@ impl DeploymentStore {
                     }
 
                     let query = EntityQuery::new(
-                        site4.deployment.clone(),
+                        site4.deployment.cheap_clone(),
                         block.number,
                         EntityCollection::All(vec![(
                             POI_OBJECT.cheap_clone(),
@@ -1094,7 +1107,7 @@ impl DeploymentStore {
         let conn = self.get_conn()?;
 
         // Unwrap: If we are reverting then the block ptr is not `None`.
-        let block_ptr_from = Self::block_ptr_with_conn(&site.deployment, &conn)?.unwrap();
+        let block_ptr_from = Self::block_ptr_with_conn(&conn, site.cheap_clone())?.unwrap();
 
         // Sanity check on block numbers
         if block_ptr_from.number <= block_ptr_to.number {
@@ -1119,7 +1132,7 @@ impl DeploymentStore {
     ) -> Result<StoreEvent, StoreError> {
         let conn = self.get_conn()?;
         // Unwrap: If we are reverting then the block ptr is not `None`.
-        let deployment_head = Self::block_ptr_with_conn(&site.deployment, &conn)?.unwrap();
+        let deployment_head = Self::block_ptr_with_conn(&conn, site.cheap_clone())?.unwrap();
 
         // Confidence check on revert to ensure we go backward only
         if block_ptr_to.number >= deployment_head.number {
