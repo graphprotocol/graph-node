@@ -110,6 +110,7 @@ table! {
         features -> Array<Text>,
         schema -> Text,
         graph_node_version_id -> Nullable<Integer>,
+        use_bytea_prefix -> Bool,
     }
 }
 
@@ -219,13 +220,15 @@ pub fn debug_fork(
     }
 }
 
-pub fn schema(conn: &PgConnection, site: &Site) -> Result<Schema, StoreError> {
+pub fn schema(conn: &PgConnection, site: &Site) -> Result<(Schema, bool), StoreError> {
     use subgraph_manifest as sm;
-    let s: String = sm::table
-        .select(sm::schema)
+    let (s, use_bytea_prefix) = sm::table
+        .select((sm::schema, sm::use_bytea_prefix))
         .filter(sm::id.eq(site.id))
-        .first(conn)?;
-    Schema::parse(s.as_str(), site.deployment.clone()).map_err(StoreError::Unknown)
+        .first::<(String, bool)>(conn)?;
+    Schema::parse(s.as_str(), site.deployment.clone())
+        .map_err(StoreError::Unknown)
+        .map(|schema| (schema, use_bytea_prefix))
 }
 
 pub fn manifest_info(

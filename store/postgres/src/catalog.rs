@@ -53,17 +53,26 @@ pub struct Catalog {
     pub site: Arc<Site>,
     text_columns: HashMap<String, HashSet<String>>,
     pub use_poi: bool,
+    /// Whether `bytea` columns are indexed with just a prefix (`true`) or
+    /// in their entirety. This influences both DDL generation and how
+    /// queries are generated
+    pub use_bytea_prefix: bool,
 }
 
 impl Catalog {
     /// Load the catalog for an existing subgraph
-    pub fn load(conn: &PgConnection, site: Arc<Site>) -> Result<Self, StoreError> {
+    pub fn load(
+        conn: &PgConnection,
+        site: Arc<Site>,
+        use_bytea_prefix: bool,
+    ) -> Result<Self, StoreError> {
         let text_columns = get_text_columns(conn, &site.namespace)?;
         let use_poi = supports_proof_of_indexing(conn, &site.namespace)?;
         Ok(Catalog {
             site,
             text_columns,
             use_poi,
+            use_bytea_prefix,
         })
     }
 
@@ -74,6 +83,8 @@ impl Catalog {
             text_columns: HashMap::default(),
             // DDL generation creates a POI table
             use_poi: true,
+            // DDL generation creates indexes for prefixes of bytes columns
+            use_bytea_prefix: true,
         }
     }
 
@@ -85,6 +96,7 @@ impl Catalog {
             site,
             text_columns: HashMap::default(),
             use_poi: false,
+            use_bytea_prefix: true,
         })
     }
 

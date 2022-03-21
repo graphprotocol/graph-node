@@ -335,6 +335,7 @@ struct StoredSubgraphManifest {
     features: Vec<String>,
     schema: String,
     graph_node_version_id: Option<i32>,
+    use_bytea_prefix: bool,
 }
 
 impl From<StoredSubgraphManifest> for SubgraphManifestEntity {

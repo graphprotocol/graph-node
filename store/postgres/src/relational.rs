@@ -1104,14 +1104,21 @@ impl Column {
         };
         let is_primary_key = sql_name.as_str() == PRIMARY_KEY_COLUMN;
 
-        // TODO: Turn this back on for `ColumnType::Bytes`. Before we can do
-        // that, we need to make sure that the generated queries work with
-        // both old (no prefix index) and new schemas
-        // see also: bytes-prefix-ignored-test
+        // When a column has arbitrary size, we only index a prefix of the
+        // column to avoid errors caused by inserting values that are too
+        // large for the index.
+        //
+        // Since we already have installations where `Bytes` columns had
+        // been indexed in their entirety, we remember if a specific
+        // subgraph indexes that, or just a prefix of `Bytes` columns. Query
+        // generation needs to match how these columns are indexed, and we
+        // therefore use that remembered value from `catalog` to determine
+        // if we should use queries for prefixes or for the entire value.
         let use_prefix_comparison = !is_primary_key
             && !is_reference
             && !field.field_type.is_list()
-            && column_type == ColumnType::String;
+            && (column_type == ColumnType::String
+                || (column_type == ColumnType::Bytes && catalog.use_bytea_prefix));
 
         Ok(Column {
             name: sql_name,
@@ -1587,8 +1594,8 @@ impl LayoutCache {
     }
 
     fn load(conn: &PgConnection, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
-        let subgraph_schema = deployment::schema(conn, site.as_ref())?;
-        let catalog = Catalog::load(conn, site.clone())?;
+        let (subgraph_schema, use_bytea_prefix) = deployment::schema(conn, site.as_ref())?;
+        let catalog = Catalog::load(conn, site.clone(), use_bytea_prefix)?;
         let layout = Arc::new(Layout::new(site.clone(), &subgraph_schema, catalog)?);
         layout.refresh(conn, site)
     }
@@ -1907,7 +1914,7 @@ create index attr_1_3_scalar_big_decimal
 create index attr_1_4_scalar_string
     on sgd0815.\"scalar\" using btree(left(\"string\", 256));
 create index attr_1_5_scalar_bytes
-    on sgd0815.\"scalar\" using btree(\"bytes\");
+    on sgd0815.\"scalar\" using btree(substring(\"bytes\", 1, 64));
 create index attr_1_6_scalar_big_int
     on sgd0815.\"scalar\" using btree(\"big_int\");
 create index attr_1_7_scalar_color
