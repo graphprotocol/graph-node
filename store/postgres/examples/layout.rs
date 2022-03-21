@@ -147,11 +147,11 @@ pub fn main() {
     );
     let site = Arc::new(make_dummy_site(subgraph, namespace, "anet".to_string()));
     let catalog = ensure(
-        Catalog::make_empty(site.clone()),
+        Catalog::for_tests(site.clone()),
         "Failed to construct catalog",
     );
     let layout = ensure(
-        Layout::new(site, &schema, catalog, false),
+        Layout::new(site, &schema, catalog),
         "Failed to construct Mapping",
     );
     match kind {

@@ -239,12 +239,7 @@ impl Layout {
     /// Generate a layout for a relational schema for entities in the
     /// GraphQL schema `schema`. The name of the database schema in which
     /// the subgraph's tables live is in `schema`.
-    pub fn new(
-        site: Arc<Site>,
-        schema: &Schema,
-        catalog: Catalog,
-        create_proof_of_indexing: bool,
-    ) -> Result<Self, StoreError> {
+    pub fn new(site: Arc<Site>, schema: &Schema, catalog: Catalog) -> Result<Self, StoreError> {
         // Extract enum types
         let enums: EnumMap = schema
             .document
@@ -324,7 +319,7 @@ impl Layout {
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
-        if create_proof_of_indexing {
+        if catalog.use_poi {
             tables.push(Self::make_poi_table(&catalog, tables.len()))
         }
 
@@ -411,8 +406,8 @@ impl Layout {
         site: Arc<Site>,
         schema: &Schema,
     ) -> Result<Layout, StoreError> {
-        let catalog = Catalog::new(conn, site.clone())?;
-        let layout = Self::new(site, schema, catalog, true)?;
+        let catalog = Catalog::for_creation(site.cheap_clone());
+        let layout = Self::new(site, schema, catalog)?;
         let sql = layout
             .as_ddl()
             .map_err(|_| StoreError::Unknown(anyhow!("failed to generate DDL for layout")))?;
@@ -1589,14 +1584,8 @@ impl LayoutCache {
 
     fn load(conn: &PgConnection, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
         let subgraph_schema = deployment::schema(conn, site.as_ref())?;
-        let has_poi = crate::catalog::supports_proof_of_indexing(conn, &site.namespace)?;
-        let catalog = Catalog::new(conn, site.clone())?;
-        let layout = Arc::new(Layout::new(
-            site.clone(),
-            &subgraph_schema,
-            catalog,
-            has_poi,
-        )?);
+        let catalog = Catalog::load(conn, site.clone())?;
+        let layout = Arc::new(Layout::new(site.clone(), &subgraph_schema, catalog)?);
         layout.refresh(conn, site)
     }
 
@@ -1699,8 +1688,8 @@ mod tests {
         let schema = Schema::parse(gql, subgraph.clone()).expect("Test schema invalid");
         let namespace = Namespace::new("sgd0815".to_owned()).unwrap();
         let site = Arc::new(make_dummy_site(subgraph, namespace, "anet".to_string()));
-        let catalog = Catalog::make_empty(site.clone()).expect("Can not create catalog");
-        Layout::new(site, &schema, catalog, false).expect("Failed to construct Layout")
+        let catalog = Catalog::for_tests(site.clone()).expect("Can not create catalog");
+        Layout::new(site, &schema, catalog).expect("Failed to construct Layout")
     }
 
     #[test]
