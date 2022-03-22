@@ -257,18 +257,21 @@ impl EthereumLogFilter {
     }
 
     /// Similar to [`matches`], checks if a transaction receipt is required for this log filter.
-    pub fn requires_transaction_receipt(&self, log: &Log) -> bool {
-        // First topic should be event sig
-        if let Some(sig) = log.topics.first() {
-            let contract = LogFilterNode::Contract(log.address);
-            let event = LogFilterNode::Event(*sig);
-            matches!(self.wildcard_events.get(sig), Some(true))
-                || self
-                    .contracts_and_events_graph
-                    .all_edges()
-                    .any(|(s, t, r)| {
-                        *r && (s == contract && t == event) || (t == contract && s == event)
-                    })
+    pub fn requires_transaction_receipt(
+        &self,
+        event_signature: &H256,
+        contract_address: Option<&Address>,
+    ) -> bool {
+        if let Some(true) = self.wildcard_events.get(event_signature) {
+            true
+        } else if let Some(address) = contract_address {
+            let contract = LogFilterNode::Contract(*address);
+            let event = LogFilterNode::Event(*event_signature);
+            self.contracts_and_events_graph
+                .all_edges()
+                .any(|(s, t, r)| {
+                    *r && (s == contract && t == event) || (t == contract && s == event)
+                })
         } else {
             false
         }
@@ -1352,4 +1355,98 @@ fn complete_log_filter() {
             }
         }
     }
+}
+
+#[test]
+fn log_filter_require_transacion_receipt_method() {
+    // test data
+    let event_signature_a = H256::zero();
+    let event_signature_b = H256::from_low_u64_be(1);
+    let event_signature_c = H256::from_low_u64_be(2);
+    let contract_a = Address::from_low_u64_be(3);
+    let contract_b = Address::from_low_u64_be(4);
+    let contract_c = Address::from_low_u64_be(5);
+
+    let wildcard_event_with_receipt = H256::from_low_u64_be(6);
+    let wildcard_event_without_receipt = H256::from_low_u64_be(7);
+    let wildcard_events = [
+        (wildcard_event_with_receipt, true),
+        (wildcard_event_without_receipt, false),
+    ]
+    .into_iter()
+    .collect();
+
+    let alien_event_signature = H256::from_low_u64_be(8); // those will not be inserted in the graph
+    let alien_contract_address = Address::from_low_u64_be(9);
+
+    // test graph nodes
+    let event_a_node = LogFilterNode::Event(event_signature_a);
+    let event_b_node = LogFilterNode::Event(event_signature_b);
+    let event_c_node = LogFilterNode::Event(event_signature_c);
+    let contract_a_node = LogFilterNode::Contract(contract_a);
+    let contract_b_node = LogFilterNode::Contract(contract_b);
+    let contract_c_node = LogFilterNode::Contract(contract_c);
+
+    // build test graph with the following layout:
+    //
+    // ```dot
+    // graph bipartite {
+    //
+    //     // conected and require a receipt
+    //     event_a -- contract_a [ receipt=true  ]
+    //     event_b -- contract_b [ receipt=true  ]
+    //     event_c -- contract_c [ receipt=true  ]
+    //
+    //     // connected but don't require a receipt
+    //     event_a -- contract_b [ receipt=false ]
+    //     event_b -- contract_a [ receipt=false ]
+    // }
+    // ```
+    let mut contracts_and_events_graph = GraphMap::new();
+
+    let event_a_id = contracts_and_events_graph.add_node(event_a_node);
+    let event_b_id = contracts_and_events_graph.add_node(event_b_node);
+    let event_c_id = contracts_and_events_graph.add_node(event_c_node);
+    let contract_a_id = contracts_and_events_graph.add_node(contract_a_node);
+    let contract_b_id = contracts_and_events_graph.add_node(contract_b_node);
+    let contract_c_id = contracts_and_events_graph.add_node(contract_c_node);
+    contracts_and_events_graph.add_edge(event_a_id, contract_a_id, true);
+    contracts_and_events_graph.add_edge(event_b_id, contract_b_id, true);
+    contracts_and_events_graph.add_edge(event_a_id, contract_b_id, false);
+    contracts_and_events_graph.add_edge(event_b_id, contract_a_id, false);
+    contracts_and_events_graph.add_edge(event_c_id, contract_c_id, true);
+
+    let filter = EthereumLogFilter {
+        contracts_and_events_graph,
+        wildcard_events,
+    };
+
+    // connected contracts and events graph
+    assert!(filter.requires_transaction_receipt(&event_signature_a, Some(&contract_a)));
+    assert!(filter.requires_transaction_receipt(&event_signature_b, Some(&contract_b)));
+    assert!(filter.requires_transaction_receipt(&event_signature_c, Some(&contract_c)));
+    assert!(!filter.requires_transaction_receipt(&event_signature_a, Some(&contract_b)));
+    assert!(!filter.requires_transaction_receipt(&event_signature_b, Some(&contract_a)));
+
+    // Event C and Contract C are not connected to the other events and contracts
+    assert!(!filter.requires_transaction_receipt(&event_signature_a, Some(&contract_c)));
+    assert!(!filter.requires_transaction_receipt(&event_signature_b, Some(&contract_c)));
+    assert!(!filter.requires_transaction_receipt(&event_signature_c, Some(&contract_a)));
+    assert!(!filter.requires_transaction_receipt(&event_signature_c, Some(&contract_b)));
+
+    // wildcard events
+    assert!(filter.requires_transaction_receipt(&wildcard_event_with_receipt, None));
+    assert!(!filter.requires_transaction_receipt(&wildcard_event_without_receipt, None));
+
+    // alien events and contracts always return false
+    assert!(
+        !filter.requires_transaction_receipt(&alien_event_signature, Some(&alien_contract_address))
+    );
+    assert!(!filter.requires_transaction_receipt(&alien_event_signature, None));
+    assert!(filter.requires_transaction_receipt(&alien_event_signature, Some(&contract_a)));
+    assert!(filter.requires_transaction_receipt(&alien_event_signature, Some(&contract_b)));
+    assert!(filter.requires_transaction_receipt(&alien_event_signature, Some(&contract_c)));
+    assert!(!filter.requires_transaction_receipt(&event_signature_a, Some(&alien_contract_address)));
+    assert!(!filter.requires_transaction_receipt(&event_signature_b, Some(&alien_contract_address)));
+    assert!(!filter.requires_transaction_receipt(&event_signature_c, Some(&alien_contract_address)));
 }

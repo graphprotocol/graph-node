@@ -1847,7 +1847,13 @@ async fn get_logs_and_transactions(
     let transaction_hashes: Vec<_> = logs
         .iter()
         .filter(|_| unified_api_version.equal_or_greater_than(&API_VERSION_0_0_7))
-        .filter(|log| log_filter.requires_transaction_receipt(log))
+        .filter(|log| {
+            if let Some(signature) = log.topics.first() {
+                log_filter.requires_transaction_receipt(signature, Some(&log.address))
+            } else {
+                false
+            }
+        })
         .filter_map(|log| log.transaction_hash)
         .collect();
 
