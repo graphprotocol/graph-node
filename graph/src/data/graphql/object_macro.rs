@@ -68,6 +68,20 @@ impl<T: IntoValue> IntoValue for Vec<T> {
     }
 }
 
+impl IntoValue for &[u8] {
+    #[inline]
+    fn into_value(self) -> r::Value {
+        r::Value::String(format!("0x{}", hex::encode(self)))
+    }
+}
+
+impl IntoValue for chrono::NaiveDate {
+    #[inline]
+    fn into_value(self) -> r::Value {
+        r::Value::String(self.format("%Y-%m-%d").to_string())
+    }
+}
+
 macro_rules! impl_into_values {
     ($(($T:ty, $V:ident)),*) => {
         $(
