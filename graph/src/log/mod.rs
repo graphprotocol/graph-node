@@ -91,8 +91,7 @@ where
     fn format_custom(&self, record: &Record, values: &OwnedKVList) -> io::Result<()> {
         self.decorator.with_record(record, values, |mut decorator| {
             decorator.start_timestamp()?;
-            timestamp_local(&mut decorator)?;
-
+            custom_timestamp_local(&mut decorator)?;
             decorator.start_whitespace()?;
             write!(decorator, " ")?;
 
@@ -382,8 +381,21 @@ fn log_query_timing(kind: &str) -> bool {
         .any(|v| v == kind)
 }
 
+fn log_time_format() -> String {
+    env::var("GRAPH_LOG_TIME_FORMAT").unwrap_or(String::from("%b %d %H:%M:%S%.3f"))
+}
+
 lazy_static! {
     pub static ref LOG_SQL_TIMING: bool = log_query_timing("sql");
     pub static ref LOG_GQL_TIMING: bool = log_query_timing("gql");
     pub static ref LOG_GQL_CACHE_TIMING: bool = *LOG_GQL_TIMING && log_query_timing("cache");
+    static ref LOG_TIME_FORMAT: String = log_time_format();
+}
+
+pub fn custom_timestamp_local(io: &mut dyn io::Write) -> io::Result<()> {
+    write!(
+        io,
+        "{}",
+        chrono::Local::now().format(LOG_TIME_FORMAT.as_str())
+    )
 }
