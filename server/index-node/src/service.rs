@@ -2,17 +2,22 @@ use http::header::{
     self, ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
     CONTENT_TYPE, LOCATION,
 };
+use hyper::body::Bytes;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
+use serde_json;
 use std::task::Context;
 use std::task::Poll;
 
-use graph::{components::server::query::GraphQLServerError, data::query::QueryResults};
-use graph::{components::store::Store, prelude::*};
+use graph::components::{server::query::GraphQLServerError, store::Store};
+use graph::data::query::QueryResults;
+use graph::prelude::*;
 use graph_graphql::prelude::{execute_query, Query as PreparedQuery, QueryExecutionOptions};
+use graphql_parser;
+
+use crate::auth::bearer_token;
 
 use crate::explorer::Explorer;
-use crate::request::IndexNodeRequest;
 use crate::resolver::IndexNodeResolver;
 use crate::schema::SCHEMA;
 
@@ -96,18 +101,21 @@ where
 
     async fn handle_graphql_query(
         &self,
-        request_body: Body,
+        request: Request<Body>,
     ) -> Result<Response<Body>, GraphQLServerError> {
+        let (req_parts, req_body) = request.into_parts();
         let store = self.store.clone();
 
         // Obtain the schema for the index node GraphQL API
         let schema = SCHEMA.clone();
 
-        let body = hyper::body::to_bytes(request_body)
+        let body = hyper::body::to_bytes(req_body)
             .map_err(|_| GraphQLServerError::InternalError("Failed to read request body".into()))
             .await?;
 
-        let query = IndexNodeRequest::new(body).compat().await?;
+        let validated = ValidatedRequest::new(body, &req_parts.headers)?;
+        let query = validated.query;
+
         let query = match PreparedQuery::new(&self.logger, schema, None, query, None, 100) {
             Ok(query) => query,
             Err(e) => return Ok(QueryResults::from(QueryResult::from(e)).as_http_response()),
@@ -119,8 +127,14 @@ where
         let query_clone = query.cheap_clone();
         let logger = self.logger.cheap_clone();
         let result = {
+            let resolver = IndexNodeResolver::new(
+                &logger,
+                store,
+                self.link_resolver.clone(),
+                validated.bearer_token,
+            );
             let options = QueryExecutionOptions {
-                resolver: IndexNodeResolver::new(&logger, store, self.link_resolver.clone()),
+                resolver,
                 deadline: None,
                 max_first: std::u32::MAX,
                 max_skip: std::u32::MAX,
@@ -206,7 +220,7 @@ where
             }
             (Method::GET, ["graphql", "playground"]) => Ok(Self::handle_graphiql()),
 
-            (Method::POST, ["graphql"]) => self.handle_graphql_query(req.into_body()).await,
+            (Method::POST, ["graphql"]) => self.handle_graphql_query(req).await,
             (Method::OPTIONS, ["graphql"]) => Ok(Self::handle_graphql_options(req)),
 
             (Method::GET, ["explorer", rest @ ..]) => self.explorer.handle(&self.logger, rest),
@@ -272,5 +286,182 @@ where
                     }
                 }),
         )
+    }
+}
+
+struct ValidatedRequest {
+    pub query: Query,
+    pub bearer_token: Option<String>,
+}
+
+impl ValidatedRequest {
+    pub fn new(req_body: Bytes, headers: &hyper::HeaderMap) -> Result<Self, GraphQLServerError> {
+        // Parse request body as JSON
+        let json: serde_json::Value = serde_json::from_slice(&req_body)
+            .map_err(|e| GraphQLServerError::ClientError(format!("{}", e)))?;
+
+        // Ensure the JSON data is an object
+        let obj = json.as_object().ok_or_else(|| {
+            GraphQLServerError::ClientError(String::from("ValidatedRequest data is not an object"))
+        })?;
+
+        // Ensure the JSON data has a "query" field
+        let query_value = obj.get("query").ok_or_else(|| {
+            GraphQLServerError::ClientError(String::from(
+                "The \"query\" field is missing in request data",
+            ))
+        })?;
+
+        // Ensure the "query" field is a string
+        let query_string = query_value.as_str().ok_or_else(|| {
+            GraphQLServerError::ClientError(String::from("The\"query\" field is not a string"))
+        })?;
+
+        // Parse the "query" field of the JSON body
+        let document = graphql_parser::parse_query(query_string)
+            .map_err(|e| GraphQLServerError::from(QueryError::ParseError(Arc::new(e.into()))))?
+            .into_static();
+
+        // Parse the "variables" field of the JSON body, if present
+        let variables = match obj.get("variables") {
+            None | Some(serde_json::Value::Null) => Ok(None),
+            Some(variables @ serde_json::Value::Object(_)) => {
+                serde_json::from_value(variables.clone())
+                    .map_err(|e| GraphQLServerError::ClientError(e.to_string()))
+                    .map(Some)
+            }
+            _ => Err(GraphQLServerError::ClientError(
+                "Invalid query variables provided".to_string(),
+            )),
+        }?;
+
+        let query = Query::new(document, variables);
+        let bearer_token = bearer_token(headers)
+            .map(<[u8]>::to_vec)
+            .map(String::from_utf8)
+            .transpose()
+            .map_err(|_| {
+                GraphQLServerError::ClientError("Bearer token is invalid UTF-8".to_string())
+            })?;
+
+        Ok(Self {
+            query,
+            bearer_token,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use graph::{data::value::Object, prelude::*};
+    use graphql_parser;
+    use hyper::body::Bytes;
+    use hyper::HeaderMap;
+    use std::collections::HashMap;
+
+    use super::{GraphQLServerError, ValidatedRequest};
+
+    fn validate_req(req_body: Bytes) -> Result<Query, GraphQLServerError> {
+        Ok(ValidatedRequest::new(req_body, &HeaderMap::new())?.query)
+    }
+
+    #[test]
+    fn rejects_invalid_json() {
+        let request = validate_req(Bytes::from("!@#)%"));
+        request.expect_err("Should reject invalid JSON");
+    }
+
+    #[test]
+    fn rejects_json_without_query_field() {
+        let request = validate_req(Bytes::from("{}"));
+        request.expect_err("Should reject JSON without query field");
+    }
+
+    #[test]
+    fn rejects_json_with_non_string_query_field() {
+        let request = validate_req(Bytes::from("{\"query\": 5}"));
+        request.expect_err("Should reject JSON with a non-string query field");
+    }
+
+    #[test]
+    fn rejects_broken_queries() {
+        let request = validate_req(Bytes::from("{\"query\": \"foo\"}"));
+        request.expect_err("Should reject broken queries");
+    }
+
+    #[test]
+    fn accepts_valid_queries() {
+        let request = validate_req(Bytes::from("{\"query\": \"{ user { name } }\"}"));
+        let query = request.expect("Should accept valid queries");
+        assert_eq!(
+            query.document,
+            graphql_parser::parse_query("{ user { name } }")
+                .unwrap()
+                .into_static()
+        );
+    }
+
+    #[test]
+    fn accepts_null_variables() {
+        let request = validate_req(Bytes::from(
+            "\
+                 {\
+                 \"query\": \"{ user { name } }\", \
+                 \"variables\": null \
+                 }",
+        ));
+        let query = request.expect("Should accept null variables");
+
+        let expected_query = graphql_parser::parse_query("{ user { name } }")
+            .unwrap()
+            .into_static();
+        assert_eq!(query.document, expected_query);
+        assert_eq!(query.variables, None);
+    }
+
+    #[test]
+    fn rejects_non_map_variables() {
+        let request = validate_req(Bytes::from(
+            "\
+                 {\
+                 \"query\": \"{ user { name } }\", \
+                 \"variables\": 5 \
+                 }",
+        ));
+        request.expect_err("Should reject non-map variables");
+    }
+
+    #[test]
+    fn parses_variables() {
+        let request = validate_req(Bytes::from(
+            "\
+                 {\
+                 \"query\": \"{ user { name } }\", \
+                 \"variables\": { \
+                 \"string\": \"s\", \"map\": {\"k\": \"v\"}, \"int\": 5 \
+                 } \
+                 }",
+        ));
+        let query = request.expect("Should accept valid queries");
+
+        let expected_query = graphql_parser::parse_query("{ user { name } }")
+            .unwrap()
+            .into_static();
+        let expected_variables = QueryVariables::new(HashMap::from_iter(
+            vec![
+                (String::from("string"), r::Value::String(String::from("s"))),
+                (
+                    String::from("map"),
+                    r::Value::Object(Object::from_iter(
+                        vec![(String::from("k"), r::Value::String(String::from("v")))].into_iter(),
+                    )),
+                ),
+                (String::from("int"), r::Value::Int(5)),
+            ]
+            .into_iter(),
+        ));
+
+        assert_eq!(query.document, expected_query);
+        assert_eq!(query.variables, Some(expected_variables));
     }
 }

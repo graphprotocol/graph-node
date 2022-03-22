@@ -14,11 +14,14 @@ use graph::{
 };
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
 
+use crate::auth::POI_PROTECTION;
+
 /// Resolver for the index node GraphQL API.
 pub struct IndexNodeResolver<S, R> {
     logger: Logger,
     store: Arc<S>,
     link_resolver: Arc<R>,
+    bearer_token: Option<String>,
 }
 
 impl<S, R> IndexNodeResolver<S, R>
@@ -26,12 +29,18 @@ where
     S: Store,
     R: LinkResolver,
 {
-    pub fn new(logger: &Logger, store: Arc<S>, link_resolver: Arc<R>) -> Self {
+    pub fn new(
+        logger: &Logger,
+        store: Arc<S>,
+        link_resolver: Arc<R>,
+        bearer_token: Option<String>,
+    ) -> Self {
         let logger = logger.new(o!("component" => "IndexNodeResolver"));
         Self {
             logger,
             store,
             link_resolver,
+            bearer_token,
         }
     }
 
@@ -166,9 +175,15 @@ where
 
         let block = BlockPtr::from((block_hash, block_number));
 
-        let indexer = field
+        let mut indexer = field
             .get_optional::<Address>("indexer")
             .expect("Invalid indexer");
+
+        if !POI_PROTECTION.validate_access_token(self.bearer_token.as_deref()) {
+            // Let's sign the POI with a zero'd address when the access token is
+            // invalid.
+            indexer = Some(Address::zero());
+        }
 
         let poi_fut = self
             .store
@@ -490,6 +505,7 @@ where
             logger: self.logger.clone(),
             store: self.store.clone(),
             link_resolver: self.link_resolver.clone(),
+            bearer_token: self.bearer_token.clone(),
         }
     }
 }

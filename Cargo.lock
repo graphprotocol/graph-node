@@ -1589,6 +1589,7 @@ dependencies = [
 name = "graph-server-index-node"
 version = "0.25.2"
 dependencies = [
+ "blake3",
  "either",
  "futures 0.3.16",
  "graph",
@@ -1599,6 +1600,7 @@ dependencies = [
  "graphql-parser",
  "http",
  "hyper",
+ "lazy_static",
  "serde",
 ]
 
