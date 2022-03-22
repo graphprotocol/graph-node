@@ -11,12 +11,14 @@ use graph::slog::{debug, Logger};
 use tokio::sync::{mpsc, watch};
 use tower::{Service, ServiceExt};
 
+pub mod ipfs_service;
+
 /// Spawn a monitor that actively polls a service. Whenever the service has capacity, the monitor
 /// pulls object ids from the queue and polls the service. If the object is not present or in case
 /// of error, the object id is pushed to the back of the queue to be polled again.
 ///
 /// The service returns the request ID along with errors or responses. The response is an
-/// `Option`, to represent the object not being found. `S::poll_ready` should never error.
+/// `Option`, to represent the object not being found.
 pub fn spawn_monitor<ID, S, E, Response: Send + 'static>(
     service: S,
     response_sender: mpsc::Sender<(ID, Response)>,
