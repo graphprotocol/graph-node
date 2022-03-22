@@ -104,7 +104,7 @@ pub struct Opt {
         default_value = "8000",
         value_name = "PORT",
         help = "Port for the GraphQL HTTP server",
-        env = "HTTP_PORT"
+        env = "GRAPH_GRAPHQL_HTTP_PORT"
     )]
     pub http_port: u16,
     #[structopt(
@@ -119,7 +119,7 @@ pub struct Opt {
         default_value = "8001",
         value_name = "PORT",
         help = "Port for the GraphQL WebSocket server",
-        env = "WS_PORT"
+        env = "GRAPH_GRAPHQL_WS_PORT"
     )]
     pub ws_port: u16,
     #[structopt(
