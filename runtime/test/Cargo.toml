@@ -1,7 +1,7 @@
 [package]
 name = "graph-runtime-test"
-version = "0.24.1"
-edition = "2018"
+version = "0.25.2"
+edition = "2021"
 
 [dependencies]
 semver = "1.0"
@@ -10,7 +10,7 @@ graph = { path = "../../graph" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
 graph-runtime-wasm = { path = "../wasm" }
 graph-core = { path = "../../core" }
-graph-mock = { path = "../../mock" }
 
 [dev-dependencies]
 test-store = { path = "../../store/test-store" }
+graph-mock = { path = "../../mock" }

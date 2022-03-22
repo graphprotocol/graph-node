@@ -1,6 +1,8 @@
 syntax = "proto3";
 
-package dfuse.ethereum.codec.v1;
+package sf.ethereum.codec.v1;
+
+option go_package = "github.com/streamingfast/sf-ethereum/pb/sf/ethereum/codec/v1;pbcodec";
 
 import "google/protobuf/timestamp.proto";
 
@@ -36,6 +38,16 @@ message Block {
   // The CEL filter expression used to exclude transaction in `transaction_traces` array, works
   // in combination with `filtering_include_filter_expr` value.
   string filtering_exclude_filter_expr = 42;
+}
+
+// HeaderOnlyBlock is a standard [Block] structure where all other fields are
+// removed so that hydrating that object from a [Block] bytes payload will
+// drastically reduced allocated memory required to hold the full block.
+//
+// This can be used to unpack a [Block] when only the [BlockHeader] information
+// is required and greatly reduced required memory.
+message HeaderOnlyBlock {
+  BlockHeader header = 5;
 }
 
 // BlockWithRefs is a lightweight block, with traces and transactions

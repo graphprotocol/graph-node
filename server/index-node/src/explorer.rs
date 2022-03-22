@@ -1,6 +1,7 @@
 //! Functionality to support the explorer in the hosted service. Everything
 //! in this file is private API and experimental and subject to change at
 //! any time
+use graph::prelude::r;
 use http::{Response, StatusCode};
 use hyper::header::{
     ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
@@ -21,7 +22,7 @@ use graph::{
     },
     data::subgraph::status,
     object,
-    prelude::{lazy_static, q, serde_json, warn, Logger, SerializableValue},
+    prelude::{lazy_static, serde_json, warn, Logger},
     util::timed_cache::TimedCache,
 };
 
@@ -75,9 +76,9 @@ lazy_static! {
 #[derive(Debug)]
 pub struct Explorer<S> {
     store: Arc<S>,
-    versions: TimedCache<String, q::Value>,
+    versions: TimedCache<String, r::Value>,
     version_infos: TimedCache<String, VersionInfo>,
-    entity_counts: TimedCache<String, q::Value>,
+    entity_counts: TimedCache<String, r::Value>,
 }
 
 impl<S> Explorer<S>
@@ -103,6 +104,9 @@ where
             ["subgraph-version", version] => self.handle_subgraph_version(version),
             ["subgraph-repo", version] => self.handle_subgraph_repo(version),
             ["entity-count", deployment] => self.handle_entity_count(logger, deployment),
+            ["subgraphs-for-deployment", deployment_hash] => {
+                self.handle_subgraphs_for_deployment(deployment_hash)
+            }
             _ => handle_not_found(),
         }
     }
@@ -230,6 +234,25 @@ where
             }
         }
     }
+
+    fn handle_subgraphs_for_deployment(
+        &self,
+        deployment_hash: &str,
+    ) -> Result<Response<Body>, GraphQLServerError> {
+        let name_version_pairs: Vec<r::Value> = self
+            .store
+            .subgraphs_for_deployment_hash(deployment_hash)?
+            .into_iter()
+            .map(|(name, version)| {
+                object! {
+                    name: name,
+                    version: version
+                }
+            })
+            .collect();
+        let payload = r::Value::List(name_version_pairs);
+        Ok(as_http_response(&payload))
+    }
 }
 
 fn handle_not_found() -> Result<Response<Body>, GraphQLServerError> {
@@ -241,10 +264,9 @@ fn handle_not_found() -> Result<Response<Body>, GraphQLServerError> {
         .unwrap())
 }
 
-fn as_http_response(value: &q::Value) -> http::Response<Body> {
+fn as_http_response(value: &r::Value) -> http::Response<Body> {
     let status_code = http::StatusCode::OK;
-    let json = serde_json::to_string(&SerializableValue(value))
-        .expect("Failed to serialize response to JSON");
+    let json = serde_json::to_string(&value).expect("Failed to serialize response to JSON");
     http::Response::builder()
         .status(status_code)
         .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")

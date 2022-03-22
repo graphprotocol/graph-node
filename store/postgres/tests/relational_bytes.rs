@@ -1,9 +1,12 @@
 //! Test relational schemas that use `Bytes` to store ids
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
+use graph::data::store::scalar;
 use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
 use lazy_static::lazy_static;
+use std::borrow::Cow;
+use std::str::FromStr;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::prelude::{
@@ -62,7 +65,7 @@ lazy_static! {
         "977c084229c72a0fa377cae304eda9099b6a2cb5d83b25cdf0f0969b69874255"
     ));
     static ref BEEF_ENTITY: Entity = entity! {
-        id: "deadbeef",
+        id: scalar::Bytes::from_str("deadbeef").unwrap(),
         name: "Beef",
         __typename: "Thing"
     };
@@ -90,10 +93,16 @@ fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity
     );
 
     let entity_type = EntityType::from(entity_type);
-    let mut entities = vec![(key.clone(), entity)];
+    let mut entities = vec![(&key, Cow::from(&entity))];
     let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
     layout
-        .insert(&conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
+        .insert(
+            &conn,
+            &entity_type,
+            entities.as_mut_slice(),
+            0,
+            &MOCK_STOPWATCH,
+        )
         .expect(&errmsg);
 }
 
@@ -240,9 +249,9 @@ fn find() {
 #[test]
 fn find_many() {
     run_test(|conn, layout| {
-        const ID: &str = "deadbeef";
+        const ID: &str = "0xdeadbeef";
         const NAME: &str = "Beef";
-        const ID2: &str = "deadbeef02";
+        const ID2: &str = "0xdeadbeef02";
         const NAME2: &str = "Moo";
         insert_thing(&conn, &layout, ID, NAME);
         insert_thing(&conn, &layout, ID2, NAME2);
@@ -251,7 +260,7 @@ fn find_many() {
         id_map.insert(&*THING, vec![ID, ID2, "badd"]);
 
         let entities = layout
-            .find_many(conn, id_map, BLOCK_NUMBER_MAX)
+            .find_many(conn, &id_map, BLOCK_NUMBER_MAX)
             .expect("Failed to read many things");
         assert_eq!(1, entities.len());
 
@@ -284,7 +293,7 @@ fn update() {
 
         let entity_id = entity.id().unwrap().clone();
         let entity_type = key.entity_type.clone();
-        let mut entities = vec![(key, entity)];
+        let mut entities = vec![(&key, Cow::from(&entity))];
         layout
             .update(&conn, &entity_type, &mut entities, 1, &MOCK_STOPWATCH)
             .expect("Failed to update");
@@ -294,8 +303,7 @@ fn update() {
             .expect("Failed to read Thing[deadbeef]")
             .unwrap();
 
-        let entity = &entities.first().unwrap().1;
-        assert_entity_eq!(scrub(&entity), actual);
+        assert_entity_eq!(entity, actual);
     });
 }
 
@@ -316,7 +324,7 @@ fn delete() {
             "ffff".to_owned(),
         );
         let entity_type = key.entity_type.clone();
-        let mut entity_keys = vec![key.entity_id.clone()];
+        let mut entity_keys = vec![key.entity_id.as_str()];
         let count = layout
             .delete(&conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
@@ -325,7 +333,7 @@ fn delete() {
         // Delete entity two
         entity_keys
             .get_mut(0)
-            .map(|key| *key = TWO_ID.to_owned())
+            .map(|key| *key = TWO_ID)
             .expect("Failed to update entity types");
         let count = layout
             .delete(&conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
@@ -337,11 +345,11 @@ fn delete() {
 //
 // Test Layout::query to check that query generation is syntactically sound
 //
-const ROOT: &str = "dead00";
-const CHILD1: &str = "babe01";
-const CHILD2: &str = "babe02";
-const GRANDCHILD1: &str = "fafa01";
-const GRANDCHILD2: &str = "fafa02";
+const ROOT: &str = "0xdead00";
+const CHILD1: &str = "0xbabe01";
+const CHILD2: &str = "0xbabe02";
+const GRANDCHILD1: &str = "0xfafa01";
+const GRANDCHILD2: &str = "0xfafa02";
 
 /// Create a set of test data that forms a tree through the `parent` and `children` attributes.
 /// The tree has this form:

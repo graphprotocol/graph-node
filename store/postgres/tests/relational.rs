@@ -1,10 +1,12 @@
 //! Test mapping of GraphQL schema to a relational schema
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
+use graph::entity;
+use graph::prelude::BlockNumber;
 use graph::prelude::{
-    o, slog, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter, EntityKey,
-    EntityOrder, EntityQuery, EntityRange, Logger, Schema, StopwatchMetrics, Value, ValueType,
-    BLOCK_NUMBER_MAX,
+    o, slog, tokio, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter,
+    EntityKey, EntityOrder, EntityQuery, EntityRange, Logger, Schema, StopwatchMetrics, Value,
+    ValueType, BLOCK_NUMBER_MAX,
 };
 use graph_mock::MockMetricsRegistry;
 use graph_store_postgres::layout_for_tests::set_account_like;
@@ -12,6 +14,8 @@ use graph_store_postgres::layout_for_tests::LayoutCache;
 use graph_store_postgres::layout_for_tests::SqlName;
 use hex_literal::hex;
 use lazy_static::lazy_static;
+use std::borrow::Cow;
+use std::panic;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::thread::sleep;
@@ -100,6 +104,11 @@ const THINGS_GQL: &str = r#"
         name: String!
     }
 
+    type Mink @entity(immutable: true) {
+        id: ID!,
+        order: Int,
+    }
+
     type User @entity {
         id: ID!,
         name: String!,
@@ -137,47 +146,29 @@ lazy_static! {
         "977c084229c72a0fa377cae304eda9099b6a2cb5d83b25cdf0f0969b69874255"
     ));
     static ref SCALAR_ENTITY: Entity = {
-        let mut entity = Entity::new();
-        let strings = Value::from(
-            vec!["left", "right", "middle"]
-                .into_iter()
-                .map(|s| Value::from(s))
-                .collect::<Vec<_>>(),
-        );
-        let byte_array = Value::from(
-            vec![*BYTES_VALUE, *BYTES_VALUE2, *BYTES_VALUE3]
-                .into_iter()
-                .map(|s| Value::from(s))
-                .collect::<Vec<_>>(),
-        );
-        entity.set("id", "one");
-        entity.set("bool", true);
-        entity.set("int", std::i32::MAX);
         let decimal = (*LARGE_DECIMAL).clone();
-        entity.set("bigDecimal", decimal.clone());
-        entity.set(
-            "bigDecimalArray",
-            vec![decimal.clone(), (decimal + 1.into()).clone()],
-        );
-        entity.set("string", "scalar");
-        entity.set("strings", strings);
-        entity.set("bytes", *BYTES_VALUE);
-        entity.set("byteArray", byte_array);
         let big_int = (*LARGE_INT).clone();
-        entity.set("bigInt", big_int.clone());
-        entity.set(
-            "bigIntArray",
-            vec![big_int.clone(), (big_int + 1.into()).clone()],
-        );
-        entity.set("color", "yellow");
-        entity.set("__typename", "Scalar");
-        entity
+        entity! {
+            id: "one",
+            bool: true,
+            int: std::i32::MAX,
+            bigDecimal: decimal.clone(),
+            bigDecimalArray: vec![decimal.clone(), (decimal + 1.into()).clone()],
+            string: "scalar",
+            strings: vec!["left", "right", "middle"],
+            bytes: *BYTES_VALUE,
+            byteArray: vec![*BYTES_VALUE, *BYTES_VALUE2, *BYTES_VALUE3],
+            bigInt: big_int.clone(),
+            bigIntArray: vec![big_int.clone(), (big_int + 1.into()).clone()],
+            color: "yellow",
+            __typename: "Scalar",
+        }
     };
     static ref EMPTY_NULLABLESTRINGS_ENTITY: Entity = {
-        let mut entity = Entity::new();
-        entity.set("id", "one");
-        entity.set("__typename", "NullableStrings");
-        entity
+        entity! {
+            id: "one",
+            __typename: "NullableStrings"
+        }
     };
     static ref SCALAR: EntityType = EntityType::from("Scalar");
     static ref NO_ENTITY: EntityType = EntityType::from("NoEntity");
@@ -190,19 +181,20 @@ lazy_static! {
 }
 
 /// Removes test data from the database behind the store.
-fn remove_test_data(conn: &PgConnection) {
+fn remove_schema(conn: &PgConnection) {
     let query = format!("drop schema if exists {} cascade", NAMESPACE.as_str());
     conn.batch_execute(&query)
         .expect("Failed to drop test schema");
 }
 
-fn insert_entity(
+fn insert_entity_at(
     conn: &PgConnection,
     layout: &Layout,
     entity_type: &str,
     mut entities: Vec<Entity>,
+    block: BlockNumber,
 ) {
-    let mut entities_with_keys = entities
+    let entities_with_keys_owned = entities
         .drain(..)
         .map(|entity| {
             let key = EntityKey::data(
@@ -213,6 +205,10 @@ fn insert_entity(
             (key, entity)
         })
         .collect::<Vec<(EntityKey, Entity)>>();
+    let mut entities_with_keys: Vec<_> = entities_with_keys_owned
+        .iter()
+        .map(|(key, entity)| (key, Cow::from(entity)))
+        .collect();
     let entity_type = EntityType::from(entity_type);
     let errmsg = format!(
         "Failed to insert entities {}[{:?}]",
@@ -223,20 +219,25 @@ fn insert_entity(
             &conn,
             &entity_type,
             &mut entities_with_keys,
-            0,
+            block,
             &MOCK_STOPWATCH,
         )
         .expect(&errmsg);
-    assert_eq!(inserted, entities_with_keys.len());
+    assert_eq!(inserted, entities_with_keys_owned.len());
 }
 
-fn update_entity(
+fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entities: Vec<Entity>) {
+    insert_entity_at(conn, layout, entity_type, entities, 0);
+}
+
+fn update_entity_at(
     conn: &PgConnection,
     layout: &Layout,
     entity_type: &str,
     mut entities: Vec<Entity>,
+    block: BlockNumber,
 ) {
-    let mut entities_with_keys: Vec<(EntityKey, Entity)> = entities
+    let entities_with_keys_owned: Vec<(EntityKey, Entity)> = entities
         .drain(..)
         .map(|entity| {
             let key = EntityKey::data(
@@ -246,6 +247,10 @@ fn update_entity(
             );
             (key, entity)
         })
+        .collect();
+    let mut entities_with_keys: Vec<_> = entities_with_keys_owned
+        .iter()
+        .map(|(key, entity)| (key, Cow::from(entity)))
         .collect();
 
     let entity_type = EntityType::from(entity_type);
@@ -259,11 +264,15 @@ fn update_entity(
             &conn,
             &entity_type,
             &mut entities_with_keys,
-            0,
+            block,
             &MOCK_STOPWATCH,
         )
         .expect(&errmsg);
-    assert_eq!(updated, entities_with_keys.len());
+    assert_eq!(updated, entities_with_keys_owned.len());
+}
+
+fn update_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entities: Vec<Entity>) {
+    update_entity_at(conn, layout, entity_type, entities, 0);
 }
 
 fn insert_user_entity(
@@ -279,31 +288,40 @@ fn insert_user_entity(
     favorite_color: Option<&str>,
     drinks: Option<Vec<&str>>,
 ) {
-    let mut user = Entity::new();
+    let user = make_user(id, name, email, age, weight, coffee, favorite_color, drinks);
 
-    user.insert("id".to_owned(), Value::String(id.to_owned()));
-    user.insert("name".to_owned(), Value::String(name.to_owned()));
+    insert_entity(conn, layout, entity_type, vec![user]);
+}
+
+fn make_user(
+    id: &str,
+    name: &str,
+    email: &str,
+    age: i32,
+    weight: f64,
+    coffee: bool,
+    favorite_color: Option<&str>,
+    drinks: Option<Vec<&str>>,
+) -> Entity {
+    let favorite_color = favorite_color
+        .map(|s| Value::String(s.to_owned()))
+        .unwrap_or(Value::Null);
     let bin_name = Bytes::from_str(&hex::encode(name)).unwrap();
-    user.insert("bin_name".to_owned(), Value::Bytes(bin_name));
-    user.insert("email".to_owned(), Value::String(email.to_owned()));
-    user.insert("age".to_owned(), Value::Int(age));
-    user.insert(
-        "seconds_age".to_owned(),
-        Value::BigInt(BigInt::from(age) * 31557600.into()),
-    );
-    user.insert("weight".to_owned(), Value::BigDecimal(weight.into()));
-    user.insert("coffee".to_owned(), Value::Bool(coffee));
-    user.insert(
-        "favorite_color".to_owned(),
-        favorite_color
-            .map(|s| Value::String(s.to_owned()))
-            .unwrap_or(Value::Null),
-    );
+    let mut user = entity! {
+        id: id,
+        name: name,
+        bin_name: bin_name,
+        email: email,
+        age: age,
+        seconds_age: BigInt::from(age) * BigInt::from(31557600 as u64),
+        weight: BigDecimal::from(weight),
+        coffee: coffee,
+        favorite_color: favorite_color
+    };
     if let Some(drinks) = drinks {
         user.insert("drinks".to_owned(), drinks.into());
     }
-
-    insert_entity(conn, layout, entity_type, vec![user]);
+    user
 }
 
 fn insert_users(conn: &PgConnection, layout: &Layout) {
@@ -361,37 +379,15 @@ fn update_user_entity(
     favorite_color: Option<&str>,
     drinks: Option<Vec<&str>>,
 ) {
-    let mut user = Entity::new();
-
-    user.insert("id".to_owned(), Value::String(id.to_owned()));
-    user.insert("name".to_owned(), Value::String(name.to_owned()));
-    let bin_name = Bytes::from_str(&hex::encode(name)).unwrap();
-    user.insert("bin_name".to_owned(), Value::Bytes(bin_name));
-    user.insert("email".to_owned(), Value::String(email.to_owned()));
-    user.insert("age".to_owned(), Value::Int(age));
-    user.insert(
-        "seconds_age".to_owned(),
-        Value::BigInt(BigInt::from(age) * 31557600.into()),
-    );
-    user.insert("weight".to_owned(), Value::BigDecimal(weight.into()));
-    user.insert("coffee".to_owned(), Value::Bool(coffee));
-    user.insert(
-        "favorite_color".to_owned(),
-        favorite_color
-            .map(|s| Value::String(s.to_owned()))
-            .unwrap_or(Value::Null),
-    );
-    if let Some(drinks) = drinks {
-        user.insert("drinks".to_owned(), drinks.into());
-    }
-
+    let user = make_user(id, name, email, age, weight, coffee, favorite_color, drinks);
     update_entity(conn, layout, entity_type, vec![user]);
 }
 
 fn insert_pet(conn: &PgConnection, layout: &Layout, entity_type: &str, id: &str, name: &str) {
-    let mut pet = Entity::new();
-    pet.set("id", id);
-    pet.set("name", name);
+    let pet = entity! {
+        id: id,
+        name: name
+    };
     insert_entity(conn, layout, entity_type, vec![pet]);
 }
 
@@ -400,7 +396,7 @@ fn insert_pets(conn: &PgConnection, layout: &Layout) {
     insert_pet(conn, layout, "Cat", "garfield", "Garfield");
 }
 
-fn insert_test_data(conn: &PgConnection) -> Layout {
+fn create_schema(conn: &PgConnection) -> Layout {
     let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
     let site = make_dummy_site(
         THINGS_SUBGRAPH_ID.clone(),
@@ -461,10 +457,10 @@ where
 {
     run_test_with_conn(|conn| {
         // Reset state before starting
-        remove_test_data(conn);
+        remove_schema(conn);
 
-        // Seed database with test data
-        let layout = insert_test_data(conn);
+        // Create the database schema
+        let layout = create_schema(conn);
 
         // Run test
         test(conn, &layout);
@@ -537,21 +533,16 @@ fn update() {
         );
 
         let entity_type = EntityType::from("Scalar");
-        let mut entities = vec![(key, entity)];
+        let mut entities = vec![(&key, Cow::from(&entity))];
         layout
             .update(&conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
             .expect("Failed to update");
-
-        // The missing 'strings' will show up as Value::Null in the
-        // loaded entity
-        let entity_again = &mut entities.get_mut(0).unwrap().1;
-        entity_again.set("strings", Value::Null);
 
         let actual = layout
             .find(conn, &*SCALAR, "one", BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[one]")
             .unwrap();
-        assert_entity_eq!(scrub(&entity_again), actual);
+        assert_entity_eq!(scrub(&entity), actual);
     });
 }
 
@@ -597,9 +588,10 @@ fn update_many() {
             })
             .collect();
 
-        let mut entities: Vec<(EntityKey, Entity)> = keys
-            .into_iter()
-            .zip(vec![one, two, three].into_iter())
+        let entities_vec = vec![one, two, three];
+        let mut entities: Vec<(&EntityKey, Cow<'_, Entity>)> = keys
+            .iter()
+            .zip(entities_vec.iter().map(|e| Cow::Borrowed(e)))
             .collect();
 
         layout
@@ -669,9 +661,15 @@ fn serialize_bigdecimal() {
                 entity.id().unwrap().clone(),
             );
             let entity_type = EntityType::from("Scalar");
-            let mut entities = vec![(key, entity.clone())];
+            let mut entities = vec![(&key, Cow::Borrowed(&entity))];
             layout
-                .update(&conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
+                .update(
+                    &conn,
+                    &entity_type,
+                    entities.as_mut_slice(),
+                    0,
+                    &MOCK_STOPWATCH,
+                )
                 .expect("Failed to update");
 
             let actual = layout
@@ -722,7 +720,7 @@ fn delete() {
             "no such entity".to_owned(),
         );
         let entity_type = EntityType::from("Scalar");
-        let mut entity_keys = vec![key.entity_id];
+        let mut entity_keys = vec![key.entity_id.as_str()];
         let count = layout
             .delete(
                 &conn,
@@ -738,7 +736,7 @@ fn delete() {
         // Delete entity two
         entity_keys
             .get_mut(0)
-            .map(|key| *key = "two".to_owned())
+            .map(|key| *key = "two")
             .expect("Failed to update key");
 
         let count = layout
@@ -764,7 +762,7 @@ fn insert_many_and_delete_many() {
 
         // Delete entities with ids equal to "two" and "three"
         let entity_type = EntityType::from("Scalar");
-        let entity_keys = vec!["two".to_string(), "three".to_string()];
+        let entity_keys = vec!["two", "three"];
         let num_removed = layout
             .delete(&conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
@@ -773,45 +771,54 @@ fn insert_many_and_delete_many() {
     });
 }
 
-#[test]
-fn layout_cache() {
-    run_test_with_conn(|conn| {
-        let id = DeploymentHash::new("primaryLayoutCache").unwrap();
-        let _loc = create_test_subgraph(&id, THINGS_GQL);
-        let site = Arc::new(primary_connection().find_active_site(&id).unwrap().unwrap());
-        let table_name = SqlName::verbatim("scalar".to_string());
+#[tokio::test]
+async fn layout_cache() {
+    // We need to use `block_on` to call the `create_test_subgraph` function which must be called
+    // from a sync context, so we replicate what we do `spawn_module`.
+    let runtime = tokio::runtime::Handle::current();
+    std::thread::spawn(move || {
+        run_test_with_conn(|conn| {
+            let _runtime_guard = runtime.enter();
 
-        let cache = LayoutCache::new(Duration::from_millis(10));
+            let id = DeploymentHash::new("primaryLayoutCache").unwrap();
+            let _loc = graph::block_on(create_test_subgraph(&id, THINGS_GQL));
+            let site = Arc::new(primary_mirror().find_active_site(&id).unwrap().unwrap());
+            let table_name = SqlName::verbatim("scalar".to_string());
 
-        // Without an entry, account_like is false
-        let layout = cache
-            .get(&*LOGGER, &conn, site.clone())
-            .expect("we can get the layout");
-        let table = layout.table(&table_name).unwrap();
-        assert_eq!(false, table.is_account_like);
+            let cache = LayoutCache::new(Duration::from_millis(10));
 
-        set_account_like(conn, site.as_ref(), &table_name, true)
-            .expect("we can set 'scalar' to account-like");
-        sleep(Duration::from_millis(50));
+            // Without an entry, account_like is false
+            let layout = cache
+                .get(&*LOGGER, &conn, site.clone())
+                .expect("we can get the layout");
+            let table = layout.table(&table_name).unwrap();
+            assert_eq!(false, table.is_account_like);
 
-        // Flip account_like to true
-        let layout = cache
-            .get(&*LOGGER, &conn, site.clone())
-            .expect("we can get the layout");
-        let table = layout.table(&table_name).unwrap();
-        assert_eq!(true, table.is_account_like);
+            set_account_like(conn, site.as_ref(), &table_name, true)
+                .expect("we can set 'scalar' to account-like");
+            sleep(Duration::from_millis(50));
 
-        // Set it back to false
-        set_account_like(conn, site.as_ref(), &table_name, false)
-            .expect("we can set 'scalar' to account-like");
-        sleep(Duration::from_millis(50));
+            // Flip account_like to true
+            let layout = cache
+                .get(&*LOGGER, &conn, site.clone())
+                .expect("we can get the layout");
+            let table = layout.table(&table_name).unwrap();
+            assert_eq!(true, table.is_account_like);
 
-        let layout = cache
-            .get(&*LOGGER, &conn, site.clone())
-            .expect("we can get the layout");
-        let table = layout.table(&table_name).unwrap();
-        assert_eq!(false, table.is_account_like);
+            // Set it back to false
+            set_account_like(conn, site.as_ref(), &table_name, false)
+                .expect("we can set 'scalar' to account-like");
+            sleep(Duration::from_millis(50));
+
+            let layout = cache
+                .get(&*LOGGER, &conn, site.clone())
+                .expect("we can get the layout");
+            let table = layout.table(&table_name).unwrap();
+            assert_eq!(false, table.is_account_like);
+        })
     })
+    .join()
+    .unwrap();
 }
 
 #[test]
@@ -851,6 +858,113 @@ fn conflicting_entity() {
     })
 }
 
+#[test]
+fn revert_block() {
+    fn check_fred(conn: &PgConnection, layout: &Layout) {
+        let id = "fred";
+
+        let set_fred = |name, block| {
+            let fred = entity! {
+                id: id,
+                name: name
+            };
+            if block == 0 {
+                insert_entity_at(conn, layout, "Cat", vec![fred], block);
+            } else {
+                update_entity_at(conn, layout, "Cat", vec![fred], block);
+            }
+        };
+
+        let assert_fred = |name: &str| {
+            let fred = layout
+                .find(conn, &EntityType::from("Cat"), id, BLOCK_NUMBER_MAX)
+                .unwrap()
+                .expect("there's a fred");
+            assert_eq!(name, fred.get("name").unwrap().as_str().unwrap())
+        };
+
+        set_fred("zero", 0);
+        set_fred("one", 1);
+        set_fred("two", 2);
+        set_fred("three", 3);
+
+        layout.revert_block(conn, 3).unwrap();
+        assert_fred("two");
+        layout.revert_block(conn, 2).unwrap();
+        assert_fred("one");
+
+        set_fred("three", 3);
+        assert_fred("three");
+        layout.revert_block(conn, 3).unwrap();
+        assert_fred("one");
+    }
+
+    fn check_marty(conn: &PgConnection, layout: &Layout) {
+        let set_marties = |from, to| {
+            for block in from..=to {
+                let id = format!("marty-{}", block);
+                let marty = entity! {
+                    id: id,
+                    order: block,
+                };
+                insert_entity_at(conn, layout, "Mink", vec![marty], block);
+            }
+        };
+
+        let assert_marties = |max_block, except: Vec<BlockNumber>| {
+            let marties: Vec<Entity> = layout
+                .query(
+                    &*LOGGER,
+                    conn,
+                    EntityCollection::All(vec![(EntityType::from("Mink"), AttributeNames::All)]),
+                    Some(EntityFilter::StartsWith(
+                        "id".to_string(),
+                        Value::from("marty"),
+                    )),
+                    EntityOrder::Ascending("order".to_string(), ValueType::Int),
+                    EntityRange::first(100),
+                    BLOCK_NUMBER_MAX,
+                    None,
+                )
+                .expect("loading all marties works");
+
+            let mut skipped = 0;
+            for block in 0..=max_block {
+                if except.contains(&block) {
+                    skipped += 1;
+                    continue;
+                }
+                let marty = &marties[block as usize - skipped];
+                let id = format!("marty-{}", block);
+                assert_eq!(id, marty.get("id").unwrap().as_str().unwrap());
+                assert_eq!(block, marty.get("order").unwrap().as_int().unwrap())
+            }
+        };
+
+        let assert_all_marties = |max_block| assert_marties(max_block, vec![]);
+
+        set_marties(0, 4);
+        assert_all_marties(4);
+
+        layout.revert_block(conn, 3).unwrap();
+        assert_all_marties(2);
+        layout.revert_block(conn, 2).unwrap();
+        assert_all_marties(1);
+
+        set_marties(4, 4);
+        // We don't have entries for 2 and 3 anymore
+        assert_marties(4, vec![2, 3]);
+
+        layout.revert_block(conn, 2).unwrap();
+        assert_all_marties(1);
+    }
+
+    run_test(|conn, layout| {
+        check_fred(conn, layout);
+        check_marty(conn, layout);
+    });
+}
+
 struct QueryChecker<'a> {
     conn: &'a PgConnection,
     layout: &'a Layout,
@@ -878,6 +992,7 @@ impl<'a> QueryChecker<'a> {
     }
 
     fn check(self, expected_entity_ids: Vec<&'static str>, query: EntityQuery) -> Self {
+        let q = query.clone();
         let unordered = matches!(query.order, EntityOrder::Unordered);
         let entities = self
             .layout
@@ -910,7 +1025,7 @@ impl<'a> QueryChecker<'a> {
             expected_entity_ids.sort();
         }
 
-        assert_eq!(entity_ids, expected_entity_ids);
+        assert_eq!(entity_ids, expected_entity_ids, "{:?}", q);
         self
     }
 }
@@ -952,6 +1067,19 @@ impl EasyOrder for EntityQuery {
     fn unordered(self) -> Self {
         self.order(EntityOrder::Unordered)
     }
+}
+
+#[test]
+#[should_panic(
+    expected = "layout.query failed to execute query: FulltextQueryInvalidSyntax(\"syntax error in tsquery: \\\"Jono 'a\\\"\")"
+)]
+fn check_fulltext_search_syntax_error() {
+    run_test(move |conn, layout| {
+        QueryChecker::new(conn, layout).check(
+            vec!["1"],
+            user_query().filter(EntityFilter::Equal("userSearch".into(), "Jono 'a".into())),
+        );
+    });
 }
 
 #[test]
@@ -1462,23 +1590,33 @@ fn ferrets() -> (String, String, String, String) {
     )
 }
 
-fn text_find(expected_entity_ids: Vec<&str>, filter: EntityFilter) {
-    let expected_entity_ids: Vec<String> =
-        expected_entity_ids.into_iter().map(str::to_owned).collect();
+struct FilterChecker<'a> {
+    conn: &'a PgConnection,
+    layout: &'a Layout,
+}
 
-    run_test(move |conn, layout| {
+impl<'a> FilterChecker<'a> {
+    fn new(conn: &'a PgConnection, layout: &'a Layout) -> Self {
         let (a1, a2, a2b, a3) = ferrets();
         insert_pet(conn, layout, "Ferret", "a1", &a1);
         insert_pet(conn, layout, "Ferret", "a2", &a2);
         insert_pet(conn, layout, "Ferret", "a2b", &a2b);
         insert_pet(conn, layout, "Ferret", "a3", &a3);
 
+        Self { conn, layout }
+    }
+
+    fn check(&self, expected_entity_ids: Vec<&'static str>, filter: EntityFilter) -> &Self {
+        let expected_entity_ids: Vec<String> =
+            expected_entity_ids.into_iter().map(str::to_owned).collect();
+
         let query = query(vec!["Ferret"]).filter(filter).asc("id");
 
-        let entities = layout
+        let entities = self
+            .layout
             .query::<Entity>(
                 &*LOGGER,
-                conn,
+                &self.conn,
                 query.collection,
                 query.filter,
                 query.order,
@@ -1498,85 +1636,39 @@ fn text_find(expected_entity_ids: Vec<&str>, filter: EntityFilter) {
             .collect();
 
         assert_eq!(expected_entity_ids, entity_ids);
-    })
+        self
+    }
 }
 
 #[test]
-fn text_equal() {
+fn check_filters() {
     let (a1, a2, a2b, a3) = ferrets();
-    fn filter(name: String) -> EntityFilter {
+
+    fn filter_eq(name: &str) -> EntityFilter {
         EntityFilter::Equal("name".to_owned(), name.into())
     }
-    text_find(vec!["a1"], filter(a1));
-    text_find(vec!["a2"], filter(a2));
-    text_find(vec!["a2b"], filter(a2b));
-    text_find(vec!["a3"], filter(a3));
-}
 
-#[test]
-fn text_not_equal() {
-    let (a1, a2, a2b, a3) = ferrets();
-    fn filter(name: String) -> EntityFilter {
+    fn filter_not(name: &str) -> EntityFilter {
         EntityFilter::Not("name".to_owned(), name.into())
     }
-    text_find(vec!["a2", "a2b", "a3"], filter(a1));
-    text_find(vec!["a1", "a2b", "a3"], filter(a2));
-    text_find(vec!["a1", "a2", "a3"], filter(a2b));
-    text_find(vec!["a1", "a2", "a2b"], filter(a3));
-}
 
-#[test]
-fn text_less_than() {
-    let (a1, a2, a2b, a3) = ferrets();
-    fn filter(name: String) -> EntityFilter {
+    fn filter_lt(name: &str) -> EntityFilter {
         EntityFilter::LessThan("name".to_owned(), name.into())
     }
-    text_find(vec![], filter(a1));
-    text_find(vec!["a1"], filter(a2));
-    text_find(vec!["a1", "a2", "a3"], filter(a2b));
-    text_find(vec!["a1", "a2"], filter(a3));
-}
 
-#[test]
-fn text_less_or_equal() {
-    let (a1, a2, a2b, a3) = ferrets();
-    fn filter(name: String) -> EntityFilter {
+    fn filter_le(name: &str) -> EntityFilter {
         EntityFilter::LessOrEqual("name".to_owned(), name.into())
     }
-    text_find(vec!["a1"], filter(a1));
-    text_find(vec!["a1", "a2"], filter(a2));
-    text_find(vec!["a1", "a2", "a2b", "a3"], filter(a2b));
-    text_find(vec!["a1", "a2", "a3"], filter(a3));
-}
 
-#[test]
-fn text_greater_than() {
-    let (a1, a2, a2b, a3) = ferrets();
-    fn filter(name: String) -> EntityFilter {
+    fn filter_gt(name: &str) -> EntityFilter {
         EntityFilter::GreaterThan("name".to_owned(), name.into())
     }
-    text_find(vec!["a2", "a2b", "a3"], filter(a1));
-    text_find(vec!["a2b", "a3"], filter(a2));
-    text_find(vec![], filter(a2b));
-    text_find(vec!["a2b"], filter(a3));
-}
 
-#[test]
-fn text_greater_or_equal() {
-    let (a1, a2, a2b, a3) = ferrets();
-    fn filter(name: String) -> EntityFilter {
+    fn filter_ge(name: &str) -> EntityFilter {
         EntityFilter::GreaterOrEqual("name".to_owned(), name.into())
     }
-    text_find(vec!["a1", "a2", "a2b", "a3"], filter(a1));
-    text_find(vec!["a2", "a2b", "a3"], filter(a2));
-    text_find(vec!["a2b"], filter(a2b));
-    text_find(vec!["a2b", "a3"], filter(a3));
-}
 
-#[test]
-fn text_in() {
-    let (a1, a2, a2b, a3) = ferrets();
-    fn filter(names: Vec<&str>) -> EntityFilter {
+    fn filter_in(names: Vec<&str>) -> EntityFilter {
         EntityFilter::In(
             "name".to_owned(),
             names
@@ -1586,18 +1678,7 @@ fn text_in() {
         )
     }
 
-    text_find(vec!["a1"], filter(vec![&a1]));
-    text_find(vec!["a2"], filter(vec![&a2]));
-    text_find(vec!["a2b"], filter(vec![&a2b]));
-    text_find(vec!["a3"], filter(vec![&a3]));
-    text_find(vec!["a1", "a2"], filter(vec![&a1, &a2]));
-    text_find(vec!["a1", "a3"], filter(vec![&a1, &a3]));
-}
-
-#[test]
-fn text_not_in() {
-    let (a1, a2, a2b, a3) = ferrets();
-    fn filter(names: Vec<&str>) -> EntityFilter {
+    fn filter_not_in(names: Vec<&str>) -> EntityFilter {
         EntityFilter::NotIn(
             "name".to_owned(),
             names
@@ -1607,10 +1688,59 @@ fn text_not_in() {
         )
     }
 
-    text_find(vec!["a2", "a2b", "a3"], filter(vec![&a1]));
-    text_find(vec!["a1", "a2b", "a3"], filter(vec![&a2]));
-    text_find(vec!["a1", "a2", "a3"], filter(vec![&a2b]));
-    text_find(vec!["a1", "a2", "a2b"], filter(vec![&a3]));
-    text_find(vec!["a2b", "a3"], filter(vec![&a1, &a2]));
-    text_find(vec!["a2", "a2b"], filter(vec![&a1, &a3]));
+    run_test(move |conn, layout| {
+        let checker = FilterChecker::new(conn, layout);
+
+        checker
+            .check(vec!["a1"], filter_eq(&a1))
+            .check(vec!["a2"], filter_eq(&a2))
+            .check(vec!["a2b"], filter_eq(&a2b))
+            .check(vec!["a3"], filter_eq(&a3));
+
+        checker
+            .check(vec!["a2", "a2b", "a3"], filter_not(&a1))
+            .check(vec!["a1", "a2b", "a3"], filter_not(&a2))
+            .check(vec!["a1", "a2", "a3"], filter_not(&a2b))
+            .check(vec!["a1", "a2", "a2b"], filter_not(&a3));
+
+        checker
+            .check(vec![], filter_lt(&a1))
+            .check(vec!["a1"], filter_lt(&a2))
+            .check(vec!["a1", "a2", "a3"], filter_lt(&a2b))
+            .check(vec!["a1", "a2"], filter_lt(&a3));
+
+        checker
+            .check(vec!["a1"], filter_le(&a1))
+            .check(vec!["a1", "a2"], filter_le(&a2))
+            .check(vec!["a1", "a2", "a2b", "a3"], filter_le(&a2b))
+            .check(vec!["a1", "a2", "a3"], filter_le(&a3));
+
+        checker
+            .check(vec!["a2", "a2b", "a3"], filter_gt(&a1))
+            .check(vec!["a2b", "a3"], filter_gt(&a2))
+            .check(vec![], filter_gt(&a2b))
+            .check(vec!["a2b"], filter_gt(&a3));
+
+        checker
+            .check(vec!["a1", "a2", "a2b", "a3"], filter_ge(&a1))
+            .check(vec!["a2", "a2b", "a3"], filter_ge(&a2))
+            .check(vec!["a2b"], filter_ge(&a2b))
+            .check(vec!["a2b", "a3"], filter_ge(&a3));
+
+        checker
+            .check(vec!["a1"], filter_in(vec![&a1]))
+            .check(vec!["a2"], filter_in(vec![&a2]))
+            .check(vec!["a2b"], filter_in(vec![&a2b]))
+            .check(vec!["a3"], filter_in(vec![&a3]))
+            .check(vec!["a1", "a2"], filter_in(vec![&a1, &a2]))
+            .check(vec!["a1", "a3"], filter_in(vec![&a1, &a3]));
+
+        checker
+            .check(vec!["a2", "a2b", "a3"], filter_not_in(vec![&a1]))
+            .check(vec!["a1", "a2b", "a3"], filter_not_in(vec![&a2]))
+            .check(vec!["a1", "a2", "a3"], filter_not_in(vec![&a2b]))
+            .check(vec!["a1", "a2", "a2b"], filter_not_in(vec![&a3]))
+            .check(vec!["a2b", "a3"], filter_not_in(vec![&a1, &a2]))
+            .check(vec!["a2", "a2b"], filter_not_in(vec![&a1, &a3]));
+    });
 }

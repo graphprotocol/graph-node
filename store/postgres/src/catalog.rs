@@ -1,4 +1,4 @@
-use diesel::sql_types::Integer;
+use diesel::sql_types::{Bool, Integer};
 use diesel::{connection::SimpleConnection, prelude::RunQueryDsl, select};
 use diesel::{insert_into, OptionalExtension};
 use diesel::{pg::PgConnection, sql_query};
@@ -117,6 +117,7 @@ pub fn supports_proof_of_indexing(
     #[derive(Debug, QueryableByName)]
     struct Table {
         #[sql_type = "Text"]
+        #[allow(dead_code)]
         pub table_name: String,
     }
     let query =
@@ -302,7 +303,7 @@ pub(crate) mod table_schema {
                 _ => ci.data_type.clone(),
             };
             Self {
-                column_name: ci.column_name.clone(),
+                column_name: ci.column_name,
                 data_type,
             }
         }
@@ -380,4 +381,79 @@ pub fn create_foreign_table(
         )
     })?;
     Ok(query)
+}
+
+/// Checks in the database if a given index is valid.
+pub(crate) fn check_index_is_valid(
+    conn: &PgConnection,
+    schema_name: &str,
+    index_name: &str,
+) -> Result<bool, StoreError> {
+    #[derive(Queryable, QueryableByName)]
+    struct ManualIndexCheck {
+        #[sql_type = "Bool"]
+        is_valid: bool,
+    }
+
+    let query = "
+        select
+            i.indisvalid as is_valid
+        from
+            pg_class c
+            join pg_index i on i.indexrelid = c.oid
+            join pg_namespace n on c.relnamespace = n.oid
+        where
+            n.nspname = $1
+            and c.relname = $2";
+    let result = sql_query(query)
+        .bind::<Text, _>(schema_name)
+        .bind::<Text, _>(index_name)
+        .get_result::<ManualIndexCheck>(conn)
+        .optional()
+        .map_err::<StoreError, _>(Into::into)?
+        .map(|check| check.is_valid);
+    Ok(matches!(result, Some(true)))
+}
+
+pub(crate) fn indexes_for_table(
+    conn: &PgConnection,
+    schema_name: &str,
+    table_name: &str,
+) -> Result<Vec<String>, StoreError> {
+    #[derive(Queryable, QueryableByName)]
+    struct IndexName {
+        #[sql_type = "Text"]
+        #[column_name = "indexdef"]
+        def: String,
+    }
+
+    let query = "
+        select
+            indexdef
+        from
+            pg_indexes
+        where
+            schemaname = $1
+            and tablename = $2
+        order by indexname";
+    let results = sql_query(query)
+        .bind::<Text, _>(schema_name)
+        .bind::<Text, _>(table_name)
+        .load::<IndexName>(conn)
+        .map_err::<StoreError, _>(Into::into)?;
+
+    Ok(results.into_iter().map(|i| i.def).collect())
+}
+pub(crate) fn drop_index(
+    conn: &PgConnection,
+    schema_name: &str,
+    index_name: &str,
+) -> Result<(), StoreError> {
+    let query = format!("drop index concurrently {schema_name}.{index_name}");
+    sql_query(&query)
+        .bind::<Text, _>(schema_name)
+        .bind::<Text, _>(index_name)
+        .execute(conn)
+        .map_err::<StoreError, _>(Into::into)?;
+    Ok(())
 }

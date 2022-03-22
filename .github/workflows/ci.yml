@@ -147,26 +147,46 @@ jobs:
           toolchain: ${{ matrix.rust }}
           components: rustfmt
           override: true
-      - name: Cache cargo registry
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: rustfmt-cargo-${{ hashFiles('**/Cargo.toml') }}
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get -y install libpq-dev
-
-      - name: Check formating
+      - name: Check formatting
         uses: actions-rs/cargo@v1
         env:
           RUSTFLAGS: "-D warnings"
         with:
           command: fmt
           args: --all -- --check
+
+  clippy:
+    name: Report Clippy warnings
+    strategy:
+      matrix:
+        rust: ["stable"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          components: clippy
+          override: true
+      # Unlike rustfmt, Clippy actually compiles stuff so it benefits from
+      # caching.
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: check-cargo-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Run Clippy
+        uses: actions-rs/cargo@v1
+        # We do *not* block builds if Clippy complains. It's just here to let us
+        # keep an eye out on the warnings it produces.
+        continue-on-error: true
+        with:
+          command: clippy
 
   release-check:
     name: Build in release mode
@@ -209,3 +229,17 @@ jobs:
         with:
           command: check
           args: --release
+
+  version-check:
+    name: Check that all graph-node crates have the same version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Checks through all Cargo.toml files, making sure their version is unique
+        run: |
+          source 'scripts/toml-utils.sh'
+
+          ALL_TOML_FILE_NAMES=$(get_all_toml_files)
+          ALL_TOML_VERSIONS=$(get_all_toml_versions $ALL_TOML_FILE_NAMES)
+
+          ./scripts/lines-unique.sh $ALL_TOML_VERSIONS

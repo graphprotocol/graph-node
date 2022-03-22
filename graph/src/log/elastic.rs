@@ -16,6 +16,8 @@ use serde_json::json;
 use slog::*;
 use slog_async;
 
+use crate::util::futures::retry;
+
 /// General configuration parameters for Elasticsearch logging.
 #[derive(Clone, Debug)]
 pub struct ElasticLoggingConfig {
@@ -140,6 +142,8 @@ pub struct ElasticDrainConfig {
     pub custom_id_value: String,
     /// The batching interval.
     pub flush_interval: Duration,
+    /// Maximum retries in case of error.
+    pub max_retries: usize,
 }
 
 /// An slog `Drain` for logging to Elasticsearch.
@@ -187,6 +191,7 @@ impl ElasticDrain {
         let logs = self.logs.clone();
         let config = self.config.clone();
         let mut interval = tokio::time::interval(self.config.flush_interval);
+        let max_retries = self.config.max_retries;
 
         crate::task_spawn::spawn(async move {
             loop {
@@ -261,7 +266,6 @@ impl ElasticDrain {
 
                 // Send batch of logs to Elasticsearch
                 let client = Client::new();
-                let logger_for_err = flush_logger.clone();
 
                 let header = match config.general.username {
                     Some(username) => client
@@ -272,19 +276,24 @@ impl ElasticDrain {
                         .post(batch_url)
                         .header(CONTENT_TYPE, "application/json"),
                 };
-                header
-                    .body(batch_body)
-                    .send()
-                    .and_then(|response| async { response.error_for_status() })
-                    .map_ok(|_| ())
-                    .unwrap_or_else(move |e| {
-                        // Log if there was a problem sending the logs
-                        error!(
-                            logger_for_err,
-                            "Failed to send logs to Elasticsearch: {}", e
-                        );
+
+                retry("send logs to elasticsearch", &flush_logger)
+                    .limit(max_retries)
+                    .timeout_secs(30)
+                    .run(move || {
+                        header
+                            .try_clone()
+                            .unwrap() // Unwrap: Request body not yet set
+                            .body(batch_body.clone())
+                            .send()
+                            .and_then(|response| async { response.error_for_status() })
+                            .map_ok(|_| ())
                     })
-                    .await;
+                    .await
+                    .unwrap_or_else(|e| {
+                        // Log if there was a problem sending the logs
+                        error!(flush_logger, "Failed to send logs to Elasticsearch: {}", e);
+                    })
             }
         });
     }
@@ -343,7 +352,7 @@ impl Drain for ElasticDrain {
         // Prepare log document
         let log = ElasticLog {
             id,
-            custom_id: custom_id,
+            custom_id,
             arguments,
             timestamp,
             text,

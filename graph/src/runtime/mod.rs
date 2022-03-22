@@ -3,6 +3,8 @@
 //! implementation. These methods take types that implement `To`/`FromAscObj` and are therefore
 //! convertible to/from an `AscType`.
 
+pub mod gas;
+
 mod asc_heap;
 mod asc_ptr;
 
@@ -14,6 +16,8 @@ use semver::Version;
 use std::convert::TryInto;
 use std::fmt;
 use std::mem::size_of;
+
+use self::gas::GasCounter;
 
 /// Marker trait for AssemblyScript types that the id should
 /// be in the header.
@@ -55,6 +59,7 @@ pub trait AscType: Sized {
     fn asc_size<H: AscHeap + ?Sized>(
         _ptr: AscPtr<Self>,
         _heap: &H,
+        _gas: &GasCounter,
     ) -> Result<u32, DeterministicHostError> {
         Ok(std::mem::size_of::<Self>() as u32)
     }
@@ -71,7 +76,7 @@ impl<T> AscType for std::marker::PhantomData<T> {
         asc_obj: &[u8],
         _api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
-        assert!(asc_obj.len() == 0);
+        assert!(asc_obj.is_empty());
 
         Ok(Self)
     }
@@ -92,7 +97,7 @@ impl AscType for bool {
         _api_version: &Version,
     ) -> Result<Self, DeterministicHostError> {
         if asc_obj.len() != 1 {
-            Err(DeterministicHostError(anyhow::anyhow!(
+            Err(DeterministicHostError::from(anyhow::anyhow!(
                 "Incorrect size for bool. Expected 1, got {},",
                 asc_obj.len()
             )))
@@ -115,7 +120,7 @@ macro_rules! impl_asc_type {
 
                 fn from_asc_bytes(asc_obj: &[u8], _api_version: &Version) -> Result<Self, DeterministicHostError> {
                     let bytes = asc_obj.try_into().map_err(|_| {
-                        DeterministicHostError(anyhow::anyhow!(
+                        DeterministicHostError::from(anyhow::anyhow!(
                             "Incorrect size for {}. Expected {}, got {},",
                             stringify!($T),
                             size_of::<Self>(),
@@ -192,23 +197,151 @@ pub enum IndexForAscTypeId {
     ArrayF32 = 49,
     ArrayF64 = 50,
     ArrayBigDecimal = 51,
+
+    // Near Type IDs
+    //
+    // Generated with the following shell script:
+    //
+    // ```
+    // cat chain/near/src/runtime/generated.rs | grep IndexForAscTypeId::Near | grep -Eo "Near[a-zA-Z0-9]+" | awk '{for(x=1;x<=NF;x++)sub(/$/,"="++i+51",")}1' | sed 's/=/ = /'
+    // ```
+    //
+    // The `51` literal at the end in the `awk` should be replaced with the last element
+    // value in the list above.
+    NearArrayDataReceiver = 52,
+    NearArrayCryptoHash = 53,
+    NearArrayActionEnum = 54,
+    NearArrayMerklePathItem = 55,
+    NearArrayValidatorStake = 56,
+    NearArraySlashedValidator = 57,
+    NearArraySignature = 58,
+    NearArrayChunkHeader = 59,
+    NearAccessKeyPermissionEnum = 60,
+    NearActionEnum = 61,
+    NearDirectionEnum = 62,
+    NearPublicKey = 63,
+    NearSignature = 64,
+    NearFunctionCallPermission = 65,
+    NearFullAccessPermission = 66,
+    NearAccessKey = 67,
+    NearDataReceiver = 68,
+    NearCreateAccountAction = 69,
+    NearDeployContractAction = 70,
+    NearFunctionCallAction = 71,
+    NearTransferAction = 72,
+    NearStakeAction = 73,
+    NearAddKeyAction = 74,
+    NearDeleteKeyAction = 75,
+    NearDeleteAccountAction = 76,
+    NearActionReceipt = 77,
+    NearSuccessStatusEnum = 78,
+    NearMerklePathItem = 79,
+    NearExecutionOutcome = 80,
+    NearSlashedValidator = 81,
+    NearBlockHeader = 82,
+    NearValidatorStake = 83,
+    NearChunkHeader = 84,
+    NearBlock = 85,
+    NearReceiptWithOutcome = 86,
+
+    // Tendermint Type IDs
+    //
+    // Generated with the following shell script:
+    //
+    // ```
+    // cat chain/tendermint/src/runtime/generated.rs | grep IndexForAscTypeId::Tendermint | grep -Eo "Tendermint[a-zA-Z0-9]+" | awk '{for(x=1;x<=NF;x++)sub(/$/,"="++i+86",")}1' | sed 's/=/ = /'
+    // ```
+    //
+    // The `86` literal at the end in the `awk` should be replaced with the last element
+    // value in the list above.
+    TendermintArrayEventTx = 87,
+    TendermintArrayEvent = 88,
+    TendermintArrayCommitSig = 89,
+    TendermintArrayBytes = 90,
+    TendermintArrayEvidence = 91,
+    TendermintArrayEventAttribute = 92,
+    TendermintBlockIDFlagEnum = 93,
+    TendermintSignedMsgTypeEnum = 94,
+    TendermintEventList = 95,
+    TendermintEventBlock = 96,
+    TendermintResponseBeginBlock = 97,
+    TendermintResponseEndBlock = 98,
+    TendermintValidatorUpdate = 99,
+    TendermintArrayValidatorUpdate = 100,
+    TendermintConsensusParams = 101,
+    TendermintBlockParams = 102,
+    TendermintEvidenceParams = 103,
+    TendermintValidatorParams = 104,
+    TendermintVersionParams = 105,
+    TendermintBlock = 106,
+    TendermintCommit = 107,
+    TendermintCommitSig = 108,
+    TendermintHeader = 109,
+    TendermintConsensus = 110,
+    TendermintBlockID = 111,
+    TendermintPartSetHeader = 112,
+    TendermintData = 113,
+    TendermintEvidence = 114,
+    TendermintDuplicateVoteEvidence = 115,
+    TendermintEventTx = 116,
+    TendermintEventVote = 117,
+    TendermintLightClientAttackEvidence = 118,
+    TendermintLightBlock = 119,
+    TendermintValidatorSet = 120,
+    TendermintSignedHeader = 121,
+    TendermintEvidenceList = 122,
+    TendermintValidator = 123,
+    TendermintArrayValidator = 124,
+    TendermintPublicKey = 125,
+    TendermintTxResult = 126,
+    TendermintResponseDeliverTx = 127,
+    TendermintEvent = 128,
+    TendermintEventAttribute = 129,
+    TendermintEventValidatorSetUpdates = 130,
+    TendermintDuration = 131,
+    TendermintTimestamp = 132,
+    TendermintEventData = 133,
 }
 
 impl ToAscObj<u32> for IndexForAscTypeId {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         _heap: &mut H,
+        _gas: &GasCounter,
     ) -> Result<u32, DeterministicHostError> {
         Ok(*self as u32)
     }
 }
 
 #[derive(Debug)]
-pub struct DeterministicHostError(pub Error);
+pub enum DeterministicHostError {
+    Gas(Error),
+    Other(Error),
+}
+
+impl DeterministicHostError {
+    pub fn gas(e: Error) -> Self {
+        DeterministicHostError::Gas(e)
+    }
+
+    pub fn inner(self) -> Error {
+        match self {
+            DeterministicHostError::Gas(e) | DeterministicHostError::Other(e) => e,
+        }
+    }
+}
 
 impl fmt::Display for DeterministicHostError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
+        match self {
+            DeterministicHostError::Gas(e) | DeterministicHostError::Other(e) => e.fmt(f),
+        }
+    }
+}
+
+impl From<Error> for DeterministicHostError {
+    fn from(e: Error) -> DeterministicHostError {
+        DeterministicHostError::Other(e)
     }
 }
 
@@ -234,7 +367,11 @@ impl From<anyhow::Error> for HostExportError {
 
 impl From<DeterministicHostError> for HostExportError {
     fn from(value: DeterministicHostError) -> Self {
-        HostExportError::Deterministic(value.0)
+        match value {
+            // Until we are confident on the gas numbers, gas errors are not deterministic
+            DeterministicHostError::Gas(e) => HostExportError::Unknown(e),
+            DeterministicHostError::Other(e) => HostExportError::Deterministic(e),
+        }
     }
 }
 

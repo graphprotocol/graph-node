@@ -1,17 +1,25 @@
 //! Jobs for database maintenance
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use diesel::{prelude::RunQueryDsl, sql_query, sql_types::Double};
 
-use graph::prelude::{error, Logger, MetricsRegistry, StoreError};
+use graph::env::env_var;
+use graph::prelude::{chrono, error, lazy_static, Logger, MetricsRegistry, StoreError};
 use graph::prometheus::Gauge;
 use graph::util::jobs::{Job, Runner};
 
 use crate::connection_pool::ConnectionPool;
-use crate::{Store, SubgraphStore};
+use crate::{unused, Store, SubgraphStore};
+
+lazy_static! {
+    static ref UNUSED_INTERVAL: chrono::Duration = {
+        let interval: u32 = env_var("GRAPH_REMOVE_UNUSED_INTERVAL", 360);
+        chrono::Duration::minutes(interval as i64)
+    };
+}
 
 pub fn register(
     runner: &mut Runner,
@@ -28,6 +36,17 @@ pub fn register(
         Arc::new(NotificationQueueUsage::new(primary_pool, registry)),
         Duration::from_secs(60),
     );
+
+    runner.register(
+        Arc::new(MirrorPrimary::new(store.subgraph_store())),
+        Duration::from_secs(15 * 60),
+    );
+
+    // Remove unused deployments every 2 hours
+    runner.register(
+        Arc::new(UnusedJob::new(store.subgraph_store())),
+        Duration::from_secs(2 * 60 * 60),
+    )
 }
 
 /// A job that vacuums `subgraphs.subgraph_deployment`. With a large number
@@ -112,6 +131,86 @@ impl Job for NotificationQueueUsage {
                 logger,
                 "Update of `notification_queue_usage` gauge failed: {}", e
             );
+        }
+    }
+}
+
+struct MirrorPrimary {
+    store: Arc<SubgraphStore>,
+}
+
+impl MirrorPrimary {
+    fn new(store: Arc<SubgraphStore>) -> MirrorPrimary {
+        MirrorPrimary { store }
+    }
+}
+
+#[async_trait]
+impl Job for MirrorPrimary {
+    fn name(&self) -> &str {
+        "Reconcile important tables from the primary"
+    }
+
+    async fn run(&self, logger: &Logger) {
+        self.store.mirror_primary_tables(logger).await;
+    }
+}
+
+struct UnusedJob {
+    store: Arc<SubgraphStore>,
+}
+
+impl UnusedJob {
+    fn new(store: Arc<SubgraphStore>) -> UnusedJob {
+        UnusedJob { store }
+    }
+}
+
+#[async_trait]
+impl Job for UnusedJob {
+    fn name(&self) -> &str {
+        "Record and remove unused deployments"
+    }
+
+    /// Record unused deployments and remove ones that were recorded at
+    /// least `UNUSED_INTERVAL` ago
+    async fn run(&self, logger: &Logger) {
+        // Work on removing about 5 minutes
+        const REMOVAL_DEADLINE: Duration = Duration::from_secs(5 * 60);
+
+        let start = Instant::now();
+
+        if let Err(e) = self.store.record_unused_deployments() {
+            error!(logger, "failed to record unused deployments"; "error" => e.to_string());
+            return;
+        }
+
+        let remove = match self
+            .store
+            .list_unused_deployments(unused::Filter::UnusedLongerThan(*UNUSED_INTERVAL))
+        {
+            Ok(remove) => remove,
+            Err(e) => {
+                error!(logger, "failed to list removable deployments"; "error" => e.to_string());
+                return;
+            }
+        };
+
+        for deployment in remove {
+            match self.store.remove_deployment(deployment.id) {
+                Ok(()) => { /* ignore */ }
+                Err(e) => {
+                    error!(logger, "failed to remove unused deployment";
+                                   "sgd" => deployment.id.to_string(),
+                                   "deployment" => deployment.deployment,
+                                   "error" => e.to_string());
+                }
+            }
+            // Stop working on removing after a while to not block other
+            // jobs for too long
+            if start.elapsed() > REMOVAL_DEADLINE {
+                return;
+            }
         }
     }
 }

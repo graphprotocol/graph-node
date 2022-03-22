@@ -82,7 +82,7 @@ impl QueryEffort {
         }
     }
 
-    pub fn add(&self, shape_hash: u64, duration: Duration, gauge: &Box<Gauge>) {
+    pub fn add(&self, shape_hash: u64, duration: Duration, gauge: &Gauge) {
         let mut inner = self.inner.write().unwrap();
         inner.add(shape_hash, duration);
         gauge.set(inner.total.average().unwrap_or(ZERO_DURATION).as_millis() as f64);
@@ -239,6 +239,7 @@ pub struct LoadManager {
     kill_state: RwLock<KillState>,
     effort_gauge: Box<Gauge>,
     query_counters: HashMap<CacheStatus, Counter>,
+    kill_rate_gauge: Box<Gauge>,
 }
 
 impl LoadManager {
@@ -269,6 +270,13 @@ impl LoadManager {
                 HashMap::new(),
             )
             .expect("failed to create `query_effort_ms` counter");
+        let kill_rate_gauge = registry
+            .new_gauge(
+                "query_kill_rate",
+                "The rate at which the load manager kills queries",
+                HashMap::new(),
+            )
+            .expect("failed to create `query_kill_rate` counter");
         let query_counters = CacheStatus::iter()
             .map(|s| {
                 let labels = HashMap::from_iter(vec![("cache_status".to_owned(), s.to_string())]);
@@ -291,6 +299,7 @@ impl LoadManager {
             kill_state: RwLock::new(KillState::new()),
             effort_gauge,
             query_counters,
+            kill_rate_gauge,
         }
     }
 
@@ -505,6 +514,7 @@ impl LoadManager {
                 Skip => { /* do nothing */ }
             }
         }
+        self.kill_rate_gauge.set(kill_rate);
         kill_rate
     }
 }

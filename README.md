@@ -1,6 +1,6 @@
 # Graph Node
 
-[![Build Status](https://travis-ci.org/graphprotocol/graph-node.svg?branch=master)](https://travis-ci.org/graphprotocol/graph-node)
+[![Build Status](https://github.com/graphprotocol/graph-node/actions/workflows/ci.yml/badge.svg)](https://github.com/graphprotocol/graph-node/actions/workflows/ci.yml?query=branch%3Amaster)
 [![Getting Started Docs](https://img.shields.io/badge/docs-getting--started-brightgreen.svg)](docs/getting-started.md)
 
 [The Graph](https://thegraph.com/) is a protocol for building decentralized applications (dApps) quickly on Ethereum and IPFS using GraphQL.
@@ -16,6 +16,7 @@ For detailed instructions and more context, check out the [Getting Started Guide
 To build and run this project you need to have the following installed on your system:
 
 - Rust (latest stable) – [How to install Rust](https://www.rust-lang.org/en-US/install.html)
+  - Note that `rustfmt`, which is part of the default Rust installation, is a build-time requirement.
 - PostgreSQL – [PostgreSQL Downloads](https://www.postgresql.org/download/)
 - IPFS – [Installing IPFS](https://docs.ipfs.io/install/)
 
@@ -43,7 +44,7 @@ Once you have all the dependencies set up, you can run the following:
 ```
 cargo run -p graph-node --release -- \
   --postgres-url postgresql://USERNAME[:PASSWORD]@localhost:5432/graph-node \
-  --ethereum-rpc [URL] \
+  --ethereum-rpc NETWORK_NAME:[CAPABILITIES]:URL \
   --ipfs 127.0.0.1:5001
 ```
 
@@ -116,11 +117,13 @@ OPTIONS:
         --ethereum-ws <NETWORK_NAME:[CAPABILITIES]:URL>
             Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg `full,archive), and an Ethereum WebSocket URL, separated by a ':'
 
+        --node-id <NODE_ID>
+            A unique identifier for this node instance. Should have the same value between consecutive node restarts [default: default]
+
         --http-port <PORT>                            Port for the GraphQL HTTP server [default: 8000]
         --ipfs <HOST:PORT>                            HTTP address of an IPFS node
-        --node-id <NODE_ID>                           a unique identifier for this node [default: default]
         --postgres-url <URL>                          Location of the Postgres database used for storing entities
-        --subgraph <[NAME:]IPFS_HASH>                 name and IPFS hash of the subgraph manifest
+        --subgraph <[NAME:]IPFS_HASH>                 Name and IPFS hash of the subgraph manifest
         --ws-port <PORT>                              Port for the GraphQL WebSocket server [default: 8001]
 ```
 

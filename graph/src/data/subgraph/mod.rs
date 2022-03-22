@@ -1,7 +1,18 @@
+/// Rust representation of the GraphQL schema for a `SubgraphManifest`.
+pub mod schema;
+
+/// API version and spec version.
+pub mod api_version;
+pub use api_version::*;
+
+pub mod features;
+pub mod status;
+
+pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
+
 use anyhow::ensure;
 use anyhow::{anyhow, Error};
 use futures03::{future::try_join3, stream::FuturesOrdered, TryStreamExt as _};
-use itertools::Itertools;
 use lazy_static::lazy_static;
 use semver::Version;
 use serde::de;
@@ -19,7 +30,7 @@ use crate::data::{
     schema::{Schema, SchemaImportError, SchemaValidationError},
     subgraph::features::validate_subgraph_features,
 };
-use crate::prelude::CheapClone;
+use crate::prelude::{r, CheapClone};
 use crate::{blockchain::DataSource, data::graphql::TryFromValue};
 use crate::{blockchain::DataSourceTemplate as _, data::query::QueryExecutionError};
 use crate::{
@@ -30,50 +41,19 @@ use crate::{
     },
 };
 
-use crate::prelude::{impl_slog_value, q, BlockNumber, Deserialize, Serialize};
+use crate::prelude::{impl_slog_value, BlockNumber, Deserialize, Serialize};
 
 use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
 
-/// This version adds a new subgraph validation step that rejects manifests whose mappings have
-/// different API versions if at least one of them is equal to or higher than `0.0.5`.
-pub const API_VERSION_0_0_5: Version = Version::new(0, 0, 5);
-
-/// Before this check was introduced, there were already subgraphs in the wild with spec version
-/// 0.0.3, due to confusion with the api version. To avoid breaking those, we accept 0.0.3 though it
-/// doesn't exist. In the future we should not use 0.0.3 as version and skip to 0.0.4 to avoid
-/// ambiguity.
-pub const SPEC_VERSION_0_0_3: Version = Version::new(0, 0, 3);
-
-/// This version supports subgraph feature management.
-pub const SPEC_VERSION_0_0_4: Version = Version::new(0, 0, 4);
-
-pub const MIN_SPEC_VERSION: Version = Version::new(0, 0, 2);
-
 lazy_static! {
     static ref DISABLE_GRAFTS: bool = std::env::var("GRAPH_DISABLE_GRAFTS")
         .ok()
         .map(|s| s.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    pub static ref MAX_SPEC_VERSION: Version = std::env::var("GRAPH_MAX_SPEC_VERSION")
-        .ok()
-        .and_then(|api_version_str| Version::parse(&api_version_str).ok())
-        .unwrap_or(SPEC_VERSION_0_0_3);
-    static ref MAX_API_VERSION: semver::Version = std::env::var("GRAPH_MAX_API_VERSION")
-        .ok()
-        .and_then(|api_version_str| semver::Version::parse(&api_version_str).ok())
-        .unwrap_or(semver::Version::new(0, 0, 5));
 }
-
-/// Rust representation of the GraphQL schema for a `SubgraphManifest`.
-pub mod schema;
-
-pub mod features;
-pub mod status;
-
-pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
 /// Deserialize an Address (with or without '0x' prefix).
 fn deserialize_address<'de, D>(deserializer: D) -> Result<Option<Address>, D::Error>
@@ -176,7 +156,7 @@ impl<'de> de::Deserialize<'de> for DeploymentHash {
 }
 
 impl TryFromValue for DeploymentHash {
-    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
+    fn try_from_value(value: &r::Value) -> Result<Self, Error> {
         Self::new(String::try_from_value(value)?)
             .map_err(|s| anyhow!("Invalid subgraph ID `{}`", s))
     }
@@ -207,8 +187,8 @@ impl SubgraphName {
 
         // Parse into components and validate each
         for part in s.split('/') {
-            // Each part must be non-empty and not too long
-            if part.is_empty() || part.len() > 32 {
+            // Each part must be non-empty
+            if part.is_empty() {
                 return Err(());
             }
 
@@ -363,8 +343,6 @@ pub enum SubgraphManifestValidationError {
     MultipleEthereumNetworks,
     #[error("subgraph must have at least one Ethereum network data source")]
     EthereumNetworkRequired,
-    #[error("subgraph data source has too many similar block handlers")]
-    DataSourceBlockHandlerLimitExceeded,
     #[error("the specified block must exist on the Ethereum network")]
     BlockNotFound(String),
     #[error("imported schema(s) are invalid: {0:?}")]
@@ -377,6 +355,8 @@ pub enum SubgraphManifestValidationError {
     DifferentApiVersions(BTreeSet<Version>),
     #[error(transparent)]
     FeatureValidationError(#[from] SubgraphFeatureValidationError),
+    #[error("data source {0} is invalid: {1}")]
+    DataSourceValidation(String, Error),
 }
 
 #[derive(Error, Debug)]
@@ -461,59 +441,6 @@ pub fn calls_host_fn(runtime: &[u8], host_fn: &str) -> anyhow::Result<bool> {
     Ok(false)
 }
 
-#[derive(Clone, PartialEq, Debug)]
-pub struct UnifiedMappingApiVersion(Option<Version>);
-
-impl UnifiedMappingApiVersion {
-    pub fn equal_or_greater_than(&self, other_version: &Version) -> bool {
-        assert!(
-            other_version >= &API_VERSION_0_0_5,
-            "api versions before 0.0.5 should not be used for comparison"
-        );
-        match &self.0 {
-            Some(version) => version >= other_version,
-            None => false,
-        }
-    }
-
-    pub fn try_from_versions(
-        versions: impl Iterator<Item = Version>,
-    ) -> Result<Self, DifferentMappingApiVersions> {
-        let unique_versions: BTreeSet<Version> = versions.collect();
-
-        let all_below_referential_version = unique_versions.iter().all(|v| *v < API_VERSION_0_0_5);
-        let all_the_same = unique_versions.len() == 1;
-
-        let unified_version: Option<Version> = match (all_below_referential_version, all_the_same) {
-            (false, false) => return Err(unique_versions.into()),
-            (false, true) => Some(unique_versions.iter().nth(0).unwrap().deref().clone()),
-            (true, _) => None,
-        };
-
-        Ok(UnifiedMappingApiVersion(unified_version))
-    }
-}
-
-#[derive(Error, Debug, PartialEq)]
-#[error("Expected a single apiVersion for mappings. Found: {}.", format_versions(.0))]
-pub struct DifferentMappingApiVersions(BTreeSet<Version>);
-
-fn format_versions(versions: &BTreeSet<Version>) -> String {
-    versions.iter().map(ToString::to_string).join(", ")
-}
-
-impl From<BTreeSet<Version>> for DifferentMappingApiVersions {
-    fn from(versions: BTreeSet<Version>) -> Self {
-        Self(versions)
-    }
-}
-
-impl From<DifferentMappingApiVersions> for SubgraphManifestValidationError {
-    fn from(versions: DifferentMappingApiVersions) -> Self {
-        SubgraphManifestValidationError::DifferentApiVersions(versions.0)
-    }
-}
-
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Graft {
@@ -522,7 +449,10 @@ pub struct Graft {
 }
 
 impl Graft {
-    fn validate<S: SubgraphStore>(&self, store: Arc<S>) -> Vec<SubgraphManifestValidationError> {
+    async fn validate<S: SubgraphStore>(
+        &self,
+        store: Arc<S>,
+    ) -> Vec<SubgraphManifestValidationError> {
         fn gbi(msg: String) -> Vec<SubgraphManifestValidationError> {
             vec![SubgraphManifestValidationError::GraftBaseInvalid(msg)]
         }
@@ -533,7 +463,7 @@ impl Graft {
         // between this check and when the graft actually happens when the
         // subgraph is started. We therefore check that any instance of the
         // base subgraph is suitable.
-        match store.least_block_ptr(&self.base) {
+        match store.least_block_ptr(&self.base).await {
             Err(e) => gbi(e.to_string()),
             Ok(None) => gbi(format!(
                 "failed to graft onto `{}` since it has not processed any blocks",
@@ -610,7 +540,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
     /// Validates the subgraph manifest file.
     ///
     /// Graft base validation will be skipped if the parameter `validate_graft_base` is false.
-    pub fn validate<S: SubgraphStore>(
+    pub async fn validate<S: SubgraphStore>(
         self,
         store: Arc<S>,
         validate_graft_base: bool,
@@ -625,7 +555,9 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         }
 
         for ds in &self.0.data_sources {
-            errors.extend(ds.validate());
+            errors.extend(ds.validate().into_iter().map(|e| {
+                SubgraphManifestValidationError::DataSourceValidation(ds.name().to_owned(), e)
+            }));
         }
 
         // For API versions newer than 0.0.5, validate that all mappings uses the same api_version
@@ -637,7 +569,6 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             .0
             .data_sources
             .iter()
-            .filter(|d| d.kind().eq("ethereum/contract"))
             .filter_map(|d| d.network().map(|n| n.to_string()))
             .collect::<Vec<String>>();
         networks.sort();
@@ -666,7 +597,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
                 ));
             }
             if validate_graft_base {
-                errors.extend(graft.validate(store));
+                errors.extend(graft.validate(store).await);
             }
         }
 
@@ -718,7 +649,6 @@ impl<C: Blockchain> SubgraphManifest<C> {
         // Assume the manifest has been validated, ensuring network names are homogenous
         self.data_sources
             .iter()
-            .filter(|d| d.kind() == "ethereum/contract")
             .filter_map(|d| d.network().map(|n| n.to_string()))
             .next()
             .expect("Validated manifest does not have a network defined on any datasource")
@@ -734,12 +664,8 @@ impl<C: Blockchain> SubgraphManifest<C> {
     pub fn api_versions(&self) -> impl Iterator<Item = semver::Version> + '_ {
         self.templates
             .iter()
-            .map(|template| template.api_version().clone())
-            .chain(
-                self.data_sources
-                    .iter()
-                    .map(|source| source.api_version().clone()),
-            )
+            .map(|template| template.api_version())
+            .chain(self.data_sources.iter().map(|source| source.api_version()))
     }
 
     pub fn runtimes(&self) -> impl Iterator<Item = &[u8]> + '_ {
@@ -854,7 +780,7 @@ impl DeploymentState {
     }
 }
 
-fn display_vector(input: &Vec<impl std::fmt::Display>) -> impl std::fmt::Display {
+fn display_vector(input: &[impl std::fmt::Display]) -> impl std::fmt::Display {
     let formatted_errors = input
         .iter()
         .map(ToString::to_string)
@@ -890,43 +816,7 @@ fn test_subgraph_name_validation() {
     assert!(SubgraphName::new("aaaa+aaaaa").is_err());
     assert!(SubgraphName::new("a/graphql").is_err());
     assert!(SubgraphName::new("graphql/a").is_err());
-    assert!(SubgraphName::new("this-component-is-longer-than-the-length-limit").is_err());
-}
-
-#[test]
-fn unified_mapping_api_version_from_iterator() {
-    let input = [
-        vec![Version::new(0, 0, 5), Version::new(0, 0, 5)], // Ok(Some(0.0.5))
-        vec![Version::new(0, 0, 6), Version::new(0, 0, 6)], // Ok(Some(0.0.6))
-        vec![Version::new(0, 0, 3), Version::new(0, 0, 4)], // Ok(None)
-        vec![Version::new(0, 0, 4), Version::new(0, 0, 4)], // Ok(None)
-        vec![Version::new(0, 0, 3), Version::new(0, 0, 5)], // Err({0.0.3, 0.0.5})
-        vec![Version::new(0, 0, 6), Version::new(0, 0, 5)], // Err({0.0.5, 0.0.6})
-    ];
-    let output: [Result<UnifiedMappingApiVersion, DifferentMappingApiVersions>; 6] = [
-        Ok(UnifiedMappingApiVersion(Some(Version::new(0, 0, 5)))),
-        Ok(UnifiedMappingApiVersion(Some(Version::new(0, 0, 6)))),
-        Ok(UnifiedMappingApiVersion(None)),
-        Ok(UnifiedMappingApiVersion(None)),
-        Err(input[4]
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<Version>>()
-            .into()),
-        Err(input[5]
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<Version>>()
-            .into()),
-    ];
-    for (version_vec, expected_unified_version) in input.iter().zip(output.iter()) {
-        let unified = UnifiedMappingApiVersion::try_from_versions(version_vec.iter().cloned());
-        match (unified, expected_unified_version) {
-            (Ok(a), Ok(b)) => assert_eq!(a, *b),
-            (Err(a), Err(b)) => assert_eq!(a, *b),
-            _ => panic!(),
-        }
-    }
+    assert!(SubgraphName::new("this-component-is-very-long-but-we-dont-care").is_ok());
 }
 
 #[test]

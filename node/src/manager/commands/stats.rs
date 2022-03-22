@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
+use crate::manager::deployment::find_single_deployment_locator;
 use diesel::r2d2::ConnectionManager;
 use diesel::r2d2::PooledConnection;
 use diesel::sql_query;
@@ -12,6 +14,7 @@ use graph_store_postgres::command_support::catalog::Site;
 use graph_store_postgres::command_support::{catalog as store_catalog, SqlName};
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::Shard;
+use graph_store_postgres::SubgraphStore;
 use graph_store_postgres::PRIMARY_SHARD;
 
 fn parse_table_name(table: &str) -> Result<(&str, SqlName), anyhow::Error> {
@@ -150,4 +153,18 @@ pub fn show(
     }
 
     Ok(())
+}
+
+pub async fn analyze(
+    store: Arc<SubgraphStore>,
+    pool: ConnectionPool,
+    deployment_id: String,
+    entity_name: &str,
+) -> Result<(), anyhow::Error> {
+    println!("Running ANALYZE for {entity_name} entity");
+    let deployment_locator = find_single_deployment_locator(&pool, &deployment_id)?;
+    store
+        .analyze(&deployment_locator, entity_name)
+        .await
+        .map_err(|e| anyhow!(e))
 }

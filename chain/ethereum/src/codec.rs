@@ -1,12 +1,17 @@
-#[path = "protobuf/dfuse.ethereum.codec.v1.rs"]
+#[path = "protobuf/sf.ethereum.codec.v1.rs"]
 mod pbcodec;
 
-use graph::prelude::{
-    web3::types::TransactionReceipt as w3TransactionReceipt, EthereumBlock, EthereumBlockWithCalls,
-    EthereumCall, LightEthereumBlock,
+use graph::{
+    blockchain::{Block as BlockchainBlock, BlockPtr},
+    prelude::{
+        web3,
+        web3::types::TransactionReceipt as w3TransactionReceipt,
+        web3::types::{Bytes, H160, H2048, H256, H64, U256, U64},
+        BlockNumber, EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock,
+    },
 };
+use std::convert::TryFrom;
 use std::sync::Arc;
-use web3::types::{Bytes, H160, H2048, H256, H64, U256, U64};
 
 use crate::chain::BlockFinality;
 
@@ -41,8 +46,8 @@ impl<'a> Into<EthereumCall> for CallAt<'a> {
                 .as_ref()
                 .map_or_else(|| U256::from(0), |v| v.into()),
             gas_used: U256::from(self.call.gas_consumed),
-            input: Bytes::from(self.call.input.clone()),
-            output: Bytes::from(self.call.return_data.clone()),
+            input: Bytes(self.call.input.clone()),
+            output: Bytes(self.call.return_data.clone()),
             block_hash: H256::from_slice(&self.block.hash),
             block_number: self.block.number as i32,
             transaction_hash: Some(H256::from_slice(&self.trace.hash)),
@@ -121,12 +126,21 @@ impl<'a> Into<web3::types::Log> for LogAt<'a> {
 
 impl Into<web3::types::U64> for TransactionTraceStatus {
     fn into(self) -> web3::types::U64 {
-        web3::types::U64::from(match self {
-            Self::Unknown => 0,
-            Self::Succeeded => 1,
-            Self::Failed => 0,
-            Self::Reverted => 0,
-        })
+        let status: Option<web3::types::U64> = self.into();
+        status.unwrap_or_else(|| web3::types::U64::from(0))
+    }
+}
+
+impl Into<Option<web3::types::U64>> for TransactionTraceStatus {
+    fn into(self) -> Option<web3::types::U64> {
+        match self {
+            Self::Unknown => {
+                panic!("Got a transaction trace with status UNKNOWN, datasource is broken")
+            }
+            Self::Succeeded => Some(web3::types::U64::from(1)),
+            Self::Failed => Some(web3::types::U64::from(0)),
+            Self::Reverted => Some(web3::types::U64::from(0)),
+        }
     }
 }
 
@@ -149,20 +163,20 @@ impl<'a> Into<web3::types::Transaction> for TransactionTraceAt<'a> {
             block_hash: Some(H256::from_slice(&self.block.hash)),
             block_number: Some(U64::from(self.block.number)),
             transaction_index: Some(U64::from(self.trace.index as u64)),
-            from: H160::from_slice(&self.trace.from),
+            from: Some(H160::from_slice(&self.trace.from)),
             to: Some(H160::from_slice(&self.trace.to)),
-            value: self
-                .trace
-                .value
-                .as_ref()
-                .map_or_else(|| U256::from(0), |x| x.into()),
-            gas_price: self
-                .trace
-                .gas_price
-                .as_ref()
-                .map_or_else(|| U256::from(0), |x| x.into()),
+            value: self.trace.value.as_ref().map_or(U256::zero(), |x| x.into()),
+            gas_price: self.trace.gas_price.as_ref().map(|x| x.into()),
             gas: U256::from(self.trace.gas_used),
             input: Bytes::from(self.trace.input.clone()),
+            v: None,
+            r: None,
+            s: None,
+            raw: None,
+            access_list: None,
+            max_fee_per_gas: None,
+            max_priority_fee_per_gas: None,
+            transaction_type: None,
         }
     }
 }
@@ -257,22 +271,113 @@ impl Into<EthereumBlockWithCalls> for &Block {
                                 .iter()
                                 .map(|l| LogAt::new(l, &self, t).into())
                                 .collect(),
-                            status: Some(
-                                TransactionTraceStatus::from_i32(t.status)
-                                    .expect("TransactionTraceStatus enum invalid")
-                                    .into(),
-                            ),
+                            status: TransactionTraceStatus::from_i32(t.status).unwrap().into(),
                             root: match r.state_root.len() {
                                 0 => None, // FIXME (SF): should this instead map to [0;32]?
                                 // FIXME (SF): if len < 32, what do we do?
                                 _ => Some(H256::from_slice(&r.state_root)),
                             },
                             logs_bloom: H2048::from_slice(&r.logs_bloom),
+                            from: H160::from_slice(&t.from),
+                            to: Some(H160::from_slice(&t.to)),
+                            transaction_type: None,
+                            effective_gas_price: None,
                         })
                     })
                     .collect(),
             },
-            calls: Some(vec![]),
+            // Comment (437a9f17-67cc-478f-80a3-804fe554b227): This Some() will avoid calls in the triggers_in_block
+            // TODO: Refactor in a way that this is no longer needed.
+            calls: Some(
+                self.transaction_traces
+                    .iter()
+                    .flat_map(|trace| {
+                        trace
+                            .calls
+                            .iter()
+                            .map(|call| CallAt::new(call, self, trace).into())
+                            .collect::<Vec<EthereumCall>>()
+                    })
+                    .collect(),
+            ),
         }
+    }
+}
+
+impl BlockHeader {
+    pub fn parent_ptr(&self) -> Option<BlockPtr> {
+        match self.parent_hash.len() {
+            0 => None,
+            _ => Some(BlockPtr::from((
+                H256::from_slice(self.parent_hash.as_ref()),
+                self.number - 1,
+            ))),
+        }
+    }
+}
+
+impl<'a> From<&'a BlockHeader> for BlockPtr {
+    fn from(b: &'a BlockHeader) -> BlockPtr {
+        BlockPtr::from((H256::from_slice(b.hash.as_ref()), b.number))
+    }
+}
+
+impl<'a> From<&'a Block> for BlockPtr {
+    fn from(b: &'a Block) -> BlockPtr {
+        BlockPtr::from((H256::from_slice(b.hash.as_ref()), b.number))
+    }
+}
+
+impl Block {
+    pub fn header(&self) -> &BlockHeader {
+        self.header.as_ref().unwrap()
+    }
+
+    pub fn ptr(&self) -> BlockPtr {
+        BlockPtr::from(self.header())
+    }
+
+    pub fn parent_ptr(&self) -> Option<BlockPtr> {
+        self.header().parent_ptr()
+    }
+}
+
+impl BlockchainBlock for Block {
+    fn number(&self) -> i32 {
+        BlockNumber::try_from(self.header().number).unwrap()
+    }
+
+    fn ptr(&self) -> BlockPtr {
+        self.into()
+    }
+
+    fn parent_ptr(&self) -> Option<BlockPtr> {
+        self.parent_ptr()
+    }
+}
+
+impl HeaderOnlyBlock {
+    pub fn header(&self) -> &BlockHeader {
+        self.header.as_ref().unwrap()
+    }
+}
+
+impl<'a> From<&'a HeaderOnlyBlock> for BlockPtr {
+    fn from(b: &'a HeaderOnlyBlock) -> BlockPtr {
+        BlockPtr::from(b.header())
+    }
+}
+
+impl BlockchainBlock for HeaderOnlyBlock {
+    fn number(&self) -> i32 {
+        BlockNumber::try_from(self.header().number).unwrap()
+    }
+
+    fn ptr(&self) -> BlockPtr {
+        self.into()
+    }
+
+    fn parent_ptr(&self) -> Option<BlockPtr> {
+        self.header().parent_ptr()
     }
 }

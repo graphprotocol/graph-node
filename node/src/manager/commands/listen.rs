@@ -1,5 +1,6 @@
-use std::io::Write;
+use std::iter::FromIterator;
 use std::sync::Arc;
+use std::{collections::BTreeSet, io::Write};
 
 use futures::compat::Future01CompatExt;
 //use futures::future;
@@ -13,7 +14,7 @@ use crate::manager::deployment;
 
 async fn listen(
     mgr: Arc<SubscriptionManager>,
-    filter: Vec<SubscriptionFilter>,
+    filter: BTreeSet<SubscriptionFilter>,
 ) -> Result<(), Error> {
     let events = mgr.subscribe(filter);
     println!("press ctrl-c to stop");
@@ -41,7 +42,11 @@ async fn listen(
 
 pub async fn assignments(mgr: Arc<SubscriptionManager>) -> Result<(), Error> {
     println!("waiting for assignment events");
-    listen(mgr, vec![SubscriptionFilter::Assignment]).await?;
+    listen(
+        mgr,
+        FromIterator::from_iter([SubscriptionFilter::Assignment]),
+    )
+    .await?;
 
     Ok(())
 }
@@ -52,7 +57,7 @@ pub async fn entities(
     entity_types: Vec<String>,
 ) -> Result<(), Error> {
     let deployment = deployment::as_hash(deployment)?;
-    let filter: Vec<_> = entity_types
+    let filter = entity_types
         .into_iter()
         .map(|et| SubscriptionFilter::Entities(deployment.clone(), EntityType::new(et)))
         .collect();

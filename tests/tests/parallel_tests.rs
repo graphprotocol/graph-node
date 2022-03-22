@@ -24,7 +24,7 @@ lazy_static::lazy_static! {
 }
 
 /// All integration tests subdirectories to run
-pub const INTEGRATION_TESTS_DIRECTORIES: [&str; 10] = [
+pub const INTEGRATION_TESTS_DIRECTORIES: [&str; 11] = [
     "api-version-v0-0-4",
     "data-source-context",
     "data-source-revert",
@@ -33,6 +33,7 @@ pub const INTEGRATION_TESTS_DIRECTORIES: [&str; 10] = [
     "host-exports",
     "non-fatal-errors",
     "overloaded-contract-functions",
+    "poi-for-failed-subgraph",
     "remove-then-update",
     "value-roundtrip",
 ];
@@ -64,7 +65,7 @@ impl IntegrationTestSetup {
 #[derive(Debug)]
 struct TestCommandResults {
     success: bool,
-    exit_code: Option<i32>,
+    _exit_code: Option<i32>,
     stdout: String,
     stderr: String,
 }
@@ -340,7 +341,7 @@ async fn run_test_command(test_setup: &IntegrationTestSetup) -> anyhow::Result<T
 
     Ok(TestCommandResults {
         success: output.status.success(),
-        exit_code: output.status.code(),
+        _exit_code: output.status.code(),
         stdout: pretty_output(&output.stdout, &stdout_tag),
         stderr: pretty_output(&output.stderr, &stderr_tag),
     })

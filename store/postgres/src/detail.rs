@@ -1,29 +1,29 @@
 //! Queries to support the index node API
-use crate::primary::Site;
-use crate::{
-    deployment::{
-        graph_node_versions, subgraph_deployment, subgraph_error, subgraph_manifest,
-        SubgraphHealth as HealthType,
-    },
-    primary::DeploymentId,
-};
-use diesel::pg::PgConnection;
+//!
+// For git_testament_macros
+#![allow(unused_macros)]
+use diesel::dsl;
 use diesel::prelude::{
-    ExpressionMethods, JoinOnDsl, NullableExpressionMethods, QueryDsl, RunQueryDsl,
+    ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, PgConnection,
+    QueryDsl, RunQueryDsl,
 };
 use diesel_derives::Associations;
 use git_testament::{git_testament, git_testament_macros};
-use graph::{
-    constraint_violation,
-    data::subgraph::schema::{SubgraphError, SubgraphManifestEntity},
-    prelude::{
-        bigdecimal::ToPrimitive, BigDecimal, BlockPtr, DeploymentHash, StoreError,
-        SubgraphDeploymentEntity,
-    },
+use graph::data::subgraph::schema::{SubgraphError, SubgraphManifestEntity};
+use graph::prelude::{
+    bigdecimal::ToPrimitive, BigDecimal, BlockPtr, DeploymentHash, StoreError,
+    SubgraphDeploymentEntity,
 };
-use graph::{data::subgraph::status, prelude::web3::types::H256};
+use graph::{constraint_violation, data::subgraph::status, prelude::web3::types::H256};
+use itertools::Itertools;
 use std::convert::TryFrom;
 use std::{ops::Bound, sync::Arc};
+
+use crate::deployment::{
+    graph_node_versions, subgraph_deployment, subgraph_error, subgraph_manifest,
+    SubgraphHealth as HealthType,
+};
+use crate::primary::{DeploymentId, Site};
 
 git_testament_macros!(version);
 git_testament!(TESTAMENT);
@@ -58,6 +58,7 @@ pub struct DeploymentDetail {
     graft_base: Option<String>,
     graft_block_hash: Option<Bytes>,
     graft_block_number: Option<BigDecimal>,
+    debug_fork: Option<String>,
     reorg_count: i32,
     current_reorg_depth: i32,
     max_reorg_depth: i32,
@@ -69,48 +70,34 @@ pub struct DeploymentDetail {
 // We map all fields to make loading `Detail` with diesel easier, but we
 // don't need all the fields
 #[allow(dead_code)]
-struct ErrorDetail {
+pub(crate) struct ErrorDetail {
     vid: i64,
-    id: String,
+    pub id: String,
     subgraph_id: String,
     message: String,
-    block_hash: Option<Bytes>,
+    pub block_hash: Option<Bytes>,
     handler: Option<String>,
-    deterministic: bool,
-    block_range: (Bound<i32>, Bound<i32>),
+    pub deterministic: bool,
+    pub block_range: (Bound<i32>, Bound<i32>),
 }
 
-struct DetailAndError<'a>(DeploymentDetail, Option<ErrorDetail>, &'a Vec<Arc<Site>>);
+impl ErrorDetail {
+    /// Fetches the fatal error, if present, associated with the given
+    /// [`DeploymentHash`].
+    pub fn fatal(
+        conn: &PgConnection,
+        deployment_id: &DeploymentHash,
+    ) -> Result<Option<Self>, StoreError> {
+        use subgraph_deployment as d;
+        use subgraph_error as e;
 
-pub(crate) fn block(
-    id: &str,
-    name: &str,
-    hash: Option<Vec<u8>>,
-    number: Option<BigDecimal>,
-) -> Result<Option<status::EthereumBlock>, StoreError> {
-    match (&hash, &number) {
-        (Some(hash), Some(number)) => {
-            let hash = H256::from_slice(hash.as_slice());
-            let number = number.to_u64().ok_or_else(|| {
-                constraint_violation!(
-                    "the block number {} for {} in {} is not representable as a u64",
-                    number,
-                    name,
-                    id
-                )
-            })?;
-            Ok(Some(status::EthereumBlock::new(hash, number)))
-        }
-        (None, None) => Ok(None),
-        _ => Err(constraint_violation!(
-            "the hash and number \
-        of a block pointer must either both be null or both have a \
-        value, but for `{}` the hash of {} is `{:?}` and the number is `{:?}`",
-            id,
-            name,
-            hash,
-            number
-        )),
+        d::table
+            .filter(d::deployment.eq(deployment_id.as_str()))
+            .inner_join(e::table.on(e::id.nullable().eq(d::fatal_error)))
+            .select(e::all_columns)
+            .get_result(conn)
+            .optional()
+            .map_err(StoreError::from)
     }
 }
 
@@ -151,78 +138,114 @@ impl TryFrom<ErrorDetail> for SubgraphError {
     }
 }
 
-impl<'a> TryFrom<DetailAndError<'a>> for status::Info {
-    type Error = StoreError;
-
-    fn try_from(detail_and_error: DetailAndError) -> Result<Self, Self::Error> {
-        let DetailAndError(detail, error, sites) = detail_and_error;
-
-        let DeploymentDetail {
+pub(crate) fn block(
+    id: &str,
+    name: &str,
+    hash: Option<Vec<u8>>,
+    number: Option<BigDecimal>,
+) -> Result<Option<status::EthereumBlock>, StoreError> {
+    match (&hash, &number) {
+        (Some(hash), Some(number)) => {
+            let hash = H256::from_slice(hash.as_slice());
+            let number = number.to_u64().ok_or_else(|| {
+                constraint_violation!(
+                    "the block number {} for {} in {} is not representable as a u64",
+                    number,
+                    name,
+                    id
+                )
+            })?;
+            Ok(Some(status::EthereumBlock::new(hash, number)))
+        }
+        (None, None) => Ok(None),
+        _ => Err(constraint_violation!(
+            "the hash and number \
+        of a block pointer must either both be null or both have a \
+        value, but for `{}` the hash of {} is `{:?}` and the number is `{:?}`",
             id,
-            deployment,
-            failed: _,
-            health,
-            synced,
-            fatal_error: _,
-            non_fatal_errors: _,
-            earliest_ethereum_block_hash,
-            earliest_ethereum_block_number,
-            latest_ethereum_block_hash,
-            latest_ethereum_block_number,
-            entity_count,
-            graft_base: _,
-            graft_block_hash: _,
-            graft_block_number: _,
-            ..
-        } = detail;
-
-        let site = sites
-            .iter()
-            .find(|site| site.deployment.as_str() == &deployment)
-            .ok_or_else(|| constraint_violation!("missing site for subgraph `{}`", deployment))?;
-
-        // This needs to be filled in later since it lives in a
-        // different shard
-        let chain_head_block = None;
-        let earliest_block = block(
-            &deployment,
-            "earliest_ethereum_block",
-            earliest_ethereum_block_hash,
-            earliest_ethereum_block_number,
-        )?;
-        let latest_block = block(
-            &deployment,
-            "latest_ethereum_block",
-            latest_ethereum_block_hash,
-            latest_ethereum_block_number,
-        )?;
-        let health = health.into();
-        let chain = status::ChainInfo {
-            network: site.network.clone(),
-            chain_head_block,
-            earliest_block,
-            latest_block,
-        };
-        let entity_count = entity_count.to_u64().ok_or_else(|| {
-            constraint_violation!(
-                "the entityCount for {} is not representable as a u64",
-                deployment
-            )
-        })?;
-        let fatal_error = error.map(|e| SubgraphError::try_from(e)).transpose()?;
-        // 'node' needs to be filled in later from a different shard
-        Ok(status::Info {
-            id: id.into(),
-            subgraph: deployment,
-            synced,
-            health,
-            fatal_error,
-            non_fatal_errors: vec![],
-            chains: vec![chain],
-            entity_count,
-            node: None,
-        })
+            name,
+            hash,
+            number
+        )),
     }
+}
+
+pub(crate) fn info_from_details(
+    detail: DeploymentDetail,
+    fatal: Option<ErrorDetail>,
+    non_fatal: Vec<ErrorDetail>,
+    sites: &[Arc<Site>],
+) -> Result<status::Info, StoreError> {
+    let DeploymentDetail {
+        id,
+        deployment,
+        failed: _,
+        health,
+        synced,
+        fatal_error: _,
+        non_fatal_errors: _,
+        earliest_ethereum_block_hash,
+        earliest_ethereum_block_number,
+        latest_ethereum_block_hash,
+        latest_ethereum_block_number,
+        entity_count,
+        graft_base: _,
+        graft_block_hash: _,
+        graft_block_number: _,
+        ..
+    } = detail;
+
+    let site = sites
+        .iter()
+        .find(|site| site.deployment.as_str() == deployment)
+        .ok_or_else(|| constraint_violation!("missing site for subgraph `{}`", deployment))?;
+
+    // This needs to be filled in later since it lives in a
+    // different shard
+    let chain_head_block = None;
+    let earliest_block = block(
+        &deployment,
+        "earliest_ethereum_block",
+        earliest_ethereum_block_hash,
+        earliest_ethereum_block_number,
+    )?;
+    let latest_block = block(
+        &deployment,
+        "latest_ethereum_block",
+        latest_ethereum_block_hash,
+        latest_ethereum_block_number,
+    )?;
+    let health = health.into();
+    let chain = status::ChainInfo {
+        network: site.network.clone(),
+        chain_head_block,
+        earliest_block,
+        latest_block,
+    };
+    let entity_count = entity_count.to_u64().ok_or_else(|| {
+        constraint_violation!(
+            "the entityCount for {} is not representable as a u64",
+            deployment
+        )
+    })?;
+    let fatal_error = fatal.map(SubgraphError::try_from).transpose()?;
+    let non_fatal_errors = non_fatal
+        .into_iter()
+        .map(SubgraphError::try_from)
+        .collect::<Result<Vec<SubgraphError>, StoreError>>()?;
+
+    // 'node' needs to be filled in later from a different shard
+    Ok(status::Info {
+        id: id.into(),
+        subgraph: deployment,
+        synced,
+        health,
+        fatal_error,
+        non_fatal_errors,
+        chains: vec![chain],
+        entity_count,
+        node: None,
+    })
 }
 
 /// Return the details for `deployments`
@@ -245,30 +268,57 @@ pub(crate) fn deployment_details(
 
 pub(crate) fn deployment_statuses(
     conn: &PgConnection,
-    sites: &Vec<Arc<Site>>,
+    sites: &[Arc<Site>],
 ) -> Result<Vec<status::Info>, StoreError> {
     use subgraph_deployment as d;
     use subgraph_error as e;
 
-    // Empty deployments means 'all of them'
-    if sites.is_empty() {
-        d::table
-            .left_outer_join(e::table.on(d::fatal_error.eq(e::id.nullable())))
-            .load::<(DeploymentDetail, Option<ErrorDetail>)>(conn)?
-            .into_iter()
-            .map(|(detail, error)| status::Info::try_from(DetailAndError(detail, error, sites)))
-            .collect()
-    } else {
-        let ids: Vec<_> = sites.into_iter().map(|site| site.id).collect();
+    // First, we fetch all deployment information along with any fatal errors.
+    // Subsequently, we fetch non-fatal errors and we group them by deployment
+    // ID.
 
-        d::table
-            .left_outer_join(e::table.on(d::fatal_error.eq(e::id.nullable())))
-            .filter(d::id.eq_any(&ids))
-            .load::<(DeploymentDetail, Option<ErrorDetail>)>(conn)?
-            .into_iter()
-            .map(|(detail, error)| status::Info::try_from(DetailAndError(detail, error, sites)))
-            .collect()
-    }
+    let details_with_fatal_error = {
+        let join = e::table.on(e::id.nullable().eq(d::fatal_error));
+
+        // Empty deployments means 'all of them'
+        if sites.is_empty() {
+            d::table
+                .left_outer_join(join)
+                .load::<(DeploymentDetail, Option<ErrorDetail>)>(conn)?
+        } else {
+            d::table
+                .left_outer_join(join)
+                .filter(d::id.eq_any(sites.iter().map(|site| site.id)))
+                .load::<(DeploymentDetail, Option<ErrorDetail>)>(conn)?
+        }
+    };
+
+    let mut non_fatal_errors = {
+        let join = e::table.on(e::id.eq(dsl::any(d::non_fatal_errors)));
+
+        if sites.is_empty() {
+            d::table
+                .inner_join(join)
+                .select((d::id, e::all_columns))
+                .load::<(DeploymentId, ErrorDetail)>(conn)?
+        } else {
+            d::table
+                .inner_join(join)
+                .filter(d::id.eq_any(sites.iter().map(|site| site.id)))
+                .select((d::id, e::all_columns))
+                .load::<(DeploymentId, ErrorDetail)>(conn)?
+        }
+        .into_iter()
+        .into_group_map()
+    };
+
+    details_with_fatal_error
+        .into_iter()
+        .map(|(detail, fatal)| {
+            let non_fatal = non_fatal_errors.remove(&detail.id).unwrap_or(vec![]);
+            info_from_details(detail, fatal, non_fatal, sites)
+        })
+        .collect()
 }
 
 #[derive(Queryable, QueryableByName, Identifiable, Associations)]
@@ -333,9 +383,15 @@ impl TryFrom<StoredDeploymentEntity> for SubgraphDeploymentEntity {
 
         let graft_base = detail
             .graft_base
-            .map(|b| DeploymentHash::new(b))
+            .map(DeploymentHash::new)
             .transpose()
             .map_err(|b| constraint_violation!("invalid graft base `{}`", b))?;
+
+        let debug_fork = detail
+            .debug_fork
+            .map(DeploymentHash::new)
+            .transpose()
+            .map_err(|b| constraint_violation!("invalid debug fork `{}`", b))?;
 
         Ok(SubgraphDeploymentEntity {
             manifest,
@@ -348,6 +404,7 @@ impl TryFrom<StoredDeploymentEntity> for SubgraphDeploymentEntity {
             latest_block,
             graft_base,
             graft_block,
+            debug_fork,
             reorg_count: detail.reorg_count,
             current_reorg_depth: detail.current_reorg_depth,
             max_reorg_depth: detail.max_reorg_depth,

@@ -45,6 +45,19 @@ For background on ranges in Postgres, see the
 [range operators](https://www.postgresql.org/docs/9.6/functions-range.html)
 chapters in the documentation.
 
+### Immutable entities
+
+For entity types declared with `@entity(immutable: true)`, the table has a
+`block$ int not null` column instead of a `block_range` column, where the
+`block$` column stores the value that would be stored in
+`lower(block_range)`. Since the upper bound of the block range for an
+immutable entity is always infinite, a test like `block_range @> $B`, which
+is equivalent to `lower(block_range) <= $B and upper(block_range) > $B`,
+can be simplified to `block$ <= $B`.
+
+The operations in the next section are adjusted accordingly for immutable
+entities.
+
 ## Operations
 
 For all operations, we assume that we perform them for block number `B`;
@@ -85,10 +98,14 @@ deleting it consists of clamping the block range at `B`:
      where id = $ID and block_range @> $INTMAX;
 ```
 
+Note that this operation is not allowed for immutable entities.
+
 ### Update entity
 
 Only the current version of an entity can be updated. An update is performed
 as a deletion followed by an insertion.
+
+Note that this operation is not allowed for immutable entities.
 
 ### Rolling back
 

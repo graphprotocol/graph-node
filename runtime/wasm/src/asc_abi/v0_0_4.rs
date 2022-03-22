@@ -1,11 +1,15 @@
-use crate::asc_abi::class;
-use anyhow::anyhow;
-use graph::runtime::{AscHeap, AscPtr, AscType, AscValue, DeterministicHostError};
-use graph_runtime_derive::AscType;
-use semver::Version;
+use graph::runtime::gas::GasCounter;
 use std::convert::TryInto as _;
 use std::marker::PhantomData;
 use std::mem::{size_of, size_of_val};
+
+use anyhow::anyhow;
+use semver::Version;
+
+use graph::runtime::{AscHeap, AscPtr, AscType, AscValue, DeterministicHostError};
+use graph_runtime_derive::AscType;
+
+use crate::asc_abi::class;
 
 /// Module related to AssemblyScript version v0.6.
 
@@ -32,7 +36,7 @@ impl ArrayBuffer {
         }
 
         if content.len() > u32::max_value() as usize {
-            return Err(DeterministicHostError(anyhow::anyhow!(
+            return Err(DeterministicHostError::from(anyhow::anyhow!(
                 "slice cannot fit in WASM memory"
             )));
         }
@@ -69,7 +73,7 @@ impl ArrayBuffer {
         self.content
             .get(range)
             .ok_or_else(|| {
-                DeterministicHostError(anyhow::anyhow!("Attempted to read past end of array"))
+                DeterministicHostError::from(anyhow::anyhow!("Attempted to read past end of array"))
             })?
             .chunks_exact(size_of::<T>())
             .map(|bytes| T::from_asc_bytes(bytes))
@@ -106,10 +110,10 @@ impl AscType for ArrayBuffer {
         // Skip `byte_length` and the padding.
         let content_offset = size_of::<u32>() + 4;
         let byte_length = asc_obj.get(..size_of::<u32>()).ok_or_else(|| {
-            DeterministicHostError(anyhow!("Attempted to read past end of array"))
+            DeterministicHostError::from(anyhow!("Attempted to read past end of array"))
         })?;
         let content = asc_obj.get(content_offset..).ok_or_else(|| {
-            DeterministicHostError(anyhow!("Attempted to read past end of array"))
+            DeterministicHostError::from(anyhow!("Attempted to read past end of array"))
         })?;
         Ok(ArrayBuffer {
             byte_length: u32::from_asc_bytes(&byte_length, api_version)?,
@@ -121,8 +125,9 @@ impl AscType for ArrayBuffer {
     fn asc_size<H: AscHeap + ?Sized>(
         ptr: AscPtr<Self>,
         heap: &H,
+        gas: &GasCounter,
     ) -> Result<u32, DeterministicHostError> {
-        let byte_length = ptr.read_u32(heap)?;
+        let byte_length = ptr.read_u32(heap, gas)?;
         let byte_length_size = size_of::<u32>() as u32;
         let padding_size = size_of::<u32>() as u32;
         Ok(byte_length_size + padding_size + byte_length)
@@ -147,6 +152,7 @@ impl<T: AscValue> TypedArray<T> {
     pub(crate) fn new<H: AscHeap + ?Sized>(
         content: &[T],
         heap: &mut H,
+        gas: &GasCounter,
     ) -> Result<Self, DeterministicHostError> {
         let buffer = class::ArrayBuffer::new(content, heap.api_version())?;
         let buffer_byte_length = if let class::ArrayBuffer::ApiVersion0_0_4(ref a) = buffer {
@@ -154,7 +160,7 @@ impl<T: AscValue> TypedArray<T> {
         } else {
             unreachable!("Only the correct ArrayBuffer will be constructed")
         };
-        let ptr = AscPtr::alloc_obj(buffer, heap)?;
+        let ptr = AscPtr::alloc_obj(buffer, heap, gas)?;
         Ok(TypedArray {
             byte_length: buffer_byte_length,
             buffer: AscPtr::new(ptr.wasm_ptr()),
@@ -166,8 +172,9 @@ impl<T: AscValue> TypedArray<T> {
     pub(crate) fn to_vec<H: AscHeap + ?Sized>(
         &self,
         heap: &H,
+        gas: &GasCounter,
     ) -> Result<Vec<T>, DeterministicHostError> {
-        self.buffer.read_ptr(heap)?.get(
+        self.buffer.read_ptr(heap, gas)?.get(
             self.byte_offset,
             self.byte_length / size_of::<T>() as u32,
             heap.api_version(),
@@ -188,7 +195,7 @@ pub struct AscString {
 impl AscString {
     pub fn new(content: &[u16]) -> Result<Self, DeterministicHostError> {
         if size_of_val(content) > u32::max_value() as usize {
-            return Err(DeterministicHostError(anyhow!(
+            return Err(DeterministicHostError::from(anyhow!(
                 "string cannot fit in WASM memory"
             )));
         }
@@ -229,21 +236,21 @@ impl AscType for AscString {
 
         let length = asc_obj
             .get(..offset)
-            .ok_or(DeterministicHostError(anyhow::anyhow!(
+            .ok_or(DeterministicHostError::from(anyhow::anyhow!(
                 "String bytes not long enough to contain length"
             )))?;
 
         // Does not panic - already validated slice length == size_of::<i32>.
         let length = i32::from_le_bytes(length.try_into().unwrap());
         if length.checked_mul(2).and_then(|l| l.checked_add(4)) != asc_obj.len().try_into().ok() {
-            return Err(DeterministicHostError(anyhow::anyhow!(
+            return Err(DeterministicHostError::from(anyhow::anyhow!(
                 "String length header does not equal byte length"
             )));
         }
 
         // Prevents panic when accessing offset + 1 in the loop
         if asc_obj.len() % 2 != 0 {
-            return Err(DeterministicHostError(anyhow::anyhow!(
+            return Err(DeterministicHostError::from(anyhow::anyhow!(
                 "Invalid string length"
             )));
         }
@@ -272,14 +279,15 @@ impl AscType for AscString {
     fn asc_size<H: AscHeap + ?Sized>(
         ptr: AscPtr<Self>,
         heap: &H,
+        gas: &GasCounter,
     ) -> Result<u32, DeterministicHostError> {
-        let length = ptr.read_u32(heap)?;
+        let length = ptr.read_u32(heap, gas)?;
         let length_size = size_of::<u32>() as u32;
         let code_point_size = size_of::<u16>() as u32;
         let data_size = code_point_size.checked_mul(length);
         let total_size = data_size.and_then(|d| d.checked_add(length_size));
         total_size.ok_or_else(|| {
-            DeterministicHostError(anyhow::anyhow!("Overflowed when getting size of string"))
+            DeterministicHostError::from(anyhow::anyhow!("Overflowed when getting size of string"))
         })
     }
 }
@@ -298,9 +306,10 @@ impl<T: AscValue> Array<T> {
     pub fn new<H: AscHeap + ?Sized>(
         content: &[T],
         heap: &mut H,
+        gas: &GasCounter,
     ) -> Result<Self, DeterministicHostError> {
         let arr_buffer = class::ArrayBuffer::new(content, heap.api_version())?;
-        let arr_buffer_ptr = AscPtr::alloc_obj(arr_buffer, heap)?;
+        let arr_buffer_ptr = AscPtr::alloc_obj(arr_buffer, heap, gas)?;
         Ok(Array {
             buffer: AscPtr::new(arr_buffer_ptr.wasm_ptr()),
             // If this cast would overflow, the above line has already panicked.
@@ -312,9 +321,10 @@ impl<T: AscValue> Array<T> {
     pub(crate) fn to_vec<H: AscHeap + ?Sized>(
         &self,
         heap: &H,
+        gas: &GasCounter,
     ) -> Result<Vec<T>, DeterministicHostError> {
         self.buffer
-            .read_ptr(heap)?
+            .read_ptr(heap, gas)?
             .get(0, self.length, heap.api_version())
     }
 }

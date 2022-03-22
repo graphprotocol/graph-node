@@ -1,6 +1,8 @@
 use crate::{
     components::store::{DeploymentLocator, EntityType},
-    prelude::{q, s, CacheWeight, EntityKey, QueryExecutionError},
+    data::graphql::ObjectTypeExt,
+    prelude::{anyhow::Context, q, r, s, CacheWeight, EntityKey, QueryExecutionError, Schema},
+    runtime::gas::{Gas, GasSizeOf},
 };
 use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
 use anyhow::{anyhow, Error};
@@ -8,13 +10,18 @@ use itertools::Itertools;
 use serde::de;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
-use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
 use std::fmt;
 use std::iter::FromIterator;
 use std::str::FromStr;
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, HashMap},
+};
 use strum::AsStaticRef as _;
 use strum_macros::AsStaticStr;
+
+use super::graphql::{ext::DirectiveFinder, DocumentExt as _, TypeExt as _};
 
 /// Custom scalars in GraphQL.
 pub mod scalar;
@@ -23,6 +30,7 @@ pub mod scalar;
 pub mod ethereum;
 
 /// Filter subscriptions
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SubscriptionFilter {
     /// Receive updates about all entities from the given deployment of the
     /// given type
@@ -186,9 +194,8 @@ impl StableHash for Value {
         use Value::*;
 
         // This is the default, so write nothing.
-        match self {
-            Null => return,
-            _ => {}
+        if self == &Null {
+            return;
         }
 
         self.as_static()
@@ -208,28 +215,28 @@ impl StableHash for Value {
 }
 
 impl Value {
-    pub fn from_query_value(value: &q::Value, ty: &s::Type) -> Result<Value, QueryExecutionError> {
+    pub fn from_query_value(value: &r::Value, ty: &s::Type) -> Result<Value, QueryExecutionError> {
         use graphql_parser::schema::Type::{ListType, NamedType, NonNullType};
 
         Ok(match (value, ty) {
             // When dealing with non-null types, use the inner type to convert the value
             (value, NonNullType(t)) => Value::from_query_value(value, t)?,
 
-            (q::Value::List(values), ListType(ty)) => Value::List(
+            (r::Value::List(values), ListType(ty)) => Value::List(
                 values
                     .iter()
                     .map(|value| Self::from_query_value(value, ty))
                     .collect::<Result<Vec<_>, _>>()?,
             ),
 
-            (q::Value::List(values), NamedType(n)) => Value::List(
+            (r::Value::List(values), NamedType(n)) => Value::List(
                 values
                     .iter()
                     .map(|value| Self::from_query_value(value, &NamedType(n.to_string())))
                     .collect::<Result<Vec<_>, _>>()?,
             ),
-            (q::Value::Enum(e), NamedType(_)) => Value::String(e.clone()),
-            (q::Value::String(s), NamedType(n)) => {
+            (r::Value::Enum(e), NamedType(_)) => Value::String(e.clone()),
+            (r::Value::String(s), NamedType(n)) => {
                 // Check if `ty` is a custom scalar type, otherwise assume it's
                 // just a string.
                 match n.as_str() {
@@ -239,14 +246,9 @@ impl Value {
                     _ => Value::String(s.clone()),
                 }
             }
-            (q::Value::Int(i), _) => Value::Int(
-                i.to_owned()
-                    .as_i64()
-                    .ok_or_else(|| QueryExecutionError::NamedTypeError("Int".to_string()))?
-                    as i32,
-            ),
-            (q::Value::Boolean(b), _) => Value::Bool(b.to_owned()),
-            (q::Value::Null, _) => Value::Null,
+            (r::Value::Int(i), _) => Value::Int(*i as i32),
+            (r::Value::Boolean(b), _) => Value::Bool(b.to_owned()),
+            (r::Value::Null, _) => Value::Null,
             _ => {
                 return Err(QueryExecutionError::AttributeTypeError(
                     value.to_string(),
@@ -276,9 +278,9 @@ impl Value {
         matches!(self, Value::String(_))
     }
 
-    pub fn as_int(self) -> Option<i32> {
+    pub fn as_int(&self) -> Option<i32> {
         if let Value::Int(i) = self {
-            Some(i)
+            Some(*i)
         } else {
             None
         }
@@ -343,6 +345,22 @@ impl Value {
             Value::String(_) => "String".to_owned(),
         }
     }
+
+    pub fn is_assignable(&self, scalar_type: &ValueType, is_list: bool) -> bool {
+        match (self, scalar_type) {
+            (Value::String(_), ValueType::String)
+            | (Value::BigDecimal(_), ValueType::BigDecimal)
+            | (Value::BigInt(_), ValueType::BigInt)
+            | (Value::Bool(_), ValueType::Boolean)
+            | (Value::Bytes(_), ValueType::Bytes)
+            | (Value::Int(_), ValueType::Int)
+            | (Value::Null, _) => true,
+            (Value::List(values), _) if is_list => values
+                .iter()
+                .all(|value| value.is_assignable(scalar_type, false)),
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for Value {
@@ -378,6 +396,23 @@ impl From<Value> for q::Value {
             }
             Value::Bytes(bytes) => q::Value::String(bytes.to_string()),
             Value::BigInt(number) => q::Value::String(number.to_string()),
+        }
+    }
+}
+
+impl From<Value> for r::Value {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::String(s) => r::Value::String(s),
+            Value::Int(i) => r::Value::Int(i as i64),
+            Value::BigDecimal(d) => r::Value::String(d.to_string()),
+            Value::Bool(b) => r::Value::Boolean(b),
+            Value::Null => r::Value::Null,
+            Value::List(values) => {
+                r::Value::List(values.into_iter().map(|value| value.into()).collect())
+            }
+            Value::Bytes(bytes) => r::Value::String(bytes.to_string()),
+            Value::BigInt(number) => r::Value::String(number.to_string()),
         }
     }
 }
@@ -517,7 +552,7 @@ impl Entity {
         self.0.remove(key)
     }
 
-    pub fn contains_key(&mut self, key: &str) -> bool {
+    pub fn contains_key(&self, key: &str) -> bool {
         self.0.contains_key(key)
     }
 
@@ -528,11 +563,15 @@ impl Entity {
         v
     }
 
-    /// Try to get this entity's ID
+    /// Return the ID of this entity. If the ID is a string, return the
+    /// string. If it is `Bytes`, return it as a hex string with a `0x`
+    /// prefix. If the ID is not set or anything but a `String` or `Bytes`,
+    /// return an error
     pub fn id(&self) -> Result<String, Error> {
         match self.get("id") {
             None => Err(anyhow!("Entity is missing an `id` attribute")),
             Some(Value::String(s)) => Ok(s.to_owned()),
+            Some(Value::Bytes(b)) => Ok(b.to_string()),
             _ => Err(anyhow!("Entity has non-string `id` attribute")),
         }
     }
@@ -566,6 +605,136 @@ impl Entity {
             };
         }
     }
+
+    /// Validate that this entity matches the object type definition in the
+    /// schema. An entity that passes these checks can be stored
+    /// successfully in the subgraph's database schema
+    pub fn validate(&self, schema: &Schema, key: &EntityKey) -> Result<(), anyhow::Error> {
+        fn scalar_value_type(schema: &Schema, field_type: &s::Type) -> ValueType {
+            use s::TypeDefinition as t;
+            match field_type {
+                s::Type::NamedType(name) => ValueType::from_str(name).unwrap_or_else(|_| {
+                    match schema.document.get_named_type(name) {
+                        Some(t::Object(obj_type)) => {
+                            let id = obj_type.field("id").expect("all object types have an id");
+                            scalar_value_type(schema, &id.field_type)
+                        }
+                        Some(t::Interface(intf)) => {
+                            // Validation checks that all implementors of an
+                            // interface use the same type for `id`. It is
+                            // therefore enough to use the id type of one of
+                            // the implementors
+                            match schema
+                                .types_for_interface()
+                                .get(&EntityType::new(intf.name.clone()))
+                                .expect("interface type names are known")
+                                .first()
+                            {
+                                None => {
+                                    // Nothing is implementing this interface; we assume it's of type string
+                                    // see also: id-type-for-unimplemented-interfaces
+                                    ValueType::String
+                                }
+                                Some(obj_type) => {
+                                    let id =
+                                        obj_type.field("id").expect("all object types have an id");
+                                    scalar_value_type(schema, &id.field_type)
+                                }
+                            }
+                        }
+                        Some(t::Enum(_)) => ValueType::String,
+                        Some(t::Scalar(_)) => unreachable!("user-defined scalars are not used"),
+                        Some(t::Union(_)) => unreachable!("unions are not used"),
+                        Some(t::InputObject(_)) => unreachable!("inputObjects are not used"),
+                        None => unreachable!("names of field types have been validated"),
+                    }
+                }),
+                s::Type::NonNullType(inner) => scalar_value_type(schema, inner),
+                s::Type::ListType(inner) => scalar_value_type(schema, inner),
+            }
+        }
+
+        if key.entity_type.is_poi() {
+            // Users can't modify Poi entities, and therefore they do not
+            // need to be validated. In addition, the schema has no object
+            // type for them, and validation would therefore fail
+            return Ok(());
+        }
+        let object_type_definitions = schema.document.get_object_type_definitions();
+        let object_type = object_type_definitions
+            .iter()
+            .find(|object_type| key.entity_type.as_str() == object_type.name)
+            .with_context(|| {
+                format!(
+                    "Entity {}[{}]: unknown entity type `{}`",
+                    key.entity_type, key.entity_id, key.entity_type
+                )
+            })?;
+
+        for field in &object_type.fields {
+            let is_derived = field.is_derived();
+            match (self.get(&field.name), is_derived) {
+                (Some(value), false) => {
+                    let scalar_type = scalar_value_type(schema, &field.field_type);
+                    if field.field_type.is_list() {
+                        // Check for inhomgeneous lists to produce a better
+                        // error message for them; other problems, like
+                        // assigning a scalar to a list will be caught below
+                        if let Value::List(elts) = value {
+                            for (index, elt) in elts.iter().enumerate() {
+                                if !elt.is_assignable(&scalar_type, false) {
+                                    anyhow::bail!(
+                                        "Entity {}[{}]: field `{}` is of type {}, but the value `{}` \
+                                        contains a {} at index {}",
+                                        key.entity_type,
+                                        key.entity_id,
+                                        field.name,
+                                        &field.field_type,
+                                        value,
+                                        elt.type_name(),
+                                        index
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    if !value.is_assignable(&scalar_type, field.field_type.is_list()) {
+                        anyhow::bail!(
+                            "Entity {}[{}]: the value `{}` for field `{}` must have type {} but has type {}",
+                            key.entity_type,
+                            key.entity_id,
+                            value,
+                            field.name,
+                            &field.field_type,
+                            value.type_name()
+                        );
+                    }
+                }
+                (None, false) => {
+                    if field.field_type.is_non_null() {
+                        anyhow::bail!(
+                            "Entity {}[{}]: missing value for non-nullable field `{}`",
+                            key.entity_type,
+                            key.entity_id,
+                            field.name,
+                        );
+                    }
+                }
+                (Some(_), true) => {
+                    anyhow::bail!(
+                        "Entity {}[{}]: field `{}` is derived and can not be set",
+                        key.entity_type,
+                        key.entity_id,
+                        field.name,
+                    );
+                }
+                (None, true) => {
+                    // derived fields should not be set
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl From<Entity> for BTreeMap<String, q::Value> {
@@ -586,6 +755,12 @@ impl From<HashMap<Attribute, Value>> for Entity {
     }
 }
 
+impl<'a> From<&'a Entity> for Cow<'a, Entity> {
+    fn from(entity: &'a Entity) -> Self {
+        Cow::Borrowed(entity)
+    }
+}
+
 impl<'a> From<Vec<(&'a str, Value)>> for Entity {
     fn from(entries: Vec<(&'a str, Value)>) -> Entity {
         Entity::from(HashMap::from_iter(
@@ -597,6 +772,12 @@ impl<'a> From<Vec<(&'a str, Value)>> for Entity {
 impl CacheWeight for Entity {
     fn indirect_weight(&self) -> usize {
         self.0.indirect_weight()
+    }
+}
+
+impl GasSizeOf for Entity {
+    fn gas_size_of(&self) -> Gas {
+        self.0.gas_size_of()
     }
 }
 
@@ -617,7 +798,7 @@ pub trait ToEntityKey {
 
 #[test]
 fn value_bytes() {
-    let graphql_value = q::Value::String("0x8f494c66afc1d3f8ac1b45df21f02a46".to_owned());
+    let graphql_value = r::Value::String("0x8f494c66afc1d3f8ac1b45df21f02a46".to_owned());
     let ty = q::Type::NamedType(BYTES_SCALAR.to_owned());
     let from_query = Value::from_query_value(&graphql_value, &ty).unwrap();
     assert_eq!(
@@ -626,18 +807,128 @@ fn value_bytes() {
             &[143, 73, 76, 102, 175, 193, 211, 248, 172, 27, 69, 223, 33, 240, 42, 70][..]
         ))
     );
-    assert_eq!(q::Value::from(from_query), graphql_value);
+    assert_eq!(r::Value::from(from_query), graphql_value);
 }
 
 #[test]
 fn value_bigint() {
     let big_num = "340282366920938463463374607431768211456";
-    let graphql_value = q::Value::String(big_num.to_owned());
+    let graphql_value = r::Value::String(big_num.to_owned());
     let ty = q::Type::NamedType(BIG_INT_SCALAR.to_owned());
     let from_query = Value::from_query_value(&graphql_value, &ty).unwrap();
     assert_eq!(
         from_query,
         Value::BigInt(FromStr::from_str(big_num).unwrap())
     );
-    assert_eq!(q::Value::from(from_query), graphql_value);
+    assert_eq!(r::Value::from(from_query), graphql_value);
+}
+
+#[test]
+fn entity_validation() {
+    fn make_thing(name: &str) -> Entity {
+        let mut thing = Entity::new();
+        thing.set("id", name);
+        thing.set("name", name);
+        thing.set("stuff", "less");
+        thing.set("favorite_color", "red");
+        thing.set("things", Value::List(vec![]));
+        thing
+    }
+
+    fn check(thing: Entity, errmsg: &str) {
+        const DOCUMENT: &str = "
+      enum Color { red, yellow, blue }
+      interface Stuff { id: ID!, name: String! }
+      type Cruft @entity {
+          id: ID!,
+          thing: Thing!
+      }
+      type Thing @entity {
+          id: ID!,
+          name: String!,
+          favorite_color: Color,
+          stuff: Stuff,
+          things: [Thing!]!
+          # Make sure we do not validate derived fields; it's ok
+          # to store a thing with a null Cruft
+          cruft: Cruft! @derivedFrom(field: \"thing\")
+      }";
+        let subgraph = DeploymentHash::new("doesntmatter").unwrap();
+        let schema =
+            crate::prelude::Schema::parse(DOCUMENT, subgraph).expect("Failed to parse test schema");
+        let id = thing.id().unwrap_or("none".to_owned());
+        let key = EntityKey::data(
+            DeploymentHash::new("doesntmatter").unwrap(),
+            "Thing".to_owned(),
+            id.to_owned(),
+        );
+
+        let err = thing.validate(&schema, &key);
+        if errmsg == "" {
+            assert!(
+                err.is_ok(),
+                "checking entity {}: expected ok but got {}",
+                id,
+                err.unwrap_err()
+            );
+        } else {
+            if let Err(e) = err {
+                assert_eq!(errmsg, e.to_string(), "checking entity {}", id);
+            } else {
+                panic!(
+                    "Expected error `{}` but got ok when checking entity {}",
+                    errmsg, id
+                );
+            }
+        }
+    }
+
+    let mut thing = make_thing("t1");
+    thing.set("things", Value::from(vec!["thing1", "thing2"]));
+    check(thing, "");
+
+    let thing = make_thing("t2");
+    check(thing, "");
+
+    let mut thing = make_thing("t3");
+    thing.remove("name");
+    check(
+        thing,
+        "Entity Thing[t3]: missing value for non-nullable field `name`",
+    );
+
+    let mut thing = make_thing("t4");
+    thing.remove("things");
+    check(
+        thing,
+        "Entity Thing[t4]: missing value for non-nullable field `things`",
+    );
+
+    let mut thing = make_thing("t5");
+    thing.set("name", Value::Int(32));
+    check(
+        thing,
+        "Entity Thing[t5]: the value `32` for field `name` must \
+         have type String! but has type Int",
+    );
+
+    let mut thing = make_thing("t6");
+    thing.set("things", Value::List(vec!["thing1".into(), 17.into()]));
+    check(
+        thing,
+        "Entity Thing[t6]: field `things` is of type [Thing!]!, \
+         but the value `[thing1, 17]` contains a Int at index 1",
+    );
+
+    let mut thing = make_thing("t7");
+    thing.remove("favorite_color");
+    thing.remove("stuff");
+    check(thing, "");
+
+    let mut thing = make_thing("t8");
+    thing.set("cruft", "wat");
+    check(
+        thing,
+        "Entity Thing[t8]: field `cruft` is derived and can not be set",
+    );
 }

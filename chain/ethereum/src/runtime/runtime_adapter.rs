@@ -7,12 +7,15 @@ use crate::{
 };
 use anyhow::{Context, Error};
 use blockchain::HostFn;
-use ethabi::{Address, Token};
+use graph::runtime::gas::Gas;
 use graph::runtime::{AscIndexId, IndexForAscTypeId};
 use graph::{
     blockchain::{self, BlockPtr, HostFnCtx},
     cheap_clone::CheapClone,
-    prelude::{EthereumCallCache, Future01CompatExt},
+    prelude::{
+        ethabi::{self, Address, Token},
+        EthereumCallCache, Future01CompatExt,
+    },
     runtime::{asc_get, asc_new, AscPtr, HostExportError},
     semver::Version,
     slog::{info, trace, Logger},
@@ -20,6 +23,16 @@ use graph::{
 use graph_runtime_wasm::asc_abi::class::{AscEnumArray, EthereumValueKind};
 
 use super::abi::{AscUnresolvedContractCall, AscUnresolvedContractCall_0_0_4};
+
+// When making an ethereum call, the maximum ethereum gas is ETH_CALL_GAS which is 50 million. One
+// unit of Ethereum gas is at least 100ns according to these benchmarks [1], so 1000 of our gas. In
+// the worst case an Ethereum call could therefore consume 50 billion of our gas. However the
+// averarge call a subgraph makes is much cheaper or even cached in the call cache. So this cost is
+// set to 5 billion gas as a compromise. This allows for 2000 calls per handler with the current
+// limits.
+//
+// [1] - https://www.sciencedirect.com/science/article/abs/pii/S0166531620300900
+pub const ETHEREUM_CALL: Gas = Gas::new(5_000_000_000);
 
 pub struct RuntimeAdapter {
     pub(crate) eth_adapters: Arc<EthereumNetworkAdapters>,
@@ -58,13 +71,15 @@ fn ethereum_call(
     wasm_ptr: u32,
     abis: &[Arc<MappingABI>],
 ) -> Result<AscEnumArray<EthereumValueKind>, HostExportError> {
+    ctx.gas.consume_host_fn(ETHEREUM_CALL)?;
+
     // For apiVersion >= 0.0.4 the call passed from the mapping includes the
     // function signature; subgraphs using an apiVersion < 0.0.4 don't pass
     // the signature along with the call.
     let call: UnresolvedContractCall = if ctx.heap.api_version() >= Version::new(0, 0, 4) {
-        asc_get::<_, AscUnresolvedContractCall_0_0_4, _>(ctx.heap, wasm_ptr.into())?
+        asc_get::<_, AscUnresolvedContractCall_0_0_4, _>(ctx.heap, wasm_ptr.into(), &ctx.gas)?
     } else {
-        asc_get::<_, AscUnresolvedContractCall, _>(ctx.heap, wasm_ptr.into())?
+        asc_get::<_, AscUnresolvedContractCall, _>(ctx.heap, wasm_ptr.into(), &ctx.gas)?
     };
 
     let result = eth_call(
@@ -76,7 +91,7 @@ fn ethereum_call(
         abis,
     )?;
     match result {
-        Some(tokens) => Ok(asc_new(ctx.heap, tokens.as_slice())?),
+        Some(tokens) => Ok(asc_new(ctx.heap, tokens.as_slice(), &ctx.gas)?),
         None => Ok(AscPtr::null()),
     }
 }

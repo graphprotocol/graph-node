@@ -1,6 +1,5 @@
 use std::net::{Ipv4Addr, SocketAddrV4};
 
-use hyper;
 use hyper::service::make_service_fn;
 use hyper::Server;
 
@@ -45,7 +44,7 @@ impl<Q> GraphQLServer<Q> {
                 }),
             }),
         );
-        let metrics = Arc::new(GraphQLServiceMetrics::new(metrics_registry.clone()));
+        let metrics = Arc::new(GraphQLServiceMetrics::new(metrics_registry));
         GraphQLServer {
             logger,
             metrics,

@@ -34,6 +34,14 @@ pub struct Opt {
         help = "name and IPFS hash of the subgraph manifest"
     )]
     pub subgraph: Option<String>,
+
+    #[structopt(
+        long,
+        value_name = "BLOCK_HASH:BLOCK_NUMBER",
+        help = "block hash and number that the subgraph passed will start indexing at"
+    )]
+    pub start_block: Option<String>,
+
     #[structopt(
         long,
         value_name = "URL",
@@ -141,7 +149,7 @@ pub struct Opt {
         default_value = "default",
         value_name = "NODE_ID",
         env = "GRAPH_NODE_ID",
-        help = "a unique identifier for this node"
+        help = "a unique identifier for this node. Should have the same value between consecutive node restarts"
     )]
     pub node_id: String,
     #[structopt(long, help = "Enable debug logging")]
@@ -194,12 +202,19 @@ pub struct Opt {
     pub store_connection_pool_size: u32,
     #[structopt(
         long,
-        min_values = 1,
-        value_name = "NETWORK_NAME",
-        help = "One or more network names to index using built-in subgraphs \
-                (e.g. 'ethereum/mainnet')."
+        help = "Allows setting configurations that may result in incorrect Proofs of Indexing."
     )]
-    pub network_subgraphs: Vec<String>,
+    pub unsafe_config: bool,
+
+    #[structopt(
+        long,
+        value_name = "IPFS_HASH",
+        help = "IPFS hash of the subgraph manifest that you want to fork"
+    )]
+    pub debug_fork: Option<String>,
+
+    #[structopt(long, value_name = "URL", help = "Base URL for forking subgraphs")]
+    pub fork_base: Option<String>,
 }
 
 impl From<Opt> for config::Opt {
@@ -215,8 +230,10 @@ impl From<Opt> for config::Opt {
             ethereum_rpc,
             ethereum_ws,
             ethereum_ipc,
+            unsafe_config,
             ..
         } = opt;
+
         config::Opt {
             postgres_url,
             config,
@@ -228,6 +245,7 @@ impl From<Opt> for config::Opt {
             ethereum_rpc,
             ethereum_ws,
             ethereum_ipc,
+            unsafe_config,
         }
     }
 }

@@ -1,14 +1,13 @@
 //! Extension traits for graphql_parser::query structs
 
+use graph::prelude::TryFromValue;
 use graphql_parser::Pos;
 
 use std::collections::{BTreeMap, HashMap};
-use std::convert::TryFrom;
 
 use anyhow::anyhow;
-use graph::data::graphql::TryFromValue;
 use graph::data::query::QueryExecutionError;
-use graph::prelude::{q, web3::types::H256, BlockNumber, Error};
+use graph::prelude::{q, r, web3::types::H256, BlockNumber, Error};
 
 pub trait ValueExt: Sized {
     fn as_object(&self) -> &BTreeMap<String, q::Value>;
@@ -55,10 +54,13 @@ impl ValueExt for q::Value {
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum BlockConstraint {
     Hash(H256),
     Number(BlockNumber),
+    /// Execute the query on the latest block only if the the subgraph has progressed to or past the
+    /// given block number.
+    Min(BlockNumber),
     Latest,
 }
 
@@ -70,18 +72,23 @@ impl Default for BlockConstraint {
 
 impl TryFromValue for BlockConstraint {
     /// `value` should be the output of input object coercion.
-    fn try_from_value(value: &q::Value) -> Result<Self, Error> {
+    fn try_from_value(value: &r::Value) -> Result<Self, Error> {
         let map = match value {
-            q::Value::Object(map) => map,
-            q::Value::Null => return Ok(Self::default()),
+            r::Value::Object(map) => map,
+            r::Value::Null => return Ok(Self::default()),
             _ => return Err(anyhow!("invalid `BlockConstraint`")),
         };
 
         if let Some(hash) = map.get("hash") {
             Ok(BlockConstraint::Hash(TryFromValue::try_from_value(hash)?))
         } else if let Some(number_value) = map.get("number") {
-            let number: u64 = TryFromValue::try_from_value(number_value)?;
-            Ok(BlockConstraint::Number(TryFrom::try_from(number)?))
+            Ok(BlockConstraint::Number(BlockNumber::try_from_value(
+                number_value,
+            )?))
+        } else if let Some(number_value) = map.get("number_gte") {
+            Ok(BlockConstraint::Min(BlockNumber::try_from_value(
+                number_value,
+            )?))
         } else {
             Err(anyhow!("invalid `BlockConstraint`"))
         }

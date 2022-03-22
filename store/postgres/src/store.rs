@@ -4,7 +4,9 @@ use std::sync::Arc;
 use graph::{
     components::{
         server::index_node::VersionInfo,
-        store::{BlockStore as BlockStoreTrait, QueryStoreManager, StatusStore},
+        store::{
+            BlockStore as BlockStoreTrait, QueryStoreManager, StatusStore, Store as StoreTrait,
+        },
     },
     constraint_violation,
     data::subgraph::status,
@@ -16,15 +18,17 @@ use graph::{
 
 use crate::{block_store::BlockStore, query_store::QueryStore, SubgraphStore};
 
-/// The overall store of the system, consisting of a [SubgraphStore] and a
-/// [BlockStore], each of which multiplex across multiple database shards.
+/// The overall store of the system, consisting of a [`SubgraphStore`] and a
+/// [`BlockStore`], each of which multiplex across multiple database shards.
 /// The `SubgraphStore` is responsible for storing all data and metadata related
 /// to individual subgraphs, and the `BlockStore` does the same for data belonging
 /// to the chains that are being processed.
 ///
 /// This struct should only be used during configuration and setup of `graph-node`.
-/// Code that needs to access the store should use the traits from [graph::components::store]
-/// and only require the smallest traits that are suitable for their purpose
+/// Code that needs to access the store should use the traits from
+/// [`graph::components::store`] and only require the smallest traits that are
+/// suitable for their purpose.
+#[derive(Clone)]
 pub struct Store {
     subgraph_store: Arc<SubgraphStore>,
     block_store: Arc<BlockStore>,
@@ -43,6 +47,19 @@ impl Store {
     }
 
     pub fn block_store(&self) -> Arc<BlockStore> {
+        self.block_store.cheap_clone()
+    }
+}
+
+impl StoreTrait for Store {
+    type BlockStore = BlockStore;
+    type SubgraphStore = SubgraphStore;
+
+    fn subgraph_store(&self) -> Arc<Self::SubgraphStore> {
+        self.subgraph_store.cheap_clone()
+    }
+
+    fn block_store(&self) -> Arc<Self::BlockStore> {
         self.block_store.cheap_clone()
     }
 }
@@ -108,14 +125,23 @@ impl StatusStore for Store {
         self.subgraph_store.versions_for_subgraph_id(subgraph_id)
     }
 
-    fn get_proof_of_indexing<'a>(
-        self: Arc<Self>,
-        subgraph_id: &'a DeploymentHash,
-        indexer: &'a Option<Address>,
+    fn subgraphs_for_deployment_hash(
+        &self,
+        deployment_hash: &str,
+    ) -> Result<Vec<(String, String)>, StoreError> {
+        self.subgraph_store
+            .subgraphs_for_deployment_hash(deployment_hash)
+    }
+
+    async fn get_proof_of_indexing(
+        &self,
+        subgraph_id: &DeploymentHash,
+        indexer: &Option<Address>,
         block: BlockPtr,
-    ) -> graph::prelude::DynTryFuture<'a, Option<[u8; 32]>> {
+    ) -> Result<Option<[u8; 32]>, StoreError> {
         self.subgraph_store
             .get_proof_of_indexing(subgraph_id, indexer, block)
+            .await
     }
 
     async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {

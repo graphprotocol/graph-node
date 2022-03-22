@@ -1,5 +1,92 @@
 # NEWS
 
+## Unreleased
+- Gracefully handle syntax errors on fulltext search. Specifically provides information about common use case
+  where whitespace characters were part of the terms.
+- Adds support for Solidity Custom Errors (issue #2577)
+
+## 0.25.2
+
+This release includes two changes:
+
+- Bug fix of blocks being skipped from processing when: a deterministic error happens **and** the `index-node` gets restarted. Issue [#3236](https://github.com/graphprotocol/graph-node/issues/3236), Pull Request: [#3316](https://github.com/graphprotocol/graph-node/pull/3316).
+- Automatic retries for non-deterministic errors. Issue [#2945](https://github.com/graphprotocol/graph-node/issues/2945), Pull Request: [#2988](https://github.com/graphprotocol/graph-node/pull/2988).
+
+This is the last patch on the `0.25` minor version, soon `0.26.0` will be released. While that we recommend updating to this version to avoid determinism issues that could be caused on `graph-node` restarts.
+
+## 0.25.1
+
+This release only adds two fixes:
+
+- The first is to address an issue with decoding the input of some calls [#3194](https://github.com/graphprotocol/graph-node/issues/3194) where subgraphs that would try to index contracts related to those would fail. Now they can advance normally.
+- The second one is to fix a non-determinism issue with the retry mechanism for errors. Whenever a non-deterministic error happened, we would keep retrying to process the block, however we should've clear the `EntityCache` on each run so that the error entity changes don't get transacted/saved in the database in the next run. This could make the POI generation non-deterministic for subgraphs that failed and retried for non-deterministic reasons, adding a new entry to the database for the POI.
+
+We strongly recommend updating to this version as quickly as possible.
+
+## 0.25.0
+
+### Api Version 0.0.6
+This release ships support for API version 0.0.6 in mappings:
+- Added `nonce` field for `Transaction` objects.
+- Added `baseFeePerGas` field for `Block` objects ([EIP-1559](https://eips.ethereum.org/EIPS/eip-1559)).
+
+#### Block Cache Invalidation and Reset
+
+All cached block data must be refetched to account for the new `Block` and `Trasaction`
+struct versions, so this release includes a `graph-node` startup check that will:
+1. Truncate all block cache tables.
+2. Bump the `db_version` value from `2` to `3`.
+
+_(Table truncation is a fast operation and no downtime will occur because of that.)_
+
+
+### Ethereum
+
+- 'Out of gas' errors on contract calls are now considered deterministic errors,
+  so they can be handled by `try_` calls. The gas limit is 50 million.
+
+### Environment Variables
+
+- The `GRAPH_ETH_CALL_GAS` environment is removed to prevent misuse, its value
+  is now hardcoded to 50 million.
+
+### Multiblockchain
+- Initial support for NEAR subgraphs.
+- Added `FirehoseBlockStream` implementation of `BlockStream` (#2716)
+
+### Misc
+- Rust docker image is now based on Debian Buster.
+- Optimizations to the PostgreSQL notification queue.
+- Improve PostgreSQL robustness in multi-sharded setups. (#2815)
+- Added 'networks' to the 'subgraphFeatures' endpoint. (#2826)
+- Check and limit the size of GraphQL query results. (#2845)
+- Allow `_in` and `_not_in` GraphQL filters. (#2841)
+- Add PoI for failed subgraphs. (#2748)
+- Make `graphman rewind` safer to use. (#2879)
+- Add `subgraphErrors` for all GraphQL schemas. (#2894)
+- Add `Graph-Attestable` response header. (#2946)
+- Add support for minimum block constraint in GraphQL queries (`number_gte`) (#2868).
+- Handle revert cases from Hardhat and Ganache (#2984)
+- Fix bug on experimental prefetching optimization feature (#2899)
+
+
+## 0.24.2
+
+This release only adds a fix for an issue where certain GraphQL queries
+could lead to `graph-node` running out of memory even on very large
+systems. This release adds code that checks the size of GraphQL responses
+as they are assembled, and can warn about large responses in the logs
+resp. abort query execution based on the values of the two new environment
+variables `GRAPH_GRAPHQL_WARN_RESULT_SIZE` and
+`GRAPH_GRAPHQL_ERROR_RESULT_SIZE`. It also adds Prometheus metrics
+`query_result_size` and `query_result_max` to track the memory consumption
+of successful GraphQL queries. The unit for the two environment variables
+is bytes, based on an estimate of the memory used by the result; it is best
+to set them after observing the Prometheus metrics for a while to establish
+what constitutes a reasonable limit for them.
+
+We strongly recommend updating to this version as quickly as possible.
+
 ## 0.24.1
 
 ### Feature Management
@@ -66,7 +153,7 @@ Subraphs with any Spec Version can be queried that way.
 
 ### Api Version 0.0.5
 
-This release ships support for API version 0.0.5 in mappings. It contains a fix for call handlers
+This release ships support for API version 0.0.5 in mappings. hIt contains a fix for call handlers
 and the long awaited AssemblyScript version upgrade!
 
 - AssemblyScript upgrade: The mapping runtime is updated to support up-to-date versions of the

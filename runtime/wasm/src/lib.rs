@@ -15,6 +15,7 @@ pub mod module;
 pub mod host_exports;
 
 pub mod error;
+mod gas_rules;
 
 pub use host::RuntimeHostBuilder;
 pub use host_exports::HostExports;

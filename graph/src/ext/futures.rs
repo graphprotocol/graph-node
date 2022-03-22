@@ -17,6 +17,12 @@ pub struct Cancelable<T, C> {
     on_cancel: C,
 }
 
+impl<T, C> Cancelable<T, C> {
+    pub fn get_mut(&mut self) -> &mut T {
+        &mut self.inner
+    }
+}
+
 /// It's not viable to use `select` directly, so we do a custom implementation.
 impl<S: Stream + Unpin, C: Fn() -> S::Item + Unpin> Stream for Cancelable<S, C> {
     type Item = S::Item;
@@ -137,7 +143,7 @@ impl Canceler for CancelHandle {
 /// an `Arc`.
 ///
 /// To cancel guarded streams or futures, call `cancel` or drop the guard.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SharedCancelGuard {
     guard: Mutex<Option<CancelGuard>>,
 }
@@ -163,6 +169,14 @@ impl SharedCancelGuard {
         } else {
             // A handle that is always canceled.
             CancelHandle { guard: Weak::new() }
+        }
+    }
+}
+
+impl Default for SharedCancelGuard {
+    fn default() -> Self {
+        Self {
+            guard: Mutex::new(Some(CancelGuard::new())),
         }
     }
 }

@@ -15,11 +15,12 @@ pub fn place(placer: &dyn DeploymentPlacer, name: &str, network: &str) -> Result
                 "no matching placement rule; default placement from JSON RPC call would be used"
             );
         }
-        Some((shard, nodes)) => {
+        Some((shards, nodes)) => {
             let nodes: Vec<_> = nodes.into_iter().map(|n| n.to_string()).collect();
+            let shards: Vec<_> = shards.into_iter().map(|s| s.to_string()).collect();
             println!("subgraph: {}", name);
             println!("network:  {}", network);
-            println!("shard:    {}", shard);
+            println!("shard:    {}", shards.join(", "));
             println!("nodes:    {}", nodes.join(", "));
         }
     }

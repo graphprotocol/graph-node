@@ -1,14 +1,15 @@
-use crate::asc_abi::{v0_0_4, v0_0_5};
 use ethabi;
+use semver::Version;
+
 use graph::{
     data::store,
-    runtime::{AscHeap, AscIndexId, AscType, AscValue, IndexForAscTypeId},
+    runtime::{gas::GasCounter, AscHeap, AscIndexId, AscType, AscValue, IndexForAscTypeId},
 };
 use graph::{prelude::serde_json, runtime::DeterministicHostError};
 use graph::{prelude::slog, runtime::AscPtr};
 use graph_runtime_derive::AscType;
-use semver::Version;
-use std::mem::size_of;
+
+use crate::asc_abi::{v0_0_4, v0_0_5};
 
 ///! Rust types that have with a direct correspondence to an Asc class,
 ///! with their `AscType` implementations.
@@ -60,8 +61,9 @@ impl AscType for ArrayBuffer {
     fn asc_size<H: AscHeap + ?Sized>(
         ptr: AscPtr<Self>,
         heap: &H,
+        gas: &GasCounter,
     ) -> Result<u32, DeterministicHostError> {
-        v0_0_4::ArrayBuffer::asc_size(AscPtr::new(ptr.wasm_ptr()), heap)
+        v0_0_4::ArrayBuffer::asc_size(AscPtr::new(ptr.wasm_ptr()), heap, gas)
     }
 
     fn content_len(&self, asc_bytes: &[u8]) -> usize {
@@ -87,24 +89,26 @@ impl<T: AscValue> TypedArray<T> {
     pub fn new<H: AscHeap + ?Sized>(
         content: &[T],
         heap: &mut H,
+        gas: &GasCounter,
     ) -> Result<Self, DeterministicHostError> {
         match heap.api_version() {
             version if version <= Version::new(0, 0, 4) => Ok(Self::ApiVersion0_0_4(
-                v0_0_4::TypedArray::new(content, heap)?,
+                v0_0_4::TypedArray::new(content, heap, gas)?,
             )),
             _ => Ok(Self::ApiVersion0_0_5(v0_0_5::TypedArray::new(
-                content, heap,
+                content, heap, gas,
             )?)),
         }
     }
 
-    pub(crate) fn to_vec<H: AscHeap + ?Sized>(
+    pub fn to_vec<H: AscHeap + ?Sized>(
         &self,
         heap: &H,
+        gas: &GasCounter,
     ) -> Result<Vec<T>, DeterministicHostError> {
         match self {
-            Self::ApiVersion0_0_4(t) => t.to_vec(heap),
-            Self::ApiVersion0_0_5(t) => t.to_vec(heap),
+            Self::ApiVersion0_0_4(t) => t.to_vec(heap, gas),
+            Self::ApiVersion0_0_5(t) => t.to_vec(heap, gas),
         }
     }
 }
@@ -230,8 +234,9 @@ impl AscType for AscString {
     fn asc_size<H: AscHeap + ?Sized>(
         ptr: AscPtr<Self>,
         heap: &H,
+        gas: &GasCounter,
     ) -> Result<u32, DeterministicHostError> {
-        v0_0_4::AscString::asc_size(AscPtr::new(ptr.wasm_ptr()), heap)
+        v0_0_4::AscString::asc_size(AscPtr::new(ptr.wasm_ptr()), heap, gas)
     }
 
     fn content_len(&self, asc_bytes: &[u8]) -> usize {
@@ -253,22 +258,26 @@ impl<T: AscValue> Array<T> {
     pub fn new<H: AscHeap + ?Sized>(
         content: &[T],
         heap: &mut H,
+        gas: &GasCounter,
     ) -> Result<Self, DeterministicHostError> {
         match heap.api_version() {
-            version if version <= Version::new(0, 0, 4) => {
-                Ok(Self::ApiVersion0_0_4(v0_0_4::Array::new(content, heap)?))
-            }
-            _ => Ok(Self::ApiVersion0_0_5(v0_0_5::Array::new(content, heap)?)),
+            version if version <= Version::new(0, 0, 4) => Ok(Self::ApiVersion0_0_4(
+                v0_0_4::Array::new(content, heap, gas)?,
+            )),
+            _ => Ok(Self::ApiVersion0_0_5(v0_0_5::Array::new(
+                content, heap, gas,
+            )?)),
         }
     }
 
     pub(crate) fn to_vec<H: AscHeap + ?Sized>(
         &self,
         heap: &H,
+        gas: &GasCounter,
     ) -> Result<Vec<T>, DeterministicHostError> {
         match self {
-            Self::ApiVersion0_0_4(a) => a.to_vec(heap),
-            Self::ApiVersion0_0_5(a) => a.to_vec(heap),
+            Self::ApiVersion0_0_4(a) => a.to_vec(heap, gas),
+            Self::ApiVersion0_0_5(a) => a.to_vec(heap, gas),
         }
     }
 }

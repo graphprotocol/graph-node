@@ -1,11 +1,11 @@
 use http::StatusCode;
 use hyper::{Body, Client, Request};
-use std::collections::BTreeMap;
 use std::time::Duration;
 
 use graph::data::{
     graphql::effort::LoadManager,
     query::{QueryResults, QueryTarget},
+    value::Object,
 };
 use graph::prelude::*;
 
@@ -44,16 +44,16 @@ impl GraphQlRunner for TestGraphQlRunner {
                 .unwrap()
                 .get(&String::from("equals"))
                 .unwrap()
-                == &q::Value::String(String::from("John"))
+                == &r::Value::String(String::from("John"))
         {
-            BTreeMap::from_iter(
-                vec![(String::from("name"), q::Value::String(String::from("John")))].into_iter(),
+            Object::from_iter(
+                vec![(String::from("name"), r::Value::String(String::from("John")))].into_iter(),
             )
         } else {
-            BTreeMap::from_iter(
+            Object::from_iter(
                 vec![(
                     String::from("name"),
-                    q::Value::String(String::from("Jordi")),
+                    r::Value::String(String::from("Jordi")),
                 )]
                 .into_iter(),
             )

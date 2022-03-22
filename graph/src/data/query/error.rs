@@ -41,9 +41,9 @@ pub enum QueryExecutionError {
     AbstractTypeError(String),
     InvalidArgumentError(Pos, String, q::Value),
     MissingArgumentError(Pos, String),
+    ValidationError(Option<Pos>, String),
     InvalidVariableTypeError(Pos, String),
     MissingVariableError(Pos, String),
-    ResolveEntityError(DeploymentHash, String, String, String),
     ResolveEntitiesError(String),
     OrderByNotSupportedError(String, String),
     OrderByNotSupportedForType(String),
@@ -78,9 +78,70 @@ pub enum QueryExecutionError {
     Panic(String),
     EventStreamError,
     FulltextQueryRequiresFilter,
+    FulltextQueryInvalidSyntax(String),
     DeploymentReverted,
     SubgraphManifestResolveError(Arc<SubgraphManifestResolveError>),
     InvalidSubgraphManifest,
+    ResultTooBig(usize, usize),
+}
+
+impl QueryExecutionError {
+    pub fn is_attestable(&self) -> bool {
+        use self::QueryExecutionError::*;
+        match self {
+            OperationNameRequired
+            | OperationNotFound(_)
+            | NotSupported(_)
+            | NoRootSubscriptionObjectType
+            | NamedTypeError(_)
+            | AbstractTypeError(_)
+            | InvalidArgumentError(_, _, _)
+            | MissingArgumentError(_, _)
+            | InvalidVariableTypeError(_, _)
+            | MissingVariableError(_, _)
+            | OrderByNotSupportedError(_, _)
+            | OrderByNotSupportedForType(_)
+            | FilterNotSupportedError(_, _)
+            | UnknownField(_, _, _)
+            | EmptyQuery
+            | MultipleSubscriptionFields
+            | SubgraphDeploymentIdError(_)
+            | InvalidFilterError
+            | EntityFieldError(_, _)
+            | ListTypesError(_, _)
+            | ListFilterError(_)
+            | AttributeTypeError(_, _)
+            | EmptySelectionSet(_)
+            | Unimplemented(_)
+            | CyclicalFragment(_)
+            | UndefinedFragment(_)
+            | FulltextQueryInvalidSyntax(_)
+            | FulltextQueryRequiresFilter => true,
+            NonNullError(_, _)
+            | ListValueError(_, _)
+            | ResolveEntitiesError(_)
+            | RangeArgumentsError(_, _, _)
+            | ValueParseError(_, _)
+            | EntityParseError(_)
+            | StoreError(_)
+            | Timeout
+            | EnumCoercionError(_, _, _, _, _)
+            | ScalarCoercionError(_, _, _, _)
+            | AmbiguousDerivedFromResult(_, _, _, _)
+            | TooComplex(_, _)
+            | TooDeep(_)
+            | IncorrectPrefetchResult { .. }
+            | Panic(_)
+            | EventStreamError
+            | TooExpensive
+            | Throttled
+            | DeploymentReverted
+            | SubgraphManifestResolveError(_)
+            | InvalidSubgraphManifest
+            | ValidationError(_, _)
+            | ResultTooBig(_, _) => false,
+        }
+    }
 }
 
 impl Error for QueryExecutionError {
@@ -101,6 +162,9 @@ impl fmt::Display for QueryExecutionError {
             OperationNameRequired => write!(f, "Operation name required"),
             OperationNotFound(s) => {
                 write!(f, "Operation name not found `{}`", s)
+            }
+            ValidationError(_pos, message) => {
+                write!(f, "{}", message)
             }
             NotSupported(s) => write!(f, "Not supported: {}", s),
             NoRootSubscriptionObjectType => {
@@ -129,9 +193,6 @@ impl fmt::Display for QueryExecutionError {
             }
             MissingVariableError(_, s) => {
                 write!(f, "No value provided for required variable `{}`", s)
-            }
-            ResolveEntityError(_, entity, id, e) => {
-                write!(f, "Failed to get `{}` entity with ID `{}` from store: {}", entity, id, e)
             }
             ResolveEntitiesError(e) => {
                 write!(f, "Failed to get entities from store: {}", e)
@@ -219,11 +280,13 @@ impl fmt::Display for QueryExecutionError {
             Panic(msg) => write!(f, "panic processing query: {}", msg),
             EventStreamError => write!(f, "error in the subscription event stream"),
             FulltextQueryRequiresFilter => write!(f, "fulltext search queries can only use EntityFilter::Equal"),
+            FulltextQueryInvalidSyntax(msg) => write!(f, "Invalid fulltext search query syntax. Error: {}. Hint: Search terms with spaces need to be enclosed in single quotes", msg),
             TooExpensive => write!(f, "query is too expensive"),
-            Throttled=> write!(f, "service is overloaded and can not run the query right now. Please try again in a few minutes"),
+            Throttled => write!(f, "service is overloaded and can not run the query right now. Please try again in a few minutes"),
             DeploymentReverted => write!(f, "the chain was reorganized while executing the query"),
             SubgraphManifestResolveError(e) => write!(f, "failed to resolve subgraph manifest: {}", e),
             InvalidSubgraphManifest => write!(f, "invalid subgraph manifest file"),
+            ResultTooBig(actual, limit) => write!(f, "the result size of {} is larger than the allowed limit of {}", actual, limit),
         }
     }
 }
@@ -271,6 +334,16 @@ pub enum QueryError {
     ParseError(Arc<anyhow::Error>),
     ExecutionError(QueryExecutionError),
     IndexingError,
+}
+
+impl QueryError {
+    pub fn is_attestable(&self) -> bool {
+        match self {
+            QueryError::EncodingError(_) | QueryError::ParseError(_) => true,
+            QueryError::ExecutionError(err) => err.is_attestable(),
+            QueryError::IndexingError => false,
+        }
+    }
 }
 
 impl From<FromUtf8Error> for QueryError {

@@ -8,12 +8,12 @@ they have. Some environment variables can be used instead of command line flags.
 Those are not listed here, please consult `graph-node --help` for details on
 those.
 
-## Getting blocks from Ethereum
+## JSON-RPC configuration for EVM chains
 
+- `ETHEREUM_REORG_THRESHOLD`: Maximum expected reorg size, if a larger reorg
+happens, subgraphs might process inconsistent data. Defaults to 250.
 - `ETHEREUM_POLLING_INTERVAL`: how often to poll Ethereum for new blocks (in ms,
   defaults to 500ms)
-- `ETHEREUM_RPC_MAX_PARALLEL_REQUESTS`: Maximum number of concurrent HTTP
-  requests to an Ethereum RPC endpoint (defaults to 64).
 - `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`: The ideal amount of triggers
   to be processed in a batch. If this is too small it may cause too many requests
   to the ethereum node, if it is too large it may cause unreasonably expensive
@@ -36,6 +36,14 @@ those.
   subgraph if the limit is reached, but will simply restart the syncing step,
   so it can be low. This limit guards against scenarios such as requesting a
   block hash that has been reorged. Defaults to 10.
+- `GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS`:
+   The maximum number of concurrent requests made against Ethereum for
+   requesting transaction receipts during block ingestion.
+   Defaults to 1,000.
+- `GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES`: Set to `true` to
+  disable fetching receipts from the Ethereum node concurrently during
+  block ingestion. This will use fewer, batched requests. This is always set to `true`
+  on MacOS to avoid DNS issues.
 - `GRAPH_ETHEREUM_CLEANUP_BLOCKS` : Set to `true` to clean up unneeded
   blocks from the cache in the database. When this is `false` or unset (the
   default), blocks will never be removed from the block cache. This setting
@@ -76,7 +84,7 @@ those.
 - `GRAPH_QUERY_CACHE_STALE_PERIOD`: Number of queries after which a cache
   entry can be considered stale. Defaults to 100.
 - `GRAPH_MAX_API_VERSION`: Maximum `apiVersion` supported, if a developer tries to create a subgraph
-  with a higher `apiVersion` than this in their mappings, they'll receive an error. Defaults to `0.0.5`.
+  with a higher `apiVersion` than this in their mappings, they'll receive an error. Defaults to `0.0.6`.
 - `GRAPH_RUNTIME_MAX_STACK_SIZE`: Maximum stack size for the WASM runtime, if exceeded the execution
   stops and an error is thrown. Defaults to 512KiB.
 
@@ -99,9 +107,17 @@ those.
 - `GRAPH_GRAPHQL_MAX_SKIP`: maximum value that can be used for the `skip`
   argument in GraphQL queries. The default value for
   `GRAPH_GRAPHQL_MAX_SKIP` is unlimited.
+- `GRAPH_GRAPHQL_WARN_RESULT_SIZE` and `GRAPH_GRAPHQL_ERROR_RESULT_SIZE`:
+  if a GraphQL result is larger than these sizes in bytes, log a warning
+  respectively abort query execution and return an error. The size of the
+  result is checked while the response is being constructed, so that
+  execution does not take more memory than what is configured. The default
+  value for both is unlimited.
 - `GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION`: maximum number of GraphQL
   operations per WebSocket connection. Any operation created after the limit
   will return an error to the client. Default: unlimited.
+- `GRAPH_GRAPHQL_HTTP_PORT` : Port for the GraphQL HTTP server
+- `GRAPH_GRAPHQL_WS_PORT` : Port for the GraphQL WebSocket server
 - `GRAPH_SQL_STATEMENT_TIMEOUT`: the maximum number of seconds an
   individual SQL query is allowed to take during GraphQL
   execution. Default: unlimited
@@ -114,7 +130,8 @@ those.
 
 - `GRAPH_NODE_ID`: sets the node ID, allowing to run multiple Graph Nodes
   in parallel and deploy to specific nodes; each ID must be unique among the set
-  of nodes.
+  of nodes. A single node should have the same value between consecutive restarts.
+  Subgraphs get assigned to node IDs and are not reassigned to other nodes automatically.
 - `GRAPH_LOG`: control log levels, the same way that `RUST_LOG` is described
   [here](https://docs.rs/env_logger/0.6.0/env_logger/)
 - `THEGRAPH_STORE_POSTGRES_DIESEL_URL`: postgres instance used when running
@@ -162,3 +179,12 @@ those.
   decisions. Set to `true` to turn simulation on, defaults to `false`
 - `GRAPH_STORE_CONNECTION_TIMEOUT`: How long to wait to connect to a
   database before assuming the database is down in ms. Defaults to 5000ms.
+- `EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE`: default is `instant`, set 
+  to `synced` to only switch a named subgraph to a new deployment once it 
+  has synced, making the new deployment the "Pending" version.
+- `GRAPH_REMOVE_UNUSED_INTERVAL`: How long to wait before removing an
+  unused deployment. The system periodically checks and marks deployments
+  that are not used by any subgraphs any longer. Once a deployment has been
+  identified as unused, `graph-node` will wait at least this long before
+  actually deleting the data (value is in minutes, defaults to 360, i.e. 6
+  hours)

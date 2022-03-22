@@ -18,13 +18,9 @@ members = [
     "tests",
 ]
 
-
-[patch.crates-io]
-# Include protection against stack overflow when parsing from this PR: https://github.com/graphql-rust/graphql-parser/commit/45167b53e9533c331298683577ba8df7e43480ac
-graphql-parser = {git="https://github.com/graphql-rust/graphql-parser", rev="45167b53e9533c331298683577ba8df7e43480ac"}
-
-# Incremental compilation on Rust 1.55 causes an ICE on build. As soon as graph node builds again, these can be removed.
-[profile.dev]
-incremental = false
+# Incremental compilation on Rust 1.58 causes an ICE on build. As soon as graph node builds again, these can be removed.
 [profile.test]
+incremental = false
+
+[profile.dev]
 incremental = false

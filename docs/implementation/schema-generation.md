@@ -49,6 +49,27 @@ generated table. The types of these columns are
   column uses an array type. We do not allow nested arrays like `[[String]]`
   in GraphQL, so arrays will only ever contain entries of a primitive type.
 
+### Immutable entities
+
+Entity types declared with a plain `@entity` in the GraphQL schema are
+mutable, and the above table design enables selecting one of many versions
+of the same entity, depending on the block height at which the query is
+run. In a lot of cases, the subgraph author knows that entities will never
+be mutated, e.g., because they are just a direct copy of immutable chain data,
+like a transfer. In those cases, we know that the upper end of the block
+range will always be infinite and don't need to store that explicitly.
+
+When an entity type is declared with `@entity(immutable: true)` in the
+GraphQL schema, we do not generate a `block_range` column in the
+corresponding table. Instead, we generate a column `block$ int not null`,
+so that the check whether a row is visible at block `B` simplifies to
+`block$ <= B`.
+
+Furthermore, since each entity can only have one version, we also add a
+constraint `unique(id)` to such tables, and can avoid expensive GiST
+indexes in favor of simple BTree indexes since the `block$` column is an
+integer.
+
 ## Indexing
 
 We do not know ahead of time which queries will be issued and therefore
@@ -58,12 +79,16 @@ are open issues at this time.
 
 We generate the following indexes for each table:
 
-* an exclusion index over `(id, block_range)` that ensures that the versions
-  for the same entity `id` have disjoint block ranges
-* a BRIN index on `(lower(block_range), COALESCE(upper(block_range),
-  2147483647), vid)` that helps speed up some operations, especially
-  reversion, in tables that have good data locality, for example, tables
-  where entities are never updated or deleted
+* for mutable entity types
+  * an exclusion index over `(id, block_range)` that ensures that the
+    versions for the same entity `id` have disjoint block ranges
+  * a BRIN index on `(lower(block_range), COALESCE(upper(block_range),
+    2147483647), vid)` that helps speed up some operations, especially
+    reversion, in tables that have good data locality, for example, tables
+    where entities are never updated or deleted
+* for immutable entity types
+  * a unique index on `id`
+  * a BRIN index on `(block$, vid)`
 * for each attribute, an index called `attr_N_M_..` where `N` is the number
   of the entity type in the GraphQL schema, and `M` is the number of the
   attribute within that type. For attributes of a primitive type, the index

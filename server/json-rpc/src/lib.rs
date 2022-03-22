@@ -3,8 +3,6 @@ extern crate jsonrpc_http_server;
 extern crate lazy_static;
 extern crate serde;
 
-use graph::prelude::futures03::channel::{mpsc, oneshot};
-use graph::prelude::futures03::SinkExt;
 use graph::prelude::serde_json;
 use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
 use jsonrpc_http_server::{
@@ -40,6 +38,7 @@ struct SubgraphDeployParams {
     name: SubgraphName,
     ipfs_hash: DeploymentHash,
     node_id: Option<NodeId>,
+    debug_fork: Option<DeploymentHash>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -94,7 +93,15 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
         let routes = subgraph_routes(&params.name, self.http_port, self.ws_port);
         match self
             .registrar
-            .create_subgraph_version(params.name.clone(), params.ipfs_hash.clone(), node_id)
+            .create_subgraph_version(
+                params.name.clone(),
+                params.ipfs_hash.clone(),
+                node_id,
+                params.debug_fork.clone(),
+                // Here it doesn't make sense to receive another
+                // startBlock, we'll use the one from the manifest.
+                None,
+            )
             .await
         {
             Ok(_) => Ok(routes),
@@ -186,94 +193,40 @@ where
             logger,
         });
 
-        let (task_sender, task_receiver) =
-            mpsc::channel::<Box<dyn std::future::Future<Output = ()> + Send + Unpin>>(100);
-        graph::spawn(task_receiver.for_each(|f| {
-            async {
-                // Blocking due to store interactions. Won't be blocking after #905.
-                graph::spawn_blocking(f);
-            }
-        }));
-
-        // This is a hack required because the json-rpc crate is not updated to tokio 0.2.
-        // We should watch the `jsonrpsee` crate and switch to that once it's ready.
-        async fn tokio02_spawn<I: Send + 'static, ER: Send + 'static>(
-            mut task_sink: mpsc::Sender<Box<dyn std::future::Future<Output = ()> + Send + Unpin>>,
-            future: impl std::future::Future<Output = Result<I, ER>> + Send + Unpin + 'static,
-        ) -> Result<I, ER>
-        where
-            I: Debug,
-            ER: Debug,
-        {
-            let (return_sender, return_receiver) = oneshot::channel();
-            task_sink
-                .send(Box::new(future.map(move |res| {
-                    return_sender.send(res).expect("`return_receiver` dropped");
-                })))
-                .await
-                .expect("task receiver dropped");
-            return_receiver.await.expect("`return_sender` dropped")
-        }
-
         let me = arc_self.clone();
-        let sender = task_sender.clone();
         handler.add_method("subgraph_create", move |params: Params| {
             let me = me.clone();
-            Box::pin(tokio02_spawn(
-                sender.clone(),
-                async move {
-                    let params = params.parse()?;
-                    me.create_handler(params).await
-                }
-                .boxed(),
-            ))
-            .compat()
+            async move {
+                let params = params.parse()?;
+                me.create_handler(params).await
+            }
         });
 
         let me = arc_self.clone();
-        let sender = task_sender.clone();
-
         handler.add_method("subgraph_deploy", move |params: Params| {
             let me = me.clone();
-            Box::pin(tokio02_spawn(
-                sender.clone(),
-                async move {
-                    let params = params.parse()?;
-                    me.deploy_handler(params).await
-                }
-                .boxed(),
-            ))
-            .compat()
+            async move {
+                let params = params.parse()?;
+                me.deploy_handler(params).await
+            }
         });
 
         let me = arc_self.clone();
-        let sender = task_sender.clone();
         handler.add_method("subgraph_remove", move |params: Params| {
             let me = me.clone();
-            Box::pin(tokio02_spawn(
-                sender.clone(),
-                async move {
-                    let params = params.parse()?;
-                    me.remove_handler(params).await
-                }
-                .boxed(),
-            ))
-            .compat()
+            async move {
+                let params = params.parse()?;
+                me.remove_handler(params).await
+            }
         });
 
-        let me = arc_self.clone();
-        let sender = task_sender.clone();
+        let me = arc_self;
         handler.add_method("subgraph_reassign", move |params: Params| {
             let me = me.clone();
-            Box::pin(tokio02_spawn(
-                sender.clone(),
-                async move {
-                    let params = params.parse()?;
-                    me.reassign_handler(params).await
-                }
-                .boxed(),
-            ))
-            .compat()
+            async move {
+                let params = params.parse()?;
+                me.reassign_handler(params).await
+            }
         });
 
         ServerBuilder::new(handler)

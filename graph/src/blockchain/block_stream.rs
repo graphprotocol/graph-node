@@ -1,15 +1,82 @@
 use anyhow::Error;
+use async_stream::stream;
 use futures03::Stream;
 use std::sync::Arc;
 use thiserror::Error;
+use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use super::{Block, BlockPtr, Blockchain};
 use crate::components::store::BlockNumber;
-use crate::firehose::bstream;
+use crate::firehose;
 use crate::{prelude::*, prometheus::labels};
 
+pub struct BufferedBlockStream<C: Blockchain> {
+    inner: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, Error>> + Send>>,
+}
+
+impl<C: Blockchain + 'static> BufferedBlockStream<C> {
+    pub fn spawn_from_stream(
+        stream: Box<dyn BlockStream<C>>,
+        size_hint: usize,
+    ) -> Box<dyn BlockStream<C>> {
+        let (sender, receiver) = mpsc::channel::<Result<BlockStreamEvent<C>, Error>>(size_hint);
+        crate::spawn(async move { BufferedBlockStream::stream_blocks(stream, sender).await });
+
+        Box::new(BufferedBlockStream::new(receiver))
+    }
+
+    pub fn new(mut receiver: Receiver<Result<BlockStreamEvent<C>, Error>>) -> Self {
+        let inner = stream! {
+            loop {
+                let event = match receiver.recv().await {
+                    Some(evt) => evt,
+                    None => return,
+                };
+
+                yield event
+            }
+        };
+
+        Self {
+            inner: Box::pin(inner),
+        }
+    }
+
+    pub async fn stream_blocks(
+        mut stream: Box<dyn BlockStream<C>>,
+        sender: Sender<Result<BlockStreamEvent<C>, Error>>,
+    ) -> Result<(), Error> {
+        while let Some(event) = stream.next().await {
+            match sender.send(event).await {
+                Ok(_) => continue,
+                Err(err) => {
+                    return Err(anyhow!(
+                        "buffered blockstream channel is closed, stopping. Err: {}",
+                        err
+                    ))
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl<C: Blockchain> BlockStream<C> for BufferedBlockStream<C> {}
+
+impl<C: Blockchain> Stream for BufferedBlockStream<C> {
+    type Item = Result<BlockStreamEvent<C>, Error>;
+
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.inner.poll_next_unpin(cx)
+    }
+}
+
 pub trait BlockStream<C: Blockchain>:
-    Stream<Item = Result<BlockStreamEvent<C>, Error>> + Unpin
+    Stream<Item = Result<BlockStreamEvent<C>, Error>> + Unpin + Send
 {
 }
 
@@ -36,6 +103,10 @@ impl<C: Blockchain> BlockWithTriggers<C> {
 
     pub fn ptr(&self) -> BlockPtr {
         self.block.ptr()
+    }
+
+    pub fn parent_ptr(&self) -> Option<BlockPtr> {
+        self.block.parent_ptr()
     }
 }
 
@@ -74,23 +145,52 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
     async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error>;
 
     /// Get pointer to parent of `block`. This is called when reverting `block`.
-    async fn parent_ptr(&self, block: &BlockPtr) -> Result<BlockPtr, Error>;
+    async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error>;
 }
 
+#[async_trait]
 pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
-    fn to_block_stream_event(
+    async fn to_block_stream_event(
         &self,
         logger: &Logger,
-        response: &bstream::BlockResponseV2,
+        response: &firehose::Response,
         adapter: &C::TriggersAdapter,
         filter: &C::TriggerFilter,
     ) -> Result<BlockStreamEvent<C>, FirehoseError>;
+
+    /// Returns the [BlockPtr] value for this given block number. This is the block pointer
+    /// of the longuest according to Firehose view of the blockchain state.
+    ///
+    /// This is a thin wrapper around [FirehoseEndpoint#block_ptr_for_number] to make
+    /// it chain agnostic and callable from chain agnostic [FirehoseBlockStream].
+    async fn block_ptr_for_number(
+        &self,
+        logger: &Logger,
+        number: BlockNumber,
+    ) -> Result<BlockPtr, Error>;
+
+    /// Returns the closest final block ptr to the block ptr received.
+    /// On probablitics chain like Ethereum, final is determined by
+    /// the confirmations threshold configured for the Firehose stack (currently
+    /// hard-coded to 200).
+    ///
+    /// On some other chain like NEAR, the actual final block number is determined
+    /// from the block itself since it contains information about which block number
+    /// is final against the current block.
+    ///
+    /// To take an example, assuming we are on Ethereum, the final block pointer
+    /// for block #10212 would be the determined final block #10012 (10212 - 200 = 10012).
+    async fn final_block_ptr_for(
+        &self,
+        logger: &Logger,
+        block: &C::Block,
+    ) -> Result<BlockPtr, Error>;
 }
 
 #[derive(Error, Debug)]
 pub enum FirehoseError {
-    /// We were unable to decode the received block payload into the chain specific Block struct (chain_ethereum::codec::Block)
-    #[error("received gRPC block payload cannot be decoded")]
+    /// We were unable to decode the received block payload into the chain specific Block struct (e.g. chain_ethereum::pb::Block)
+    #[error("received gRPC block payload cannot be decoded: {0}")]
     DecodingError(#[from] prost::DecodeError),
 
     /// Some unknown error occured
@@ -99,8 +199,7 @@ pub enum FirehoseError {
 }
 
 pub enum BlockStreamEvent<C: Blockchain> {
-    // The payload is the current subgraph head pointer, which should be reverted, such that the
-    // parent of the current subgraph head becomes the new subgraph head.
+    // The payload is the block the subgraph should revert to, so it becomes the new subgraph head.
     Revert(BlockPtr, FirehoseCursor),
 
     ProcessBlock(BlockWithTriggers<C>, FirehoseCursor),
@@ -166,4 +265,90 @@ pub type ChainHeadUpdateStream = Box<dyn Stream<Item = ()> + Send + Unpin>;
 pub trait ChainHeadUpdateListener: Send + Sync + 'static {
     /// Subscribe to chain head updates for the given network.
     fn subscribe(&self, network: String, logger: Logger) -> ChainHeadUpdateStream;
+}
+
+#[cfg(test)]
+mod test {
+    use std::{collections::HashSet, task::Poll};
+
+    use anyhow::Error;
+    use futures03::{Stream, StreamExt, TryStreamExt};
+
+    use crate::{
+        blockchain::mock::{MockBlock, MockBlockchain},
+        ext::futures::{CancelableError, SharedCancelGuard, StreamExtension},
+    };
+
+    use super::{BlockStream, BlockStreamEvent, BlockWithTriggers, BufferedBlockStream};
+
+    #[derive(Debug)]
+    struct TestStream {
+        number: u64,
+    }
+
+    impl BlockStream<MockBlockchain> for TestStream {}
+
+    impl Stream for TestStream {
+        type Item = Result<BlockStreamEvent<MockBlockchain>, Error>;
+
+        fn poll_next(
+            mut self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<Self::Item>> {
+            self.number += 1;
+            Poll::Ready(Some(Ok(BlockStreamEvent::ProcessBlock(
+                BlockWithTriggers::<MockBlockchain> {
+                    block: MockBlock {
+                        number: self.number - 1,
+                    },
+                    trigger_data: vec![],
+                },
+                None,
+            ))))
+        }
+    }
+
+    #[tokio::test]
+    async fn consume_stream() {
+        let initial_block = 100;
+        let buffer_size = 5;
+
+        let stream = Box::new(TestStream {
+            number: initial_block,
+        });
+        let guard = SharedCancelGuard::new();
+
+        let mut stream = BufferedBlockStream::spawn_from_stream(stream, buffer_size)
+            .map_err(CancelableError::Error)
+            .cancelable(&guard, || Err(CancelableError::Cancel));
+
+        let mut blocks = HashSet::<MockBlock>::new();
+        let mut count = 0;
+        loop {
+            match stream.next().await {
+                None if blocks.len() == 0 => panic!("None before blocks"),
+                Some(Err(CancelableError::Cancel)) => {
+                    assert!(guard.is_canceled(), "Guard shouldn't be called yet");
+
+                    break;
+                }
+                Some(Ok(BlockStreamEvent::ProcessBlock(block_triggers, _))) => {
+                    let block = block_triggers.block;
+                    blocks.insert(block.clone());
+                    count += 1;
+
+                    if block.number > initial_block + buffer_size as u64 {
+                        guard.cancel();
+                    }
+                }
+                _ => panic!("Should not happen"),
+            };
+        }
+        assert!(
+            blocks.len() > buffer_size,
+            "should consume at least a full buffer, consumed {}",
+            count
+        );
+        assert_eq!(count, blocks.len(), "should not have duplicated blocks");
+    }
 }

@@ -132,23 +132,6 @@ where
             .unwrap())
     }
 
-    /// Serves a static file.
-    fn serve_file(
-        &self,
-        contents: &'static str,
-        content_type: &'static str,
-    ) -> GraphQLServiceResponse {
-        async move {
-            Ok(Response::builder()
-                .status(200)
-                .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                .header(CONTENT_TYPE, content_type)
-                .body(Body::from(contents))
-                .unwrap())
-        }
-        .boxed()
-    }
-
     /// Serves a dynamically created file.
     fn serve_dynamic_file(&self, contents: String) -> GraphQLServiceResponse {
         async {
@@ -282,13 +265,6 @@ where
 
         match (method, path_segments.as_slice()) {
             (Method::GET, [""]) => self.index().boxed(),
-            (Method::GET, ["graphiql.css"]) => {
-                self.serve_file(include_str!("../assets/graphiql.css"), "text/css")
-            }
-            (Method::GET, ["graphiql.min.js"]) => {
-                self.serve_file(include_str!("../assets/graphiql.min.js"), "text/javascript")
-            }
-
             (Method::GET, &["subgraphs", "id", _, "graphql"])
             | (Method::GET, &["subgraphs", "name", _, "graphql"])
             | (Method::GET, &["subgraphs", "name", _, _, "graphql"])
@@ -387,10 +363,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use graph::data::value::Object;
     use http::status::StatusCode;
     use hyper::service::Service;
     use hyper::{Body, Method, Request};
-    use std::collections::BTreeMap;
 
     use graph::data::{
         graphql::effort::LoadManager,
@@ -426,10 +402,10 @@ mod tests {
         }
 
         async fn run_query(self: Arc<Self>, _query: Query, _target: QueryTarget) -> QueryResults {
-            QueryResults::from(BTreeMap::from_iter(
+            QueryResults::from(Object::from_iter(
                 vec![(
                     String::from("name"),
-                    q::Value::String(String::from("Jordi")),
+                    r::Value::String(String::from("Jordi")),
                 )]
                 .into_iter(),
             ))

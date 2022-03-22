@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use anyhow::Error;
 use graph::prometheus::{Encoder, Registry, TextEncoder};
-use hyper;
 use hyper::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Response, Server};
@@ -66,10 +65,9 @@ impl MetricsServerTrait for PrometheusMetricsServer {
         let server = self.clone();
         let new_service = make_service_fn(move |_req| {
             let server = server.clone();
-            let registry = server.registry.clone();
             async move {
                 Ok::<_, Error>(service_fn(move |_| {
-                    let metric_families = registry.gather();
+                    let metric_families = server.registry.gather();
                     let mut buffer = vec![];
                     let encoder = TextEncoder::new();
                     encoder.encode(&metric_families, &mut buffer).unwrap();

@@ -25,6 +25,7 @@ type UtcDateTime = DateTime<Utc>;
 struct CopyState {
     src: i32,
     dst: i32,
+    #[allow(dead_code)]
     target_block_hash: Vec<u8>,
     target_block_number: i32,
     started_at: UtcDateTime,
@@ -35,12 +36,15 @@ struct CopyState {
 #[derive(Queryable, QueryableByName, Debug)]
 #[table_name = "copy_table_state"]
 struct CopyTableState {
+    #[allow(dead_code)]
     id: i32,
     entity_type: String,
+    #[allow(dead_code)]
     dst: i32,
     next_vid: i64,
     target_vid: i64,
     batch_size: i64,
+    #[allow(dead_code)]
     started_at: UtcDateTime,
     finished_at: Option<UtcDateTime>,
     duration_ms: i64,
@@ -88,7 +92,7 @@ pub async fn create(
     let query_store = store.query_store(src.hash.clone().into(), true).await?;
     let network = query_store.network_name();
 
-    let src_ptr = query_store.block_ptr()?.ok_or_else(|| anyhow!("subgraph {} has not indexed any blocks yet and can not be used as the source of a copy", src))?;
+    let src_ptr = query_store.block_ptr().await?.ok_or_else(|| anyhow!("subgraph {} has not indexed any blocks yet and can not be used as the source of a copy", src))?;
     let src_number = if src_ptr.number <= block_offset {
         bail!("subgraph {} has only indexed up to block {}, but we need at least block {} before we can copy from it", src, src_ptr.number, block_offset);
     } else {

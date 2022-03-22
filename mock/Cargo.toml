@@ -1,12 +1,7 @@
 [package]
 name = "graph-mock"
-version = "0.24.1"
-edition = "2018"
+version = "0.25.2"
+edition = "2021"
 
 [dependencies]
-futures = "0.1.21"
-graphql-parser = "0.3"
 graph = { path = "../graph" }
-graph-graphql = { path = "../graphql" }
-mockall = "0.8"
-rand = "0.6.1"

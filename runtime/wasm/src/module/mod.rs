@@ -2,36 +2,39 @@ use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
-use graph::blockchain::{Blockchain, HostFnCtx, MappingTrigger};
-use graph::runtime::HostExportError;
+use anyhow::anyhow;
+use anyhow::Error;
 use never::Never;
 use semver::Version;
 use wasmtime::{Memory, Trap};
 
-use crate::error::DeterminismLevel;
-pub use crate::host_exports;
-use crate::mapping::MappingContext;
-use anyhow::Error;
+use graph::blockchain::{Blockchain, HostFnCtx, TriggerWithHandler};
 use graph::data::store;
 use graph::prelude::*;
+use graph::runtime::gas::{self, Gas, GasCounter, SaturatingInto};
+use graph::runtime::HostExportError;
 use graph::runtime::{AscHeap, IndexForAscTypeId};
 use graph::{components::subgraph::MappingError, runtime::AscPtr};
 use graph::{
     data::subgraph::schema::SubgraphError,
     runtime::{asc_get, asc_new, try_asc_get, DeterministicHostError},
 };
+pub use into_wasm_ret::IntoWasmRet;
+pub use stopwatch::TimeoutStopwatch;
 
 use crate::asc_abi::class::*;
+use crate::error::DeterminismLevel;
+use crate::gas_rules::{GAS_COST_LOAD, GAS_COST_STORE};
+pub use crate::host_exports;
 use crate::host_exports::HostExports;
+use crate::mapping::MappingContext;
 use crate::mapping::ValidModule;
 
 mod into_wasm_ret;
 pub mod stopwatch;
-
-pub use into_wasm_ret::IntoWasmRet;
-pub use stopwatch::TimeoutStopwatch;
 
 pub const TRAP_TIMEOUT: &str = "trap: interrupt";
 
@@ -50,6 +53,9 @@ pub struct WasmInstance<C: Blockchain> {
     // Also this is the only strong reference, so the instance will be dropped once this is dropped.
     // The weak references are circulary held by instance itself through host exports.
     pub instance_ctx: Rc<RefCell<Option<WasmInstanceContext<C>>>>,
+
+    // A reference to the gas counter used for reporting the gas used.
+    pub gas: GasCounter,
 }
 
 impl<C: Blockchain> Drop for WasmInstance<C> {
@@ -61,13 +67,18 @@ impl<C: Blockchain> Drop for WasmInstance<C> {
 
 /// Proxies to the WasmInstanceContext.
 impl<C: Blockchain> AscHeap for WasmInstance<C> {
-    fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, DeterministicHostError> {
+    fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError> {
         let mut ctx = RefMut::map(self.instance_ctx.borrow_mut(), |i| i.as_mut().unwrap());
-        ctx.raw_new(bytes)
+        ctx.raw_new(bytes, gas)
     }
 
-    fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, DeterministicHostError> {
-        self.instance_ctx().get(offset, size)
+    fn get(
+        &self,
+        offset: u32,
+        size: u32,
+        gas: &GasCounter,
+    ) -> Result<Vec<u8>, DeterministicHostError> {
+        self.instance_ctx().get(offset, size, gas)
     }
 
     fn api_version(&self) -> Version {
@@ -89,8 +100,9 @@ impl<C: Blockchain> WasmInstance<C> {
         value: &serde_json::Value,
         user_data: &store::Value,
     ) -> Result<BlockState<C>, anyhow::Error> {
-        let value = asc_new(&mut self, value)?;
-        let user_data = asc_new(&mut self, user_data)?;
+        let gas = GasCounter::default();
+        let value = asc_new(&mut self, value, &gas)?;
+        let user_data = asc_new(&mut self, user_data, &gas)?;
 
         self.instance_ctx_mut().ctx.state.enter_handler();
 
@@ -109,10 +121,11 @@ impl<C: Blockchain> WasmInstance<C> {
 
     pub(crate) fn handle_trigger(
         mut self,
-        trigger: C::MappingTrigger,
-    ) -> Result<BlockState<C>, MappingError> {
+        trigger: TriggerWithHandler<C>,
+    ) -> Result<(BlockState<C>, Gas), MappingError> {
         let handler_name = trigger.handler_name().to_owned();
-        let asc_trigger = trigger.to_asc_ptr(&mut self)?;
+        let gas = self.gas.clone();
+        let asc_trigger = trigger.to_asc_ptr(&mut self, &gas)?;
         self.invoke_handler(&handler_name, asc_trigger)
     }
 
@@ -133,11 +146,16 @@ impl<C: Blockchain> WasmInstance<C> {
         self.instance.get_func(func_name).unwrap()
     }
 
+    #[cfg(debug_assertions)]
+    pub fn gas_used(&self) -> u64 {
+        self.gas.get().value()
+    }
+
     fn invoke_handler<T>(
         &mut self,
         handler: &str,
         arg: AscPtr<T>,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<(BlockState<C>, Gas), MappingError> {
         let func = self
             .instance
             .get_func(handler)
@@ -208,7 +226,8 @@ impl<C: Blockchain> WasmInstance<C> {
             self.instance_ctx_mut().ctx.state.exit_handler();
         }
 
-        Ok(self.take_ctx().ctx.state)
+        let gas = self.gas.get();
+        Ok((self.take_ctx().ctx.state, gas))
     }
 }
 
@@ -297,6 +316,11 @@ impl<C: Blockchain> WasmInstance<C> {
             });
         }
 
+        // Because `gas` and `deterministic_host_trap` need to be accessed from the gas
+        // host fn, they need to be separate from the rest of the context.
+        let gas = GasCounter::default();
+        let deterministic_host_trap = Rc::new(AtomicBool::new(false));
+
         macro_rules! link {
             ($wasm_name:expr, $rust_name:ident, $($param:ident),*) => {
                 link!($wasm_name, $rust_name, "host_export_other", $($param),*)
@@ -316,6 +340,7 @@ impl<C: Blockchain> WasmInstance<C> {
                     let host_metrics = host_metrics.cheap_clone();
                     let timeout_stopwatch = timeout_stopwatch.cheap_clone();
                     let ctx = ctx.cheap_clone();
+                    let gas = gas.cheap_clone();
                     linker.func(
                         module,
                         $wasm_name,
@@ -340,6 +365,7 @@ impl<C: Blockchain> WasmInstance<C> {
                             let _section = instance.host_metrics.stopwatch.start_section($section);
 
                             let result = instance.$rust_name(
+                                &gas,
                                 $($param.into()),*
                             );
                             match result {
@@ -375,6 +401,7 @@ impl<C: Blockchain> WasmInstance<C> {
             for module in modules {
                 let func_shared_ctx = Rc::downgrade(&shared_ctx);
                 let host_fn = host_fn.cheap_clone();
+                let gas = gas.cheap_clone();
                 linker.func(module, host_fn.name, move |call_ptr: u32| {
                     let start = Instant::now();
                     let instance = func_shared_ctx.upgrade().unwrap();
@@ -389,7 +416,7 @@ impl<C: Blockchain> WasmInstance<C> {
                                 "{} is not allowed in global variables",
                                 host_fn.name
                             )
-                            .into())
+                            .into());
                         }
                     };
 
@@ -402,6 +429,7 @@ impl<C: Blockchain> WasmInstance<C> {
                         logger: instance.ctx.logger.cheap_clone(),
                         block_ptr: instance.ctx.block_ptr.cheap_clone(),
                         heap: instance,
+                        gas: gas.cheap_clone(),
                     };
                     let ret = (host_fn.func)(ctx, call_ptr).map_err(|e| match e {
                         HostExportError::Deterministic(e) => {
@@ -515,6 +543,24 @@ impl<C: Blockchain> WasmInstance<C> {
             link!("box.profile", box_profile, ptr);
         }
 
+        // link the `gas` function
+        // See also e3f03e62-40e4-4f8c-b4a1-d0375cca0b76
+        {
+            let gas = gas.cheap_clone();
+            linker.func("gas", "gas", move |gas_used: u32| -> Result<(), Trap> {
+                // Gas metering has a relevant execution cost cost, being called tens of thousands
+                // of times per handler, but it's not worth having a stopwatch section here because
+                // the cost of measuring would be greater than the cost of `consume_host_fn`. Last
+                // time this was benchmarked it took < 100ns to run.
+                if let Err(e) = gas.consume_host_fn(gas_used.saturating_into()) {
+                    deterministic_host_trap.store(true, Ordering::SeqCst);
+                    return Err(e.into_trap());
+                }
+
+                Ok(())
+            })?;
+        }
+
         let instance = linker.instantiate(&valid_module.module)?;
 
         // Usually `shared_ctx` is still `None` because no host fns were called during start.
@@ -537,20 +583,24 @@ impl<C: Blockchain> WasmInstance<C> {
                     .get_func("_start")
                     .context("`_start` function not found")?
                     .typed::<(), ()>()?
-                    .call(())
-                    .unwrap();
+                    .call(())?;
             }
         }
 
         Ok(WasmInstance {
             instance,
             instance_ctx: shared_ctx,
+            gas,
         })
     }
 }
 
 impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
-    fn raw_new(&mut self, bytes: &[u8]) -> Result<u32, DeterministicHostError> {
+    fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError> {
+        // The cost of writing to wasm memory from the host is the same as of writing from wasm
+        // using load instructions.
+        gas.consume_host_fn(Gas::new(GAS_COST_STORE as u64 * bytes.len() as u64))?;
+
         // We request large chunks from the AssemblyScript allocator to use as arenas that we
         // manage directly.
 
@@ -593,14 +643,23 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
         Ok(ptr as u32)
     }
 
-    fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, DeterministicHostError> {
+    fn get(
+        &self,
+        offset: u32,
+        size: u32,
+        gas: &GasCounter,
+    ) -> Result<Vec<u8>, DeterministicHostError> {
+        // The cost of reading wasm memory from the host is the same as of reading from wasm using
+        // load instructions.
+        gas.consume_host_fn(Gas::new(GAS_COST_LOAD as u64 * size as u64))?;
+
         let offset = offset as usize;
         let size = size as usize;
 
         let mut data = vec![0; size];
 
         self.memory.read(offset, &mut data).map_err(|_| {
-            DeterministicHostError(anyhow!(
+            DeterministicHostError::from(anyhow!(
                 "Heap access out of bounds. Offset: {} Size: {}",
                 offset,
                 size
@@ -624,7 +683,7 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
             .unwrap() // Unwrap ok because it's only called on correct apiVersion, look for AscPtr::generate_header
             .call(type_id_index as u32)
             .with_context(|| format!("Failed to call 'asc_type_id' with '{:?}'", type_id_index))
-            .map_err(DeterministicHostError)?;
+            .map_err(DeterministicHostError::from)?;
         Ok(type_id)
     }
 }
@@ -746,17 +805,18 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     /// Always returns a trap.
     pub fn abort(
         &mut self,
+        gas: &GasCounter,
         message_ptr: AscPtr<AscString>,
         file_name_ptr: AscPtr<AscString>,
         line_number: u32,
         column_number: u32,
     ) -> Result<Never, DeterministicHostError> {
         let message = match message_ptr.is_null() {
-            false => Some(asc_get(self, message_ptr)?),
+            false => Some(asc_get(self, message_ptr, gas)?),
             true => None,
         };
         let file_name = match file_name_ptr.is_null() {
-            false => Some(asc_get(self, file_name_ptr)?),
+            false => Some(asc_get(self, file_name_ptr, gas)?),
             true => None,
         };
         let line_number = match line_number {
@@ -770,12 +830,13 @@ impl<C: Blockchain> WasmInstanceContext<C> {
 
         self.ctx
             .host_exports
-            .abort(message, file_name, line_number, column_number)
+            .abort(message, file_name, line_number, column_number, gas)
     }
 
     /// function store.set(entity: string, id: string, data: Entity): void
     pub fn store_set(
         &mut self,
+        gas: &GasCounter,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
         data_ptr: AscPtr<AscEntity>,
@@ -783,9 +844,9 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let stopwatch = &self.host_metrics.stopwatch;
         stopwatch.start_section("host_export_store_set__wasm_instance_context_store_set");
 
-        let entity = asc_get(self, entity_ptr)?;
-        let id = asc_get(self, id_ptr)?;
-        let data = try_asc_get(self, data_ptr)?;
+        let entity = asc_get(self, entity_ptr, gas)?;
+        let id = asc_get(self, id_ptr, gas)?;
+        let data = try_asc_get(self, data_ptr, gas)?;
 
         self.ctx.host_exports.store_set(
             &self.ctx.logger,
@@ -795,30 +856,35 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             id,
             data,
             stopwatch,
+            gas,
         )?;
+
         Ok(())
     }
 
     /// function store.remove(entity: string, id: string): void
     pub fn store_remove(
         &mut self,
+        gas: &GasCounter,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<(), HostExportError> {
-        let entity = asc_get(self, entity_ptr)?;
-        let id = asc_get(self, id_ptr)?;
+        let entity = asc_get(self, entity_ptr, gas)?;
+        let id = asc_get(self, id_ptr, gas)?;
         self.ctx.host_exports.store_remove(
             &self.ctx.logger,
             &mut self.ctx.state,
             &self.ctx.proof_of_indexing,
             entity,
             id,
+            gas,
         )
     }
 
     /// function store.get(entity: string, id: string): Entity | null
     pub fn store_get(
         &mut self,
+        gas: &GasCounter,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscEntity>, HostExportError> {
@@ -826,12 +892,15 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             .host_metrics
             .cheap_clone()
             .time_host_fn_execution_region("store_get");
-        let entity_ptr = asc_get(self, entity_ptr)?;
-        let id_ptr = asc_get(self, id_ptr)?;
-        let entity_option =
-            self.ctx
-                .host_exports
-                .store_get(&mut self.ctx.state, entity_ptr, id_ptr)?;
+
+        let entity_type: String = asc_get(self, entity_ptr, gas)?;
+        let id: String = asc_get(self, id_ptr, gas)?;
+        let entity_option = self.ctx.host_exports.store_get(
+            &mut self.ctx.state,
+            entity_type.clone(),
+            id.clone(),
+            gas,
+        )?;
 
         let ret = match entity_option {
             Some(entity) => {
@@ -839,9 +908,31 @@ impl<C: Blockchain> WasmInstanceContext<C> {
                     .host_metrics
                     .stopwatch
                     .start_section("store_get_asc_new");
-                asc_new(self, &entity.sorted())?
+                asc_new(self, &entity.sorted(), gas)?
             }
-            None => AscPtr::null(),
+            None => match &self.ctx.debug_fork {
+                Some(fork) => {
+                    let entity_option = fork.fetch(entity_type, id).map_err(|e| {
+                        HostExportError::Unknown(anyhow!(
+                            "store_get: failed to fetch entity from the debug fork: {}",
+                            e
+                        ))
+                    })?;
+                    match entity_option {
+                        Some(entity) => {
+                            let _section = self
+                                .host_metrics
+                                .stopwatch
+                                .start_section("store_get_asc_new");
+                            let entity = asc_new(self, &entity.sorted(), gas)?;
+                            self.store_set(gas, entity_ptr, id_ptr, entity)?;
+                            entity
+                        }
+                        None => AscPtr::null(),
+                    }
+                }
+                None => AscPtr::null(),
+            },
         };
 
         Ok(ret)
@@ -850,10 +941,15 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     /// function typeConversion.bytesToString(bytes: Bytes): string
     pub fn bytes_to_string(
         &mut self,
+        gas: &GasCounter,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscString>, DeterministicHostError> {
-        let string = host_exports::bytes_to_string(&self.ctx.logger, asc_get(self, bytes_ptr)?);
-        asc_new(self, &string)
+        let string = self.ctx.host_exports.bytes_to_string(
+            &self.ctx.logger,
+            asc_get(self, bytes_ptr, gas)?,
+            gas,
+        )?;
+        asc_new(self, &string, gas)
     }
 
     /// Converts bytes to a hex string.
@@ -863,116 +959,136 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     /// https://github.com/ethereum/web3.js/blob/f98fe1462625a6c865125fecc9cb6b414f0a5e83/packages/web3-utils/src/utils.js#L283
     pub fn bytes_to_hex(
         &mut self,
+        gas: &GasCounter,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscString>, DeterministicHostError> {
-        let bytes: Vec<u8> = asc_get(self, bytes_ptr)?;
+        let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
+        gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(gas::complexity::Size, &bytes))?;
+
         // Even an empty string must be prefixed with `0x`.
         // Encodes each byte as a two hex digits.
         let hex = format!("0x{}", hex::encode(bytes));
-        asc_new(self, &hex)
+        asc_new(self, &hex, gas)
     }
 
     /// function typeConversion.bigIntToString(n: Uint8Array): string
     pub fn big_int_to_string(
         &mut self,
+        gas: &GasCounter,
         big_int_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscString>, DeterministicHostError> {
-        let n: BigInt = asc_get(self, big_int_ptr)?;
-        asc_new(self, &n.to_string())
+        let n: BigInt = asc_get(self, big_int_ptr, gas)?;
+        gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(gas::complexity::Size, &n))?;
+        asc_new(self, &n.to_string(), gas)
     }
 
     /// function bigInt.fromString(x: string): BigInt
     pub fn big_int_from_string(
         &mut self,
+        gas: &GasCounter,
         string_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
         let result = self
             .ctx
             .host_exports
-            .big_int_from_string(asc_get(self, string_ptr)?)?;
-        asc_new(self, &result)
+            .big_int_from_string(asc_get(self, string_ptr, gas)?, gas)?;
+        asc_new(self, &result, gas)
     }
 
     /// function typeConversion.bigIntToHex(n: Uint8Array): string
     pub fn big_int_to_hex(
         &mut self,
+        gas: &GasCounter,
         big_int_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscString>, DeterministicHostError> {
-        let n: BigInt = asc_get(self, big_int_ptr)?;
-        let hex = self.ctx.host_exports.big_int_to_hex(n)?;
-        asc_new(self, &hex)
+        let n: BigInt = asc_get(self, big_int_ptr, gas)?;
+        let hex = self.ctx.host_exports.big_int_to_hex(n, gas)?;
+        asc_new(self, &hex, gas)
     }
 
     /// function typeConversion.stringToH160(s: String): H160
     pub fn string_to_h160(
         &mut self,
+        gas: &GasCounter,
         str_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscH160>, DeterministicHostError> {
-        let s: String = asc_get(self, str_ptr)?;
-        let h160 = host_exports::string_to_h160(&s)?;
-        asc_new(self, &h160)
+        let s: String = asc_get(self, str_ptr, gas)?;
+        let h160 = self.ctx.host_exports.string_to_h160(&s, gas)?;
+        asc_new(self, &h160, gas)
     }
 
     /// function json.fromBytes(bytes: Bytes): JSONValue
     pub fn json_from_bytes(
         &mut self,
+        gas: &GasCounter,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscEnum<JsonValueKind>>, DeterministicHostError> {
-        let bytes: Vec<u8> = asc_get(self, bytes_ptr)?;
-
-        let result = host_exports::json_from_bytes(&bytes)
+        let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
+        let result = self
+            .ctx
+            .host_exports
+            .json_from_bytes(&bytes, gas)
             .with_context(|| {
                 format!(
                     "Failed to parse JSON from byte array. Bytes (truncated to 1024 chars): `{:?}`",
                     &bytes[..bytes.len().min(1024)],
                 )
             })
-            .map_err(DeterministicHostError)?;
-        asc_new(self, &result)
+            .map_err(DeterministicHostError::from)?;
+        asc_new(self, &result, gas)
     }
 
     /// function json.try_fromBytes(bytes: Bytes): Result<JSONValue, boolean>
     pub fn json_try_from_bytes(
         &mut self,
+        gas: &GasCounter,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscResult<AscPtr<AscEnum<JsonValueKind>>, bool>>, DeterministicHostError>
     {
-        let bytes: Vec<u8> = asc_get(self, bytes_ptr)?;
-        let result = host_exports::json_from_bytes(&bytes).map_err(|e| {
-            warn!(
-                &self.ctx.logger,
-                "Failed to parse JSON from byte array";
-                "bytes" => format!("{:?}", bytes),
-                "error" => format!("{}", e)
-            );
+        let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
+        let result = self
+            .ctx
+            .host_exports
+            .json_from_bytes(&bytes, gas)
+            .map_err(|e| {
+                warn!(
+                    &self.ctx.logger,
+                    "Failed to parse JSON from byte array";
+                    "bytes" => format!("{:?}", bytes),
+                    "error" => format!("{}", e)
+                );
 
-            // Map JSON errors to boolean to match the `Result<JSONValue, boolean>`
-            // result type expected by mappings
-            true
-        });
-        asc_new(self, &result)
+                // Map JSON errors to boolean to match the `Result<JSONValue, boolean>`
+                // result type expected by mappings
+                true
+            });
+        asc_new(self, &result, gas)
     }
 
     /// function ipfs.cat(link: String): Bytes
     pub fn ipfs_cat(
         &mut self,
+        gas: &GasCounter,
         link_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<Uint8Array>, HostExportError> {
+        // Note on gas: There is no gas costing for the ipfs call itself,
+        // since it's not enabled on the network.
+
         if !self.experimental_features.allow_non_deterministic_ipfs {
             return Err(HostExportError::Deterministic(anyhow!(
                 "`ipfs.cat` is deprecated. Improved support for IPFS will be added in the future"
             )));
         }
 
-        let link = asc_get(self, link_ptr)?;
+        let link = asc_get(self, link_ptr, gas)?;
         let ipfs_res = self.ctx.host_exports.ipfs_cat(&self.ctx.logger, link);
         match ipfs_res {
-            Ok(bytes) => asc_new(self, &*bytes).map_err(Into::into),
+            Ok(bytes) => asc_new(self, &*bytes, gas).map_err(Into::into),
 
             // Return null in case of error.
             Err(e) => {
                 info!(&self.ctx.logger, "Failed ipfs.cat, returning `null`";
-                                    "link" => asc_get::<String, _, _>(self, link_ptr)?,
+                                    "link" => asc_get::<String, _, _>(self, link_ptr, gas)?,
                                     "error" => e.to_string());
                 Ok(AscPtr::null())
             }
@@ -982,22 +1098,27 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     /// function ipfs.map(link: String, callback: String, flags: String[]): void
     pub fn ipfs_map(
         &mut self,
+        gas: &GasCounter,
         link_ptr: AscPtr<AscString>,
         callback: AscPtr<AscString>,
         user_data: AscPtr<AscEnum<StoreValueKind>>,
         flags: AscPtr<Array<AscPtr<AscString>>>,
     ) -> Result<(), HostExportError> {
+        // Note on gas:
+        // Ideally we would consume gas the same as ipfs_cat and then share
+        // gas across the spawned modules for callbacks.
+
         if !self.experimental_features.allow_non_deterministic_ipfs {
             return Err(HostExportError::Deterministic(anyhow!(
                 "`ipfs.map` is deprecated. Improved support for IPFS will be added in the future"
             )));
         }
 
-        let link: String = asc_get(self, link_ptr)?;
-        let callback: String = asc_get(self, callback)?;
-        let user_data: store::Value = try_asc_get(self, user_data)?;
+        let link: String = asc_get(self, link_ptr, gas)?;
+        let callback: String = asc_get(self, callback, gas)?;
+        let user_data: store::Value = try_asc_get(self, user_data, gas)?;
 
-        let flags = asc_get(self, flags)?;
+        let flags = asc_get(self, flags, gas)?;
 
         // Pause the timeout while running ipfs_map, ensure it will be restarted by using a guard.
         self.timeout_stopwatch.lock().unwrap().stop();
@@ -1033,308 +1154,352 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     /// function json.toI64(json: String): i64
     pub fn json_to_i64(
         &mut self,
+        gas: &GasCounter,
         json_ptr: AscPtr<AscString>,
     ) -> Result<i64, DeterministicHostError> {
-        self.ctx.host_exports.json_to_i64(asc_get(self, json_ptr)?)
+        self.ctx
+            .host_exports
+            .json_to_i64(asc_get(self, json_ptr, gas)?, gas)
     }
 
     /// Expects a decimal string.
     /// function json.toU64(json: String): u64
     pub fn json_to_u64(
         &mut self,
+        gas: &GasCounter,
         json_ptr: AscPtr<AscString>,
     ) -> Result<u64, DeterministicHostError> {
-        self.ctx.host_exports.json_to_u64(asc_get(self, json_ptr)?)
+        self.ctx
+            .host_exports
+            .json_to_u64(asc_get(self, json_ptr, gas)?, gas)
     }
 
     /// Expects a decimal string.
     /// function json.toF64(json: String): f64
     pub fn json_to_f64(
         &mut self,
+        gas: &GasCounter,
         json_ptr: AscPtr<AscString>,
     ) -> Result<f64, DeterministicHostError> {
-        self.ctx.host_exports.json_to_f64(asc_get(self, json_ptr)?)
+        self.ctx
+            .host_exports
+            .json_to_f64(asc_get(self, json_ptr, gas)?, gas)
     }
 
     /// Expects a decimal string.
     /// function json.toBigInt(json: String): BigInt
     pub fn json_to_big_int(
         &mut self,
+        gas: &GasCounter,
         json_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
         let big_int = self
             .ctx
             .host_exports
-            .json_to_big_int(asc_get(self, json_ptr)?)?;
-        asc_new(self, &*big_int)
+            .json_to_big_int(asc_get(self, json_ptr, gas)?, gas)?;
+        asc_new(self, &*big_int, gas)
     }
 
     /// function crypto.keccak256(input: Bytes): Bytes
     pub fn crypto_keccak_256(
         &mut self,
+        gas: &GasCounter,
         input_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<Uint8Array>, DeterministicHostError> {
         let input = self
             .ctx
             .host_exports
-            .crypto_keccak_256(asc_get(self, input_ptr)?)?;
-        asc_new(self, input.as_ref())
+            .crypto_keccak_256(asc_get(self, input_ptr, gas)?, gas)?;
+        asc_new(self, input.as_ref(), gas)
     }
 
     /// function bigInt.plus(x: BigInt, y: BigInt): BigInt
     pub fn big_int_plus(
         &mut self,
+        gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_int_plus(asc_get(self, x_ptr)?, asc_get(self, y_ptr)?)?;
-        asc_new(self, &result)
+        let result = self.ctx.host_exports.big_int_plus(
+            asc_get(self, x_ptr, gas)?,
+            asc_get(self, y_ptr, gas)?,
+            gas,
+        )?;
+        asc_new(self, &result, gas)
     }
 
     /// function bigInt.minus(x: BigInt, y: BigInt): BigInt
     pub fn big_int_minus(
         &mut self,
+        gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_int_minus(asc_get(self, x_ptr)?, asc_get(self, y_ptr)?)?;
-        asc_new(self, &result)
+        let result = self.ctx.host_exports.big_int_minus(
+            asc_get(self, x_ptr, gas)?,
+            asc_get(self, y_ptr, gas)?,
+            gas,
+        )?;
+        asc_new(self, &result, gas)
     }
 
     /// function bigInt.times(x: BigInt, y: BigInt): BigInt
     pub fn big_int_times(
         &mut self,
+        gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_int_times(asc_get(self, x_ptr)?, asc_get(self, y_ptr)?)?;
-        asc_new(self, &result)
+        let result = self.ctx.host_exports.big_int_times(
+            asc_get(self, x_ptr, gas)?,
+            asc_get(self, y_ptr, gas)?,
+            gas,
+        )?;
+        asc_new(self, &result, gas)
     }
 
     /// function bigInt.dividedBy(x: BigInt, y: BigInt): BigInt
     pub fn big_int_divided_by(
         &mut self,
+        gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_int_divided_by(asc_get(self, x_ptr)?, asc_get(self, y_ptr)?)?;
-        asc_new(self, &result)
+        let result = self.ctx.host_exports.big_int_divided_by(
+            asc_get(self, x_ptr, gas)?,
+            asc_get(self, y_ptr, gas)?,
+            gas,
+        )?;
+        asc_new(self, &result, gas)
     }
 
     /// function bigInt.dividedByDecimal(x: BigInt, y: BigDecimal): BigDecimal
     pub fn big_int_divided_by_decimal(
         &mut self,
+        gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, DeterministicHostError> {
-        let x = BigDecimal::new(asc_get::<BigInt, _, _>(self, x_ptr)?, 0);
-        let result = self
-            .ctx
-            .host_exports
-            .big_decimal_divided_by(x, try_asc_get(self, y_ptr)?)?;
-        asc_new(self, &result)
+        let x = BigDecimal::new(asc_get(self, x_ptr, gas)?, 0);
+        let result =
+            self.ctx
+                .host_exports
+                .big_decimal_divided_by(x, try_asc_get(self, y_ptr, gas)?, gas)?;
+        asc_new(self, &result, gas)
     }
 
     /// function bigInt.mod(x: BigInt, y: BigInt): BigInt
     pub fn big_int_mod(
         &mut self,
+        gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_int_mod(asc_get(self, x_ptr)?, asc_get(self, y_ptr)?)?;
-        asc_new(self, &result)
+        let result = self.ctx.host_exports.big_int_mod(
+            asc_get(self, x_ptr, gas)?,
+            asc_get(self, y_ptr, gas)?,
+            gas,
+        )?;
+        asc_new(self, &result, gas)
     }
 
     /// function bigInt.pow(x: BigInt, exp: u8): BigInt
     pub fn big_int_pow(
         &mut self,
+        gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         exp: u32,
     ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
-        let exp = u8::try_from(exp).map_err(|e| DeterministicHostError(e.into()))?;
+        let exp = u8::try_from(exp).map_err(|e| DeterministicHostError::from(Error::from(e)))?;
         let result = self
             .ctx
             .host_exports
-            .big_int_pow(asc_get(self, x_ptr)?, exp)?;
-        asc_new(self, &result)
+            .big_int_pow(asc_get(self, x_ptr, gas)?, exp, gas)?;
+        asc_new(self, &result, gas)
     }
 
     /// function bigInt.bitOr(x: BigInt, y: BigInt): BigInt
     pub fn big_int_bit_or(
         &mut self,
+        gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_int_bit_or(asc_get(self, x_ptr)?, asc_get(self, y_ptr)?)?;
-        asc_new(self, &result)
+        let result = self.ctx.host_exports.big_int_bit_or(
+            asc_get(self, x_ptr, gas)?,
+            asc_get(self, y_ptr, gas)?,
+            gas,
+        )?;
+        asc_new(self, &result, gas)
     }
 
     /// function bigInt.bitAnd(x: BigInt, y: BigInt): BigInt
     pub fn big_int_bit_and(
         &mut self,
+        gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_int_bit_and(asc_get(self, x_ptr)?, asc_get(self, y_ptr)?)?;
-        asc_new(self, &result)
+        let result = self.ctx.host_exports.big_int_bit_and(
+            asc_get(self, x_ptr, gas)?,
+            asc_get(self, y_ptr, gas)?,
+            gas,
+        )?;
+        asc_new(self, &result, gas)
     }
 
     /// function bigInt.leftShift(x: BigInt, bits: u8): BigInt
     pub fn big_int_left_shift(
         &mut self,
+        gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         bits: u32,
     ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
-        let bits = u8::try_from(bits).map_err(|e| DeterministicHostError(e.into()))?;
-        let result = self
-            .ctx
-            .host_exports
-            .big_int_left_shift(asc_get(self, x_ptr)?, bits)?;
-        asc_new(self, &result)
+        let bits = u8::try_from(bits).map_err(|e| DeterministicHostError::from(Error::from(e)))?;
+        let result =
+            self.ctx
+                .host_exports
+                .big_int_left_shift(asc_get(self, x_ptr, gas)?, bits, gas)?;
+        asc_new(self, &result, gas)
     }
 
     /// function bigInt.rightShift(x: BigInt, bits: u8): BigInt
     pub fn big_int_right_shift(
         &mut self,
+        gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         bits: u32,
     ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
-        let bits = u8::try_from(bits).map_err(|e| DeterministicHostError(e.into()))?;
-        let result = self
-            .ctx
-            .host_exports
-            .big_int_right_shift(asc_get(self, x_ptr)?, bits)?;
-        asc_new(self, &result)
+        let bits = u8::try_from(bits).map_err(|e| DeterministicHostError::from(Error::from(e)))?;
+        let result =
+            self.ctx
+                .host_exports
+                .big_int_right_shift(asc_get(self, x_ptr, gas)?, bits, gas)?;
+        asc_new(self, &result, gas)
     }
 
     /// function typeConversion.bytesToBase58(bytes: Bytes): string
     pub fn bytes_to_base58(
         &mut self,
+        gas: &GasCounter,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscString>, DeterministicHostError> {
         let result = self
             .ctx
             .host_exports
-            .bytes_to_base58(asc_get(self, bytes_ptr)?)?;
-        asc_new(self, &result)
+            .bytes_to_base58(asc_get(self, bytes_ptr, gas)?, gas)?;
+        asc_new(self, &result, gas)
     }
 
     /// function bigDecimal.toString(x: BigDecimal): string
     pub fn big_decimal_to_string(
         &mut self,
+        gas: &GasCounter,
         big_decimal_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscString>, DeterministicHostError> {
         let result = self
             .ctx
             .host_exports
-            .big_decimal_to_string(try_asc_get(self, big_decimal_ptr)?)?;
-        asc_new(self, &result)
+            .big_decimal_to_string(try_asc_get(self, big_decimal_ptr, gas)?, gas)?;
+        asc_new(self, &result, gas)
     }
 
     /// function bigDecimal.fromString(x: string): BigDecimal
     pub fn big_decimal_from_string(
         &mut self,
+        gas: &GasCounter,
         string_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscBigDecimal>, DeterministicHostError> {
         let result = self
             .ctx
             .host_exports
-            .big_decimal_from_string(asc_get(self, string_ptr)?)?;
-        asc_new(self, &result)
+            .big_decimal_from_string(asc_get(self, string_ptr, gas)?, gas)?;
+        asc_new(self, &result, gas)
     }
 
     /// function bigDecimal.plus(x: BigDecimal, y: BigDecimal): BigDecimal
     pub fn big_decimal_plus(
         &mut self,
+        gas: &GasCounter,
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, DeterministicHostError> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_decimal_plus(try_asc_get(self, x_ptr)?, try_asc_get(self, y_ptr)?)?;
-        asc_new(self, &result)
+        let result = self.ctx.host_exports.big_decimal_plus(
+            try_asc_get(self, x_ptr, gas)?,
+            try_asc_get(self, y_ptr, gas)?,
+            gas,
+        )?;
+        asc_new(self, &result, gas)
     }
 
     /// function bigDecimal.minus(x: BigDecimal, y: BigDecimal): BigDecimal
     pub fn big_decimal_minus(
         &mut self,
+        gas: &GasCounter,
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, DeterministicHostError> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_decimal_minus(try_asc_get(self, x_ptr)?, try_asc_get(self, y_ptr)?)?;
-        asc_new(self, &result)
+        let result = self.ctx.host_exports.big_decimal_minus(
+            try_asc_get(self, x_ptr, gas)?,
+            try_asc_get(self, y_ptr, gas)?,
+            gas,
+        )?;
+        asc_new(self, &result, gas)
     }
 
     /// function bigDecimal.times(x: BigDecimal, y: BigDecimal): BigDecimal
     pub fn big_decimal_times(
         &mut self,
+        gas: &GasCounter,
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, DeterministicHostError> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_decimal_times(try_asc_get(self, x_ptr)?, try_asc_get(self, y_ptr)?)?;
-        asc_new(self, &result)
+        let result = self.ctx.host_exports.big_decimal_times(
+            try_asc_get(self, x_ptr, gas)?,
+            try_asc_get(self, y_ptr, gas)?,
+            gas,
+        )?;
+        asc_new(self, &result, gas)
     }
 
     /// function bigDecimal.dividedBy(x: BigDecimal, y: BigDecimal): BigDecimal
     pub fn big_decimal_divided_by(
         &mut self,
+        gas: &GasCounter,
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, DeterministicHostError> {
-        let result = self
-            .ctx
-            .host_exports
-            .big_decimal_divided_by(try_asc_get(self, x_ptr)?, try_asc_get(self, y_ptr)?)?;
-        asc_new(self, &result)
+        let result = self.ctx.host_exports.big_decimal_divided_by(
+            try_asc_get(self, x_ptr, gas)?,
+            try_asc_get(self, y_ptr, gas)?,
+            gas,
+        )?;
+        asc_new(self, &result, gas)
     }
 
     /// function bigDecimal.equals(x: BigDecimal, y: BigDecimal): bool
     pub fn big_decimal_equals(
         &mut self,
+        gas: &GasCounter,
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<bool, DeterministicHostError> {
-        self.ctx
-            .host_exports
-            .big_decimal_equals(try_asc_get(self, x_ptr)?, try_asc_get(self, y_ptr)?)
+        self.ctx.host_exports.big_decimal_equals(
+            try_asc_get(self, x_ptr, gas)?,
+            try_asc_get(self, y_ptr, gas)?,
+            gas,
+        )
     }
 
     /// function dataSource.create(name: string, params: Array<string>): void
     pub fn data_source_create(
         &mut self,
+        gas: &GasCounter,
         name_ptr: AscPtr<AscString>,
         params_ptr: AscPtr<Array<AscPtr<AscString>>>,
     ) -> Result<(), HostExportError> {
-        let name: String = asc_get(self, name_ptr)?;
-        let params: Vec<String> = asc_get(self, params_ptr)?;
+        let name: String = asc_get(self, name_ptr, gas)?;
+        let params: Vec<String> = asc_get(self, params_ptr, gas)?;
         self.ctx.host_exports.data_source_create(
             &self.ctx.logger,
             &mut self.ctx.state,
@@ -1342,19 +1507,21 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             params,
             None,
             self.ctx.block_ptr.number,
+            gas,
         )
     }
 
     /// function createWithContext(name: string, params: Array<string>, context: DataSourceContext): void
     pub fn data_source_create_with_context(
         &mut self,
+        gas: &GasCounter,
         name_ptr: AscPtr<AscString>,
         params_ptr: AscPtr<Array<AscPtr<AscString>>>,
         context_ptr: AscPtr<AscEntity>,
     ) -> Result<(), HostExportError> {
-        let name: String = asc_get(self, name_ptr)?;
-        let params: Vec<String> = asc_get(self, params_ptr)?;
-        let context: HashMap<_, _> = try_asc_get(self, context_ptr)?;
+        let name: String = asc_get(self, name_ptr, gas)?;
+        let params: Vec<String> = asc_get(self, params_ptr, gas)?;
+        let context: HashMap<_, _> = try_asc_get(self, context_ptr, gas)?;
         self.ctx.host_exports.data_source_create(
             &self.ctx.logger,
             &mut self.ctx.state,
@@ -1362,73 +1529,117 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             params,
             Some(context.into()),
             self.ctx.block_ptr.number,
+            gas,
         )
     }
 
     /// function dataSource.address(): Bytes
-    pub fn data_source_address(&mut self) -> Result<AscPtr<Uint8Array>, DeterministicHostError> {
-        asc_new(self, self.ctx.host_exports.data_source_address().as_slice())
+    pub fn data_source_address(
+        &mut self,
+        gas: &GasCounter,
+    ) -> Result<AscPtr<Uint8Array>, DeterministicHostError> {
+        asc_new(
+            self,
+            self.ctx.host_exports.data_source_address(gas)?.as_slice(),
+            gas,
+        )
     }
 
     /// function dataSource.network(): String
-    pub fn data_source_network(&mut self) -> Result<AscPtr<AscString>, DeterministicHostError> {
-        asc_new(self, &self.ctx.host_exports.data_source_network())
+    pub fn data_source_network(
+        &mut self,
+        gas: &GasCounter,
+    ) -> Result<AscPtr<AscString>, DeterministicHostError> {
+        asc_new(self, &self.ctx.host_exports.data_source_network(gas)?, gas)
     }
 
     /// function dataSource.context(): DataSourceContext
-    pub fn data_source_context(&mut self) -> Result<AscPtr<AscEntity>, DeterministicHostError> {
-        asc_new(self, &self.ctx.host_exports.data_source_context().sorted())
+    pub fn data_source_context(
+        &mut self,
+        gas: &GasCounter,
+    ) -> Result<AscPtr<AscEntity>, DeterministicHostError> {
+        asc_new(
+            self,
+            &self.ctx.host_exports.data_source_context(gas)?.sorted(),
+            gas,
+        )
     }
 
     pub fn ens_name_by_hash(
         &mut self,
+        gas: &GasCounter,
         hash_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscString>, HostExportError> {
-        let hash: String = asc_get(self, hash_ptr)?;
+        // Not enabled on the network, no gas consumed.
+        drop(gas);
+
+        // This is unrelated to IPFS, but piggyback on the config to disallow it on the network.
+        if !self.experimental_features.allow_non_deterministic_ipfs {
+            return Err(HostExportError::Deterministic(anyhow!(
+                "`ens_name_by_hash` is deprecated"
+            )));
+        }
+
+        let hash: String = asc_get(self, hash_ptr, gas)?;
         let name = self.ctx.host_exports.ens_name_by_hash(&*hash)?;
+
         // map `None` to `null`, and `Some(s)` to a runtime string
-        name.map(|name| asc_new(self, &*name).map_err(Into::into))
+        name.map(|name| asc_new(self, &*name, gas).map_err(Into::into))
             .unwrap_or(Ok(AscPtr::null()))
     }
 
     pub fn log_log(
         &mut self,
+        gas: &GasCounter,
         level: u32,
         msg: AscPtr<AscString>,
     ) -> Result<(), DeterministicHostError> {
         let level = LogLevel::from(level).into();
-        let msg: String = asc_get(self, msg)?;
-        self.ctx.host_exports.log_log(&self.ctx.logger, level, msg)
+        let msg: String = asc_get(self, msg, gas)?;
+        self.ctx
+            .host_exports
+            .log_log(&self.ctx.logger, level, msg, gas)
     }
 
     /// function encode(token: ethereum.Value): Bytes | null
     pub fn ethereum_encode(
         &mut self,
+        gas: &GasCounter,
         token_ptr: AscPtr<AscEnum<EthereumValueKind>>,
     ) -> Result<AscPtr<Uint8Array>, DeterministicHostError> {
-        let data = host_exports::ethereum_encode(asc_get(self, token_ptr)?);
+        let data = self
+            .ctx
+            .host_exports
+            .ethereum_encode(asc_get(self, token_ptr, gas)?, gas);
+
         // return `null` if it fails
-        data.map(|bytes| asc_new(self, &*bytes))
+        data.map(|bytes| asc_new(self, &*bytes, gas))
             .unwrap_or(Ok(AscPtr::null()))
     }
 
     /// function decode(types: String, data: Bytes): ethereum.Value | null
     pub fn ethereum_decode(
         &mut self,
+        gas: &GasCounter,
         types_ptr: AscPtr<AscString>,
         data_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscEnum<EthereumValueKind>>, DeterministicHostError> {
-        let result =
-            host_exports::ethereum_decode(asc_get(self, types_ptr)?, asc_get(self, data_ptr)?);
+        let result = self.ctx.host_exports.ethereum_decode(
+            asc_get(self, types_ptr, gas)?,
+            asc_get(self, data_ptr, gas)?,
+            gas,
+        );
+
         // return `null` if it fails
         result
-            .map(|param| asc_new(self, &param))
+            .map(|param| asc_new(self, &param, gas))
             .unwrap_or(Ok(AscPtr::null()))
     }
 
     /// function arweave.transactionData(txId: string): Bytes | null
     pub fn arweave_transaction_data(
         &mut self,
+        _gas: &GasCounter,
         _tx_id: AscPtr<AscString>,
     ) -> Result<AscPtr<Uint8Array>, HostExportError> {
         Err(HostExportError::Deterministic(anyhow!(
@@ -1439,6 +1650,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     /// function box.profile(address: string): JSONValue | null
     pub fn box_profile(
         &mut self,
+        _gas: &GasCounter,
         _address: AscPtr<AscString>,
     ) -> Result<AscPtr<AscJson>, HostExportError> {
         Err(HostExportError::Deterministic(anyhow!(

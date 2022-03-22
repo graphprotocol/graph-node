@@ -1,10 +1,10 @@
 [package]
 name = "graph-server-json-rpc"
-version = "0.24.1"
-edition = "2018"
+version = "0.25.2"
+edition = "2021"
 
 [dependencies]
 graph = { path = "../../graph" }
-jsonrpc-http-server = "14.0.6"
+jsonrpc-http-server = "18.0.0"
 lazy_static = "1.2.0"
 serde = "1.0"

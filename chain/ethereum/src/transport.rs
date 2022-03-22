@@ -1,12 +1,12 @@
 use jsonrpc_core::types::Call;
-use serde_json::Value;
-use std::env;
+use jsonrpc_core::Value;
 
-pub use web3::transports::EventLoopHandle;
 use web3::transports::{http, ipc, ws};
 use web3::RequestId;
 
 use graph::prelude::*;
+use graph::url::Url;
+use std::future::Future;
 
 /// Abstraction over the different web3 transports.
 #[derive(Clone, Debug)]
@@ -18,16 +18,19 @@ pub enum Transport {
 
 impl Transport {
     /// Creates an IPC transport.
-    pub fn new_ipc(ipc: &str) -> (EventLoopHandle, Self) {
+    #[cfg(unix)]
+    pub async fn new_ipc(ipc: &str) -> Self {
         ipc::Ipc::new(ipc)
-            .map(|(event_loop, transport)| (event_loop, Transport::IPC(transport)))
+            .await
+            .map(|transport| Transport::IPC(transport))
             .expect("Failed to connect to Ethereum IPC")
     }
 
     /// Creates a WebSocket transport.
-    pub fn new_ws(ws: &str) -> (EventLoopHandle, Self) {
+    pub async fn new_ws(ws: &str) -> Self {
         ws::WebSocket::new(ws)
-            .map(|(event_loop, transport)| (event_loop, Transport::WS(transport)))
+            .await
+            .map(|transport| Transport::WS(transport))
             .expect("Failed to connect to Ethereum WS")
     }
 
@@ -35,19 +38,18 @@ impl Transport {
     ///
     /// Note: JSON-RPC over HTTP doesn't always support subscribing to new
     /// blocks (one such example is Infura's HTTP endpoint).
-    pub fn new_rpc(rpc: &str, headers: ::http::HeaderMap) -> (EventLoopHandle, Self) {
-        let max_parallel_http: usize = env::var_os("ETHEREUM_RPC_MAX_PARALLEL_REQUESTS")
-            .map(|s| s.to_str().unwrap().parse().unwrap())
-            .unwrap_or(64);
-
-        http::Http::with_max_parallel_and_headers(rpc, max_parallel_http, headers)
-            .map(|(event_loop, transport)| (event_loop, Transport::RPC(transport)))
-            .expect("Failed to connect to Ethereum RPC")
+    pub fn new_rpc(rpc: Url, headers: ::http::HeaderMap) -> Self {
+        // Unwrap: This only fails if something is wrong with the system's TLS config.
+        let client = reqwest::Client::builder()
+            .default_headers(headers)
+            .build()
+            .unwrap();
+        Transport::RPC(http::Http::with_client(client, rpc))
     }
 }
 
 impl web3::Transport for Transport {
-    type Out = Box<dyn Future<Item = Value, Error = web3::error::Error> + Send>;
+    type Out = Box<dyn Future<Output = Result<Value, web3::error::Error>> + Send + Unpin>;
 
     fn prepare(&self, method: &str, params: Vec<Value>) -> (RequestId, Call) {
         match self {
@@ -68,8 +70,9 @@ impl web3::Transport for Transport {
 
 impl web3::BatchTransport for Transport {
     type Batch = Box<
-        dyn Future<Item = Vec<Result<Value, web3::error::Error>>, Error = web3::error::Error>
-            + Send,
+        dyn Future<Output = Result<Vec<Result<Value, web3::error::Error>>, web3::error::Error>>
+            + Send
+            + Unpin,
     >;
 
     fn send_batch<T>(&self, requests: T) -> Self::Batch
