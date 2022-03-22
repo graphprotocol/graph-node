@@ -83,6 +83,7 @@ deploy your subgraph to the running Graph Node.
   
 We do not currently build native images for Macbook M1, which can lead to processes being killed due to out-of-memory errors (code 137). Based on the example `docker-compose.yml` is possible to rebuild the image for your M1 by running the following, then running `docker-compose up` as normal:
  
+> **Important** Increase memory limits for the docker engine running on your machine. Otherwise docker build command will fail due to out of memory error. To do that, open docker-desktop and go to Resources/advanced/memory.
 ```
 # Remove the original image
 docker rmi graphprotocol/graph-node:latest
