@@ -142,7 +142,7 @@ impl ProofOfIndexing {
         causality_region: &str,
         event: &ProofOfIndexingEvent<'_>,
     ) {
-        if ENV_VARS.log_poi_events() {
+        if ENV_VARS.log_poi_events {
             debug!(
                 logger,
                 "Proof of indexing event";

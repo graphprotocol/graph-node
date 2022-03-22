@@ -227,7 +227,7 @@ impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
                     // To be robust against any problems with the listener for the DB channel, a
                     // timeout is set so that subscribers are guaranteed to get periodic updates.
                     match tokio::time::timeout(
-                        ENV_VARS.chain_head_watcher_timeout(),
+                        ENV_VARS.store.chain_head_watcher_timeout,
                         update_receiver.changed(),
                     )
                     .await
@@ -241,7 +241,7 @@ impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
                         Err(_) => debug!(
                             logger,
                             "no chain head update for {} seconds, polling for update",
-                            ENV_VARS.chain_head_watcher_timeout().as_secs()
+                            ENV_VARS.store.chain_head_watcher_timeout.as_secs()
                         ),
                     };
                     Some(((), update_receiver))

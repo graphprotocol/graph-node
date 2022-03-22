@@ -4,6 +4,7 @@ use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::{Block as BlockchainBlock, Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::store::BlockStore;
 use graph::data::graphql::effort::LoadManager;
+use graph::env::EnvVars;
 use graph::firehose::{FirehoseEndpoints, FirehoseNetworks};
 use graph::log::logger;
 use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
@@ -181,7 +182,10 @@ async fn main() {
 
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry
-    let link_resolver = Arc::new(LinkResolver::from(ipfs_clients));
+    let link_resolver = Arc::new(LinkResolver::new(
+        ipfs_clients,
+        Arc::new(EnvVars::default()),
+    ));
 
     // Set up Prometheus registry
     let prometheus_registry = Arc::new(Registry::new());
@@ -356,7 +360,7 @@ async fn main() {
             );
             graph::spawn_blocking(job_runner.start());
         }
-        let static_filters = ENV_VARS.experimental_static_filters();
+        let static_filters = ENV_VARS.experimental_static_filters;
 
         let subgraph_instance_manager = SubgraphInstanceManager::new(
             &logger_factory,
@@ -375,7 +379,7 @@ async fn main() {
         );
 
         // Check version switching mode environment variable
-        let version_switching_mode = ENV_VARS.subgraph_version_switching_mode();
+        let version_switching_mode = ENV_VARS.subgraph_version_switching_mode;
 
         // Create named subgraph provider for resolving subgraph name->ID mappings
         let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
@@ -512,7 +516,7 @@ async fn main() {
                                      "code" => LogCode::TokioContention);
             if timeout < Duration::from_secs(10) {
                 timeout *= 10;
-            } else if ENV_VARS.kill_if_unresponsive() {
+            } else if ENV_VARS.kill_if_unresponsive {
                 // The node is unresponsive, kill it in hopes it will be restarted.
                 crit!(contention_logger, "Node is unresponsive, killing process");
                 std::process::abort()

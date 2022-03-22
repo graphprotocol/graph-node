@@ -14,6 +14,7 @@ use graph::anyhow::{format_err, Error};
 use graph::blockchain::{BlockchainKind, BlockchainMap, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::BlockStore as _;
+use graph::env::EnvVars;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, FirehoseNetworks};
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::MetricsRegistry as MetricsRegistryTrait;
@@ -54,7 +55,10 @@ pub async fn run(
 
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry
-    let link_resolver = Arc::new(LinkResolver::from(ipfs_clients));
+    let link_resolver = Arc::new(LinkResolver::new(
+        ipfs_clients,
+        Arc::new(EnvVars::default()),
+    ));
 
     let eth_networks = create_ethereum_networks(logger.clone(), metrics_registry.clone(), &config)
         .await
@@ -113,7 +117,7 @@ pub async fn run(
     let mut blockchain_map = BlockchainMap::new();
     blockchain_map.insert(network_name.clone(), Arc::new(chain));
 
-    let static_filters = ENV_VARS.experimental_static_filters();
+    let static_filters = ENV_VARS.experimental_static_filters;
 
     let blockchain_map = Arc::new(blockchain_map);
     let subgraph_instance_manager = SubgraphInstanceManager::new(

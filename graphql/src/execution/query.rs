@@ -25,7 +25,7 @@ use crate::{execution::get_field, schema::api::ErrorPolicy};
 
 lazy_static! {
     static ref GRAPHQL_VALIDATION_PLAN: ValidationPlan =
-        ValidationPlan::from(if !ENV_VARS.enable_graphql_validations() {
+        ValidationPlan::from(if !ENV_VARS.graphql.enable_validations {
             vec![]
         } else {
             vec![

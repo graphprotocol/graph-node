@@ -116,7 +116,7 @@ impl WritableStore {
     /// Try to send a `StoreEvent`; if sending fails, log the error but
     /// return `Ok(())`
     fn try_send_store_event(&self, event: StoreEvent) -> Result<(), StoreError> {
-        if !ENV_VARS.disable_subscription_notifications() {
+        if !ENV_VARS.store.disable_subscription_notifications {
             let _ = self.store.send_store_event(&event).map_err(
                 |e| error!(self.logger, "Could not send store event"; "error" => e.to_string()),
             );

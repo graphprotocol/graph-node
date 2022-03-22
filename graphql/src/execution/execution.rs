@@ -14,6 +14,7 @@ use std::{borrow::ToOwned, collections::HashSet};
 
 use graph::data::graphql::*;
 use graph::data::query::CacheStatus;
+use graph::env::CachedSubgraphIds;
 use graph::prelude::*;
 use graph::util::lfu_cache::LfuCache;
 
@@ -27,11 +28,11 @@ lazy_static! {
     // Sharded query results cache for recent blocks by network.
     // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
     static ref QUERY_BLOCK_CACHE: Vec<TimedMutex<QueryBlockCache>> = {
-            let shards = ENV_VARS.query_block_cache_shards();
-            let blocks = ENV_VARS.query_cache_blocks();
+            let shards = ENV_VARS.query_block_cache_shards;
+            let blocks = ENV_VARS.mappings.query_cache_blocks;
 
             // The memory budget is evenly divided among blocks and their shards.
-            let max_weight = ENV_VARS.query_cache_max_mem() / (blocks * shards as usize);
+            let max_weight = ENV_VARS.mappings. query_cache_max_mem / (blocks * shards as usize);
             let mut caches = Vec::new();
             for i in 0..shards {
                 let id = format!("query_block_cache_{}", i);
@@ -42,7 +43,7 @@ lazy_static! {
     static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new("query_herd_cache");
     static ref QUERY_LFU_CACHE: Vec<TimedMutex<LfuCache<QueryHash, WeightedResult>>> = {
         std::iter::repeat_with(|| TimedMutex::new(LfuCache::new(), "query_lfu_cache"))
-                    .take(ENV_VARS.query_lfu_cache_shards() as usize).collect()
+                    .take(ENV_VARS.query_lfu_cache_shards as usize).collect()
     };
 }
 
@@ -237,7 +238,7 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
     // and once for insert.
     let mut key: Option<QueryHash> = None;
 
-    if let Some(cached_subgraph_ids) = ENV_VARS.cached_subgraph_ids() {
+    if let CachedSubgraphIds::Only(ref cached_subgraph_ids) = ENV_VARS.cached_subgraph_ids {
         if R::CACHEABLE && cached_subgraph_ids.contains(ctx.query.schema.id()) {
             if let (Some(block_ptr), Some(network)) = (block_ptr.as_ref(), &ctx.query.network) {
                 // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two reasons:
@@ -354,9 +355,9 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
         } else {
             // Results that are too old for the QUERY_BLOCK_CACHE go into the QUERY_LFU_CACHE
             let mut cache = QUERY_LFU_CACHE[shard].lock(&ctx.logger);
-            let max_mem =
-                ENV_VARS.query_cache_max_mem() / (ENV_VARS.query_block_cache_shards() as usize);
-            cache.evict_with_period(max_mem, ENV_VARS.query_cache_stale_period());
+            let max_mem = ENV_VARS.mappings.query_cache_max_mem
+                / (ENV_VARS.query_block_cache_shards as usize);
+            cache.evict_with_period(max_mem, ENV_VARS.mappings.query_cache_stale_period);
             cache.insert(
                 key,
                 WeightedResult {

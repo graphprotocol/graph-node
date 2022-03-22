@@ -115,7 +115,7 @@ where
         state: DeploymentState,
         latest_block: u64,
     ) -> Result<(), QueryExecutionError> {
-        if ENV_VARS.graphql_allow_deployment_change() {
+        if ENV_VARS.graphql.allow_deployment_change {
             return Ok(());
         }
         let new_state = store.deployment_state().await?;
@@ -167,7 +167,7 @@ where
             .clone()
             .unwrap_or(state);
 
-        let max_depth = max_depth.unwrap_or(ENV_VARS.graphql_max_depth());
+        let max_depth = max_depth.unwrap_or(ENV_VARS.graphql.max_depth);
         let query = crate::execution::Query::new(
             &self.logger,
             schema,
@@ -206,9 +206,9 @@ where
                 resolver.block_ptr.clone(),
                 QueryExecutionOptions {
                     resolver,
-                    deadline: ENV_VARS.graphql_query_timeout().map(|t| Instant::now() + t),
-                    max_first: max_first.unwrap_or(ENV_VARS.graphql_max_first()),
-                    max_skip: max_skip.unwrap_or(ENV_VARS.graphql_max_skip()),
+                    deadline: ENV_VARS.graphql.query_timeout.map(|t| Instant::now() + t),
+                    max_first: max_first.unwrap_or(ENV_VARS.graphql.max_first),
+                    max_skip: max_skip.unwrap_or(ENV_VARS.graphql.max_skip),
                     load_manager: self.load_manager.clone(),
                 },
             )
@@ -234,10 +234,10 @@ where
         self.run_query_with_complexity(
             query,
             target,
-            ENV_VARS.graphql_max_complexity(),
-            Some(ENV_VARS.graphql_max_depth()),
-            Some(ENV_VARS.graphql_max_first()),
-            Some(ENV_VARS.graphql_max_skip()),
+            ENV_VARS.graphql.max_complexity,
+            Some(ENV_VARS.graphql.max_depth),
+            Some(ENV_VARS.graphql.max_first),
+            Some(ENV_VARS.graphql.max_skip),
         )
         .await
     }
@@ -278,8 +278,8 @@ where
             schema,
             Some(network),
             subscription.query,
-            ENV_VARS.graphql_max_complexity(),
-            ENV_VARS.graphql_max_depth(),
+            ENV_VARS.graphql.max_complexity,
+            ENV_VARS.graphql.max_depth,
         )?;
 
         if let Err(err) = self
@@ -300,11 +300,11 @@ where
                 logger: self.logger.clone(),
                 store,
                 subscription_manager: self.subscription_manager.cheap_clone(),
-                timeout: ENV_VARS.graphql_query_timeout(),
-                max_complexity: ENV_VARS.graphql_max_complexity(),
-                max_depth: ENV_VARS.graphql_max_depth(),
-                max_first: ENV_VARS.graphql_max_first(),
-                max_skip: ENV_VARS.graphql_max_skip(),
+                timeout: ENV_VARS.graphql.query_timeout,
+                max_complexity: ENV_VARS.graphql.max_complexity,
+                max_depth: ENV_VARS.graphql.max_depth,
+                max_first: ENV_VARS.graphql.max_first,
+                max_skip: ENV_VARS.graphql.max_skip,
                 result_size: self.result_size.clone(),
             },
         )

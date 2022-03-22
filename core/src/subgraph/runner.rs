@@ -121,7 +121,7 @@ where
 
         // Exponential backoff that starts with two minutes and keeps
         // increasing its timeout exponentially until it reaches the ceiling.
-        let mut backoff = ExponentialBackoff::new(MINUTE * 2, ENV_VARS.subgraph_error_retry_ceil());
+        let mut backoff = ExponentialBackoff::new(MINUTE * 2, ENV_VARS.subgraph_error_retry_ceil);
 
         loop {
             debug!(logger, "Starting or restarting subgraph");
@@ -695,7 +695,7 @@ where
                 // To prevent a buggy pending version from replacing a current version, if errors are
                 // present the subgraph will be unassigned.
                 if has_errors
-                    && !ENV_VARS.disable_fail_fast()
+                    && !ENV_VARS.disable_fail_fast
                     && !store.is_deployment_synced().await?
                 {
                     store

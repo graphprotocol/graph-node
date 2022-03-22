@@ -59,7 +59,7 @@ impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C> {
         metrics: Arc<HostMetrics>,
     ) -> Result<Sender<Self::Req>, Error> {
         let experimental_features = ExperimentalFeatures {
-            allow_non_deterministic_ipfs: ENV_VARS.allow_non_deterministic_ipfs(),
+            allow_non_deterministic_ipfs: ENV_VARS.mappings.allow_non_deterministic_ipfs,
         };
         crate::mapping::spawn_module(
             raw_module,
@@ -67,7 +67,7 @@ impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C> {
             subgraph_id,
             metrics,
             tokio::runtime::Handle::current(),
-            ENV_VARS.mapping_handler_timeout(),
+            ENV_VARS.mappings.timeout,
             experimental_features,
         )
     }

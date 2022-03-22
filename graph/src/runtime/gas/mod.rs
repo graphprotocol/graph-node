@@ -94,7 +94,7 @@ impl GasCounter {
             .fetch_update(SeqCst, SeqCst, |v| Some(v.saturating_add(amount.0)))
             .unwrap();
         let new = old.saturating_add(amount.0);
-        if new >= ENV_VARS.max_gas_per_handler() {
+        if new >= ENV_VARS.max_gas_per_handler {
             Err(DeterministicHostError::gas(anyhow::anyhow!(
                 "Gas limit exceeded. Used: {}",
                 new

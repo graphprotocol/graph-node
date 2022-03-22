@@ -148,7 +148,7 @@ impl NotificationListener {
         debug!(
             logger,
             "Cleaning up large notifications after about {}s",
-            ENV_VARS.large_notification_cleanup_interval().as_secs(),
+            ENV_VARS.store.large_notification_cleanup_interval.as_secs(),
         );
 
         // Create two ends of a boolean variable for signalling when the worker
@@ -237,7 +237,7 @@ impl NotificationListener {
 
                         match JsonNotification::parse(&notification, &mut conn) {
                             Ok(json_notification) => {
-                                let timeout = ENV_VARS.notification_broadcast_timeout();
+                                let timeout = ENV_VARS.store.notification_broadcast_timeout;
                                 match graph::block_on(
                                     sender.send_timeout(json_notification, timeout),
                                 ) {
@@ -450,11 +450,11 @@ impl NotificationSender {
             // If we can't get the lock, another thread in this process is
             // already checking, and we can just skip checking
             if let Ok(mut last_check) = LAST_CLEANUP_CHECK.try_lock() {
-                if last_check.elapsed() > ENV_VARS.large_notification_cleanup_interval() {
+                if last_check.elapsed() > ENV_VARS.store.large_notification_cleanup_interval {
                     diesel::sql_query(format!(
                         "delete from large_notifications
                          where created_at < current_timestamp - interval '{}s'",
-                        ENV_VARS.large_notification_cleanup_interval().as_secs(),
+                        ENV_VARS.store.large_notification_cleanup_interval.as_secs(),
                     ))
                     .execute(conn)?;
                     *last_check = Instant::now();

@@ -266,10 +266,12 @@ pub fn parse_response(response: Value) -> Result<(), jsonrpc_core::Error> {
 
 fn subgraph_routes(name: &SubgraphName, http_port: u16, ws_port: u16) -> Value {
     let http_base_url = ENV_VARS
-        .external_http_base_url()
+        .external_http_base_url
+        .clone()
         .unwrap_or_else(|| format!(":{}", http_port));
     let ws_base_url = ENV_VARS
-        .external_ws_base_url()
+        .external_ws_base_url
+        .clone()
         .unwrap_or_else(|| format!(":{}", ws_port));
 
     let mut map = BTreeMap::new();

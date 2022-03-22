@@ -41,7 +41,7 @@ pub use graph_store_postgres::Store;
 const CONN_POOL_SIZE: u32 = 20;
 
 lazy_static! {
-    pub static ref LOGGER: Logger = match ENV_VARS.log_levels() {
+    pub static ref LOGGER: Logger = match ENV_VARS.log_levels {
         Some(_) => log::logger(false),
         None => Logger::root(slog::Discard, o!()),
     };

@@ -69,7 +69,7 @@ pub struct MovingStats {
 /// the environment
 impl Default for MovingStats {
     fn default() -> Self {
-        Self::new(ENV_VARS.load_window_size(), ENV_VARS.load_bin_size())
+        Self::new(ENV_VARS.load_window_size, ENV_VARS.load_bin_size)
     }
 }
 

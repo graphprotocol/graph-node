@@ -155,7 +155,7 @@ where
                 // Allow for infinite retries for subgraph definition files.
                 &self.link_resolver.as_ref().clone().with_retries(),
                 &logger,
-                ENV_VARS.max_spec_version(),
+                ENV_VARS.max_spec_version.clone(),
             )
             .await
             .context("Failed to resolve subgraph from IPFS")?;

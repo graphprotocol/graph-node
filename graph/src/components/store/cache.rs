@@ -301,7 +301,7 @@ impl EntityCache {
                 mods.push(modification)
             }
         }
-        self.current.evict(ENV_VARS.entity_cache_size());
+        self.current.evict(ENV_VARS.mappings.entity_cache_size);
 
         Ok(ModificationsAndCache {
             modifications: mods,

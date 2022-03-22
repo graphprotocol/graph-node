@@ -499,13 +499,13 @@ fn execute_root_selection_set(
 }
 
 fn check_result_size(logger: &Logger, size: usize) -> Result<(), QueryExecutionError> {
-    if size > ENV_VARS.graphql_error_result_size() {
+    if size > ENV_VARS.graphql.error_result_size {
         return Err(QueryExecutionError::ResultTooBig(
             size,
-            ENV_VARS.graphql_error_result_size(),
+            ENV_VARS.graphql.error_result_size,
         ));
     }
-    if size > ENV_VARS.graphql_warn_result_size() {
+    if size > ENV_VARS.graphql.warn_result_size {
         warn!(logger, "Large query result"; "size" => size);
     }
     Ok(())
@@ -562,7 +562,7 @@ fn execute_selection_set<'a>(
             // If this environment variable is set, the program will use an empty collection that,
             // effectively, causes the `AttributeNames::All` variant to be used as a fallback value for all
             // queries.
-            let collected_columns = if !ENV_VARS.enable_select_by_specific_attributes() {
+            let collected_columns = if !ENV_VARS.enable_select_by_specific_attributes {
                 SelectedAttributes(BTreeMap::new())
             } else {
                 SelectedAttributes::for_field(field)?

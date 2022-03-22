@@ -251,7 +251,7 @@ where
                         );
                     }
 
-                    if let Some(max_ops) = ENV_VARS.graphql_max_operations_per_connection() {
+                    if let Some(max_ops) = ENV_VARS.graphql.max_operations_per_connection {
                         if operations.operations.len() >= max_ops {
                             return send_error_string(
                                 &msg_sink,

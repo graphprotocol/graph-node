@@ -61,7 +61,8 @@ pub const BYTE_ARRAY_PREFIX_SIZE: usize = 64;
 
 lazy_static! {
     static ref STATEMENT_TIMEOUT: Option<String> = ENV_VARS
-        .sql_statement_timeout()
+        .graphql
+        .sql_statement_timeout
         .map(|duration| format!("set local statement_timeout={}", duration.as_millis()));
 }
 
@@ -890,7 +891,8 @@ impl Layout {
         let is_account_like = {
             |table: &Table| {
                 ENV_VARS
-                    .account_tables()
+                    .store
+                    .account_tables
                     .contains(table.qualified_name.as_str())
                     || account_like.contains(table.name.as_str())
             }
@@ -1254,7 +1256,10 @@ impl Table {
             .chain(fulltexts.iter().map(Column::new_fulltext))
             .collect::<Result<Vec<Column>, StoreError>>()?;
         let qualified_name = SqlName::qualified_name(&catalog.site.namespace, &table_name);
-        let is_account_like = ENV_VARS.account_tables().contains(qualified_name.as_str());
+        let is_account_like = ENV_VARS
+            .store
+            .account_tables
+            .contains(qualified_name.as_str());
 
         let immutable = defn
             .find_directive("entity")

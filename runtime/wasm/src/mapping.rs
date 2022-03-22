@@ -96,7 +96,7 @@ fn instantiate_module_and_handle_trigger<C: Blockchain>(
     section.end();
 
     let _section = host_metrics.stopwatch.start_section("run_handler");
-    if ENV_VARS.log_trigger_data() {
+    if ENV_VARS.log_trigger_data {
         debug!(logger, "trigger data: {:?}", trigger);
     }
     module.handle_trigger(trigger)
@@ -167,7 +167,7 @@ impl ValidModule {
         config.cranelift_nan_canonicalization(true); // For NaN determinism.
         config.cranelift_opt_level(wasmtime::OptLevel::None);
         config
-            .max_wasm_stack(ENV_VARS.runtime_max_stack_size())
+            .max_wasm_stack(ENV_VARS.mappings.max_stack_size)
             .unwrap(); // Safe because this only panics if size passed is 0.
 
         let engine = &wasmtime::Engine::new(&config)?;

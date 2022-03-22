@@ -368,7 +368,7 @@ where
                             raw,
                             self.link_resolver.clone(),
                             &self.logger,
-                            ENV_VARS.max_spec_version(),
+                            ENV_VARS.max_spec_version.clone(),
                         )
                         .await?;
 
@@ -386,7 +386,7 @@ where
                             raw,
                             self.link_resolver.clone(),
                             &self.logger,
-                            ENV_VARS.max_spec_version(),
+                            ENV_VARS.max_spec_version.clone(),
                         )
                         .await?;
 
@@ -404,7 +404,7 @@ where
                             raw,
                             self.link_resolver.clone(),
                             &self.logger,
-                            ENV_VARS.max_spec_version(),
+                            ENV_VARS.max_spec_version.clone(),
                         )
                         .await?;
 

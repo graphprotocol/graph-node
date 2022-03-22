@@ -348,7 +348,7 @@ impl ConnectionPool {
     /// `StoreError::DatabaseUnavailable`
     fn get_ready(&self) -> Result<Arc<PoolInner>, StoreError> {
         let mut guard = self.inner.lock(&self.logger);
-        if !self.state_tracker.is_available() && !ENV_VARS.store_connection_try_always() {
+        if !self.state_tracker.is_available() && !ENV_VARS.store.connection_try_always {
             // We know that trying to use this pool is pointless since the
             // database is not available, and will only lead to other
             // operations having to wait until the connection timeout is
@@ -730,17 +730,17 @@ impl PoolInner {
         let builder: Builder<ConnectionManager<PgConnection>> = Pool::builder()
             .error_handler(error_handler.clone())
             .event_handler(event_handler.clone())
-            .connection_timeout(ENV_VARS.store_connection_timeout())
+            .connection_timeout(ENV_VARS.store.connection_timeout)
             .max_size(pool_size)
-            .min_idle(ENV_VARS.store_connection_min_idle())
-            .idle_timeout(Some(ENV_VARS.store_connection_idle_timeout()));
+            .min_idle(ENV_VARS.store.connection_min_idle)
+            .idle_timeout(Some(ENV_VARS.store.connection_idle_timeout));
         let pool = builder.build_unchecked(conn_manager);
         let fdw_pool = fdw_pool_size.map(|pool_size| {
             let conn_manager = ConnectionManager::new(postgres_url.clone());
             let builder: Builder<ConnectionManager<PgConnection>> = Pool::builder()
                 .error_handler(error_handler)
                 .event_handler(event_handler)
-                .connection_timeout(ENV_VARS.store_connection_timeout())
+                .connection_timeout(ENV_VARS.store.connection_timeout)
                 .max_size(pool_size)
                 .min_idle(Some(1))
                 .idle_timeout(Some(FDW_IDLE_TIMEOUT));
@@ -757,7 +757,7 @@ impl PoolInner {
                 const_labels,
             )
             .expect("failed to create `query_effort_ms` counter");
-        let max_concurrent_queries = pool_size as usize + ENV_VARS.extra_query_permits();
+        let max_concurrent_queries = pool_size as usize + ENV_VARS.store.extra_query_permits;
         let query_semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_queries));
         PoolInner {
             logger: logger_pool,
@@ -871,7 +871,7 @@ impl PoolInner {
         logger: &Logger,
     ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
         loop {
-            match self.pool.get_timeout(ENV_VARS.store_connection_timeout()) {
+            match self.pool.get_timeout(ENV_VARS.store.connection_timeout) {
                 Ok(conn) => return Ok(conn),
                 Err(e) => error!(logger, "Error checking out connection, retrying";
                    "error" => brief_error_msg(&e),

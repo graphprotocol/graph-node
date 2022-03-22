@@ -148,7 +148,7 @@ impl DeploymentStore {
             replica_order,
             conn_round_robin_counter: AtomicUsize::new(0),
             subgraph_cache: Mutex::new(LruCache::with_capacity(100)),
-            layout_cache: LayoutCache::new(ENV_VARS.query_stats_refresh_interval()),
+            layout_cache: LayoutCache::new(ENV_VARS.store.query_stats_refresh_interval),
         };
 
         DeploymentStore(Arc::new(store))

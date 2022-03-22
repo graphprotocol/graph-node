@@ -32,7 +32,7 @@ struct QueryEffortInner {
 /// the environment
 impl Default for QueryEffort {
     fn default() -> Self {
-        Self::new(ENV_VARS.load_window_size(), ENV_VARS.load_bin_size())
+        Self::new(ENV_VARS.load_window_size, ENV_VARS.load_bin_size)
     }
 }
 
@@ -217,7 +217,7 @@ impl LoadManager {
 
         let mode = if ENV_VARS.load_management_is_disabled() {
             "disabled"
-        } else if ENV_VARS.load_simulate() {
+        } else if ENV_VARS.load_simulate {
             "simulation"
         } else {
             "enabled"
@@ -333,7 +333,7 @@ impl LoadManager {
         }
 
         if self.jailed_queries.read().unwrap().contains(&shape_hash) {
-            return if ENV_VARS.load_simulate() {
+            return if ENV_VARS.load_simulate {
                 Proceed
             } else {
                 TooExpensive
@@ -362,7 +362,7 @@ impl LoadManager {
         let total_effort = total_effort.as_millis() as f64;
 
         // When this variable is not set, we never jail any queries.
-        if let Some(jail_threshold) = ENV_VARS.load_jail_threshold() {
+        if let Some(jail_threshold) = ENV_VARS.load_jail_threshold {
             if known_query && query_effort / total_effort > jail_threshold {
                 // Any single query that causes at least JAIL_THRESHOLD of the
                 // effort in an overload situation gets killed
@@ -373,7 +373,7 @@ impl LoadManager {
                 "total_effort_ms" => total_effort,
                 "ratio" => format!("{:.4}", query_effort/total_effort));
                 self.jailed_queries.write().unwrap().insert(shape_hash);
-                return if ENV_VARS.load_simulate() {
+                return if ENV_VARS.load_simulate {
                     Proceed
                 } else {
                     TooExpensive
@@ -387,7 +387,7 @@ impl LoadManager {
         let decline =
             thread_rng().gen_bool((kill_rate * query_effort / total_effort).min(1.0).max(0.0));
         if decline {
-            if ENV_VARS.load_simulate() {
+            if ENV_VARS.load_simulate {
                 debug!(self.logger, "Declining query";
                     "query" => query,
                     "wait_ms" => wait_ms.as_millis(),
@@ -405,7 +405,7 @@ impl LoadManager {
     fn overloaded(&self, wait_stats: &PoolWaitStats) -> (bool, Duration) {
         let store_avg = wait_stats.read().unwrap().average();
         let overloaded = store_avg
-            .map(|average| average > ENV_VARS.load_threshold())
+            .map(|average| average > ENV_VARS.load_threshold)
             .unwrap_or(false);
         (overloaded, store_avg.unwrap_or(Duration::ZERO))
     }

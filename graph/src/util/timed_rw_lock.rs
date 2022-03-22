@@ -16,7 +16,7 @@ impl<T> TimedRwLock<T> {
         TimedRwLock {
             id: id.into(),
             lock: RwLock::new(x),
-            log_threshold: ENV_VARS.lock_contention_log_threshold(),
+            log_threshold: ENV_VARS.lock_contention_log_threshold,
         }
     }
 
@@ -65,7 +65,7 @@ impl<T> TimedMutex<T> {
         TimedMutex {
             id: id.into(),
             lock: Mutex::new(x),
-            log_threshold: ENV_VARS.lock_contention_log_threshold(),
+            log_threshold: ENV_VARS.lock_contention_log_threshold,
         }
     }
 

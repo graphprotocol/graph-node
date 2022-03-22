@@ -193,7 +193,7 @@ where
         metrics: Arc<HostMetrics>,
     ) -> Result<Option<Arc<T::Host>>, Error> {
         // Protect against creating more than the allowed maximum number of data sources
-        if let Some(max_data_sources) = ENV_VARS.subgraph_max_data_sources() {
+        if let Some(max_data_sources) = ENV_VARS.subgraph_max_data_sources {
             if self.hosts.len() >= max_data_sources {
                 anyhow::bail!(
                     "Limit of {} data sources per subgraph exceeded",

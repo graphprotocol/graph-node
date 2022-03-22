@@ -1866,7 +1866,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" and c.");
         out.push_identifier(column.name.as_str())?;
         out.push_sql(" @> array[p.id]");
-        if self.ids.len() < ENV_VARS.typea_batch_size() {
+        if self.ids.len() < ENV_VARS.store.typea_batch_size {
             out.push_sql(" and c.");
             out.push_identifier(column.name.as_str())?;
             out.push_sql(" && ");
@@ -2008,12 +2008,12 @@ impl<'a> FilterWindow<'a> {
         // Include a constraint on the child IDs as a set if the size of the set
         // is below the threshold set by environment variable. Set it to
         // 0 to turn off this optimization.
-        if ENV_VARS.typed_children_set_size() > 0 {
+        if ENV_VARS.store.typed_children_set_size > 0 {
             let mut child_set: Vec<&str> = child_ids.iter().map(|id| id.as_str()).collect();
             child_set.sort_unstable();
             child_set.dedup();
 
-            if child_set.len() <= ENV_VARS.typed_children_set_size() {
+            if child_set.len() <= ENV_VARS.store.typed_children_set_size {
                 out.push_sql(" and c.id = any(");
                 self.table.primary_key().bind_ids(&child_set, out)?;
                 out.push_sql(")");
@@ -2223,7 +2223,7 @@ impl<'a> SortKey<'a> {
             }
         }
 
-        let br_column = if ENV_VARS.order_by_block_range() {
+        let br_column = if ENV_VARS.store.order_by_block_range {
             Some(BlockRangeColumn::new(table, "c.", block))
         } else {
             None
@@ -2359,7 +2359,7 @@ impl<'a> SortKey<'a> {
                 out.push_identifier(name)?;
             }
         }
-        if ENV_VARS.reversible_order_by_off() {
+        if ENV_VARS.store.reversible_order_by_off {
             // Old behavior
             out.push_sql(" ");
             out.push_sql(direction);

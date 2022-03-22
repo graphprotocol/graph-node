@@ -135,7 +135,7 @@ impl DocumentExt for Document {
                     .collect()
             },
         );
-        if !ENV_VARS.allow_non_deterministic_fulltext_search() && !directives.is_empty() {
+        if !ENV_VARS.allow_non_deterministic_fulltext_search && !directives.is_empty() {
             Err(anyhow::anyhow!("Fulltext search is not yet deterministic"))
         } else {
             Ok(directives)

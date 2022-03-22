@@ -180,7 +180,7 @@ impl Job for UnusedJob {
         let remove = match self
             .store
             .list_unused_deployments(unused::Filter::UnusedLongerThan(
-                ENV_VARS.remove_unused_interval(),
+                ENV_VARS.store.remove_unused_interval,
             )) {
             Ok(remove) => remove,
             Err(e) => {

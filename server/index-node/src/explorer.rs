@@ -41,9 +41,9 @@ where
     pub fn new(store: Arc<S>) -> Self {
         Self {
             store,
-            versions: TimedCache::new(ENV_VARS.explorer_ttl()),
-            version_infos: TimedCache::new(ENV_VARS.explorer_ttl()),
-            entity_counts: TimedCache::new(ENV_VARS.explorer_ttl()),
+            versions: TimedCache::new(ENV_VARS.explorer_ttl),
+            version_infos: TimedCache::new(ENV_VARS.explorer_ttl),
+            entity_counts: TimedCache::new(ENV_VARS.explorer_ttl),
         }
     }
 
@@ -122,7 +122,7 @@ where
     ) -> Result<Response<Body>, GraphQLServerError> {
         let start = Instant::now();
         let count = self.entity_counts.get(deployment);
-        if start.elapsed() > ENV_VARS.explorer_lock_threshold() {
+        if start.elapsed() > ENV_VARS.explorer_lock_threshold {
             let action = match count {
                 Some(_) => "cache_hit",
                 None => "cache_miss",
@@ -141,7 +141,7 @@ where
         let infos = self
             .store
             .status(status::Filter::Deployments(vec![deployment.to_string()]))?;
-        if start.elapsed() > ENV_VARS.explorer_query_threshold() {
+        if start.elapsed() > ENV_VARS.explorer_query_threshold {
             warn!(logger, "Getting entity_count takes too long";
             "action" => "query_status",
             "deployment" => deployment,
@@ -159,7 +159,7 @@ where
         };
         let start = Instant::now();
         let resp = as_http_response(&value);
-        if start.elapsed() > ENV_VARS.explorer_lock_threshold() {
+        if start.elapsed() > ENV_VARS.explorer_lock_threshold {
             warn!(logger, "Getting entity_count takes too long";
             "action" => "as_http_response",
             "deployment" => deployment,
@@ -168,7 +168,7 @@ where
         let start = Instant::now();
         self.entity_counts
             .set(deployment.to_string(), Arc::new(value));
-        if start.elapsed() > ENV_VARS.explorer_lock_threshold() {
+        if start.elapsed() > ENV_VARS.explorer_lock_threshold {
             warn!(logger, "Getting entity_count takes too long";
                 "action" => "cache_set",
                 "deployment" => deployment,
