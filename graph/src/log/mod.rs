@@ -44,7 +44,7 @@ pub fn logger(show_debug: bool) -> Logger {
                 FilterLevel::Info
             },
         )
-        .parse(ENV_VARS.log_levels.as_deref().unwrap_or_default())
+        .parse(ENV_VARS.log_levels.as_deref().unwrap_or(""))
         .build();
     let drain = slog_async::Async::new(drain)
         .chan_size(20000)
