@@ -201,6 +201,7 @@ pub async fn create_firehose_networks(
                     &provider.label,
                     &firehose.url,
                     firehose.token.clone(),
+                    firehose.filters_enabled(),
                 )
                 .await?;
 

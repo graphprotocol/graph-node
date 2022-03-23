@@ -23,7 +23,6 @@ pub struct SubgraphInstanceManager<S, M, L> {
     instances: SharedInstanceKeepAliveMap,
     link_resolver: Arc<L>,
     static_filters: bool,
-    firehose_grpc_filters: bool,
 }
 
 #[async_trait]
@@ -111,7 +110,6 @@ where
         metrics_registry: Arc<M>,
         link_resolver: Arc<L>,
         static_filters: bool,
-        firehose_filters: bool,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
@@ -125,7 +123,6 @@ where
             instances: SharedInstanceKeepAliveMap::default(),
             link_resolver,
             static_filters,
-            firehose_grpc_filters: firehose_filters,
         }
     }
 
@@ -272,7 +269,6 @@ where
             templates,
             unified_api_version,
             static_filters: self.static_filters,
-            firehose_grpc_filters: self.firehose_grpc_filters,
         };
 
         // The subgraph state tracks the state of the subgraph instance over time

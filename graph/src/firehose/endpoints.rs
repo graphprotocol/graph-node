@@ -25,6 +25,7 @@ pub struct FirehoseEndpoint {
     pub provider: String,
     pub uri: String,
     pub token: Option<String>,
+    pub filters_enabled: bool,
     channel: Channel,
     _logger: Logger,
 }
@@ -41,6 +42,7 @@ impl FirehoseEndpoint {
         provider: S,
         url: S,
         token: Option<String>,
+        filters_enabled: bool,
     ) -> Result<Self, anyhow::Error> {
         let uri = url
             .as_ref()
@@ -70,6 +72,7 @@ impl FirehoseEndpoint {
             channel,
             token,
             _logger: logger,
+            filters_enabled,
         })
     }
 

@@ -117,7 +117,6 @@ pub async fn run(
     blockchain_map.insert(network_name.clone(), Arc::new(chain));
 
     let static_filters = env::var_os("EXPERIMENTAL_STATIC_FILTERS").is_some();
-    let firehose_filters = env::var_os("FIREHOSE_FILTERS").is_some();
 
     let blockchain_map = Arc::new(blockchain_map);
     let subgraph_instance_manager = SubgraphInstanceManager::new(
@@ -127,7 +126,6 @@ pub async fn run(
         metrics_registry.clone(),
         link_resolver.cheap_clone(),
         static_filters,
-        firehose_filters,
     );
 
     // Create IPFS-based subgraph provider
@@ -423,6 +421,7 @@ async fn create_firehose_networks(
                     &provider.label,
                     &firehose.url,
                     firehose.token.clone(),
+                    firehose.filters_enabled(),
                 )
                 .await?;
 

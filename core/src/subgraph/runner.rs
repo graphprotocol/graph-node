@@ -68,7 +68,6 @@ async fn new_block_stream<C: Blockchain>(
             current_ptr,
             Arc::new(filter.clone()),
             inputs.unified_api_version.clone(),
-            inputs.firehose_grpc_filters,
         ),
         false => chain.new_polling_block_stream(
             inputs.deployment.clone(),
