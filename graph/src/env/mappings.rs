@@ -1,5 +1,4 @@
 use super::*;
-use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub struct EnvVarsMapping {
@@ -66,14 +65,6 @@ pub struct EnvVarsMapping {
     /// Set by the flag `GRAPH_ALLOW_NON_DETERMINISTIC_IPFS`. Off by
     /// default.
     pub allow_non_deterministic_ipfs: bool,
-}
-
-impl Default for EnvVarsMapping {
-    fn default() -> Self {
-        InnerMappingHandlers::init_from_hashmap(&HashMap::new())
-            .unwrap()
-            .into()
-    }
 }
 
 impl From<InnerMappingHandlers> for EnvVarsMapping {
