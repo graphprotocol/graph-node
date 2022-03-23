@@ -27,6 +27,7 @@ async fn main() -> Result<(), Error> {
             "firehose",
             "https://api.streamingfast.io:443",
             token,
+            false,
         )
         .await?,
     );

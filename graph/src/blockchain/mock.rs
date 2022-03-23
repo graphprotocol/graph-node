@@ -313,7 +313,6 @@ impl Blockchain for MockBlockchain {
         _subgraph_current_block: Option<BlockPtr>,
         _filter: std::sync::Arc<Self::TriggerFilter>,
         _unified_api_version: crate::data::subgraph::UnifiedMappingApiVersion,
-        _grpc_filters: bool,
     ) -> Result<Box<dyn block_stream::BlockStream<Self>>, anyhow::Error> {
         todo!()
     }

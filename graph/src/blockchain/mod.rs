@@ -112,7 +112,6 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
-        grpc_filters: bool,
     ) -> Result<Box<dyn BlockStream<Self>>, Error>;
 
     async fn new_polling_block_stream(

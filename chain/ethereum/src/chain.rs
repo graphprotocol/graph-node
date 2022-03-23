@@ -186,7 +186,6 @@ impl Blockchain for Chain {
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
-        grpc_filters: bool,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let requirements = filter.node_capabilities();
         let adapter = self
@@ -219,7 +218,6 @@ impl Blockchain for Chain {
             filter,
             start_blocks,
             logger,
-            grpc_filters,
         )))
     }
 

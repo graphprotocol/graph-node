@@ -30,7 +30,6 @@ where
         filter: Arc<C::TriggerFilter>,
         start_blocks: Vec<BlockNumber>,
         logger: Logger,
-        grpc_filters: bool,
     ) -> Self
     where
         F: FirehoseMapper<C> + 'static,
@@ -51,7 +50,6 @@ where
                 filter,
                 manifest_start_block_num,
                 subgraph_current_block,
-                grpc_filters,
                 logger,
             )),
         }
@@ -66,7 +64,6 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
     filter: Arc<C::TriggerFilter>,
     manifest_start_block_num: BlockNumber,
     subgraph_current_block: Option<BlockPtr>,
-    grpc_filters: bool,
     logger: Logger,
 ) -> impl Stream<Item = Result<BlockStreamEvent<C>, Error>> {
     use firehose::ForkStep::*;
@@ -141,7 +138,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                 ..Default::default()
             };
 
-            if grpc_filters {
+            if endpoint.filters_enabled {
                 request.transforms = filter.as_ref().clone().to_firehose_filter();
             }
 
