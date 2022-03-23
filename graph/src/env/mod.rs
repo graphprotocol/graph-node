@@ -75,6 +75,7 @@ pub fn env_var<E: std::error::Error + Send + Sync, T: FromStr<Err = E> + Eq>(
 }
 
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct EnvVars {
     pub graphql: EnvVarsGraphQl,
     pub mappings: EnvVarsMapping,

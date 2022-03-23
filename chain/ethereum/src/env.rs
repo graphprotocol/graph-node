@@ -8,6 +8,7 @@ lazy_static! {
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct EnvVars {
     /// Controls if firehose should be preferred over RPC if Firehose endpoints
     /// are present, if not set, the default behavior is is kept which is to
