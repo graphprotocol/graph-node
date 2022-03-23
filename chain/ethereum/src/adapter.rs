@@ -358,7 +358,7 @@ impl EthereumLogFilter {
             for neighbor in g.neighbors(max_vertex) {
                 match neighbor {
                     LogFilterNode::Contract(address) => {
-                        if filter.contracts.len() == ENV_VARS.get_logs_max_contracts() {
+                        if filter.contracts.len() == ENV_VARS.get_logs_max_contracts {
                             // The batch size was reached, register the filter and start a new one.
                             let event = filter.event_signatures[0];
                             push_filter(filter);

@@ -59,7 +59,7 @@ impl BlockIngestor {
                 Ok(()) => (),
             }
 
-            if ENV_VARS.cleanup_blocks() {
+            if ENV_VARS.cleanup_blocks {
                 self.cleanup_cached_blocks()
             }
 

@@ -1,118 +1,50 @@
-use core::ops::Deref;
 use envconfig::Envconfig;
 use graph::env::EnvVarBoolean;
-use graph::parking_lot;
 use graph::prelude::{envconfig, lazy_static, BlockNumber};
-use parking_lot::{RwLock, RwLockReadGuard};
 use std::time::Duration;
 
 lazy_static! {
     pub static ref ENV_VARS: EnvVars = EnvVars::from_env().unwrap();
 }
 
-struct Inner {
-    env_vars: EnvVarsEthereum,
-    geth_eth_call_errors: Vec<String>,
-}
-
-impl Inner {
-    fn from_env() -> Result<Self, envconfig::Error> {
-        let env_vars = EnvVarsEthereum::init_from_env()?;
-
-        let geth_eth_call_errors = env_vars
-            .geth_eth_call_errors
-            .split(';')
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .collect();
-
-        Ok(Self {
-            env_vars,
-            geth_eth_call_errors,
-        })
-    }
-}
-
+#[derive(Debug, Clone)]
 pub struct EnvVars {
-    inner: RwLock<Inner>,
-}
-
-impl EnvVars {
-    pub fn from_env() -> Result<Self, envconfig::Error> {
-        Ok(Self {
-            inner: RwLock::new(Inner::from_env()?),
-        })
-    }
-
-    /// Refreshes all internally stored environment variables to reflect the
-    /// current environment variable values.
-    ///
-    /// Only available in debug builds.
-    #[cfg(debug_assertions)]
-    pub fn refresh(&self) -> Result<(), envconfig::Error> {
-        *self.inner.write() = Inner::from_env()?;
-        Ok(())
-    }
-
-    fn inner(&self) -> RwLockReadGuard<Inner> {
-        self.inner.read()
-    }
-
-    /// Set by the environment variable `ETHEREUM_REORG_THRESHOLD`. The default
-    /// value is 250 blocks.
-    pub fn reorg_threshold(&self) -> BlockNumber {
-        self.inner().env_vars.reorg_threshold
-    }
-
     /// Controls if firehose should be preferred over RPC if Firehose endpoints
     /// are present, if not set, the default behavior is is kept which is to
     /// automatically favor Firehose.
     ///
     /// Set by the flag `GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED`. On by default.
-    pub fn is_firehose_preferred(&self) -> bool {
-        self.inner().env_vars.is_firehose_preferred.0
-    }
-
-    /// Ideal number of triggers in a range. The range size will adapt to try to
-    /// meet this.
+    pub is_firehose_preferred: bool,
+    /// Additional deterministic errors that have not yet been hardcoded.
     ///
-    /// Set by the environment variable
-    /// `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`. The default value is
-    /// 100.
-    pub fn target_triggers_per_block_range(&self) -> u64 {
-        self.inner().env_vars.target_triggers_per_block_range
-    }
+    /// Set by the environment variable `GRAPH_GETH_ETH_CALL_ERRORS`, separated
+    /// by `;`.
+    pub geth_eth_call_errors: Vec<String>,
+    /// Set by the environment variable `GRAPH_ETH_GET_LOGS_MAX_CONTRACTS`. The
+    /// default value is 2000.
+    pub get_logs_max_contracts: usize,
 
-    /// Maximum number of blocks to request in each chunk.
-    ///
-    /// Set by the environment variable `GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE`.
-    /// The default value is 2000 blocks.
-    pub fn max_block_range_size(&self) -> BlockNumber {
-        self.inner().env_vars.max_block_range_size
-    }
-
+    /// Set by the environment variable `ETHEREUM_REORG_THRESHOLD`. The default
+    /// value is 250 blocks.
+    pub reorg_threshold: BlockNumber,
     /// Set by the environment variable `ETHEREUM_TRACE_STREAM_STEP_SIZE`. The
     /// default value is 50 blocks.
-    pub fn trace_stream_step_size(&self) -> BlockNumber {
-        self.inner().env_vars.trace_stream_step_size
-    }
-
+    pub trace_stream_step_size: BlockNumber,
     /// Maximum range size for `eth.getLogs` requests that don't filter on
     /// contract address, only event signature, and are therefore expensive.
     ///
     /// Set by the environment variable `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`. The
     /// default value is 500 blocks, which is reasonable according to Ethereum
     /// node operators.
-    pub fn max_event_only_range(&self) -> BlockNumber {
-        self.inner().env_vars.max_event_only_range
-    }
-
+    pub max_event_only_range: BlockNumber,
     /// Set by the environment variable `ETHEREUM_BLOCK_BATCH_SIZE`. The
     /// default value is 10 blocks.
-    pub fn block_batch_size(&self) -> usize {
-        self.inner().env_vars.block_batch_size
-    }
-
+    pub block_batch_size: usize,
+    /// Maximum number of blocks to request in each chunk.
+    ///
+    /// Set by the environment variable `GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE`.
+    /// The default value is 2000 blocks.
+    pub max_block_range_size: BlockNumber,
     /// This should not be too large that it causes requests to timeout without
     /// us catching it, nor too small that it causes us to timeout requests that
     /// would've succeeded. We've seen successful `eth_getLogs` requests take
@@ -120,10 +52,7 @@ impl EnvVars {
     ///
     /// Set by the environment variable `GRAPH_ETHEREUM_JSON_RPC_TIMEOUT`
     /// (expressed in seconds). The default value is 180s.
-    pub fn json_rpc_timeout(&self) -> Duration {
-        Duration::from_secs(self.inner().env_vars.json_rpc_timeout_in_secs)
-    }
-
+    pub json_rpc_timeout: Duration,
     /// This is used for requests that will not fail the subgraph if the limit
     /// is reached, but will simply restart the syncing step, so it can be low.
     /// This limit guards against scenarios such as requesting a block hash that
@@ -131,57 +60,73 @@ impl EnvVars {
     ///
     /// Set by the environment variable `GRAPH_ETHEREUM_REQUEST_RETRIES`. The
     /// default value is 10.
-    pub fn request_retries(&self) -> usize {
-        self.inner().env_vars.request_retries
-    }
-
-    /// Additional deterministic errors that have not yet been hardcoded.
-    ///
-    /// Set by the environment variable `GRAPH_GETH_ETH_CALL_ERRORS`, separated
-    /// by `;`.
-    pub fn geth_eth_call_errors(&self) -> impl Deref<Target = [String]> + '_ {
-        RwLockReadGuard::map(self.inner(), |x| &x.geth_eth_call_errors[..])
-    }
-
-    /// Set by the environment variable `GRAPH_ETH_GET_LOGS_MAX_CONTRACTS`. The
-    /// default value is 2000.
-    pub fn get_logs_max_contracts(&self) -> usize {
-        self.inner().env_vars.get_logs_max_contracts
-    }
-
+    pub request_retries: usize,
     /// Set by the environment variable
     /// `GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS`.
     /// The default value is 1000.
-    pub fn block_ingestor_max_concurrent_json_rpc_calls(&self) -> usize {
-        self.inner()
-            .env_vars
-            .block_ingestor_max_concurrent_json_rpc_calls
-    }
-
+    pub block_ingestor_max_concurrent_json_rpc_calls: usize,
     /// Set by the flag `GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES`. Enabled
     /// by default on macOS (to avoid DNS issues) and disabled by default on all
     /// other systems.
-    pub fn fetch_receipts_in_batches(&self) -> bool {
-        let default = cfg!(target_os = "macos");
-
-        self.inner()
-            .env_vars
-            .fetch_receipts_in_batches
-            .map(|x| x.0)
-            .unwrap_or(default)
-    }
-
+    pub fetch_receipts_in_batches: bool,
     /// `graph_node::config` disallows setting this in a store with multiple
     /// shards. See 8b6ad0c64e244023ac20ced7897fe666 for the reason.
     ///
     /// Set by the flag `GRAPH_ETHEREUM_CLEANUP_BLOCKS`. Off by default.
-    pub fn cleanup_blocks(&self) -> bool {
-        self.inner().env_vars.cleanup_blocks.0
+    pub cleanup_blocks: bool,
+    /// Ideal number of triggers in a range. The range size will adapt to try to
+    /// meet this.
+    ///
+    /// Set by the environment variable
+    /// `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`. The default value is
+    /// 100.
+    pub target_triggers_per_block_range: u64,
+}
+
+impl EnvVars {
+    pub fn from_env() -> Result<Self, envconfig::Error> {
+        Ok(Inner::init_from_env()?.into())
+    }
+}
+
+impl From<Inner> for EnvVars {
+    fn from(x: Inner) -> Self {
+        Self {
+            is_firehose_preferred: x.is_firehose_preferred.0,
+            get_logs_max_contracts: x.get_logs_max_contracts,
+            geth_eth_call_errors: x
+                .geth_eth_call_errors
+                .split(';')
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect(),
+            reorg_threshold: x.reorg_threshold,
+            trace_stream_step_size: x.trace_stream_step_size,
+            max_event_only_range: x.max_event_only_range,
+            block_batch_size: x.block_batch_size,
+            max_block_range_size: x.max_block_range_size,
+            json_rpc_timeout: Duration::from_secs(x.json_rpc_timeout_in_secs),
+            request_retries: x.request_retries,
+            block_ingestor_max_concurrent_json_rpc_calls: x
+                .block_ingestor_max_concurrent_json_rpc_calls,
+            fetch_receipts_in_batches: x
+                .fetch_receipts_in_batches
+                .map(|b| b.0)
+                .unwrap_or(cfg!(target_os = "macos")),
+            cleanup_blocks: x.cleanup_blocks.0,
+            target_triggers_per_block_range: x.target_triggers_per_block_range,
+        }
+    }
+}
+
+impl Default for EnvVars {
+    fn default() -> Self {
+        ENV_VARS.clone()
     }
 }
 
 #[derive(Clone, Debug, Envconfig)]
-struct EnvVarsEthereum {
+struct Inner {
     #[envconfig(from = "GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED", default = "true")]
     is_firehose_preferred: EnvVarBoolean,
     #[envconfig(from = "GRAPH_GETH_ETH_CALL_ERRORS", default = "")]

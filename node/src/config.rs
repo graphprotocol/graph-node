@@ -101,7 +101,7 @@ impl Config {
         if !self.stores.contains_key(PRIMARY_SHARD.as_str()) {
             return Err(anyhow!("missing a primary store"));
         }
-        if self.stores.len() > 1 && ethereum::ENV_VARS.cleanup_blocks() {
+        if self.stores.len() > 1 && ethereum::ENV_VARS.cleanup_blocks {
             // See 8b6ad0c64e244023ac20ced7897fe666
             return Err(anyhow!(
                 "GRAPH_ETHEREUM_CLEANUP_BLOCKS can not be used with a sharded store"
