@@ -1,10 +1,6 @@
 use hyper::header::AUTHORIZATION;
-use lazy_static::lazy_static;
 
-lazy_static! {
-    /// A public [`PoiProtection::from_env`] value for easy access.
-    pub static ref POI_PROTECTION: PoiProtection = PoiProtection::from_env();
-}
+use graph::env::EnvVars;
 
 /// Validation logic for access tokens required to access POI results.
 pub struct PoiProtection {
@@ -14,10 +10,9 @@ pub struct PoiProtection {
 impl PoiProtection {
     /// Creates a new [`PoiProtection`] instance configured in accordance with
     /// the `GRAPH_POI_ACCESS_TOKEN` environment variable.
-    pub fn from_env() -> Self {
-        let access_token = std::env::var("GRAPH_POI_ACCESS_TOKEN").ok();
+    pub fn from_env(env: &EnvVars) -> Self {
         Self {
-            reqd_access_token: access_token,
+            reqd_access_token: env.poi_access_token.clone(),
         }
     }
 

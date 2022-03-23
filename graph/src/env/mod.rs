@@ -159,6 +159,11 @@ pub struct EnvVars {
     pub subgraph_version_switching_mode: SubgraphVersionSwitchingMode,
     /// Set by the flag `GRAPH_KILL_IF_UNRESPONSIVE`. Off by default.
     pub kill_if_unresponsive: bool,
+    /// Guards public access to POIs in the `index-node`.
+    ///
+    /// Set by the environment variable `GRAPH_POI_ACCESS_TOKEN`. No default
+    /// value is provided.
+    pub poi_access_token: Option<String>,
     /// Set by the environment variable `GRAPH_SUBGRAPH_MAX_DATA_SOURCES`. No
     /// default value is provided.
     pub subgraph_max_data_sources: Option<usize>,
@@ -257,6 +262,7 @@ impl EnvVars {
             experimental_static_filters: inner.experimental_static_filters.0,
             subgraph_version_switching_mode: inner.subgraph_version_switching_mode,
             kill_if_unresponsive: inner.kill_if_unresponsive.0,
+            poi_access_token: inner.poi_access_token,
             subgraph_max_data_sources: inner.subgraph_max_data_sources,
             disable_fail_fast: inner.disable_fail_fast.0,
             subgraph_error_retry_ceil: Duration::from_secs(inner.subgraph_error_retry_ceil_in_secs),
@@ -284,9 +290,7 @@ impl EnvVars {
             external_ws_base_url: inner.external_ws_base_url,
         })
     }
-}
 
-impl EnvVars {
     /// Equivalent to checking if [`EnvVar::load_threshold`] is set to
     /// [`Duration::ZERO`].
     pub fn load_management_is_disabled(&self) -> bool {
@@ -363,6 +367,8 @@ struct Inner {
     subgraph_version_switching_mode: SubgraphVersionSwitchingMode,
     #[envconfig(from = "GRAPH_KILL_IF_UNRESPONSIVE", default = "false")]
     kill_if_unresponsive: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_POI_ACCESS_TOKEN")]
+    poi_access_token: Option<String>,
     #[envconfig(from = "GRAPH_SUBGRAPH_MAX_DATA_SOURCES")]
     subgraph_max_data_sources: Option<usize>,
     #[envconfig(from = "GRAPH_DISABLE_FAIL_FAST", default = "false")]
