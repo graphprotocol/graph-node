@@ -1844,7 +1844,7 @@ async fn get_logs_and_transactions(
 
     // not all logs have associated transaction hashes, nor do all triggers require them.
     // we also restrict receipts retrieval for some api versions.
-    let transaction_hashes: Vec<_> = logs
+    let transaction_hashes_by_block: HashMap<H256, HashSet<H256>> = logs
         .iter()
         .filter(|_| unified_api_version.equal_or_greater_than(&API_VERSION_0_0_7))
         .filter(|log| {
@@ -1854,12 +1854,29 @@ async fn get_logs_and_transactions(
                 false
             }
         })
-        .filter_map(|log| log.transaction_hash)
-        .collect();
+        .filter_map(|log| {
+            if let (Some(block), Some(txn)) = (log.block_hash, log.transaction_hash) {
+                Some((block, txn))
+            } else {
+                // TODO: Should this case be considered an error?
+                None
+            }
+        })
+        .fold(
+            HashMap::<H256, HashSet<H256>>::new(),
+            |mut acc, (block_hash, txn_hash)| {
+                acc.entry(block_hash).or_default().insert(txn_hash);
+                acc
+            },
+        );
 
     // obtain receipts externally
-    let transaction_receipts_by_hash =
-        get_transaction_receipts_for_transaction_hashes(&adapter, &transaction_hashes).await?;
+    let transaction_receipts_by_hash = get_transaction_receipts_for_transaction_hashes(
+        &adapter,
+        &transaction_hashes_by_block,
+        logger.cheap_clone(),
+    )
+    .await?;
 
     // associate each log with its receipt, when possible
     let mut log_triggers = Vec::new();
@@ -1875,34 +1892,45 @@ async fn get_logs_and_transactions(
 }
 
 /// Tries to retrive all transaction receipts for a set of transaction hashes.
-/// Deduplicates input before making requests and returns the results mapped by hash.
 async fn get_transaction_receipts_for_transaction_hashes(
     adapter: &EthereumAdapter,
-    transaction_hashes: &[H256],
+    transaction_hashes_by_block: &HashMap<H256, HashSet<H256>>,
+    logger: Logger,
 ) -> Result<HashMap<H256, TransactionReceipt>, anyhow::Error> {
     use std::collections::hash_map::Entry::Vacant;
 
     let mut receipts_by_hash: HashMap<H256, TransactionReceipt> = HashMap::new();
 
-    // return early if input set is empty
-    if transaction_hashes.is_empty() {
+    // Return early if input set is empty
+    if transaction_hashes_by_block.is_empty() {
         return Ok(receipts_by_hash);
     }
 
-    // Keep record of all unique transact hashes that we'll request receipts for.
-    let mut unique_hashes: HashSet<&H256> = transaction_hashes.iter().collect();
+    // Keep a record of all unique transaction hashes for which we'll request receipts. We will
+    // later use this to check if we have collected the receipts from all required transactions.
+    let mut unique_transaction_hashes: HashSet<&H256> = HashSet::new();
 
-    // Request transact receipts concurrently
+    // Request transaction receipts concurrently
     let receipt_futures = FuturesUnordered::new();
-    for &hash in &unique_hashes {
-        let receipt_future = fetch_receipt_from_ethereum_client(adapter, hash);
-        receipt_futures.push(receipt_future)
+
+    let web3 = Arc::clone(&adapter.web3);
+    for (block_hash, transaction_hashes) in transaction_hashes_by_block {
+        for transaction_hash in transaction_hashes {
+            unique_transaction_hashes.insert(transaction_hash);
+            let receipt_future = fetch_transaction_receipt_with_retry(
+                web3.cheap_clone(),
+                *transaction_hash,
+                *block_hash,
+                logger.cheap_clone(),
+            );
+            receipt_futures.push(receipt_future)
+        }
     }
     let receipts: Vec<_> = receipt_futures.try_collect().await?;
 
-    // build a map between transaction hashes and their receipts
+    // Build a map between transaction hashes and their receipts
     for receipt in receipts.into_iter() {
-        if !unique_hashes.remove(&receipt.transaction_hash) {
+        if !unique_transaction_hashes.remove(&receipt.transaction_hash) {
             bail!("Received a receipt for a different transaction hash")
         }
         if let Vacant(entry) = receipts_by_hash.entry(receipt.transaction_hash.clone()) {
@@ -1912,9 +1940,9 @@ async fn get_transaction_receipts_for_transaction_hashes(
         }
     }
 
-    // confidence check: all unique hashes should have been used
+    // Confidence check: all unique hashes should have been used
     ensure!(
-        unique_hashes.is_empty(),
+        unique_transaction_hashes.is_empty(),
         "Didn't receive all necessary transaction receipts"
     );
 
