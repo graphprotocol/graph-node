@@ -340,7 +340,7 @@ impl AscIndexId for AscEthereumTransactionReceipt {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TransactionReceipt;
 }
 
-/// Introduced in API Version 0.0.7, this is the same as [`AscEthereumTransaction`] with an added
+/// Introduced in API Version 0.0.7, this is the same as [`AscEthereumEvent`] with an added
 /// `receipt` field.
 #[repr(C)]
 #[derive(AscType)]
