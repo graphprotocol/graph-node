@@ -116,8 +116,11 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
     // by `ptr` from the local cache. An offset of 0 means the block itself,
     // an offset of 1 means the block's parent etc. If the block is not in
     // the local cache, return `None`
-    fn ancestor_block(&self, ptr: BlockPtr, offset: BlockNumber)
-        -> Result<Option<C::Block>, Error>;
+    async fn ancestor_block(
+        &self,
+        ptr: BlockPtr,
+        offset: BlockNumber,
+    ) -> Result<Option<C::Block>, Error>;
 
     // Returns a sequence of blocks in increasing order of block number.
     // Each block will include all of its triggers that match the given `filter`.

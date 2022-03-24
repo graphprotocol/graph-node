@@ -4,6 +4,7 @@ use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
 use graph::blockchain::{Block, ChainIdentifier};
+use graph::cheap_clone::CheapClone;
 use graph::prelude::web3::types::H256;
 use graph::util::timed_cache::TimedCache;
 use graph::{
@@ -1484,8 +1485,8 @@ impl ChainStoreTrait for ChainStore {
         self.storage.blocks(&conn, &self.chain, hashes)
     }
 
-    fn ancestor_block(
-        &self,
+    async fn ancestor_block(
+        self: Arc<Self>,
         block_ptr: BlockPtr,
         offset: BlockNumber,
     ) -> Result<Option<json::Value>, Error> {
@@ -1496,8 +1497,15 @@ impl ChainStoreTrait for ChainStore {
             block_ptr.hash_hex()
         );
 
-        let conn = self.get_conn()?;
-        self.storage.ancestor_block(&conn, block_ptr, offset)
+        Ok(self
+            .cheap_clone()
+            .pool
+            .with_conn(move |conn, _| {
+                self.storage
+                    .ancestor_block(&conn, block_ptr, offset)
+                    .map_err(|e| CancelableError::from(StoreError::from(e)))
+            })
+            .await?)
     }
 
     fn cleanup_cached_blocks(

@@ -166,7 +166,7 @@ pub struct MockTriggersAdapter;
 
 #[async_trait]
 impl<C: Blockchain> TriggersAdapter<C> for MockTriggersAdapter {
-    fn ancestor_block(
+    async fn ancestor_block(
         &self,
         _ptr: BlockPtr,
         _offset: BlockNumber,

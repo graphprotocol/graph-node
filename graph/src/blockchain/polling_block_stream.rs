@@ -423,7 +423,7 @@ where
 
             // In principle this block should be in the store, but we have seen this error for deep
             // reorgs in ropsten.
-            let head_ancestor_opt = self.adapter.ancestor_block(head_ptr, offset)?;
+            let head_ancestor_opt = self.adapter.ancestor_block(head_ptr, offset).await?;
 
             match head_ancestor_opt {
                 None => {

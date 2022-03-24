@@ -217,7 +217,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
-    fn ancestor_block(
+    async fn ancestor_block(
         &self,
         _ptr: BlockPtr,
         _offset: BlockNumber,

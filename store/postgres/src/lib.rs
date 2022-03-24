@@ -12,7 +12,6 @@ extern crate diesel_migrations;
 #[macro_use]
 extern crate diesel_derive_enum;
 extern crate fallible_iterator;
-extern crate futures;
 extern crate graph;
 extern crate graph_graphql;
 extern crate graphql_parser;

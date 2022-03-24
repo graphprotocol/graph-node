@@ -47,7 +47,7 @@ pub fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(), Error
     Ok(())
 }
 
-pub fn info(
+pub async fn info(
     primary: ConnectionPool,
     store: Arc<BlockStore>,
     name: String,
@@ -84,7 +84,8 @@ pub fn info(
     let ancestor = match &head_block {
         None => None,
         Some(head_block) => chain_store
-            .ancestor_block(head_block.clone(), offset)?
+            .ancestor_block(head_block.clone(), offset)
+            .await?
             .map(json::from_value::<EthereumBlock>)
             .transpose()?
             .map(|b| b.block.block_ptr()),
