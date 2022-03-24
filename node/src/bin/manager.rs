@@ -838,7 +838,7 @@ async fn main() {
             match cmd {
                 List => {
                     let (block_store, primary) = ctx.block_store_and_primary_pool();
-                    commands::chain::list(primary, block_store)
+                    commands::chain::list(primary, block_store).await
                 }
                 Info {
                     name,

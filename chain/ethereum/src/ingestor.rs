@@ -101,7 +101,7 @@ impl BlockIngestor {
         trace!(self.logger, "BlockIngestor::do_poll");
 
         // Get chain head ptr from store
-        let head_block_ptr_opt = self.chain_store.chain_head_ptr()?;
+        let head_block_ptr_opt = self.chain_store.cheap_clone().chain_head_ptr().await?;
 
         // To check if there is a new block or not, fetch only the block header since that's cheaper
         // than the full block. This is worthwhile because most of the time there won't be a new

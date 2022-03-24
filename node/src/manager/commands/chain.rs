@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use graph::blockchain::BlockPtr;
+use graph::cheap_clone::CheapClone;
 use graph::prelude::BlockNumber;
 use graph::prelude::ChainStore as _;
 use graph::prelude::EthereumBlock;
@@ -14,7 +15,7 @@ use graph_store_postgres::{
     command_support::catalog::block_store, connection_pool::ConnectionPool,
 };
 
-pub fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(), Error> {
+pub async fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(), Error> {
     let mut chains = {
         let conn = primary.get()?;
         block_store::load_chains(&conn)?
@@ -35,7 +36,8 @@ pub fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(), Error
         let head_block = match store.chain_store(&chain.name) {
             None => "no chain".to_string(),
             Some(chain_store) => chain_store
-                .chain_head_ptr()?
+                .chain_head_ptr()
+                .await?
                 .map(|ptr| ptr.number.to_string())
                 .unwrap_or("none".to_string()),
         };
@@ -80,7 +82,7 @@ pub async fn info(
     let chain_store = store
         .chain_store(&chain.name)
         .ok_or_else(|| anyhow!("unknown chain: {}", name))?;
-    let head_block = chain_store.chain_head_ptr()?;
+    let head_block = chain_store.cheap_clone().chain_head_ptr().await?;
     let ancestor = match &head_block {
         None => None,
         Some(head_block) => chain_store

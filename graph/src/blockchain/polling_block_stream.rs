@@ -220,7 +220,7 @@ where
         let max_block_range_size = self.max_block_range_size;
 
         // Get pointers from database for comparison
-        let head_ptr_opt = ctx.chain_store.chain_head_ptr()?;
+        let head_ptr_opt = ctx.chain_store.chain_head_ptr().await?;
         let subgraph_ptr = self.current_block.clone();
 
         // If chain head ptr is not set yet
