@@ -120,25 +120,7 @@ where
         // If a subgraph failed for deterministic reasons, before start indexing, we first
         // revert the deployment head. It should lead to the same result since the error was
         // deterministic.
-        if let Some(current_ptr) = self.inputs.store.block_ptr().await {
-            if let Some(parent_ptr) = self
-                .inputs
-                .triggers_adapter
-                .parent_ptr(&current_ptr)
-                .await?
-            {
-                // This reverts the deployment head to the parent_ptr if
-                // deterministic errors happened.
-                //
-                // There's no point in calling it if we have no current or parent block
-                // pointers, because there would be: no block to revert to or to search
-                // errors from (first execution).
-                let _outcome = self
-                    .inputs
-                    .store
-                    .unfail_deterministic_error(&current_ptr, &parent_ptr)?;
-            }
-        }
+        self.revert_deployment_head().await?;
 
         // Exponential backoff that starts with two minutes and keeps
         // increasing its timeout exponentially until it reaches the ceiling.
@@ -393,6 +375,29 @@ where
                 }
             }
         }
+    }
+
+    async fn revert_deployment_head(&self) -> Result<(), Error> {
+        if let Some(current_ptr) = self.inputs.store.block_ptr().await {
+            if let Some(parent_ptr) = self
+                .inputs
+                .triggers_adapter
+                .parent_ptr(&current_ptr)
+                .await?
+            {
+                // This reverts the deployment head to the parent_ptr if
+                // deterministic errors happened.
+                //
+                // There's no point in calling it if we have no current or parent block
+                // pointers, because there would be: no block to revert to or to search
+                // errors from (first execution).
+                let _outcome = self
+                    .inputs
+                    .store
+                    .unfail_deterministic_error(&current_ptr, &parent_ptr)?;
+            }
+        }
+        Ok(())
     }
 
     async fn revert_to_block(
