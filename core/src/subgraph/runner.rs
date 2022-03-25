@@ -235,7 +235,6 @@ where
         state: &mut State,
     ) -> Result<NextStep, Error> {
         let metrics = &self.ctx.block_stream_metrics;
-        let chain_store = self.inputs.chain.chain_store();
 
         let (block, cursor) = match event {
             BlockStreamEvent::ProcessBlock(block, cursor) => (block, cursor),
@@ -283,65 +282,9 @@ where
         let deployment_failed = &self.ctx.block_stream_metrics.deployment_failed;
 
         match res {
-            Ok(needs_restart) => {
-                // Once synced, no need to try to update the status again.
-                if !state.synced
-                    && is_deployment_synced(
-                        &block_ptr,
-                        chain_store.cheap_clone().cached_head_ptr().await?,
-                    )
-                {
-                    // Updating the sync status is an one way operation.
-                    // This state change exists: not synced -> synced
-                    // This state change does NOT: synced -> not synced
-                    self.inputs.store.deployment_synced()?;
-
-                    // Stop trying to update the sync status.
-                    state.synced = true;
-
-                    // Stop recording time-to-sync metrics.
-                    self.ctx.block_stream_metrics.stopwatch.disable();
-                }
-
-                // Keep trying to unfail subgraph for everytime it advances block(s) until it's
-                // health is not Failed anymore.
-                if state.should_try_unfail_non_deterministic {
-                    // If the deployment head advanced, we can unfail
-                    // the non-deterministic error (if there's any).
-                    let outcome = self
-                        .inputs
-                        .store
-                        .unfail_non_deterministic_error(&block_ptr)?;
-
-                    if let UnfailOutcome::Unfailed = outcome {
-                        // Stop trying to unfail.
-                        state.should_try_unfail_non_deterministic = false;
-                        deployment_failed.set(0.0);
-                        state.backoff.reset();
-                    }
-                }
-
-                if needs_restart && !self.inputs.static_filters {
-                    // Cancel the stream for real
-                    self.ctx
-                        .state
-                        .instances
-                        .write()
-                        .unwrap()
-                        .remove(&self.inputs.deployment.id);
-
-                    // And restart the subgraph
-                    return Ok(NextStep::RestartSubgraph);
-                }
-
-                if let Some(stop_block) = &self.inputs.stop_block {
-                    if block_ptr.number >= *stop_block {
-                        info!(&logger, "stop block reached for subgraph");
-                        return Ok(NextStep::Exit);
-                    }
-                }
-                Ok(NextStep::KeepProcessingEvents)
-            }
+            Ok(needs_restart) => Ok(self
+                .post_block_processing(&block_ptr, state, needs_restart)
+                .await?),
             Err(BlockProcessingError::Canceled) => {
                 debug!(&logger, "Subgraph block stream shut down cleanly");
                 Ok(NextStep::Exit)
@@ -410,6 +353,70 @@ where
             .revert_data_sources(subgraph_ptr.number);
         self.ctx.state.entity_lfu_cache = LfuCache::new();
         NextStep::KeepProcessingEvents
+    }
+
+    async fn post_block_processing(
+        &self,
+        block_ptr: &BlockPtr,
+        state: &mut State,
+        needs_restart: bool,
+    ) -> Result<NextStep, Error> {
+        let logger = &self.ctx.state.logger;
+        let chain_store = self.inputs.chain.chain_store();
+        let deployment_failed = &self.ctx.block_stream_metrics.deployment_failed;
+
+        // Once synced, no need to try to update the status again.
+        if !state.synced && is_deployment_synced(&block_ptr, chain_store.cached_head_ptr().await?) {
+            // Updating the sync status is an one way operation.
+            // This state change exists: not synced -> synced
+            // This state change does NOT: synced -> not synced
+            self.inputs.store.deployment_synced()?;
+
+            // Stop trying to update the sync status.
+            state.synced = true;
+
+            // Stop recording time-to-sync metrics.
+            self.ctx.block_stream_metrics.stopwatch.disable();
+        }
+
+        // Keep trying to unfail subgraph for everytime it advances block(s) until it's
+        // health is not Failed anymore.
+        if state.should_try_unfail_non_deterministic {
+            // If the deployment head advanced, we can unfail
+            // the non-deterministic error (if there's any).
+            let outcome = self
+                .inputs
+                .store
+                .unfail_non_deterministic_error(&block_ptr)?;
+
+            if let UnfailOutcome::Unfailed = outcome {
+                // Stop trying to unfail.
+                state.should_try_unfail_non_deterministic = false;
+                deployment_failed.set(0.0);
+                state.backoff.reset();
+            }
+        }
+
+        if needs_restart && !self.inputs.static_filters {
+            // Cancel the stream for real
+            self.ctx
+                .state
+                .instances
+                .write()
+                .unwrap()
+                .remove(&self.inputs.deployment.id);
+
+            // And restart the subgraph
+            return Ok(NextStep::RestartSubgraph);
+        }
+
+        if let Some(stop_block) = &self.inputs.stop_block {
+            if block_ptr.number >= *stop_block {
+                info!(&logger, "stop block reached for subgraph");
+                return Ok(NextStep::Exit);
+            }
+        }
+        Ok(NextStep::KeepProcessingEvents)
     }
 
     async fn handle_block_processing_error(
