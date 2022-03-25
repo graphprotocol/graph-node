@@ -8,6 +8,7 @@ use graph::env::env_var;
 use graph::prelude::{
     BlockNumber, Entity, MetricsRegistry, Schema, SubgraphStore as _, BLOCK_NUMBER_MAX,
 };
+use graph::slog::info;
 use graph::util::bounded_queue::BoundedQueue;
 use graph::{
     cheap_clone::CheapClone,
@@ -484,7 +485,7 @@ impl Queue {
         capacity: usize,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Arc<Self> {
-        async fn start_writer(queue: Arc<Queue>) {
+        async fn start_writer(queue: Arc<Queue>, logger: Logger) {
             loop {
                 // We peek at the front of the queue, rather than pop it
                 // right away, so that query methods like `get` have access
@@ -501,10 +502,12 @@ impl Queue {
                 match res {
                     Ok(Ok(())) => { /* nothing to do  */ }
                     Ok(Err(e)) => {
+                        error!(logger, "Subgraph writer failed"; "error" => e.to_string());
                         queue.record_err(e);
                         return;
                     }
                     Err(e) => {
+                        error!(logger, "Subgraph writer paniced"; "error" => e.to_string());
                         queue.record_err(StoreError::WriterPanic(e));
                         return;
                     }
@@ -518,8 +521,12 @@ impl Queue {
         // Use a separate instance of the `StopwatchMetrics` for background
         // work since that has its own call hierarchy, and using the
         // foreground metrics will lead to incorrect nesting of sections
-        let stopwatch =
-            StopwatchMetrics::new(logger, store.site.deployment.clone(), "writer", registry);
+        let stopwatch = StopwatchMetrics::new(
+            logger.clone(),
+            store.site.deployment.clone(),
+            "writer",
+            registry,
+        );
 
         let queue = Self {
             store,
@@ -530,7 +537,7 @@ impl Queue {
         };
         let queue = Arc::new(queue);
 
-        graph::spawn(start_writer(queue.cheap_clone()));
+        graph::spawn(start_writer(queue.cheap_clone(), logger));
 
         queue
     }
@@ -734,6 +741,7 @@ impl Writer {
         capacity: usize,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
+        info!(logger, "Starting subgraph writer"; "queue_size" => capacity);
         if capacity == 0 {
             Self::Sync(store)
         } else {
