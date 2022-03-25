@@ -18,7 +18,7 @@ use graph::{
     prelude::{
         async_trait,
         ethabi::{Address, Contract, Event, Function, LogParam, ParamType, RawLog},
-        info, serde_json,
+        info, serde_json, warn,
         web3::types::{Log, Transaction, H256},
         BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, EthereumCall,
         LightEthereumBlock, LightEthereumBlockExt, LinkResolver, Logger, TryStreamExt,
@@ -602,15 +602,21 @@ impl DataSource {
                 // Take the input for the call, chop off the first 4 bytes, then call
                 // `function.decode_input` to get a vector of `Token`s. Match the `Token`s
                 // with the `Param`s in `function.inputs` to create a `Vec<LogParam>`.
-                let tokens = function_abi
-                    .decode_input(&call.input.0[4..])
-                    .with_context(|| {
+                let tokens = match function_abi.decode_input(&call.input.0[4..]).with_context(
+                    || {
                         format!(
                             "Generating function inputs for the call {:?} failed, raw input: {}",
                             &function_abi,
                             hex::encode(&call.input.0)
                         )
-                    })?;
+                    },
+                ) {
+                    Ok(val) => val,
+                    Err(err) => {
+                        warn!(logger, "Failed parsing inputs, skipping"; "error" => &err.to_string());
+                        return Ok(None);
+                    }
+                };
 
                 ensure!(
                     tokens.len() == function_abi.inputs.len(),
