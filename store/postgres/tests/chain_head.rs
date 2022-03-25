@@ -1,6 +1,7 @@
 //! Test ChainStore implementation of Store, in particular, how
 //! the chain head pointer gets updated in various situations
 
+use futures::executor;
 use std::future::Future;
 use std::sync::Arc;
 
@@ -85,6 +86,7 @@ fn check_chain_head_update(
         let head_hash_exp = head_exp.map(|block| block.hash.clone());
         let head_hash_act = store
             .chain_head_ptr()
+            .await
             .expect("chain_head_ptr failed")
             .map(|ebp| ebp.hash_hex());
         assert_eq!(head_hash_exp, head_hash_act);
@@ -249,11 +251,14 @@ fn check_ancestor(
     offset: BlockNumber,
     exp: &FakeBlock,
 ) -> Result<(), Error> {
-    let act = store
-        .ancestor_block(child.block_ptr(), offset)?
-        .map(json::from_value::<EthereumBlock>)
-        .transpose()?
-        .ok_or_else(|| anyhow!("block {} has no ancestor at offset {}", child.hash, offset))?;
+    let act = executor::block_on(
+        store
+            .cheap_clone()
+            .ancestor_block(child.block_ptr(), offset),
+    )?
+    .map(json::from_value::<EthereumBlock>)
+    .transpose()?
+    .ok_or_else(|| anyhow!("block {} has no ancestor at offset {}", child.hash, offset))?;
     let act_hash = format!("{:x}", act.block.hash.unwrap());
     let exp_hash = &exp.hash;
 
@@ -289,11 +294,15 @@ fn ancestor_block_simple() {
 
         for offset in [6, 7, 8, 50].iter() {
             let offset = *offset;
-            let res = store.ancestor_block(BLOCK_FIVE.block_ptr(), offset);
+            let res = executor::block_on(
+                store
+                    .cheap_clone()
+                    .ancestor_block(BLOCK_FIVE.block_ptr(), offset),
+            );
             assert!(res.is_err());
         }
 
-        let block = store.ancestor_block(BLOCK_TWO_NO_PARENT.block_ptr(), 1)?;
+        let block = executor::block_on(store.ancestor_block(BLOCK_TWO_NO_PARENT.block_ptr(), 1))?;
         assert!(block.is_none());
         Ok(())
     });

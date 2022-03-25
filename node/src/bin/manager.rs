@@ -838,7 +838,7 @@ async fn main() {
             match cmd {
                 List => {
                     let (block_store, primary) = ctx.block_store_and_primary_pool();
-                    commands::chain::list(primary, block_store)
+                    commands::chain::list(primary, block_store).await
                 }
                 Info {
                     name,
@@ -846,7 +846,7 @@ async fn main() {
                     hashes,
                 } => {
                     let (block_store, primary) = ctx.block_store_and_primary_pool();
-                    commands::chain::info(primary, block_store, name, reorg_threshold, hashes)
+                    commands::chain::info(primary, block_store, name, reorg_threshold, hashes).await
                 }
                 Remove { name } => {
                     let (block_store, primary) = ctx.block_store_and_primary_pool();

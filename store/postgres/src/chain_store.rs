@@ -4,6 +4,7 @@ use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
 use graph::blockchain::{Block, ChainIdentifier};
+use graph::cheap_clone::CheapClone;
 use graph::prelude::web3::types::H256;
 use graph::util::timed_cache::TimedCache;
 use graph::{
@@ -1396,33 +1397,41 @@ impl ChainStoreTrait for ChainStore {
         Ok(missing)
     }
 
-    fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+    async fn chain_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error> {
         use public::ethereum_networks::dsl::*;
 
-        ethereum_networks
-            .select((head_block_hash, head_block_number))
-            .filter(name.eq(&self.chain))
-            .load::<(Option<String>, Option<i64>)>(&*self.get_conn()?)
-            .map(|rows| {
-                rows.first()
-                    .map(|(hash_opt, number_opt)| match (hash_opt, number_opt) {
-                        (Some(hash), Some(number)) => Some((hash.parse().unwrap(), *number).into()),
-                        (None, None) => None,
-                        _ => unreachable!(),
+        Ok(self
+            .cheap_clone()
+            .pool
+            .with_conn(move |conn, _| {
+                ethereum_networks
+                    .select((head_block_hash, head_block_number))
+                    .filter(name.eq(&self.chain))
+                    .load::<(Option<String>, Option<i64>)>(conn)
+                    .map(|rows| {
+                        rows.first()
+                            .map(|(hash_opt, number_opt)| match (hash_opt, number_opt) {
+                                (Some(hash), Some(number)) => {
+                                    Some((hash.parse().unwrap(), *number).into())
+                                }
+                                (None, None) => None,
+                                _ => unreachable!(),
+                            })
+                            .and_then(|opt: Option<BlockPtr>| opt)
+                            .map(|head| {
+                                self.block_cache.set("head", Arc::new(head.clone()));
+                                head
+                            })
                     })
-                    .and_then(|opt: Option<BlockPtr>| opt)
-                    .map(|head| {
-                        self.block_cache.set("head", Arc::new(head.clone()));
-                        head
-                    })
+                    .map_err(|e| CancelableError::from(StoreError::from(e)))
             })
-            .map_err(Error::from)
+            .await?)
     }
 
-    fn cached_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+    async fn cached_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error> {
         match self.block_cache.get("head") {
             Some(head) => Ok(Some(head.as_ref().clone())),
-            None => self.chain_head_ptr(),
+            None => self.chain_head_ptr().await,
         }
     }
 
@@ -1484,8 +1493,8 @@ impl ChainStoreTrait for ChainStore {
         self.storage.blocks(&conn, &self.chain, hashes)
     }
 
-    fn ancestor_block(
-        &self,
+    async fn ancestor_block(
+        self: Arc<Self>,
         block_ptr: BlockPtr,
         offset: BlockNumber,
     ) -> Result<Option<json::Value>, Error> {
@@ -1496,8 +1505,15 @@ impl ChainStoreTrait for ChainStore {
             block_ptr.hash_hex()
         );
 
-        let conn = self.get_conn()?;
-        self.storage.ancestor_block(&conn, block_ptr, offset)
+        Ok(self
+            .cheap_clone()
+            .pool
+            .with_conn(move |conn, _| {
+                self.storage
+                    .ancestor_block(&conn, block_ptr, offset)
+                    .map_err(|e| CancelableError::from(StoreError::from(e)))
+            })
+            .await?)
     }
 
     fn cleanup_cached_blocks(

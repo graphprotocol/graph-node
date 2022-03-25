@@ -1658,7 +1658,7 @@ dependencies = [
  "diesel_derives",
  "diesel_migrations",
  "fallible-iterator",
- "futures 0.1.31",
+ "futures 0.3.16",
  "git-testament",
  "graph",
  "graph-chain-ethereum",

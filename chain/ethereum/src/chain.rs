@@ -465,14 +465,16 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             .await
     }
 
-    fn ancestor_block(
+    async fn ancestor_block(
         &self,
         ptr: BlockPtr,
         offset: BlockNumber,
     ) -> Result<Option<BlockFinality>, Error> {
         let block: Option<EthereumBlock> = self
             .chain_store
-            .ancestor_block(ptr, offset)?
+            .cheap_clone()
+            .ancestor_block(ptr, offset)
+            .await?
             .map(json::from_value)
             .transpose()?;
         Ok(block.map(|block| {

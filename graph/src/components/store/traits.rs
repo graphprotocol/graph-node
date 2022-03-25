@@ -296,10 +296,10 @@ pub trait ChainStore: Send + Sync + 'static {
     /// to a block with a smaller or equal block number.
     ///
     /// The head block pointer will be None on initial set up.
-    fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
+    async fn chain_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error>;
 
     /// In-memory time cached version of `chain_head_ptr`.
-    fn cached_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
+    async fn cached_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error>;
 
     /// Get the current head block cursor for this chain.
     ///
@@ -324,8 +324,8 @@ pub trait ChainStore: Send + Sync + 'static {
     /// missing blocks in the chain store.
     ///
     /// Returns an error if the offset would reach past the genesis block.
-    fn ancestor_block(
-        &self,
+    async fn ancestor_block(
+        self: Arc<Self>,
         block_ptr: BlockPtr,
         offset: BlockNumber,
     ) -> Result<Option<serde_json::Value>, Error>;

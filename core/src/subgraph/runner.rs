@@ -279,7 +279,10 @@ where
                     Ok(needs_restart) => {
                         // Once synced, no need to try to update the status again.
                         if !synced
-                            && is_deployment_synced(&block_ptr, chain_store.cached_head_ptr()?)
+                            && is_deployment_synced(
+                                &block_ptr,
+                                chain_store.cheap_clone().cached_head_ptr().await?,
+                            )
                         {
                             // Updating the sync status is an one way operation.
                             // This state change exists: not synced -> synced
