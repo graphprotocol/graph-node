@@ -85,6 +85,11 @@ async fn new_block_stream<C: Blockchain>(
     ))
 }
 
+enum NextStep {
+    RestartSubgraph,
+    KeepProcessingEvents,
+}
+
 pub struct SubgraphRunner<C: Blockchain, T: RuntimeHostBuilder<C>> {
     ctx: IndexingContext<T, C>,
     inputs: Arc<IndexingInputs<C>>,
@@ -177,49 +182,10 @@ where
                 let (block, cursor) = match event {
                     Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => (block, cursor),
                     Some(Ok(BlockStreamEvent::Revert(revert_to_ptr, cursor))) => {
-                        // Current deployment head in the database / WritableAgent Mutex cache.
-                        //
-                        // Safe unwrap because in a Revert event we're sure the subgraph has
-                        // advanced at least once.
-                        let subgraph_ptr = self.inputs.store.block_ptr().await.unwrap();
-                        if revert_to_ptr.number >= subgraph_ptr.number {
-                            info!(&logger, "Block to revert is higher than subgraph pointer, nothing to do"; "subgraph_ptr" => &subgraph_ptr, "revert_to_ptr" => &revert_to_ptr);
-                            continue;
+                        match self.revert_to_block(revert_to_ptr, cursor).await {
+                            NextStep::KeepProcessingEvents => continue,
+                            NextStep::RestartSubgraph => break,
                         }
-
-                        info!(&logger, "Reverting block to get back to main chain"; "subgraph_ptr" => &subgraph_ptr, "revert_to_ptr" => &revert_to_ptr);
-
-                        if let Err(e) = self
-                            .inputs
-                            .store
-                            .revert_block_operations(revert_to_ptr, cursor.as_deref())
-                        {
-                            error!(&logger, "Could not revert block. Retrying"; "error" => %e);
-
-                            // Exit inner block stream consumption loop and go up to loop that restarts subgraph
-                            break;
-                        }
-
-                        self.ctx
-                            .block_stream_metrics
-                            .reverted_blocks
-                            .set(subgraph_ptr.number as f64);
-                        metrics.deployment_head.set(subgraph_ptr.number as f64);
-
-                        // Revert the in-memory state:
-                        // - Remove hosts for reverted dynamic data sources.
-                        // - Clear the entity cache.
-                        //
-                        // Note that we do not currently revert the filters, which means the filters
-                        // will be broader than necessary. This is not ideal for performance, but is not
-                        // incorrect since we will discard triggers that match the filters but do not
-                        // match any data sources.
-                        self.ctx
-                            .state
-                            .instance
-                            .revert_data_sources(subgraph_ptr.number);
-                        self.ctx.state.entity_lfu_cache = LfuCache::new();
-                        continue;
                     }
 
                     // Log and drop the errors from the block_stream
@@ -427,6 +393,59 @@ where
                 }
             }
         }
+    }
+
+    async fn revert_to_block(
+        &mut self,
+        revert_to_ptr: BlockPtr,
+        cursor: Option<String>,
+    ) -> NextStep {
+        let logger = &self.ctx.state.logger;
+        let metrics = &*self.ctx.block_stream_metrics;
+
+        // Current deployment head in the database / WritableAgent Mutex cache.
+        //
+        // Safe unwrap because in a Revert event we're sure the subgraph has
+        // advanced at least once.
+        let subgraph_ptr = self.inputs.store.block_ptr().await.unwrap();
+        if revert_to_ptr.number >= subgraph_ptr.number {
+            info!(&logger, "Block to revert is higher than subgraph pointer, nothing to do"; "subgraph_ptr" => &subgraph_ptr, "revert_to_ptr" => &revert_to_ptr);
+            return NextStep::KeepProcessingEvents;
+        }
+
+        info!(&logger, "Reverting block to get back to main chain"; "subgraph_ptr" => &subgraph_ptr, "revert_to_ptr" => &revert_to_ptr);
+
+        if let Err(e) = self
+            .inputs
+            .store
+            .revert_block_operations(revert_to_ptr, cursor.as_deref())
+        {
+            error!(&logger, "Could not revert block. Retrying"; "error" => %e);
+
+            // Exit inner block stream consumption loop and go up to loop that restarts subgraph
+            return NextStep::RestartSubgraph;
+        }
+
+        self.ctx
+            .block_stream_metrics
+            .reverted_blocks
+            .set(subgraph_ptr.number as f64);
+        metrics.deployment_head.set(subgraph_ptr.number as f64);
+
+        // Revert the in-memory state:
+        // - Remove hosts for reverted dynamic data sources.
+        // - Clear the entity cache.
+        //
+        // Note that we do not currently revert the filters, which means the filters
+        // will be broader than necessary. This is not ideal for performance, but is not
+        // incorrect since we will discard triggers that match the filters but do not
+        // match any data sources.
+        self.ctx
+            .state
+            .instance
+            .revert_data_sources(subgraph_ptr.number);
+        self.ctx.state.entity_lfu_cache = LfuCache::new();
+        NextStep::KeepProcessingEvents
     }
 
     /// Processes a block and returns the updated context and a boolean flag indicating
