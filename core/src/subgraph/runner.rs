@@ -85,6 +85,26 @@ async fn new_block_stream<C: Blockchain>(
     ))
 }
 
+struct State {
+    synced: bool,
+    should_try_unfail_non_deterministic: bool,
+    skip_ptr_updates_timer: Instant,
+    backoff: ExponentialBackoff,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            synced: false,
+            should_try_unfail_non_deterministic: true,
+            skip_ptr_updates_timer: Instant::now(),
+            // Exponential backoff that starts with two minutes and keeps
+            // increasing its timeout exponentially until it reaches the ceiling.
+            backoff: ExponentialBackoff::new(MINUTE * 2, *SUBGRAPH_ERROR_RETRY_CEIL_SECS),
+        }
+    }
+}
+
 enum NextStep {
     RestartSubgraph,
     KeepProcessingEvents,
@@ -110,21 +130,14 @@ where
     pub async fn run(mut self) -> Result<(), Error> {
         // Clone a few things for different parts of the async processing
         let subgraph_metrics = self.ctx.subgraph_metrics.cheap_clone();
-        let store_for_err = self.inputs.store.cheap_clone();
         let logger = self.ctx.state.logger.cheap_clone();
-        let id_for_err = self.inputs.deployment.hash.clone();
-        let mut should_try_unfail_non_deterministic = true;
-        let mut synced = false;
-        let mut skip_ptr_updates_timer = Instant::now();
 
         // If a subgraph failed for deterministic reasons, before start indexing, we first
         // revert the deployment head. It should lead to the same result since the error was
         // deterministic.
         self.revert_deployment_head().await?;
 
-        // Exponential backoff that starts with two minutes and keeps
-        // increasing its timeout exponentially until it reaches the ceiling.
-        let mut backoff = ExponentialBackoff::new(MINUTE * 2, *SUBGRAPH_ERROR_RETRY_CEIL_SECS);
+        let mut state = State::default();
 
         loop {
             debug!(logger, "Starting or restarting subgraph");
@@ -199,12 +212,12 @@ where
                 }
 
                 if block.trigger_count() == 0
-                    && skip_ptr_updates_timer.elapsed() <= SKIP_PTR_UPDATES_THRESHOLD
-                    && !synced
+                    && state.skip_ptr_updates_timer.elapsed() <= SKIP_PTR_UPDATES_THRESHOLD
+                    && !state.synced
                 {
                     continue;
                 } else {
-                    skip_ptr_updates_timer = Instant::now();
+                    state.skip_ptr_updates_timer = Instant::now();
                 }
 
                 let start = Instant::now();
@@ -226,7 +239,7 @@ where
                 match res {
                     Ok(needs_restart) => {
                         // Once synced, no need to try to update the status again.
-                        if !synced
+                        if !state.synced
                             && is_deployment_synced(
                                 &block_ptr,
                                 chain_store.cheap_clone().cached_head_ptr().await?,
@@ -238,7 +251,7 @@ where
                             self.inputs.store.deployment_synced()?;
 
                             // Stop trying to update the sync status.
-                            synced = true;
+                            state.synced = true;
 
                             // Stop recording time-to-sync metrics.
                             self.ctx.block_stream_metrics.stopwatch.disable();
@@ -246,7 +259,7 @@ where
 
                         // Keep trying to unfail subgraph for everytime it advances block(s) until it's
                         // health is not Failed anymore.
-                        if should_try_unfail_non_deterministic {
+                        if state.should_try_unfail_non_deterministic {
                             // If the deployment head advanced, we can unfail
                             // the non-deterministic error (if there's any).
                             let outcome = self
@@ -256,9 +269,9 @@ where
 
                             if let UnfailOutcome::Unfailed = outcome {
                                 // Stop trying to unfail.
-                                should_try_unfail_non_deterministic = false;
+                                state.should_try_unfail_non_deterministic = false;
                                 deployment_failed.set(0.0);
-                                backoff.reset();
+                                state.backoff.reset();
                             }
                         }
 
@@ -287,90 +300,13 @@ where
                         return Ok(());
                     }
 
-                    // Handle unexpected stream errors by marking the subgraph as failed.
                     Err(e) => {
-                        // Clear entity cache when a subgraph fails.
-                        //
-                        // This is done to be safe and sure that there's no state that's
-                        // out of sync from the database.
-                        //
-                        // Without it, POI changes on failure would be kept in the entity cache
-                        // and be transacted incorrectly in the next run.
-                        self.ctx.state.entity_lfu_cache = LfuCache::new();
-
                         deployment_failed.set(1.0);
-
-                        let message = format!("{:#}", e).replace("\n", "\t");
-                        let err = anyhow!("{}, code: {}", message, LogCode::SubgraphSyncingFailure);
-                        let deterministic = e.is_deterministic();
-
-                        let error = SubgraphError {
-                            subgraph_id: id_for_err.clone(),
-                            message,
-                            block_ptr: Some(block_ptr),
-                            handler: None,
-                            deterministic,
-                        };
-
-                        match deterministic {
-                            true => {
-                                // Fail subgraph:
-                                // - Change status/health.
-                                // - Save the error to the database.
-                                store_for_err
-                                    .fail_subgraph(error)
-                                    .await
-                                    .context("Failed to set subgraph status to `failed`")?;
-
-                                return Err(err);
-                            }
-                            false => {
-                                // Shouldn't fail subgraph if it's already failed for non-deterministic
-                                // reasons.
-                                //
-                                // If we don't do this check we would keep adding the same error to the
-                                // database.
-                                let should_fail_subgraph = self
-                                    .inputs
-                                    .store
-                                    .health(&self.inputs.deployment.hash)
-                                    .await?
-                                    != SubgraphHealth::Failed;
-
-                                if should_fail_subgraph {
-                                    // Fail subgraph:
-                                    // - Change status/health.
-                                    // - Save the error to the database.
-                                    store_for_err
-                                        .fail_subgraph(error)
-                                        .await
-                                        .context("Failed to set subgraph status to `failed`")?;
-                                }
-
-                                // Retry logic below:
-
-                                // Cancel the stream for real.
-                                self.ctx
-                                    .state
-                                    .instances
-                                    .write()
-                                    .unwrap()
-                                    .remove(&self.inputs.deployment.id);
-
-                                let message = format!("{:#}", e).replace("\n", "\t");
-                                error!(logger, "Subgraph failed with non-deterministic error: {}", message;
-                                    "attempt" => backoff.attempt,
-                                    "retry_delay_s" => backoff.delay().as_secs());
-
-                                // Sleep before restarting.
-                                backoff.sleep_async().await;
-
-                                should_try_unfail_non_deterministic = true;
-
-                                // And restart the subgraph.
-                                break;
-                            }
-                        }
+                        // Handle unexpected stream errors by marking the subgraph as failed.
+                        self.handle_block_processing_error(e, block_ptr, &mut state)
+                            .await?;
+                        // And restart the subgraph.
+                        break;
                     }
                 }
             }
@@ -451,6 +387,97 @@ where
             .revert_data_sources(subgraph_ptr.number);
         self.ctx.state.entity_lfu_cache = LfuCache::new();
         NextStep::KeepProcessingEvents
+    }
+
+    async fn handle_block_processing_error(
+        &mut self,
+        e: BlockProcessingError,
+        block_ptr: BlockPtr,
+        state: &mut State,
+    ) -> Result<(), Error> {
+        let logger = &self.ctx.state.logger;
+        let store_for_err = &self.inputs.store;
+        let subgraph_id = self.inputs.deployment.hash.clone();
+
+        // Clear entity cache when a subgraph fails.
+        //
+        // This is done to be safe and sure that there's no state that's
+        // out of sync from the database.
+        //
+        // Without it, POI changes on failure would be kept in the entity cache
+        // and be transacted incorrectly in the next run.
+        self.ctx.state.entity_lfu_cache = LfuCache::new();
+
+        let message = format!("{:#}", e).replace("\n", "\t");
+        let err = anyhow!("{}, code: {}", message, LogCode::SubgraphSyncingFailure);
+        let deterministic = e.is_deterministic();
+
+        let error = SubgraphError {
+            subgraph_id,
+            message,
+            block_ptr: Some(block_ptr),
+            handler: None,
+            deterministic,
+        };
+
+        match deterministic {
+            true => {
+                // Fail subgraph:
+                // - Change status/health.
+                // - Save the error to the database.
+                store_for_err
+                    .fail_subgraph(error)
+                    .await
+                    .context("Failed to set subgraph status to `failed`")?;
+
+                Err(err)
+            }
+            false => {
+                // Shouldn't fail subgraph if it's already failed for non-deterministic
+                // reasons.
+                //
+                // If we don't do this check we would keep adding the same error to the
+                // database.
+                let should_fail_subgraph = self
+                    .inputs
+                    .store
+                    .health(&self.inputs.deployment.hash)
+                    .await?
+                    != SubgraphHealth::Failed;
+
+                if should_fail_subgraph {
+                    // Fail subgraph:
+                    // - Change status/health.
+                    // - Save the error to the database.
+                    store_for_err
+                        .fail_subgraph(error)
+                        .await
+                        .context("Failed to set subgraph status to `failed`")?;
+                }
+
+                // Retry logic below:
+
+                // Cancel the stream for real.
+                self.ctx
+                    .state
+                    .instances
+                    .write()
+                    .unwrap()
+                    .remove(&self.inputs.deployment.id);
+
+                let message = format!("{:#}", e).replace("\n", "\t");
+                error!(logger, "Subgraph failed with non-deterministic error: {}", message;
+                                    "attempt" => state.backoff.attempt,
+                                    "retry_delay_s" => state.backoff.delay().as_secs());
+
+                // Sleep before restarting.
+                state.backoff.sleep_async().await;
+
+                state.should_try_unfail_non_deterministic = true;
+
+                Ok(())
+            }
+        }
     }
 
     /// Processes a block and returns the updated context and a boolean flag indicating
