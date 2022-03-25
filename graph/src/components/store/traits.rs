@@ -358,7 +358,8 @@ pub trait ChainStore: Send + Sync + 'static {
 }
 
 pub trait EthereumCallCache: Send + Sync + 'static {
-    /// Cached return value.
+    /// Returns the return value of the provided Ethereum call, if present in
+    /// the cache.
     fn get_call(
         &self,
         contract_address: ethabi::Address,
@@ -366,7 +367,11 @@ pub trait EthereumCallCache: Send + Sync + 'static {
         block: BlockPtr,
     ) -> Result<Option<Vec<u8>>, Error>;
 
-    // Add entry to the cache.
+    /// Returns all cached calls for a given `block`. This method does *not*
+    /// update the last access time of the returned cached calls.
+    fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error>;
+
+    /// Stores the provided Ethereum call in the cache.
     fn set_call(
         &self,
         contract_address: ethabi::Address,

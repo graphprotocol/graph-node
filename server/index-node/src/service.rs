@@ -1,3 +1,4 @@
+use graph::blockchain::BlockchainMap;
 use http::header::{
     self, ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
     CONTENT_TYPE, LOCATION,
@@ -28,6 +29,7 @@ pub type IndexNodeServiceResponse = DynTryFuture<'static, Response<Body>, GraphQ
 #[derive(Debug)]
 pub struct IndexNodeService<Q, S, R> {
     logger: Logger,
+    blockchain_map: Arc<BlockchainMap>,
     graphql_runner: Arc<Q>,
     store: Arc<S>,
     explorer: Arc<Explorer<S>>,
@@ -38,6 +40,7 @@ impl<Q, S, R> Clone for IndexNodeService<Q, S, R> {
     fn clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
+            blockchain_map: self.blockchain_map.clone(),
             graphql_runner: self.graphql_runner.clone(),
             store: self.store.clone(),
             explorer: self.explorer.clone(),
@@ -57,6 +60,7 @@ where
     /// Creates a new GraphQL service.
     pub fn new(
         logger: Logger,
+        blockchain_map: Arc<BlockchainMap>,
         graphql_runner: Arc<Q>,
         store: Arc<S>,
         link_resolver: Arc<R>,
@@ -65,6 +69,7 @@ where
 
         IndexNodeService {
             logger,
+            blockchain_map,
             graphql_runner,
             store,
             explorer,
@@ -132,6 +137,7 @@ where
                 store,
                 self.link_resolver.clone(),
                 validated.bearer_token,
+                self.blockchain_map.clone(),
             );
             let options = QueryExecutionOptions {
                 resolver,

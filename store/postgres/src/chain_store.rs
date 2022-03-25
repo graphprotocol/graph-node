@@ -3,19 +3,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
-use graph::blockchain::{Block, ChainIdentifier};
-use graph::cheap_clone::CheapClone;
-use graph::prelude::web3::types::H256;
-use graph::util::timed_cache::TimedCache;
-use graph::{
-    constraint_violation,
-    prelude::{
-        async_trait, ethabi, CancelableError, ChainStore as ChainStoreTrait, EthereumCallCache,
-        StoreError,
-    },
-};
 
-use graph::ensure;
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
@@ -24,9 +12,16 @@ use std::{
     time::Duration,
 };
 
+use graph::blockchain::{Block, ChainIdentifier};
+use graph::cheap_clone::CheapClone;
+use graph::prelude::web3::types::H256;
 use graph::prelude::{
-    serde_json as json, transaction_receipt::LightTransactionReceipt, BlockNumber, BlockPtr, Error,
+    async_trait, ethabi, serde_json as json, transaction_receipt::LightTransactionReceipt,
+    BlockNumber, BlockPtr, CachedEthereumCall, CancelableError, ChainStore as ChainStoreTrait,
+    Error, EthereumCallCache, StoreError,
 };
+use graph::util::timed_cache::TimedCache;
+use graph::{constraint_violation, ensure};
 
 use crate::{
     block_store::ChainStatus, chain_head_listener::ChainHeadUpdateSender,
@@ -52,33 +47,26 @@ pub use data::Storage;
 
 /// Encapuslate access to the blocks table for a chain.
 mod data {
-
-    use diesel::sql_types::Binary;
-    use diesel::{connection::SimpleConnection, insert_into};
-    use diesel::{delete, prelude::*, sql_query};
-    use diesel::{dsl::sql, pg::PgConnection};
-    use diesel::{
-        pg::Pg,
-        serialize::Output,
-        sql_types::Text,
-        types::{FromSql, ToSql},
-    };
-    use diesel::{
-        sql_types::{BigInt, Bytea, Integer, Jsonb},
-        update,
-    };
+    use diesel::connection::SimpleConnection;
+    use diesel::dsl::sql;
+    use diesel::pg::{Pg, PgConnection};
+    use diesel::serialize::Output;
+    use diesel::sql_types::{BigInt, Binary, Bytea, Integer, Jsonb, Text};
+    use diesel::types::{FromSql, ToSql};
+    use diesel::{delete, insert_into, prelude::*, sql_query, update};
     use diesel_dynamic_schema as dds;
     use graph::blockchain::{Block, BlockHash};
-    use graph::{
-        constraint_violation,
-        prelude::{transaction_receipt::LightTransactionReceipt, StoreError},
+    use graph::constraint_violation;
+    use graph::prelude::ethabi::ethereum_types::H160;
+    use graph::prelude::transaction_receipt::LightTransactionReceipt;
+    use graph::prelude::web3::types::H256;
+    use graph::prelude::{
+        serde_json as json, BlockNumber, BlockPtr, CachedEthereumCall, Error, StoreError,
     };
 
     use std::fmt;
     use std::iter::FromIterator;
     use std::{convert::TryFrom, io::Write};
-
-    use graph::prelude::{serde_json as json, web3::types::H256, BlockNumber, BlockPtr, Error};
 
     use crate::transaction_receipt::RawTransactionReceipt;
 
@@ -239,6 +227,10 @@ mod data {
             self.table.column::<Bytea, _>("id")
         }
 
+        fn block_number(&self) -> DynColumn<BigInt> {
+            self.table.column::<BigInt, _>("block_number")
+        }
+
         fn return_value(&self) -> DynColumn<Bytea> {
             self.table.column::<Bytea, _>("return_value")
         }
@@ -348,6 +340,7 @@ mod data {
 	              contract_address bytea not null,
 	              block_number     int4 not null
                 );
+                create index call_cache_block_number_idx ON {nsp}.call_cache(block_number);
 
                 create table {nsp}.call_meta (
                     contract_address bytea not null primary key,
@@ -938,6 +931,46 @@ mod data {
                     .optional()
                     .map_err(Error::from),
             }
+        }
+
+        pub(super) fn get_calls_in_block(
+            &self,
+            conn: &PgConnection,
+            block_ptr: BlockPtr,
+        ) -> Result<Vec<CachedEthereumCall>, Error> {
+            let block_num = block_ptr.block_number();
+
+            let rows = match self {
+                Storage::Shared => {
+                    use public::eth_call_cache as cache;
+
+                    cache::table
+                        .select((cache::id, cache::return_value, cache::contract_address))
+                        .filter(cache::block_number.eq(block_num))
+                        .order(cache::contract_address)
+                        .get_results::<(Vec<u8>, Vec<u8>, Vec<u8>)>(conn)?
+                }
+                Storage::Private(Schema { call_cache, .. }) => call_cache
+                    .table()
+                    .select((
+                        call_cache.id(),
+                        call_cache.return_value(),
+                        call_cache.contract_address(),
+                    ))
+                    .filter(call_cache.block_number().eq(block_num as i64))
+                    .order(call_cache.contract_address())
+                    .get_results::<(Vec<u8>, Vec<u8>, Vec<u8>)>(conn)?,
+            };
+
+            Ok(rows
+                .into_iter()
+                .map(|row| CachedEthereumCall {
+                    blake3_id: row.0,
+                    block_ptr: block_ptr.clone(),
+                    contract_address: H160::from_slice(&row.2[..]),
+                    return_value: row.1,
+                })
+                .collect())
         }
 
         pub(super) fn update_accessed_at(
@@ -1644,6 +1677,11 @@ impl EthereumCallCache for ChainStore {
         } else {
             Ok(None)
         }
+    }
+
+    fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error> {
+        let conn = &*self.get_conn()?;
+        conn.transaction::<_, Error, _>(|| Ok(self.storage.get_calls_in_block(conn, block)?))
     }
 
     fn set_call(

@@ -80,6 +80,7 @@ impl std::fmt::Debug for Chain {
 }
 
 impl Chain {
+    /// Creates a new Ethereum [`Chain`].
     pub fn new(
         logger_factory: LoggerFactory,
         name: String,
@@ -107,9 +108,12 @@ impl Chain {
             is_ingestible,
         }
     }
-}
 
-impl Chain {
+    /// Returns a handler to this chain's [`EthereumCallCache`].
+    pub fn call_cache(&self) -> Arc<dyn EthereumCallCache> {
+        self.call_cache.clone()
+    }
+
     pub fn cheapest_adapter(&self) -> Arc<EthereumAdapter> {
         self.eth_adapters.cheapest().unwrap().clone()
     }

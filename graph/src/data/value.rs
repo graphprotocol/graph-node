@@ -210,6 +210,7 @@ impl Value {
             ("BigInt", Value::String(s)) => Ok(Value::String(s)),
             ("BigInt", Value::Int(n)) => Ok(Value::String(n.to_string())),
             ("JSONObject", Value::Object(obj)) => Ok(Value::Object(obj)),
+            ("Date", Value::String(obj)) => Ok(Value::String(obj)),
             (_, v) => Err(v),
         }
     }

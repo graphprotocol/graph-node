@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 
+use crate::blockchain::BlockPtr;
 use crate::components::store::{
     self as s, Entity, EntityKey, EntityOp, EntityOperation, EntityType,
 };
@@ -340,4 +341,21 @@ impl LfuCache<EntityKey, Option<Entity>> {
             Some(data) => Ok(data.to_owned()),
         }
     }
+}
+
+/// Represents an item retrieved from an
+/// [`EthereumCallCache`](super::EthereumCallCache) implementor.
+pub struct CachedEthereumCall {
+    /// The BLAKE3 hash that uniquely represents this cache item. The way this
+    /// hash is constructed is an implementation detail.
+    pub blake3_id: Vec<u8>,
+
+    /// Block details related to this Ethereum call.
+    pub block_ptr: BlockPtr,
+
+    /// The address to the called contract.
+    pub contract_address: ethabi::Address,
+
+    /// The encoded return value of this call.
+    pub return_value: Vec<u8>,
 }

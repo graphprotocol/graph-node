@@ -4,6 +4,7 @@ use hyper::Server;
 use std::net::{Ipv4Addr, SocketAddrV4};
 
 use graph::{
+    blockchain::BlockchainMap,
     components::store::Store,
     prelude::{IndexNodeServer as IndexNodeServerTrait, *},
 };
@@ -27,6 +28,7 @@ impl From<hyper::Error> for IndexNodeServeError {
 /// A GraphQL server based on Hyper.
 pub struct IndexNodeServer<Q, S, R> {
     logger: Logger,
+    blockchain_map: Arc<BlockchainMap>,
     graphql_runner: Arc<Q>,
     store: Arc<S>,
     link_resolver: Arc<R>,
@@ -36,6 +38,7 @@ impl<Q, S, R> IndexNodeServer<Q, S, R> {
     /// Creates a new GraphQL server.
     pub fn new(
         logger_factory: &LoggerFactory,
+        blockchain_map: Arc<BlockchainMap>,
         graphql_runner: Arc<Q>,
         store: Arc<S>,
         link_resolver: Arc<R>,
@@ -51,6 +54,7 @@ impl<Q, S, R> IndexNodeServer<Q, S, R> {
 
         IndexNodeServer {
             logger,
+            blockchain_map,
             graphql_runner,
             store,
             link_resolver,
@@ -86,6 +90,7 @@ where
         let store = self.store.clone();
         let service = IndexNodeService::new(
             logger_for_service.clone(),
+            self.blockchain_map.clone(),
             graphql_runner.clone(),
             store.clone(),
             self.link_resolver.clone(),

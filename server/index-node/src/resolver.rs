@@ -3,15 +3,13 @@ use std::collections::BTreeMap;
 use std::convert::TryInto;
 use web3::types::{Address, H256};
 
-use graph::blockchain::{Blockchain, BlockchainKind};
+use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
+use graph::components::store::{BlockStore, EntityType, Store};
+use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
 use graph::data::subgraph::features::detect_features;
 use graph::data::subgraph::{status, MAX_SPEC_VERSION};
 use graph::data::value::Object;
 use graph::prelude::*;
-use graph::{
-    components::store::{BlockStore, EntityType, Store},
-    data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap},
-};
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
 
 use crate::auth::POI_PROTECTION;
@@ -19,6 +17,7 @@ use crate::auth::POI_PROTECTION;
 /// Resolver for the index node GraphQL API.
 pub struct IndexNodeResolver<S, R> {
     logger: Logger,
+    blockchain_map: Arc<BlockchainMap>,
     store: Arc<S>,
     link_resolver: Arc<R>,
     bearer_token: Option<String>,
@@ -34,10 +33,12 @@ where
         store: Arc<S>,
         link_resolver: Arc<R>,
         bearer_token: Option<String>,
+        blockchain_map: Arc<BlockchainMap>,
     ) -> Self {
         let logger = logger.new(o!("component" => "IndexNodeResolver"));
         Self {
             logger,
+            blockchain_map,
             store,
             link_resolver,
             bearer_token,
@@ -123,7 +124,7 @@ where
         } else {
             error!(
                 self.logger,
-                "Failed to fetch block data; nonexistant network";
+                "Failed to fetch block data; nonexistent network";
                 "network" => network,
                 "block_hash" => format!("{}", block_hash),
             );
@@ -156,6 +157,91 @@ where
                 r::Value::Null
             }
         })
+    }
+
+    fn resolve_cached_ethereum_calls(
+        &self,
+        field: &a::Field,
+    ) -> Result<r::Value, QueryExecutionError> {
+        let network = field
+            .get_required::<String>("network")
+            .expect("Valid network required");
+
+        let block_hash = field
+            .get_required::<H256>("blockHash")
+            .expect("Valid blockHash required");
+
+        let chain = if let Ok(c) = self
+            .blockchain_map
+            .get::<graph_chain_ethereum::Chain>(network.clone())
+        {
+            c
+        } else {
+            error!(
+                self.logger,
+                "Failed to fetch cached Ethereum calls; nonexistent network";
+                "network" => network,
+                "block_hash" => format!("{}", block_hash),
+            );
+            return Ok(r::Value::Null);
+        };
+        let chain_store = chain.chain_store();
+        let call_cache = chain.call_cache();
+
+        let block_number = match chain_store.block_number(block_hash) {
+            Ok(Some((_, n))) => n,
+            Ok(None) => {
+                error!(
+                    self.logger,
+                    "Failed to fetch cached Ethereum calls; block not found";
+                    "network" => network,
+                    "block_hash" => format!("{}", block_hash),
+                );
+                return Ok(r::Value::Null);
+            }
+            Err(e) => {
+                error!(
+                    self.logger,
+                    "Failed to fetch cached Ethereum calls; storage error";
+                    "network" => network.as_str(),
+                    "block_hash" => format!("{}", block_hash),
+                    "error" => e.to_string(),
+                );
+                return Ok(r::Value::Null);
+            }
+        };
+        let block_ptr = BlockPtr::new(block_hash.into(), block_number);
+
+        let calls = match call_cache.get_calls_in_block(block_ptr) {
+            Ok(c) => c,
+            Err(e) => {
+                error!(
+                    self.logger,
+                    "Failed to fetch cached Ethereum calls; storage error";
+                    "network" => network.as_str(),
+                    "block_hash" => format!("{}", block_hash),
+                    "error" => e.to_string(),
+                );
+                return Err(QueryExecutionError::StoreError(Error::from(e).into()));
+            }
+        };
+
+        Ok(r::Value::List(
+            calls
+                .into_iter()
+                .map(|cached_call| {
+                    object! {
+                        idHash: &cached_call.blake3_id[..],
+                        block: object! {
+                            hash: cached_call.block_ptr.hash.hash_hex(),
+                            number: cached_call.block_ptr.number,
+                        },
+                        contractAddress: &cached_call.contract_address[..],
+                        returnValue: &cached_call.return_value[..],
+                    }
+                })
+                .collect::<Vec<r::Value>>(),
+        ))
     }
 
     fn resolve_proof_of_indexing(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
@@ -503,6 +589,7 @@ where
     fn clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
+            blockchain_map: self.blockchain_map.clone(),
             store: self.store.clone(),
             link_resolver: self.link_resolver.clone(),
             bearer_token: self.bearer_token.clone(),
@@ -561,15 +648,16 @@ where
         _field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
     ) -> Result<r::Value, QueryExecutionError> {
+        // Resolves the `field.name` top-level field.
         match (prefetched_objects, object_type.name(), field.name.as_str()) {
-            // The top-level `indexingStatuses` field
             (None, "SubgraphIndexingStatus", "indexingStatuses") => {
                 self.resolve_indexing_statuses(field)
             }
-
-            // The top-level `indexingStatusesForSubgraphName` field
             (None, "SubgraphIndexingStatus", "indexingStatusesForSubgraphName") => {
                 self.resolve_indexing_statuses_for_subgraph_name(field)
+            }
+            (None, "CachedEthereumCall", "cachedEthereumCalls") => {
+                self.resolve_cached_ethereum_calls(field)
             }
 
             // Resolve fields of `Object` values (e.g. the `chains` field of `ChainIndexingStatus`)
@@ -584,21 +672,15 @@ where
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
     ) -> Result<r::Value, QueryExecutionError> {
+        // Resolves the `field.name` top-level field.
         match (prefetched_object, field.name.as_str()) {
-            // The top-level `indexingStatusForCurrentVersion` field
             (None, "indexingStatusForCurrentVersion") => {
                 self.resolve_indexing_status_for_version(field, true)
             }
-
-            // The top-level `indexingStatusForPendingVersion` field
             (None, "indexingStatusForPendingVersion") => {
                 self.resolve_indexing_status_for_version(field, false)
             }
-
-            // The top-level `indexingStatusForPendingVersion` field
             (None, "subgraphFeatures") => graph::block_on(self.resolve_subgraph_features(field)),
-
-            // The top-level `entityChangesInBlock` field
             (None, "entityChangesInBlock") => self.resolve_entity_changes_in_block(field),
 
             // Resolve fields of `Object` values (e.g. the `latestBlock` field of `EthereumBlock`)
