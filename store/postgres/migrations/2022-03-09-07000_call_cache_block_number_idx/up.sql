@@ -5,7 +5,9 @@ on
 
 do $$
 declare
-	tables cursor for select namespace from ethereum_networks;
+    tables cursor for select namespace
+                        from ethereum_networks
+                       where namespace != 'public';
 begin
 	for table_record in tables loop
 		execute
