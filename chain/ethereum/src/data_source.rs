@@ -198,7 +198,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             errors.push(anyhow!("data source has duplicated block handlers"));
         }
 
-        // Validate that event handlers don't require receipts for API verisions lower than 0.0.7
+        // Validate that event handlers don't require receipts for API versions lower than 0.0.7
         let api_version = self.api_version();
         if api_version < semver::Version::new(0, 0, 7) {
             for event_handler in &self.mapping.event_handlers {
