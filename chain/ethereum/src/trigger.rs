@@ -33,7 +33,7 @@ use crate::runtime::abi::AscEthereumBlock_0_0_6;
 use crate::runtime::abi::AscEthereumCall;
 use crate::runtime::abi::AscEthereumCall_0_0_3;
 use crate::runtime::abi::AscEthereumEvent;
-use crate::runtime::abi::AscEthereumEventWithReceipt;
+use crate::runtime::abi::AscEthereumEvent_0_0_7;
 use crate::runtime::abi::AscEthereumTransaction_0_0_1;
 use crate::runtime::abi::AscEthereumTransaction_0_0_2;
 use crate::runtime::abi::AscEthereumTransaction_0_0_6;
@@ -135,40 +135,37 @@ impl blockchain::MappingTrigger for MappingTrigger {
                     log_type: log.log_type.clone(),
                     params,
                 };
-                match (api_version, receipt) {
-                    (api_version, Some(receipt)) if api_version >= API_VERSION_0_0_7 => {
-                        asc_new::<
-                            AscEthereumEventWithReceipt<
-                                AscEthereumTransaction_0_0_6,
-                                AscEthereumBlock_0_0_6,
-                            >,
-                            _,
-                            _,
-                        >(heap, &(ethereum_event_data, receipt), gas)?
-                        .erase()
-                    }
-                    (api_version, _) if api_version >= API_VERSION_0_0_6 => {
-                        asc_new::<
-                            AscEthereumEvent<AscEthereumTransaction_0_0_6, AscEthereumBlock_0_0_6>,
-                            _,
-                            _,
-                        >(heap, &ethereum_event_data, gas)?
-                        .erase()
-                    }
-                    (api_version, _) if api_version >= API_VERSION_0_0_2 => {
-                        asc_new::<
+                if api_version >= API_VERSION_0_0_7 {
+                    asc_new::<
+                        AscEthereumEvent_0_0_7<
+                            AscEthereumTransaction_0_0_6,
+                            AscEthereumBlock_0_0_6,
+                        >,
+                        _,
+                        _,
+                    >(heap, &(ethereum_event_data, receipt), gas)?
+                    .erase()
+                } else if api_version >= API_VERSION_0_0_6 {
+                    asc_new::<
+                        AscEthereumEvent<AscEthereumTransaction_0_0_6, AscEthereumBlock_0_0_6>,
+                        _,
+                        _,
+                    >(heap, &ethereum_event_data, gas)?
+                    .erase()
+                } else if api_version >= API_VERSION_0_0_2 {
+                    asc_new::<
                             AscEthereumEvent<AscEthereumTransaction_0_0_2, AscEthereumBlock>,
                             _,
                             _,
                         >(heap, &ethereum_event_data, gas)?
                         .erase()
-                    }
-                    _ => asc_new::<
+                } else {
+                    asc_new::<
                         AscEthereumEvent<AscEthereumTransaction_0_0_1, AscEthereumBlock>,
                         _,
                         _,
                     >(heap, &ethereum_event_data, gas)?
-                    .erase(),
+                    .erase()
                 }
             }
             MappingTrigger::Call {

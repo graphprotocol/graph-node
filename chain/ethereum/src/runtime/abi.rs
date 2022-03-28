@@ -344,7 +344,7 @@ impl AscIndexId for AscEthereumTransactionReceipt {
 /// `receipt` field.
 #[repr(C)]
 #[derive(AscType)]
-pub(crate) struct AscEthereumEventWithReceipt<T, B>
+pub(crate) struct AscEthereumEvent_0_0_7<T, B>
 where
     T: AscType,
     B: AscType,
@@ -359,17 +359,15 @@ where
     pub receipt: AscPtr<AscEthereumTransactionReceipt>,
 }
 
-impl AscIndexId for AscEthereumEventWithReceipt<AscEthereumTransaction_0_0_1, AscEthereumBlock> {
+impl AscIndexId for AscEthereumEvent_0_0_7<AscEthereumTransaction_0_0_1, AscEthereumBlock> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
 }
 
-impl AscIndexId for AscEthereumEventWithReceipt<AscEthereumTransaction_0_0_2, AscEthereumBlock> {
+impl AscIndexId for AscEthereumEvent_0_0_7<AscEthereumTransaction_0_0_2, AscEthereumBlock> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
 }
 
-impl AscIndexId
-    for AscEthereumEventWithReceipt<AscEthereumTransaction_0_0_6, AscEthereumBlock_0_0_6>
-{
+impl AscIndexId for AscEthereumEvent_0_0_7<AscEthereumTransaction_0_0_6, AscEthereumBlock_0_0_6> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
 }
 
@@ -587,7 +585,8 @@ where
     }
 }
 
-impl<T, B> ToAscObj<AscEthereumEventWithReceipt<T, B>> for (EthereumEventData, TransactionReceipt)
+impl<T, B> ToAscObj<AscEthereumEvent_0_0_7<T, B>>
+    for (EthereumEventData, Option<TransactionReceipt>)
 where
     T: AscType + AscIndexId,
     B: AscType + AscIndexId,
@@ -598,7 +597,7 @@ where
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscEthereumEventWithReceipt<T, B>, DeterministicHostError> {
+    ) -> Result<AscEthereumEvent_0_0_7<T, B>, DeterministicHostError> {
         let (event_data, receipt) = self;
         let AscEthereumEvent {
             address,
@@ -609,7 +608,12 @@ where
             transaction,
             params,
         } = event_data.to_asc_obj(heap, gas)?;
-        Ok(AscEthereumEventWithReceipt {
+        let asc_receipt = if let Some(receipt_data) = receipt {
+            asc_new(heap, receipt_data, gas)?
+        } else {
+            AscPtr::null()
+        };
+        Ok(AscEthereumEvent_0_0_7 {
             address,
             log_index,
             transaction_log_index,
@@ -617,7 +621,7 @@ where
             block,
             transaction,
             params,
-            receipt: asc_new(heap, receipt, gas)?,
+            receipt: asc_receipt,
         })
     }
 }
