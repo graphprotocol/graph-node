@@ -1443,9 +1443,9 @@ fn log_filter_require_transacion_receipt_method() {
         !filter.requires_transaction_receipt(&alien_event_signature, Some(&alien_contract_address))
     );
     assert!(!filter.requires_transaction_receipt(&alien_event_signature, None));
-    assert!(filter.requires_transaction_receipt(&alien_event_signature, Some(&contract_a)));
-    assert!(filter.requires_transaction_receipt(&alien_event_signature, Some(&contract_b)));
-    assert!(filter.requires_transaction_receipt(&alien_event_signature, Some(&contract_c)));
+    assert!(!filter.requires_transaction_receipt(&alien_event_signature, Some(&contract_a)));
+    assert!(!filter.requires_transaction_receipt(&alien_event_signature, Some(&contract_b)));
+    assert!(!filter.requires_transaction_receipt(&alien_event_signature, Some(&contract_c)));
     assert!(!filter.requires_transaction_receipt(&event_signature_a, Some(&alien_contract_address)));
     assert!(!filter.requires_transaction_receipt(&event_signature_b, Some(&alien_contract_address)));
     assert!(!filter.requires_transaction_receipt(&event_signature_c, Some(&alien_contract_address)));
