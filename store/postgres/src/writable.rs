@@ -495,12 +495,13 @@ impl Queue {
                 // incorrect results.
                 let req = queue.queue.peek().await;
                 let res = graph::spawn_blocking_allow_panic(move || req.execute()).await;
-                // The request has been handled. It's now safe to remove it
-                // from the queue
-                queue.queue.pop().await;
 
                 match res {
-                    Ok(Ok(())) => { /* nothing to do  */ }
+                    Ok(Ok(())) => {
+                        // The request has been handled. It's now safe to remove it
+                        // from the queue
+                        queue.queue.pop().await;
+                    }
                     Ok(Err(e)) => {
                         error!(logger, "Subgraph writer failed"; "error" => e.to_string());
                         queue.record_err(e);
@@ -565,6 +566,8 @@ impl Queue {
         }
     }
 
+    /// Record the error `e`, mark the queue as poisoned, and remove all
+    /// pending requests. The queue can not be used anymore
     fn record_err(&self, e: StoreError) {
         *self.write_err.lock().unwrap() = Some(e);
         self.poisoned.store(true, Ordering::SeqCst);
