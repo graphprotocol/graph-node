@@ -11,20 +11,6 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::thread;
 
-const ONE_MIB: usize = 1 << 20; // 1_048_576
-
-lazy_static! {
-    /// Verbose logging of mapping inputs
-    pub static ref LOG_TRIGGER_DATA: bool = std::env::var("GRAPH_LOG_TRIGGER_DATA").is_ok();
-
-    /// Maximum stack size for the WASM runtime
-    pub static ref MAX_STACK_SIZE: usize = std::env::var("GRAPH_RUNTIME_MAX_STACK_SIZE")
-        .ok()
-        .and_then(|max_stack_size| max_stack_size.parse().ok())
-        // 512KiB
-        .unwrap_or(ONE_MIB / 2);
-}
-
 /// Spawn a wasm module in its own thread.
 pub fn spawn_module<C: Blockchain>(
     raw_module: Vec<u8>,
@@ -110,7 +96,7 @@ fn instantiate_module_and_handle_trigger<C: Blockchain>(
     section.end();
 
     let _section = host_metrics.stopwatch.start_section("run_handler");
-    if *LOG_TRIGGER_DATA {
+    if ENV_VARS.log_trigger_data {
         debug!(logger, "trigger data: {:?}", trigger);
     }
     module.handle_trigger(trigger)
@@ -180,7 +166,9 @@ impl ValidModule {
         config.interruptable(true); // For timeouts.
         config.cranelift_nan_canonicalization(true); // For NaN determinism.
         config.cranelift_opt_level(wasmtime::OptLevel::None);
-        config.max_wasm_stack(*MAX_STACK_SIZE).unwrap(); // Safe because this only panics if size passed is 0.
+        config
+            .max_wasm_stack(ENV_VARS.mappings.max_stack_size)
+            .unwrap(); // Safe because this only panics if size passed is 0.
 
         let engine = &wasmtime::Engine::new(&config)?;
         let module = wasmtime::Module::from_binary(&engine, &raw_module)?;

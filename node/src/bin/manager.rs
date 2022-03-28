@@ -10,7 +10,7 @@ use structopt::StructOpt;
 
 use graph::{
     log::logger,
-    prelude::{info, o, slog, tokio, Logger, NodeId},
+    prelude::{info, o, slog, tokio, Logger, NodeId, ENV_VARS},
     url::Url,
 };
 use graph_node::{manager::PanicSubscriptionManager, store_builder::StoreBuilder, MetricsContext};
@@ -624,7 +624,7 @@ async fn main() {
 
     let version_label = opt.version_label.clone();
     // Set up logger
-    let logger = match env::var_os("GRAPH_LOG") {
+    let logger = match ENV_VARS.log_levels {
         Some(_) => logger(false),
         None => Logger::root(slog::Discard, o!()),
     };

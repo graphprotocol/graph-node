@@ -1,6 +1,7 @@
 use ethabi::Contract;
 use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::*;
+use graph::env::EnvVars;
 use graph::ipfs_client::IpfsClient;
 use graph::log;
 use graph::prelude::*;
@@ -56,7 +57,10 @@ fn mock_host_exports(
         &data_source,
         network,
         Arc::new(templates),
-        Arc::new(graph_core::LinkResolver::from(IpfsClient::localhost())),
+        Arc::new(graph_core::LinkResolver::new(
+            vec![IpfsClient::localhost()],
+            Arc::new(EnvVars::default()),
+        )),
         ens_lookup,
     )
 }

@@ -1,5 +1,3 @@
-use std::env;
-use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -8,8 +6,8 @@ use async_trait::async_trait;
 use bytes::BytesMut;
 use futures01::{stream::poll_fn, try_ready};
 use futures03::stream::FuturesUnordered;
+use graph::env::EnvVars;
 use graph::util::futures::RetryConfigNoTimeout;
-use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
 use serde_json::Value;
 
@@ -17,41 +15,6 @@ use graph::{
     ipfs_client::{IpfsClient, ObjectStatResponse},
     prelude::{LinkResolver as LinkResolverTrait, *},
 };
-
-/// Environment variable for limiting the `ipfs.map` file size limit.
-const MAX_IPFS_MAP_FILE_SIZE_VAR: &'static str = "GRAPH_MAX_IPFS_MAP_FILE_SIZE";
-
-/// The default file size limit for `ipfs.map` is 256MiB.
-const DEFAULT_MAX_IPFS_MAP_FILE_SIZE: u64 = 256 * 1024 * 1024;
-
-/// Environment variable for limiting the `ipfs.cat` file size limit.
-const MAX_IPFS_FILE_SIZE_VAR: &'static str = "GRAPH_MAX_IPFS_FILE_BYTES";
-
-lazy_static! {
-    /// The default file size limit for the IPFS cache is 1MiB.
-    static ref MAX_IPFS_CACHE_FILE_SIZE: u64 = read_u64_from_env("GRAPH_MAX_IPFS_CACHE_FILE_SIZE")
-        .unwrap_or(1024 * 1024);
-
-    /// The default size limit for the IPFS cache is 50 items.
-    static ref MAX_IPFS_CACHE_SIZE: u64 = read_u64_from_env("GRAPH_MAX_IPFS_CACHE_SIZE")
-        .unwrap_or(50);
-
-    /// The timeout for IPFS requests in seconds
-    static ref IPFS_TIMEOUT: Duration = Duration::from_secs(
-        read_u64_from_env("GRAPH_IPFS_TIMEOUT").unwrap_or(30)
-    );
-}
-
-fn read_u64_from_env(name: &str) -> Option<u64> {
-    env::var(name).ok().map(|s| {
-        u64::from_str(&s).unwrap_or_else(|_| {
-            panic!(
-                "expected env var {} to contain a number (unsigned 64-bit integer), but got '{}'",
-                name, s
-            )
-        })
-    })
-}
 
 fn retry_policy<I: Send + Sync>(
     always_retry: bool,
@@ -150,35 +113,26 @@ pub struct LinkResolver {
     cache: Arc<Mutex<LruCache<String, Vec<u8>>>>,
     timeout: Duration,
     retry: bool,
+    env_vars: Arc<EnvVars>,
+}
+
+impl LinkResolver {
+    pub fn new(clients: Vec<IpfsClient>, env_vars: Arc<EnvVars>) -> Self {
+        Self {
+            clients: Arc::new(clients.into_iter().map(Arc::new).collect()),
+            cache: Arc::new(Mutex::new(LruCache::with_capacity(
+                env_vars.mappings.max_ipfs_cache_size as usize,
+            ))),
+            timeout: env_vars.mappings.ipfs_timeout,
+            retry: false,
+            env_vars,
+        }
+    }
 }
 
 impl CheapClone for LinkResolver {
     fn cheap_clone(&self) -> Self {
-        LinkResolver {
-            clients: self.clients.cheap_clone(),
-            cache: self.cache.cheap_clone(),
-            timeout: self.timeout,
-            retry: self.retry,
-        }
-    }
-}
-
-impl From<IpfsClient> for LinkResolver {
-    fn from(client: IpfsClient) -> Self {
-        vec![client].into()
-    }
-}
-
-impl From<Vec<IpfsClient>> for LinkResolver {
-    fn from(clients: Vec<IpfsClient>) -> Self {
-        Self {
-            clients: Arc::new(clients.into_iter().map(Arc::new).collect()),
-            cache: Arc::new(Mutex::new(LruCache::with_capacity(
-                *MAX_IPFS_CACHE_SIZE as usize,
-            ))),
-            timeout: *IPFS_TIMEOUT,
-            retry: false,
-        }
+        self.clone()
     }
 }
 
@@ -214,9 +168,8 @@ impl LinkResolverTrait for LinkResolver {
         )
         .await?;
 
-        // FIXME: Having an env variable here is a problem for consensus.
-        // Index Nodes should not disagree on whether the file should be read.
-        let max_file_size: Option<u64> = read_u64_from_env(MAX_IPFS_FILE_SIZE_VAR);
+        let max_cache_file_size = self.env_vars.mappings.max_ipfs_cache_file_size;
+        let max_file_size = self.env_vars.mappings.max_ipfs_file_bytes.map(|n| n as u64);
         restrict_file_size(&path, &stat, &max_file_size)?;
 
         let path = path.clone();
@@ -233,7 +186,7 @@ impl LinkResolverTrait for LinkResolver {
                     let data = client.cat_all(path.clone(), timeout).await?.to_vec();
 
                     // Only cache files if they are not too large
-                    if data.len() <= *MAX_IPFS_CACHE_FILE_SIZE as usize {
+                    if data.len() <= max_cache_file_size {
                         let mut cache = this.cache.lock().unwrap();
                         if !cache.contains_key(&path) {
                             cache.insert(path.to_owned(), data.clone());
@@ -265,8 +218,7 @@ impl LinkResolverTrait for LinkResolver {
         )
         .await?;
 
-        let max_file_size =
-            read_u64_from_env(MAX_IPFS_MAP_FILE_SIZE_VAR).or(Some(DEFAULT_MAX_IPFS_MAP_FILE_SIZE));
+        let max_file_size = Some(self.env_vars.mappings.max_ipfs_map_file_size as u64);
         restrict_file_size(path, &stat, &max_file_size)?;
 
         let mut stream = client.cat(path.to_string()).await?.fuse().boxed().compat();
@@ -335,14 +287,17 @@ impl LinkResolverTrait for LinkResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use graph::env::EnvVars;
     use serde_json::json;
 
     #[tokio::test]
     async fn max_file_size() {
-        env::set_var(MAX_IPFS_FILE_SIZE_VAR, "200");
+        let mut env_vars = EnvVars::default();
+        env_vars.mappings.max_ipfs_file_bytes = Some(200);
+
         let file: &[u8] = &[0u8; 201];
         let client = IpfsClient::localhost();
-        let resolver = super::LinkResolver::from(client.clone());
+        let resolver = super::LinkResolver::new(vec![client.clone()], Arc::new(env_vars));
 
         let logger = Logger::root(slog::Discard, o!());
 
@@ -350,7 +305,6 @@ mod tests {
         let err = LinkResolver::cat(&resolver, &logger, &Link { link: link.clone() })
             .await
             .unwrap_err();
-        env::remove_var(MAX_IPFS_FILE_SIZE_VAR);
         assert_eq!(
             err.to_string(),
             format!(
@@ -360,9 +314,9 @@ mod tests {
         );
     }
 
-    async fn json_round_trip(text: &'static str) -> Result<Vec<Value>, Error> {
+    async fn json_round_trip(text: &'static str, env_vars: EnvVars) -> Result<Vec<Value>, Error> {
         let client = IpfsClient::localhost();
-        let resolver = super::LinkResolver::from(client.clone());
+        let resolver = super::LinkResolver::new(vec![client.clone()], Arc::new(env_vars));
 
         let logger = Logger::root(slog::Discard, o!());
         let link = client.add(text.as_bytes().into()).await.unwrap().hash;
@@ -373,16 +327,20 @@ mod tests {
 
     #[tokio::test]
     async fn read_json_stream() {
-        let values = json_round_trip("\"with newline\"\n").await;
+        let values = json_round_trip("\"with newline\"\n", EnvVars::default()).await;
         assert_eq!(vec![json!("with newline")], values.unwrap());
 
-        let values = json_round_trip("\"without newline\"").await;
+        let values = json_round_trip("\"without newline\"", EnvVars::default()).await;
         assert_eq!(vec![json!("without newline")], values.unwrap());
 
-        let values = json_round_trip("\"two\" \n \"things\"").await;
+        let values = json_round_trip("\"two\" \n \"things\"", EnvVars::default()).await;
         assert_eq!(vec![json!("two"), json!("things")], values.unwrap());
 
-        let values = json_round_trip("\"one\"\n  \"two\" \n [\"bad\" \n \"split\"]").await;
+        let values = json_round_trip(
+            "\"one\"\n  \"two\" \n [\"bad\" \n \"split\"]",
+            EnvVars::default(),
+        )
+        .await;
         assert_eq!(
             "EOF while parsing a list at line 4 column 0: ' [\"bad\" \n'",
             values.unwrap_err().to_string()
@@ -392,14 +350,15 @@ mod tests {
     #[tokio::test]
     async fn ipfs_map_file_size() {
         let file = "\"small test string that trips the size restriction\"";
-        env::set_var(MAX_IPFS_MAP_FILE_SIZE_VAR, (file.len() - 1).to_string());
+        let mut env_vars = EnvVars::default();
+        env_vars.mappings.max_ipfs_map_file_size = file.len() - 1;
 
-        let err = json_round_trip(file).await.unwrap_err();
-        env::remove_var(MAX_IPFS_MAP_FILE_SIZE_VAR);
+        let err = json_round_trip(file, env_vars).await.unwrap_err();
 
         assert!(err.to_string().contains(" is too large"));
 
-        let values = json_round_trip(file).await;
+        env_vars = EnvVars::default();
+        let values = json_round_trip(file, env_vars).await;
         assert_eq!(
             vec!["small test string that trips the size restriction"],
             values.unwrap()

@@ -11,12 +11,11 @@ use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text};
 use diesel::Connection;
-use lazy_static::lazy_static;
 
 use graph::prelude::{
     anyhow, r, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
     EntityFilter, EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink,
-    QueryExecutionError, StoreError, Value,
+    QueryExecutionError, StoreError, Value, ENV_VARS,
 };
 use graph::{
     components::store::{AttributeNames, EntityType},
@@ -26,7 +25,6 @@ use itertools::Itertools;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
-use std::env;
 use std::fmt::{self, Display};
 use std::iter::FromIterator;
 use std::str::FromStr;
@@ -43,55 +41,6 @@ use crate::{
     },
     primary::Namespace,
 };
-
-lazy_static! {
-    /// Use a variant of the query for child_type_a when we are looking up
-    /// fewer than this many entities. This variable is only here temporarily
-    /// until we can settle on the right batch size through experimentation
-    /// and should then just become an ordinary constant
-    static ref TYPEA_BATCH_SIZE: usize = {
-        env::var("TYPEA_BATCH_SIZE")
-            .ok()
-            .map(|s| {
-                usize::from_str(&s)
-                    .unwrap_or_else(|_| panic!("TYPE_BATCH_SIZE must be a number, but is `{}`", s))
-            })
-            .unwrap_or(150)
-    };
-    /// Include a constraint on the child ids as a set in child_type_d
-    /// queries if the size of the set is below this threshold. Set this to
-    /// 0 to turn off this optimization
-    static ref TYPED_CHILDREN_SET_SIZE: usize = {
-        env::var("TYPED_CHILDREN_SET_SIZE")
-            .ok()
-            .map(|s| {
-                usize::from_str(&s)
-                    .unwrap_or_else(|_| panic!("TYPED_CHILDREN_SET_SIZE must be a number, but is `{}`", s))
-            })
-            .unwrap_or(150)
-    };
-    /// When we add `order by id` to a query should we add instead
-    /// `order by id, block_range`
-    static ref ORDER_BY_BLOCK_RANGE: bool = {
-        env::var("ORDER_BY_BLOCK_RANGE")
-            .ok()
-            .map(|s| {
-                s == "1"
-            })
-            .unwrap_or(false)
-    };
-    /// Reversible order by. Change our `order by` clauses so that `asc`
-    /// and `desc` ordering produce reverse orders. Setting this
-    /// turns the new, correct behavior off
-    static ref REVERSIBLE_ORDER_BY_OFF: bool = {
-        env::var("REVERSIBLE_ORDER_BY_OFF")
-            .ok()
-            .map(|s| {
-                s == "1"
-            })
-            .unwrap_or(false)
-    };
-}
 
 /// Those are columns that we always want to fetch from the database.
 const BASE_SQL_COLUMNS: [&'static str; 2] = ["id", "vid"];
@@ -1917,7 +1866,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" and c.");
         out.push_identifier(column.name.as_str())?;
         out.push_sql(" @> array[p.id]");
-        if self.ids.len() < *TYPEA_BATCH_SIZE {
+        if self.ids.len() < ENV_VARS.store.typea_batch_size {
             out.push_sql(" and c.");
             out.push_identifier(column.name.as_str())?;
             out.push_sql(" && ");
@@ -2055,12 +2004,16 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" c where ");
         BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
         limit.filter(out);
-        if *TYPED_CHILDREN_SET_SIZE > 0 {
+
+        // Include a constraint on the child IDs as a set if the size of the set
+        // is below the threshold set by environment variable. Set it to
+        // 0 to turn off this optimization.
+        if ENV_VARS.store.typed_children_set_size > 0 {
             let mut child_set: Vec<&str> = child_ids.iter().map(|id| id.as_str()).collect();
             child_set.sort_unstable();
             child_set.dedup();
 
-            if child_set.len() <= *TYPED_CHILDREN_SET_SIZE {
+            if child_set.len() <= ENV_VARS.store.typed_children_set_size {
                 out.push_sql(" and c.id = any(");
                 self.table.primary_key().bind_ids(&child_set, out)?;
                 out.push_sql(")");
@@ -2270,7 +2223,7 @@ impl<'a> SortKey<'a> {
             }
         }
 
-        let br_column = if *ORDER_BY_BLOCK_RANGE {
+        let br_column = if ENV_VARS.store.order_by_block_range {
             Some(BlockRangeColumn::new(table, "c.", block))
         } else {
             None
@@ -2406,7 +2359,7 @@ impl<'a> SortKey<'a> {
                 out.push_identifier(name)?;
             }
         }
-        if *REVERSIBLE_ORDER_BY_OFF {
+        if ENV_VARS.store.reversible_order_by_off {
             // Old behavior
             out.push_sql(" ");
             out.push_sql(direction);

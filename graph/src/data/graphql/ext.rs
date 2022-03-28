@@ -4,16 +4,8 @@ use crate::prelude::s::{
     Definition, Directive, Document, EnumType, Field, InterfaceType, ObjectType, Type,
     TypeDefinition, Value,
 };
-use lazy_static::lazy_static;
+use crate::prelude::ENV_VARS;
 use std::collections::{BTreeMap, HashMap};
-
-lazy_static! {
-    static ref ALLOW_NON_DETERMINISTIC_FULLTEXT_SEARCH: bool = if cfg!(debug_assertions) {
-        true
-    } else {
-        std::env::var("GRAPH_ALLOW_NON_DETERMINISTIC_FULLTEXT_SEARCH").is_ok()
-    };
-}
 
 pub trait ObjectTypeExt {
     fn field(&self, name: &str) -> Option<&Field>;
@@ -143,7 +135,7 @@ impl DocumentExt for Document {
                     .collect()
             },
         );
-        if !*ALLOW_NON_DETERMINISTIC_FULLTEXT_SEARCH && !directives.is_empty() {
+        if !ENV_VARS.allow_non_deterministic_fulltext_search && !directives.is_empty() {
             Err(anyhow::anyhow!("Fulltext search is not yet deterministic"))
         } else {
             Ok(directives)

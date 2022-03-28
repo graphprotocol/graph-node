@@ -11,14 +11,13 @@ use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
 use graph::cheap_clone::CheapClone;
 use graph::constraint_violation;
 use graph::data::graphql::{DirectiveExt, TypeExt as _};
-use graph::prelude::{q, s, StopwatchMetrics};
+use graph::prelude::{q, s, StopwatchMetrics, ENV_VARS};
 use graph::slog::warn;
 use inflector::Inflector;
 use lazy_static::lazy_static;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::{From, TryFrom};
-use std::env;
 use std::fmt::{self, Write};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -61,38 +60,10 @@ pub const STRING_PREFIX_SIZE: usize = 256;
 pub const BYTE_ARRAY_PREFIX_SIZE: usize = 64;
 
 lazy_static! {
-    /// Deprecated; use 'graphman stats account-like' instead. A list of
-    /// fully qualified table names that contain entities that are like
-    /// accounts in that they have a relatively small number of entities,
-    /// with a large number of change for each entity. It is useful to treat
-    /// such tables special in queries by changing the clause that selects
-    /// for a specific block range in a way that makes the BRIN index on
-    /// block_range usable
-    ///
-    /// Example: GRAPH_ACCOUNT_TABLES=sgd21902.pair,sgd1708.things
-    static ref ACCOUNT_TABLES: HashSet<String> = {
-            // Transform the entries in the form `schema.table` into
-            // `"schema"."table"` so that we can compare to a table's
-            // qualified name
-            env::var("GRAPH_ACCOUNT_TABLES")
-                .ok()
-                .map(|v| v.split(',').map(|s| format!("\"{}\"", s.replace(".", "\".\""))).collect())
-                .unwrap_or(HashSet::new())
-    };
-
-    /// `GRAPH_SQL_STATEMENT_TIMEOUT` is the timeout for queries in seconds.
-    /// If it is not set, no statement timeout will be enforced. The statement
-    /// timeout is local, i.e., can only be used within a transaction and
-    /// will be cleared at the end of the transaction
-    static ref STATEMENT_TIMEOUT: Option<String> = {
-        env::var("GRAPH_SQL_STATEMENT_TIMEOUT")
-        .ok()
-        .map(|s| {
-            u64::from_str(&s).unwrap_or_else(|_| {
-                panic!("GRAPH_SQL_STATEMENT_TIMEOUT must be a number, but is `{}`", s)
-            })
-        }).map(|timeout| format!("set local statement_timeout={}", timeout * 1000))
-    };
+    static ref STATEMENT_TIMEOUT: Option<String> = ENV_VARS
+        .graphql
+        .sql_statement_timeout
+        .map(|duration| format!("set local statement_timeout={}", duration.as_millis()));
 }
 
 /// A string we use as a SQL name for a table or column. The important thing
@@ -690,7 +661,7 @@ impl Layout {
             // 20kB
             const MAXLEN: usize = 20_480;
 
-            if !*graph::log::LOG_SQL_TIMING {
+            if !ENV_VARS.log_sql_timing() {
                 return;
             }
 
@@ -919,7 +890,10 @@ impl Layout {
         let account_like = crate::catalog::account_like(conn, &self.site)?;
         let is_account_like = {
             |table: &Table| {
-                ACCOUNT_TABLES.contains(table.qualified_name.as_str())
+                ENV_VARS
+                    .store
+                    .account_tables
+                    .contains(table.qualified_name.as_str())
                     || account_like.contains(table.name.as_str())
             }
         };
@@ -1282,7 +1256,10 @@ impl Table {
             .chain(fulltexts.iter().map(Column::new_fulltext))
             .collect::<Result<Vec<Column>, StoreError>>()?;
         let qualified_name = SqlName::qualified_name(&catalog.site.namespace, &table_name);
-        let is_account_like = ACCOUNT_TABLES.contains(qualified_name.as_str());
+        let is_account_like = ENV_VARS
+            .store
+            .account_tables
+            .contains(qualified_name.as_str());
 
         let immutable = defn
             .find_directive("entity")

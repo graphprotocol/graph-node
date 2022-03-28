@@ -26,9 +26,9 @@ use graph_store_postgres::{
 };
 use hex_literal::hex;
 use lazy_static::lazy_static;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::time::Instant;
-use std::{collections::BTreeSet, env};
 use std::{marker::PhantomData, sync::Mutex};
 use tokio::runtime::{Builder, Runtime};
 use web3::types::H256;
@@ -41,7 +41,7 @@ pub use graph_store_postgres::Store;
 const CONN_POOL_SIZE: u32 = 20;
 
 lazy_static! {
-    pub static ref LOGGER: Logger = match env::var_os("GRAPH_LOG") {
+    pub static ref LOGGER: Logger = match ENV_VARS.log_levels {
         Some(_) => log::logger(false),
         None => Logger::root(slog::Discard, o!()),
     };

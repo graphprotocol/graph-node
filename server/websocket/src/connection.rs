@@ -3,25 +3,13 @@ use futures::sync::mpsc;
 use futures03::stream::SplitStream;
 use graphql_parser::parse_query;
 use http::StatusCode;
-use lazy_static::lazy_static;
 use std::collections::HashMap;
-use std::env;
-use std::str::FromStr;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_tungstenite::tungstenite::{Error as WsError, Message as WsMessage};
 use tokio_tungstenite::WebSocketStream;
 use uuid::Uuid;
 
 use graph::{data::query::QueryTarget, prelude::*};
-
-lazy_static! {
-    static ref MAX_OPERATIONS_PER_CONNECTION: Option<usize> =
-        env::var("GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION")
-            .ok()
-            .map(|s| usize::from_str(&s).unwrap_or_else(|_| panic!(
-                "failed to parse env var GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION"
-            )));
-}
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -263,7 +251,7 @@ where
                         );
                     }
 
-                    if let Some(max_ops) = *MAX_OPERATIONS_PER_CONNECTION {
+                    if let Some(max_ops) = ENV_VARS.graphql.max_operations_per_connection {
                         if operations.operations.len() >= max_ops {
                             return send_error_string(
                                 &msg_sink,

@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, HashMap};
-use std::env;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -15,12 +14,13 @@ use graph::anyhow::{format_err, Error};
 use graph::blockchain::{BlockchainKind, BlockchainMap, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::BlockStore as _;
+use graph::env::EnvVars;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, FirehoseNetworks};
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::MetricsRegistry as MetricsRegistryTrait;
 use graph::prelude::{
     anyhow, tokio, BlockNumber, DeploymentHash, LoggerFactory, NodeId, SubgraphAssignmentProvider,
-    SubgraphName, SubgraphRegistrar, SubgraphStore, SubgraphVersionSwitchingMode,
+    SubgraphName, SubgraphRegistrar, SubgraphStore, SubgraphVersionSwitchingMode, ENV_VARS,
 };
 use graph::slog::{debug, error, info, o, Logger};
 use graph::util::security::SafeDisplay;
@@ -29,8 +29,6 @@ use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
-use lazy_static::lazy_static;
-use std::str::FromStr;
 use url::Url;
 
 pub async fn run(
@@ -57,7 +55,10 @@ pub async fn run(
 
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry
-    let link_resolver = Arc::new(LinkResolver::from(ipfs_clients));
+    let link_resolver = Arc::new(LinkResolver::new(
+        ipfs_clients,
+        Arc::new(EnvVars::default()),
+    ));
 
     let eth_networks = create_ethereum_networks(logger.clone(), metrics_registry.clone(), &config)
         .await
@@ -108,7 +109,7 @@ pub async fn run(
         firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
         eth_adapters,
         chain_head_update_listener,
-        *REORG_THRESHOLD,
+        ethereum::ENV_VARS.reorg_threshold,
         // We assume the tested chain is always ingestible for now
         true,
     );
@@ -116,7 +117,7 @@ pub async fn run(
     let mut blockchain_map = BlockchainMap::new();
     blockchain_map.insert(network_name.clone(), Arc::new(chain));
 
-    let static_filters = env::var_os("EXPERIMENTAL_STATIC_FILTERS").is_some();
+    let static_filters = ENV_VARS.experimental_static_filters;
 
     let blockchain_map = Arc::new(blockchain_map);
     let subgraph_instance_manager = SubgraphInstanceManager::new(
@@ -259,14 +260,6 @@ enum ProviderNetworkStatus {
 /// hash from the client. If we can't get it within that time, we'll try and
 /// continue regardless.
 const NET_VERSION_WAIT_TIME: Duration = Duration::from_secs(30);
-
-lazy_static! {
-    static ref REORG_THRESHOLD: BlockNumber = env::var("ETHEREUM_REORG_THRESHOLD")
-        .ok()
-        .map(|s| BlockNumber::from_str(&s)
-            .unwrap_or_else(|_| panic!("failed to parse env var ETHEREUM_REORG_THRESHOLD")))
-        .unwrap_or(250);
-}
 
 fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<IpfsClient> {
     // Parse the IPFS URL from the `--ipfs` command line argument

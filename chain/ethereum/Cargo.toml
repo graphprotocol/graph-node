@@ -4,6 +4,7 @@ version = "0.25.2"
 edition = "2021"
 
 [dependencies]
+envconfig = "0.10.0"
 futures = "0.1.21"
 http = "0.2.4"
 jsonrpc-core = "18.0.0"

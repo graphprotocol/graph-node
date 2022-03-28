@@ -1,5 +1,4 @@
 use anyhow::anyhow;
-use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Debug};
 use std::sync::Arc;
@@ -8,17 +7,8 @@ use crate::blockchain::BlockPtr;
 use crate::components::store::{
     self as s, Entity, EntityKey, EntityOp, EntityOperation, EntityType,
 };
+use crate::prelude::ENV_VARS;
 use crate::util::lfu_cache::LfuCache;
-
-lazy_static! {
-    /// Size limit of the entity LFU cache, in bytes.
-    // Multiplied by 1000 because the env var is in KB.
-    pub static ref ENTITY_CACHE_SIZE: usize = 1000
-        * std::env::var("GRAPH_ENTITY_CACHE_SIZE")
-            .unwrap_or("10000".into())
-            .parse::<usize>()
-            .expect("invalid GRAPH_ENTITY_CACHE_SIZE");
-}
 
 /// A cache for entities from the store that provides the basic functionality
 /// needed for the store interactions in the host exports. This struct tracks
@@ -311,7 +301,7 @@ impl EntityCache {
                 mods.push(modification)
             }
         }
-        self.current.evict(*ENTITY_CACHE_SIZE);
+        self.current.evict(ENV_VARS.mappings.entity_cache_size);
 
         Ok(ModificationsAndCache {
             modifications: mods,

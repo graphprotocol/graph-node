@@ -7,9 +7,9 @@ use graph::{
     prometheus::{CounterVec, GaugeVec},
     util::timed_rw_lock::TimedRwLock,
 };
+use std::collections::BTreeMap;
+use std::sync::atomic;
 use std::sync::{atomic::AtomicBool, Arc};
-use std::{collections::BTreeMap, time::Duration};
-use std::{str::FromStr, sync::atomic};
 
 use lazy_static::lazy_static;
 
@@ -22,17 +22,9 @@ use graph::blockchain::ChainHeadUpdateListener as ChainHeadUpdateListenerTrait;
 use graph::prelude::serde::{Deserialize, Serialize};
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::tokio::sync::{mpsc::Receiver, watch};
-use graph::prelude::{crit, debug, o, CheapClone, Logger, MetricsRegistry};
+use graph::prelude::{crit, debug, o, CheapClone, Logger, MetricsRegistry, ENV_VARS};
 
 lazy_static! {
-    pub static ref CHAIN_HEAD_WATCHER_TIMEOUT: Duration = Duration::from_secs(
-        std::env::var("GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT")
-            .ok()
-            .map(|s| u64::from_str(&s).unwrap_or_else(|_| panic!(
-                "failed to parse env var GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT"
-            )))
-            .unwrap_or(30)
-    );
     pub static ref CHANNEL_NAME: SafeChannelName =
         SafeChannelName::i_promise_this_is_safe("chain_head_updates");
 }
@@ -235,7 +227,7 @@ impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
                     // To be robust against any problems with the listener for the DB channel, a
                     // timeout is set so that subscribers are guaranteed to get periodic updates.
                     match tokio::time::timeout(
-                        *CHAIN_HEAD_WATCHER_TIMEOUT,
+                        ENV_VARS.store.chain_head_watcher_timeout,
                         update_receiver.changed(),
                     )
                     .await
@@ -249,7 +241,7 @@ impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
                         Err(_) => debug!(
                             logger,
                             "no chain head update for {} seconds, polling for update",
-                            CHAIN_HEAD_WATCHER_TIMEOUT.as_secs()
+                            ENV_VARS.store.chain_head_watcher_timeout.as_secs()
                         ),
                     };
                     Some(((), update_receiver))

@@ -2,18 +2,7 @@ use parking_lot::{Mutex, RwLock};
 use slog::{warn, Logger};
 use std::time::{Duration, Instant};
 
-lazy_static::lazy_static! {
-    /// If an instrumented lock is contended for longer than the specified duration, a warning will
-    /// be logged. Environment variable specified in milliseconds. Defaults to 100ms.
-    static ref LOCK_CONTENTION_LOG_THRESHOLD: Duration = {
-        Duration::from_millis(
-            std::env::var("GRAPH_LOCK_CONTENTION_LOG_THRESHOLD_MS")
-                .unwrap_or_else(|_| "100".to_string())
-                .parse::<u64>()
-                .expect("Invalid value for LOCK_CONTENTION_LOG_THRESHOLD_MS environment variable")
-       )
-    };
-}
+use crate::prelude::ENV_VARS;
 
 /// Adds instrumentation for timing the performance of the lock.
 pub struct TimedRwLock<T> {
@@ -27,7 +16,7 @@ impl<T> TimedRwLock<T> {
         TimedRwLock {
             id: id.into(),
             lock: RwLock::new(x),
-            log_threshold: *LOCK_CONTENTION_LOG_THRESHOLD,
+            log_threshold: ENV_VARS.lock_contention_log_threshold,
         }
     }
 
@@ -76,7 +65,7 @@ impl<T> TimedMutex<T> {
         TimedMutex {
             id: id.into(),
             lock: Mutex::new(x),
-            log_threshold: *LOCK_CONTENTION_LOG_THRESHOLD,
+            log_threshold: ENV_VARS.lock_contention_log_threshold,
         }
     }
 

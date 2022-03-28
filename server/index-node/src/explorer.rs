@@ -8,12 +8,7 @@ use hyper::header::{
     CONTENT_TYPE,
 };
 use hyper::Body;
-use std::{
-    env,
-    str::FromStr,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Instant};
 
 use graph::{
     components::{
@@ -22,51 +17,9 @@ use graph::{
     },
     data::subgraph::status,
     object,
-    prelude::{lazy_static, serde_json, warn, Logger},
+    prelude::{serde_json, warn, Logger, ENV_VARS},
     util::timed_cache::TimedCache,
 };
-
-lazy_static! {
-    static ref TTL: Duration = {
-        let ttl = env::var("GRAPH_EXPLORER_TTL")
-            .ok()
-            .map(|s| {
-                u64::from_str(&s).unwrap_or_else(|_| {
-                    panic!("GRAPH_EXPLORER_TTL must be a number, but is `{}`", s)
-                })
-            })
-            .unwrap_or(10);
-        Duration::from_secs(ttl)
-    };
-    static ref LOCK_THRESHOLD: Duration = {
-        let duration = env::var("GRAPH_EXPLORER_LOCK_THRESHOLD")
-            .ok()
-            .map(|s| {
-                u64::from_str(&s).unwrap_or_else(|_| {
-                    panic!(
-                        "GRAPH_EXPLORER_LOCK_THRESHOLD must be a number, but is `{}`",
-                        s
-                    )
-                })
-            })
-            .unwrap_or(100);
-        Duration::from_millis(duration)
-    };
-    static ref QUERY_THRESHOLD: Duration = {
-        let duration = env::var("GRAPH_EXPLORER_QUERY_THRESHOLD")
-            .ok()
-            .map(|s| {
-                u64::from_str(&s).unwrap_or_else(|_| {
-                    panic!(
-                        "GRAPH_EXPLORER_QUERY_THRESHOLD must be a number, but is `{}`",
-                        s
-                    )
-                })
-            })
-            .unwrap_or(500);
-        Duration::from_millis(duration)
-    };
-}
 
 // Do not implement `Clone` for this; the IndexNode service puts the `Explorer`
 // behind an `Arc` so we don't have to put each `Cache` into an `Arc`
@@ -88,9 +41,9 @@ where
     pub fn new(store: Arc<S>) -> Self {
         Self {
             store,
-            versions: TimedCache::new(*TTL),
-            version_infos: TimedCache::new(*TTL),
-            entity_counts: TimedCache::new(*TTL),
+            versions: TimedCache::new(ENV_VARS.explorer_ttl),
+            version_infos: TimedCache::new(ENV_VARS.explorer_ttl),
+            entity_counts: TimedCache::new(ENV_VARS.explorer_ttl),
         }
     }
 
@@ -169,7 +122,7 @@ where
     ) -> Result<Response<Body>, GraphQLServerError> {
         let start = Instant::now();
         let count = self.entity_counts.get(deployment);
-        if start.elapsed() > *LOCK_THRESHOLD {
+        if start.elapsed() > ENV_VARS.explorer_lock_threshold {
             let action = match count {
                 Some(_) => "cache_hit",
                 None => "cache_miss",
@@ -188,7 +141,7 @@ where
         let infos = self
             .store
             .status(status::Filter::Deployments(vec![deployment.to_string()]))?;
-        if start.elapsed() > *QUERY_THRESHOLD {
+        if start.elapsed() > ENV_VARS.explorer_query_threshold {
             warn!(logger, "Getting entity_count takes too long";
             "action" => "query_status",
             "deployment" => deployment,
@@ -206,7 +159,7 @@ where
         };
         let start = Instant::now();
         let resp = as_http_response(&value);
-        if start.elapsed() > *LOCK_THRESHOLD {
+        if start.elapsed() > ENV_VARS.explorer_lock_threshold {
             warn!(logger, "Getting entity_count takes too long";
             "action" => "as_http_response",
             "deployment" => deployment,
@@ -215,7 +168,7 @@ where
         let start = Instant::now();
         self.entity_counts
             .set(deployment.to_string(), Arc::new(value));
-        if start.elapsed() > *LOCK_THRESHOLD {
+        if start.elapsed() > ENV_VARS.explorer_lock_threshold {
             warn!(logger, "Getting entity_count takes too long";
                 "action" => "cache_set",
                 "deployment" => deployment,

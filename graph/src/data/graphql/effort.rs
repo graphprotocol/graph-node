@@ -1,12 +1,9 @@
 //! Utilities to keep moving statistics about queries
 
-use lazy_static::lazy_static;
 use prometheus::core::GenericCounter;
 use rand::{prelude::Rng, thread_rng};
 use std::collections::{HashMap, HashSet};
-use std::env;
 use std::iter::FromIterator;
-use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
@@ -15,44 +12,8 @@ use crate::components::store::PoolWaitStats;
 use crate::data::graphql::shape_hash::shape_hash;
 use crate::data::query::{CacheStatus, QueryExecutionError};
 use crate::prelude::q;
-use crate::prelude::{async_trait, debug, info, o, warn, Logger, QueryLoadManager};
-use crate::util::stats::{MovingStats, BIN_SIZE, WINDOW_SIZE};
-
-const ZERO_DURATION: Duration = Duration::from_millis(0);
-
-lazy_static! {
-    static ref LOAD_THRESHOLD: Duration = {
-        let threshold = env::var("GRAPH_LOAD_THRESHOLD")
-            .ok()
-            .map(|s| {
-                u64::from_str(&s).unwrap_or_else(|_| {
-                    panic!("GRAPH_LOAD_THRESHOLD must be a number, but is `{}`", s)
-                })
-            })
-            .unwrap_or(0);
-        Duration::from_millis(threshold)
-    };
-
-    static ref JAIL_QUERIES: bool = env::var("GRAPH_LOAD_JAIL_THRESHOLD").is_ok();
-
-    static ref JAIL_THRESHOLD: f64 = {
-        env::var("GRAPH_LOAD_JAIL_THRESHOLD")
-            .ok()
-            .map(|s| {
-                f64::from_str(&s).unwrap_or_else(|_| {
-                    panic!("GRAPH_LOAD_JAIL_THRESHOLD must be a number, but is `{}`", s)
-                })
-            })
-            .unwrap_or(1e9)
-    };
-
-    // Load management can be disabled by setting the threshold to 0. This
-    // makes sure in particular that we never take any of the locks
-    // associated with it
-    static ref LOAD_MANAGEMENT_DISABLED: bool = *LOAD_THRESHOLD == ZERO_DURATION;
-
-    static ref SIMULATE: bool = env::var("GRAPH_LOAD_SIMULATE").is_ok();
-}
+use crate::prelude::{async_trait, debug, info, o, warn, Logger, QueryLoadManager, ENV_VARS};
+use crate::util::stats::MovingStats;
 
 struct QueryEffort {
     inner: Arc<RwLock<QueryEffortInner>>,
@@ -71,7 +32,7 @@ struct QueryEffortInner {
 /// the environment
 impl Default for QueryEffort {
     fn default() -> Self {
-        Self::new(*WINDOW_SIZE, *BIN_SIZE)
+        Self::new(ENV_VARS.load_window_size, ENV_VARS.load_bin_size)
     }
 }
 
@@ -85,7 +46,7 @@ impl QueryEffort {
     pub fn add(&self, shape_hash: u64, duration: Duration, gauge: &Gauge) {
         let mut inner = self.inner.write().unwrap();
         inner.add(shape_hash, duration);
-        gauge.set(inner.total.average().unwrap_or(ZERO_DURATION).as_millis() as f64);
+        gauge.set(inner.total.average().unwrap_or(Duration::ZERO).as_millis() as f64);
     }
 
     /// Return what we know right now about the effort for the query
@@ -254,9 +215,9 @@ impl LoadManager {
             .map(|doc| shape_hash(&doc))
             .collect::<HashSet<_>>();
 
-        let mode = if *LOAD_MANAGEMENT_DISABLED {
+        let mode = if ENV_VARS.load_management_is_disabled() {
             "disabled"
-        } else if *SIMULATE {
+        } else if ENV_VARS.load_simulate {
             "simulation"
         } else {
             "enabled"
@@ -310,7 +271,7 @@ impl LoadManager {
         self.query_counters
             .get(&cache_status)
             .map(GenericCounter::inc);
-        if !*LOAD_MANAGEMENT_DISABLED {
+        if !ENV_VARS.load_management_is_disabled() {
             self.effort.add(shape_hash, duration, &self.effort_gauge);
         }
     }
@@ -340,7 +301,7 @@ impl LoadManager {
     ///
     /// We detect whether we are in an overloaded situation by looking at
     /// the average wait time for connection checkouts. If that exceeds
-    /// `GRAPH_LOAD_THRESHOLD`, we consider ourselves to be in an overload
+    /// [`ENV_VARS.load_threshold`], we consider ourselves to be in an overload
     /// situation.
     ///
     /// There are several criteria that will lead to us declining to run
@@ -356,8 +317,8 @@ impl LoadManager {
     ///    queries randomly with a probability of
     ///    kill_rate * query_effort / total_effort
     ///
-    /// If `GRAPH_LOAD_THRESHOLD` is set to 0, we bypass all this logic, and
-    /// only ever decline to run statically configured queries (1). In that
+    /// If [`ENV_VARS.load_threshold`] is set to 0, we bypass all this logic,
+    /// and only ever decline to run statically configured queries (1). In that
     /// case, we also do not take any locks when asked to update statistics,
     /// or to check whether we are overloaded; these operations amount to
     /// noops.
@@ -367,12 +328,16 @@ impl LoadManager {
         if self.blocked_queries.contains(&shape_hash) {
             return TooExpensive;
         }
-        if *LOAD_MANAGEMENT_DISABLED {
+        if ENV_VARS.load_management_is_disabled() {
             return Proceed;
         }
 
         if self.jailed_queries.read().unwrap().contains(&shape_hash) {
-            return if *SIMULATE { Proceed } else { TooExpensive };
+            return if ENV_VARS.load_simulate {
+                Proceed
+            } else {
+                TooExpensive
+            };
         }
 
         let (overloaded, wait_ms) = self.overloaded(wait_stats);
@@ -382,9 +347,9 @@ impl LoadManager {
         }
 
         let (query_effort, total_effort) = self.effort.current_effort(shape_hash);
-        // When `total_effort` is `ZERO_DURATION`, we haven't done any work. All are
+        // When `total_effort` is `Duratino::ZERO`, we haven't done any work. All are
         // welcome
-        if total_effort == ZERO_DURATION {
+        if total_effort.is_zero() {
             return Proceed;
         }
 
@@ -396,17 +361,24 @@ impl LoadManager {
         let query_effort = query_effort.unwrap_or(total_effort).as_millis() as f64;
         let total_effort = total_effort.as_millis() as f64;
 
-        if known_query && *JAIL_QUERIES && query_effort / total_effort > *JAIL_THRESHOLD {
-            // Any single query that causes at least JAIL_THRESHOLD of the
-            // effort in an overload situation gets killed
-            warn!(self.logger, "Jailing query";
+        // When this variable is not set, we never jail any queries.
+        if let Some(jail_threshold) = ENV_VARS.load_jail_threshold {
+            if known_query && query_effort / total_effort > jail_threshold {
+                // Any single query that causes at least JAIL_THRESHOLD of the
+                // effort in an overload situation gets killed
+                warn!(self.logger, "Jailing query";
                 "query" => query,
                 "wait_ms" => wait_ms.as_millis(),
                 "query_effort_ms" => query_effort,
                 "total_effort_ms" => total_effort,
                 "ratio" => format!("{:.4}", query_effort/total_effort));
-            self.jailed_queries.write().unwrap().insert(shape_hash);
-            return if *SIMULATE { Proceed } else { TooExpensive };
+                self.jailed_queries.write().unwrap().insert(shape_hash);
+                return if ENV_VARS.load_simulate {
+                    Proceed
+                } else {
+                    TooExpensive
+                };
+            }
         }
 
         // Kill random queries in case we have no queries, or not enough queries
@@ -415,7 +387,7 @@ impl LoadManager {
         let decline =
             thread_rng().gen_bool((kill_rate * query_effort / total_effort).min(1.0).max(0.0));
         if decline {
-            if *SIMULATE {
+            if ENV_VARS.load_simulate {
                 debug!(self.logger, "Declining query";
                     "query" => query,
                     "wait_ms" => wait_ms.as_millis(),
@@ -433,9 +405,9 @@ impl LoadManager {
     fn overloaded(&self, wait_stats: &PoolWaitStats) -> (bool, Duration) {
         let store_avg = wait_stats.read().unwrap().average();
         let overloaded = store_avg
-            .map(|average| average > *LOAD_THRESHOLD)
+            .map(|average| average > ENV_VARS.load_threshold)
             .unwrap_or(false);
-        (overloaded, store_avg.unwrap_or(ZERO_DURATION))
+        (overloaded, store_avg.unwrap_or(Duration::ZERO))
     }
 
     fn kill_state(&self) -> (f64, Instant) {
@@ -525,7 +497,7 @@ impl QueryLoadManager for LoadManager {
         self.query_counters
             .get(&cache_status)
             .map(|counter| counter.inc());
-        if !*LOAD_MANAGEMENT_DISABLED {
+        if !ENV_VARS.load_management_is_disabled() {
             self.effort.add(shape_hash, duration, &self.effort_gauge);
         }
     }

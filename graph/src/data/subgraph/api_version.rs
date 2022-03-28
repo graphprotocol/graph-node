@@ -1,5 +1,4 @@
 use itertools::Itertools;
-use lazy_static::lazy_static;
 use semver::Version;
 use std::collections::BTreeSet;
 use thiserror::Error;
@@ -19,17 +18,6 @@ pub const SPEC_VERSION_0_0_3: Version = Version::new(0, 0, 3);
 pub const SPEC_VERSION_0_0_4: Version = Version::new(0, 0, 4);
 
 pub const MIN_SPEC_VERSION: Version = Version::new(0, 0, 2);
-
-lazy_static! {
-    pub static ref MAX_SPEC_VERSION: Version = std::env::var("GRAPH_MAX_SPEC_VERSION")
-        .ok()
-        .and_then(|api_version_str| Version::parse(&api_version_str).ok())
-        .unwrap_or(SPEC_VERSION_0_0_4);
-    pub static ref MAX_API_VERSION: semver::Version = std::env::var("GRAPH_MAX_API_VERSION")
-        .ok()
-        .and_then(|api_version_str| semver::Version::parse(&api_version_str).ok())
-        .unwrap_or(semver::Version::new(0, 0, 6));
-}
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct UnifiedMappingApiVersion(Option<Version>);

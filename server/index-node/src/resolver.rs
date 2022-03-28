@@ -7,12 +7,12 @@ use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::store::{BlockStore, EntityType, Store};
 use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
 use graph::data::subgraph::features::detect_features;
-use graph::data::subgraph::{status, MAX_SPEC_VERSION};
+use graph::data::subgraph::status;
 use graph::data::value::Object;
 use graph::prelude::*;
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
 
-use crate::auth::POI_PROTECTION;
+use crate::auth::PoiProtection;
 
 /// Resolver for the index node GraphQL API.
 pub struct IndexNodeResolver<S, R> {
@@ -265,7 +265,8 @@ where
             .get_optional::<Address>("indexer")
             .expect("Invalid indexer");
 
-        if !POI_PROTECTION.validate_access_token(self.bearer_token.as_deref()) {
+        let poi_protection = PoiProtection::from_env(&ENV_VARS);
+        if !poi_protection.validate_access_token(self.bearer_token.as_deref()) {
             // Let's sign the POI with a zero'd address when the access token is
             // invalid.
             indexer = Some(Address::zero());
@@ -368,7 +369,7 @@ where
                             raw,
                             self.link_resolver.clone(),
                             &self.logger,
-                            MAX_SPEC_VERSION.clone(),
+                            ENV_VARS.max_spec_version.clone(),
                         )
                         .await?;
 
@@ -386,7 +387,7 @@ where
                             raw,
                             self.link_resolver.clone(),
                             &self.logger,
-                            MAX_SPEC_VERSION.clone(),
+                            ENV_VARS.max_spec_version.clone(),
                         )
                         .await?;
 
@@ -404,7 +405,7 @@ where
                             raw,
                             self.link_resolver.clone(),
                             &self.logger,
-                            MAX_SPEC_VERSION.clone(),
+                            ENV_VARS.max_spec_version.clone(),
                         )
                         .await?;
 

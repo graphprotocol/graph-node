@@ -9,15 +9,12 @@ pub use traits::*;
 use futures::stream::poll_fn;
 use futures::{Async, Poll, Stream};
 use graphql_parser::schema as s;
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
-use std::env;
 use std::fmt;
 use std::fmt::Display;
-use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -26,17 +23,6 @@ use crate::blockchain::DataSource;
 use crate::blockchain::{Block, Blockchain};
 use crate::data::{store::*, subgraph::Source};
 use crate::prelude::*;
-
-lazy_static! {
-    pub static ref SUBSCRIPTION_THROTTLE_INTERVAL: Duration =
-        env::var("SUBSCRIPTION_THROTTLE_INTERVAL")
-            .ok()
-            .map(|s| u64::from_str(&s).unwrap_or_else(|_| panic!(
-                "failed to parse env var SUBSCRIPTION_THROTTLE_INTERVAL"
-            )))
-            .map(Duration::from_millis)
-            .unwrap_or_else(|| Duration::from_millis(1000));
-}
 
 /// The type name of an entity. This is the string that is used in the
 /// subgraph's GraphQL schema as `type NAME @entity { .. }`

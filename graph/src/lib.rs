@@ -58,6 +58,7 @@ pub mod prelude {
     pub use async_trait::async_trait;
     pub use bigdecimal;
     pub use chrono;
+    pub use envconfig;
     pub use ethabi;
     pub use futures::future;
     pub use futures::prelude::*;
@@ -119,7 +120,6 @@ pub mod prelude {
         EntityRange, EntityWindow, EthereumCallCache, ParentLink, PoolWaitStats, QueryStore,
         QueryStoreManager, StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox,
         SubgraphStore, UnfailOutcome, WindowAttribute, BLOCK_NUMBER_MAX,
-        SUBSCRIPTION_THROTTLE_INTERVAL,
     };
     pub use crate::components::subgraph::{
         BlockState, DataSourceTemplateInfo, HostMetrics, RuntimeHost, RuntimeHostBuilder,
@@ -127,6 +127,7 @@ pub mod prelude {
         SubgraphVersionSwitchingMode,
     };
     pub use crate::components::{transaction_receipt, EventConsumer, EventProducer};
+    pub use crate::env::ENV_VARS;
 
     pub use crate::cheap_clone::CheapClone;
     pub use crate::data::graphql::{

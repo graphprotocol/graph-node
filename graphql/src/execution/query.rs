@@ -15,7 +15,7 @@ use graph::data::graphql::{ext::TypeExt, ObjectOrInterface};
 use graph::data::query::QueryExecutionError;
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::ApiSchema;
-use graph::prelude::{info, o, q, r, s, BlockNumber, CheapClone, Logger, TryFromValue};
+use graph::prelude::{info, o, q, r, s, BlockNumber, CheapClone, Logger, TryFromValue, ENV_VARS};
 
 use crate::execution::ast as a;
 use crate::query::{ast as qast, ext::BlockConstraint};
@@ -24,8 +24,8 @@ use crate::values::coercion;
 use crate::{execution::get_field, schema::api::ErrorPolicy};
 
 lazy_static! {
-    static ref GRAPHQL_VALIDATION_PLAN: ValidationPlan = ValidationPlan::from(
-        if std::env::var("ENABLE_GRAPHQL_VALIDATIONS").ok().is_none() {
+    static ref GRAPHQL_VALIDATION_PLAN: ValidationPlan =
+        ValidationPlan::from(if !ENV_VARS.graphql.enable_validations {
             vec![]
         } else {
             vec![
@@ -54,8 +54,7 @@ lazy_static! {
                 Box::new(ValuesOfCorrectType::new()),
                 Box::new(UniqueDirectivesPerLocation::new()),
             ]
-        }
-    );
+        });
 }
 
 #[derive(Clone, Debug)]
@@ -318,7 +317,7 @@ impl Query {
 
     /// Log details about the overall execution of the query
     pub fn log_execution(&self, block: BlockNumber) {
-        if *graph::log::LOG_GQL_TIMING {
+        if ENV_VARS.log_gql_timing() {
             info!(
                 &self.logger,
                 "Query timing (GraphQL)";
@@ -339,7 +338,7 @@ impl Query {
         start: Instant,
         cache_status: String,
     ) {
-        if *graph::log::LOG_GQL_CACHE_TIMING {
+        if ENV_VARS.log_gql_cache_timing() {
             info!(
                 &self.logger,
                 "Query caching";
