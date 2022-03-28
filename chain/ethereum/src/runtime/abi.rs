@@ -303,7 +303,7 @@ impl AscIndexId for AscEthereumEvent<AscEthereumTransaction_0_0_6, AscEthereumBl
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEthereumLog {
-    pub address: AscPtr<AscH160>,
+    pub address: AscPtr<AscAddress>,
     pub topics: AscPtr<AscTopicArray>,
     pub data: AscPtr<Uint8Array>,
     pub block_hash: AscPtr<AscH256>,
