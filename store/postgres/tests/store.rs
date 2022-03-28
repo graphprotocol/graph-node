@@ -1667,6 +1667,7 @@ fn handle_large_bytea_with_index() {
             )
             .await
             .expect("Failed to insert large text");
+        writable.flush().await.unwrap();
 
         let query = user_query()
             .first(5)
