@@ -235,6 +235,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "blake3"
+version = "1.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a08e53fc5a564bb15bfe6fae56bd71522205f1f91893f9c0116edad6496c183f"
+dependencies = [
+ "arrayref",
+ "arrayvec 0.7.2",
+ "cc",
+ "cfg-if 1.0.0",
+ "constant_time_eq",
+ "digest 0.10.3",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -829,6 +843,7 @@ checksum = "f2fb860ca6fafa5552fb6d0e816a69c8e49f0908bf524e30a90d97c85892d506"
 dependencies = [
  "block-buffer 0.10.2",
  "crypto-common",
+ "subtle",
 ]
 
 [[package]]
@@ -1611,7 +1626,7 @@ dependencies = [
 name = "graph-server-index-node"
 version = "0.25.2"
 dependencies = [
- "blake3",
+ "blake3 1.3.1",
  "either",
  "futures 0.3.16",
  "graph",
@@ -1671,7 +1686,7 @@ dependencies = [
  "Inflector",
  "anyhow",
  "async-trait",
- "blake3",
+ "blake3 1.3.1",
  "clap",
  "derive_more",
  "diesel",
@@ -3665,7 +3680,7 @@ name = "stable-hash"
 version = "0.3.1"
 source = "git+https://github.com/graphprotocol/stable-hash#752463958b369506845e89da8b831430146c61d1"
 dependencies = [
- "blake3",
+ "blake3 0.3.8",
  "firestorm",
  "ibig",
  "lazy_static",
