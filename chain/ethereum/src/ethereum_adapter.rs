@@ -1858,7 +1858,8 @@ async fn get_logs_and_transactions(
             if let (Some(block), Some(txn)) = (log.block_hash, log.transaction_hash) {
                 Some((block, txn))
             } else {
-                // TODO: Should this case be considered an error?
+                // Absent block and transaction data might happen for pending transactions, which we
+                // don't handle.
                 None
             }
         })
