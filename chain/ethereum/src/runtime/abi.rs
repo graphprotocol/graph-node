@@ -359,14 +359,6 @@ where
     pub receipt: AscPtr<AscEthereumTransactionReceipt>,
 }
 
-impl AscIndexId for AscEthereumEvent_0_0_7<AscEthereumTransaction_0_0_1, AscEthereumBlock> {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
-}
-
-impl AscIndexId for AscEthereumEvent_0_0_7<AscEthereumTransaction_0_0_2, AscEthereumBlock> {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
-}
-
 impl AscIndexId for AscEthereumEvent_0_0_7<AscEthereumTransaction_0_0_6, AscEthereumBlock_0_0_6> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumEvent;
 }
