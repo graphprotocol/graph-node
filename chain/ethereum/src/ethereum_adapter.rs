@@ -1827,7 +1827,7 @@ fn resolve_transaction_receipt(
     }
 }
 
-/// Retrieves logs and the associated transact receipts, if required by the [`EthereumLogFilter`].
+/// Retrieves logs and the associated transaction receipts, if required by the [`EthereumLogFilter`].
 async fn get_logs_and_transactions(
     adapter: Arc<EthereumAdapter>,
     logger: &Logger,
