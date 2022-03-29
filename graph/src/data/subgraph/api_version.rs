@@ -11,6 +11,7 @@ pub const API_VERSION_0_0_2: Version = Version::new(0, 0, 2);
 /// different API versions if at least one of them is equal to or higher than `0.0.5`.
 pub const API_VERSION_0_0_5: Version = Version::new(0, 0, 5);
 
+// Adds two new fields to the Transaction object: nonce and input
 pub const API_VERSION_0_0_6: Version = Version::new(0, 0, 6);
 
 /// Enables event handlers to require transaction receipts in the runtime.
@@ -23,6 +24,9 @@ pub const SPEC_VERSION_0_0_3: Version = Version::new(0, 0, 3);
 
 /// This version supports subgraph feature management.
 pub const SPEC_VERSION_0_0_4: Version = Version::new(0, 0, 4);
+
+/// This version supports event handlers having access to transaction receipts.
+pub const SPEC_VERSION_0_0_5: Version = Version::new(0, 0, 5);
 
 pub const MIN_SPEC_VERSION: Version = Version::new(0, 0, 2);
 
