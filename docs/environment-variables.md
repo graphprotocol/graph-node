@@ -187,3 +187,7 @@ happens, subgraphs might process inconsistent data. Defaults to 250.
   identified as unused, `graph-node` will wait at least this long before
   actually deleting the data (value is in minutes, defaults to 360, i.e. 6
   hours)
+- `START_BLOCK`: block hash:block number where the forked subgraph will start indexing at
+- `FORK_BASE`: api url for where the graph node will fork from, use `https://api.thegraph.com/subgraphs/id/`
+  for the hosted service.
+- `DEBUG_FORK`: the IPFS hash id of the subgraph to fork
