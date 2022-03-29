@@ -37,6 +37,7 @@ pub struct Opt {
 
     #[structopt(
         long,
+        env = "START_BLOCK",
         value_name = "BLOCK_HASH:BLOCK_NUMBER",
         help = "block hash and number that the subgraph passed will start indexing at"
     )]
@@ -207,11 +208,17 @@ pub struct Opt {
     #[structopt(
         long,
         value_name = "IPFS_HASH",
+        env = "DEBUG_FORK",
         help = "IPFS hash of the subgraph manifest that you want to fork"
     )]
     pub debug_fork: Option<String>,
 
-    #[structopt(long, value_name = "URL", help = "Base URL for forking subgraphs")]
+    #[structopt(
+        long,
+        value_name = "URL",
+        env = "FORK_BASE",
+        help = "Base URL for forking subgraphs"
+    )]
     pub fork_base: Option<String>,
 }
 
