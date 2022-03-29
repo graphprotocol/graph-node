@@ -1837,13 +1837,13 @@ async fn get_logs_and_transactions(
     log_filter: EthereumLogFilter,
     unified_api_version: &UnifiedMappingApiVersion,
 ) -> Result<Vec<EthereumTrigger>, anyhow::Error> {
-    // obtain logs externally
+    // Obtain logs externally
     let logs = adapter
         .logs_in_block_range(logger, subgraph_metrics, from, to, log_filter.clone())
         .await?;
 
-    // not all logs have associated transaction hashes, nor do all triggers require them.
-    // we also restrict receipts retrieval for some api versions.
+    // Not all logs have associated transaction hashes, nor do all triggers require them.
+    // We also restrict receipts retrieval for some api versions.
     let transaction_hashes_by_block: HashMap<H256, HashSet<H256>> = logs
         .iter()
         .filter(|_| unified_api_version.equal_or_greater_than(&API_VERSION_0_0_7))
@@ -1871,7 +1871,7 @@ async fn get_logs_and_transactions(
             },
         );
 
-    // obtain receipts externally
+    // Obtain receipts externally
     let transaction_receipts_by_hash = get_transaction_receipts_for_transaction_hashes(
         &adapter,
         &transaction_hashes_by_block,
@@ -1879,7 +1879,7 @@ async fn get_logs_and_transactions(
     )
     .await?;
 
-    // associate each log with its receipt, when possible
+    // Associate each log with its receipt, when possible
     let mut log_triggers = Vec::new();
     for log in logs.into_iter() {
         let optional_receipt = log
