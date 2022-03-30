@@ -5,6 +5,11 @@
   where whitespace characters were part of the terms.
 - Adds support for Solidity Custom Errors (issue #2577)
 
+### Api Version 0.0.7 and Spec Version 0.0.5
+This release brings API Version 0.0.7 in mappings, which allows Ethereum event handlers to require transaction receipts to be present in the `Event` object.
+Refer to [PR #3373](https://github.com/graphprotocol/graph-node/pull/3373) for instructions on how to enable that.
+
+
 ## 0.25.2
 
 This release includes two changes:
