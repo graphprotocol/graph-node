@@ -1434,11 +1434,11 @@ fn log_filter_require_transacion_receipt_method() {
     assert!(!filter.requires_transaction_receipt(&event_signature_c, Some(&contract_a)));
     assert!(!filter.requires_transaction_receipt(&event_signature_c, Some(&contract_b)));
 
-    // wildcard events
+    // Wildcard events
     assert!(filter.requires_transaction_receipt(&wildcard_event_with_receipt, None));
     assert!(!filter.requires_transaction_receipt(&wildcard_event_without_receipt, None));
 
-    // alien events and contracts always return false
+    // Alien events and contracts always return false
     assert!(
         !filter.requires_transaction_receipt(&alien_event_signature, Some(&alien_contract_address))
     );

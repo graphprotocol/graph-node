@@ -590,7 +590,7 @@ where
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscEthereumEvent_0_0_7<T, B>, DeterministicHostError> {
-        let (event_data, receipt) = self;
+        let (event_data, optional_receipt) = self;
         let AscEthereumEvent {
             address,
             log_index,
@@ -600,7 +600,7 @@ where
             transaction,
             params,
         } = event_data.to_asc_obj(heap, gas)?;
-        let asc_receipt = if let Some(receipt_data) = receipt {
+        let receipt = if let Some(receipt_data) = optional_receipt {
             asc_new(heap, receipt_data, gas)?
         } else {
             AscPtr::null()
@@ -613,7 +613,7 @@ where
             block,
             transaction,
             params,
-            receipt: asc_receipt,
+            receipt,
         })
     }
 }
