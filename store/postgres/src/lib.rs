@@ -48,6 +48,9 @@ pub mod layout_for_tests {
         make_dummy_site, Connection, Mirror, Namespace, EVENT_TAP, EVENT_TAP_ENABLED,
     };
     pub use crate::relational::*;
+    pub mod writable {
+        pub use crate::writable::test_support::allow_steps;
+    }
 }
 
 pub use self::block_store::BlockStore;

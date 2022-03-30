@@ -358,11 +358,20 @@ impl SyncStore {
     }
 }
 
-/// Track block numbers we see in a few methods that traverse the queue
+/// Track block numbers we see in a few methods that traverse the queue to
+/// help determine which changes in the queue will actually be visible in
+/// the database once the whole queue has been processed and the block
+/// number at which queries should run so that they only consider data that
+/// is not affected by any requests currently queued.
+///
+/// The tracker relies on `update` being called in the order newest request
+/// in the queue to oldest request so that reverts are seen before the
+/// writes that they revert.
 struct BlockTracker {
-    /// The smallest block number for which we saw a revert
+    /// The smallest block number that has been reverted to
     revert: BlockNumber,
-    /// The smallest block number for which the queue has an entry
+    /// The largest block number that is not affected by entries in the
+    /// queue
     block: BlockNumber,
 }
 
@@ -377,9 +386,11 @@ impl BlockTracker {
     fn update(&mut self, req: &Request) {
         match req {
             Request::Write { block_ptr, .. } => {
-                self.block = self.block.min(block_ptr.number);
+                self.block = self.block.min(block_ptr.number - 1);
             }
             Request::Revert { block_ptr, .. } => {
+                // `block_ptr` is the block pointer we are reverting _to_,
+                // and is not affected by the revert
                 self.revert = self.revert.min(block_ptr.number);
                 self.block = self.block.min(block_ptr.number);
             }
@@ -390,17 +401,13 @@ impl BlockTracker {
     /// of any writes that might have happened concurrently but have already
     /// been accounted for by inspecting the in-memory queue
     fn query_block(&self) -> BlockNumber {
-        if self.block == BLOCK_NUMBER_MAX {
-            BLOCK_NUMBER_MAX
-        } else {
-            self.block - 1
-        }
+        self.block
     }
 
     /// Return `true` if a write at this block will be visible, i.e., not
     /// reverted by a previous queue entry
     fn visible(&self, block_ptr: &BlockPtr) -> bool {
-        self.revert > block_ptr.number
+        self.revert >= block_ptr.number
     }
 }
 
@@ -477,6 +484,37 @@ struct Queue {
     stopwatch: StopwatchMetrics,
 }
 
+/// Support for controlling the background writer (pause/resume) only for
+/// use in tests. In release builds, the checks that pause the writer are
+/// compiled out. Before `allow_steps` is called, the background writer is
+/// allowed to process as many requests as it can
+#[cfg(debug_assertions)]
+pub(crate) mod test_support {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use graph::{prelude::lazy_static, util::bounded_queue::BoundedQueue};
+
+    lazy_static! {
+        static ref DO_STEP: AtomicBool = AtomicBool::new(false);
+        static ref ALLOWED_STEPS: BoundedQueue<()> = BoundedQueue::with_capacity(1_000);
+    }
+
+    pub(super) async fn take_step() {
+        if DO_STEP.load(Ordering::SeqCst) {
+            ALLOWED_STEPS.pop().await
+        }
+    }
+
+    /// Allow the writer to process `steps` requests. After calling this,
+    /// the writer will only process the number of requests it is allowed to
+    pub async fn allow_steps(steps: usize) {
+        for _ in 0..steps {
+            ALLOWED_STEPS.push(()).await
+        }
+        DO_STEP.store(true, Ordering::SeqCst);
+    }
+}
+
 impl Queue {
     /// Create a new queue and spawn a task that processes write requests
     fn start(
@@ -487,6 +525,9 @@ impl Queue {
     ) -> Arc<Self> {
         async fn start_writer(queue: Arc<Queue>, logger: Logger) {
             loop {
+                #[cfg(debug_assertions)]
+                test_support::take_step().await;
+
                 // We peek at the front of the queue, rather than pop it
                 // right away, so that query methods like `get` have access
                 // to the data while it is being written. If we popped here,
