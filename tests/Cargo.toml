@@ -3,7 +3,7 @@ name = "graph-tests"
 version = "0.26.0"
 edition = "2021"
 
-[dev-dependencies]
+[dependencies]
 slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
 bollard = "0.10"
 tokio = {version = "1.16.1", features = ["rt", "macros", "process"]}
@@ -21,3 +21,4 @@ graph-chain-ethereum = { path = "../chain/ethereum" }
 graph-chain-near = { path = "../chain/near" }
 async-stream = "0.3.3"
 futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
+tests = { path = "../tests-common"}

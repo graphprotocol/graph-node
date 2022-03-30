@@ -1875,6 +1875,7 @@ dependencies = [
  "port_check",
  "serde_yaml",
  "slog",
+ "tests",
  "tokio",
  "tokio-stream",
 ]
@@ -2326,6 +2327,16 @@ dependencies = [
  "tokio-stream",
  "tokio-util 0.6.7",
  "unicase",
+]
+
+[[package]]
+name = "k6-tests"
+version = "0.26.0"
+dependencies = [
+ "anyhow",
+ "tests",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]
@@ -4120,6 +4131,19 @@ dependencies = [
  "graphql-parser",
  "hex-literal",
  "lazy_static",
+]
+
+[[package]]
+name = "tests"
+version = "0.26.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "bollard",
+ "lazy_static",
+ "port_check",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]

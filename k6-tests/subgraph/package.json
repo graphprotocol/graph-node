@@ -1,0 +1,23 @@
+{
+  "name": "performance-testing-test",
+  "version": "0.0.1",
+  "scripts": {
+    "prepare:env": "yarn contract:compile && yarn contract:abi && yarn contract:seed",
+    "contract:abi": "node abi.js",
+    "contract:compile": "truffle compile --network test",
+    "contract:seed": "truffle test --compile-none --network test",
+    "codegen": "graph codegen",
+    "create:test": "graph create test/k6 --node $GRAPH_NODE_ADMIN_URI",
+    "deploy:test": "graph deploy test/k6 --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
+  },
+  "dependencies": {
+    "@graphprotocol/graph-cli": "^0.29.2",
+    "@graphprotocol/graph-ts": "^0.26.0",
+    "solc": "0.8.13",
+    "graphql-request": "4.2.0",
+    "@truffle/contract": "4.5.10",
+    "@truffle/hdwallet-provider": "2.0.8",
+    "gluegun": "5.1.2",
+    "truffle": "5.5.14"
+  }
+}

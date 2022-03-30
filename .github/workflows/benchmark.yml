@@ -1,0 +1,69 @@
+name: Benchmark
+
+on:
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  query:
+    name: Query
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: ["stable"]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: test-cargo-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Install Node 16
+        uses: actions/setup-node@v2
+        with:
+          node-version: "16"
+
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+
+      - name: Install lld
+        run: sudo apt-get install -y lld
+
+      - name: Build graph-node
+        env:
+          RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+
+      - name: Install Subgraph Dependencies
+        run: yarn
+        working-directory: ./k6-tests/subgraph
+
+      - name: Setup K6
+        run: |
+          sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Seed, Deploy & Test
+        uses: actions-rs/cargo@v1
+        env:
+          GITHUB_PR: ${{ github.event.number }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+        with:
+          command: run
+          args: --package k6-tests -- --nocapture

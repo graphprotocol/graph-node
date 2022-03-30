@@ -74,6 +74,7 @@ pub struct GraphNodePorts {
     pub admin: u16,
     pub metrics: u16,
 }
+
 impl GraphNodePorts {
     /// Returns five available port numbers, using dynamic port ranges
     pub fn get_ports() -> GraphNodePorts {

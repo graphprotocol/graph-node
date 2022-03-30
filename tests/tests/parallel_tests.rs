@@ -1,16 +1,15 @@
-mod common;
 use anyhow::Context;
-use common::docker::{pull_images, DockerTestClient, TestContainerService};
-use common::helpers::{
-    basename, get_unique_ganache_counter, get_unique_postgres_counter, make_ganache_uri,
-    make_ipfs_uri, make_postgres_uri, pretty_output, GraphNodePorts, MappedPorts,
-};
 use futures03::StreamExt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::io::AsyncReadExt;
-use tokio::process::{Child, Command};
+use tests::docker::{pull_images, DockerTestClient, TestContainerService};
+use tests::helpers::{
+    basename, get_unique_ganache_counter, get_unique_postgres_counter, make_ganache_uri,
+    make_ipfs_uri, make_postgres_uri, pretty_output, MappedPorts,
+};
+use tests::{run_graph_node, stop_graph_node, GraphNodePorts, IntegrationTestSetup, StdIO};
+use tokio::process::Command;
 
 const DEFAULT_N_CONCURRENT_TESTS: usize = 15;
 
@@ -38,29 +37,6 @@ pub const INTEGRATION_TESTS_DIRECTORIES: [&str; 11] = [
     "value-roundtrip",
 ];
 
-/// Contains all information a test command needs
-#[derive(Debug)]
-struct IntegrationTestSetup {
-    postgres_uri: String,
-    ipfs_uri: String,
-    ganache_port: u16,
-    ganache_uri: String,
-    graph_node_ports: GraphNodePorts,
-    graph_node_bin: Arc<PathBuf>,
-    test_directory: PathBuf,
-}
-
-impl IntegrationTestSetup {
-    fn test_name(&self) -> String {
-        basename(&self.test_directory)
-    }
-
-    fn graph_node_admin_uri(&self) -> String {
-        let ws_port = self.graph_node_ports.admin;
-        format!("http://localhost:{}/", ws_port)
-    }
-}
-
 /// Info about a finished test command
 #[derive(Debug)]
 struct TestCommandResults {
@@ -68,23 +44,6 @@ struct TestCommandResults {
     _exit_code: Option<i32>,
     stdout: String,
     stderr: String,
-}
-
-#[derive(Debug)]
-struct StdIO {
-    stdout: Option<String>,
-    stderr: Option<String>,
-}
-impl std::fmt::Display for StdIO {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(ref stdout) = self.stdout {
-            write!(f, "{}", stdout)?;
-        }
-        if let Some(ref stderr) = self.stderr {
-            write!(f, "{}", stderr)?
-        }
-        Ok(())
-    }
 }
 
 // The results of a finished integration test
@@ -290,13 +249,21 @@ async fn run_integration_test(
         ganache_port,
         graph_node_bin,
         graph_node_ports: GraphNodePorts::get_ports(),
-        test_directory,
+        test_directory: Some(test_directory),
     };
 
     // spawn graph-node
     let mut graph_node_child_command = run_graph_node(&test_setup).await?;
 
-    println!("Test started: {}", basename(&test_setup.test_directory));
+    println!(
+        "Test started: {}",
+        basename(
+            &test_setup
+                .test_directory
+                .as_deref()
+                .expect("missing test dir")
+        )
+    );
     let test_command_results = run_test_command(&test_setup).await?;
 
     // stop graph-node
@@ -330,7 +297,12 @@ async fn run_test_command(test_setup: &IntegrationTestSetup) -> anyhow::Result<T
             test_setup.graph_node_ports.index.to_string(),
         )
         .env("IPFS_URI", &test_setup.ipfs_uri)
-        .current_dir(&test_setup.test_directory)
+        .current_dir(
+            &test_setup
+                .test_directory
+                .as_deref()
+                .expect("missing test dir"),
+        )
         .output()
         .await
         .context("failed to run test command")?;
@@ -345,80 +317,6 @@ async fn run_test_command(test_setup: &IntegrationTestSetup) -> anyhow::Result<T
         stdout: pretty_output(&output.stdout, &stdout_tag),
         stderr: pretty_output(&output.stderr, &stderr_tag),
     })
-}
-async fn run_graph_node(test_setup: &IntegrationTestSetup) -> anyhow::Result<Child> {
-    use std::process::Stdio;
-
-    let mut command = Command::new(test_setup.graph_node_bin.as_os_str());
-    command
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        // postgres
-        .arg("--postgres-url")
-        .arg(&test_setup.postgres_uri)
-        // ethereum
-        .arg("--ethereum-rpc")
-        .arg(&test_setup.ganache_uri)
-        // ipfs
-        .arg("--ipfs")
-        .arg(&test_setup.ipfs_uri)
-        // http port
-        .arg("--http-port")
-        .arg(test_setup.graph_node_ports.http.to_string())
-        // index node port
-        .arg("--index-node-port")
-        .arg(test_setup.graph_node_ports.index.to_string())
-        // ws  port
-        .arg("--ws-port")
-        .arg(test_setup.graph_node_ports.ws.to_string())
-        // admin  port
-        .arg("--admin-port")
-        .arg(test_setup.graph_node_ports.admin.to_string())
-        // metrics  port
-        .arg("--metrics-port")
-        .arg(test_setup.graph_node_ports.metrics.to_string());
-
-    // add test specific environment variables
-    // TODO: it might be interesting to refactor this conditional into a new datatype that ties
-    // the test name and its environment variables together.
-    if test_setup.test_name().as_str() == "data-source-revert" {
-        command.env(
-            "FAILPOINTS",
-            "test_reorg=return(2);error_on_duplicate_ds=return",
-        );
-    }
-
-    command
-        .spawn()
-        .context("failed to start graph-node command.")
-}
-
-async fn stop_graph_node(child: &mut Child) -> anyhow::Result<StdIO> {
-    child.kill().await.context("Failed to kill graph-node")?;
-
-    // capture stdio
-    let stdout = match child.stdout.take() {
-        Some(mut data) => Some(process_stdio(&mut data, "[graph-node:stdout] ").await?),
-        None => None,
-    };
-    let stderr = match child.stderr.take() {
-        Some(mut data) => Some(process_stdio(&mut data, "[graph-node:stderr] ").await?),
-        None => None,
-    };
-
-    Ok(StdIO { stdout, stderr })
-}
-
-async fn process_stdio<T: AsyncReadExt + Unpin>(
-    stdio: &mut T,
-    prefix: &str,
-) -> anyhow::Result<String> {
-    let mut buffer: Vec<u8> = Vec::new();
-    stdio
-        .read_to_end(&mut buffer)
-        .await
-        .context("failed to read stdio")?;
-    Ok(pretty_output(&buffer, prefix))
 }
 
 /// run yarn to build everything

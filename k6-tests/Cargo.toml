@@ -1,0 +1,14 @@
+[package]
+name = "k6-tests"
+version = "0.26.0"
+edition = "2021"
+
+[[bin]]
+name = "k6-tests"
+path = "src/main.rs"
+
+[dependencies]
+tests = { path = "../tests-common"}
+tokio = {version = "1.16.1", features = ["full"]}
+tokio-stream = "0.1"
+anyhow = "1.0.54"
