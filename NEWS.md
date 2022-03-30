@@ -1,27 +1,30 @@
 # NEWS
 
-## 0.26.0
+## Unreleased
 
-- Gracefully handle syntax errors on fulltext search. Specifically provides information about common use case
-  where whitespace characters were part of the terms.
-- Adds support for Solidity Custom Errors #2577
+- Pipeline store writes #3084 #3177
+- Allow using Bytes as well as String/ID for the id of entities #3271
+
+## 0.26.0
 
 ### Features
 
 - Gas metering #2414
+- Adds support for Solidity Custom Errors #2577
 - Debug fork tool #2995
 - Automatically remove unused deployments #3023
+- Fix fulltextsearch space handling #3048
 - Allow placing new deployments onto one of several shards #3049
-- Store pipelining #3084
-- Make NEAR update the sync status #3108
+- Make NEAR subgraphs update their sync status #3108
 - GraphQL validations #3164
 - Add special treatment for immutable entities #3201
+- Tendermint integration #3212
 - Skip block updates when triggers are empty #3223 #3268
 - Use new GraphiQL version #3252
 - GraphQL prefetching #3256
-- Allow using Bytes as well as String/ID for the id of entities #3271
 - GraphQL route for dumping entity changes in subgraph and block #3275
 - Firehose filters #3323
+- NEAR filters #3372
 
 ### Robustness
 
@@ -32,7 +35,7 @@
 - Prevent subscriptions from back-pressuring the notification queue #3053
 - Avoid parsing X triggers if the filter is empty #3083
 - Pipeline `BlockStream` #3085
-- Tendermint integration #3212
+- More robust proofOfIndexing GraphQL route #3348
 
 ### `graphman`
 
@@ -57,7 +60,7 @@ These are the main ones:
 - Update `ethabi` to its latest version #3144
 - Bump `structopt` from `0.3.25` to `0.3.26` #3180
 - Bump `anyhow` from `1.0.45` to `1.0.53` #3182
-- Bump `quote` from `1.0.9` to `1.0.15` #3112 #3183
+- Bump `quote` from `1.0.9` to `1.0.16` #3112 #3183 #3384
 - Bump `tokio` from `1.15.0` to `1.16.1` #3208
 - Bump `semver` from `1.0.4` to `1.0.5` #3229
 - Bump `async-stream` from `0.3.2` to `0.3.3` #3361
@@ -68,6 +71,7 @@ These are the main ones:
 - More context when logging RPC calls #3128
 - Increase default reorg threshold to 250 for Ethereum #3308
 - Improve traces error logs #3353
+- Add warning and continue on parse input failures for Ethereum #3326
 
 ## 0.25.2
 
