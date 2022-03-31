@@ -133,19 +133,15 @@ pub enum Command {
     },
     /// Assign or reassign a deployment
     Reassign {
-        /// The id of the deployment to reassign
-        id: String,
+        /// The deployment (see `help info`)
+        deployment: DeploymentSearch,
         /// The name of the node that should index the deployment
         node: String,
-        /// The shard of the deployment if `id` itself is ambiguous
-        shard: Option<String>,
     },
     /// Unassign a deployment
     Unassign {
-        /// The id of the deployment to unassign
-        id: String,
-        /// The shard of the deployment if `id` itself is ambiguous
-        shard: Option<String>,
+        /// The deployment (see `help info`)
+        deployment: DeploymentSearch,
     },
     /// Rewind a subgraph to a specific block
     Rewind {
@@ -755,11 +751,11 @@ async fn main() {
         }
         Remove { name } => commands::remove::run(ctx.subgraph_store(), name),
         Create { name } => commands::create::run(ctx.subgraph_store(), name),
-        Unassign { id, shard } => {
-            commands::assign::unassign(logger.clone(), ctx.subgraph_store(), id, shard).await
+        Unassign { deployment } => {
+            commands::assign::unassign(ctx.primary_pool(), &deployment).await
         }
-        Reassign { id, node, shard } => {
-            commands::assign::reassign(ctx.subgraph_store(), id, node, shard)
+        Reassign { deployment, node } => {
+            commands::assign::reassign(ctx.primary_pool(), &deployment, node)
         }
         Rewind {
             force,
