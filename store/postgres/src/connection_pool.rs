@@ -708,7 +708,7 @@ impl PoolInner {
             .global_counter(
                 "store_connection_error_count",
                 "The number of Postgres connections errors",
-                HashMap::new(),
+                const_labels.clone(),
             )
             .expect("failed to create `store_connection_error_count` counter");
         let error_handler = Box::new(ErrorHandler::new(
