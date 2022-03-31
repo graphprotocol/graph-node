@@ -363,8 +363,11 @@ pub enum StatsCommand {
     /// to distinct entities. It can take up to 5 minutes for this to take
     /// effect.
     AccountLike {
-        #[structopt(long, help = "do not set but clear the account-like flag\n")]
+        #[structopt(long, short, help = "do not set but clear the account-like flag\n")]
         clear: bool,
+        /// The deployment (see `help info`).
+        deployment: DeploymentSearch,
+        /// The name of the database table
         table: String,
     },
     /// Show statistics for the tables of a deployment
@@ -376,15 +379,15 @@ pub enum StatsCommand {
     /// in that table, which can be very slow, but is needed since the
     /// statistics based data can be off by an order of magnitude.
     Show {
-        /// The namespace of the deployment in the form `sgdNNNN`
-        nsp: String,
+        /// The deployment (see `help info`).
+        deployment: DeploymentSearch,
         /// The name of a table to fully count
         table: Option<String>,
     },
     /// Perform a SQL ANALYZE in a Entity table
     Analyze {
-        /// The id of the deployment
-        id: String,
+        /// The deployment (see `help info`).
+        deployment: DeploymentSearch,
         /// The name of the Entity to ANALYZE, in camel case
         entity: String,
     },
@@ -860,14 +863,19 @@ async fn main() {
         Stats(cmd) => {
             use StatsCommand::*;
             match cmd {
-                AccountLike { clear, table } => {
-                    commands::stats::account_like(ctx.pools(), clear, table)
+                AccountLike {
+                    clear,
+                    deployment,
+                    table,
+                } => commands::stats::account_like(ctx.pools(), clear, &deployment, table),
+                Show { deployment, table } => {
+                    commands::stats::show(ctx.pools(), &deployment, table)
                 }
-                Show { nsp, table } => commands::stats::show(ctx.pools(), nsp, table),
-                Analyze { id, entity } => {
+                Analyze { deployment, entity } => {
                     let (store, primary_pool) = ctx.store_and_primary();
                     let subgraph_store = store.subgraph_store();
-                    commands::stats::analyze(subgraph_store, primary_pool, id, &entity).await
+                    commands::stats::analyze(subgraph_store, primary_pool, deployment, &entity)
+                        .await
                 }
             }
         }

@@ -298,6 +298,12 @@ impl From<GraphDeploymentId> for DeploymentId {
     }
 }
 
+impl From<DeploymentLocator> for DeploymentId {
+    fn from(loc: DeploymentLocator) -> Self {
+        Self::from(loc.id)
+    }
+}
+
 impl FromSql<Integer, Pg> for DeploymentId {
     fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
         let id = <i32 as FromSql<Integer, Pg>>::from_sql(bytes)?;
@@ -1159,9 +1165,9 @@ impl<'a> Connection<'a> {
         })
     }
 
-    pub fn find_site_by_name(&self, name: &str) -> Result<Option<Site>, StoreError> {
+    pub fn locate_site(&self, locator: DeploymentLocator) -> Result<Option<Site>, StoreError> {
         let schema = deployment_schemas::table
-            .filter(deployment_schemas::name.eq(name))
+            .filter(deployment_schemas::id.eq::<DeploymentId>(locator.into()))
             .first::<Schema>(self.conn.as_ref())
             .optional()?;
         schema.map(|schema| schema.try_into()).transpose()
