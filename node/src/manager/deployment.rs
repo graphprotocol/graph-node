@@ -11,14 +11,13 @@ use graph::{
     components::store::DeploymentLocator,
     data::subgraph::status,
     prelude::{
-        anyhow::{self, anyhow, bail},
-        lazy_static, DeploymentHash, Error, SubgraphStore as _,
+        anyhow::{self},
+        lazy_static, DeploymentHash,
     },
 };
+use graph_store_postgres::command_support::catalog as store_catalog;
 use graph_store_postgres::connection_pool::ConnectionPool;
-use graph_store_postgres::{command_support::catalog as store_catalog, Shard, SubgraphStore};
 
-use crate::manager::deployment;
 use crate::manager::display::List;
 
 lazy_static! {
@@ -156,50 +155,6 @@ pub struct Deployment {
 }
 
 impl Deployment {
-    pub fn lookup(primary: &ConnectionPool, name: &str) -> Result<Vec<Self>, anyhow::Error> {
-        let conn = primary.get()?;
-        Self::lookup_with_conn(&conn, name)
-    }
-
-    pub fn lookup_with_conn(conn: &PgConnection, name: &str) -> Result<Vec<Self>, anyhow::Error> {
-        use store_catalog::deployment_schemas as ds;
-        use store_catalog::subgraph as s;
-        use store_catalog::subgraph_deployment_assignment as a;
-        use store_catalog::subgraph_version as v;
-
-        let query = ds::table
-            .inner_join(v::table.on(v::deployment.eq(ds::subgraph)))
-            .inner_join(s::table.on(v::subgraph.eq(s::id)))
-            .left_outer_join(a::table.on(a::id.eq(ds::id)))
-            .select((
-                s::name,
-                sql::<Text>(
-                    "(case
-                    when subgraphs.subgraph.pending_version = subgraphs.subgraph_version.id then 'pending'
-                    when subgraphs.subgraph.current_version = subgraphs.subgraph_version.id then 'current'
-                    else 'unused' end) status",
-                ),
-                v::deployment,
-                ds::name,
-                ds::id,
-                a::node_id.nullable(),
-                ds::shard,
-                ds::network,
-                ds::active,
-            ));
-
-        let deployments: Vec<Deployment> = if name.starts_with("sgd") {
-            query.filter(ds::name.eq(&name)).load(conn)?
-        } else if name.starts_with("Qm") {
-            query.filter(ds::subgraph.eq(&name)).load(conn)?
-        } else {
-            // A subgraph name
-            let pattern = format!("%{}%", name);
-            query.filter(s::name.ilike(&pattern)).load(conn)?
-        };
-        Ok(deployments)
-    }
-
     pub fn locator(&self) -> DeploymentLocator {
         DeploymentLocator::new(
             DeploymentId(self.id),
@@ -261,61 +216,4 @@ impl Deployment {
 
         list.render();
     }
-}
-
-pub fn locate(
-    store: &SubgraphStore,
-    hash: String,
-    shard: Option<String>,
-) -> Result<DeploymentLocator, Error> {
-    let hash = deployment::as_hash(hash)?;
-
-    fn locate_unique(store: &SubgraphStore, hash: String) -> Result<DeploymentLocator, Error> {
-        let locators = store.locators(&hash)?;
-
-        match locators.len() {
-            0 => {
-                bail!("no matching assignment");
-            }
-            1 => Ok(locators[0].clone()),
-            _ => {
-                bail!(
-                    "deployment hash `{}` is ambiguous: {} locations found",
-                    hash,
-                    locators.len()
-                );
-            }
-        }
-    }
-
-    match shard {
-        Some(shard) => store
-            .locate_in_shard(&hash, Shard::new(shard.clone())?)?
-            .ok_or_else(|| anyhow!("no deployment with hash `{}` in shard {}", hash, shard)),
-        None => locate_unique(store, hash.to_string()),
-    }
-}
-
-pub fn as_hash(hash: String) -> Result<DeploymentHash, Error> {
-    DeploymentHash::new(hash).map_err(|s| anyhow!("illegal deployment hash `{}`", s))
-}
-
-/// Finds a single deployment locator for the given deployment identifier.
-pub fn find_single_deployment_locator(
-    pool: &ConnectionPool,
-    name: &str,
-) -> anyhow::Result<DeploymentLocator> {
-    let mut locators: Vec<DeploymentLocator> = HashSet::<DeploymentLocator>::from_iter(
-        Deployment::lookup(pool, name)?
-            .into_iter()
-            .map(|deployment| deployment.locator()),
-    )
-    .into_iter()
-    .collect();
-    let deployment_locator = match locators.len() {
-        0 => anyhow::bail!("Found no deployment for `{}`", name),
-        1 => locators.pop().unwrap(),
-        n => anyhow::bail!("Found {} deployments for `{}`", n, name),
-    };
-    Ok(deployment_locator)
 }
