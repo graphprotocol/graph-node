@@ -6,7 +6,7 @@ use graph::{
     prelude::{
         anyhow::{anyhow, bail, Error},
         chrono::{DateTime, Duration, SecondsFormat, Utc},
-        BlockPtr, ChainStore, NodeId, QueryStoreManager,
+        BlockPtr, ChainStore, DeploymentHash, NodeId, QueryStoreManager,
     },
 };
 use graph_store_postgres::{
@@ -15,7 +15,7 @@ use graph_store_postgres::{
 };
 use graph_store_postgres::{connection_pool::ConnectionPool, Shard, Store, SubgraphStore};
 
-use crate::manager::deployment;
+use crate::manager::deployment::DeploymentSearch;
 use crate::manager::display::List;
 
 type UtcDateTime = DateTime<Utc>;
@@ -80,15 +80,15 @@ impl CopyState {
 
 pub async fn create(
     store: Arc<Store>,
-    src: String,
-    src_shard: Option<String>,
+    primary: ConnectionPool,
+    src: DeploymentSearch,
     shard: String,
     node: String,
     block_offset: u32,
 ) -> Result<(), Error> {
     let block_offset = block_offset as i32;
     let subgraph_store = store.subgraph_store();
-    let src = deployment::locate(subgraph_store.as_ref(), src, src_shard)?;
+    let src = src.locate_unique(&primary)?;
     let query_store = store.query_store(src.hash.clone().into(), true).await?;
     let network = query_store.network_name();
 
@@ -129,7 +129,8 @@ pub async fn create(
 
 pub fn activate(store: Arc<SubgraphStore>, deployment: String, shard: String) -> Result<(), Error> {
     let shard = Shard::new(shard)?;
-    let deployment = deployment::as_hash(deployment)?;
+    let deployment =
+        DeploymentHash::new(deployment).map_err(|s| anyhow!("illegal deployment hash `{}`", s))?;
     let deployment = store
         .locate_in_shard(&deployment, shard.clone())?
         .ok_or_else(|| {
@@ -202,7 +203,7 @@ pub fn list(pools: HashMap<Shard, ConnectionPool>) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: i32) -> Result<(), Error> {
+pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> Result<(), Error> {
     use catalog::active_copies as ac;
     use catalog::deployment_schemas as ds;
 
@@ -234,6 +235,7 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: i32) -> Result<(), Err
         .get(&*PRIMARY_SHARD)
         .ok_or_else(|| anyhow!("can not find deployment with id {}", dst))?;
     let pconn = primary.get()?;
+    let dst = dst.locate_unique(&primary)?.id.0;
 
     let (shard, deployment) = ds::table
         .filter(ds::id.eq(dst as i32))

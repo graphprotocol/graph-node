@@ -296,14 +296,12 @@ pub enum CopyCommand {
         /// How far behind `src` subgraph head to copy
         #[structopt(long, short, default_value = "200")]
         offset: u32,
-        /// The IPFS hash of the source deployment
-        src: String,
+        /// The source deployment (see `help info`)
+        src: DeploymentSearch,
         /// The name of the database shard into which to copy
         shard: String,
         /// The name of the node that should index the copy
         node: String,
-        /// The shard of the `src` subgraph in case that is ambiguous
-        src_shard: Option<String>,
     },
     /// Activate the copy of a deployment.
     ///
@@ -320,8 +318,8 @@ pub enum CopyCommand {
     List,
     /// Print the progress of a copy operation
     Status {
-        /// The internal id of the destination of the copy operation (number)
-        dst: i32,
+        /// The destination deployment of the copy operation (see `help info`)
+        dst: DeploymentSearch,
     },
 }
 
@@ -829,13 +827,15 @@ async fn main() {
                     shard,
                     node,
                     offset,
-                    src_shard,
-                } => commands::copy::create(ctx.store(), src, src_shard, shard, node, offset).await,
+                } => {
+                    let (store, primary) = ctx.store_and_primary();
+                    commands::copy::create(store, primary, src, shard, node, offset).await
+                }
                 Activate { deployment, shard } => {
                     commands::copy::activate(ctx.subgraph_store(), deployment, shard)
                 }
                 List => commands::copy::list(ctx.pools()),
-                Status { dst } => commands::copy::status(ctx.pools(), dst),
+                Status { dst } => commands::copy::status(ctx.pools(), &dst),
             }
         }
         Query {
