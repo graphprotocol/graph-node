@@ -301,6 +301,12 @@ pub enum IndexForAscTypeId {
     TendermintDuration = 131,
     TendermintTimestamp = 132,
     TendermintEventData = 133,
+
+    // More Ethereum tyes
+    TransactionReceipt = 134,
+    Log = 135,
+    ArrayH256 = 136,
+    ArrayLog = 137,
 }
 
 impl ToAscObj<u32> for IndexForAscTypeId {

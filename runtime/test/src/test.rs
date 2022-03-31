@@ -135,6 +135,11 @@ async fn test_module_latest(subgraph_id: &str, wasm_file: &str) -> WasmInstance<
 
 trait WasmInstanceExt {
     fn invoke_export0_void(&self, f: &str) -> Result<(), wasmtime::Trap>;
+    fn invoke_export1_val_void<V: wasmtime::WasmTy>(
+        &self,
+        f: &str,
+        v: V,
+    ) -> Result<(), wasmtime::Trap>;
     fn invoke_export0<R>(&self, f: &str) -> AscPtr<R>;
     fn invoke_export1<C, T, R>(&mut self, f: &str, arg: &T) -> AscPtr<R>
     where
@@ -157,6 +162,7 @@ trait WasmInstanceExt {
         C2: AscType + AscIndexId,
         T1: ToAscObj<C1> + ?Sized,
         T2: ToAscObj<C2> + ?Sized;
+    fn invoke_export0_val<V: wasmtime::WasmTy>(&mut self, func: &str) -> V;
     fn invoke_export1_val<V: wasmtime::WasmTy, C, T>(&mut self, func: &str, v: &T) -> V
     where
         C: AscType + AscIndexId,
@@ -195,6 +201,16 @@ impl WasmInstanceExt for WasmInstance<Chain> {
         ptr.into()
     }
 
+    fn invoke_export1_val_void<V: wasmtime::WasmTy>(
+        &self,
+        f: &str,
+        v: V,
+    ) -> Result<(), wasmtime::Trap> {
+        let func = self.get_func(f).typed().unwrap().clone();
+        func.call(v)?;
+        Ok(())
+    }
+
     fn invoke_export2<C1, T1, T2, C2, R>(&mut self, f: &str, arg0: &T1, arg1: &T2) -> AscPtr<R>
     where
         C1: AscType + AscIndexId,
@@ -227,6 +243,11 @@ impl WasmInstanceExt for WasmInstance<Chain> {
         let arg0 = asc_new(self, arg0, &gas).unwrap();
         let arg1 = asc_new(self, arg1, &gas).unwrap();
         func.call((arg0.wasm_ptr(), arg1.wasm_ptr()))
+    }
+
+    fn invoke_export0_val<V: wasmtime::WasmTy>(&mut self, func: &str) -> V {
+        let func = self.get_func(func).typed().unwrap().clone();
+        func.call(()).unwrap()
     }
 
     fn invoke_export1_val<V: wasmtime::WasmTy, C, T>(&mut self, func: &str, v: &T) -> V
@@ -1088,4 +1109,37 @@ async fn test_array_blowup() {
         .unwrap_err()
         .to_string()
         .contains("Gas limit exceeded. Used: 11286295575421"));
+}
+
+#[tokio::test]
+async fn test_boolean() {
+    let mut module = test_module_latest("boolean", "boolean.wasm").await;
+
+    let true_: i32 = module.invoke_export0_val("testReturnTrue");
+    assert_eq!(true_, 1);
+
+    let false_: i32 = module.invoke_export0_val("testReturnFalse");
+    assert_eq!(false_, 0);
+
+    // non-zero values are true
+    for x in (-10i32..10).filter(|&x| x != 0) {
+        assert!(module.invoke_export1_val_void("testReceiveTrue", x).is_ok(),);
+    }
+
+    // zero is not true
+    assert!(module
+        .invoke_export1_val_void("testReceiveTrue", 0i32)
+        .is_err());
+
+    // zero is false
+    assert!(module
+        .invoke_export1_val_void("testReceiveFalse", 0i32)
+        .is_ok());
+
+    // non-zero values are not false
+    for x in (-10i32..10).filter(|&x| x != 0) {
+        assert!(module
+            .invoke_export1_val_void("testReceiveFalse", x)
+            .is_err());
+    }
 }

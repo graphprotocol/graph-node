@@ -198,6 +198,20 @@ impl blockchain::DataSource<Chain> for DataSource {
             errors.push(anyhow!("data source has duplicated block handlers"));
         }
 
+        // Validate that event handlers don't require receipts for API versions lower than 0.0.7
+        let api_version = self.api_version();
+        if api_version < semver::Version::new(0, 0, 7) {
+            for event_handler in &self.mapping.event_handlers {
+                if event_handler.receipt {
+                    errors.push(anyhow!(
+                        "data source has event handlers that require transaction receipts, but this \
+                         is only supported for apiVersion >= 0.0.7"
+                    ));
+                    break;
+                }
+            }
+        }
+
         errors
     }
 
@@ -433,7 +447,7 @@ impl DataSource {
         let trigger_address = match trigger {
             EthereumTrigger::Block(_, EthereumBlockTriggerType::WithCallTo(address)) => address,
             EthereumTrigger::Call(call) => &call.to,
-            EthereumTrigger::Log(log) => &log.address,
+            EthereumTrigger::Log(log, _) => &log.address,
 
             // Unfiltered block triggers match any data source address.
             EthereumTrigger::Block(_, EthereumBlockTriggerType::Every) => return true,
@@ -471,7 +485,7 @@ impl DataSource {
                     handler.handler,
                 )))
             }
-            EthereumTrigger::Log(log) => {
+            EthereumTrigger::Log(log, receipt) => {
                 let potential_handlers = self.handlers_for_log(log)?;
 
                 // Map event handlers to (event handler, event ABI) pairs; fail if there are
@@ -572,6 +586,7 @@ impl DataSource {
                         transaction: Arc::new(transaction),
                         log: log.cheap_clone(),
                         params,
+                        receipt: receipt.clone(),
                     },
                     event_handler.handler,
                     logging_extras,
@@ -996,6 +1011,8 @@ pub struct MappingEventHandler {
     pub event: String,
     pub topic0: Option<H256>,
     pub handler: String,
+    #[serde(default)]
+    pub receipt: bool,
 }
 
 impl MappingEventHandler {
