@@ -1,4 +1,5 @@
-use graph::prelude::{Gauge, Histogram, MetricsRegistry};
+use graph::blockchain::block_stream::BlockStreamMetrics;
+use graph::prelude::{Gauge, Histogram, HostMetrics, MetricsRegistry};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -80,4 +81,13 @@ impl SubgraphInstanceManagerMetrics {
             .expect("failed to create `deployment_count` gauge");
         Self { subgraph_count }
     }
+}
+
+pub struct RunnerMetrics {
+    /// Sensors to measure the execution of the subgraph instance
+    pub subgraph: Arc<SubgraphInstanceMetrics>,
+    /// Sensors to measure the execution of the subgraph's runtime hosts
+    pub host: Arc<HostMetrics>,
+    /// Sensors to measure the BlockStream metrics
+    pub stream: Arc<BlockStreamMetrics>,
 }

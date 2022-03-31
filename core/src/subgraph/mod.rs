@@ -8,6 +8,8 @@ mod metrics;
 mod provider;
 mod registrar;
 mod runner;
+mod state;
+mod stream;
 
 pub use self::instance::SubgraphInstance;
 pub use self::instance_manager::SubgraphInstanceManager;

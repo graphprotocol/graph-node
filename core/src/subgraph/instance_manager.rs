@@ -1,7 +1,9 @@
-use crate::subgraph::context::{IndexingContext, IndexingState, SharedInstanceKeepAliveMap};
+use crate::subgraph::context::{IndexingContext, SharedInstanceKeepAliveMap};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
-use crate::subgraph::metrics::{SubgraphInstanceManagerMetrics, SubgraphInstanceMetrics};
+use crate::subgraph::metrics::{
+    RunnerMetrics, SubgraphInstanceManagerMetrics, SubgraphInstanceMetrics,
+};
 use crate::subgraph::runner::SubgraphRunner;
 use crate::subgraph::SubgraphInstance;
 use graph::blockchain::block_stream::BlockStreamMetrics;
@@ -9,7 +11,6 @@ use graph::blockchain::Blockchain;
 use graph::blockchain::NodeCapabilities;
 use graph::blockchain::{BlockchainKind, TriggerFilter};
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
-use graph::util::lfu_cache::LfuCache;
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
 use tokio::task;
 
@@ -272,16 +273,15 @@ where
 
         // The subgraph state tracks the state of the subgraph instance over time
         let ctx = IndexingContext {
-            state: IndexingState {
-                logger: logger.cheap_clone(),
-                instance,
-                instances: self.instances.cheap_clone(),
-                filter,
-                entity_lfu_cache: LfuCache::new(),
-            },
-            subgraph_metrics,
-            host_metrics,
-            block_stream_metrics,
+            instance,
+            instances: self.instances.cheap_clone(),
+            filter,
+        };
+
+        let metrics = RunnerMetrics {
+            subgraph: subgraph_metrics,
+            host: host_metrics,
+            stream: block_stream_metrics,
         };
 
         // Keep restarting the subgraph until it terminates. The subgraph
@@ -298,7 +298,7 @@ where
         // it has a dedicated OS thread so the OS will handle the preemption. See
         // https://github.com/tokio-rs/tokio/issues/3493.
         graph::spawn_thread(deployment.to_string(), move || {
-            let runner = SubgraphRunner::new(inputs, ctx);
+            let runner = SubgraphRunner::new(inputs, ctx, logger.cheap_clone(), metrics);
             if let Err(e) = graph::block_on(task::unconstrained(runner.run())) {
                 error!(
                     &logger,
