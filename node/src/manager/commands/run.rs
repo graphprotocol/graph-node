@@ -3,17 +3,16 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::config::{Config, ProviderDetails};
-use crate::manager::deployment::Deployment;
 use crate::manager::PanicSubscriptionManager;
 use crate::store_builder::StoreBuilder;
 use crate::MetricsContext;
 use ethereum::{EthereumNetworks, ProviderEthRpcMetrics};
 use futures::future::join_all;
 use futures::TryFutureExt;
-use graph::anyhow::{format_err, Error};
+use graph::anyhow::{bail, format_err, Error};
 use graph::blockchain::{BlockchainKind, BlockchainMap, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
-use graph::components::store::BlockStore as _;
+use graph::components::store::{BlockStore as _, DeploymentLocator};
 use graph::env::EnvVars;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, FirehoseNetworks};
 use graph::ipfs_client::IpfsClient;
@@ -30,6 +29,15 @@ use graph_core::{
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use url::Url;
+
+fn locate(store: &dyn SubgraphStore, hash: &str) -> Result<DeploymentLocator, anyhow::Error> {
+    let mut locators = store.locators(&hash)?;
+    match locators.len() {
+        0 => bail!("could not find subgraph {hash} we just created"),
+        1 => Ok(locators.pop().unwrap()),
+        n => bail!("there are {n} subgraphs with hash {hash}"),
+    }
+}
 
 pub async fn run(
     logger: Logger,
@@ -89,7 +97,6 @@ pub async fn run(
     // .await;
 
     let chain_head_update_listener = store_builder.chain_head_update_listener();
-    let primary_pool = store_builder.primary_pool();
     let network_identifiers = ethereum_idents.into_iter().collect();
     let network_store = store_builder.network_store(network_identifiers);
 
@@ -158,7 +165,8 @@ pub async fn run(
 
     let subgraph_name = SubgraphName::new(name)
         .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
-    let subgraph_hash = DeploymentHash::new(hash).expect("Subgraph hash must be a valid IPFS hash");
+    let subgraph_hash =
+        DeploymentHash::new(hash.clone()).expect("Subgraph hash must be a valid IPFS hash");
 
     info!(&logger, "Creating subgraph {}", name);
     let create_result =
@@ -183,17 +191,10 @@ pub async fn run(
     )
     .await?;
 
-    let deployments = Deployment::lookup(&primary_pool, name)?;
-    let deployment = deployments
-        .first()
-        .expect("At least one deployment should exist");
+    let locator = locate(subgraph_store.as_ref(), &hash)?;
 
-    SubgraphAssignmentProvider::start(
-        subgraph_provider.as_ref(),
-        deployment.locator(),
-        Some(stop_block),
-    )
-    .await?;
+    SubgraphAssignmentProvider::start(subgraph_provider.as_ref(), locator, Some(stop_block))
+        .await?;
 
     loop {
         tokio::time::sleep(Duration::from_millis(1000)).await;
