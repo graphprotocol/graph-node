@@ -388,7 +388,7 @@ impl BlockTracker {
             Request::Write { block_ptr, .. } => {
                 self.block = self.block.min(block_ptr.number - 1);
             }
-            Request::Revert { block_ptr, .. } => {
+            Request::RevertTo { block_ptr, .. } => {
                 // `block_ptr` is the block pointer we are reverting _to_,
                 // and is not affected by the revert
                 self.revert = self.revert.min(block_ptr.number);
@@ -407,7 +407,7 @@ impl BlockTracker {
     /// Return `true` if a write at this block will be visible, i.e., not
     /// reverted by a previous queue entry
     fn visible(&self, block_ptr: &BlockPtr) -> bool {
-        self.revert >= block_ptr.number
+        block_ptr.number <= self.revert
     }
 }
 
@@ -424,7 +424,7 @@ enum Request {
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
     },
-    Revert {
+    RevertTo {
         store: Arc<SyncStore>,
         /// The subgraph head will be at this block pointer after the revert
         block_ptr: BlockPtr,
@@ -451,7 +451,7 @@ impl Request {
                 data_sources,
                 deterministic_errors,
             ),
-            Request::Revert {
+            Request::RevertTo {
                 store,
                 block_ptr,
                 firehose_cursor,
@@ -651,7 +651,7 @@ impl Queue {
                         None
                     }
                 }
-                Request::Revert { .. } => None,
+                Request::RevertTo { .. } => None,
             }
         });
 
@@ -706,7 +706,7 @@ impl Queue {
                             }
                         }
                     }
-                    Request::Revert { .. } => { /* nothing to do */ }
+                    Request::RevertTo { .. } => { /* nothing to do */ }
                 }
                 map
             },
@@ -752,7 +752,7 @@ impl Queue {
                         dds.extend(data_sources.clone());
                     }
                 }
-                Request::Revert { .. } => { /* nothing to do */ }
+                Request::RevertTo { .. } => { /* nothing to do */ }
             }
             dds
         });
@@ -835,7 +835,7 @@ impl Writer {
             Writer::Sync(store) => store.revert_block_operations(block_ptr_to, firehose_cursor),
             Writer::Async(queue) => {
                 let firehose_cursor = firehose_cursor.map(|c| c.to_string());
-                let req = Request::Revert {
+                let req = Request::RevertTo {
                     store: queue.store.cheap_clone(),
                     block_ptr: block_ptr_to,
                     firehose_cursor,
