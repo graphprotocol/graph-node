@@ -9,11 +9,11 @@ use graph::prelude::{anyhow, BlockNumber, BlockPtr, NodeId, SubgraphStore};
 use graph_store_postgres::BlockStore;
 use graph_store_postgres::{connection_pool::ConnectionPool, Store};
 
-use crate::manager::deployment::Deployment;
+use crate::manager::deployment::{Deployment, DeploymentSearch};
 
 fn block_ptr(
     store: Arc<BlockStore>,
-    names: &[String],
+    searches: &[DeploymentSearch],
     deployments: &[Deployment],
     hash: &str,
     number: BlockNumber,
@@ -24,10 +24,12 @@ fn block_ptr(
 
     let chains = deployments.iter().map(|d| &d.chain).collect::<HashSet<_>>();
     if chains.len() > 1 {
-        bail!(
-            "the deployments matching `{}` are on different chains",
-            names.join(",")
-        );
+        let names = searches
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        bail!("the deployments matching `{names}` are on different chains");
     }
     let chain = chains.iter().next().unwrap();
     let chain_store = match store.chain_store(chain) {
@@ -58,7 +60,7 @@ fn block_ptr(
 pub fn run(
     primary: ConnectionPool,
     store: Arc<Store>,
-    names: Vec<String>,
+    searches: Vec<DeploymentSearch>,
     block_hash: String,
     block_number: BlockNumber,
     force: bool,
@@ -69,9 +71,9 @@ pub fn run(
     let subgraph_store = store.subgraph_store();
     let block_store = store.block_store();
 
-    let deployments = names
+    let deployments = searches
         .iter()
-        .map(|name| Deployment::lookup(&primary, name))
+        .map(|search| search.lookup(&primary))
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .flatten()
@@ -83,7 +85,7 @@ pub fn run(
 
     let block_ptr_to = block_ptr(
         block_store,
-        &names,
+        &searches,
         &deployments,
         &block_hash,
         block_number,

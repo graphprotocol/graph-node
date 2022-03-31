@@ -165,8 +165,8 @@ pub enum Command {
         block_hash: String,
         /// The block number of the target block
         block_number: i32,
-        /// The deployments to rewind
-        names: Vec<String>,
+        /// The deployments to rewind (see `help info`)
+        deployments: Vec<DeploymentSearch>,
     },
     /// Deploy and run an arbitrary subgraph up to a certain block, although it can surpass it by a few blocks, it's not exact (use for dev and testing purposes) -- WARNING: WILL RUN MIGRATIONS ON THE DB, DO NOT USE IN PRODUCTION
     ///
@@ -761,13 +761,13 @@ async fn main() {
             sleep,
             block_hash,
             block_number,
-            names,
+            deployments,
         } => {
             let (store, primary) = ctx.store_and_primary();
             commands::rewind::run(
                 primary,
                 store,
-                names,
+                deployments,
                 block_hash,
                 block_number,
                 force,
