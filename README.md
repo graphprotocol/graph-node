@@ -22,6 +22,10 @@ To build and run this project you need to have the following installed on your s
 
 For Ethereum network data, you can either run your own Ethereum node or use an Ethereum node provider of your choice.
 
+**Minimum Hardware Requirements:**
+
+- To build graph-node with `cargo`, 8GB RAM are required.
+
 ### Running a Local Graph Node
 
 This is a quick example to show a working Graph Node. It is a [subgraph for Gravatars](https://github.com/graphprotocol/example-subgraph).
