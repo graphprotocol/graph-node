@@ -13,7 +13,11 @@ use graph::{
     prelude::{info, o, slog, tokio, Logger, NodeId, ENV_VARS},
     url::Url,
 };
-use graph_node::{manager::PanicSubscriptionManager, store_builder::StoreBuilder, MetricsContext};
+use graph_node::{
+    manager::{deployment::DeploymentSearch, PanicSubscriptionManager},
+    store_builder::StoreBuilder,
+    MetricsContext,
+};
 use graph_store_postgres::{
     connection_pool::ConnectionPool, BlockStore, Shard, Store, SubgraphStore, SubscriptionManager,
     PRIMARY_SHARD,
@@ -91,9 +95,14 @@ pub enum Command {
         delay: u64,
     },
     /// Print details about a deployment
+    ///
+    /// The deployment can be specified as either a subgraph name, an IPFS
+    /// hash `Qm..`, or the database namespace `sgdNNN`. Since the same IPFS
+    /// hash can be deployed in multiple shards, it is possible to specify
+    /// the shard by adding `:shard` to the IPFS hash.
     Info {
-        /// The deployment, an id, schema name or subgraph name
-        name: String,
+        /// The deployment (see above)
+        deployment: DeploymentSearch,
         /// List only current version
         #[structopt(long, short)]
         current: bool,
@@ -696,7 +705,7 @@ async fn main() {
     let result = match opt.cmd {
         TxnSpeed { delay } => commands::txn_speed::run(ctx.primary_pool(), delay),
         Info {
-            name,
+            deployment,
             current,
             pending,
             status,
@@ -708,7 +717,7 @@ async fn main() {
             } else {
                 (ctx.primary_pool(), None)
             };
-            commands::info::run(primary, store, name, current, pending, used)
+            commands::info::run(primary, store, deployment, current, pending, used)
         }
         Unused(cmd) => {
             let store = ctx.subgraph_store();
