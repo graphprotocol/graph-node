@@ -1,4 +1,4 @@
-use crate::manager::deployment::find_single_deployment_locator;
+use crate::manager::deployment::DeploymentSearch;
 use graph::prelude::{anyhow, StoreError};
 use graph_store_postgres::{connection_pool::ConnectionPool, SubgraphStore};
 use std::{collections::HashSet, sync::Arc};
@@ -18,13 +18,13 @@ fn validate_fields<T: AsRef<str>>(fields: &[T]) -> Result<(), anyhow::Error> {
 pub async fn create(
     store: Arc<SubgraphStore>,
     pool: ConnectionPool,
-    id: &str,
+    search: DeploymentSearch,
     entity_name: &str,
     field_names: Vec<String>,
     index_method: String,
 ) -> Result<(), anyhow::Error> {
     validate_fields(&field_names)?;
-    let deployment_locator = find_single_deployment_locator(&pool, &id)?;
+    let deployment_locator = search.locate_unique(&pool)?;
     println!("Index creation started. Please wait.");
     match store
         .create_manual_index(&deployment_locator, entity_name, field_names, index_method)
@@ -42,10 +42,10 @@ pub async fn create(
 pub async fn list(
     store: Arc<SubgraphStore>,
     pool: ConnectionPool,
-    id: String,
+    search: DeploymentSearch,
     entity_name: &str,
 ) -> Result<(), anyhow::Error> {
-    let deployment_locator = find_single_deployment_locator(&pool, &id)?;
+    let deployment_locator = search.locate_unique(&pool)?;
     let indexes: Vec<String> = store
         .indexes_for_entity(&deployment_locator, entity_name)
         .await?;
@@ -58,10 +58,10 @@ pub async fn list(
 pub async fn drop(
     store: Arc<SubgraphStore>,
     pool: ConnectionPool,
-    id: &str,
+    search: DeploymentSearch,
     index_name: &str,
 ) -> Result<(), anyhow::Error> {
-    let deployment_locator = find_single_deployment_locator(&pool, &id)?;
+    let deployment_locator = search.locate_unique(&pool)?;
     store
         .drop_index_for_deployment(&deployment_locator, &index_name)
         .await?;

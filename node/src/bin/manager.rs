@@ -402,11 +402,9 @@ pub enum IndexCommand {
     ///
     /// This command may be time-consuming.
     Create {
-        /// The id of the deployment.
-        ///
-        /// Can be expressed either as its Qm-hash form or as its SQL schema identifier.
+        /// The deployment (see `help info`).
         #[structopt(empty_values = false)]
-        id: String,
+        deployment: DeploymentSearch,
         /// The Entity name.
         ///
         /// Can be expressed either in upper camel case (as its GraphQL definition) or in snake case
@@ -428,11 +426,9 @@ pub enum IndexCommand {
     },
     /// Lists existing indexes for a given Entity
     List {
-        /// The id of the deployment.
-        ///
-        /// Can be expressed either as its Qm-hash form or as its SQL schema identifier.
+        /// The deployment (see `help info`).
         #[structopt(empty_values = false)]
-        id: String,
+        deployment: DeploymentSearch,
         /// The Entity name.
         ///
         /// Can be expressed either in upper camel case (as its GraphQL definition) or in snake case
@@ -443,11 +439,9 @@ pub enum IndexCommand {
 
     /// Drops an index for a given deployment, concurrently
     Drop {
-        /// The id of the deployment.
-        ///
-        /// Can be expressed either as its Qm-hash form or as its SQL schema identifier.
+        /// The deployment (see `help info`).
         #[structopt(empty_values = false)]
-        id: String,
+        deployment: DeploymentSearch,
         /// The name of the index to be dropped
         #[structopt(empty_values = false)]
         index_name: String,
@@ -883,7 +877,7 @@ async fn main() {
             let subgraph_store = store.subgraph_store();
             match cmd {
                 Create {
-                    id,
+                    deployment,
                     entity,
                     fields,
                     method,
@@ -891,18 +885,22 @@ async fn main() {
                     commands::index::create(
                         subgraph_store,
                         primary_pool,
-                        &id,
+                        deployment,
                         &entity,
                         fields,
                         method,
                     )
                     .await
                 }
-                List { id, entity } => {
-                    commands::index::list(subgraph_store, primary_pool, id, &entity).await
+                List { deployment, entity } => {
+                    commands::index::list(subgraph_store, primary_pool, deployment, &entity).await
                 }
-                Drop { id, index_name } => {
-                    commands::index::drop(subgraph_store, primary_pool, &id, &index_name).await
+                Drop {
+                    deployment,
+                    index_name,
+                } => {
+                    commands::index::drop(subgraph_store, primary_pool, deployment, &index_name)
+                        .await
                 }
             }
         }
