@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use diesel::{dsl::sql, prelude::*};
 use diesel::{sql_types::Text, PgConnection};
 
@@ -179,11 +181,17 @@ pub fn find_single_deployment_locator(
     pool: &ConnectionPool,
     name: &str,
 ) -> anyhow::Result<DeploymentLocator> {
-    let deployment_locator = match &Deployment::lookup(pool, name)?[..] {
-        [] => anyhow::bail!("Found no deployment for the given ID"),
-        [deployment_locator] => deployment_locator,
-        _ => anyhow::bail!("Found multiplle deployments for given identifier"),
-    }
-    .locator();
+    let mut locators: Vec<DeploymentLocator> = HashSet::<DeploymentLocator>::from_iter(
+        Deployment::lookup(pool, name)?
+            .into_iter()
+            .map(|deployment| deployment.locator()),
+    )
+    .into_iter()
+    .collect();
+    let deployment_locator = match locators.len() {
+        0 => anyhow::bail!("Found no deployment for `{}`", name),
+        1 => locators.pop().unwrap(),
+        n => anyhow::bail!("Found {} deployments for `{}`", n, name),
+    };
     Ok(deployment_locator)
 }
