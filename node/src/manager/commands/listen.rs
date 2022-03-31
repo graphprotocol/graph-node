@@ -8,9 +8,10 @@ use graph::{
     components::store::{EntityType, SubscriptionManager as _},
     prelude::{serde_json, Error, Stream, SubscriptionFilter},
 };
+use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::SubscriptionManager;
 
-use crate::manager::deployment;
+use crate::manager::deployment::DeploymentSearch;
 
 async fn listen(
     mgr: Arc<SubscriptionManager>,
@@ -52,17 +53,18 @@ pub async fn assignments(mgr: Arc<SubscriptionManager>) -> Result<(), Error> {
 }
 
 pub async fn entities(
+    primary_pool: ConnectionPool,
     mgr: Arc<SubscriptionManager>,
-    deployment: String,
+    search: &DeploymentSearch,
     entity_types: Vec<String>,
 ) -> Result<(), Error> {
-    let deployment = deployment::as_hash(deployment)?;
+    let locator = search.locate_unique(&primary_pool)?;
     let filter = entity_types
         .into_iter()
-        .map(|et| SubscriptionFilter::Entities(deployment.clone(), EntityType::new(et)))
+        .map(|et| SubscriptionFilter::Entities(locator.hash.clone(), EntityType::new(et)))
         .collect();
 
-    println!("waiting for store events from {}", deployment);
+    println!("waiting for store events from {}", locator);
     listen(mgr, filter).await?;
 
     Ok(())

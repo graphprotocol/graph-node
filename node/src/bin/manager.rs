@@ -280,8 +280,8 @@ pub enum ListenCommand {
     Assignments,
     /// Listen to events for entities in a specific deployment
     Entities {
-        /// The deployment hash
-        deployment: String,
+        /// The deployment (see `help info`).
+        deployment: DeploymentSearch,
         /// The entity types for which to print change notifications
         entity_types: Vec<String>,
     },
@@ -538,13 +538,21 @@ impl Context {
         self.store_and_pools().0.subgraph_store()
     }
 
-    fn subscription_manager(self) -> Arc<SubscriptionManager> {
+    fn subscription_manager(&self) -> Arc<SubscriptionManager> {
         let primary = self.config.primary_store();
+
         Arc::new(SubscriptionManager::new(
             self.logger.clone(),
             primary.connection.to_owned(),
             self.registry.clone(),
         ))
+    }
+
+    fn primary_and_subscription_manager(self) -> (ConnectionPool, Arc<SubscriptionManager>) {
+        let mgr = self.subscription_manager();
+        let primary_pool = self.primary_pool();
+
+        (primary_pool, mgr)
     }
 
     fn store(self) -> Arc<Store> {
@@ -812,8 +820,8 @@ async fn main() {
                     deployment,
                     entity_types,
                 } => {
-                    commands::listen::entities(ctx.subscription_manager(), deployment, entity_types)
-                        .await
+                    let (primary, mgr) = ctx.primary_and_subscription_manager();
+                    commands::listen::entities(primary, mgr, &deployment, entity_types).await
                 }
             }
         }
