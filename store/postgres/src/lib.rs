@@ -6,21 +6,10 @@
 extern crate derive_more;
 #[macro_use]
 extern crate diesel;
-extern crate diesel_dynamic_schema;
 #[macro_use]
 extern crate diesel_migrations;
 #[macro_use]
 extern crate diesel_derive_enum;
-extern crate fallible_iterator;
-extern crate graph;
-extern crate graph_graphql;
-extern crate graphql_parser;
-extern crate inflector;
-extern crate lazy_static;
-extern crate lru_time_cache;
-extern crate postgres;
-extern crate serde;
-extern crate uuid;
 
 mod advisory_lock;
 mod block_range;

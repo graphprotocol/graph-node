@@ -4,7 +4,7 @@ version = "0.25.2"
 edition = "2021"
 
 [dependencies]
-blake3 = "0.3.8"
+blake3 = "1.0"
 either = "1.6.1"
 futures = "0.3.4"
 graph = { path = "../../graph" }
