@@ -343,57 +343,50 @@ where
 
         let first_error = deterministic_errors.first().cloned();
 
-        match store.transact_block_operations(
-            block_ptr,
-            firehose_cursor,
-            mods,
-            &self.metrics.host.stopwatch,
-            data_sources,
-            deterministic_errors,
-        ) {
-            Ok(_) => {
-                // For subgraphs with `nonFatalErrors` feature disabled, we consider
-                // any error as fatal.
-                //
-                // So we do an early return to make the subgraph stop processing blocks.
-                //
-                // In this scenario the only entity that is stored/transacted is the PoI,
-                // all of the others are discarded.
-                if has_errors && !is_non_fatal_errors_active {
-                    // Only the first error is reported.
-                    return Err(BlockProcessingError::Deterministic(first_error.unwrap()));
-                }
+        store
+            .transact_block_operations(
+                block_ptr,
+                firehose_cursor,
+                mods,
+                &self.metrics.host.stopwatch,
+                data_sources,
+                deterministic_errors,
+            )
+            .context("Failed to transact block operations")?;
 
-                let elapsed = start.elapsed().as_secs_f64();
-                self.metrics
-                    .subgraph
-                    .block_ops_transaction_duration
-                    .observe(elapsed);
+        // For subgraphs with `nonFatalErrors` feature disabled, we consider
+        // any error as fatal.
+        //
+        // So we do an early return to make the subgraph stop processing blocks.
+        //
+        // In this scenario the only entity that is stored/transacted is the PoI,
+        // all of the others are discarded.
+        if has_errors && !is_non_fatal_errors_active {
+            // Only the first error is reported.
+            return Err(BlockProcessingError::Deterministic(first_error.unwrap()));
+        }
 
-                // To prevent a buggy pending version from replacing a current version, if errors are
-                // present the subgraph will be unassigned.
-                if has_errors
-                    && !ENV_VARS.disable_fail_fast
-                    && !store.is_deployment_synced().await?
-                {
-                    store
-                        .unassign_subgraph()
-                        .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
+        let elapsed = start.elapsed().as_secs_f64();
+        self.metrics
+            .subgraph
+            .block_ops_transaction_duration
+            .observe(elapsed);
 
-                    // Use `Canceled` to avoiding setting the subgraph health to failed, an error was
-                    // just transacted so it will be already be set to unhealthy.
-                    return Err(BlockProcessingError::Canceled);
-                }
+        // To prevent a buggy pending version from replacing a current version, if errors are
+        // present the subgraph will be unassigned.
+        if has_errors && !ENV_VARS.disable_fail_fast && !store.is_deployment_synced().await? {
+            store
+                .unassign_subgraph()
+                .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
 
-                match needs_restart {
-                    true => Ok(Action::Restart),
-                    false => Ok(Action::Continue),
-                }
-            }
+            // Use `Canceled` to avoiding setting the subgraph health to failed, an error was
+            // just transacted so it will be already be set to unhealthy.
+            return Err(BlockProcessingError::Canceled);
+        }
 
-            Err(e) => {
-                Err(anyhow!("Error while processing block stream for a subgraph: {}", e).into())
-            }
+        match needs_restart {
+            true => Ok(Action::Restart),
+            false => Ok(Action::Continue),
         }
     }
 
