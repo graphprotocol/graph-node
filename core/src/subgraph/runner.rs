@@ -63,9 +63,6 @@ where
     }
 
     pub async fn run(mut self) -> Result<(), Error> {
-        // Clone a few things for different parts of the async processing
-        let logger = self.logger.cheap_clone();
-
         // If a subgraph failed for deterministic reasons, before start indexing, we first
         // revert the deployment head. It should lead to the same result since the error was
         // deterministic.
@@ -90,7 +87,7 @@ where
         }
 
         loop {
-            debug!(logger, "Starting or restarting subgraph");
+            debug!(self.logger, "Starting or restarting subgraph");
 
             let block_stream_canceler = CancelGuard::new();
             let block_stream_cancel_handle = block_stream_canceler.handle();
@@ -103,7 +100,7 @@ where
                 .map_err(CancelableError::Error)
                 .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
 
-            debug!(logger, "Starting block stream");
+            debug!(self.logger, "Starting block stream");
 
             // Process events from the stream as long as no restart is needed
             loop {
@@ -218,7 +215,6 @@ where
         while block_state.has_created_data_sources() {
             // Instantiate dynamic data sources, removing them from the block state.
             let (data_sources, runtime_hosts) = self.create_dynamic_data_sources(
-                logger.clone(),
                 host_metrics.clone(),
                 block_state.drain_created_data_sources(),
             )?;
@@ -247,11 +243,7 @@ where
 
             // Add entity operations for the new data sources to the block state
             // and add runtimes for the data sources to the subgraph instance.
-            self.persist_dynamic_data_sources(
-                logger.clone(),
-                &mut block_state.entity_cache,
-                data_sources,
-            );
+            self.persist_dynamic_data_sources(&mut block_state.entity_cache, data_sources);
 
             // Process the triggers in each host in the same order the
             // corresponding data sources have been created.
@@ -456,7 +448,6 @@ where
 
     fn create_dynamic_data_sources(
         &mut self,
-        logger: Logger,
         host_metrics: Arc<HostMetrics>,
         created_data_sources: Vec<DataSourceTemplateInfo<C>>,
     ) -> Result<(Vec<C::DataSource>, Vec<Arc<T::Host>>), Error> {
@@ -483,7 +474,7 @@ where
                 None => {
                     fail_point!("error_on_duplicate_ds", |_| Err(anyhow!("duplicate ds")));
                     warn!(
-                        logger,
+                        self.logger,
                         "no runtime hosted created, there is already a runtime host instantiated for \
                         this data source";
                         "name" => &data_source.name(),
@@ -500,13 +491,12 @@ where
 
     fn persist_dynamic_data_sources(
         &mut self,
-        logger: Logger,
         entity_cache: &mut EntityCache,
         data_sources: Vec<C::DataSource>,
     ) {
         if !data_sources.is_empty() {
             debug!(
-                logger,
+                self.logger,
                 "Creating {} dynamic data source(s)",
                 data_sources.len()
             );
@@ -516,7 +506,7 @@ where
         // the dynamic data sources
         for data_source in data_sources.iter() {
             debug!(
-                logger,
+                self.logger,
                 "Persisting data_source";
                 "name" => &data_source.name(),
                 "address" => &data_source.address().map(|address| hex::encode(address)).unwrap_or("none".to_string()),
@@ -596,7 +586,6 @@ where
         cursor: Option<String>,
         cancel_handle: &CancelHandle,
     ) -> Result<Action, Error> {
-        let logger = self.logger.cheap_clone();
         let block_ptr = block.ptr();
         self.metrics
             .stream
@@ -690,7 +679,7 @@ where
 
                 if let Some(stop_block) = &self.inputs.stop_block {
                     if block_ptr.number >= *stop_block {
-                        info!(&logger, "stop block reached for subgraph");
+                        info!(self.logger, "stop block reached for subgraph");
                         return Ok(Action::Stop);
                     }
                 }
@@ -698,7 +687,7 @@ where
                 return Ok(Action::Continue);
             }
             Err(BlockProcessingError::Canceled) => {
-                debug!(&logger, "Subgraph block stream shut down cleanly");
+                debug!(self.logger, "Subgraph block stream shut down cleanly");
                 return Ok(Action::Stop);
             }
 
@@ -773,7 +762,7 @@ where
                             .remove(&self.inputs.deployment.id);
 
                         let message = format!("{:#}", e).replace("\n", "\t");
-                        error!(logger, "Subgraph failed with non-deterministic error: {}", message;
+                        error!(self.logger, "Subgraph failed with non-deterministic error: {}", message;
                             "attempt" => self.state.backoff.attempt,
                             "retry_delay_s" => self.state.backoff.delay().as_secs());
 
