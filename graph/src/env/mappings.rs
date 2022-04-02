@@ -92,7 +92,7 @@ impl From<InnerMappingHandlers> for EnvVarsMapping {
 pub struct InnerMappingHandlers {
     #[envconfig(from = "GRAPH_ENTITY_CACHE_SIZE", default = "10000")]
     entity_cache_size_in_kb: usize,
-    #[envconfig(from = "GRAPH_MAX_API_VERSION", default = "0.0.6")]
+    #[envconfig(from = "GRAPH_MAX_API_VERSION", default = "0.0.7")]
     max_api_version: Version,
     #[envconfig(from = "GRAPH_MAPPING_HANDLER_TIMEOUT")]
     mapping_handler_timeout_in_secs: Option<u64>,
