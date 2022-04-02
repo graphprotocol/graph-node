@@ -126,7 +126,6 @@ where
     /// whether new dynamic data sources have been added to the subgraph.
     async fn process_block(
         &mut self,
-        triggers_adapter: Arc<C::TriggersAdapter>,
         block_stream_cancel_handle: &CancelHandle,
         block: BlockWithTriggers<C>,
         firehose_cursor: Option<String>,
@@ -220,7 +219,9 @@ where
             let filter = C::TriggerFilter::from_data_sources(data_sources.iter());
 
             // Reprocess the triggers from this block that match the new data sources
-            let block_with_triggers = triggers_adapter
+            let block_with_triggers = self
+                .inputs
+                .triggers_adapter
                 .triggers_in_block(&logger, block.as_ref().clone(), &filter)
                 .await?;
 
@@ -610,12 +611,7 @@ where
         let deployment_failed = self.metrics.stream.deployment_failed.clone();
 
         let res = self
-            .process_block(
-                self.inputs.triggers_adapter.cheap_clone(),
-                &cancel_handle,
-                block,
-                cursor.into(),
-            )
+            .process_block(&cancel_handle, block, cursor.into())
             .await;
 
         let elapsed = start.elapsed().as_secs_f64();
