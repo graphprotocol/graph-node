@@ -151,13 +151,7 @@ where
 
         let subgraph_metrics = self.metrics.subgraph.clone();
 
-        let proof_of_indexing = if self
-            .inputs
-            .store
-            .clone()
-            .supports_proof_of_indexing()
-            .await?
-        {
+        let proof_of_indexing = if self.inputs.store.supports_proof_of_indexing().await? {
             Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
                 block_ptr.number,
             ))))
@@ -687,7 +681,6 @@ where
 
             // Handle unexpected stream errors by marking the subgraph as failed.
             Err(e) => {
-                let store_for_err = self.inputs.store.cheap_clone();
                 // Clear entity cache when a subgraph fails.
                 //
                 // This is done to be safe and sure that there's no state that's
@@ -716,7 +709,8 @@ where
                         // Fail subgraph:
                         // - Change status/health.
                         // - Save the error to the database.
-                        store_for_err
+                        self.inputs
+                            .store
                             .fail_subgraph(error)
                             .await
                             .context("Failed to set subgraph status to `failed`")?;
@@ -740,7 +734,8 @@ where
                             // Fail subgraph:
                             // - Change status/health.
                             // - Save the error to the database.
-                            store_for_err
+                            self.inputs
+                                .store
                                 .fail_subgraph(error)
                                 .await
                                 .context("Failed to set subgraph status to `failed`")?;
