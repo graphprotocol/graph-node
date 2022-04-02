@@ -92,7 +92,6 @@ where
             let block_stream_canceler = CancelGuard::new();
             let block_stream_cancel_handle = block_stream_canceler.handle();
 
-            let stream_metrics = self.metrics.stream.clone();
             let mut block_stream = new_block_stream(&self.inputs, &self.ctx.filter)
                 .await?
                 .map_err(CancelableError::Error)
@@ -103,7 +102,7 @@ where
             // Process events from the stream as long as no restart is needed
             loop {
                 let event = {
-                    let _section = stream_metrics.stopwatch.start_section("scan_blocks");
+                    let _section = self.metrics.stream.stopwatch.start_section("scan_blocks");
 
                     block_stream.next().await
                 };
@@ -149,8 +148,6 @@ where
             );
         }
 
-        let subgraph_metrics = self.metrics.subgraph.clone();
-
         let proof_of_indexing = if self.inputs.store.supports_proof_of_indexing().await? {
             Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
                 block_ptr.number,
@@ -193,7 +190,6 @@ where
         // If new data sources have been created, restart the subgraph after this block.
         // This is necessary to re-create the block stream.
         let needs_restart = block_state.has_created_data_sources();
-        let host_metrics = self.metrics.host.clone();
 
         // This loop will:
         // 1. Instantiate created data sources.
@@ -205,10 +201,8 @@ where
         // very contrived subgraph would be able to observe this.
         while block_state.has_created_data_sources() {
             // Instantiate dynamic data sources, removing them from the block state.
-            let (data_sources, runtime_hosts) = self.create_dynamic_data_sources(
-                host_metrics.clone(),
-                block_state.drain_created_data_sources(),
-            )?;
+            let (data_sources, runtime_hosts) =
+                self.create_dynamic_data_sources(block_state.drain_created_data_sources())?;
 
             let filter = C::TriggerFilter::from_data_sources(data_sources.iter());
 
@@ -284,14 +278,18 @@ where
             let proof_of_indexing = Arc::try_unwrap(proof_of_indexing).unwrap().into_inner();
             update_proof_of_indexing(
                 proof_of_indexing,
-                &host_metrics.stopwatch,
+                &self.metrics.host.stopwatch,
                 &self.inputs.deployment.hash,
                 &mut block_state.entity_cache,
             )
             .await?;
         }
 
-        let section = host_metrics.stopwatch.start_section("as_modifications");
+        let section = self
+            .metrics
+            .host
+            .stopwatch
+            .start_section("as_modifications");
         let ModificationsAndCache {
             modifications: mut mods,
             data_sources,
@@ -321,8 +319,8 @@ where
 
         // Transact entity operations into the store and update the
         // subgraph's block stream pointer
-        let _section = host_metrics.stopwatch.start_section("transact_block");
-        let stopwatch = host_metrics.stopwatch.clone();
+        let _section = self.metrics.host.stopwatch.start_section("transact_block");
+        let stopwatch = self.metrics.host.stopwatch.clone();
         let start = Instant::now();
 
         let store = &self.inputs.store;
@@ -368,7 +366,8 @@ where
                 }
 
                 let elapsed = start.elapsed().as_secs_f64();
-                subgraph_metrics
+                self.metrics
+                    .subgraph
                     .block_ops_transaction_duration
                     .observe(elapsed);
 
@@ -441,7 +440,6 @@ where
 
     fn create_dynamic_data_sources(
         &mut self,
-        host_metrics: Arc<HostMetrics>,
         created_data_sources: Vec<DataSourceTemplateInfo<C>>,
     ) -> Result<(Vec<C::DataSource>, Vec<Arc<T::Host>>), Error> {
         let mut data_sources = vec![];
@@ -602,7 +600,6 @@ where
         }
 
         let start = Instant::now();
-        let deployment_failed = self.metrics.stream.deployment_failed.clone();
 
         let res = self
             .process_block(&cancel_handle, block, cursor.into())
@@ -648,7 +645,7 @@ where
                     if let UnfailOutcome::Unfailed = outcome {
                         // Stop trying to unfail.
                         self.state.should_try_unfail_non_deterministic = false;
-                        deployment_failed.set(0.0);
+                        self.metrics.stream.deployment_failed.set(0.0);
                         self.state.backoff.reset();
                     }
                 }
@@ -690,7 +687,7 @@ where
                 // and be transacted incorrectly in the next run.
                 self.state.entity_lfu_cache = LfuCache::new();
 
-                deployment_failed.set(1.0);
+                self.metrics.stream.deployment_failed.set(1.0);
 
                 let message = format!("{:#}", e).replace("\n", "\t");
                 let err = anyhow!("{}, code: {}", message, LogCode::SubgraphSyncingFailure);
