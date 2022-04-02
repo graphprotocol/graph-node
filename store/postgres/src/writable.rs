@@ -230,7 +230,7 @@ impl WritableStore {
         block_ptr_to: &BlockPtr,
         firehose_cursor: Option<&str>,
         mods: &[EntityModification],
-        stopwatch: StopwatchMetrics,
+        stopwatch: &StopwatchMetrics,
         data_sources: &[StoredDynamicDataSource],
         deterministic_errors: &[SubgraphError],
     ) -> Result<(), StoreError> {
@@ -244,7 +244,7 @@ impl WritableStore {
                 block_ptr_to,
                 firehose_cursor,
                 mods,
-                stopwatch.cheap_clone(),
+                stopwatch,
                 data_sources,
                 deterministic_errors,
             )?;
@@ -442,7 +442,7 @@ impl WritableStoreTrait for WritableAgent {
         block_ptr_to: BlockPtr,
         firehose_cursor: Option<String>,
         mods: Vec<EntityModification>,
-        stopwatch: StopwatchMetrics,
+        stopwatch: &StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
     ) -> Result<(), StoreError> {
@@ -450,7 +450,7 @@ impl WritableStoreTrait for WritableAgent {
             &block_ptr_to,
             firehose_cursor.as_deref(),
             &mods,
-            stopwatch,
+            &stopwatch,
             &data_sources,
             &deterministic_errors,
         )?;

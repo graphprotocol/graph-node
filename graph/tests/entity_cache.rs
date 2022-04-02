@@ -104,7 +104,7 @@ impl WritableStore for MockStore {
         _: BlockPtr,
         _: Option<String>,
         _: Vec<EntityModification>,
-        _: StopwatchMetrics,
+        _: &StopwatchMetrics,
         _: Vec<StoredDynamicDataSource>,
         _: Vec<SubgraphError>,
     ) -> Result<(), StoreError> {

@@ -226,7 +226,7 @@ pub async fn transact_errors(
             block_ptr_to,
             None,
             Vec::new(),
-            stopwatch_metrics,
+            &stopwatch_metrics,
             Vec::new(),
             errs,
         )
@@ -267,7 +267,7 @@ pub fn transact_entities_and_dynamic_data_sources(
         block_ptr_to,
         None,
         mods,
-        stopwatch_metrics,
+        &stopwatch_metrics,
         data_sources,
         Vec::new(),
     )

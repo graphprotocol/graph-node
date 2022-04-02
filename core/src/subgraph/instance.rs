@@ -209,8 +209,7 @@ where
                 <= data_source.creation_block()
         );
 
-        let host =
-            Arc::new(self.new_host(logger.clone(), data_source, templates, metrics.clone())?);
+        let host = Arc::new(self.new_host(logger.clone(), data_source, templates, metrics)?);
 
         Ok(if self.hosts.contains(&host) {
             None

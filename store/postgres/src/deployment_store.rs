@@ -293,7 +293,7 @@ impl DeploymentStore {
         layout: &Layout,
         mods: &[EntityModification],
         ptr: &BlockPtr,
-        stopwatch: StopwatchMetrics,
+        stopwatch: &StopwatchMetrics,
     ) -> Result<i32, StoreError> {
         use EntityModification::*;
         let mut count = 0;
@@ -329,14 +329,14 @@ impl DeploymentStore {
         // Inserts:
         for (entity_type, mut entities) in inserts.into_iter() {
             count +=
-                self.insert_entities(&entity_type, &mut entities, conn, layout, ptr, &stopwatch)?
+                self.insert_entities(&entity_type, &mut entities, conn, layout, ptr, stopwatch)?
                     as i32
         }
 
         // Overwrites:
         for (entity_type, mut entities) in overwrites.into_iter() {
             // we do not update the count since the number of entities remains the same
-            self.overwrite_entities(&entity_type, &mut entities, conn, layout, ptr, &stopwatch)?;
+            self.overwrite_entities(&entity_type, &mut entities, conn, layout, ptr, stopwatch)?;
         }
 
         // Removals
@@ -347,7 +347,7 @@ impl DeploymentStore {
                 conn,
                 layout,
                 ptr,
-                &stopwatch,
+                stopwatch,
             )? as i32;
         }
         Ok(count)
@@ -953,7 +953,7 @@ impl DeploymentStore {
         block_ptr_to: &BlockPtr,
         firehose_cursor: Option<&str>,
         mods: &[EntityModification],
-        stopwatch: StopwatchMetrics,
+        stopwatch: &StopwatchMetrics,
         data_sources: &[StoredDynamicDataSource],
         deterministic_errors: &[SubgraphError],
     ) -> Result<StoreEvent, StoreError> {

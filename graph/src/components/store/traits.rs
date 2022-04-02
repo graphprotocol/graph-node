@@ -200,7 +200,7 @@ pub trait WritableStore: Send + Sync + 'static {
         block_ptr_to: BlockPtr,
         firehose_cursor: Option<String>,
         mods: Vec<EntityModification>,
-        stopwatch: StopwatchMetrics,
+        stopwatch: &StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
     ) -> Result<(), StoreError>;

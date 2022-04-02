@@ -1547,7 +1547,7 @@ fn handle_large_string_with_index() {
                     make_insert_op(ONE, &long_text),
                     make_insert_op(TWO, &other_text),
                 ],
-                stopwatch_metrics,
+                &stopwatch_metrics,
                 Vec::new(),
                 Vec::new(),
             )
@@ -1641,7 +1641,7 @@ fn handle_large_bytea_with_index() {
                     make_insert_op(ONE, &long_bytea),
                     make_insert_op(TWO, &other_bytea),
                 ],
-                stopwatch_metrics,
+                &stopwatch_metrics,
                 Vec::new(),
                 Vec::new(),
             )
