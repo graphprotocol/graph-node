@@ -451,9 +451,9 @@ where
             // Try to create a runtime host for the data source
             let host = self.ctx.instance.add_dynamic_data_source(
                 &self.logger,
-                &data_source,
-                &self.inputs.templates,
-                &self.metrics.host,
+                data_source.clone(),
+                self.inputs.templates.clone(),
+                self.metrics.host.clone(),
             )?;
 
             match host {

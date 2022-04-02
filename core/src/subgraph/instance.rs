@@ -188,9 +188,9 @@ where
     pub(crate) fn add_dynamic_data_source(
         &mut self,
         logger: &Logger,
-        data_source: &C::DataSource,
-        templates: &Arc<Vec<C::DataSourceTemplate>>,
-        metrics: &Arc<HostMetrics>,
+        data_source: C::DataSource,
+        templates: Arc<Vec<C::DataSourceTemplate>>,
+        metrics: Arc<HostMetrics>,
     ) -> Result<Option<Arc<T::Host>>, Error> {
         // Protect against creating more than the allowed maximum number of data sources
         if let Some(max_data_sources) = ENV_VARS.subgraph_max_data_sources {
@@ -209,12 +209,7 @@ where
                 <= data_source.creation_block()
         );
 
-        let host = Arc::new(self.new_host(
-            logger.clone(),
-            data_source.clone(),
-            templates.clone(),
-            metrics.clone(),
-        )?);
+        let host = Arc::new(self.new_host(logger.clone(), data_source, templates, metrics)?);
 
         Ok(if self.hosts.contains(&host) {
             None
