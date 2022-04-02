@@ -93,9 +93,7 @@ where
             let block_stream_cancel_handle = block_stream_canceler.handle();
 
             let stream_metrics = self.metrics.stream.clone();
-            let filter = self.ctx.filter.clone();
-            let stream_inputs = self.inputs.clone();
-            let mut block_stream = new_block_stream(stream_inputs, filter)
+            let mut block_stream = new_block_stream(&self.inputs, &self.ctx.filter)
                 .await?
                 .map_err(CancelableError::Error)
                 .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
