@@ -320,7 +320,6 @@ where
         // Transact entity operations into the store and update the
         // subgraph's block stream pointer
         let _section = self.metrics.host.stopwatch.start_section("transact_block");
-        let stopwatch = self.metrics.host.stopwatch.clone();
         let start = Instant::now();
 
         let store = &self.inputs.store;
@@ -348,7 +347,7 @@ where
             block_ptr,
             firehose_cursor,
             mods,
-            stopwatch,
+            &self.metrics.host.stopwatch,
             data_sources,
             deterministic_errors,
         ) {
