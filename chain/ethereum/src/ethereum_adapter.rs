@@ -42,6 +42,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::adapter::ProviderStatus;
 use crate::chain::BlockFinality;
 use crate::{
     adapter::{
@@ -820,29 +821,56 @@ impl EthereumAdapterTrait for EthereumAdapter {
         let logger = self.logger.clone();
 
         let web3 = self.web3.clone();
+        let metrics = self.metrics.clone();
+        let provider = self.provider().to_string();
         let net_version_future = retry("net_version RPC call", &logger)
             .no_limit()
             .timeout_secs(20)
             .run(move || {
                 let web3 = web3.cheap_clone();
-                async move { web3.net().version().await.map_err(Into::into) }
+                let metrics = metrics.cheap_clone();
+                let provider = provider.clone();
+                async move {
+                    web3.net().version().await.map_err(|e| {
+                        metrics.set_status(ProviderStatus::VersionFail, &provider);
+                        e.into()
+                    })
+                }
+            })
+            .map_err(|e| {
+                self.metrics
+                    .set_status(ProviderStatus::VersionTimeout, self.provider());
+                e
             })
             .boxed();
 
         let web3 = self.web3.clone();
+        let metrics = self.metrics.clone();
+        let provider = self.provider().to_string();
         let gen_block_hash_future = retry("eth_getBlockByNumber(0, false) RPC call", &logger)
             .no_limit()
             .timeout_secs(30)
             .run(move || {
                 let web3 = web3.cheap_clone();
+                let metrics = metrics.cheap_clone();
+                let provider = provider.clone();
                 async move {
                     web3.eth()
                         .block(BlockId::Number(Web3BlockNumber::Number(0.into())))
-                        .await?
+                        .await
+                        .map_err(|e| {
+                            metrics.set_status(ProviderStatus::GenesisFail, &provider);
+                            e
+                        })?
                         .map(|gen_block| gen_block.hash.map(BlockHash::from))
                         .flatten()
                         .ok_or_else(|| anyhow!("Ethereum node could not find genesis block"))
                 }
+            })
+            .map_err(|e| {
+                self.metrics
+                    .set_status(ProviderStatus::GenesisTimeout, self.provider());
+                e
             });
 
         let (net_version, genesis_block_hash) =
@@ -858,6 +886,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
             genesis_block_hash,
         };
 
+        self.metrics
+            .set_status(ProviderStatus::Working, self.provider());
         Ok(ident)
     }
 

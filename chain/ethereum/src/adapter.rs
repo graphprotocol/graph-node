@@ -727,10 +727,32 @@ impl EthereumBlockFilter {
     }
 }
 
+pub enum ProviderStatus {
+    Working,
+    VersionFail,
+    GenesisFail,
+    VersionTimeout,
+    GenesisTimeout,
+}
+
+impl From<ProviderStatus> for f64 {
+    fn from(state: ProviderStatus) -> Self {
+        match state {
+            ProviderStatus::Working => 0.0,
+            ProviderStatus::VersionFail => 1.0,
+            ProviderStatus::GenesisFail => 2.0,
+            ProviderStatus::VersionTimeout => 3.0,
+            ProviderStatus::GenesisTimeout => 4.0,
+        }
+    }
+}
+
+const STATUS_HELP: &str = "0 = ok, 1 = net_version failed, 2 = get genesis failed, 3 = net_version timeout, 4 = get genesis timeout";
 #[derive(Clone)]
 pub struct ProviderEthRpcMetrics {
     request_duration: Box<HistogramVec>,
     errors: Box<CounterVec>,
+    status: Box<GaugeVec>,
 }
 
 impl ProviderEthRpcMetrics {
@@ -750,9 +772,18 @@ impl ProviderEthRpcMetrics {
                 vec![String::from("method"), String::from("provider")],
             )
             .unwrap();
+        let status_help = format!("Whether the provider has failed ({STATUS_HELP})");
+        let status = registry
+            .new_gauge_vec(
+                "eth_rpc_status",
+                &status_help,
+                vec![String::from("provider")],
+            )
+            .unwrap();
         Self {
             request_duration,
             errors,
+            status,
         }
     }
 
@@ -764,6 +795,12 @@ impl ProviderEthRpcMetrics {
 
     pub fn add_error(&self, method: &str, provider: &str) {
         self.errors.with_label_values(&[method, provider]).inc();
+    }
+
+    pub fn set_status(&self, status: ProviderStatus, provider: &str) {
+        self.status
+            .with_label_values(&[provider])
+            .set(status.into());
     }
 }
 
