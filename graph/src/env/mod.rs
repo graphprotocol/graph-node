@@ -8,6 +8,7 @@ use semver::Version;
 use std::{
     collections::HashSet,
     env::VarError,
+    fmt,
     str::FromStr,
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
@@ -74,7 +75,7 @@ pub fn env_var<E: std::error::Error + Send + Sync, T: FromStr<Err = E> + Eq>(
         .unwrap_or_else(|e| panic!("failed to parse environment variable {}: {}", name, e))
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 #[non_exhaustive]
 pub struct EnvVars {
     pub graphql: EnvVarsGraphQl,
@@ -317,6 +318,13 @@ impl EnvVars {
 impl Default for EnvVars {
     fn default() -> Self {
         ENV_VARS.clone()
+    }
+}
+
+// This does not print any values avoid accidentally leaking any sensitive env vars
+impl fmt::Debug for EnvVars {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "env vars")
     }
 }
 

@@ -1,6 +1,8 @@
+use std::fmt;
+
 use super::*;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct EnvVarsStore {
     /// Set by the environment variable `GRAPH_CHAIN_HEAD_WATCHER_TIMEOUT`
     /// (expressed in seconds). The default value is 30 seconds.
@@ -90,6 +92,13 @@ pub struct EnvVarsStore {
     /// Set by the environment variable `GRAPH_STORE_CONNECTION_IDLE_TIMEOUT`
     /// (expressed in seconds). The default value is 600s.
     pub connection_idle_timeout: Duration,
+}
+
+// This does not print any values avoid accidentally leaking any sensitive env vars
+impl fmt::Debug for EnvVarsStore {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "env vars")
+    }
 }
 
 impl From<InnerStore> for EnvVarsStore {
