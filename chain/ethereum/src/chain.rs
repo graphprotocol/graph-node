@@ -23,9 +23,9 @@ use graph::{
     },
 };
 use prost::Message;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::data_source::DataSourceTemplate;
 use crate::data_source::UnresolvedDataSourceTemplate;
@@ -58,6 +58,7 @@ pub struct Chain {
     chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
     reorg_threshold: BlockNumber,
     pub is_ingestible: bool,
+    deployment_rpc_metrics: Arc<Mutex<HashMap<String, Arc<SubgraphEthRpcMetrics>>>>,
 }
 
 impl std::fmt::Debug for Chain {
@@ -93,6 +94,7 @@ impl Chain {
             chain_head_update_listener,
             reorg_threshold,
             is_ingestible,
+            deployment_rpc_metrics: Default::default(),
         }
     }
 
@@ -157,7 +159,15 @@ impl Blockchain for Chain {
             self.eth_adapters.cheapest_with(capabilities)?.clone()
         };
 
-        let ethrpc_metrics = Arc::new(SubgraphEthRpcMetrics::new(self.registry.clone(), &loc.hash));
+        let ethrpc_metrics = self
+            .deployment_rpc_metrics
+            .lock()
+            .unwrap()
+            .entry(String::from(loc.hash.as_str()))
+            .or_insert_with(|| {
+                Arc::new(SubgraphEthRpcMetrics::new(self.registry.clone(), &loc.hash))
+            })
+            .cheap_clone();
 
         let adapter = TriggersAdapter {
             logger,
