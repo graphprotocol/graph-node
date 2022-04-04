@@ -1366,7 +1366,7 @@ dependencies = [
  "petgraph 0.6.0",
  "priority-queue",
  "prometheus",
- "prost",
+ "prost 0.10.0",
  "prost-types",
  "rand",
  "reqwest",
@@ -1416,7 +1416,7 @@ dependencies = [
  "jsonrpc-core",
  "lazy_static",
  "mockall",
- "prost",
+ "prost 0.10.0",
  "prost-types",
  "semver",
  "serde",
@@ -1437,7 +1437,7 @@ dependencies = [
  "graph-runtime-wasm",
  "graph-store-postgres",
  "pretty_assertions 0.7.2",
- "prost",
+ "prost 0.8.0",
  "prost-types",
  "serde",
  "test-store",
@@ -1455,7 +1455,7 @@ dependencies = [
  "graph-runtime-wasm",
  "mockall",
  "pretty_assertions 0.7.2",
- "prost",
+ "prost 0.8.0",
  "prost-types",
  "semver",
  "serde",
@@ -2927,7 +2927,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "de5e2533f59d08fcf364fd374ebda0692a70bd6d7e66ef97f306f45c6c5d8020"
 dependencies = [
  "bytes",
- "prost-derive",
+ "prost-derive 0.8.0",
+]
+
+[[package]]
+name = "prost"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1bd5316aa8f5c82add416dfbc25116b84b748a21153f512917e8143640a71bbd"
+dependencies = [
+ "bytes",
+ "prost-derive 0.10.0",
 ]
 
 [[package]]
@@ -2942,7 +2952,7 @@ dependencies = [
  "log",
  "multimap",
  "petgraph 0.5.1",
- "prost",
+ "prost 0.8.0",
  "prost-types",
  "tempfile",
  "which",
@@ -2962,13 +2972,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "prost-derive"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df35198f0777b75e9ff669737c6da5136b59dba33cf5a010a6d1cc4d56defc6f"
+dependencies = [
+ "anyhow",
+ "itertools",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "prost-types"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "603bbd6394701d13f3f25aada59c7de9d35a6a5887cfc156181234a44002771b"
 dependencies = [
  "bytes",
- "prost",
+ "prost 0.8.0",
 ]
 
 [[package]]
@@ -4117,8 +4140,8 @@ dependencies = [
  "hyper-timeout",
  "percent-encoding",
  "pin-project",
- "prost",
- "prost-derive",
+ "prost 0.8.0",
+ "prost-derive 0.8.0",
  "rustls-native-certs",
  "tokio",
  "tokio-rustls",
