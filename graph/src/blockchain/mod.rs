@@ -149,7 +149,7 @@ pub enum IngestorError {
     ReceiptUnavailable(H256, H256),
 
     /// An unexpected error occurred.
-    #[error("Ingestor error: {0}")]
+    #[error("Ingestor error: {0:#}")]
     Unknown(Error),
 }
 
