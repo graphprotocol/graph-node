@@ -1,13 +1,14 @@
 use envconfig::Envconfig;
 use graph::env::EnvVarBoolean;
 use graph::prelude::{envconfig, lazy_static, BlockNumber};
+use std::fmt;
 use std::time::Duration;
 
 lazy_static! {
     pub static ref ENV_VARS: EnvVars = EnvVars::from_env().unwrap();
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[non_exhaustive]
 pub struct EnvVars {
     /// Controls if firehose should be preferred over RPC if Firehose endpoints
@@ -82,6 +83,13 @@ pub struct EnvVars {
     /// `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`. The default value is
     /// 100.
     pub target_triggers_per_block_range: u64,
+}
+
+// This does not print any values avoid accidentally leaking any sensitive env vars
+impl fmt::Debug for EnvVars {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "env vars")
+    }
 }
 
 impl EnvVars {

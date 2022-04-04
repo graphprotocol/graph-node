@@ -1,6 +1,8 @@
+use std::fmt;
+
 use super::*;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct EnvVarsGraphQl {
     /// Set by the flag `ENABLE_GRAPHQL_VALIDATIONS`. Off by default.
     pub enable_validations: bool,
@@ -45,6 +47,13 @@ pub struct EnvVarsGraphQl {
     /// Set by the flag `GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION`. No
     /// default is provided.
     pub max_operations_per_connection: Option<usize>,
+}
+
+// This does not print any values avoid accidentally leaking any sensitive env vars
+impl fmt::Debug for EnvVarsGraphQl {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "env vars")
+    }
 }
 
 impl From<InnerGraphQl> for EnvVarsGraphQl {

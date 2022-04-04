@@ -1,6 +1,8 @@
+use std::fmt;
+
 use super::*;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct EnvVarsMapping {
     /// Size limit of the entity LFU cache.
     ///
@@ -65,6 +67,13 @@ pub struct EnvVarsMapping {
     /// Set by the flag `GRAPH_ALLOW_NON_DETERMINISTIC_IPFS`. Off by
     /// default.
     pub allow_non_deterministic_ipfs: bool,
+}
+
+// This does not print any values avoid accidentally leaking any sensitive env vars
+impl fmt::Debug for EnvVarsMapping {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "env vars")
+    }
 }
 
 impl From<InnerMappingHandlers> for EnvVarsMapping {
