@@ -233,7 +233,7 @@ pub trait UnresolvedDataSourceTemplate<C: Blockchain>:
 {
     async fn resolve(
         self,
-        resolver: &impl LinkResolver,
+        resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
     ) -> Result<C::DataSourceTemplate, anyhow::Error>;
 }
@@ -250,7 +250,7 @@ pub trait UnresolvedDataSource<C: Blockchain>:
 {
     async fn resolve(
         self,
-        resolver: &impl LinkResolver,
+        resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
     ) -> Result<C::DataSource, anyhow::Error>;
 }
@@ -362,7 +362,7 @@ impl BlockchainKind {
 }
 
 /// A collection of blockchains, keyed by `BlockchainKind` and network.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct BlockchainMap(HashMap<(BlockchainKind, String), Arc<dyn Any + Send + Sync>>);
 
 impl BlockchainMap {

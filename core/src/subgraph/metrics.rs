@@ -12,7 +12,7 @@ pub struct SubgraphInstanceMetrics {
 }
 
 impl SubgraphInstanceMetrics {
-    pub fn new(registry: Arc<impl MetricsRegistry>, subgraph_hash: &str) -> Self {
+    pub fn new(registry: Arc<dyn MetricsRegistry>, subgraph_hash: &str) -> Self {
         let block_trigger_count = registry
             .new_deployment_histogram(
                 "deployment_block_trigger_count",
@@ -58,7 +58,7 @@ impl SubgraphInstanceMetrics {
         self.trigger_processing_duration.observe(duration);
     }
 
-    pub fn unregister<M: MetricsRegistry>(&self, registry: Arc<M>) {
+    pub fn unregister(&self, registry: Arc<dyn MetricsRegistry>) {
         registry.unregister(self.block_processing_duration.clone());
         registry.unregister(self.block_trigger_count.clone());
         registry.unregister(self.trigger_processing_duration.clone());
@@ -71,7 +71,7 @@ pub struct SubgraphInstanceManagerMetrics {
 }
 
 impl SubgraphInstanceManagerMetrics {
-    pub fn new(registry: Arc<impl MetricsRegistry>) -> Self {
+    pub fn new(registry: Arc<dyn MetricsRegistry>) -> Self {
         let subgraph_count = registry
             .new_gauge(
                 "deployment_count",

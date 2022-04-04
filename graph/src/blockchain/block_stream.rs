@@ -80,6 +80,10 @@ pub trait BlockStream<C: Blockchain>:
 {
 }
 
+pub trait BlockStreamBuilder<C: Blockchain> {
+    fn build() -> Box<dyn BlockStream<C>>;
+}
+
 pub type FirehoseCursor = Option<String>;
 
 pub struct BlockWithTriggers<C: Blockchain> {
@@ -218,7 +222,7 @@ pub struct BlockStreamMetrics {
 
 impl BlockStreamMetrics {
     pub fn new(
-        registry: Arc<impl MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistry>,
         deployment_id: &DeploymentHash,
         network: String,
         shard: String,

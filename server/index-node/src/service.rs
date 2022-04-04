@@ -27,16 +27,16 @@ pub type IndexNodeServiceResponse = DynTryFuture<'static, Response<Body>, GraphQ
 
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
-pub struct IndexNodeService<Q, S, R> {
+pub struct IndexNodeService<Q, S> {
     logger: Logger,
     blockchain_map: Arc<BlockchainMap>,
     graphql_runner: Arc<Q>,
     store: Arc<S>,
     explorer: Arc<Explorer<S>>,
-    link_resolver: Arc<R>,
+    link_resolver: Arc<dyn LinkResolver>,
 }
 
-impl<Q, S, R> Clone for IndexNodeService<Q, S, R> {
+impl<Q, S> Clone for IndexNodeService<Q, S> {
     fn clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
@@ -49,13 +49,12 @@ impl<Q, S, R> Clone for IndexNodeService<Q, S, R> {
     }
 }
 
-impl<Q, S, R> CheapClone for IndexNodeService<Q, S, R> {}
+impl<Q, S> CheapClone for IndexNodeService<Q, S> {}
 
-impl<Q, S, R> IndexNodeService<Q, S, R>
+impl<Q, S> IndexNodeService<Q, S>
 where
     Q: GraphQlRunner,
     S: Store,
-    R: LinkResolver,
 {
     /// Creates a new GraphQL service.
     pub fn new(
@@ -63,7 +62,7 @@ where
         blockchain_map: Arc<BlockchainMap>,
         graphql_runner: Arc<Q>,
         store: Arc<S>,
-        link_resolver: Arc<R>,
+        link_resolver: Arc<dyn LinkResolver>,
     ) -> Self {
         let explorer = Arc::new(Explorer::new(store.clone()));
 
@@ -236,11 +235,10 @@ where
     }
 }
 
-impl<Q, S, R> Service<Request<Body>> for IndexNodeService<Q, S, R>
+impl<Q, S> Service<Request<Body>> for IndexNodeService<Q, S>
 where
     Q: GraphQlRunner,
     S: Store,
-    R: LinkResolver,
 {
     type Response = Response<Body>;
     type Error = GraphQLServerError;

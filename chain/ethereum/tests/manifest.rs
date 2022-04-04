@@ -24,7 +24,7 @@ const GQL_SCHEMA_FULLTEXT: &str = include_str!("full-text.graphql");
 const MAPPING_WITH_IPFS_FUNC_WASM: &[u8] = include_bytes!("ipfs-on-ethereum-contracts.wasm");
 const ABI: &str = "[{\"type\":\"function\", \"inputs\": [{\"name\": \"i\",\"type\": \"uint256\"}],\"name\":\"get\",\"outputs\": [{\"type\": \"address\",\"name\": \"o\"}]}]";
 
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
 struct TextResolver {
     texts: HashMap<String, Vec<u8>>,
 }
@@ -40,12 +40,12 @@ impl TextResolver {
 
 #[async_trait]
 impl LinkResolverTrait for TextResolver {
-    fn with_timeout(self, _timeout: Duration) -> Self {
-        self
+    fn with_timeout(&self, _timeout: Duration) -> Box<dyn LinkResolverTrait> {
+        Box::new(self.clone())
     }
 
-    fn with_retries(self) -> Self {
-        self
+    fn with_retries(&self) -> Box<dyn LinkResolverTrait> {
+        Box::new(self.clone())
     }
 
     async fn cat(&self, _logger: &Logger, link: &Link) -> Result<Vec<u8>, anyhow::Error> {
@@ -73,6 +73,8 @@ async fn resolve_manifest(text: &str) -> SubgraphManifest<graph_chain_ethereum::
     resolver.add("/ipfs/Qmabi", &ABI);
     resolver.add("/ipfs/Qmmapping", &MAPPING_WITH_IPFS_FUNC_WASM);
 
+    let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
+
     let raw = serde_yaml::from_str(text).unwrap();
     SubgraphManifest::resolve_from_raw(id, raw, &resolver, &LOGGER, SPEC_VERSION_0_0_4.clone())
         .await
@@ -86,16 +88,12 @@ async fn resolve_unvalidated(text: &str) -> UnvalidatedSubgraphManifest<Chain> {
     resolver.add(id.as_str(), &text);
     resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
 
+    let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
+
     let raw = serde_yaml::from_str(text).unwrap();
-    UnvalidatedSubgraphManifest::resolve(
-        id,
-        raw,
-        Arc::new(resolver),
-        &LOGGER,
-        SPEC_VERSION_0_0_4.clone(),
-    )
-    .await
-    .expect("Parsing simple manifest works")
+    UnvalidatedSubgraphManifest::resolve(id, raw, &resolver, &LOGGER, SPEC_VERSION_0_0_4.clone())
+        .await
+        .expect("Parsing simple manifest works")
 }
 
 // Some of these manifest tests should be made chain-independent, but for
@@ -362,11 +360,13 @@ schema:
             resolver.add("/ipfs/Qmabi", &ABI);
             resolver.add("/ipfs/Qmschema", &GQL_SCHEMA_FULLTEXT);
 
+            let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
+
             let raw = serde_yaml::from_str(YAML).unwrap();
             UnvalidatedSubgraphManifest::resolve(
                 id,
                 raw,
-                Arc::new(resolver),
+                &resolver,
                 &LOGGER,
                 SPEC_VERSION_0_0_4.clone(),
             )
@@ -412,11 +412,13 @@ schema:
             resolver.add("/ipfs/Qmabi", &ABI);
             resolver.add("/ipfs/Qmschema", &GQL_SCHEMA_FULLTEXT);
 
+            let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
+
             let raw = serde_yaml::from_str(YAML).unwrap();
             UnvalidatedSubgraphManifest::resolve(
                 id,
                 raw,
-                Arc::new(resolver),
+                &resolver,
                 &LOGGER,
                 SPEC_VERSION_0_0_4.clone(),
             )
@@ -486,11 +488,13 @@ dataSources:
             resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
             resolver.add("/ipfs/Qmmapping", &MAPPING_WITH_IPFS_FUNC_WASM);
 
+            let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
+
             let raw = serde_yaml::from_str(YAML).unwrap();
             UnvalidatedSubgraphManifest::resolve(
                 id,
                 raw,
-                Arc::new(resolver),
+                &resolver,
                 &LOGGER,
                 SPEC_VERSION_0_0_4.clone(),
             )
@@ -562,11 +566,13 @@ dataSources:
             resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
             resolver.add("/ipfs/Qmmapping", &MAPPING_WITH_IPFS_FUNC_WASM);
 
+            let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
+
             let raw = serde_yaml::from_str(YAML).unwrap();
             UnvalidatedSubgraphManifest::resolve(
                 id,
                 raw,
-                Arc::new(resolver),
+                &resolver,
                 &LOGGER,
                 SPEC_VERSION_0_0_4.clone(),
             )

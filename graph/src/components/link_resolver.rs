@@ -8,6 +8,7 @@ use slog::Logger;
 
 use crate::data::subgraph::Link;
 use crate::prelude::Error;
+use std::fmt::Debug;
 
 /// The values that `json_stream` returns. The struct contains the deserialized
 /// JSON value from the input stream, together with the line number from which
@@ -22,16 +23,12 @@ pub type JsonValueStream =
 
 /// Resolves links to subgraph manifests and resources referenced by them.
 #[async_trait]
-pub trait LinkResolver: Send + Sync + 'static {
+pub trait LinkResolver: Send + Sync + 'static + Debug {
     /// Updates the timeout used by the resolver.
-    fn with_timeout(self, timeout: Duration) -> Self
-    where
-        Self: Sized;
+    fn with_timeout(&self, timeout: Duration) -> Box<dyn LinkResolver>;
 
     /// Enables infinite retries.
-    fn with_retries(self) -> Self
-    where
-        Self: Sized;
+    fn with_retries(&self) -> Box<dyn LinkResolver>;
 
     /// Fetches the link contents as bytes.
     async fn cat(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error>;

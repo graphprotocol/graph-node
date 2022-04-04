@@ -15,27 +15,24 @@ use graph_graphql::prelude::{a, ExecutionContext, Resolver};
 use crate::auth::PoiProtection;
 
 /// Resolver for the index node GraphQL API.
-pub struct IndexNodeResolver<S, R> {
+pub struct IndexNodeResolver<S: Store> {
     logger: Logger,
     blockchain_map: Arc<BlockchainMap>,
     store: Arc<S>,
-    link_resolver: Arc<R>,
+    link_resolver: Arc<dyn LinkResolver>,
     bearer_token: Option<String>,
 }
 
-impl<S, R> IndexNodeResolver<S, R>
-where
-    S: Store,
-    R: LinkResolver,
-{
+impl<S: Store> IndexNodeResolver<S> {
     pub fn new(
         logger: &Logger,
         store: Arc<S>,
-        link_resolver: Arc<R>,
+        link_resolver: Arc<dyn LinkResolver>,
         bearer_token: Option<String>,
         blockchain_map: Arc<BlockchainMap>,
     ) -> Self {
         let logger = logger.new(o!("component" => "IndexNodeResolver"));
+
         Self {
             logger,
             blockchain_map,
@@ -367,7 +364,7 @@ where
                         UnvalidatedSubgraphManifest::<graph_chain_ethereum::Chain>::resolve(
                             deployment_hash,
                             raw,
-                            self.link_resolver.clone(),
+                            &self.link_resolver,
                             &self.logger,
                             ENV_VARS.max_spec_version.clone(),
                         )
@@ -385,7 +382,7 @@ where
                         UnvalidatedSubgraphManifest::<graph_chain_tendermint::Chain>::resolve(
                             deployment_hash,
                             raw,
-                            self.link_resolver.clone(),
+                            &self.link_resolver,
                             &self.logger,
                             ENV_VARS.max_spec_version.clone(),
                         )
@@ -403,7 +400,7 @@ where
                         UnvalidatedSubgraphManifest::<graph_chain_near::Chain>::resolve(
                             deployment_hash,
                             raw,
-                            self.link_resolver.clone(),
+                            &self.link_resolver,
                             &self.logger,
                             ENV_VARS.max_spec_version.clone(),
                         )
@@ -582,11 +579,7 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
     }
 }
 
-impl<S, R> Clone for IndexNodeResolver<S, R>
-where
-    S: Clone,
-    R: Clone,
-{
+impl<S: Store> Clone for IndexNodeResolver<S> {
     fn clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
@@ -599,11 +592,7 @@ where
 }
 
 #[async_trait]
-impl<S, R> Resolver for IndexNodeResolver<S, R>
-where
-    S: Store,
-    R: LinkResolver,
-{
+impl<S: Store> Resolver for IndexNodeResolver<S> {
     const CACHEABLE: bool = false;
 
     async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {

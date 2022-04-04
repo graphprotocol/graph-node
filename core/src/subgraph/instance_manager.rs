@@ -14,24 +14,19 @@ use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *}
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
 use tokio::task;
 
-pub struct SubgraphInstanceManager<S, M, L> {
+pub struct SubgraphInstanceManager<S: SubgraphStore> {
     logger_factory: LoggerFactory,
     subgraph_store: Arc<S>,
     chains: Arc<BlockchainMap>,
-    metrics_registry: Arc<M>,
+    metrics_registry: Arc<dyn MetricsRegistry>,
     manager_metrics: SubgraphInstanceManagerMetrics,
     instances: SharedInstanceKeepAliveMap,
-    link_resolver: Arc<L>,
+    link_resolver: Arc<dyn LinkResolver>,
     static_filters: bool,
 }
 
 #[async_trait]
-impl<S, M, L> SubgraphInstanceManagerTrait for SubgraphInstanceManager<S, M, L>
-where
-    S: SubgraphStore,
-    M: MetricsRegistry,
-    L: LinkResolver + Clone,
-{
+impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<S> {
     async fn start_subgraph(
         self: Arc<Self>,
         loc: DeploymentLocator,
@@ -97,18 +92,13 @@ where
     }
 }
 
-impl<S, M, L> SubgraphInstanceManager<S, M, L>
-where
-    S: SubgraphStore,
-    M: MetricsRegistry,
-    L: LinkResolver + Clone,
-{
+impl<S: SubgraphStore> SubgraphInstanceManager<S> {
     pub fn new(
         logger_factory: &LoggerFactory,
         subgraph_store: Arc<S>,
         chains: Arc<BlockchainMap>,
-        metrics_registry: Arc<M>,
-        link_resolver: Arc<L>,
+        metrics_registry: Arc<dyn MetricsRegistry>,
+        link_resolver: Arc<dyn LinkResolver>,
         static_filters: bool,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
@@ -154,7 +144,7 @@ where
                 deployment.hash.cheap_clone(),
                 manifest,
                 // Allow for infinite retries for subgraph definition files.
-                &self.link_resolver.as_ref().clone().with_retries(),
+                &self.link_resolver,
                 &logger,
                 ENV_VARS.max_spec_version.clone(),
             )

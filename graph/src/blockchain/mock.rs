@@ -7,7 +7,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use core::fmt;
 use serde::Deserialize;
-use std::convert::TryFrom;
+use std::{convert::TryFrom, sync::Arc};
 
 use super::{block_stream, HostFn, IngestorError, TriggerWithHandler};
 
@@ -124,7 +124,7 @@ pub struct MockUnresolvedDataSource;
 impl<C: Blockchain> UnresolvedDataSource<C> for MockUnresolvedDataSource {
     async fn resolve(
         self,
-        _resolver: &impl LinkResolver,
+        _resolver: &Arc<dyn LinkResolver>,
         _logger: &slog::Logger,
     ) -> Result<C::DataSource, anyhow::Error> {
         todo!()
@@ -155,7 +155,7 @@ pub struct MockUnresolvedDataSourceTemplate;
 impl<C: Blockchain> UnresolvedDataSourceTemplate<C> for MockUnresolvedDataSourceTemplate {
     async fn resolve(
         self,
-        _resolver: &impl LinkResolver,
+        _resolver: &Arc<dyn LinkResolver>,
         _logger: &slog::Logger,
     ) -> Result<C::DataSourceTemplate, anyhow::Error> {
         todo!()
