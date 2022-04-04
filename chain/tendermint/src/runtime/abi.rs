@@ -39,6 +39,19 @@ impl ToAscObj<AscEventData> for codec::EventData {
     }
 }
 
+impl ToAscObj<AscTransactionData> for codec::TransactionData {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscTransactionData, DeterministicHostError> {
+        Ok(AscTransactionData {
+            tx: asc_new_or_null(heap, &self.tx, gas)?,
+            block: asc_new_or_null(heap, &self.block, gas)?,
+        })
+    }
+}
+
 impl ToAscObj<AscEventBlock> for codec::EventBlock {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,

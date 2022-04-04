@@ -49,6 +49,10 @@ impl EventList {
         })
     }
 
+    pub fn tx_results(&self) -> impl Iterator<Item = &TxResult> {
+        self.transaction.iter().flat_map(|tx| tx.tx_result.iter())
+    }
+
     pub fn end_block_events(&self) -> impl Iterator<Item = &Event> {
         self.block()
             .result_end_block
@@ -140,5 +144,19 @@ impl BlockchainBlock for EventBlock {
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
         self.parent_ptr()
+    }
+}
+
+impl TransactionData {
+    pub fn tx(&self) -> &TxResult {
+        self.tx.as_ref().unwrap()
+    }
+
+    pub fn tx_result(&self) -> &ResponseDeliverTx {
+        self.tx.as_ref().unwrap().result.as_ref().unwrap()
+    }
+
+    pub fn block(&self) -> &EventBlock {
+        self.block.as_ref().unwrap()
     }
 }

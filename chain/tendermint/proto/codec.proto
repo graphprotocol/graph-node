@@ -42,6 +42,11 @@ message EventData {
   EventBlock  block = 2;
 }
 
+message TransactionData {
+  TxResult   tx    = 1;
+  EventBlock block = 2;
+}
+
 message Block {
   Header        header      = 1 [(gogoproto.nullable) = false];
   Data          data        = 2 [(gogoproto.nullable) = false];

@@ -258,6 +258,17 @@ impl AscIndexId for AscEventList {
 
 #[repr(C)]
 #[derive(AscType)]
+pub(crate) struct AscTransactionData {
+    pub tx: AscPtr<AscTxResult>,
+    pub block: AscPtr<AscEventBlock>,
+}
+
+impl AscIndexId for AscTransactionData {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintTransactionData;
+}
+
+#[repr(C)]
+#[derive(AscType)]
 pub(crate) struct AscBlock {
     pub header: AscPtr<AscHeader>,
     pub data: AscPtr<AscData>,
