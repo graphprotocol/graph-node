@@ -17,6 +17,7 @@ pub struct MetricsRegistry {
     global_counters: Arc<RwLock<HashMap<u64, Counter>>>,
     global_counter_vecs: Arc<RwLock<HashMap<u64, CounterVec>>>,
     global_gauges: Arc<RwLock<HashMap<u64, Gauge>>>,
+    global_gauge_vecs: Arc<RwLock<HashMap<u64, GaugeVec>>>,
 }
 
 impl MetricsRegistry {
@@ -35,6 +36,7 @@ impl MetricsRegistry {
             global_counters: Arc::new(RwLock::new(HashMap::new())),
             global_counter_vecs: Arc::new(RwLock::new(HashMap::new())),
             global_gauges: Arc::new(RwLock::new(HashMap::new())),
+            global_gauge_vecs: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -190,6 +192,28 @@ impl MetricsRegistryTrait for MetricsRegistry {
                 .unwrap()
                 .insert(id, gauge.clone());
             Ok(gauge)
+        }
+    }
+
+    fn global_gauge_vec(
+        &self,
+        name: &str,
+        help: &str,
+        variable_labels: &[&str],
+    ) -> Result<GaugeVec, PrometheusError> {
+        let opts = Opts::new(name, help);
+        let gauges = GaugeVec::new(opts, variable_labels)?;
+        let id = gauges.desc().first().unwrap().id;
+        let maybe_gauge = self.global_gauge_vecs.read().unwrap().get(&id).cloned();
+        if let Some(gauges) = maybe_gauge {
+            Ok(gauges)
+        } else {
+            self.register(name, Box::new(gauges.clone()));
+            self.global_gauge_vecs
+                .write()
+                .unwrap()
+                .insert(id, gauges.clone());
+            Ok(gauges)
         }
     }
 

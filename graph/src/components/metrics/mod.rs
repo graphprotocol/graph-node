@@ -70,6 +70,13 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         const_labels: HashMap<String, String>,
     ) -> Result<Gauge, PrometheusError>;
 
+    fn global_gauge_vec(
+        &self,
+        name: &str,
+        help: &str,
+        variable_labels: &[&str],
+    ) -> Result<GaugeVec, PrometheusError>;
+
     fn new_gauge(
         &self,
         name: &str,
