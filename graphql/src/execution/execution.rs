@@ -238,36 +238,42 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
     // and once for insert.
     let mut key: Option<QueryHash> = None;
 
-    if let CachedSubgraphIds::Only(ref cached_subgraph_ids) = ENV_VARS.cached_subgraph_ids {
-        if R::CACHEABLE && cached_subgraph_ids.contains(ctx.query.schema.id()) {
-            if let (Some(block_ptr), Some(network)) = (block_ptr.as_ref(), &ctx.query.network) {
-                // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two reasons:
-                // - Metadata queries are not cacheable.
-                // - Caching `BLOCK_NUMBER_MAX` would make this cache think all other blocks are old.
-                if block_ptr.number != BLOCK_NUMBER_MAX {
-                    // Calculate the hash outside of the lock
-                    let cache_key = cache_key(&ctx, &selection_set, block_ptr);
-                    let shard = (cache_key[0] as usize) % QUERY_BLOCK_CACHE.len();
+    let should_check_cache = R::CACHEABLE
+        && match ENV_VARS.cached_subgraph_ids {
+            CachedSubgraphIds::All => true,
+            CachedSubgraphIds::Only(ref subgraph_ids) => {
+                subgraph_ids.contains(ctx.query.schema.id())
+            }
+        };
 
-                    // Check if the response is cached, first in the recent blocks cache,
-                    // and then in the LfuCache for historical queries
-                    // The blocks are used to delimit how long locks need to be held
-                    {
-                        let cache = QUERY_BLOCK_CACHE[shard].lock(&ctx.logger);
-                        if let Some(result) = cache.get(network, block_ptr, &cache_key) {
-                            ctx.cache_status.store(CacheStatus::Hit);
-                            return result;
-                        }
+    if should_check_cache {
+        if let (Some(block_ptr), Some(network)) = (block_ptr.as_ref(), &ctx.query.network) {
+            // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two reasons:
+            // - Metadata queries are not cacheable.
+            // - Caching `BLOCK_NUMBER_MAX` would make this cache think all other blocks are old.
+            if block_ptr.number != BLOCK_NUMBER_MAX {
+                // Calculate the hash outside of the lock
+                let cache_key = cache_key(&ctx, &selection_set, block_ptr);
+                let shard = (cache_key[0] as usize) % QUERY_BLOCK_CACHE.len();
+
+                // Check if the response is cached, first in the recent blocks cache,
+                // and then in the LfuCache for historical queries
+                // The blocks are used to delimit how long locks need to be held
+                {
+                    let cache = QUERY_BLOCK_CACHE[shard].lock(&ctx.logger);
+                    if let Some(result) = cache.get(network, block_ptr, &cache_key) {
+                        ctx.cache_status.store(CacheStatus::Hit);
+                        return result;
                     }
-                    {
-                        let mut cache = QUERY_LFU_CACHE[shard].lock(&ctx.logger);
-                        if let Some(weighted) = cache.get(&cache_key) {
-                            ctx.cache_status.store(CacheStatus::Hit);
-                            return weighted.result.cheap_clone();
-                        }
-                    }
-                    key = Some(cache_key);
                 }
+                {
+                    let mut cache = QUERY_LFU_CACHE[shard].lock(&ctx.logger);
+                    if let Some(weighted) = cache.get(&cache_key) {
+                        ctx.cache_status.store(CacheStatus::Hit);
+                        return weighted.result.cheap_clone();
+                    }
+                }
+                key = Some(cache_key);
             }
         }
     }
