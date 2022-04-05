@@ -63,6 +63,14 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         self.global_counter(name, help, deployment_labels(subgraph))
     }
 
+    fn global_deployment_counter_vec(
+        &self,
+        name: &str,
+        help: &str,
+        subgraph: &str,
+        variable_labels: &[&str],
+    ) -> Result<CounterVec, PrometheusError>;
+
     fn global_gauge(
         &self,
         name: &str,

@@ -56,6 +56,18 @@ impl MetricsRegistryTrait for MockMetricsRegistry {
         Ok(counters)
     }
 
+    fn global_deployment_counter_vec(
+        &self,
+        name: &str,
+        help: &str,
+        subgraph: &str,
+        variable_labels: &[&str],
+    ) -> Result<CounterVec, PrometheusError> {
+        let opts = Opts::new(name, help).const_label("deployment", subgraph);
+        let counters = CounterVec::new(opts, variable_labels)?;
+        Ok(counters)
+    }
+
     fn global_gauge_vec(
         &self,
         name: &str,

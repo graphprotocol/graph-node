@@ -82,6 +82,33 @@ impl MetricsRegistry {
             .expect("failed to register `registered_metrics` gauge");
         gauge
     }
+
+    fn global_counter_vec_internal(
+        &self,
+        name: &str,
+        help: &str,
+        deployment: Option<&str>,
+        variable_labels: &[&str],
+    ) -> Result<CounterVec, PrometheusError> {
+        let opts = Opts::new(name, help);
+        let opts = match deployment {
+            None => opts,
+            Some(deployment) => opts.const_label("deployment", deployment),
+        };
+        let counters = CounterVec::new(opts, variable_labels)?;
+        let id = counters.desc().first().unwrap().id;
+        let maybe_counter = self.global_counter_vecs.read().unwrap().get(&id).cloned();
+        if let Some(counters) = maybe_counter {
+            Ok(counters)
+        } else {
+            self.register(name, Box::new(counters.clone()));
+            self.global_counter_vecs
+                .write()
+                .unwrap()
+                .insert(id, counters.clone());
+            Ok(counters)
+        }
+    }
 }
 
 impl MetricsRegistryTrait for MetricsRegistry {
@@ -160,20 +187,17 @@ impl MetricsRegistryTrait for MetricsRegistry {
         help: &str,
         variable_labels: &[&str],
     ) -> Result<CounterVec, PrometheusError> {
-        let opts = Opts::new(name, help);
-        let counters = CounterVec::new(opts, variable_labels)?;
-        let id = counters.desc().first().unwrap().id;
-        let maybe_counter = self.global_counter_vecs.read().unwrap().get(&id).cloned();
-        if let Some(counters) = maybe_counter {
-            Ok(counters)
-        } else {
-            self.register(name, Box::new(counters.clone()));
-            self.global_counter_vecs
-                .write()
-                .unwrap()
-                .insert(id, counters.clone());
-            Ok(counters)
-        }
+        self.global_counter_vec_internal(name, help, None, variable_labels)
+    }
+
+    fn global_deployment_counter_vec(
+        &self,
+        name: &str,
+        help: &str,
+        subgraph: &str,
+        variable_labels: &[&str],
+    ) -> Result<CounterVec, PrometheusError> {
+        self.global_counter_vec_internal(name, help, Some(subgraph), variable_labels)
     }
 
     fn global_gauge(
