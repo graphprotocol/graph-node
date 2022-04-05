@@ -309,7 +309,7 @@ pub enum IndexForAscTypeId {
     ArrayLog = 137,
 
     //Tendermint transaction data type
-    TendermintTransactionData = 139,
+    TendermintTransactionData = 138,
 }
 
 impl ToAscObj<u32> for IndexForAscTypeId {
