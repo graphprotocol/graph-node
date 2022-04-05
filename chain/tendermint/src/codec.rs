@@ -148,11 +148,11 @@ impl BlockchainBlock for EventBlock {
 }
 
 impl TransactionData {
-    pub fn tx(&self) -> &TxResult {
+    pub fn tx_result(&self) -> &TxResult {
         self.tx.as_ref().unwrap()
     }
 
-    pub fn tx_result(&self) -> &ResponseDeliverTx {
+    pub fn response_deliver_tx(&self) -> &ResponseDeliverTx {
         self.tx.as_ref().unwrap().result.as_ref().unwrap()
     }
 

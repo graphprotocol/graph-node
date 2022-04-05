@@ -163,7 +163,9 @@ impl Ord for TendermintTrigger {
             (Self::Event { .. }, Self::Event { .. }) => Ordering::Equal,
 
             // Transactions are ordered by their index inside the block
-            (Self::Transaction(a), Self::Transaction(b)) => a.tx().index.cmp(&b.tx().index),
+            (Self::Transaction(a), Self::Transaction(b)) => {
+                a.tx_result().index.cmp(&b.tx_result().index)
+            }
 
             // When comparing events and transactions, transactions go first
             (Self::Transaction(..), Self::Event { .. }) => Ordering::Less,
@@ -198,7 +200,7 @@ impl TriggerData for TendermintTrigger {
                     "block #{}, hash {}, transaction log: {}",
                     self.block_number(),
                     self.block_hash(),
-                    transaction_data.tx_result().log
+                    transaction_data.response_deliver_tx().log
                 )
             }
         }
