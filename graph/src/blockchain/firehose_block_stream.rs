@@ -2,7 +2,7 @@ use async_stream::try_stream;
 use futures03::{Stream, StreamExt};
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tonic::Status;
 
 use crate::blockchain::TriggerFilter;
@@ -13,6 +13,94 @@ use super::block_stream::{BlockStream, BlockStreamEvent, FirehoseMapper};
 use super::Blockchain;
 use crate::{firehose, firehose::FirehoseEndpoint};
 
+struct FirehoseBlockStreamMetrics {
+    deployment: DeploymentHash,
+    provider: String,
+    restarts: CounterVec,
+    connect_duration: GaugeVec,
+    time_between_responses: HistogramVec,
+    responses: CounterVec,
+}
+
+impl FirehoseBlockStreamMetrics {
+    pub fn new(
+        registry: Arc<dyn MetricsRegistry>,
+        deployment: DeploymentHash,
+        provider: String,
+    ) -> Self {
+        Self {
+            deployment,
+            provider,
+
+            restarts: registry
+                .global_counter_vec(
+                    "deployment_firehose_blockstream_restarts",
+                    "Counts the number of times a Firehose block stream is (re)started",
+                    vec!["deployment", "provider", "success"].as_slice(),
+                )
+                .unwrap(),
+
+            connect_duration: registry
+                .global_gauge_vec(
+                    "deployment_firehose_blockstream_connect_duration",
+                    "Measures the time it takes to connect a Firehose block stream",
+                    vec!["deployment", "provider"].as_slice(),
+                )
+                .unwrap(),
+
+            time_between_responses: registry
+                .global_histogram_vec(
+                    "deployment_firehose_blockstream_time_between_responses",
+                    "Measures the time between receiving and processing Firehose stream responses",
+                    vec!["deployment", "provider"].as_slice(),
+                )
+                .unwrap(),
+
+            responses: registry
+                .global_counter_vec(
+                    "deployment_firehose_blockstream_responses",
+                    "Counts the number of responses received from a Firehose block stream",
+                    vec!["deployment", "provider", "kind"].as_slice(),
+                )
+                .unwrap(),
+        }
+    }
+
+    fn observe_successful_connection(&self, time: &mut Instant) {
+        self.restarts
+            .with_label_values(&[&self.deployment, &self.provider, "true"]);
+        self.connect_duration
+            .with_label_values(&[&self.deployment, &self.provider])
+            .set(time.elapsed().as_secs_f64());
+
+        // Reset last connection timestamp
+        *time = Instant::now();
+    }
+
+    fn observe_failed_connection(&self, time: &mut Instant) {
+        self.restarts
+            .with_label_values(&[&self.deployment, &self.provider, "false"]);
+        self.connect_duration
+            .with_label_values(&[&self.deployment, &self.provider])
+            .set(time.elapsed().as_secs_f64());
+
+        // Reset last connection timestamp
+        *time = Instant::now();
+    }
+
+    fn observe_response(&self, kind: &str, time: &mut Instant) {
+        self.time_between_responses
+            .with_label_values(&[&self.deployment, &self.provider])
+            .observe(time.elapsed().as_secs_f64());
+        self.responses
+            .with_label_values(&[&self.deployment, &self.provider, kind])
+            .inc();
+
+        // Reset last response timestamp
+        *time = Instant::now();
+    }
+}
+
 pub struct FirehoseBlockStream<C: Blockchain> {
     stream: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, Error>> + Send>>,
 }
@@ -22,6 +110,7 @@ where
     C: Blockchain,
 {
     pub fn new<F>(
+        deployment: DeploymentHash,
         endpoint: Arc<FirehoseEndpoint>,
         subgraph_current_block: Option<BlockPtr>,
         cursor: Option<String>,
@@ -30,6 +119,7 @@ where
         filter: Arc<C::TriggerFilter>,
         start_blocks: Vec<BlockNumber>,
         logger: Logger,
+        registry: Arc<dyn MetricsRegistry>,
     ) -> Self
     where
         F: FirehoseMapper<C> + 'static,
@@ -41,6 +131,9 @@ where
             // start at Genesis block.
             .unwrap_or(0);
 
+        let metrics =
+            FirehoseBlockStreamMetrics::new(registry, deployment, endpoint.provider.clone());
+
         FirehoseBlockStream {
             stream: Box::pin(stream_blocks(
                 endpoint,
@@ -51,6 +144,7 @@ where
                 manifest_start_block_num,
                 subgraph_current_block,
                 logger,
+                metrics,
             )),
         }
     }
@@ -65,6 +159,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
     manifest_start_block_num: BlockNumber,
     subgraph_current_block: Option<BlockPtr>,
     logger: Logger,
+    metrics: FirehoseBlockStreamMetrics,
 ) -> impl Stream<Item = Result<BlockStreamEvent<C>, Error>> {
     use firehose::ForkStep::*;
 
@@ -142,15 +237,19 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                 request.transforms = filter.as_ref().clone().to_firehose_filter();
             }
 
-            let result = endpoint
-            .clone()
-            .stream_blocks(request).await;
+            let mut connect_start = Instant::now();
+            let result = endpoint.clone().stream_blocks(request).await;
 
             match result {
                 Ok(stream) => {
                     info!(&logger, "Blockstream connected");
+
+                    // Track the time it takes to set up the block stream
+                    metrics.observe_successful_connection(&mut connect_start);
+
                     backoff.reset();
 
+                    let mut last_response_time = Instant::now();
                     let mut expected_stream_end = false;
 
                     for await response in stream {
@@ -165,11 +264,15 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                             &logger,
                         ).await {
                             Ok(BlockResponse::Proceed(event, cursor)) => {
+                                metrics.observe_response("proceed", &mut last_response_time);
+
                                 yield event;
 
                                 latest_cursor = cursor;
                             },
                             Ok(BlockResponse::Rewind(revert_to)) => {
+                                metrics.observe_response("rewind", &mut last_response_time);
+
                                 // It's totally correct to pass the None as the cursor here, if we are here, there
                                 // was no cursor before anyway, so it's totally fine to pass `None`
                                 yield BlockStreamEvent::Revert(revert_to.clone(), None);
@@ -186,6 +289,8 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                                 break;
                             },
                             Err(err) => {
+                                metrics.observe_response("error", &mut last_response_time);
+
                                 error!(logger, "{:#}", err);
                                 expected_stream_end = true;
                                 break;
@@ -198,6 +303,8 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                     }
                 },
                 Err(e) => {
+                    metrics.observe_failed_connection(&mut connect_start);
+
                     error!(logger, "Unable to connect to endpoint: {:?}", e);
                 }
             }

@@ -286,6 +286,7 @@ async fn main() {
             &near_networks,
             network_store.as_ref(),
             &logger_factory,
+            metrics_registry.clone(),
         );
 
         let tendermint_chains = tendermint_networks_as_chains(
@@ -294,6 +295,7 @@ async fn main() {
             &tendermint_networks,
             network_store.as_ref(),
             &logger_factory,
+            metrics_registry.clone(),
         );
 
         let blockchain_map = Arc::new(blockchain_map);
@@ -592,6 +594,7 @@ fn tendermint_networks_as_chains(
     firehose_networks: &FirehoseNetworks,
     store: &Store,
     logger_factory: &LoggerFactory,
+    metrics_registry: Arc<MetricsRegistry>,
 ) -> HashMap<String, FirehoseChain<tendermint::Chain>> {
     let chains: Vec<_> = firehose_networks
         .networks
@@ -619,6 +622,7 @@ fn tendermint_networks_as_chains(
                         network_name.clone(),
                         chain_store,
                         firehose_endpoints.clone(),
+                        metrics_registry.clone(),
                     )),
                     firehose_endpoints: firehose_endpoints.clone(),
                 },
@@ -641,6 +645,7 @@ fn near_networks_as_chains(
     firehose_networks: &FirehoseNetworks,
     store: &Store,
     logger_factory: &LoggerFactory,
+    metrics_registry: Arc<MetricsRegistry>,
 ) -> HashMap<String, FirehoseChain<near::Chain>> {
     let chains: Vec<_> = firehose_networks
         .networks
@@ -667,6 +672,7 @@ fn near_networks_as_chains(
                         chain_id.clone(),
                         chain_store,
                         endpoints.clone(),
+                        metrics_registry.clone(),
                     )),
                     firehose_endpoints: endpoints.clone(),
                 },
