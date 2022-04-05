@@ -201,6 +201,7 @@ impl Blockchain for Chain {
         });
 
         Ok(Box::new(FirehoseBlockStream::new(
+            deployment.hash,
             firehose_endpoint,
             subgraph_current_block,
             block_cursor,
@@ -209,6 +210,7 @@ impl Blockchain for Chain {
             filter,
             start_blocks,
             logger,
+            self.registry.clone(),
         )))
     }
 

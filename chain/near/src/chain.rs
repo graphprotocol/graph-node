@@ -2,7 +2,7 @@ use graph::blockchain::BlockchainKind;
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
-use graph::prelude::TryFutureExt;
+use graph::prelude::{MetricsRegistry, TryFutureExt};
 use graph::{
     anyhow,
     blockchain::{
@@ -36,6 +36,7 @@ pub struct Chain {
     name: String,
     firehose_endpoints: Arc<FirehoseEndpoints>,
     chain_store: Arc<dyn ChainStore>,
+    metrics_registry: Arc<dyn MetricsRegistry>,
 }
 
 impl std::fmt::Debug for Chain {
@@ -50,12 +51,14 @@ impl Chain {
         name: String,
         chain_store: Arc<dyn ChainStore>,
         firehose_endpoints: FirehoseEndpoints,
+        metrics_registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         Chain {
             logger_factory,
             name,
             firehose_endpoints: Arc::new(firehose_endpoints),
             chain_store,
+            metrics_registry,
         }
     }
 }
@@ -124,6 +127,7 @@ impl Blockchain for Chain {
         });
 
         Ok(Box::new(FirehoseBlockStream::new(
+            deployment.hash,
             firehose_endpoint,
             subgraph_current_block,
             block_cursor,
@@ -132,6 +136,7 @@ impl Blockchain for Chain {
             filter,
             start_blocks,
             logger,
+            self.metrics_registry.clone(),
         )))
     }
 

@@ -285,4 +285,11 @@ pub trait MetricsRegistry: Send + Sync + 'static {
         self.register(name, histograms.clone());
         Ok(histograms)
     }
+
+    fn global_histogram_vec(
+        &self,
+        name: &str,
+        help: &str,
+        variable_labels: &[&str],
+    ) -> Result<HistogramVec, PrometheusError>;
 }
