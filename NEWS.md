@@ -1,9 +1,100 @@
 # NEWS
 
 ## Unreleased
-- Gracefully handle syntax errors on fulltext search. Specifically provides information about common use case
-  where whitespace characters were part of the terms.
-- Adds support for Solidity Custom Errors (issue #2577)
+
+- Pipeline store writes #3084 #3177
+
+## 0.26.0
+
+### Features
+
+- Gas metering #2414
+- Adds support for Solidity Custom Errors #2577
+- Debug fork tool #2995 #3292
+- Automatically remove unused deployments #3023
+- Fix fulltextsearch space handling #3048
+- Allow placing new deployments onto one of several shards #3049
+- Make NEAR subgraphs update their sync status #3108
+- GraphQL validations #3164
+- Add special treatment for immutable entities #3201
+- Tendermint integration #3212
+- Skip block updates when triggers are empty #3223 #3268
+- Use new GraphiQL version #3252
+- GraphQL prefetching #3256
+- Allow using Bytes as well as String/ID for the id of entities #3271
+- GraphQL route for dumping entity changes in subgraph and block #3275
+- Firehose filters #3323
+- NEAR filters #3372
+
+### Robustness
+
+- Improve our `CacheWeight` estimates #2935
+- Refactor GraphQL execution #3005
+- Setup databases in parallel #3019
+- Block ingestor now fetches receipts in parallel #3030
+- Prevent subscriptions from back-pressuring the notification queue #3053
+- Avoid parsing X triggers if the filter is empty #3083
+- Pipeline `BlockStream` #3085
+- More robust `proofOfIndexing` GraphQL route #3348
+
+### `graphman`
+
+- Add `run` command, for running a subgraph up to a block #3079
+- Add `analyze` command, for analyzing a PostgreSQL table, which can improve performance #3170
+- Add `index create` command, for adding an index to certain attributes #3175
+- Add `index list` command, for listing indexes #3198
+- Add `index drop` command, for dropping indexes #3198
+
+### Dependency Updates
+
+These are the main ones:
+
+- Updated protobuf to latest version for NEAR #2947
+- Update `web3` crate #2916 #3120 #3338
+- Update `graphql-parser` to `v0.4.0` #3020
+- Bump `itertools` from `0.10.1` to `0.10.3` #3037
+- Bump `clap` from `2.33.3` to `2.34.0` #3039
+- Bump `serde_yaml` from `0.8.21` to `0.8.23` #3065
+- Bump `tokio` from `1.14.0` to `1.15.0` #3092
+- Bump `indexmap` from `1.7.0` to `1.8.0` #3143
+- Update `ethabi` to its latest version #3144
+- Bump `structopt` from `0.3.25` to `0.3.26` #3180
+- Bump `anyhow` from `1.0.45` to `1.0.53` #3182
+- Bump `quote` from `1.0.9` to `1.0.16` #3112 #3183 #3384
+- Bump `tokio` from `1.15.0` to `1.16.1` #3208
+- Bump `semver` from `1.0.4` to `1.0.5` #3229
+- Bump `async-stream` from `0.3.2` to `0.3.3` #3361
+- Update `jsonrpc-server` #3313
+
+### Misc
+
+- More context when logging RPC calls #3128
+- Increase default reorg threshold to 250 for Ethereum #3308
+- Improve traces error logs #3353
+- Add warning and continue on parse input failures for Ethereum #3326
+
+### Upgrade Notes
+
+When upgrading to this version, we recommend taking a brief look into these changes:
+
+- Gas metering #2414
+  - Now there's a gas limit for subgraph mappings, if the limit is reached the subgraph will fail with a non-deterministic error, you can make them recover via the environment variable `GRAPH_MAX_GAS_PER_HANDLER`
+- Improve our `CacheWeight` estimates #2935
+  - This is relevant because a couple of releases back we've added a limit for the memory size of a query result. That limit is based of the `CacheWeight`.
+
+These are some of the features that will probably be helpful for indexers 😊
+
+- Allow placing new deployments onto one of several shards #3049
+- GraphQL route for dumping entity changes in subgraph and block #3275
+- Unused deployments are automatically removed now #3023
+  - The interval can be set via `GRAPH_REMOVE_UNUSED_INTERVAL`
+- Setup databases in parallel #3019
+- Block ingestor now fetches receipts in parallel #3030
+  - `GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES` can be set to `true` for the old fetching behavior
+- More robust `proofOfIndexing` GraphQL route #3348
+  - A token can be set via `GRAPH_POI_ACCESS_TOKEN` to limit access to the POI route
+- The new `graphman` commands 🙂
+
 
 ### Api Version 0.0.7 and Spec Version 0.0.5
 This release brings API Version 0.0.7 in mappings, which allows Ethereum event handlers to require transaction receipts to be present in the `Event` object.
