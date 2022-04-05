@@ -26,22 +26,22 @@ impl From<hyper::Error> for IndexNodeServeError {
 }
 
 /// A GraphQL server based on Hyper.
-pub struct IndexNodeServer<Q, S, R> {
+pub struct IndexNodeServer<Q, S> {
     logger: Logger,
     blockchain_map: Arc<BlockchainMap>,
     graphql_runner: Arc<Q>,
     store: Arc<S>,
-    link_resolver: Arc<R>,
+    link_resolver: Arc<dyn LinkResolver>,
 }
 
-impl<Q, S, R> IndexNodeServer<Q, S, R> {
+impl<Q, S> IndexNodeServer<Q, S> {
     /// Creates a new GraphQL server.
     pub fn new(
         logger_factory: &LoggerFactory,
         blockchain_map: Arc<BlockchainMap>,
         graphql_runner: Arc<Q>,
         store: Arc<S>,
-        link_resolver: Arc<R>,
+        link_resolver: Arc<dyn LinkResolver>,
     ) -> Self {
         let logger = logger_factory.component_logger(
             "IndexNodeServer",
@@ -62,11 +62,10 @@ impl<Q, S, R> IndexNodeServer<Q, S, R> {
     }
 }
 
-impl<Q, S, R> IndexNodeServerTrait for IndexNodeServer<Q, S, R>
+impl<Q, S> IndexNodeServerTrait for IndexNodeServer<Q, S>
 where
     Q: GraphQlRunner,
     S: Store,
-    R: LinkResolver,
 {
     type ServeError = IndexNodeServeError;
 

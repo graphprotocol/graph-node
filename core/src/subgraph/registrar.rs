@@ -12,10 +12,10 @@ use graph::prelude::{
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
 
-pub struct SubgraphRegistrar<L, P, S, SM> {
+pub struct SubgraphRegistrar<P, S, SM> {
     logger: Logger,
     logger_factory: LoggerFactory,
-    resolver: Arc<L>,
+    resolver: Arc<dyn LinkResolver>,
     provider: Arc<P>,
     store: Arc<S>,
     subscription_manager: Arc<SM>,
@@ -25,16 +25,15 @@ pub struct SubgraphRegistrar<L, P, S, SM> {
     assignment_event_stream_cancel_guard: CancelGuard, // cancels on drop
 }
 
-impl<L, P, S, SM> SubgraphRegistrar<L, P, S, SM>
+impl<P, S, SM> SubgraphRegistrar<P, S, SM>
 where
-    L: LinkResolver + Clone,
     P: SubgraphAssignmentProviderTrait,
     S: SubgraphStore,
     SM: SubscriptionManager,
 {
     pub fn new(
         logger_factory: &LoggerFactory,
-        resolver: Arc<L>,
+        resolver: Arc<dyn LinkResolver>,
         provider: Arc<P>,
         store: Arc<S>,
         subscription_manager: Arc<SM>,
@@ -45,10 +44,12 @@ where
         let logger = logger_factory.component_logger("SubgraphRegistrar", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
 
+        let resolver = resolver.with_retries();
+
         SubgraphRegistrar {
             logger,
             logger_factory,
-            resolver: Arc::new(resolver.as_ref().clone().with_retries()),
+            resolver: resolver.into(),
             provider,
             store,
             subscription_manager,
@@ -159,8 +160,9 @@ where
             .and_then(
                 move |(deployment, operation)| -> Result<Box<dyn Stream<Item = _, Error = _> + Send>, _> {
                     trace!(logger, "Received assignment change";
-                                   "deployment" => &deployment,
-                                   "operation" => format!("{:?}", operation));
+                                   "deployment" => %deployment,
+                                   "operation" => format!("{:?}", operation),
+                                );
 
                     match operation {
                         EntityChangeOperation::Set => {
@@ -242,9 +244,8 @@ where
 }
 
 #[async_trait]
-impl<L, P, S, SM> SubgraphRegistrarTrait for SubgraphRegistrar<L, P, S, SM>
+impl<P, S, SM> SubgraphRegistrarTrait for SubgraphRegistrar<P, S, SM>
 where
-    L: LinkResolver,
     P: SubgraphAssignmentProviderTrait,
     S: SubgraphStore,
     SM: SubscriptionManager,
@@ -296,7 +297,7 @@ where
 
         match kind {
             BlockchainKind::Ethereum => {
-                create_subgraph_version::<graph_chain_ethereum::Chain, _, _>(
+                create_subgraph_version::<graph_chain_ethereum::Chain, _>(
                     &logger,
                     self.store.clone(),
                     self.chains.cheap_clone(),
@@ -307,13 +308,13 @@ where
                     node_id,
                     debug_fork,
                     self.version_switching_mode,
-                    self.resolver.cheap_clone(),
+                    &self.resolver,
                 )
                 .await?
             }
 
             BlockchainKind::Near => {
-                create_subgraph_version::<graph_chain_near::Chain, _, _>(
+                create_subgraph_version::<graph_chain_near::Chain, _>(
                     &logger,
                     self.store.clone(),
                     self.chains.cheap_clone(),
@@ -324,13 +325,13 @@ where
                     node_id,
                     debug_fork,
                     self.version_switching_mode,
-                    self.resolver.cheap_clone(),
+                    &self.resolver,
                 )
                 .await?
             }
 
             BlockchainKind::Tendermint => {
-                create_subgraph_version::<graph_chain_tendermint::Chain, _, _>(
+                create_subgraph_version::<graph_chain_tendermint::Chain, _>(
                     &logger,
                     self.store.clone(),
                     self.chains.cheap_clone(),
@@ -341,7 +342,7 @@ where
                     node_id,
                     debug_fork,
                     self.version_switching_mode,
-                    self.resolver.cheap_clone(),
+                    &self.resolver,
                 )
                 .await?
             }
@@ -507,7 +508,7 @@ async fn resolve_subgraph_chain_blocks(
     Ok((start_block_ptr, base_ptr))
 }
 
-async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolver>(
+async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
     logger: &Logger,
     store: Arc<S>,
     chains: Arc<BlockchainMap>,
@@ -518,12 +519,12 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, L: LinkResolve
     node_id: NodeId,
     debug_fork: Option<DeploymentHash>,
     version_switching_mode: SubgraphVersionSwitchingMode,
-    resolver: Arc<L>,
+    resolver: &Arc<dyn LinkResolver>,
 ) -> Result<(), SubgraphRegistrarError> {
     let unvalidated = UnvalidatedSubgraphManifest::<C>::resolve(
         deployment,
         raw,
-        resolver,
+        &resolver,
         &logger,
         ENV_VARS.max_spec_version.clone(),
     )

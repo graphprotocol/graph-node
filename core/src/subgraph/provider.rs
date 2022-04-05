@@ -8,19 +8,19 @@ use graph::{
     prelude::{SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait, *},
 };
 
-pub struct SubgraphAssignmentProvider<L, I> {
+pub struct SubgraphAssignmentProvider<I> {
     logger_factory: LoggerFactory,
     subgraphs_running: Arc<Mutex<HashSet<DeploymentId>>>,
-    link_resolver: Arc<L>,
+    link_resolver: Arc<dyn LinkResolver>,
     instance_manager: Arc<I>,
 }
 
-impl<L, I> SubgraphAssignmentProvider<L, I>
-where
-    L: LinkResolver + CheapClone,
-    I: SubgraphInstanceManager,
-{
-    pub fn new(logger_factory: &LoggerFactory, link_resolver: Arc<L>, instance_manager: I) -> Self {
+impl<I: SubgraphInstanceManager> SubgraphAssignmentProvider<I> {
+    pub fn new(
+        logger_factory: &LoggerFactory,
+        link_resolver: Arc<dyn LinkResolver>,
+        instance_manager: I,
+    ) -> Self {
         let logger = logger_factory.component_logger("SubgraphAssignmentProvider", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
 
@@ -28,18 +28,14 @@ where
         SubgraphAssignmentProvider {
             logger_factory,
             subgraphs_running: Arc::new(Mutex::new(HashSet::new())),
-            link_resolver: Arc::new(link_resolver.as_ref().cheap_clone().with_retries()),
+            link_resolver: link_resolver.with_retries().into(),
             instance_manager: Arc::new(instance_manager),
         }
     }
 }
 
 #[async_trait]
-impl<L, I> SubgraphAssignmentProviderTrait for SubgraphAssignmentProvider<L, I>
-where
-    L: LinkResolver,
-    I: SubgraphInstanceManager,
-{
+impl<I: SubgraphInstanceManager> SubgraphAssignmentProviderTrait for SubgraphAssignmentProvider<I> {
     async fn start(
         &self,
         loc: DeploymentLocator,

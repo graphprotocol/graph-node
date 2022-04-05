@@ -251,7 +251,11 @@ pub struct UnresolvedDataSource {
 
 #[async_trait]
 impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
-    async fn resolve(self, resolver: &impl LinkResolver, logger: &Logger) -> Result<DataSource> {
+    async fn resolve(
+        self,
+        resolver: &Arc<dyn LinkResolver>,
+        logger: &Logger,
+    ) -> Result<DataSource> {
         let UnresolvedDataSource {
             kind,
             network,
@@ -263,7 +267,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
 
         info!(logger, "Resolve data source"; "name" => &name, "source" => &source.start_block);
 
-        let mapping = mapping.resolve(&*resolver, logger).await?;
+        let mapping = mapping.resolve(resolver, logger).await?;
 
         DataSource::from_manifest(kind, network, name, source, mapping, context)
     }
@@ -292,7 +296,7 @@ pub type DataSourceTemplate = BaseDataSourceTemplate<Mapping>;
 impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTemplate {
     async fn resolve(
         self,
-        _resolver: &impl LinkResolver,
+        _resolver: &Arc<dyn LinkResolver>,
         _logger: &Logger,
     ) -> Result<DataSourceTemplate> {
         Err(anyhow!(TEMPLATE_ERROR))
@@ -327,7 +331,11 @@ pub struct UnresolvedMapping {
 }
 
 impl UnresolvedMapping {
-    pub async fn resolve(self, resolver: &impl LinkResolver, logger: &Logger) -> Result<Mapping> {
+    pub async fn resolve(
+        self,
+        resolver: &Arc<dyn LinkResolver>,
+        logger: &Logger,
+    ) -> Result<Mapping> {
         let UnresolvedMapping {
             api_version,
             language,

@@ -74,7 +74,7 @@ pub struct HostMetrics {
 
 impl HostMetrics {
     pub fn new(
-        registry: Arc<impl MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistry>,
         subgraph: &str,
         stopwatch: StopwatchMetrics,
     ) -> Self {

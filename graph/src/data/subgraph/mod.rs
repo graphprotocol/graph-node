@@ -394,7 +394,7 @@ impl UnresolvedSchema {
     pub async fn resolve(
         self,
         id: DeploymentHash,
-        resolver: &impl LinkResolver,
+        resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
     ) -> Result<Schema, anyhow::Error> {
         info!(logger, "Resolve schema"; "link" => &self.file.link);
@@ -519,13 +519,12 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
     pub async fn resolve(
         id: DeploymentHash,
         raw: serde_yaml::Mapping,
-        resolver: Arc<impl LinkResolver>,
+        resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
         Ok(Self(
-            SubgraphManifest::resolve_from_raw(id, raw, resolver.deref(), logger, max_spec_version)
-                .await?,
+            SubgraphManifest::resolve_from_raw(id, raw, resolver, logger, max_spec_version).await?,
         ))
     }
 
@@ -616,7 +615,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
     pub async fn resolve_from_raw(
         id: DeploymentHash,
         mut raw: serde_yaml::Mapping,
-        resolver: &impl LinkResolver,
+        resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
@@ -632,7 +631,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
         debug!(logger, "Features {:?}", unresolved.features);
 
         unresolved
-            .resolve(&*resolver, logger, max_spec_version)
+            .resolve(resolver, logger, max_spec_version)
             .await
             .map_err(SubgraphManifestResolveError::ResolveError)
     }
@@ -677,7 +676,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
 impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
     pub async fn resolve(
         self,
-        resolver: &impl LinkResolver,
+        resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<SubgraphManifest<C>, anyhow::Error> {
@@ -705,15 +704,15 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
         }
 
         let (schema, data_sources, templates) = try_join3(
-            schema.resolve(id.clone(), resolver, logger),
+            schema.resolve(id.clone(), &resolver, logger),
             data_sources
                 .into_iter()
-                .map(|ds| ds.resolve(resolver, logger))
+                .map(|ds| ds.resolve(&resolver, logger))
                 .collect::<FuturesOrdered<_>>()
                 .try_collect::<Vec<_>>(),
             templates
                 .into_iter()
-                .map(|template| template.resolve(resolver, logger))
+                .map(|template| template.resolve(&resolver, logger))
                 .collect::<FuturesOrdered<_>>()
                 .try_collect::<Vec<_>>(),
         )

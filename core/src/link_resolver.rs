@@ -130,6 +130,16 @@ impl LinkResolver {
     }
 }
 
+impl Debug for LinkResolver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LinkResolver")
+            .field("timeout", &self.timeout)
+            .field("retry", &self.retry)
+            .field("env_vars", &self.env_vars)
+            .finish()
+    }
+}
+
 impl CheapClone for LinkResolver {
     fn cheap_clone(&self) -> Self {
         self.clone()
@@ -138,14 +148,16 @@ impl CheapClone for LinkResolver {
 
 #[async_trait]
 impl LinkResolverTrait for LinkResolver {
-    fn with_timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = timeout;
-        self
+    fn with_timeout(&self, timeout: Duration) -> Box<dyn LinkResolverTrait> {
+        let mut s = self.cheap_clone();
+        s.timeout = timeout;
+        Box::new(s)
     }
 
-    fn with_retries(mut self) -> Self {
-        self.retry = true;
-        self
+    fn with_retries(&self) -> Box<dyn LinkResolverTrait> {
+        let mut s = self.cheap_clone();
+        s.retry = true;
+        Box::new(s)
     }
 
     /// Supports links of the form `/ipfs/ipfs_hash` or just `ipfs_hash`.

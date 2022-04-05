@@ -367,14 +367,14 @@ async fn main() {
             network_store.subgraph_store(),
             blockchain_map.cheap_clone(),
             metrics_registry.clone(),
-            link_resolver.cheap_clone(),
+            link_resolver.clone(),
             static_filters,
         );
 
         // Create IPFS-based subgraph provider
         let subgraph_provider = IpfsSubgraphAssignmentProvider::new(
             &logger_factory,
-            link_resolver.cheap_clone(),
+            link_resolver.clone(),
             subgraph_instance_manager,
         );
 
@@ -384,7 +384,7 @@ async fn main() {
         // Create named subgraph provider for resolving subgraph name->ID mappings
         let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
             &logger_factory,
-            link_resolver.cheap_clone(),
+            link_resolver,
             Arc::new(subgraph_provider),
             network_store.subgraph_store(),
             subscription_manager,
