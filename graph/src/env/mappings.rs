@@ -20,25 +20,6 @@ pub struct EnvVarsMapping {
     /// Set by the environment variable `GRAPH_RUNTIME_MAX_STACK_SIZE`
     /// (expressed in bytes). The default value is 512KiB.
     pub max_stack_size: usize,
-    /// How many blocks per network should be kept in the query cache. When the
-    /// limit is reached, older blocks are evicted. This should be kept small
-    /// since a lookup to the cache is O(n) on this value, and the cache memory
-    /// usage also increases with larger number. Set to 0 to disable
-    /// the cache.
-    ///
-    /// Set by the environment variable `GRAPH_QUERY_CACHE_BLOCKS`. The default
-    /// value is 2.
-    pub query_cache_blocks: usize,
-    /// Maximum total memory to be used by the cache. Each block has a max size of
-    /// `QUERY_CACHE_MAX_MEM` / (`QUERY_CACHE_BLOCKS` *
-    /// `GRAPH_QUERY_BLOCK_CACHE_SHARDS`).
-    ///
-    /// Set by the environment variable `GRAPH_QUERY_CACHE_MAX_MEM` (expressed
-    /// in MB). The default value is 1GB.
-    pub query_cache_max_mem: usize,
-    /// Set by the environment variable `GRAPH_QUERY_CACHE_STALE_PERIOD`. The
-    /// default value is 100.
-    pub query_cache_stale_period: u64,
 
     /// Set by the environment variable `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`
     /// (expressed in bytes). The default value is 1MiB.
@@ -80,12 +61,10 @@ impl From<InnerMappingHandlers> for EnvVarsMapping {
     fn from(x: InnerMappingHandlers) -> Self {
         Self {
             entity_cache_size: x.entity_cache_size_in_kb * 1000,
+
             max_api_version: x.max_api_version,
             timeout: x.mapping_handler_timeout_in_secs.map(Duration::from_secs),
             max_stack_size: x.runtime_max_stack_size.0 .0,
-            query_cache_blocks: x.query_cache_blocks,
-            query_cache_max_mem: x.query_cache_max_mem_in_mb.0 * 1000 * 1000,
-            query_cache_stale_period: x.query_cache_stale_period,
 
             max_ipfs_cache_file_size: x.max_ipfs_cache_file_size.0,
             max_ipfs_cache_size: x.max_ipfs_cache_size,
@@ -107,12 +86,6 @@ pub struct InnerMappingHandlers {
     mapping_handler_timeout_in_secs: Option<u64>,
     #[envconfig(from = "GRAPH_RUNTIME_MAX_STACK_SIZE", default = "")]
     runtime_max_stack_size: WithDefaultUsize<NoUnderscores<usize>, { 512 * 1024 }>,
-    #[envconfig(from = "GRAPH_QUERY_CACHE_BLOCKS", default = "2")]
-    query_cache_blocks: usize,
-    #[envconfig(from = "GRAPH_QUERY_CACHE_MAX_MEM", default = "1000")]
-    query_cache_max_mem_in_mb: NoUnderscores<usize>,
-    #[envconfig(from = "GRAPH_QUERY_CACHE_STALE_PERIOD", default = "100")]
-    query_cache_stale_period: u64,
 
     // IPFS.
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "")]
