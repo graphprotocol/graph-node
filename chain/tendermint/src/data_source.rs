@@ -67,6 +67,11 @@ impl blockchain::DataSource<Chain> for DataSource {
                     None => return Ok(None),
                 }
             }
+
+            TendermintTrigger::Transaction(_) => match self.handler_for_transaction() {
+                Some(handler) => handler.handler,
+                None => return Ok(None),
+            },
         };
 
         Ok(Some(TriggerWithHandler::new(
@@ -118,6 +123,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             && source == &other.source
             && mapping.block_handlers == other.mapping.block_handlers
             && mapping.event_handlers == other.mapping.event_handlers
+            && mapping.transaction_handlers == other.mapping.transaction_handlers
             && context == &other.context
     }
 
@@ -146,6 +152,11 @@ impl blockchain::DataSource<Chain> for DataSource {
         // Ensure there is only one block handler
         if self.mapping.block_handlers.len() > 1 {
             errors.push(anyhow!("data source has duplicated block handlers"));
+        }
+
+        // Ensure there is only one transaction handler
+        if self.mapping.transaction_handlers.len() > 1 {
+            errors.push(anyhow!("data source has duplicated transaction handlers"));
         }
 
         // Ensure that each event type + origin filter combination has only one handler
@@ -216,6 +227,10 @@ impl DataSource {
 
     fn handler_for_block(&self) -> Option<MappingBlockHandler> {
         self.mapping.block_handlers.first().cloned()
+    }
+
+    fn handler_for_transaction(&self) -> Option<MappingTransactionHandler> {
+        self.mapping.transaction_handlers.first().cloned()
     }
 
     fn handler_for_event(
@@ -327,6 +342,8 @@ pub struct UnresolvedMapping {
     pub block_handlers: Vec<MappingBlockHandler>,
     #[serde(default)]
     pub event_handlers: Vec<MappingEventHandler>,
+    #[serde(default)]
+    pub transaction_handlers: Vec<MappingTransactionHandler>,
     pub file: Link,
 }
 
@@ -342,6 +359,7 @@ impl UnresolvedMapping {
             entities,
             block_handlers,
             event_handlers,
+            transaction_handlers,
             file: link,
         } = self;
 
@@ -356,6 +374,7 @@ impl UnresolvedMapping {
             entities,
             block_handlers: block_handlers.clone(),
             event_handlers: event_handlers.clone(),
+            transaction_handlers: transaction_handlers.clone(),
             runtime: Arc::new(module_bytes),
             link,
         })
@@ -369,6 +388,7 @@ pub struct Mapping {
     pub entities: Vec<String>,
     pub block_handlers: Vec<MappingBlockHandler>,
     pub event_handlers: Vec<MappingEventHandler>,
+    pub transaction_handlers: Vec<MappingTransactionHandler>,
     pub runtime: Arc<Vec<u8>>,
     pub link: Link,
 }
@@ -382,6 +402,11 @@ pub struct MappingBlockHandler {
 pub struct MappingEventHandler {
     pub event: String,
     pub origin: Option<EventOrigin>,
+    pub handler: String,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub struct MappingTransactionHandler {
     pub handler: String,
 }
 
@@ -493,6 +518,7 @@ mod tests {
                     entities: vec![],
                     block_handlers: vec![],
                     event_handlers,
+                    transaction_handlers: vec![],
                     runtime: Arc::new(vec![]),
                     link: "test".to_string().into(),
                 },

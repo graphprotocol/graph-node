@@ -15,6 +15,13 @@ pub struct EventData {
     pub block: ::core::option::Option<EventBlock>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TransactionData {
+    #[prost(message, optional, tag = "1")]
+    pub tx: ::core::option::Option<TxResult>,
+    #[prost(message, optional, tag = "2")]
+    pub block: ::core::option::Option<EventBlock>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Block {
     #[prost(message, optional, tag = "1")]
     pub header: ::core::option::Option<Header>,

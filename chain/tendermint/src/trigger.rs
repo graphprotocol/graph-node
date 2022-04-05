@@ -18,6 +18,7 @@ impl std::fmt::Debug for TendermintTrigger {
                 event_type: &'e str,
                 origin: EventOrigin,
             },
+            Transaction,
         }
 
         let trigger_without_block = match self {
@@ -26,6 +27,7 @@ impl std::fmt::Debug for TendermintTrigger {
                 event_type: &event_data.event().event_type,
                 origin: *origin,
             },
+            TendermintTrigger::Transaction(_) => MappingTriggerWithoutBlock::Transaction,
         };
 
         write!(f, "{:?}", trigger_without_block)
@@ -45,6 +47,9 @@ impl MappingTrigger for TendermintTrigger {
             TendermintTrigger::Event { event_data, .. } => {
                 asc_new(heap, event_data.as_ref(), gas)?.erase()
             }
+            TendermintTrigger::Transaction(transaction_data) => {
+                asc_new(heap, transaction_data.as_ref(), gas)?.erase()
+            }
         })
     }
 }
@@ -56,6 +61,7 @@ pub enum TendermintTrigger {
         event_data: Arc<codec::EventData>,
         origin: EventOrigin,
     },
+    Transaction(Arc<codec::TransactionData>),
 }
 
 impl CheapClone for TendermintTrigger {
@@ -68,6 +74,9 @@ impl CheapClone for TendermintTrigger {
                 event_data: event_data.cheap_clone(),
                 origin: *origin,
             },
+            TendermintTrigger::Transaction(transaction_data) => {
+                TendermintTrigger::Transaction(transaction_data.cheap_clone())
+            }
         }
     }
 }
@@ -89,6 +98,7 @@ impl PartialEq for TendermintTrigger {
                 a_event_data.event().event_type == b_event_data.event().event_type
                     && a_origin == b_origin
             }
+            (Self::Transaction(a_ptr), Self::Transaction(b_ptr)) => a_ptr == b_ptr,
             _ => false,
         }
     }
@@ -111,10 +121,21 @@ impl TendermintTrigger {
         }
     }
 
+    pub(crate) fn with_transaction(
+        tx_result: codec::TxResult,
+        block: codec::EventBlock,
+    ) -> TendermintTrigger {
+        TendermintTrigger::Transaction(Arc::new(codec::TransactionData {
+            tx: Some(tx_result),
+            block: Some(block),
+        }))
+    }
+
     pub fn block_number(&self) -> BlockNumber {
         match self {
             TendermintTrigger::Block(event_list) => event_list.block().number(),
             TendermintTrigger::Event { event_data, .. } => event_data.block().number(),
+            TendermintTrigger::Transaction(transaction_data) => transaction_data.block().number(),
         }
     }
 
@@ -122,6 +143,7 @@ impl TendermintTrigger {
         match self {
             TendermintTrigger::Block(event_list) => event_list.block().hash(),
             TendermintTrigger::Event { event_data, .. } => event_data.block().hash(),
+            TendermintTrigger::Transaction(transaction_data) => transaction_data.block().hash(),
         }
     }
 }
@@ -139,6 +161,15 @@ impl Ord for TendermintTrigger {
             // Events have no intrinsic ordering information, so we keep the order in
             // which they are included in the `events` field
             (Self::Event { .. }, Self::Event { .. }) => Ordering::Equal,
+
+            // Transactions are ordered by their index inside the block
+            (Self::Transaction(a), Self::Transaction(b)) => {
+                a.tx_result().index.cmp(&b.tx_result().index)
+            }
+
+            // When comparing events and transactions, transactions go first
+            (Self::Transaction(..), Self::Event { .. }) => Ordering::Less,
+            (Self::Event { .. }, Self::Transaction(..)) => Ordering::Greater,
         }
     }
 }
@@ -162,6 +193,14 @@ impl TriggerData for TendermintTrigger {
                     origin,
                     self.block_number(),
                     self.block_hash(),
+                )
+            }
+            TendermintTrigger::Transaction(transaction_data) => {
+                format!(
+                    "block #{}, hash {}, transaction log: {}",
+                    self.block_number(),
+                    self.block_hash(),
+                    transaction_data.response_deliver_tx().log
                 )
             }
         }
