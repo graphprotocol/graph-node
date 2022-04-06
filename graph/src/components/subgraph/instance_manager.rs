@@ -1,7 +1,7 @@
-use crate::prelude::BlockNumber;
-use std::sync::Arc;
-
 use crate::components::store::DeploymentLocator;
+use crate::prelude::BlockNumber;
+use anyhow::Result;
+use std::sync::Arc;
 
 /// A `SubgraphInstanceManager` loads and manages subgraph instances.
 ///
@@ -15,6 +15,6 @@ pub trait SubgraphInstanceManager: Send + Sync + 'static {
         deployment: DeploymentLocator,
         manifest: serde_yaml::Mapping,
         stop_block: Option<BlockNumber>,
-    );
+    ) -> Result<()>;
     fn stop_subgraph(&self, deployment: DeploymentLocator);
 }

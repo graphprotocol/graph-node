@@ -6,6 +6,7 @@ use crate::subgraph::metrics::{
 };
 use crate::subgraph::runner::SubgraphRunner;
 use crate::subgraph::SubgraphInstance;
+use anyhow::Result;
 use graph::blockchain::block_stream::BlockStreamMetrics;
 use graph::blockchain::Blockchain;
 use graph::blockchain::NodeCapabilities;
@@ -32,14 +33,19 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
         loc: DeploymentLocator,
         manifest: serde_yaml::Mapping,
         stop_block: Option<BlockNumber>,
-    ) {
+    ) -> Result<()> {
         let logger = self.logger_factory.subgraph_logger(&loc);
         let err_logger = logger.clone();
         let instance_manager = self.cheap_clone();
+        let kind = BlockchainKind::from_manifest(&manifest)?;
 
         let subgraph_start_future = async move {
-            match BlockchainKind::from_manifest(&manifest)? {
+            match kind {
                 BlockchainKind::Ethereum => {
+                    let manifest = instance_manager
+                        .parse_manifest::<graph_chain_ethereum::Chain>(&logger, &loc, manifest)
+                        .await?;
+
                     instance_manager
                         .start_subgraph_inner::<graph_chain_ethereum::Chain>(
                             logger, loc, manifest, stop_block,
@@ -47,6 +53,10 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                         .await
                 }
                 BlockchainKind::Near => {
+                    let manifest = instance_manager
+                        .parse_manifest::<graph_chain_near::Chain>(&logger, &loc, manifest)
+                        .await?;
+
                     instance_manager
                         .start_subgraph_inner::<graph_chain_near::Chain>(
                             logger, loc, manifest, stop_block,
@@ -54,6 +64,10 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                         .await
                 }
                 BlockchainKind::Tendermint => {
+                    let manifest = instance_manager
+                        .parse_manifest::<graph_chain_tendermint::Chain>(&logger, &loc, manifest)
+                        .await?;
+
                     instance_manager
                         .start_subgraph_inner::<graph_chain_tendermint::Chain>(
                             logger, loc, manifest, stop_block,
@@ -62,6 +76,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                 }
             }
         };
+
         // Perform the actual work of starting the subgraph in a separate
         // task. If the subgraph is a graft or a copy, starting it will
         // perform the actual work of grafting/copying, which can take
@@ -78,6 +93,8 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                 ),
             }
         });
+
+        Ok(())
     }
 
     fn stop_subgraph(&self, loc: DeploymentLocator) {
@@ -116,11 +133,58 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         }
     }
 
+    async fn parse_manifest<C: Blockchain>(
+        &self,
+        logger: &Logger,
+        deployment: &DeploymentLocator,
+        manifest: serde_yaml::Mapping,
+    ) -> Result<SubgraphManifest<C>> {
+        let store = self
+            .subgraph_store
+            .cheap_clone()
+            .writable(logger.clone(), deployment.id)
+            .await?;
+
+        info!(logger, "Resolve subgraph files using IPFS");
+
+        let mut manifest = SubgraphManifest::resolve_from_raw(
+            deployment.hash.cheap_clone(),
+            manifest,
+            // Allow for infinite retries for subgraph definition files.
+            &self.link_resolver,
+            &logger,
+            ENV_VARS.max_spec_version.clone(),
+        )
+        .await
+        .context("Failed to resolve subgraph from IPFS")?;
+
+        let data_sources = load_dynamic_data_sources::<C>(
+            store.clone(),
+            logger.clone(),
+            manifest.templates.clone(),
+        )
+        .await
+        .context("Failed to load dynamic data sources")?;
+
+        info!(logger, "Successfully resolved subgraph files using IPFS");
+
+        // Add dynamic data sources to the subgraph
+        manifest.data_sources.extend(data_sources);
+
+        info!(
+            logger,
+            "Data source count at start: {}",
+            manifest.data_sources.len()
+        );
+
+        Ok(manifest)
+    }
+
     async fn start_subgraph_inner<C: Blockchain>(
         self: Arc<Self>,
         logger: Logger,
         deployment: DeploymentLocator,
-        manifest: serde_yaml::Mapping,
+        manifest: SubgraphManifest<C>,
         stop_block: Option<BlockNumber>,
     ) -> Result<(), Error> {
         let subgraph_store = self.subgraph_store.cheap_clone();
@@ -136,42 +200,6 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         // do the copying and dynamic data sources won't show up until after
         // that is done
         store.start_subgraph_deployment(&logger).await?;
-
-        let manifest: SubgraphManifest<C> = {
-            info!(logger, "Resolve subgraph files using IPFS");
-
-            let mut manifest = SubgraphManifest::resolve_from_raw(
-                deployment.hash.cheap_clone(),
-                manifest,
-                // Allow for infinite retries for subgraph definition files.
-                &self.link_resolver,
-                &logger,
-                ENV_VARS.max_spec_version.clone(),
-            )
-            .await
-            .context("Failed to resolve subgraph from IPFS")?;
-
-            let data_sources = load_dynamic_data_sources::<C>(
-                store.clone(),
-                logger.clone(),
-                manifest.templates.clone(),
-            )
-            .await
-            .context("Failed to load dynamic data sources")?;
-
-            info!(logger, "Successfully resolved subgraph files using IPFS");
-
-            // Add dynamic data sources to the subgraph
-            manifest.data_sources.extend(data_sources);
-
-            info!(
-                logger,
-                "Data source count at start: {}",
-                manifest.data_sources.len()
-            );
-
-            manifest
-        };
 
         let required_capabilities = C::NodeCapabilities::from_data_sources(&manifest.data_sources);
         let network = manifest.network_name();
