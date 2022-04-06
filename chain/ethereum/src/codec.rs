@@ -84,6 +84,7 @@ impl Into<web3::types::CallType> for CallType {
             CallType::Static => web3::types::CallType::StaticCall,
 
             // FIXME (SF): Really not sure what this should map to, we are using None for now, need to revisit
+            // we don't use create anywhere in graph-node!
             CallType::Create => web3::types::CallType::None,
         }
     }
@@ -223,9 +224,9 @@ impl Into<EthereumBlockWithCalls> for &Block {
                         .difficulty
                         .as_ref()
                         .map_or_else(|| U256::default(), |v| v.into()),
-                    // FIXME (SF): Not sure we have such equivalent stuff in Firehose, need to double-check (is this important?)
+                    // FIXME (SF): not instrumented
                     total_difficulty: None,
-                    // FIXME (SF): Firehose does not have seal fields, are they really used? Might be required for POA chains only also, I've seen that stuff on xDai (is this important?)
+                    // We don't use this field, it's okay to be empty for now.
                     seal_fields: vec![],
                     uncles: self
                         .uncles
@@ -251,7 +252,6 @@ impl Into<EthereumBlockWithCalls> for &Block {
                             block_hash: Some(H256::from_slice(&self.hash)),
                             block_number: Some(U64::from(self.number)),
                             cumulative_gas_used: U256::from(r.cumulative_gas_used),
-                            // FIXME (SF): What is the rule here about gas_used being None, when it's 0?
                             gas_used: Some(U256::from(t.gas_used)),
                             contract_address: {
                                 match t.calls.len() {
@@ -273,8 +273,7 @@ impl Into<EthereumBlockWithCalls> for &Block {
                                 .collect(),
                             status: TransactionTraceStatus::from_i32(t.status).unwrap().into(),
                             root: match r.state_root.len() {
-                                0 => None, // FIXME (SF): should this instead map to [0;32]?
-                                // FIXME (SF): if len < 32, what do we do?
+                                0 => None,
                                 _ => Some(H256::from_slice(&r.state_root)),
                             },
                             logs_bloom: H2048::from_slice(&r.logs_bloom),
