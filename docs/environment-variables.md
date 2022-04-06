@@ -86,7 +86,7 @@ happens, subgraphs might process inconsistent data. Defaults to 250.
 - `GRAPH_MAX_API_VERSION`: Maximum `apiVersion` supported, if a developer tries to create a subgraph
   with a higher `apiVersion` than this in their mappings, they'll receive an error. Defaults to `0.0.7`.
 - `GRAPH_MAX_SPEC_VERSION`: Maximum `specVersion` supported. if a developer tries to create a subgraph
-  with a higher `apiVersion` than this, the'll receive an error. Defaults to `0.0.5`.
+  with a higher `apiVersion` than this, they'll receive an error. Defaults to `0.0.5`.
 - `GRAPH_RUNTIME_MAX_STACK_SIZE`: Maximum stack size for the WASM runtime, if exceeded the execution
   stops and an error is thrown. Defaults to 512KiB.
 
