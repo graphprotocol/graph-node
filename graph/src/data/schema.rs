@@ -1,4 +1,3 @@
-use crate::cheap_clone::CheapClone;
 use crate::components::store::{EntityKey, EntityType, SubgraphStore};
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
 use crate::data::graphql::ObjectTypeExt;
@@ -430,7 +429,7 @@ impl ApiSchema {
         self.object_types
             .get(&obj_type.name)
             .expect("ApiSchema.object_type is only used with existing types")
-            .cheap_clone()
+            .clone()
     }
 
     pub fn get_named_type(&self, name: &str) -> Option<&TypeDefinition> {

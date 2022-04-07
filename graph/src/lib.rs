@@ -13,9 +13,6 @@ pub mod ext;
 /// Logging utilities
 pub mod log;
 
-/// `CheapClone` trait.
-pub mod cheap_clone;
-
 pub mod ipfs_client;
 
 pub mod blockchain;
@@ -129,7 +126,6 @@ pub mod prelude {
     pub use crate::components::{transaction_receipt, EventConsumer, EventProducer};
     pub use crate::env::ENV_VARS;
 
-    pub use crate::cheap_clone::CheapClone;
     pub use crate::data::graphql::{
         shape_hash::shape_hash, SerializableValue, TryFromValue, ValueMap,
     };

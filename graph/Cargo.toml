@@ -62,10 +62,5 @@ itertools = "0.10.3"
 web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "graph-patches-onto-0.18", features = ["arbitrary_precision"] }
 serde_plain = "1.0.0"
 
-[dev-dependencies]
-test-store = { path = "../store/test-store" }
-maplit = "1.0.2"
-structopt = { version = "0.3" }
-
 [build-dependencies]
 tonic-build = "0.5.1"

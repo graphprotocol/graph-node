@@ -77,8 +77,6 @@ impl From<&str> for EntityType {
     }
 }
 
-impl CheapClone for EntityType {}
-
 // Note: Do not modify fields without making a backward compatible change to
 // the StableHash impl (below)
 /// Key by which an individual entity in the store can be accessed.
@@ -787,8 +785,6 @@ pub struct DeploymentLocator {
     pub id: DeploymentId,
     pub hash: DeploymentHash,
 }
-
-impl CheapClone for DeploymentLocator {}
 
 impl slog::Value for DeploymentLocator {
     fn serialize(

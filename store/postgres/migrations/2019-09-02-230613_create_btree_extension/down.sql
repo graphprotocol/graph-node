@@ -1,1 +1,0 @@
--- No good reason to drop the btree_gist extension again

@@ -1,26 +1,19 @@
 [workspace]
 members = [
-    "core",
-    "chain/ethereum",
-    "graphql",
-    "mock",
-    "node",
-    "runtime/wasm",
-    "runtime/derive",
-    "runtime/test",
-    "server/http",
-    "server/json-rpc",
-    "server/index-node",
-    "server/metrics",
-    "store/postgres",
-    "store/test-store",
+    #"core",
+    #"chain/ethereum",
+    #"graphql",
+    #"mock",
+    #"node",
+    #"runtime/wasm",
+    #"runtime/derive",
+    #"runtime/test",
+    #"server/http",
+    #"server/json-rpc",
+    #"server/index-node",
+    #"server/metrics",
+    #"store/postgres",
+    #"store/test-store",
     "graph",
-    "tests",
+    #"tests",
 ]
-
-# Incremental compilation on Rust 1.58 causes an ICE on build. As soon as graph node builds again, these can be removed.
-[profile.test]
-incremental = false
-
-[profile.dev]
-incremental = false

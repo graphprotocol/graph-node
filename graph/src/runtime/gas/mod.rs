@@ -3,7 +3,7 @@ mod costs;
 mod ops;
 mod saturating;
 mod size_of;
-use crate::prelude::{CheapClone, ENV_VARS};
+use crate::prelude::ENV_VARS;
 use crate::runtime::DeterministicHostError;
 pub use combinators::*;
 pub use costs::DEFAULT_BASE_COST;
@@ -77,8 +77,6 @@ impl Display for Gas {
 
 #[derive(Clone, Default)]
 pub struct GasCounter(Arc<AtomicU64>);
-
-impl CheapClone for GasCounter {}
 
 impl GasCounter {
     /// Alias of [`Default::default`].

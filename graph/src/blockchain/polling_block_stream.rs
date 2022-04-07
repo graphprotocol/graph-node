@@ -103,7 +103,7 @@ where
 impl<C: Blockchain> Clone for PollingBlockStreamContext<C> {
     fn clone(&self) -> Self {
         Self {
-            chain_store: self.chain_store.cheap_clone(),
+            chain_store: self.chain_store.clone(),
             adapter: self.adapter.clone(),
             node_id: self.node_id.clone(),
             subgraph_id: self.subgraph_id.clone(),

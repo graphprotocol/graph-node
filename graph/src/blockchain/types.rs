@@ -5,7 +5,7 @@ use std::convert::TryFrom;
 use std::{fmt, str::FromStr};
 use web3::types::{Block, H256};
 
-use crate::{cheap_clone::CheapClone, components::store::BlockNumber};
+use crate::components::store::BlockNumber;
 
 /// A simple marker for byte arrays that are really block hashes
 #[derive(Clone, Default, PartialEq, Eq, Hash)]
@@ -36,8 +36,6 @@ impl fmt::Debug for BlockHash {
         write!(f, "0x{}", hex::encode(&self.0))
     }
 }
-
-impl CheapClone for BlockHash {}
 
 impl From<H256> for BlockHash {
     fn from(hash: H256) -> Self {
@@ -71,8 +69,6 @@ pub struct BlockPtr {
     pub hash: BlockHash,
     pub number: BlockNumber,
 }
-
-impl CheapClone for BlockPtr {}
 
 impl StableHash for BlockPtr {
     fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {

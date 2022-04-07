@@ -1,1 +1,0 @@
--- To rebuild a set of indexes simply redeploy the subgraph

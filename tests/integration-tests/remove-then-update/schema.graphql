@@ -1,5 +1,0 @@
-type Foo @entity {
-  id: ID!
-  value: String
-  removed: Boolean!
-}

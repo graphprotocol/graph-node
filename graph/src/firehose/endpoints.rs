@@ -1,7 +1,6 @@
 use crate::{
     blockchain::Block as BlockchainBlock,
     blockchain::BlockPtr,
-    cheap_clone::CheapClone,
     components::store::BlockNumber,
     firehose::{decode_firehose_block, ForkStep},
     prelude::{debug, info},
@@ -103,7 +102,7 @@ impl FirehoseEndpoint {
         };
 
         let mut client = firehose::stream_client::StreamClient::with_interceptor(
-            self.channel.cheap_clone(),
+            self.channel.clone(),
             move |mut r: Request<()>| {
                 if let Some(ref t) = token_metadata {
                     r.metadata_mut().insert("authorization", t.clone());
@@ -192,7 +191,7 @@ impl FirehoseEndpoint {
         };
 
         let mut client = firehose::stream_client::StreamClient::with_interceptor(
-            self.channel.cheap_clone(),
+            self.channel.clone(),
             move |mut r: Request<()>| {
                 if let Some(ref t) = token_metadata {
                     r.metadata_mut().insert("authorization", t.clone());

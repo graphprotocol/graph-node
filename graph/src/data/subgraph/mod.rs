@@ -29,7 +29,7 @@ use crate::data::{
     schema::{Schema, SchemaImportError, SchemaValidationError},
     subgraph::features::validate_subgraph_features,
 };
-use crate::prelude::{r, CheapClone, ENV_VARS};
+use crate::prelude::{r, ENV_VARS};
 use crate::{blockchain::DataSource, data::graphql::TryFromValue};
 use crate::{blockchain::DataSourceTemplate as _, data::query::QueryExecutionError};
 use crate::{
@@ -76,9 +76,6 @@ impl StableHash for DeploymentHash {
 }
 
 impl_slog_value!(DeploymentHash);
-
-/// `DeploymentHash` is fixed-length so cheap to clone.
-impl CheapClone for DeploymentHash {}
 
 impl DeploymentHash {
     /// Check that `s` is a valid `SubgraphDeploymentId` and create a new one.

@@ -11,7 +11,6 @@ mod types;
 
 // Try to reexport most of the necessary types
 use crate::{
-    cheap_clone::CheapClone,
     components::store::{DeploymentLocator, StoredDynamicDataSource},
     data::subgraph::UnifiedMappingApiVersion,
     prelude::DataSourceContext,
@@ -286,15 +285,6 @@ pub struct HostFn {
     pub func: Arc<dyn Send + Sync + Fn(HostFnCtx, u32) -> Result<u32, HostExportError>>,
 }
 
-impl CheapClone for HostFn {
-    fn cheap_clone(&self) -> Self {
-        HostFn {
-            name: self.name,
-            func: self.func.cheap_clone(),
-        }
-    }
-}
-
 pub trait RuntimeAdapter<C: Blockchain>: Send + Sync {
     fn host_fns(&self, ds: &C::DataSource) -> Result<Vec<HostFn>, Error>;
 }
@@ -378,7 +368,7 @@ impl BlockchainMap {
         self.0
             .get(&(C::KIND, network.clone()))
             .with_context(|| format!("no network {} found on chain {}", network, C::KIND))?
-            .cheap_clone()
+            .clone()
             .downcast()
             .map_err(|_| anyhow!("unable to downcast, wrong type for blockchain {}", C::KIND))
     }
@@ -422,7 +412,7 @@ impl<C: Blockchain> TriggerWithHandler<C> {
 
     /// Additional key-value pairs to be logged with the "Done processing trigger" message.
     pub fn logging_extras(&self) -> Arc<dyn SendSyncRefUnwindSafeKV> {
-        self.logging_extras.cheap_clone()
+        self.logging_extras.clone()
     }
 
     pub fn handler_name(&self) -> &str {

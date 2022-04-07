@@ -1,4 +1,3 @@
-use crate::prelude::CheapClone;
 use anyhow::Error;
 use bytes::Bytes;
 use futures03::Stream;
@@ -32,15 +31,6 @@ pub struct AddResponse {
 pub struct IpfsClient {
     base: Arc<Uri>,
     client: Arc<reqwest::Client>,
-}
-
-impl CheapClone for IpfsClient {
-    fn cheap_clone(&self) -> Self {
-        IpfsClient {
-            base: self.base.cheap_clone(),
-            client: self.client.cheap_clone(),
-        }
-    }
 }
 
 impl IpfsClient {

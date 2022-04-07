@@ -115,7 +115,7 @@ impl DeploymentCreate {
     ) -> Self {
         Self {
             manifest: SubgraphManifestEntity::from(source_manifest),
-            earliest_block: earliest_block.cheap_clone(),
+            earliest_block: earliest_block.clone(),
             graft_base: None,
             graft_block: None,
             debug_fork: None,
