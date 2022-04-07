@@ -850,6 +850,10 @@ impl<'a> QueryFilter<'a> {
                 }
             }
 
+            // This is a special case since we want to allow passing "block" column filter, but we dont
+            // want to fail/error when this is passed here, since this column is not really an entity column.
+            ChangeBlockGte(..) => {}
+
             Contains(attr, _)
             | ContainsNoCase(attr, _)
             | NotContains(attr, _)
@@ -1130,6 +1134,14 @@ impl<'a> QueryFilter<'a> {
         Ok(())
     }
 
+    fn filter_block_gte(
+        &self,
+        block_number_gte: &BlockNumber,
+        mut out: AstPass<Pg>,
+    ) -> QueryResult<()> {
+        BlockRangeColumn::new(self.table, "c.", *block_number_gte).changed_since(&mut out)
+    }
+
     fn starts_or_ends_with(
         &self,
         attribute: &Attribute,
@@ -1217,6 +1229,7 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
             NotEndsWithNoCase(attr, value) => {
                 self.starts_or_ends_with(attr, value, " not ilike ", false, out)?
             }
+            ChangeBlockGte(block_number) => self.filter_block_gte(block_number, out)?,
         }
         Ok(())
     }

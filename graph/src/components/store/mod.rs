@@ -160,6 +160,7 @@ pub enum EntityFilter {
     EndsWithNoCase(Attribute, Value),
     NotEndsWith(Attribute, Value),
     NotEndsWithNoCase(Attribute, Value),
+    ChangeBlockGte(BlockNumber),
 }
 
 // Define some convenience methods
