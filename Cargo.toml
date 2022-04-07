@@ -20,7 +20,6 @@ reqwest = { version = "0.11.2", features = ["json", "stream", "multipart"] }
 ethabi = "17.0"
 hex = "0.4.3"
 http = "0.2.3"
-fail = { version = "0.5", features = ["failpoints"] }
 futures = "0.1.21"
 graphql-parser = "0.4.0"
 lazy_static = "1.4.0"
@@ -50,7 +49,6 @@ prometheus = "0.13.0"
 priority-queue = "0.7.0"
 tonic = { version = "0.5.1", features = ["tls-roots"] }
 prost = "0.8.0"
-prost-types = "0.8.0"
 futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
 wasmparser = "0.78.2"
 thiserror = "1.0.25"

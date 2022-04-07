@@ -495,17 +495,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fail"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec3245a0ca564e7f3c797d20d833a6870f57a728ac967d5225b3ffdef4465011"
-dependencies = [
- "lazy_static",
- "log",
- "rand",
-]
-
-[[package]]
 name = "fastrand"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -720,7 +709,6 @@ dependencies = [
  "diesel_derives",
  "envconfig",
  "ethabi",
- "fail",
  "futures 0.1.31",
  "futures 0.3.21",
  "graphql-parser",
@@ -737,7 +725,6 @@ dependencies = [
  "priority-queue",
  "prometheus",
  "prost",
- "prost-types",
  "rand",
  "reqwest",
  "semver",

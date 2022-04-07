@@ -13,8 +13,6 @@ pub mod ext;
 /// Logging utilities
 pub mod log;
 
-pub mod firehose;
-
 /// Wrapper for spawning tasks that abort on panic, which is our default.
 mod task_spawn;
 pub use task_spawn::{
