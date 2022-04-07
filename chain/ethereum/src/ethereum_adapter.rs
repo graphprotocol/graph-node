@@ -1055,6 +1055,9 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
         let block_future =
             futures03::TryFutureExt::map_ok(receipts_future, move |transaction_receipts| {
+                // TODO: FIXME: This allocates an additional vector. It would be more efficient if
+                // we get a `Vec<Arc<T>>` directly instead of doing this.
+                let transaction_receipts = transaction_receipts.into_iter().map(Arc::new).collect();
                 EthereumBlock {
                     block: Arc::new(block),
                     transaction_receipts,
@@ -1489,7 +1492,9 @@ pub(crate) fn parse_log_triggers(
                 .logs
                 .iter()
                 .filter(move |log| log_filter.matches(log))
-                .map(move |log| EthereumTrigger::Log(Arc::new(log.clone()), Some(receipt.clone())))
+                .map(move |log| {
+                    EthereumTrigger::Log(Arc::new(log.clone()), Some(receipt.cheap_clone()))
+                })
         })
         .collect()
 }
@@ -1885,7 +1890,7 @@ async fn get_logs_and_transactions(
         let optional_receipt = log
             .transaction_hash
             .and_then(|txn| transaction_receipts_by_hash.get(&txn).cloned());
-        let value = EthereumTrigger::Log(Arc::new(log), optional_receipt);
+        let value = EthereumTrigger::Log(Arc::new(log), optional_receipt.map(Arc::new));
         log_triggers.push(value);
     }
 

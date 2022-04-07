@@ -101,7 +101,7 @@ pub fn evaluate_transaction_status(receipt_status: Option<U64>) -> bool {
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct EthereumBlock {
     pub block: Arc<LightEthereumBlock>,
-    pub transaction_receipts: Vec<TransactionReceipt>,
+    pub transaction_receipts: Vec<Arc<TransactionReceipt>>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
