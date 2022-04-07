@@ -178,22 +178,6 @@ pub struct EnvVars {
     /// Set by the environment variable `GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS`
     /// (expressed in seconds). The default value is 1800s (30 minutes).
     pub subgraph_error_retry_ceil: Duration,
-    /// Set by the environment variable `GRAPH_CACHED_SUBGRAPH_IDS` (comma
-    /// separated). When the value of the variable is `*`, queries are cached
-    /// for all subgraphs, which is the default
-    /// behavior.
-    pub cached_subgraph_ids: CachedSubgraphIds,
-    /// In how many shards (mutexes) the query block cache is split.
-    /// Ideally this should divide 256 so that the distribution of queries to
-    /// shards is even.
-    ///
-    /// Set by the environment variable `GRAPH_QUERY_BLOCK_CACHE_SHARDS`. The
-    /// default value is 128.
-    pub query_block_cache_shards: u8,
-    /// Set by the environment variable `GRAPH_QUERY_LFU_CACHE_SHARDS`. The
-    /// default value is set to whatever `GRAPH_QUERY_BLOCK_CACHE_SHARDS` is set
-    /// to.
-    pub query_lfu_cache_shards: u8,
     /// Experimental feature.
     ///
     /// Set by the flag `GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES`. Off by
@@ -267,21 +251,6 @@ impl EnvVars {
             subgraph_max_data_sources: inner.subgraph_max_data_sources,
             disable_fail_fast: inner.disable_fail_fast.0,
             subgraph_error_retry_ceil: Duration::from_secs(inner.subgraph_error_retry_ceil_in_secs),
-            cached_subgraph_ids: if inner.cached_subgraph_ids == "*" {
-                CachedSubgraphIds::All
-            } else {
-                CachedSubgraphIds::Only(
-                    inner
-                        .cached_subgraph_ids
-                        .split(',')
-                        .map(str::to_string)
-                        .collect(),
-                )
-            },
-            query_block_cache_shards: inner.query_block_cache_shards,
-            query_lfu_cache_shards: inner
-                .query_lfu_cache_shards
-                .unwrap_or(inner.query_block_cache_shards),
             enable_select_by_specific_attributes: inner.enable_select_by_specific_attributes.0,
             log_trigger_data: inner.log_trigger_data.0,
             explorer_ttl: Duration::from_secs(inner.explorer_ttl_in_secs),
@@ -383,12 +352,6 @@ struct Inner {
     disable_fail_fast: EnvVarBoolean,
     #[envconfig(from = "GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS", default = "1800")]
     subgraph_error_retry_ceil_in_secs: u64,
-    #[envconfig(from = "GRAPH_CACHED_SUBGRAPH_IDS", default = "*")]
-    cached_subgraph_ids: String,
-    #[envconfig(from = "GRAPH_QUERY_BLOCK_CACHE_SHARDS", default = "128")]
-    query_block_cache_shards: u8,
-    #[envconfig(from = "GRAPH_QUERY_LFU_CACHE_SHARDS")]
-    query_lfu_cache_shards: Option<u8>,
     #[envconfig(from = "GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES", default = "false")]
     enable_select_by_specific_attributes: EnvVarBoolean,
     #[envconfig(from = "GRAPH_LOG_TRIGGER_DATA", default = "false")]

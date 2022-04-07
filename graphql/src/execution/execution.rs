@@ -28,11 +28,11 @@ lazy_static! {
     // Sharded query results cache for recent blocks by network.
     // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
     static ref QUERY_BLOCK_CACHE: Vec<TimedMutex<QueryBlockCache>> = {
-            let shards = ENV_VARS.query_block_cache_shards;
-            let blocks = ENV_VARS.mappings.query_cache_blocks;
+            let shards = ENV_VARS.graphql.query_block_cache_shards;
+            let blocks = ENV_VARS.graphql.query_cache_blocks;
 
             // The memory budget is evenly divided among blocks and their shards.
-            let max_weight = ENV_VARS.mappings. query_cache_max_mem / (blocks * shards as usize);
+            let max_weight = ENV_VARS.graphql.query_cache_max_mem / (blocks * shards as usize);
             let mut caches = Vec::new();
             for i in 0..shards {
                 let id = format!("query_block_cache_{}", i);
@@ -43,7 +43,7 @@ lazy_static! {
     static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new("query_herd_cache");
     static ref QUERY_LFU_CACHE: Vec<TimedMutex<LfuCache<QueryHash, WeightedResult>>> = {
         std::iter::repeat_with(|| TimedMutex::new(LfuCache::new(), "query_lfu_cache"))
-                    .take(ENV_VARS.query_lfu_cache_shards as usize).collect()
+                    .take(ENV_VARS.graphql.query_lfu_cache_shards as usize).collect()
     };
 }
 
@@ -239,7 +239,7 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
     let mut key: Option<QueryHash> = None;
 
     let should_check_cache = R::CACHEABLE
-        && match ENV_VARS.cached_subgraph_ids {
+        && match ENV_VARS.graphql.cached_subgraph_ids {
             CachedSubgraphIds::All => true,
             CachedSubgraphIds::Only(ref subgraph_ids) => {
                 subgraph_ids.contains(ctx.query.schema.id())
@@ -361,9 +361,9 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
         } else {
             // Results that are too old for the QUERY_BLOCK_CACHE go into the QUERY_LFU_CACHE
             let mut cache = QUERY_LFU_CACHE[shard].lock(&ctx.logger);
-            let max_mem = ENV_VARS.mappings.query_cache_max_mem
-                / (ENV_VARS.query_block_cache_shards as usize);
-            cache.evict_with_period(max_mem, ENV_VARS.mappings.query_cache_stale_period);
+            let max_mem = ENV_VARS.graphql.query_cache_max_mem
+                / (ENV_VARS.graphql.query_block_cache_shards as usize);
+            cache.evict_with_period(max_mem, ENV_VARS.graphql.query_cache_stale_period);
             cache.insert(
                 key,
                 WeightedResult {
