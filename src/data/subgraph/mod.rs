@@ -144,13 +144,6 @@ impl<'de> de::Deserialize<'de> for DeploymentHash {
     }
 }
 
-impl TryFromValue for DeploymentHash {
-    fn try_from_value(value: &r::Value) -> Result<Self, Error> {
-        Self::new(String::try_from_value(value)?)
-            .map_err(|s| anyhow!("Invalid subgraph ID `{}`", s))
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SubgraphName(String);
 

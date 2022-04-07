@@ -309,17 +309,18 @@ impl TryFrom<q::Value> for Value {
             q::Value::Boolean(b) => Ok(Value::Boolean(b)),
             q::Value::Null => Ok(Value::Null),
             q::Value::Enum(s) => Ok(Value::Enum(s)),
-            q::Value::List(vals) => {
-                let vals: Vec<_> = vals
-                    .into_iter()
-                    .map(Value::try_from)
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(Value::List(vals))
-            }
+            q::Value::List(vals) => vals
+                .into_iter()
+                .map(Value::try_from)
+                .collect::<Result<Vec<_>, _>>()
+                .map(Value::List),
             q::Value::Object(map) => {
                 let mut rmap = BTreeMap::new();
                 for (key, value) in map.into_iter() {
-                    let value = Value::try_from(value)?;
+                    let value = match Value::try_from(value) {
+                        Ok(v) => v,
+                        Err(e) => return Err(e),
+                    };
                     rmap.insert(key, value);
                 }
                 Ok(Value::object(rmap))
