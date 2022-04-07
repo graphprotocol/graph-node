@@ -3,7 +3,6 @@ mod costs;
 mod ops;
 mod saturating;
 mod size_of;
-use crate::prelude::ENV_VARS;
 use crate::runtime::DeterministicHostError;
 pub use combinators::*;
 pub use costs::DEFAULT_BASE_COST;
@@ -92,7 +91,7 @@ impl GasCounter {
             .fetch_update(SeqCst, SeqCst, |v| Some(v.saturating_add(amount.0)))
             .unwrap();
         let new = old.saturating_add(amount.0);
-        if new >= ENV_VARS.max_gas_per_handler {
+        if new >= 1 {
             Err(DeterministicHostError::gas(anyhow::anyhow!(
                 "Gas limit exceeded. Used: {}",
                 new

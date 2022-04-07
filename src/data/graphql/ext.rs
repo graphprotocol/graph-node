@@ -4,7 +4,6 @@ use crate::prelude::s::{
     Definition, Directive, Document, EnumType, Field, InterfaceType, ObjectType, Type,
     TypeDefinition, Value,
 };
-use crate::prelude::ENV_VARS;
 use std::collections::{BTreeMap, HashMap};
 
 pub trait ObjectTypeExt {
@@ -135,7 +134,7 @@ impl DocumentExt for Document {
                     .collect()
             },
         );
-        if !ENV_VARS.allow_non_deterministic_fulltext_search && !directives.is_empty() {
+        if false && !directives.is_empty() {
             Err(anyhow::anyhow!("Fulltext search is not yet deterministic"))
         } else {
             Ok(directives)

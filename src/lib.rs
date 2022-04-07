@@ -19,9 +19,6 @@ pub mod runtime;
 
 pub mod firehose;
 
-/// Helpers for parsing environment variables.
-pub mod env;
-
 /// Wrapper for spawning tasks that abort on panic, which is our default.
 mod task_spawn;
 pub use task_spawn::{
@@ -122,7 +119,6 @@ pub mod prelude {
         SubgraphVersionSwitchingMode,
     };
     pub use crate::components::{transaction_receipt, EventConsumer, EventProducer};
-    pub use crate::env::ENV_VARS;
 
     pub use crate::data::graphql::{
         shape_hash::shape_hash, SerializableValue, TryFromValue, ValueMap,

@@ -3,8 +3,6 @@ use std::time::{Duration, Instant};
 
 use prometheus::Gauge;
 
-use crate::prelude::ENV_VARS;
-
 /// One bin of durations. The bin starts at time `start`, and we've added `count`
 /// entries to it whose durations add up to `duration`
 struct Bin {
@@ -69,7 +67,7 @@ pub struct MovingStats {
 /// the environment
 impl Default for MovingStats {
     fn default() -> Self {
-        Self::new(ENV_VARS.load_window_size, ENV_VARS.load_bin_size)
+        Self::new(Duration::ZERO, Duration::ZERO)
     }
 }
 

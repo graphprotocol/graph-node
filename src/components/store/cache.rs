@@ -7,7 +7,6 @@ use crate::blockchain::BlockPtr;
 use crate::components::store::{
     self as s, Entity, EntityKey, EntityOp, EntityOperation, EntityType,
 };
-use crate::prelude::ENV_VARS;
 use crate::util::lfu_cache::LfuCache;
 
 /// A cache for entities from the store that provides the basic functionality
@@ -301,7 +300,7 @@ impl EntityCache {
                 mods.push(modification)
             }
         }
-        self.current.evict(ENV_VARS.mappings.entity_cache_size);
+        self.current.evict(0);
 
         Ok(ModificationsAndCache {
             modifications: mods,

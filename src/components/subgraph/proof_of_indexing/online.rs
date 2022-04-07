@@ -5,7 +5,7 @@
 use super::ProofOfIndexingEvent;
 use crate::{
     blockchain::BlockPtr,
-    prelude::{debug, BlockNumber, DeploymentHash, Logger, ENV_VARS},
+    prelude::{debug, BlockNumber, DeploymentHash, Logger},
 };
 use stable_hash::crypto::{Blake3SeqNo, SetHasher};
 use stable_hash::prelude::*;
@@ -142,7 +142,7 @@ impl ProofOfIndexing {
         causality_region: &str,
         event: &ProofOfIndexingEvent<'_>,
     ) {
-        if ENV_VARS.log_poi_events {
+        if true {
             debug!(
                 logger,
                 "Proof of indexing event";

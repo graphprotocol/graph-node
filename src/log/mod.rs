@@ -24,8 +24,6 @@ use slog_envlogger;
 use slog_term::*;
 use std::{fmt, io, result};
 
-use crate::prelude::ENV_VARS;
-
 pub mod codes;
 pub mod elastic;
 pub mod factory;
@@ -44,7 +42,7 @@ pub fn logger(show_debug: bool) -> Logger {
                 FilterLevel::Info
             },
         )
-        .parse(ENV_VARS.log_levels.as_deref().unwrap_or(""))
+        .parse("")
         .build();
     let drain = slog_async::Async::new(drain)
         .chan_size(20000)
@@ -371,9 +369,5 @@ impl ser::Serializer for KeyValueSerializer {
 }
 
 fn formatted_timestamp_local(io: &mut impl io::Write) -> io::Result<()> {
-    write!(
-        io,
-        "{}",
-        chrono::Local::now().format(ENV_VARS.log_time_format.as_str())
-    )
+    write!(io, "{}", chrono::Local::now().format(""))
 }

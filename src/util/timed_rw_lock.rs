@@ -2,8 +2,6 @@ use parking_lot::{Mutex, RwLock};
 use slog::{warn, Logger};
 use std::time::{Duration, Instant};
 
-use crate::prelude::ENV_VARS;
-
 /// Adds instrumentation for timing the performance of the lock.
 pub struct TimedRwLock<T> {
     id: String,
@@ -16,7 +14,7 @@ impl<T> TimedRwLock<T> {
         TimedRwLock {
             id: id.into(),
             lock: RwLock::new(x),
-            log_threshold: ENV_VARS.lock_contention_log_threshold,
+            log_threshold: Duration::ZERO,
         }
     }
 
@@ -65,7 +63,7 @@ impl<T> TimedMutex<T> {
         TimedMutex {
             id: id.into(),
             lock: Mutex::new(x),
-            log_threshold: ENV_VARS.lock_contention_log_threshold,
+            log_threshold: Duration::ZERO,
         }
     }
 

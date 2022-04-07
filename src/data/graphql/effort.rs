@@ -12,7 +12,7 @@ use crate::components::store::PoolWaitStats;
 use crate::data::graphql::shape_hash::shape_hash;
 use crate::data::query::{CacheStatus, QueryExecutionError};
 use crate::prelude::q;
-use crate::prelude::{async_trait, debug, info, o, warn, Logger, QueryLoadManager, ENV_VARS};
+use crate::prelude::{async_trait, debug, info, o, warn, Logger, QueryLoadManager};
 use crate::util::stats::MovingStats;
 
 struct QueryEffort {
@@ -32,7 +32,7 @@ struct QueryEffortInner {
 /// the environment
 impl Default for QueryEffort {
     fn default() -> Self {
-        Self::new(ENV_VARS.load_window_size, ENV_VARS.load_bin_size)
+        Self::new(Duration::ZERO, Duration::ZERO)
     }
 }
 
@@ -215,9 +215,9 @@ impl LoadManager {
             .map(|doc| shape_hash(&doc))
             .collect::<HashSet<_>>();
 
-        let mode = if ENV_VARS.load_management_is_disabled() {
+        let mode = if true {
             "disabled"
-        } else if ENV_VARS.load_simulate {
+        } else if false {
             "simulation"
         } else {
             "enabled"
@@ -271,9 +271,7 @@ impl LoadManager {
         self.query_counters
             .get(&cache_status)
             .map(GenericCounter::inc);
-        if !ENV_VARS.load_management_is_disabled() {
-            self.effort.add(shape_hash, duration, &self.effort_gauge);
-        }
+        self.effort.add(shape_hash, duration, &self.effort_gauge);
     }
 
     /// Decide whether we should decline to run the query with this
@@ -328,16 +326,12 @@ impl LoadManager {
         if self.blocked_queries.contains(&shape_hash) {
             return TooExpensive;
         }
-        if ENV_VARS.load_management_is_disabled() {
+        if true {
             return Proceed;
         }
 
         if self.jailed_queries.read().unwrap().contains(&shape_hash) {
-            return if ENV_VARS.load_simulate {
-                Proceed
-            } else {
-                TooExpensive
-            };
+            return if false { Proceed } else { TooExpensive };
         }
 
         let (overloaded, wait_ms) = self.overloaded(wait_stats);
@@ -362,7 +356,7 @@ impl LoadManager {
         let total_effort = total_effort.as_millis() as f64;
 
         // When this variable is not set, we never jail any queries.
-        if let Some(jail_threshold) = ENV_VARS.load_jail_threshold {
+        if let Some(jail_threshold) = Some(0.0) {
             if known_query && query_effort / total_effort > jail_threshold {
                 // Any single query that causes at least JAIL_THRESHOLD of the
                 // effort in an overload situation gets killed
@@ -373,11 +367,7 @@ impl LoadManager {
                 "total_effort_ms" => total_effort,
                 "ratio" => format!("{:.4}", query_effort/total_effort));
                 self.jailed_queries.write().unwrap().insert(shape_hash);
-                return if ENV_VARS.load_simulate {
-                    Proceed
-                } else {
-                    TooExpensive
-                };
+                return if false { Proceed } else { TooExpensive };
             }
         }
 
@@ -387,7 +377,7 @@ impl LoadManager {
         let decline =
             thread_rng().gen_bool((kill_rate * query_effort / total_effort).min(1.0).max(0.0));
         if decline {
-            if ENV_VARS.load_simulate {
+            if true {
                 debug!(self.logger, "Declining query";
                     "query" => query,
                     "wait_ms" => wait_ms.as_millis(),
@@ -405,7 +395,7 @@ impl LoadManager {
     fn overloaded(&self, wait_stats: &PoolWaitStats) -> (bool, Duration) {
         let store_avg = wait_stats.read().unwrap().average();
         let overloaded = store_avg
-            .map(|average| average > ENV_VARS.load_threshold)
+            .map(|average| average > Duration::ZERO)
             .unwrap_or(false);
         (overloaded, store_avg.unwrap_or(Duration::ZERO))
     }
@@ -497,7 +487,7 @@ impl QueryLoadManager for LoadManager {
         self.query_counters
             .get(&cache_status)
             .map(|counter| counter.inc());
-        if !ENV_VARS.load_management_is_disabled() {
+        if true {
             self.effort.add(shape_hash, duration, &self.effort_gauge);
         }
     }

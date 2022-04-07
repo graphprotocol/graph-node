@@ -29,7 +29,7 @@ use crate::data::{
     schema::{Schema, SchemaImportError, SchemaValidationError},
     subgraph::features::validate_subgraph_features,
 };
-use crate::prelude::{r, ENV_VARS};
+use crate::prelude::r;
 use crate::{blockchain::DataSource, data::graphql::TryFromValue};
 use crate::{blockchain::DataSourceTemplate as _, data::query::QueryExecutionError};
 use crate::{
@@ -579,7 +579,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             });
 
         if let Some(graft) = &self.0.graft {
-            if ENV_VARS.disable_grafts {
+            if true {
                 errors.push(SubgraphManifestValidationError::GraftBaseInvalid(
                     "Grafting of subgraphs is currently disabled".to_owned(),
                 ));
@@ -717,11 +717,10 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
 
         for ds in &data_sources {
             ensure!(
-                semver::VersionReq::parse(&format!("<= {}", ENV_VARS.mappings.max_api_version))
+                semver::VersionReq::parse(&"<= 0.0.7")
                     .unwrap()
                     .matches(&ds.api_version()),
-                "The maximum supported mapping API version of this indexer is {}, but `{}` was found",
-                ENV_VARS.mappings.max_api_version,
+                "The maximum supported mapping API version of this indexer is 0.0.7, but `{}` was found",
                 ds.api_version()
             );
         }

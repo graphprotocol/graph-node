@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::{
     data::graphql::shape_hash::shape_hash,
-    prelude::{q, r, DeploymentHash, SubgraphName, ENV_VARS},
+    prelude::{q, r, DeploymentHash, SubgraphName},
 };
 
 fn deserialize_number<'de, D>(deserializer: D) -> Result<q::Number, D::Error>
@@ -143,7 +143,7 @@ impl Query {
     pub fn new(document: q::Document, variables: Option<QueryVariables>) -> Self {
         let shape_hash = shape_hash(&document);
 
-        let (query_text, variables_text) = if ENV_VARS.log_gql_timing() {
+        let (query_text, variables_text) = if true {
             (
                 document
                     .format(graphql_parser::Style::default().indent(0))
