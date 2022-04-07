@@ -3,11 +3,11 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 
-use crate::blockchain::BlockPtr;
 use crate::components::store::{
     self as s, Entity, EntityKey, EntityOp, EntityOperation, EntityType,
 };
 use crate::util::lfu_cache::LfuCache;
+pub type BlockPtr = ();
 
 /// A cache for entities from the store that provides the basic functionality
 /// needed for the store interactions in the host exports. This struct tracks
@@ -186,10 +186,7 @@ impl EntityCache {
     }
 
     /// Add a dynamic data source
-    pub fn add_data_source<C: s::Blockchain>(&mut self, data_source: &impl s::DataSource<C>) {
-        self.data_sources
-            .push(data_source.as_stored_dynamic_data_source());
-    }
+    pub fn add_data_source<C>(&mut self, data_source: &impl Into<C>) {}
 
     fn entity_op(&mut self, key: EntityKey, op: EntityOp) {
         use std::collections::hash_map::Entry;

@@ -23,7 +23,7 @@ pub struct EthereumBlock(BlockPtr);
 
 impl EthereumBlock {
     pub fn new(hash: H256, number: u64) -> Self {
-        EthereumBlock(BlockPtr::from((hash, number)))
+        EthereumBlock(())
     }
 
     pub fn to_ptr(self) -> BlockPtr {
@@ -31,7 +31,7 @@ impl EthereumBlock {
     }
 
     pub fn number(&self) -> i32 {
-        self.0.number
+        90
     }
 }
 
@@ -39,8 +39,8 @@ impl IntoValue for EthereumBlock {
     fn into_value(self) -> r::Value {
         object! {
             __typename: "EthereumBlock",
-            hash: self.0.hash_hex(),
-            number: format!("{}", self.0.number),
+            hash: 0,
+            number: format!("{}", 30),
         }
     }
 }
@@ -138,8 +138,8 @@ impl IntoValue for Info {
                 handler: handler,
                 block: object! {
                     __typename: "Block",
-                    number: block_ptr.as_ref().map(|x| x.number),
-                    hash: block_ptr.map(|x| r::Value::from(Value::Bytes(x.hash.into()))),
+                    number: 123,
+                    hash: block_ptr.map(|x| r::Value::from(Value::Bytes(todo!()))),
                 },
                 deterministic: deterministic,
             }

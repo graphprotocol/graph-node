@@ -13,8 +13,6 @@ pub mod ext;
 /// Logging utilities
 pub mod log;
 
-pub mod blockchain;
-
 pub mod firehose;
 
 /// Wrapper for spawning tasks that abort on panic, which is our default.
@@ -83,7 +81,7 @@ pub mod prelude {
     pub type DynTryFuture<'a, Ok = (), Err = Error> =
         Pin<Box<dyn futures03::Future<Output = Result<Ok, Err>> + Send + 'a>>;
 
-    pub use crate::blockchain::BlockPtr;
+    pub type BlockPtr = ();
 
     pub use crate::components::ethereum::{
         EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock,

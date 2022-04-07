@@ -266,9 +266,9 @@ pub trait ChainStore: Send + Sync + 'static {
     fn genesis_block_ptr(&self) -> Result<BlockPtr, Error>;
 
     /// Insert a block into the store (or update if they are already present).
-    async fn upsert_block(&self, block: Arc<dyn Block>) -> Result<(), Error>;
+    async fn upsert_block(&self, block: Arc<()>) -> Result<(), Error>;
 
-    fn upsert_light_blocks(&self, blocks: &[&dyn Block]) -> Result<(), Error>;
+    fn upsert_light_blocks(&self, blocks: &[&()]) -> Result<(), Error>;
 
     /// Try to update the head block pointer to the block with the highest block number.
     ///
@@ -310,11 +310,7 @@ pub trait ChainStore: Send + Sync + 'static {
     /// - Upserts received block into blocks table
     /// - Update chain head block into networks table
     /// - Update chain head cursor into networks table
-    async fn set_chain_head(
-        self: Arc<Self>,
-        block: Arc<dyn Block>,
-        cursor: String,
-    ) -> Result<(), Error>;
+    async fn set_chain_head(self: Arc<Self>, block: Arc<()>, cursor: String) -> Result<(), Error>;
 
     /// Returns the blocks present in the store.
     fn blocks(&self, hashes: &[H256]) -> Result<Vec<serde_json::Value>, Error>;

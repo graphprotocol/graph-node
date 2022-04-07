@@ -11,7 +11,6 @@
 //! Feature validation is performed by the [`validate_subgraph_features`] function.
 
 use crate::{
-    blockchain::Blockchain,
     data::{graphql::DocumentExt, schema::Schema, subgraph::SubgraphManifest},
     prelude::{Deserialize, Serialize},
 };
@@ -67,7 +66,7 @@ fn fmt_subgraph_features(subgraph_features: &BTreeSet<SubgraphFeature>) -> Strin
     subgraph_features.iter().join(", ")
 }
 
-pub fn validate_subgraph_features<C: Blockchain>(
+pub fn validate_subgraph_features<C: Into<()>>(
     manifest: &SubgraphManifest<C>,
 ) -> Result<BTreeSet<SubgraphFeature>, SubgraphFeatureValidationError> {
     let declared: &BTreeSet<SubgraphFeature> = &manifest.features;
@@ -80,7 +79,7 @@ pub fn validate_subgraph_features<C: Blockchain>(
     }
 }
 
-pub fn detect_features<C: Blockchain>(
+pub fn detect_features<C: Into<()>>(
     manifest: &SubgraphManifest<C>,
 ) -> Result<BTreeSet<SubgraphFeature>, InvalidMapping> {
     let features = vec![
@@ -95,9 +94,7 @@ pub fn detect_features<C: Blockchain>(
     Ok(features)
 }
 
-fn detect_non_fatal_errors<C: Blockchain>(
-    manifest: &SubgraphManifest<C>,
-) -> Option<SubgraphFeature> {
+fn detect_non_fatal_errors<C: Into<()>>(manifest: &SubgraphManifest<C>) -> Option<SubgraphFeature> {
     if manifest.features.contains(&SubgraphFeature::NonFatalErrors) {
         Some(SubgraphFeature::NonFatalErrors)
     } else {
@@ -105,7 +102,7 @@ fn detect_non_fatal_errors<C: Blockchain>(
     }
 }
 
-fn detect_grafting<C: Blockchain>(manifest: &SubgraphManifest<C>) -> Option<SubgraphFeature> {
+fn detect_grafting<C: Into<()>>(manifest: &SubgraphManifest<C>) -> Option<SubgraphFeature> {
     manifest.graft.as_ref().map(|_| SubgraphFeature::Grafting)
 }
 
@@ -129,7 +126,7 @@ impl From<InvalidMapping> for SubgraphFeatureValidationError {
     }
 }
 
-fn detect_ipfs_on_ethereum_contracts<C: Blockchain>(
+fn detect_ipfs_on_ethereum_contracts<C: Into<()>>(
     manifest: &SubgraphManifest<C>,
 ) -> Result<Option<SubgraphFeature>, InvalidMapping> {
     for runtime in manifest.runtimes() {

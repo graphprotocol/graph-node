@@ -1,18 +1,17 @@
-use crate::blockchain::Blockchain;
 use crate::prelude::*;
 use crate::util::lfu_cache::LfuCache;
 use crate::{components::store::WritableStore, data::subgraph::schema::SubgraphError};
 
 #[derive(Clone, Debug)]
-pub struct DataSourceTemplateInfo<C: Blockchain> {
-    pub template: C::DataSourceTemplate,
+pub struct DataSourceTemplateInfo<C> {
+    pub template: C,
     pub params: Vec<String>,
     pub context: Option<DataSourceContext>,
     pub creation_block: BlockNumber,
 }
 
 #[derive(Debug)]
-pub struct BlockState<C: Blockchain> {
+pub struct BlockState<C> {
     pub entity_cache: EntityCache,
     pub deterministic_errors: Vec<SubgraphError>,
     created_data_sources: Vec<DataSourceTemplateInfo<C>>,
@@ -24,7 +23,7 @@ pub struct BlockState<C: Blockchain> {
     in_handler: bool,
 }
 
-impl<C: Blockchain> BlockState<C> {
+impl<C> BlockState<C> {
     pub fn new(
         store: Arc<dyn WritableStore>,
         lfu_cache: LfuCache<EntityKey, Option<Entity>>,

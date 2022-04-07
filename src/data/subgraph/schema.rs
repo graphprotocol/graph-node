@@ -10,11 +10,11 @@ use std::str::FromStr;
 use std::{fmt, fmt::Display};
 
 use super::DeploymentHash;
+use crate::components::store::EntityType;
 use crate::data::graphql::TryFromValue;
 use crate::data::store::Value;
 use crate::data::subgraph::SubgraphManifest;
 use crate::prelude::*;
-use crate::{blockchain::Blockchain, components::store::EntityType};
 
 pub const POI_TABLE: &str = "poi2$";
 lazy_static! {
@@ -110,7 +110,7 @@ pub struct DeploymentCreate {
 
 impl DeploymentCreate {
     pub fn new(
-        source_manifest: &SubgraphManifest<impl Blockchain>,
+        source_manifest: &SubgraphManifest<impl Into<()>>,
         earliest_block: Option<BlockPtr>,
     ) -> Self {
         Self {
@@ -165,7 +165,7 @@ pub struct SubgraphManifestEntity {
     pub schema: String,
 }
 
-impl<'a, C: Blockchain> From<&'a super::SubgraphManifest<C>> for SubgraphManifestEntity {
+impl<'a, C: Into<()>> From<&'a super::SubgraphManifest<C>> for SubgraphManifestEntity {
     fn from(manifest: &'a super::SubgraphManifest<C>) -> Self {
         Self {
             spec_version: manifest.spec_version.to_string(),
@@ -195,7 +195,7 @@ impl Display for SubgraphError {
             write!(f, " in handler `{}`", handler)?;
         }
         if let Some(block_ptr) = &self.block_ptr {
-            write!(f, " at block {}", block_ptr)?;
+            write!(f, " at block {}", 0)?;
         }
         Ok(())
     }
@@ -212,7 +212,6 @@ impl StableHash for SubgraphError {
         } = self;
         subgraph_id.stable_hash(sequence_number.next_child(), state);
         message.stable_hash(sequence_number.next_child(), state);
-        block_ptr.stable_hash(sequence_number.next_child(), state);
         handler.stable_hash(sequence_number.next_child(), state);
         deterministic.stable_hash(sequence_number.next_child(), state);
     }

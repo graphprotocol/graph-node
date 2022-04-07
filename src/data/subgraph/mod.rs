@@ -24,21 +24,16 @@ use thiserror::Error;
 use wasmparser;
 use web3::types::Address;
 
+use crate::components::{
+    link_resolver::LinkResolver,
+    store::{DeploymentLocator, StoreError, SubgraphStore},
+};
 use crate::data::store::Entity;
 use crate::data::{
     schema::{Schema, SchemaImportError, SchemaValidationError},
     subgraph::features::validate_subgraph_features,
 };
 use crate::prelude::r;
-use crate::{blockchain::DataSource, data::graphql::TryFromValue};
-use crate::{blockchain::DataSourceTemplate as _, data::query::QueryExecutionError};
-use crate::{
-    blockchain::{Blockchain, UnresolvedDataSource as _, UnresolvedDataSourceTemplate as _},
-    components::{
-        link_resolver::LinkResolver,
-        store::{DeploymentLocator, StoreError, SubgraphStore},
-    },
-};
 
 use crate::prelude::{impl_slog_value, BlockNumber, Deserialize, Serialize};
 
@@ -245,8 +240,8 @@ pub enum SubgraphRegistrarError {
     DeploymentNotFound(String),
     #[error("deployment assignment unchanged: {0}")]
     DeploymentAssignmentUnchanged(String),
-    #[error("subgraph registrar internal query error: {0}")]
-    QueryExecutionError(QueryExecutionError),
+    #[error("subgraph registrar internal query error: ")]
+    QueryExecutionError(()),
     #[error("subgraph registrar error with store: {0}")]
     StoreError(StoreError),
     #[error("subgraph validation error: {}", display_vector(.0))]
@@ -257,8 +252,8 @@ pub enum SubgraphRegistrarError {
     Unknown(anyhow::Error),
 }
 
-impl From<QueryExecutionError> for SubgraphRegistrarError {
-    fn from(e: QueryExecutionError) -> Self {
+impl From<()> for SubgraphRegistrarError {
+    fn from(e: ()) -> Self {
         SubgraphRegistrarError::QueryExecutionError(e)
     }
 }
@@ -452,10 +447,10 @@ impl Graft {
                 self.base
             )),
             Ok(Some(ptr)) => {
-                if ptr.number < self.block {
+                if 0 < self.block {
                     gbi(format!(
                         "failed to graft onto `{}` at block {} since it has only processed block {}",
-                        self.base, self.block, ptr.number
+                        self.base, self.block, 0
                     ))
                 } else {
                     vec![]
@@ -484,25 +479,15 @@ pub struct BaseSubgraphManifest<C, S, D, T> {
 }
 
 /// SubgraphManifest with IPFS links unresolved
-type UnresolvedSubgraphManifest<C> = BaseSubgraphManifest<
-    C,
-    UnresolvedSchema,
-    <C as Blockchain>::UnresolvedDataSource,
-    <C as Blockchain>::UnresolvedDataSourceTemplate,
->;
+type UnresolvedSubgraphManifest<C> = BaseSubgraphManifest<C, UnresolvedSchema, (), ()>;
 
 /// SubgraphManifest validated with IPFS links resolved
-pub type SubgraphManifest<C> = BaseSubgraphManifest<
-    C,
-    Schema,
-    <C as Blockchain>::DataSource,
-    <C as Blockchain>::DataSourceTemplate,
->;
+pub type SubgraphManifest<C> = BaseSubgraphManifest<C, Schema, (), ()>;
 
 /// Unvalidated SubgraphManifest
-pub struct UnvalidatedSubgraphManifest<C: Blockchain>(SubgraphManifest<C>);
+pub struct UnvalidatedSubgraphManifest<C: Into<()>>(SubgraphManifest<C>);
 
-impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
+impl<C: Into<()>> UnvalidatedSubgraphManifest<C> {
     /// Entry point for resolving a subgraph definition.
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
@@ -535,11 +520,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             errors.push(SubgraphManifestValidationError::NoDataSources);
         }
 
-        for ds in &self.0.data_sources {
-            errors.extend(ds.validate().into_iter().map(|e| {
-                SubgraphManifestValidationError::DataSourceValidation(ds.name().to_owned(), e)
-            }));
-        }
+        for ds in &self.0.data_sources {}
 
         // For API versions newer than 0.0.5, validate that all mappings uses the same api_version
         if let Err(different_api_versions) = self.0.unified_mapping_api_version() {
@@ -550,7 +531,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             .0
             .data_sources
             .iter()
-            .filter_map(|d| d.network().map(|n| n.to_string()))
+            .filter_map(|d| Some(String::new()))
             .collect::<Vec<String>>();
         networks.sort();
         networks.dedup();
@@ -600,7 +581,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
     }
 }
 
-impl<C: Blockchain> SubgraphManifest<C> {
+impl<C: Into<()>> SubgraphManifest<C> {
     /// Entry point for resolving a subgraph definition.
     pub async fn resolve_from_raw(
         id: DeploymentHash,
@@ -630,30 +611,21 @@ impl<C: Blockchain> SubgraphManifest<C> {
         // Assume the manifest has been validated, ensuring network names are homogenous
         self.data_sources
             .iter()
-            .filter_map(|d| d.network().map(|n| n.to_string()))
+            .filter_map(|d| Some(String::new()))
             .next()
             .expect("Validated manifest does not have a network defined on any datasource")
     }
 
     pub fn start_blocks(&self) -> Vec<BlockNumber> {
-        self.data_sources
-            .iter()
-            .map(|data_source| data_source.start_block())
-            .collect()
+        self.data_sources.iter().map(|data_source| 8).collect()
     }
 
     pub fn api_versions(&self) -> impl Iterator<Item = semver::Version> + '_ {
-        self.templates
-            .iter()
-            .map(|template| template.api_version())
-            .chain(self.data_sources.iter().map(|source| source.api_version()))
+        vec![].into_iter()
     }
 
     pub fn runtimes(&self) -> impl Iterator<Item = &[u8]> + '_ {
-        self.templates
-            .iter()
-            .map(|template| template.runtime())
-            .chain(self.data_sources.iter().map(|source| source.runtime()))
+        vec![].into_iter()
     }
 
     pub fn unified_mapping_api_version(
@@ -663,73 +635,14 @@ impl<C: Blockchain> SubgraphManifest<C> {
     }
 }
 
-impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
+impl<C: Into<()>> UnresolvedSubgraphManifest<C> {
     pub async fn resolve(
         self,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<SubgraphManifest<C>, anyhow::Error> {
-        let UnresolvedSubgraphManifest {
-            id,
-            spec_version,
-            features,
-            description,
-            repository,
-            schema,
-            data_sources,
-            graft,
-            templates,
-            chain,
-        } = self;
-
-        if !(MIN_SPEC_VERSION..=max_spec_version.clone()).contains(&spec_version) {
-            return Err(anyhow!(
-                "This Graph Node only supports manifest spec versions between {} and {}, but subgraph `{}` uses `{}`",
-                MIN_SPEC_VERSION,
-                max_spec_version,
-                id,
-                spec_version
-            ));
-        }
-
-        let (schema, data_sources, templates) = try_join3(
-            schema.resolve(id.clone(), &resolver, logger),
-            data_sources
-                .into_iter()
-                .map(|ds| ds.resolve(&resolver, logger))
-                .collect::<FuturesOrdered<_>>()
-                .try_collect::<Vec<_>>(),
-            templates
-                .into_iter()
-                .map(|template| template.resolve(&resolver, logger))
-                .collect::<FuturesOrdered<_>>()
-                .try_collect::<Vec<_>>(),
-        )
-        .await?;
-
-        for ds in &data_sources {
-            ensure!(
-                semver::VersionReq::parse(&"<= 0.0.7")
-                    .unwrap()
-                    .matches(&ds.api_version()),
-                "The maximum supported mapping API version of this indexer is 0.0.7, but `{}` was found",
-                ds.api_version()
-            );
-        }
-
-        Ok(SubgraphManifest {
-            id,
-            spec_version,
-            features,
-            description,
-            repository,
-            schema,
-            data_sources,
-            graft,
-            templates,
-            chain,
-        })
+        todo!()
     }
 }
 

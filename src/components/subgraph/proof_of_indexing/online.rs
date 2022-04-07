@@ -3,10 +3,7 @@
 //! to the reference implementation, but this is updated incrementally
 
 use super::ProofOfIndexingEvent;
-use crate::{
-    blockchain::BlockPtr,
-    prelude::{debug, BlockNumber, DeploymentHash, Logger},
-};
+use crate::prelude::{debug, BlockNumber, DeploymentHash, Logger};
 use stable_hash::crypto::{Blake3SeqNo, SetHasher};
 use stable_hash::prelude::*;
 use stable_hash::utils::AsBytes;
@@ -186,7 +183,7 @@ pub struct ProofOfIndexingFinisher {
 }
 
 impl ProofOfIndexingFinisher {
-    pub fn new(block: &BlockPtr, subgraph_id: &DeploymentHash, indexer: &Option<Address>) -> Self {
+    pub fn new(block: &(), subgraph_id: &DeploymentHash, indexer: &Option<Address>) -> Self {
         let mut state = SetHasher::new();
 
         // Add the subgraph id
@@ -199,7 +196,6 @@ impl ProofOfIndexingFinisher {
         let block_hash_seq_no = traverse_seq_no(&[
             2, // PoI.block_hash
         ]);
-        AsBytes(block.hash_slice()).stable_hash(block_hash_seq_no, &mut state);
 
         // Add the indexer
         let indexer_seq_no = traverse_seq_no(&[
@@ -211,7 +207,7 @@ impl ProofOfIndexingFinisher {
             .stable_hash(indexer_seq_no, &mut state);
 
         ProofOfIndexingFinisher {
-            block_number: block.number,
+            block_number: 0,
             state,
             causality_count: 0,
         }

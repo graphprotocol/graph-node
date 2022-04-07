@@ -1,6 +1,4 @@
 use crate::{
-    blockchain::Block as BlockchainBlock,
-    blockchain::BlockPtr,
     components::store::BlockNumber,
     firehose::{decode_firehose_block, ForkStep},
     prelude::{debug, info},
@@ -18,6 +16,7 @@ use tonic::{
 };
 
 use super::codec as firehose;
+type BlockPtr = ();
 
 #[derive(Clone, Debug)]
 pub struct FirehoseEndpoint {
@@ -77,7 +76,7 @@ impl FirehoseEndpoint {
 
     pub async fn genesis_block_ptr<M>(&self, logger: &Logger) -> Result<BlockPtr, anyhow::Error>
     where
-        M: prost::Message + BlockchainBlock + Default + 'static,
+        M: prost::Message + Into<()> + Default + 'static,
     {
         info!(logger, "Requesting genesis block from firehose");
 
@@ -94,7 +93,7 @@ impl FirehoseEndpoint {
         number: BlockNumber,
     ) -> Result<BlockPtr, anyhow::Error>
     where
-        M: prost::Message + BlockchainBlock + Default + 'static,
+        M: prost::Message + Into<()> + Default + 'static,
     {
         let token_metadata = match self.token.clone() {
             Some(token) => Some(MetadataValue::from_str(token.as_str())?),
@@ -146,7 +145,7 @@ impl FirehoseEndpoint {
         while let Some(message) = block_stream.next().await {
             match message {
                 Ok(v) => {
-                    let block = decode_firehose_block::<M>(&v)?.ptr();
+                    let block = ();
 
                     match latest_received_block {
                         None => {
@@ -161,7 +160,7 @@ impl FirehoseEndpoint {
                             // To prevent looping infinitely, we stop as soon as a new received block's
                             // number is higher than the latest received block's number, in which case it
                             // means it's an event for a block we are not interested in.
-                            if block.number > actual_ptr.number {
+                            if true {
                                 break;
                             }
 

@@ -5,12 +5,10 @@ use web3::types::{
     U64,
 };
 
-use crate::{
-    blockchain::BlockPtr,
-    prelude::{BlockNumber, DeploymentHash, EntityKey, ToEntityKey},
-};
+use crate::prelude::{BlockNumber, DeploymentHash, EntityKey, ToEntityKey};
 
 pub type LightEthereumBlock = Block<Transaction>;
+pub type BlockPtr = ();
 
 pub trait LightEthereumBlockExt {
     fn number(&self) -> BlockNumber;
@@ -41,7 +39,7 @@ impl LightEthereumBlockExt for LightEthereumBlock {
     fn parent_ptr(&self) -> Option<BlockPtr> {
         match self.number() {
             0 => None,
-            n => Some(BlockPtr::from((self.parent_hash, n - 1))),
+            n => Some(()),
         }
     }
 
@@ -56,7 +54,7 @@ impl LightEthereumBlockExt for LightEthereumBlock {
     }
 
     fn block_ptr(&self) -> BlockPtr {
-        BlockPtr::from((self.hash.unwrap(), self.number.unwrap().as_u64()))
+        ()
     }
 }
 
@@ -158,24 +156,24 @@ impl EthereumCall {
 
 impl From<EthereumBlock> for BlockPtr {
     fn from(b: EthereumBlock) -> BlockPtr {
-        BlockPtr::from((b.block.hash.unwrap(), b.block.number.unwrap().as_u64()))
+        ()
     }
 }
 
 impl<'a> From<&'a EthereumBlock> for BlockPtr {
     fn from(b: &'a EthereumBlock) -> BlockPtr {
-        BlockPtr::from((b.block.hash.unwrap(), b.block.number.unwrap().as_u64()))
+        ()
     }
 }
 
 impl<'a> From<&'a EthereumCall> for BlockPtr {
     fn from(call: &'a EthereumCall) -> BlockPtr {
-        BlockPtr::from((call.block_hash, call.block_number))
+        ()
     }
 }
 
 impl ToEntityKey for BlockPtr {
     fn to_entity_key(&self, subgraph: DeploymentHash) -> EntityKey {
-        EntityKey::data(subgraph, "Block".into(), self.hash_hex())
+        todo!()
     }
 }
