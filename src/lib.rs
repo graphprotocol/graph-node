@@ -13,8 +13,6 @@ pub mod ext;
 /// Logging utilities
 pub mod log;
 
-pub mod ipfs_client;
-
 pub mod blockchain;
 
 pub mod runtime;
