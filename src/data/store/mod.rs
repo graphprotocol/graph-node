@@ -2,7 +2,6 @@ use crate::{
     components::store::{DeploymentLocator, EntityType},
     data::graphql::ObjectTypeExt,
     prelude::{anyhow::Context, q, r, s, CacheWeight, EntityKey, QueryExecutionError, Schema},
-    runtime::gas::{Gas, GasSizeOf},
 };
 use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
 use anyhow::{anyhow, Error};
@@ -772,12 +771,6 @@ impl<'a> From<Vec<(&'a str, Value)>> for Entity {
 impl CacheWeight for Entity {
     fn indirect_weight(&self) -> usize {
         self.0.indirect_weight()
-    }
-}
-
-impl GasSizeOf for Entity {
-    fn gas_size_of(&self) -> Gas {
-        self.0.gas_size_of()
     }
 }
 

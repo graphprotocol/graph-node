@@ -14,7 +14,6 @@ use crate::{
     components::store::{DeploymentLocator, StoredDynamicDataSource},
     data::subgraph::UnifiedMappingApiVersion,
     prelude::DataSourceContext,
-    runtime::{gas::GasCounter, AscHeap, AscPtr, DeterministicHostError, HostExportError},
 };
 use crate::{
     components::{
@@ -263,18 +262,14 @@ pub trait TriggerData {
 pub trait MappingTrigger: Send + Sync {
     /// A flexible interface for writing a type to AS memory, any pointer can be returned.
     /// Use `AscPtr::erased` to convert `AscPtr<T>` into `AscPtr<()>`.
-    fn to_asc_ptr<H: AscHeap>(
-        self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscPtr<()>, DeterministicHostError>;
+    fn to_asc_ptr<H>(self, heap: &mut H, gas: &u32) -> Result<(), ()>;
 }
 
 pub struct HostFnCtx<'a> {
     pub logger: Logger,
     pub block_ptr: BlockPtr,
-    pub heap: &'a mut dyn AscHeap,
-    pub gas: GasCounter,
+    pub heap: &'a mut dyn Any,
+    pub gas: u32,
 }
 
 /// Host fn that receives one u32 argument and returns an u32.
@@ -282,7 +277,7 @@ pub struct HostFnCtx<'a> {
 #[derive(Clone)]
 pub struct HostFn {
     pub name: &'static str,
-    pub func: Arc<dyn Send + Sync + Fn(HostFnCtx, u32) -> Result<u32, HostExportError>>,
+    pub func: Arc<dyn Send + Sync + Fn(HostFnCtx, u32) -> Result<u32, ()>>,
 }
 
 pub trait RuntimeAdapter<C: Blockchain>: Send + Sync {
@@ -419,11 +414,7 @@ impl<C: Blockchain> TriggerWithHandler<C> {
         &self.handler
     }
 
-    pub fn to_asc_ptr<H: AscHeap>(
-        self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscPtr<()>, DeterministicHostError> {
+    pub fn to_asc_ptr<H>(self, heap: &mut H, gas: &u32) -> Result<(), ()> {
         self.trigger.to_asc_ptr(heap, gas)
     }
 }

@@ -15,8 +15,6 @@ pub mod log;
 
 pub mod blockchain;
 
-pub mod runtime;
-
 pub mod firehose;
 
 /// Wrapper for spawning tasks that abort on panic, which is our default.
