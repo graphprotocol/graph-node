@@ -45,142 +45,8 @@ impl fmt::Display for Strings {
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SchemaValidationError {
-    #[error("Interface `{0}` not defined")]
-    InterfaceUndefined(String),
-
-    #[error("@entity directive missing on the following types: `{0}`")]
-    EntityDirectivesMissing(Strings),
-
-    #[error(
-        "Entity type `{0}` does not satisfy interface `{1}` because it is missing \
-         the following fields: {2}"
-    )]
-    InterfaceFieldsMissing(String, String, Strings), // (type, interface, missing_fields)
-    #[error("Implementors of interface `{0}` use different id types `{1}`. They must all use the same type")]
-    InterfaceImplementorsMixId(String, String),
-    #[error("Field `{1}` in type `{0}` has invalid @derivedFrom: {2}")]
-    InvalidDerivedFrom(String, String, String), // (type, field, reason)
-    #[error("The following type names are reserved: `{0}`")]
-    UsageOfReservedTypes(Strings),
-    #[error("_Schema_ type is only for @imports and must not have any fields")]
-    SchemaTypeWithFields,
-    #[error("Imported subgraph name `{0}` is invalid")]
-    ImportedSubgraphNameInvalid(String),
-    #[error("Imported subgraph id `{0}` is invalid")]
-    ImportedSubgraphIdInvalid(String),
-    #[error("The _Schema_ type only allows @import directives")]
-    InvalidSchemaTypeDirectives,
-    #[error(
-        r#"@import directives must have the form \
-@import(types: ["A", {{ name: "B", as: "C"}}], from: {{ name: "org/subgraph"}}) or \
-@import(types: ["A", {{ name: "B", as: "C"}}], from: {{ id: "Qm..."}})"#
-    )]
-    ImportDirectiveInvalid,
-    #[error("Type `{0}`, field `{1}`: type `{2}` is neither defined nor imported")]
-    FieldTypeUnknown(String, String, String), // (type_name, field_name, field_type)
-    #[error("Imported type `{0}` does not exist in the `{1}` schema")]
-    ImportedTypeUndefined(String, String), // (type_name, schema)
-    #[error("Fulltext directive name undefined")]
-    FulltextNameUndefined,
-    #[error("Fulltext directive name overlaps with type: {0}")]
-    FulltextNameConflict(String),
-    #[error("Fulltext directive name overlaps with an existing entity field or a top-level query field: {0}")]
-    FulltextNameCollision(String),
-    #[error("Fulltext language is undefined")]
-    FulltextLanguageUndefined,
-    #[error("Fulltext language is invalid: {0}")]
-    FulltextLanguageInvalid(String),
-    #[error("Fulltext algorithm is undefined")]
-    FulltextAlgorithmUndefined,
-    #[error("Fulltext algorithm is invalid: {0}")]
-    FulltextAlgorithmInvalid(String),
-    #[error("Fulltext include is invalid")]
-    FulltextIncludeInvalid,
-    #[error("Fulltext directive requires an 'include' list")]
-    FulltextIncludeUndefined,
-    #[error("Fulltext 'include' list must contain an object")]
-    FulltextIncludeObjectMissing,
-    #[error(
-        "Fulltext 'include' object must contain 'entity' (String) and 'fields' (List) attributes"
-    )]
-    FulltextIncludeEntityMissingOrIncorrectAttributes,
-    #[error("Fulltext directive includes an entity not found on the subgraph schema")]
-    FulltextIncludedEntityNotFound,
-    #[error("Fulltext include field must have a 'name' attribute")]
-    FulltextIncludedFieldMissingRequiredProperty,
-    #[error("Fulltext entity field, {0}, not found or not a string")]
-    FulltextIncludedFieldInvalid(String),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum FulltextLanguage {
-    Simple,
-    Danish,
-    Dutch,
-    English,
-    Finnish,
-    French,
-    German,
-    Hungarian,
-    Italian,
-    Norwegian,
-    Portugese,
-    Romanian,
-    Russian,
-    Spanish,
-    Swedish,
-    Turkish,
-}
-
-impl TryFrom<&str> for FulltextLanguage {
-    type Error = String;
-    fn try_from(language: &str) -> Result<Self, Self::Error> {
-        match &language[..] {
-            "simple" => Ok(FulltextLanguage::Simple),
-            "da" => Ok(FulltextLanguage::Danish),
-            "nl" => Ok(FulltextLanguage::Dutch),
-            "en" => Ok(FulltextLanguage::English),
-            "fi" => Ok(FulltextLanguage::Finnish),
-            "fr" => Ok(FulltextLanguage::French),
-            "de" => Ok(FulltextLanguage::German),
-            "hu" => Ok(FulltextLanguage::Hungarian),
-            "it" => Ok(FulltextLanguage::Italian),
-            "no" => Ok(FulltextLanguage::Norwegian),
-            "pt" => Ok(FulltextLanguage::Portugese),
-            "ro" => Ok(FulltextLanguage::Romanian),
-            "ru" => Ok(FulltextLanguage::Russian),
-            "es" => Ok(FulltextLanguage::Spanish),
-            "sv" => Ok(FulltextLanguage::Swedish),
-            "tr" => Ok(FulltextLanguage::Turkish),
-            invalid => Err(format!(
-                "Provided language for fulltext search is invalid: {}",
-                invalid
-            )),
-        }
-    }
-}
-
-impl FulltextLanguage {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Simple => "simple",
-            Self::Danish => "danish",
-            Self::Dutch => "dutch",
-            Self::English => "english",
-            Self::Finnish => "finnish",
-            Self::French => "french",
-            Self::German => "german",
-            Self::Hungarian => "hungarian",
-            Self::Italian => "italian",
-            Self::Norwegian => "norwegian",
-            Self::Portugese => "portugese",
-            Self::Romanian => "romanian",
-            Self::Russian => "russian",
-            Self::Spanish => "spanish",
-            Self::Swedish => "swedish",
-            Self::Turkish => "turkish",
-        }
-    }
+    #[error("Interface `` not defined")]
+    A,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -205,7 +71,7 @@ impl TryFrom<&str> for FulltextAlgorithm {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FulltextConfig {
-    pub language: FulltextLanguage,
+    pub language: (),
     pub algorithm: FulltextAlgorithm,
 }
 
@@ -226,9 +92,7 @@ impl From<&s::Directive> for FulltextDefinition {
         )
         .unwrap();
 
-        let language =
-            FulltextLanguage::try_from(directive.argument("language").unwrap().as_enum().unwrap())
-                .unwrap();
+        let language = ();
 
         let included_entity_list = directive.argument("include").unwrap().as_list().unwrap();
         // Currently fulltext query fields are limited to 1 entity, so we just take the first (and only) included Entity
@@ -699,9 +563,7 @@ impl Schema {
                         }
                         _ => None,
                     })
-                    .ok_or_else(|| {
-                        SchemaValidationError::InterfaceUndefined(implemented_interface.clone())
-                    })?;
+                    .ok_or_else(|| SchemaValidationError::A)?;
 
                 Self::validate_interface_implementation(object_type, &interface_type)?;
 
@@ -872,7 +734,7 @@ impl Schema {
             .subgraph_schema_object_type()
             .and_then(|subgraph_schema_type| {
                 if !subgraph_schema_type.fields.is_empty() {
-                    Some(SchemaValidationError::SchemaTypeWithFields)
+                    Some(SchemaValidationError::A)
                 } else {
                     None
                 }
@@ -895,7 +757,7 @@ impl Schema {
                     .next()
                     .is_none()
                 {
-                    Some(SchemaValidationError::InvalidSchemaTypeDirectives)
+                    Some(SchemaValidationError::A)
                 } else {
                     None
                 }
@@ -946,7 +808,7 @@ impl Schema {
         if from_is_valid(import.argument("from")) && types_are_valid(import.argument("types")) {
             None
         } else {
-            Some(SchemaValidationError::ImportDirectiveInvalid)
+            Some(SchemaValidationError::A)
         }
     }
 
@@ -998,7 +860,7 @@ impl Schema {
     fn validate_fulltext_directive_name(&self, fulltext: &Directive) -> Vec<SchemaValidationError> {
         let name = match fulltext.argument("name") {
             Some(Value::String(name)) => name,
-            _ => return vec![SchemaValidationError::FulltextNameUndefined],
+            _ => return vec![SchemaValidationError::A],
         };
 
         let local_types: Vec<&ObjectType> = self
@@ -1017,9 +879,7 @@ impl Schema {
                     || field.name.eq(name)
             })
         }) {
-            return vec![SchemaValidationError::FulltextNameCollision(
-                name.to_string(),
-            )];
+            return vec![SchemaValidationError::A];
         }
 
         // Validate that each fulltext directive has a distinct name
@@ -1039,9 +899,7 @@ impl Schema {
             .count()
             > 1
         {
-            return vec![SchemaValidationError::FulltextNameConflict(
-                name.to_string(),
-            )];
+            return vec![SchemaValidationError::A];
         } else {
             return vec![];
         }
@@ -1053,13 +911,11 @@ impl Schema {
     ) -> Vec<SchemaValidationError> {
         let language = match fulltext.argument("language") {
             Some(Value::Enum(language)) => language,
-            _ => return vec![SchemaValidationError::FulltextLanguageUndefined],
+            _ => return vec![SchemaValidationError::A],
         };
-        match FulltextLanguage::try_from(language.as_str()) {
+        match Result::<(), ()>::Ok(()) {
             Ok(_) => vec![],
-            Err(_) => vec![SchemaValidationError::FulltextLanguageInvalid(
-                language.to_string(),
-            )],
+            Err(_) => vec![SchemaValidationError::A],
         }
     }
 
@@ -1069,13 +925,11 @@ impl Schema {
     ) -> Vec<SchemaValidationError> {
         let algorithm = match fulltext.argument("algorithm") {
             Some(Value::Enum(algorithm)) => algorithm,
-            _ => return vec![SchemaValidationError::FulltextAlgorithmUndefined],
+            _ => return vec![SchemaValidationError::A],
         };
         match FulltextAlgorithm::try_from(algorithm.as_str()) {
             Ok(_) => vec![],
-            Err(_) => vec![SchemaValidationError::FulltextAlgorithmInvalid(
-                algorithm.to_string(),
-            )],
+            Err(_) => vec![SchemaValidationError::A],
         }
     }
 
@@ -1093,19 +947,19 @@ impl Schema {
         // Validate that each entity in fulltext.include exists
         let includes = match fulltext.argument("include") {
             Some(Value::List(includes)) if !includes.is_empty() => includes,
-            _ => return vec![SchemaValidationError::FulltextIncludeUndefined],
+            _ => return vec![SchemaValidationError::A],
         };
 
         for include in includes {
             match include.as_object() {
-                None => return vec![SchemaValidationError::FulltextIncludeObjectMissing],
+                None => return vec![SchemaValidationError::A],
                 Some(include_entity) => {
                     let (entity, fields) =
                         match (include_entity.get("entity"), include_entity.get("fields")) {
                             (Some(Value::String(entity)), Some(Value::List(fields))) => {
                                 (entity, fields)
                             }
-                            _ => return vec![SchemaValidationError::FulltextIncludeEntityMissingOrIncorrectAttributes],
+                            _ => return vec![SchemaValidationError::A],
                         };
 
                     // Validate the included entity type is one of the local types
@@ -1114,7 +968,7 @@ impl Schema {
                         .cloned()
                         .find(|typ| typ.name[..].eq(entity))
                     {
-                        None => return vec![SchemaValidationError::FulltextIncludedEntityNotFound],
+                        None => return vec![SchemaValidationError::A],
                         Some(t) => t.clone(),
                     };
 
@@ -1122,9 +976,9 @@ impl Schema {
                         let field_name = match field_value {
                             Value::Object(field_map) => match field_map.get("name") {
                                 Some(Value::String(name)) => name,
-                                _ => return vec![SchemaValidationError::FulltextIncludedFieldMissingRequiredProperty],
+                                _ => return vec![SchemaValidationError::A],
                             },
-                            _ => return vec![SchemaValidationError::FulltextIncludeEntityMissingOrIncorrectAttributes],
+                            _ => return vec![SchemaValidationError::A],
                         };
 
                         // Validate the included field is a String field on the local entity types specified
@@ -1136,9 +990,8 @@ impl Schema {
                                 matches!(ValueType::from_str(base_type), Ok(ValueType::String) if field.name.eq(field_name))
                             })
                         {
-                            return vec![SchemaValidationError::FulltextIncludedFieldInvalid(
-                                field_name.clone(),
-                            )];
+                            return vec![SchemaValidationError::A
+                            ];
                         };
                     }
                 }
@@ -1192,10 +1045,7 @@ impl Schema {
                             .iter()
                             .any(|(import, _)| name == import.alias);
                         if !is_local && !is_imported {
-                            Some(SchemaValidationError::ImportedTypeUndefined(
-                                name.to_string(),
-                                schema_handle,
-                            ))
+                            Some(SchemaValidationError::A)
                         } else {
                             None
                         }
@@ -1235,11 +1085,7 @@ impl Schema {
                     if local_enums.iter().any(|enu| enu.eq(base)) {
                         return errors;
                     }
-                    errors.push(SchemaValidationError::FieldTypeUnknown(
-                        type_name.to_string(),
-                        field.name.to_string(),
-                        base.to_string(),
-                    ));
+                    errors.push(SchemaValidationError::A);
                     errors
                 })
             })
@@ -1302,9 +1148,7 @@ impl Schema {
         if reserved_types.is_empty() {
             Ok(())
         } else {
-            Err(SchemaValidationError::UsageOfReservedTypes(Strings(
-                reserved_types,
-            )))
+            Err(SchemaValidationError::A)
         }
     }
 
@@ -1319,9 +1163,7 @@ impl Schema {
         if types_without_entity_directive.is_empty() {
             Ok(())
         } else {
-            Err(SchemaValidationError::EntityDirectivesMissing(Strings(
-                types_without_entity_directive,
-            )))
+            Err(SchemaValidationError::A)
         }
     }
 
@@ -1332,11 +1174,7 @@ impl Schema {
             field_name: &str,
             reason: &str,
         ) -> SchemaValidationError {
-            SchemaValidationError::InvalidDerivedFrom(
-                object_type.name.to_owned(),
-                field_name.to_owned(),
-                reason.to_owned(),
-            )
+            SchemaValidationError::A
         }
 
         let type_definitions = self.document.get_object_type_definitions();
@@ -1482,11 +1320,7 @@ impl Schema {
             }
         }
         if !missing_fields.is_empty() {
-            Err(SchemaValidationError::InterfaceFieldsMissing(
-                object.name.clone(),
-                interface.name.clone(),
-                Strings(missing_fields),
-            ))
+            Err(SchemaValidationError::A)
         } else {
             Ok(())
         }
@@ -1502,10 +1336,7 @@ impl Schema {
                     .map(|name| if name == "ID" { "String" } else { name }),
             );
             if id_types.len() > 1 {
-                return Err(SchemaValidationError::InterfaceImplementorsMixId(
-                    intf.to_string(),
-                    id_types.iter().join(", "),
-                ));
+                return Err(SchemaValidationError::A);
             }
         }
         Ok(())
