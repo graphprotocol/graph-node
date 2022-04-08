@@ -658,265 +658,47 @@ impl Schema {
     }
 
     // Adds a @subgraphId(id: ...) directive to object/interface/enum types in the schema.
-    pub fn add_subgraph_id_directives(&mut self, id: ()) {
-        for definition in self.document.definitions.iter_mut() {
-            let subgraph_id_argument = (String::from("id"), s::Value::String(String::new()));
-
-            let subgraph_id_directive = s::Directive {
-                name: "subgraphId".to_string(),
-                position: Pos::default(),
-                arguments: vec![subgraph_id_argument],
-            };
-
-            if let Definition::TypeDefinition(ref mut type_definition) = definition {
-                let (name, directives) = match type_definition {
-                    TypeDefinition::Object(object_type) => {
-                        (&object_type.name, &mut object_type.directives)
-                    }
-                    TypeDefinition::Interface(interface_type) => {
-                        (&interface_type.name, &mut interface_type.directives)
-                    }
-                    TypeDefinition::Enum(enum_type) => (&enum_type.name, &mut enum_type.directives),
-                    TypeDefinition::Scalar(scalar_type) => {
-                        (&scalar_type.name, &mut scalar_type.directives)
-                    }
-                    TypeDefinition::InputObject(input_object_type) => {
-                        (&input_object_type.name, &mut input_object_type.directives)
-                    }
-                    TypeDefinition::Union(union_type) => {
-                        (&union_type.name, &mut union_type.directives)
-                    }
-                };
-
-                if !name.eq(SCHEMA_TYPE_NAME)
-                    && !directives
-                        .iter()
-                        .any(|directive| directive.name.eq("subgraphId"))
-                {
-                    directives.push(subgraph_id_directive);
-                }
-            };
-        }
-    }
+    pub fn add_subgraph_id_directives(&mut self, id: ()) {}
 
     pub fn validate(
         &self,
         schemas: &HashMap<SchemaReference, Arc<Schema>>,
     ) -> Result<(), Vec<SchemaValidationError>> {
-        let mut errors: Vec<SchemaValidationError> = [
-            self.validate_schema_types(),
-            self.validate_derived_from(),
-            self.validate_schema_type_has_no_fields(),
-            self.validate_directives_on_schema_type(),
-            self.validate_reserved_types_usage(),
-            self.validate_interface_id_type(),
-        ]
-        .into_iter()
-        .filter(Result::is_err)
-        // Safe unwrap due to the filter above
-        .map(Result::unwrap_err)
-        .collect();
-
-        errors.append(&mut self.validate_fields());
-        errors.append(&mut self.validate_import_directives());
-        errors.append(&mut self.validate_fulltext_directives());
-        errors.append(&mut self.validate_imported_types(schemas));
-
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(errors)
-        }
+        Ok(())
     }
 
     fn validate_schema_type_has_no_fields(&self) -> Result<(), SchemaValidationError> {
-        match self
-            .subgraph_schema_object_type()
-            .and_then(|subgraph_schema_type| {
-                if !subgraph_schema_type.fields.is_empty() {
-                    Some(SchemaValidationError::A)
-                } else {
-                    None
-                }
-            }) {
-            Some(err) => Err(err),
-            None => Ok(()),
-        }
+        Ok(())
     }
 
     fn validate_directives_on_schema_type(&self) -> Result<(), SchemaValidationError> {
-        match self
-            .subgraph_schema_object_type()
-            .and_then(|subgraph_schema_type| {
-                if !subgraph_schema_type
-                    .directives
-                    .iter()
-                    .filter(|directive| {
-                        !directive.name.eq("import") && !directive.name.eq("fulltext")
-                    })
-                    .next()
-                    .is_none()
-                {
-                    Some(SchemaValidationError::A)
-                } else {
-                    None
-                }
-            }) {
-            Some(err) => Err(err),
-            None => Ok(()),
-        }
+        Ok(())
     }
 
     /// Check the syntax of a single `@import` directive
     fn validate_import_directive_arguments(import: &Directive) -> Option<SchemaValidationError> {
-        fn validate_import_type(typ: &Value) -> Result<(), ()> {
-            match typ {
-                Value::String(_) => Ok(()),
-                Value::Object(typ) => match (typ.get("name"), typ.get("as")) {
-                    (Some(Value::String(_)), Some(Value::String(_))) => Ok(()),
-                    _ => Err(()),
-                },
-                _ => Err(()),
-            }
-        }
-
-        fn types_are_valid(types: Option<&Value>) -> bool {
-            // All of the elements in the `types` field are valid: either
-            // a string or an object with keys `name` and `as` which are strings
-            if let Some(Value::List(types)) = types {
-                types
-                    .iter()
-                    .try_for_each(validate_import_type)
-                    .err()
-                    .is_none()
-            } else {
-                false
-            }
-        }
-
-        fn from_is_valid(from: Option<&Value>) -> bool {
-            if let Some(Value::Object(from)) = from {
-                let has_id = matches!(from.get("id"), Some(Value::String(_)));
-
-                let has_name = matches!(from.get("name"), Some(Value::String(_)));
-                has_id ^ has_name
-            } else {
-                false
-            }
-        }
-
-        if from_is_valid(import.argument("from")) && types_are_valid(import.argument("types")) {
-            None
-        } else {
-            Some(SchemaValidationError::A)
-        }
+        None
     }
 
     fn validate_import_directive_schema_reference_parses(
         directive: &Directive,
     ) -> Option<SchemaValidationError> {
-        directive.argument("from").and_then(|from| match from {
-            Value::Object(from) => {
-                let id_parse_error = match from.get("id") {
-                    Some(Value::String(id)) => None,
-                    _ => None,
-                };
-                let name_parse_error = match from.get("name") {
-                    Some(Value::String(name)) => None,
-                    _ => None,
-                };
-                id_parse_error.or(name_parse_error)
-            }
-            _ => None,
-        })
+        None
     }
 
     fn validate_fulltext_directives(&self) -> Vec<SchemaValidationError> {
-        self.subgraph_schema_object_type()
-            .map_or(vec![], |subgraph_schema_type| {
-                subgraph_schema_type
-                    .directives
-                    .iter()
-                    .filter(|directives| directives.name.eq("fulltext"))
-                    .fold(vec![], |mut errors, fulltext| {
-                        errors.extend(self.validate_fulltext_directive_name(fulltext).into_iter());
-                        errors.extend(
-                            self.validate_fulltext_directive_language(fulltext)
-                                .into_iter(),
-                        );
-                        errors.extend(
-                            self.validate_fulltext_directive_algorithm(fulltext)
-                                .into_iter(),
-                        );
-                        errors.extend(
-                            self.validate_fulltext_directive_includes(fulltext)
-                                .into_iter(),
-                        );
-                        errors
-                    })
-            })
+        vec![]
     }
 
     fn validate_fulltext_directive_name(&self, fulltext: &Directive) -> Vec<SchemaValidationError> {
-        let name = match fulltext.argument("name") {
-            Some(Value::String(name)) => name,
-            _ => return vec![SchemaValidationError::A],
-        };
-
-        let local_types: Vec<&ObjectType> = self
-            .document
-            .get_object_type_definitions()
-            .into_iter()
-            .collect();
-
-        // Validate that the fulltext field doesn't collide with any top-level Query fields
-        // generated for entity types. The field name conversions should always align with those used
-        // to create the field names in `graphql::schema::api::query_fields_for_type()`.
-        if local_types.iter().any(|typ| {
-            typ.fields.iter().any(|field| {
-                name == &field.name.as_str().to_camel_case()
-                    || name == &field.name.to_plural().to_camel_case()
-                    || field.name.eq(name)
-            })
-        }) {
-            return vec![SchemaValidationError::A];
-        }
-
-        // Validate that each fulltext directive has a distinct name
-        if self
-            .subgraph_schema_object_type()
-            .unwrap()
-            .directives
-            .iter()
-            .filter(|directive| directive.name.eq("fulltext"))
-            .filter_map(|fulltext| {
-                // Collect all @fulltext directives with the same name
-                match fulltext.argument("name") {
-                    Some(Value::String(n)) if name.eq(n) => Some(n.as_str()),
-                    _ => None,
-                }
-            })
-            .count()
-            > 1
-        {
-            return vec![SchemaValidationError::A];
-        } else {
-            return vec![];
-        }
+        vec![]
     }
 
     fn validate_fulltext_directive_language(
         &self,
         fulltext: &Directive,
     ) -> Vec<SchemaValidationError> {
-        let language = match fulltext.argument("language") {
-            Some(Value::Enum(language)) => language,
-            _ => return vec![SchemaValidationError::A],
-        };
-        match Result::<(), ()>::Ok(()) {
-            Ok(_) => vec![],
-            Err(_) => vec![SchemaValidationError::A],
-        }
+        vec![]
     }
 
     fn validate_fulltext_directive_algorithm(
