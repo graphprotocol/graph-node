@@ -1,7 +1,6 @@
 use web3::types::{Address, H256};
 
 use super::*;
-use crate::components::transaction_receipt;
 use crate::data::query::QueryTarget;
 
 pub trait SubscriptionManager: Send + Sync + 'static {
@@ -345,10 +344,7 @@ pub trait ChainStore: Send + Sync + 'static {
     fn block_number(&self, block_hash: H256) -> Result<Option<(String, BlockNumber)>, StoreError>;
 
     /// Tries to retrieve all transactions receipts for a given block.
-    async fn transaction_receipts_in_block(
-        &self,
-        block_ptr: &H256,
-    ) -> Result<Vec<transaction_receipt::LightTransactionReceipt>, StoreError>;
+    async fn transaction_receipts_in_block(&self, block_ptr: &H256) -> Result<Vec<()>, StoreError>;
 }
 
 pub trait EthereumCallCache: Send + Sync + 'static {
