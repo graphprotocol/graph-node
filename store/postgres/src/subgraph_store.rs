@@ -936,25 +936,28 @@ impl SubgraphStoreInner {
         // If we don't have this block or we have multiple versions of this block
         // and using any of them could introduce non-deterministic because we don't
         // know which one is the right one -> return no block hash
-        let block = PartialBlockPtr {
-            number: block_number,
-            hash: if hashes.is_empty() || hashes.len() > 1 {
-                None
-            } else {
-                Some(BlockHash::from(hashes.pop().unwrap()))
-            },
-        };
+        if hashes.is_empty() || hashes.len() > 1 {
+            return Ok(None);
+        }
 
-        let block_for_poi_query = BlockPtr::new(
-            block.hash.clone().unwrap_or(BlockHash::zero()),
-            block.number,
-        );
+        // This `unwrap` is safe to do now
+        let block_hash = BlockHash::from(hashes.pop().unwrap());
+
+        let block_for_poi_query = BlockPtr::new(block_hash.clone(), block_number);
         let indexer = Some(Address::zero());
         let poi = store
             .get_proof_of_indexing(site, &indexer, block_for_poi_query)
             .await?;
 
-        Ok(poi.map(|poi| (block, poi)))
+        Ok(poi.map(|poi| {
+            (
+                PartialBlockPtr {
+                    number: block_number,
+                    hash: Some(block_hash),
+                },
+                poi,
+            )
+        }))
     }
 
     // Only used by tests
