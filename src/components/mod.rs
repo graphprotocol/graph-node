@@ -46,9 +46,6 @@ pub mod store;
 
 pub mod link_resolver;
 
-/// Components dealing with collecting metrics
-pub mod metrics;
-
 /// A component that receives events of type `T`.
 pub trait EventConsumer<E> {
     /// Get the event sink.

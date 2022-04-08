@@ -7,7 +7,6 @@ use std::iter::FromIterator;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
-use crate::components::metrics::{Counter, Gauge, MetricsRegistry};
 use crate::components::store::PoolWaitStats;
 use crate::data::graphql::shape_hash::shape_hash;
 use crate::data::query::{CacheStatus, QueryExecutionError};
@@ -43,10 +42,9 @@ impl QueryEffort {
         }
     }
 
-    pub fn add(&self, shape_hash: u64, duration: Duration, gauge: &Gauge) {
+    pub fn add(&self, shape_hash: u64, duration: Duration, gauge: &()) {
         let mut inner = self.inner.write().unwrap();
         inner.add(shape_hash, duration);
-        gauge.set(inner.total.average().unwrap_or(Duration::ZERO).as_millis() as f64);
     }
 
     /// Return what we know right now about the effort for the query
@@ -198,17 +196,13 @@ pub struct LoadManager {
     /// restarting the process
     jailed_queries: RwLock<HashSet<u64>>,
     kill_state: RwLock<KillState>,
-    effort_gauge: Box<Gauge>,
-    query_counters: HashMap<CacheStatus, Counter>,
-    kill_rate_gauge: Box<Gauge>,
+    effort_gauge: Box<()>,
+    query_counters: HashMap<CacheStatus, ()>,
+    kill_rate_gauge: Box<()>,
 }
 
 impl LoadManager {
-    pub fn new(
-        logger: &Logger,
-        blocked_queries: Vec<Arc<q::Document>>,
-        registry: Arc<dyn MetricsRegistry>,
-    ) -> Self {
+    pub fn new(logger: &Logger, blocked_queries: Vec<Arc<q::Document>>, registry: Arc<()>) -> Self {
         let logger = logger.new(o!("component" => "LoadManager"));
         let blocked_queries = blocked_queries
             .into_iter()
@@ -224,53 +218,13 @@ impl LoadManager {
         };
         info!(logger, "Creating LoadManager in {} mode", mode,);
 
-        let effort_gauge = registry
-            .new_gauge(
-                "query_effort_ms",
-                "Moving average of time spent running queries",
-                HashMap::new(),
-            )
-            .expect("failed to create `query_effort_ms` counter");
-        let kill_rate_gauge = registry
-            .new_gauge(
-                "query_kill_rate",
-                "The rate at which the load manager kills queries",
-                HashMap::new(),
-            )
-            .expect("failed to create `query_kill_rate` counter");
-        let query_counters = CacheStatus::iter()
-            .map(|s| {
-                let labels = HashMap::from_iter(vec![("cache_status".to_owned(), s.to_string())]);
-                let counter = registry
-                    .global_counter(
-                        "query_cache_status_count",
-                        "Count toplevel GraphQL fields executed and their cache status",
-                        labels,
-                    )
-                    .expect("Failed to register query_counter metric");
-                (*s, counter)
-            })
-            .collect::<HashMap<_, _>>();
-
-        Self {
-            logger,
-            effort: QueryEffort::default(),
-            blocked_queries,
-            jailed_queries: RwLock::new(HashSet::new()),
-            kill_state: RwLock::new(KillState::new()),
-            effort_gauge,
-            query_counters,
-            kill_rate_gauge,
-        }
+        todo!()
     }
 
     /// Record that we spent `duration` amount of work for the query
     /// `shape_hash`, where `cache_status` indicates whether the query
     /// was cached or had to actually run
     pub fn record_work(&self, shape_hash: u64, duration: Duration, cache_status: CacheStatus) {
-        self.query_counters
-            .get(&cache_status)
-            .map(GenericCounter::inc);
         self.effort.add(shape_hash, duration, &self.effort_gauge);
     }
 
@@ -476,7 +430,6 @@ impl LoadManager {
                 Skip => { /* do nothing */ }
             }
         }
-        self.kill_rate_gauge.set(kill_rate);
         kill_rate
     }
 }
@@ -484,9 +437,6 @@ impl LoadManager {
 #[async_trait]
 impl QueryLoadManager for LoadManager {
     fn record_work(&self, shape_hash: u64, duration: Duration, cache_status: CacheStatus) {
-        self.query_counters
-            .get(&cache_status)
-            .map(|counter| counter.inc());
         if true {
             self.effort.add(shape_hash, duration, &self.effort_gauge);
         }
