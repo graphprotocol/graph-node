@@ -4,9 +4,6 @@ pub mod components;
 /// Common data types used throughout The Graph.
 pub mod data;
 
-/// Extension traits for external types.
-pub mod ext;
-
 /// Wrapper for spawning tasks that abort on panic, which is our default.
 mod task_spawn;
 pub use task_spawn::{
@@ -95,10 +92,6 @@ pub mod prelude {
     pub use crate::data::store::{
         AssignmentEvent, Attribute, Entity, NodeId, SubscriptionFilter, ToEntityId, ToEntityKey,
         TryIntoEntity, Value, ValueType,
-    };
-    pub use crate::ext::futures::{
-        CancelGuard, CancelHandle, CancelToken, CancelableError, FutureExtension,
-        SharedCancelGuard, StreamExtension,
     };
 
     macro_rules! static_graphql {
