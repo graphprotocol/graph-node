@@ -4,21 +4,11 @@ pub mod components;
 /// Common data types used throughout The Graph.
 pub mod data;
 
-/// Wrapper for spawning tasks that abort on panic, which is our default.
-mod task_spawn;
-pub use task_spawn::{
-    block_on, spawn, spawn_allow_panic, spawn_blocking, spawn_blocking_allow_panic, spawn_thread,
-};
-
 pub use anyhow;
 pub use bytes;
-pub use parking_lot;
-pub use petgraph;
 pub use prometheus;
-pub use semver;
 pub use slog;
 pub use stable_hash;
-pub use tokio_stream;
 pub use url;
 
 /// A prelude that makes all system component traits and data types available.
