@@ -4,9 +4,6 @@ pub mod components;
 /// Common data types used throughout The Graph.
 pub mod data;
 
-/// Utilities.
-pub mod util;
-
 /// Extension traits for external types.
 pub mod ext;
 
@@ -107,9 +104,6 @@ pub mod prelude {
         CancelGuard, CancelHandle, CancelToken, CancelableError, FutureExtension,
         SharedCancelGuard, StreamExtension,
     };
-    pub use crate::util::cache_weight::CacheWeight;
-    pub use crate::util::futures::{retry, TimeoutError};
-    pub use crate::util::stats::MovingStats;
 
     macro_rules! static_graphql {
         ($m:ident, $m2:ident, {$($n:ident,)*}) => {

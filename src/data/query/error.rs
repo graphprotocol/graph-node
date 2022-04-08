@@ -8,9 +8,9 @@ use std::fmt;
 use std::string::FromUtf8Error;
 use std::sync::Arc;
 
+use crate::components::store::StoreError;
 use crate::data::graphql::SerializableValue;
 use crate::prelude::q;
-use crate::{components::store::StoreError, prelude::CacheWeight};
 
 #[derive(Debug)]
 pub struct CloneableAnyhowError(Arc<anyhow::Error>);
@@ -461,12 +461,5 @@ impl Serialize for QueryError {
 
         map.serialize_entry("message", msg.as_str())?;
         map.end()
-    }
-}
-
-impl CacheWeight for QueryError {
-    fn indirect_weight(&self) -> usize {
-        // Errors don't have a weight since they are never cached
-        0
     }
 }

@@ -1,4 +1,4 @@
-use crate::prelude::{q, s, CacheWeight};
+use crate::prelude::{q, s};
 use serde::ser::{SerializeMap, SerializeSeq, Serializer};
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -134,18 +134,6 @@ impl<'a> IntoIterator for &'a Object {
     }
 }
 
-impl CacheWeight for Entry {
-    fn indirect_weight(&self) -> usize {
-        self.key.indirect_weight() + self.value.indirect_weight()
-    }
-}
-
-impl CacheWeight for Object {
-    fn indirect_weight(&self) -> usize {
-        self.0.indirect_weight()
-    }
-}
-
 impl std::fmt::Debug for Object {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
@@ -249,17 +237,6 @@ impl std::fmt::Display for Value {
                 }
                 write!(f, "}}")
             }
-        }
-    }
-}
-
-impl CacheWeight for Value {
-    fn indirect_weight(&self) -> usize {
-        match self {
-            Value::Boolean(_) | Value::Int(_) | Value::Null | Value::Float(_) => 0,
-            Value::Enum(s) | Value::String(s) => s.indirect_weight(),
-            Value::List(l) => l.indirect_weight(),
-            Value::Object(o) => o.indirect_weight(),
         }
     }
 }

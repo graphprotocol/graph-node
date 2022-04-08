@@ -12,7 +12,6 @@ use crate::data::graphql::shape_hash::shape_hash;
 use crate::data::query::{CacheStatus, QueryExecutionError};
 use crate::prelude::q;
 use crate::prelude::{async_trait, debug, info, o, warn, Logger, QueryLoadManager};
-use crate::util::stats::MovingStats;
 
 struct QueryEffort {
     inner: Arc<RwLock<QueryEffortInner>>,
@@ -23,8 +22,8 @@ struct QueryEffort {
 struct QueryEffortInner {
     window_size: Duration,
     bin_size: Duration,
-    effort: HashMap<u64, MovingStats>,
-    total: MovingStats,
+    effort: HashMap<u64, ()>,
+    total: (),
 }
 
 /// Create a `QueryEffort` that uses the window and bin sizes configured in
@@ -53,10 +52,7 @@ impl QueryEffort {
     /// data for the particular query, return `None` as the effort
     /// for the query
     pub fn current_effort(&self, shape_hash: u64) -> (Option<Duration>, Duration) {
-        let inner = self.inner.read().unwrap();
-        let total_effort = inner.total.duration();
-        let query_effort = inner.effort.get(&shape_hash).map(|stats| stats.duration());
-        (query_effort, total_effort)
+        (None, Duration::ZERO)
     }
 }
 
@@ -66,7 +62,7 @@ impl QueryEffortInner {
             window_size,
             bin_size,
             effort: HashMap::default(),
-            total: MovingStats::new(window_size, bin_size),
+            total: (),
         }
     }
 
@@ -74,11 +70,7 @@ impl QueryEffortInner {
         let window_size = self.window_size;
         let bin_size = self.bin_size;
         let now = Instant::now();
-        self.effort
-            .entry(shape_hash)
-            .or_insert_with(|| MovingStats::new(window_size, bin_size))
-            .add_at(now, duration);
-        self.total.add_at(now, duration);
+        self.effort.entry(shape_hash).or_insert_with(|| ());
     }
 }
 
@@ -347,7 +339,7 @@ impl LoadManager {
     }
 
     fn overloaded(&self, wait_stats: &PoolWaitStats) -> (bool, Duration) {
-        let store_avg = wait_stats.read().unwrap().average();
+        let store_avg = Some(Duration::ZERO);
         let overloaded = store_avg
             .map(|average| average > Duration::ZERO)
             .unwrap_or(false);

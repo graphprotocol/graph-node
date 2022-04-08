@@ -2,7 +2,7 @@ use crate::prelude::EntityChange;
 use crate::{
     components::store::{DeploymentLocator, EntityType},
     data::graphql::ObjectTypeExt,
-    prelude::{anyhow::Context, q, r, s, CacheWeight, EntityKey, QueryExecutionError, Schema},
+    prelude::{anyhow::Context, q, r, s, EntityKey, QueryExecutionError, Schema},
 };
 use anyhow::{anyhow, Error};
 use itertools::Itertools;
@@ -765,12 +765,6 @@ impl<'a> From<Vec<(&'a str, Value)>> for Entity {
         Entity::from(HashMap::from_iter(
             entries.into_iter().map(|(k, v)| (String::from(k), v)),
         ))
-    }
-}
-
-impl CacheWeight for Entity {
-    fn indirect_weight(&self) -> usize {
-        self.0.indirect_weight()
     }
 }
 

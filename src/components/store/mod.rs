@@ -803,7 +803,7 @@ impl Display for DeploymentLocator {
 
 // The type that the connection pool uses to track wait times for
 // connection checkouts
-pub type PoolWaitStats = Arc<RwLock<MovingStats>>;
+pub type PoolWaitStats = Arc<RwLock<()>>;
 
 /// An entity operation that can be transacted into the store; as opposed to
 /// `EntityOperation`, we already know whether a `Set` should be an `Insert`

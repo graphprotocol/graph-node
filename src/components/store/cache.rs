@@ -6,7 +6,6 @@ use std::sync::Arc;
 use crate::components::store::{
     self as s, Entity, EntityKey, EntityOp, EntityOperation, EntityType,
 };
-use crate::util::lfu_cache::LfuCache;
 pub type BlockPtr = ();
 
 /// A cache for entities from the store that provides the basic functionality
@@ -19,7 +18,7 @@ pub type BlockPtr = ();
 pub struct EntityCache {
     /// The state of entities in the store. An entry of `None`
     /// means that the entity is not present in the store
-    current: LfuCache<EntityKey, Option<Entity>>,
+    current: (),
 
     /// The accumulated changes to an entity.
     updates: HashMap<EntityKey, EntityOp>,
@@ -48,13 +47,13 @@ impl Debug for EntityCache {
 pub struct ModificationsAndCache {
     pub modifications: Vec<s::EntityModification>,
     pub data_sources: Vec<s::StoredDynamicDataSource>,
-    pub entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
+    pub entity_lfu_cache: (),
 }
 
 impl EntityCache {
     pub fn new(store: Arc<dyn s::WritableStore>) -> Self {
         Self {
-            current: LfuCache::new(),
+            current: (),
             updates: HashMap::new(),
             handler_updates: HashMap::new(),
             in_handler: false,
@@ -63,10 +62,7 @@ impl EntityCache {
         }
     }
 
-    pub fn with_current(
-        store: Arc<dyn s::WritableStore>,
-        current: LfuCache<EntityKey, Option<Entity>>,
-    ) -> EntityCache {
+    pub fn with_current(store: Arc<dyn s::WritableStore>, current: ()) -> EntityCache {
         EntityCache {
             current,
             updates: HashMap::new(),
@@ -101,7 +97,7 @@ impl EntityCache {
 
     pub fn get(&mut self, key: &EntityKey) -> Result<Option<Entity>, s::QueryExecutionError> {
         // Get the current entity, apply any updates from `updates`, then from `handler_updates`.
-        let mut entity = self.current.get_entity(&*self.store, key)?;
+        let mut entity = todo!();
         if let Some(op) = self.updates.get(key).cloned() {
             entity = op.apply_to(entity)
         }
@@ -206,7 +202,6 @@ impl EntityCache {
     pub(crate) fn extend(&mut self, other: EntityCache) {
         assert!(!other.in_handler);
 
-        self.current.extend(other.current);
         for (key, op) in other.updates {
             self.entity_op(key, op);
         }
@@ -222,10 +217,7 @@ impl EntityCache {
 
         // The first step is to make sure all entities being set are in `self.current`.
         // For each subgraph, we need a map of entity type to missing entity ids.
-        let missing = self
-            .updates
-            .keys()
-            .filter(|key| !self.current.contains_key(key));
+        let missing = self.updates.keys().filter(|key| true);
 
         let mut missing_by_subgraph: BTreeMap<_, BTreeMap<&EntityType, Vec<&str>>> =
             BTreeMap::new();
@@ -246,7 +238,6 @@ impl EntityCache {
                         entity_type: entity_type.clone(),
                         entity_id: entity.id().unwrap(),
                     };
-                    self.current.insert(key, Some(entity));
                 }
             }
         }
@@ -255,41 +246,27 @@ impl EntityCache {
         for (key, update) in self.updates {
             use s::EntityModification::*;
 
-            let current = self.current.remove(&key).and_then(|entity| entity);
-            let modification = match (current, update) {
+            let modification = match (Some(()), update) {
                 // Entity was created
                 (None, EntityOp::Update(updates)) | (None, EntityOp::Overwrite(updates)) => {
                     // Merging with an empty entity removes null fields.
                     let mut data = Entity::new();
                     data.merge_remove_null_fields(updates);
-                    self.current.insert(key.clone(), Some(data.clone()));
                     Some(Insert { key, data })
                 }
                 // Entity may have been changed
                 (Some(current), EntityOp::Update(updates)) => {
                     let mut data = current.clone();
-                    data.merge_remove_null_fields(updates);
-                    self.current.insert(key.clone(), Some(data.clone()));
                     if current != data {
-                        Some(Overwrite { key, data })
+                        Some(Overwrite { key, data: todo!() })
                     } else {
                         None
                     }
                 }
                 // Entity was removed and then updated, so it will be overwritten
-                (Some(current), EntityOp::Overwrite(data)) => {
-                    self.current.insert(key.clone(), Some(data.clone()));
-                    if current != data {
-                        Some(Overwrite { key, data })
-                    } else {
-                        None
-                    }
-                }
+                (Some(current), EntityOp::Overwrite(data)) => None,
                 // Existing entity was deleted
-                (Some(_), EntityOp::Remove) => {
-                    self.current.insert(key.clone(), None);
-                    Some(Remove { key })
-                }
+                (Some(_), EntityOp::Remove) => Some(Remove { key: todo!() }),
                 // Entity was deleted, but it doesn't exist in the store
                 (None, EntityOp::Remove) => None,
             };
@@ -297,35 +274,12 @@ impl EntityCache {
                 mods.push(modification)
             }
         }
-        self.current.evict(0);
 
         Ok(ModificationsAndCache {
             modifications: mods,
             data_sources: self.data_sources,
             entity_lfu_cache: self.current,
         })
-    }
-}
-
-impl LfuCache<EntityKey, Option<Entity>> {
-    // Helper for cached lookup of an entity.
-    fn get_entity(
-        &mut self,
-        store: &(impl s::WritableStore + ?Sized),
-        key: &EntityKey,
-    ) -> Result<Option<Entity>, s::QueryExecutionError> {
-        match self.get(key) {
-            None => {
-                let mut entity = store.get(key)?;
-                if let Some(entity) = &mut entity {
-                    // `__typename` is for queries not for mappings.
-                    entity.remove("__typename");
-                }
-                self.insert(key.clone(), entity.clone());
-                Ok(entity)
-            }
-            Some(data) => Ok(data.to_owned()),
-        }
     }
 }
 

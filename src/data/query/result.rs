@@ -1,6 +1,6 @@
 use super::error::{QueryError, QueryExecutionError};
 use crate::data::value::Object;
-use crate::prelude::{r, CacheWeight};
+use crate::prelude::r;
 use http::header::{
     ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
     CONTENT_TYPE,
@@ -293,12 +293,6 @@ impl<V: Into<QueryResult>, E: Into<QueryResult>> From<Result<V, E>> for QueryRes
             Ok(v) => v.into(),
             Err(e) => e.into(),
         }
-    }
-}
-
-impl CacheWeight for QueryResult {
-    fn indirect_weight(&self) -> usize {
-        self.data.indirect_weight() + self.errors.indirect_weight()
     }
 }
 
