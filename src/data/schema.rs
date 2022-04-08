@@ -502,7 +502,7 @@ impl ApiSchema {
 
 lazy_static! {
     static ref INTROSPECTION_SCHEMA: Document = {
-        let schema = include_str!("introspection.graphql");
+        let schema = "";
         parse_schema(schema).expect("the schema `introspection.graphql` is invalid")
     };
 }
