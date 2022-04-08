@@ -341,6 +341,13 @@ impl<S: Store> IndexNodeResolver<S> {
             .get_required::<Vec<PublicProofOfIndexingRequest>>("requests")
             .expect("valid requests required, validation should have caught this");
 
+        // Only 10 requests are allowed at a time to avoid generating too many SQL queries;
+        // NOTE: Indexers should rate limit the status API anyway, but this adds some soft
+        // extra protection
+        if requests.len() > 10 {
+            return Err(QueryExecutionError::TooExpensive);
+        }
+
         Ok(r::Value::List(
             requests
                 .into_iter()
