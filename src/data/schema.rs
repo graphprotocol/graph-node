@@ -225,64 +225,12 @@ impl ApiSchema {
         &self.schema.document
     }
 
-    pub fn id(&self) -> &() {
-        &self.schema.id
-    }
-
     pub fn schema(&self) -> &Schema {
         &self.schema
     }
 
     pub fn types_for_interface(&self) -> &BTreeMap<EntityType, Vec<ObjectType>> {
         &self.schema.types_for_interface
-    }
-
-    /// Returns `None` if the type implements no interfaces.
-    pub fn interfaces_for_type(&self, type_name: &EntityType) -> Option<&Vec<InterfaceType>> {
-        None
-    }
-
-    /// Return an `Arc` around the `ObjectType` from our internal cache
-    ///
-    /// # Panics
-    /// If `obj_type` is not part of this schema, this function panics
-    pub fn object_type(&self, obj_type: &ObjectType) -> Arc<ObjectType> {
-        self.object_types
-            .get(&obj_type.name)
-            .expect("ApiSchema.object_type is only used with existing types")
-            .clone()
-    }
-
-    pub fn get_named_type(&self, name: &str) -> Option<&TypeDefinition> {
-        None
-    }
-
-    pub fn get_root_query_type_def(&self) -> Option<&s::TypeDefinition> {
-        None
-    }
-
-    pub fn object_or_interface(&self, name: &str) -> Option<()> {
-        None
-    }
-
-    /// Returns the type definition that a field type corresponds to.
-    pub fn get_type_definition_from_field<'a>(
-        &'a self,
-        field: &s::Field,
-    ) -> Option<&'a s::TypeDefinition> {
-        self.get_type_definition_from_type(&field.field_type)
-    }
-
-    /// Returns the type definition for a type.
-    pub fn get_type_definition_from_type<'a>(
-        &'a self,
-        t: &s::Type,
-    ) -> Option<&'a s::TypeDefinition> {
-        match t {
-            s::Type::NamedType(name) => self.get_named_type(name),
-            s::Type::ListType(inner) => self.get_type_definition_from_type(inner),
-            s::Type::NonNullType(inner) => self.get_type_definition_from_type(inner),
-        }
     }
 
     #[cfg(debug_assertions)]
@@ -303,7 +251,6 @@ fn add_introspection_schema(schema: &mut Document) {}
 /// A validated and preprocessed GraphQL schema for a subgraph.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Schema {
-    pub id: (),
     pub document: s::Document,
 
     // Maps type name to implemented interfaces.
@@ -314,13 +261,6 @@ pub struct Schema {
 }
 
 impl Schema {
-    /// Create a new schema. The document must already have been
-    /// validated. This function is only useful for creating an introspection
-    /// schema, and should not be used otherwise
-    pub fn new(id: (), document: s::Document) -> Self {
-        todo!()
-    }
-
     /// Construct a value for the entity type's id attribute
     pub fn id_value(&self, key: &EntityKey) -> Result<store::Value, Error> {
         let obj_type = ObjectType::new("name".to_string());
