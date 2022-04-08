@@ -1,7 +1,6 @@
 use web3::types::{Address, H256};
 
 use super::*;
-use crate::components::server::index_node::VersionInfo;
 use crate::components::transaction_receipt;
 use crate::data::subgraph::status;
 use crate::data::{query::QueryTarget, subgraph::schema::*};
@@ -418,7 +417,7 @@ pub trait StatusStore: Send + Sync + 'static {
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
 
     /// Support for the explorer-specific API
-    fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError>;
+    fn version_info(&self, version_id: &str) -> Result<(), StoreError>;
 
     /// Support for the explorer-specific API; note that `subgraph_id` must be
     /// the id of an entry in `subgraphs.subgraph`, not that of a deployment.

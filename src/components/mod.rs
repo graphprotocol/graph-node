@@ -38,9 +38,6 @@ use futures::prelude::*;
 /// Components dealing with processing GraphQL.
 pub mod graphql;
 
-/// Components powering GraphQL, JSON-RPC, WebSocket APIs, Metrics.
-pub mod server;
-
 /// Components dealing with storing entities.
 pub mod store;
 

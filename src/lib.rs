@@ -82,11 +82,6 @@ pub mod prelude {
         GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,
     };
     pub use crate::components::link_resolver::{JsonStreamValue, JsonValueStream, LinkResolver};
-    pub use crate::components::server::admin::JsonRpcServer;
-    pub use crate::components::server::index_node::IndexNodeServer;
-    pub use crate::components::server::metrics::MetricsServer;
-    pub use crate::components::server::query::GraphQLServer;
-    pub use crate::components::server::subscription::SubscriptionServer;
     pub use crate::components::store::{
         AttributeNames, BlockNumber, CachedEthereumCall, ChainStore, ChildMultiplicity,
         EntityCache, EntityChange, EntityChangeOperation, EntityCollection, EntityFilter,
