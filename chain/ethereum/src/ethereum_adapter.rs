@@ -1078,9 +1078,10 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 )
             })
             .buffered(ENV_VARS.block_ingestor_max_concurrent_json_rpc_calls);
-            graph::tokio_stream::StreamExt::collect::<Result<Vec<TransactionReceipt>, IngestorError>>(
-                receipt_stream,
-            ).boxed()
+            graph::tokio_stream::StreamExt::collect::<
+                Result<Vec<Arc<TransactionReceipt>>, IngestorError>,
+            >(receipt_stream)
+            .boxed()
         };
 
         let block_future =
@@ -1519,7 +1520,9 @@ pub(crate) fn parse_log_triggers(
                 .logs
                 .iter()
                 .filter(move |log| log_filter.matches(log))
-                .map(move |log| EthereumTrigger::Log(Arc::new(log.clone()), Some(receipt.clone())))
+                .map(move |log| {
+                    EthereumTrigger::Log(Arc::new(log.clone()), Some(receipt.cheap_clone()))
+                })
         })
         .collect()
 }
@@ -1736,7 +1739,7 @@ async fn fetch_transaction_receipts_in_batch_with_retry(
     hashes: Vec<H256>,
     block_hash: H256,
     logger: Logger,
-) -> Result<Vec<TransactionReceipt>, IngestorError> {
+) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
     let retry_log_message = format!(
         "batch eth_getTransactionReceipt RPC call for block {:?}",
         block_hash
@@ -1761,7 +1764,7 @@ async fn fetch_transaction_receipts_in_batch(
     hashes: Vec<H256>,
     block_hash: H256,
     logger: Logger,
-) -> Result<Vec<TransactionReceipt>, IngestorError> {
+) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
     let batching_web3 = Web3::new(Batch::new(web3.transport().clone()));
     let eth = batching_web3.eth();
     let receipt_futures = hashes
@@ -1780,7 +1783,7 @@ async fn fetch_transaction_receipts_in_batch(
 
     let mut collected = vec![];
     for receipt in receipt_futures.into_iter() {
-        collected.push(receipt.await?)
+        collected.push(Arc::new(receipt.await?))
     }
     Ok(collected)
 }
@@ -1791,7 +1794,7 @@ async fn fetch_transaction_receipt_with_retry(
     transaction_hash: H256,
     block_hash: H256,
     logger: Logger,
-) -> Result<TransactionReceipt, IngestorError> {
+) -> Result<Arc<TransactionReceipt>, IngestorError> {
     let logger = logger.cheap_clone();
     let retry_log_message = format!(
         "eth_getTransactionReceipt RPC call for transaction {:?}",
@@ -1806,6 +1809,7 @@ async fn fetch_transaction_receipt_with_retry(
         .and_then(move |some_receipt| {
             resolve_transaction_receipt(some_receipt, transaction_hash, block_hash, logger)
         })
+        .map(Arc::new)
 }
 
 fn resolve_transaction_receipt(
@@ -1927,10 +1931,10 @@ async fn get_transaction_receipts_for_transaction_hashes(
     adapter: &EthereumAdapter,
     transaction_hashes_by_block: &HashMap<H256, HashSet<H256>>,
     logger: Logger,
-) -> Result<HashMap<H256, TransactionReceipt>, anyhow::Error> {
+) -> Result<HashMap<H256, Arc<TransactionReceipt>>, anyhow::Error> {
     use std::collections::hash_map::Entry::Vacant;
 
-    let mut receipts_by_hash: HashMap<H256, TransactionReceipt> = HashMap::new();
+    let mut receipts_by_hash: HashMap<H256, Arc<TransactionReceipt>> = HashMap::new();
 
     // Return early if input set is empty
     if transaction_hashes_by_block.is_empty() {

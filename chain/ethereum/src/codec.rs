@@ -284,6 +284,9 @@ impl Into<EthereumBlockWithCalls> for &Block {
                             effective_gas_price: None,
                         })
                     })
+                    // Transaction receipts will be shared along the code, so we put them into an
+                    // Arc here to avoid excessive cloning.
+                    .map(Arc::new)
                     .collect(),
             },
             // Comment (437a9f17-67cc-478f-80a3-804fe554b227): This Some() will avoid calls in the triggers_in_block
