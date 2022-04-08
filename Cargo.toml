@@ -25,7 +25,6 @@ num-bigint = { version = "^0.2.6", features = ["serde"] }
 num_cpus = "1.13.1"
 num-traits = "0.2.14"
 rand = "0.8.4"
-semver = { version = "1.0.7", features = ["serde"] }
 serde = { version = "1.0.126", features = ["rc"] }
 serde_derive = "1.0.125"
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
@@ -34,7 +33,6 @@ slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_tr
 stable-hash = { git = "https://github.com/graphprotocol/stable-hash", rev = "752463958b369506845e89da8b831430146c61d1" }
 strum = "0.21.0"
 strum_macros = "0.21.1"
-petgraph = "0.6.0"
 tiny-keccak = "1.5.0"
 tokio = { version = "1.16.1", features = ["time", "sync", "macros", "test-util", "rt-multi-thread", "parking_lot"] }
 tokio-stream = { version = "0.1.8", features = ["sync"] }
