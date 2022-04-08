@@ -38,14 +38,11 @@ petgraph = "0.6.0"
 tiny-keccak = "1.5.0"
 tokio = { version = "1.16.1", features = ["time", "sync", "macros", "test-util", "rt-multi-thread", "parking_lot"] }
 tokio-stream = { version = "0.1.8", features = ["sync"] }
-tokio-retry = "0.3.0"
 url = "2.2.1"
 prometheus = "0.13.0"
-priority-queue = "0.7.0"
 tonic = { version = "0.5.1", features = ["tls-roots"] }
 prost = "0.8.0"
 futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
-wasmparser = "0.78.2"
 thiserror = "1.0.25"
 parking_lot = "0.12.0"
 itertools = "0.10.3"
@@ -53,7 +50,6 @@ itertools = "0.10.3"
 # Our fork contains patches to make some fields optional for Celo and Fantom compatibility.
 # Without the "arbitrary_precision" feature, we get the error `data did not match any variant of untagged enum Response`.
 web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "graph-patches-onto-0.18", features = ["arbitrary_precision"] }
-serde_plain = "1.0.0"
 
 [build-dependencies]
 tonic-build = "0.5.1"
