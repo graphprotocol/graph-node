@@ -4,7 +4,7 @@ use std::convert::TryFrom;
 use std::str::FromStr;
 
 use crate::data::value::Object;
-use crate::prelude::{r, BigInt, Entity};
+use crate::prelude::{r, Entity};
 use web3::types::{H160, H256};
 
 pub trait TryFromValue: Sized {

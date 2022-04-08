@@ -22,8 +22,6 @@ use std::iter::FromIterator;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use super::store::scalar;
-
 pub const SCHEMA_TYPE_NAME: &str = "_Schema_";
 
 pub const META_FIELD_TYPE: &str = "_Meta_";
@@ -281,9 +279,7 @@ impl Schema {
 
         match base_type {
             "ID" | "String" => Ok(store::Value::String(key.entity_id.clone())),
-            "Bytes" => Ok(store::Value::Bytes(scalar::Bytes::from_str(
-                &key.entity_id,
-            )?)),
+            "Bytes" => Ok(store::Value::Bytes(todo!())),
             s => {
                 return Err(anyhow!(
                     "Entity type {} uses illegal type {} for id column",

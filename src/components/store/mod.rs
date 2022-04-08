@@ -442,10 +442,10 @@ impl EntityQuery {
                     if let EntityLink::Direct(attribute, _) = &window.link {
                         let filter = match attribute {
                             WindowAttribute::Scalar(name) => {
-                                EntityFilter::Equal(name.to_owned(), id.into())
+                                EntityFilter::Equal(name.to_owned(), Value::Null)
                             }
                             WindowAttribute::List(name) => {
-                                EntityFilter::Contains(name.to_owned(), Value::from(vec![id]))
+                                EntityFilter::Contains(name.to_owned(), Value::Null)
                             }
                         };
                         self.filter = Some(filter.and_maybe(self.filter));

@@ -23,9 +23,6 @@ use strum_macros::AsStaticStr;
 
 use super::graphql::{ext::DirectiveFinder, TypeExt as _};
 
-/// Custom scalars in GraphQL.
-pub mod scalar;
-
 // Ethereum compatibility.
 pub mod ethereum;
 
@@ -181,12 +178,12 @@ impl ValueType {
 pub enum Value {
     String(String),
     Int(i32),
-    BigDecimal(scalar::BigDecimal),
+    BigDecimal(i32),
     Bool(bool),
     List(Vec<Value>),
     Null,
-    Bytes(scalar::Bytes),
-    BigInt(scalar::BigInt),
+    Bytes(i32),
+    BigInt(i32),
 }
 
 impl StableHash for Value {
@@ -239,12 +236,7 @@ impl Value {
             (r::Value::String(s), NamedType(n)) => {
                 // Check if `ty` is a custom scalar type, otherwise assume it's
                 // just a string.
-                match n.as_str() {
-                    BYTES_SCALAR => Value::Bytes(scalar::Bytes::from_str(s)?),
-                    BIG_INT_SCALAR => Value::BigInt(scalar::BigInt::from_str(s)?),
-                    BIG_DECIMAL_SCALAR => Value::BigDecimal(scalar::BigDecimal::from_str(s)?),
-                    _ => Value::String(s.clone()),
-                }
+                Value::Bytes(0)
             }
             (r::Value::Int(i), _) => Value::Int(*i as i32),
             (r::Value::Boolean(b), _) => Value::Bool(b.to_owned()),
@@ -286,12 +278,8 @@ impl Value {
         }
     }
 
-    pub fn as_big_decimal(self) -> Option<scalar::BigDecimal> {
-        if let Value::BigDecimal(d) = self {
-            Some(d)
-        } else {
-            None
-        }
+    pub fn as_big_decimal(self) -> Option<()> {
+        None
     }
 
     pub fn as_bool(self) -> Option<bool> {
@@ -305,22 +293,6 @@ impl Value {
     pub fn as_list(self) -> Option<Vec<Value>> {
         if let Value::List(v) = self {
             Some(v)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_bytes(self) -> Option<scalar::Bytes> {
-        if let Value::Bytes(b) = self {
-            Some(b)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_bigint(self) -> Option<scalar::BigInt> {
-        if let Value::BigInt(b) = self {
-            Some(b)
         } else {
             None
         }
@@ -417,30 +389,6 @@ impl From<Value> for r::Value {
     }
 }
 
-impl<'a> From<&'a str> for Value {
-    fn from(value: &'a str) -> Value {
-        Value::String(value.to_owned())
-    }
-}
-
-impl From<String> for Value {
-    fn from(value: String) -> Value {
-        Value::String(value)
-    }
-}
-
-impl<'a> From<&'a String> for Value {
-    fn from(value: &'a String) -> Value {
-        Value::String(value.clone())
-    }
-}
-
-impl From<scalar::Bytes> for Value {
-    fn from(value: scalar::Bytes) -> Value {
-        Value::Bytes(value)
-    }
-}
-
 impl From<bool> for Value {
     fn from(value: bool) -> Value {
         Value::Bool(value)
@@ -450,36 +398,6 @@ impl From<bool> for Value {
 impl From<i32> for Value {
     fn from(value: i32) -> Value {
         Value::Int(value)
-    }
-}
-
-impl From<scalar::BigDecimal> for Value {
-    fn from(value: scalar::BigDecimal) -> Value {
-        Value::BigDecimal(value)
-    }
-}
-
-impl From<scalar::BigInt> for Value {
-    fn from(value: scalar::BigInt) -> Value {
-        Value::BigInt(value)
-    }
-}
-
-impl From<u64> for Value {
-    fn from(value: u64) -> Value {
-        Value::BigInt(value.into())
-    }
-}
-
-impl TryFrom<Value> for Option<scalar::BigInt> {
-    type Error = Error;
-
-    fn try_from(value: Value) -> Result<Self, Self::Error> {
-        match value {
-            Value::BigInt(n) => Ok(Some(n)),
-            Value::Null => Ok(None),
-            _ => Err(anyhow!("Value is not an BigInt")),
-        }
     }
 }
 
