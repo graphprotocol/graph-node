@@ -6,7 +6,6 @@ use futures03::prelude::Stream;
 use serde_json::Value;
 use slog::Logger;
 
-use crate::data::subgraph::Link;
 use crate::prelude::Error;
 use std::fmt::Debug;
 
@@ -31,11 +30,11 @@ pub trait LinkResolver: Send + Sync + 'static + Debug {
     fn with_retries(&self) -> Box<dyn LinkResolver>;
 
     /// Fetches the link contents as bytes.
-    async fn cat(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error>;
+    async fn cat(&self, logger: &Logger, link: &()) -> Result<Vec<u8>, Error>;
 
     /// Read the contents of `link` and deserialize them into a stream of JSON
     /// values. The values must each be on a single line; newlines are significant
     /// as they are used to split the file contents and each line is deserialized
     /// separately.
-    async fn json_stream(&self, logger: &Logger, link: &Link) -> Result<JsonValueStream, Error>;
+    async fn json_stream(&self, logger: &Logger, link: &()) -> Result<JsonValueStream, Error>;
 }

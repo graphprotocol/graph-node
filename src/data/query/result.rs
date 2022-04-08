@@ -1,6 +1,6 @@
 use super::error::{QueryError, QueryExecutionError};
 use crate::data::value::Object;
-use crate::prelude::{r, CacheWeight, DeploymentHash};
+use crate::prelude::{r, CacheWeight};
 use http::header::{
     ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
     CONTENT_TYPE,
@@ -183,7 +183,7 @@ pub struct QueryResult {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     errors: Vec<QueryError>,
     #[serde(skip_serializing)]
-    pub deployment: Option<DeploymentHash>,
+    pub deployment: Option<()>,
 }
 
 impl QueryResult {

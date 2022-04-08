@@ -2,7 +2,6 @@ use futures::prelude::*;
 
 use crate::data::query::{CacheStatus, Query, QueryTarget};
 use crate::data::{graphql::effort::LoadManager, query::QueryResults};
-use crate::prelude::DeploymentHash;
 
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -13,7 +12,7 @@ pub type SubscriptionResultFuture = Box<dyn Future<Item = (), Error = ()> + Send
 
 pub enum GraphQlTarget {
     SubgraphName(String),
-    Deployment(DeploymentHash),
+    Deployment(()),
 }
 
 /// A component that can run GraphqL queries against a [Store](../store/trait.Store.html).

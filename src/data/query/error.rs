@@ -9,7 +9,6 @@ use std::string::FromUtf8Error;
 use std::sync::Arc;
 
 use crate::data::graphql::SerializableValue;
-use crate::data::subgraph::*;
 use crate::prelude::q;
 use crate::{components::store::StoreError, prelude::CacheWeight};
 
@@ -80,7 +79,7 @@ pub enum QueryExecutionError {
     FulltextQueryRequiresFilter,
     FulltextQueryInvalidSyntax(String),
     DeploymentReverted,
-    SubgraphManifestResolveError(Arc<SubgraphManifestResolveError>),
+    SubgraphManifestResolveError(Arc<u32>),
     InvalidSubgraphManifest,
     ResultTooBig(usize, usize),
 }
@@ -318,12 +317,6 @@ impl From<bigdecimal::ParseBigDecimalError> for QueryExecutionError {
 impl From<StoreError> for QueryExecutionError {
     fn from(e: StoreError) -> Self {
         QueryExecutionError::StoreError(CloneableAnyhowError(Arc::new(e.into())))
-    }
-}
-
-impl From<SubgraphManifestResolveError> for QueryExecutionError {
-    fn from(e: SubgraphManifestResolveError) -> Self {
-        QueryExecutionError::SubgraphManifestResolveError(Arc::new(e))
     }
 }
 

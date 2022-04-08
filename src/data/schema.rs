@@ -2,7 +2,6 @@ use crate::components::store::{EntityKey, EntityType, SubgraphStore};
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
 use crate::data::graphql::ObjectTypeExt;
 use crate::data::store::{self, ValueType};
-use crate::data::subgraph::{DeploymentHash, SubgraphName};
 use crate::prelude::{
     anyhow, lazy_static,
     q::Value,
@@ -316,17 +315,17 @@ impl ImportedType {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SchemaReference {
-    subgraph: DeploymentHash,
+    subgraph: (),
 }
 
 impl fmt::Display for SchemaReference {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "{}", self.subgraph)
+        write!(f, "{}", 0)
     }
 }
 
 impl SchemaReference {
-    fn new(subgraph: DeploymentHash) -> Self {
+    fn new(subgraph: ()) -> Self {
         SchemaReference { subgraph }
     }
 
@@ -335,17 +334,14 @@ impl SchemaReference {
         store: Arc<S>,
     ) -> Result<Arc<Schema>, SchemaImportError> {
         store
-            .input_schema(&self.subgraph)
+            .input_schema(todo!())
             .map_err(|_| SchemaImportError::ImportedSchemaNotFound(self.clone()))
     }
 
     fn parse(value: &Value) -> Option<Self> {
         match value {
             Value::Object(map) => match map.get("id") {
-                Some(Value::String(id)) => match DeploymentHash::new(id) {
-                    Ok(id) => Some(SchemaReference::new(id)),
-                    _ => None,
-                },
+                Some(Value::String(id)) => None,
                 _ => None,
             },
             _ => None,
@@ -404,7 +400,7 @@ impl ApiSchema {
         &self.schema.document
     }
 
-    pub fn id(&self) -> &DeploymentHash {
+    pub fn id(&self) -> &() {
         &self.schema.id
     }
 
@@ -570,7 +566,7 @@ fn add_introspection_schema(schema: &mut Document) {
 /// A validated and preprocessed GraphQL schema for a subgraph.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Schema {
-    pub id: DeploymentHash,
+    pub id: (),
     pub document: s::Document,
 
     // Maps type name to implemented interfaces.
@@ -584,7 +580,7 @@ impl Schema {
     /// Create a new schema. The document must already have been
     /// validated. This function is only useful for creating an introspection
     /// schema, and should not be used otherwise
-    pub fn new(id: DeploymentHash, document: s::Document) -> Self {
+    pub fn new(id: (), document: s::Document) -> Self {
         Schema {
             id,
             document,
@@ -643,7 +639,7 @@ impl Schema {
         &self,
         store: Arc<S>,
         schemas: &mut HashMap<SchemaReference, Arc<Schema>>,
-        visit_log: &mut HashSet<DeploymentHash>,
+        visit_log: &mut HashSet<()>,
     ) -> Vec<SchemaImportError> {
         // Use the visit log to detect cycles in the import graph
         self.imported_schemas()
@@ -723,7 +719,7 @@ impl Schema {
         Ok((interfaces_for_type, types_for_interface))
     }
 
-    pub fn parse(raw: &str, id: DeploymentHash) -> Result<Self, Error> {
+    pub fn parse(raw: &str, id: ()) -> Result<Self, Error> {
         let document = graphql_parser::parse_schema(raw)?.into_static();
 
         let (interfaces_for_type, types_for_interface) = Self::collect_interfaces(&document)?;
@@ -800,9 +796,9 @@ impl Schema {
     }
 
     // Adds a @subgraphId(id: ...) directive to object/interface/enum types in the schema.
-    pub fn add_subgraph_id_directives(&mut self, id: DeploymentHash) {
+    pub fn add_subgraph_id_directives(&mut self, id: ()) {
         for definition in self.document.definitions.iter_mut() {
-            let subgraph_id_argument = (String::from("id"), s::Value::String(id.to_string()));
+            let subgraph_id_argument = (String::from("id"), s::Value::String(String::new()));
 
             let subgraph_id_directive = s::Directive {
                 name: "subgraphId".to_string(),
@@ -960,21 +956,11 @@ impl Schema {
         directive.argument("from").and_then(|from| match from {
             Value::Object(from) => {
                 let id_parse_error = match from.get("id") {
-                    Some(Value::String(id)) => match DeploymentHash::new(id) {
-                        Err(_) => {
-                            Some(SchemaValidationError::ImportedSubgraphIdInvalid(id.clone()))
-                        }
-                        _ => None,
-                    },
+                    Some(Value::String(id)) => None,
                     _ => None,
                 };
                 let name_parse_error = match from.get("name") {
-                    Some(Value::String(name)) => match SubgraphName::new(name) {
-                        Err(_) => Some(SchemaValidationError::ImportedSubgraphNameInvalid(
-                            name.clone(),
-                        )),
-                        _ => None,
-                    },
+                    Some(Value::String(name)) => None,
                     _ => None,
                 };
                 id_parse_error.or(name_parse_error)
@@ -1198,7 +1184,7 @@ impl Schema {
                         // the respective schema or is itself imported
                         // If the imported type is itself imported, do not
                         // recursively check the schema
-                        let schema_handle = schema_ref.subgraph.to_string();
+                        let schema_handle = String::new();
                         let name = imported_type.name.as_str();
 
                         let is_local = local_types.iter().any(|object| object.name == name);

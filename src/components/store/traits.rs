@@ -2,8 +2,7 @@ use web3::types::{Address, H256};
 
 use super::*;
 use crate::components::transaction_receipt;
-use crate::data::subgraph::status;
-use crate::data::{query::QueryTarget, subgraph::schema::*};
+use crate::data::query::QueryTarget;
 
 pub trait SubscriptionManager: Send + Sync + 'static {
     /// Subscribe to changes for specific subgraphs and entities.
@@ -51,7 +50,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// Check if the store is accepting queries for the specified subgraph.
     /// May return true even if the specified subgraph is not currently assigned to an indexing
     /// node, as the store will still accept queries.
-    fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
+    fn is_deployed(&self, id: &()) -> Result<bool, StoreError>;
 
     /// Create a new deployment for the subgraph `name`. If the deployment
     /// already exists (as identified by the `schema.id`), reuse that, otherwise
@@ -59,9 +58,9 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// `name` at it, depending on the `mode`
     fn create_subgraph_deployment(
         &self,
-        name: SubgraphName,
+        name: (),
         schema: &Schema,
-        deployment: DeploymentCreate,
+        deployment: (),
         node_id: NodeId,
         network: String,
         mode: (),
@@ -70,12 +69,12 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// Create a new subgraph with the given name. If one already exists, use
     /// the existing one. Return the `id` of the newly created or existing
     /// subgraph
-    fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError>;
+    fn create_subgraph(&self, name: ()) -> Result<String, StoreError>;
 
     /// Remove a subgraph and all its versions; if deployments that were used
     /// by this subgraph do not need to be indexed anymore, also remove
     /// their assignment, but keep the deployments themselves around
-    fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError>;
+    fn remove_subgraph(&self, name: ()) -> Result<(), StoreError>;
 
     /// Assign the subgraph with `id` to the node `node_id`. If there is no
     /// assignment for the given deployment, report an error.
@@ -91,7 +90,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     /// Return `true` if a subgraph `name` exists, regardless of whether the
     /// subgraph has any deployments attached to it
-    fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError>;
+    fn subgraph_exists(&self, name: &()) -> Result<bool, StoreError>;
 
     /// Returns a collection of all [`EntityModification`] items in relation to
     /// the given [`BlockNumber`]. No distinction is made between inserts and
@@ -99,22 +98,22 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// or [`EntityModification::Overwrite`].
     fn entity_changes_in_block(
         &self,
-        subgraph_id: &DeploymentHash,
+        subgraph_id: &(),
         block_number: BlockNumber,
     ) -> Result<Vec<EntityOperation>, StoreError>;
 
     /// Return the GraphQL schema supplied by the user
-    fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<Schema>, StoreError>;
+    fn input_schema(&self, subgraph_id: &()) -> Result<Arc<Schema>, StoreError>;
 
     /// Return the GraphQL schema that was derived from the user's schema by
     /// adding a root query type etc. to it
-    fn api_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError>;
+    fn api_schema(&self, subgraph_id: &()) -> Result<Arc<ApiSchema>, StoreError>;
 
     /// Return a `SubgraphFork`, derived from the user's `debug-fork` deployment argument,
     /// that is used for debugging purposes only.
     fn debug_fork(
         &self,
-        subgraph_id: &DeploymentHash,
+        subgraph_id: &(),
         logger: Logger,
     ) -> Result<Option<Arc<dyn SubgraphFork>>, StoreError>;
 
@@ -132,7 +131,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// that we would use to query or copy from; in particular, this will
     /// ignore any instances of this deployment that are in the process of
     /// being set up
-    async fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError>;
+    async fn least_block_ptr(&self, id: &()) -> Result<Option<BlockPtr>, StoreError>;
 
     /// Find the deployment locators for the subgraph with the given hash
     fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError>;
@@ -183,7 +182,7 @@ pub trait WritableStore: Send + Sync + 'static {
     ) -> Result<UnfailOutcome, StoreError>;
 
     /// Set subgraph status to failed with the given error as the cause.
-    async fn fail_subgraph(&self, error: SubgraphError) -> Result<(), StoreError>;
+    async fn fail_subgraph(&self, error: ()) -> Result<(), StoreError>;
 
     async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError>;
 
@@ -201,7 +200,7 @@ pub trait WritableStore: Send + Sync + 'static {
         mods: Vec<EntityModification>,
         stopwatch: &(),
         data_sources: Vec<StoredDynamicDataSource>,
-        deterministic_errors: Vec<SubgraphError>,
+        deterministic_errors: Vec<()>,
     ) -> Result<(), StoreError>;
 
     /// Look up multiple entities as of the latest block. Returns a map of
@@ -229,7 +228,7 @@ pub trait WritableStore: Send + Sync + 'static {
     /// should only be used for reporting and monitoring
     fn shard(&self) -> &str;
 
-    async fn health(&self, id: &DeploymentHash) -> Result<SubgraphHealth, StoreError>;
+    async fn health(&self, id: &()) -> Result<(), StoreError>;
 
     fn input_schema(&self) -> Arc<Schema>;
 }
@@ -397,7 +396,7 @@ pub trait QueryStore: Send + Sync {
 
     /// Find the current state for the subgraph deployment `id` and
     /// return details about it needed for executing queries
-    async fn deployment_state(&self) -> Result<DeploymentState, QueryExecutionError>;
+    async fn deployment_state(&self) -> Result<(), QueryExecutionError>;
 
     fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError>;
 
@@ -414,7 +413,7 @@ pub trait StatusStore: Send + Sync + 'static {
     /// A permit should be acquired before starting query execution.
     async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit;
 
-    fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
+    fn status(&self, filter: ()) -> Result<Vec<()>, StoreError>;
 
     /// Support for the explorer-specific API
     fn version_info(&self, version_id: &str) -> Result<(), StoreError>;
@@ -442,7 +441,7 @@ pub trait StatusStore: Send + Sync + 'static {
     /// can be removed.
     async fn get_proof_of_indexing(
         &self,
-        subgraph_id: &DeploymentHash,
+        subgraph_id: &(),
         indexer: &Option<Address>,
         block: BlockPtr,
     ) -> Result<Option<[u8; 32]>, StoreError>;

@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Error};
 use thiserror::Error;
 
-use super::{BlockNumber, DeploymentHash};
+use super::BlockNumber;
 use crate::prelude::QueryExecutionError;
 
 #[derive(Error, Debug)]
@@ -27,7 +27,7 @@ pub enum StoreError {
         "subgraph `{0}` has already processed block `{1}`; \
          there are most likely two (or more) nodes indexing this subgraph"
     )]
-    DuplicateBlockProcessing(DeploymentHash, BlockNumber),
+    DuplicateBlockProcessing(u32, BlockNumber),
     /// An internal error where we expected the application logic to enforce
     /// some constraint, e.g., that subgraph names are unique, but found that
     /// constraint to not hold

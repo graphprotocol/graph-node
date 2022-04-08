@@ -103,13 +103,6 @@ pub mod prelude {
         AssignmentEvent, Attribute, Entity, NodeId, SubscriptionFilter, ToEntityId, ToEntityKey,
         TryIntoEntity, Value, ValueType,
     };
-    pub use crate::data::subgraph::schema::SubgraphDeploymentEntity;
-    pub use crate::data::subgraph::{
-        CreateSubgraphResult, DataSourceContext, DeploymentHash, DeploymentState, Link,
-        SubgraphAssignmentProviderError, SubgraphManifest, SubgraphManifestResolveError,
-        SubgraphManifestValidationError, SubgraphName, SubgraphRegistrarError,
-        UnvalidatedSubgraphManifest,
-    };
     pub use crate::ext::futures::{
         CancelGuard, CancelHandle, CancelToken, CancelableError, FutureExtension,
         SharedCancelGuard, StreamExtension,

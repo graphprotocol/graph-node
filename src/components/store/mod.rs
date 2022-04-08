@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use crate::data::{store::*, subgraph::Source};
+use crate::data::store::*;
 use crate::prelude::*;
 
 /// The type name of an entity. This is the string that is used in the
@@ -81,7 +81,7 @@ impl From<&str> for EntityType {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityKey {
     /// ID of the subgraph.
-    pub subgraph_id: DeploymentHash,
+    pub subgraph_id: (),
 
     /// Name of the entity type.
     pub entity_type: EntityType,
@@ -92,8 +92,6 @@ pub struct EntityKey {
 
 impl StableHash for EntityKey {
     fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
-        self.subgraph_id
-            .stable_hash(sequence_number.next_child(), state);
         self.entity_type
             .as_str()
             .stable_hash(sequence_number.next_child(), state);
@@ -103,7 +101,7 @@ impl StableHash for EntityKey {
 }
 
 impl EntityKey {
-    pub fn data(subgraph_id: DeploymentHash, entity_type: String, entity_id: String) -> Self {
+    pub fn data(subgraph_id: (), entity_type: String, entity_id: String) -> Self {
         Self {
             subgraph_id,
             entity_type: EntityType::new(entity_type),
@@ -362,7 +360,7 @@ pub const BLOCK_NUMBER_MAX: BlockNumber = std::i32::MAX;
 #[derive(Clone, Debug)]
 pub struct EntityQuery {
     /// ID of the subgraph.
-    pub subgraph_id: DeploymentHash,
+    pub subgraph_id: (),
 
     /// The block height at which to execute the query. Set this to
     /// `BLOCK_NUMBER_MAX` to run the query at the latest available block.
@@ -393,11 +391,7 @@ pub struct EntityQuery {
 }
 
 impl EntityQuery {
-    pub fn new(
-        subgraph_id: DeploymentHash,
-        block: BlockNumber,
-        collection: EntityCollection,
-    ) -> Self {
+    pub fn new(subgraph_id: (), block: BlockNumber, collection: EntityCollection) -> Self {
         EntityQuery {
             subgraph_id,
             block,
@@ -481,7 +475,7 @@ pub enum EntityChangeOperation {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum EntityChange {
     Data {
-        subgraph_id: DeploymentHash,
+        subgraph_id: (),
         /// Entity type name of the changed entity.
         entity_type: EntityType,
     },
@@ -750,7 +744,7 @@ pub enum UnfailOutcome {
 
 pub struct StoredDynamicDataSource {
     pub name: String,
-    pub source: Source,
+    pub source: (),
     pub context: Option<String>,
     pub creation_block: Option<BlockNumber>,
 }
@@ -781,7 +775,7 @@ impl DeploymentId {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct DeploymentLocator {
     pub id: DeploymentId,
-    pub hash: DeploymentHash,
+    pub hash: (),
 }
 
 impl slog::Value for DeploymentLocator {
@@ -796,14 +790,14 @@ impl slog::Value for DeploymentLocator {
 }
 
 impl DeploymentLocator {
-    pub fn new(id: DeploymentId, hash: DeploymentHash) -> Self {
+    pub fn new(id: DeploymentId, hash: ()) -> Self {
         Self { id, hash }
     }
 }
 
 impl Display for DeploymentLocator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}[{}]", self.hash, self.id)
+        write!(f, "{}[{}]", 0, self.id)
     }
 }
 

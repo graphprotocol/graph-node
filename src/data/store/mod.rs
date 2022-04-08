@@ -1,9 +1,9 @@
+use crate::prelude::EntityChange;
 use crate::{
     components::store::{DeploymentLocator, EntityType},
     data::graphql::ObjectTypeExt,
     prelude::{anyhow::Context, q, r, s, CacheWeight, EntityKey, QueryExecutionError, Schema},
 };
-use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
 use anyhow::{anyhow, Error};
 use itertools::Itertools;
 use serde::de;
@@ -33,7 +33,7 @@ pub mod ethereum;
 pub enum SubscriptionFilter {
     /// Receive updates about all entities from the given deployment of the
     /// given type
-    Entities(DeploymentHash, EntityType),
+    Entities((), EntityType),
     /// Subscripe to changes in deployment assignments
     Assignment,
 }
@@ -786,7 +786,7 @@ pub trait ToEntityId {
 
 /// A value that can be converted to an `Entity` key.
 pub trait ToEntityKey {
-    fn to_entity_key(&self, subgraph: DeploymentHash) -> EntityKey;
+    fn to_entity_key(&self, subgraph: ()) -> EntityKey;
 }
 
 #[test]
