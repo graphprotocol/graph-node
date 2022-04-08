@@ -78,10 +78,6 @@ pub mod prelude {
 
     pub type BlockPtr = ();
 
-    pub use crate::components::ethereum::{
-        EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock,
-        LightEthereumBlockExt,
-    };
     pub use crate::components::graphql::{
         GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,
     };

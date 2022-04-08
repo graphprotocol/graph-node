@@ -35,9 +35,6 @@
 
 use futures::prelude::*;
 
-/// Components dealing with Ethereum.
-pub mod ethereum;
-
 /// Components dealing with processing GraphQL.
 pub mod graphql;
 
