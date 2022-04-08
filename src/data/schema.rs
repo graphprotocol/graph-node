@@ -250,7 +250,7 @@ impl ApiSchema {
 
     /// Returns `None` if the type implements no interfaces.
     pub fn interfaces_for_type(&self, type_name: &EntityType) -> Option<&Vec<InterfaceType>> {
-        self.schema.interfaces_for_type(type_name)
+        None
     }
 
     /// Return an `Arc` around the `ObjectType` from our internal cache
@@ -268,46 +268,12 @@ impl ApiSchema {
         self.schema.document.get_named_type(name)
     }
 
-    /// Returns true if the given type is an input type.
-    ///
-    /// Uses the algorithm outlined on
-    /// https://facebook.github.io/graphql/draft/#IsInputType().
-    pub fn is_input_type(&self, t: &s::Type) -> bool {
-        match t {
-            s::Type::NamedType(name) => {
-                let named_type = self.get_named_type(name);
-                named_type.map_or(false, |type_def| match type_def {
-                    s::TypeDefinition::Scalar(_)
-                    | s::TypeDefinition::Enum(_)
-                    | s::TypeDefinition::InputObject(_) => true,
-                    _ => false,
-                })
-            }
-            s::Type::ListType(inner) => self.is_input_type(inner),
-            s::Type::NonNullType(inner) => self.is_input_type(inner),
-        }
-    }
-
     pub fn get_root_query_type_def(&self) -> Option<&s::TypeDefinition> {
-        self.schema
-            .document
-            .definitions
-            .iter()
-            .find_map(|d| match d {
-                s::Definition::TypeDefinition(def @ s::TypeDefinition::Object(_)) => match def {
-                    s::TypeDefinition::Object(t) if t.name == "Query" => Some(def),
-                    _ => None,
-                },
-                _ => None,
-            })
+        None
     }
 
     pub fn object_or_interface(&self, name: &str) -> Option<ObjectOrInterface<'_>> {
-        if name.starts_with("__") {
-            INTROSPECTION_SCHEMA.object_or_interface(name)
-        } else {
-            self.schema.document.object_or_interface(name)
-        }
+        None
     }
 
     /// Returns the type definition that a field type corresponds to.
@@ -397,178 +363,5 @@ impl Schema {
                 ))
             }
         }
-    }
-
-    pub fn resolve_schema_references<S: SubgraphStore>(
-        &self,
-        store: Arc<S>,
-    ) -> (
-        HashMap<SchemaReference, Arc<Schema>>,
-        Vec<SchemaImportError>,
-    ) {
-        let mut schemas = HashMap::new();
-        let mut visit_log = HashSet::new();
-        let import_errors = self.resolve_import_graph(store, &mut schemas, &mut visit_log);
-        (schemas, import_errors)
-    }
-
-    fn resolve_import_graph<S: SubgraphStore>(
-        &self,
-        store: Arc<S>,
-        schemas: &mut HashMap<SchemaReference, Arc<Schema>>,
-        visit_log: &mut HashSet<()>,
-    ) -> Vec<SchemaImportError> {
-        vec![]
-    }
-
-    pub fn collect_interfaces(
-        document: &s::Document,
-    ) -> Result<
-        (
-            BTreeMap<EntityType, Vec<InterfaceType>>,
-            BTreeMap<EntityType, Vec<ObjectType>>,
-        ),
-        SchemaValidationError,
-    > {
-        todo!()
-    }
-
-    pub fn parse(raw: &str, id: ()) -> Result<Self, Error> {
-        todo!()
-    }
-
-    fn imported_types(&self) -> HashMap<ImportedType, SchemaReference> {
-        todo!()
-    }
-
-    pub fn imported_schemas(&self) -> Vec<SchemaReference> {
-        vec![]
-    }
-
-    pub fn name_argument_value_from_directive(directive: &Directive) -> Value {
-        directive
-            .argument("name")
-            .expect("fulltext directive must have name argument")
-            .clone()
-    }
-
-    /// Returned map has one an entry for each interface in the schema.
-    pub fn types_for_interface(&self) -> &BTreeMap<EntityType, Vec<ObjectType>> {
-        &self.types_for_interface
-    }
-
-    /// Returns `None` if the type implements no interfaces.
-    pub fn interfaces_for_type(&self, type_name: &EntityType) -> Option<&Vec<InterfaceType>> {
-        self.interfaces_for_type.get(type_name)
-    }
-
-    // Adds a @subgraphId(id: ...) directive to object/interface/enum types in the schema.
-    pub fn add_subgraph_id_directives(&mut self, id: ()) {}
-
-    pub fn validate(
-        &self,
-        schemas: &HashMap<SchemaReference, Arc<Schema>>,
-    ) -> Result<(), Vec<SchemaValidationError>> {
-        Ok(())
-    }
-
-    fn validate_schema_type_has_no_fields(&self) -> Result<(), SchemaValidationError> {
-        Ok(())
-    }
-
-    fn validate_directives_on_schema_type(&self) -> Result<(), SchemaValidationError> {
-        Ok(())
-    }
-
-    /// Check the syntax of a single `@import` directive
-    fn validate_import_directive_arguments(import: &Directive) -> Option<SchemaValidationError> {
-        None
-    }
-
-    fn validate_import_directive_schema_reference_parses(
-        directive: &Directive,
-    ) -> Option<SchemaValidationError> {
-        None
-    }
-
-    fn validate_fulltext_directives(&self) -> Vec<SchemaValidationError> {
-        vec![]
-    }
-
-    fn validate_fulltext_directive_name(&self, fulltext: &Directive) -> Vec<SchemaValidationError> {
-        vec![]
-    }
-
-    fn validate_fulltext_directive_language(
-        &self,
-        fulltext: &Directive,
-    ) -> Vec<SchemaValidationError> {
-        vec![]
-    }
-
-    fn validate_fulltext_directive_algorithm(
-        &self,
-        fulltext: &Directive,
-    ) -> Vec<SchemaValidationError> {
-        vec![]
-    }
-
-    fn validate_fulltext_directive_includes(
-        &self,
-        fulltext: &Directive,
-    ) -> Vec<SchemaValidationError> {
-        vec![]
-    }
-
-    fn validate_import_directives(&self) -> Vec<SchemaValidationError> {
-        vec![]
-    }
-
-    fn validate_imported_types(
-        &self,
-        schemas: &HashMap<SchemaReference, Arc<Schema>>,
-    ) -> Vec<SchemaValidationError> {
-        vec![]
-    }
-
-    fn validate_fields(&self) -> Vec<SchemaValidationError> {
-        vec![]
-    }
-
-    /// Checks if the schema is using types that are reserved
-    /// by `graph-node`
-    fn validate_reserved_types_usage(&self) -> Result<(), SchemaValidationError> {
-        Ok(())
-    }
-
-    fn validate_schema_types(&self) -> Result<(), SchemaValidationError> {
-        Ok(())
-    }
-
-    fn validate_derived_from(&self) -> Result<(), SchemaValidationError> {
-        Ok(())
-    }
-
-    /// Validate that `object` implements `interface`.
-    fn validate_interface_implementation(
-        object: &ObjectType,
-        interface: &InterfaceType,
-    ) -> Result<(), SchemaValidationError> {
-        Ok(())
-    }
-
-    fn validate_interface_id_type(&self) -> Result<(), SchemaValidationError> {
-        Ok(())
-    }
-
-    fn subgraph_schema_object_type(&self) -> Option<&ObjectType> {
-        None
-    }
-
-    pub fn entity_fulltext_definitions(
-        entity: &str,
-        document: &Document,
-    ) -> Result<Vec<FulltextDefinition>, anyhow::Error> {
-        Ok(vec![])
     }
 }

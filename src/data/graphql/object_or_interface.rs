@@ -115,10 +115,7 @@ impl<'a> ObjectOrInterface<'a> {
     pub fn object_types(self, schema: &'a Schema) -> Option<Vec<&'a s::ObjectType>> {
         match self {
             ObjectOrInterface::Object(object) => Some(vec![object]),
-            ObjectOrInterface::Interface(interface) => schema
-                .types_for_interface()
-                .get(&interface.into())
-                .map(|object_types| object_types.iter().collect()),
+            ObjectOrInterface::Interface(interface) => None,
         }
     }
 

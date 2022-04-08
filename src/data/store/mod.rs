@@ -1,3 +1,4 @@
+use crate::prelude::s::ObjectType;
 use crate::prelude::EntityChange;
 use crate::{
     components::store::{DeploymentLocator, EntityType},
@@ -623,8 +624,7 @@ impl Entity {
                             // interface use the same type for `id`. It is
                             // therefore enough to use the id type of one of
                             // the implementors
-                            match schema
-                                .types_for_interface()
+                            match BTreeMap::<EntityType, Vec<ObjectType>>::new()
                                 .get(&EntityType::new(intf.name.clone()))
                                 .expect("interface type names are known")
                                 .first()
