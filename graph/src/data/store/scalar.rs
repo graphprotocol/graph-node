@@ -26,7 +26,7 @@ use crate::blockchain::BlockHash;
 // https://github.com/akubera/bigdecimal-rs/issues/54.
 // Using `#[serde(from = "BigDecimal"]` makes sure deserialization calls `BigDecimal::new()`.
 #[derive(
-    Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, AsExpression, FromSqlRow,
+    Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, AsExpression, FromSqlRow,
 )]
 #[serde(from = "bigdecimal::BigDecimal")]
 #[sql_type = "diesel::sql_types::Numeric"]
@@ -89,6 +89,12 @@ impl BigDecimal {
 impl Display for BigDecimal {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         self.0.fmt(f)
+    }
+}
+
+impl fmt::Debug for BigDecimal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "BigDecimal({})", self.0)
     }
 }
 
@@ -197,7 +203,7 @@ impl StableHash for BigDecimal {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BigInt(num_bigint::BigInt);
 
 impl StableHash for BigInt {
@@ -247,6 +253,12 @@ impl TryFrom<BigInt> for u64 {
     type Error = BigIntOutOfRangeError;
     fn try_from(value: BigInt) -> Result<u64, BigIntOutOfRangeError> {
         (&value).try_into()
+    }
+}
+
+impl fmt::Debug for BigInt {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "BigInt({})", self)
     }
 }
 
@@ -481,13 +493,19 @@ impl Shr<u8> for BigInt {
 }
 
 /// A byte array that's serialized as a hex string prefixed by `0x`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Bytes(Box<[u8]>);
 
 impl Deref for Bytes {
     type Target = [u8];
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl fmt::Debug for Bytes {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Bytes(0x{})", hex::encode(&self.0))
     }
 }
 
@@ -558,7 +576,7 @@ impl<'de> Deserialize<'de> for Bytes {
 
 #[cfg(test)]
 mod test {
-    use super::{BigDecimal, BigInt};
+    use super::{BigDecimal, BigInt, Bytes};
     use stable_hash::crypto::SetHasher;
     use stable_hash::prelude::*;
     use stable_hash::utils::stable_hash;
@@ -657,5 +675,15 @@ mod test {
             assert_eq!(not_normalized.normalized().to_string(), string);
             assert_eq!(normalized.to_string(), string);
         }
+    }
+
+    #[test]
+    fn fmt_debug() {
+        let bi = BigInt::from(-17);
+        let bd = BigDecimal::new(bi.clone(), -2);
+        let bytes = Bytes::from([222, 173, 190, 239].as_slice());
+        assert_eq!("BigInt(-17)", format!("{:?}", bi));
+        assert_eq!("BigDecimal(-0.17)", format!("{:?}", bd));
+        assert_eq!("Bytes(0xdeadbeef)", format!("{:?}", bytes));
     }
 }
