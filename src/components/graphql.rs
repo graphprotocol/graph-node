@@ -1,7 +1,6 @@
 use futures::prelude::*;
 
 use crate::data::query::{CacheStatus, Query, QueryTarget};
-use crate::data::subscription::{Subscription, SubscriptionError, SubscriptionResult};
 use crate::data::{graphql::effort::LoadManager, query::QueryResults};
 use crate::prelude::DeploymentHash;
 
@@ -10,8 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Future for subscription results.
-pub type SubscriptionResultFuture =
-    Box<dyn Future<Item = SubscriptionResult, Error = SubscriptionError> + Send>;
+pub type SubscriptionResultFuture = Box<dyn Future<Item = (), Error = ()> + Send>;
 
 pub enum GraphQlTarget {
     SubgraphName(String),
@@ -38,9 +36,9 @@ pub trait GraphQlRunner: Send + Sync + 'static {
     /// Runs a GraphQL subscription and returns a stream of results.
     async fn run_subscription(
         self: Arc<Self>,
-        subscription: Subscription,
+        subscription: (),
         target: QueryTarget,
-    ) -> Result<SubscriptionResult, SubscriptionError>;
+    ) -> Result<(), ()>;
 
     fn load_manager(&self) -> Arc<LoadManager>;
 }

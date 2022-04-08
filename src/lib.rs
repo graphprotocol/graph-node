@@ -110,9 +110,6 @@ pub mod prelude {
         SubgraphManifestValidationError, SubgraphName, SubgraphRegistrarError,
         UnvalidatedSubgraphManifest,
     };
-    pub use crate::data::subscription::{
-        QueryResultStream, Subscription, SubscriptionError, SubscriptionResult,
-    };
     pub use crate::ext::futures::{
         CancelGuard, CancelHandle, CancelToken, CancelableError, FutureExtension,
         SharedCancelGuard, StreamExtension,
