@@ -21,7 +21,7 @@ use std::{
 use strum::AsStaticRef as _;
 use strum_macros::AsStaticStr;
 
-use super::graphql::{ext::DirectiveFinder, DocumentExt as _, TypeExt as _};
+use super::graphql::{ext::DirectiveFinder, TypeExt as _};
 
 /// Custom scalars in GraphQL.
 pub mod scalar;
@@ -614,7 +614,7 @@ impl Entity {
             use s::TypeDefinition as t;
             match field_type {
                 s::Type::NamedType(name) => ValueType::from_str(name).unwrap_or_else(|_| {
-                    match schema.document.get_named_type(name) {
+                    match None {
                         Some(t::Object(obj_type)) => {
                             let id = obj_type.field("id").expect("all object types have an id");
                             scalar_value_type(schema, &id.field_type)
@@ -659,7 +659,7 @@ impl Entity {
             // type for them, and validation would therefore fail
             return Ok(());
         }
-        let object_type_definitions = schema.document.get_object_type_definitions();
+        let object_type_definitions = Vec::<ObjectType>::new();
         let object_type = object_type_definitions
             .iter()
             .find(|object_type| key.entity_type.as_str() == object_type.name)

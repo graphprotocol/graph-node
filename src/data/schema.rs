@@ -1,5 +1,5 @@
 use crate::components::store::{EntityKey, EntityType, SubgraphStore};
-use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
+use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, TypeExt, ValueExt};
 use crate::data::graphql::ObjectTypeExt;
 use crate::data::store::{self, ValueType};
 use crate::prelude::{
@@ -22,7 +22,6 @@ use std::iter::FromIterator;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use super::graphql::ObjectOrInterface;
 use super::store::scalar;
 
 pub const SCHEMA_TYPE_NAME: &str = "_Schema_";
@@ -205,23 +204,13 @@ impl ApiSchema {
     pub fn from_api_schema(mut api_schema: Schema) -> Result<Self, anyhow::Error> {
         add_introspection_schema(&mut api_schema.document);
 
-        let query_type = api_schema
-            .document
-            .get_root_query_type()
-            .context("no root `Query` in the schema")?
-            .clone();
-        let subscription_type = api_schema
-            .document
-            .get_root_subscription_type()
-            .cloned()
-            .map(Arc::new);
+        let query_type = todo!();
+        let subscription_type = todo!();
 
         let object_types = HashMap::from_iter(
-            api_schema
-                .document
-                .get_object_type_definitions()
+            vec![]
                 .into_iter()
-                .map(|obj_type| (obj_type.name.clone(), Arc::new(obj_type.clone()))),
+                .map(|obj_type: ObjectType| (obj_type.name.clone(), Arc::new(obj_type.clone()))),
         );
 
         Ok(Self {
@@ -265,14 +254,14 @@ impl ApiSchema {
     }
 
     pub fn get_named_type(&self, name: &str) -> Option<&TypeDefinition> {
-        self.schema.document.get_named_type(name)
+        None
     }
 
     pub fn get_root_query_type_def(&self) -> Option<&s::TypeDefinition> {
         None
     }
 
-    pub fn object_or_interface(&self, name: &str) -> Option<ObjectOrInterface<'_>> {
+    pub fn object_or_interface(&self, name: &str) -> Option<()> {
         None
     }
 
@@ -334,9 +323,9 @@ impl Schema {
 
     /// Construct a value for the entity type's id attribute
     pub fn id_value(&self, key: &EntityKey) -> Result<store::Value, Error> {
-        let base_type = self
-            .document
-            .get_object_type_definition(key.entity_type.as_str())
+        let obj_type = ObjectType::new("name".to_string());
+        let a = Result::<&ObjectType, anyhow::Error>::Ok(&obj_type).ok();
+        let base_type = a
             .ok_or_else(|| {
                 anyhow!(
                     "Entity {}[{}]: unknown entity type `{}`",
