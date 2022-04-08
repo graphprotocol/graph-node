@@ -1,3 +1,4 @@
+use anyhow::Result;
 use anyhow::{Context, Error};
 use graph::blockchain::BlockchainKind;
 use graph::data::subgraph::UnifiedMappingApiVersion;
@@ -41,10 +42,73 @@ use crate::{
     SubgraphEthRpcMetrics, TriggerFilter, ENV_VARS,
 };
 use crate::{network::EthereumNetworkAdapters, EthereumAdapter};
-use graph::blockchain::block_stream::{BlockStream, FirehoseCursor};
+use graph::blockchain::block_stream::{BlockStream, BlockStreamBuilder, FirehoseCursor};
 
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
 const CELO_CHAIN_IDS: [u64; 3] = [42220, 44787, 62320];
+
+pub struct EthereumStreamBuilder {}
+
+#[async_trait]
+impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
+    fn build_firehose(
+        &self,
+        chain: &Chain,
+        deployment: DeploymentLocator,
+        block_cursor: Option<String>,
+        start_blocks: Vec<BlockNumber>,
+        subgraph_current_block: Option<BlockPtr>,
+        filter: Arc<<Chain as Blockchain>::TriggerFilter>,
+        unified_api_version: UnifiedMappingApiVersion,
+    ) -> Result<Box<dyn BlockStream<Chain>>> {
+        let requirements = filter.node_capabilities();
+        let adapter = chain
+            .triggers_adapter(&deployment, &requirements, unified_api_version)
+            .expect(&format!(
+                "no adapter for network {} with capabilities {}",
+                chain.name, requirements
+            ));
+
+        let firehose_endpoint = match chain.firehose_endpoints.random() {
+            Some(e) => e.clone(),
+            None => return Err(anyhow::format_err!("no firehose endpoint available",)),
+        };
+
+        let logger = chain
+            .logger_factory
+            .subgraph_logger(&deployment)
+            .new(o!("component" => "FirehoseBlockStream"));
+
+        let firehose_mapper = Arc::new(FirehoseMapper {
+            endpoint: firehose_endpoint.cheap_clone(),
+        });
+
+        Ok(Box::new(FirehoseBlockStream::new(
+            deployment.hash,
+            firehose_endpoint,
+            subgraph_current_block,
+            block_cursor,
+            firehose_mapper,
+            adapter,
+            filter,
+            start_blocks,
+            logger,
+            chain.registry.clone(),
+        )))
+    }
+
+    async fn build_polling(
+        &self,
+        _chain: Arc<Chain>,
+        _deployment: DeploymentLocator,
+        _start_blocks: Vec<BlockNumber>,
+        _subgraph_current_block: Option<BlockPtr>,
+        _filter: Arc<<Chain as Blockchain>::TriggerFilter>,
+        _unified_api_version: UnifiedMappingApiVersion,
+    ) -> Result<Box<dyn BlockStream<Chain>>> {
+        todo!()
+    }
+}
 
 pub struct Chain {
     logger_factory: LoggerFactory,
@@ -58,6 +122,7 @@ pub struct Chain {
     chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
     reorg_threshold: BlockNumber,
     pub is_ingestible: bool,
+    block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
 }
 
 impl std::fmt::Debug for Chain {
@@ -78,6 +143,7 @@ impl Chain {
         firehose_endpoints: FirehoseEndpoints,
         eth_adapters: EthereumNetworkAdapters,
         chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
+        block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
         reorg_threshold: BlockNumber,
         is_ingestible: bool,
     ) -> Self {
@@ -91,6 +157,7 @@ impl Chain {
             chain_store,
             call_cache,
             chain_head_update_listener,
+            block_stream_builder,
             reorg_threshold,
             is_ingestible,
         }
@@ -178,40 +245,15 @@ impl Blockchain for Chain {
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        let requirements = filter.node_capabilities();
-        let adapter = self
-            .triggers_adapter(&deployment, &requirements, unified_api_version)
-            .expect(&format!(
-                "no adapter for network {} with capabilities {}",
-                self.name, requirements
-            ));
-
-        let firehose_endpoint = match self.firehose_endpoints.random() {
-            Some(e) => e.clone(),
-            None => return Err(anyhow::format_err!("no firehose endpoint available",)),
-        };
-
-        let logger = self
-            .logger_factory
-            .subgraph_logger(&deployment)
-            .new(o!("component" => "FirehoseBlockStream"));
-
-        let firehose_mapper = Arc::new(FirehoseMapper {
-            endpoint: firehose_endpoint.cheap_clone(),
-        });
-
-        Ok(Box::new(FirehoseBlockStream::new(
-            deployment.hash,
-            firehose_endpoint,
-            subgraph_current_block,
+        self.block_stream_builder.build_firehose(
+            self,
+            deployment,
             block_cursor,
-            firehose_mapper,
-            adapter,
-            filter,
             start_blocks,
-            logger,
-            self.registry.clone(),
-        )))
+            subgraph_current_block,
+            filter,
+            unified_api_version,
+        )
     }
 
     async fn new_polling_block_stream(

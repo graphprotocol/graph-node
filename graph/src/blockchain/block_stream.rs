@@ -6,7 +6,9 @@ use thiserror::Error;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use super::{Block, BlockPtr, Blockchain};
-use crate::components::store::BlockNumber;
+use crate::anyhow::Result;
+use crate::components::store::{BlockNumber, DeploymentLocator};
+use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::firehose;
 use crate::{prelude::*, prometheus::labels};
 
@@ -80,8 +82,29 @@ pub trait BlockStream<C: Blockchain>:
 {
 }
 
-pub trait BlockStreamBuilder<C: Blockchain> {
-    fn build() -> Box<dyn BlockStream<C>>;
+/// BlockStreamBuilder is an abstraction that would separate the logic for building streams from the blockchain trait
+#[async_trait]
+pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
+    fn build_firehose(
+        &self,
+        chain: &C,
+        deployment: DeploymentLocator,
+        block_cursor: Option<String>,
+        start_blocks: Vec<BlockNumber>,
+        subgraph_current_block: Option<BlockPtr>,
+        filter: Arc<C::TriggerFilter>,
+        unified_api_version: UnifiedMappingApiVersion,
+    ) -> Result<Box<dyn BlockStream<C>>>;
+
+    async fn build_polling(
+        &self,
+        chain: Arc<C>,
+        deployment: DeploymentLocator,
+        start_blocks: Vec<BlockNumber>,
+        subgraph_current_block: Option<BlockPtr>,
+        filter: Arc<C::TriggerFilter>,
+        unified_api_version: UnifiedMappingApiVersion,
+    ) -> Result<Box<dyn BlockStream<C>>>;
 }
 
 pub type FirehoseCursor = Option<String>;
@@ -89,6 +112,18 @@ pub type FirehoseCursor = Option<String>;
 pub struct BlockWithTriggers<C: Blockchain> {
     pub block: C::Block,
     pub trigger_data: Vec<C::TriggerData>,
+}
+
+impl<C: Blockchain> Clone for BlockWithTriggers<C>
+where
+    C::TriggerData: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            block: self.block.clone(),
+            trigger_data: self.trigger_data.clone(),
+        }
+    }
 }
 
 impl<C: Blockchain> BlockWithTriggers<C> {
@@ -210,6 +245,18 @@ pub enum BlockStreamEvent<C: Blockchain> {
     Revert(BlockPtr, FirehoseCursor),
 
     ProcessBlock(BlockWithTriggers<C>, FirehoseCursor),
+}
+
+impl<C: Blockchain> Clone for BlockStreamEvent<C>
+where
+    C::TriggerData: Clone,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Self::Revert(arg0, arg1) => Self::Revert(arg0.clone(), arg1.clone()),
+            Self::ProcessBlock(arg0, arg1) => Self::ProcessBlock(arg0.clone(), arg1.clone()),
+        }
+    }
 }
 
 #[derive(Clone)]

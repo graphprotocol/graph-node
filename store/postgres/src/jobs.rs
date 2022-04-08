@@ -17,7 +17,7 @@ pub fn register(
     runner: &mut Runner,
     store: Arc<Store>,
     primary_pool: ConnectionPool,
-    registry: Arc<impl MetricsRegistry>,
+    registry: Arc<dyn MetricsRegistry>,
 ) {
     runner.register(
         Arc::new(VacuumDeploymentsJob::new(store.subgraph_store())),
@@ -79,7 +79,7 @@ struct NotificationQueueUsage {
 }
 
 impl NotificationQueueUsage {
-    fn new(primary: ConnectionPool, registry: Arc<impl MetricsRegistry>) -> Self {
+    fn new(primary: ConnectionPool, registry: Arc<dyn MetricsRegistry>) -> Self {
         let usage_gauge = registry
             .new_gauge(
                 "notification_queue_usage",

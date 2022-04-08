@@ -21,7 +21,7 @@ impl StoreEventListener {
     pub fn new(
         logger: Logger,
         postgres_url: String,
-        registry: Arc<impl MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistry>,
     ) -> (Self, Box<dyn Stream<Item = StoreEvent, Error = ()> + Send>) {
         let channel = SafeChannelName::i_promise_this_is_safe("store_events");
         let (notification_listener, receiver) =
@@ -132,7 +132,7 @@ pub struct SubscriptionManager {
 }
 
 impl SubscriptionManager {
-    pub fn new(logger: Logger, postgres_url: String, registry: Arc<impl MetricsRegistry>) -> Self {
+    pub fn new(logger: Logger, postgres_url: String, registry: Arc<dyn MetricsRegistry>) -> Self {
         let (listener, store_events) = StoreEventListener::new(logger, postgres_url, registry);
 
         let mut manager = SubscriptionManager {

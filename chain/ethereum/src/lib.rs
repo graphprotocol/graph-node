@@ -20,7 +20,7 @@ pub use trigger::MappingTrigger;
 
 pub mod chain;
 
-mod network;
+pub mod network;
 mod trigger;
 
 pub use crate::adapter::{
