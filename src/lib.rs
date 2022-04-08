@@ -75,9 +75,6 @@ pub mod prelude {
 
     pub type BlockPtr = ();
 
-    pub use crate::components::graphql::{
-        GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,
-    };
     pub use crate::components::link_resolver::{JsonStreamValue, JsonValueStream, LinkResolver};
     pub use crate::components::store::{
         AttributeNames, BlockNumber, CachedEthereumCall, ChainStore, ChildMultiplicity,

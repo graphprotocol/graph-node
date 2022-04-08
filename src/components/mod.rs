@@ -35,9 +35,6 @@
 
 use futures::prelude::*;
 
-/// Components dealing with processing GraphQL.
-pub mod graphql;
-
 /// Components dealing with storing entities.
 pub mod store;
 

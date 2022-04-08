@@ -11,7 +11,7 @@ use crate::components::store::PoolWaitStats;
 use crate::data::graphql::shape_hash::shape_hash;
 use crate::data::query::{CacheStatus, QueryExecutionError};
 use crate::prelude::q;
-use crate::prelude::{async_trait, debug, info, o, warn, Logger, QueryLoadManager};
+use crate::prelude::{async_trait, debug, info, o, warn, Logger};
 
 struct QueryEffort {
     inner: Arc<RwLock<QueryEffortInner>>,
@@ -423,14 +423,5 @@ impl LoadManager {
             }
         }
         kill_rate
-    }
-}
-
-#[async_trait]
-impl QueryLoadManager for LoadManager {
-    fn record_work(&self, shape_hash: u64, duration: Duration, cache_status: CacheStatus) {
-        if true {
-            self.effort.add(shape_hash, duration, &self.effort_gauge);
-        }
     }
 }
