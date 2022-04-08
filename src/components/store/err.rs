@@ -84,7 +84,7 @@ impl From<serde_json::Error> for StoreError {
 
 impl From<QueryExecutionError> for StoreError {
     fn from(e: QueryExecutionError) -> Self {
-        StoreError::QueryExecutionError(e.to_string())
+        todo!()
     }
 }
 

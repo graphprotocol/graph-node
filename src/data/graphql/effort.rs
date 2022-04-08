@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use crate::components::store::PoolWaitStats;
 use crate::data::graphql::shape_hash::shape_hash;
-use crate::data::query::{CacheStatus, QueryExecutionError};
+use crate::data::query::QueryExecutionError;
 use crate::prelude::q;
 use crate::prelude::{async_trait, debug, info, o, warn, Logger};
 
@@ -170,8 +170,8 @@ impl Decision {
         use Decision::*;
         match self {
             Proceed => Ok(()),
-            TooExpensive => Err(QueryExecutionError::TooExpensive),
-            Throttle => Err(QueryExecutionError::Throttled),
+            TooExpensive => Err(QueryExecutionError::Timeout),
+            Throttle => Err(QueryExecutionError::Timeout),
         }
     }
 }
@@ -189,7 +189,7 @@ pub struct LoadManager {
     jailed_queries: RwLock<HashSet<u64>>,
     kill_state: RwLock<KillState>,
     effort_gauge: Box<()>,
-    query_counters: HashMap<CacheStatus, ()>,
+    query_counters: HashMap<(), ()>,
     kill_rate_gauge: Box<()>,
 }
 
@@ -216,7 +216,7 @@ impl LoadManager {
     /// Record that we spent `duration` amount of work for the query
     /// `shape_hash`, where `cache_status` indicates whether the query
     /// was cached or had to actually run
-    pub fn record_work(&self, shape_hash: u64, duration: Duration, cache_status: CacheStatus) {
+    pub fn record_work(&self, shape_hash: u64, duration: Duration, cache_status: ()) {
         self.effort.add(shape_hash, duration, &self.effort_gauge);
     }
 

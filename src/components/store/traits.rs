@@ -1,7 +1,6 @@
 use web3::types::{Address, H256};
 
 use super::*;
-use crate::data::query::QueryTarget;
 
 pub trait SubscriptionManager: Send + Sync + 'static {
     /// Subscribe to changes for specific subgraphs and entities.
@@ -245,7 +244,7 @@ pub trait QueryStoreManager: Send + Sync + 'static {
     /// If `for_subscription` is true, the main replica will always be used.
     async fn query_store(
         &self,
-        target: QueryTarget,
+        target: (),
         for_subscription: bool,
     ) -> Result<Arc<dyn QueryStore + Send + Sync>, QueryExecutionError>;
 }

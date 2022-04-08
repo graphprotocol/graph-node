@@ -73,9 +73,7 @@ pub mod prelude {
     pub use crate::components::{EventConsumer, EventProducer};
 
     pub use crate::data::graphql::{shape_hash::shape_hash, SerializableValue, TryFromValue};
-    pub use crate::data::query::{
-        Query, QueryError, QueryExecutionError, QueryResult, QueryVariables,
-    };
+    pub use crate::data::query::QueryExecutionError;
     pub use crate::data::schema::{ApiSchema, Schema};
     pub use crate::data::store::{
         AssignmentEvent, Attribute, Entity, NodeId, SubscriptionFilter, ToEntityId, ToEntityKey,

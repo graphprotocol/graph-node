@@ -239,10 +239,7 @@ impl Value {
             (r::Value::Boolean(b), _) => Value::Bool(b.to_owned()),
             (r::Value::Null, _) => Value::Null,
             _ => {
-                return Err(QueryExecutionError::AttributeTypeError(
-                    value.to_string(),
-                    ty.to_string(),
-                ));
+                return Err(QueryExecutionError::Timeout);
             }
         })
     }
