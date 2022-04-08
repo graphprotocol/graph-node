@@ -175,7 +175,7 @@ impl ValueType {
 
 // Note: Do not modify fields without also making a backward compatible change to the StableHash impl (below)
 /// An attribute value is represented as an enum with variants for all supported value types.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "type", content = "data")]
 #[derive(AsStaticStr)]
 pub enum Value {
@@ -380,6 +380,21 @@ impl fmt::Display for Value {
                 Value::BigInt(ref number) => number.to_string(),
             }
         )
+    }
+}
+
+impl fmt::Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::String(s) => f.debug_tuple("String").field(s).finish(),
+            Self::Int(i) => f.debug_tuple("Int").field(i).finish(),
+            Self::BigDecimal(d) => d.fmt(f),
+            Self::Bool(arg0) => f.debug_tuple("Bool").field(arg0).finish(),
+            Self::List(arg0) => f.debug_tuple("List").field(arg0).finish(),
+            Self::Null => write!(f, "Null"),
+            Self::Bytes(bytes) => bytes.fmt(f),
+            Self::BigInt(number) => number.fmt(f),
+        }
     }
 }
 
@@ -931,4 +946,21 @@ fn entity_validation() {
         thing,
         "Entity Thing[t8]: field `cruft` is derived and can not be set",
     );
+}
+
+#[test]
+fn fmt_debug() {
+    assert_eq!("String(\"hello\")", format!("{:?}", Value::from("hello")));
+    assert_eq!("Int(17)", format!("{:?}", Value::Int(17)));
+    assert_eq!("Bool(false)", format!("{:?}", Value::Bool(false)));
+    assert_eq!("Null", format!("{:?}", Value::Null));
+
+    let bd = Value::BigDecimal(scalar::BigDecimal::from(-0.17));
+    assert_eq!("BigDecimal(-0.17)", format!("{:?}", bd));
+
+    let bytes = Value::Bytes(scalar::Bytes::from([222, 173, 190, 239].as_slice()));
+    assert_eq!("Bytes(0xdeadbeef)", format!("{:?}", bytes));
+
+    let bi = Value::BigInt(scalar::BigInt::from(-17i32));
+    assert_eq!("BigInt(-17)", format!("{:?}", bi));
 }
