@@ -104,11 +104,6 @@ pub mod prelude {
         QueryStoreManager, StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox,
         SubgraphStore, UnfailOutcome, WindowAttribute, BLOCK_NUMBER_MAX,
     };
-    pub use crate::components::subgraph::{
-        BlockState, DataSourceTemplateInfo, HostMetrics, RuntimeHost, RuntimeHostBuilder,
-        SubgraphAssignmentProvider, SubgraphInstanceManager, SubgraphRegistrar,
-        SubgraphVersionSwitchingMode,
-    };
     pub use crate::components::{transaction_receipt, EventConsumer, EventProducer};
 
     pub use crate::data::graphql::{shape_hash::shape_hash, SerializableValue, TryFromValue};

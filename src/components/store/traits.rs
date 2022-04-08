@@ -65,7 +65,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
         deployment: DeploymentCreate,
         node_id: NodeId,
         network: String,
-        mode: SubgraphVersionSwitchingMode,
+        mode: (),
     ) -> Result<DeploymentLocator, StoreError>;
 
     /// Create a new subgraph with the given name. If one already exists, use
