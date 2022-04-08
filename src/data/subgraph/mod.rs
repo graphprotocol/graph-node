@@ -35,7 +35,7 @@ use crate::data::{
 };
 use crate::prelude::r;
 
-use crate::prelude::{impl_slog_value, BlockNumber, Deserialize, Serialize};
+use crate::prelude::{BlockNumber, Deserialize, Serialize};
 
 use std::fmt;
 use std::ops::Deref;
@@ -69,8 +69,6 @@ impl StableHash for DeploymentHash {
         self.0.stable_hash(sequence_number.next_child(), state);
     }
 }
-
-impl_slog_value!(DeploymentHash);
 
 impl DeploymentHash {
     /// Check that `s` is a valid `SubgraphDeploymentId` and create a new one.

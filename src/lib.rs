@@ -10,9 +10,6 @@ pub mod util;
 /// Extension traits for external types.
 pub mod ext;
 
-/// Logging utilities
-pub mod log;
-
 /// Wrapper for spawning tasks that abort on panic, which is our default.
 mod task_spawn;
 pub use task_spawn::{
@@ -139,13 +136,6 @@ pub mod prelude {
         CancelGuard, CancelHandle, CancelToken, CancelableError, FutureExtension,
         SharedCancelGuard, StreamExtension,
     };
-    pub use crate::impl_slog_value;
-    pub use crate::log::codes::LogCode;
-    pub use crate::log::elastic::{elastic_logger, ElasticDrainConfig, ElasticLoggingConfig};
-    pub use crate::log::factory::{
-        ComponentLoggerConfig, ElasticComponentLoggerConfig, LoggerFactory,
-    };
-    pub use crate::log::split::split_logger;
     pub use crate::util::cache_weight::CacheWeight;
     pub use crate::util::futures::{retry, TimeoutError};
     pub use crate::util::stats::MovingStats;

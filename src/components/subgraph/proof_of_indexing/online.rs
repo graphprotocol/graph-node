@@ -139,15 +139,6 @@ impl ProofOfIndexing {
         causality_region: &str,
         event: &ProofOfIndexingEvent<'_>,
     ) {
-        if true {
-            debug!(
-                logger,
-                "Proof of indexing event";
-                "event" => &event,
-                "causality_region" => causality_region
-            );
-        }
-
         self.with_causality_region(causality_region, |entry| entry.write(event))
     }
 

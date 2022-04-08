@@ -1,4 +1,4 @@
-use crate::prelude::{impl_slog_value, Value};
+use crate::prelude::Value;
 use stable_hash::prelude::*;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
@@ -112,5 +112,3 @@ impl fmt::Debug for ProofOfIndexingEvent<'_> {
         builder.finish()
     }
 }
-
-impl_slog_value!(ProofOfIndexingEvent<'_>, "{:?}");
