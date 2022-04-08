@@ -77,7 +77,6 @@ pub mod prelude {
         Query, QueryError, QueryExecutionError, QueryResult, QueryVariables,
     };
     pub use crate::data::schema::{ApiSchema, Schema};
-    pub use crate::data::store::ethereum::*;
     pub use crate::data::store::{
         AssignmentEvent, Attribute, Entity, NodeId, SubscriptionFilter, ToEntityId, ToEntityKey,
         TryIntoEntity, Value, ValueType,

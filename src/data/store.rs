@@ -23,9 +23,6 @@ use strum_macros::AsStaticStr;
 
 use super::graphql::{ext::DirectiveFinder, TypeExt as _};
 
-// Ethereum compatibility.
-pub mod ethereum;
-
 /// Filter subscriptions
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SubscriptionFilter {
