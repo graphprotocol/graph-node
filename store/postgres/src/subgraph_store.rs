@@ -915,7 +915,7 @@ impl SubgraphStoreInner {
         indexer: &Option<Address>,
         block: BlockPtr,
     ) -> Result<Option<[u8; 32]>, StoreError> {
-        let (store, site) = self.store(id).unwrap();
+        let (store, site) = self.store(id)?;
         store.get_proof_of_indexing(site, indexer, block).await
     }
 
@@ -925,7 +925,7 @@ impl SubgraphStoreInner {
         block_number: BlockNumber,
         block_store: Arc<impl BlockStore>,
     ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
-        let (store, site) = self.store(&id).unwrap();
+        let (store, site) = self.store(&id)?;
 
         let chain_store = match block_store.chain_store(&site.network) {
             Some(chain_store) => chain_store,
