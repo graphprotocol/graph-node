@@ -2,7 +2,7 @@ mod entity_cache;
 mod err;
 mod traits;
 
-pub use entity_cache::{EntityCache, ModificationsAndCache};
+pub use entity_cache::{EntityCache, GetScope, ModificationsAndCache};
 
 use diesel::types::{FromSql, ToSql};
 pub use err::StoreError;

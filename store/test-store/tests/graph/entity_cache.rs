@@ -1,7 +1,7 @@
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::{
-    DeploymentCursorTracker, DerivedEntityQuery, EntityKey, EntityType, LoadRelatedRequest,
-    ReadStore, StoredDynamicDataSource, WritableStore,
+    DeploymentCursorTracker, DerivedEntityQuery, EntityKey, EntityType, GetScope,
+    LoadRelatedRequest, ReadStore, StoredDynamicDataSource, WritableStore,
 };
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, SubgraphHealth};
 use graph::data_source::CausalityRegion;
@@ -750,5 +750,44 @@ fn check_for_delete_async_related() {
         let expeted_vec = vec![wallet_2, wallet_3];
 
         assert_eq!(result, expeted_vec);
+    });
+}
+
+#[test]
+fn scoped_get() {
+    run_store_test(|mut cache, _store, _deployment, _writable| async move {
+        // Key for an existing entity that is in the store
+        let key1 = EntityKey::data(WALLET.to_owned(), "1".to_owned());
+        let wallet1 = create_wallet_entity("1", "1", 67);
+
+        // Create a new entity that is not in the store
+        let wallet5 = create_wallet_entity("5", "5", 100);
+        let key5 = EntityKey::data(WALLET.to_owned(), "5".to_owned());
+        cache.set(key5.clone(), wallet5.clone()).unwrap();
+
+        // For the new entity, we can retrieve it with either scope
+        let act5 = cache.get(&key5, GetScope::InBlock).unwrap();
+        assert_eq!(Some(&wallet5), act5.as_ref());
+        let act5 = cache.get(&key5, GetScope::Store).unwrap();
+        assert_eq!(Some(&wallet5), act5.as_ref());
+
+        // For an entity in the store, we can not get it `InBlock` but with
+        // `Store`
+        let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
+        assert_eq!(None, act1);
+        let act1 = cache.get(&key1, GetScope::Store).unwrap();
+        assert_eq!(Some(&wallet1), act1.as_ref());
+        // Even after reading from the store, the entity is not visible with
+        // `InBlock`
+        let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
+        assert_eq!(None, act1);
+        // But if it gets updated, it becomes visible with either scope
+        let mut wallet1 = wallet1;
+        wallet1.set("balance", 70);
+        cache.set(key1.clone(), wallet1.clone()).unwrap();
+        let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
+        assert_eq!(Some(&wallet1), act1.as_ref());
+        let act1 = cache.get(&key1, GetScope::Store).unwrap();
+        assert_eq!(Some(&wallet1), act1.as_ref());
     });
 }

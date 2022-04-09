@@ -6,7 +6,7 @@ use crate::subgraph::stream::new_block_stream;
 use atomic_refcell::AtomicRefCell;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
 use graph::blockchain::{Block, Blockchain, DataSource as _, TriggerFilter as _};
-use graph::components::store::{EmptyStore, EntityKey, StoredDynamicDataSource};
+use graph::components::store::{EmptyStore, EntityKey, GetScope, StoredDynamicDataSource};
 use graph::components::{
     store::ModificationsAndCache,
     subgraph::{MappingError, PoICausalityRegion, ProofOfIndexing, SharedProofOfIndexing},
@@ -1034,14 +1034,13 @@ async fn update_proof_of_indexing(
         };
 
         // Grab the current digest attribute on this entity
-        let prev_poi =
-            entity_cache
-                .get(&entity_key)
-                .map_err(Error::from)?
-                .map(|entity| match entity.get("digest") {
-                    Some(Value::Bytes(b)) => b.clone(),
-                    _ => panic!("Expected POI entity to have a digest and for it to be bytes"),
-                });
+        let prev_poi = entity_cache
+            .get(&entity_key, GetScope::Store)
+            .map_err(Error::from)?
+            .map(|entity| match entity.get("digest") {
+                Some(Value::Bytes(b)) => b.clone(),
+                _ => panic!("Expected POI entity to have a digest and for it to be bytes"),
+            });
 
         // Finish the POI stream, getting the new POI value.
         let updated_proof_of_indexing = stream.pause(prev_poi.as_deref());

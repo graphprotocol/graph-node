@@ -9,7 +9,7 @@ use wasmtime::Trap;
 use web3::types::H160;
 
 use graph::blockchain::Blockchain;
-use graph::components::store::{EnsLookup, LoadRelatedRequest};
+use graph::components::store::{EnsLookup, GetScope, LoadRelatedRequest};
 use graph::components::store::{EntityKey, EntityType};
 use graph::components::subgraph::{
     PoICausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing,
@@ -225,6 +225,7 @@ impl<C: Blockchain> HostExports<C> {
         entity_type: String,
         entity_id: String,
         gas: &GasCounter,
+        scope: GetScope,
     ) -> Result<Option<Entity>, anyhow::Error> {
         let store_key = EntityKey {
             entity_type: EntityType::new(entity_type),
@@ -233,7 +234,7 @@ impl<C: Blockchain> HostExports<C> {
         };
         self.check_entity_type_access(&store_key.entity_type)?;
 
-        let result = state.entity_cache.get(&store_key)?;
+        let result = state.entity_cache.get(&store_key, scope)?;
         gas.consume_host_fn(gas::STORE_GET.with_args(complexity::Linear, (&store_key, &result)))?;
 
         Ok(result)
