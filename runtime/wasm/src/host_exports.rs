@@ -11,7 +11,7 @@ use web3::types::H160;
 use graph::blockchain::DataSource;
 use graph::blockchain::{Blockchain, DataSourceTemplate as _};
 use graph::components::store::EntityType;
-use graph::components::store::{EnsLookup, EntityKey};
+use graph::components::store::{EnsLookup, EntityKey, GetScope};
 use graph::components::subgraph::{CausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::data::store;
 use graph::ensure;
@@ -201,6 +201,7 @@ impl<C: Blockchain> HostExports<C> {
         entity_type: String,
         entity_id: String,
         gas: &GasCounter,
+        scope: GetScope,
     ) -> Result<Option<Entity>, anyhow::Error> {
         let store_key = EntityKey {
             subgraph_id: self.subgraph_id.clone(),
@@ -208,7 +209,7 @@ impl<C: Blockchain> HostExports<C> {
             entity_id,
         };
 
-        let result = state.entity_cache.get(&store_key)?;
+        let result = state.entity_cache.get(&store_key, scope)?;
         gas.consume_host_fn(gas::STORE_GET.with_args(complexity::Linear, (&store_key, &result)))?;
 
         Ok(result)

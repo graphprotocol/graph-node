@@ -10,6 +10,14 @@ use crate::components::store::{
 use crate::prelude::ENV_VARS;
 use crate::util::lfu_cache::LfuCache;
 
+/// The scope in which the `EntityCache` should perform a `get` operation
+pub enum GetScope {
+    /// Get from all previously stored entities in the store
+    Store,
+    /// Get from the entities that have been stored during this block
+    InBlock,
+}
+
 /// A cache for entities from the store that provides the basic functionality
 /// needed for the store interactions in the host exports. This struct tracks
 /// how entities are modified, and caches all entities looked up from the
@@ -100,9 +108,16 @@ impl EntityCache {
         self.handler_updates.clear();
     }
 
-    pub fn get(&mut self, key: &EntityKey) -> Result<Option<Entity>, s::QueryExecutionError> {
+    pub fn get(
+        &mut self,
+        key: &EntityKey,
+        scope: GetScope,
+    ) -> Result<Option<Entity>, s::QueryExecutionError> {
         // Get the current entity, apply any updates from `updates`, then from `handler_updates`.
-        let mut entity = self.current.get_entity(&*self.store, key)?;
+        let mut entity = match scope {
+            GetScope::Store => self.current.get_entity(&*self.store, key)?,
+            GetScope::InBlock => None,
+        };
         if let Some(op) = self.updates.get(key).cloned() {
             entity = op.apply_to(entity)
         }
@@ -158,7 +173,7 @@ impl EntityCache {
         // lookup in the database and check again with an entity that merges
         // the existing entity with the changes
         if !is_valid {
-            let entity = self.get(&key)?.ok_or_else(|| {
+            let entity = self.get(&key, GetScope::Store)?.ok_or_else(|| {
                 anyhow!(
                     "Failed to read entity {}[{}] back from cache",
                     key.entity_type,

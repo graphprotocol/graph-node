@@ -2,7 +2,7 @@ mod cache;
 mod err;
 mod traits;
 
-pub use cache::{CachedEthereumCall, EntityCache, ModificationsAndCache};
+pub use cache::{CachedEthereumCall, EntityCache, GetScope, ModificationsAndCache};
 pub use err::StoreError;
 pub use traits::*;
 
