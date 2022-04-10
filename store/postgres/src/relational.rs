@@ -16,7 +16,7 @@ use diesel::{connection::SimpleConnection, Connection};
 use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
 use graph::cheap_clone::CheapClone;
 use graph::constraint_violation;
-use graph::data::graphql::{DirectiveExt, TypeExt as _};
+use graph::data::graphql::TypeExt as _;
 use graph::prelude::{q, s, StopwatchMetrics, ENV_VARS};
 use graph::slog::warn;
 use inflector::Inflector;
@@ -1208,14 +1208,7 @@ impl Table {
             .account_tables
             .contains(qualified_name.as_str());
 
-        let immutable = defn
-            .find_directive("entity")
-            .and_then(|dir| dir.argument("immutable"))
-            .map(|value| match value {
-                q::Value::Boolean(b) => *b,
-                _ => false,
-            })
-            .unwrap_or(false);
+        let immutable = defn.is_immutable();
 
         let table = Table {
             object: EntityType::from(defn),
