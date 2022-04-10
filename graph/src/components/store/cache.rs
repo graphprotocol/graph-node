@@ -101,8 +101,18 @@ impl EntityCache {
     }
 
     pub fn get(&mut self, key: &EntityKey) -> Result<Option<Entity>, s::QueryExecutionError> {
-        // Get the current entity, apply any updates from `updates`, then from `handler_updates`.
-        let mut entity = self.current.get_entity(&*self.store, key)?;
+        // Get the current entity, apply any updates from `updates`, then
+        // from `handler_updates`.
+
+        // For immutable entities, assume the user is doing the right thing
+        // and not trying to modify an entity that was written on a previous
+        // block. If they do, saving the entity will fail at the end of the
+        // block, but skipping the load from the store can save a lot of
+        // time in the common happy case
+        let mut entity = match self.store.input_schema().is_immutable(&key.entity_type) {
+            true => None,
+            false => self.current.get_entity(&*self.store, key)?,
+        };
         if let Some(op) = self.updates.get(key).cloned() {
             entity = op.apply_to(entity)
         }
@@ -230,6 +240,16 @@ impl EntityCache {
             .updates
             .keys()
             .filter(|key| !self.current.contains_key(key));
+
+        // For immutable types, we assume that the subgraph is well-behaved,
+        // and all updated immutable entities are in fact new, and skip
+        // looking them up in the store. That ultimately always leads to an
+        // `Insert` modification for immutable entities; if the assumption
+        // is wrong and the store already has a version of the entity from a
+        // previous block, the attempt to insert will trigger a constraint
+        // violation in the database, ensuring correctness
+        let missing =
+            missing.filter(|key| !self.store.input_schema().is_immutable(&key.entity_type));
 
         let mut missing_by_subgraph: BTreeMap<_, BTreeMap<&EntityType, Vec<&str>>> =
             BTreeMap::new();
