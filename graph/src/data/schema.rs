@@ -579,6 +579,8 @@ pub struct Schema {
 
     // Maps an interface name to the list of entities that implement it.
     pub types_for_interface: BTreeMap<EntityType, Vec<ObjectType>>,
+
+    immutable_types: HashSet<EntityType>,
 }
 
 impl Schema {
@@ -590,12 +592,14 @@ impl Schema {
     // `Schema` is always fully valid
     pub fn new(id: DeploymentHash, document: s::Document) -> Result<Self, SchemaValidationError> {
         let (interfaces_for_type, types_for_interface) = Self::collect_interfaces(&document)?;
+        let immutable_types = Self::collect_immutable_types(&document);
 
         let mut schema = Schema {
             id: id.clone(),
             document,
             interfaces_for_type,
             types_for_interface,
+            immutable_types,
         };
 
         schema.add_subgraph_id_directives(id);
@@ -634,6 +638,10 @@ impl Schema {
                 ))
             }
         }
+    }
+
+    pub fn is_immutable(&self, entity_type: &EntityType) -> bool {
+        self.immutable_types.contains(entity_type)
     }
 
     pub fn resolve_schema_references<S: SubgraphStore>(
@@ -731,6 +739,16 @@ impl Schema {
         }
 
         Ok((interfaces_for_type, types_for_interface))
+    }
+
+    fn collect_immutable_types(document: &s::Document) -> HashSet<EntityType> {
+        HashSet::from_iter(
+            document
+                .get_object_type_definitions()
+                .into_iter()
+                .filter(|obj_type| obj_type.is_immutable())
+                .map(Into::into),
+        )
     }
 
     pub fn parse(raw: &str, id: DeploymentHash) -> Result<Self, Error> {
