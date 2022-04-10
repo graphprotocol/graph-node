@@ -582,16 +582,25 @@ pub struct Schema {
 }
 
 impl Schema {
-    /// Create a new schema. The document must already have been
-    /// validated. This function is only useful for creating an introspection
-    /// schema, and should not be used otherwise
-    pub fn new(id: DeploymentHash, document: s::Document) -> Self {
-        Schema {
-            id,
+    /// Create a new schema. The document must already have been validated
+    //
+    // TODO: The way some validation is expected to be done beforehand, and
+    // some is done here makes it incredibly murky whether a `Schema` is
+    // fully validated. The code should be changed to make sure that a
+    // `Schema` is always fully valid
+    pub fn new(id: DeploymentHash, document: s::Document) -> Result<Self, SchemaValidationError> {
+        let (interfaces_for_type, types_for_interface) = Self::collect_interfaces(&document)?;
+
+        let mut schema = Schema {
+            id: id.clone(),
             document,
-            interfaces_for_type: BTreeMap::new(),
-            types_for_interface: BTreeMap::new(),
-        }
+            interfaces_for_type,
+            types_for_interface,
+        };
+
+        schema.add_subgraph_id_directives(id);
+
+        Ok(schema)
     }
 
     /// Construct a value for the entity type's id attribute
@@ -671,7 +680,7 @@ impl Schema {
             })
     }
 
-    pub fn collect_interfaces(
+    fn collect_interfaces(
         document: &s::Document,
     ) -> Result<
         (
@@ -727,17 +736,7 @@ impl Schema {
     pub fn parse(raw: &str, id: DeploymentHash) -> Result<Self, Error> {
         let document = graphql_parser::parse_schema(raw)?.into_static();
 
-        let (interfaces_for_type, types_for_interface) = Self::collect_interfaces(&document)?;
-
-        let mut schema = Schema {
-            id: id.clone(),
-            document,
-            interfaces_for_type,
-            types_for_interface,
-        };
-        schema.add_subgraph_id_directives(id);
-
-        Ok(schema)
+        Schema::new(id, document).map_err(Into::into)
     }
 
     fn imported_types(&self) -> HashMap<ImportedType, SchemaReference> {
@@ -1648,7 +1647,7 @@ type Account implements Address @entity { id: ID!, txn: Transaction! @derivedFro
         let document = graphql_parser::parse_schema(&raw)
             .expect("Failed to parse raw schema")
             .into_static();
-        let schema = Schema::new(DeploymentHash::new("id").unwrap(), document);
+        let schema = Schema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
         match schema.validate_derived_from() {
             Err(ref e) => match e {
                 SchemaValidationError::InvalidDerivedFrom(_, _, msg) => assert_eq!(errmsg, msg),
@@ -1700,7 +1699,7 @@ fn test_reserved_type_with_fields() {
 type _Schema_ { id: ID! }";
 
     let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
-    let schema = Schema::new(DeploymentHash::new("id").unwrap(), document);
+    let schema = Schema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
     assert_eq!(
         schema
             .validate_schema_type_has_no_fields()
@@ -1715,7 +1714,7 @@ fn test_reserved_type_directives() {
 type _Schema_ @illegal";
 
     let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
-    let schema = Schema::new(DeploymentHash::new("id").unwrap(), document);
+    let schema = Schema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
     assert_eq!(
         schema.validate_directives_on_schema_type().expect_err(
             "Expected validation to fail due to extra imports defined on the reserved type"
@@ -1730,7 +1729,7 @@ fn test_imports_directive_from_argument() {
 type _Schema_ @import(types: ["T", "A", "C"])"#;
 
     let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
-    let schema = Schema::new(DeploymentHash::new("id").unwrap(), document);
+    let schema = Schema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
     match schema
         .validate_import_directives()
         .into_iter()
@@ -1757,7 +1756,7 @@ type A @entity {
 }"#;
 
     let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
-    let schema = Schema::new(DeploymentHash::new("id").unwrap(), document);
+    let schema = Schema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
     assert_eq!(schema.validate_fields().len(), 0);
 }
 
@@ -1780,9 +1779,9 @@ type T @entity { id: ID! }
 
     let c1id = DeploymentHash::new("c1id").unwrap();
     let c2id = DeploymentHash::new("c2id").unwrap();
-    let root_schema = Schema::new(DeploymentHash::new("rid").unwrap(), root_document);
-    let child_1_schema = Schema::new(c1id.clone(), child_1_document);
-    let child_2_schema = Schema::new(c2id.clone(), child_2_document);
+    let root_schema = Schema::new(DeploymentHash::new("rid").unwrap(), root_document).unwrap();
+    let child_1_schema = Schema::new(c1id.clone(), child_1_document).unwrap();
+    let child_2_schema = Schema::new(c2id.clone(), child_2_document).unwrap();
 
     let mut schemas = HashMap::new();
     schemas.insert(SchemaReference::new(c1id), Arc::new(child_1_schema));
@@ -1815,9 +1814,9 @@ type T @entity { id: ID! }
 
     let c1id = DeploymentHash::new("c1id").unwrap();
     let c2id = DeploymentHash::new("c2id").unwrap();
-    let root_schema = Schema::new(DeploymentHash::new("rid").unwrap(), root_document);
-    let child_1_schema = Schema::new(c1id.clone(), child_1_document);
-    let child_2_schema = Schema::new(c2id.clone(), child_2_document);
+    let root_schema = Schema::new(DeploymentHash::new("rid").unwrap(), root_document).unwrap();
+    let child_1_schema = Schema::new(c1id.clone(), child_1_document).unwrap();
+    let child_2_schema = Schema::new(c2id.clone(), child_2_document).unwrap();
 
     let mut schemas = HashMap::new();
     schemas.insert(SchemaReference::new(c1id), Arc::new(child_1_schema));
@@ -1931,7 +1930,7 @@ type Gravatar @entity {
 }"#;
 
     let document = graphql_parser::parse_schema(SCHEMA).expect("Failed to parse schema");
-    let schema = Schema::new(DeploymentHash::new("id1").unwrap(), document);
+    let schema = Schema::new(DeploymentHash::new("id1").unwrap(), document).unwrap();
 
     assert_eq!(schema.validate_fulltext_directives(), vec![]);
 }
