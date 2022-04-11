@@ -103,16 +103,7 @@ impl EntityCache {
     pub fn get(&mut self, key: &EntityKey) -> Result<Option<Entity>, s::QueryExecutionError> {
         // Get the current entity, apply any updates from `updates`, then
         // from `handler_updates`.
-
-        // For immutable entities, assume the user is doing the right thing
-        // and not trying to modify an entity that was written on a previous
-        // block. If they do, saving the entity will fail at the end of the
-        // block, but skipping the load from the store can save a lot of
-        // time in the common happy case
-        let mut entity = match self.store.input_schema().is_immutable(&key.entity_type) {
-            true => None,
-            false => self.current.get_entity(&*self.store, key)?,
-        };
+        let mut entity = self.current.get_entity(&*self.store, key)?;
         if let Some(op) = self.updates.get(key).cloned() {
             entity = op.apply_to(entity)
         }
