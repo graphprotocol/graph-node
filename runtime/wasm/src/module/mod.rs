@@ -473,6 +473,12 @@ impl<C: Blockchain> WasmInstance<C> {
         // For reference, search this codebase for: ff652476-e6ad-40e4-85b8-e815d6c6e5e2
         link!("ipfs.cat", ipfs_cat, "host_export_ipfs_cat", hash_ptr);
         link!(
+            "ipfs.getBlock",
+            ipfs_get_block,
+            "host_export_ipfs_get_block",
+            hash_ptr
+        );
+        link!(
             "ipfs.map",
             ipfs_map,
             "host_export_ipfs_map",
@@ -1088,6 +1094,36 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             // Return null in case of error.
             Err(e) => {
                 info!(&self.ctx.logger, "Failed ipfs.cat, returning `null`";
+                                    "link" => asc_get::<String, _, _>(self, link_ptr, gas)?,
+                                    "error" => e.to_string());
+                Ok(AscPtr::null())
+            }
+        }
+    }
+
+    /// function ipfs.getBlock(link: String): Bytes
+    pub fn ipfs_get_block(
+        &mut self,
+        gas: &GasCounter,
+        link_ptr: AscPtr<AscString>,
+    ) -> Result<AscPtr<Uint8Array>, HostExportError> {
+        // Note on gas: There is no gas costing for the ipfs call itself,
+        // since it's not enabled on the network.
+
+        if !self.experimental_features.allow_non_deterministic_ipfs {
+            return Err(HostExportError::Deterministic(anyhow!(
+                "`ipfs.getBlock` is deprecated. Improved support for IPFS will be added in the future"
+            )));
+        }
+
+        let link = asc_get(self, link_ptr, gas)?;
+        let ipfs_res = self.ctx.host_exports.ipfs_get_block(&self.ctx.logger, link);
+        match ipfs_res {
+            Ok(bytes) => asc_new(self, &*bytes, gas).map_err(Into::into),
+
+            // Return null in case of error.
+            Err(e) => {
+                info!(&self.ctx.logger, "Failed ipfs.getBlock, returning `null`";
                                     "link" => asc_get::<String, _, _>(self, link_ptr, gas)?,
                                     "error" => e.to_string());
                 Ok(AscPtr::null())

@@ -244,6 +244,17 @@ impl<C: Blockchain> HostExports<C> {
         graph::block_on(self.link_resolver.cat(logger, &Link { link }))
     }
 
+    pub(crate) fn ipfs_get_block(
+        &self,
+        logger: &Logger,
+        link: String,
+    ) -> Result<Vec<u8>, anyhow::Error> {
+        // Does not consume gas because this is not a part of the deterministic feature set.
+        // Ideally this would first consume gas for fetching the file stats, and then again
+        // for the bytes of the file.
+        graph::block_on(self.link_resolver.get_block(logger, &Link { link }))
+    }
+
     // Read the IPFS file `link`, split it into JSON objects, and invoke the
     // exported function `callback` on each JSON object. The successful return
     // value contains the block state produced by each callback invocation. Each

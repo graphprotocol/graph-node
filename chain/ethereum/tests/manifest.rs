@@ -55,6 +55,10 @@ impl LinkResolverTrait for TextResolver {
             .map(Clone::clone)
     }
 
+    async fn get_block(&self, _logger: &Logger, _link: &Link) -> Result<Vec<u8>, anyhow::Error> {
+        unimplemented!()
+    }
+
     async fn json_stream(
         &self,
         _logger: &Logger,

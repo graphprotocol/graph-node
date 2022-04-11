@@ -84,6 +84,14 @@ impl IpfsClient {
             .bytes_stream())
     }
 
+    pub async fn get_block(&self, cid: String) -> Result<Bytes, reqwest::Error> {
+        let form = multipart::Form::new().part("arg", multipart::Part::text(cid));
+        self.call(format!("{}api/v0/block/get", self.base), Some(form), None)
+            .await?
+            .bytes()
+            .await
+    }
+
     pub async fn test(&self) -> Result<(), reqwest::Error> {
         self.call(format!("{}api/v0/version", self.base), None, None)
             .await

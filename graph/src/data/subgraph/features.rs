@@ -23,7 +23,8 @@ use super::calls_host_fn;
 /// This array must contain all IPFS-related functions that are exported by the host WASM runtime.
 ///
 /// For reference, search this codebase for: ff652476-e6ad-40e4-85b8-e815d6c6e5e2
-const IPFS_ON_ETHEREUM_CONTRACTS_FUNCTION_NAMES: [&'static str; 2] = ["ipfs.cat", "ipfs.map"];
+const IPFS_ON_ETHEREUM_CONTRACTS_FUNCTION_NAMES: [&'static str; 3] =
+    ["ipfs.cat", "ipfs.getBlock", "ipfs.map"];
 
 #[derive(Debug, Deserialize, Serialize, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "camelCase")]
