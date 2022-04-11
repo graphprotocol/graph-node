@@ -5,7 +5,7 @@ edition = "2021"
 
 [dev-dependencies]
 slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
-bollard = "0.10"
+bollard = "0.12"
 tokio = {version = "1.16.1", features = ["rt", "macros", "process"]}
 tokio-stream = "0.1"
 futures = "0.3.13"
