@@ -149,7 +149,7 @@ impl_asc_type!(u8, u16, u32, u64, i8, i32, i64, f32, f64);
 /// 1 .The discriminants must have the same value as their counterparts in `TypeId` enum from
 ///    graph-ts' `global` module. If not, the runtime will fail to determine the correct class
 ///    during allocation.
-/// 2. Each supported blockchain has a reserved space of 500 contiguous variants.
+/// 2. Each supported blockchain has a reserved space of 1,000 contiguous variants.
 /// 3. Once defined, items and their discriminants cannot be changed, as this would break running
 ///    subgraphs compiled in previous versions of this representation.
 #[repr(u32)]
@@ -245,27 +245,27 @@ pub enum IndexForAscTypeId {
     NearChunkHeader = 84,
     NearBlock = 85,
     NearReceiptWithOutcome = 86,
-    // Reserved discriminant space for more Near type IDs: [87, 499]:
+    // Reserved discriminant space for more Near type IDs: [87, 999]:
     // Continue to add more Near type IDs here.
     // e.g.:
     // NextNearType = 87,
     // AnotherNearType = 88,
     // ...
-    // LastNearType = 499,
+    // LastNearType = 999,
 
-    // Reserved discriminant space for more Ethereum type IDs: [500, 999]
-    TransactionReceipt = 500,
-    Log = 501,
-    ArrayH256 = 502,
-    ArrayLog = 503,
+    // Reserved discriminant space for more Ethereum type IDs: [1000, 1499]
+    TransactionReceipt = 1000,
+    Log = 1001,
+    ArrayH256 = 1002,
+    ArrayLog = 1003,
     // Continue to add more Ethereum type IDs here.
     // e.g.:
-    // NextEthereumType = 504,
-    // AnotherEthereumType = 505,
+    // NextEthereumType = 1004,
+    // AnotherEthereumType = 1005,
     // ...
-    // LastEthereumType = 999,
+    // LastEthereumType = 1499,
 
-    // Reserved discriminant space for Tendermint type IDs: [1,500, 1,999]
+    // Reserved discriminant space for Tendermint type IDs: [1,500, 2,499]
     TendermintArrayBytes = 1500,
     TendermintArrayCommitSig = 1501,
     TendermintArrayEvent = 1502,
@@ -318,20 +318,21 @@ pub enum IndexForAscTypeId {
     // NextTendermintType = 1547,
     // AnotherTendermintType = 1547,
     // ...
-    // LastTendermintType = 1999,
+    // LastTendermintType = 2499,
 
-    // Reserved discriminant space for a future blockchain type IDs: [2,000, 2,500]
+    // Reserved discriminant space for a future blockchain type IDs: [2,500, 3,499]
     //
     // Generated with the following shell script:
     //
     // ```
-    // grep -Po "(?<=IndexForAscTypeId::)IDENDIFIER_PREFIX.*\b" SRC_FILE | sort |uniq | awk 'BEGIN{count=2000} {sub("$", " = "count",", $1); count++} 1'
+    // grep -Po "(?<=IndexForAscTypeId::)IDENDIFIER_PREFIX.*\b" SRC_FILE | sort |uniq | awk 'BEGIN{count=2500} {sub("$", " = "count",", $1); count++} 1'
     // ```
     //
     // INSTRUCTIONS:
     // 1. Replace the IDENTIFIER_PREFIX and the SRC_FILE placeholders according to the blockchain
     //    name and implementation before running this script.
-    // 2. Insert the output right before the end of this block.
+    // 2. Replace `2500` part with the first number of that blockchain's reserved discriminant space.
+    // 3. Insert the output right before the end of this block.
 }
 
 impl ToAscObj<u32> for IndexForAscTypeId {
