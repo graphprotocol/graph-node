@@ -1398,6 +1398,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-chain-arweave"
+version = "0.26.0"
+dependencies = [
+ "base64",
+ "diesel",
+ "graph",
+ "graph-core",
+ "graph-runtime-derive",
+ "graph-runtime-wasm",
+ "graph-store-postgres",
+ "pretty_assertions 0.7.2",
+ "prost",
+ "prost-types",
+ "serde",
+ "test-store",
+ "tonic-build",
+]
+
+[[package]]
 name = "graph-chain-ethereum"
 version = "0.26.0"
 dependencies = [
@@ -1535,6 +1554,7 @@ dependencies = [
  "futures 0.3.16",
  "git-testament",
  "graph",
+ "graph-chain-arweave",
  "graph-chain-ethereum",
  "graph-chain-near",
  "graph-chain-tendermint",
