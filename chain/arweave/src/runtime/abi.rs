@@ -79,7 +79,7 @@ impl ToAscObj<AscBlock> for codec::Block {
         gas: &GasCounter,
     ) -> Result<AscBlock, DeterministicHostError> {
         Ok(AscBlock {
-            indep_hash: self.height,
+            indep_hash: asc_new(heap, self.indep_hash.as_slice(), gas)?,
             nonce: asc_new(heap, self.nonce.as_slice(), gas)?,
             previous_block: asc_new(heap, self.previous_block.as_slice(), gas)?,
             timestamp: self.timestamp,

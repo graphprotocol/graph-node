@@ -5,32 +5,32 @@ use graph::semver::Version;
 use graph_runtime_derive::AscType;
 use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, AscString, Uint8Array};
 
-// #[repr(C)]
-// #[derive(AscType)]
-// pub struct AscBlock {
-//     pub indep_hash: AscPtr<Uint8Array>,
-//     pub nonce: AscPtr<Uint8Array>,
-//     pub previous_block: AscPtr<Uint8Array>,
-//     pub timestamp: u64,
-//     pub last_retarget: u64,
-//     pub diff: AscPtr<AscString>,
-//     pub height: u64,
-//     pub hash: AscPtr<Uint8Array>,
-//     pub tx_root: AscPtr<AscPtr<Uint8Array>>,
-//     pub wallet_list: AscPtr<Uint8Array>,
-//     pub reward_addr: AscPtr<Uint8Array>,
-//     pub tags: AscPtr<Array<AscPtrAscTag>>,
-//     pub reward_pool: AscPtr<AscString>,
-//     pub weave_size: AscPtr<AscString>,
-//     pub block_size: AscPtr<AscString>,
-//     pub cumulative_diff: AscPtr<AscString>,
-//     pub hash_list_merkle: AscPtr<AscPtr<Uint8Array>>,
-//     pub poa: AscPtr<AscProofOfAccess>,
-// }
-//
-// impl AscIndexId for AscBlock {
-//     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::ArweaveBlock;
-// }
+#[repr(C)]
+#[derive(AscType)]
+pub struct AscBlock {
+    pub indep_hash: AscPtr<Uint8Array>,
+    pub nonce: AscPtr<Uint8Array>,
+    pub previous_block: AscPtr<Uint8Array>,
+    pub timestamp: u64,
+    pub last_retarget: u64,
+    pub diff: AscPtr<AscString>,
+    pub height: u64,
+    pub hash: AscPtr<Uint8Array>,
+    pub tx_root: AscPtr<Uint8Array>,
+    pub wallet_list: AscPtr<Uint8Array>,
+    pub reward_addr: AscPtr<Uint8Array>,
+    pub tags: AscPtr<AscTagArray>,
+    pub reward_pool: AscPtr<AscString>,
+    pub weave_size: AscPtr<AscString>,
+    pub block_size: AscPtr<AscString>,
+    pub cumulative_diff: AscPtr<AscString>,
+    pub hash_list_merkle: AscPtr<Uint8Array>,
+    pub poa: AscPtr<AscProofOfAccess>,
+}
+
+impl AscIndexId for AscBlock {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::ArweaveBlock;
+}
 
 #[repr(C)]
 #[derive(AscType)]
