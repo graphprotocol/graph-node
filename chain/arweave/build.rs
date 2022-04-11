@@ -3,6 +3,6 @@ fn main() {
     tonic_build::configure()
         .out_dir("src/protobuf")
         .format(true)
-        .compile(&["proto/codec.proto"], &["proto"])
-        .expect("Failed to compile Firehose NEAR proto(s)");
+        .compile(&["proto/type.proto"], &["proto"])
+        .expect("Failed to compile Firehose Arweave proto(s)");
 }

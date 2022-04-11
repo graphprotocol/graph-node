@@ -320,7 +320,20 @@ pub enum IndexForAscTypeId {
     // ...
     // LastTendermintType = 2499,
 
-    // Reserved discriminant space for a future blockchain type IDs: [2,500, 3,499]
+    // Arweave types
+    ArweaveBlock = 2500,
+    ArweaveProofOfAccess = 2501,
+    ArweaveTransaction = 2502,
+    ArweaveTag = 2503,
+    ArweaveTagArray = 2504,
+    // Continue to add more Tendermint type IDs here.
+    // e.g.:
+    // NextArweaveType = 2505,
+    // AnotherArweaveType = 2506,
+    // ...
+    // LastArweaveType = 3499,
+
+    // Reserved discriminant space for a future blockchain type IDs: [3,500, 4,499]
     //
     // Generated with the following shell script:
     //
@@ -331,7 +344,7 @@ pub enum IndexForAscTypeId {
     // INSTRUCTIONS:
     // 1. Replace the IDENTIFIER_PREFIX and the SRC_FILE placeholders according to the blockchain
     //    name and implementation before running this script.
-    // 2. Replace `2500` part with the first number of that blockchain's reserved discriminant space.
+    // 2. Replace `3500` part with the first number of that blockchain's reserved discriminant space.
     // 3. Insert the output right before the end of this block.
 }
 

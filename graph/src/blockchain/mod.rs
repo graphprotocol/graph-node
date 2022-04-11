@@ -307,6 +307,9 @@ pub trait NodeCapabilities<C: Blockchain> {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BlockchainKind {
+    /// Arweave chains that are compatible.
+    Arweave,
+
     /// Ethereum itself or chains that are compatible.
     Ethereum,
 
@@ -320,6 +323,7 @@ pub enum BlockchainKind {
 impl fmt::Display for BlockchainKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let value = match self {
+            BlockchainKind::Arweave => "arweave",
             BlockchainKind::Ethereum => "ethereum",
             BlockchainKind::Near => "near",
             BlockchainKind::Tendermint => "tendermint",
