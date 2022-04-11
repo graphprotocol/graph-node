@@ -8,4 +8,3 @@ mod trigger;
 
 pub use crate::chain::Chain;
 pub use codec::Block;
-pub use codec::HeaderOnlyBlock;

@@ -1,9 +1,7 @@
 use crate::codec;
-use crate::trigger::ReceiptWithOutcome;
-use graph::anyhow::anyhow;
 use graph::runtime::gas::GasCounter;
 use graph::runtime::{asc_new, AscHeap, AscPtr, DeterministicHostError, ToAscObj};
-use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, EnumPayload, Uint8Array};
+use graph_runtime_wasm::asc_abi::class::Array;
 
 pub(crate) use super::generated::*;
 
@@ -89,6 +87,7 @@ impl ToAscObj<AscBlock> for codec::Block {
             hash: asc_new(heap, self.hash.as_slice(), gas)?,
             tx_root: self
                 .tx_root
+                .as_ref()
                 .map(|tx_root| asc_new(heap, tx_root.as_slice(), gas))
                 .unwrap_or(Ok(AscPtr::null()))?,
             wallet_list: asc_new(heap, self.wallet_list.as_slice(), gas)?,
@@ -99,10 +98,12 @@ impl ToAscObj<AscBlock> for codec::Block {
             block_size: asc_new(heap, &self.block_size, gas)?,
             cumulative_diff: self
                 .cumulative_diff
+                .as_ref()
                 .map(|cumulative_diff| asc_new(heap, &cumulative_diff, gas))
                 .unwrap_or(Ok(AscPtr::null()))?,
             hash_list_merkle: self
                 .hash_list_merkle
+                .as_ref()
                 .map(|hash_list_merkle| asc_new(heap, hash_list_merkle.as_slice(), gas))
                 .unwrap_or(Ok(AscPtr::null()))?,
             poa: self

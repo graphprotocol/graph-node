@@ -15,9 +15,9 @@ use std::collections::BTreeMap;
 use std::{convert::TryFrom, sync::Arc};
 
 use crate::chain::Chain;
-use crate::trigger::NearTrigger;
+use crate::trigger::ArweaveTrigger;
 
-pub const NEAR_KIND: &str = "near";
+pub const ARWEAVE_KIND: &str = "arweave";
 
 /// Runtime representation of a data source.
 #[derive(Clone, Debug)]
@@ -52,23 +52,10 @@ impl blockchain::DataSource<Chain> for DataSource {
 
         let handler = match trigger {
             // A block trigger matches if a block handler is present.
-            NearTrigger::Block(_) => match self.handler_for_block() {
+            ArweaveTrigger::Block(_) => match self.handler_for_block() {
                 Some(handler) => &handler.handler,
                 None => return Ok(None),
             },
-
-            // A receipt trigger matches if the receiver matches `source.account` and a receipt
-            // handler is present.
-            NearTrigger::Receipt(receipt) => {
-                if Some(&receipt.receipt.receiver_id) != self.source.account.as_ref() {
-                    return Ok(None);
-                }
-
-                match self.handler_for_receipt() {
-                    Some(handler) => &handler.handler,
-                    None => return Ok(None),
-                }
-            }
         };
 
         Ok(Some(TriggerWithHandler::new(
@@ -123,7 +110,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
-        // FIXME (NEAR): Implement me!
+        // FIXME (ARWEAVE): Implement me!
         todo!()
     }
 
@@ -131,17 +118,17 @@ impl blockchain::DataSource<Chain> for DataSource {
         _templates: &BTreeMap<&str, &DataSourceTemplate>,
         _stored: StoredDynamicDataSource,
     ) -> Result<Self, Error> {
-        // FIXME (NEAR): Implement me correctly
+        // FIXME (ARWEAVE): Implement me correctly
         todo!()
     }
 
     fn validate(&self) -> Vec<Error> {
         let mut errors = Vec::new();
 
-        if self.kind != NEAR_KIND {
+        if self.kind != ARWEAVE_KIND {
             errors.push(anyhow!(
                 "data source has invalid `kind`, expected {} but found {}",
-                NEAR_KIND,
+                ARWEAVE_KIND,
                 self.kind
             ))
         }
@@ -199,10 +186,6 @@ impl DataSource {
     fn handler_for_block(&self) -> Option<&MappingBlockHandler> {
         self.mapping.block_handlers.first()
     }
-
-    fn handler_for_receipt(&self) -> Option<&ReceiptHandler> {
-        self.mapping.receipt_handlers.first()
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
@@ -239,42 +222,14 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
     }
 }
 
+/// # TODO
+///
+/// add templates for arweave subgraphs
 impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
     type Error = Error;
 
     fn try_from(_info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
-        Err(anyhow!("Near subgraphs do not support templates"))
-
-        // How this might be implemented if/when Near gets support for templates:
-        // let DataSourceTemplateInfo {
-        //     template,
-        //     params,
-        //     context,
-        //     creation_block,
-        // } = info;
-
-        // let account = params
-        //     .get(0)
-        //     .with_context(|| {
-        //         format!(
-        //             "Failed to create data source from template `{}`: account parameter is missing",
-        //             template.name
-        //         )
-        //     })?
-        //     .clone();
-
-        // Ok(DataSource {
-        //     kind: template.kind,
-        //     network: template.network,
-        //     name: template.name,
-        //     source: Source {
-        //         account,
-        //         start_block: 0,
-        //     },
-        //     mapping: template.mapping,
-        //     context: Arc::new(context),
-        //     creation_block: Some(creation_block),
-        // })
+        Err(anyhow!("Arweave subgraphs do not support templates"))
     }
 }
 

@@ -1,4 +1,4 @@
-use graph::blockchain::BlockchainKind;
+use graph::blockchain::{Block, BlockchainKind};
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
@@ -24,7 +24,7 @@ use crate::adapter::TriggerFilter;
 use crate::capabilities::NodeCapabilities;
 use crate::data_source::{DataSourceTemplate, UnresolvedDataSourceTemplate};
 use crate::runtime::RuntimeAdapter;
-use crate::trigger::{self, NearTrigger};
+use crate::trigger::ArweaveTrigger;
 use crate::{
     codec,
     data_source::{DataSource, UnresolvedDataSource},
@@ -41,7 +41,7 @@ pub struct Chain {
 
 impl std::fmt::Debug for Chain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "chain: near")
+        write!(f, "chain: arweave")
     }
 }
 
@@ -65,7 +65,7 @@ impl Chain {
 
 #[async_trait]
 impl Blockchain for Chain {
-    const KIND: BlockchainKind = BlockchainKind::Near;
+    const KIND: BlockchainKind = BlockchainKind::Arweave;
 
     type Block = codec::Block;
 
@@ -79,9 +79,9 @@ impl Blockchain for Chain {
 
     type TriggersAdapter = TriggersAdapter;
 
-    type TriggerData = crate::trigger::NearTrigger;
+    type TriggerData = crate::trigger::ArweaveTrigger;
 
-    type MappingTrigger = crate::trigger::NearTrigger;
+    type MappingTrigger = crate::trigger::ArweaveTrigger;
 
     type TriggerFilter = crate::adapter::TriggerFilter;
 
@@ -148,7 +148,7 @@ impl Blockchain for Chain {
         _filter: Arc<Self::TriggerFilter>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        panic!("NEAR does not support polling block stream")
+        panic!("ARWEAVE does not support polling block stream")
     }
 
     fn chain_store(&self) -> Arc<dyn ChainStore> {
@@ -166,7 +166,7 @@ impl Blockchain for Chain {
         };
 
         firehose_endpoint
-            .block_ptr_for_number::<codec::HeaderOnlyBlock>(logger, number)
+            .block_ptr_for_number::<codec::Block>(logger, number)
             .map_err(Into::into)
             .await
     }
@@ -202,54 +202,12 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         // TODO: Find the best place to introduce an `Arc` and avoid this clone.
         let shared_block = Arc::new(block.clone());
 
-        let TriggerFilter {
-            block_filter,
-            receipt_filter,
-        } = filter;
+        let TriggerFilter { block_filter } = filter;
 
-        // Filter non-successful or non-action receipts.
-        let receipts = block.shards.iter().flat_map(|shard| {
-            shard
-                .receipt_execution_outcomes
-                .iter()
-                .filter_map(|outcome| {
-                    if !outcome
-                        .execution_outcome
-                        .as_ref()?
-                        .outcome
-                        .as_ref()?
-                        .status
-                        .as_ref()?
-                        .is_success()
-                    {
-                        return None;
-                    }
-                    if !matches!(
-                        outcome.receipt.as_ref()?.receipt,
-                        Some(codec::receipt::Receipt::Action(_))
-                    ) {
-                        return None;
-                    }
-
-                    let receipt = outcome.receipt.as_ref()?.clone();
-                    if !receipt_filter.matches(&receipt.receiver_id) {
-                        return None;
-                    }
-
-                    Some(trigger::ReceiptWithOutcome {
-                        outcome: outcome.execution_outcome.as_ref()?.clone(),
-                        receipt,
-                        block: shared_block.cheap_clone(),
-                    })
-                })
-        });
-
-        let mut trigger_data: Vec<_> = receipts
-            .map(|r| NearTrigger::Receipt(Arc::new(r)))
-            .collect();
+        let mut trigger_data: Vec<ArweaveTrigger> = Vec::new();
 
         if block_filter.trigger_every_block {
-            trigger_data.push(NearTrigger::Block(shared_block.cheap_clone()));
+            trigger_data.push(ArweaveTrigger::Block(shared_block.cheap_clone()));
         }
 
         Ok(BlockWithTriggers::new(block, trigger_data))
@@ -270,7 +228,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     /// Panics if `block` is genesis.
     /// But that's ok since this is only called when reverting `block`.
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
-        // FIXME (NEAR):  Might not be necessary for NEAR support for now
+        // FIXME (ARWEAVE):  Might not be necessary for ARWEAVE support for now
         Ok(Some(BlockPtr {
             hash: BlockHash::from(vec![0xff; 32]),
             number: block.number.saturating_sub(1),
@@ -321,7 +279,6 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 
             StepUndo => {
                 let parent_ptr = block
-                    .header()
                     .parent_ptr()
                     .expect("Genesis block should never be reverted");
 
@@ -347,162 +304,18 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         number: BlockNumber,
     ) -> Result<BlockPtr, Error> {
         self.endpoint
-            .block_ptr_for_number::<codec::HeaderOnlyBlock>(logger, number)
+            .block_ptr_for_number::<codec::Block>(logger, number)
             .await
     }
 
+    // # FIXME
+    //
+    // the final block of arweave is itself in the current implementation
     async fn final_block_ptr_for(
         &self,
-        logger: &Logger,
+        _logger: &Logger,
         block: &codec::Block,
     ) -> Result<BlockPtr, Error> {
-        let final_block_number = block.header().last_final_block_height as BlockNumber;
-
-        self.endpoint
-            .block_ptr_for_number::<codec::HeaderOnlyBlock>(logger, final_block_number)
-            .await
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use std::{collections::HashSet, vec};
-
-    use graph::{
-        blockchain::{block_stream::BlockWithTriggers, TriggersAdapter as _},
-        prelude::tokio,
-        slog::{self, o, Logger},
-    };
-
-    use crate::{
-        adapter::{NearReceiptFilter, TriggerFilter},
-        codec::{
-            self, execution_outcome,
-            receipt::{self},
-            BlockHeader, DataReceiver, ExecutionOutcome, ExecutionOutcomeWithId,
-            IndexerExecutionOutcomeWithReceipt, IndexerShard, ReceiptAction,
-            SuccessValueExecutionStatus,
-        },
-        Chain,
-    };
-
-    use super::TriggersAdapter;
-
-    #[tokio::test]
-    async fn test_trigger_filter_empty() {
-        let account1: String = "account1".into();
-
-        let adapter = TriggersAdapter {};
-
-        let logger = Logger::root(slog::Discard, o!());
-        let block1 = new_success_block(1, &account1);
-
-        let filter = TriggerFilter::default();
-
-        let block_with_triggers: BlockWithTriggers<Chain> = adapter
-            .triggers_in_block(&logger, block1, &filter)
-            .await
-            .expect("failed to execute triggers_in_block");
-        assert_eq!(block_with_triggers.trigger_count(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_trigger_filter_every_block() {
-        let account1: String = "account1".into();
-
-        let adapter = TriggersAdapter {};
-
-        let logger = Logger::root(slog::Discard, o!());
-        let block1 = new_success_block(1, &account1);
-
-        let filter = TriggerFilter {
-            block_filter: crate::adapter::NearBlockFilter {
-                trigger_every_block: true,
-            },
-            ..Default::default()
-        };
-
-        let block_with_triggers: BlockWithTriggers<Chain> = adapter
-            .triggers_in_block(&logger, block1, &filter)
-            .await
-            .expect("failed to execute triggers_in_block");
-        assert_eq!(block_with_triggers.trigger_count(), 1);
-
-        let height: Vec<u64> = heights_from_triggers(&block_with_triggers);
-        assert_eq!(height, vec![1]);
-    }
-
-    #[tokio::test]
-    async fn test_trigger_filter_every_receipt() {
-        let account1: String = "account1".into();
-
-        let adapter = TriggersAdapter {};
-
-        let logger = Logger::root(slog::Discard, o!());
-        let block1 = new_success_block(1, &account1);
-
-        let filter = TriggerFilter {
-            receipt_filter: NearReceiptFilter {
-                accounts: HashSet::from_iter(vec![account1]),
-            },
-            ..Default::default()
-        };
-
-        let block_with_triggers: BlockWithTriggers<Chain> = adapter
-            .triggers_in_block(&logger, block1, &filter)
-            .await
-            .expect("failed to execute triggers_in_block");
-        assert_eq!(block_with_triggers.trigger_count(), 1);
-
-        let height: Vec<u64> = heights_from_triggers(&block_with_triggers);
-        assert_eq!(height.len(), 0);
-    }
-
-    fn heights_from_triggers(block: &BlockWithTriggers<Chain>) -> Vec<u64> {
-        block
-            .trigger_data
-            .clone()
-            .into_iter()
-            .filter_map(|x| match x {
-                crate::trigger::NearTrigger::Block(b) => b.header.clone().map(|x| x.height),
-                _ => None,
-            })
-            .collect()
-    }
-
-    fn new_success_block(height: u64, receiver_id: &String) -> codec::Block {
-        codec::Block {
-            header: Some(BlockHeader {
-                height,
-                ..Default::default()
-            }),
-            shards: vec![IndexerShard {
-                receipt_execution_outcomes: vec![IndexerExecutionOutcomeWithReceipt {
-                    receipt: Some(crate::codec::Receipt {
-                        receipt: Some(receipt::Receipt::Action(ReceiptAction {
-                            output_data_receivers: vec![DataReceiver {
-                                receiver_id: receiver_id.clone(),
-                                ..Default::default()
-                            }],
-                            ..Default::default()
-                        })),
-                        receiver_id: receiver_id.clone(),
-                        ..Default::default()
-                    }),
-                    execution_outcome: Some(ExecutionOutcomeWithId {
-                        outcome: Some(ExecutionOutcome {
-                            status: Some(execution_outcome::Status::SuccessValue(
-                                SuccessValueExecutionStatus::default(),
-                            )),
-
-                            ..Default::default()
-                        }),
-                        ..Default::default()
-                    }),
-                }],
-                ..Default::default()
-            }],
-            ..Default::default()
-        }
+        Ok(block.ptr())
     }
 }
