@@ -10,7 +10,7 @@ use anyhow::Context;
 use futures03::StreamExt;
 use http::uri::{Scheme, Uri};
 use rand::prelude::IteratorRandom;
-use slog::Logger;
+use slog::{warn, Logger};
 use std::{collections::BTreeMap, fmt::Display, sync::Arc};
 use tonic::{
     metadata::MetadataValue,
@@ -145,6 +145,8 @@ impl FirehoseEndpoint {
 
         let mut latest_received_block: Option<BlockPtr> = None;
         while let Some(message) = block_stream.next().await {
+            warn!(logger, "Firehose message: {:#?}", message);
+
             match message {
                 Ok(v) => {
                     let block = decode_firehose_block::<M>(&v)?.ptr();

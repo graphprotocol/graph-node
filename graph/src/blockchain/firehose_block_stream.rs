@@ -253,6 +253,8 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                     let mut expected_stream_end = false;
 
                     for await response in stream {
+                        warn!(&logger, "Firehose response before processing: {:#?}", &response);
+
                         match process_firehose_response(
                             response,
                             &mut check_subgraph_continuity,
