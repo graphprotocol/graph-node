@@ -337,6 +337,8 @@ async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
         Err(e) => return Err(anyhow!("An error occurred while streaming blocks: {:?}", e)),
     };
 
+    warn!(&logger, "Firehose response: {:#?}", response);
+
     let event = mapper
         .to_block_stream_event(logger, &response, adapter, filter)
         .await
