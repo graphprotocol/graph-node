@@ -187,9 +187,9 @@ where
             }
         };
 
-        // If new data sources have been created, restart the subgraph after this block.
-        // This is necessary to re-create the block stream.
-        let needs_restart = block_state.has_created_data_sources();
+        // If new data sources have been created, and static filters are not in use, it is necessary
+        // to restart the block stream with the new filters.
+        let needs_restart = block_state.has_created_data_sources() && !self.inputs.static_filters;
 
         // This loop will:
         // 1. Instantiate created data sources.
@@ -643,7 +643,7 @@ where
                     }
                 }
 
-                if matches!(action, Action::Restart) && !self.inputs.static_filters {
+                if matches!(action, Action::Restart) {
                     // Cancel the stream for real
                     self.ctx
                         .instances
