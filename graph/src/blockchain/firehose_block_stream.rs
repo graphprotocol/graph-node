@@ -253,8 +253,6 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                     let mut expected_stream_end = false;
 
                     for await response in stream {
-                        warn!(&logger, "Firehose response before processing: {:#?}", &response);
-
                         match process_firehose_response(
                             response,
                             &mut check_subgraph_continuity,
@@ -339,7 +337,7 @@ async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
         Err(e) => return Err(anyhow!("An error occurred while streaming blocks: {:?}", e)),
     };
 
-    warn!(&logger, "Firehose response: {:#?}", response);
+    warn!(&logger, "Firehose response: {:?}", response);
 
     let event = mapper
         .to_block_stream_event(logger, &response, adapter, filter)
