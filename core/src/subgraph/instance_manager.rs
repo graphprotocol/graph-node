@@ -39,6 +39,13 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
 
         let subgraph_start_future = async move {
             match BlockchainKind::from_manifest(&manifest)? {
+                BlockchainKind::Arweave => {
+                    instance_manager
+                        .start_subgraph_inner::<graph_chain_arweave::Chain>(
+                            logger, loc, manifest, stop_block,
+                        )
+                        .await
+                }
                 BlockchainKind::Ethereum => {
                     instance_manager
                         .start_subgraph_inner::<graph_chain_ethereum::Chain>(
