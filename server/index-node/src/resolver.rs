@@ -510,6 +510,24 @@ impl<S: Store> IndexNodeResolver<S> {
                     )
                     .await?
                 }
+
+                BlockchainKind::Arweave => {
+                    let unvalidated_subgraph_manifest =
+                        UnvalidatedSubgraphManifest::<graph_chain_arweave::Chain>::resolve(
+                            deployment_hash,
+                            raw,
+                            &self.link_resolver,
+                            &self.logger,
+                            ENV_VARS.max_spec_version.clone(),
+                        )
+                        .await?;
+
+                    validate_and_extract_features(
+                        &self.store.subgraph_store(),
+                        unvalidated_subgraph_manifest,
+                    )
+                    .await?
+                }
             }
         };
 
