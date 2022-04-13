@@ -28,3 +28,9 @@ impl BlockchainBlock for Block {
         })
     }
 }
+
+impl AsRef<[u8]> for BigInt {
+    fn as_ref(&self) -> &[u8] {
+        self.bytes.as_ref()
+    }
+}

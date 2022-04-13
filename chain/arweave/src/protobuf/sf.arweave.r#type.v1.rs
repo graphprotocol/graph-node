@@ -1,4 +1,9 @@
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BigInt {
+    #[prost(bytes = "vec", tag = "1")]
+    pub bytes: ::prost::alloc::vec::Vec<u8>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Block {
     /// Firehose block version (unrelated to Arweave block version)
     #[prost(uint32, tag = "1")]
@@ -19,8 +24,8 @@ pub struct Block {
     #[prost(uint64, tag = "6")]
     pub last_retarget: u64,
     /// Mining difficulty; the number `hash` must be greater than.
-    #[prost(string, tag = "7")]
-    pub diff: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "7")]
+    pub diff: ::core::option::Option<BigInt>,
     /// How many blocks have passed since the genesis block
     #[prost(uint64, tag = "8")]
     pub height: u64,
@@ -28,8 +33,8 @@ pub struct Block {
     #[prost(bytes = "vec", tag = "9")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
     /// Merkle root of the tree of Merkle roots of block's transactions' data.
-    #[prost(bytes = "vec", optional, tag = "10")]
-    pub tx_root: ::core::option::Option<::prost::alloc::vec::Vec<u8>>,
+    #[prost(bytes = "vec", tag = "10")]
+    pub tx_root: ::prost::alloc::vec::Vec<u8>,
     /// Transactions contained within this block
     #[prost(message, repeated, tag = "11")]
     pub txs: ::prost::alloc::vec::Vec<Transaction>,
@@ -45,27 +50,23 @@ pub struct Block {
     #[prost(message, repeated, tag = "14")]
     pub tags: ::prost::alloc::vec::Vec<Tag>,
     /// Size of reward pool
-    #[prost(string, tag = "15")]
-    pub reward_pool: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "15")]
+    pub reward_pool: ::core::option::Option<BigInt>,
     /// Size of the weave in bytes
-    #[prost(string, tag = "16")]
-    pub weave_size: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "16")]
+    pub weave_size: ::core::option::Option<BigInt>,
     /// Size of this block in bytes
-    #[prost(string, tag = "17")]
-    pub block_size: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "17")]
+    pub block_size: ::core::option::Option<BigInt>,
     /// Required after the version 1.8 fork. Zero otherwise.
     /// The sum of the average number of hashes computed
     /// by the network to produce the past blocks including this one.
-    #[prost(string, optional, tag = "18")]
-    pub cumulative_diff: ::core::option::Option<::prost::alloc::string::String>,
-    /// The list of the block identifiers of the last
-    /// STORE_BLOCKS_BEHIND_CURRENT blocks.
-    #[prost(bytes = "vec", repeated, tag = "19")]
-    pub hash_list: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
+    #[prost(message, optional, tag = "18")]
+    pub cumulative_diff: ::core::option::Option<BigInt>,
     /// Required after the version 1.8 fork. Null byte otherwise.
     /// The Merkle root of the block index - the list of {`indep_hash`; `weave_size`; `tx_root`} triplets
-    #[prost(bytes = "vec", optional, tag = "20")]
-    pub hash_list_merkle: ::core::option::Option<::prost::alloc::vec::Vec<u8>>,
+    #[prost(bytes = "vec", tag = "20")]
+    pub hash_list_merkle: ::prost::alloc::vec::Vec<u8>,
     /// The proof of access; Used after v2.4 only; set as defaults otherwise
     #[prost(message, optional, tag = "21")]
     pub poa: ::core::option::Option<ProofOfAccess>,
@@ -95,8 +96,8 @@ pub struct Transaction {
     #[prost(uint32, tag = "1")]
     pub format: u32,
     /// The transaction identifier.
-    #[prost(string, tag = "2")]
-    pub id: ::prost::alloc::string::String,
+    #[prost(bytes = "vec", tag = "2")]
+    pub id: ::prost::alloc::vec::Vec<u8>,
     /// Either the identifier of the previous transaction from the same
     /// wallet or the identifier of one of the last ?MAX_TX_ANCHOR_DEPTH blocks.
     #[prost(bytes = "vec", tag = "3")]
@@ -111,16 +112,16 @@ pub struct Transaction {
     #[prost(bytes = "vec", tag = "6")]
     pub target: ::prost::alloc::vec::Vec<u8>,
     /// The amount of Winstons to send to the recipient; if any.
-    #[prost(string, tag = "7")]
-    pub quantity: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "7")]
+    pub quantity: ::core::option::Option<BigInt>,
     /// The data to upload; if any. For v2 transactions; the field is optional
     /// - a fee is charged based on the `data_size` field;
     ///   data may be uploaded any time later in chunks.
     #[prost(bytes = "vec", tag = "8")]
     pub data: ::prost::alloc::vec::Vec<u8>,
     /// Size in bytes of the transaction data.
-    #[prost(string, tag = "9")]
-    pub data_size: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "9")]
+    pub data_size: ::core::option::Option<BigInt>,
     /// The Merkle root of the Merkle tree of data chunks.
     #[prost(bytes = "vec", tag = "10")]
     pub data_root: ::prost::alloc::vec::Vec<u8>,
@@ -128,8 +129,8 @@ pub struct Transaction {
     #[prost(bytes = "vec", tag = "11")]
     pub signature: ::prost::alloc::vec::Vec<u8>,
     /// The fee in Winstons.
-    #[prost(string, tag = "12")]
-    pub reward: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "12")]
+    pub reward: ::core::option::Option<BigInt>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Tag {

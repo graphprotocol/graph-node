@@ -55,17 +55,35 @@ impl ToAscObj<AscTransaction> for codec::Transaction {
     ) -> Result<AscTransaction, DeterministicHostError> {
         Ok(AscTransaction {
             format: self.format,
-            id: asc_new(heap, &self.id, gas)?,
+            id: asc_new(heap, self.id.as_slice(), gas)?,
             last_tx: asc_new(heap, self.last_tx.as_slice(), gas)?,
             owner: asc_new(heap, self.owner.as_slice(), gas)?,
             tags: asc_new(heap, &self.tags, gas)?,
             target: asc_new(heap, self.target.as_slice(), gas)?,
-            quantity: asc_new(heap, &self.quantity, gas)?,
+            quantity: asc_new(
+                heap,
+                self.quantity
+                    .as_ref()
+                    .map(|b| b.as_ref())
+                    .unwrap_or_default(),
+                gas,
+            )?,
             data: asc_new(heap, self.data.as_slice(), gas)?,
-            data_size: asc_new(heap, &self.data_size, gas)?,
+            data_size: asc_new(
+                heap,
+                self.data_size
+                    .as_ref()
+                    .map(|b| b.as_ref())
+                    .unwrap_or_default(),
+                gas,
+            )?,
             data_root: asc_new(heap, self.data_root.as_slice(), gas)?,
             signature: asc_new(heap, self.signature.as_slice(), gas)?,
-            reward: asc_new(heap, &self.reward, gas)?,
+            reward: asc_new(
+                heap,
+                self.reward.as_ref().map(|b| b.as_ref()).unwrap_or_default(),
+                gas,
+            )?,
         })
     }
 }
@@ -82,30 +100,50 @@ impl ToAscObj<AscBlock> for codec::Block {
             previous_block: asc_new(heap, self.previous_block.as_slice(), gas)?,
             timestamp: self.timestamp,
             last_retarget: self.last_retarget,
-            diff: asc_new(heap, &self.diff, gas)?,
+            diff: asc_new(
+                heap,
+                self.diff.as_ref().map(|b| b.as_ref()).unwrap_or_default(),
+                gas,
+            )?,
             height: self.height,
             hash: asc_new(heap, self.hash.as_slice(), gas)?,
-            tx_root: self
-                .tx_root
-                .as_ref()
-                .map(|tx_root| asc_new(heap, tx_root.as_slice(), gas))
-                .unwrap_or(Ok(AscPtr::null()))?,
+            tx_root: asc_new(heap, self.tx_root.as_slice(), gas)?,
             wallet_list: asc_new(heap, self.wallet_list.as_slice(), gas)?,
             reward_addr: asc_new(heap, self.reward_addr.as_slice(), gas)?,
             tags: asc_new(heap, &self.tags, gas)?,
-            reward_pool: asc_new(heap, &self.reward_pool, gas)?,
-            weave_size: asc_new(heap, &self.weave_size, gas)?,
-            block_size: asc_new(heap, &self.block_size, gas)?,
-            cumulative_diff: self
-                .cumulative_diff
-                .as_ref()
-                .map(|cumulative_diff| asc_new(heap, &cumulative_diff, gas))
-                .unwrap_or(Ok(AscPtr::null()))?,
-            hash_list_merkle: self
-                .hash_list_merkle
-                .as_ref()
-                .map(|hash_list_merkle| asc_new(heap, hash_list_merkle.as_slice(), gas))
-                .unwrap_or(Ok(AscPtr::null()))?,
+            reward_pool: asc_new(
+                heap,
+                self.reward_pool
+                    .as_ref()
+                    .map(|b| b.as_ref())
+                    .unwrap_or_default(),
+                gas,
+            )?,
+            weave_size: asc_new(
+                heap,
+                self.weave_size
+                    .as_ref()
+                    .map(|b| b.as_ref())
+                    .unwrap_or_default(),
+                gas,
+            )?,
+            block_size: asc_new(
+                heap,
+                self.block_size
+                    .as_ref()
+                    .map(|b| b.as_ref())
+                    .unwrap_or_default(),
+                gas,
+            )?,
+            cumulative_diff: asc_new(
+                heap,
+                self.cumulative_diff
+                    .as_ref()
+                    .map(|b| b.as_ref())
+                    .unwrap_or_default(),
+                gas,
+            )?,
+            hash_list_merkle: asc_new(heap, self.hash_list_merkle.as_slice(), gas)?,
             poa: self
                 .poa
                 .as_ref()
