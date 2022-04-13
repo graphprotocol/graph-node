@@ -531,7 +531,12 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
         let block = codec::Block::decode(any_block.value.as_ref())?;
 
-        warn!(&logger, "Firehose block: {:?}", block);
+        debug!(
+            &logger,
+            "Decode block";
+            "number" => block.number,
+            "hash" => hex::encode(&block.hash),
+        );
 
         use firehose::ForkStep::*;
         match step {
