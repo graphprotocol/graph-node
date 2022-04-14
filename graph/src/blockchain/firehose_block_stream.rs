@@ -68,7 +68,8 @@ impl FirehoseBlockStreamMetrics {
 
     fn observe_successful_connection(&self, time: &mut Instant) {
         self.restarts
-            .with_label_values(&[&self.deployment, &self.provider, "true"]);
+            .with_label_values(&[&self.deployment, &self.provider, "true"])
+            .inc();
         self.connect_duration
             .with_label_values(&[&self.deployment, &self.provider])
             .set(time.elapsed().as_secs_f64());
@@ -79,7 +80,8 @@ impl FirehoseBlockStreamMetrics {
 
     fn observe_failed_connection(&self, time: &mut Instant) {
         self.restarts
-            .with_label_values(&[&self.deployment, &self.provider, "false"]);
+            .with_label_values(&[&self.deployment, &self.provider, "false"])
+            .inc();
         self.connect_duration
             .with_label_values(&[&self.deployment, &self.provider])
             .set(time.elapsed().as_secs_f64());
