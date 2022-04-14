@@ -166,7 +166,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
     use firehose::ForkStep::*;
 
     let mut latest_cursor = cursor.unwrap_or_else(|| "".to_string());
-    let mut backoff = ExponentialBackoff::new(Duration::from_millis(500), Duration::from_secs(45));
+
     let mut subgraph_current_block = subgraph_current_block;
     let mut start_block_num = subgraph_current_block
         .as_ref()
@@ -177,10 +177,6 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
             ptr.block_number() + 1 as BlockNumber
         })
         .unwrap_or(manifest_start_block_num);
-
-    // Seems the `try_stream!` macro interfer and don't see we are actually reading/writing this
-    #[allow(unused_assignments)]
-    let mut skip_backoff = false;
 
     // Sanity check when starting from a subgraph block ptr directly. When
     // this happens, we must ensure that Firehose first picked block directly follows the
@@ -217,6 +213,13 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
         debug!(&logger, "Going to check continuity of chain on first block");
     }
 
+    // Back off exponentially whenever we encounter a connection error or a stream with bad data
+    let mut backoff = ExponentialBackoff::new(Duration::from_millis(500), Duration::from_secs(45));
+
+    // This macro is needed because `try_stream!` seems to break detection of `skip_backoff` assignments
+    #[allow(unused_assignments)]
+    let mut skip_backoff = false;
+
     try_stream! {
         loop {
             info!(
@@ -226,6 +229,8 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                 "start_block" => start_block_num,
                 "cursor" => &latest_cursor,
             );
+
+            // We just reconnected, assume that we want to back off on errors
             skip_backoff = false;
 
             let mut request = firehose::Request {
@@ -249,8 +254,6 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                     // Track the time it takes to set up the block stream
                     metrics.observe_successful_connection(&mut connect_start);
 
-                    backoff.reset();
-
                     let mut last_response_time = Instant::now();
                     let mut expected_stream_end = false;
 
@@ -266,6 +269,9 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                             &logger,
                         ).await {
                             Ok(BlockResponse::Proceed(event, cursor)) => {
+                                // Reset backoff because we got a good value from the stream
+                                backoff.reset();
+
                                 metrics.observe_response("proceed", &mut last_response_time);
 
                                 yield event;
@@ -273,6 +279,9 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                                 latest_cursor = cursor;
                             },
                             Ok(BlockResponse::Rewind(revert_to)) => {
+                                // Reset backoff because we got a good value from the stream
+                                backoff.reset();
+
                                 metrics.observe_response("rewind", &mut last_response_time);
 
                                 // It's totally correct to pass the None as the cursor here, if we are here, there
@@ -280,6 +289,9 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                                 yield BlockStreamEvent::Revert(revert_to.clone(), None);
 
                                 latest_cursor = "".to_string();
+
+                                // We have to reconnect (see below) but we don't wait to wait before doing
+                                // that, so skip the optional backing off at the end of the loop
                                 skip_backoff = true;
 
                                 // We must restart the stream to ensure we now send block from revert_to point
@@ -291,6 +303,12 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                                 break;
                             },
                             Err(err) => {
+                                // We have an open connection but there was an error processing the Firehose
+                                // response. We will reconnect the stream after this; this is the case where
+                                // we actually _want_ to back off in case we keep running into the same error.
+                                // An example of this situation is if we get invalid block or transaction data
+                                // that cannot be decoded properly.
+
                                 metrics.observe_response("error", &mut last_response_time);
 
                                 error!(logger, "{:#}", err);
@@ -305,6 +323,10 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                     }
                 },
                 Err(e) => {
+                    // We failed to connect and will try again; this is another
+                    // case where we actually _want_ to back off in case we keep
+                    // having connection errors.
+
                     metrics.observe_failed_connection(&mut connect_start);
 
                     error!(logger, "Unable to connect to endpoint: {:?}", e);
