@@ -81,8 +81,6 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     type DataSourceTemplate: DataSourceTemplate<Self> + Clone;
     type UnresolvedDataSourceTemplate: UnresolvedDataSourceTemplate<Self>;
 
-    type TriggersAdapter: TriggersAdapter<Self>;
-
     /// Trigger data as parsed from the triggers adapter.
     type TriggerData: TriggerData + Ord + Send + Sync;
 
@@ -102,7 +100,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         loc: &DeploymentLocator,
         capabilities: &Self::NodeCapabilities,
         unified_api_version: UnifiedMappingApiVersion,
-    ) -> Result<Arc<Self::TriggersAdapter>, Error>;
+    ) -> Result<Arc<dyn TriggersAdapter<Self>>, Error>;
 
     async fn new_firehose_block_stream(
         &self,

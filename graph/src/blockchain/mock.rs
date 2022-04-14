@@ -20,7 +20,7 @@ use super::{
 #[derive(Debug)]
 pub struct MockBlockchain;
 
-#[derive(Clone, Hash, Eq, PartialEq)]
+#[derive(Clone, Hash, Eq, PartialEq, Debug)]
 pub struct MockBlock {
     pub number: u64,
 }
@@ -284,8 +284,6 @@ impl Blockchain for MockBlockchain {
 
     type UnresolvedDataSourceTemplate = MockUnresolvedDataSourceTemplate;
 
-    type TriggersAdapter = MockTriggersAdapter;
-
     type TriggerData = MockTriggerData;
 
     type MappingTrigger = MockMappingTrigger;
@@ -301,7 +299,7 @@ impl Blockchain for MockBlockchain {
         _loc: &crate::components::store::DeploymentLocator,
         _capabilities: &Self::NodeCapabilities,
         _unified_api_version: crate::data::subgraph::UnifiedMappingApiVersion,
-    ) -> Result<std::sync::Arc<Self::TriggersAdapter>, anyhow::Error> {
+    ) -> Result<std::sync::Arc<dyn TriggersAdapter<Self>>, anyhow::Error> {
         todo!()
     }
 

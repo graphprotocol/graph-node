@@ -6,7 +6,9 @@ use std::time::Duration;
 use anyhow::Error;
 use async_stream::stream;
 use futures03::{Stream, StreamExt};
-use graph::blockchain::block_stream::{BlockStream, BlockStreamBuilder, BlockStreamEvent};
+use graph::blockchain::block_stream::{
+    BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockWithTriggers,
+};
 use graph::blockchain::{Block, BlockPtr, Blockchain, BlockchainMap, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::{BlockStore, DeploymentId, DeploymentLocator};
@@ -33,7 +35,7 @@ use graph_node::{
 use slog::{debug, info, Logger};
 use std::env;
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_runner() -> anyhow::Result<()> {
     let subgraph_name = SubgraphName::new("test1")
         .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
@@ -51,9 +53,36 @@ async fn test_runner() -> anyhow::Result<()> {
             number: Some(U64::from(1)),
             ..Default::default()
         }));
-    let stop_block = 1;
+    let stop_block = 2;
 
-    let ctx = setup(subgraph_name.clone(), &deployment, start_block, vec![]).await;
+    let ctx = setup(
+        subgraph_name.clone(),
+        &deployment,
+        start_block.clone(),
+        vec![
+            BlockStreamEvent::ProcessBlock(
+                BlockWithTriggers::<graph_chain_ethereum::chain::Chain> {
+                    block: start_block.clone(),
+                    trigger_data: vec![],
+                },
+                None,
+            ),
+            BlockStreamEvent::ProcessBlock(
+                BlockWithTriggers::<graph_chain_ethereum::chain::Chain> {
+                    block: graph_chain_ethereum::chain::BlockFinality::Final(Arc::new(
+                        LightEthereumBlock {
+                            hash: Some(H256::from_low_u64_be(2)),
+                            number: Some(U64::from(2)),
+                            ..Default::default()
+                        },
+                    )),
+                    trigger_data: vec![],
+                },
+                None,
+            ),
+        ],
+    )
+    .await;
 
     let provider = ctx.provider.clone();
     let store = ctx.store.clone();
@@ -66,6 +95,7 @@ async fn test_runner() -> anyhow::Result<()> {
 
     loop {
         tokio::time::sleep(Duration::from_millis(1000)).await;
+        println!("!!!");
 
         let block_ptr = store
             .least_block_ptr(&deployment.hash)

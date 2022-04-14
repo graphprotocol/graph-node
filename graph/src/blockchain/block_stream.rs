@@ -196,7 +196,7 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
         &self,
         logger: &Logger,
         response: &firehose::Response,
-        adapter: &C::TriggersAdapter,
+        adapter: &Arc<dyn TriggersAdapter<C>>,
         filter: &C::TriggerFilter,
     ) -> Result<BlockStreamEvent<C>, FirehoseError>;
 
