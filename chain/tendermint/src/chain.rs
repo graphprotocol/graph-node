@@ -208,12 +208,11 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             }))
             .collect();
 
-        triggers.append(
-            &mut shared_block
+        triggers.extend(
+            shared_block
                 .tx_results()
                 .cloned()
-                .map(|tx| TendermintTrigger::with_transaction(tx, block.block().clone()))
-                .collect(),
+                .map(|tx| TendermintTrigger::with_transaction(tx, block.block().clone())),
         );
 
         triggers.push(TendermintTrigger::Block(shared_block.cheap_clone()));

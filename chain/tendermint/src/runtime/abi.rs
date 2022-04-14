@@ -46,8 +46,8 @@ impl ToAscObj<AscTransactionData> for codec::TransactionData {
         gas: &GasCounter,
     ) -> Result<AscTransactionData, DeterministicHostError> {
         Ok(AscTransactionData {
-            tx: asc_new_or_null(heap, &self.tx, gas)?,
-            block: asc_new_or_null(heap, &self.block, gas)?,
+            tx: asc_new_or_missing(heap, &self.tx, gas, "TransactionData", "tx")?,
+            block: asc_new_or_missing(heap, &self.block, gas, "TransactionData", "block")?,
         })
     }
 }
