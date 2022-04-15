@@ -94,40 +94,29 @@ mod test {
     #[test]
     fn test_trigger_filters() {
         let cases = [
-            (TriggerFilter::new_test(false, &[]), vec![]),
-            (TriggerFilter::new_test(true, &[]), vec![]),
-            (
-                TriggerFilter::new_test(true, &["event_1", "event_2"]),
-                vec![],
-            ),
+            (TriggerFilter::new_test(false, &[]), None),
+            (TriggerFilter::new_test(true, &[]), None),
+            (TriggerFilter::new_test(true, &["event_1", "event_2"]), None),
             (
                 TriggerFilter::new_test(false, &["event_1", "event_2", "event_3"]),
-                vec!["event_1", "event_2", "event_3"],
+                Some(event_filter_with_types(&["event_1", "event_2", "event_3"])),
             ),
         ];
 
-        for (trigger_filter, expected_filter_events) in cases {
+        for (trigger_filter, expected_filter) in cases {
             let firehose_filter = trigger_filter.to_firehose_filter();
+            let decoded_filter = decode_filter(firehose_filter);
 
-            if !expected_filter_events.is_empty() {
-                let decoded_event_types = decode_filter(firehose_filter)
-                    .expect(&format!(
-                        "expected decoded filter with event types {:?}, but found none",
-                        expected_filter_events
-                    ))
-                    .event_types;
+            assert_eq!(decoded_filter.is_some(), expected_filter.is_some());
 
-                assert_eq!(expected_filter_events.len(), decoded_event_types.len());
+            if let (Some(mut expected_filter), Some(mut decoded_filter)) =
+                (expected_filter, decoded_filter)
+            {
+                // event types may be in different order
+                expected_filter.event_types.sort();
+                decoded_filter.event_types.sort();
 
-                let expected_filter_events = expected_filter_events.iter().map(ToString::to_string);
-                for expected_event in expected_filter_events {
-                    assert!(
-                        decoded_event_types.contains(&expected_event),
-                        "expected encoded firehose filter with {:?} to contain {:?}, but it didn't",
-                        decoded_event_types,
-                        expected_event,
-                    );
-                }
+                assert_eq!(decoded_filter, expected_filter);
             }
         }
     }
@@ -142,6 +131,12 @@ mod test {
                     trigger_every_block,
                 },
             }
+        }
+    }
+
+    fn event_filter_with_types(event_types: &[&str]) -> EventFilter {
+        EventFilter {
+            event_types: event_types.iter().map(ToString::to_string).collect(),
         }
     }
 
