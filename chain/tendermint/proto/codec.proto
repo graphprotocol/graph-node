@@ -1,29 +1,433 @@
 syntax = "proto3";
-
 package fig.tendermint.codec.v1;
 
-option go_package = "github.com/figment-networks/tendermint-protobuf-def/codec";
+option  go_package = "github.com/figment-networks/tendermint-protobuf-def/pb/tendermint;pbcodec";
 
 import "gogo.proto";
 import "google/protobuf/descriptor.proto";
+import "google/protobuf/any.proto";
 
-// used in Vote
+
+//------------------------------------------------------------------------
+// imported from cosmos/crypto/multisig/v1beta1/multisig.proto
+//
+
+message MultiSignature {
+  option (gogoproto.goproto_unrecognized) = true;
+  repeated bytes signatures               = 1;
+}
+
+message CompactBitArray {
+  option (gogoproto.goproto_stringer) = false;
+
+  uint32 extra_bits_stored = 1;
+  bytes  elems             = 2;
+}
+
+//------------------------------------------------------------------------
+// imported from cosmos/tx/signing/v1beta1/signing.proto
+//
+
+enum SignMode {
+  // SIGN_MODE_UNSPECIFIED specifies an unknown signing mode and will be
+  // rejected
+  SIGN_MODE_UNSPECIFIED = 0;
+
+  // SIGN_MODE_DIRECT specifies a signing mode which uses SignDoc and is
+  // verified with raw bytes from Tx
+  SIGN_MODE_DIRECT = 1;
+
+  // SIGN_MODE_TEXTUAL is a future signing mode that will verify some
+  // human-readable textual representation on top of the binary representation
+  // from SIGN_MODE_DIRECT
+  SIGN_MODE_TEXTUAL = 2;
+
+  // SIGN_MODE_LEGACY_AMINO_JSON is a backwards compatibility mode which uses
+  // Amino JSON and will be removed in the future
+  SIGN_MODE_LEGACY_AMINO_JSON = 127;
+}
+
+message SignatureDescriptors {
+  // signatures are the signature descriptors
+  repeated SignatureDescriptor signatures = 1;
+}
+
+message Single {
+  // mode is the signing mode of the single signer
+  SignMode mode = 1;
+
+  // signature is the raw signature bytes
+  bytes signature = 2;
+}
+
+message Multi {
+  // bitarray specifies which keys within the multisig are signing
+  CompactBitArray bitarray = 1;
+
+  // signatures is the signatures of the multi-signature
+  repeated Data signatures = 2;
+}
+
+message Data {
+  // sum is the oneof that specifies whether this represents single or multi-signature data
+  oneof sum {
+    // single represents a single signer
+    Single single = 1;
+
+    // multi represents a multisig signer
+    Multi multi = 2;
+  }
+}
+
+message SignatureDescriptor {
+  // public_key is the public key of the signer
+  google.protobuf.Any public_key = 1;
+
+  Data data = 2;
+
+  // sequence is the sequence of the account, which describes the
+  // number of committed transactions signed by a given address. It is used to prevent
+  // replay attacks.
+  uint64 sequence = 3;
+}
+
+//------------------------------------------------------------------------
+// imported from cosmos_proto/cosmos.proto
+//
+
+extend google.protobuf.MessageOptions {
+  // implements_interface is used to indicate the type name of the interface
+  // that a message implements so that it can be used in google.protobuf.Any
+  // fields that accept that interface. A message can implement multiple
+  // interfaces. Interfaces should be declared using a declare_interface
+  // file option.
+  repeated string implements_interface = 93001;
+}
+
+extend google.protobuf.FieldOptions {
+  // accepts_interface is used to annotate that a google.protobuf.Any
+  // field accepts messages that implement the specified interface.
+  // Interfaces should be declared using a declare_interface file option.
+  string accepts_interface = 93001;
+
+  // scalar is used to indicate that this field follows the formatting defined
+  // by the named scalar which should be declared with declare_scalar. Code
+  // generators may choose to use this information to map this field to a
+  // language-specific type representing the scalar.
+  string scalar = 93002;
+}
+
+extend google.protobuf.FileOptions {
+  // declare_interface declares an interface type to be used with
+  // accepts_interface and implements_interface. Interface names are
+  // expected to follow the following convention such that their declaration
+  // can be discovered by tools: for a given interface type a.b.C, it is
+  // expected that the declaration will be found in a protobuf file named
+  // a/b/interfaces.proto in the file descriptor set.
+  repeated InterfaceDescriptor declare_interface = 793021;
+
+  // declare_scalar declares a scalar type to be used with
+  // the scalar field option. Scalar names are
+  // expected to follow the following convention such that their declaration
+  // can be discovered by tools: for a given scalar type a.b.C, it is
+  // expected that the declaration will be found in a protobuf file named
+  // a/b/scalars.proto in the file descriptor set.
+  repeated ScalarDescriptor declare_scalar = 793022;
+}
+
+message InterfaceDescriptor {
+  // name is the name of the interface. It should be a short-name (without
+  // a period) such that the fully qualified name of the interface will be
+  // package.name, ex. for the package a.b and interface named C, the
+  // fully-qualified name will be a.b.C.
+  string name = 1;
+
+  // description is a human-readable description of the interface and its
+  // purpose.
+  string description = 2;
+}
+
+message ScalarDescriptor {
+  // name is the name of the scalar. It should be a short-name (without
+  // a period) such that the fully qualified name of the scalar will be
+  // package.name, ex. for the package a.b and scalar named C, the
+  // fully-qualified name will be a.b.C.
+  string name = 1;
+
+  // description is a human-readable description of the scalar and its
+  // encoding format. For instance a big integer or decimal scalar should
+  // specify precisely the expected encoding format.
+  string description = 2;
+
+  // field_type is the type of field with which this scalar can be used.
+  // Scalars can be used with one and only one type of field so that
+  // encoding standards and simple and clear. Currently only string and
+  // bytes fields are supported for scalars.
+  repeated ScalarType field_type = 3;
+}
+
+enum ScalarType {
+  SCALAR_TYPE_UNSPECIFIED = 0;
+  SCALAR_TYPE_STRING      = 1;
+  SCALAR_TYPE_BYTES       = 2;
+}
+
+//------------------------------------------------------------------------
+// imported from cosmos/base/v1beta1/coin.proto
+//
+
+message Coin {
+  option (gogoproto.equal) = true;
+
+  string denom  = 1;
+  string amount = 2 [(gogoproto.customtype) = "Int", (gogoproto.nullable) = false];
+}
+
+message DecCoin {
+  option (gogoproto.equal) = true;
+
+  string denom  = 1;
+  string amount = 2 [(gogoproto.customtype) = "Dec", (gogoproto.nullable) = false];
+}
+
+message IntProto {
+  string int = 1 [(gogoproto.customtype) = "Int", (gogoproto.nullable) = false];
+}
+
+message DecProto {
+  string dec = 1 [(gogoproto.customtype) = "Dec", (gogoproto.nullable) = false];
+}
+
+//------------------------------------------------------------------------
+// imported from cosmos/tx/v1beta1/tx.proto
+//
+
+message Tx {
+  // body is the processable content of the transaction
+  TxBody body = 1;
+
+  // auth_info is the authorization related content of the transaction,
+  // specifically signers, signer modes and fee
+  AuthInfo auth_info = 2;
+
+  // signatures is a list of signatures that matches the length and order of
+  // AuthInfo's signer_infos to allow connecting signature meta information like
+  // public key and signing mode by position.
+  repeated bytes signatures = 3;
+}
+
+message TxRaw {
+  // body_bytes is a protobuf serialization of a TxBody that matches the
+  // representation in SignDoc.
+  bytes body_bytes = 1;
+
+  // auth_info_bytes is a protobuf serialization of an AuthInfo that matches the
+  // representation in SignDoc.
+  bytes auth_info_bytes = 2;
+
+  // signatures is a list of signatures that matches the length and order of
+  // AuthInfo's signer_infos to allow connecting signature meta information like
+  // public key and signing mode by position.
+  repeated bytes signatures = 3;
+}
+
+message SignDoc {
+  // body_bytes is protobuf serialization of a TxBody that matches the
+  // representation in TxRaw.
+  bytes body_bytes = 1;
+
+  // auth_info_bytes is a protobuf serialization of an AuthInfo that matches the
+  // representation in TxRaw.
+  bytes auth_info_bytes = 2;
+
+  // chain_id is the unique identifier of the chain this transaction targets.
+  // It prevents signed transactions from being used on another chain by an
+  // attacker
+  string chain_id = 3;
+
+  // account_number is the account number of the account in state
+  uint64 account_number = 4;
+}
+
+message SignDocDirectAux {
+  // body_bytes is protobuf serialization of a TxBody that matches the
+  // representation in TxRaw.
+  bytes body_bytes = 1;
+
+  // public_key is the public key of the signing account.
+  google.protobuf.Any public_key = 2;
+
+  // chain_id is the identifier of the chain this transaction targets.
+  // It prevents signed transactions from being used on another chain by an
+  // attacker.
+  string chain_id = 3;
+
+  // account_number is the account number of the account in state.
+  uint64 account_number = 4;
+
+  // sequence is the sequence number of the signing account.
+  uint64 sequence = 5;
+
+  // Tip is the optional tip used for meta-transactions. It should be left
+  // empty if the signer is not the tipper for this transaction.
+  Tip tip = 6;
+}
+
+message TxBody {
+  // messages is a list of messages to be executed. The required signers of
+  // those messages define the number and order of elements in AuthInfo's
+  // signer_infos and Tx's signatures. Each required signer address is added to
+  // the list only the first time it occurs.
+  // By convention, the first required signer (usually from the first message)
+  // is referred to as the primary signer and pays the fee for the whole
+  // transaction.
+  repeated google.protobuf.Any messages = 1;
+
+  // memo is any arbitrary note/comment to be added to the transaction.
+  // WARNING: in clients, any publicly exposed text should not be called memo,
+  // but should be called `note` instead (see https://github.com/cosmos/cosmos-sdk/issues/9122).
+  string memo = 2;
+
+  // timeout is the block height after which this transaction will not
+  // be processed by the chain
+  uint64 timeout_height = 3;
+
+  // extension_options are arbitrary options that can be added by chains
+  // when the default options are not sufficient. If any of these are present
+  // and can't be handled, the transaction will be rejected
+  repeated google.protobuf.Any extension_options = 1023;
+
+  // extension_options are arbitrary options that can be added by chains
+  // when the default options are not sufficient. If any of these are present
+  // and can't be handled, they will be ignored
+  repeated google.protobuf.Any non_critical_extension_options = 2047;
+}
+
+message AuthInfo {
+  // signer_infos defines the signing modes for the required signers. The number
+  // and order of elements must match the required signers from TxBody's
+  // messages. The first element is the primary signer and the one which pays
+  // the fee.
+  repeated SignerInfo signer_infos = 1;
+
+  // Fee is the fee and gas limit for the transaction. The first signer is the
+  // primary signer and the one which pays the fee. The fee can be calculated
+  // based on the cost of evaluating the body and doing signature verification
+  // of the signers. This can be estimated via simulation.
+  Fee fee = 2;
+
+  // Tip is the optional tip used for meta-transactions.
+  //
+  // Since: cosmos-sdk 0.46
+  Tip tip = 3;
+}
+
+message SignerInfo {
+  // public_key is the public key of the signer. It is optional for accounts
+  // that already exist in state. If unset, the verifier can use the required \
+  // signer address for this position and lookup the public key.
+  google.protobuf.Any public_key = 1;
+
+  // mode_info describes the signing mode of the signer and is a nested
+  // structure to support nested multisig pubkey's
+  ModeInfo mode_info = 2;
+
+  // sequence is the sequence of the account, which describes the
+  // number of committed transactions signed by a given address. It is used to
+  // prevent replay attacks.
+  uint64 sequence = 3;
+}
+
+message ModeInfo {
+  // sum is the oneof that specifies whether this represents a single or nested
+  // multisig signer
+  oneof sum {
+    // single represents a single signer
+    Single single = 1;
+
+    // multi represents a nested multisig signer
+    Multi multi = 2;
+  }
+
+  // Single is the mode info for a single signer. It is structured as a message
+  // to allow for additional fields such as locale for SIGN_MODE_TEXTUAL in the
+  // future
+  message Single {
+    // mode is the signing mode of the single signer
+    SignMode mode = 1;
+  }
+
+  // Multi is the mode info for a multisig public key
+  message Multi {
+    // bitarray specifies which keys within the multisig are signing
+    CompactBitArray bitarray = 1;
+
+    // mode_infos is the corresponding modes of the signers of the multisig
+    // which could include nested multisig public keys
+    repeated ModeInfo mode_infos = 2;
+  }
+}
+
+message Fee {
+  // amount is the amount of coins to be paid as a fee
+  repeated Coin amount = 1 [(gogoproto.nullable) = false, (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"];
+
+  // gas_limit is the maximum gas that can be used in transaction processing
+  // before an out of gas error occurs
+  uint64 gas_limit = 2;
+
+  // if unset, the first signer is responsible for paying the fees. If set, the specified account must pay the fees.
+  // the payer must be a tx signer (and thus have signed this field in AuthInfo).
+  // setting this field does *not* change the ordering of required signers for the transaction.
+  string payer = 3 [(scalar) = "cosmos.AddressString"];
+
+  // if set, the fee payer (either the first signer or the value of the payer field) requests that a fee grant be used
+  // to pay fees instead of the fee payer's own balance. If an appropriate fee grant does not exist or the chain does
+  // not support fee grants, this will fail
+  string granter = 4 [(scalar) = "cosmos.AddressString"];
+}
+
+message Tip {
+  // amount is the amount of the tip
+  repeated Coin amount = 1 [(gogoproto.nullable) = false, (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"];
+  // tipper is the address of the account paying for the tip
+  string tipper = 2 [(scalar) = "cosmos.AddressString"];
+}
+
+message AuxSignerData {
+  // address is the bech32-encoded address of the auxiliary signer. If using
+  // AuxSignerData across different chains, the bech32 prefix of the target
+  // chain (where the final transaction is broadcasted) should be used.
+  string address = 1 [(scalar) = "cosmos.AddressString"];
+  // sign_doc is the SIGN_MOD_DIRECT_AUX sign doc that the auxiliary signer
+  // signs. Note: we use the same sign doc even if we're signing with
+  // LEGACY_AMINO_JSON.
+  SignDocDirectAux sign_doc = 2;
+  // mode is the signing mode of the single signer
+  SignMode mode = 3;
+  // sig is the signature of the sign doc.
+  bytes sig = 4;
+}
+
+//------------------------------------------------------------------------
+// imported from fig/tendermint/codec/v1/codec.proto
+//
+
 enum SignedMsgType {
-  option (gogoproto.goproto_enum_stringer)  = true;
-  option (gogoproto.goproto_enum_prefix)    = false;
+  option (gogoproto.goproto_enum_stringer) = true;
+  option (gogoproto.goproto_enum_prefix)   = false;
 
-  SIGNED_MSG_TYPE_UNKNOWN   = 0 [(gogoproto.enumvalue_customname) = "UnknownType"];
+  SIGNED_MSG_TYPE_UNKNOWN = 0 [(gogoproto.enumvalue_customname) = "UnknownType"];
   // Votes
   SIGNED_MSG_TYPE_PREVOTE   = 1 [(gogoproto.enumvalue_customname) = "PrevoteType"];
   SIGNED_MSG_TYPE_PRECOMMIT = 2 [(gogoproto.enumvalue_customname) = "PrecommitType"];
   // Proposals
-  SIGNED_MSG_TYPE_PROPOSAL  = 32 [(gogoproto.enumvalue_customname) = "ProposalType"];
+  SIGNED_MSG_TYPE_PROPOSAL = 32 [(gogoproto.enumvalue_customname) = "ProposalType"];
 }
 
-// BlockIdFlag indicates which BlockID the signature is for
 enum BlockIDFlag {
-  option (gogoproto.goproto_enum_stringer)  = true;
-  option (gogoproto.goproto_enum_prefix)    = false;
+  option (gogoproto.goproto_enum_stringer) = true;
+  option (gogoproto.goproto_enum_prefix)   = false;
 
   BLOCK_ID_FLAG_UNKNOWN = 0 [(gogoproto.enumvalue_customname) = "BlockIDFlagUnknown"];
   BLOCK_ID_FLAG_ABSENT  = 1 [(gogoproto.enumvalue_customname) = "BlockIDFlagAbsent"];
@@ -32,14 +436,14 @@ enum BlockIDFlag {
 }
 
 message EventList {
-  EventBlock                new_block             = 1;
-  repeated EventTx          transaction           = 2;
-  EventValidatorSetUpdates  validator_set_updates = 3;
+  EventBlock               new_block             = 1;
+  repeated EventTx         transaction           = 2;
+  EventValidatorSetUpdates validator_set_updates = 3;
 }
 
 message EventData {
-  Event       event = 1;
-  EventBlock  block = 2;
+  Event      event = 1;
+  EventBlock block = 2;
 }
 
 message TransactionData {
@@ -48,10 +452,10 @@ message TransactionData {
 }
 
 message Block {
-  Header        header      = 1 [(gogoproto.nullable) = false];
-  Data          data        = 2 [(gogoproto.nullable) = false];
-  EvidenceList  evidence    = 3 [(gogoproto.nullable) = false];
-  Commit        last_commit = 4;
+  Header header = 1 [(gogoproto.nullable) = false];
+  reserved 2; // Data data = 2 [(gogoproto.nullable) = false];
+  EvidenceList evidence    = 3 [(gogoproto.nullable) = false];
+  Commit       last_commit = 4;
 }
 
 message BlockID {
@@ -65,10 +469,10 @@ message BlockParams {
 }
 
 message Commit {
-  int64               height      = 1; // must be > 0
-  int32               round       = 2; // must be > 0
-  BlockID             block_id    = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
-  repeated CommitSig  signatures  = 4 [(gogoproto.nullable) = false];
+  int64              height     = 1; // must be > 0
+  int32              round      = 2; // must be > 0
+  BlockID            block_id   = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
+  repeated CommitSig signatures = 4 [(gogoproto.nullable) = false];
 }
 
 message CommitSig {
@@ -92,42 +496,35 @@ message ConsensusParams {
   VersionParams   version   = 4 [(gogoproto.nullable) = false];
 }
 
-message Data {
-  repeated bytes txs = 1;
-}
-
 message Duration {
   int64 seconds = 1;
   int32 nanos   = 2;
 }
 
 message DuplicateVoteEvidence {
-  EventVote   vote_a              = 1;
-  EventVote   vote_b              = 2;
-  int64       total_voting_power  = 3;
-  int64       validator_power     = 4;
-  Timestamp   timestamp           = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  EventVote vote_a             = 1;
+  EventVote vote_b             = 2;
+  int64     total_voting_power = 3;
+  int64     validator_power    = 4;
+  Timestamp timestamp          = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
 }
 
 message Event {
   string                  event_type = 1 [json_name = "type"];
-  repeated EventAttribute attributes = 2 [
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag)  = "attributes,omitempty"
-  ];
+  repeated EventAttribute attributes = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "attributes,omitempty"];
 }
 
 message EventAttribute {
-  string  key   = 1;
-  string  value = 2;
-  bool    index = 3; // nondeterministic
+  string key   = 1;
+  string value = 2;
+  bool   index = 3; // nondeterministic
 }
 
 message EventBlock {
-  Block               block               = 1;
-  BlockID             block_id            = 2; // not present in v0.34.13
-  ResponseBeginBlock  result_begin_block  = 3;
-  ResponseEndBlock    result_end_block    = 4;
+  Block              block              = 1;
+  BlockID            block_id           = 2; // not present in v0.34.13
+  ResponseBeginBlock result_begin_block = 3;
+  ResponseEndBlock   result_end_block   = 4;
 }
 
 message EventTx {
@@ -140,8 +537,8 @@ message EventValidatorSetUpdates {
 
 message EventVote {
   SignedMsgType event_vote_type   = 1 [json_name = "type"]; // should be present in the enum at the top of this file
-  uint64        height            = 2; // must be > 0
-  int32         round             = 3; // must be > 0
+  uint64        height            = 2;                      // must be > 0
+  int32         round             = 3;                      // must be > 0
   BlockID       block_id          = 4 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
   Timestamp     timestamp         = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
   bytes         validator_address = 6; // hash with a length of 20
@@ -151,8 +548,8 @@ message EventVote {
 
 message Evidence {
   oneof sum {
-    DuplicateVoteEvidence     duplicate_vote_evidence       = 1;
-    LightClientAttackEvidence light_client_attack_evidence  = 2;
+    DuplicateVoteEvidence     duplicate_vote_evidence      = 1;
+    LightClientAttackEvidence light_client_attack_evidence = 2;
   }
 }
 
@@ -161,27 +558,27 @@ message EvidenceList {
 }
 
 message EvidenceParams {
-  int64     max_age_num_blocks  = 1;
-  Duration  max_age_duration    = 2
-      [(gogoproto.nullable)     = false, (gogoproto.stdduration) = true];
-  int64     max_bytes           = 3; // Default is 1048576 or 1MB
+  int64    max_age_num_blocks = 1;
+  Duration max_age_duration   = 2 [(gogoproto.nullable) = false, (gogoproto.stdduration) = true];
+  int64    max_bytes          = 3; // Default is 1048576 or 1MB
 }
 
 message Header {
-  Consensus version               = 1 [(gogoproto.nullable) = false];
-  string    chain_id              = 2 [(gogoproto.customname) = "ChainID"];
-  uint64    height                = 3;
-  Timestamp time                  = 4 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-  BlockID   last_block_id         = 5 [(gogoproto.nullable) = false];
-  bytes     last_commit_hash      = 6; // hash 256 32 bytes
-  bytes     data_hash             = 7; // hash 256 32 bytes
-  bytes     validators_hash       = 8; // hash 256 32 bytes
-  bytes     next_validators_hash  = 9; // hash 256 32 bytes
-  bytes     consensus_hash        = 10; // hash 256 32 bytes
-  bytes     app_hash              = 11; // determined by application, not a fixed length
-  bytes     last_results_hash     = 12; // hash 256 32 bytes - first block will be results of an empty hash
-  bytes     evidence_hash         = 13; // hash sha256 32 bytes
-  bytes     proposer_address      = 14; // hash 256 20 bytes - this is the first 20 characters of a 32-byte key - SHA256(pubkey)[:20]
+  Consensus version              = 1 [(gogoproto.nullable) = false];
+  string    chain_id             = 2 [(gogoproto.customname) = "ChainID"];
+  uint64    height               = 3;
+  Timestamp time                 = 4 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  BlockID   last_block_id        = 5 [(gogoproto.nullable) = false];
+  bytes     last_commit_hash     = 6;  // hash 256 32 bytes
+  bytes     data_hash            = 7;  // hash 256 32 bytes
+  bytes     validators_hash      = 8;  // hash 256 32 bytes
+  bytes     next_validators_hash = 9;  // hash 256 32 bytes
+  bytes     consensus_hash       = 10; // hash 256 32 bytes
+  bytes     app_hash             = 11; // determined by application, not a fixed length
+  bytes     last_results_hash    = 12; // hash 256 32 bytes - first block will be results of an empty hash
+  bytes     evidence_hash        = 13; // hash sha256 32 bytes
+  bytes     proposer_address     = 14; // hash 256 20 bytes - this is the first 20 characters of a 32-byte key -
+                                       // SHA256(pubkey)[:20]
 }
 
 message LightBlock {
@@ -190,16 +587,16 @@ message LightBlock {
 }
 
 message LightClientAttackEvidence {
-  LightBlock          conflicting_block     = 1;
-  int64               common_height         = 2;
-  repeated Validator  byzantine_validators  = 3;
-  int64               total_voting_power    = 4;
-  Timestamp           timestamp             = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
+  LightBlock         conflicting_block    = 1;
+  int64              common_height        = 2;
+  repeated Validator byzantine_validators = 3;
+  int64              total_voting_power   = 4;
+  Timestamp          timestamp            = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
 }
 
 message PublicKey {
   option (gogoproto.compare) = true;
-  option (gogoproto.equal) = true;
+  option (gogoproto.equal)   = true;
 
   oneof sum {
     bytes ed25519   = 1;
@@ -208,30 +605,29 @@ message PublicKey {
 }
 
 message PartSetHeader {
-  uint32  total = 1;
-  bytes   hash  = 2; // hash 256 32 bytes
+  uint32 total = 1;
+  bytes  hash  = 2; // hash 256 32 bytes
 }
 
 message ResponseBeginBlock {
-  repeated Event events = 1
-      [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"];
+  repeated Event events = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"];
 }
 
 message ResponseEndBlock {
-  repeated ValidatorUpdate  validator_updates       = 1;
-  ConsensusParams           consensus_param_updates = 2;
-  repeated Event            events                  = 3;
+  repeated ValidatorUpdate validator_updates       = 1;
+  ConsensusParams          consensus_param_updates = 2;
+  repeated Event           events                  = 3;
 }
 
 message ResponseDeliverTx {
-  uint32          code        = 1;
-  bytes           data        = 2;
-  string          log         = 3;
-  string          info        = 4;
-  int64           gas_wanted  = 5;
-  int64           gas_used    = 6;
-  repeated Event  events      = 7 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"];
-  string          codespace   = 8;
+  uint32         code       = 1;
+  bytes          data       = 2;
+  string         log        = 3;
+  string         info       = 4;
+  int64          gas_wanted = 5;
+  int64          gas_used   = 6;
+  repeated Event events     = 7 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "events,omitempty"];
+  string         codespace  = 8;
 }
 
 message SignedHeader {
@@ -241,14 +637,15 @@ message SignedHeader {
 
 message Timestamp {
   int64 seconds = 1;
-  int32 nanos = 2;
+  int32 nanos   = 2;
 }
 
 message TxResult {
-  uint64            height  = 1;
-  uint32            index   = 2;
-  bytes             tx      = 3;
-  ResponseDeliverTx result  = 4;
+  uint64            height = 1;
+  uint32            index  = 2;
+  Tx                tx     = 3;
+  ResponseDeliverTx result = 4;
+  bytes             hash   = 5;
 }
 
 message Validator {
@@ -266,9 +663,9 @@ message ValidatorParams {
 }
 
 message ValidatorSet {
-  repeated Validator  validators         = 1; // cannot be empty or nil
-  Validator           proposer           = 2; // cannot be nil
-  int64               total_voting_power = 3;
+  repeated Validator validators         = 1; // cannot be empty or nil
+  Validator          proposer           = 2; // cannot be nil
+  int64              total_voting_power = 3;
 }
 
 message ValidatorUpdate {
