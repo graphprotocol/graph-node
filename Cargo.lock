@@ -4723,7 +4723,7 @@ dependencies = [
 [[package]]
 name = "web3"
 version = "0.19.0-graph"
-source = "git+https://github.com/graphprotocol/rust-web3?branch=graph-patches-onto-0.18#2760dbd18837bf0b605f8b2e832fd0e27cee00b6"
+source = "git+https://github.com/graphprotocol/rust-web3?branch=graph-patches-onto-0.18#739e13dbd819cfb23cbb9b538870a2d373b48ad4"
 dependencies = [
  "arrayvec 0.7.2",
  "base64",
