@@ -190,7 +190,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         _logger: &Logger,
         block: codec::Block,
-        _filter: &TriggerFilter,
+        filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         let shared_block = Arc::new(block.clone());
 
@@ -204,14 +204,14 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             // FIXME (Cosmos): Optimize. Should use an Arc instead of cloning the
             // block. This is not currently possible because EventData is automatically
             // generated.
-            .map(|event| {
-                CosmosTrigger::with_event(event, header_only_block.clone(), EventOrigin::BeginBlock)
+            .filter_map(|event| {
+                filter_event_trigger(filter, event, &header_only_block, EventOrigin::BeginBlock)
             })
-            .chain(shared_block.tx_events().cloned().map(|event| {
-                CosmosTrigger::with_event(event, header_only_block.clone(), EventOrigin::DeliverTx)
+            .chain(shared_block.tx_events().cloned().filter_map(|event| {
+                filter_event_trigger(filter, event, &header_only_block, EventOrigin::DeliverTx)
             }))
-            .chain(shared_block.end_block_events().cloned().map(|event| {
-                CosmosTrigger::with_event(event, header_only_block.clone(), EventOrigin::EndBlock)
+            .chain(shared_block.end_block_events().cloned().filter_map(|event| {
+                filter_event_trigger(filter, event, &header_only_block, EventOrigin::EndBlock)
             }))
             .collect();
 
@@ -222,7 +222,9 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 .map(|tx| CosmosTrigger::with_transaction(tx, header_only_block.clone())),
         );
 
-        triggers.push(CosmosTrigger::Block(shared_block.cheap_clone()));
+        if filter.block_filter.trigger_every_block {
+            triggers.push(CosmosTrigger::Block(shared_block.cheap_clone()));
+        }
 
         Ok(BlockWithTriggers::new(block, triggers))
     }
@@ -246,6 +248,24 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             hash: BlockHash::from(vec![0xff; 32]),
             number: block.number.saturating_sub(1),
         }))
+    }
+}
+
+/// Returns a new event trigger only if the given event matches the event filter.
+fn filter_event_trigger(
+    filter: &TriggerFilter,
+    event: codec::Event,
+    block: &codec::HeaderOnlyBlock,
+    origin: EventOrigin,
+) -> Option<CosmosTrigger> {
+    if filter.event_filter.matches(&event.event_type) {
+        Some(CosmosTrigger::with_event(
+            event,
+            block.clone(),
+            origin,
+        ))
+    } else {
+        None
     }
 }
 

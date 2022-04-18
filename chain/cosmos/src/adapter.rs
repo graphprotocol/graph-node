@@ -62,6 +62,10 @@ pub(crate) struct TendermintEventFilter {
 }
 
 impl TendermintEventFilter {
+    pub(crate) fn matches(&self, event_type: &EventType) -> bool {
+        self.event_types.contains(event_type)
+    }
+
     fn extend_from_data_sources<'a>(&mut self, data_sources: impl Iterator<Item = &'a DataSource>) {
         self.event_types.extend(
             data_sources.flat_map(|data_source| data_source.events().map(ToString::to_string)),
