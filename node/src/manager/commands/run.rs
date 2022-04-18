@@ -6,8 +6,8 @@ use crate::config::{Config, ProviderDetails};
 use crate::manager::PanicSubscriptionManager;
 use crate::store_builder::StoreBuilder;
 use crate::MetricsContext;
-use ethereum::chain::EthereumStreamBuilder;
-use ethereum::{EthereumNetworks, ProviderEthRpcMetrics};
+use ethereum::chain::{EthereumAdapterSelector, EthereumStreamBuilder};
+use ethereum::{EthereumNetworks, ProviderEthRpcMetrics, RuntimeAdapter as EthereumRuntimeAdapter};
 use futures::future::join_all;
 use futures::TryFutureExt;
 use graph::anyhow::{bail, format_err, Error};
@@ -77,7 +77,9 @@ pub async fn run(
             .await
             .expect("Failed to parse Firehose endpoints");
     let firehose_networks = firehose_networks_by_kind.get(&BlockchainKind::Ethereum);
-    let firehose_endpoints = firehose_networks.and_then(|v| v.networks.get(&network_name));
+    let firehose_endpoints = firehose_networks
+        .and_then(|v| v.networks.get(&network_name))
+        .map_or_else(|| FirehoseEndpoints::new(), |v| v.clone());
 
     let eth_adapters = match eth_networks.networks.get(&network_name) {
         Some(adapters) => adapters.clone(),
@@ -87,6 +89,8 @@ pub async fn run(
             ))
         }
     };
+
+    let eth_adapters2 = eth_adapters.clone();
 
     let (_, ethereum_idents) = connect_ethereum_networks(&logger, eth_networks).await;
     // let (near_networks, near_idents) = connect_firehose_networks::<NearFirehoseHeaderOnlyBlock>(
@@ -113,11 +117,22 @@ pub async fn run(
         node_id.clone(),
         metrics_registry.clone(),
         chain_store.cheap_clone(),
-        chain_store,
-        firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
-        eth_adapters,
+        chain_store.cheap_clone(),
+        firehose_endpoints.clone(),
+        eth_adapters.clone(),
         chain_head_update_listener,
         Arc::new(EthereumStreamBuilder {}),
+        Arc::new(EthereumAdapterSelector::new(
+            logger_factory.clone(),
+            Arc::new(eth_adapters),
+            Arc::new(firehose_endpoints.clone()),
+            metrics_registry.clone(),
+            chain_store.cheap_clone(),
+        )),
+        Arc::new(EthereumRuntimeAdapter {
+            call_cache: chain_store.cheap_clone(),
+            eth_adapters: Arc::new(eth_adapters2),
+        }),
         ethereum::ENV_VARS.reorg_threshold,
         // We assume the tested chain is always ingestible for now
         true,

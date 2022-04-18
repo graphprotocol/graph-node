@@ -292,8 +292,6 @@ impl Blockchain for MockBlockchain {
 
     type NodeCapabilities = MockNodeCapabilities;
 
-    type RuntimeAdapter = MockRuntimeAdapter;
-
     fn triggers_adapter(
         &self,
         _loc: &crate::components::store::DeploymentLocator,
@@ -338,7 +336,7 @@ impl Blockchain for MockBlockchain {
         todo!()
     }
 
-    fn runtime_adapter(&self) -> std::sync::Arc<Self::RuntimeAdapter> {
+    fn runtime_adapter(&self) -> std::sync::Arc<dyn RuntimeAdapter<Self>> {
         todo!()
     }
 

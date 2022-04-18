@@ -45,6 +45,15 @@ pub use types::{BlockHash, BlockPtr, ChainIdentifier};
 
 use self::block_stream::BlockStream;
 
+pub trait TriggersAdapterSelector<C: Blockchain>: Sync + Send {
+    fn triggers_adapter(
+        &self,
+        loc: &DeploymentLocator,
+        capabilities: &C::NodeCapabilities,
+        unified_api_version: UnifiedMappingApiVersion,
+    ) -> Result<Arc<dyn TriggersAdapter<C>>, Error>;
+}
+
 pub trait Block: Send + Sync {
     fn ptr(&self) -> BlockPtr;
     fn parent_ptr(&self) -> Option<BlockPtr>;
@@ -74,7 +83,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
 
     // The `Clone` bound is used when reprocessing a block, because `triggers_in_block` requires an
     // owned `Block`. It would be good to come up with a way to remove this bound.
-    type Block: Block + Clone;
+    type Block: Block + Clone + Debug;
     type DataSource: DataSource<Self>;
     type UnresolvedDataSource: UnresolvedDataSource<Self>;
 
@@ -82,7 +91,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     type UnresolvedDataSourceTemplate: UnresolvedDataSourceTemplate<Self>;
 
     /// Trigger data as parsed from the triggers adapter.
-    type TriggerData: TriggerData + Ord + Send + Sync;
+    type TriggerData: TriggerData + Ord + Send + Sync + Debug;
 
     /// Decoded trigger ready to be processed by the mapping.
     /// New implementations should have this be the same as `TriggerData`.
@@ -93,11 +102,9 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
 
     type NodeCapabilities: NodeCapabilities<Self> + std::fmt::Display;
 
-    type RuntimeAdapter: RuntimeAdapter<Self>;
-
     fn triggers_adapter(
         &self,
-        loc: &DeploymentLocator,
+        log: &DeploymentLocator,
         capabilities: &Self::NodeCapabilities,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Arc<dyn TriggersAdapter<Self>>, Error>;
@@ -129,7 +136,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError>;
 
-    fn runtime_adapter(&self) -> Arc<Self::RuntimeAdapter>;
+    fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapter<Self>>;
 
     fn is_firehose_supported(&self) -> bool;
 }

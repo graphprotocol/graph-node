@@ -12,6 +12,7 @@ use graph::{
         },
         firehose_block_stream::FirehoseBlockStream,
         Block as _, BlockHash, BlockPtr, Blockchain, BlockchainKind, IngestorError,
+        RuntimeAdapter as RuntimeAdapterTrait,
     },
     components::store::DeploymentLocator,
     firehose::{self, FirehoseEndpoint, FirehoseEndpoints, ForkStep},
@@ -80,8 +81,6 @@ impl Blockchain for Chain {
     type TriggerFilter = TriggerFilter;
 
     type NodeCapabilities = NodeCapabilities;
-
-    type RuntimeAdapter = RuntimeAdapter;
 
     fn triggers_adapter(
         &self,
@@ -165,7 +164,7 @@ impl Blockchain for Chain {
             .map_err(Into::into)
     }
 
-    fn runtime_adapter(&self) -> Arc<Self::RuntimeAdapter> {
+    fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
         Arc::new(RuntimeAdapter {})
     }
 

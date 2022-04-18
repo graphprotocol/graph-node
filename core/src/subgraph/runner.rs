@@ -66,7 +66,6 @@ where
         // If a subgraph failed for deterministic reasons, before start indexing, we first
         // revert the deployment head. It should lead to the same result since the error was
         // deterministic.
-        println!("####");
         if let Some(current_ptr) = self.inputs.store.block_ptr().await {
             if let Some(parent_ptr) = self
                 .inputs
@@ -86,7 +85,7 @@ where
                     .unfail_deterministic_error(&current_ptr, &parent_ptr)?;
             }
         }
-        println!("####");
+
         loop {
             debug!(self.logger, "Starting or restarting subgraph");
 

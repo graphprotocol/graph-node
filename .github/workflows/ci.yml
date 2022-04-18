@@ -75,7 +75,6 @@ jobs:
         with:
           command: test
           args: --verbose --package graph-tests -- test_runner --nocapture
-        continue-on-error: true
 
   integration-tests:
     name: Run integration tests
