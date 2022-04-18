@@ -351,3 +351,209 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             .await
     }
 }
+
+#[cfg(test)]
+mod test {
+    use graph::prelude::{
+        slog::{o, Discard, Logger},
+        tokio,
+    };
+
+    use super::*;
+
+    use codec::{
+        Event, EventBlock, EventList, EventTx, ResponseBeginBlock, ResponseDeliverTx,
+        ResponseEndBlock, TxResult,
+    };
+
+    #[tokio::test]
+    async fn test_trigger_filters() {
+        let adapter = TriggersAdapter {};
+        let logger = Logger::root(Discard, o!());
+
+        let block_with_events = EventList::test_with_event_types(
+            vec!["begin_event_1", "begin_event_2", "begin_event_3"],
+            vec!["tx_event_1", "tx_event_2", "tx_event_3"],
+            vec!["end_event_1", "end_event_2", "end_event_3"],
+        );
+
+        let cases = [
+            (
+                EventList::test_new(),
+                TriggerFilter::test_new(false, &[]),
+                vec![],
+            ),
+            (
+                EventList::test_new(),
+                TriggerFilter::test_new(true, &[]),
+                vec![TendermintTrigger::Block(Arc::new(EventList::test_new()))],
+            ),
+            (
+                EventList::test_new(),
+                TriggerFilter::test_new(false, &["event_1", "event_2", "event_3"]),
+                vec![],
+            ),
+            (
+                block_with_events.clone(),
+                TriggerFilter::test_new(false, &["begin_event_3", "tx_event_3", "end_event_3"]),
+                vec![
+                    TendermintTrigger::with_event(
+                        Event::test_with_type("begin_event_3"),
+                        block_with_events.block().clone(),
+                        EventOrigin::BeginBlock,
+                    ),
+                    TendermintTrigger::with_event(
+                        Event::test_with_type("tx_event_3"),
+                        block_with_events.block().clone(),
+                        EventOrigin::DeliverTx,
+                    ),
+                    TendermintTrigger::with_event(
+                        Event::test_with_type("end_event_3"),
+                        block_with_events.block().clone(),
+                        EventOrigin::EndBlock,
+                    ),
+                    TendermintTrigger::with_transaction(
+                        TxResult::test_with_event_type("tx_event_1"),
+                        block_with_events.block().clone(),
+                    ),
+                    TendermintTrigger::with_transaction(
+                        TxResult::test_with_event_type("tx_event_2"),
+                        block_with_events.block().clone(),
+                    ),
+                    TendermintTrigger::with_transaction(
+                        TxResult::test_with_event_type("tx_event_3"),
+                        block_with_events.block().clone(),
+                    ),
+                ],
+            ),
+            (
+                block_with_events.clone(),
+                TriggerFilter::test_new(true, &["begin_event_3", "tx_event_2", "end_event_1"]),
+                vec![
+                    TendermintTrigger::Block(Arc::new(block_with_events.clone())),
+                    TendermintTrigger::with_event(
+                        Event::test_with_type("begin_event_3"),
+                        block_with_events.block().clone(),
+                        EventOrigin::BeginBlock,
+                    ),
+                    TendermintTrigger::with_event(
+                        Event::test_with_type("tx_event_2"),
+                        block_with_events.block().clone(),
+                        EventOrigin::DeliverTx,
+                    ),
+                    TendermintTrigger::with_event(
+                        Event::test_with_type("end_event_1"),
+                        block_with_events.block().clone(),
+                        EventOrigin::EndBlock,
+                    ),
+                    TendermintTrigger::with_transaction(
+                        TxResult::test_with_event_type("tx_event_1"),
+                        block_with_events.block().clone(),
+                    ),
+                    TendermintTrigger::with_transaction(
+                        TxResult::test_with_event_type("tx_event_2"),
+                        block_with_events.block().clone(),
+                    ),
+                    TendermintTrigger::with_transaction(
+                        TxResult::test_with_event_type("tx_event_3"),
+                        block_with_events.block().clone(),
+                    ),
+                ],
+            ),
+        ];
+
+        for (block, trigger_filter, expected_triggers) in cases {
+            let triggers = adapter
+                .triggers_in_block(&logger, block, &trigger_filter)
+                .await
+                .expect("failed to get triggers in block");
+
+            assert_eq!(
+                triggers.trigger_data.len(),
+                expected_triggers.len(),
+                "Expected trigger list to contain exactly {:?}, but it didn't: {:?}",
+                expected_triggers,
+                triggers.trigger_data
+            );
+
+            // they may not be in the same order
+            for trigger in expected_triggers {
+                assert!(
+                    triggers.trigger_data.contains(&trigger),
+                    "Expected trigger list to contain {:?}, but it only contains: {:?}",
+                    trigger,
+                    triggers.trigger_data
+                );
+            }
+        }
+    }
+
+    impl EventList {
+        fn test_new() -> EventList {
+            EventList::test_with_event_types(vec![], vec![], vec![])
+        }
+
+        fn test_with_event_types(
+            begin_event_types: Vec<&str>,
+            tx_event_types: Vec<&str>,
+            end_event_types: Vec<&str>,
+        ) -> EventList {
+            EventList {
+                new_block: Some(EventBlock {
+                    block: None,
+                    block_id: None,
+                    result_begin_block: Some(ResponseBeginBlock {
+                        events: begin_event_types
+                            .into_iter()
+                            .map(Event::test_with_type)
+                            .collect(),
+                    }),
+                    result_end_block: Some(ResponseEndBlock {
+                        validator_updates: vec![],
+                        consensus_param_updates: None,
+                        events: end_event_types
+                            .into_iter()
+                            .map(Event::test_with_type)
+                            .collect(),
+                    }),
+                }),
+                transaction: tx_event_types
+                    .into_iter()
+                    .map(|event_type| EventTx {
+                        tx_result: Some(TxResult::test_with_event_type(event_type)),
+                    })
+                    .collect(),
+                validator_set_updates: None,
+            }
+        }
+    }
+
+    impl Event {
+        fn test_with_type(event_type: &str) -> Event {
+            Event {
+                event_type: event_type.to_string(),
+                attributes: vec![],
+            }
+        }
+    }
+
+    impl TxResult {
+        fn test_with_event_type(event_type: &str) -> TxResult {
+            TxResult {
+                height: 1,
+                index: 1,
+                tx: vec![],
+                result: Some(ResponseDeliverTx {
+                    code: 1,
+                    data: vec![],
+                    log: "".to_string(),
+                    info: "".to_string(),
+                    gas_wanted: 1,
+                    gas_used: 1,
+                    codespace: "".to_string(),
+                    events: vec![Event::test_with_type(event_type)],
+                }),
+            }
+        }
+    }
+}

@@ -98,11 +98,11 @@ mod test {
     #[test]
     fn test_trigger_filters() {
         let cases = [
-            (TriggerFilter::new_test(false, &[]), None),
-            (TriggerFilter::new_test(true, &[]), None),
-            (TriggerFilter::new_test(true, &["event_1", "event_2"]), None),
+            (TriggerFilter::test_new(false, &[]), None),
+            (TriggerFilter::test_new(true, &[]), None),
+            (TriggerFilter::test_new(true, &["event_1", "event_2"]), None),
             (
-                TriggerFilter::new_test(false, &["event_1", "event_2", "event_3"]),
+                TriggerFilter::test_new(false, &["event_1", "event_2", "event_3"]),
                 Some(event_filter_with_types(&["event_1", "event_2", "event_3"])),
             ),
         ];
@@ -126,7 +126,7 @@ mod test {
     }
 
     impl TriggerFilter {
-        fn new_test(trigger_every_block: bool, event_types: &[&str]) -> TriggerFilter {
+        pub(crate) fn test_new(trigger_every_block: bool, event_types: &[&str]) -> TriggerFilter {
             TriggerFilter {
                 event_filter: TendermintEventFilter {
                     event_types: event_types.iter().map(ToString::to_string).collect(),
