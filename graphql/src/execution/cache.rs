@@ -4,8 +4,8 @@ use graph::{
     prelude::{debug, futures03, BlockPtr, CheapClone, Logger, QueryResult},
     util::timed_rw_lock::TimedMutex,
 };
-use stable_hash::crypto::SetHasher;
-use stable_hash::prelude::*;
+use stable_hash_legacy::crypto::SetHasher;
+use stable_hash_legacy::prelude::*;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};

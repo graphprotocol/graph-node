@@ -1,5 +1,5 @@
 use crate::prelude::{impl_slog_value, Value};
-use stable_hash::prelude::*;
+use stable_hash_legacy::prelude::*;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use strum::AsStaticRef as _;

@@ -9,7 +9,7 @@ use anyhow::{anyhow, Error};
 use itertools::Itertools;
 use serde::de;
 use serde::{Deserialize, Serialize};
-use stable_hash::prelude::*;
+use stable_hash_legacy::prelude::*;
 use std::convert::TryFrom;
 use std::fmt;
 use std::iter::FromIterator;
