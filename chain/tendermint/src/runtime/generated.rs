@@ -67,7 +67,7 @@ impl AscIndexId for AscDataArray {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintArrayData;
 }
 
-pub struct AscScalarTypeArray(pub(crate) Array<AscPtr<AscScalarTypeEnum>>);
+pub struct AscScalarTypeArray(pub(crate) Array<AscPtr<AscScalarType>>);
 
 impl AscType for AscScalarTypeArray {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
