@@ -18,7 +18,7 @@ use serde::de;
 use serde::ser;
 use serde_yaml;
 use slog::{debug, info, Logger};
-use stable_hash::prelude::*;
+use stable_hash_legacy::prelude::*;
 use std::{collections::BTreeSet, marker::PhantomData};
 use thiserror::Error;
 use wasmparser;

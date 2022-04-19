@@ -25,7 +25,7 @@ use graph::prelude::{
     anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr,
     DeploymentHash, DeploymentState, Schema, StoreError,
 };
-use stable_hash::crypto::SetHasher;
+use stable_hash_legacy::crypto::SetHasher;
 use std::{collections::BTreeSet, convert::TryFrom, ops::Bound};
 use std::{str::FromStr, sync::Arc};
 
@@ -609,7 +609,8 @@ pub fn exists_and_synced(conn: &PgConnection, id: &str) -> Result<bool, StoreErr
 fn insert_subgraph_error(conn: &PgConnection, error: &SubgraphError) -> anyhow::Result<String> {
     use subgraph_error as e;
 
-    let error_id = hex::encode(&stable_hash::utils::stable_hash::<SetHasher, _>(&error));
+    let error_id =
+        hex::encode(&stable_hash_legacy::utils::stable_hash_legacy::<SetHasher, _>(&error));
     let SubgraphError {
         subgraph_id,
         message,

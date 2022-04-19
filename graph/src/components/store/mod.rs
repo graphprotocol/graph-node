@@ -10,7 +10,7 @@ use futures::stream::poll_fn;
 use futures::{Async, Poll, Stream};
 use graphql_parser::schema as s;
 use serde::{Deserialize, Serialize};
-use stable_hash::prelude::*;
+use stable_hash_legacy::prelude::*;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt;
@@ -118,12 +118,12 @@ impl EntityKey {
 
 #[test]
 fn key_stable_hash() {
-    use stable_hash::crypto::SetHasher;
-    use stable_hash::utils::stable_hash;
+    use stable_hash_legacy::crypto::SetHasher;
+    use stable_hash_legacy::utils::stable_hash;
 
     #[track_caller]
     fn hashes_to(key: &EntityKey, exp: &str) {
-        let hash = hex::encode(stable_hash::<SetHasher, _>(&key));
+        let hash = hex::encode(stable_hash_legacy::<SetHasher, _>(&key));
         assert_eq!(exp, hash.as_str());
     }
 

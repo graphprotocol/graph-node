@@ -6,9 +6,9 @@ use graph::{
     util::timed_rw_lock::TimedMutex,
 };
 use lazy_static::lazy_static;
-use stable_hash::crypto::SetHasher;
-use stable_hash::prelude::*;
-use stable_hash::utils::stable_hash;
+use stable_hash_legacy::crypto::SetHasher;
+use stable_hash_legacy::prelude::*;
+use stable_hash_legacy::utils::stable_hash;
 use std::time::Instant;
 use std::{borrow::ToOwned, collections::HashSet};
 
@@ -115,7 +115,7 @@ fn cache_key(
         selection_set,
         block_ptr,
     };
-    stable_hash::<SetHasher, _>(&query)
+    stable_hash_legacy::<SetHasher, _>(&query)
 }
 
 /// Contextual information passed around during query execution.

@@ -34,8 +34,8 @@ mod tests {
     use online::ProofOfIndexingFinisher;
     use reference::*;
     use slog::{o, Discard, Logger};
-    use stable_hash::crypto::SetHasher;
-    use stable_hash::utils::stable_hash;
+    use stable_hash_legacy::crypto::SetHasher;
+    use stable_hash_legacy::utils::stable_hash;
     use std::collections::HashMap;
     use std::convert::TryInto;
     use web3::types::{Address, H256};
@@ -86,7 +86,7 @@ mod tests {
         }
 
         let online = hex::encode(finisher.finish());
-        let offline = hex::encode(stable_hash::<SetHasher, _>(reference));
+        let offline = hex::encode(stable_hash_legacy::<SetHasher, _>(reference));
         assert_eq!(&online, &offline);
         offline
     }

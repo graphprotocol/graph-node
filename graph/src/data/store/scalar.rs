@@ -7,7 +7,7 @@ use serde::{self, Deserialize, Serialize};
 use thiserror::Error;
 use web3::types::*;
 
-use stable_hash::{
+use stable_hash_legacy::{
     prelude::*,
     utils::{AsBytes, AsInt},
 };
@@ -577,9 +577,9 @@ impl<'de> Deserialize<'de> for Bytes {
 #[cfg(test)]
 mod test {
     use super::{BigDecimal, BigInt, Bytes};
-    use stable_hash::crypto::SetHasher;
-    use stable_hash::prelude::*;
-    use stable_hash::utils::stable_hash;
+    use stable_hash_legacy::crypto::SetHasher;
+    use stable_hash_legacy::prelude::*;
+    use stable_hash_legacy::utils::stable_hash;
     use std::str::FromStr;
     use web3::types::U64;
 
@@ -593,7 +593,7 @@ mod test {
     }
 
     fn crypto_stable_hash(value: impl StableHash) -> <SetHasher as StableHasher>::Out {
-        stable_hash::<SetHasher, _>(&value)
+        stable_hash_legacy::<SetHasher, _>(&value)
     }
 
     fn same_stable_hash(left: impl StableHash, right: impl StableHash) {
