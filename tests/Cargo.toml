@@ -8,7 +8,6 @@ slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_tr
 bollard = "0.10"
 tokio = {version = "1.16.1", features = ["rt", "macros", "process"]}
 tokio-stream = "0.1"
-futures = "0.3.13"
 port_check = "0.1.5"
 anyhow = "1.0.54"
 lazy_static = "1.4.0"
@@ -17,3 +16,8 @@ graph-core = { path = "../core" }
 graph = { path = "../graph" }
 graph-mock = { path = "../mock" }
 graph-store-postgres = { path = "../store/postgres" }
+serde_yaml = "0.8"
+graph-chain-ethereum = { path = "../chain/ethereum" }
+graph-chain-near = { path = "../chain/near" }
+async-stream = "0.3.3"
+futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }

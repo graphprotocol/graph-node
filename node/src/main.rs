@@ -1,3 +1,4 @@
+use ethereum::chain::EthereumStreamBuilder;
 use ethereum::{BlockIngestor as EthereumBlockIngestor, EthereumAdapterTrait, EthereumNetworks};
 use git_testament::{git_testament, render_testament};
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
@@ -31,6 +32,7 @@ use graph_server_json_rpc::JsonRpcServer;
 use graph_server_metrics::PrometheusMetricsServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::{register_jobs as register_store_jobs, ChainHeadUpdateListener, Store};
+use near::NearStreamBuilder;
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -574,6 +576,7 @@ fn ethereum_networks_as_chains(
                 firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
                 eth_adapters.clone(),
                 chain_head_update_listener.clone(),
+                Arc::new(EthereumStreamBuilder {}),
                 ethereum::ENV_VARS.reorg_threshold,
                 is_ingestible,
             );
@@ -673,6 +676,7 @@ fn near_networks_as_chains(
                         chain_store,
                         endpoints.clone(),
                         metrics_registry.clone(),
+                        Arc::new(NearStreamBuilder {}),
                     )),
                     firehose_endpoints: endpoints.clone(),
                 },

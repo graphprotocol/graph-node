@@ -6,6 +6,7 @@ use crate::config::{Config, ProviderDetails};
 use crate::manager::PanicSubscriptionManager;
 use crate::store_builder::StoreBuilder;
 use crate::MetricsContext;
+use ethereum::chain::EthereumStreamBuilder;
 use ethereum::{EthereumNetworks, ProviderEthRpcMetrics};
 use futures::future::join_all;
 use futures::TryFutureExt;
@@ -116,6 +117,7 @@ pub async fn run(
         firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
         eth_adapters,
         chain_head_update_listener,
+        Arc::new(EthereumStreamBuilder {}),
         ethereum::ENV_VARS.reorg_threshold,
         // We assume the tested chain is always ingestible for now
         true,

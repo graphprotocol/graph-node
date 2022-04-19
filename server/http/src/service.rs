@@ -29,7 +29,7 @@ impl fmt::Debug for GraphQLServiceMetrics {
 }
 
 impl GraphQLServiceMetrics {
-    pub fn new(registry: Arc<impl MetricsRegistry>) -> Self {
+    pub fn new(registry: Arc<dyn MetricsRegistry>) -> Self {
         let query_execution_time = registry
             .new_histogram_vec(
                 "query_execution_time",
