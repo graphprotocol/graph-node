@@ -593,7 +593,7 @@ mod test {
     }
 
     fn crypto_stable_hash(value: impl StableHash) -> <SetHasher as StableHasher>::Out {
-        stable_hash_legacy::<SetHasher, _>(&value)
+        stable_hash::<SetHasher, _>(&value)
     }
 
     fn same_stable_hash(left: impl StableHash, right: impl StableHash) {

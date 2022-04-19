@@ -115,7 +115,7 @@ fn cache_key(
         selection_set,
         block_ptr,
     };
-    stable_hash_legacy::<SetHasher, _>(&query)
+    stable_hash::<SetHasher, _>(&query)
 }
 
 /// Contextual information passed around during query execution.

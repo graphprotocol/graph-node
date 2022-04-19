@@ -123,7 +123,7 @@ fn key_stable_hash() {
 
     #[track_caller]
     fn hashes_to(key: &EntityKey, exp: &str) {
-        let hash = hex::encode(stable_hash_legacy::<SetHasher, _>(&key));
+        let hash = hex::encode(stable_hash::<SetHasher, _>(&key));
         assert_eq!(exp, hash.as_str());
     }
 

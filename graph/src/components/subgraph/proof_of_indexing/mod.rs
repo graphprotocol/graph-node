@@ -86,7 +86,7 @@ mod tests {
         }
 
         let online = hex::encode(finisher.finish());
-        let offline = hex::encode(stable_hash_legacy::<SetHasher, _>(reference));
+        let offline = hex::encode(stable_hash::<SetHasher, _>(reference));
         assert_eq!(&online, &offline);
         offline
     }

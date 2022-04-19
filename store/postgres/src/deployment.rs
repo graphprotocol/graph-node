@@ -609,8 +609,9 @@ pub fn exists_and_synced(conn: &PgConnection, id: &str) -> Result<bool, StoreErr
 fn insert_subgraph_error(conn: &PgConnection, error: &SubgraphError) -> anyhow::Result<String> {
     use subgraph_error as e;
 
-    let error_id =
-        hex::encode(&stable_hash_legacy::utils::stable_hash_legacy::<SetHasher, _>(&error));
+    let error_id = hex::encode(&stable_hash_legacy::utils::stable_hash::<SetHasher, _>(
+        &error,
+    ));
     let SubgraphError {
         subgraph_id,
         message,
