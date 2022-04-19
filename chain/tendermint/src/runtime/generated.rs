@@ -16,7 +16,10 @@ impl AscType for AscBytesArray {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8], api_version: &Version) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
         Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
     }
 }
@@ -32,13 +35,17 @@ impl AscType for AscSignatureDescriptorArray {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8], api_version: &Version) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
         Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
     }
 }
 
 impl AscIndexId for AscSignatureDescriptorArray {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintArraySignatureDescriptor;
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId =
+        IndexForAscTypeId::TendermintArraySignatureDescriptor;
 }
 
 pub struct AscDataArray(pub(crate) Array<AscPtr<AscData>>);
@@ -48,7 +55,10 @@ impl AscType for AscDataArray {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8], api_version: &Version) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
         Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
     }
 }
@@ -64,7 +74,10 @@ impl AscType for AscScalarTypeArray {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8], api_version: &Version) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
         Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
     }
 }
@@ -80,7 +93,10 @@ impl AscType for AscAnyArray {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8], api_version: &Version) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
         Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
     }
 }
@@ -96,7 +112,10 @@ impl AscType for AscSignerInfoArray {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8], api_version: &Version) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
         Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
     }
 }
@@ -112,7 +131,10 @@ impl AscType for AscCoinArray {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8], api_version: &Version) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
         Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
     }
 }
@@ -128,7 +150,10 @@ impl AscType for AscEventTxArray {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8], api_version: &Version) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
         Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
     }
 }
@@ -144,7 +169,10 @@ impl AscType for AscCommitSigArray {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8], api_version: &Version) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
         Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
     }
 }
@@ -160,7 +188,10 @@ impl AscType for AscEventAttributeArray {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8], api_version: &Version) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
         Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
     }
 }
@@ -176,7 +207,10 @@ impl AscType for AscValidatorArray {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8], api_version: &Version) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
         Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
     }
 }
@@ -192,7 +226,10 @@ impl AscType for AscEvidenceArray {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8], api_version: &Version) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
         Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
     }
 }
@@ -208,7 +245,10 @@ impl AscType for AscEventArray {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8], api_version: &Version) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
         Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
     }
 }
@@ -224,7 +264,10 @@ impl AscType for AscValidatorUpdateArray {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8], api_version: &Version) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
         Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
     }
 }
@@ -233,7 +276,6 @@ impl AscIndexId for AscValidatorUpdateArray {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintArrayValidatorUpdate;
 }
 
-
 pub struct AscSignModeEnum(pub(crate) AscEnum<AscSignMode>);
 
 impl AscType for AscSignModeEnum {
@@ -241,7 +283,10 @@ impl AscType for AscSignModeEnum {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8], api_version: &Version) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
         Ok(Self(AscEnum::from_asc_bytes(asc_obj, api_version)?))
     }
 }
@@ -257,7 +302,10 @@ impl AscType for AscBlockIDFlagEnum {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8], api_version: &Version) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
         Ok(Self(AscEnum::from_asc_bytes(asc_obj, api_version)?))
     }
 }
@@ -273,7 +321,10 @@ impl AscType for AscSignedMsgTypeEnum {
         self.0.to_asc_bytes()
     }
 
-    fn from_asc_bytes(asc_obj: &[u8], api_version: &Version) -> Result<Self, DeterministicHostError> {
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
         Ok(Self(AscEnum::from_asc_bytes(asc_obj, api_version)?))
     }
 }
@@ -281,7 +332,6 @@ impl AscType for AscSignedMsgTypeEnum {
 impl AscIndexId for AscSignedMsgTypeEnum {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintSignedMsgTypeEnum;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -294,7 +344,6 @@ impl AscIndexId for AscAny {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintAny;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscMultiSignature {
@@ -304,7 +353,6 @@ pub(crate) struct AscMultiSignature {
 impl AscIndexId for AscMultiSignature {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintMultiSignature;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -316,7 +364,6 @@ pub(crate) struct AscCompactBitArray {
 impl AscIndexId for AscCompactBitArray {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintCompactBitArray;
 }
-
 
 #[repr(u32)]
 #[derive(AscType, Copy, Clone)]
@@ -335,7 +382,6 @@ impl Default for AscSignMode {
     }
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscSignatureDescriptors {
@@ -345,7 +391,6 @@ pub(crate) struct AscSignatureDescriptors {
 impl AscIndexId for AscSignatureDescriptors {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintSignatureDescriptors;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -358,7 +403,6 @@ impl AscIndexId for AscSingle {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintSingle;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscMulti {
@@ -370,7 +414,6 @@ impl AscIndexId for AscMulti {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintMulti;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscData {
@@ -381,7 +424,6 @@ pub(crate) struct AscData {
 impl AscIndexId for AscData {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintData;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -395,7 +437,6 @@ impl AscIndexId for AscSignatureDescriptor {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintSignatureDescriptor;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscInterfaceDescriptor {
@@ -406,7 +447,6 @@ pub(crate) struct AscInterfaceDescriptor {
 impl AscIndexId for AscInterfaceDescriptor {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintInterfaceDescriptor;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -419,7 +459,6 @@ pub(crate) struct AscScalarDescriptor {
 impl AscIndexId for AscScalarDescriptor {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintScalarDescriptor;
 }
-
 
 #[repr(u32)]
 #[derive(AscType, Copy, Clone)]
@@ -437,7 +476,6 @@ impl Default for AscScalarType {
     }
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscCoin {
@@ -448,7 +486,6 @@ pub(crate) struct AscCoin {
 impl AscIndexId for AscCoin {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintCoin;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -461,7 +498,6 @@ impl AscIndexId for AscDecCoin {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintDecCoin;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscIntProto {
@@ -472,7 +508,6 @@ impl AscIndexId for AscIntProto {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintIntProto;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscDecProto {
@@ -482,7 +517,6 @@ pub(crate) struct AscDecProto {
 impl AscIndexId for AscDecProto {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintDecProto;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -496,7 +530,6 @@ impl AscIndexId for AscTx {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintTx;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscTxRaw {
@@ -508,7 +541,6 @@ pub(crate) struct AscTxRaw {
 impl AscIndexId for AscTxRaw {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintTxRaw;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -522,7 +554,6 @@ pub(crate) struct AscSignDoc {
 impl AscIndexId for AscSignDoc {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintSignDoc;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -539,7 +570,6 @@ impl AscIndexId for AscSignDocDirectAux {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintSignDocDirectAux;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscTxBody {
@@ -554,7 +584,6 @@ impl AscIndexId for AscTxBody {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintTxBody;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscAuthInfo {
@@ -566,7 +595,6 @@ pub(crate) struct AscAuthInfo {
 impl AscIndexId for AscAuthInfo {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintAuthInfo;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -580,7 +608,6 @@ impl AscIndexId for AscSignerInfo {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintSignerInfo;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscModeInfo {
@@ -591,7 +618,6 @@ pub(crate) struct AscModeInfo {
 impl AscIndexId for AscModeInfo {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintModeInfo;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -606,7 +632,6 @@ impl AscIndexId for AscFee {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintFee;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscTip {
@@ -617,7 +642,6 @@ pub(crate) struct AscTip {
 impl AscIndexId for AscTip {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintTip;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -631,7 +655,6 @@ pub(crate) struct AscAuxSignerData {
 impl AscIndexId for AscAuxSignerData {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintAuxSignerData;
 }
-
 
 #[repr(u32)]
 #[derive(AscType, Copy, Clone)]
@@ -650,7 +673,6 @@ impl Default for AscSignedMsgType {
     }
 }
 
-
 #[repr(u32)]
 #[derive(AscType, Copy, Clone)]
 pub(crate) enum AscBlockIDFlag {
@@ -668,7 +690,6 @@ impl Default for AscBlockIDFlag {
     }
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEventList {
@@ -681,7 +702,6 @@ impl AscIndexId for AscEventList {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventList;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEventData {
@@ -693,7 +713,6 @@ impl AscIndexId for AscEventData {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventData;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscTransactionData {
@@ -704,7 +723,6 @@ pub(crate) struct AscTransactionData {
 impl AscIndexId for AscTransactionData {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintTransactionData;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -718,11 +736,10 @@ impl AscIndexId for AscBlock {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintBlock;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscBlockID {
-    pub hash: AscPtr<Uint8Array>,
+    pub hash: AscPtr<AscHash>,
     pub part_set_header: AscPtr<AscPartSetHeader>,
 }
 
@@ -730,18 +747,16 @@ impl AscIndexId for AscBlockID {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintBlockID;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscBlockParams {
     pub max_bytes: i64,
-    pub max_gas: i64,
+    pub max_gas: AscGas,
 }
 
 impl AscIndexId for AscBlockParams {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintBlockParams;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -750,26 +765,25 @@ pub(crate) struct AscCommit {
     pub round: i32,
     pub block_id: AscPtr<AscBlockID>,
     pub signatures: AscPtr<AscCommitSigArray>,
+    pub _padding: u32,
 }
 
 impl AscIndexId for AscCommit {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintCommit;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscCommitSig {
-    pub block_id_flag: AscPtr<AscBlockIDFlagEnum>,
-    pub validator_address: AscPtr<Uint8Array>,
+    pub block_id_flag: u32,
+    pub validator_address: AscPtr<AscHash>,
     pub timestamp: AscPtr<AscTimestamp>,
-    pub signature: AscPtr<Uint8Array>,
+    pub signature: AscPtr<AscBytes>,
 }
 
 impl AscIndexId for AscCommitSig {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintCommitSig;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -781,7 +795,6 @@ pub(crate) struct AscConsensus {
 impl AscIndexId for AscConsensus {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintConsensus;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -796,18 +809,17 @@ impl AscIndexId for AscConsensusParams {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintConsensusParams;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscDuration {
     pub seconds: i64,
     pub nanos: i32,
+    pub _padding: u32,
 }
 
 impl AscIndexId for AscDuration {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintDuration;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -823,7 +835,6 @@ impl AscIndexId for AscDuplicateVoteEvidence {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintDuplicateVoteEvidence;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEvent {
@@ -835,19 +846,19 @@ impl AscIndexId for AscEvent {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEvent;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEventAttribute {
     pub key: AscPtr<AscString>,
     pub value: AscPtr<AscString>,
     pub index: bool,
+    pub _padding: u8,
+    pub _padding2: u16,
 }
 
 impl AscIndexId for AscEventAttribute {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventAttribute;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -862,7 +873,6 @@ impl AscIndexId for AscEventBlock {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventBlock;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEventTx {
@@ -873,7 +883,6 @@ impl AscIndexId for AscEventTx {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventTx;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEventValidatorSetUpdates {
@@ -881,27 +890,26 @@ pub(crate) struct AscEventValidatorSetUpdates {
 }
 
 impl AscIndexId for AscEventValidatorSetUpdates {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventValidatorSetUpdates;
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId =
+        IndexForAscTypeId::TendermintEventValidatorSetUpdates;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEventVote {
-    pub event_vote_type: AscPtr<AscSignedMsgTypeEnum>,
+    pub event_vote_type: u32,
     pub height: u64,
     pub round: i32,
     pub block_id: AscPtr<AscBlockID>,
     pub timestamp: AscPtr<AscTimestamp>,
-    pub validator_address: AscPtr<Uint8Array>,
+    pub validator_address: AscPtr<AscHash>,
     pub validator_index: i32,
-    pub signature: AscPtr<Uint8Array>,
+    pub signature: AscPtr<AscBytes>,
 }
 
 impl AscIndexId for AscEventVote {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEventVote;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -914,7 +922,6 @@ impl AscIndexId for AscEvidence {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEvidence;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEvidenceList {
@@ -924,7 +931,6 @@ pub(crate) struct AscEvidenceList {
 impl AscIndexId for AscEvidenceList {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEvidenceList;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -938,7 +944,6 @@ impl AscIndexId for AscEvidenceParams {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintEvidenceParams;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscHeader {
@@ -947,21 +952,21 @@ pub(crate) struct AscHeader {
     pub height: u64,
     pub time: AscPtr<AscTimestamp>,
     pub last_block_id: AscPtr<AscBlockID>,
-    pub last_commit_hash: AscPtr<Uint8Array>,
-    pub data_hash: AscPtr<Uint8Array>,
-    pub validators_hash: AscPtr<Uint8Array>,
-    pub next_validators_hash: AscPtr<Uint8Array>,
-    pub consensus_hash: AscPtr<Uint8Array>,
-    pub app_hash: AscPtr<Uint8Array>,
-    pub last_results_hash: AscPtr<Uint8Array>,
-    pub evidence_hash: AscPtr<Uint8Array>,
-    pub proposer_address: AscPtr<Uint8Array>,
+    pub last_commit_hash: AscPtr<AscHash>,
+    pub data_hash: AscPtr<AscHash>,
+    pub validators_hash: AscPtr<AscHash>,
+    pub next_validators_hash: AscPtr<AscHash>,
+    pub consensus_hash: AscPtr<AscHash>,
+    pub app_hash: AscPtr<AscHash>,
+    pub last_results_hash: AscPtr<AscHash>,
+    pub evidence_hash: AscPtr<AscHash>,
+    pub proposer_address: AscPtr<AscHash>,
+    pub _padding: u32,
 }
 
 impl AscIndexId for AscHeader {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintHeader;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -974,7 +979,6 @@ impl AscIndexId for AscLightBlock {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintLightBlock;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscLightClientAttackEvidence {
@@ -986,33 +990,31 @@ pub(crate) struct AscLightClientAttackEvidence {
 }
 
 impl AscIndexId for AscLightClientAttackEvidence {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintLightClientAttackEvidence;
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId =
+        IndexForAscTypeId::TendermintLightClientAttackEvidence;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscPublicKey {
-    pub ed25519: AscPtr<Uint8Array>,
-    pub secp256k1: AscPtr<Uint8Array>,
+    pub ed25519: AscPtr<AscBytes>,
+    pub secp256k1: AscPtr<AscBytes>,
 }
 
 impl AscIndexId for AscPublicKey {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintPublicKey;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscPartSetHeader {
     pub total: u32,
-    pub hash: AscPtr<Uint8Array>,
+    pub hash: AscPtr<AscHash>,
 }
 
 impl AscIndexId for AscPartSetHeader {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintPartSetHeader;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -1023,7 +1025,6 @@ pub(crate) struct AscResponseBeginBlock {
 impl AscIndexId for AscResponseBeginBlock {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintResponseBeginBlock;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -1037,16 +1038,15 @@ impl AscIndexId for AscResponseEndBlock {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintResponseEndBlock;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscResponseDeliverTx {
     pub code: u32,
-    pub data: AscPtr<Uint8Array>,
+    pub data: AscPtr<AscBytes>,
     pub log: AscPtr<AscString>,
     pub info: AscPtr<AscString>,
-    pub gas_wanted: i64,
-    pub gas_used: i64,
+    pub gas_wanted: AscGas,
+    pub gas_used: AscGas,
     pub events: AscPtr<AscEventArray>,
     pub codespace: AscPtr<AscString>,
 }
@@ -1054,7 +1054,6 @@ pub(crate) struct AscResponseDeliverTx {
 impl AscIndexId for AscResponseDeliverTx {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintResponseDeliverTx;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -1067,18 +1066,17 @@ impl AscIndexId for AscSignedHeader {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintSignedHeader;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscTimestamp {
     pub seconds: i64,
     pub nanos: i32,
+    pub _padding: u32,
 }
 
 impl AscIndexId for AscTimestamp {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintTimestamp;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -1088,17 +1086,17 @@ pub(crate) struct AscTxResult {
     pub tx: AscPtr<AscTx>,
     pub result: AscPtr<AscResponseDeliverTx>,
     pub hash: AscPtr<Uint8Array>,
+    pub _padding: u32,
 }
 
 impl AscIndexId for AscTxResult {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintTxResult;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscValidator {
-    pub address: AscPtr<Uint8Array>,
+    pub address: AscPtr<AscHash>,
     pub pub_key: AscPtr<AscPublicKey>,
     pub voting_power: i64,
     pub proposer_priority: i64,
@@ -1107,7 +1105,6 @@ pub(crate) struct AscValidator {
 impl AscIndexId for AscValidator {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintValidator;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -1118,7 +1115,6 @@ pub(crate) struct AscValidatorParams {
 impl AscIndexId for AscValidatorParams {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintValidatorParams;
 }
-
 
 #[repr(C)]
 #[derive(AscType)]
@@ -1132,7 +1128,6 @@ impl AscIndexId for AscValidatorSet {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintValidatorSet;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscValidatorUpdate {
@@ -1145,7 +1140,6 @@ impl AscIndexId for AscValidatorUpdate {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintValidatorUpdate;
 }
 
-
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscVersionParams {
@@ -1155,5 +1149,3 @@ pub(crate) struct AscVersionParams {
 impl AscIndexId for AscVersionParams {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintVersionParams;
 }
-
-
