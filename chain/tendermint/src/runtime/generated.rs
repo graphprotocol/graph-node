@@ -1085,7 +1085,7 @@ pub(crate) struct AscTxResult {
     pub index: u32,
     pub tx: AscPtr<AscTx>,
     pub result: AscPtr<AscResponseDeliverTx>,
-    pub hash: AscPtr<Uint8Array>,
+    pub hash: AscPtr<AscHash>,
     pub _padding: u32,
 }
 

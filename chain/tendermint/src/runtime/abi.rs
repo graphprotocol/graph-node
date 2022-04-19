@@ -688,11 +688,91 @@ impl ToAscObj<AscTxResult> for codec::TxResult {
             index: self.index,
             tx: asc_new_or_null(heap, &self.tx, gas)?,
             result: asc_new_or_null(heap, &self.result, gas)?,
-            hash: asc_new(heap, &self.hash, gas),
+            hash: asc_new(heap, &Bytes(&self.hash), gas)?,
             _padding: 0,
         })
     }
 }
+
+impl ToAscObj<AscTx> for codec::Tx {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscTx, DeterministicHostError> {
+        Ok(AscTx {
+            body: asc_new_or_null(heap, &self.body, gas)?,
+            auth_info: asc_new_or_null(heap, &self.auth_info, gas)?,
+            signatures: asc_new(heap, &self.signatures, gas)?
+        })
+    }
+}
+
+impl ToAscObj<AscTxBody> for codec::TxBody {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscTxBody, DeterministicHostError> {
+        Ok(AscTxBody {
+            messages: asc_new(heap, &self.messages, gas)?,
+            memo: asc_new(heap, &self.memo, gas)?,
+            timeout_height: self.timeout_height,
+            extension_options: asc_new(heap, &self.extension_options, gas)?,
+            non_critical_extension_options: asc_new(heap, &self.non_critical_extension_options, gas)?,
+        })
+    }
+}
+
+impl ToAscObj<AscAuthInfo> for codec::AuthInfo {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscAuthInfo, DeterministicHostError> {
+        Ok(AscAuthInfo {
+            signer_infos: asc_new(heap, &self.signer_infos, gas)?,
+            fee: asc_new(heap, &self.fee, gas)?,
+            tip: asc_new(heap, &self.tip, gas)?,
+        })
+    }
+}
+
+impl ToAscObj<AscAny> for prost_types::Any {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscAny, DeterministicHostError> {
+        Ok(AscAny {
+            type_url: asc_new(heap, &self.type_url, gas)?,
+            value: asc_new(heap, &Bytes(&self.value), gas)?
+        })
+    }
+}
+
+impl ToAscObj<AscAnyArray> for Vec<prost_types::Any> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscAnyArray, DeterministicHostError> {
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
+
+        Ok(AscAnyArray(Array::new(&content?, heap, gas)?))
+    }
+}
+
+// impl ToAscObj<AscXXXX> for codec::XXXX {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         heap: &mut H,
+//         gas: &GasCounter,
+//     ) -> Result<AscXXXX, DeterministicHostError> {
+//         Ok(AscXXXX {
+//         })
+//     }
+// }
 
 impl ToAscObj<AscResponseDeliverTx> for codec::ResponseDeliverTx {
     fn to_asc_obj<H: AscHeap + ?Sized>(
