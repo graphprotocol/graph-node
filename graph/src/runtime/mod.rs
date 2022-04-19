@@ -310,6 +310,38 @@ pub enum IndexForAscTypeId {
 
     //Tendermint transaction data type
     TendermintTransactionData = 138,
+    TendermintAny = 139,
+    TendermintArrayAny = 140,
+    TendermintArrayCoin = 141,
+    TendermintArrayData = 142,
+    TendermintArrayScalarType = 143,
+    TendermintArraySignatureDescriptor = 144,
+    TendermintArraySignerInfo = 145,
+    TendermintAuthInfo = 146,
+    TendermintAuxSignerData = 147,
+    TendermintCoin = 148,
+    TendermintCompactBitArray = 149,
+    TendermintDecCoin = 150,
+    TendermintDecProto = 151,
+    TendermintFee = 152,
+    TendermintInterfaceDescriptor = 153,
+    TendermintIntProto = 154,
+    TendermintModeInfo = 155,
+    TendermintMulti = 156,
+    TendermintMultiSignature = 157,
+    TendermintScalarDescriptor = 158,
+    TendermintSignatureDescriptor = 159,
+    TendermintSignatureDescriptors = 160,
+    TendermintSignDoc = 161,
+    TendermintSignDocDirectAux = 162,
+    TendermintSignerInfo = 163,
+    TendermintSignModeEnum = 164,
+    TendermintSingle = 165,
+    TendermintTip = 166,
+    TendermintTx = 167,
+    TendermintTxBody = 168,
+    TendermintTxRaw = 169
+
 }
 
 impl ToAscObj<u32> for IndexForAscTypeId {

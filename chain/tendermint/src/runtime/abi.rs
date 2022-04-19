@@ -686,7 +686,7 @@ impl ToAscObj<AscTxResult> for codec::TxResult {
         Ok(AscTxResult {
             height: self.height,
             index: self.index,
-            tx: asc_new(heap, &Bytes(&self.tx), gas)?,
+            tx: asc_new_or_null(heap, &self.tx, gas)?,
             result: asc_new_or_null(heap, &self.result, gas)?,
             hash: asc_new(heap, &self.hash, gas),
             _padding: 0,
