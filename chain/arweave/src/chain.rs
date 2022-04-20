@@ -230,7 +230,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
         // FIXME (ARWEAVE):  Might not be necessary for ARWEAVE support for now
         Ok(Some(BlockPtr {
-            hash: BlockHash::from(vec![0xff; 32]),
+            hash: BlockHash::from(vec![0xff; 48]),
             number: block.number.saturating_sub(1),
         }))
     }

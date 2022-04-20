@@ -4,17 +4,19 @@ use graph_runtime_derive::AscType;
 use graph_runtime_wasm::asc_abi::class::{Array, AscString, Uint8Array};
 
 #[repr(C)]
-#[derive(AscType)]
+#[derive(AscType, Default)]
 pub struct AscBlock {
+    // pub ver: u32,
+    pub timestamp: u64,
+    pub last_retarget: u64,
+    pub height: u64,
     pub indep_hash: AscPtr<Uint8Array>,
     pub nonce: AscPtr<Uint8Array>,
     pub previous_block: AscPtr<Uint8Array>,
-    pub timestamp: u64,
-    pub last_retarget: u64,
     pub diff: AscPtr<Uint8Array>,
-    pub height: u64,
     pub hash: AscPtr<Uint8Array>,
     pub tx_root: AscPtr<Uint8Array>,
+    pub txs: AscPtr<AscTransactionArray>,
     pub wallet_list: AscPtr<Uint8Array>,
     pub reward_addr: AscPtr<Uint8Array>,
     pub tags: AscPtr<AscTagArray>,
@@ -75,6 +77,27 @@ impl AscIndexId for AscTag {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::ArweaveTag;
 }
 
+#[repr(C)]
+pub struct AscTransactionArray(pub(crate) Array<AscPtr<AscTransaction>>);
+
+impl AscType for AscTransactionArray {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        self.0.to_asc_bytes()
+    }
+
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
+        Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
+    }
+}
+
+impl AscIndexId for AscTransactionArray {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::ArweaveTransactionArray;
+}
+
+#[repr(C)]
 pub struct AscTagArray(pub(crate) Array<AscPtr<AscTag>>);
 
 impl AscType for AscTagArray {
