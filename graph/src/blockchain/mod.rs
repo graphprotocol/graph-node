@@ -44,6 +44,7 @@ pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersA
 pub use types::{BlockHash, BlockPtr, ChainIdentifier};
 
 use self::block_stream::BlockStream;
+pub use self::block_stream::BufferedBlockStreamMetrics;
 
 pub trait TriggersAdapterSelector<C: Blockchain>: Sync + Send {
     fn triggers_adapter(

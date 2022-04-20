@@ -6,7 +6,7 @@ use crate::subgraph::metrics::{
 };
 use crate::subgraph::runner::SubgraphRunner;
 use crate::subgraph::SubgraphInstance;
-use graph::blockchain::block_stream::BlockStreamMetrics;
+use graph::blockchain::block_stream::{BlockStreamMetrics, BufferedBlockStreamMetrics};
 use graph::blockchain::Blockchain;
 use graph::blockchain::NodeCapabilities;
 use graph::blockchain::{BlockchainKind, TriggerFilter};
@@ -234,6 +234,10 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             store.shard().to_string(),
             stopwatch_metrics,
         ));
+        let buffered_block_stream_metrics = Arc::new(BufferedBlockStreamMetrics::new(
+            &deployment.hash,
+            registry.cheap_clone(),
+        ));
 
         // Initialize deployment_head with current deployment head. Any sort of trouble in
         // getting the deployment head ptr leads to initializing with 0
@@ -276,6 +280,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             subgraph: subgraph_metrics,
             host: host_metrics,
             stream: block_stream_metrics,
+            buffered_stream: buffered_block_stream_metrics,
         };
 
         // Keep restarting the subgraph until it terminates. The subgraph
