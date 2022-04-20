@@ -209,6 +209,9 @@ pub struct EnvVars {
     /// Set by the environment variable `GRAPH_FIREHOSE_STREAM_BUFFER`.
     /// Default is 1.
     pub firehose_stream_buffer: usize,
+    /// Set by the environment variable `GRAPH_FIREHOSE_STREAM_TIMEOUT`.
+    /// Default is 30 (seconds).
+    pub firehose_stream_timeout: Duration,
 }
 
 impl EnvVars {
@@ -266,6 +269,7 @@ impl EnvVars {
             external_ws_base_url: inner.external_ws_base_url,
             block_stream_buffer: inner.block_stream_buffer,
             firehose_stream_buffer: inner.firehose_stream_buffer,
+            firehose_stream_timeout: Duration::from_secs(inner.firehose_stream_timeout),
         })
     }
 
@@ -378,6 +382,8 @@ struct Inner {
     block_stream_buffer: usize,
     #[envconfig(from = "GRAPH_FIREHOSE_STREAM_BUFFER", default = "1")]
     firehose_stream_buffer: usize,
+    #[envconfig(from = "GRAPH_FIREHOSE_STREAM_TIMEOUT", default = "30")]
+    firehose_stream_timeout: u64,
 }
 
 #[derive(Clone, Debug)]

@@ -3,6 +3,7 @@ use crate::{
     blockchain::BlockPtr,
     cheap_clone::CheapClone,
     components::store::BlockNumber,
+    env::EnvVars,
     firehose::{decode_firehose_block, ForkStep},
     prelude::{debug, info},
 };
@@ -189,6 +190,8 @@ impl FirehoseEndpoint {
         let mut client = firehose::stream_client::StreamClient::with_interceptor(
             self.channel.cheap_clone(),
             move |mut r: Request<()>| {
+                r.set_timeout(EnvVars::default().firehose_stream_timeout);
+
                 if let Some(ref t) = token_metadata {
                     r.metadata_mut().insert("authorization", t.clone());
                 }
