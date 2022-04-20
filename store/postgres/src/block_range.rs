@@ -205,6 +205,13 @@ impl<'a> BlockRangeColumn<'a> {
         }
     }
 
+    pub fn column_name(&self) -> &str {
+        match self {
+            BlockRangeColumn::Mutable { .. } => BLOCK_RANGE_COLUMN,
+            BlockRangeColumn::Immutable { .. } => BLOCK_COLUMN,
+        }
+    }
+
     /// Output the qualified name of the block range column
     pub fn name(&self, out: &mut AstPass<Pg>) {
         match self {

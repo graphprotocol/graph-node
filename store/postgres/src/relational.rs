@@ -665,21 +665,31 @@ impl Layout {
                 }
                 query.load::<EntityData>(conn)
             })
-            .map_err(|e| match e {
-                diesel::result::Error::DatabaseError(
-                    diesel::result::DatabaseErrorKind::__Unknown,
-                    ref info,
-                ) if info.message().starts_with("syntax error in tsquery") => {
-                    QueryExecutionError::FulltextQueryInvalidSyntax(info.message().to_string())
+            .map_err(|e| {
+                use diesel::result::DatabaseErrorKind;
+                use diesel::result::Error::*;
+                // Sometimes `debug_query(..)` can't be turned into a
+                // string, e.g., because `walk_ast` for one of its fragments
+                // returns an error. When that happens, avoid a panic from
+                // simply calling `to_string()` on it, and output a string
+                // representation of the `FilterQuery` instead of the SQL
+                let mut query_text = String::new();
+                match write!(query_text, "{}", debug_query(&query_clone)) {
+                    Ok(()) => (),
+                    Err(_) => {
+                        write!(query_text, "{query_clone}").ok();
+                    }
+                };
+                match e {
+                    DatabaseError(DatabaseErrorKind::__Unknown, ref info)
+                        if info.message().starts_with("syntax error in tsquery") =>
+                    {
+                        QueryExecutionError::FulltextQueryInvalidSyntax(info.message().to_string())
+                    }
+                    _ => QueryExecutionError::ResolveEntitiesError(format!(
+                        "{e}, query = {query_text}",
+                    )),
                 }
-                diesel::result::Error::QueryBuilderError(e) => {
-                    QueryExecutionError::ResolveEntitiesError(e.to_string())
-                }
-                _ => QueryExecutionError::ResolveEntitiesError(format!(
-                    "{}, query = {}",
-                    e,
-                    debug_query(&query_clone).to_string()
-                )),
             })?;
         log_query_timing(logger, &query_clone, start.elapsed(), values.len());
 

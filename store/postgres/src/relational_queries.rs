@@ -859,6 +859,13 @@ pub struct QueryFilter<'a> {
     table: &'a Table,
 }
 
+/// String representation that is useful for debugging when `walk_ast` fails
+impl<'a> fmt::Display for QueryFilter<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.filter)
+    }
+}
+
 impl<'a> QueryFilter<'a> {
     pub fn new(filter: &'a EntityFilter, table: &'a Table) -> Result<Self, StoreError> {
         Self::valid_attributes(filter, table)?;
@@ -2140,6 +2147,92 @@ pub enum FilterCollection<'a> {
     MultiWindow(Vec<FilterWindow<'a>>, Vec<String>),
 }
 
+/// String representation that is useful for debugging when `walk_ast` fails
+impl<'a> fmt::Display for FilterCollection<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), std::fmt::Error> {
+        fn fmt_table(
+            f: &mut fmt::Formatter,
+            table: &Table,
+            attrs: &AttributeNames,
+            filter: &Option<QueryFilter>,
+        ) -> Result<(), std::fmt::Error> {
+            write!(f, "{}[", table.qualified_name.as_str().replace("\\\"", ""))?;
+            match attrs {
+                AttributeNames::All => write!(f, "*")?,
+                AttributeNames::Select(cols) => write!(f, "{}", cols.iter().join(","))?,
+            };
+            write!(f, "]")?;
+            if let Some(filter) = filter {
+                write!(f, "{{{}}}", filter)?;
+            }
+            Ok(())
+        }
+
+        fn fmt_window(f: &mut fmt::Formatter, w: &FilterWindow) -> Result<(), std::fmt::Error> {
+            let FilterWindow {
+                table,
+                query_filter,
+                ids,
+                link,
+                column_names,
+            } = w;
+            fmt_table(f, table, column_names, query_filter)?;
+            if !ids.is_empty() {
+                use ChildMultiplicity::*;
+
+                write!(f, "<")?;
+
+                match link {
+                    TableLink::Direct(col, Single) => {
+                        write!(f, "uniq:{}={}", col.name(), ids.join(","))?
+                    }
+                    TableLink::Direct(col, Many) => {
+                        write!(f, "many:{}={}", col.name(), ids.join(","))?
+                    }
+                    TableLink::Parent(ParentIds::List(css)) => {
+                        let css = css
+                            .into_iter()
+                            .map(|cs| {
+                                cs.into_iter()
+                                    .filter_map(|c| c.as_ref().map(|s| &s.0))
+                                    .join(",")
+                            })
+                            .join("],[");
+                        write!(f, "uniq:id=[{}]", css)?
+                    }
+                    TableLink::Parent(ParentIds::Scalar(cs)) => {
+                        write!(f, "uniq:id={}", cs.join(","))?
+                    }
+                };
+                write!(f, " for {}>", ids.join(","))?;
+            }
+            Ok(())
+        }
+
+        match self {
+            FilterCollection::All(tables) => {
+                for (table, filter, attrs) in tables {
+                    fmt_table(f, table, attrs, filter)?;
+                }
+            }
+            FilterCollection::SingleWindow(w) => {
+                fmt_window(f, w)?;
+            }
+            FilterCollection::MultiWindow(ws, _ps) => {
+                let mut first = true;
+                for w in ws {
+                    if !first {
+                        write!(f, ", ")?
+                    }
+                    fmt_window(f, w)?;
+                    first = false;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 impl<'a> FilterCollection<'a> {
     pub fn new(
         layout: &'a Layout,
@@ -2238,6 +2331,33 @@ pub enum SortKey<'a> {
         value: Option<&'a str>,
         direction: &'static str,
     },
+}
+
+/// String representation that is useful for debugging when `walk_ast` fails
+impl<'a> fmt::Display for SortKey<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use SortKey::*;
+
+        match self {
+            None => write!(f, "none"),
+            IdAsc(Option::None) => write!(f, "{}", PRIMARY_KEY_COLUMN),
+            IdAsc(Some(br)) => write!(f, "{}, {}", PRIMARY_KEY_COLUMN, br.column_name()),
+            IdDesc(Option::None) => write!(f, "{} desc", PRIMARY_KEY_COLUMN),
+            IdDesc(Some(br)) => write!(f, "{} desc, {} desc", PRIMARY_KEY_COLUMN, br.column_name()),
+            Key {
+                column,
+                value: _,
+                direction,
+            } => write!(
+                f,
+                "{} {}, {} {}",
+                column.name.as_str(),
+                direction,
+                PRIMARY_KEY_COLUMN,
+                direction
+            ),
+        }
+    }
 }
 
 impl<'a> SortKey<'a> {
@@ -2445,6 +2565,22 @@ impl<'a> SortKey<'a> {
 #[derive(Debug, Clone)]
 pub struct FilterRange(EntityRange);
 
+/// String representation that is useful for debugging when `walk_ast` fails
+impl fmt::Display for FilterRange {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(first) = self.0.first {
+            write!(f, "first {}", first)?;
+            if self.0.skip > 0 {
+                write!(f, " ")?;
+            }
+        }
+        if self.0.skip > 0 {
+            write!(f, "skip {}", self.0.skip)?;
+        }
+        Ok(())
+    }
+}
+
 impl QueryFragment<Pg> for FilterRange {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         let range = &self.0;
@@ -2471,6 +2607,21 @@ pub struct FilterQuery<'a> {
     range: FilterRange,
     block: BlockNumber,
     query_id: Option<String>,
+}
+
+/// String representation that is useful for debugging when `walk_ast` fails
+impl<'a> fmt::Display for FilterQuery<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), std::fmt::Error> {
+        write!(
+            f,
+            "from {} order {} {} at {}",
+            &self.collection, &self.sort_key, &self.range, self.block
+        )?;
+        if let Some(query_id) = &self.query_id {
+            write!(f, " query_id {}", query_id)?;
+        }
+        Ok(())
+    }
 }
 
 impl<'a> FilterQuery<'a> {
