@@ -1,5 +1,7 @@
 use crate::subgraph::inputs::IndexingInputs;
-use graph::blockchain::block_stream::{BlockStream, BufferedBlockStream};
+use graph::blockchain::block_stream::{
+    BlockStream, BufferedBlockStream, BufferedBlockStreamMetrics,
+};
 use graph::blockchain::Blockchain;
 use graph::env::EnvVars;
 use graph::prelude::Error;
@@ -8,6 +10,7 @@ use std::sync::Arc;
 pub async fn new_block_stream<C: Blockchain>(
     inputs: &IndexingInputs<C>,
     filter: &C::TriggerFilter,
+    metrics: Arc<BufferedBlockStreamMetrics>,
 ) -> Result<Box<dyn BlockStream<C>>, Error> {
     let env_vars = EnvVars::default();
 
@@ -42,5 +45,6 @@ pub async fn new_block_stream<C: Blockchain>(
     Ok(BufferedBlockStream::spawn_from_stream(
         block_stream,
         buffer_size,
+        metrics,
     ))
 }

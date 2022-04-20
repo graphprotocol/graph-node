@@ -92,10 +92,14 @@ where
             let block_stream_canceler = CancelGuard::new();
             let block_stream_cancel_handle = block_stream_canceler.handle();
 
-            let mut block_stream = new_block_stream(&self.inputs, &self.ctx.filter)
-                .await?
-                .map_err(CancelableError::Error)
-                .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
+            let mut block_stream = new_block_stream(
+                &self.inputs,
+                &self.ctx.filter,
+                self.metrics.buffered_stream.cheap_clone(),
+            )
+            .await?
+            .map_err(CancelableError::Error)
+            .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
 
             debug!(self.logger, "Starting block stream");
 

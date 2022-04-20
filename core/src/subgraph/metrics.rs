@@ -1,4 +1,4 @@
-use graph::blockchain::block_stream::BlockStreamMetrics;
+use graph::blockchain::block_stream::{BlockStreamMetrics, BufferedBlockStreamMetrics};
 use graph::prelude::{Gauge, Histogram, HostMetrics, MetricsRegistry};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -90,4 +90,6 @@ pub struct RunnerMetrics {
     pub host: Arc<HostMetrics>,
     /// Sensors to measure the BlockStream metrics
     pub stream: Arc<BlockStreamMetrics>,
+    /// Sensors to measure buffered block stream behavior
+    pub buffered_stream: Arc<BufferedBlockStreamMetrics>,
 }

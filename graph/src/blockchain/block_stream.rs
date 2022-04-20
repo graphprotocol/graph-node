@@ -2,6 +2,7 @@ use anyhow::Error;
 use async_stream::stream;
 use futures03::Stream;
 use std::sync::Arc;
+use std::time::Instant;
 use thiserror::Error;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
@@ -12,6 +13,25 @@ use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::firehose;
 use crate::{prelude::*, prometheus::labels};
 
+pub struct BufferedBlockStreamMetrics {
+    event_read_duration: Box<Histogram>,
+}
+
+impl BufferedBlockStreamMetrics {
+    pub fn new(deployment: &str, metrics_registry: Arc<dyn MetricsRegistry>) -> Self {
+        Self {
+            event_read_duration: metrics_registry
+                .new_deployment_histogram(
+                    "deployment_block_stream_event_read_duration",
+                    "Measures the time it takes to read individual events from a block stream",
+                    deployment,
+                    vec![0.001, 0.01, 0.1, 1.0, 2.0, 10.0],
+                )
+                .expect("failed to create `deployment_block_stream_event_read_duration` metric"),
+        }
+    }
+}
+
 pub struct BufferedBlockStream<C: Blockchain> {
     inner: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, Error>> + Send>>,
 }
@@ -20,9 +40,12 @@ impl<C: Blockchain + 'static> BufferedBlockStream<C> {
     pub fn spawn_from_stream(
         stream: Box<dyn BlockStream<C>>,
         size_hint: usize,
+        metrics: Arc<BufferedBlockStreamMetrics>,
     ) -> Box<dyn BlockStream<C>> {
         let (sender, receiver) = mpsc::channel::<Result<BlockStreamEvent<C>, Error>>(size_hint);
-        crate::spawn(async move { BufferedBlockStream::stream_blocks(stream, sender).await });
+        crate::spawn(
+            async move { BufferedBlockStream::stream_blocks(stream, sender, metrics).await },
+        );
 
         Box::new(BufferedBlockStream::new(receiver))
     }
@@ -47,10 +70,17 @@ impl<C: Blockchain + 'static> BufferedBlockStream<C> {
     pub async fn stream_blocks(
         mut stream: Box<dyn BlockStream<C>>,
         sender: Sender<Result<BlockStreamEvent<C>, Error>>,
+        metrics: Arc<BufferedBlockStreamMetrics>,
     ) -> Result<(), Error> {
+        let mut last_event_time = Instant::now();
+
         while let Some(event) = stream.next().await {
+            metrics
+                .event_read_duration
+                .observe(last_event_time.elapsed().as_secs_f64());
+
             match sender.send(event).await {
-                Ok(_) => continue,
+                Ok(_) => {}
                 Err(err) => {
                     return Err(anyhow!(
                         "buffered blockstream channel is closed, stopping. Err: {}",
@@ -58,6 +88,8 @@ impl<C: Blockchain + 'static> BufferedBlockStream<C> {
                     ))
                 }
             }
+
+            last_event_time = Instant::now();
         }
 
         Ok(())
