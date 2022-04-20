@@ -109,6 +109,7 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
 
 pub type FirehoseCursor = Option<String>;
 
+#[derive(Debug)]
 pub struct BlockWithTriggers<C: Blockchain> {
     pub block: C::Block,
     pub trigger_data: Vec<C::TriggerData>,
@@ -196,7 +197,7 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
         &self,
         logger: &Logger,
         response: &firehose::Response,
-        adapter: &C::TriggersAdapter,
+        adapter: &Arc<dyn TriggersAdapter<C>>,
         filter: &C::TriggerFilter,
     ) -> Result<BlockStreamEvent<C>, FirehoseError>;
 
@@ -240,6 +241,7 @@ pub enum FirehoseError {
     UnknownError(#[from] anyhow::Error),
 }
 
+#[derive(Debug)]
 pub enum BlockStreamEvent<C: Blockchain> {
     // The payload is the block the subgraph should revert to, so it becomes the new subgraph head.
     Revert(BlockPtr, FirehoseCursor),

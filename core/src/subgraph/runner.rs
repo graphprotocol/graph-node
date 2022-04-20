@@ -8,7 +8,7 @@ use crate::subgraph::SubgraphInstance;
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers};
-use graph::blockchain::{Block, Blockchain, DataSource, TriggerFilter as _, TriggersAdapter};
+use graph::blockchain::{Block, Blockchain, DataSource, TriggerFilter as _};
 use graph::components::{
     store::ModificationsAndCache,
     subgraph::{CausalityRegion, MappingError, ProofOfIndexing, SharedProofOfIndexing},

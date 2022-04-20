@@ -12,7 +12,7 @@ use graph::{
             FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
         },
         firehose_block_stream::FirehoseBlockStream,
-        BlockHash, BlockPtr, Blockchain, IngestorError,
+        BlockHash, BlockPtr, Blockchain, IngestorError, RuntimeAdapter as RuntimeAdapterTrait,
     },
     components::store::DeploymentLocator,
     firehose::{self as firehose, ForkStep},
@@ -140,8 +140,6 @@ impl Blockchain for Chain {
 
     type UnresolvedDataSourceTemplate = UnresolvedDataSourceTemplate;
 
-    type TriggersAdapter = TriggersAdapter;
-
     type TriggerData = crate::trigger::NearTrigger;
 
     type MappingTrigger = crate::trigger::NearTrigger;
@@ -150,14 +148,12 @@ impl Blockchain for Chain {
 
     type NodeCapabilities = crate::capabilities::NodeCapabilities;
 
-    type RuntimeAdapter = RuntimeAdapter;
-
     fn triggers_adapter(
         &self,
         _loc: &DeploymentLocator,
         _capabilities: &Self::NodeCapabilities,
         _unified_api_version: UnifiedMappingApiVersion,
-    ) -> Result<Arc<Self::TriggersAdapter>, Error> {
+    ) -> Result<Arc<dyn TriggersAdapterTrait<Self>>, Error> {
         let adapter = TriggersAdapter {};
         Ok(Arc::new(adapter))
     }
@@ -213,7 +209,7 @@ impl Blockchain for Chain {
             .await
     }
 
-    fn runtime_adapter(&self) -> Arc<Self::RuntimeAdapter> {
+    fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
         Arc::new(RuntimeAdapter {})
     }
 
@@ -330,7 +326,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         &self,
         logger: &Logger,
         response: &firehose::Response,
-        adapter: &TriggersAdapter,
+        adapter: &Arc<dyn TriggersAdapterTrait<Chain>>,
         filter: &TriggerFilter,
     ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
         let step = ForkStep::from_i32(response.step).unwrap_or_else(|| {

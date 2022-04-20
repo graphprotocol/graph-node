@@ -1,5 +1,7 @@
-use ethereum::chain::EthereumStreamBuilder;
-use ethereum::{BlockIngestor as EthereumBlockIngestor, EthereumAdapterTrait, EthereumNetworks};
+use ethereum::chain::{EthereumAdapterSelector, EthereumStreamBuilder};
+use ethereum::{
+    BlockIngestor as EthereumBlockIngestor, EthereumAdapterTrait, EthereumNetworks, RuntimeAdapter,
+};
 use git_testament::{git_testament, render_testament};
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::{Block as BlockchainBlock, Blockchain, BlockchainKind, BlockchainMap};
@@ -566,6 +568,23 @@ fn ethereum_networks_as_chains(
         .map(|(network_name, eth_adapters, chain_store, is_ingestible)| {
             let firehose_endpoints = firehose_networks.and_then(|v| v.networks.get(network_name));
 
+            let adapter_selector = EthereumAdapterSelector::new(
+                logger_factory.clone(),
+                Arc::new(eth_adapters.clone()),
+                Arc::new(
+                    firehose_endpoints
+                        .map(|fe| fe.clone())
+                        .unwrap_or(FirehoseEndpoints::new()),
+                ),
+                registry.clone(),
+                chain_store.clone(),
+            );
+
+            let runtime_adapter = Arc::new(RuntimeAdapter {
+                eth_adapters: Arc::new(eth_adapters.clone()),
+                call_cache: chain_store.cheap_clone(),
+            });
+
             let chain = ethereum::Chain::new(
                 logger_factory.clone(),
                 network_name.clone(),
@@ -577,6 +596,8 @@ fn ethereum_networks_as_chains(
                 eth_adapters.clone(),
                 chain_head_update_listener.clone(),
                 Arc::new(EthereumStreamBuilder {}),
+                Arc::new(adapter_selector),
+                runtime_adapter,
                 ethereum::ENV_VARS.reorg_threshold,
                 is_ingestible,
             );

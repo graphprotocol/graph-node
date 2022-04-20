@@ -3,23 +3,30 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
+use anyhow::anyhow;
 use anyhow::Error;
 use async_stream::stream;
+use ethereum::trigger::{EthereumBlockTriggerType, EthereumTrigger};
 use futures03::{Stream, StreamExt};
-use graph::blockchain::block_stream::{BlockStream, BlockStreamBuilder, BlockStreamEvent};
-use graph::blockchain::{Block, BlockPtr, Blockchain, BlockchainMap, ChainIdentifier};
+use graph::blockchain::block_stream::{
+    BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockWithTriggers,
+};
+use graph::blockchain::{
+    Block, BlockHash, BlockPtr, Blockchain, BlockchainMap, ChainIdentifier, RuntimeAdapter,
+    TriggersAdapter, TriggersAdapterSelector,
+};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::{BlockStore, DeploymentId, DeploymentLocator};
 use graph::env::{EnvVars, ENV_VARS};
-use graph::firehose::FirehoseEndpoints;
+use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::{H256, U64};
 use graph::prelude::{
-    async_trait, DeploymentHash, LightEthereumBlock, LoggerFactory, MetricsRegistry, NodeId,
-    SubgraphAssignmentProvider, SubgraphName, SubgraphRegistrar, SubgraphStore,
+    async_trait, BlockNumber, DeploymentHash, LightEthereumBlock, LoggerFactory, MetricsRegistry,
+    NodeId, SubgraphAssignmentProvider, SubgraphName, SubgraphRegistrar, SubgraphStore,
     SubgraphVersionSwitchingMode,
 };
-use graph_chain_ethereum::{self as ethereum};
+use graph_chain_ethereum::{self as ethereum, Chain};
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -33,7 +40,7 @@ use graph_node::{
 use slog::{debug, info, Logger};
 use std::env;
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_runner() -> anyhow::Result<()> {
     let subgraph_name = SubgraphName::new("test1")
         .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
@@ -51,9 +58,42 @@ async fn test_runner() -> anyhow::Result<()> {
             number: Some(U64::from(1)),
             ..Default::default()
         }));
-    let stop_block = 1;
+    let stop_block = 2;
 
-    let ctx = setup(subgraph_name.clone(), &deployment, start_block, vec![]).await;
+    let ctx = setup(
+        subgraph_name.clone(),
+        &deployment,
+        start_block.clone(),
+        vec![
+            BlockStreamEvent::ProcessBlock(
+                BlockWithTriggers::<graph_chain_ethereum::chain::Chain> {
+                    block: start_block.clone(),
+                    trigger_data: vec![],
+                },
+                None,
+            ),
+            BlockStreamEvent::ProcessBlock(
+                BlockWithTriggers::<graph_chain_ethereum::chain::Chain> {
+                    block: graph_chain_ethereum::chain::BlockFinality::Final(Arc::new(
+                        LightEthereumBlock {
+                            hash: Some(H256::from_low_u64_be(2)),
+                            number: Some(U64::from(2)),
+                            ..Default::default()
+                        },
+                    )),
+                    trigger_data: vec![EthereumTrigger::Block(
+                        BlockPtr {
+                            hash: H256::from_low_u64_be(2).into(),
+                            number: 2,
+                        },
+                        EthereumBlockTriggerType::Every,
+                    )],
+                },
+                None,
+            ),
+        ],
+    )
+    .await;
 
     let provider = ctx.provider.clone();
     let store = ctx.store.clone();
@@ -67,11 +107,13 @@ async fn test_runner() -> anyhow::Result<()> {
     loop {
         tokio::time::sleep(Duration::from_millis(1000)).await;
 
-        let block_ptr = store
-            .least_block_ptr(&deployment.hash)
-            .await
-            .unwrap()
-            .unwrap();
+        let block_ptr = match store.least_block_ptr(&deployment.hash).await {
+            Ok(Some(ptr)) => ptr,
+            res => {
+                info!(&logger, "{:?}", res);
+                continue;
+            }
+        };
 
         debug!(&logger, "subgraph block: {:?}", block_ptr);
 
@@ -108,8 +150,8 @@ struct TestContext {
 async fn setup(
     subgraph_name: SubgraphName,
     deployment: &DeploymentLocator,
-    start_block: <graph_chain_ethereum::Chain as Blockchain>::Block,
-    events: Vec<BlockStreamEvent<graph_chain_ethereum::Chain>>,
+    start_block: <Chain as Blockchain>::Block,
+    events: Vec<BlockStreamEvent<Chain>>,
 ) -> TestContext {
     let logger = Logger::root(slog::Discard, slog::o!());
     let logger_factory = LoggerFactory::new(logger.clone(), None);
@@ -150,6 +192,15 @@ async fn setup(
         .chain_store(network_name.as_ref())
         .expect(format!("No chain store for {}", &network_name).as_ref());
 
+    // This is needed bacause the stream builder only works for firehose and this will only be called if there
+    // are > 1 firehose endpoints. The endpoint itself is never used because it's mocked.
+    let firehose_endpoints: FirehoseEndpoints = vec![Arc::new(
+        FirehoseEndpoint::new(logger.clone(), "", "https://example.com", None, true)
+            .await
+            .expect("unable to create endpoint"),
+    )]
+    .into();
+
     let chain = ethereum::Chain::new(
         logger_factory.clone(),
         network_name.clone(),
@@ -157,10 +208,12 @@ async fn setup(
         mock_registry.clone(),
         chain_store.cheap_clone(),
         chain_store,
-        FirehoseEndpoints::new(),
+        firehose_endpoints,
         ethereum::network::EthereumNetworkAdapters { adapters: vec![] },
         chain_head_update_listener,
         Arc::new(StaticStreamBuilder { events }),
+        Arc::new(NoopAdapterSelector {}),
+        Arc::new(NoopRuntimeAdapter {}),
         ethereum::ENV_VARS.reorg_threshold,
         // We assume the tested chain is always ingestible for now
         true,
@@ -297,6 +350,79 @@ fn stream_events<C: Blockchain>(
     stream! {
         for event in blocks.into_iter() {
             yield Ok(event);
+        }
+
+        loop {
+            yield Err(anyhow!("no more blocks"))
+        }
+    }
+}
+
+struct NoopRuntimeAdapter {}
+
+impl RuntimeAdapter<Chain> for NoopRuntimeAdapter {
+    fn host_fns(
+        &self,
+        _ds: &<Chain as Blockchain>::DataSource,
+    ) -> Result<Vec<graph::blockchain::HostFn>, Error> {
+        Ok(vec![])
+    }
+}
+
+struct NoopAdapterSelector {}
+
+impl TriggersAdapterSelector<Chain> for NoopAdapterSelector {
+    fn triggers_adapter(
+        &self,
+        _loc: &DeploymentLocator,
+        _capabilities: &<graph_chain_ethereum::Chain as Blockchain>::NodeCapabilities,
+        _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
+    ) -> Result<Arc<dyn graph::blockchain::TriggersAdapter<Chain>>, Error> {
+        Ok(Arc::new(NoopTriggersAdapter {}))
+    }
+}
+
+struct NoopTriggersAdapter {}
+
+#[async_trait]
+impl TriggersAdapter<Chain> for NoopTriggersAdapter {
+    async fn ancestor_block(
+        &self,
+        _ptr: BlockPtr,
+        _offset: BlockNumber,
+    ) -> Result<Option<<graph_chain_ethereum::Chain as Blockchain>::Block>, Error> {
+        todo!()
+    }
+
+    async fn scan_triggers(
+        &self,
+        _from: BlockNumber,
+        _to: BlockNumber,
+        _filter: &<graph_chain_ethereum::Chain as Blockchain>::TriggerFilter,
+    ) -> Result<Vec<BlockWithTriggers<Chain>>, Error> {
+        todo!()
+    }
+
+    async fn triggers_in_block(
+        &self,
+        _logger: &Logger,
+        _block: <graph_chain_ethereum::Chain as Blockchain>::Block,
+        _filter: &<graph_chain_ethereum::Chain as Blockchain>::TriggerFilter,
+    ) -> Result<BlockWithTriggers<Chain>, Error> {
+        todo!()
+    }
+
+    async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
+        todo!()
+    }
+
+    async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
+        match block.number {
+            0 => Ok(None),
+            n => Ok(Some(BlockPtr {
+                hash: BlockHash::default(),
+                number: n - 1,
+            })),
         }
     }
 }

@@ -16,12 +16,11 @@ pub use env::ENV_VARS;
 
 // ETHDEP: These concrete types should probably not be exposed.
 pub use data_source::{DataSource, DataSourceTemplate, Mapping, MappingABI, TemplateSource};
-pub use trigger::MappingTrigger;
 
 pub mod chain;
 
 pub mod network;
-mod trigger;
+pub mod trigger;
 
 pub use crate::adapter::{
     EthereumAdapter as EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError,
