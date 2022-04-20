@@ -203,6 +203,12 @@ pub struct EnvVars {
     /// Set by the environment variable `EXTERNAL_WS_BASE_URL`. No default
     /// value is provided.
     pub external_ws_base_url: Option<String>,
+    /// Set by the environment variable `GRAPH_BLOCK_STREAM_BUFFER`.
+    /// Default is 100.
+    pub block_stream_buffer: usize,
+    /// Set by the environment variable `GRAPH_FIREHOSE_STREAM_BUFFER`.
+    /// Default is 1.
+    pub firehose_stream_buffer: usize,
 }
 
 impl EnvVars {
@@ -258,6 +264,8 @@ impl EnvVars {
             explorer_query_threshold: Duration::from_millis(inner.explorer_query_threshold_in_msec),
             external_http_base_url: inner.external_http_base_url,
             external_ws_base_url: inner.external_ws_base_url,
+            block_stream_buffer: inner.block_stream_buffer,
+            firehose_stream_buffer: inner.firehose_stream_buffer,
         })
     }
 
@@ -366,6 +374,10 @@ struct Inner {
     external_http_base_url: Option<String>,
     #[envconfig(from = "EXTERNAL_WS_BASE_URL")]
     external_ws_base_url: Option<String>,
+    #[envconfig(from = "GRAPH_BLOCK_STREAM_BUFFER", default = "100")]
+    block_stream_buffer: usize,
+    #[envconfig(from = "GRAPH_FIREHOSE_STREAM_BUFFER", default = "1")]
+    firehose_stream_buffer: usize,
 }
 
 #[derive(Clone, Debug)]
