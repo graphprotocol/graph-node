@@ -67,7 +67,7 @@ jobs:
           args: --verbose --workspace --exclude graph-tests -- --nocapture
 
   runner-tests:
-    name: Run unit tests
+    name: Subgraph Runner integration tests
     strategy:
       fail-fast: false
       matrix:
