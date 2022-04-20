@@ -337,7 +337,7 @@ impl AscIndexId for AscSignedMsgTypeEnum {
 #[derive(AscType)]
 pub(crate) struct AscAny {
     pub type_url: AscPtr<AscString>,
-    pub value: AscPtr<Uint8Array>,
+    pub value: AscPtr<AscBytes>,
 }
 
 impl AscIndexId for AscAny {
@@ -358,7 +358,7 @@ impl AscIndexId for AscMultiSignature {
 #[derive(AscType)]
 pub(crate) struct AscCompactBitArray {
     pub extra_bits_stored: u32,
-    pub elems: AscPtr<Uint8Array>,
+    pub elems: AscPtr<AscBytes>,
 }
 
 impl AscIndexId for AscCompactBitArray {
@@ -396,7 +396,7 @@ impl AscIndexId for AscSignatureDescriptors {
 #[derive(AscType)]
 pub(crate) struct AscSingle {
     pub mode: AscPtr<AscSignModeEnum>,
-    pub signature: AscPtr<Uint8Array>,
+    pub signature: AscPtr<AscBytes>,
 }
 
 impl AscIndexId for AscSingle {
@@ -533,8 +533,8 @@ impl AscIndexId for AscTx {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscTxRaw {
-    pub body_bytes: AscPtr<Uint8Array>,
-    pub auth_info_bytes: AscPtr<Uint8Array>,
+    pub body_bytes: AscPtr<AscBytes>,
+    pub auth_info_bytes: AscPtr<AscBytes>,
     pub signatures: AscPtr<AscBytesArray>,
 }
 
@@ -545,8 +545,8 @@ impl AscIndexId for AscTxRaw {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscSignDoc {
-    pub body_bytes: AscPtr<Uint8Array>,
-    pub auth_info_bytes: AscPtr<Uint8Array>,
+    pub body_bytes: AscPtr<AscBytes>,
+    pub auth_info_bytes: AscPtr<AscBytes>,
     pub chain_id: AscPtr<AscString>,
     pub account_number: u64,
 }
@@ -558,7 +558,7 @@ impl AscIndexId for AscSignDoc {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscSignDocDirectAux {
-    pub body_bytes: AscPtr<Uint8Array>,
+    pub body_bytes: AscPtr<AscBytes>,
     pub public_key: AscPtr<AscAny>,
     pub chain_id: AscPtr<AscString>,
     pub account_number: u64,
@@ -649,7 +649,7 @@ pub(crate) struct AscAuxSignerData {
     pub address: AscPtr<AscString>,
     pub sign_doc: AscPtr<AscSignDocDirectAux>,
     pub mode: AscPtr<AscSignModeEnum>,
-    pub sig: AscPtr<Uint8Array>,
+    pub sig: AscPtr<AscBytes>,
 }
 
 impl AscIndexId for AscAuxSignerData {
@@ -1131,7 +1131,7 @@ impl AscIndexId for AscValidatorSet {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscValidatorUpdate {
-    pub address: AscPtr<Uint8Array>,
+    pub address: AscPtr<AscBytes>,
     pub pub_key: AscPtr<AscPublicKey>,
     pub power: i64,
 }

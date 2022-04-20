@@ -732,8 +732,8 @@ impl ToAscObj<AscAuthInfo> for codec::AuthInfo {
     ) -> Result<AscAuthInfo, DeterministicHostError> {
         Ok(AscAuthInfo {
             signer_infos: asc_new(heap, &self.signer_infos, gas)?,
-            fee: asc_new(heap, &self.fee, gas)?,
-            tip: asc_new(heap, &self.tip, gas)?,
+            fee: asc_new_or_null(heap, &self.fee, gas)?,
+            tip: asc_new_or_null(heap, &self.tip, gas)?,
         })
     }
 }
@@ -763,6 +763,110 @@ impl ToAscObj<AscAnyArray> for Vec<prost_types::Any> {
     }
 }
 
+impl ToAscObj<AscSignerInfo> for codec::SignerInfo {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscSignerInfo, DeterministicHostError> {
+        Ok(AscSignerInfo {
+            public_key: asc_new_or_null(heap, &self.public_key, gas)?,
+            mode_info: asc_new_or_null(heap, &self.mode_info, gas)?,
+            sequence: self.sequence,
+        })
+    }
+}
+
+impl ToAscObj<AscFee> for codec::Fee {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscFee, DeterministicHostError> {
+        Ok(AscFee {
+            amount: asc_new(heap, &self.amount, gas)?,
+            gas_limit: self.gas_limit,
+            payer: asc_new(heap, &self.payer, gas)?,
+            granter: asc_new(heap, &self.granter, gas)?,
+        })
+    }
+}
+
+impl ToAscObj<AscTip> for codec::Tip {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscTip, DeterministicHostError> {
+        Ok(AscTip {
+            amount: asc_new(heap, &self.amount, gas)?,
+            tipper: asc_new(heap, &self.tipper, gas)?,
+        })
+    }
+}
+
+impl ToAscObj<AscCoinArray> for Vec<codec::Coin> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscCoinArray, DeterministicHostError> {
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
+
+        Ok(AscCoinArray(Array::new(&content?, heap, gas)?))
+    }
+}
+
+impl ToAscObj<AscCoin> for codec::Coin {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscCoin, DeterministicHostError> {
+        Ok(AscCoin {
+            denom: asc_new(heap, &self.denom, gas)?,
+            amount: asc_new(heap, &self.amount, gas)?
+        })
+    }
+}
+
+impl ToAscObj<AscModeInfo> for codec::ModeInfo {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscModeInfo, DeterministicHostError> {
+        use codec::mode_info::Sum;
+
+        let sum = self
+            .sum
+            .as_ref()
+            .ok_or_else(|| missing_field_error("ModeInfo", "sum"))?;
+
+        let (single, multi) = match sum {
+            Sum::Single(s) => (asc_new(heap, s, gas)?, AscPtr::null()),
+            Sum::Multi(m) => (AscPtr::null(), asc_new(heap, m, gas)?),
+        };
+
+        Ok(AscModeInfo {
+            single,
+            multi
+        })
+    }
+}
+
+impl ToAscObj<AscSingle> for codec::mode_info::Single {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscSingle, DeterministicHostError> {
+        Ok(AscSingle {
+            mode: asc_new(heap, &self.mode, gas)?,
+        })
+    }
+}
+
 // impl ToAscObj<AscXXXX> for codec::XXXX {
 //     fn to_asc_obj<H: AscHeap + ?Sized>(
 //         &self,
@@ -770,9 +874,36 @@ impl ToAscObj<AscAnyArray> for Vec<prost_types::Any> {
 //         gas: &GasCounter,
 //     ) -> Result<AscXXXX, DeterministicHostError> {
 //         Ok(AscXXXX {
+//             xxx: asc_new(heap, &self.xxx, gas)?,
+//             yyy: asc_new_or_null(heap, &self.yyy, gas)?,
 //         })
 //     }
 // }
+
+// impl ToAscObj<AscXXXX> for codec::XXXX {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         heap: &mut H,
+//         gas: &GasCounter,
+//     ) -> Result<AscXXXX, DeterministicHostError> {
+//         Ok(AscXXXX {
+//             xxx: asc_new(heap, &self.xxx, gas)?,
+//             yyy: asc_new_or_null(heap, &self.yyy, gas)?,
+//         })
+//     }
+// }
+
+impl ToAscObj<AscSignerInfoArray> for Vec<codec::SignerInfo> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscSignerInfoArray, DeterministicHostError> {
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
+
+        Ok(AscSignerInfoArray(Array::new(&content?, heap, gas)?))
+    }
+}
 
 impl ToAscObj<AscResponseDeliverTx> for codec::ResponseDeliverTx {
     fn to_asc_obj<H: AscHeap + ?Sized>(
