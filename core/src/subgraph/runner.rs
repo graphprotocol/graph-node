@@ -97,6 +97,14 @@ where
                 .map_err(CancelableError::Error)
                 .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
 
+            // Keep the stream's cancel guard around to be able to shut it down when the subgraph
+            // deployment is unassigned
+            self.ctx
+                .instances
+                .write()
+                .unwrap()
+                .insert(self.inputs.deployment.id, block_stream_canceler);
+
             debug!(self.logger, "Starting block stream");
 
             // Process events from the stream as long as no restart is needed
