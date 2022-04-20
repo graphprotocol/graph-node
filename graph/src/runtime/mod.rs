@@ -340,8 +340,10 @@ pub enum IndexForAscTypeId {
     TendermintTip = 166,
     TendermintTx = 167,
     TendermintTxBody = 168,
-    TendermintTxRaw = 169
-
+    TendermintTxRaw = 169,
+    TendermintModeInfoSingle = 170,
+    TendermintModeInfoMulti = 171,
+    TendermintArrayModeInfo = 172,
 }
 
 impl ToAscObj<u32> for IndexForAscTypeId {

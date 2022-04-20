@@ -124,6 +124,25 @@ impl AscIndexId for AscSignerInfoArray {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintArraySignerInfo;
 }
 
+pub struct AscModeInfoArray(pub(crate) Array<AscPtr<AscModeInfo>>);
+
+impl AscType for AscModeInfoArray {
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        self.0.to_asc_bytes()
+    }
+
+    fn from_asc_bytes(
+        asc_obj: &[u8],
+        api_version: &Version,
+    ) -> Result<Self, DeterministicHostError> {
+        Ok(Self(Array::from_asc_bytes(asc_obj, api_version)?))
+    }
+}
+
+impl AscIndexId for AscModeInfoArray {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintArrayModeInfo;
+}
+
 pub struct AscCoinArray(pub(crate) Array<AscPtr<AscCoin>>);
 
 impl AscType for AscCoinArray {
@@ -611,12 +630,33 @@ impl AscIndexId for AscSignerInfo {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscModeInfo {
-    pub single: AscPtr<AscSingle>,
-    pub multi: AscPtr<AscMulti>,
+    pub single: AscPtr<AscModeInfoSingle>,
+    pub multi: AscPtr<AscModeInfoMulti>,
 }
 
 impl AscIndexId for AscModeInfo {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintModeInfo;
+}
+
+#[repr(C)]
+#[derive(AscType)]
+pub(crate) struct AscModeInfoSingle {
+    pub mode: i32,
+}
+
+impl AscIndexId for AscModeInfoSingle {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintModeInfoSingle;
+}
+
+#[repr(C)]
+#[derive(AscType)]
+pub(crate) struct AscModeInfoMulti {
+    pub bitarray: AscPtr<AscCompactBitArray>,
+    pub mode_infos: AscPtr<AscModeInfoArray>,
+}
+
+impl AscIndexId for AscModeInfoMulti {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintModeInfoMulti;
 }
 
 #[repr(C)]

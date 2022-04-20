@@ -287,37 +287,37 @@ pub struct ModeInfo {
 }
 /// Nested message and enum types in `ModeInfo`.
 pub mod mode_info {
-    /// Single is the mode info for a single signer. It is structured as a message
-    /// to allow for additional fields such as locale for SIGN_MODE_TEXTUAL in the
-    /// future
-    #[derive(Clone, PartialEq, ::prost::Message)]
-    pub struct Single {
-        /// mode is the signing mode of the single signer
-        #[prost(enumeration = "super::SignMode", tag = "1")]
-        pub mode: i32,
-    }
-    /// Multi is the mode info for a multisig public key
-    #[derive(Clone, PartialEq, ::prost::Message)]
-    pub struct Multi {
-        /// bitarray specifies which keys within the multisig are signing
-        #[prost(message, optional, tag = "1")]
-        pub bitarray: ::core::option::Option<super::CompactBitArray>,
-        /// mode_infos is the corresponding modes of the signers of the multisig
-        /// which could include nested multisig public keys
-        #[prost(message, repeated, tag = "2")]
-        pub mode_infos: ::prost::alloc::vec::Vec<super::ModeInfo>,
-    }
     /// sum is the oneof that specifies whether this represents a single or nested
     /// multisig signer
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Sum {
         /// single represents a single signer
         #[prost(message, tag = "1")]
-        Single(Single),
+        Single(super::ModeInfoSingle),
         /// multi represents a nested multisig signer
         #[prost(message, tag = "2")]
-        Multi(Multi),
+        Multi(super::ModeInfoMulti),
     }
+}
+/// Single is the mode info for a single signer. It is structured as a message
+/// to allow for additional fields such as locale for SIGN_MODE_TEXTUAL in the
+/// future
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ModeInfoSingle {
+    /// mode is the signing mode of the single signer
+    #[prost(enumeration = "SignMode", tag = "1")]
+    pub mode: i32,
+}
+/// Multi is the mode info for a multisig public key
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ModeInfoMulti {
+    /// bitarray specifies which keys within the multisig are signing
+    #[prost(message, optional, tag = "1")]
+    pub bitarray: ::core::option::Option<CompactBitArray>,
+    /// mode_infos is the corresponding modes of the signers of the multisig
+    /// which could include nested multisig public keys
+    #[prost(message, repeated, tag = "2")]
+    pub mode_infos: ::prost::alloc::vec::Vec<ModeInfo>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Fee {
