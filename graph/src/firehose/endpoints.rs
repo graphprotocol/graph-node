@@ -11,7 +11,7 @@ use futures03::StreamExt;
 use http::uri::{Scheme, Uri};
 use rand::prelude::IteratorRandom;
 use slog::Logger;
-use std::{collections::BTreeMap, fmt::Display, sync::Arc};
+use std::{collections::BTreeMap, fmt::Display, sync::Arc, time::Duration};
 use tonic::{
     metadata::MetadataValue,
     transport::{Channel, ClientTlsConfig},
@@ -49,13 +49,19 @@ impl FirehoseEndpoint {
             .parse::<Uri>()
             .expect("the url should have been validated by now, so it is a valid Uri");
 
+        let env_vars = EnvVars::default();
+
         let endpoint = match uri.scheme().unwrap_or(&Scheme::HTTP).as_str() {
             "http" => Channel::builder(uri),
             "https" => Channel::builder(uri)
                 .tls_config(ClientTlsConfig::new())
                 .expect("TLS config on this host is invalid"),
             _ => panic!("invalid uri scheme for firehose endpoint"),
-        };
+        }
+        .connect_timeout(env_vars.firehose_stream_timeout)
+        .tcp_keepalive(Some(Duration::from_secs(10)))
+        .http2_keep_alive_interval(Duration::from_secs(10))
+        .keep_alive_while_idle(true);
 
         let uri = endpoint.uri().to_string();
         //connect_lazy() used to return Result, but not anymore, that makes sence since Channel is not used immediatelly
@@ -190,8 +196,6 @@ impl FirehoseEndpoint {
         let mut client = firehose::stream_client::StreamClient::with_interceptor(
             self.channel.cheap_clone(),
             move |mut r: Request<()>| {
-                r.set_timeout(EnvVars::default().firehose_stream_timeout);
-
                 if let Some(ref t) = token_metadata {
                     r.metadata_mut().insert("authorization", t.clone());
                 }
