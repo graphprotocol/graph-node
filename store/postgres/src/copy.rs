@@ -39,7 +39,12 @@ use crate::{
 use crate::{connection_pool::ConnectionPool, relational::Layout};
 use crate::{relational::Table, relational_queries as rq};
 
+/// The initial batch size for tables that do not have an array column
 const INITIAL_BATCH_SIZE: i64 = 10_000;
+/// The initial batch size for tables that do have an array column; those
+/// arrays can be large and large arrays will slow down copying a lot. We
+/// therefore tread lightly in that case
+const INITIAL_BATCH_SIZE_LIST: i64 = 100;
 const TARGET_DURATION: Duration = Duration::from_secs(5 * 60);
 const LOG_INTERVAL: Duration = Duration::from_secs(3 * 60);
 
@@ -303,13 +308,19 @@ impl TableState {
         .map(|v| v.max_vid)
         .unwrap_or(-1);
 
+        let batch_size = if dst.columns.iter().any(|col| col.is_list()) {
+            INITIAL_BATCH_SIZE_LIST
+        } else {
+            INITIAL_BATCH_SIZE
+        };
+
         Ok(Self {
             dst_site,
             src,
             dst,
             next_vid: 0,
             target_vid,
-            batch_size: INITIAL_BATCH_SIZE,
+            batch_size,
             duration_ms: 0,
         })
     }
