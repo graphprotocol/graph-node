@@ -6,9 +6,8 @@ use graph::{
     util::timed_rw_lock::TimedMutex,
 };
 use lazy_static::lazy_static;
-use stable_hash_legacy::crypto::SetHasher;
-use stable_hash_legacy::prelude::*;
-use stable_hash_legacy::utils::stable_hash;
+use stable_hash::{FieldAddress, StableHash, StableHasher};
+use stable_hash_legacy::SequenceNumber;
 use std::time::Instant;
 use std::{borrow::ToOwned, collections::HashSet};
 
@@ -89,16 +88,45 @@ struct HashableQuery<'a> {
 /// different representations. This is considered not an issue. The worst
 /// possible outcome is that the same query will have multiple cache entries.
 /// But, the wrong result should not be served.
-impl StableHash for HashableQuery<'_> {
-    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
-        self.query_schema_id
-            .stable_hash(sequence_number.next_child(), state);
+impl stable_hash_legacy::StableHash for HashableQuery<'_> {
+    fn stable_hash<H: stable_hash_legacy::StableHasher>(
+        &self,
+        mut sequence_number: H::Seq,
+        state: &mut H,
+    ) {
+        stable_hash_legacy::StableHash::stable_hash(
+            &self.query_schema_id,
+            sequence_number.next_child(),
+            state,
+        );
 
         // Not stable! Uses to_string
-        format!("{:?}", self.selection_set).stable_hash(sequence_number.next_child(), state);
+        stable_hash_legacy::StableHash::stable_hash(
+            &format!("{:?}", self.selection_set),
+            sequence_number.next_child(),
+            state,
+        );
 
-        self.block_ptr
-            .stable_hash(sequence_number.next_child(), state);
+        stable_hash_legacy::StableHash::stable_hash(
+            &self.block_ptr,
+            sequence_number.next_child(),
+            state,
+        );
+    }
+}
+
+impl StableHash for HashableQuery<'_> {
+    fn stable_hash<H: StableHasher>(&self, field_address: H::Addr, state: &mut H) {
+        StableHash::stable_hash(&self.query_schema_id, field_address.child(0), state);
+
+        // Not stable! Uses to_string
+        StableHash::stable_hash(
+            &format!("{:?}", self.selection_set),
+            field_address.child(1),
+            state,
+        );
+
+        StableHash::stable_hash(&self.block_ptr, field_address.child(2), state);
     }
 }
 
@@ -115,7 +143,7 @@ fn cache_key(
         selection_set,
         block_ptr,
     };
-    stable_hash::<SetHasher, _>(&query)
+    stable_hash_legacy::utils::stable_hash::<stable_hash_legacy::crypto::SetHasher, _>(&query)
 }
 
 /// Contextual information passed around during query execution.

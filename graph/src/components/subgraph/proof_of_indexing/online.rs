@@ -99,7 +99,6 @@ impl BlockEventStream {
         self.handler_start = self.vec_length;
     }
 }
-
 #[derive(Default)]
 pub struct ProofOfIndexing {
     block_number: BlockNumber,
@@ -123,7 +122,9 @@ impl ProofOfIndexing {
             per_causality_region: HashMap::new(),
         }
     }
+}
 
+impl ProofOfIndexing {
     pub fn write_deterministic_error(&mut self, logger: &Logger, causality_region: &str) {
         let redacted_events = self.with_causality_region(causality_region, |entry| {
             entry.vec_length - entry.handler_start
@@ -159,7 +160,7 @@ impl ProofOfIndexing {
     }
 
     // This is just here because the raw_entry API is not stabilized.
-    fn with_causality_region<F, T>(&mut self, causality_region: &str, f: F) -> T
+    pub fn with_causality_region<F, T>(&mut self, causality_region: &str, f: F) -> T
     where
         F: FnOnce(&mut BlockEventStream) -> T,
     {

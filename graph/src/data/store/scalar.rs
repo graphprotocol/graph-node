@@ -4,13 +4,12 @@ use diesel_derives::{AsExpression, FromSqlRow};
 use hex;
 use num_bigint;
 use serde::{self, Deserialize, Serialize};
+use stable_hash::utils::{AsBytes, AsInt};
+use stable_hash::{FieldAddress, StableHash};
+use stable_hash_legacy::SequenceNumber;
 use thiserror::Error;
 use web3::types::*;
 
-use stable_hash_legacy::{
-    prelude::*,
-    utils::{AsBytes, AsInt},
-};
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{self, Display, Formatter};
 use std::io::Write;
@@ -193,27 +192,61 @@ impl bigdecimal::ToPrimitive for BigDecimal {
     }
 }
 
-impl StableHash for BigDecimal {
-    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
+impl stable_hash_legacy::StableHash for BigDecimal {
+    fn stable_hash<H: stable_hash_legacy::StableHasher>(
+        &self,
+        mut sequence_number: H::Seq,
+        state: &mut H,
+    ) {
         let (int, exp) = self.as_bigint_and_exponent();
         // This only allows for backward compatible changes between
         // BigDecimal and unsigned ints
-        exp.stable_hash(sequence_number.next_child(), state);
-        BigInt(int).stable_hash(sequence_number, state);
+        stable_hash_legacy::StableHash::stable_hash(&exp, sequence_number.next_child(), state);
+        stable_hash_legacy::StableHash::stable_hash(&BigInt(int), sequence_number, state);
+    }
+}
+
+impl StableHash for BigDecimal {
+    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
+        // This implementation allows for backward compatible changes from integers (signed or unsigned)
+        // when the exponent is zero.
+        let (int, exp) = self.as_bigint_and_exponent();
+        StableHash::stable_hash(&exp, field_address.child(1), state);
+        // Normally it would be a red flag to pass field_address in after having used a child slot.
+        // But, we know the implementation of StableHash for BigInt will not use child(1) and that
+        // it will not in the future due to having no forward schema evolutions for ints and the
+        // stability guarantee.
+        //
+        // For reference, ints use child(0) for the sign and write the little endian bytes to the parent slot.
+        BigInt(int).stable_hash(field_address, state);
     }
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BigInt(num_bigint::BigInt);
 
-impl StableHash for BigInt {
+impl stable_hash_legacy::StableHash for BigInt {
     #[inline]
-    fn stable_hash<H: StableHasher>(&self, sequence_number: H::Seq, state: &mut H) {
-        AsInt {
+    fn stable_hash<H: stable_hash_legacy::StableHasher>(
+        &self,
+        sequence_number: H::Seq,
+        state: &mut H,
+    ) {
+        stable_hash_legacy::utils::AsInt {
             is_negative: self.0.sign() == BigIntSign::Minus,
             little_endian: &self.to_bytes_le().1,
         }
         .stable_hash(sequence_number, state)
+    }
+}
+
+impl StableHash for BigInt {
+    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
+        AsInt {
+            is_negative: self.0.sign() == BigIntSign::Minus,
+            little_endian: &self.to_bytes_le().1,
+        }
+        .stable_hash(field_address, state)
     }
 }
 
@@ -509,9 +542,19 @@ impl fmt::Debug for Bytes {
     }
 }
 
+impl stable_hash_legacy::StableHash for Bytes {
+    fn stable_hash<H: stable_hash_legacy::StableHasher>(
+        &self,
+        sequence_number: H::Seq,
+        state: &mut H,
+    ) {
+        stable_hash_legacy::utils::AsBytes(&self.0).stable_hash(sequence_number, state);
+    }
+}
+
 impl StableHash for Bytes {
-    fn stable_hash<H: StableHasher>(&self, sequence_number: H::Seq, state: &mut H) {
-        AsBytes(&self.0).stable_hash(sequence_number, state);
+    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
+        AsBytes(&self.0).stable_hash(field_address, state);
     }
 }
 
