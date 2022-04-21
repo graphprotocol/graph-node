@@ -173,18 +173,6 @@ impl ToAscObj<AscConsensus> for codec::Consensus {
     }
 }
 
-// impl ToAscObj<AscData> for codec::Data {
-//     fn to_asc_obj<H: AscHeap + ?Sized>(
-//         &self,
-//         heap: &mut H,
-//         gas: &GasCounter,
-//     ) -> Result<AscData, DeterministicHostError> {
-//         Ok(AscData {
-//             txs: asc_new(heap, &self.txs, gas)?,
-//         })
-//     }
-// }
-
 impl ToAscObj<AscBytesArray> for Vec<Vec<u8>> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
