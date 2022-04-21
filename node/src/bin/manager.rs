@@ -828,8 +828,9 @@ async fn main() {
                     node,
                     offset,
                 } => {
+                    let shards: Vec<_> = ctx.config.stores.keys().cloned().collect();
                     let (store, primary) = ctx.store_and_primary();
-                    commands::copy::create(store, primary, src, shard, node, offset).await
+                    commands::copy::create(store, primary, src, shard, shards, node, offset).await
                 }
                 Activate { deployment, shard } => {
                     commands::copy::activate(ctx.subgraph_store(), deployment, shard)

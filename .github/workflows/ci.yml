@@ -66,6 +66,62 @@ jobs:
           command: test
           args: --verbose --workspace --exclude graph-tests -- --nocapture
 
+  runner-tests:
+    name: Subgraph Runner integration tests
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: ["stable"]
+    runs-on: ubuntu-latest
+    services:
+      ipfs:
+        image: ipfs/go-ipfs:v0.4.23
+        ports:
+          - 5001:5001
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: graph_node_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: test-cargo-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+
+      - name: Install lld
+        run: sudo apt-get install -y lld
+
+      - name: Run runner tests
+        id: runner-tests-1
+        uses: actions-rs/cargo@v1
+        env:
+          RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+          TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
+        with:
+          command: test
+          args: --verbose --package graph-tests -- test_runner --nocapture
+
   integration-tests:
     name: Run integration tests
     strategy:
@@ -119,7 +175,7 @@ jobs:
           TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
         with:
           command: test
-          args: --verbose --package graph-tests -- --nocapture
+          args: --verbose --package graph-tests -- --nocapture --skip test_runner
         continue-on-error: true
       - name: Run integration tests (round 2)
         id: integration-tests-2
@@ -131,7 +187,7 @@ jobs:
           TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
         with:
           command: test
-          args: --verbose --package graph-tests -- --nocapture
+          args: --verbose --package graph-tests -- --nocapture --skip test_runner
 
   rustfmt:
     name: Check rustfmt style

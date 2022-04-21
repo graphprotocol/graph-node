@@ -19,7 +19,7 @@ use crate::{host_exports::HostExports, module::ExperimentalFeatures};
 use graph::runtime::gas::Gas;
 
 pub struct RuntimeHostBuilder<C: Blockchain> {
-    runtime_adapter: Arc<C::RuntimeAdapter>,
+    runtime_adapter: Arc<dyn RuntimeAdapter<C>>,
     link_resolver: Arc<dyn LinkResolver>,
     ens_lookup: Arc<dyn EnsLookup>,
 }
@@ -36,7 +36,7 @@ impl<C: Blockchain> Clone for RuntimeHostBuilder<C> {
 
 impl<C: Blockchain> RuntimeHostBuilder<C> {
     pub fn new(
-        runtime_adapter: Arc<C::RuntimeAdapter>,
+        runtime_adapter: Arc<dyn RuntimeAdapter<C>>,
         link_resolver: Arc<dyn LinkResolver>,
         ens_lookup: Arc<dyn EnsLookup>,
     ) -> Self {
@@ -108,7 +108,7 @@ where
     C: Blockchain,
 {
     fn new(
-        runtime_adapter: Arc<C::RuntimeAdapter>,
+        runtime_adapter: Arc<dyn RuntimeAdapter<C>>,
         link_resolver: Arc<dyn LinkResolver>,
         network_name: String,
         subgraph_id: DeploymentHash,

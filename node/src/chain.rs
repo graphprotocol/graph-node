@@ -13,7 +13,6 @@ use graph::slog::{debug, error, info, o, Logger};
 use graph::url::Url;
 use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{self as ethereum, EthereumAdapterTrait, Transport};
-use graph_core::MetricsRegistry;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::Duration;
@@ -106,7 +105,7 @@ pub fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec
 /// Parses an Ethereum connection string and returns the network name and Ethereum adapter.
 pub async fn create_ethereum_networks(
     logger: Logger,
-    registry: Arc<MetricsRegistry>,
+    registry: Arc<dyn MetricsRegistryTrait>,
     config: &Config,
 ) -> Result<EthereumNetworks, anyhow::Error> {
     let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));

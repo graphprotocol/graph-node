@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context};
-use stable_hash::prelude::*;
-use stable_hash::utils::AsBytes;
+use stable_hash_legacy::prelude::*;
+use stable_hash_legacy::utils::AsBytes;
 use std::convert::TryFrom;
 use std::{fmt, str::FromStr};
 use web3::types::{Block, H256};

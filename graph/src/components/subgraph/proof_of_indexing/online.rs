@@ -7,9 +7,9 @@ use crate::{
     blockchain::BlockPtr,
     prelude::{debug, BlockNumber, DeploymentHash, Logger, ENV_VARS},
 };
-use stable_hash::crypto::{Blake3SeqNo, SetHasher};
-use stable_hash::prelude::*;
-use stable_hash::utils::AsBytes;
+use stable_hash_legacy::crypto::{Blake3SeqNo, SetHasher};
+use stable_hash_legacy::prelude::*;
+use stable_hash_legacy::utils::AsBytes;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fmt;

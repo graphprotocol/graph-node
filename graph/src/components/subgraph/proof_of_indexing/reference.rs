@@ -1,7 +1,7 @@
 use super::ProofOfIndexingEvent;
 use crate::prelude::DeploymentHash;
-use stable_hash::prelude::*;
-use stable_hash::utils::AsBytes;
+use stable_hash_legacy::prelude::*;
+use stable_hash_legacy::utils::AsBytes;
 use std::collections::HashMap;
 use web3::types::{Address, H256};
 

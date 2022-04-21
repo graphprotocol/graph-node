@@ -26,7 +26,7 @@ pub struct ResultSizeMetrics {
 }
 
 impl ResultSizeMetrics {
-    fn new(registry: Arc<impl MetricsRegistry>) -> Self {
+    fn new(registry: Arc<dyn MetricsRegistry>) -> Self {
         // Divide the Histogram into exponentially sized buckets between 1k and 4G
         let bins = (10..32).map(|n| 2u64.pow(n) as f64).collect::<Vec<_>>();
         let histogram = registry
@@ -53,7 +53,7 @@ impl ResultSizeMetrics {
 
     // Tests need to construct one of these, but normal code doesn't
     #[cfg(debug_assertions)]
-    pub fn make(registry: Arc<impl MetricsRegistry>) -> Self {
+    pub fn make(registry: Arc<dyn MetricsRegistry>) -> Self {
         Self::new(registry)
     }
 
@@ -92,7 +92,7 @@ where
         store: Arc<S>,
         subscription_manager: Arc<SM>,
         load_manager: Arc<LoadManager>,
-        registry: Arc<impl MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         let logger = logger.new(o!("component" => "GraphQlRunner"));
         let result_size = Arc::new(ResultSizeMetrics::new(registry));

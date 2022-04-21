@@ -83,6 +83,7 @@ pub async fn create(
     primary: ConnectionPool,
     src: DeploymentSearch,
     shard: String,
+    shards: Vec<String>,
     node: String,
     block_offset: u32,
 ) -> Result<(), Error> {
@@ -118,6 +119,12 @@ pub async fn create(
     };
     let base_ptr = BlockPtr::from((hash, src_number));
 
+    if !shards.contains(&shard) {
+        bail!(
+            "unknown shard {shard}, only shards {} are configured",
+            shards.join(", ")
+        )
+    }
     let shard = Shard::new(shard)?;
     let node = NodeId::new(node.clone()).map_err(|()| anyhow!("invalid node id `{}`", node))?;
 

@@ -10,7 +10,7 @@ use crate::prelude::*;
 use crate::util::backoff::ExponentialBackoff;
 
 use super::block_stream::{BlockStream, BlockStreamEvent, FirehoseMapper};
-use super::Blockchain;
+use super::{Blockchain, TriggersAdapter};
 use crate::{firehose, firehose::FirehoseEndpoint};
 
 struct FirehoseBlockStreamMetrics {
@@ -68,7 +68,8 @@ impl FirehoseBlockStreamMetrics {
 
     fn observe_successful_connection(&self, time: &mut Instant) {
         self.restarts
-            .with_label_values(&[&self.deployment, &self.provider, "true"]);
+            .with_label_values(&[&self.deployment, &self.provider, "true"])
+            .inc();
         self.connect_duration
             .with_label_values(&[&self.deployment, &self.provider])
             .set(time.elapsed().as_secs_f64());
@@ -79,7 +80,8 @@ impl FirehoseBlockStreamMetrics {
 
     fn observe_failed_connection(&self, time: &mut Instant) {
         self.restarts
-            .with_label_values(&[&self.deployment, &self.provider, "false"]);
+            .with_label_values(&[&self.deployment, &self.provider, "false"])
+            .inc();
         self.connect_duration
             .with_label_values(&[&self.deployment, &self.provider])
             .set(time.elapsed().as_secs_f64());
@@ -115,7 +117,7 @@ where
         subgraph_current_block: Option<BlockPtr>,
         cursor: Option<String>,
         mapper: Arc<F>,
-        adapter: Arc<C::TriggersAdapter>,
+        adapter: Arc<dyn TriggersAdapter<C>>,
         filter: Arc<C::TriggerFilter>,
         start_blocks: Vec<BlockNumber>,
         logger: Logger,
@@ -154,7 +156,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
     endpoint: Arc<FirehoseEndpoint>,
     cursor: Option<String>,
     mapper: Arc<F>,
-    adapter: Arc<C::TriggersAdapter>,
+    adapter: Arc<dyn TriggersAdapter<C>>,
     filter: Arc<C::TriggerFilter>,
     manifest_start_block_num: BlockNumber,
     subgraph_current_block: Option<BlockPtr>,
@@ -328,7 +330,7 @@ async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
     manifest_start_block_num: BlockNumber,
     subgraph_current_block: Option<&BlockPtr>,
     mapper: &F,
-    adapter: &C::TriggersAdapter,
+    adapter: &Arc<dyn TriggersAdapter<C>>,
     filter: &C::TriggerFilter,
     logger: &Logger,
 ) -> Result<BlockResponse<C>, Error> {

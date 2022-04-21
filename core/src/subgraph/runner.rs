@@ -8,7 +8,7 @@ use crate::subgraph::SubgraphInstance;
 use atomic_refcell::AtomicRefCell;
 use fail::fail_point;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers};
-use graph::blockchain::{Block, Blockchain, DataSource, TriggerFilter as _, TriggersAdapter};
+use graph::blockchain::{Block, Blockchain, DataSource, TriggerFilter as _};
 use graph::components::{
     store::ModificationsAndCache,
     subgraph::{CausalityRegion, MappingError, ProofOfIndexing, SharedProofOfIndexing},
@@ -96,6 +96,14 @@ where
                 .await?
                 .map_err(CancelableError::Error)
                 .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
+
+            // Keep the stream's cancel guard around to be able to shut it down when the subgraph
+            // deployment is unassigned
+            self.ctx
+                .instances
+                .write()
+                .unwrap()
+                .insert(self.inputs.deployment.id, block_stream_canceler);
 
             debug!(self.logger, "Starting block stream");
 
@@ -586,6 +594,13 @@ where
         if block.trigger_count() == 0
             && self.state.skip_ptr_updates_timer.elapsed() <= SKIP_PTR_UPDATES_THRESHOLD
             && !self.state.synced
+            && !close_to_chain_head(
+                &block_ptr,
+                self.inputs.chain.chain_store().cached_head_ptr().await?,
+                // The "skip ptr updates timer" is ignored when a subgraph is at most 1000 blocks
+                // behind the chain head.
+                1000,
+            )
         {
             return Ok(Action::Continue);
         } else {
@@ -608,9 +623,12 @@ where
             Ok(action) => {
                 // Once synced, no need to try to update the status again.
                 if !self.state.synced
-                    && is_deployment_synced(
+                    && close_to_chain_head(
                         &block_ptr,
                         self.inputs.chain.chain_store().cached_head_ptr().await?,
+                        // We consider a subgraph synced when it's at most 1 block behind the
+                        // chain head.
+                        1,
                     )
                 {
                     // Updating the sync status is an one way operation.
@@ -877,13 +895,19 @@ async fn update_proof_of_indexing(
     Ok(())
 }
 
-/// Checks if the Deployment BlockPtr is at least one block behind to the chain head.
-fn is_deployment_synced(deployment_head_ptr: &BlockPtr, chain_head_ptr: Option<BlockPtr>) -> bool {
-    matches!((deployment_head_ptr, &chain_head_ptr), (b1, Some(b2)) if b1.number >= (b2.number - 1))
+/// Checks if the Deployment BlockPtr is at least X blocks behind to the chain head.
+fn close_to_chain_head(
+    deployment_head_ptr: &BlockPtr,
+    chain_head_ptr: Option<BlockPtr>,
+    n: BlockNumber,
+) -> bool {
+    matches!((deployment_head_ptr, &chain_head_ptr), (b1, Some(b2)) if b1.number >= (b2.number - n))
 }
 
 #[test]
-fn test_is_deployment_synced() {
+fn test_close_to_chain_head() {
+    let offset = 1;
+
     let block_0 = BlockPtr::try_from((
         "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
         0,
@@ -900,11 +924,15 @@ fn test_is_deployment_synced() {
     ))
     .unwrap();
 
-    assert!(!is_deployment_synced(&block_0, None));
-    assert!(!is_deployment_synced(&block_2, None));
+    assert!(!close_to_chain_head(&block_0, None, offset));
+    assert!(!close_to_chain_head(&block_2, None, offset));
 
-    assert!(!is_deployment_synced(&block_0, Some(block_2.clone())));
+    assert!(!close_to_chain_head(
+        &block_0,
+        Some(block_2.clone()),
+        offset
+    ));
 
-    assert!(is_deployment_synced(&block_1, Some(block_2.clone())));
-    assert!(is_deployment_synced(&block_2, Some(block_2.clone())));
+    assert!(close_to_chain_head(&block_1, Some(block_2.clone()), offset));
+    assert!(close_to_chain_head(&block_2, Some(block_2.clone()), offset));
 }

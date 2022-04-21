@@ -12,6 +12,7 @@ use graph::{
         },
         firehose_block_stream::FirehoseBlockStream,
         Block as _, BlockHash, BlockPtr, Blockchain, BlockchainKind, IngestorError,
+        RuntimeAdapter as RuntimeAdapterTrait,
     },
     components::store::DeploymentLocator,
     firehose::{self, FirehoseEndpoint, FirehoseEndpoints, ForkStep},
@@ -73,8 +74,6 @@ impl Blockchain for Chain {
 
     type UnresolvedDataSourceTemplate = UnresolvedDataSourceTemplate;
 
-    type TriggersAdapter = TriggersAdapter;
-
     type TriggerData = TendermintTrigger;
 
     type MappingTrigger = TendermintTrigger;
@@ -83,14 +82,12 @@ impl Blockchain for Chain {
 
     type NodeCapabilities = NodeCapabilities;
 
-    type RuntimeAdapter = RuntimeAdapter;
-
     fn triggers_adapter(
         &self,
         _loc: &DeploymentLocator,
         _capabilities: &Self::NodeCapabilities,
         _unified_api_version: UnifiedMappingApiVersion,
-    ) -> Result<Arc<Self::TriggersAdapter>, Error> {
+    ) -> Result<Arc<dyn TriggersAdapterTrait<Self>>, Error> {
         let adapter = TriggersAdapter {};
         Ok(Arc::new(adapter))
     }
@@ -167,7 +164,7 @@ impl Blockchain for Chain {
             .map_err(Into::into)
     }
 
-    fn runtime_adapter(&self) -> Arc<Self::RuntimeAdapter> {
+    fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
         Arc::new(RuntimeAdapter {})
     }
 
@@ -251,7 +248,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         &self,
         logger: &Logger,
         response: &firehose::Response,
-        adapter: &TriggersAdapter,
+        adapter: &Arc<dyn TriggersAdapterTrait<Chain>>,
         filter: &TriggerFilter,
     ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
         let step = ForkStep::from_i32(response.step).unwrap_or_else(|| {

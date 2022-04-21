@@ -40,7 +40,7 @@ pub use petgraph;
 pub use prometheus;
 pub use semver;
 pub use slog;
-pub use stable_hash;
+pub use stable_hash_legacy;
 pub use tokio_stream;
 pub use url;
 
