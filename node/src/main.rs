@@ -575,7 +575,7 @@ fn arweave_networks_as_chains(
                 .or_else(|| {
                     error!(
                         logger,
-                        "No store configured for NEAR chain {}; ignoring this chain", chain_id
+                        "No store configured for Arweave chain {}; ignoring this chain", chain_id
                     );
                     None
                 })

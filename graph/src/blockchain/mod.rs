@@ -337,6 +337,7 @@ impl FromStr for BlockchainKind {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
+            "arweave" => Ok(BlockchainKind::Arweave),
             "ethereum" => Ok(BlockchainKind::Ethereum),
             "near" => Ok(BlockchainKind::Near),
             "tendermint" => Ok(BlockchainKind::Tendermint),
