@@ -2,10 +2,10 @@
 extern crate pretty_assertions;
 
 use graph::data::subgraph::schema::DeploymentCreate;
-use graph::data::value::Object;
 use graph::entity;
 use graphql_parser::Pos;
 use std::iter::FromIterator;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{
@@ -22,19 +22,19 @@ use graph::{
         subgraph::SubgraphFeature,
     },
     prelude::{
-        futures03::stream::StreamExt, o, q, r, serde_json, slog, BlockPtr, DeploymentHash, Entity,
-        EntityKey, EntityOperation, FutureExtension, GraphQlRunner as _, Logger, NodeId, Query,
-        QueryError, QueryExecutionError, QueryResult, QueryStoreManager, QueryVariables, Schema,
-        SubgraphManifest, SubgraphName, SubgraphStore, SubgraphVersionSwitchingMode, Subscription,
-        SubscriptionError,
+        futures03::stream::StreamExt, lazy_static, o, q, r, serde_json, slog, BlockPtr,
+        DeploymentHash, Entity, EntityKey, EntityOperation, FutureExtension, GraphQlRunner as _,
+        Logger, NodeId, Query, QueryError, QueryExecutionError, QueryResult, QueryStoreManager,
+        QueryVariables, Schema, SubgraphManifest, SubgraphName, SubgraphStore,
+        SubgraphVersionSwitchingMode, Subscription, SubscriptionError,
     },
     semver::Version,
 };
 use graph_graphql::{prelude::*, subscription::execute_subscription};
 use test_store::{
-    deployment_state, execute_subgraph_query_with_complexity, execute_subgraph_query_with_deadline,
-    result_size_metrics, revert_block, run_test_sequentially, transact_errors, Store, BLOCK_ONE,
-    GENESIS_PTR, LOAD_MANAGER, LOGGER, METRICS_REGISTRY, STORE, SUBSCRIPTION_MANAGER,
+    deployment_state, execute_subgraph_query_with_deadline, result_size_metrics, revert_block,
+    run_test_sequentially, transact_errors, Store, BLOCK_ONE, GENESIS_PTR, LOAD_MANAGER, LOGGER,
+    METRICS_REGISTRY, STORE, SUBSCRIPTION_MANAGER,
 };
 
 const NETWORK_NAME: &str = "fake_network";
@@ -43,78 +43,150 @@ async fn setup(store: &Store) -> DeploymentLocator {
     setup_with_features(store, "graphqlTestsQuery", BTreeSet::new()).await
 }
 
+const SONGS_STRING: [&str; 5] = ["s0", "s1", "s2", "s3", "s4"];
+const SONGS_BYTES: [&str; 5] = ["0xf0", "0xf1", "0xf2", "0xf3", "0xf4"];
+
+#[derive(Clone, Copy, Debug)]
+enum IdType {
+    String,
+    #[allow(dead_code)]
+    Bytes,
+}
+
+impl IdType {
+    fn songs(&self) -> &[&str] {
+        match self {
+            IdType::String => SONGS_STRING.as_slice(),
+            IdType::Bytes => SONGS_BYTES.as_slice(),
+        }
+    }
+
+    fn as_str(&self) -> &str {
+        match self {
+            IdType::String => "String",
+            IdType::Bytes => "Bytes",
+        }
+    }
+
+    fn deployment_id(&self) -> &str {
+        match self {
+            IdType::String => "graphqlTestsQuery",
+            IdType::Bytes => "graphqlTestsQueryBytes",
+        }
+    }
+}
+
 async fn setup_with_features(
     store: &Store,
     id: &str,
     features: BTreeSet<SubgraphFeature>,
 ) -> DeploymentLocator {
-    use test_store::block_store::{self, BLOCK_ONE, BLOCK_TWO, GENESIS_BLOCK};
-
-    let id = DeploymentHash::new(id).unwrap();
-
-    let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
-    block_store::set_chain(chain, NETWORK_NAME);
-    test_store::remove_subgraphs();
-
-    let schema = test_schema(id.clone());
-    let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
-        id: id.clone(),
-        spec_version: Version::new(1, 0, 0),
-        features,
-        description: None,
-        repository: None,
-        schema: schema.clone(),
-        data_sources: vec![],
-        graft: None,
-        templates: vec![],
-        chain: PhantomData,
-    };
-
-    insert_test_entities(store.subgraph_store().as_ref(), manifest).await
+    setup_with_features_and_type(store, id, features, IdType::String).await
 }
 
-fn test_schema(id: DeploymentHash) -> Schema {
-    Schema::parse(
-        "
-            type Musician @entity {
-                id: ID!
-                name: String!
-                mainBand: Band
-                bands: [Band!]!
-                writtenSongs: [Song]! @derivedFrom(field: \"writtenBy\")
-            }
+/// Set up a deployment `id` with the test schema and populate it with test
+/// data. If the `id` is the same as `id_type.deployment_id()`, the test
+/// must not modify the deployment in any way as these are reused for other
+/// tests that expect pristine data
+async fn setup_with_features_and_type(
+    store: &Store,
+    id: &str,
+    features: BTreeSet<SubgraphFeature>,
+    id_type: IdType,
+) -> DeploymentLocator {
+    use test_store::block_store::{self, BLOCK_ONE, BLOCK_TWO, GENESIS_BLOCK};
 
-            type Band @entity {
-                id: ID!
-                name: String!
-                members: [Musician!]! @derivedFrom(field: \"bands\")
-                originalSongs: [Song!]!
-            }
+    /// Make sure we get rid of all subgraphs once for the entire test run
+    fn global_init() {
+        lazy_static! {
+            static ref STORE_CLEAN: AtomicBool = AtomicBool::new(false);
+        }
+        if !STORE_CLEAN.load(Ordering::SeqCst) {
+            let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
+            block_store::set_chain(chain, NETWORK_NAME);
+            test_store::remove_subgraphs();
+            STORE_CLEAN.store(true, Ordering::SeqCst);
+        }
+    }
 
-            type Song @entity {
-                id: ID!
-                title: String!
-                writtenBy: Musician!
-                band: Band @derivedFrom(field: \"originalSongs\")
-            }
+    async fn initialize(
+        store: &Store,
+        id: DeploymentHash,
+        features: BTreeSet<SubgraphFeature>,
+        id_type: IdType,
+    ) -> DeploymentLocator {
+        let schema = test_schema(id.clone(), id_type);
+        let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
+            id: id.clone(),
+            spec_version: Version::new(1, 0, 0),
+            features,
+            description: None,
+            repository: None,
+            schema: schema.clone(),
+            data_sources: vec![],
+            graft: None,
+            templates: vec![],
+            chain: PhantomData,
+        };
 
-            type SongStat @entity {
-                id: ID!
-                song: Song @derivedFrom(field: \"id\")
-                played: Int!
-            }
-            ",
-        id,
-    )
-    .expect("Test schema invalid")
+        insert_test_entities(store.subgraph_store().as_ref(), manifest, id_type).await
+    }
+
+    global_init();
+    let id = DeploymentHash::new(id).unwrap();
+    let loc = store.subgraph_store().locators(&id).unwrap().pop();
+
+    match loc {
+        Some(loc) if id_type.deployment_id() == loc.hash.as_str() => loc,
+        Some(loc) => {
+            test_store::remove_subgraph(&loc.hash);
+            initialize(store, id, features, id_type).await
+        }
+        None => initialize(store, id, features, id_type).await,
+    }
+}
+
+fn test_schema(id: DeploymentHash, id_type: IdType) -> Schema {
+    const SCHEMA: &str = "
+    type Musician @entity {
+        id: ID!
+        name: String!
+        mainBand: Band
+        bands: [Band!]!
+        writtenSongs: [Song]! @derivedFrom(field: \"writtenBy\")
+    }
+
+    type Band @entity {
+        id: ID!
+        name: String!
+        members: [Musician!]! @derivedFrom(field: \"bands\")
+        originalSongs: [Song!]!
+    }
+
+    type Song @entity {
+        id: @ID@!
+        title: String!
+        writtenBy: Musician!
+        band: Band @derivedFrom(field: \"originalSongs\")
+    }
+
+    type SongStat @entity {
+        id: @ID@!
+        song: Song @derivedFrom(field: \"id\")
+        played: Int!
+    }
+    ";
+
+    Schema::parse(&SCHEMA.replace("@ID@", id_type.as_str()), id).expect("Test schema invalid")
 }
 
 async fn insert_test_entities(
     store: &impl SubgraphStore,
     manifest: SubgraphManifest<graph_chain_ethereum::Chain>,
+    id_type: IdType,
 ) -> DeploymentLocator {
     let deployment = DeploymentCreate::new(&manifest, None);
-    let name = SubgraphName::new("test/query").unwrap();
+    let name = SubgraphName::new(manifest.id.as_str()).unwrap();
     let node_id = NodeId::new("test").unwrap();
     let deployment = store
         .create_subgraph_deployment(
@@ -127,17 +199,18 @@ async fn insert_test_entities(
         )
         .unwrap();
 
+    let s = id_type.songs();
     let entities0 = vec![
         entity! { __typename: "Musician", id: "m1", name: "John", mainBand: "b1", bands: vec!["b1", "b2"] },
         entity! { __typename: "Musician", id: "m2", name: "Lisa", mainBand: "b1", bands: vec!["b1"] },
-        entity! { __typename: "Band", id: "b1", name: "The Musicians", originalSongs: vec!["s1", "s2"] },
-        entity! { __typename: "Band", id: "b2", name: "The Amateurs",  originalSongs: vec!["s1", "s3", "s4"] },
-        entity! { __typename: "Song", id: "s1", title: "Cheesy Tune", writtenBy: "m1" },
-        entity! { __typename: "Song", id: "s2", title: "Rock Tune",   writtenBy: "m2" },
-        entity! { __typename: "Song", id: "s3", title: "Pop Tune",    writtenBy: "m1" },
-        entity! { __typename: "Song", id: "s4", title: "Folk Tune",   writtenBy: "m3" },
-        entity! { __typename: "SongStat", id: "s1", played: 10 },
-        entity! { __typename: "SongStat", id: "s2", played: 15 },
+        entity! { __typename: "Band", id: "b1", name: "The Musicians", originalSongs: vec![s[1], s[2]] },
+        entity! { __typename: "Band", id: "b2", name: "The Amateurs",  originalSongs: vec![s[1], s[3], s[4]] },
+        entity! { __typename: "Song", id: s[1], title: "Cheesy Tune", writtenBy: "m1" },
+        entity! { __typename: "Song", id: s[2], title: "Rock Tune",   writtenBy: "m2" },
+        entity! { __typename: "Song", id: s[3], title: "Pop Tune",    writtenBy: "m1" },
+        entity! { __typename: "Song", id: s[4], title: "Folk Tune",   writtenBy: "m3" },
+        entity! { __typename: "SongStat", id: s[1], played: 10 },
+        entity! { __typename: "SongStat", id: s[2], played: 15 },
     ];
 
     let entities1 = vec![
@@ -170,8 +243,11 @@ async fn insert_test_entities(
     deployment
 }
 
-async fn execute_query_document(id: &DeploymentHash, query: q::Document) -> QueryResult {
-    execute_query_document_with_variables(id, query, None).await
+async fn execute_query(loc: &DeploymentLocator, query: &str) -> QueryResult {
+    let query = graphql_parser::parse_query(query)
+        .expect("invalid test query")
+        .into_static();
+    execute_query_document_with_variables(&loc.hash, query, None).await
 }
 
 async fn execute_query_document_with_variables(
@@ -211,37 +287,121 @@ macro_rules! extract_data {
     };
 }
 
+struct QueryArgs {
+    query: String,
+    variables: Option<QueryVariables>,
+    max_complexity: Option<u64>,
+}
+
+impl From<&str> for QueryArgs {
+    fn from(query: &str) -> Self {
+        QueryArgs {
+            query: query.to_owned(),
+            variables: None,
+            max_complexity: None,
+        }
+    }
+}
+
+impl From<(&str, r::Value)> for QueryArgs {
+    fn from((query, vars): (&str, r::Value)) -> Self {
+        let vars = match vars {
+            r::Value::Object(map) => map,
+            _ => panic!("vars must be an object"),
+        };
+        let vars = QueryVariables::new(HashMap::from_iter(
+            vars.into_iter().map(|(k, v)| (k.to_string(), v)),
+        ));
+        QueryArgs {
+            query: query.to_owned(),
+            variables: Some(vars),
+            max_complexity: None,
+        }
+    }
+}
+
+/// Run a GraphQL query against the `test_schema` and call the `test`
+/// function with the result. The query is actually run twice: once against
+/// the test schema where the `id` of `Song` and `SongStats` has type
+/// `String`, and once where it has type `Bytes`. The second argument to
+/// `test` indicates which type is being used for the id.
+///
+/// The query can contain placeholders `@S1@` .. `@S4@` which will be
+/// replaced with the id's of songs 1 through 4 before running the query.
+fn run_query<F>(args: impl Into<QueryArgs>, test: F)
+where
+    F: Fn(QueryResult, IdType) -> () + Send + 'static,
+{
+    let QueryArgs {
+        query,
+        variables,
+        max_complexity,
+    } = args.into();
+    run_test_sequentially(move |store| async move {
+        for id_type in [IdType::String, IdType::Bytes] {
+            let name = id_type.deployment_id();
+
+            let deployment =
+                setup_with_features_and_type(store.as_ref(), name, BTreeSet::new(), id_type).await;
+
+            let mut query = query.clone();
+            for (i, id) in id_type.songs().iter().enumerate() {
+                let pat = format!("@S{i}@");
+                let repl = format!("\"{id}\"");
+                query = query.replace(&pat, &repl);
+            }
+
+            let result = {
+                let id = &deployment.hash;
+                let query = graphql_parser::parse_query(&query)
+                    .expect("Invalid test query")
+                    .into_static();
+                let variables = variables.clone();
+                let runner = Arc::new(GraphQlRunner::new(
+                    &*LOGGER,
+                    STORE.clone(),
+                    SUBSCRIPTION_MANAGER.clone(),
+                    LOAD_MANAGER.clone(),
+                    METRICS_REGISTRY.clone(),
+                ));
+                let target = QueryTarget::Deployment(id.clone());
+                let query = Query::new(query, variables);
+
+                runner
+                    .run_query_with_complexity(query, target, max_complexity, None, None, None)
+                    .await
+                    .first()
+                    .unwrap()
+                    .duplicate()
+            };
+            test(result, id_type);
+        }
+    })
+}
+
 #[test]
 fn can_query_one_to_one_relationship() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let result = execute_query_document(
-            &deployment.hash,
-            graphql_parser::parse_query(
-                "
-            query {
-                musicians(first: 100, orderBy: id) {
-                    name
-                    mainBand {
-                        name
-                    }
-                }
-                songStats(first: 100, orderBy: id) {
-                    id
-                    song {
-                      id
-                      title
-                    }
-                    played
-                }
+    const QUERY: &str = "
+    query {
+        musicians(first: 100, orderBy: id) {
+            name
+            mainBand {
+                name
             }
-            ",
-            )
-            .expect("Invalid test query")
-            .into_static(),
-        )
-        .await;
+        }
+        songStats(first: 100, orderBy: id) {
+            id
+            song {
+              id
+              title
+            }
+            played
+        }
+    }
+    ";
 
+    run_query(QUERY, |result, id_type| {
+        let s = id_type.songs();
         let exp = object! {
             musicians: vec![
                 object! { name: "John", mainBand: object! { name: "The Musicians" } },
@@ -251,46 +411,36 @@ fn can_query_one_to_one_relationship() {
             ],
             songStats: vec![
                 object! {
-                    id: "s1",
-                    song: object! { id: "s1", title: "Cheesy Tune" },
+                    id: s[1],
+                    song: object! { id: s[1], title: "Cheesy Tune" },
                     played: 10,
                 },
                 object! {
-                    id: "s2",
-                    song: object! { id: "s2", title: "Rock Tune" },
+                    id: s[2],
+                    song: object! { id: s[2], title: "Rock Tune" },
                     played: 15
                 }
             ]
         };
         let data = extract_data!(result).unwrap();
-        assert_eq!(data, exp)
+        assert_eq!(data, exp);
     })
 }
 
 #[test]
 fn can_query_one_to_many_relationships_in_both_directions() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let result = execute_query_document(
-            &deployment.hash,
-            graphql_parser::parse_query(
-                "
-        query {
-            musicians(first: 100, orderBy: id) {
-                name
-                writtenSongs(first: 100, orderBy: id) {
-                    title
-                    writtenBy { name }
-                }
+    const QUERY: &str = "
+    query {
+        musicians(first: 100, orderBy: id) {
+            name
+            writtenSongs(first: 100, orderBy: id) {
+                title
+                writtenBy { name }
             }
         }
-        ",
-            )
-            .expect("Invalid test query")
-            .into_static(),
-        )
-        .await;
+    }";
 
+    run_query(QUERY, |result, _| {
         fn song(title: &str, author: &str) -> r::Value {
             object! {
                 title: title,
@@ -326,30 +476,20 @@ fn can_query_one_to_many_relationships_in_both_directions() {
 
 #[test]
 fn can_query_many_to_many_relationship() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let result = execute_query_document(
-            &deployment.hash,
-            graphql_parser::parse_query(
-                "
-            query {
-                musicians(first: 100, orderBy: id) {
+    const QUERY: &str = "
+    query {
+        musicians(first: 100, orderBy: id) {
+            name
+            bands(first: 100, orderBy: id) {
+                name
+                members(first: 100, orderBy: id) {
                     name
-                    bands(first: 100, orderBy: id) {
-                        name
-                        members(first: 100, orderBy: id) {
-                            name
-                        }
-                    }
                 }
             }
-            ",
-            )
-            .expect("Invalid test query")
-            .into_static(),
-        )
-        .await;
+        }
+    }";
 
+    run_query(QUERY, |result, _| {
         fn members(names: Vec<&str>) -> Vec<r::Value> {
             names
                 .into_iter()
@@ -383,23 +523,17 @@ fn can_query_many_to_many_relationship() {
 
 #[test]
 fn root_fragments_are_expanded() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let query = graphql_parser::parse_query(
-            r#"
-            fragment Musicians on Query {
-                musicians(first: 100, where: { name: "Tom" }) {
-                    name
-                }
-            }
-            query MyQuery {
-                ...Musicians
-            }"#,
-        )
-        .expect("invalid test query")
-        .into_static();
+    const QUERY: &str = r#"
+    fragment Musicians on Query {
+        musicians(first: 100, where: { name: "Tom" }) {
+            name
+        }
+    }
+    query MyQuery {
+        ...Musicians
+    }"#;
 
-        let result = execute_query_document_with_variables(&deployment.hash, query, None).await;
+    run_query(QUERY, |result, _| {
         let exp = object! { musicians: vec![ object! { name: "Tom" }]};
         assert_eq!(extract_data!(result), Some(exp));
     })
@@ -407,68 +541,37 @@ fn root_fragments_are_expanded() {
 
 #[test]
 fn query_variables_are_used() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let query = graphql_parser::parse_query(
-            "
-        query musicians($where: Musician_filter!) {
-          musicians(first: 100, where: $where) {
-            name
-          }
-        }
-    ",
-        )
-        .expect("invalid test query")
-        .into_static();
+    const QUERY: &str = "
+    query musicians($where: Musician_filter!) {
+      musicians(first: 100, where: $where) {
+        name
+      }
+    }";
 
-        let result = execute_query_document_with_variables(
-            &deployment.hash,
-            query,
-            Some(QueryVariables::new(HashMap::from_iter(
-                vec![(
-                    String::from("where"),
-                    object_value(vec![("name", r::Value::String(String::from("Tom")))]),
-                )]
-                .into_iter(),
-            ))),
-        )
-        .await;
-
-        let exp = object! {
-            musicians: vec![ object! { name: "Tom" }]
-        };
-        let data = extract_data!(result).unwrap();
-        assert_eq!(data, exp);
-    })
+    run_query(
+        (QUERY, object![ where: object! { name: "Tom"} ]),
+        |result, _| {
+            let exp = object! {
+                musicians: vec![ object! { name: "Tom" }]
+            };
+            let data = extract_data!(result).unwrap();
+            assert_eq!(data, exp);
+        },
+    );
 }
 
 #[test]
 fn skip_directive_works_with_query_variables() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let query = graphql_parser::parse_query(
-            "
-        query musicians($skip: Boolean!) {
-          musicians(first: 100, orderBy: id) {
-            id @skip(if: $skip)
-            name
-          }
-        }
-    ",
-        )
-        .expect("invalid test query")
-        .into_static();
+    const QUERY: &str = "
+    query musicians($skip: Boolean!) {
+      musicians(first: 100, orderBy: id) {
+        id @skip(if: $skip)
+        name
+      }
+    }
+";
 
-        // Set variable $skip to true
-        let result = execute_query_document_with_variables(
-            &deployment.hash,
-            query.clone(),
-            Some(QueryVariables::new(HashMap::from_iter(
-                vec![(String::from("skip"), r::Value::Boolean(true))].into_iter(),
-            ))),
-        )
-        .await;
-
+    run_query((QUERY, object! { skip: true }), |result, _| {
         // Assert that only names are returned
         let musicians: Vec<_> = ["John", "Lisa", "Tom", "Valerie"]
             .into_iter()
@@ -477,17 +580,9 @@ fn skip_directive_works_with_query_variables() {
         let exp = object! { musicians: musicians };
         let data = extract_data!(result).unwrap();
         assert_eq!(data, exp);
+    });
 
-        // Set variable $skip to false
-        let result = execute_query_document_with_variables(
-            &deployment.hash,
-            query,
-            Some(QueryVariables::new(HashMap::from_iter(
-                vec![(String::from("skip"), r::Value::Boolean(false))].into_iter(),
-            ))),
-        )
-        .await;
-
+    run_query((QUERY, object! { skip: false }), |result, _| {
         // Assert that IDs and names are returned
         let exp = object! {
             musicians: vec![
@@ -499,36 +594,21 @@ fn skip_directive_works_with_query_variables() {
         };
         let data = extract_data!(result).unwrap();
         assert_eq!(data, exp);
-    })
+    });
 }
 
 #[test]
 fn include_directive_works_with_query_variables() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let query = graphql_parser::parse_query(
-            "
-        query musicians($include: Boolean!) {
-          musicians(first: 100, orderBy: id) {
-            id @include(if: $include)
-            name
-          }
-        }
-    ",
-        )
-        .expect("invalid test query")
-        .into_static();
+    const QUERY: &str = "
+    query musicians($include: Boolean!) {
+      musicians(first: 100, orderBy: id) {
+        id @include(if: $include)
+        name
+      }
+    }
+";
 
-        // Set variable $include to true
-        let result = execute_query_document_with_variables(
-            &deployment.hash,
-            query.clone(),
-            Some(QueryVariables::new(HashMap::from_iter(
-                vec![(String::from("include"), r::Value::Boolean(true))].into_iter(),
-            ))),
-        )
-        .await;
-
+    run_query((QUERY, object! { include: true }), |result, _| {
         // Assert that IDs and names are returned
         let exp = object! {
             musicians: vec![
@@ -540,17 +620,9 @@ fn include_directive_works_with_query_variables() {
         };
         let data = extract_data!(result).unwrap();
         assert_eq!(data, exp);
+    });
 
-        // Set variable $include to false
-        let result = execute_query_document_with_variables(
-            &deployment.hash,
-            query,
-            Some(QueryVariables::new(HashMap::from_iter(
-                vec![(String::from("include"), r::Value::Boolean(false))].into_iter(),
-            ))),
-        )
-        .await;
-
+    run_query((QUERY, object! { include: false }), |result, _| {
         // Assert that only names are returned
         let musicians: Vec<_> = ["John", "Lisa", "Tom", "Valerie"]
             .into_iter()
@@ -559,71 +631,55 @@ fn include_directive_works_with_query_variables() {
         let exp = object! { musicians: musicians };
         let data = extract_data!(result).unwrap();
         assert_eq!(data, exp);
-    })
+    });
 }
 
 #[test]
 fn query_complexity() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let query = Query::new(
-            graphql_parser::parse_query(
-                "query {
-                musicians(orderBy: id) {
+    const QUERY1: &str = "query {
+        musicians(orderBy: id) {
+            name
+            bands(first: 100, orderBy: id) {
+                name
+                members(first: 100, orderBy: id) {
                     name
-                    bands(first: 100, orderBy: id) {
-                        name
-                        members(first: 100, orderBy: id) {
-                            name
-                        }
-                    }
                 }
-            }",
-            )
-            .unwrap()
-            .into_static(),
-            None,
-        );
-        let max_complexity = Some(1_010_100);
-
+            }
+        }
+    }";
+    let args = QueryArgs {
+        query: QUERY1.to_owned(),
+        variables: None,
+        max_complexity: Some(1_010_100),
+    };
+    run_query(args, |result, _| {
         // This query is exactly at the maximum complexity.
-        let hash2 = deployment.hash.clone();
-        let result = first_result(
-            execute_subgraph_query_with_complexity(query, hash2.into(), max_complexity).await,
-        )
-        .await;
         assert!(!result.has_errors());
+    });
 
-        let query = Query::new(
-            graphql_parser::parse_query(
-                "query {
-                musicians(orderBy: id) {
+    const QUERY2: &str = "query {
+        musicians(orderBy: id) {
+            name
+            bands(first: 100, orderBy: id) {
+                name
+                members(first: 100, orderBy: id) {
                     name
-                    bands(first: 100, orderBy: id) {
-                        name
-                        members(first: 100, orderBy: id) {
-                            name
-                        }
-                    }
                 }
-                __schema {
-                    types {
-                        name
-                    }
-                }
-            }",
-            )
-            .unwrap()
-            .into_static(),
-            None,
-        );
-
+            }
+        }
+        __schema {
+            types {
+                name
+            }
+        }
+    }";
+    let args = QueryArgs {
+        query: QUERY2.to_owned(),
+        variables: None,
+        max_complexity: Some(1_010_100),
+    };
+    run_query(args, |result, _| {
         // The extra introspection causes the complexity to go over.
-        let result = first_result(
-            execute_subgraph_query_with_complexity(query, deployment.hash.into(), max_complexity)
-                .await,
-        )
-        .await;
         match result.to_result().unwrap_err()[0] {
             QueryError::ExecutionError(QueryExecutionError::TooComplex(1_010_200, _)) => (),
             _ => panic!("did not catch complexity"),
@@ -765,28 +821,15 @@ fn instant_timeout() {
 
 #[test]
 fn variable_defaults() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let query = graphql_parser::parse_query(
-            "
-        query musicians($orderDir: OrderDirection = desc) {
-          bands(first: 2, orderBy: id, orderDirection: $orderDir) {
-            id
-          }
-        }
-    ",
-        )
-        .expect("invalid test query")
-        .into_static();
+    const QUERY: &str = "
+    query musicians($orderDir: OrderDirection = desc) {
+      bands(first: 2, orderBy: id, orderDirection: $orderDir) {
+        id
+      }
+    }
+";
 
-        // Assert that missing variables are defaulted.
-        let result = execute_query_document_with_variables(
-            &deployment.hash,
-            query.clone(),
-            Some(QueryVariables::default()),
-        )
-        .await;
-
+    run_query((QUERY, object! {}), |result, _| {
         let exp = object! {
             bands: vec![
                 object! { id: "b2" },
@@ -795,46 +838,34 @@ fn variable_defaults() {
         };
         let data = extract_data!(result).unwrap();
         assert_eq!(data, exp);
+    });
 
-        // Assert that null variables are not defaulted.
-        let result = execute_query_document_with_variables(
-            &deployment.hash,
-            query,
-            Some(QueryVariables::new(HashMap::from_iter(
-                vec![(String::from("orderDir"), r::Value::Null)].into_iter(),
-            ))),
-        )
-        .await;
-
-        let exp = object! {
-            bands: vec![
-                object! { id: "b1" },
-                object! { id: "b2" }
-            ]
-        };
-        let data = extract_data!(result).unwrap();
-        assert_eq!(data, exp);
-    })
+    run_query(
+        (QUERY, object! { orderDir: r::Value::Null }),
+        |result, _| {
+            let exp = object! {
+                bands: vec![
+                    object! { id: "b1" },
+                    object! { id: "b2" }
+                ]
+            };
+            let data = extract_data!(result).unwrap();
+            assert_eq!(data, exp);
+        },
+    )
 }
 
 #[test]
 fn skip_is_nullable() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let query = graphql_parser::parse_query(
-            "
-        query musicians {
-          musicians(orderBy: id, skip: null) {
-            name
-          }
-        }
-    ",
-        )
-        .expect("invalid test query")
-        .into_static();
+    const QUERY: &str = "
+    query musicians {
+      musicians(orderBy: id, skip: null) {
+        name
+      }
+    }
+";
 
-        let result = execute_query_document_with_variables(&deployment.hash, query, None).await;
-
+    run_query(QUERY, |result, _| {
         let musicians: Vec<_> = ["John", "Lisa", "Tom", "Valerie"]
             .into_iter()
             .map(|name| object! { name: name })
@@ -847,22 +878,15 @@ fn skip_is_nullable() {
 
 #[test]
 fn first_is_nullable() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let query = graphql_parser::parse_query(
-            "
-        query musicians {
-          musicians(first: null, orderBy: id) {
-            name
-          }
-        }
-    ",
-        )
-        .expect("invalid test query")
-        .into_static();
+    const QUERY: &str = "
+    query musicians {
+      musicians(first: null, orderBy: id) {
+        name
+      }
+    }
+";
 
-        let result = execute_query_document_with_variables(&deployment.hash, query, None).await;
-
+    run_query(QUERY, |result, _| {
         let musicians: Vec<_> = ["John", "Lisa", "Tom", "Valerie"]
             .into_iter()
             .map(|name| object! { name: name })
@@ -875,29 +899,15 @@ fn first_is_nullable() {
 
 #[test]
 fn nested_variable() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let query = graphql_parser::parse_query(
-            "
-        query musicians($name: String) {
-          musicians(first: 100, where: { name: $name }) {
-            name
-          }
-        }
-    ",
-        )
-        .expect("invalid test query")
-        .into_static();
+    const QUERY: &str = "
+    query musicians($name: String) {
+      musicians(first: 100, where: { name: $name }) {
+        name
+      }
+    }
+";
 
-        let result = execute_query_document_with_variables(
-            &deployment.hash,
-            query,
-            Some(QueryVariables::new(HashMap::from_iter(
-                vec![(String::from("name"), r::Value::String("Lisa".to_string()))].into_iter(),
-            ))),
-        )
-        .await;
-
+    run_query((QUERY, object! { name: "Lisa" }), |result, _| {
         let exp = object! {
             musicians: vec! { object! { name: "Lisa" }}
         };
@@ -908,25 +918,9 @@ fn nested_variable() {
 
 #[test]
 fn ambiguous_derived_from_result() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let query = graphql_parser::parse_query(
-            "
-        {
-          songs(first: 100, orderBy: id) {
-            id
-            band {
-              id
-            }
-          }
-        }
-        ",
-        )
-        .expect("invalid test query")
-        .into_static();
+    const QUERY: &str = "{ songs(first: 100, orderBy: id) { id band { id } } }";
 
-        let result = execute_query_document_with_variables(&deployment.hash, query, None).await;
-
+    run_query(QUERY, |result, _| {
         match &result.to_result().unwrap_err()[0] {
             QueryError::ExecutionError(QueryExecutionError::AmbiguousDerivedFromResult(
                 pos,
@@ -937,8 +931,8 @@ fn ambiguous_derived_from_result() {
                 assert_eq!(
                     pos,
                     &Pos {
-                        line: 5,
-                        column: 13
+                        line: 1,
+                        column: 39
                     }
                 );
                 assert_eq!(derived_from_field.as_str(), "band");
@@ -952,28 +946,21 @@ fn ambiguous_derived_from_result() {
 
 #[test]
 fn can_filter_by_relationship_fields() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let result = execute_query_document(
-            &deployment.hash,
-            graphql_parser::parse_query(
-                "
-        query {
-            musicians(orderBy: id, where: { mainBand: \"b2\" }) {
-                id name
-                mainBand { id }
-            }
-            bands(orderBy: id, where: { originalSongs: [\"s1\", \"s3\", \"s4\"] }) {
-                id name
-                originalSongs { id }
-            }
+    const QUERY: &str = "
+    query {
+        musicians(orderBy: id, where: { mainBand: \"b2\" }) {
+            id name
+            mainBand { id }
         }
-        ",
-            )
-            .expect("invalid test query")
-            .into_static(),
-        )
-        .await;
+        bands(orderBy: id, where: { originalSongs: [@S1@, @S3@, @S4@] }) {
+            id name
+            originalSongs { id }
+        }
+    }
+    ";
+
+    run_query(QUERY, |result, id_type| {
+        let s = id_type.songs();
 
         let exp = object! {
             musicians: vec![
@@ -984,9 +971,9 @@ fn can_filter_by_relationship_fields() {
                     id: "b2",
                     name: "The Amateurs",
                     originalSongs: vec! [
-                        object! { id: "s1" },
-                        object! { id: "s3" },
-                        object! { id: "s4" }
+                        object! { id: s[1] },
+                        object! { id: s[3] },
+                        object! { id: s[4] }
                     ]
                 }
             ]
@@ -999,25 +986,16 @@ fn can_filter_by_relationship_fields() {
 
 #[test]
 fn cannot_filter_by_derved_relationship_fields() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let result = execute_query_document(
-            &deployment.hash,
-            graphql_parser::parse_query(
-                "
-        query {
-            musicians(orderBy: id, where: { writtenSongs: [\"s1\"] }) {
-                id name
-                mainBand { id }
-            }
+    const QUERY: &str = "
+    query {
+        musicians(orderBy: id, where: { writtenSongs: [@S1@] }) {
+            id name
+            mainBand { id }
         }
-        ",
-            )
-            .expect("invalid test query")
-            .into_static(),
-        )
-        .await;
+    }
+    ";
 
+    run_query(QUERY, |result, _id_type| {
         match &result.to_result().unwrap_err()[0] {
             // With validations
             QueryError::ExecutionError(QueryExecutionError::ValidationError(_, error_message)) => {
@@ -1102,79 +1080,51 @@ fn subscription_gets_result_even_without_events() {
 
 #[test]
 fn can_use_nested_filter() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let result = execute_query_document(
-            &deployment.hash,
-            graphql_parser::parse_query(
-                "
-        query {
-            musicians(orderBy: id) {
-                name
-                bands(where: { originalSongs: [\"s1\", \"s3\", \"s4\"] }) { id }
-            }
+    const QUERY: &str = "
+    query {
+        musicians(orderBy: id) {
+            name
+            bands(where: { originalSongs: [@S1@, @S3@, @S4@] }) { id }
         }
-        ",
-            )
-            .expect("invalid test query")
-            .into_static(),
-        )
-        .await;
+    }
+    ";
 
-        assert_eq!(
-            extract_data!(result).unwrap(),
-            object_value(vec![(
-                "musicians",
-                r::Value::List(vec![
-                    object_value(vec![
-                        ("name", r::Value::String(String::from("John"))),
-                        (
-                            "bands",
-                            r::Value::List(vec![object_value(vec![(
-                                "id",
-                                r::Value::String(String::from("b2"))
-                            )])])
-                        )
-                    ]),
-                    object_value(vec![
-                        ("name", r::Value::String(String::from("Lisa"))),
-                        ("bands", r::Value::List(vec![]))
-                    ]),
-                    object_value(vec![
-                        ("name", r::Value::String(String::from("Tom"))),
-                        (
-                            "bands",
-                            r::Value::List(vec![object_value(vec![
-                                (("id", r::Value::String(String::from("b2"))))
-                            ])])
-                        )
-                    ]),
-                    object_value(vec![
-                        ("name", r::Value::String(String::from("Valerie"))),
-                        ("bands", r::Value::List(vec![]))
-                    ])
-                ])
-            )])
-        );
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            musicians: vec![
+                object! {
+                    name: "John",
+                    bands: vec![ object! { id: "b2" }]
+                },
+                object! {
+                    name: "Lisa",
+                    bands: Vec::<r::Value>::new(),
+                },
+                object! {
+                    name: "Tom",
+                    bands: vec![ object! { id: "b2" }]
+                },
+                object! {
+                    name: "Valerie",
+                    bands: Vec::<r::Value>::new(),
+                }
+            ]
+        };
+
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
     })
 }
 
 // see: graphql-bug-compat
 #[test]
 fn ignores_invalid_field_arguments() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        // This query has to return all the musicians since `id` is not a
-        // valid argument for the `musicians` field and must therefore be
-        // ignored
-        let result = execute_query_document(
-            &deployment.hash,
-            graphql_parser::parse_query("query { musicians(id: \"m1\") { id } } ")
-                .expect("invalid test query")
-                .into_static(),
-        )
-        .await;
+    // This query has to return all the musicians since `id` is not a
+    // valid argument for the `musicians` field and must therefore be
+    // ignored
+    const QUERY: &str = "query { musicians(id: \"m1\") { id } } ";
 
+    run_query(QUERY, |result, _| {
         match &result.to_result() {
             // Without validations
             Ok(Some(r::Value::Object(obj))) => match obj.get("musicians").unwrap() {
@@ -1208,23 +1158,10 @@ fn ignores_invalid_field_arguments() {
 // see: graphql-bug-compat
 #[test]
 fn leaf_selection_mismatch() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let result = execute_query_document(
-            &deployment.hash,
-            // 'name' is a string and doesn't admit a selection
-            graphql_parser::parse_query("query { musician(id: \"m1\") { id name { wat }} } ")
-                .expect("invalid test query")
-                .into_static(),
-        )
-        .await;
+    const QUERY1: &str = "query { musician(id: \"m1\") { id name { wat }} } ";
 
-        let exp = object! {
-            musician: object! {
-                id: "m1",
-                name: "John"
-            }
-        };
+    run_query(QUERY1, |result, _| {
+        let exp = object! { musician: object! { id: "m1", name: "John" } };
 
         match &result.to_result() {
             // Without validations
@@ -1256,15 +1193,11 @@ fn leaf_selection_mismatch() {
                 panic!("unexpexted result: {:?}", r);
             }
         }
+    });
 
-        let result = execute_query_document(
-            &deployment.hash,
-            // 'mainBand' is an object and requires a selection; it is ignored
-            graphql_parser::parse_query("query { musician(id: \"m1\") { id name mainBand } } ")
-                .expect("invalid test query")
-                .into_static(),
-        )
-        .await;
+    const QUERY2: &str = "query { musician(id: \"m1\") { id name mainBand } } ";
+    run_query(QUERY2, |result, _| {
+        let exp = object! { musician: object! { id: "m1", name: "John" } };
 
         match &result.to_result() {
             // Without validations
@@ -1293,17 +1226,9 @@ fn leaf_selection_mismatch() {
 // see: graphql-bug-compat
 #[test]
 fn missing_variable() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let result = execute_query_document(
-            &deployment.hash,
-            // '$first' is not defined, use its default from the schema
-            graphql_parser::parse_query("query { musicians(first: $first) { id } }")
-                .expect("invalid test query")
-                .into_static(),
-        )
-        .await;
-
+    // '$first' is not defined, use its default from the schema
+    const QUERY1: &str = "query { musicians(first: $first) { id } }";
+    run_query(QUERY1, |result, _| {
         let exp = object! {
             musicians: vec![
                 object! { id: "m1" },
@@ -1329,15 +1254,19 @@ fn missing_variable() {
                 panic!("unexpexted result: {:?}", r);
             }
         }
+    });
 
-        let result = execute_query_document(
-            &deployment.hash,
-            // '$where' is not defined but nullable, ignore the argument
-            graphql_parser::parse_query("query { musicians(where: $where) { id } }")
-                .expect("invalid test query")
-                .into_static(),
-        )
-        .await;
+    // '$where' is not defined but nullable, ignore the argument
+    const QUERY2: &str = "query { musicians(where: $where) { id } }";
+    run_query(QUERY2, |result, _| {
+        let exp = object! {
+            musicians: vec![
+                object! { id: "m1" },
+                object! { id: "m2" },
+                object! { id: "m3" },
+                object! { id: "m4" },
+            ]
+        };
 
         match &result.to_result() {
             // '$where' is not defined but nullable, ignore the argument
@@ -1363,235 +1292,137 @@ fn missing_variable() {
 // deleted once queries are validated
 #[test]
 fn invalid_field_merge() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
-        let result = execute_query_document(
-            &deployment.hash,
-            graphql_parser::parse_query("query { musicians { t: id t: mainBand { id } } }")
-                .expect("invalid test query")
-                .into_static(),
-        )
-        .await;
+    const QUERY: &str = "query { musicians { t: id t: mainBand { id } } }";
+
+    run_query(QUERY, |result, _| {
         assert!(result.has_errors());
     })
 }
 
-async fn check_musicians_at(
-    id: &DeploymentHash,
-    query: &str,
-    block_var: Option<(&str, r::Value)>,
-    expected: Result<Vec<&str>, &str>,
-    qid: &str,
-) {
-    let query = graphql_parser::parse_query(query)
-        .expect("invalid test query")
-        .into_static();
-    let vars = block_var.map(|(name, value)| {
-        let mut map = HashMap::new();
-        map.insert(name.to_owned(), value);
-        QueryVariables::new(map)
+/// What we expect the query to return: either a list of musician ids when
+/// the query should succeed (`Ok`) or a string that should appear in the
+/// error message when the query should return an `Err`. The error string
+/// can contain `@DEPLOYMENT@` which will be replaced with the deployment id
+type Expected = Result<Vec<&'static str>, &'static str>;
+
+fn check_musicians_at(query0: &str, block_var: r::Value, expected: Expected, qid: &'static str) {
+    run_query((query0, block_var), move |result, id_type| {
+        match &expected {
+            Ok(ids) => {
+                let ids: Vec<_> = ids.into_iter().map(|id| object! { id: *id }).collect();
+                let expected = Some(object_value(vec![("musicians", r::Value::List(ids))]));
+                let data = match result.to_result() {
+                    Err(errors) => panic!("unexpected error: {:?} ({})\n", errors, qid),
+                    Ok(data) => data,
+                };
+                assert_eq!(data, expected, "failed query: ({})", qid);
+            }
+            Err(msg) => {
+                let errors = match result.to_result() {
+                    Err(errors) => errors,
+                    Ok(_) => panic!(
+                        "expected error `{}` but got successful result ({})",
+                        msg, qid
+                    ),
+                };
+                let actual = errors
+                    .first()
+                    .expect("we expect one error message")
+                    .to_string();
+                let msg = msg.replace("@DEPLOYMENT@", id_type.deployment_id());
+                assert!(
+                    actual.contains(&msg),
+                    "expected error message `{}` but got {:?} ({})",
+                    msg,
+                    errors,
+                    qid
+                );
+            }
+        };
     });
-
-    let result = execute_query_document_with_variables(id, query, vars).await;
-
-    match expected {
-        Ok(ids) => {
-            let ids: Vec<_> = ids
-                .into_iter()
-                .map(|id| object_value(vec![("id", r::Value::String(String::from(id)))]))
-                .collect();
-            let expected = Some(object_value(vec![("musicians", r::Value::List(ids))]));
-            let data = match result.to_result() {
-                Err(errors) => panic!("unexpected error: {:?} ({})\n", errors, qid),
-                Ok(data) => data,
-            };
-            assert_eq!(data, expected, "failed query: ({})", qid);
-        }
-        Err(msg) => {
-            let errors = match result.to_result() {
-                Err(errors) => errors,
-                Ok(_) => panic!(
-                    "expected error `{}` but got successful result ({})",
-                    msg, qid
-                ),
-            };
-            let actual = errors
-                .first()
-                .expect("we expect one error message")
-                .to_string();
-
-            assert!(
-                actual.contains(msg),
-                "expected error message `{}` but got {:?} ({})",
-                msg,
-                errors,
-                qid
-            );
-        }
-    }
 }
 
 #[test]
 fn query_at_block() {
-    run_test_sequentially(|store| async move {
-        use test_store::block_store::{
-            FakeBlock, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK,
-        };
+    use test_store::block_store::{FakeBlock, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK};
 
-        async fn musicians_at(
-            deployment: &DeploymentLocator,
-            block: &str,
-            expected: Result<Vec<&str>, &str>,
-            qid: &str,
-        ) {
-            let query = format!("query {{ musicians(block: {{ {} }}) {{ id }} }}", block);
-            check_musicians_at(&deployment.hash, &query, None, expected, qid).await;
-        }
+    fn musicians_at(block: &str, expected: Expected, qid: &'static str) {
+        let query = format!("query {{ musicians(block: {{ {} }}) {{ id }} }}", block);
+        check_musicians_at(&query, object! {}, expected, qid);
+    }
 
-        fn hash(block: &FakeBlock) -> String {
-            format!("hash : \"0x{}\"", block.hash)
-        }
+    fn hash(block: &FakeBlock) -> String {
+        format!("hash : \"0x{}\"", block.hash)
+    }
 
-        const BLOCK_NOT_INDEXED: &str = "subgraph graphqlTestsQuery has only indexed \
+    const BLOCK_NOT_INDEXED: &str = "subgraph @DEPLOYMENT@ has only indexed \
          up to block number 1 and data for block number 7000 is therefore not yet available";
-        const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
+    const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 
-        let deployment = setup(store.as_ref()).await;
-        musicians_at(&deployment, "number: 7000", Err(BLOCK_NOT_INDEXED), "n7000").await;
-        musicians_at(&deployment, "number: 0", Ok(vec!["m1", "m2"]), "n0").await;
-        musicians_at(
-            &deployment,
-            "number: 1",
-            Ok(vec!["m1", "m2", "m3", "m4"]),
-            "n1",
-        )
-        .await;
+    musicians_at("number: 7000", Err(BLOCK_NOT_INDEXED), "n7000");
+    musicians_at("number: 0", Ok(vec!["m1", "m2"]), "n0");
+    musicians_at("number: 1", Ok(vec!["m1", "m2", "m3", "m4"]), "n1");
 
-        musicians_at(
-            &deployment,
-            &hash(&*GENESIS_BLOCK),
-            Ok(vec!["m1", "m2"]),
-            "h0",
-        )
-        .await;
-        musicians_at(
-            &deployment,
-            &hash(&*BLOCK_ONE),
-            Ok(vec!["m1", "m2", "m3", "m4"]),
-            "h1",
-        )
-        .await;
-        musicians_at(
-            &deployment,
-            &hash(&*BLOCK_TWO),
-            Ok(vec!["m1", "m2", "m3", "m4"]),
-            "h2",
-        )
-        .await;
-        musicians_at(
-            &deployment,
-            &hash(&*BLOCK_THREE),
-            Err(BLOCK_HASH_NOT_FOUND),
-            "h3",
-        )
-        .await;
-    })
+    musicians_at(&hash(&*GENESIS_BLOCK), Ok(vec!["m1", "m2"]), "h0");
+    musicians_at(&hash(&*BLOCK_ONE), Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
+    musicians_at(&hash(&*BLOCK_TWO), Ok(vec!["m1", "m2", "m3", "m4"]), "h2");
+    musicians_at(&hash(&*BLOCK_THREE), Err(BLOCK_HASH_NOT_FOUND), "h3");
 }
 
 #[test]
 fn query_at_block_with_vars() {
-    run_test_sequentially(|store| async move {
-        use test_store::block_store::{
-            FakeBlock, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK,
-        };
+    use test_store::block_store::{FakeBlock, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK};
 
-        async fn musicians_at_nr(
-            deployment: &DeploymentLocator,
-            block: i32,
-            expected: Result<Vec<&str>, &str>,
-            qid: &str,
-        ) {
-            let query = "query by_nr($block: Int!) { musicians(block: { number: $block }) { id } }";
-            let number = r::Value::Int(block.into());
-            let var = Some(("block", number.clone()));
+    fn musicians_at_nr(block: i32, expected: Expected, qid: &'static str) {
+        let query = "query by_nr($block: Int!) { musicians(block: { number: $block }) { id } }";
+        let var = object! { block: block };
 
-            check_musicians_at(&deployment.hash, query, var, expected.clone(), qid).await;
+        check_musicians_at(query, var, expected.clone(), qid);
 
-            let query = "query by_nr($block: Block_height!) { musicians(block: $block) { id } }";
-            let mut map = Object::new();
-            map.insert("number".to_owned(), number);
-            let block = r::Value::Object(map);
-            let var = Some(("block", block));
+        let query = "query by_nr($block: Block_height!) { musicians(block: $block) { id } }";
+        let var = object! { block: object! { number: block } };
 
-            check_musicians_at(&deployment.hash, query, var, expected, qid).await;
-        }
+        check_musicians_at(query, var, expected, qid);
+    }
 
-        async fn musicians_at_nr_gte(
-            deployment: &DeploymentLocator,
-            block: i32,
-            expected: Result<Vec<&str>, &str>,
-            qid: &str,
-        ) {
-            let query =
-                "query by_nr($block: Int!) { musicians(block: { number_gte: $block }) { id } }";
-            let var = Some(("block", r::Value::Int(block.into())));
+    fn musicians_at_nr_gte(block: i32, expected: Expected, qid: &'static str) {
+        let query = "query by_nr($block: Int!) { musicians(block: { number_gte: $block }) { id } }";
+        let var = object! { block: block };
 
-            check_musicians_at(&deployment.hash, query, var, expected, qid).await;
-        }
+        check_musicians_at(query, var, expected, qid);
+    }
 
-        async fn musicians_at_hash(
-            deployment: &DeploymentLocator,
-            block: &FakeBlock,
-            expected: Result<Vec<&str>, &str>,
-            qid: &str,
-        ) {
-            let query =
-                "query by_hash($block: Bytes!) { musicians(block: { hash: $block }) { id } }";
-            let var = Some(("block", r::Value::String(block.hash.to_owned())));
+    fn musicians_at_hash(block: &FakeBlock, expected: Expected, qid: &'static str) {
+        let query = "query by_hash($block: Bytes!) { musicians(block: { hash: $block }) { id } }";
+        let var = object! { block: block.hash.to_string() };
 
-            check_musicians_at(&deployment.hash, query, var, expected, qid).await;
-        }
+        check_musicians_at(query, var, expected, qid);
+    }
 
-        const BLOCK_NOT_INDEXED: &str = "subgraph graphqlTestsQuery has only indexed \
+    const BLOCK_NOT_INDEXED: &str = "subgraph @DEPLOYMENT@ has only indexed \
          up to block number 1 and data for block number 7000 is therefore not yet available";
-        const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
+    const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 
-        let deployment = setup(store.as_ref()).await;
-        musicians_at_nr(&deployment, 7000, Err(BLOCK_NOT_INDEXED), "n7000").await;
-        musicians_at_nr(&deployment, 0, Ok(vec!["m1", "m2"]), "n0").await;
-        musicians_at_nr(&deployment, 1, Ok(vec!["m1", "m2", "m3", "m4"]), "n1").await;
+    musicians_at_nr(7000, Err(BLOCK_NOT_INDEXED), "n7000");
+    musicians_at_nr(0, Ok(vec!["m1", "m2"]), "n0");
+    musicians_at_nr(1, Ok(vec!["m1", "m2", "m3", "m4"]), "n1");
 
-        musicians_at_nr_gte(&deployment, 7000, Err(BLOCK_NOT_INDEXED), "ngte7000").await;
-        musicians_at_nr_gte(&deployment, 0, Ok(vec!["m1", "m2", "m3", "m4"]), "ngte0").await;
-        musicians_at_nr_gte(&deployment, 1, Ok(vec!["m1", "m2", "m3", "m4"]), "ngte1").await;
+    musicians_at_nr_gte(7000, Err(BLOCK_NOT_INDEXED), "ngte7000");
+    musicians_at_nr_gte(0, Ok(vec!["m1", "m2", "m3", "m4"]), "ngte0");
+    musicians_at_nr_gte(1, Ok(vec!["m1", "m2", "m3", "m4"]), "ngte1");
 
-        musicians_at_hash(&deployment, &GENESIS_BLOCK, Ok(vec!["m1", "m2"]), "h0").await;
-        musicians_at_hash(
-            &deployment,
-            &BLOCK_ONE,
-            Ok(vec!["m1", "m2", "m3", "m4"]),
-            "h1",
-        )
-        .await;
-        musicians_at_hash(
-            &deployment,
-            &BLOCK_TWO,
-            Ok(vec!["m1", "m2", "m3", "m4"]),
-            "h2",
-        )
-        .await;
-        musicians_at_hash(&deployment, &BLOCK_THREE, Err(BLOCK_HASH_NOT_FOUND), "h3").await;
-    })
+    musicians_at_hash(&GENESIS_BLOCK, Ok(vec!["m1", "m2"]), "h0");
+    musicians_at_hash(&BLOCK_ONE, Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
+    musicians_at_hash(&BLOCK_TWO, Ok(vec!["m1", "m2", "m3", "m4"]), "h2");
+    musicians_at_hash(&BLOCK_THREE, Err(BLOCK_HASH_NOT_FOUND), "h3");
 }
 
 #[test]
 fn query_detects_reorg() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
+        let deployment =
+            setup_with_features(store.as_ref(), "graphqlQueryDetectsReorg", BTreeSet::new()).await;
         let query = "query { musician(id: \"m1\") { id } }";
-        let query = graphql_parser::parse_query(query)
-            .expect("invalid test query")
-            .into_static();
         let state = deployment_state(STORE.as_ref(), &deployment.hash).await;
 
         // Inject a fake initial state; c435c25decbc4ad7bbbadf8e0ced0ff2
@@ -1600,7 +1431,7 @@ fn query_detects_reorg() {
             .unwrap() = Some(state);
 
         // When there is no revert, queries work fine
-        let result = execute_query_document(&deployment.hash, query.clone()).await;
+        let result = execute_query(&deployment, query).await;
 
         assert_eq!(
             extract_data!(result),
@@ -1613,7 +1444,7 @@ fn query_detects_reorg() {
         // at block 1 when we got `state`, and reorged once by one block, which
         // can not affect block 0, and it's therefore ok to query at block 0
         // even with a concurrent reorg
-        let result = execute_query_document(&deployment.hash, query.clone()).await;
+        let result = execute_query(&deployment, query).await;
         assert_eq!(
             extract_data!(result),
             Some(object!(musician: object!(id: "m1")))
@@ -1631,7 +1462,7 @@ fn query_detects_reorg() {
         .await
         .unwrap();
 
-        let result = execute_query_document(&deployment.hash, query.clone()).await;
+        let result = execute_query(&deployment, query).await;
         match result.to_result().unwrap_err()[0] {
             QueryError::ExecutionError(QueryExecutionError::DeploymentReverted) => { /* expected */
             }
@@ -1647,18 +1478,13 @@ fn query_detects_reorg() {
 
 #[test]
 fn can_query_meta() {
-    run_test_sequentially(|store| async move {
-        // metadata for the latest block (block 1)
-        let query = "query { _meta { deployment block { hash number __typename } __typename } }";
-        let query = graphql_parser::parse_query(query)
-            .expect("invalid test query")
-            .into_static();
-
-        let deployment = setup(store.as_ref()).await;
-        let result = execute_query_document(&deployment.hash, query).await;
+    // metadata for the latest block (block 1)
+    const QUERY1: &str =
+        "query { _meta { deployment block { hash number __typename } __typename } }";
+    run_query(QUERY1, |result, id_type| {
         let exp = object! {
             _meta: object! {
-                deployment: "graphqlTestsQuery",
+                deployment: id_type.deployment_id(),
                 block: object! {
                     hash: "0x8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
                     number: 1,
@@ -1668,17 +1494,15 @@ fn can_query_meta() {
             },
         };
         assert_eq!(extract_data!(result), Some(exp));
+    });
 
-        // metadata for block 0 by number
-        let query = "query { _meta(block: { number: 0 }) { deployment block { hash number } } }";
-        let query = graphql_parser::parse_query(query)
-            .expect("invalid test query")
-            .into_static();
-
-        let result = execute_query_document(&deployment.hash, query).await;
+    // metadata for block 0 by number
+    const QUERY2: &str =
+        "query { _meta(block: { number: 0 }) { deployment block { hash number } } }";
+    run_query(QUERY2, |result, id_type| {
         let exp = object! {
             _meta: object! {
-                deployment: "graphqlTestsQuery",
+                deployment: id_type.deployment_id(),
                 block: object! {
                     hash: r::Value::Null,
                     number: 0
@@ -1686,18 +1510,15 @@ fn can_query_meta() {
             },
         };
         assert_eq!(extract_data!(result), Some(exp));
+    });
 
-        // metadata for block 0 by hash
-        let query = "query { _meta(block: { hash: \"bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f\" }) { \
+    // metadata for block 0 by hash
+    const QUERY3: &str = "query { _meta(block: { hash: \"bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f\" }) { \
                                         deployment block { hash number } } }";
-        let query = graphql_parser::parse_query(query)
-            .expect("invalid test query")
-            .into_static();
-
-        let result = execute_query_document(&deployment.hash, query).await;
+    run_query(QUERY3, |result, id_type| {
         let exp = object! {
             _meta: object! {
-                deployment: "graphqlTestsQuery",
+                deployment: id_type.deployment_id(),
                 block: object! {
                     hash: "0xbd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
                     number: 0
@@ -1705,16 +1526,14 @@ fn can_query_meta() {
             },
         };
         assert_eq!(extract_data!(result), Some(exp));
+    });
 
-        // metadata for block 2, which is beyond what the subgraph has indexed
-        let query = "query { _meta(block: { number: 2 }) { deployment block { hash number } } }";
-        let query = graphql_parser::parse_query(query)
-            .expect("invalid test query")
-            .into_static();
-
-        let result = execute_query_document(&deployment.hash, query).await;
+    // metadata for block 2, which is beyond what the subgraph has indexed
+    const QUERY4: &str =
+        "query { _meta(block: { number: 2 }) { deployment block { hash number } } }";
+    run_query(QUERY4, |result, _| {
         assert!(result.has_errors());
-    })
+    });
 }
 
 #[test]
@@ -1744,8 +1563,7 @@ fn non_fatal_errors() {
 
         // `subgraphError` is implicitly `deny`, data is omitted.
         let query = "query { musician(id: \"m1\") { id } }";
-        let query = graphql_parser::parse_query(query).unwrap().into_static();
-        let result = execute_query_document(&deployment.hash, query).await;
+        let result = execute_query(&deployment, query).await;
         let expected = json!({
             "errors": [
                 {
@@ -1757,14 +1575,12 @@ fn non_fatal_errors() {
 
         // Same result for explicit `deny`.
         let query = "query { musician(id: \"m1\", subgraphError: deny) { id } }";
-        let query = graphql_parser::parse_query(query).unwrap().into_static();
-        let result = execute_query_document(&deployment.hash, query).await;
+        let result = execute_query(&deployment, query).await;
         assert_eq!(expected, serde_json::to_value(&result).unwrap());
 
         // But `_meta` is still returned.
         let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";
-        let query = graphql_parser::parse_query(query).unwrap().into_static();
-        let result = execute_query_document(&deployment.hash, query).await;
+        let result = execute_query(&deployment, query).await;
         let expected = json!({
             "data": {
                 "_meta": {
@@ -1781,8 +1597,7 @@ fn non_fatal_errors() {
 
         // With `allow`, the error remains but the data is included.
         let query = "query { musician(id: \"m1\", subgraphError: allow) { id } }";
-        let query = graphql_parser::parse_query(query).unwrap().into_static();
-        let result = execute_query_document(&deployment.hash, query).await;
+        let result = execute_query(&deployment, query).await;
         let expected = json!({
             "data": {
                 "musician": {
@@ -1800,8 +1615,7 @@ fn non_fatal_errors() {
         // Test error reverts.
         revert_block(&*STORE, &deployment, &*BLOCK_ONE).await;
         let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";
-        let query = graphql_parser::parse_query(query).unwrap().into_static();
-        let result = execute_query_document(&deployment.hash, query).await;
+        let result = execute_query(&deployment, query).await;
         let expected = json!({
             "data": {
                 "musician": {
@@ -1818,13 +1632,8 @@ fn non_fatal_errors() {
 
 #[test]
 fn can_query_root_typename() {
-    run_test_sequentially(|store| async move {
-        let query = "query { __typename }";
-        let query = graphql_parser::parse_query(query)
-            .expect("invalid test query")
-            .into_static();
-        let deployment = setup(store.as_ref()).await;
-        let result = execute_query_document(&deployment.hash, query).await;
+    const QUERY: &str = "query { __typename }";
+    run_query(QUERY, |result, _| {
         let exp = object! {
             __typename: "Query"
         };
