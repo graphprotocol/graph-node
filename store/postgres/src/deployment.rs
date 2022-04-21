@@ -158,7 +158,10 @@ fn graft(
     match graft {
         (None, None, None) => Ok(None),
         (Some(subgraph), Some(hash), Some(block)) => {
-            let hash = H256::from_slice(&hash.as_slice()[0..32]);
+            // FIXME:
+            //
+            // workaround for arweave
+            let hash = H256::from_slice(&hash.as_slice()[..32]);
             let block = block.to_u64().expect("block numbers fit into a u64");
             let subgraph = DeploymentHash::new(subgraph.clone()).map_err(|_| {
                 StoreError::Unknown(anyhow!(

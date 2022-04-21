@@ -108,7 +108,7 @@ impl BlockPtr {
     //
     // workaround for arweave
     pub fn hash_as_h256(&self) -> H256 {
-        H256::from_slice(&self.hash_slice()[0..32])
+        H256::from_slice(&self.hash_slice()[..32])
     }
 
     pub fn hash_slice(&self) -> &[u8] {

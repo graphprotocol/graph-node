@@ -116,7 +116,10 @@ impl TryFrom<ErrorDetail> for SubgraphError {
             block_range,
         } = value;
         let block_number = crate::block_range::first_block_in_range(&block_range);
-        let block_hash = block_hash.map(|hash| H256::from_slice(&hash.as_slice()[0..32]));
+        // FIXME:
+        //
+        // workaround for arweave
+        let block_hash = block_hash.map(|hash| H256::from_slice(&hash.as_slice()[..32]));
         // In existing databases, we have errors that have a `block_range` of
         // `UNVERSIONED_RANGE`, which leads to `None` as the block number, but
         // has a hash. Conversely, it is also possible for an error to not have a
