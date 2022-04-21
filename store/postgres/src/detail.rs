@@ -116,7 +116,7 @@ impl TryFrom<ErrorDetail> for SubgraphError {
             block_range,
         } = value;
         let block_number = crate::block_range::first_block_in_range(&block_range);
-        let block_hash = block_hash.map(|hash| H256::from_slice(hash.as_slice()));
+        let block_hash = block_hash.map(|hash| H256::from_slice(&hash.as_slice()[0..32]));
         // In existing databases, we have errors that have a `block_range` of
         // `UNVERSIONED_RANGE`, which leads to `None` as the block number, but
         // has a hash. Conversely, it is also possible for an error to not have a
@@ -146,7 +146,7 @@ pub(crate) fn block(
 ) -> Result<Option<status::EthereumBlock>, StoreError> {
     match (&hash, &number) {
         (Some(hash), Some(number)) => {
-            let hash = H256::from_slice(hash.as_slice());
+            let hash = H256::from_slice(&hash.as_slice()[0..32]);
             let number = number.to_u64().ok_or_else(|| {
                 constraint_violation!(
                     "the block number {} for {} in {} is not representable as a u64",
