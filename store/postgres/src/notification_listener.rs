@@ -5,11 +5,13 @@ use graph::prelude::tokio::sync::mpsc::error::SendTimeoutError;
 use graph::util::backoff::ExponentialBackoff;
 use lazy_static::lazy_static;
 use postgres::Notification;
-use postgres::{fallible_iterator::FallibleIterator, Client, NoTls};
+use postgres::{fallible_iterator::FallibleIterator, Client};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
+use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
+use postgres_openssl::{MakeTlsConnector};
 use tokio::sync::mpsc::{channel, Receiver};
 
 use graph::prelude::serde_json;
@@ -121,7 +123,11 @@ impl NotificationListener {
             let mut backoff =
                 ExponentialBackoff::new(Duration::from_secs(1), Duration::from_secs(30));
             loop {
-                let res = Client::connect(postgres_url, NoTls).and_then(|mut conn| {
+                let mut builder = SslConnector::builder(SslMethod::tls()).expect("unable to create SslConnector builder");
+                builder.set_verify(SslVerifyMode::NONE);
+                let connector = MakeTlsConnector::new(builder.build());
+
+                let res = Client::connect(postgres_url, connector).and_then(|mut conn| {
                     conn.execute(format!("LISTEN {}", channel_name).as_str(), &[])?;
                     Ok(conn)
                 });
