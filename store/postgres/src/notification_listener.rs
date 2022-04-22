@@ -4,14 +4,14 @@ use diesel::sql_types::Text;
 use graph::prelude::tokio::sync::mpsc::error::SendTimeoutError;
 use graph::util::backoff::ExponentialBackoff;
 use lazy_static::lazy_static;
+use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use postgres::Notification;
 use postgres::{fallible_iterator::FallibleIterator, Client};
+use postgres_openssl::MakeTlsConnector;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
-use postgres_openssl::{MakeTlsConnector};
 use tokio::sync::mpsc::{channel, Receiver};
 
 use graph::prelude::serde_json;
@@ -123,7 +123,8 @@ impl NotificationListener {
             let mut backoff =
                 ExponentialBackoff::new(Duration::from_secs(1), Duration::from_secs(30));
             loop {
-                let mut builder = SslConnector::builder(SslMethod::tls()).expect("unable to create SslConnector builder");
+                let mut builder = SslConnector::builder(SslMethod::tls())
+                    .expect("unable to create SslConnector builder");
                 builder.set_verify(SslVerifyMode::NONE);
                 let connector = MakeTlsConnector::new(builder.build());
 
