@@ -164,7 +164,7 @@ type PartialBlock {
 type PublicProofOfIndexingResult {
   deployment: String!
   block: PartialBlock!
-  proofOfIndexing: Bytes!
+  proofOfIndexing: Bytes
 }
 
 type ProofOfIndexingResult {
