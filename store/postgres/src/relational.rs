@@ -215,7 +215,7 @@ pub struct Layout {
 impl Layout {
     /// Generate a layout for a relational schema for entities in the
     /// GraphQL schema `schema`. The name of the database schema in which
-    /// the subgraph's tables live is in `schema`.
+    /// the subgraph's tables live is in `site`.
     pub fn new(site: Arc<Site>, schema: &Schema, catalog: Catalog) -> Result<Self, StoreError> {
         // Extract enum types
         let enums: EnumMap = schema
