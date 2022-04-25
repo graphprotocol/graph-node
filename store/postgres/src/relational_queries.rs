@@ -1606,7 +1606,7 @@ impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
             out.push_sql(" as entity from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" where id = ");
-            out.push_bind_param::<Text, _>(&self.entity_id)?;
+            table.primary_key().bind_id(&self.entity_id, &mut out)?;
         }
         Ok(())
     }

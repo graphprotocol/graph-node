@@ -1,6 +1,7 @@
 //! Test mapping of GraphQL schema to a relational schema
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
+use graph::data::store::scalar;
 use graph::entity;
 use graph::prelude::BlockNumber;
 use graph::prelude::{
@@ -127,6 +128,26 @@ const THINGS_GQL: &str = r#"
         name: String,
         description: String,
         test: String
+    }
+
+    interface BytePet {
+        id: Bytes!,
+        name: String!
+    }
+
+    type ByteCat implements BytePet @entity {
+        id: Bytes!,
+        name: String!
+    }
+
+    type ByteDog implements BytePet @entity {
+        id: Bytes!,
+        name: String!
+    }
+
+    type ByteFerret implements BytePet @entity {
+        id: Bytes!,
+        name: String!
     }
 "#;
 
@@ -832,26 +853,27 @@ async fn layout_cache() {
 
 #[test]
 fn conflicting_entity() {
-    run_test(|conn, layout| {
-        let id = "fred";
-        let cat = EntityType::from("Cat");
-        let dog = EntityType::from("Dog");
-        let ferret = EntityType::from("Ferret");
+    // `id` is the id of an entity to create, `cat`, `dog`, and `ferret` are
+    // the names of the types for which to check entity uniqueness
+    fn check(conn: &PgConnection, layout: &Layout, id: Value, cat: &str, dog: &str, ferret: &str) {
+        let cat = EntityType::from(cat);
+        let dog = EntityType::from(dog);
+        let ferret = EntityType::from(ferret);
 
         let mut fred = Entity::new();
-        fred.set("id", id);
-        fred.set("name", id);
-        insert_entity(&conn, &layout, "Cat", vec![fred]);
+        fred.set("id", id.clone());
+        fred.set("name", Value::String(id.to_string()));
+        insert_entity(&conn, &layout, cat.as_str(), vec![fred]);
 
         // If we wanted to create Fred the dog, which is forbidden, we'd run this:
         let conflict = layout
-            .conflicting_entity(&conn, &id.to_owned(), vec![cat.clone(), ferret.clone()])
+            .conflicting_entity(&conn, &id.to_string(), vec![cat.clone(), ferret.clone()])
             .unwrap();
-        assert_eq!(Some("Cat".to_owned()), conflict);
+        assert_eq!(Some(cat.to_string()), conflict);
 
         // If we wanted to manipulate Fred the cat, which is ok, we'd run:
         let conflict = layout
-            .conflicting_entity(&conn, &id.to_owned(), vec![dog.clone(), ferret.clone()])
+            .conflicting_entity(&conn, &id.to_string(), vec![dog.clone(), ferret.clone()])
             .unwrap();
         assert_eq!(None, conflict);
 
@@ -859,11 +881,19 @@ fn conflicting_entity() {
         let chair = EntityType::from("Chair");
         let result = layout.conflicting_entity(
             &conn,
-            &id.to_owned(),
+            &id.to_string(),
             vec![dog.clone(), ferret.clone(), chair.clone()],
         );
         assert!(result.is_err());
         assert_eq!("unknown table 'Chair'", result.err().unwrap().to_string());
+    }
+
+    run_test(|conn, layout| {
+        let id = Value::String("fred".to_string());
+        check(conn, layout, id, "Cat", "Dog", "Ferret");
+
+        let id = Value::Bytes(scalar::Bytes::from_str("0xf1ed").unwrap());
+        check(conn, layout, id, "ByteCat", "ByteDog", "ByteFerret");
     })
 }
 

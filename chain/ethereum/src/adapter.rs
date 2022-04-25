@@ -692,24 +692,25 @@ impl EthereumBlockFilter {
         } = other;
 
         self.trigger_every_block = self.trigger_every_block || trigger_every_block;
-        self.contract_addresses = self.contract_addresses.iter().cloned().fold(
-            HashSet::new(),
-            |mut addresses, (start_block, address)| {
-                match contract_addresses
-                    .iter()
-                    .cloned()
-                    .find(|(_, other_address)| &address == other_address)
-                {
-                    Some((other_start_block, address)) => {
-                        addresses.insert((cmp::min(other_start_block, start_block), address));
-                    }
-                    None => {
-                        addresses.insert((start_block, address));
+
+        for other in contract_addresses {
+            let (other_start_block, other_address) = other;
+
+            match self.find_contract_address(&other.1) {
+                Some((current_start_block, current_address)) => {
+                    if other_start_block < current_start_block {
+                        self.contract_addresses
+                            .remove(&(current_start_block, current_address));
+                        self.contract_addresses
+                            .insert((other_start_block, other_address));
                     }
                 }
-                addresses
-            },
-        );
+                None => {
+                    self.contract_addresses
+                        .insert((other_start_block, other_address));
+                }
+            }
+        }
     }
 
     fn requires_traces(&self) -> bool {
@@ -724,6 +725,13 @@ impl EthereumBlockFilter {
         }
 
         self.contract_addresses.is_empty()
+    }
+
+    fn find_contract_address(&self, candidate: &Address) -> Option<(i32, Address)> {
+        self.contract_addresses
+            .iter()
+            .find(|(_, current_address)| candidate == current_address)
+            .cloned()
     }
 }
 
@@ -1188,8 +1196,6 @@ mod tests {
 
     #[test]
     fn matching_ethereum_call_filter() {
-        let address = |id: u64| Address::from_low_u64_be(id);
-        let bytes = |value: Vec<u8>| Bytes::from(value);
         let call = |to: Address, input: Vec<u8>| EthereumCall {
             to,
             input: bytes(input),
@@ -1288,6 +1294,125 @@ mod tests {
     }
 
     #[test]
+    fn extending_ethereum_block_filter_no_found() {
+        let mut base = EthereumBlockFilter {
+            contract_addresses: HashSet::new(),
+            trigger_every_block: false,
+        };
+
+        let extension = EthereumBlockFilter {
+            contract_addresses: HashSet::from_iter(vec![(10, address(1))]),
+            trigger_every_block: false,
+        };
+
+        base.extend(extension);
+
+        assert_eq!(
+            HashSet::from_iter(vec![(10, address(1))]),
+            base.contract_addresses,
+        );
+    }
+
+    #[test]
+    fn extending_ethereum_block_filter_conflict_picks_lowest_block_from_ext() {
+        let mut base = EthereumBlockFilter {
+            contract_addresses: HashSet::from_iter(vec![(10, address(1))]),
+            trigger_every_block: false,
+        };
+
+        let extension = EthereumBlockFilter {
+            contract_addresses: HashSet::from_iter(vec![(2, address(1))]),
+            trigger_every_block: false,
+        };
+
+        base.extend(extension);
+
+        assert_eq!(
+            HashSet::from_iter(vec![(2, address(1))]),
+            base.contract_addresses,
+        );
+    }
+
+    #[test]
+    fn extending_ethereum_block_filter_conflict_picks_lowest_block_from_base() {
+        let mut base = EthereumBlockFilter {
+            contract_addresses: HashSet::from_iter(vec![(2, address(1))]),
+            trigger_every_block: false,
+        };
+
+        let extension = EthereumBlockFilter {
+            contract_addresses: HashSet::from_iter(vec![(10, address(1))]),
+            trigger_every_block: false,
+        };
+
+        base.extend(extension);
+
+        assert_eq!(
+            HashSet::from_iter(vec![(2, address(1))]),
+            base.contract_addresses,
+        );
+    }
+
+    #[test]
+    fn extending_ethereum_block_filter_every_block_in_ext() {
+        let mut base = EthereumBlockFilter {
+            contract_addresses: HashSet::default(),
+            trigger_every_block: false,
+        };
+
+        let extension = EthereumBlockFilter {
+            contract_addresses: HashSet::default(),
+            trigger_every_block: true,
+        };
+
+        base.extend(extension);
+
+        assert_eq!(true, base.trigger_every_block);
+    }
+
+    #[test]
+    fn extending_ethereum_block_filter_every_block_in_base_and_merge_contract_addresses() {
+        let mut base = EthereumBlockFilter {
+            contract_addresses: HashSet::from_iter(vec![(10, address(2))]),
+            trigger_every_block: true,
+        };
+
+        let extension = EthereumBlockFilter {
+            contract_addresses: HashSet::from_iter(vec![]),
+            trigger_every_block: false,
+        };
+
+        base.extend(extension);
+
+        assert_eq!(true, base.trigger_every_block);
+        assert_eq!(
+            HashSet::from_iter(vec![(10, address(2))]),
+            base.contract_addresses,
+        );
+    }
+
+    #[test]
+    fn extending_ethereum_block_filter_every_block_in_ext_and_merge_contract_addresses() {
+        let mut base = EthereumBlockFilter {
+            contract_addresses: HashSet::from_iter(vec![(10, address(2))]),
+            trigger_every_block: false,
+        };
+
+        let extension = EthereumBlockFilter {
+            contract_addresses: HashSet::from_iter(vec![(10, address(1))]),
+            trigger_every_block: true,
+        };
+
+        base.extend(extension);
+
+        assert_eq!(true, base.trigger_every_block);
+        assert_eq!(
+            HashSet::from_iter(vec![(10, address(2)), (10, address(1))]),
+            base.contract_addresses,
+        );
+    }
+
+    #[test]
     fn extending_ethereum_call_filter() {
         let mut base = EthereumCallFilter {
             contract_addresses_function_signatures: HashMap::from_iter(vec![
@@ -1332,6 +1457,14 @@ mod tests {
                 .get(&Address::from_low_u64_be(1)),
             Some(&(1, HashSet::from_iter(vec![[1u8; 4]])))
         );
+    }
+
+    fn address(id: u64) -> Address {
+        Address::from_low_u64_be(id)
+    }
+
+    fn bytes(value: Vec<u8>) -> Bytes {
+        Bytes::from(value)
     }
 }
 
