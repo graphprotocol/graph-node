@@ -216,7 +216,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
     // Back off exponentially whenever we encounter a connection error or a stream with bad data
     let mut backoff = ExponentialBackoff::new(Duration::from_millis(500), Duration::from_secs(45));
 
-    // This macro is needed because `try_stream!` seems to break detection of `skip_backoff` assignments
+    // This attribute is needed because `try_stream!` seems to break detection of `skip_backoff` assignments
     #[allow(unused_assignments)]
     let mut skip_backoff = false;
 
