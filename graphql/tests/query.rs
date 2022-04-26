@@ -38,11 +38,6 @@ use test_store::{
 };
 
 const NETWORK_NAME: &str = "fake_network";
-
-async fn setup(store: &Store) -> DeploymentLocator {
-    setup_with_features(store, "graphqlTestsQuery", BTreeSet::new()).await
-}
-
 const SONGS_STRING: [&str; 5] = ["s0", "s1", "s2", "s3", "s4"];
 const SONGS_BYTES: [&str; 5] = ["0xf0", "0xf1", "0xf2", "0xf3", "0xf4"];
 
@@ -76,19 +71,17 @@ impl IdType {
     }
 }
 
-async fn setup_with_features(
-    store: &Store,
-    id: &str,
-    features: BTreeSet<SubgraphFeature>,
-) -> DeploymentLocator {
-    setup_with_features_and_type(store, id, features, IdType::String).await
+/// Setup a basic deployment. The test using the deployment must not modify
+/// the deployment at all
+async fn setup_readonly(store: &Store) -> DeploymentLocator {
+    setup(store, "graphqlTestsQuery", BTreeSet::new(), IdType::String).await
 }
 
 /// Set up a deployment `id` with the test schema and populate it with test
 /// data. If the `id` is the same as `id_type.deployment_id()`, the test
 /// must not modify the deployment in any way as these are reused for other
 /// tests that expect pristine data
-async fn setup_with_features_and_type(
+async fn setup(
     store: &Store,
     id: &str,
     features: BTreeSet<SubgraphFeature>,
@@ -341,8 +334,7 @@ where
         for id_type in [IdType::String, IdType::Bytes] {
             let name = id_type.deployment_id();
 
-            let deployment =
-                setup_with_features_and_type(store.as_ref(), name, BTreeSet::new(), id_type).await;
+            let deployment = setup(store.as_ref(), name, BTreeSet::new(), id_type).await;
 
             let mut query = query.clone();
             for (i, id) in id_type.songs().iter().enumerate() {
@@ -690,7 +682,7 @@ fn query_complexity() {
 #[test]
 fn query_complexity_subscriptions() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
+        let deployment = setup_readonly(store.as_ref()).await;
         let logger = Logger::root(slog::Discard, o!());
         let store = STORE
             .clone()
@@ -793,7 +785,7 @@ fn query_complexity_subscriptions() {
 #[test]
 fn instant_timeout() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
+        let deployment = setup_readonly(store.as_ref()).await;
         let query = Query::new(
             graphql_parser::parse_query("query { musicians(first: 100) { name } }")
                 .unwrap()
@@ -1020,7 +1012,7 @@ fn cannot_filter_by_derved_relationship_fields() {
 #[test]
 fn subscription_gets_result_even_without_events() {
     run_test_sequentially(|store| async move {
-        let deployment = setup(store.as_ref()).await;
+        let deployment = setup_readonly(store.as_ref()).await;
         let logger = Logger::root(slog::Discard, o!());
         let store = STORE
             .clone()
@@ -1420,8 +1412,13 @@ fn query_at_block_with_vars() {
 #[test]
 fn query_detects_reorg() {
     run_test_sequentially(|store| async move {
-        let deployment =
-            setup_with_features(store.as_ref(), "graphqlQueryDetectsReorg", BTreeSet::new()).await;
+        let deployment = setup(
+            store.as_ref(),
+            "graphqlQueryDetectsReorg",
+            BTreeSet::new(),
+            IdType::String,
+        )
+        .await;
         let query = "query { musician(id: \"m1\") { id } }";
         let state = deployment_state(STORE.as_ref(), &deployment.hash).await;
 
@@ -1542,10 +1539,11 @@ fn non_fatal_errors() {
     use test_store::block_store::BLOCK_TWO;
 
     run_test_sequentially(|store| async move {
-        let deployment = setup_with_features(
+        let deployment = setup(
             store.as_ref(),
             "testNonFatalErrors",
             BTreeSet::from_iter(Some(SubgraphFeature::NonFatalErrors)),
+            IdType::String,
         )
         .await;
 
