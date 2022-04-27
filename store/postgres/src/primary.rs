@@ -114,19 +114,18 @@ table! {
     }
 }
 
-/// This versions changes to the storage schema of deployments.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DeploymentSchemaVersion {
     /// Baseline version, in which:
     /// - A relational schema is used.
-    /// - Each deployment has its own namespaces for entity tables.
+    /// - Each deployment has its own namespace for entity tables.
     /// - Dynamic data sources are stored in `subgraphs.dynamic_ethereum_contract_data_source`.
     V0 = 0,
 }
 
 impl DeploymentSchemaVersion {
-    // Schema version supported by this version of graph node.
-    const CURRENT: Self = Self::V0;
+    // Latest schema version supported by this version of graph node.
+    const LATEST: Self = Self::V0;
 }
 
 impl TryFrom<i32> for DeploymentSchemaVersion {
@@ -1103,6 +1102,7 @@ impl<'a> Connection<'a> {
         })
     }
 
+    /// Create a site for a brand new deployment.
     pub fn allocate_site(
         &self,
         shard: Shard,
@@ -1113,7 +1113,7 @@ impl<'a> Connection<'a> {
             return Ok(site);
         }
 
-        let schema_version = DeploymentSchemaVersion::CURRENT;
+        let schema_version = DeploymentSchemaVersion::LATEST;
         self.create_site(shard, subgraph.clone(), network, schema_version, true)
     }
 
@@ -1129,6 +1129,14 @@ impl<'a> Connection<'a> {
             queries::find_site_in_shard(self.conn.as_ref(), &src.deployment, &shard)?
         {
             return Ok(site);
+        }
+
+        if src.schema_version != DeploymentSchemaVersion::LATEST {
+            return Err(StoreError::Unknown(anyhow!(
+                "Attempted to copy from deployment {} which is on an old schema version.
+                This means a schema migration is ongoing, please try again later.",
+                src.id
+            )));
         }
 
         self.create_site(

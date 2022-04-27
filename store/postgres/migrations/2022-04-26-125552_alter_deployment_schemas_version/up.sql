@@ -8,7 +8,7 @@ drop view if exists info.subgraph_info;
 drop view if exists info.all_sizes;
 drop materialized view if exists info.subgraph_sizes;
 
-alter table if exists deployment_schemas alter version type integer using 0;
+alter table deployment_schemas alter version type integer using 0;
 drop type if exists deployment_schema_version;
 
 create view info.subgraph_info as
