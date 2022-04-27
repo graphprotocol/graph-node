@@ -54,7 +54,6 @@ mod data {
     use diesel::sql_types::{BigInt, Binary, Bytea, Integer, Jsonb, Text};
     use diesel::types::{FromSql, ToSql};
     use diesel::{delete, insert_into, prelude::*, sql_query, update};
-    use diesel_dynamic_schema as dds;
     use graph::blockchain::{Block, BlockHash};
     use graph::constraint_violation;
     use graph::prelude::ethabi::ethereum_types::H160;
@@ -69,6 +68,7 @@ mod data {
     use std::{convert::TryFrom, io::Write};
 
     use crate::transaction_receipt::RawTransactionReceipt;
+    use crate::{DynColumn, DynTable};
 
     pub(crate) const ETHEREUM_BLOCKS_TABLE_NAME: &'static str = "public.ethereum_blocks";
 
@@ -137,9 +137,6 @@ mod data {
         }
     }
 
-    type DynTable = dds::Table<String>;
-    type DynColumn<ST> = dds::Column<DynTable, &'static str, ST>;
-
     /// The table that holds blocks when we store a chain in its own
     /// dedicated database schema
     #[derive(Clone, Debug)]
@@ -156,7 +153,8 @@ mod data {
         fn new(namespace: &str) -> Self {
             BlocksTable {
                 qname: format!("{}.{}", namespace, Self::TABLE_NAME),
-                table: dds::schema(namespace.to_string()).table(Self::TABLE_NAME.to_string()),
+                table: diesel_dynamic_schema::schema(namespace.to_string())
+                    .table(Self::TABLE_NAME.to_string()),
             }
         }
 
@@ -190,7 +188,8 @@ mod data {
         fn new(namespace: &str) -> Self {
             CallMetaTable {
                 qname: format!("{}.{}", namespace, Self::TABLE_NAME),
-                table: dds::schema(namespace.to_string()).table(Self::TABLE_NAME.to_string()),
+                table: diesel_dynamic_schema::schema(namespace.to_string())
+                    .table(Self::TABLE_NAME.to_string()),
             }
         }
 
@@ -215,7 +214,8 @@ mod data {
         fn new(namespace: &str) -> Self {
             CallCacheTable {
                 qname: format!("{}.{}", namespace, Self::TABLE_NAME),
-                table: dds::schema(namespace.to_string()).table(Self::TABLE_NAME.to_string()),
+                table: diesel_dynamic_schema::schema(namespace.to_string())
+                    .table(Self::TABLE_NAME.to_string()),
             }
         }
 
