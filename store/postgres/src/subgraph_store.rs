@@ -12,6 +12,7 @@ use std::{fmt, io::Write};
 use std::{iter::FromIterator, time::Duration};
 
 use graph::{
+    blockchain::BlockHash,
     cheap_clone::CheapClone,
     components::{
         server::index_node::VersionInfo,
@@ -23,8 +24,8 @@ use graph::{
     prelude::StoreEvent,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        BlockHash, BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation, Logger,
-        MetricsRegistry, NodeId, PartialBlockPtr, Schema, StoreError, SubgraphName,
+        BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation, Logger,
+        MetricsRegistry, NodeId, Schema, StoreError, SubgraphName,
         SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
     url::Url,
@@ -236,11 +237,11 @@ impl SubgraphStore {
     pub(crate) async fn get_public_proof_of_indexing(
         &self,
         id: &DeploymentHash,
-        block_number: BlockNumber,
+        block: BlockPtr,
         block_store: Arc<impl BlockStore>,
-    ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
+    ) -> Result<Option<(BlockPtr, [u8; 32])>, StoreError> {
         self.inner
-            .get_public_proof_of_indexing(id, block_number, block_store)
+            .get_public_proof_of_indexing(id, block, block_store)
             .await
     }
 
@@ -928,9 +929,9 @@ impl SubgraphStoreInner {
     pub(crate) async fn get_public_proof_of_indexing(
         &self,
         id: &DeploymentHash,
-        block_number: BlockNumber,
+        block: BlockPtr,
         block_store: Arc<impl BlockStore>,
-    ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
+    ) -> Result<Option<(BlockPtr, [u8; 32])>, StoreError> {
         let (store, site) = self.store(&id)?;
 
         let chain_store = match block_store.chain_store(&site.network) {
@@ -939,38 +940,30 @@ impl SubgraphStoreInner {
                 return Ok(None);
             }
         };
-        let mut hashes = chain_store.block_hashes_by_block_number(block_number)?;
+        let mut hashes = chain_store.block_hashes_by_block_number(block.number)?;
 
         // If we have multiple versions of this block and using any of them
-        // could introduce non-deterministic because we don't know which one is
-        // the right one -> return no block hash
+        // could introduce non-deterministic results because we don't know which
+        // one is the right one -> return no block hash
         if hashes.len() > 1 {
             return Ok(None);
         }
 
-        // If we _don't_ have the block, just use a zero hash. This is ok, because
-        // we're passing the block hash to `get_proof_of_indexing`, which currently
-        // only cares about the number.
-        // See also: b62a758b-d766-4926-93a5-7d9e0e2955f9
-        let block_hash = hashes
-            .pop()
-            .map_or_else(|| BlockHash::zero(), BlockHash::from);
+        // If we have the block but the hash we have for the block number
+        // differs from what was passed in -> return no POI because it
+        // would be for the block we have, no the one requested
+        if let Some(hash) = hashes.pop() {
+            if BlockHash::from(hash) != block.hash {
+                return Ok(None);
+            }
+        }
 
-        let block_for_poi_query = BlockPtr::new(dbg!(&block_hash).clone(), block_number);
         let indexer = Some(Address::zero());
         let poi = store
-            .get_proof_of_indexing(site, &indexer, block_for_poi_query)
+            .get_proof_of_indexing(site, &indexer, block.clone())
             .await?;
 
-        Ok(poi.map(|poi| {
-            (
-                PartialBlockPtr {
-                    number: block_number,
-                    hash: Some(block_hash),
-                },
-                poi,
-            )
-        }))
+        Ok(poi.map(|poi| (block, poi)))
     }
 
     // Only used by tests

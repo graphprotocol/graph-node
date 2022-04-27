@@ -461,6 +461,6 @@ pub trait StatusStore: Send + Sync + 'static {
     async fn get_public_proof_of_indexing(
         &self,
         subgraph_id: &DeploymentHash,
-        block_number: BlockNumber,
-    ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError>;
+        block: BlockPtr,
+    ) -> Result<Option<(BlockPtr, [u8; 32])>, StoreError>;
 }
