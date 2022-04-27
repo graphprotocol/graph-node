@@ -935,22 +935,28 @@ impl SubgraphStoreInner {
         let (store, site) = self.store(&id)?;
 
         let chain_store = match block_store.chain_store(&site.network) {
-            Some(chain_store) => chain_store,
-            None => return Ok(None),
+            Some(chain_store) => {
+                dbg!("HAVE CHAIN STORE");
+                chain_store
+            }
+            None => {
+                dbg!("HAVE NO CHAIN STORE");
+                return Ok(None);
+            }
         };
         let mut hashes = chain_store.block_hashes_by_block_number(block_number)?;
 
         // If we don't have this block or we have multiple versions of this block
         // and using any of them could introduce non-deterministic because we don't
         // know which one is the right one -> return no block hash
-        if hashes.is_empty() || hashes.len() > 1 {
+        if dbg!(&hashes).is_empty() || hashes.len() > 1 {
             return Ok(None);
         }
 
         // This `unwrap` is safe to do now
         let block_hash = BlockHash::from(hashes.pop().unwrap());
 
-        let block_for_poi_query = BlockPtr::new(block_hash.clone(), block_number);
+        let block_for_poi_query = BlockPtr::new(dbg!(&block_hash).clone(), block_number);
         let indexer = Some(Address::zero());
         let poi = store
             .get_proof_of_indexing(site, &indexer, block_for_poi_query)
