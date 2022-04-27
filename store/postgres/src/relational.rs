@@ -215,7 +215,7 @@ pub struct Layout {
 impl Layout {
     /// Generate a layout for a relational schema for entities in the
     /// GraphQL schema `schema`. The name of the database schema in which
-    /// the subgraph's tables live is in `schema`.
+    /// the subgraph's tables live is in `site`.
     pub fn new(site: Arc<Site>, schema: &Schema, catalog: Catalog) -> Result<Self, StoreError> {
         // Extract enum types
         let enums: EnumMap = schema
@@ -472,7 +472,7 @@ impl Layout {
         FindQuery::new(table.as_ref(), id, block)
             .get_result::<EntityData>(conn)
             .optional()?
-            .map(|entity_data| entity_data.deserialize_with_layout(self))
+            .map(|entity_data| entity_data.deserialize_with_layout(self, None))
             .transpose()
     }
 
@@ -501,7 +501,7 @@ impl Layout {
             entities_for_type
                 .entry(data.entity_type())
                 .or_default()
-                .push(data.deserialize_with_layout(self)?);
+                .push(data.deserialize_with_layout(self, None)?);
         }
         Ok(entities_for_type)
     }
@@ -530,7 +530,7 @@ impl Layout {
 
         for entity_data in inserts_or_updates.into_iter() {
             let entity_type = entity_data.entity_type();
-            let mut data: Entity = entity_data.deserialize_with_layout(self)?;
+            let mut data: Entity = entity_data.deserialize_with_layout(self, None)?;
             let entity_id = data.id().expect("Invalid ID for entity.");
             processed_entities.insert((entity_type.clone(), entity_id.clone()));
 
@@ -682,11 +682,13 @@ impl Layout {
                 )),
             })?;
         log_query_timing(logger, &query_clone, start.elapsed(), values.len());
+
+        let parent_type = filter_collection.parent_type()?.map(ColumnType::from);
         values
             .into_iter()
             .map(|entity_data| {
                 entity_data
-                    .deserialize_with_layout(self)
+                    .deserialize_with_layout(self, parent_type.as_ref())
                     .map_err(|e| e.into())
             })
             .collect()

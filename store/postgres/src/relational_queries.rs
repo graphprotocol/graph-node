@@ -443,7 +443,7 @@ impl EntityDeletion {
 /// at compile time. Because of that, we retrieve the actual data for an
 /// entity as Jsonb by converting the row containing the entity using the
 /// `to_jsonb` function.
-#[derive(QueryableByName)]
+#[derive(QueryableByName, Debug)]
 pub struct EntityData {
     #[sql_type = "Text"]
     entity: String,
@@ -460,6 +460,7 @@ impl EntityData {
     pub fn deserialize_with_layout<T: FromEntityData>(
         self,
         layout: &Layout,
+        parent_type: Option<&ColumnType>,
     ) -> Result<T, StoreError> {
         let entity_type = EntityType::new(self.entity);
         let table = layout.table_for_entity(&entity_type)?;
@@ -473,8 +474,30 @@ impl EntityData {
                     // column; those will be things like the block_range that
                     // is used internally for versioning
                     if key == "g$parent_id" {
-                        let value = T::Value::from_column_value(&ColumnType::String, json)?;
-                        out.insert_entity_data("g$parent_id".to_owned(), value);
+                        match &parent_type {
+                            None => {
+                                if ENV_VARS.store.disable_error_for_toplevel_parents {
+                                    // Only temporarily in case reporting an
+                                    // error causes unexpected trouble. Can
+                                    // be removed once it's been working for
+                                    // a few days
+                                    let value =
+                                        T::Value::from_column_value(&ColumnType::String, json)?;
+                                    out.insert_entity_data("g$parent_id".to_owned(), value);
+                                } else {
+                                    // A query that does not have parents
+                                    // somehow returned parent ids. We have no
+                                    // idea how to deserialize that
+                                    return Err(graph::constraint_violation!(
+                                        "query unexpectedly produces parent ids"
+                                    ));
+                                }
+                            }
+                            Some(parent_type) => {
+                                let value = T::Value::from_column_value(parent_type, json)?;
+                                out.insert_entity_data("g$parent_id".to_owned(), value);
+                            }
+                        }
                     } else if let Some(column) = table.column(&SqlName::verbatim(key)) {
                         let value = T::Value::from_column_value(&column.column_type, json)?;
                         if !value.is_null() {
@@ -1803,6 +1826,13 @@ impl<'a> FilterWindow<'a> {
         })
     }
 
+    fn parent_type(&self) -> IdType {
+        match &self.link {
+            TableLink::Direct(column, _) => column.column_type.id_type(),
+            TableLink::Parent(_) => self.table.primary_key().column_type.id_type(),
+        }
+    }
+
     fn and_filter(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         if let Some(filter) = &self.query_filter {
             out.push_sql("\n   and ");
@@ -2169,6 +2199,25 @@ impl<'a> FilterCollection<'a> {
             FilterCollection::All(entities) => entities.is_empty(),
             FilterCollection::SingleWindow(_) => false,
             FilterCollection::MultiWindow(windows, _) => windows.is_empty(),
+        }
+    }
+
+    /// Return the id type of the fields in the parents for which the query
+    /// produces children. This is `None` if there are no parents, i.e., for
+    /// a toplevel query.
+    pub(crate) fn parent_type(&self) -> Result<Option<IdType>, StoreError> {
+        match self {
+            FilterCollection::All(_) => Ok(None),
+            FilterCollection::SingleWindow(window) => Ok(Some(window.parent_type())),
+            FilterCollection::MultiWindow(windows, _) => {
+                if windows.iter().map(FilterWindow::parent_type).all_equal() {
+                    Ok(Some(windows[0].parent_type().to_owned()))
+                } else {
+                    Err(graph::constraint_violation!(
+                        "all implementors of an interface must use the same type for their `id`"
+                    ))
+                }
+            }
         }
     }
 }
