@@ -18,7 +18,7 @@ use crate::auth::PoiProtection;
 #[derive(Clone, Debug)]
 struct PublicProofOfIndexingRequest {
     pub deployment: DeploymentHash,
-    pub block_number: BlockNumber,
+    pub block: BlockPtr,
 }
 
 impl TryFromValue for PublicProofOfIndexingRequest {
@@ -26,7 +26,10 @@ impl TryFromValue for PublicProofOfIndexingRequest {
         match value {
             r::Value::Object(o) => Ok(Self {
                 deployment: DeploymentHash::new(o.get_required::<String>("deployment")?).unwrap(),
-                block_number: o.get_required::<BlockNumber>("blockNumber")?,
+                block: BlockPtr::new(
+                    BlockHash::from(o.get_required::<H256>("blockHash")?),
+                    o.get_required::<BlockNumber>("blockNumber")?,
+                ),
             }),
             _ => Err(anyhow!(
                 "Cannot parse non-object value as PublicProofOfIndexingRequest: {:?}",
@@ -39,7 +42,7 @@ impl TryFromValue for PublicProofOfIndexingRequest {
 #[derive(Debug)]
 struct PublicProofOfIndexingResult {
     pub deployment: DeploymentHash,
-    pub block: PartialBlockPtr,
+    pub block: BlockPtr,
     pub proof_of_indexing: Option<[u8; 32]>,
 }
 
@@ -50,7 +53,7 @@ impl IntoValue for PublicProofOfIndexingResult {
             deployment: self.deployment.to_string(),
             block: object! {
                 number: self.block.number,
-                hash: self.block.hash.map(|hash| hash.hash_hex()),
+                hash: self.block.hash.hash_hex(),
             },
             proofOfIndexing: self.proof_of_indexing.map(|poi| format!("0x{}", hex::encode(&poi))),
         }
@@ -355,7 +358,7 @@ impl<S: Store> IndexNodeResolver<S> {
                     match futures::executor::block_on(
                         self.store.get_public_proof_of_indexing(
                             &request.deployment,
-                            request.block_number,
+                            request.block.clone(),
                         ),
                     ) {
                         Ok(Some(poi)) => (Some(poi), request),
@@ -365,7 +368,7 @@ impl<S: Store> IndexNodeResolver<S> {
                                 self.logger,
                                 "Failed to query public proof of indexing";
                                 "subgraph" => &request.deployment,
-                                "block" => format!("{}", request.block_number),
+                                "block" => format!("{}", request.block),
                                 "error" => format!("{:?}", e)
                             );
                             (None, request)
@@ -376,7 +379,7 @@ impl<S: Store> IndexNodeResolver<S> {
                     deployment: request.deployment,
                     block: match poi_result {
                         Some((ref block, _)) => block.clone(),
-                        None => PartialBlockPtr::from(request.block_number),
+                        None => request.block,
                     },
                     proof_of_indexing: match poi_result {
                         Some((_, poi)) => Some(poi),

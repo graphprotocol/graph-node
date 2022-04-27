@@ -154,16 +154,12 @@ input ProofOfIndexingRequest {
 input PublicProofOfIndexingRequest {
   deployment: String!
   blockNumber: BigInt!
-}
-
-type PartialBlock {
-  hash: Bytes
-  number: BigInt!
+  blockHash: Bytes!
 }
 
 type PublicProofOfIndexingResult {
   deployment: String!
-  block: PartialBlock!
+  block: Block!
   proofOfIndexing: Bytes
 }
 

@@ -848,14 +848,6 @@ impl DeploymentStore {
                     // Unfortunately the machinery needed to do this is not yet in place.
                     // The best we can do right now is just to make sure that the block number
                     // is high enough.
-                    //
-                    // NOTE: `SubgraphStoreInner::get_public_proof_of_indexing`
-                    // currently assumes that the block hash is _ignored_. So if
-                    // we decide to do any checking of the hash here, we will
-                    // have to likely require `get_public_proof_of_indexing` to
-                    // also take a mandatory hash.
-                    // See also: b62a758b-d766-4926-93a5-7d9e0e2955f9
-                    //
                     if latest_block_ptr.number < block.number {
                         return Ok(None);
                     }

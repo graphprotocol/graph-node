@@ -1030,18 +1030,6 @@ impl AttributeNames {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct PartialBlockPtr {
-    pub number: BlockNumber,
-    pub hash: Option<BlockHash>,
-}
-
-impl From<BlockNumber> for PartialBlockPtr {
-    fn from(number: BlockNumber) -> Self {
-        Self { number, hash: None }
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DeploymentSchemaVersion {
     /// V0, baseline version, in which:
