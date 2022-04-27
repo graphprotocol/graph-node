@@ -144,7 +144,7 @@ impl Blockchain for Chain {
         _filter: Arc<Self::TriggerFilter>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        panic!("ARWEAVE does not support polling block stream")
+        panic!("Arweave does not support polling block stream")
     }
 
     fn chain_store(&self) -> Arc<dyn ChainStore> {
@@ -224,7 +224,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     /// Panics if `block` is genesis.
     /// But that's ok since this is only called when reverting `block`.
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
-        // FIXME (ARWEAVE):  Might not be necessary for ARWEAVE support for now
+        // FIXME (Arweave):  Might not be necessary for Arweave support for now
         Ok(Some(BlockPtr {
             hash: BlockHash::from(vec![0xff; 48]),
             number: block.number.saturating_sub(1),

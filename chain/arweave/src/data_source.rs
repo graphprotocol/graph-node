@@ -110,7 +110,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
-        // FIXME (ARWEAVE): Implement me!
+        // FIXME (Arweave): Implement me!
         todo!()
     }
 
@@ -118,7 +118,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         _templates: &BTreeMap<&str, &DataSourceTemplate>,
         _stored: StoredDynamicDataSource,
     ) -> Result<Self, Error> {
-        // FIXME (ARWEAVE): Implement me correctly
+        // FIXME (Arweave): Implement me correctly
         todo!()
     }
 
@@ -133,19 +133,19 @@ impl blockchain::DataSource<Chain> for DataSource {
             ))
         }
 
-        // Validate that there is a `source` address if there are receipt handlers
+        // Validate that there is a `source` address if there are transaction handlers
         let no_source_address = self.address().is_none();
-        let has_receipt_handlers = !self.mapping.receipt_handlers.is_empty();
-        if no_source_address && has_receipt_handlers {
+        let has_transaction_handlers = !self.mapping.transaction_handlers.is_empty();
+        if no_source_address && has_transaction_handlers {
             errors.push(SubgraphManifestValidationError::SourceAddressRequired.into());
         };
 
-        // Validate that there are no more than one of both block handlers and receipt handlers
+        // Validate that there are no more than one of both block handlers and transaction handlers
         if self.mapping.block_handlers.len() > 1 {
             errors.push(anyhow!("data source has duplicated block handlers"));
         }
-        if self.mapping.receipt_handlers.len() > 1 {
-            errors.push(anyhow!("data source has duplicated receipt handlers"));
+        if self.mapping.transaction_handlers.len() > 1 {
+            errors.push(anyhow!("data source has duplicated transaction handlers"));
         }
 
         errors
@@ -214,7 +214,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
             context,
         } = self;
 
-        info!(logger, "Resolve data source"; "name" => &name, "source_account" => format_args!("{:?}", source.account), "source_start_block" => source.start_block);
+        info!(logger, "Resolve data source"; "name" => &name, "source_address" => format_args!("{:?}", source.account), "source_start_block" => source.start_block);
 
         let mapping = mapping.resolve(resolver, logger).await?;
 
@@ -292,7 +292,7 @@ pub struct UnresolvedMapping {
     #[serde(default)]
     pub block_handlers: Vec<MappingBlockHandler>,
     #[serde(default)]
-    pub receipt_handlers: Vec<ReceiptHandler>,
+    pub transaction_handlers: Vec<TransactionHandler>,
     pub file: Link,
 }
 
@@ -307,7 +307,7 @@ impl UnresolvedMapping {
             language,
             entities,
             block_handlers,
-            receipt_handlers,
+            transaction_handlers,
             file: link,
         } = self;
 
@@ -321,7 +321,7 @@ impl UnresolvedMapping {
             language,
             entities,
             block_handlers,
-            receipt_handlers,
+            transaction_handlers,
             runtime: Arc::new(module_bytes),
             link,
         })
@@ -334,7 +334,7 @@ pub struct Mapping {
     pub language: String,
     pub entities: Vec<String>,
     pub block_handlers: Vec<MappingBlockHandler>,
-    pub receipt_handlers: Vec<ReceiptHandler>,
+    pub transaction_handlers: Vec<TransactionHandler>,
     pub runtime: Arc<Vec<u8>>,
     pub link: Link,
 }
@@ -345,7 +345,7 @@ pub struct MappingBlockHandler {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct ReceiptHandler {
+pub struct TransactionHandler {
     handler: String,
 }
 

@@ -559,7 +559,7 @@ async fn main() {
     futures::future::pending::<()>().await;
 }
 
-/// Return the hashmap of NEAR chains and also add them to `blockchain_map`.
+/// Return the hashmap of Arweave chains and also add them to `blockchain_map`.
 fn arweave_networks_as_chains(
     blockchain_map: &mut BlockchainMap,
     logger: &Logger,

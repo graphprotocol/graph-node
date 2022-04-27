@@ -327,7 +327,7 @@ pub enum IndexForAscTypeId {
     ArweaveTransactionArray = 2503,
     ArweaveTag = 2504,
     ArweaveTagArray = 2505,
-    // Continue to add more Tendermint type IDs here.
+    // Continue to add more Arweave type IDs here.
     // e.g.:
     // NextArweaveType = 2505,
     // AnotherArweaveType = 2506,
