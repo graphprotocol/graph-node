@@ -15,11 +15,13 @@ use std::convert::TryInto;
 use std::fmt;
 use web3::types::Address;
 
-pub struct BlockEventStream {
-    vec_length: u64,
-    handler_start: u64,
-    seq_no: Blake3SeqNo,
-    digest: SetHasher,
+pub enum BlockEventStream {
+    LegacyHasherStream {
+        vec_length: u64,
+        handler_start: u64,
+        seq_no: Blake3SeqNo,
+        digest: SetHasher,
+    },
 }
 
 /// Go directly to a SequenceNumber identifying a field within a struct.
@@ -61,14 +63,14 @@ fn traverse_seq_no(counts: &[usize]) -> Blake3SeqNo {
 }
 
 impl BlockEventStream {
-    fn new(block_number: BlockNumber) -> Self {
+    fn new_legacy(block_number: BlockNumber) -> Self {
         let events = traverse_seq_no(&[
             1,                                // kvp -> v
             0,                                // CausalityRegion.blocks: Vec<Block>
             block_number.try_into().unwrap(), // Vec<Block> -> [i]
             0,                                // Block.events -> Vec<ProofOfIndexingEvent>
         ]);
-        Self {
+        Self::LegacyHasherStream {
             vec_length: 0,
             handler_start: 0,
             seq_no: events,
@@ -80,23 +82,50 @@ impl BlockEventStream {
     /// be resumed later. Cases in which the hash function is resumed include
     /// when asking for the final PoI, or when combining with the next modified
     /// block via the argument `prev`
-    pub fn pause(mut self, prev: Option<&[u8]>) -> Vec<u8> {
-        self.vec_length.stable_hash(self.seq_no, &mut self.digest);
-        let mut state = self.digest;
-        if let Some(prev) = prev {
-            let prev = SetHasher::from_bytes(prev);
-            state.finish_unordered(prev, SequenceNumber::root());
+    pub fn pause(self, prev: Option<&[u8]>) -> Vec<u8> {
+        match self {
+            BlockEventStream::LegacyHasherStream {
+                vec_length,
+                handler_start: _,
+                seq_no,
+                mut digest,
+            } => {
+                vec_length.stable_hash(seq_no, &mut digest);
+                let mut state = digest;
+                if let Some(prev) = prev {
+                    let prev = SetHasher::from_bytes(prev);
+                    state.finish_unordered(prev, SequenceNumber::root());
+                }
+                state.to_bytes()
+            }
         }
-        state.to_bytes()
     }
 
     fn write(&mut self, event: &ProofOfIndexingEvent<'_>) {
-        self.vec_length += 1;
-        event.stable_hash(self.seq_no.next_child(), &mut self.digest);
+        match self {
+            BlockEventStream::LegacyHasherStream {
+                ref mut vec_length,
+                handler_start: _,
+                seq_no,
+                ref mut digest,
+            } => {
+                *vec_length += 1;
+                event.stable_hash(seq_no.next_child(), digest);
+            }
+        }
     }
 
     fn start_handler(&mut self) {
-        self.handler_start = self.vec_length;
+        match self {
+            BlockEventStream::LegacyHasherStream {
+                ref vec_length,
+                ref mut handler_start,
+                seq_no: _,
+                digest: _,
+            } => {
+                *handler_start = *vec_length;
+            }
+        }
     }
 }
 #[derive(Default)]
@@ -126,9 +155,15 @@ impl ProofOfIndexing {
 
 impl ProofOfIndexing {
     pub fn write_deterministic_error(&mut self, logger: &Logger, causality_region: &str) {
-        let redacted_events = self.with_causality_region(causality_region, |entry| {
-            entry.vec_length - entry.handler_start
+        let redacted_events = self.with_causality_region(causality_region, |entry| match entry {
+            BlockEventStream::LegacyHasherStream {
+                ref vec_length,
+                ref handler_start,
+                seq_no: _,
+                digest: _,
+            } => vec_length - handler_start,
         });
+
         self.write(
             logger,
             causality_region,
@@ -167,7 +202,7 @@ impl ProofOfIndexing {
         if let Some(causality_region) = self.per_causality_region.get_mut(causality_region) {
             f(causality_region)
         } else {
-            let mut entry = BlockEventStream::new(self.block_number);
+            let mut entry = BlockEventStream::new_legacy(self.block_number);
             let result = f(&mut entry);
             self.per_causality_region
                 .insert(causality_region.to_owned(), entry);
