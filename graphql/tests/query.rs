@@ -3,6 +3,7 @@ extern crate pretty_assertions;
 
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::entity;
+use graph::prelude::SubscriptionResult;
 use graphql_parser::Pos;
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -371,6 +372,39 @@ where
     })
 }
 
+/// Helper to run a subscription
+async fn run_subscription(
+    store: &Arc<Store>,
+    query: &str,
+    max_complexity: Option<u64>,
+) -> Result<SubscriptionResult, SubscriptionError> {
+    let deployment = setup_readonly(store.as_ref()).await;
+    let logger = Logger::root(slog::Discard, o!());
+    let query_store = store
+        .query_store(deployment.hash.clone().into(), true)
+        .await
+        .unwrap();
+
+    let query = Query::new(
+        graphql_parser::parse_query(query).unwrap().into_static(),
+        None,
+    );
+    let options = SubscriptionExecutionOptions {
+        logger: logger.clone(),
+        store: query_store.clone(),
+        subscription_manager: SUBSCRIPTION_MANAGER.clone(),
+        timeout: None,
+        max_complexity,
+        max_depth: 100,
+        max_first: std::u32::MAX,
+        max_skip: std::u32::MAX,
+        result_size: result_size_metrics(),
+    };
+    let schema = STORE.subgraph_store().api_schema(&deployment.hash).unwrap();
+
+    execute_subscription(Subscription { query }, schema.clone(), options)
+}
+
 #[test]
 fn can_query_one_to_one_relationship() {
     const QUERY: &str = "
@@ -682,17 +716,7 @@ fn query_complexity() {
 #[test]
 fn query_complexity_subscriptions() {
     run_test_sequentially(|store| async move {
-        let deployment = setup_readonly(store.as_ref()).await;
-        let logger = Logger::root(slog::Discard, o!());
-        let store = STORE
-            .clone()
-            .query_store(deployment.hash.clone().into(), true)
-            .await
-            .unwrap();
-
-        let query = Query::new(
-            graphql_parser::parse_query(
-                "subscription {
+        const QUERY1: &str = "subscription {
                 musicians(orderBy: id) {
                     name
                     bands(first: 100, orderBy: id) {
@@ -702,34 +726,16 @@ fn query_complexity_subscriptions() {
                         }
                     }
                 }
-            }",
-            )
-            .unwrap()
-            .into_static(),
-            None,
-        );
+            }";
         let max_complexity = Some(1_010_100);
-        let options = SubscriptionExecutionOptions {
-            logger: logger.clone(),
-            store: store.clone(),
-            subscription_manager: SUBSCRIPTION_MANAGER.clone(),
-            timeout: None,
-            max_complexity,
-            max_depth: 100,
-            max_first: std::u32::MAX,
-            max_skip: std::u32::MAX,
-            result_size: result_size_metrics(),
-        };
-        let schema = STORE.subgraph_store().api_schema(&deployment.hash).unwrap();
 
         // This query is exactly at the maximum complexity.
         // FIXME: Not collecting the stream because that will hang the test.
-        let _ignore_stream =
-            execute_subscription(Subscription { query }, schema.clone(), options).unwrap();
+        let _ignore_stream = run_subscription(&store, QUERY1, max_complexity)
+            .await
+            .unwrap();
 
-        let query = Query::new(
-            graphql_parser::parse_query(
-                "subscription {
+        const QUERY2: &str = "subscription {
                 musicians(orderBy: id) {
                     name
                     t1: bands(first: 100, orderBy: id) {
@@ -745,32 +751,9 @@ fn query_complexity_subscriptions() {
                       }
                   }
                 }
-            }",
-            )
-            .unwrap()
-            .into_static(),
-            None,
-        );
+            }";
 
-        let store = STORE
-            .clone()
-            .query_store(deployment.hash.into(), true)
-            .await
-            .unwrap();
-
-        let options = SubscriptionExecutionOptions {
-            logger,
-            store,
-            subscription_manager: SUBSCRIPTION_MANAGER.clone(),
-            timeout: None,
-            max_complexity,
-            max_depth: 100,
-            max_first: std::u32::MAX,
-            max_skip: std::u32::MAX,
-            result_size: result_size_metrics(),
-        };
-
-        let result = execute_subscription(Subscription { query }, schema, options);
+        let result = run_subscription(&store, QUERY2, max_complexity).await;
 
         match result {
             Err(SubscriptionError::GraphQLError(e)) => match &e[0] {
@@ -1012,42 +995,15 @@ fn cannot_filter_by_derved_relationship_fields() {
 #[test]
 fn subscription_gets_result_even_without_events() {
     run_test_sequentially(|store| async move {
-        let deployment = setup_readonly(store.as_ref()).await;
-        let logger = Logger::root(slog::Discard, o!());
-        let store = STORE
-            .clone()
-            .query_store(deployment.hash.clone().into(), true)
-            .await
-            .unwrap();
-        let schema = STORE.subgraph_store().api_schema(&deployment.hash).unwrap();
+        const QUERY: &str = "subscription {
+            musicians(orderBy: id, first: 2) {
+              name
+            }
+          }";
 
-        let query = Query::new(
-            graphql_parser::parse_query(
-                "subscription {
-              musicians(orderBy: id, first: 2) {
-                name
-              }
-            }",
-            )
-            .unwrap()
-            .into_static(),
-            None,
-        );
-
-        let options = SubscriptionExecutionOptions {
-            logger: logger.clone(),
-            store,
-            subscription_manager: SUBSCRIPTION_MANAGER.clone(),
-            timeout: None,
-            max_complexity: None,
-            max_depth: 100,
-            max_first: std::u32::MAX,
-            max_skip: std::u32::MAX,
-            result_size: result_size_metrics(),
-        };
         // Execute the subscription and expect at least one result to be
         // available in the result stream
-        let stream = execute_subscription(Subscription { query }, schema, options).unwrap();
+        let stream = run_subscription(&store, QUERY, None).await.unwrap();
         let results: Vec<_> = stream
             .take(1)
             .collect()
@@ -1057,16 +1013,14 @@ fn subscription_gets_result_even_without_events() {
 
         assert_eq!(results.len(), 1);
         let result = Arc::try_unwrap(results.into_iter().next().unwrap()).unwrap();
-        assert_eq!(
-            extract_data!(result),
-            Some(object_value(vec![(
-                "musicians",
-                r::Value::List(vec![
-                    object_value(vec![("name", r::Value::String(String::from("John")))]),
-                    object_value(vec![("name", r::Value::String(String::from("Lisa")))])
-                ])
-            )])),
-        );
+        let data = extract_data!(result).unwrap();
+        let exp = object! {
+            musicians: vec![
+                object! { name: "John" },
+                object! { name: "Lisa" }
+            ]
+        };
+        assert_eq!(data, exp);
     })
 }
 
