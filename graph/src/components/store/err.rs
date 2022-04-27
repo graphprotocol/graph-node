@@ -50,6 +50,10 @@ pub enum StoreError {
     Poisoned,
     #[error("panic in subgraph writer: {0}")]
     WriterPanic(JoinError),
+    #[error(
+        "found deployment schema version {0} which is not supported. Did you downgrade Graph Node?"
+    )]
+    UnsupportedDeploymentSchemaVersion(i32),
 }
 
 // Convenience to report a constraint violation
