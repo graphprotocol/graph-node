@@ -57,6 +57,17 @@ impl QueryResults {
     pub fn first(&self) -> Option<&Arc<QueryResult>> {
         self.results.first()
     }
+
+    pub fn has_errors(&self) -> bool {
+        self.results.iter().any(|result| result.has_errors())
+    }
+
+    pub fn deployment_hash(&self) -> Option<&DeploymentHash> {
+        self.results
+            .iter()
+            .filter_map(|result| result.deployment.as_ref())
+            .next()
+    }
 }
 
 impl Serialize for QueryResults {
