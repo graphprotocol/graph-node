@@ -323,14 +323,15 @@ pub enum IndexForAscTypeId {
     // Arweave types
     ArweaveBlock = 2500,
     ArweaveProofOfAccess = 2501,
-    ArweaveTransaction = 2502,
-    ArweaveTransactionArray = 2503,
-    ArweaveTag = 2504,
-    ArweaveTagArray = 2505,
+    ArweaveTag = 2502,
+    ArweaveTagArray = 2503,
+    ArweaveTransaction = 2504,
+    ArweaveTransactionArray = 2505,
+    ArweaveTransactionWithBlockPtr = 2506,
     // Continue to add more Arweave type IDs here.
     // e.g.:
-    // NextArweaveType = 2505,
-    // AnotherArweaveType = 2506,
+    // NextArweaveType = 2507,
+    // AnotherArweaveType = 2508,
     // ...
     // LastArweaveType = 3499,
 

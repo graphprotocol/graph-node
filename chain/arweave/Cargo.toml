@@ -7,7 +7,7 @@ edition = "2021"
 tonic-build = "0.5.1"
 
 [dependencies]
-base64 = "0.13"
+base64-url = "1.4.13"
 graph = { path = "../../graph" }
 prost = "0.8.0"
 prost-types = "0.8.0"

@@ -1,7 +1,8 @@
 use crate::codec;
+use crate::trigger::TransactionWithBlockPtr;
 use graph::runtime::gas::GasCounter;
 use graph::runtime::{asc_new, AscHeap, AscPtr, DeterministicHostError, ToAscObj};
-use graph_runtime_wasm::asc_abi::class::Array;
+use graph_runtime_wasm::asc_abi::class::{Array, Uint8Array};
 
 pub(crate) use super::generated::*;
 
@@ -18,16 +19,16 @@ impl ToAscObj<AscTag> for codec::Tag {
     }
 }
 
-impl ToAscObj<AscTransactionArray> for Vec<codec::Transaction> {
+impl ToAscObj<AscTransactionArray> for Vec<Vec<u8>> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscTransactionArray, DeterministicHostError> {
         let content = self
-            .iter()
-            .map(|x| asc_new(heap, x, gas))
-            .collect::<Result<Vec<_>, _>>()?;
+            .into_iter()
+            .map(|x| asc_new(heap, x.as_slice(), gas))
+            .collect::<Result<Vec<AscPtr<Uint8Array>>, _>>()?;
         Ok(AscTransactionArray(Array::new(&*content, heap, gas)?))
     }
 }
@@ -109,7 +110,6 @@ impl ToAscObj<AscBlock> for codec::Block {
         gas: &GasCounter,
     ) -> Result<AscBlock, DeterministicHostError> {
         Ok(AscBlock {
-            // ver: self.ver,
             indep_hash: asc_new(heap, self.indep_hash.as_slice(), gas)?,
             nonce: asc_new(heap, self.nonce.as_slice(), gas)?,
             previous_block: asc_new(heap, self.previous_block.as_slice(), gas)?,
@@ -123,7 +123,15 @@ impl ToAscObj<AscBlock> for codec::Block {
             height: self.height,
             hash: asc_new(heap, self.hash.as_slice(), gas)?,
             tx_root: asc_new(heap, self.tx_root.as_slice(), gas)?,
-            txs: asc_new(heap, &self.txs, gas)?,
+            txs: asc_new(
+                heap,
+                &self
+                    .txs
+                    .iter()
+                    .map(|tx| tx.id.clone().into())
+                    .collect::<Vec<Vec<u8>>>(),
+                gas,
+            )?,
             wallet_list: asc_new(heap, self.wallet_list.as_slice(), gas)?,
             reward_addr: asc_new(heap, self.reward_addr.as_slice(), gas)?,
             tags: asc_new(heap, &self.tags, gas)?,
@@ -165,6 +173,19 @@ impl ToAscObj<AscBlock> for codec::Block {
                 .as_ref()
                 .map(|poa| asc_new(heap, poa, gas))
                 .unwrap_or(Ok(AscPtr::null()))?,
+        })
+    }
+}
+
+impl ToAscObj<AscTransactionWithBlockPtr> for TransactionWithBlockPtr {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscTransactionWithBlockPtr, DeterministicHostError> {
+        Ok(AscTransactionWithBlockPtr {
+            tx: asc_new(heap, &self.tx.as_ref(), gas)?,
+            block: asc_new(heap, self.block.as_ref(), gas)?,
         })
     }
 }

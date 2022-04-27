@@ -32,8 +32,11 @@ pub struct DataSource {
 }
 
 impl blockchain::DataSource<Chain> for DataSource {
+    // FIXME
+    //
+    // need to decode the base64url encoding?
     fn address(&self) -> Option<&[u8]> {
-        self.source.account.as_ref().map(String::as_bytes)
+        self.source.owner.as_ref().map(String::as_bytes)
     }
 
     fn start_block(&self) -> BlockNumber {
@@ -53,6 +56,11 @@ impl blockchain::DataSource<Chain> for DataSource {
         let handler = match trigger {
             // A block trigger matches if a block handler is present.
             ArweaveTrigger::Block(_) => match self.handler_for_block() {
+                Some(handler) => &handler.handler,
+                None => return Ok(None),
+            },
+            // A transaction trigger matches if a transaction handler is present.
+            ArweaveTrigger::Transaction(_) => match self.handler_for_transaction() {
                 Some(handler) => &handler.handler,
                 None => return Ok(None),
             },
@@ -186,6 +194,10 @@ impl DataSource {
     fn handler_for_block(&self) -> Option<&MappingBlockHandler> {
         self.mapping.block_handlers.first()
     }
+
+    fn handler_for_transaction(&self) -> Option<&TransactionHandler> {
+        self.mapping.transaction_handlers.first()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
@@ -214,7 +226,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
             context,
         } = self;
 
-        info!(logger, "Resolve data source"; "name" => &name, "source_address" => format_args!("{:?}", source.account), "source_start_block" => source.start_block);
+        info!(logger, "Resolve data source"; "name" => &name, "source_address" => format_args!("{:?}", base64_url::encode(&source.owner.clone().unwrap_or_default())), "source_start_block" => source.start_block);
 
         let mapping = mapping.resolve(resolver, logger).await?;
 
@@ -346,13 +358,13 @@ pub struct MappingBlockHandler {
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct TransactionHandler {
-    handler: String,
+    pub handler: String,
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub(crate) struct Source {
-    // A data source that does not have an account can only have block handlers.
-    pub(crate) account: Option<String>,
+    // A data source that does not have an owner can only have block handlers.
+    pub(crate) owner: Option<String>,
     #[serde(rename = "startBlock", default)]
     pub(crate) start_block: BlockNumber,
 }

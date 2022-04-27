@@ -78,7 +78,7 @@ impl AscIndexId for AscTag {
 }
 
 #[repr(C)]
-pub struct AscTransactionArray(pub(crate) Array<AscPtr<AscTransaction>>);
+pub struct AscTransactionArray(pub(crate) Array<AscPtr<Uint8Array>>);
 
 impl AscType for AscTransactionArray {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
@@ -115,4 +115,15 @@ impl AscType for AscTagArray {
 
 impl AscIndexId for AscTagArray {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::ArweaveTagArray;
+}
+
+#[repr(C)]
+#[derive(AscType)]
+pub struct AscTransactionWithBlockPtr {
+    pub tx: AscPtr<AscTransaction>,
+    pub block: AscPtr<AscBlock>,
+}
+
+impl AscIndexId for AscTransactionWithBlockPtr {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::ArweaveTransactionWithBlockPtr;
 }

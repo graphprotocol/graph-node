@@ -24,7 +24,7 @@ use crate::adapter::TriggerFilter;
 use crate::capabilities::NodeCapabilities;
 use crate::data_source::{DataSourceTemplate, UnresolvedDataSourceTemplate};
 use crate::runtime::RuntimeAdapter;
-use crate::trigger::ArweaveTrigger;
+use crate::trigger::{self, ArweaveTrigger};
 use crate::{
     codec,
     data_source::{DataSource, UnresolvedDataSource},
@@ -198,9 +198,26 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         // TODO: Find the best place to introduce an `Arc` and avoid this clone.
         let shared_block = Arc::new(block.clone());
 
-        let TriggerFilter { block_filter } = filter;
+        let TriggerFilter {
+            block_filter,
+            transaction_filter,
+        } = filter;
 
-        let mut trigger_data: Vec<ArweaveTrigger> = Vec::new();
+        let txs = block
+            .clone()
+            .txs
+            .into_iter()
+            .filter(|tx| transaction_filter.matches(&tx.owner))
+            .map(|tx| trigger::TransactionWithBlockPtr {
+                tx: Arc::new(tx.clone()),
+                block: shared_block.clone(),
+            })
+            .collect::<Vec<_>>();
+
+        let mut trigger_data: Vec<_> = txs
+            .into_iter()
+            .map(|tx| ArweaveTrigger::Transaction(Arc::new(tx)))
+            .collect();
 
         if block_filter.trigger_every_block {
             trigger_data.push(ArweaveTrigger::Block(shared_block.cheap_clone()));

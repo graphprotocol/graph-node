@@ -19,10 +19,14 @@ impl std::fmt::Debug for ArweaveTrigger {
         #[derive(Debug)]
         pub enum MappingTriggerWithoutBlock {
             Block,
+            Transaction(Arc<codec::Transaction>),
         }
 
         let trigger_without_block = match self {
             ArweaveTrigger::Block(_) => MappingTriggerWithoutBlock::Block,
+            ArweaveTrigger::Transaction(tx) => {
+                MappingTriggerWithoutBlock::Transaction(tx.tx.clone())
+            }
         };
 
         write!(f, "{:?}", trigger_without_block)
@@ -37,6 +41,7 @@ impl blockchain::MappingTrigger for ArweaveTrigger {
     ) -> Result<AscPtr<()>, DeterministicHostError> {
         Ok(match self {
             ArweaveTrigger::Block(block) => asc_new(heap, block.as_ref(), gas)?.erase(),
+            ArweaveTrigger::Transaction(tx) => asc_new(heap, tx.as_ref(), gas)?.erase(),
         })
     }
 }
@@ -44,12 +49,14 @@ impl blockchain::MappingTrigger for ArweaveTrigger {
 #[derive(Clone)]
 pub enum ArweaveTrigger {
     Block(Arc<codec::Block>),
+    Transaction(Arc<TransactionWithBlockPtr>),
 }
 
 impl CheapClone for ArweaveTrigger {
     fn cheap_clone(&self) -> ArweaveTrigger {
         match self {
             ArweaveTrigger::Block(block) => ArweaveTrigger::Block(block.cheap_clone()),
+            ArweaveTrigger::Transaction(tx) => ArweaveTrigger::Transaction(tx.cheap_clone()),
         }
     }
 }
@@ -58,6 +65,8 @@ impl PartialEq for ArweaveTrigger {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Block(a_ptr), Self::Block(b_ptr)) => a_ptr == b_ptr,
+            (Self::Transaction(a_tx), Self::Transaction(b_tx)) => a_tx.tx.id == b_tx.tx.id,
+            _ => false,
         }
     }
 }
@@ -68,12 +77,14 @@ impl ArweaveTrigger {
     pub fn block_number(&self) -> BlockNumber {
         match self {
             ArweaveTrigger::Block(block) => block.number(),
+            ArweaveTrigger::Transaction(tx) => tx.block.number(),
         }
     }
 
     pub fn block_hash(&self) -> H256 {
         match self {
             ArweaveTrigger::Block(block) => block.ptr().hash_as_h256(),
+            ArweaveTrigger::Transaction(tx) => tx.block.ptr().hash_as_h256(),
         }
     }
 }
@@ -83,6 +94,14 @@ impl Ord for ArweaveTrigger {
         match (self, other) {
             // Keep the order when comparing two block triggers
             (Self::Block(..), Self::Block(..)) => Ordering::Equal,
+
+            // Block triggers always come last
+            (Self::Block(..), _) => Ordering::Greater,
+            (_, Self::Block(..)) => Ordering::Less,
+
+            // Execution outcomes have no intrinsic ordering information so we keep the order in
+            // which they are included in the `txs` field of `Block`.
+            (Self::Transaction(..), Self::Transaction(..)) => Ordering::Equal,
         }
     }
 }
@@ -99,6 +118,20 @@ impl TriggerData for ArweaveTrigger {
             ArweaveTrigger::Block(..) => {
                 format!("Block #{} ({})", self.block_number(), self.block_hash())
             }
+            ArweaveTrigger::Transaction(tx) => {
+                format!(
+                    "Tx #{}, block #{}({})",
+                    base64_url::encode(&tx.tx.id),
+                    self.block_number(),
+                    self.block_hash()
+                )
+            }
         }
     }
+}
+
+pub struct TransactionWithBlockPtr {
+    // REVIEW: Do we want to actually also have those two below behind an `Arc` wrapper?
+    pub tx: Arc<codec::Transaction>,
+    pub block: Arc<codec::Block>,
 }
