@@ -80,3 +80,6 @@ pub mod command_support {
     pub use crate::primary::Namespace;
     pub use crate::relational::{Catalog, Column, ColumnType, Layout, SqlName};
 }
+
+type DynTable = diesel_dynamic_schema::Table<String>;
+type DynColumn<ST> = diesel_dynamic_schema::Column<DynTable, &'static str, ST>;
