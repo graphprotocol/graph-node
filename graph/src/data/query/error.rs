@@ -93,6 +93,7 @@ impl QueryExecutionError {
             | OperationNotFound(_)
             | NotSupported(_)
             | NoRootSubscriptionObjectType
+            | NonNullError(_, _)
             | NamedTypeError(_)
             | AbstractTypeError(_)
             | InvalidArgumentError(_, _, _)
@@ -117,8 +118,7 @@ impl QueryExecutionError {
             | UndefinedFragment(_)
             | FulltextQueryInvalidSyntax(_)
             | FulltextQueryRequiresFilter => true,
-            NonNullError(_, _)
-            | ListValueError(_, _)
+            ListValueError(_, _)
             | ResolveEntitiesError(_)
             | RangeArgumentsError(_, _, _)
             | ValueParseError(_, _)
