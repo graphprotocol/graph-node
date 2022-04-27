@@ -15,7 +15,7 @@ use http::header::{
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
 
-use crate::request::GraphQLRequest;
+use crate::request::parse_graphql_request;
 
 pub struct GraphQLServiceMetrics {
     query_execution_time: Box<HistogramVec>,
@@ -189,7 +189,7 @@ where
         let body = hyper::body::to_bytes(request_body)
             .map_err(|_| GraphQLServerError::InternalError("Failed to read request body".into()))
             .await?;
-        let query = GraphQLRequest::new(body).compat().await;
+        let query = parse_graphql_request(&body);
 
         let result = match query {
             Ok(query) => service.graphql_runner.run_query(query, target).await,
