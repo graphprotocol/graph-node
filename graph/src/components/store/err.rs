@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Error};
+use diesel::result::Error as DieselError;
 use thiserror::Error;
 use tokio::task::JoinError;
 
@@ -65,8 +66,20 @@ macro_rules! constraint_violation {
     }}
 }
 
-impl From<::diesel::result::Error> for StoreError {
-    fn from(e: ::diesel::result::Error) -> Self {
+impl From<DieselError> for StoreError {
+    fn from(e: DieselError) -> Self {
+        // When the error is caused by a closed connection, treat the error
+        // as 'database unavailable'. When this happens during indexing, the
+        // indexing machinery will retry in that case rather than fail the
+        // subgraph
+        if let DieselError::DatabaseError(_, info) = &e {
+            if info
+                .message()
+                .contains("server closed the connection unexpectedly")
+            {
+                return StoreError::DatabaseUnavailable;
+            }
+        }
         StoreError::Unknown(e.into())
     }
 }
