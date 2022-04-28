@@ -456,7 +456,7 @@ impl EthereumAdapter {
                     let result = web3.eth().call(req, Some(block_id)).boxed().await;
 
                     // Try to check if the call was reverted. The JSON-RPC response for reverts is
-                    // not standardized, so we have ad-hoc checks for each Ethereum client                    // Ganache.
+                    // not standardized, so we have ad-hoc checks for each Ethereum client.
 
                     // 0xfe is the "designated bad instruction" of the EVM, and Solidity uses it for
                     // asserts.
@@ -479,12 +479,12 @@ impl EthereumAdapter {
                     // subgraphs come across other errors. See
                     // https://github.com/ethereum/go-ethereum/blob/cd57d5cd38ef692de8fbedaa56598b4e9fbfbabc/core/vm/errors.go
                     const GETH_EXECUTION_ERRORS: &[&str] = &[
-                        // Hardhat format.
-                        "error: transaction reverted",
-                        // Ganache and Moonbeam format.
-                        "vm exception while processing transaction: revert",
-                        // Geth errors
-                        "execution reverted",
+                        // The "revert" substring covers a few known error messages, including:
+                        // Hardhat: "error: transaction reverted",
+                        // Ganache and Moonbeam: "vm exception while processing transaction: revert",
+                        // Geth: "execution reverted"
+                        // And others.
+                        "revert",
                         "invalid jump destination",
                         "invalid opcode",
                         // Ethereum says 1024 is the stack sizes limit, so this is deterministic.
