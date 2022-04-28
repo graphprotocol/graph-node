@@ -309,8 +309,10 @@ impl ConnectionPool {
         servers: Arc<Vec<ForeignServer>>,
     ) -> ConnectionPool {
         let state_tracker = PoolStateTracker::new();
+        let shard =
+            Shard::new(shard_name.to_string()).expect("shard_name is a valid name for a shard");
         let pool = PoolInner::create(
-            shard_name,
+            shard.clone(),
             pool_name.as_str(),
             postgres_url,
             pool_size,
@@ -319,7 +321,6 @@ impl ConnectionPool {
             registry,
             state_tracker.clone(),
         );
-        let shard = pool.shard.clone();
         let pool_state = if pool_name.is_replica() {
             PoolState::Ready(Arc::new(pool))
         } else {
@@ -688,7 +689,7 @@ pub struct PoolInner {
 
 impl PoolInner {
     fn create(
-        shard_name: &str,
+        shard: Shard,
         pool_name: &str,
         postgres_url: String,
         pool_size: u32,
@@ -702,7 +703,7 @@ impl PoolInner {
         let const_labels = {
             let mut map = HashMap::new();
             map.insert("pool".to_owned(), pool_name.to_owned());
-            map.insert("shard".to_string(), shard_name.to_owned());
+            map.insert("shard".to_string(), shard.to_string());
             map
         };
         let error_counter = registry
@@ -775,8 +776,7 @@ impl PoolInner {
         let query_semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_queries));
         PoolInner {
             logger: logger_pool,
-            shard: Shard::new(shard_name.to_string())
-                .expect("shard_name is a valid name for a shard"),
+            shard,
             postgres_url,
             pool,
             fdw_pool,
