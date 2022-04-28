@@ -4,13 +4,14 @@ mod traits;
 
 pub use cache::{CachedEthereumCall, EntityCache, ModificationsAndCache};
 pub use err::StoreError;
+use stable_hash::{FieldAddress, StableHash};
+use stable_hash_legacy::SequenceNumber;
 pub use traits::*;
 
 use futures::stream::poll_fn;
 use futures::{Async, Poll, Stream};
 use graphql_parser::schema as s;
 use serde::{Deserialize, Serialize};
-use stable_hash_legacy::prelude::*;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt;
@@ -94,15 +95,44 @@ pub struct EntityKey {
     pub entity_id: String,
 }
 
+impl stable_hash_legacy::StableHash for EntityKey {
+    fn stable_hash<H: stable_hash_legacy::StableHasher>(
+        &self,
+        mut sequence_number: H::Seq,
+        state: &mut H,
+    ) {
+        let Self {
+            subgraph_id,
+            entity_type,
+            entity_id,
+        } = self;
+
+        stable_hash_legacy::StableHash::stable_hash(
+            subgraph_id,
+            sequence_number.next_child(),
+            state,
+        );
+        stable_hash_legacy::StableHash::stable_hash(
+            &entity_type.as_str(),
+            sequence_number.next_child(),
+            state,
+        );
+        stable_hash_legacy::StableHash::stable_hash(entity_id, sequence_number.next_child(), state);
+    }
+}
+
 impl StableHash for EntityKey {
-    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
-        self.subgraph_id
-            .stable_hash(sequence_number.next_child(), state);
-        self.entity_type
-            .as_str()
-            .stable_hash(sequence_number.next_child(), state);
-        self.entity_id
-            .stable_hash(sequence_number.next_child(), state);
+    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
+        let Self {
+            subgraph_id,
+            entity_type,
+            entity_id,
+        } = self;
+
+        subgraph_id.stable_hash(field_address.child(0), state);
+
+        stable_hash::StableHash::stable_hash(&entity_type.as_str(), field_address.child(1), state);
+        stable_hash::StableHash::stable_hash(entity_id, field_address.child(2), state);
     }
 }
 

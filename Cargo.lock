@@ -1071,6 +1071,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "31586bda1b136406162e381a3185a506cdfc1631708dd40cba2f6628d8634499"
 
 [[package]]
+name = "firestorm"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d3d6188b8804df28032815ea256b6955c9625c24da7525f387a7af02fbb8f01"
+
+[[package]]
 name = "fixed-hash"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1380,7 +1386,8 @@ dependencies = [
  "slog-async",
  "slog-envlogger",
  "slog-term",
- "stable-hash",
+ "stable-hash 0.3.2",
+ "stable-hash 0.4.1",
  "structopt",
  "strum",
  "strum_macros",
@@ -1511,7 +1518,8 @@ dependencies = [
  "once_cell",
  "parking_lot 0.12.0",
  "pretty_assertions 1.2.1",
- "stable-hash",
+ "stable-hash 0.3.2",
+ "stable-hash 0.4.1",
  "test-store",
 ]
 
@@ -1712,7 +1720,7 @@ dependencies = [
  "postgres",
  "rand",
  "serde",
- "stable-hash",
+ "stable-hash 0.3.2",
  "test-store",
  "uuid",
 ]
@@ -3692,11 +3700,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2dfeb73d08f4ae1f48059f31f53a3768fad3dc54622631e0a3eff1d07a4ca19"
 dependencies = [
  "blake3 0.3.8",
- "firestorm",
+ "firestorm 0.4.6",
  "ibig",
  "lazy_static",
  "leb128",
  "num-traits",
+]
+
+[[package]]
+name = "stable-hash"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "442fcfd15605146b373dafa4bea8368e98d9b51350e5da5a44ab2923c5ac3ca8"
+dependencies = [
+ "blake3 0.3.8",
+ "firestorm 0.5.0",
+ "ibig",
+ "lazy_static",
+ "leb128",
+ "num-traits",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -4884,6 +4907,12 @@ checksum = "30b31594f29d27036c383b53b59ed3476874d518f0efb151b27a4c275141390e"
 dependencies = [
  "tap",
 ]
+
+[[package]]
+name = "xxhash-rust"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "074914ea4eec286eb8d1fd745768504f420a1f7b7919185682a4a267bed7d2e7"
 
 [[package]]
 name = "yaml-rust"
