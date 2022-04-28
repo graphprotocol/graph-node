@@ -487,7 +487,7 @@ impl DeploymentStore {
     pub(crate) async fn query_permit(
         &self,
         replica: ReplicaId,
-    ) -> tokio::sync::OwnedSemaphorePermit {
+    ) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError> {
         let pool = match replica {
             ReplicaId::Main => &self.pool,
             ReplicaId::ReadOnly(idx) => &self.read_only_pools[idx],
@@ -495,7 +495,7 @@ impl DeploymentStore {
         pool.query_permit().await
     }
 
-    pub(crate) fn wait_stats(&self, replica: ReplicaId) -> PoolWaitStats {
+    pub(crate) fn wait_stats(&self, replica: ReplicaId) -> Result<PoolWaitStats, StoreError> {
         match replica {
             ReplicaId::Main => self.pool.wait_stats(),
             ReplicaId::ReadOnly(idx) => self.read_only_pools[idx].wait_stats(),

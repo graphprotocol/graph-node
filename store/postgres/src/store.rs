@@ -154,8 +154,8 @@ impl StatusStore for Store {
             .await
     }
 
-    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError> {
         // Status queries go to the primary shard.
-        self.block_store.query_permit_primary().await
+        Ok(self.block_store.query_permit_primary().await)
     }
 }

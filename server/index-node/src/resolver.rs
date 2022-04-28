@@ -693,8 +693,8 @@ impl<S: Store> Clone for IndexNodeResolver<S> {
 impl<S: Store> Resolver for IndexNodeResolver<S> {
     const CACHEABLE: bool = false;
 
-    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
-        self.store.query_permit().await
+    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, QueryExecutionError> {
+        self.store.query_permit().await.map_err(Into::into)
     }
 
     fn prefetch(

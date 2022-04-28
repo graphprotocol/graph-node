@@ -229,6 +229,8 @@ enum PoolState {
     Created(Arc<PoolInner>, Arc<Vec<ForeignServer>>),
     /// The pool has been successfully set up
     Ready(Arc<PoolInner>),
+    /// The pool has been disabled by setting its size to 0
+    Disabled,
 }
 
 #[derive(Clone)]
@@ -311,20 +313,26 @@ impl ConnectionPool {
         let state_tracker = PoolStateTracker::new();
         let shard =
             Shard::new(shard_name.to_string()).expect("shard_name is a valid name for a shard");
-        let pool = PoolInner::create(
-            shard.clone(),
-            pool_name.as_str(),
-            postgres_url,
-            pool_size,
-            fdw_pool_size,
-            logger,
-            registry,
-            state_tracker.clone(),
-        );
-        let pool_state = if pool_name.is_replica() {
-            PoolState::Ready(Arc::new(pool))
-        } else {
-            PoolState::Created(Arc::new(pool), servers)
+        let pool_state = {
+            if pool_size == 0 {
+                PoolState::Disabled
+            } else {
+                let pool = PoolInner::create(
+                    shard.clone(),
+                    pool_name.as_str(),
+                    postgres_url,
+                    pool_size,
+                    fdw_pool_size,
+                    logger,
+                    registry,
+                    state_tracker.clone(),
+                );
+                if pool_name.is_replica() {
+                    PoolState::Ready(Arc::new(pool))
+                } else {
+                    PoolState::Created(Arc::new(pool), servers)
+                }
+            }
         };
         ConnectionPool {
             inner: Arc::new(TimedMutex::new(pool_state, format!("pool-{}", shard_name))),
@@ -340,7 +348,7 @@ impl ConnectionPool {
         let mut guard = self.inner.lock(&self.logger);
         match &*guard {
             PoolState::Created(pool, _) => *guard = PoolState::Ready(pool.clone()),
-            PoolState::Ready(_) => { /* nothing to do */ }
+            PoolState::Ready(_) | PoolState::Disabled => { /* nothing to do */ }
         }
     }
 
@@ -368,6 +376,7 @@ impl ConnectionPool {
                 Ok(pool2)
             }
             PoolState::Ready(pool) => Ok(pool.clone()),
+            PoolState::Disabled => Err(StoreError::DatabaseDisabled),
         }
     }
 
@@ -473,16 +482,22 @@ impl ConnectionPool {
         .unwrap();
     }
 
-    pub(crate) async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+    pub(crate) async fn query_permit(
+        &self,
+    ) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError> {
         let pool = match &*self.inner.lock(&self.logger) {
             PoolState::Created(pool, _) | PoolState::Ready(pool) => pool.clone(),
+            PoolState::Disabled => {
+                return Err(StoreError::DatabaseDisabled);
+            }
         };
-        pool.query_permit().await
+        Ok(pool.query_permit().await)
     }
 
-    pub(crate) fn wait_stats(&self) -> PoolWaitStats {
+    pub(crate) fn wait_stats(&self) -> Result<PoolWaitStats, StoreError> {
         match &*self.inner.lock(&self.logger) {
-            PoolState::Created(pool, _) | PoolState::Ready(pool) => pool.wait_stats.clone(),
+            PoolState::Created(pool, _) | PoolState::Ready(pool) => Ok(pool.wait_stats.clone()),
+            PoolState::Disabled => Err(StoreError::DatabaseDisabled),
         }
     }
 

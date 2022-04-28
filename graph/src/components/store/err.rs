@@ -44,6 +44,8 @@ pub enum StoreError {
     Canceled,
     #[error("database unavailable")]
     DatabaseUnavailable,
+    #[error("database disabled")]
+    DatabaseDisabled,
     #[error("subgraph forking failed: {0}")]
     ForkFailure(String),
     #[error("subgraph writer poisoned by previous error")]

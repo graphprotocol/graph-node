@@ -341,7 +341,11 @@ impl BlockStore {
     }
 
     pub(crate) async fn query_permit_primary(&self) -> tokio::sync::OwnedSemaphorePermit {
-        self.mirror.primary().query_permit().await
+        self.mirror
+            .primary()
+            .query_permit()
+            .await
+            .expect("the primary is never disabled")
     }
 
     fn add_chain_store(
