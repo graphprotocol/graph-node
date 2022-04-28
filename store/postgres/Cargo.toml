@@ -23,7 +23,7 @@ maybe-owned = "0.3.4"
 postgres = "0.19.1"
 rand = "0.8.4"
 serde = "1.0"
-uuid = { version = "0.8.1", features = ["v4"] }
+uuid = { version = "1.0.0", features = ["v4"] }
 stable-hash_legacy = { version = "0.3.2", package = "stable-hash" }
 diesel_derives = "1.4.1"
 anyhow = "1.0.57"
