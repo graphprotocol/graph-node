@@ -1,9 +1,9 @@
 pub mod assign;
 pub mod chain;
+pub mod check_blocks;
 pub mod config;
 pub mod copy;
 pub mod create;
-pub mod fix_block;
 pub mod index;
 pub mod info;
 pub mod listen;

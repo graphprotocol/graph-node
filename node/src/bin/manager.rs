@@ -915,7 +915,7 @@ async fn main() -> anyhow::Result<()> {
                     commands::chain::remove(primary, block_store, name)
                 }
                 CheckBlocks { method, chain_name } => {
-                    use commands::fix_block::{by_hash, by_number, by_range};
+                    use commands::check_blocks::{by_hash, by_number, by_range};
                     use CheckBlockMethod::*;
                     let logger = ctx.logger.clone();
                     let (chain_store, ethereum_adapter) =
@@ -933,7 +933,7 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
                 Truncate { chain_name, force } => {
-                    use commands::fix_block::truncate;
+                    use commands::check_blocks::truncate;
                     let chain_store = ctx.chain_store(&chain_name)?;
                     truncate(chain_store, force)
                 }
