@@ -23,10 +23,6 @@ use diesel::{
     Connection as _,
 };
 use graph::{
-    components::store::DeploymentId as GraphDeploymentId,
-    prelude::{chrono, CancelHandle, CancelToken},
-};
-use graph::{
     components::store::DeploymentLocator,
     constraint_violation,
     data::subgraph::status,
@@ -34,6 +30,10 @@ use graph::{
         anyhow, bigdecimal::ToPrimitive, serde_json, DeploymentHash, EntityChange,
         EntityChangeOperation, NodeId, StoreError, SubgraphName, SubgraphVersionSwitchingMode,
     },
+};
+use graph::{
+    components::store::{DeploymentId as GraphDeploymentId, DeploymentSchemaVersion},
+    prelude::{chrono, CancelHandle, CancelToken},
 };
 use graph::{data::subgraph::schema::generate_entity_id, prelude::StoreEvent};
 use itertools::Itertools;
@@ -111,31 +111,6 @@ table! {
     public.ens_names(hash) {
         hash -> Varchar,
         name -> Varchar,
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum DeploymentSchemaVersion {
-    /// Baseline version, in which:
-    /// - A relational schema is used.
-    /// - Each deployment has its own namespace for entity tables.
-    /// - Dynamic data sources are stored in `subgraphs.dynamic_ethereum_contract_data_source`.
-    V0 = 0,
-}
-
-impl DeploymentSchemaVersion {
-    // Latest schema version supported by this version of graph node.
-    const LATEST: Self = Self::V0;
-}
-
-impl TryFrom<i32> for DeploymentSchemaVersion {
-    type Error = StoreError;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::V0),
-            _ => Err(StoreError::UnsupportedDeploymentSchemaVersion(value)),
-        }
     }
 }
 

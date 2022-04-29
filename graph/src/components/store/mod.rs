@@ -964,3 +964,34 @@ impl From<BlockNumber> for PartialBlockPtr {
         Self { number, hash: None }
     }
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DeploymentSchemaVersion {
+    /// Baseline version, in which:
+    /// - A relational schema is used.
+    /// - Each deployment has its own namespace for entity tables.
+    /// - Dynamic data sources are stored in `subgraphs.dynamic_ethereum_contract_data_source`.
+    V0 = 0,
+}
+
+impl DeploymentSchemaVersion {
+    // Latest schema version supported by this version of graph node.
+    pub const LATEST: Self = Self::V0;
+}
+
+impl TryFrom<i32> for DeploymentSchemaVersion {
+    type Error = StoreError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::V0),
+            _ => Err(StoreError::UnsupportedDeploymentSchemaVersion(value)),
+        }
+    }
+}
+
+impl fmt::Display for DeploymentSchemaVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&(*self as i32), f)
+    }
+}
