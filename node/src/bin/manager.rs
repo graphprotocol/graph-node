@@ -356,7 +356,8 @@ pub enum ChainCommand {
         /// Chain name (must be an existing chain, see 'chain list')
         #[structopt(empty_values = false)]
         chain_name: String,
-        #[structopt(long, short, help = "Skips confirmation prompt")]
+        /// Skips confirmation prompt
+        #[structopt(long, short)]
         force: bool,
     },
 }
