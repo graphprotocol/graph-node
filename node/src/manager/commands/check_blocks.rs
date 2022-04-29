@@ -227,7 +227,7 @@ mod helpers {
 
 /// Custom range type
 mod ranges {
-    use graph::prelude::anyhow;
+    use graph::prelude::anyhow::{self, bail};
 
     pub(super) struct Range {
         pub(super) lower_bound: i32,
@@ -236,22 +236,29 @@ mod ranges {
 
     impl Range {
         pub fn new(lower_bound: Option<i32>, upper_bound: Option<i32>) -> anyhow::Result<Self> {
-            let lower_bound = match lower_bound {
-                None => 1, // When a lower bound is not set, we adjust it to the lowest possible block number
-                Some(0) => anyhow::bail!("Genesis block can't be removed."),
-                Some(x) if x < 0 => {
-                    anyhow::bail!("Negative block number used as lower bound: {}", x)
+            let (lower_bound, upper_bound) = match (lower_bound, upper_bound) {
+                // Invalid cases:
+                (None, None) => {
+                    bail!(
+                        "This would wipe the whole cache. \
+                         Use `graphman chain truncate` instead"
+                    )
                 }
-                Some(x) => x,
-            };
+                (Some(0), _) => bail!("Genesis block can't be removed"),
+                (Some(x), _) if x < 0 => {
+                    bail!("Negative block number used as lower bound: {}", x)
+                }
+                (Some(lower), Some(upper)) if upper < lower => bail!(
+                    "Upper bound ({}) can't be smaller than lower bound ({})",
+                    upper,
+                    lower
+                ),
 
-            if matches!(upper_bound, Some(x) if x < lower_bound) {
-                anyhow::bail!(
-                    "Upper bound {} is smaller than lower bound {}",
-                    upper_bound.unwrap(), // Unwrap: We just checked this
-                    lower_bound
-                )
-            }
+                // Valid cases:
+                // Open lower bounds are set to the lowest possible block number
+                (None, upper @ Some(_)) => (1, upper),
+                (Some(lower), upper) => (lower, upper),
+            };
 
             Ok(Self {
                 lower_bound,
