@@ -326,7 +326,7 @@ pub struct Site {
     /// deployment have `active = false`
     pub(crate) active: bool,
 
-    schema_version: DeploymentSchemaVersion,
+    pub(crate) schema_version: DeploymentSchemaVersion,
     /// Only the store and tests can create Sites
     _creation_disallowed: (),
 }
