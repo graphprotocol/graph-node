@@ -444,9 +444,9 @@ pub enum IndexCommand {
 
 #[derive(Clone, Debug, StructOpt)]
 pub struct FixBlockCommand {
-    /// Network name (must fit one of the chain)
+    /// Chain name (must be an existing chain, see 'chain list')
     #[structopt(empty_values = false)]
-    network_name: String,
+    chain_name: String,
     #[structopt(subcommand)]
     method: FixBlockSubCommand,
 }
@@ -949,16 +949,16 @@ async fn main() -> anyhow::Result<()> {
             use graph::components::store::BlockStore as BlockStoreTrait;
             use FixBlockSubCommand::*;
 
-            if let Some(chain_store) = ctx.store().block_store().chain_store(&cmd.network_name) {
+            if let Some(chain_store) = ctx.store().block_store().chain_store(&cmd.chain_name) {
                 let ethereum_networks = ctx.ethereum_networks().await?;
                 let ethereum_adapter = ethereum_networks
                     .networks
-                    .get(&cmd.network_name)
+                    .get(&cmd.chain_name)
                     .map(|adapters| adapters.cheapest())
                     .flatten()
                     .ok_or(anyhow::anyhow!(
                         "Failed to obtain an Ethereum adapter for chain '{}'",
-                        cmd.network_name
+                        cmd.chain_name
                     ))?;
 
                 match cmd.method {
@@ -976,7 +976,7 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 Err(anyhow::anyhow!(
                     "Could not find a network named '{}'",
-                    &cmd.network_name
+                    &cmd.chain_name
                 ))
             }
         }
