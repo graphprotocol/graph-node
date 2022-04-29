@@ -247,7 +247,8 @@ mod ranges {
 
         pub(super) fn min_max(&self) -> anyhow::Result<(i32, Option<i32>)> {
             let min = match self.lower_bound {
-                None | Some(0) => 1, // Never include the genesis block
+                None => 1, // When a lower bound is not set, we adjust it to the lowest possible block number
+                Some(0) => anyhow::bail!("Genesis block can't be removed."),
                 Some(x) if x < 0 => anyhow::bail!("Negative block number"),
                 Some(x) => x,
             };
