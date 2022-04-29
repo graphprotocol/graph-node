@@ -1,5 +1,7 @@
+mod private;
 mod shared;
-// mod private;
+
+pub(crate) use private::DataSourcesTable;
 
 use crate::primary::Site;
 use diesel::PgConnection;
