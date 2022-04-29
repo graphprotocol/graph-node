@@ -467,7 +467,12 @@ pub enum CheckBlockMethod {
     ByNumber { number: i32 },
 
     /// A block number range, inclusive on both ends.
-    ByRange { from: Option<i32>, to: Option<i32> },
+    ByRange {
+        #[structopt(long, short)]
+        from: Option<i32>,
+        #[structopt(long, short)]
+        to: Option<i32>,
+    },
 }
 
 impl From<Opt> for config::Opt {
