@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use graph::data::value::Word;
 use web3::types::H256;
 
 use crate::deployment_store::{DeploymentStore, ReplicaId};
@@ -36,7 +37,7 @@ impl QueryStoreTrait for QueryStore {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<Vec<BTreeMap<String, r::Value>>, QueryExecutionError> {
+    ) -> Result<Vec<BTreeMap<Word, r::Value>>, QueryExecutionError> {
         assert_eq!(&self.site.deployment, &query.subgraph_id);
         let conn = self
             .store

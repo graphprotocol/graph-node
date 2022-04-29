@@ -12,6 +12,7 @@ use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text};
 use diesel::Connection;
 
+use graph::data::value::Word;
 use graph::prelude::{
     anyhow, r, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
     EntityFilter, EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink,
@@ -244,17 +245,17 @@ impl FromEntityData for Entity {
     }
 }
 
-impl FromEntityData for BTreeMap<String, r::Value> {
+impl FromEntityData for BTreeMap<Word, r::Value> {
     type Value = r::Value;
 
     fn new_entity(typename: String) -> Self {
         let mut map = BTreeMap::new();
-        map.insert("__typename".to_string(), Self::Value::from_string(typename));
+        map.insert("__typename".into(), Self::Value::from_string(typename));
         map
     }
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value) {
-        self.insert(key, v);
+        self.insert(Word::from(key), v);
     }
 }
 

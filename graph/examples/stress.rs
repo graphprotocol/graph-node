@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 
+use graph::data::value::Word;
 use graph::prelude::{lazy_static, q};
 use rand::SeedableRng;
 use rand::{rngs::SmallRng, Rng};
@@ -206,6 +207,23 @@ impl Template<String> for String {
         }
         s
     }
+    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self::Item> {
+        Box::new(self[0..size].into())
+    }
+}
+
+/// Template for testing caching of `String`
+impl Template<Word> for Word {
+    type Item = Word;
+
+    fn create(size: usize, _rng: Option<&mut SmallRng>) -> Self {
+        let mut s = String::with_capacity(size);
+        for _ in 0..size {
+            s.push('x');
+        }
+        Word::from(s)
+    }
+
     fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self::Item> {
         Box::new(self[0..size].into())
     }
@@ -529,6 +547,8 @@ pub fn main() {
         stress::<ValueMap>(&opt);
     } else if opt.template == "string" {
         stress::<String>(&opt);
+    } else if opt.template == "word" {
+        stress::<Word>(&opt);
     } else if opt.template == "usizemap" {
         stress::<UsizeMap>(&opt)
     } else {

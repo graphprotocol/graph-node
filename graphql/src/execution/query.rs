@@ -749,7 +749,7 @@ impl Transform {
                 let mut rmap = BTreeMap::new();
                 for (key, value) in map.into_iter() {
                     let value = self.interpolate_value(value, pos);
-                    rmap.insert(key, value);
+                    rmap.insert(key.into(), value);
                 }
                 r::Value::object(rmap)
             }

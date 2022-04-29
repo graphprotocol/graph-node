@@ -1,5 +1,6 @@
 use crate::{
     components::store::EntityType,
+    data::value::Word,
     prelude::{q, BigDecimal, BigInt, EntityKey, Value},
 };
 use std::{
@@ -57,6 +58,12 @@ impl<T: CacheWeight, U: CacheWeight> CacheWeight for HashMap<T, U> {
 impl CacheWeight for String {
     fn indirect_weight(&self) -> usize {
         self.capacity()
+    }
+}
+
+impl CacheWeight for Word {
+    fn indirect_weight(&self) -> usize {
+        self.len()
     }
 }
 

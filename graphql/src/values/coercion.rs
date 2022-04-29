@@ -79,7 +79,7 @@ fn coerce_to_definition<'a>(
                     let def = t
                         .fields
                         .iter()
-                        .find(|f| f.name == name)
+                        .find(|f| f.name == &*name)
                         .ok_or_else(|| object_for_error.clone())?;
                     coerced_object.insert(
                         name.clone(),
