@@ -316,7 +316,7 @@ impl SyncStore {
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         self.retry_async("load_dynamic_data_sources", || async {
             self.writable
-                .load_dynamic_data_sources(self.site.deployment.clone(), block)
+                .load_dynamic_data_sources(self.site.cheap_clone(), block)
                 .await
         })
         .await
