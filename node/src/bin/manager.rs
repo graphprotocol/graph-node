@@ -9,7 +9,7 @@ use graph::{
     },
     url::Url,
 };
-use graph_chain_ethereum::EthereumNetworks;
+use graph_chain_ethereum::{EthereumAdapter, EthereumNetworks};
 use graph_core::MetricsRegistry;
 use graph_graphql::prelude::GraphQlRunner;
 use graph_node::config::{self, Config as Cfg};
@@ -20,6 +20,7 @@ use graph_node::{
     store_builder::StoreBuilder,
     MetricsContext,
 };
+use graph_store_postgres::ChainStore;
 use graph_store_postgres::{
     connection_pool::ConnectionPool, BlockStore, Shard, Store, SubgraphStore, SubscriptionManager,
     PRIMARY_SHARD,
@@ -201,9 +202,6 @@ pub enum Command {
 
     /// Manage database indexes
     Index(IndexCommand),
-
-    /// Compares cached blocks with fresh ones and report any differences and affected subgraphs.
-    FixBlock(FixBlockCommand),
 }
 
 impl Command {
@@ -343,6 +341,24 @@ pub enum ChainCommand {
     /// There must be no deployments using that chain. If there are, the
     /// subgraphs and/or deployments using the chain must first be removed
     Remove { name: String },
+
+    /// Compares cached blocks with fresh ones and clears the block cache when they differ.
+    CheckBlocks {
+        #[structopt(subcommand)] // Note that we mark a field as a subcommand
+        method: CheckBlockMethod,
+
+        /// Chain name (must be an existing chain, see 'chain list')
+        #[structopt(empty_values = false)]
+        chain_name: String,
+    },
+    /// Truncates the whole block cache for the given chain.
+    Truncate {
+        /// Chain name (must be an existing chain, see 'chain list')
+        #[structopt(empty_values = false)]
+        chain_name: String,
+        #[structopt(long, short, help = "Skips confirmation prompt")]
+        force: bool,
+    },
 }
 
 #[derive(Clone, Debug, StructOpt)]
@@ -443,16 +459,7 @@ pub enum IndexCommand {
 }
 
 #[derive(Clone, Debug, StructOpt)]
-pub struct FixBlockCommand {
-    /// Chain name (must be an existing chain, see 'chain list')
-    #[structopt(empty_values = false)]
-    chain_name: String,
-    #[structopt(subcommand)]
-    method: FixBlockSubCommand,
-}
-
-#[derive(Clone, Debug, StructOpt)]
-enum FixBlockSubCommand {
+pub enum CheckBlockMethod {
     /// The number of the target block
     ByHash { hash: String },
 
@@ -461,13 +468,6 @@ enum FixBlockSubCommand {
 
     /// A block number range, inclusive on both ends.
     ByRange { from: Option<i32>, to: Option<i32> },
-
-    /// Truncates the whole block cache for the given chain.
-    TruncateCache {
-        /// Skips prompt for confirming the operation.
-        #[structopt(long)]
-        no_confirm: bool,
-    },
 }
 
 impl From<Opt> for config::Opt {
@@ -654,6 +654,32 @@ impl Context {
         let logger = self.logger.clone();
         let registry = self.metrics_registry();
         create_ethereum_networks(logger, registry, &self.config).await
+    }
+
+    fn chain_store(self, chain_name: &str) -> anyhow::Result<Arc<ChainStore>> {
+        use graph::components::store::BlockStore;
+        self.store()
+            .block_store()
+            .chain_store(&chain_name)
+            .ok_or_else(|| anyhow::anyhow!("Could not find a network named '{}'", chain_name))
+    }
+
+    async fn chain_store_and_adapter(
+        self,
+        chain_name: &str,
+    ) -> anyhow::Result<(Arc<ChainStore>, Arc<EthereumAdapter>)> {
+        let ethereum_networks = self.ethereum_networks().await?;
+        let chain_store = self.chain_store(chain_name)?;
+        let ethereum_adapter = ethereum_networks
+            .networks
+            .get(chain_name)
+            .map(|adapters| adapters.cheapest())
+            .flatten()
+            .ok_or(anyhow::anyhow!(
+                "Failed to obtain an Ethereum adapter for chain '{}'",
+                chain_name
+            ))?;
+        Ok((chain_store, ethereum_adapter))
     }
 }
 
@@ -888,6 +914,29 @@ async fn main() -> anyhow::Result<()> {
                     let (block_store, primary) = ctx.block_store_and_primary_pool();
                     commands::chain::remove(primary, block_store, name)
                 }
+                CheckBlocks { method, chain_name } => {
+                    use commands::fix_block::{by_hash, by_number, by_range};
+                    use CheckBlockMethod::*;
+                    let logger = ctx.logger.clone();
+                    let (chain_store, ethereum_adapter) =
+                        ctx.chain_store_and_adapter(&chain_name).await?;
+                    match method {
+                        ByHash { hash } => {
+                            by_hash(&hash, chain_store, &ethereum_adapter, &logger).await
+                        }
+                        ByNumber { number } => {
+                            by_number(number, chain_store, &ethereum_adapter, &logger).await
+                        }
+                        ByRange { from, to } => {
+                            by_range(chain_store, &ethereum_adapter, from, to, &logger).await
+                        }
+                    }
+                }
+                Truncate { chain_name, force } => {
+                    use commands::fix_block::truncate;
+                    let chain_store = ctx.chain_store(&chain_name)?;
+                    truncate(chain_store, force)
+                }
             }
         }
         Stats(cmd) => {
@@ -940,43 +989,6 @@ async fn main() -> anyhow::Result<()> {
                     commands::index::drop(subgraph_store, primary_pool, deployment, &index_name)
                         .await
                 }
-            }
-        }
-        FixBlock(cmd) => {
-            use commands::fix_block::{by_hash, by_number, by_range, truncate};
-            use graph::components::store::BlockStore as BlockStoreTrait;
-            use FixBlockSubCommand::*;
-
-            let logger = ctx.logger.clone();
-            let ethereum_networks = ctx.ethereum_networks().await?;
-            if let Some(chain_store) = ctx.store().block_store().chain_store(&cmd.chain_name) {
-                let ethereum_adapter = ethereum_networks
-                    .networks
-                    .get(&cmd.chain_name)
-                    .map(|adapters| adapters.cheapest())
-                    .flatten()
-                    .ok_or(anyhow::anyhow!(
-                        "Failed to obtain an Ethereum adapter for chain '{}'",
-                        cmd.chain_name
-                    ))?;
-
-                match cmd.method {
-                    ByHash { hash } => {
-                        by_hash(&hash, chain_store, &ethereum_adapter, &logger).await
-                    }
-                    ByNumber { number } => {
-                        by_number(number, chain_store, &ethereum_adapter, &logger).await
-                    }
-                    ByRange { from, to } => {
-                        by_range(chain_store, &ethereum_adapter, from, to, &logger).await
-                    }
-                    TruncateCache { no_confirm } => truncate(chain_store, no_confirm),
-                }
-            } else {
-                Err(anyhow::anyhow!(
-                    "Could not find a network named '{}'",
-                    &cmd.chain_name
-                ))
             }
         }
     }
