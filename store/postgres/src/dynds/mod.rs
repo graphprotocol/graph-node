@@ -1,5 +1,5 @@
 mod private;
-mod shared;
+pub(crate) mod shared;
 
 pub(crate) use private::DataSourcesTable;
 
@@ -8,24 +8,24 @@ use diesel::PgConnection;
 use graph::{
     blockchain::BlockPtr,
     components::store::StoredDynamicDataSource,
-    prelude::{BlockNumber, DeploymentHash, StoreError},
+    prelude::{BlockNumber, StoreError},
 };
 
 pub fn load(
     conn: &PgConnection,
-    id: &str,
+    site: &Site,
     block: BlockNumber,
 ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
-    shared::load(conn, id, block)
+    shared::load(conn, site.deployment.as_str(), block)
 }
 
 pub(crate) fn insert(
     conn: &PgConnection,
-    deployment: &DeploymentHash,
+    site: &Site,
     data_sources: &[StoredDynamicDataSource],
     block_ptr: &BlockPtr,
 ) -> Result<usize, StoreError> {
-    shared::insert(conn, deployment, data_sources, block_ptr)
+    shared::insert(conn, &site.deployment, data_sources, block_ptr)
 }
 
 pub(crate) fn copy(
@@ -39,12 +39,8 @@ pub(crate) fn copy(
 
 pub(crate) fn revert(
     conn: &PgConnection,
-    id: &DeploymentHash,
+    site: &Site,
     block: BlockNumber,
 ) -> Result<(), StoreError> {
-    shared::revert(conn, id, block)
-}
-
-pub(crate) fn drop(conn: &PgConnection, id: &DeploymentHash) -> Result<usize, StoreError> {
-    shared::drop(conn, id)
+    shared::revert(conn, &site.deployment, block)
 }

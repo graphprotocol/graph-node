@@ -850,11 +850,11 @@ impl Layout {
     /// is subject to reversion is only ever created but never updated
     pub fn revert_metadata(
         conn: &PgConnection,
-        subgraph: &DeploymentHash,
+        site: &Site,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
-        crate::dynds::revert(conn, subgraph, block)?;
-        crate::deployment::revert_subgraph_errors(conn, subgraph, block)?;
+        crate::dynds::revert(conn, site, block)?;
+        crate::deployment::revert_subgraph_errors(conn, &site.deployment, block)?;
 
         Ok(())
     }
