@@ -541,7 +541,7 @@ impl Context {
         self.node_id.clone()
     }
 
-    fn primary_pool(&self) -> ConnectionPool {
+    fn primary_pool(self) -> ConnectionPool {
         let primary = self.config.primary_store();
         let pool = StoreBuilder::main_pool(
             &self.logger,
@@ -555,7 +555,7 @@ impl Context {
         pool
     }
 
-    fn subgraph_store(&self) -> Arc<SubgraphStore> {
+    fn subgraph_store(self) -> Arc<SubgraphStore> {
         self.store_and_pools().0.subgraph_store()
     }
 
@@ -576,12 +576,12 @@ impl Context {
         (primary_pool, mgr)
     }
 
-    fn store(&self) -> Arc<Store> {
+    fn store(self) -> Arc<Store> {
         let (store, _) = self.store_and_pools();
         store
     }
 
-    fn pools(&self) -> HashMap<Shard, ConnectionPool> {
+    fn pools(self) -> HashMap<Shard, ConnectionPool> {
         let (_, pools) = self.store_and_pools();
         pools
     }
@@ -597,13 +597,13 @@ impl Context {
         .await
     }
 
-    fn store_and_pools(&self) -> (Arc<Store>, HashMap<Shard, ConnectionPool>) {
+    fn store_and_pools(self) -> (Arc<Store>, HashMap<Shard, ConnectionPool>) {
         let (subgraph_store, pools) = StoreBuilder::make_subgraph_store_and_pools(
             &self.logger,
             &self.node_id,
             &self.config,
-            self.fork_base.clone(),
-            self.registry.clone(),
+            self.fork_base,
+            self.registry,
         );
 
         for pool in pools.values() {
@@ -621,20 +621,20 @@ impl Context {
         (store, pools)
     }
 
-    fn store_and_primary(&self) -> (Arc<Store>, ConnectionPool) {
+    fn store_and_primary(self) -> (Arc<Store>, ConnectionPool) {
         let (store, pools) = self.store_and_pools();
         let primary = pools.get(&*PRIMARY_SHARD).expect("there is a primary pool");
         (store, primary.clone())
     }
 
-    fn block_store_and_primary_pool(&self) -> (Arc<BlockStore>, ConnectionPool) {
+    fn block_store_and_primary_pool(self) -> (Arc<BlockStore>, ConnectionPool) {
         let (store, pools) = self.store_and_pools();
 
         let primary = pools.get(&*PRIMARY_SHARD).unwrap();
         (store.block_store(), primary.clone())
     }
 
-    fn graphql_runner(&self) -> Arc<GraphQlRunner<Store, PanicSubscriptionManager>> {
+    fn graphql_runner(self) -> Arc<GraphQlRunner<Store, PanicSubscriptionManager>> {
         let logger = self.logger.clone();
         let registry = self.registry.clone();
 
@@ -949,8 +949,9 @@ async fn main() -> anyhow::Result<()> {
             use graph::components::store::BlockStore as BlockStoreTrait;
             use FixBlockSubCommand::*;
 
+            let logger = ctx.logger.clone();
+            let ethereum_networks = ctx.ethereum_networks().await?;
             if let Some(chain_store) = ctx.store().block_store().chain_store(&cmd.chain_name) {
-                let ethereum_networks = ctx.ethereum_networks().await?;
                 let ethereum_adapter = ethereum_networks
                     .networks
                     .get(&cmd.chain_name)
@@ -963,13 +964,13 @@ async fn main() -> anyhow::Result<()> {
 
                 match cmd.method {
                     ByHash { hash } => {
-                        by_hash(&hash, chain_store, &ethereum_adapter, &ctx.logger).await
+                        by_hash(&hash, chain_store, &ethereum_adapter, &logger).await
                     }
                     ByNumber { number } => {
-                        by_number(number, chain_store, &ethereum_adapter, &ctx.logger).await
+                        by_number(number, chain_store, &ethereum_adapter, &logger).await
                     }
                     ByRange { range } => {
-                        by_range(chain_store, &ethereum_adapter, &range, &ctx.logger).await
+                        by_range(chain_store, &ethereum_adapter, &range, &logger).await
                     }
                     TruncateCache { no_confirm } => truncate(chain_store, no_confirm),
                 }
