@@ -38,6 +38,7 @@ use crate::block_range::block_number;
 use crate::catalog;
 use crate::deployment;
 use crate::detail::ErrorDetail;
+use crate::dynds::DataSourcesTable;
 use crate::relational::{Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::FromEntityData;
 use crate::{connection_pool::ConnectionPool, detail};
@@ -168,13 +169,7 @@ impl DeploymentStore {
 
             // Create (or update) the metadata. Update only happens in tests
             if replace || !exists {
-                deployment::create_deployment(
-                    &conn,
-                    &site,
-                    deployment,
-                    exists,
-                    replace,
-                )?;
+                deployment::create_deployment(&conn, &site, deployment, exists, replace)?;
             };
 
             // Create the schema for the subgraph data
@@ -189,12 +184,19 @@ impl DeploymentStore {
                     if !errors.is_empty() {
                         return Err(StoreError::Unknown(anyhow!(
                             "The subgraph `{}` cannot be used as the graft base \
-                                                    for `{}` because the schemas are incompatible:\n    - {}",
+                             for `{}` because the schemas are incompatible:\n    - {}",
                             &base.catalog.site.namespace,
                             &layout.catalog.site.namespace,
                             errors.join("\n    - ")
                         )));
                     }
+                }
+
+                // Create data sources table
+                if site.schema_version.private_data_sources() {
+                    conn.batch_execute(
+                        &DataSourcesTable::new(site.namespace.to_string()).as_ddl(),
+                    )?;
                 }
             }
             Ok(())
