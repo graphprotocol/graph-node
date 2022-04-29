@@ -217,7 +217,9 @@ impl DeploymentStore {
         let conn = self.get_conn()?;
         conn.transaction(|| {
             crate::deployment::drop_schema(&conn, &site.namespace)?;
-            crate::dynds::drop(&conn, &site.deployment)?;
+            if !site.schema_version.private_data_sources() {
+                crate::dynds::shared::drop(&conn, &site.deployment)?;
+            }
             crate::deployment::drop_metadata(&conn, site)
         })
     }
@@ -999,7 +1001,7 @@ impl DeploymentStore {
             )?;
             section.end();
 
-            dynds::insert(&conn, &site.deployment, data_sources, block_ptr_to)?;
+            dynds::insert(&conn, &site, data_sources, block_ptr_to)?;
 
             if !deterministic_errors.is_empty() {
                 deployment::insert_subgraph_errors(
@@ -1072,7 +1074,7 @@ impl DeploymentStore {
             // importantly creation of dynamic data sources. We ensure in the
             // rest of the code that we only record history for those meta data
             // changes that might need to be reverted
-            Layout::revert_metadata(&conn, &site.deployment, block)?;
+            Layout::revert_metadata(&conn, &site, block)?;
 
             deployment::update_entity_count(
                 conn,
@@ -1174,11 +1176,11 @@ impl DeploymentStore {
 
     pub(crate) async fn load_dynamic_data_sources(
         &self,
-        id: DeploymentHash,
+        site: Arc<Site>,
         block: BlockNumber,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         self.with_conn(move |conn, _| {
-            conn.transaction(|| crate::dynds::load(&conn, id.as_str(), block))
+            conn.transaction(|| crate::dynds::load(&conn, &site, block))
                 .map_err(Into::into)
         })
         .await

@@ -60,7 +60,7 @@ fn to_source(
     })
 }
 
-pub fn load(
+pub(super) fn load(
     conn: &PgConnection,
     id: &str,
     block: BlockNumber,
@@ -229,7 +229,7 @@ pub(super) fn revert(
     Ok(())
 }
 
-pub(super) fn drop(conn: &PgConnection, id: &DeploymentHash) -> Result<usize, StoreError> {
+pub(crate) fn drop(conn: &PgConnection, id: &DeploymentHash) -> Result<usize, StoreError> {
     use dynamic_ethereum_contract_data_source as decds;
 
     delete(decds::table.filter(decds::deployment.eq(id.as_str())))
