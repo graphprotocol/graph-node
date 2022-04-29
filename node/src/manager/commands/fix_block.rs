@@ -34,20 +34,20 @@ pub async fn by_number(
 pub async fn by_range(
     chain_store: Arc<ChainStore>,
     ethereum_adapter: &EthereumAdapter,
-    range: &str,
+    range_from: Option<i32>,
+    range_to: Option<i32>,
     logger: &Logger,
 ) -> anyhow::Result<()> {
     // Resolve a range of block numbers into a collection of blocks hashes
-    let range = range.parse::<ranges::Range>()?;
-    let (min, max) = range.min_max()?;
-    let max = match max {
-        // When we have an open upper bound, we must check the number of the chain head block
+    let range = ranges::Range::new(range_from, range_to)?;
+    let max = match range.upper_bound {
+        // When we have an open upper bound, we use the chain head's block number
         None => steps::find_chain_head(&chain_store)?,
         Some(x) => x,
     };
     // FIXME: This performs poorly.
     // TODO: This could be turned into async code
-    for block_number in min..=max {
+    for block_number in range.lower_bound..=max {
         println!("Fixing block [{block_number}/{max}]");
         let block_hash = steps::resolve_block_hash_from_block_number(block_number, &chain_store)?;
         run(&block_hash, &chain_store, ethereum_adapter, logger).await?
@@ -225,77 +225,38 @@ mod helpers {
     }
 }
 
-/// Custom range type that supports being parsed from a string.
+/// Custom range type
 mod ranges {
-    use graph::prelude::anyhow::{self, bail};
-    use std::str::FromStr;
+    use graph::prelude::anyhow;
 
     pub(super) struct Range {
-        pub(super) lower_bound: Option<i32>,
+        pub(super) lower_bound: i32,
         pub(super) upper_bound: Option<i32>,
-        pub(super) inclusive: bool,
     }
 
     impl Range {
-        fn new(lower_bound: Option<i32>, upper_bound: Option<i32>, inclusive: bool) -> Self {
-            Self {
-                lower_bound,
-                upper_bound,
-                inclusive,
-            }
-        }
-
-        pub(super) fn min_max(&self) -> anyhow::Result<(i32, Option<i32>)> {
-            let min = match self.lower_bound {
+        pub fn new(lower_bound: Option<i32>, upper_bound: Option<i32>) -> anyhow::Result<Self> {
+            let lower_bound = match lower_bound {
                 None => 1, // When a lower bound is not set, we adjust it to the lowest possible block number
                 Some(0) => anyhow::bail!("Genesis block can't be removed."),
-                Some(x) if x < 0 => anyhow::bail!("Negative block number"),
+                Some(x) if x < 0 => {
+                    anyhow::bail!("Negative block number used as lower bound: {}", x)
+                }
                 Some(x) => x,
             };
-            let inclusive = if self.inclusive { 1 } else { 0 };
-            let max = self.upper_bound.map(|x| x + inclusive);
-            Ok((min, max))
-        }
-    }
 
-    impl FromStr for Range {
-        type Err = anyhow::Error;
-
-        fn from_str(s: &str) -> Result<Self, Self::Err> {
-            const INCLUSIVE: &str = "..=";
-            const EXCLUSIVE: &str = "..";
-            if !s.contains(INCLUSIVE) && !s.contains(EXCLUSIVE) {
-                bail!("Malformed range expression")
+            if matches!(upper_bound, Some(x) if x < lower_bound) {
+                anyhow::bail!(
+                    "Upper bound {} is smaller than lower bound {}",
+                    upper_bound.unwrap(), // Unwrap: We just checked this
+                    lower_bound
+                )
             }
-            let (separator, inclusive) = if s.contains("..=") {
-                (INCLUSIVE, true)
-            } else {
-                (EXCLUSIVE, false)
-            };
-            let split: Vec<&str> = s.split(separator).collect();
-            let range = match split.as_slice() {
-                // open upper bounds are always inclusive
-                ["", ""] => Range::new(None, None, true),
-                [start, ""] => {
-                    let start: i32 = start.parse::<i32>()?;
-                    // open upper bounds are always inclusive
-                    Range::new(Some(start), None, true)
-                }
-                ["", end] => {
-                    let end = end.parse::<i32>()?;
-                    Range::new(None, Some(end), inclusive)
-                }
-                [start, end] => {
-                    let start: i32 = start.parse::<i32>()?;
-                    let end: i32 = end.parse::<i32>()?;
-                    if start > end {
-                        bail!("Invalid range")
-                    }
-                    Range::new(Some(start), Some(end), inclusive)
-                }
-                _ => bail!("Invalid range"),
-            };
-            Ok(range)
+
+            Ok(Self {
+                lower_bound,
+                upper_bound,
+            })
         }
     }
 }

@@ -459,10 +459,8 @@ enum FixBlockSubCommand {
     /// The hash of the target block
     ByNumber { number: i32 },
 
-    /// A block number range in the form: `start..end`
-    ///
-    /// All valid [`std::ops::Range`] definitions are accepted.
-    ByRange { range: String },
+    /// A block number range, inclusive on both ends.
+    ByRange { from: Option<i32>, to: Option<i32> },
 
     /// Truncates the whole block cache for the given chain.
     TruncateCache {
@@ -969,8 +967,8 @@ async fn main() -> anyhow::Result<()> {
                     ByNumber { number } => {
                         by_number(number, chain_store, &ethereum_adapter, &logger).await
                     }
-                    ByRange { range } => {
-                        by_range(chain_store, &ethereum_adapter, &range, &logger).await
+                    ByRange { from, to } => {
+                        by_range(chain_store, &ethereum_adapter, from, to, &logger).await
                     }
                     TruncateCache { no_confirm } => truncate(chain_store, no_confirm),
                 }
