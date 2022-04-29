@@ -245,8 +245,8 @@ mod ranges {
                     )
                 }
                 (Some(0), _) => bail!("Genesis block can't be removed"),
-                (Some(x), _) if x < 0 => {
-                    bail!("Negative block number used as lower bound: {}", x)
+                (Some(x), _) | (_, Some(x)) if x < 0 => {
+                    bail!("Negative block number used as range bound: {}", x)
                 }
                 (Some(lower), Some(upper)) if upper < lower => bail!(
                     "Upper bound ({}) can't be smaller than lower bound ({})",
