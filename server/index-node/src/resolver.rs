@@ -475,9 +475,9 @@ impl<S: Store> IndexNodeResolver<S> {
                     .await?
                 }
 
-                BlockchainKind::Tendermint => {
+                BlockchainKind::Cosmos => {
                     let unvalidated_subgraph_manifest =
-                        UnvalidatedSubgraphManifest::<graph_chain_tendermint::Chain>::resolve(
+                        UnvalidatedSubgraphManifest::<graph_chain_cosmos::Chain>::resolve(
                             deployment_hash,
                             raw,
                             &self.link_resolver,

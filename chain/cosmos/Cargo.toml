@@ -1,5 +1,5 @@
 [package]
-name = "graph-chain-tendermint"
+name = "graph-chain-cosmos"
 version = "0.26.0"
 edition = "2018"
 

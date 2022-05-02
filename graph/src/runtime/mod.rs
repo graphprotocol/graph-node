@@ -265,7 +265,7 @@ pub enum IndexForAscTypeId {
     // ...
     // LastEthereumType = 1499,
 
-    // Reserved discriminant space for Tendermint type IDs: [1,500, 2,499]
+    // Reserved discriminant space for Cosmos type IDs: [1,500, 2,499]
     CosmosAny = 1500,
     CosmosArrayAny = 1501,
     CosmosArrayBytes = 1502,
@@ -328,12 +328,12 @@ pub enum IndexForAscTypeId {
     CosmosValidatorSetUpdates = 1559,
     CosmosValidatorUpdate = 1560,
     CosmosVersionParams = 1561,
-    // Continue to add more Tendermint type IDs here.
+    // Continue to add more Cosmos type IDs here.
     // e.g.:
-    // NextTendermintType = 1562,
-    // AnotherTendermintType = 1563,
+    // NextCosmosType = 1562,
+    // AnotherCosmosType = 1563,
     // ...
-    // LastTendermintType = 2499,
+    // LastCosmosType = 2499,
 
     // Reserved discriminant space for a future blockchain type IDs: [2,500, 3,499]
     //

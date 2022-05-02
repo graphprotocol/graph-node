@@ -24,7 +24,7 @@ use crate::capabilities::NodeCapabilities;
 use crate::data_source::{
     DataSource, DataSourceTemplate, EventOrigin, UnresolvedDataSource, UnresolvedDataSourceTemplate,
 };
-use crate::trigger::TendermintTrigger;
+use crate::trigger::CosmosTrigger;
 use crate::RuntimeAdapter;
 use crate::{codec, TriggerFilter};
 
@@ -38,7 +38,7 @@ pub struct Chain {
 
 impl std::fmt::Debug for Chain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "chain: tendermint")
+        write!(f, "chain: cosmos")
     }
 }
 
@@ -62,7 +62,7 @@ impl Chain {
 
 #[async_trait]
 impl Blockchain for Chain {
-    const KIND: BlockchainKind = BlockchainKind::Tendermint;
+    const KIND: BlockchainKind = BlockchainKind::Cosmos;
 
     type Block = codec::Block;
 
@@ -74,9 +74,9 @@ impl Blockchain for Chain {
 
     type UnresolvedDataSourceTemplate = UnresolvedDataSourceTemplate;
 
-    type TriggerData = TendermintTrigger;
+    type TriggerData = CosmosTrigger;
 
-    type MappingTrigger = TendermintTrigger;
+    type MappingTrigger = CosmosTrigger;
 
     type TriggerFilter = TriggerFilter;
 
@@ -141,7 +141,7 @@ impl Blockchain for Chain {
         _filter: Arc<Self::TriggerFilter>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        panic!("Tendermint does not support polling block stream")
+        panic!("Cosmos does not support polling block stream")
     }
 
     fn chain_store(&self) -> Arc<dyn ChainStore> {
@@ -201,29 +201,17 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         let mut triggers: Vec<_> = shared_block
             .begin_block_events()
             .cloned()
-            // FIXME (Tendermint): Optimize. Should use an Arc instead of cloning the
+            // FIXME (Cosmos): Optimize. Should use an Arc instead of cloning the
             // block. This is not currently possible because EventData is automatically
             // generated.
             .map(|event| {
-                TendermintTrigger::with_event(
-                    event,
-                    header_only_block.clone(),
-                    EventOrigin::BeginBlock,
-                )
+                CosmosTrigger::with_event(event, header_only_block.clone(), EventOrigin::BeginBlock)
             })
             .chain(shared_block.tx_events().cloned().map(|event| {
-                TendermintTrigger::with_event(
-                    event,
-                    header_only_block.clone(),
-                    EventOrigin::DeliverTx,
-                )
+                CosmosTrigger::with_event(event, header_only_block.clone(), EventOrigin::DeliverTx)
             }))
             .chain(shared_block.end_block_events().cloned().map(|event| {
-                TendermintTrigger::with_event(
-                    event,
-                    header_only_block.clone(),
-                    EventOrigin::EndBlock,
-                )
+                CosmosTrigger::with_event(event, header_only_block.clone(), EventOrigin::EndBlock)
             }))
             .collect();
 
@@ -231,10 +219,10 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             shared_block
                 .transactions()
                 .cloned()
-                .map(|tx| TendermintTrigger::with_transaction(tx, header_only_block.clone())),
+                .map(|tx| CosmosTrigger::with_transaction(tx, header_only_block.clone())),
         );
 
-        triggers.push(TendermintTrigger::Block(shared_block.cheap_clone()));
+        triggers.push(CosmosTrigger::Block(shared_block.cheap_clone()));
 
         Ok(BlockWithTriggers::new(block, triggers))
     }
@@ -337,7 +325,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         logger: &Logger,
         block: &codec::Block,
     ) -> Result<BlockPtr, Error> {
-        // Tendermint provides instant block finality.
+        // Cosmos provides instant block finality.
         self.endpoint
             .block_ptr_for_number::<codec::Block>(logger, block.number())
             .await

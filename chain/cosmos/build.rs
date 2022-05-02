@@ -4,5 +4,5 @@ fn main() {
         .out_dir("src/protobuf")
         .format(true)
         .compile(&["proto/type.proto"], &["proto"])
-        .expect("Failed to compile Firehose Tendermint proto(s)");
+        .expect("Failed to compile Firehose Cosmos proto(s)");
 }
