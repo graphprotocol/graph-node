@@ -56,9 +56,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.54"
+version = "1.0.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a99269dff3bc004caa411f38845c20303f1e393ca2bd6581576fa3a7f59577d"
+checksum = "08f9b8508dccb7687a1d6c4ce66b2b0ecef467c94667de27d8d7fe1f8d2a9cdc"
 
 [[package]]
 name = "arc-swap"
@@ -1071,6 +1071,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "31586bda1b136406162e381a3185a506cdfc1631708dd40cba2f6628d8634499"
 
 [[package]]
+name = "firestorm"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d3d6188b8804df28032815ea256b6955c9625c24da7525f387a7af02fbb8f01"
+
+[[package]]
 name = "fixed-hash"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1335,7 +1341,7 @@ dependencies = [
 
 [[package]]
 name = "graph"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "Inflector",
  "anyhow",
@@ -1380,7 +1386,8 @@ dependencies = [
  "slog-async",
  "slog-envlogger",
  "slog-term",
- "stable-hash",
+ "stable-hash 0.3.2",
+ "stable-hash 0.4.1",
  "structopt",
  "strum",
  "strum_macros",
@@ -1399,7 +1406,7 @@ dependencies = [
 
 [[package]]
 name = "graph-chain-ethereum"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -1427,7 +1434,7 @@ dependencies = [
 
 [[package]]
 name = "graph-chain-near"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "base64",
  "diesel",
@@ -1446,7 +1453,7 @@ dependencies = [
 
 [[package]]
 name = "graph-chain-tendermint"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "anyhow",
  "graph",
@@ -1465,7 +1472,7 @@ dependencies = [
 
 [[package]]
 name = "graph-core"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -1485,7 +1492,7 @@ dependencies = [
  "hex",
  "lazy_static",
  "lru_time_cache",
- "pretty_assertions 1.2.0",
+ "pretty_assertions 1.2.1",
  "semver",
  "serde",
  "serde_json",
@@ -1496,7 +1503,7 @@ dependencies = [
 
 [[package]]
 name = "graph-graphql"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "Inflector",
  "anyhow",
@@ -1510,21 +1517,22 @@ dependencies = [
  "lazy_static",
  "once_cell",
  "parking_lot 0.12.0",
- "pretty_assertions 1.2.0",
- "stable-hash",
+ "pretty_assertions 1.2.1",
+ "stable-hash 0.3.2",
+ "stable-hash 0.4.1",
  "test-store",
 ]
 
 [[package]]
 name = "graph-mock"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "graph",
 ]
 
 [[package]]
 name = "graph-node"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "assert_cli",
  "clap",
@@ -1562,7 +1570,7 @@ dependencies = [
 
 [[package]]
 name = "graph-runtime-derive"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "quote",
  "syn",
@@ -1570,7 +1578,7 @@ dependencies = [
 
 [[package]]
 name = "graph-runtime-test"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "graph",
  "graph-chain-ethereum",
@@ -1584,7 +1592,7 @@ dependencies = [
 
 [[package]]
 name = "graph-runtime-wasm"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1604,13 +1612,13 @@ dependencies = [
  "semver",
  "strum",
  "strum_macros",
- "uuid",
+ "uuid 1.0.0",
  "wasmtime",
 ]
 
 [[package]]
 name = "graph-server-http"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "futures 0.1.31",
  "graph",
@@ -1624,7 +1632,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-index-node"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "blake3 1.3.1",
  "either",
@@ -1643,7 +1651,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-json-rpc"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "graph",
  "jsonrpc-http-server",
@@ -1653,7 +1661,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-metrics"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "futures 0.1.31",
  "graph",
@@ -1665,7 +1673,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-websocket"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "anyhow",
  "futures 0.1.31",
@@ -1676,12 +1684,12 @@ dependencies = [
  "serde",
  "serde_derive",
  "tokio-tungstenite",
- "uuid",
+ "uuid 0.8.2",
 ]
 
 [[package]]
 name = "graph-store-postgres"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "Inflector",
  "anyhow",
@@ -1712,25 +1720,29 @@ dependencies = [
  "postgres",
  "rand",
  "serde",
- "stable-hash",
+ "stable-hash 0.3.2",
  "test-store",
- "uuid",
+ "uuid 1.0.0",
 ]
 
 [[package]]
 name = "graph-tests"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "anyhow",
+ "async-stream",
  "bollard",
  "futures 0.3.16",
  "graph",
+ "graph-chain-ethereum",
+ "graph-chain-near",
  "graph-core",
  "graph-mock",
  "graph-node",
  "graph-store-postgres",
  "lazy_static",
  "port_check",
+ "serde_yaml",
  "slog",
  "tokio",
  "tokio-stream",
@@ -2821,9 +2833,9 @@ dependencies = [
 
 [[package]]
 name = "pretty_assertions"
-version = "1.2.0"
+version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57c038cb5319b9c704bf9c227c261d275bfec0ad438118a2787ce47944fb228b"
+checksum = "c89f989ac94207d048d92db058e4f6ec7342b0971fc58d1271ca148b799b3563"
 dependencies = [
  "ansi_term",
  "ctor",
@@ -3010,9 +3022,9 @@ checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
 
 [[package]]
 name = "quote"
-version = "1.0.17"
+version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "632d02bff7f874a36f33ea8bb416cd484b90cc66c1194b1a1110d067a7013f58"
+checksum = "a1feb54ed693b93a84e14094943b84b7c4eae204c512b7ccb95ab0c66d278ad1"
 dependencies = [
  "proc-macro2",
 ]
@@ -3683,15 +3695,31 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "stable-hash"
-version = "0.3.1"
-source = "git+https://github.com/graphprotocol/stable-hash#752463958b369506845e89da8b831430146c61d1"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2dfeb73d08f4ae1f48059f31f53a3768fad3dc54622631e0a3eff1d07a4ca19"
 dependencies = [
  "blake3 0.3.8",
- "firestorm",
+ "firestorm 0.4.6",
  "ibig",
  "lazy_static",
  "leb128",
  "num-traits",
+]
+
+[[package]]
+name = "stable-hash"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "442fcfd15605146b373dafa4bea8368e98d9b51350e5da5a44ab2923c5ac3ca8"
+dependencies = [
+ "blake3 0.3.8",
+ "firestorm 0.5.0",
+ "ibig",
+ "lazy_static",
+ "leb128",
+ "num-traits",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -3863,7 +3891,7 @@ dependencies = [
 
 [[package]]
 name = "test-store"
-version = "0.25.2"
+version = "0.26.0"
 dependencies = [
  "diesel",
  "graph",
@@ -4357,6 +4385,15 @@ name = "uuid"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
+dependencies = [
+ "getrandom",
+]
+
+[[package]]
+name = "uuid"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8cfcd319456c4d6ea10087ed423473267e1a071f3bc0aa89f80d60997843c6f0"
 dependencies = [
  "getrandom",
 ]
@@ -4879,6 +4916,12 @@ checksum = "30b31594f29d27036c383b53b59ed3476874d518f0efb151b27a4c275141390e"
 dependencies = [
  "tap",
 ]
+
+[[package]]
+name = "xxhash-rust"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "074914ea4eec286eb8d1fd745768504f420a1f7b7919185682a4a267bed7d2e7"
 
 [[package]]
 name = "yaml-rust"

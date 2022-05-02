@@ -267,7 +267,8 @@ mod tests {
 }"#,
             )
             .unwrap(),
-        );
+        )
+        .unwrap();
         Arc::new(schema)
     }
 

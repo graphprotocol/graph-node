@@ -578,7 +578,7 @@ where
 }
 
 impl<T, B> ToAscObj<AscEthereumEvent_0_0_7<T, B>>
-    for (EthereumEventData, Option<TransactionReceipt>)
+    for (EthereumEventData, Option<&TransactionReceipt>)
 where
     T: AscType + AscIndexId,
     B: AscType + AscIndexId,
@@ -665,7 +665,7 @@ impl ToAscObj<AscEthereumLog> for Log {
     }
 }
 
-impl ToAscObj<AscEthereumTransactionReceipt> for TransactionReceipt {
+impl ToAscObj<AscEthereumTransactionReceipt> for &TransactionReceipt {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,

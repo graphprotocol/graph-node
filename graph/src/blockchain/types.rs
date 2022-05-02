@@ -1,10 +1,13 @@
 use anyhow::{anyhow, Context};
-use stable_hash::prelude::*;
-use stable_hash::utils::AsBytes;
+use stable_hash::{FieldAddress, StableHash};
+use stable_hash_legacy::SequenceNumber;
 use std::convert::TryFrom;
 use std::{fmt, str::FromStr};
 use web3::types::{Block, H256};
 
+use crate::data::graphql::IntoValue;
+use crate::object;
+use crate::prelude::{r, BigInt, TryFromValue, ValueMap};
 use crate::{cheap_clone::CheapClone, components::store::BlockNumber};
 
 /// A simple marker for byte arrays that are really block hashes
@@ -22,6 +25,10 @@ impl BlockHash {
     /// should be changed to use `bytea`
     pub fn hash_hex(&self) -> String {
         hex::encode(&self.0)
+    }
+
+    pub fn zero() -> Self {
+        Self::from(H256::zero())
     }
 }
 
@@ -74,10 +81,26 @@ pub struct BlockPtr {
 
 impl CheapClone for BlockPtr {}
 
+impl stable_hash_legacy::StableHash for BlockPtr {
+    fn stable_hash<H: stable_hash_legacy::StableHasher>(
+        &self,
+        mut sequence_number: H::Seq,
+        state: &mut H,
+    ) {
+        let BlockPtr { hash, number } = self;
+
+        stable_hash_legacy::utils::AsBytes(hash.0.as_ref())
+            .stable_hash(sequence_number.next_child(), state);
+        stable_hash_legacy::StableHash::stable_hash(number, sequence_number.next_child(), state);
+    }
+}
+
 impl StableHash for BlockPtr {
-    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
-        AsBytes(self.hash.0.as_ref()).stable_hash(sequence_number.next_child(), state);
-        self.number.stable_hash(sequence_number.next_child(), state);
+    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
+        let BlockPtr { hash, number } = self;
+
+        stable_hash::utils::AsBytes(hash.0.as_ref()).stable_hash(field_address.child(0), state);
+        stable_hash::StableHash::stable_hash(number, field_address.child(1), state);
     }
 }
 
@@ -214,6 +237,33 @@ impl TryFrom<(&[u8], i64)> for BlockPtr {
             ));
         };
         Ok(BlockPtr::from((hash, number)))
+    }
+}
+
+impl TryFromValue for BlockPtr {
+    fn try_from_value(value: &r::Value) -> Result<Self, anyhow::Error> {
+        match value {
+            r::Value::Object(o) => {
+                let number = o.get_required::<BigInt>("number")?.to_u64() as BlockNumber;
+                let hash = o.get_required::<H256>("hash")?;
+
+                Ok(BlockPtr::from((hash, number)))
+            }
+            _ => Err(anyhow!(
+                "failed to parse non-object value into BlockPtr: {:?}",
+                value
+            )),
+        }
+    }
+}
+
+impl IntoValue for BlockPtr {
+    fn into_value(self) -> r::Value {
+        object! {
+            __typename: "Block",
+            hash: self.hash_hex(),
+            number: format!("{}", self.number),
+        }
     }
 }
 

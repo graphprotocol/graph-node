@@ -81,7 +81,7 @@ where
     C: Blockchain,
 {
     chain_store: Arc<dyn ChainStore>,
-    adapter: Arc<C::TriggersAdapter>,
+    adapter: Arc<dyn TriggersAdapter<C>>,
     node_id: NodeId,
     subgraph_id: DeploymentHash,
     // This is not really a block number, but the (unsigned) difference
@@ -148,7 +148,7 @@ where
     pub fn new(
         chain_store: Arc<dyn ChainStore>,
         chain_head_update_stream: ChainHeadUpdateStream,
-        adapter: Arc<C::TriggersAdapter>,
+        adapter: Arc<dyn TriggersAdapter<C>>,
         node_id: NodeId,
         subgraph_id: DeploymentHash,
         filter: Arc<C::TriggerFilter>,

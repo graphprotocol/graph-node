@@ -37,7 +37,7 @@ impl StoreBuilder {
         node: &NodeId,
         config: &Config,
         fork_base: Option<Url>,
-        registry: Arc<impl MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         let primary_shard = config.primary_store().clone();
 
@@ -91,7 +91,7 @@ impl StoreBuilder {
         node: &NodeId,
         config: &Config,
         fork_base: Option<Url>,
-        registry: Arc<impl MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistry>,
     ) -> (Arc<SubgraphStore>, HashMap<ShardName, ConnectionPool>) {
         let notification_sender = Arc::new(NotificationSender::new(registry.cheap_clone()));
 
@@ -144,6 +144,7 @@ impl StoreBuilder {
             Arc::new(config.deployment.clone()),
             notification_sender,
             fork_base,
+            registry,
         ));
 
         (store, pools)

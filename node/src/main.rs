@@ -1,4 +1,7 @@
-use ethereum::{BlockIngestor as EthereumBlockIngestor, EthereumAdapterTrait, EthereumNetworks};
+use ethereum::chain::{EthereumAdapterSelector, EthereumStreamBuilder};
+use ethereum::{
+    BlockIngestor as EthereumBlockIngestor, EthereumAdapterTrait, EthereumNetworks, RuntimeAdapter,
+};
 use git_testament::{git_testament, render_testament};
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::{Block as BlockchainBlock, Blockchain, BlockchainKind, BlockchainMap};
@@ -31,6 +34,7 @@ use graph_server_json_rpc::JsonRpcServer;
 use graph_server_metrics::PrometheusMetricsServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::{register_jobs as register_store_jobs, ChainHeadUpdateListener, Store};
+use near::NearStreamBuilder;
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -286,6 +290,7 @@ async fn main() {
             &near_networks,
             network_store.as_ref(),
             &logger_factory,
+            metrics_registry.clone(),
         );
 
         let tendermint_chains = tendermint_networks_as_chains(
@@ -294,6 +299,7 @@ async fn main() {
             &tendermint_networks,
             network_store.as_ref(),
             &logger_factory,
+            metrics_registry.clone(),
         );
 
         let blockchain_map = Arc::new(blockchain_map);
@@ -562,6 +568,23 @@ fn ethereum_networks_as_chains(
         .map(|(network_name, eth_adapters, chain_store, is_ingestible)| {
             let firehose_endpoints = firehose_networks.and_then(|v| v.networks.get(network_name));
 
+            let adapter_selector = EthereumAdapterSelector::new(
+                logger_factory.clone(),
+                Arc::new(eth_adapters.clone()),
+                Arc::new(
+                    firehose_endpoints
+                        .map(|fe| fe.clone())
+                        .unwrap_or(FirehoseEndpoints::new()),
+                ),
+                registry.clone(),
+                chain_store.clone(),
+            );
+
+            let runtime_adapter = Arc::new(RuntimeAdapter {
+                eth_adapters: Arc::new(eth_adapters.clone()),
+                call_cache: chain_store.cheap_clone(),
+            });
+
             let chain = ethereum::Chain::new(
                 logger_factory.clone(),
                 network_name.clone(),
@@ -572,6 +595,9 @@ fn ethereum_networks_as_chains(
                 firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
                 eth_adapters.clone(),
                 chain_head_update_listener.clone(),
+                Arc::new(EthereumStreamBuilder {}),
+                Arc::new(adapter_selector),
+                runtime_adapter,
                 ethereum::ENV_VARS.reorg_threshold,
                 is_ingestible,
             );
@@ -592,6 +618,7 @@ fn tendermint_networks_as_chains(
     firehose_networks: &FirehoseNetworks,
     store: &Store,
     logger_factory: &LoggerFactory,
+    metrics_registry: Arc<MetricsRegistry>,
 ) -> HashMap<String, FirehoseChain<tendermint::Chain>> {
     let chains: Vec<_> = firehose_networks
         .networks
@@ -619,6 +646,7 @@ fn tendermint_networks_as_chains(
                         network_name.clone(),
                         chain_store,
                         firehose_endpoints.clone(),
+                        metrics_registry.clone(),
                     )),
                     firehose_endpoints: firehose_endpoints.clone(),
                 },
@@ -641,6 +669,7 @@ fn near_networks_as_chains(
     firehose_networks: &FirehoseNetworks,
     store: &Store,
     logger_factory: &LoggerFactory,
+    metrics_registry: Arc<MetricsRegistry>,
 ) -> HashMap<String, FirehoseChain<near::Chain>> {
     let chains: Vec<_> = firehose_networks
         .networks
@@ -667,6 +696,8 @@ fn near_networks_as_chains(
                         chain_id.clone(),
                         chain_store,
                         endpoints.clone(),
+                        metrics_registry.clone(),
+                        Arc::new(NearStreamBuilder {}),
                     )),
                     firehose_endpoints: endpoints.clone(),
                 },

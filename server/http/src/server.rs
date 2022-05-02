@@ -32,7 +32,7 @@ impl<Q> GraphQLServer<Q> {
     /// Creates a new GraphQL server.
     pub fn new(
         logger_factory: &LoggerFactory,
-        metrics_registry: Arc<impl MetricsRegistry>,
+        metrics_registry: Arc<dyn MetricsRegistry>,
         graphql_runner: Arc<Q>,
         node_id: NodeId,
     ) -> Self {

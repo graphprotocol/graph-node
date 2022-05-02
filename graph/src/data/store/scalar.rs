@@ -4,13 +4,12 @@ use diesel_derives::{AsExpression, FromSqlRow};
 use hex;
 use num_bigint;
 use serde::{self, Deserialize, Serialize};
+use stable_hash::utils::{AsBytes, AsInt};
+use stable_hash::{FieldAddress, StableHash};
+use stable_hash_legacy::SequenceNumber;
 use thiserror::Error;
 use web3::types::*;
 
-use stable_hash::{
-    prelude::*,
-    utils::{AsBytes, AsInt},
-};
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{self, Display, Formatter};
 use std::io::Write;
@@ -26,7 +25,7 @@ use crate::blockchain::BlockHash;
 // https://github.com/akubera/bigdecimal-rs/issues/54.
 // Using `#[serde(from = "BigDecimal"]` makes sure deserialization calls `BigDecimal::new()`.
 #[derive(
-    Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, AsExpression, FromSqlRow,
+    Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, AsExpression, FromSqlRow,
 )]
 #[serde(from = "bigdecimal::BigDecimal")]
 #[sql_type = "diesel::sql_types::Numeric"]
@@ -89,6 +88,12 @@ impl BigDecimal {
 impl Display for BigDecimal {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         self.0.fmt(f)
+    }
+}
+
+impl fmt::Debug for BigDecimal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "BigDecimal({})", self.0)
     }
 }
 
@@ -187,27 +192,61 @@ impl bigdecimal::ToPrimitive for BigDecimal {
     }
 }
 
-impl StableHash for BigDecimal {
-    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
+impl stable_hash_legacy::StableHash for BigDecimal {
+    fn stable_hash<H: stable_hash_legacy::StableHasher>(
+        &self,
+        mut sequence_number: H::Seq,
+        state: &mut H,
+    ) {
         let (int, exp) = self.as_bigint_and_exponent();
         // This only allows for backward compatible changes between
         // BigDecimal and unsigned ints
-        exp.stable_hash(sequence_number.next_child(), state);
-        BigInt(int).stable_hash(sequence_number, state);
+        stable_hash_legacy::StableHash::stable_hash(&exp, sequence_number.next_child(), state);
+        stable_hash_legacy::StableHash::stable_hash(&BigInt(int), sequence_number, state);
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+impl StableHash for BigDecimal {
+    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
+        // This implementation allows for backward compatible changes from integers (signed or unsigned)
+        // when the exponent is zero.
+        let (int, exp) = self.as_bigint_and_exponent();
+        StableHash::stable_hash(&exp, field_address.child(1), state);
+        // Normally it would be a red flag to pass field_address in after having used a child slot.
+        // But, we know the implementation of StableHash for BigInt will not use child(1) and that
+        // it will not in the future due to having no forward schema evolutions for ints and the
+        // stability guarantee.
+        //
+        // For reference, ints use child(0) for the sign and write the little endian bytes to the parent slot.
+        BigInt(int).stable_hash(field_address, state);
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BigInt(num_bigint::BigInt);
 
-impl StableHash for BigInt {
+impl stable_hash_legacy::StableHash for BigInt {
     #[inline]
-    fn stable_hash<H: StableHasher>(&self, sequence_number: H::Seq, state: &mut H) {
-        AsInt {
+    fn stable_hash<H: stable_hash_legacy::StableHasher>(
+        &self,
+        sequence_number: H::Seq,
+        state: &mut H,
+    ) {
+        stable_hash_legacy::utils::AsInt {
             is_negative: self.0.sign() == BigIntSign::Minus,
             little_endian: &self.to_bytes_le().1,
         }
         .stable_hash(sequence_number, state)
+    }
+}
+
+impl StableHash for BigInt {
+    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
+        AsInt {
+            is_negative: self.0.sign() == BigIntSign::Minus,
+            little_endian: &self.to_bytes_le().1,
+        }
+        .stable_hash(field_address, state)
     }
 }
 
@@ -247,6 +286,12 @@ impl TryFrom<BigInt> for u64 {
     type Error = BigIntOutOfRangeError;
     fn try_from(value: BigInt) -> Result<u64, BigIntOutOfRangeError> {
         (&value).try_into()
+    }
+}
+
+impl fmt::Debug for BigInt {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "BigInt({})", self)
     }
 }
 
@@ -481,7 +526,7 @@ impl Shr<u8> for BigInt {
 }
 
 /// A byte array that's serialized as a hex string prefixed by `0x`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Bytes(Box<[u8]>);
 
 impl Deref for Bytes {
@@ -491,9 +536,25 @@ impl Deref for Bytes {
     }
 }
 
+impl fmt::Debug for Bytes {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Bytes(0x{})", hex::encode(&self.0))
+    }
+}
+
+impl stable_hash_legacy::StableHash for Bytes {
+    fn stable_hash<H: stable_hash_legacy::StableHasher>(
+        &self,
+        sequence_number: H::Seq,
+        state: &mut H,
+    ) {
+        stable_hash_legacy::utils::AsBytes(&self.0).stable_hash(sequence_number, state);
+    }
+}
+
 impl StableHash for Bytes {
-    fn stable_hash<H: StableHasher>(&self, sequence_number: H::Seq, state: &mut H) {
-        AsBytes(&self.0).stable_hash(sequence_number, state);
+    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
+        AsBytes(&self.0).stable_hash(field_address, state);
     }
 }
 
@@ -558,10 +619,10 @@ impl<'de> Deserialize<'de> for Bytes {
 
 #[cfg(test)]
 mod test {
-    use super::{BigDecimal, BigInt};
-    use stable_hash::crypto::SetHasher;
-    use stable_hash::prelude::*;
-    use stable_hash::utils::stable_hash;
+    use super::{BigDecimal, BigInt, Bytes};
+    use stable_hash_legacy::crypto::SetHasher;
+    use stable_hash_legacy::prelude::*;
+    use stable_hash_legacy::utils::stable_hash;
     use std::str::FromStr;
     use web3::types::U64;
 
@@ -657,5 +718,15 @@ mod test {
             assert_eq!(not_normalized.normalized().to_string(), string);
             assert_eq!(normalized.to_string(), string);
         }
+    }
+
+    #[test]
+    fn fmt_debug() {
+        let bi = BigInt::from(-17);
+        let bd = BigDecimal::new(bi.clone(), -2);
+        let bytes = Bytes::from([222, 173, 190, 239].as_slice());
+        assert_eq!("BigInt(-17)", format!("{:?}", bi));
+        assert_eq!("BigDecimal(-0.17)", format!("{:?}", bd));
+        assert_eq!("Bytes(0xdeadbeef)", format!("{:?}", bytes));
     }
 }

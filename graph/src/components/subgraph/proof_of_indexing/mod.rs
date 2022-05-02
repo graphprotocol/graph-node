@@ -34,8 +34,8 @@ mod tests {
     use online::ProofOfIndexingFinisher;
     use reference::*;
     use slog::{o, Discard, Logger};
-    use stable_hash::crypto::SetHasher;
-    use stable_hash::utils::stable_hash;
+    use stable_hash_legacy::crypto::SetHasher;
+    use stable_hash_legacy::utils::stable_hash;
     use std::collections::HashMap;
     use std::convert::TryInto;
     use web3::types::{Address, H256};

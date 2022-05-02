@@ -1,6 +1,7 @@
-use either::Either;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
+
+use either::Either;
 use web3::types::{Address, H256};
 
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
@@ -13,6 +14,48 @@ use graph::prelude::*;
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
 
 use crate::auth::PoiProtection;
+
+#[derive(Clone, Debug)]
+struct PublicProofOfIndexingRequest {
+    pub deployment: DeploymentHash,
+    pub block_number: BlockNumber,
+}
+
+impl TryFromValue for PublicProofOfIndexingRequest {
+    fn try_from_value(value: &r::Value) -> Result<Self, Error> {
+        match value {
+            r::Value::Object(o) => Ok(Self {
+                deployment: DeploymentHash::new(o.get_required::<String>("deployment")?).unwrap(),
+                block_number: o.get_required::<BlockNumber>("blockNumber")?,
+            }),
+            _ => Err(anyhow!(
+                "Cannot parse non-object value as PublicProofOfIndexingRequest: {:?}",
+                value
+            )),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct PublicProofOfIndexingResult {
+    pub deployment: DeploymentHash,
+    pub block: PartialBlockPtr,
+    pub proof_of_indexing: Option<[u8; 32]>,
+}
+
+impl IntoValue for PublicProofOfIndexingResult {
+    fn into_value(self) -> r::Value {
+        object! {
+            __typename: "ProofOfIndexingResult",
+            deployment: self.deployment.to_string(),
+            block: object! {
+                number: self.block.number,
+                hash: self.block.hash.map(|hash| hash.hash_hex()),
+            },
+            proofOfIndexing: self.proof_of_indexing.map(|poi| format!("0x{}", hex::encode(&poi))),
+        }
+    }
+}
 
 /// Resolver for the index node GraphQL API.
 pub struct IndexNodeResolver<S: Store> {
@@ -288,6 +331,61 @@ impl<S: Store> IndexNodeResolver<S> {
         };
 
         Ok(poi)
+    }
+
+    fn resolve_public_proofs_of_indexing(
+        &self,
+        field: &a::Field,
+    ) -> Result<r::Value, QueryExecutionError> {
+        let requests = field
+            .get_required::<Vec<PublicProofOfIndexingRequest>>("requests")
+            .expect("valid requests required, validation should have caught this");
+
+        // Only 10 requests are allowed at a time to avoid generating too many SQL queries;
+        // NOTE: Indexers should rate limit the status API anyway, but this adds some soft
+        // extra protection
+        if requests.len() > 10 {
+            return Err(QueryExecutionError::TooExpensive);
+        }
+
+        Ok(r::Value::List(
+            requests
+                .into_iter()
+                .map(|request| {
+                    match futures::executor::block_on(
+                        self.store.get_public_proof_of_indexing(
+                            &request.deployment,
+                            request.block_number,
+                        ),
+                    ) {
+                        Ok(Some(poi)) => (Some(poi), request),
+                        Ok(None) => (None, request),
+                        Err(e) => {
+                            error!(
+                                self.logger,
+                                "Failed to query public proof of indexing";
+                                "subgraph" => &request.deployment,
+                                "block" => format!("{}", request.block_number),
+                                "error" => format!("{:?}", e)
+                            );
+                            (None, request)
+                        }
+                    }
+                })
+                .map(|(poi_result, request)| PublicProofOfIndexingResult {
+                    deployment: request.deployment,
+                    block: match poi_result {
+                        Some((ref block, _)) => block.clone(),
+                        None => PartialBlockPtr::from(request.block_number),
+                    },
+                    proof_of_indexing: match poi_result {
+                        Some((_, poi)) => Some(poi),
+                        None => None,
+                    },
+                })
+                .map(IntoValue::into_value)
+                .collect(),
+        ))
     }
 
     fn resolve_indexing_status_for_version(
@@ -595,8 +693,8 @@ impl<S: Store> Clone for IndexNodeResolver<S> {
 impl<S: Store> Resolver for IndexNodeResolver<S> {
     const CACHEABLE: bool = false;
 
-    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
-        self.store.query_permit().await
+    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, QueryExecutionError> {
+        self.store.query_permit().await.map_err(Into::into)
     }
 
     fn prefetch(
@@ -648,6 +746,11 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
             }
             (None, "CachedEthereumCall", "cachedEthereumCalls") => {
                 self.resolve_cached_ethereum_calls(field)
+            }
+
+            // The top-level `publicProofsOfIndexing` field
+            (None, "PublicProofOfIndexingResult", "publicProofsOfIndexing") => {
+                self.resolve_public_proofs_of_indexing(field)
             }
 
             // Resolve fields of `Object` values (e.g. the `chains` field of `ChainIndexingStatus`)

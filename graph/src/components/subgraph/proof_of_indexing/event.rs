@@ -1,5 +1,5 @@
 use crate::prelude::{impl_slog_value, Value};
-use stable_hash::prelude::*;
+use stable_hash_legacy::StableHasher;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use strum::AsStaticRef as _;
@@ -58,9 +58,11 @@ pub enum ProofOfIndexingEvent<'a> {
     DeterministicError { redacted_events: u64 },
 }
 
-impl StableHash for ProofOfIndexingEvent<'_> {
+impl stable_hash_legacy::StableHash for ProofOfIndexingEvent<'_> {
     fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
+        use stable_hash_legacy::prelude::*;
         use ProofOfIndexingEvent::*;
+
         self.as_static()
             .stable_hash(sequence_number.next_child(), state);
         match self {
@@ -81,6 +83,36 @@ impl StableHash for ProofOfIndexingEvent<'_> {
                 redacted_events.stable_hash(sequence_number.next_child(), state)
             }
         }
+    }
+}
+
+impl stable_hash::StableHash for ProofOfIndexingEvent<'_> {
+    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
+        use stable_hash::prelude::*;
+
+        let variant = match self {
+            Self::RemoveEntity { entity_type, id } => {
+                entity_type.stable_hash(field_address.child(0), state);
+                id.stable_hash(field_address.child(1), state);
+                1
+            }
+            Self::SetEntity {
+                entity_type,
+                id,
+                data,
+            } => {
+                entity_type.stable_hash(field_address.child(0), state);
+                id.stable_hash(field_address.child(1), state);
+                data.stable_hash(field_address.child(2), state);
+                2
+            }
+            Self::DeterministicError { redacted_events } => {
+                redacted_events.stable_hash(field_address.child(0), state);
+                3
+            }
+        };
+
+        state.write(field_address, &[variant]);
     }
 }
 

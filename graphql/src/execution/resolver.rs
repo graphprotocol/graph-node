@@ -12,7 +12,7 @@ use crate::execution::{ast as a, ExecutionContext};
 pub trait Resolver: Sized + Send + Sync + 'static {
     const CACHEABLE: bool;
 
-    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit;
+    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, QueryExecutionError>;
 
     /// Prepare for executing a query by prefetching as much data as possible
     fn prefetch(

@@ -166,7 +166,7 @@ impl Config {
         let deployment = Deployment::from_opt(opt);
         let mut stores = BTreeMap::new();
         let chains = ChainSection::from_opt(opt)?;
-        stores.insert(PRIMARY_SHARD.to_string(), Shard::from_opt(opt)?);
+        stores.insert(PRIMARY_SHARD.to_string(), Shard::from_opt(true, opt)?);
         Ok(Config {
             general: None,
             stores,
@@ -231,10 +231,11 @@ impl Shard {
             return Err(anyhow!("missing pool size definition for shard `{}`", name));
         }
 
-        self.pool_size.validate(&self.connection)?;
+        self.pool_size
+            .validate(name == PRIMARY_SHARD.as_str(), &self.connection)?;
         for (name, replica) in self.replicas.iter_mut() {
             validate_name(name).context("illegal replica name")?;
-            replica.validate(&self.pool_size)?;
+            replica.validate(name == PRIMARY_SHARD.as_str(), &self.pool_size)?;
         }
 
         let no_weight =
@@ -249,13 +250,13 @@ impl Shard {
         Ok(())
     }
 
-    fn from_opt(opt: &Opt) -> Result<Self> {
+    fn from_opt(is_primary: bool, opt: &Opt) -> Result<Self> {
         let postgres_url = opt
             .postgres_url
             .as_ref()
             .expect("validation checked that postgres_url is set");
         let pool_size = PoolSize::Fixed(opt.store_connection_pool_size);
-        pool_size.validate(&postgres_url)?;
+        pool_size.validate(is_primary, &postgres_url)?;
         let mut replicas = BTreeMap::new();
         for (i, host) in opt.postgres_secondary_hosts.iter().enumerate() {
             let replica = Replica {
@@ -294,7 +295,7 @@ impl PoolSize {
         Self::Fixed(5)
     }
 
-    fn validate(&self, connection: &str) -> Result<()> {
+    fn validate(&self, is_primary: bool, connection: &str) -> Result<()> {
         use PoolSize::*;
 
         let pool_size = match self {
@@ -303,14 +304,17 @@ impl PoolSize {
             Rule(rules) => rules.iter().map(|rule| rule.size).min().unwrap_or(0u32),
         };
 
-        if pool_size < 2 {
-            Err(anyhow!(
+        match pool_size {
+            0 if is_primary => Err(anyhow!(
+                "the pool size for the primary shard must be at least 2"
+            )),
+            0 => Ok(()),
+            1 => Err(anyhow!(
                 "connection pool size must be at least 2, but is {} for {}",
                 pool_size,
                 connection
-            ))
-        } else {
-            Ok(())
+            )),
+            _ => Ok(()),
         }
     }
 
@@ -360,13 +364,13 @@ pub struct Replica {
 }
 
 impl Replica {
-    fn validate(&mut self, pool_size: &PoolSize) -> Result<()> {
+    fn validate(&mut self, is_primary: bool, pool_size: &PoolSize) -> Result<()> {
         self.connection = shellexpand::env(&self.connection)?.into_owned();
         if matches!(self.pool_size, PoolSize::None) {
             self.pool_size = pool_size.clone();
         }
 
-        self.pool_size.validate(&self.connection)?;
+        self.pool_size.validate(is_primary, &self.connection)?;
         Ok(())
     }
 }

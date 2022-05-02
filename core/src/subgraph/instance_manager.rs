@@ -144,7 +144,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
                 deployment.hash.cheap_clone(),
                 manifest,
                 // Allow for infinite retries for subgraph definition files.
-                &self.link_resolver,
+                &Arc::from(self.link_resolver.with_retries()),
                 &logger,
                 ENV_VARS.max_spec_version.clone(),
             )
@@ -203,6 +203,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let stopwatch_metrics = StopwatchMetrics::new(
             logger.clone(),
             deployment.hash.clone(),
+            "process",
             self.metrics_registry.clone(),
         );
 

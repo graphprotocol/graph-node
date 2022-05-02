@@ -5,7 +5,7 @@ use common::helpers::{
     basename, get_unique_ganache_counter, get_unique_postgres_counter, make_ganache_uri,
     make_ipfs_uri, make_postgres_uri, pretty_output, GraphNodePorts, MappedPorts,
 };
-use futures::StreamExt;
+use futures03::StreamExt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

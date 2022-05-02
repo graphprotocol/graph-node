@@ -5,6 +5,7 @@ use std::task::Context;
 use std::task::Poll;
 use std::time::Instant;
 
+use graph::data::query::QueryResults;
 use graph::prelude::*;
 use graph::{components::server::query::GraphQLServerError, data::query::QueryTarget};
 use http::header;
@@ -15,11 +16,10 @@ use http::header::{
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
 
-use crate::request::GraphQLRequest;
+use crate::request::parse_graphql_request;
 
 pub struct GraphQLServiceMetrics {
     query_execution_time: Box<HistogramVec>,
-    failed_query_execution_time: Box<HistogramVec>,
 }
 
 impl fmt::Debug for GraphQLServiceMetrics {
@@ -29,41 +29,34 @@ impl fmt::Debug for GraphQLServiceMetrics {
 }
 
 impl GraphQLServiceMetrics {
-    pub fn new(registry: Arc<impl MetricsRegistry>) -> Self {
+    pub fn new(registry: Arc<dyn MetricsRegistry>) -> Self {
         let query_execution_time = registry
             .new_histogram_vec(
                 "query_execution_time",
                 "Execution time for successful GraphQL queries",
-                vec![String::from("deployment")],
+                vec![String::from("deployment"), String::from("status")],
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],
             )
             .expect("failed to create `query_execution_time` histogram");
 
-        let failed_query_execution_time = registry
-            .new_histogram_vec(
-                "query_failed_execution_time",
-                "Execution time for failed GraphQL queries",
-                vec![String::from("deployment")],
-                vec![0.1, 0.5, 1.0, 10.0, 100.0],
-            )
-            .expect("failed to create `query_failed_execution_time` histogram");
-
         Self {
             query_execution_time,
-            failed_query_execution_time,
         }
     }
 
-    pub fn observe_query_execution_time(&self, duration: f64, deployment_id: String) {
+    pub fn observe_query(&self, duration: Duration, results: &QueryResults) {
+        let id = results
+            .deployment_hash()
+            .map(|h| h.as_str())
+            .unwrap_or("unknown");
+        let status = if results.has_errors() {
+            "failed"
+        } else {
+            "success"
+        };
         self.query_execution_time
-            .with_label_values(vec![deployment_id.as_ref()].as_slice())
-            .observe(duration);
-    }
-
-    pub fn observe_failed_query_execution_time(&self, duration: f64, deployment_id: String) {
-        self.failed_query_execution_time
-            .with_label_values(vec![deployment_id.as_ref()].as_slice())
-            .observe(duration);
+            .with_label_values(&[id, status])
+            .observe(duration.as_secs_f64());
     }
 }
 
@@ -189,7 +182,7 @@ where
         let body = hyper::body::to_bytes(request_body)
             .map_err(|_| GraphQLServerError::InternalError("Failed to read request body".into()))
             .await?;
-        let query = GraphQLRequest::new(body).compat().await;
+        let query = parse_graphql_request(&body);
 
         let result = match query {
             Ok(query) => service.graphql_runner.run_query(query, target).await,
@@ -197,10 +190,7 @@ where
             Err(e) => return Err(e),
         };
 
-        if let Some(id) = result.first().and_then(|res| res.deployment.clone()) {
-            service_metrics
-                .observe_query_execution_time(start.elapsed().as_secs_f64(), id.to_string());
-        }
+        service_metrics.observe_query(start.elapsed(), &result);
 
         Ok(result.as_http_response())
     }

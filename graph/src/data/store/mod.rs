@@ -9,7 +9,7 @@ use anyhow::{anyhow, Error};
 use itertools::Itertools;
 use serde::de;
 use serde::{Deserialize, Serialize};
-use stable_hash::prelude::*;
+use stable_hash::{FieldAddress, StableHash, StableHasher};
 use std::convert::TryFrom;
 use std::fmt;
 use std::iter::FromIterator;
@@ -175,7 +175,7 @@ impl ValueType {
 
 // Note: Do not modify fields without also making a backward compatible change to the StableHash impl (below)
 /// An attribute value is represented as an enum with variants for all supported value types.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "type", content = "data")]
 #[derive(AsStaticStr)]
 pub enum Value {
@@ -189,8 +189,54 @@ pub enum Value {
     BigInt(scalar::BigInt),
 }
 
+impl stable_hash_legacy::StableHash for Value {
+    fn stable_hash<H: stable_hash_legacy::StableHasher>(
+        &self,
+        mut sequence_number: H::Seq,
+        state: &mut H,
+    ) {
+        use stable_hash_legacy::prelude::*;
+        use Value::*;
+
+        // This is the default, so write nothing.
+        if self == &Null {
+            return;
+        }
+        stable_hash_legacy::StableHash::stable_hash(
+            &self.as_static().to_string(),
+            sequence_number.next_child(),
+            state,
+        );
+
+        match self {
+            Null => unreachable!(),
+            String(inner) => {
+                stable_hash_legacy::StableHash::stable_hash(inner, sequence_number, state)
+            }
+            Int(inner) => {
+                stable_hash_legacy::StableHash::stable_hash(inner, sequence_number, state)
+            }
+            BigDecimal(inner) => {
+                stable_hash_legacy::StableHash::stable_hash(inner, sequence_number, state)
+            }
+            Bool(inner) => {
+                stable_hash_legacy::StableHash::stable_hash(inner, sequence_number, state)
+            }
+            List(inner) => {
+                stable_hash_legacy::StableHash::stable_hash(inner, sequence_number, state)
+            }
+            Bytes(inner) => {
+                stable_hash_legacy::StableHash::stable_hash(inner, sequence_number, state)
+            }
+            BigInt(inner) => {
+                stable_hash_legacy::StableHash::stable_hash(inner, sequence_number, state)
+            }
+        }
+    }
+}
+
 impl StableHash for Value {
-    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
+    fn stable_hash<H: StableHasher>(&self, field_address: H::Addr, state: &mut H) {
         use Value::*;
 
         // This is the default, so write nothing.
@@ -198,19 +244,39 @@ impl StableHash for Value {
             return;
         }
 
-        self.as_static()
-            .stable_hash(sequence_number.next_child(), state);
-
-        match self {
+        let variant = match self {
             Null => unreachable!(),
-            String(inner) => inner.stable_hash(sequence_number, state),
-            Int(inner) => inner.stable_hash(sequence_number, state),
-            BigDecimal(inner) => inner.stable_hash(sequence_number, state),
-            Bool(inner) => inner.stable_hash(sequence_number, state),
-            List(inner) => inner.stable_hash(sequence_number, state),
-            Bytes(inner) => inner.stable_hash(sequence_number, state),
-            BigInt(inner) => inner.stable_hash(sequence_number, state),
-        }
+            String(inner) => {
+                inner.stable_hash(field_address.child(0), state);
+                1
+            }
+            Int(inner) => {
+                inner.stable_hash(field_address.child(0), state);
+                2
+            }
+            BigDecimal(inner) => {
+                inner.stable_hash(field_address.child(0), state);
+                3
+            }
+            Bool(inner) => {
+                inner.stable_hash(field_address.child(0), state);
+                4
+            }
+            List(inner) => {
+                inner.stable_hash(field_address.child(0), state);
+                5
+            }
+            Bytes(inner) => {
+                inner.stable_hash(field_address.child(0), state);
+                6
+            }
+            BigInt(inner) => {
+                inner.stable_hash(field_address.child(0), state);
+                7
+            }
+        };
+
+        state.write(field_address, &[variant])
     }
 }
 
@@ -383,6 +449,21 @@ impl fmt::Display for Value {
     }
 }
 
+impl fmt::Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::String(s) => f.debug_tuple("String").field(s).finish(),
+            Self::Int(i) => f.debug_tuple("Int").field(i).finish(),
+            Self::BigDecimal(d) => d.fmt(f),
+            Self::Bool(arg0) => f.debug_tuple("Bool").field(arg0).finish(),
+            Self::List(arg0) => f.debug_tuple("List").field(arg0).finish(),
+            Self::Null => write!(f, "Null"),
+            Self::Bytes(bytes) => bytes.fmt(f),
+            Self::BigInt(number) => number.fmt(f),
+        }
+    }
+}
+
 impl From<Value> for q::Value {
     fn from(value: Value) -> Self {
         match value {
@@ -511,10 +592,21 @@ where
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Entity(HashMap<Attribute, Value>);
 
-impl StableHash for Entity {
+impl stable_hash_legacy::StableHash for Entity {
     #[inline]
-    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
-        self.0.stable_hash(sequence_number.next_child(), state);
+    fn stable_hash<H: stable_hash_legacy::StableHasher>(
+        &self,
+        mut sequence_number: H::Seq,
+        state: &mut H,
+    ) {
+        use stable_hash_legacy::SequenceNumber;
+        stable_hash_legacy::StableHash::stable_hash(&self.0, sequence_number.next_child(), state);
+    }
+}
+
+impl StableHash for Entity {
+    fn stable_hash<H: StableHasher>(&self, field_address: H::Addr, state: &mut H) {
+        StableHash::stable_hash(&self.0, field_address.child(0), state);
     }
 }
 
@@ -931,4 +1023,21 @@ fn entity_validation() {
         thing,
         "Entity Thing[t8]: field `cruft` is derived and can not be set",
     );
+}
+
+#[test]
+fn fmt_debug() {
+    assert_eq!("String(\"hello\")", format!("{:?}", Value::from("hello")));
+    assert_eq!("Int(17)", format!("{:?}", Value::Int(17)));
+    assert_eq!("Bool(false)", format!("{:?}", Value::Bool(false)));
+    assert_eq!("Null", format!("{:?}", Value::Null));
+
+    let bd = Value::BigDecimal(scalar::BigDecimal::from(-0.17));
+    assert_eq!("BigDecimal(-0.17)", format!("{:?}", bd));
+
+    let bytes = Value::Bytes(scalar::Bytes::from([222, 173, 190, 239].as_slice()));
+    assert_eq!("Bytes(0xdeadbeef)", format!("{:?}", bytes));
+
+    let bi = Value::BigInt(scalar::BigInt::from(-17i32));
+    assert_eq!("BigInt(-17)", format!("{:?}", bi));
 }

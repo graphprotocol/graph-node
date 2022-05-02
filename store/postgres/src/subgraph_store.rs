@@ -15,7 +15,7 @@ use graph::{
     cheap_clone::CheapClone,
     components::{
         server::index_node::VersionInfo,
-        store::{self, DeploymentLocator, EnsLookup as EnsLookupTrait, SubgraphFork},
+        store::{self, BlockStore, DeploymentLocator, EnsLookup as EnsLookupTrait, SubgraphFork},
     },
     constraint_violation,
     data::query::QueryTarget,
@@ -23,8 +23,9 @@ use graph::{
     prelude::StoreEvent,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        BlockNumber, BlockPtr, DeploymentHash, EntityOperation, Logger, NodeId, Schema, StoreError,
-        SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
+        BlockHash, BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation, Logger,
+        MetricsRegistry, NodeId, PartialBlockPtr, Schema, StoreError, SubgraphName,
+        SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
     url::Url,
     util::timed_cache::TimedCache,
@@ -36,7 +37,7 @@ use crate::{
     primary,
     primary::{DeploymentId, Mirror as PrimaryMirror, Site},
     relational::Layout,
-    writable::WritableAgent,
+    writable::WritableStore,
     NotificationSender,
 };
 use crate::{
@@ -213,9 +214,12 @@ impl SubgraphStore {
         placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
         sender: Arc<NotificationSender>,
         fork_base: Option<Url>,
+        registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         Self {
-            inner: Arc::new(SubgraphStoreInner::new(logger, stores, placer, sender)),
+            inner: Arc::new(SubgraphStoreInner::new(
+                logger, stores, placer, sender, registry,
+            )),
             fork_base,
         }
     }
@@ -227,6 +231,17 @@ impl SubgraphStore {
         block: BlockPtr,
     ) -> Result<Option<[u8; 32]>, StoreError> {
         self.inner.get_proof_of_indexing(id, indexer, block).await
+    }
+
+    pub(crate) async fn get_public_proof_of_indexing(
+        &self,
+        id: &DeploymentHash,
+        block_number: BlockNumber,
+        block_store: Arc<impl BlockStore>,
+    ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
+        self.inner
+            .get_public_proof_of_indexing(id, block_number, block_store)
+            .await
     }
 
     pub fn notification_sender(&self) -> Arc<NotificationSender> {
@@ -254,7 +269,8 @@ pub struct SubgraphStoreInner {
     sites: TimedCache<DeploymentHash, Site>,
     placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
     sender: Arc<NotificationSender>,
-    writables: Mutex<HashMap<DeploymentId, Arc<WritableAgent>>>,
+    writables: Mutex<HashMap<DeploymentId, Arc<WritableStore>>>,
+    registry: Arc<dyn MetricsRegistry>,
 }
 
 impl SubgraphStoreInner {
@@ -277,6 +293,7 @@ impl SubgraphStoreInner {
         stores: Vec<(Shard, ConnectionPool, Vec<ConnectionPool>, Vec<usize>)>,
         placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
         sender: Arc<NotificationSender>,
+        registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         let mirror = {
             let pools = HashMap::from_iter(
@@ -309,6 +326,7 @@ impl SubgraphStoreInner {
             placer,
             sender,
             writables: Mutex::new(HashMap::new()),
+            registry,
         }
     }
 
@@ -903,8 +921,49 @@ impl SubgraphStoreInner {
         indexer: &Option<Address>,
         block: BlockPtr,
     ) -> Result<Option<[u8; 32]>, StoreError> {
-        let (store, site) = self.store(id).unwrap();
+        let (store, site) = self.store(id)?;
         store.get_proof_of_indexing(site, indexer, block).await
+    }
+
+    pub(crate) async fn get_public_proof_of_indexing(
+        &self,
+        id: &DeploymentHash,
+        block_number: BlockNumber,
+        block_store: Arc<impl BlockStore>,
+    ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
+        let (store, site) = self.store(&id)?;
+
+        let chain_store = match block_store.chain_store(&site.network) {
+            Some(chain_store) => chain_store,
+            None => return Ok(None),
+        };
+        let mut hashes = chain_store.block_hashes_by_block_number(block_number)?;
+
+        // If we don't have this block or we have multiple versions of this block
+        // and using any of them could introduce non-deterministic because we don't
+        // know which one is the right one -> return no block hash
+        if hashes.is_empty() || hashes.len() > 1 {
+            return Ok(None);
+        }
+
+        // This `unwrap` is safe to do now
+        let block_hash = BlockHash::from(hashes.pop().unwrap());
+
+        let block_for_poi_query = BlockPtr::new(block_hash.clone(), block_number);
+        let indexer = Some(Address::zero());
+        let poi = store
+            .get_proof_of_indexing(site, &indexer, block_for_poi_query)
+            .await?;
+
+        Ok(poi.map(|poi| {
+            (
+                PartialBlockPtr {
+                    number: block_number,
+                    hash: Some(block_hash),
+                },
+                poi,
+            )
+        }))
     }
 
     // Only used by tests
@@ -1124,7 +1183,9 @@ impl SubgraphStoreTrait for SubgraphStore {
         .await
         .unwrap()?; // Propagate panics, there shouldn't be any.
 
-        let writable = Arc::new(WritableAgent::new(self.as_ref().clone(), logger, site).await?);
+        let writable = Arc::new(
+            WritableStore::new(self.as_ref().clone(), logger, site, self.registry.clone()).await?,
+        );
         self.writables
             .lock()
             .unwrap()

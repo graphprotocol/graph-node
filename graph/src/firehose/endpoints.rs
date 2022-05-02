@@ -232,6 +232,12 @@ impl FirehoseEndpoints {
     }
 }
 
+impl From<Vec<Arc<FirehoseEndpoint>>> for FirehoseEndpoints {
+    fn from(val: Vec<Arc<FirehoseEndpoint>>) -> Self {
+        FirehoseEndpoints(val)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct FirehoseNetworks {
     /// networks contains a map from chain id (`near-mainnet`, `near-testnet`, `solana-mainnet`, etc.)

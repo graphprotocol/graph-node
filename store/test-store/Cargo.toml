@@ -1,6 +1,6 @@
 [package]
 name = "test-store"
-version = "0.25.2"
+version = "0.26.0"
 authors = ["Leonardo Yvens <leoyvens@gmail.com>"]
 edition = "2021"
 description = "Provides static store instance for tests."

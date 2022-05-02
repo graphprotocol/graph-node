@@ -10,6 +10,7 @@ use graph::cheap_clone::CheapClone;
 use graph::constraint_violation;
 use graph::prelude::tokio;
 use graph::prelude::tokio::time::Instant;
+use graph::slog::warn;
 use graph::util::timed_rw_lock::TimedMutex;
 use graph::{
     prelude::{
@@ -228,6 +229,8 @@ enum PoolState {
     Created(Arc<PoolInner>, Arc<Vec<ForeignServer>>),
     /// The pool has been successfully set up
     Ready(Arc<PoolInner>),
+    /// The pool has been disabled by setting its size to 0
+    Disabled,
 }
 
 #[derive(Clone)]
@@ -308,21 +311,28 @@ impl ConnectionPool {
         servers: Arc<Vec<ForeignServer>>,
     ) -> ConnectionPool {
         let state_tracker = PoolStateTracker::new();
-        let pool = PoolInner::create(
-            shard_name,
-            pool_name.as_str(),
-            postgres_url,
-            pool_size,
-            fdw_pool_size,
-            logger,
-            registry,
-            state_tracker.clone(),
-        );
-        let shard = pool.shard.clone();
-        let pool_state = if pool_name.is_replica() {
-            PoolState::Ready(Arc::new(pool))
-        } else {
-            PoolState::Created(Arc::new(pool), servers)
+        let shard =
+            Shard::new(shard_name.to_string()).expect("shard_name is a valid name for a shard");
+        let pool_state = {
+            if pool_size == 0 {
+                PoolState::Disabled
+            } else {
+                let pool = PoolInner::create(
+                    shard.clone(),
+                    pool_name.as_str(),
+                    postgres_url,
+                    pool_size,
+                    fdw_pool_size,
+                    logger,
+                    registry,
+                    state_tracker.clone(),
+                );
+                if pool_name.is_replica() {
+                    PoolState::Ready(Arc::new(pool))
+                } else {
+                    PoolState::Created(Arc::new(pool), servers)
+                }
+            }
         };
         ConnectionPool {
             inner: Arc::new(TimedMutex::new(pool_state, format!("pool-{}", shard_name))),
@@ -338,7 +348,7 @@ impl ConnectionPool {
         let mut guard = self.inner.lock(&self.logger);
         match &*guard {
             PoolState::Created(pool, _) => *guard = PoolState::Ready(pool.clone()),
-            PoolState::Ready(_) => { /* nothing to do */ }
+            PoolState::Ready(_) | PoolState::Disabled => { /* nothing to do */ }
         }
     }
 
@@ -366,6 +376,7 @@ impl ConnectionPool {
                 Ok(pool2)
             }
             PoolState::Ready(pool) => Ok(pool.clone()),
+            PoolState::Disabled => Err(StoreError::DatabaseDisabled),
         }
     }
 
@@ -471,16 +482,22 @@ impl ConnectionPool {
         .unwrap();
     }
 
-    pub(crate) async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+    pub(crate) async fn query_permit(
+        &self,
+    ) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError> {
         let pool = match &*self.inner.lock(&self.logger) {
             PoolState::Created(pool, _) | PoolState::Ready(pool) => pool.clone(),
+            PoolState::Disabled => {
+                return Err(StoreError::DatabaseDisabled);
+            }
         };
-        pool.query_permit().await
+        Ok(pool.query_permit().await)
     }
 
-    pub(crate) fn wait_stats(&self) -> PoolWaitStats {
+    pub(crate) fn wait_stats(&self) -> Result<PoolWaitStats, StoreError> {
         match &*self.inner.lock(&self.logger) {
-            PoolState::Created(pool, _) | PoolState::Ready(pool) => pool.wait_stats.clone(),
+            PoolState::Created(pool, _) | PoolState::Ready(pool) => Ok(pool.wait_stats.clone()),
+            PoolState::Disabled => Err(StoreError::DatabaseDisabled),
         }
     }
 
@@ -687,7 +704,7 @@ pub struct PoolInner {
 
 impl PoolInner {
     fn create(
-        shard_name: &str,
+        shard: Shard,
         pool_name: &str,
         postgres_url: String,
         pool_size: u32,
@@ -701,7 +718,7 @@ impl PoolInner {
         let const_labels = {
             let mut map = HashMap::new();
             map.insert("pool".to_owned(), pool_name.to_owned());
-            map.insert("shard".to_string(), shard_name.to_owned());
+            map.insert("shard".to_string(), shard.to_string());
             map
         };
         let error_counter = registry
@@ -727,12 +744,25 @@ impl PoolInner {
 
         // Connect to Postgres
         let conn_manager = ConnectionManager::new(postgres_url.clone());
+        let min_idle = ENV_VARS.store.connection_min_idle.filter(|min_idle| {
+            if *min_idle <= pool_size {
+                true
+            } else {
+                warn!(
+                    logger_pool,
+                    "Configuration error: min idle {} exceeds pool size {}, ignoring min idle",
+                    min_idle,
+                    pool_size
+                );
+                false
+            }
+        });
         let builder: Builder<ConnectionManager<PgConnection>> = Pool::builder()
             .error_handler(error_handler.clone())
             .event_handler(event_handler.clone())
             .connection_timeout(ENV_VARS.store.connection_timeout)
             .max_size(pool_size)
-            .min_idle(ENV_VARS.store.connection_min_idle)
+            .min_idle(min_idle)
             .idle_timeout(Some(ENV_VARS.store.connection_idle_timeout));
         let pool = builder.build_unchecked(conn_manager);
         let fdw_pool = fdw_pool_size.map(|pool_size| {
@@ -761,8 +791,7 @@ impl PoolInner {
         let query_semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_queries));
         PoolInner {
             logger: logger_pool,
-            shard: Shard::new(shard_name.to_string())
-                .expect("shard_name is a valid name for a shard"),
+            shard,
             postgres_url,
             pool,
             fdw_pool,

@@ -82,6 +82,7 @@ async fn test_valid_module_and_store_with_timeout(
     let stopwatch_metrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),
         deployment_id.clone(),
+        "test",
         metrics_registry.clone(),
     );
     let host_metrics = Arc::new(HostMetrics::new(
@@ -922,6 +923,7 @@ async fn test_entity_store(api_version: Version) {
         &deployment,
         vec![(user_type.clone(), alex), (user_type, steve)],
     )
+    .await
     .unwrap();
 
     let get_user = move |module: &mut WasmInstance<Chain>, id: &str| -> Option<Entity> {

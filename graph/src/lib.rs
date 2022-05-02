@@ -40,7 +40,7 @@ pub use petgraph;
 pub use prometheus;
 pub use semver;
 pub use slog;
-pub use stable_hash;
+pub use stable_hash_legacy;
 pub use tokio_stream;
 pub use url;
 
@@ -93,7 +93,7 @@ pub mod prelude {
     pub type DynTryFuture<'a, Ok = (), Err = Error> =
         Pin<Box<dyn futures03::Future<Output = Result<Ok, Err>> + Send + 'a>>;
 
-    pub use crate::blockchain::BlockPtr;
+    pub use crate::blockchain::{BlockHash, BlockPtr};
 
     pub use crate::components::ethereum::{
         EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock,
@@ -117,9 +117,9 @@ pub mod prelude {
         AttributeNames, BlockNumber, CachedEthereumCall, ChainStore, ChildMultiplicity,
         EntityCache, EntityChange, EntityChangeOperation, EntityCollection, EntityFilter,
         EntityKey, EntityLink, EntityModification, EntityOperation, EntityOrder, EntityQuery,
-        EntityRange, EntityWindow, EthereumCallCache, ParentLink, PoolWaitStats, QueryStore,
-        QueryStoreManager, StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox,
-        SubgraphStore, UnfailOutcome, WindowAttribute, BLOCK_NUMBER_MAX,
+        EntityRange, EntityWindow, EthereumCallCache, ParentLink, PartialBlockPtr, PoolWaitStats,
+        QueryStore, QueryStoreManager, StoreError, StoreEvent, StoreEventStream,
+        StoreEventStreamBox, SubgraphStore, UnfailOutcome, WindowAttribute, BLOCK_NUMBER_MAX,
     };
     pub use crate::components::subgraph::{
         BlockState, DataSourceTemplateInfo, HostMetrics, RuntimeHost, RuntimeHostBuilder,

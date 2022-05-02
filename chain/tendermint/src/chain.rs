@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
+use graph::prelude::MetricsRegistry;
 use graph::{
     anyhow::anyhow,
     blockchain::{
@@ -11,6 +12,7 @@ use graph::{
         },
         firehose_block_stream::FirehoseBlockStream,
         Block as _, BlockHash, BlockPtr, Blockchain, BlockchainKind, IngestorError,
+        RuntimeAdapter as RuntimeAdapterTrait,
     },
     components::store::DeploymentLocator,
     firehose::{self, FirehoseEndpoint, FirehoseEndpoints, ForkStep},
@@ -31,6 +33,7 @@ pub struct Chain {
     name: String,
     firehose_endpoints: Arc<FirehoseEndpoints>,
     chain_store: Arc<dyn ChainStore>,
+    metrics_registry: Arc<dyn MetricsRegistry>,
 }
 
 impl std::fmt::Debug for Chain {
@@ -45,12 +48,14 @@ impl Chain {
         name: String,
         chain_store: Arc<dyn ChainStore>,
         firehose_endpoints: FirehoseEndpoints,
+        metrics_registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         Chain {
             logger_factory,
             name,
             firehose_endpoints: Arc::new(firehose_endpoints),
             chain_store,
+            metrics_registry,
         }
     }
 }
@@ -69,8 +74,6 @@ impl Blockchain for Chain {
 
     type UnresolvedDataSourceTemplate = UnresolvedDataSourceTemplate;
 
-    type TriggersAdapter = TriggersAdapter;
-
     type TriggerData = TendermintTrigger;
 
     type MappingTrigger = TendermintTrigger;
@@ -79,14 +82,12 @@ impl Blockchain for Chain {
 
     type NodeCapabilities = NodeCapabilities;
 
-    type RuntimeAdapter = RuntimeAdapter;
-
     fn triggers_adapter(
         &self,
         _loc: &DeploymentLocator,
         _capabilities: &Self::NodeCapabilities,
         _unified_api_version: UnifiedMappingApiVersion,
-    ) -> Result<Arc<Self::TriggersAdapter>, Error> {
+    ) -> Result<Arc<dyn TriggersAdapterTrait<Self>>, Error> {
         let adapter = TriggersAdapter {};
         Ok(Arc::new(adapter))
     }
@@ -119,6 +120,7 @@ impl Blockchain for Chain {
         });
 
         Ok(Box::new(FirehoseBlockStream::new(
+            deployment.hash,
             firehose_endpoint,
             subgraph_current_block,
             block_cursor,
@@ -127,6 +129,7 @@ impl Blockchain for Chain {
             filter,
             start_blocks,
             logger,
+            self.metrics_registry.clone(),
         )))
     }
 
@@ -161,7 +164,7 @@ impl Blockchain for Chain {
             .map_err(Into::into)
     }
 
-    fn runtime_adapter(&self) -> Arc<Self::RuntimeAdapter> {
+    fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
         Arc::new(RuntimeAdapter {})
     }
 
@@ -268,7 +271,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         &self,
         logger: &Logger,
         response: &firehose::Response,
-        adapter: &TriggersAdapter,
+        adapter: &Arc<dyn TriggersAdapterTrait<Chain>>,
         filter: &TriggerFilter,
     ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
         let step = ForkStep::from_i32(response.step).unwrap_or_else(|| {
