@@ -41,9 +41,7 @@ impl MappingTrigger for TendermintTrigger {
         gas: &GasCounter,
     ) -> Result<AscPtr<()>, DeterministicHostError> {
         Ok(match self {
-            TendermintTrigger::Block(event_list) => {
-                asc_new(heap, event_list.as_ref(), gas)?.erase()
-            }
+            TendermintTrigger::Block(block) => asc_new(heap, block.as_ref(), gas)?.erase(),
             TendermintTrigger::Event { event_data, .. } => {
                 asc_new(heap, event_data.as_ref(), gas)?.erase()
             }
@@ -56,7 +54,7 @@ impl MappingTrigger for TendermintTrigger {
 
 #[derive(Clone)]
 pub enum TendermintTrigger {
-    Block(Arc<codec::EventList>),
+    Block(Arc<codec::Block>),
     Event {
         event_data: Arc<codec::EventData>,
         origin: EventOrigin,
@@ -67,9 +65,7 @@ pub enum TendermintTrigger {
 impl CheapClone for TendermintTrigger {
     fn cheap_clone(&self) -> TendermintTrigger {
         match self {
-            TendermintTrigger::Block(event_list) => {
-                TendermintTrigger::Block(event_list.cheap_clone())
-            }
+            TendermintTrigger::Block(block) => TendermintTrigger::Block(block.cheap_clone()),
             TendermintTrigger::Event { event_data, origin } => TendermintTrigger::Event {
                 event_data: event_data.cheap_clone(),
                 origin: *origin,
@@ -109,7 +105,7 @@ impl Eq for TendermintTrigger {}
 impl TendermintTrigger {
     pub(crate) fn with_event(
         event: codec::Event,
-        block: codec::EventBlock,
+        block: codec::HeaderOnlyBlock,
         origin: EventOrigin,
     ) -> TendermintTrigger {
         TendermintTrigger::Event {
@@ -123,7 +119,7 @@ impl TendermintTrigger {
 
     pub(crate) fn with_transaction(
         tx_result: codec::TxResult,
-        block: codec::EventBlock,
+        block: codec::HeaderOnlyBlock,
     ) -> TendermintTrigger {
         TendermintTrigger::Transaction(Arc::new(codec::TransactionData {
             tx: Some(tx_result),
@@ -133,7 +129,7 @@ impl TendermintTrigger {
 
     pub fn block_number(&self) -> BlockNumber {
         match self {
-            TendermintTrigger::Block(event_list) => event_list.block().number(),
+            TendermintTrigger::Block(block) => block.number(),
             TendermintTrigger::Event { event_data, .. } => event_data.block().number(),
             TendermintTrigger::Transaction(transaction_data) => transaction_data.block().number(),
         }
@@ -141,7 +137,7 @@ impl TendermintTrigger {
 
     pub fn block_hash(&self) -> BlockHash {
         match self {
-            TendermintTrigger::Block(event_list) => event_list.block().hash(),
+            TendermintTrigger::Block(block) => block.hash(),
             TendermintTrigger::Event { event_data, .. } => event_data.block().hash(),
             TendermintTrigger::Transaction(transaction_data) => transaction_data.block().hash(),
         }

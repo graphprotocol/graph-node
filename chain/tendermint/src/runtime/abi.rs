@@ -1,27 +1,43 @@
-#[path = "../protobuf/fig.tendermint.codec.v1.rs"]
-mod pbcodec;
+#[path = "../protobuf/sf.cosmos.r#type.v1.rs"]
+mod pbcosmos;
 
 use anyhow::anyhow;
 use graph::runtime::{
     asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, DeterministicHostError,
     ToAscObj,
 };
-use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, EnumPayload, Uint8Array};
+use graph_runtime_wasm::asc_abi::class::{Array, Uint8Array};
 
 use crate::codec;
 
 pub(crate) use super::generated::*;
 
-impl ToAscObj<AscEventList> for codec::EventList {
+impl ToAscObj<AscBlock> for codec::Block {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscEventList, DeterministicHostError> {
-        Ok(AscEventList {
-            new_block: asc_new_or_null(heap, &self.new_block, gas)?,
-            transaction: asc_new(heap, &self.transaction, gas)?,
-            validator_set_updates: asc_new_or_null(heap, &self.validator_set_updates, gas)?,
+    ) -> Result<AscBlock, DeterministicHostError> {
+        Ok(AscBlock {
+            header: asc_new_or_missing(heap, &self.header, gas, "Block", "header")?,
+            evidence: asc_new_or_missing(heap, &self.evidence, gas, "Block", "evidence")?,
+            last_commit: asc_new_or_null(heap, &self.last_commit, gas)?,
+            result_begin_block: asc_new_or_null(heap, &self.result_begin_block, gas)?,
+            result_end_block: asc_new_or_null(heap, &self.result_end_block, gas)?,
+            transactions: asc_new(heap, &self.transactions, gas)?,
+            validator_updates: asc_new(heap, &self.validator_updates, gas)?,
+        })
+    }
+}
+
+impl ToAscObj<AscHeaderOnlyBlock> for codec::HeaderOnlyBlock {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscHeaderOnlyBlock, DeterministicHostError> {
+        Ok(AscHeaderOnlyBlock {
+            header: asc_new_or_missing(heap, &self.header, gas, "Block", "header")?,
         })
     }
 }
@@ -35,35 +51,6 @@ impl ToAscObj<AscEventData> for codec::EventData {
         Ok(AscEventData {
             event: asc_new_or_null(heap, &self.event, gas)?,
             block: asc_new_or_null(heap, &self.block, gas)?,
-        })
-    }
-}
-
-impl ToAscObj<AscEventBlock> for codec::EventBlock {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscEventBlock, DeterministicHostError> {
-        Ok(AscEventBlock {
-            block: asc_new_or_null(heap, &self.block, gas)?,
-            block_id: asc_new_or_null(heap, &self.block_id, gas)?,
-            result_begin_block: asc_new_or_null(heap, &self.result_begin_block, gas)?,
-            result_end_block: asc_new_or_null(heap, &self.result_end_block, gas)?,
-        })
-    }
-}
-
-impl ToAscObj<AscBlock> for codec::Block {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscBlock, DeterministicHostError> {
-        Ok(AscBlock {
-            header: asc_new_or_missing(heap, &self.header, gas, "Block", "header")?,
-            evidence: asc_new_or_missing(heap, &self.evidence, gas, "Block", "evidence")?,
-            last_commit: asc_new_or_null(heap, &self.last_commit, gas)?,
         })
     }
 }
@@ -95,7 +82,7 @@ impl ToAscObj<AscHeader> for codec::Header {
             last_results_hash: asc_new(heap, &Bytes(&self.last_results_hash), gas)?,
             evidence_hash: asc_new(heap, &Bytes(&self.evidence_hash), gas)?,
             proposer_address: asc_new(heap, &Bytes(&self.proposer_address), gas)?,
-            _padding: 0,
+            hash: asc_new(heap, &Bytes(&self.hash), gas)?,
         })
     }
 }
@@ -405,7 +392,7 @@ impl ToAscObj<AscCommitSig> for codec::CommitSig {
                 3 => 3,
                 value => {
                     return Err(DeterministicHostError::from(anyhow!(
-                        "Invalid direction value {}",
+                        "Invalid block ID flag: {}",
                         value
                     )))
                 }
@@ -613,7 +600,7 @@ impl ToAscObj<AscEventVote> for codec::EventVote {
                 32 => 32,
                 value => {
                     return Err(DeterministicHostError::from(anyhow!(
-                        "Invalid event vote type value {}",
+                        "Invalid event vote type: {}",
                         value
                     )))
                 }
@@ -641,30 +628,6 @@ impl ToAscObj<AscEvidenceArray> for Vec<codec::Evidence> {
     }
 }
 
-impl ToAscObj<AscEventTxArray> for Vec<codec::EventTx> {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscEventTxArray, DeterministicHostError> {
-        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
-
-        Ok(AscEventTxArray(Array::new(&content?, heap, gas)?))
-    }
-}
-
-impl ToAscObj<AscEventTx> for codec::EventTx {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscEventTx, DeterministicHostError> {
-        Ok(AscEventTx {
-            tx_result: asc_new_or_null(heap, &self.tx_result, gas)?,
-        })
-    }
-}
-
 impl ToAscObj<AscTxResult> for codec::TxResult {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
@@ -677,8 +640,19 @@ impl ToAscObj<AscTxResult> for codec::TxResult {
             tx: asc_new_or_null(heap, &self.tx, gas)?,
             result: asc_new_or_null(heap, &self.result, gas)?,
             hash: asc_new(heap, &Bytes(&self.hash), gas)?,
-            _padding: 0,
         })
+    }
+}
+
+impl ToAscObj<AscTxResultArray> for Vec<codec::TxResult> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscTxResultArray, DeterministicHostError> {
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
+
+        Ok(AscTxResultArray(Array::new(&content?, heap, gas)?))
     }
 }
 
@@ -777,6 +751,7 @@ impl ToAscObj<AscFee> for codec::Fee {
     ) -> Result<AscFee, DeterministicHostError> {
         Ok(AscFee {
             amount: asc_new(heap, &self.amount, gas)?,
+            _padding: 0,
             gas_limit: self.gas_limit,
             payer: asc_new(heap, &self.payer, gas)?,
             granter: asc_new(heap, &self.granter, gas)?,
@@ -850,7 +825,20 @@ impl ToAscObj<AscModeInfoSingle> for codec::ModeInfoSingle {
         _heap: &mut H,
         _gas: &GasCounter,
     ) -> Result<AscModeInfoSingle, DeterministicHostError> {
-        Ok(AscModeInfoSingle { mode: self.mode })
+        Ok(AscModeInfoSingle {
+            mode: match self.mode {
+                0 => 0,
+                1 => 1,
+                2 => 2,
+                127 => 127,
+                value => {
+                    return Err(DeterministicHostError::from(anyhow!(
+                        "Invalid sign mode: {}",
+                        value,
+                    )))
+                }
+            },
+        })
     }
 }
 
@@ -936,73 +924,15 @@ impl ToAscObj<AscResponseDeliverTx> for codec::ResponseDeliverTx {
     }
 }
 
-impl ToAscObj<AscEventValidatorSetUpdates> for codec::EventValidatorSetUpdates {
+impl ToAscObj<AscValidatorSetUpdates> for codec::ValidatorSetUpdates {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscEventValidatorSetUpdates, DeterministicHostError> {
-        Ok(AscEventValidatorSetUpdates {
+    ) -> Result<AscValidatorSetUpdates, DeterministicHostError> {
+        Ok(AscValidatorSetUpdates {
             validator_updates: asc_new(heap, &self.validator_updates, gas)?,
         })
-    }
-}
-
-struct BlockIDKind(i32);
-
-impl ToAscObj<AscBlockIDFlagEnum> for BlockIDKind {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        _heap: &mut H,
-        _gas: &GasCounter,
-    ) -> Result<AscBlockIDFlagEnum, DeterministicHostError> {
-        let value = match self.0 {
-            0 => AscBlockIDFlag::BlockIdFlagUnknown,
-            1 => AscBlockIDFlag::BlockIdFlagAbsent,
-            2 => AscBlockIDFlag::BlockIdFlagCommit,
-            3 => AscBlockIDFlag::BlockIdFlagNil,
-            _ => {
-                return Err(DeterministicHostError::from(anyhow!(
-                    "Invalid direction value {}",
-                    self.0
-                )))
-            }
-        };
-
-        Ok(AscBlockIDFlagEnum(AscEnum {
-            _padding: 0,
-            kind: value,
-            payload: EnumPayload(self.0 as u64),
-        }))
-    }
-}
-
-struct SignedMessageTypeKind(i32);
-
-impl ToAscObj<AscSignedMsgTypeEnum> for SignedMessageTypeKind {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        _heap: &mut H,
-        _gas: &GasCounter,
-    ) -> Result<AscSignedMsgTypeEnum, DeterministicHostError> {
-        let value = match self.0 {
-            0 => AscSignedMsgType::SignedMsgTypeUnknown,
-            1 => AscSignedMsgType::SignedMsgTypePrevote,
-            2 => AscSignedMsgType::SignedMsgTypePrecommit,
-            3 => AscSignedMsgType::SignedMsgTypeProposal,
-            _ => {
-                return Err(DeterministicHostError::from(anyhow!(
-                    "Invalid direction value {}",
-                    self.0
-                )))
-            }
-        };
-
-        Ok(AscSignedMsgTypeEnum(AscEnum {
-            _padding: 0,
-            kind: value,
-            payload: EnumPayload(self.0 as u64),
-        }))
     }
 }
 
@@ -1013,7 +943,7 @@ impl ToAscObj<Uint8Array> for Bytes<'_> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscHash, DeterministicHostError> {
+    ) -> Result<Uint8Array, DeterministicHostError> {
         self.0.to_asc_obj(heap, gas)
     }
 }

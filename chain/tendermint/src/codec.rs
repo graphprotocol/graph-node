@@ -1,24 +1,16 @@
-#[path = "protobuf/fig.tendermint.codec.v1.rs"]
-mod pbcodec;
+#[path = "protobuf/sf.cosmos.r#type.v1.rs"]
+mod pbcosmos;
 
-pub use pbcodec::*;
+pub use pbcosmos::*;
 
 use graph::blockchain::Block as BlockchainBlock;
 use graph::{blockchain::BlockPtr, prelude::BlockNumber};
 
 use std::convert::TryFrom;
 
-impl EventList {
-    pub fn block(&self) -> &EventBlock {
-        self.new_block.as_ref().unwrap()
-    }
-
-    pub fn block_id(&self) -> &BlockId {
-        self.block().block_id()
-    }
-
+impl Block {
     pub fn header(&self) -> &Header {
-        self.block().header()
+        self.header.as_ref().unwrap()
     }
 
     pub fn events(&self) -> impl Iterator<Item = &Event> {
@@ -28,38 +20,21 @@ impl EventList {
     }
 
     pub fn begin_block_events(&self) -> impl Iterator<Item = &Event> {
-        self.block()
-            .result_begin_block
-            .as_ref()
-            .unwrap()
-            .events
-            .iter()
+        self.result_begin_block.as_ref().unwrap().events.iter()
     }
 
     pub fn tx_events(&self) -> impl Iterator<Item = &Event> {
-        self.transaction.iter().flat_map(|tx| {
-            tx.tx_result
-                .as_ref()
-                .unwrap()
-                .result
-                .as_ref()
-                .unwrap()
-                .events
-                .iter()
-        })
-    }
-
-    pub fn tx_results(&self) -> impl Iterator<Item = &TxResult> {
-        self.transaction.iter().flat_map(|tx| tx.tx_result.iter())
+        self.transactions
+            .iter()
+            .flat_map(|tx| tx.result.as_ref().unwrap().events.iter())
     }
 
     pub fn end_block_events(&self) -> impl Iterator<Item = &Event> {
-        self.block()
-            .result_end_block
-            .as_ref()
-            .unwrap()
-            .events
-            .iter()
+        self.result_end_block.as_ref().unwrap().events.iter()
+    }
+
+    pub fn transactions(&self) -> impl Iterator<Item = &TxResult> {
+        self.transactions.iter()
     }
 
     pub fn parent_ptr(&self) -> Option<BlockPtr> {
@@ -69,19 +44,57 @@ impl EventList {
     }
 }
 
-impl From<EventList> for BlockPtr {
-    fn from(b: EventList) -> BlockPtr {
+impl From<Block> for BlockPtr {
+    fn from(b: Block) -> BlockPtr {
         (&b).into()
     }
 }
 
-impl<'a> From<&'a EventList> for BlockPtr {
-    fn from(b: &'a EventList) -> BlockPtr {
-        BlockPtr::from((b.block_id().hash.clone(), b.header().height))
+impl<'a> From<&'a Block> for BlockPtr {
+    fn from(b: &'a Block) -> BlockPtr {
+        BlockPtr::from((b.header().hash.clone(), b.header().height))
     }
 }
 
-impl BlockchainBlock for EventList {
+impl BlockchainBlock for Block {
+    fn number(&self) -> i32 {
+        BlockNumber::try_from(self.header().height).unwrap()
+    }
+
+    fn ptr(&self) -> BlockPtr {
+        self.into()
+    }
+
+    fn parent_ptr(&self) -> Option<BlockPtr> {
+        self.parent_ptr()
+    }
+}
+
+impl HeaderOnlyBlock {
+    pub fn header(&self) -> &Header {
+        self.header.as_ref().unwrap()
+    }
+
+    pub fn parent_ptr(&self) -> Option<BlockPtr> {
+        self.header().last_block_id.as_ref().map(|last_block_id| {
+            BlockPtr::from((last_block_id.hash.clone(), self.header().height - 1))
+        })
+    }
+}
+
+impl From<HeaderOnlyBlock> for BlockPtr {
+    fn from(b: HeaderOnlyBlock) -> BlockPtr {
+        (&b).into()
+    }
+}
+
+impl<'a> From<&'a HeaderOnlyBlock> for BlockPtr {
+    fn from(b: &'a HeaderOnlyBlock) -> BlockPtr {
+        BlockPtr::from((b.header().hash.clone(), b.header().height))
+    }
+}
+
+impl BlockchainBlock for HeaderOnlyBlock {
     fn number(&self) -> i32 {
         BlockNumber::try_from(self.header().height).unwrap()
     }
@@ -99,51 +112,8 @@ impl EventData {
     pub fn event(&self) -> &Event {
         self.event.as_ref().unwrap()
     }
-
-    pub fn block(&self) -> &EventBlock {
+    pub fn block(&self) -> &HeaderOnlyBlock {
         self.block.as_ref().unwrap()
-    }
-}
-
-impl EventBlock {
-    pub fn block_id(&self) -> &BlockId {
-        self.block_id.as_ref().unwrap()
-    }
-
-    pub fn header(&self) -> &Header {
-        self.block.as_ref().unwrap().header.as_ref().unwrap()
-    }
-
-    pub fn parent_ptr(&self) -> Option<BlockPtr> {
-        self.header().last_block_id.as_ref().map(|last_block_id| {
-            BlockPtr::from((last_block_id.hash.clone(), self.header().height - 1))
-        })
-    }
-}
-
-impl From<EventBlock> for BlockPtr {
-    fn from(b: EventBlock) -> BlockPtr {
-        (&b).into()
-    }
-}
-
-impl<'a> From<&'a EventBlock> for BlockPtr {
-    fn from(b: &'a EventBlock) -> BlockPtr {
-        BlockPtr::from((b.block_id().hash.clone(), b.header().height))
-    }
-}
-
-impl BlockchainBlock for EventBlock {
-    fn number(&self) -> i32 {
-        BlockNumber::try_from(self.header().height).unwrap()
-    }
-
-    fn ptr(&self) -> BlockPtr {
-        self.into()
-    }
-
-    fn parent_ptr(&self) -> Option<BlockPtr> {
-        self.parent_ptr()
     }
 }
 
@@ -153,10 +123,10 @@ impl TransactionData {
     }
 
     pub fn response_deliver_tx(&self) -> &ResponseDeliverTx {
-        self.tx.as_ref().unwrap().result.as_ref().unwrap()
+        self.tx_result().result.as_ref().unwrap()
     }
 
-    pub fn block(&self) -> &EventBlock {
+    pub fn block(&self) -> &HeaderOnlyBlock {
         self.block.as_ref().unwrap()
     }
 }

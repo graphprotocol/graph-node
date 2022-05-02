@@ -12,7 +12,7 @@ use graph::prometheus::Registry;
 use graph::url::Url;
 use graph_chain_ethereum as ethereum;
 use graph_chain_near::{self as near, HeaderOnlyBlock as NearFirehoseHeaderOnlyBlock};
-use graph_chain_tendermint::{self as tendermint, EventList as TendermintFirehoseEventList};
+use graph_chain_tendermint::{self as tendermint, Block as TendermintFirehoseBlock};
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -252,7 +252,7 @@ async fn main() {
             .await;
 
         let (tendermint_networks, tendermint_idents) =
-            connect_firehose_networks::<TendermintFirehoseEventList>(
+            connect_firehose_networks::<TendermintFirehoseBlock>(
                 &logger,
                 firehose_networks_by_kind
                     .remove(&BlockchainKind::Tendermint)
@@ -344,7 +344,7 @@ async fn main() {
                 &network_store,
                 near_chains,
             );
-            start_firehose_block_ingestor::<_, TendermintFirehoseEventList>(
+            start_firehose_block_ingestor::<_, TendermintFirehoseBlock>(
                 &logger,
                 &network_store,
                 tendermint_chains,

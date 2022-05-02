@@ -59,7 +59,7 @@ impl Chain {
 impl Blockchain for Chain {
     const KIND: BlockchainKind = BlockchainKind::Tendermint;
 
-    type Block = codec::EventList;
+    type Block = codec::Block;
 
     type DataSource = DataSource;
 
@@ -156,7 +156,7 @@ impl Blockchain for Chain {
         };
 
         firehose_endpoint
-            .block_ptr_for_number::<codec::EventList>(logger, number)
+            .block_ptr_for_number::<codec::Block>(logger, number)
             .await
             .map_err(Into::into)
     }
@@ -186,10 +186,14 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     async fn triggers_in_block(
         &self,
         _logger: &Logger,
-        block: codec::EventList,
+        block: codec::Block,
         _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         let shared_block = Arc::new(block.clone());
+
+        let header_only_block = codec::HeaderOnlyBlock {
+            header: block.header.clone(),
+        };
 
         let mut triggers: Vec<_> = shared_block
             .begin_block_events()
@@ -198,21 +202,33 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             // block. This is not currently possible because EventData is automatically
             // generated.
             .map(|event| {
-                TendermintTrigger::with_event(event, block.block().clone(), EventOrigin::BeginBlock)
+                TendermintTrigger::with_event(
+                    event,
+                    header_only_block.clone(),
+                    EventOrigin::BeginBlock,
+                )
             })
             .chain(shared_block.tx_events().cloned().map(|event| {
-                TendermintTrigger::with_event(event, block.block().clone(), EventOrigin::DeliverTx)
+                TendermintTrigger::with_event(
+                    event,
+                    header_only_block.clone(),
+                    EventOrigin::DeliverTx,
+                )
             }))
             .chain(shared_block.end_block_events().cloned().map(|event| {
-                TendermintTrigger::with_event(event, block.block().clone(), EventOrigin::EndBlock)
+                TendermintTrigger::with_event(
+                    event,
+                    header_only_block.clone(),
+                    EventOrigin::EndBlock,
+                )
             }))
             .collect();
 
         triggers.extend(
             shared_block
-                .tx_results()
+                .transactions()
                 .cloned()
-                .map(|tx| TendermintTrigger::with_transaction(tx, block.block().clone())),
+                .map(|tx| TendermintTrigger::with_transaction(tx, header_only_block.clone())),
         );
 
         triggers.push(TendermintTrigger::Block(shared_block.cheap_clone()));
@@ -228,7 +244,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         _ptr: BlockPtr,
         _offset: BlockNumber,
-    ) -> Result<Option<codec::EventList>, Error> {
+    ) -> Result<Option<codec::Block>, Error> {
         panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
@@ -274,7 +290,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         //
         // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
         // define a slimmed down struct that would decode only a few fields and ignore all the rest.
-        let sp = codec::EventList::decode(any_block.value.as_ref())?;
+        let sp = codec::Block::decode(any_block.value.as_ref())?;
 
         match step {
             ForkStep::StepNew => Ok(BlockStreamEvent::ProcessBlock(
@@ -309,18 +325,18 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         number: BlockNumber,
     ) -> Result<BlockPtr, Error> {
         self.endpoint
-            .block_ptr_for_number::<codec::EventList>(logger, number)
+            .block_ptr_for_number::<codec::Block>(logger, number)
             .await
     }
 
     async fn final_block_ptr_for(
         &self,
         logger: &Logger,
-        block: &codec::EventList,
+        block: &codec::Block,
     ) -> Result<BlockPtr, Error> {
         // Tendermint provides instant block finality.
         self.endpoint
-            .block_ptr_for_number::<codec::EventList>(logger, block.number())
+            .block_ptr_for_number::<codec::Block>(logger, block.number())
             .await
     }
 }
