@@ -11,8 +11,8 @@ use graph::{
     constraint_violation,
     data::subgraph::status,
     prelude::{
-        tokio, web3::types::Address, BlockPtr, CheapClone, DeploymentHash, QueryExecutionError,
-        StoreError,
+        tokio, web3::types::Address, BlockNumber, BlockPtr, CheapClone, DeploymentHash,
+        PartialBlockPtr, QueryExecutionError, StoreError,
     },
 };
 
@@ -144,8 +144,18 @@ impl StatusStore for Store {
             .await
     }
 
-    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+    async fn get_public_proof_of_indexing(
+        &self,
+        subgraph_id: &DeploymentHash,
+        block_number: BlockNumber,
+    ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
+        self.subgraph_store
+            .get_public_proof_of_indexing(subgraph_id, block_number, self.block_store().clone())
+            .await
+    }
+
+    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError> {
         // Status queries go to the primary shard.
-        self.block_store.query_permit_primary().await
+        Ok(self.block_store.query_permit_primary().await)
     }
 }

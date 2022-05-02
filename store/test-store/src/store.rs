@@ -206,6 +206,7 @@ pub fn remove_subgraph(id: &DeploymentHash) {
     }
 }
 
+/// Transact errors for this block and wait until changes have been written
 pub async fn transact_errors(
     store: &Arc<Store>,
     deployment: &DeploymentLocator,
@@ -216,6 +217,7 @@ pub async fn transact_errors(
     let stopwatch_metrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),
         deployment.hash.clone(),
+        "transact",
         metrics_registry.clone(),
     );
     store
@@ -230,19 +232,40 @@ pub async fn transact_errors(
             Vec::new(),
             errs,
         )
+        .await?;
+    flush(deployment).await
 }
 
 /// Convenience to transact EntityOperation instead of EntityModification
-pub fn transact_entity_operations(
+pub async fn transact_entity_operations(
     store: &Arc<DieselSubgraphStore>,
     deployment: &DeploymentLocator,
     block_ptr_to: BlockPtr,
     ops: Vec<EntityOperation>,
 ) -> Result<(), StoreError> {
     transact_entities_and_dynamic_data_sources(store, deployment.clone(), block_ptr_to, vec![], ops)
+        .await
 }
 
-pub fn transact_entities_and_dynamic_data_sources(
+/// Convenience to transact EntityOperation instead of EntityModification and wait for the store to process the operations
+pub async fn transact_and_wait(
+    store: &Arc<DieselSubgraphStore>,
+    deployment: &DeploymentLocator,
+    block_ptr_to: BlockPtr,
+    ops: Vec<EntityOperation>,
+) -> Result<(), StoreError> {
+    transact_entities_and_dynamic_data_sources(
+        store,
+        deployment.clone(),
+        block_ptr_to,
+        vec![],
+        ops,
+    )
+    .await?;
+    flush(deployment).await
+}
+
+pub async fn transact_entities_and_dynamic_data_sources(
     store: &Arc<DieselSubgraphStore>,
     deployment: DeploymentLocator,
     block_ptr_to: BlockPtr,
@@ -261,18 +284,22 @@ pub fn transact_entities_and_dynamic_data_sources(
     let stopwatch_metrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),
         deployment.hash.clone(),
+        "transact",
         metrics_registry.clone(),
     );
-    store.transact_block_operations(
-        block_ptr_to,
-        None,
-        mods,
-        &stopwatch_metrics,
-        data_sources,
-        Vec::new(),
-    )
+    store
+        .transact_block_operations(
+            block_ptr_to,
+            None,
+            mods,
+            &stopwatch_metrics,
+            data_sources,
+            Vec::new(),
+        )
+        .await
 }
 
+/// Revert to block `ptr` and wait for the store to process the changes
 pub async fn revert_block(store: &Arc<Store>, deployment: &DeploymentLocator, ptr: &BlockPtr) {
     store
         .subgraph_store()
@@ -280,7 +307,9 @@ pub async fn revert_block(store: &Arc<Store>, deployment: &DeploymentLocator, pt
         .await
         .expect("can get writable")
         .revert_block_operations(ptr.clone(), None)
+        .await
         .unwrap();
+    flush(deployment).await.unwrap();
 }
 
 pub fn insert_ens_name(hash: &str, name: &str) {
@@ -297,7 +326,9 @@ pub fn insert_ens_name(hash: &str, name: &str) {
         .unwrap();
 }
 
-pub fn insert_entities(
+/// Insert the given entities and wait until all writes have been processed.
+/// The inserts all happen at `GENESIS_PTR`, i.e., block 0
+pub async fn insert_entities(
     deployment: &DeploymentLocator,
     entities: Vec<(EntityType, Entity)>,
 ) -> Result<(), StoreError> {
@@ -318,7 +349,19 @@ pub fn insert_entities(
         GENESIS_PTR.clone(),
         insert_ops.collect::<Vec<_>>(),
     )
-    .map(|_| ())
+    .await?;
+
+    flush(deployment).await
+}
+
+/// Wait until all pending writes have been processed
+pub async fn flush(deployment: &DeploymentLocator) -> Result<(), StoreError> {
+    let writable = SUBGRAPH_STORE
+        .cheap_clone()
+        .writable(LOGGER.clone(), deployment.id)
+        .await
+        .expect("we can get a writable");
+    writable.flush().await
 }
 
 /// Tap into store events sent when running `f` and return those events. This

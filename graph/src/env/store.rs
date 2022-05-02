@@ -92,6 +92,17 @@ pub struct EnvVarsStore {
     /// Set by the environment variable `GRAPH_STORE_CONNECTION_IDLE_TIMEOUT`
     /// (expressed in seconds). The default value is 600s.
     pub connection_idle_timeout: Duration,
+
+    /// The size of the write queue; this many blocks can be buffered for
+    /// writing before calls to transact block operations will block.
+    /// Setting this to `0` disables pipelined writes, and writes will be
+    /// done synchronously.
+    pub write_queue_size: usize,
+
+    /// This is just in case new behavior causes issues. This can be removed
+    /// once the new behavior has run in the hosted service for a few days
+    /// without issues.
+    pub disable_error_for_toplevel_parents: bool,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -132,6 +143,8 @@ impl From<InnerStore> for EnvVarsStore {
             connection_timeout: Duration::from_millis(x.connection_timeout_in_millis),
             connection_min_idle: x.connection_min_idle,
             connection_idle_timeout: Duration::from_secs(x.connection_idle_timeout_in_secs),
+            write_queue_size: x.write_queue_size,
+            disable_error_for_toplevel_parents: x.disable_error_for_toplevel_parents.0,
         }
     }
 }
@@ -175,4 +188,8 @@ pub struct InnerStore {
     connection_min_idle: Option<u32>,
     #[envconfig(from = "GRAPH_STORE_CONNECTION_IDLE_TIMEOUT", default = "600")]
     connection_idle_timeout_in_secs: u64,
+    #[envconfig(from = "GRAPH_STORE_WRITE_QUEUE", default = "5")]
+    write_queue_size: usize,
+    #[envconfig(from = "GRAPH_DISABLE_ERROR_FOR_TOPLEVEL_PARENTS", default = "false")]
+    disable_error_for_toplevel_parents: EnvVarBoolean,
 }

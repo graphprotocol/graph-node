@@ -1,6 +1,6 @@
 [package]
 name = "graph-server-index-node"
-version = "0.25.2"
+version = "0.26.0"
 edition = "2021"
 
 [dependencies]
@@ -11,7 +11,7 @@ graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
 graph-chain-near = { path = "../../chain/near" }
-graph-chain-tendermint = { path = "../../chain/tendermint" }
+graph-chain-cosmos = { path = "../../chain/cosmos" }
 graphql-parser = "0.4.0"
 http = "0.2"
 hyper = "0.14"

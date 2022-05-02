@@ -1,6 +1,6 @@
 [package]
 name = "graph-node"
-version = "0.25.2"
+version = "0.26.0"
 edition = "2021"
 default-run = "graph-node"
 
@@ -25,7 +25,7 @@ graph = { path = "../graph" }
 graph-core = { path = "../core" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
 graph-chain-near = { path = "../chain/near" }
-graph-chain-tendermint = { path = "../chain/tendermint" }
+graph-chain-cosmos = { path = "../chain/cosmos" }
 graph-graphql = { path = "../graphql" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 graph-server-http = { path = "../server/http" }

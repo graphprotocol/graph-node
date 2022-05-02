@@ -74,6 +74,7 @@ lazy_static! {
     static ref MOCK_STOPWATCH: StopwatchMetrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),
         THINGS_SUBGRAPH_ID.clone(),
+        "test",
         Arc::new(MockMetricsRegistry::new()),
     );
 }

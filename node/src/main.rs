@@ -1,4 +1,7 @@
-use ethereum::{BlockIngestor as EthereumBlockIngestor, EthereumAdapterTrait, EthereumNetworks};
+use ethereum::chain::{EthereumAdapterSelector, EthereumStreamBuilder};
+use ethereum::{
+    BlockIngestor as EthereumBlockIngestor, EthereumAdapterTrait, EthereumNetworks, RuntimeAdapter,
+};
 use git_testament::{git_testament, render_testament};
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::{Block as BlockchainBlock, Blockchain, BlockchainKind, BlockchainMap};
@@ -10,9 +13,9 @@ use graph::log::logger;
 use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
 use graph::prometheus::Registry;
 use graph::url::Url;
+use graph_chain_cosmos::{self as cosmos, Block as CosmosFirehoseBlock};
 use graph_chain_ethereum as ethereum;
 use graph_chain_near::{self as near, HeaderOnlyBlock as NearFirehoseHeaderOnlyBlock};
-use graph_chain_tendermint::{self as tendermint, EventList as TendermintFirehoseEventList};
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -31,6 +34,7 @@ use graph_server_json_rpc::JsonRpcServer;
 use graph_server_metrics::PrometheusMetricsServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::{register_jobs as register_store_jobs, ChainHeadUpdateListener, Store};
+use near::NearStreamBuilder;
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -251,19 +255,18 @@ async fn main() {
             )
             .await;
 
-        let (tendermint_networks, tendermint_idents) =
-            connect_firehose_networks::<TendermintFirehoseEventList>(
-                &logger,
-                firehose_networks_by_kind
-                    .remove(&BlockchainKind::Tendermint)
-                    .unwrap_or_else(|| FirehoseNetworks::new()),
-            )
-            .await;
+        let (cosmos_networks, cosmos_idents) = connect_firehose_networks::<CosmosFirehoseBlock>(
+            &logger,
+            firehose_networks_by_kind
+                .remove(&BlockchainKind::Cosmos)
+                .unwrap_or_else(|| FirehoseNetworks::new()),
+        )
+        .await;
 
         let network_identifiers = ethereum_idents
             .into_iter()
             .chain(near_idents)
-            .chain(tendermint_idents)
+            .chain(cosmos_idents)
             .collect();
 
         let network_store = store_builder.network_store(network_identifiers);
@@ -286,14 +289,16 @@ async fn main() {
             &near_networks,
             network_store.as_ref(),
             &logger_factory,
+            metrics_registry.clone(),
         );
 
-        let tendermint_chains = tendermint_networks_as_chains(
+        let cosmos_chains = cosmos_networks_as_chains(
             &mut blockchain_map,
             &logger,
-            &tendermint_networks,
+            &cosmos_networks,
             network_store.as_ref(),
             &logger_factory,
+            metrics_registry.clone(),
         );
 
         let blockchain_map = Arc::new(blockchain_map);
@@ -344,10 +349,10 @@ async fn main() {
                 &network_store,
                 near_chains,
             );
-            start_firehose_block_ingestor::<_, TendermintFirehoseEventList>(
+            start_firehose_block_ingestor::<_, CosmosFirehoseBlock>(
                 &logger,
                 &network_store,
-                tendermint_chains,
+                cosmos_chains,
             );
 
             // Start a task runner
@@ -562,6 +567,23 @@ fn ethereum_networks_as_chains(
         .map(|(network_name, eth_adapters, chain_store, is_ingestible)| {
             let firehose_endpoints = firehose_networks.and_then(|v| v.networks.get(network_name));
 
+            let adapter_selector = EthereumAdapterSelector::new(
+                logger_factory.clone(),
+                Arc::new(eth_adapters.clone()),
+                Arc::new(
+                    firehose_endpoints
+                        .map(|fe| fe.clone())
+                        .unwrap_or(FirehoseEndpoints::new()),
+                ),
+                registry.clone(),
+                chain_store.clone(),
+            );
+
+            let runtime_adapter = Arc::new(RuntimeAdapter {
+                eth_adapters: Arc::new(eth_adapters.clone()),
+                call_cache: chain_store.cheap_clone(),
+            });
+
             let chain = ethereum::Chain::new(
                 logger_factory.clone(),
                 network_name.clone(),
@@ -572,6 +594,9 @@ fn ethereum_networks_as_chains(
                 firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
                 eth_adapters.clone(),
                 chain_head_update_listener.clone(),
+                Arc::new(EthereumStreamBuilder {}),
+                Arc::new(adapter_selector),
+                runtime_adapter,
                 ethereum::ENV_VARS.reorg_threshold,
                 is_ingestible,
             );
@@ -586,13 +611,14 @@ fn ethereum_networks_as_chains(
     HashMap::from_iter(chains)
 }
 
-fn tendermint_networks_as_chains(
+fn cosmos_networks_as_chains(
     blockchain_map: &mut BlockchainMap,
     logger: &Logger,
     firehose_networks: &FirehoseNetworks,
     store: &Store,
     logger_factory: &LoggerFactory,
-) -> HashMap<String, FirehoseChain<tendermint::Chain>> {
+    metrics_registry: Arc<MetricsRegistry>,
+) -> HashMap<String, FirehoseChain<cosmos::Chain>> {
     let chains: Vec<_> = firehose_networks
         .networks
         .iter()
@@ -604,7 +630,7 @@ fn tendermint_networks_as_chains(
                 .or_else(|| {
                     error!(
                         logger,
-                        "No store configured for Tendermint chain {}; ignoring this chain",
+                        "No store configured for Cosmos chain {}; ignoring this chain",
                         network_name
                     );
                     None
@@ -614,11 +640,12 @@ fn tendermint_networks_as_chains(
             (
                 network_name.clone(),
                 FirehoseChain {
-                    chain: Arc::new(tendermint::Chain::new(
+                    chain: Arc::new(cosmos::Chain::new(
                         logger_factory.clone(),
                         network_name.clone(),
                         chain_store,
                         firehose_endpoints.clone(),
+                        metrics_registry.clone(),
                     )),
                     firehose_endpoints: firehose_endpoints.clone(),
                 },
@@ -627,8 +654,7 @@ fn tendermint_networks_as_chains(
         .collect();
 
     for (network_name, firehose_chain) in chains.iter() {
-        blockchain_map
-            .insert::<tendermint::Chain>(network_name.clone(), firehose_chain.chain.clone())
+        blockchain_map.insert::<cosmos::Chain>(network_name.clone(), firehose_chain.chain.clone())
     }
 
     HashMap::from_iter(chains)
@@ -641,6 +667,7 @@ fn near_networks_as_chains(
     firehose_networks: &FirehoseNetworks,
     store: &Store,
     logger_factory: &LoggerFactory,
+    metrics_registry: Arc<MetricsRegistry>,
 ) -> HashMap<String, FirehoseChain<near::Chain>> {
     let chains: Vec<_> = firehose_networks
         .networks
@@ -667,6 +694,8 @@ fn near_networks_as_chains(
                         chain_id.clone(),
                         chain_store,
                         endpoints.clone(),
+                        metrics_registry.clone(),
+                        Arc::new(NearStreamBuilder {}),
                     )),
                     firehose_endpoints: endpoints.clone(),
                 },

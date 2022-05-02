@@ -6,9 +6,8 @@ use graph::{
     util::timed_rw_lock::TimedMutex,
 };
 use lazy_static::lazy_static;
-use stable_hash::crypto::SetHasher;
-use stable_hash::prelude::*;
-use stable_hash::utils::stable_hash;
+use stable_hash::{FieldAddress, StableHash, StableHasher};
+use stable_hash_legacy::SequenceNumber;
 use std::time::Instant;
 use std::{borrow::ToOwned, collections::HashSet};
 
@@ -28,11 +27,11 @@ lazy_static! {
     // Sharded query results cache for recent blocks by network.
     // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
     static ref QUERY_BLOCK_CACHE: Vec<TimedMutex<QueryBlockCache>> = {
-            let shards = ENV_VARS.query_block_cache_shards;
-            let blocks = ENV_VARS.mappings.query_cache_blocks;
+            let shards = ENV_VARS.graphql.query_block_cache_shards;
+            let blocks = ENV_VARS.graphql.query_cache_blocks;
 
             // The memory budget is evenly divided among blocks and their shards.
-            let max_weight = ENV_VARS.mappings. query_cache_max_mem / (blocks * shards as usize);
+            let max_weight = ENV_VARS.graphql.query_cache_max_mem / (blocks * shards as usize);
             let mut caches = Vec::new();
             for i in 0..shards {
                 let id = format!("query_block_cache_{}", i);
@@ -43,7 +42,7 @@ lazy_static! {
     static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new("query_herd_cache");
     static ref QUERY_LFU_CACHE: Vec<TimedMutex<LfuCache<QueryHash, WeightedResult>>> = {
         std::iter::repeat_with(|| TimedMutex::new(LfuCache::new(), "query_lfu_cache"))
-                    .take(ENV_VARS.query_lfu_cache_shards as usize).collect()
+                    .take(ENV_VARS.graphql.query_lfu_cache_shards as usize).collect()
     };
 }
 
@@ -89,16 +88,45 @@ struct HashableQuery<'a> {
 /// different representations. This is considered not an issue. The worst
 /// possible outcome is that the same query will have multiple cache entries.
 /// But, the wrong result should not be served.
-impl StableHash for HashableQuery<'_> {
-    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
-        self.query_schema_id
-            .stable_hash(sequence_number.next_child(), state);
+impl stable_hash_legacy::StableHash for HashableQuery<'_> {
+    fn stable_hash<H: stable_hash_legacy::StableHasher>(
+        &self,
+        mut sequence_number: H::Seq,
+        state: &mut H,
+    ) {
+        stable_hash_legacy::StableHash::stable_hash(
+            &self.query_schema_id,
+            sequence_number.next_child(),
+            state,
+        );
 
         // Not stable! Uses to_string
-        format!("{:?}", self.selection_set).stable_hash(sequence_number.next_child(), state);
+        stable_hash_legacy::StableHash::stable_hash(
+            &format!("{:?}", self.selection_set),
+            sequence_number.next_child(),
+            state,
+        );
 
-        self.block_ptr
-            .stable_hash(sequence_number.next_child(), state);
+        stable_hash_legacy::StableHash::stable_hash(
+            &self.block_ptr,
+            sequence_number.next_child(),
+            state,
+        );
+    }
+}
+
+impl StableHash for HashableQuery<'_> {
+    fn stable_hash<H: StableHasher>(&self, field_address: H::Addr, state: &mut H) {
+        StableHash::stable_hash(&self.query_schema_id, field_address.child(0), state);
+
+        // Not stable! Uses to_string
+        StableHash::stable_hash(
+            &format!("{:?}", self.selection_set),
+            field_address.child(1),
+            state,
+        );
+
+        StableHash::stable_hash(&self.block_ptr, field_address.child(2), state);
     }
 }
 
@@ -115,7 +143,7 @@ fn cache_key(
         selection_set,
         block_ptr,
     };
-    stable_hash::<SetHasher, _>(&query)
+    stable_hash_legacy::utils::stable_hash::<stable_hash_legacy::crypto::SetHasher, _>(&query)
 }
 
 /// Contextual information passed around during query execution.
@@ -238,36 +266,42 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
     // and once for insert.
     let mut key: Option<QueryHash> = None;
 
-    if let CachedSubgraphIds::Only(ref cached_subgraph_ids) = ENV_VARS.cached_subgraph_ids {
-        if R::CACHEABLE && cached_subgraph_ids.contains(ctx.query.schema.id()) {
-            if let (Some(block_ptr), Some(network)) = (block_ptr.as_ref(), &ctx.query.network) {
-                // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two reasons:
-                // - Metadata queries are not cacheable.
-                // - Caching `BLOCK_NUMBER_MAX` would make this cache think all other blocks are old.
-                if block_ptr.number != BLOCK_NUMBER_MAX {
-                    // Calculate the hash outside of the lock
-                    let cache_key = cache_key(&ctx, &selection_set, block_ptr);
-                    let shard = (cache_key[0] as usize) % QUERY_BLOCK_CACHE.len();
+    let should_check_cache = R::CACHEABLE
+        && match ENV_VARS.graphql.cached_subgraph_ids {
+            CachedSubgraphIds::All => true,
+            CachedSubgraphIds::Only(ref subgraph_ids) => {
+                subgraph_ids.contains(ctx.query.schema.id())
+            }
+        };
 
-                    // Check if the response is cached, first in the recent blocks cache,
-                    // and then in the LfuCache for historical queries
-                    // The blocks are used to delimit how long locks need to be held
-                    {
-                        let cache = QUERY_BLOCK_CACHE[shard].lock(&ctx.logger);
-                        if let Some(result) = cache.get(network, block_ptr, &cache_key) {
-                            ctx.cache_status.store(CacheStatus::Hit);
-                            return result;
-                        }
+    if should_check_cache {
+        if let (Some(block_ptr), Some(network)) = (block_ptr.as_ref(), &ctx.query.network) {
+            // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two reasons:
+            // - Metadata queries are not cacheable.
+            // - Caching `BLOCK_NUMBER_MAX` would make this cache think all other blocks are old.
+            if block_ptr.number != BLOCK_NUMBER_MAX {
+                // Calculate the hash outside of the lock
+                let cache_key = cache_key(&ctx, &selection_set, block_ptr);
+                let shard = (cache_key[0] as usize) % QUERY_BLOCK_CACHE.len();
+
+                // Check if the response is cached, first in the recent blocks cache,
+                // and then in the LfuCache for historical queries
+                // The blocks are used to delimit how long locks need to be held
+                {
+                    let cache = QUERY_BLOCK_CACHE[shard].lock(&ctx.logger);
+                    if let Some(result) = cache.get(network, block_ptr, &cache_key) {
+                        ctx.cache_status.store(CacheStatus::Hit);
+                        return result;
                     }
-                    {
-                        let mut cache = QUERY_LFU_CACHE[shard].lock(&ctx.logger);
-                        if let Some(weighted) = cache.get(&cache_key) {
-                            ctx.cache_status.store(CacheStatus::Hit);
-                            return weighted.result.cheap_clone();
-                        }
-                    }
-                    key = Some(cache_key);
                 }
+                {
+                    let mut cache = QUERY_LFU_CACHE[shard].lock(&ctx.logger);
+                    if let Some(weighted) = cache.get(&cache_key) {
+                        ctx.cache_status.store(CacheStatus::Hit);
+                        return weighted.result.cheap_clone();
+                    }
+                }
+                key = Some(cache_key);
             }
         }
     }
@@ -355,9 +389,9 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
         } else {
             // Results that are too old for the QUERY_BLOCK_CACHE go into the QUERY_LFU_CACHE
             let mut cache = QUERY_LFU_CACHE[shard].lock(&ctx.logger);
-            let max_mem = ENV_VARS.mappings.query_cache_max_mem
-                / (ENV_VARS.query_block_cache_shards as usize);
-            cache.evict_with_period(max_mem, ENV_VARS.mappings.query_cache_stale_period);
+            let max_mem = ENV_VARS.graphql.query_cache_max_mem
+                / (ENV_VARS.graphql.query_block_cache_shards as usize);
+            cache.evict_with_period(max_mem, ENV_VARS.graphql.query_cache_stale_period);
             cache.insert(
                 key,
                 WeightedResult {

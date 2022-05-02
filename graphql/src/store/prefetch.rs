@@ -498,7 +498,10 @@ fn execute_root_selection_set(
     execute_selection_set(resolver, ctx, make_root_node(), selection_set)
 }
 
-fn check_result_size(logger: &Logger, size: usize) -> Result<(), QueryExecutionError> {
+fn check_result_size<'a>(
+    ctx: &'a ExecutionContext<impl Resolver>,
+    size: usize,
+) -> Result<(), QueryExecutionError> {
     if size > ENV_VARS.graphql.error_result_size {
         return Err(QueryExecutionError::ResultTooBig(
             size,
@@ -506,7 +509,7 @@ fn check_result_size(logger: &Logger, size: usize) -> Result<(), QueryExecutionE
         ));
     }
     if size > ENV_VARS.graphql.warn_result_size {
-        warn!(logger, "Large query result"; "size" => size);
+        warn!(ctx.logger, "Large query result"; "size" => size, "query_id" => &ctx.query.query_id);
     }
     Ok(())
 }
@@ -583,7 +586,7 @@ fn execute_selection_set<'a>(
                             Join::perform(&mut parents, children, field.response_key());
                             let weight =
                                 parents.iter().map(|parent| parent.weight()).sum::<usize>();
-                            check_result_size(&ctx.logger, weight)?;
+                            check_result_size(ctx, weight)?;
                         }
                         Err(mut e) => errors.append(&mut e),
                     }

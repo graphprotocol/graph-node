@@ -15,12 +15,12 @@ use graph::{
 
 use crate::chain::Chain;
 use crate::codec;
-use crate::trigger::TendermintTrigger;
+use crate::trigger::CosmosTrigger;
 
-pub const TENDERMINT_KIND: &str = "tendermint";
+pub const COSMOS_KIND: &str = "cosmos";
 
-const DYNAMIC_DATA_SOURCE_ERROR: &str = "Tendermint subgraphs do not support dynamic data sources";
-const TEMPLATE_ERROR: &str = "Tendermint subgraphs do not support templates";
+const DYNAMIC_DATA_SOURCE_ERROR: &str = "Cosmos subgraphs do not support dynamic data sources";
+const TEMPLATE_ERROR: &str = "Cosmos subgraphs do not support templates";
 
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
@@ -56,19 +56,19 @@ impl blockchain::DataSource<Chain> for DataSource {
         }
 
         let handler = match trigger {
-            TendermintTrigger::Block(_) => match self.handler_for_block() {
+            CosmosTrigger::Block(_) => match self.handler_for_block() {
                 Some(handler) => handler.handler,
                 None => return Ok(None),
             },
 
-            TendermintTrigger::Event { event_data, origin } => {
+            CosmosTrigger::Event { event_data, origin } => {
                 match self.handler_for_event(event_data.event(), *origin) {
                     Some(handler) => handler.handler,
                     None => return Ok(None),
                 }
             }
 
-            TendermintTrigger::Transaction(_) => match self.handler_for_transaction() {
+            CosmosTrigger::Transaction(_) => match self.handler_for_transaction() {
                 Some(handler) => handler.handler,
                 None => return Ok(None),
             },
@@ -141,10 +141,10 @@ impl blockchain::DataSource<Chain> for DataSource {
     fn validate(&self) -> Vec<Error> {
         let mut errors = Vec::new();
 
-        if self.kind != TENDERMINT_KIND {
+        if self.kind != COSMOS_KIND {
             errors.push(anyhow!(
                 "data source has invalid `kind`, expected {} but found {}",
-                TENDERMINT_KIND,
+                COSMOS_KIND,
                 self.kind
             ))
         }
@@ -508,7 +508,7 @@ mod tests {
     impl DataSource {
         fn with_event_handlers(event_handlers: Vec<MappingEventHandler>) -> DataSource {
             DataSource {
-                kind: "tendermint".to_string(),
+                kind: "cosmos".to_string(),
                 network: None,
                 name: "Test".to_string(),
                 source: Source { start_block: 1 },

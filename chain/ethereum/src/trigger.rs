@@ -47,7 +47,7 @@ pub enum MappingTrigger {
         transaction: Arc<Transaction>,
         log: Arc<Log>,
         params: Vec<LogParam>,
-        receipt: Option<TransactionReceipt>,
+        receipt: Option<Arc<TransactionReceipt>>,
     },
     Call {
         block: Arc<LightEthereumBlock>,
@@ -143,7 +143,7 @@ impl blockchain::MappingTrigger for MappingTrigger {
                         >,
                         _,
                         _,
-                    >(heap, &(ethereum_event_data, receipt), gas)?
+                    >(heap, &(ethereum_event_data, receipt.as_deref()), gas)?
                     .erase()
                 } else if api_version >= API_VERSION_0_0_6 {
                     asc_new::<
@@ -217,7 +217,7 @@ impl blockchain::MappingTrigger for MappingTrigger {
 pub enum EthereumTrigger {
     Block(BlockPtr, EthereumBlockTriggerType),
     Call(Arc<EthereumCall>),
-    Log(Arc<Log>, Option<TransactionReceipt>),
+    Log(Arc<Log>, Option<Arc<TransactionReceipt>>),
 }
 
 impl PartialEq for EthereumTrigger {

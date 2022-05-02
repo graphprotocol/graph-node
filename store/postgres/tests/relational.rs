@@ -1,6 +1,7 @@
 //! Test mapping of GraphQL schema to a relational schema
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
+use graph::data::store::scalar;
 use graph::entity;
 use graph::prelude::BlockNumber;
 use graph::prelude::{
@@ -128,6 +129,26 @@ const THINGS_GQL: &str = r#"
         description: String,
         test: String
     }
+
+    interface BytePet {
+        id: Bytes!,
+        name: String!
+    }
+
+    type ByteCat implements BytePet @entity {
+        id: Bytes!,
+        name: String!
+    }
+
+    type ByteDog implements BytePet @entity {
+        id: Bytes!,
+        name: String!
+    }
+
+    type ByteFerret implements BytePet @entity {
+        id: Bytes!,
+        name: String!
+    }
 "#;
 
 lazy_static! {
@@ -176,6 +197,7 @@ lazy_static! {
     static ref MOCK_STOPWATCH: StopwatchMetrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),
         THINGS_SUBGRAPH_ID.clone(),
+        "test",
         Arc::new(MockMetricsRegistry::new()),
     );
 }
@@ -271,10 +293,6 @@ fn update_entity_at(
     assert_eq!(updated, entities_with_keys_owned.len());
 }
 
-fn update_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entities: Vec<Entity>) {
-    update_entity_at(conn, layout, entity_type, entities, 0);
-}
-
 fn insert_user_entity(
     conn: &PgConnection,
     layout: &Layout,
@@ -287,10 +305,11 @@ fn insert_user_entity(
     coffee: bool,
     favorite_color: Option<&str>,
     drinks: Option<Vec<&str>>,
+    block: BlockNumber,
 ) {
     let user = make_user(id, name, email, age, weight, coffee, favorite_color, drinks);
 
-    insert_entity(conn, layout, entity_type, vec![user]);
+    insert_entity_at(conn, layout, entity_type, vec![user], block);
 }
 
 fn make_user(
@@ -337,6 +356,7 @@ fn insert_users(conn: &PgConnection, layout: &Layout) {
         false,
         Some("yellow"),
         None,
+        0,
     );
     insert_user_entity(
         conn,
@@ -350,6 +370,7 @@ fn insert_users(conn: &PgConnection, layout: &Layout) {
         true,
         Some("red"),
         Some(vec!["beer", "wine"]),
+        0,
     );
     insert_user_entity(
         conn,
@@ -363,6 +384,7 @@ fn insert_users(conn: &PgConnection, layout: &Layout) {
         false,
         None,
         Some(vec!["coffee", "tea"]),
+        0,
     );
 }
 
@@ -378,22 +400,30 @@ fn update_user_entity(
     coffee: bool,
     favorite_color: Option<&str>,
     drinks: Option<Vec<&str>>,
+    block: BlockNumber,
 ) {
     let user = make_user(id, name, email, age, weight, coffee, favorite_color, drinks);
-    update_entity(conn, layout, entity_type, vec![user]);
+    update_entity_at(conn, layout, entity_type, vec![user], block);
 }
 
-fn insert_pet(conn: &PgConnection, layout: &Layout, entity_type: &str, id: &str, name: &str) {
+fn insert_pet(
+    conn: &PgConnection,
+    layout: &Layout,
+    entity_type: &str,
+    id: &str,
+    name: &str,
+    block: BlockNumber,
+) {
     let pet = entity! {
         id: id,
         name: name
     };
-    insert_entity(conn, layout, entity_type, vec![pet]);
+    insert_entity_at(conn, layout, entity_type, vec![pet], block);
 }
 
 fn insert_pets(conn: &PgConnection, layout: &Layout) {
-    insert_pet(conn, layout, "Dog", "pluto", "Pluto");
-    insert_pet(conn, layout, "Cat", "garfield", "Garfield");
+    insert_pet(conn, layout, "Dog", "pluto", "Pluto", 0);
+    insert_pet(conn, layout, "Cat", "garfield", "Garfield", 0);
 }
 
 fn create_schema(conn: &PgConnection) -> Layout {
@@ -823,26 +853,27 @@ async fn layout_cache() {
 
 #[test]
 fn conflicting_entity() {
-    run_test(|conn, layout| {
-        let id = "fred";
-        let cat = EntityType::from("Cat");
-        let dog = EntityType::from("Dog");
-        let ferret = EntityType::from("Ferret");
+    // `id` is the id of an entity to create, `cat`, `dog`, and `ferret` are
+    // the names of the types for which to check entity uniqueness
+    fn check(conn: &PgConnection, layout: &Layout, id: Value, cat: &str, dog: &str, ferret: &str) {
+        let cat = EntityType::from(cat);
+        let dog = EntityType::from(dog);
+        let ferret = EntityType::from(ferret);
 
         let mut fred = Entity::new();
-        fred.set("id", id);
-        fred.set("name", id);
-        insert_entity(&conn, &layout, "Cat", vec![fred]);
+        fred.set("id", id.clone());
+        fred.set("name", Value::String(id.to_string()));
+        insert_entity(&conn, &layout, cat.as_str(), vec![fred]);
 
         // If we wanted to create Fred the dog, which is forbidden, we'd run this:
         let conflict = layout
-            .conflicting_entity(&conn, &id.to_owned(), vec![cat.clone(), ferret.clone()])
+            .conflicting_entity(&conn, &id.to_string(), vec![cat.clone(), ferret.clone()])
             .unwrap();
-        assert_eq!(Some("Cat".to_owned()), conflict);
+        assert_eq!(Some(cat.to_string()), conflict);
 
         // If we wanted to manipulate Fred the cat, which is ok, we'd run:
         let conflict = layout
-            .conflicting_entity(&conn, &id.to_owned(), vec![dog.clone(), ferret.clone()])
+            .conflicting_entity(&conn, &id.to_string(), vec![dog.clone(), ferret.clone()])
             .unwrap();
         assert_eq!(None, conflict);
 
@@ -850,11 +881,19 @@ fn conflicting_entity() {
         let chair = EntityType::from("Chair");
         let result = layout.conflicting_entity(
             &conn,
-            &id.to_owned(),
+            &id.to_string(),
             vec![dog.clone(), ferret.clone(), chair.clone()],
         );
         assert!(result.is_err());
         assert_eq!("unknown table 'Chair'", result.err().unwrap().to_string());
+    }
+
+    run_test(|conn, layout| {
+        let id = Value::String("fred".to_string());
+        check(conn, layout, id, "Cat", "Dog", "Ferret");
+
+        let id = Value::Bytes(scalar::Bytes::from_str("0xf1ed").unwrap());
+        check(conn, layout, id, "ByteCat", "ByteDog", "ByteFerret");
     })
 }
 
@@ -985,6 +1024,7 @@ impl<'a> QueryChecker<'a> {
             false,
             Some("yellow"),
             None,
+            0,
         );
         insert_pets(conn, layout);
 
@@ -1079,6 +1119,45 @@ fn check_fulltext_search_syntax_error() {
             vec!["1"],
             user_query().filter(EntityFilter::Equal("userSearch".into(), "Jono 'a".into())),
         );
+    });
+}
+
+#[test]
+fn check_block_finds() {
+    run_test(move |conn, layout| {
+        let checker = QueryChecker::new(conn, layout);
+
+        update_user_entity(
+            conn,
+            layout,
+            "1",
+            "User",
+            "Johnton",
+            "tonofjohn@email.com",
+            67 as i32,
+            184.4,
+            false,
+            Some("yellow"),
+            None,
+            1,
+        );
+
+        checker
+            // Max block, we should get nothing
+            .check(
+                vec![],
+                user_query().filter(EntityFilter::ChangeBlockGte(BLOCK_NUMBER_MAX)),
+            )
+            // Initial block, we should get here all data
+            .check(
+                vec!["1", "2", "3"],
+                user_query().filter(EntityFilter::ChangeBlockGte(0)),
+            )
+            // Block with an update, we should have one only
+            .check(
+                vec!["1"],
+                user_query().filter(EntityFilter::ChangeBlockGte(1)),
+            );
     });
 }
 
@@ -1598,10 +1677,10 @@ struct FilterChecker<'a> {
 impl<'a> FilterChecker<'a> {
     fn new(conn: &'a PgConnection, layout: &'a Layout) -> Self {
         let (a1, a2, a2b, a3) = ferrets();
-        insert_pet(conn, layout, "Ferret", "a1", &a1);
-        insert_pet(conn, layout, "Ferret", "a2", &a2);
-        insert_pet(conn, layout, "Ferret", "a2b", &a2b);
-        insert_pet(conn, layout, "Ferret", "a3", &a3);
+        insert_pet(conn, layout, "Ferret", "a1", &a1, 0);
+        insert_pet(conn, layout, "Ferret", "a2", &a2, 0);
+        insert_pet(conn, layout, "Ferret", "a2b", &a2b, 0);
+        insert_pet(conn, layout, "Ferret", "a3", &a3, 0);
 
         Self { conn, layout }
     }
@@ -1646,6 +1725,10 @@ fn check_filters() {
 
     fn filter_eq(name: &str) -> EntityFilter {
         EntityFilter::Equal("name".to_owned(), name.into())
+    }
+
+    fn filter_block_gte(block: BlockNumber) -> EntityFilter {
+        EntityFilter::ChangeBlockGte(block)
     }
 
     fn filter_not(name: &str) -> EntityFilter {
@@ -1742,5 +1825,21 @@ fn check_filters() {
             .check(vec!["a1", "a2", "a2b"], filter_not_in(vec![&a3]))
             .check(vec!["a2b", "a3"], filter_not_in(vec![&a1, &a2]))
             .check(vec!["a2", "a2b"], filter_not_in(vec![&a1, &a3]));
+
+        update_entity_at(
+            conn,
+            layout,
+            "Ferret",
+            vec![entity! {
+              id: "a1",
+              name: "Test"
+            }],
+            1,
+        );
+
+        checker
+            .check(vec!["a1", "a2", "a2b", "a3"], filter_block_gte(0))
+            .check(vec!["a1"], filter_block_gte(1))
+            .check(vec![], filter_block_gte(BLOCK_NUMBER_MAX));
     });
 }

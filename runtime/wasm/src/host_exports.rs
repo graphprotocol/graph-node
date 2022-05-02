@@ -445,7 +445,10 @@ impl<C: Blockchain> HostExports<C> {
         exp: u8,
         gas: &GasCounter,
     ) -> Result<BigInt, DeterministicHostError> {
-        gas.consume_host_fn(gas::BIG_MATH_GAS_OP.with_args(complexity::Exponential, (&x, exp)))?;
+        gas.consume_host_fn(
+            gas::BIG_MATH_GAS_OP
+                .with_args(complexity::Exponential, (&x, (exp as f32).log2() as u8)),
+        )?;
         Ok(x.pow(exp))
     }
 

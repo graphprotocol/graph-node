@@ -35,8 +35,8 @@ use super::abi::{AscUnresolvedContractCall, AscUnresolvedContractCall_0_0_4};
 pub const ETHEREUM_CALL: Gas = Gas::new(5_000_000_000);
 
 pub struct RuntimeAdapter {
-    pub(crate) eth_adapters: Arc<EthereumNetworkAdapters>,
-    pub(crate) call_cache: Arc<dyn EthereumCallCache>,
+    pub eth_adapters: Arc<EthereumNetworkAdapters>,
+    pub call_cache: Arc<dyn EthereumCallCache>,
 }
 
 impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {

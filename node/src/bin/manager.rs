@@ -19,8 +19,8 @@ use graph_node::{
     MetricsContext,
 };
 use graph_store_postgres::{
-    connection_pool::ConnectionPool, BlockStore, Shard, Store, SubgraphStore, SubscriptionManager,
-    PRIMARY_SHARD,
+    connection_pool::ConnectionPool, BlockStore, NotificationSender, Shard, Store, SubgraphStore,
+    SubscriptionManager, PRIMARY_SHARD,
 };
 
 use graph_node::config::{self, Config as Cfg};
@@ -514,6 +514,10 @@ impl Context {
         self.node_id.clone()
     }
 
+    fn notification_sender(&self) -> Arc<NotificationSender> {
+        Arc::new(NotificationSender::new(self.registry.clone()))
+    }
+
     fn primary_pool(self) -> ConnectionPool {
         let primary = self.config.primary_store();
         let pool = StoreBuilder::main_pool(
@@ -750,10 +754,12 @@ async fn main() {
         Remove { name } => commands::remove::run(ctx.subgraph_store(), name),
         Create { name } => commands::create::run(ctx.subgraph_store(), name),
         Unassign { deployment } => {
-            commands::assign::unassign(ctx.primary_pool(), &deployment).await
+            let sender = ctx.notification_sender();
+            commands::assign::unassign(ctx.primary_pool(), &sender, &deployment).await
         }
         Reassign { deployment, node } => {
-            commands::assign::reassign(ctx.primary_pool(), &deployment, node)
+            let sender = ctx.notification_sender();
+            commands::assign::reassign(ctx.primary_pool(), &sender, &deployment, node)
         }
         Rewind {
             force,
@@ -828,8 +834,9 @@ async fn main() {
                     node,
                     offset,
                 } => {
+                    let shards: Vec<_> = ctx.config.stores.keys().cloned().collect();
                     let (store, primary) = ctx.store_and_primary();
-                    commands::copy::create(store, primary, src, shard, node, offset).await
+                    commands::copy::create(store, primary, src, shard, shards, node, offset).await
                 }
                 Activate { deployment, shard } => {
                     commands::copy::activate(ctx.subgraph_store(), deployment, shard)

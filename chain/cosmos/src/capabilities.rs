@@ -20,7 +20,7 @@ impl FromStr for NodeCapabilities {
 
 impl fmt::Display for NodeCapabilities {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("tendermint")
+        f.write_str("cosmos")
     }
 }
 

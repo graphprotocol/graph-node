@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
+use graph::prelude::MetricsRegistry;
 use graph::{
     anyhow::anyhow,
     blockchain::{
@@ -11,6 +12,7 @@ use graph::{
         },
         firehose_block_stream::FirehoseBlockStream,
         Block as _, BlockHash, BlockPtr, Blockchain, BlockchainKind, IngestorError,
+        RuntimeAdapter as RuntimeAdapterTrait,
     },
     components::store::DeploymentLocator,
     firehose::{self, FirehoseEndpoint, FirehoseEndpoints, ForkStep},
@@ -22,7 +24,7 @@ use crate::capabilities::NodeCapabilities;
 use crate::data_source::{
     DataSource, DataSourceTemplate, EventOrigin, UnresolvedDataSource, UnresolvedDataSourceTemplate,
 };
-use crate::trigger::TendermintTrigger;
+use crate::trigger::CosmosTrigger;
 use crate::RuntimeAdapter;
 use crate::{codec, TriggerFilter};
 
@@ -31,11 +33,12 @@ pub struct Chain {
     name: String,
     firehose_endpoints: Arc<FirehoseEndpoints>,
     chain_store: Arc<dyn ChainStore>,
+    metrics_registry: Arc<dyn MetricsRegistry>,
 }
 
 impl std::fmt::Debug for Chain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "chain: tendermint")
+        write!(f, "chain: cosmos")
     }
 }
 
@@ -45,21 +48,23 @@ impl Chain {
         name: String,
         chain_store: Arc<dyn ChainStore>,
         firehose_endpoints: FirehoseEndpoints,
+        metrics_registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         Chain {
             logger_factory,
             name,
             firehose_endpoints: Arc::new(firehose_endpoints),
             chain_store,
+            metrics_registry,
         }
     }
 }
 
 #[async_trait]
 impl Blockchain for Chain {
-    const KIND: BlockchainKind = BlockchainKind::Tendermint;
+    const KIND: BlockchainKind = BlockchainKind::Cosmos;
 
-    type Block = codec::EventList;
+    type Block = codec::Block;
 
     type DataSource = DataSource;
 
@@ -69,24 +74,20 @@ impl Blockchain for Chain {
 
     type UnresolvedDataSourceTemplate = UnresolvedDataSourceTemplate;
 
-    type TriggersAdapter = TriggersAdapter;
+    type TriggerData = CosmosTrigger;
 
-    type TriggerData = TendermintTrigger;
-
-    type MappingTrigger = TendermintTrigger;
+    type MappingTrigger = CosmosTrigger;
 
     type TriggerFilter = TriggerFilter;
 
     type NodeCapabilities = NodeCapabilities;
-
-    type RuntimeAdapter = RuntimeAdapter;
 
     fn triggers_adapter(
         &self,
         _loc: &DeploymentLocator,
         _capabilities: &Self::NodeCapabilities,
         _unified_api_version: UnifiedMappingApiVersion,
-    ) -> Result<Arc<Self::TriggersAdapter>, Error> {
+    ) -> Result<Arc<dyn TriggersAdapterTrait<Self>>, Error> {
         let adapter = TriggersAdapter {};
         Ok(Arc::new(adapter))
     }
@@ -119,6 +120,7 @@ impl Blockchain for Chain {
         });
 
         Ok(Box::new(FirehoseBlockStream::new(
+            deployment.hash,
             firehose_endpoint,
             subgraph_current_block,
             block_cursor,
@@ -127,6 +129,7 @@ impl Blockchain for Chain {
             filter,
             start_blocks,
             logger,
+            self.metrics_registry.clone(),
         )))
     }
 
@@ -138,7 +141,7 @@ impl Blockchain for Chain {
         _filter: Arc<Self::TriggerFilter>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        panic!("Tendermint does not support polling block stream")
+        panic!("Cosmos does not support polling block stream")
     }
 
     fn chain_store(&self) -> Arc<dyn ChainStore> {
@@ -156,12 +159,12 @@ impl Blockchain for Chain {
         };
 
         firehose_endpoint
-            .block_ptr_for_number::<codec::EventList>(logger, number)
+            .block_ptr_for_number::<codec::Block>(logger, number)
             .await
             .map_err(Into::into)
     }
 
-    fn runtime_adapter(&self) -> Arc<Self::RuntimeAdapter> {
+    fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
         Arc::new(RuntimeAdapter {})
     }
 
@@ -186,36 +189,40 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     async fn triggers_in_block(
         &self,
         _logger: &Logger,
-        block: codec::EventList,
+        block: codec::Block,
         _filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         let shared_block = Arc::new(block.clone());
 
+        let header_only_block = codec::HeaderOnlyBlock {
+            header: block.header.clone(),
+        };
+
         let mut triggers: Vec<_> = shared_block
             .begin_block_events()
             .cloned()
-            // FIXME (Tendermint): Optimize. Should use an Arc instead of cloning the
+            // FIXME (Cosmos): Optimize. Should use an Arc instead of cloning the
             // block. This is not currently possible because EventData is automatically
             // generated.
             .map(|event| {
-                TendermintTrigger::with_event(event, block.block().clone(), EventOrigin::BeginBlock)
+                CosmosTrigger::with_event(event, header_only_block.clone(), EventOrigin::BeginBlock)
             })
             .chain(shared_block.tx_events().cloned().map(|event| {
-                TendermintTrigger::with_event(event, block.block().clone(), EventOrigin::DeliverTx)
+                CosmosTrigger::with_event(event, header_only_block.clone(), EventOrigin::DeliverTx)
             }))
             .chain(shared_block.end_block_events().cloned().map(|event| {
-                TendermintTrigger::with_event(event, block.block().clone(), EventOrigin::EndBlock)
+                CosmosTrigger::with_event(event, header_only_block.clone(), EventOrigin::EndBlock)
             }))
             .collect();
 
         triggers.extend(
             shared_block
-                .tx_results()
+                .transactions()
                 .cloned()
-                .map(|tx| TendermintTrigger::with_transaction(tx, block.block().clone())),
+                .map(|tx| CosmosTrigger::with_transaction(tx, header_only_block.clone())),
         );
 
-        triggers.push(TendermintTrigger::Block(shared_block.cheap_clone()));
+        triggers.push(CosmosTrigger::Block(shared_block.cheap_clone()));
 
         Ok(BlockWithTriggers::new(block, triggers))
     }
@@ -228,7 +235,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         _ptr: BlockPtr,
         _offset: BlockNumber,
-    ) -> Result<Option<codec::EventList>, Error> {
+    ) -> Result<Option<codec::Block>, Error> {
         panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
@@ -252,7 +259,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         &self,
         logger: &Logger,
         response: &firehose::Response,
-        adapter: &TriggersAdapter,
+        adapter: &Arc<dyn TriggersAdapterTrait<Chain>>,
         filter: &TriggerFilter,
     ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
         let step = ForkStep::from_i32(response.step).unwrap_or_else(|| {
@@ -274,7 +281,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         //
         // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
         // define a slimmed down struct that would decode only a few fields and ignore all the rest.
-        let sp = codec::EventList::decode(any_block.value.as_ref())?;
+        let sp = codec::Block::decode(any_block.value.as_ref())?;
 
         match step {
             ForkStep::StepNew => Ok(BlockStreamEvent::ProcessBlock(
@@ -309,18 +316,18 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         number: BlockNumber,
     ) -> Result<BlockPtr, Error> {
         self.endpoint
-            .block_ptr_for_number::<codec::EventList>(logger, number)
+            .block_ptr_for_number::<codec::Block>(logger, number)
             .await
     }
 
     async fn final_block_ptr_for(
         &self,
         logger: &Logger,
-        block: &codec::EventList,
+        block: &codec::Block,
     ) -> Result<BlockPtr, Error> {
-        // Tendermint provides instant block finality.
+        // Cosmos provides instant block finality.
         self.endpoint
-            .block_ptr_for_number::<codec::EventList>(logger, block.number())
+            .block_ptr_for_number::<codec::Block>(logger, block.number())
             .await
     }
 }

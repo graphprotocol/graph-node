@@ -1,6 +1,6 @@
 [package]
-name = "graph-chain-tendermint"
-version = "0.25.2"
+name = "graph-chain-cosmos"
+version = "0.26.0"
 edition = "2018"
 
 [build-dependencies]

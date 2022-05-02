@@ -139,12 +139,23 @@ macro_rules! impl_asc_type {
 
 impl_asc_type!(u8, u16, u32, u64, i8, i32, i64, f32, f64);
 
-// The numbers on each variant could just be comments hence the
-// `#[repr(u32)]`, however having them in code enforces each value
-// to be the same as the docs.
+/// Contains type IDs and their discriminants for every blockchain supported by Graph-Node.
+///
+/// Each variant corresponds to the unique ID of an AssemblyScript concrete class used in the
+/// [`runtime`].
+///
+/// # Rules for updating this enum
+///
+/// 1 .The discriminants must have the same value as their counterparts in `TypeId` enum from
+///    graph-ts' `global` module. If not, the runtime will fail to determine the correct class
+///    during allocation.
+/// 2. Each supported blockchain has a reserved space of 1,000 contiguous variants.
+/// 3. Once defined, items and their discriminants cannot be changed, as this would break running
+///    subgraphs compiled in previous versions of this representation.
 #[repr(u32)]
 #[derive(Copy, Clone, Debug)]
 pub enum IndexForAscTypeId {
+    // Ethereum type IDs
     String = 0,
     ArrayBuffer = 1,
     Int8Array = 2,
@@ -199,15 +210,6 @@ pub enum IndexForAscTypeId {
     ArrayBigDecimal = 51,
 
     // Near Type IDs
-    //
-    // Generated with the following shell script:
-    //
-    // ```
-    // cat chain/near/src/runtime/generated.rs | grep IndexForAscTypeId::Near | grep -Eo "Near[a-zA-Z0-9]+" | awk '{for(x=1;x<=NF;x++)sub(/$/,"="++i+51",")}1' | sed 's/=/ = /'
-    // ```
-    //
-    // The `51` literal at the end in the `awk` should be replaced with the last element
-    // value in the list above.
     NearArrayDataReceiver = 52,
     NearArrayCryptoHash = 53,
     NearArrayActionEnum = 54,
@@ -243,73 +245,109 @@ pub enum IndexForAscTypeId {
     NearChunkHeader = 84,
     NearBlock = 85,
     NearReceiptWithOutcome = 86,
+    // Reserved discriminant space for more Near type IDs: [87, 999]:
+    // Continue to add more Near type IDs here.
+    // e.g.:
+    // NextNearType = 87,
+    // AnotherNearType = 88,
+    // ...
+    // LastNearType = 999,
 
-    // Tendermint Type IDs
+    // Reserved discriminant space for more Ethereum type IDs: [1000, 1499]
+    TransactionReceipt = 1000,
+    Log = 1001,
+    ArrayH256 = 1002,
+    ArrayLog = 1003,
+    // Continue to add more Ethereum type IDs here.
+    // e.g.:
+    // NextEthereumType = 1004,
+    // AnotherEthereumType = 1005,
+    // ...
+    // LastEthereumType = 1499,
+
+    // Reserved discriminant space for Cosmos type IDs: [1,500, 2,499]
+    CosmosAny = 1500,
+    CosmosArrayAny = 1501,
+    CosmosArrayBytes = 1502,
+    CosmosArrayCoin = 1503,
+    CosmosArrayCommitSig = 1504,
+    CosmosArrayEvent = 1505,
+    CosmosArrayEventAttribute = 1506,
+    CosmosArrayEvidence = 1507,
+    CosmosArrayModeInfo = 1508,
+    CosmosArraySignerInfo = 1509,
+    CosmosArrayTxResult = 1510,
+    CosmosArrayValidator = 1511,
+    CosmosArrayValidatorUpdate = 1512,
+    CosmosAuthInfo = 1513,
+    CosmosBlock = 1514,
+    CosmosBlockID = 1515,
+    CosmosBlockIDFlagEnum = 1516,
+    CosmosBlockParams = 1517,
+    CosmosCoin = 1518,
+    CosmosCommit = 1519,
+    CosmosCommitSig = 1520,
+    CosmosCompactBitArray = 1521,
+    CosmosConsensus = 1522,
+    CosmosConsensusParams = 1523,
+    CosmosDuplicateVoteEvidence = 1524,
+    CosmosDuration = 1525,
+    CosmosEvent = 1526,
+    CosmosEventAttribute = 1527,
+    CosmosEventData = 1528,
+    CosmosEventVote = 1529,
+    CosmosEvidence = 1530,
+    CosmosEvidenceList = 1531,
+    CosmosEvidenceParams = 1532,
+    CosmosFee = 1533,
+    CosmosHeader = 1534,
+    CosmosHeaderOnlyBlock = 1535,
+    CosmosLightBlock = 1536,
+    CosmosLightClientAttackEvidence = 1537,
+    CosmosModeInfo = 1538,
+    CosmosModeInfoMulti = 1539,
+    CosmosModeInfoSingle = 1540,
+    CosmosPartSetHeader = 1541,
+    CosmosPublicKey = 1542,
+    CosmosResponseBeginBlock = 1543,
+    CosmosResponseDeliverTx = 1544,
+    CosmosResponseEndBlock = 1545,
+    CosmosSignModeEnum = 1546,
+    CosmosSignedHeader = 1547,
+    CosmosSignedMsgTypeEnum = 1548,
+    CosmosSignerInfo = 1549,
+    CosmosTimestamp = 1550,
+    CosmosTip = 1551,
+    CosmosTransactionData = 1552,
+    CosmosTx = 1553,
+    CosmosTxBody = 1554,
+    CosmosTxResult = 1555,
+    CosmosValidator = 1556,
+    CosmosValidatorParams = 1557,
+    CosmosValidatorSet = 1558,
+    CosmosValidatorSetUpdates = 1559,
+    CosmosValidatorUpdate = 1560,
+    CosmosVersionParams = 1561,
+    // Continue to add more Cosmos type IDs here.
+    // e.g.:
+    // NextCosmosType = 1562,
+    // AnotherCosmosType = 1563,
+    // ...
+    // LastCosmosType = 2499,
+
+    // Reserved discriminant space for a future blockchain type IDs: [2,500, 3,499]
     //
     // Generated with the following shell script:
     //
     // ```
-    // cat chain/tendermint/src/runtime/generated.rs | grep IndexForAscTypeId::Tendermint | grep -Eo "Tendermint[a-zA-Z0-9]+" | awk '{for(x=1;x<=NF;x++)sub(/$/,"="++i+86",")}1' | sed 's/=/ = /'
+    // grep -Po "(?<=IndexForAscTypeId::)IDENDIFIER_PREFIX.*\b" SRC_FILE | sort |uniq | awk 'BEGIN{count=2500} {sub("$", " = "count",", $1); count++} 1'
     // ```
     //
-    // The `86` literal at the end in the `awk` should be replaced with the last element
-    // value in the list above.
-    TendermintArrayEventTx = 87,
-    TendermintArrayEvent = 88,
-    TendermintArrayCommitSig = 89,
-    TendermintArrayBytes = 90,
-    TendermintArrayEvidence = 91,
-    TendermintArrayEventAttribute = 92,
-    TendermintBlockIDFlagEnum = 93,
-    TendermintSignedMsgTypeEnum = 94,
-    TendermintEventList = 95,
-    TendermintEventBlock = 96,
-    TendermintResponseBeginBlock = 97,
-    TendermintResponseEndBlock = 98,
-    TendermintValidatorUpdate = 99,
-    TendermintArrayValidatorUpdate = 100,
-    TendermintConsensusParams = 101,
-    TendermintBlockParams = 102,
-    TendermintEvidenceParams = 103,
-    TendermintValidatorParams = 104,
-    TendermintVersionParams = 105,
-    TendermintBlock = 106,
-    TendermintCommit = 107,
-    TendermintCommitSig = 108,
-    TendermintHeader = 109,
-    TendermintConsensus = 110,
-    TendermintBlockID = 111,
-    TendermintPartSetHeader = 112,
-    TendermintData = 113,
-    TendermintEvidence = 114,
-    TendermintDuplicateVoteEvidence = 115,
-    TendermintEventTx = 116,
-    TendermintEventVote = 117,
-    TendermintLightClientAttackEvidence = 118,
-    TendermintLightBlock = 119,
-    TendermintValidatorSet = 120,
-    TendermintSignedHeader = 121,
-    TendermintEvidenceList = 122,
-    TendermintValidator = 123,
-    TendermintArrayValidator = 124,
-    TendermintPublicKey = 125,
-    TendermintTxResult = 126,
-    TendermintResponseDeliverTx = 127,
-    TendermintEvent = 128,
-    TendermintEventAttribute = 129,
-    TendermintEventValidatorSetUpdates = 130,
-    TendermintDuration = 131,
-    TendermintTimestamp = 132,
-    TendermintEventData = 133,
-
-    // More Ethereum tyes
-    TransactionReceipt = 134,
-    Log = 135,
-    ArrayH256 = 136,
-    ArrayLog = 137,
-
-    //Tendermint transaction data type
-    TendermintTransactionData = 138,
+    // INSTRUCTIONS:
+    // 1. Replace the IDENTIFIER_PREFIX and the SRC_FILE placeholders according to the blockchain
+    //    name and implementation before running this script.
+    // 2. Replace `2500` part with the first number of that blockchain's reserved discriminant space.
+    // 3. Insert the output right before the end of this block.
 }
 
 impl ToAscObj<u32> for IndexForAscTypeId {

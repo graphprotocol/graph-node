@@ -180,6 +180,7 @@ indexing across [multiple databases](./docs/config.md).
 | Query entity collections | ✅ |
 | Pagination | ✅ |
 | Filtering | ✅ |
+| Block-based Filtering | ✅ |
 | Entity relationships | ✅ |
 | Subscriptions | ✅ |
 
