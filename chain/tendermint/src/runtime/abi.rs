@@ -20,10 +20,22 @@ impl ToAscObj<AscBlock> for codec::Block {
     ) -> Result<AscBlock, DeterministicHostError> {
         Ok(AscBlock {
             header: asc_new_or_missing(heap, &self.header, gas, "Block", "header")?,
-            evidence: asc_new_or_missing(heap, &self.evidence, gas, "Block", "evidence")?,
+            evidence: asc_new_or_null(heap, &self.evidence, gas)?,
             last_commit: asc_new_or_null(heap, &self.last_commit, gas)?,
-            result_begin_block: asc_new_or_null(heap, &self.result_begin_block, gas)?,
-            result_end_block: asc_new_or_null(heap, &self.result_end_block, gas)?,
+            result_begin_block: asc_new_or_missing(
+                heap,
+                &self.result_begin_block,
+                gas,
+                "Block",
+                "result_begin_block",
+            )?,
+            result_end_block: asc_new_or_missing(
+                heap,
+                &self.result_end_block,
+                gas,
+                "Block",
+                "result_end_block",
+            )?,
             transactions: asc_new(heap, &self.transactions, gas)?,
             validator_updates: asc_new(heap, &self.validator_updates, gas)?,
         })
@@ -37,7 +49,7 @@ impl ToAscObj<AscHeaderOnlyBlock> for codec::HeaderOnlyBlock {
         gas: &GasCounter,
     ) -> Result<AscHeaderOnlyBlock, DeterministicHostError> {
         Ok(AscHeaderOnlyBlock {
-            header: asc_new_or_missing(heap, &self.header, gas, "Block", "header")?,
+            header: asc_new_or_missing(heap, &self.header, gas, "HeaderOnlyBlock", "header")?,
         })
     }
 }
@@ -49,8 +61,8 @@ impl ToAscObj<AscEventData> for codec::EventData {
         gas: &GasCounter,
     ) -> Result<AscEventData, DeterministicHostError> {
         Ok(AscEventData {
-            event: asc_new_or_null(heap, &self.event, gas)?,
-            block: asc_new_or_null(heap, &self.block, gas)?,
+            event: asc_new_or_missing(heap, &self.event, gas, "EventData", "event")?,
+            block: asc_new_or_missing(heap, &self.block, gas, "EventData", "block")?,
         })
     }
 }
@@ -62,8 +74,8 @@ impl ToAscObj<AscTransactionData> for codec::TransactionData {
         gas: &GasCounter,
     ) -> Result<AscTransactionData, DeterministicHostError> {
         Ok(AscTransactionData {
-            tx: asc_new_or_null(heap, &self.tx, gas)?,
-            block: asc_new_or_null(heap, &self.block, gas)?,
+            tx: asc_new_or_missing(heap, &self.tx, gas, "TransactionData", "tx")?,
+            block: asc_new_or_missing(heap, &self.block, gas, "TransactionData", "block")?,
         })
     }
 }
@@ -75,10 +87,10 @@ impl ToAscObj<AscHeader> for codec::Header {
         gas: &GasCounter,
     ) -> Result<AscHeader, DeterministicHostError> {
         Ok(AscHeader {
-            version: asc_new_or_missing(heap, &self.version, gas, "Header", "version")?,
+            version: asc_new_or_null(heap, &self.version, gas)?,
             chain_id: asc_new(heap, &self.chain_id, gas)?,
             height: self.height,
-            time: asc_new_or_missing(heap, &self.time, gas, "Header", "time")?,
+            time: asc_new_or_null(heap, &self.time, gas)?,
             last_block_id: asc_new_or_missing(
                 heap,
                 &self.last_block_id,
@@ -135,13 +147,7 @@ impl ToAscObj<AscBlockID> for codec::BlockId {
     ) -> Result<AscBlockID, DeterministicHostError> {
         Ok(AscBlockID {
             hash: asc_new(heap, &Bytes(&self.hash), gas)?,
-            part_set_header: asc_new_or_missing(
-                heap,
-                &self.part_set_header,
-                gas,
-                "BlockId",
-                "part_set_header",
-            )?,
+            part_set_header: asc_new_or_null(heap, &self.part_set_header, gas)?,
         })
     }
 }
@@ -219,13 +225,7 @@ impl ToAscObj<AscDuplicateVoteEvidence> for codec::DuplicateVoteEvidence {
             vote_b: asc_new_or_null(heap, &self.vote_b, gas)?,
             total_voting_power: self.total_voting_power,
             validator_power: self.total_voting_power,
-            timestamp: asc_new_or_missing(
-                heap,
-                &self.timestamp,
-                gas,
-                "DuplicateVoteEvidence",
-                "timestamp",
-            )?,
+            timestamp: asc_new_or_null(heap, &self.timestamp, gas)?,
         })
     }
 }
@@ -251,8 +251,8 @@ impl ToAscObj<AscEventVote> for codec::EventVote {
             },
             height: self.height,
             round: self.round,
-            block_id: asc_new_or_missing(heap, &self.block_id, gas, "EventVote", "block_id")?,
-            timestamp: asc_new_or_missing(heap, &self.timestamp, gas, "EventVote", "timestamp")?,
+            block_id: asc_new_or_null(heap, &self.block_id, gas)?,
+            timestamp: asc_new_or_null(heap, &self.timestamp, gas)?,
             validator_address: asc_new(heap, &Bytes(&self.validator_address), gas)?,
             validator_index: self.validator_index,
             signature: asc_new(heap, &Bytes(&self.signature), gas)?,
@@ -271,13 +271,7 @@ impl ToAscObj<AscLightClientAttackEvidence> for codec::LightClientAttackEvidence
             common_height: self.common_height,
             byzantine_validators: asc_new(heap, &self.byzantine_validators, gas)?,
             total_voting_power: self.total_voting_power,
-            timestamp: asc_new_or_missing(
-                heap,
-                &self.timestamp,
-                gas,
-                "LightClientAttackEvidence",
-                "timestamp",
-            )?,
+            timestamp: asc_new_or_null(heap, &self.timestamp, gas)?,
         })
     }
 }
@@ -289,20 +283,8 @@ impl ToAscObj<AscLightBlock> for codec::LightBlock {
         gas: &GasCounter,
     ) -> Result<AscLightBlock, DeterministicHostError> {
         Ok(AscLightBlock {
-            signed_header: asc_new_or_missing(
-                heap,
-                &self.signed_header,
-                gas,
-                "LightBlock",
-                "signed_header",
-            )?,
-            validator_set: asc_new_or_missing(
-                heap,
-                &self.validator_set,
-                gas,
-                "LightBlock",
-                "validator_set",
-            )?,
+            signed_header: asc_new_or_null(heap, &self.signed_header, gas)?,
+            validator_set: asc_new_or_null(heap, &self.validator_set, gas)?,
         })
     }
 }
@@ -329,7 +311,7 @@ impl ToAscObj<AscCommit> for codec::Commit {
         Ok(AscCommit {
             height: self.height,
             round: self.round,
-            block_id: asc_new_or_missing(heap, &self.block_id, gas, "Commit", "block_id")?,
+            block_id: asc_new_or_null(heap, &self.block_id, gas)?,
             signatures: asc_new(heap, &self.signatures, gas)?,
             _padding: 0,
         })
@@ -356,7 +338,7 @@ impl ToAscObj<AscCommitSig> for codec::CommitSig {
                 }
             },
             validator_address: asc_new(heap, &Bytes(&self.validator_address), gas)?,
-            timestamp: asc_new_or_missing(heap, &self.timestamp, gas, "CommitSig", "timestamp")?,
+            timestamp: asc_new_or_null(heap, &self.timestamp, gas)?,
             signature: asc_new(heap, &Bytes(&self.signature), gas)?,
         })
     }
@@ -382,7 +364,7 @@ impl ToAscObj<AscValidatorSet> for codec::ValidatorSet {
     ) -> Result<AscValidatorSet, DeterministicHostError> {
         Ok(AscValidatorSet {
             validators: asc_new(heap, &self.validators, gas)?,
-            proposer: asc_new_or_missing(heap, &self.proposer, gas, "ValidatorSet", "proposer")?,
+            proposer: asc_new_or_null(heap, &self.proposer, gas)?,
             total_voting_power: self.total_voting_power,
         })
     }
@@ -396,7 +378,7 @@ impl ToAscObj<AscValidator> for codec::Validator {
     ) -> Result<AscValidator, DeterministicHostError> {
         Ok(AscValidator {
             address: asc_new(heap, &Bytes(&self.address), gas)?,
-            pub_key: asc_new_or_missing(heap, &self.pub_key, gas, "Validator", "pub_key")?,
+            pub_key: asc_new_or_null(heap, &self.pub_key, gas)?,
             voting_power: self.voting_power,
             proposer_priority: self.proposer_priority,
         })
@@ -524,7 +506,7 @@ impl ToAscObj<AscValidatorUpdate> for codec::ValidatorUpdate {
     ) -> Result<AscValidatorUpdate, DeterministicHostError> {
         Ok(AscValidatorUpdate {
             address: asc_new(heap, &Bytes(&self.address), gas)?,
-            pub_key: asc_new_or_missing(heap, &self.pub_key, gas, "ValidatorUpdate", "pub_key")?,
+            pub_key: asc_new_or_null(heap, &self.pub_key, gas)?,
             power: self.power,
         })
     }
@@ -578,13 +560,7 @@ impl ToAscObj<AscEvidenceParams> for codec::EvidenceParams {
     ) -> Result<AscEvidenceParams, DeterministicHostError> {
         Ok(AscEvidenceParams {
             max_age_num_blocks: self.max_age_num_blocks,
-            max_age_duration: asc_new_or_missing(
-                heap,
-                &self.max_age_duration,
-                gas,
-                "EvidenceParams",
-                "timestamp",
-            )?,
+            max_age_duration: asc_new_or_null(heap, &self.max_age_duration, gas)?,
             max_bytes: self.max_bytes,
         })
     }
@@ -637,8 +613,8 @@ impl ToAscObj<AscTxResult> for codec::TxResult {
         Ok(AscTxResult {
             height: self.height,
             index: self.index,
-            tx: asc_new_or_null(heap, &self.tx, gas)?,
-            result: asc_new_or_null(heap, &self.result, gas)?,
+            tx: asc_new_or_missing(heap, &self.tx, gas, "TxResult", "tx")?,
+            result: asc_new_or_missing(heap, &self.result, gas, "TxResult", "result")?,
             hash: asc_new(heap, &Bytes(&self.hash), gas)?,
         })
     }
@@ -663,7 +639,7 @@ impl ToAscObj<AscTx> for codec::Tx {
         gas: &GasCounter,
     ) -> Result<AscTx, DeterministicHostError> {
         Ok(AscTx {
-            body: asc_new_or_null(heap, &self.body, gas)?,
+            body: asc_new_or_missing(heap, &self.body, gas, "Tx", "body")?,
             auth_info: asc_new_or_null(heap, &self.auth_info, gas)?,
             signatures: asc_new(heap, &self.signatures, gas)?,
         })
