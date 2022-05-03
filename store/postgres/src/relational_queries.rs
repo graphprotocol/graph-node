@@ -223,7 +223,7 @@ impl ForeignKeyClauses for Column {
     }
 }
 
-pub trait FromEntityData {
+pub trait FromEntityData: std::fmt::Debug {
     type Value: FromColumnValue;
 
     fn new_entity(typename: String) -> Self;
@@ -259,7 +259,7 @@ impl FromEntityData for BTreeMap<Word, r::Value> {
     }
 }
 
-pub trait FromColumnValue: Sized {
+pub trait FromColumnValue: Sized + std::fmt::Debug {
     fn is_null(&self) -> bool;
 
     fn null() -> Self;
@@ -369,11 +369,39 @@ impl FromColumnValue for r::Value {
     }
 
     fn from_bytes(b: &str) -> Result<Self, StoreError> {
-        Ok(r::Value::String(format!("0x{}", b)))
+        // In some cases, we pass strings as parent_id's through the
+        // database; those are already prefixed with '0x' and we need to
+        // avoid double-prefixing
+        if b.starts_with("0x") {
+            Ok(r::Value::String(b.to_string()))
+        } else {
+            Ok(r::Value::String(format!("0x{}", b)))
+        }
     }
 
     fn from_vec(v: Vec<Self>) -> Self {
         r::Value::List(v)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use graph::prelude::{r, serde_json as json};
+
+    use crate::{relational::ColumnType, relational_queries::FromColumnValue};
+
+    #[test]
+    fn gql_value_from_bytes() {
+        const EXP: &str = "0xdeadbeef";
+
+        let exp = r::Value::String(EXP.to_string());
+        for s in ["deadbeef", "\\xdeadbeef", "0xdeadbeef"] {
+            let act =
+                r::Value::from_column_value(&ColumnType::Bytes, json::Value::String(s.to_string()))
+                    .unwrap();
+
+            assert_eq!(exp, act);
+        }
     }
 }
 
