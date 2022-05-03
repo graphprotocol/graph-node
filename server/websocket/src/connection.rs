@@ -1,4 +1,3 @@
-use futures::future::IntoFuture;
 use futures::sync::mpsc;
 use futures03::stream::SplitStream;
 use graphql_parser::parse_query;

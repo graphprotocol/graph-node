@@ -4,7 +4,6 @@ version = "0.26.0"
 edition = "2021"
 
 [dependencies]
-futures = "0.1.21"
 graph = { path = "../../graph" }
 http = "0.2"
 hyper = { version = "0.14", features = ["server"] }
