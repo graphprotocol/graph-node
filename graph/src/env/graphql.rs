@@ -31,7 +31,7 @@ pub struct EnvVarsGraphQl {
     pub query_block_cache_shards: u8,
     /// Set by the environment variable `GRAPH_QUERY_LFU_CACHE_SHARDS`. The
     /// default value is set to whatever `GRAPH_QUERY_BLOCK_CACHE_SHARDS` is set
-    /// to.
+    /// to. Set to 0 to disable this cache.
     pub query_lfu_cache_shards: u8,
     /// How many blocks per network should be kept in the query cache. When the
     /// limit is reached, older blocks are evicted. This should be kept small
