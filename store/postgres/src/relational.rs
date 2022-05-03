@@ -864,15 +864,7 @@ impl Layout {
         site: Arc<Site>,
     ) -> Result<Arc<Self>, StoreError> {
         let account_like = crate::catalog::account_like(conn, &self.site)?;
-        let is_account_like = {
-            |table: &Table| {
-                ENV_VARS
-                    .store
-                    .account_tables
-                    .contains(table.qualified_name.as_str())
-                    || account_like.contains(table.name.as_str())
-            }
-        };
+        let is_account_like = { |table: &Table| account_like.contains(table.name.as_str()) };
 
         let changed_tables: Vec<_> = self
             .tables
@@ -1215,18 +1207,16 @@ impl Table {
             .chain(fulltexts.iter().map(Column::new_fulltext))
             .collect::<Result<Vec<Column>, StoreError>>()?;
         let qualified_name = SqlName::qualified_name(&catalog.site.namespace, &table_name);
-        let is_account_like = ENV_VARS
-            .store
-            .account_tables
-            .contains(qualified_name.as_str());
-
         let immutable = defn.is_immutable();
 
         let table = Table {
             object: EntityType::from(defn),
             name: table_name,
             qualified_name,
-            is_account_like,
+            // Default `is_account_like` to `false`; the caller should call
+            // `refresh` after constructing the layout, but that requires a
+            // db connection, which we don't have at this point.
+            is_account_like: false,
             columns,
             position,
             immutable,
