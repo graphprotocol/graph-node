@@ -17,7 +17,6 @@ use tonic::{
     Request,
 };
 
-
 use super::codec as firehose;
 
 #[derive(Clone, Debug)]

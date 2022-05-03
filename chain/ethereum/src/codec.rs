@@ -1,3 +1,4 @@
+#[rustfmt::skip]
 #[path = "protobuf/sf.ethereum.codec.v1.rs"]
 mod pbcodec;
 
