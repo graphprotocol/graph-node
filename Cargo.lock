@@ -1663,7 +1663,6 @@ dependencies = [
 name = "graph-server-metrics"
 version = "0.26.0"
 dependencies = [
- "futures 0.1.31",
  "graph",
  "http",
  "hyper",
