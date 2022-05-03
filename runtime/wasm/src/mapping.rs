@@ -154,7 +154,7 @@ impl ValidModule {
         // e3f03e62-40e4-4f8c-b4a1-d0375cca0b76. We do this by round-tripping the module through
         // parity - injecting gas then serializing again.
         let parity_module = parity_wasm::elements::Module::from_bytes(raw_module)?;
-        let parity_module = pwasm_utils::inject_gas_counter(parity_module, &GasRules, "gas")
+        let parity_module = wasm_instrument::gas_metering::inject(parity_module, &GasRules, "gas")
             .map_err(|_| anyhow!("Failed to inject gas counter"))?;
         let raw_module = parity_module.to_bytes()?;
 
