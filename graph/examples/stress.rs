@@ -4,7 +4,7 @@ use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 
 use graph::data::value::{Object, Word};
-use graph::prelude::{lazy_static, q, r, QueryResult};
+use graph::prelude::{lazy_static, q, r, BigDecimal, BigInt, QueryResult};
 use rand::SeedableRng;
 use rand::{rngs::SmallRng, Rng};
 use structopt::StructOpt;
@@ -230,6 +230,53 @@ impl Template for Vec<usize> {
     }
     fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self> {
         Box::new(self[0..size].into())
+    }
+}
+
+impl Template for BigInt {
+    fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
+        let f = match rng {
+            Some(rng) => {
+                let mag = rng.gen_range(1..100);
+                if rng.gen_bool(0.5) {
+                    mag
+                } else {
+                    -mag
+                }
+            }
+            None => 1,
+        };
+        BigInt::from(3u64).pow(size as u8) * BigInt::from(f)
+    }
+
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self> {
+        Box::new(Self::create(size, rng))
+    }
+}
+
+impl Template for BigDecimal {
+    fn create(size: usize, mut rng: Option<&mut SmallRng>) -> Self {
+        let f = match rng.as_deref_mut() {
+            Some(rng) => {
+                let mag = rng.gen_range(1i32..100);
+                if rng.gen_bool(0.5) {
+                    mag
+                } else {
+                    -mag
+                }
+            }
+            None => 1,
+        };
+        let exp = match rng {
+            Some(rng) => rng.gen_range(-100..=100),
+            None => 1,
+        };
+        let bi = BigInt::from(3u64).pow(size as u8) * BigInt::from(f);
+        BigDecimal::new(bi, exp)
+    }
+
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self> {
+        Box::new(Self::create(size, rng))
     }
 }
 
@@ -615,6 +662,8 @@ pub fn main() {
     // Use different Cacheables to see how the cache manages memory with
     // different types of cache entries.
     match opt.template.as_str() {
+        "bigdecimal" => stress::<BigDecimal>(&opt),
+        "bigint" => stress::<BigInt>(&opt),
         "hashmap" => stress::<HashMap<String, String>>(&opt),
         "object" => stress::<Object>(&opt),
         "result" => stress::<QueryResult>(&opt),
