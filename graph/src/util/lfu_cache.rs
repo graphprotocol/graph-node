@@ -43,9 +43,12 @@ impl<K, V: Default + CacheWeight> CacheEntry<K, V> {
 }
 
 impl<K: CacheWeight, V: Default + CacheWeight> CacheEntry<K, V> {
-    /// Estimate the size of a `CacheEntry` with the given key and value
+    /// Estimate the size of a `CacheEntry` with the given key and value. Do
+    /// not count the size of `Self` since that is memory that is not freed
+    /// when the cache entry is dropped as its storage is embedded in the
+    /// `PriorityQueue`
     fn weight(key: &K, value: &V) -> usize {
-        value.indirect_weight() + key.indirect_weight() + std::mem::size_of::<Self>()
+        value.indirect_weight() + key.indirect_weight()
     }
 }
 
