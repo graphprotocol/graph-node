@@ -11,7 +11,6 @@ use graph::{
     },
     semver,
 };
-use std::collections::BTreeMap;
 use std::{convert::TryFrom, sync::Arc};
 
 use crate::chain::Chain;
@@ -128,7 +127,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn from_stored_dynamic_data_source(
-        _templates: &BTreeMap<&str, &DataSourceTemplate>,
+        _template: &DataSourceTemplate,
         _stored: StoredDynamicDataSource,
     ) -> Result<Self, Error> {
         // FIXME (NEAR): Implement me correctly

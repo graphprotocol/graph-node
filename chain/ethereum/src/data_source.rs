@@ -8,7 +8,6 @@ use graph::prelude::futures03::future::try_join;
 use graph::prelude::futures03::stream::FuturesOrdered;
 use graph::prelude::{Entity, Link, SubgraphManifestValidationError};
 use graph::slog::{o, trace};
-use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::{convert::TryFrom, sync::Arc};
 use tiny_keccak::{keccak256, Keccak};
@@ -130,7 +129,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn from_stored_dynamic_data_source(
-        templates: &BTreeMap<&str, &DataSourceTemplate>,
+        template: &DataSourceTemplate,
         stored: StoredDynamicDataSource,
     ) -> Result<Self, Error> {
         let StoredDynamicDataSource {
@@ -139,9 +138,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             context,
             creation_block,
         } = stored;
-        let template = templates
-            .get(name.as_str())
-            .ok_or_else(|| anyhow!("no template named `{}` was found", name))?;
+
         let context = context
             .map(|ctx| serde_json::from_str::<Entity>(&ctx))
             .transpose()?;
