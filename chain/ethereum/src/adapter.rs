@@ -282,7 +282,7 @@ impl EthereumLogFilter {
         for ds in iter {
             for event_handler in ds.mapping.event_handlers.iter() {
                 let event_sig = event_handler.topic0();
-                match ds.source.address {
+                match ds.address {
                     Some(contract) => {
                         this.contracts_and_events_graph.add_edge(
                             LogFilterNode::Contract(contract),
@@ -508,9 +508,9 @@ impl EthereumCallFilter {
 
     pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
         iter.into_iter()
-            .filter_map(|data_source| data_source.source.address.map(|addr| (addr, data_source)))
+            .filter_map(|data_source| data_source.address.map(|addr| (addr, data_source)))
             .map(|(contract_addr, data_source)| {
-                let start_block = data_source.source.start_block;
+                let start_block = data_source.start_block;
                 data_source
                     .mapping
                     .call_handlers
@@ -645,7 +645,7 @@ impl EthereumBlockFilter {
 
     pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
         iter.into_iter()
-            .filter(|data_source| data_source.source.address.is_some())
+            .filter(|data_source| data_source.address.is_some())
             .fold(Self::default(), |mut filter_opt, data_source| {
                 let has_block_handler_with_call_filter = data_source
                     .mapping
@@ -668,8 +668,8 @@ impl EthereumBlockFilter {
                     trigger_every_block: has_block_handler_without_filter,
                     contract_addresses: if has_block_handler_with_call_filter {
                         vec![(
-                            data_source.source.start_block,
-                            data_source.source.address.unwrap().to_owned(),
+                            data_source.start_block,
+                            data_source.address.unwrap().to_owned(),
                         )]
                         .into_iter()
                         .collect()
