@@ -40,7 +40,8 @@ pub struct DataSource {
     pub kind: String,
     pub network: Option<String>,
     pub name: String,
-    pub source: Source,
+    pub address: Option<Address>,
+    pub start_block: BlockNumber,
     pub mapping: Mapping,
     pub context: Arc<Option<DataSourceContext>>,
     pub creation_block: Option<BlockNumber>,
@@ -49,11 +50,11 @@ pub struct DataSource {
 
 impl blockchain::DataSource<Chain> for DataSource {
     fn address(&self) -> Option<&[u8]> {
-        self.source.address.as_ref().map(|x| x.as_bytes())
+        self.address.as_ref().map(|x| x.as_bytes())
     }
 
     fn start_block(&self) -> BlockNumber {
-        self.source.start_block
+        self.start_block
     }
 
     fn match_and_decode(
@@ -91,14 +92,15 @@ impl blockchain::DataSource<Chain> for DataSource {
             kind,
             network,
             name,
-            source,
+            address,
             mapping,
             context,
 
             // The creation block is ignored for detection duplicate data sources.
-            // Contract ABI equality is implicit in `source` and `mapping.abis` equality.
+            // Contract ABI equality is implicit in `mapping.abis` equality.
             creation_block: _,
             contract_abi: _,
+            start_block: _,
         } = self;
 
         // mapping_request_sender, host_metrics, and (most of) host_exports are operational structs
@@ -107,7 +109,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         kind == &other.kind
             && network == &other.network
             && name == &other.name
-            && source == &other.source
+            && address == &other.address
             && mapping.abis == other.mapping.abis
             && mapping.event_handlers == other.mapping.event_handlers
             && mapping.call_handlers == other.mapping.call_handlers
@@ -118,7 +120,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
         StoredDynamicDataSource {
             name: self.name.to_owned(),
-            source: self.source.clone(),
+            address: self.address.clone(),
             context: self
                 .context
                 .as_ref()
@@ -133,8 +135,8 @@ impl blockchain::DataSource<Chain> for DataSource {
         stored: StoredDynamicDataSource,
     ) -> Result<Self, Error> {
         let StoredDynamicDataSource {
-            name,
-            source,
+            name: _,
+            address,
             context,
             creation_block,
         } = stored;
@@ -148,8 +150,9 @@ impl blockchain::DataSource<Chain> for DataSource {
         Ok(DataSource {
             kind: template.kind.to_string(),
             network: template.network.as_ref().map(|s| s.to_string()),
-            name,
-            source,
+            name: template.name.clone(),
+            address,
+            start_block: 0,
             mapping: template.mapping.clone(),
             context: Arc::new(context),
             creation_block,
@@ -240,7 +243,8 @@ impl DataSource {
             kind,
             network,
             name,
-            source,
+            address: source.address,
+            start_block: source.start_block,
             mapping,
             context: Arc::new(context),
             creation_block,
@@ -434,7 +438,7 @@ impl DataSource {
     }
 
     fn matches_trigger_address(&self, trigger: &EthereumTrigger) -> bool {
-        let ds_address = match self.source.address {
+        let ds_address = match self.address {
             Some(addr) => addr,
 
             // 'wildcard' data sources match any trigger address.
@@ -465,7 +469,7 @@ impl DataSource {
             return Ok(None);
         }
 
-        if self.source.start_block > block.number() {
+        if self.start_block > block.number() {
             return Ok(None);
         }
 
@@ -773,11 +777,8 @@ impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
             kind: template.kind,
             network: template.network,
             name: template.name,
-            source: Source {
-                address: Some(address),
-                abi: template.source.abi,
-                start_block: 0,
-            },
+            address: Some(address),
+            start_block: 0,
             mapping: template.mapping,
             context: Arc::new(context),
             creation_block: Some(creation_block),

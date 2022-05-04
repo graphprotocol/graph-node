@@ -1150,11 +1150,8 @@ fn mock_data_source() -> graph_chain_ethereum::DataSource {
         kind: String::from("ethereum/contract"),
         name: String::from("example data source"),
         network: Some(String::from("mainnet")),
-        source: Source {
-            address: Some(Address::from_str("0123123123012312312301231231230123123123").unwrap()),
-            abi: String::from("123123"),
-            start_block: 0,
-        },
+        address: Some(Address::from_str("0123123123012312312301231231230123123123").unwrap()),
+        start_block: 0,
         mapping: Mapping {
             kind: String::from("ethereum/events"),
             api_version: Version::parse("0.1.0").unwrap(),
@@ -1240,7 +1237,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         // Verify that the dynamic data source exists afterwards
         let loaded_dds = writable.load_dynamic_data_sources().await.unwrap();
         assert_eq!(1, loaded_dds.len());
-        assert_eq!(data_source.source, loaded_dds[0].source);
+        assert_eq!(data_source.address, loaded_dds[0].address);
 
         let subscription = subscribe(&deployment.hash, USER);
 
