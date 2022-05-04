@@ -184,7 +184,7 @@ static A: Counter = Counter;
 // with cache size easier
 
 /// The template of an object we want to cache
-trait Template: CacheWeight + Default {
+trait Template: CacheWeight {
     // Create a new test object
     fn create(size: usize, rng: Option<&mut SmallRng>) -> Self;
 
@@ -432,9 +432,23 @@ impl Template for UsizeMap {
     }
 }
 
+struct Defaultable<T>(T);
+
+impl<T: Template> Default for Defaultable<T> {
+    fn default() -> Self {
+        Self(T::create(0, None))
+    }
+}
+
+impl<T: Template> CacheWeight for Defaultable<T> {
+    fn indirect_weight(&self) -> usize {
+        self.0.indirect_weight()
+    }
+}
+
 /// Helper to deal with different template objects
 struct Cacheable<T: Template> {
-    cache: LfuCache<usize, T>,
+    cache: LfuCache<usize, Defaultable<T>>,
     template: T,
 }
 
@@ -452,6 +466,12 @@ impl<T: Template> Cacheable<T> {
 
     fn name(&self) -> &'static str {
         std::any::type_name::<T>()
+    }
+}
+
+impl<T: Template> From<T> for Defaultable<T> {
+    fn from(templ: T) -> Self {
+        Self(templ)
     }
 }
 
@@ -557,7 +577,7 @@ fn stress<T: Template>(opt: &Opt) {
         if opt.samples {
             println!("sample: weight {:6} alloc {:6}", weight, alloc,);
         }
-        cacheable.cache.insert(key, *sample);
+        cacheable.cache.insert(key, Defaultable::from(*sample));
         // Do a few random reads from the cache
         for _attempt in 0..5 {
             let read = rng.gen_range(0..=key);
