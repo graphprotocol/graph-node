@@ -4,6 +4,7 @@ mod traits;
 
 pub use cache::{CachedEthereumCall, EntityCache, ModificationsAndCache};
 pub use err::StoreError;
+use ethabi::Address;
 pub use traits::*;
 
 use futures::stream::poll_fn;
@@ -21,7 +22,7 @@ use std::time::Duration;
 
 use crate::blockchain::DataSource;
 use crate::blockchain::{Block, Blockchain};
-use crate::data::{store::*, subgraph::Source};
+use crate::data::store::*;
 use crate::prelude::*;
 
 /// The type name of an entity. This is the string that is used in the
@@ -756,7 +757,7 @@ pub enum UnfailOutcome {
 #[derive(Clone)]
 pub struct StoredDynamicDataSource {
     pub name: String,
-    pub source: Source,
+    pub address: Option<Address>,
     pub context: Option<String>,
     pub creation_block: Option<BlockNumber>,
 }
