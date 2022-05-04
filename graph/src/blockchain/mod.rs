@@ -32,7 +32,7 @@ use slog::Logger;
 use slog::{self, SendSyncRefUnwindSafeKV};
 use std::{
     any::Any,
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     convert::TryFrom,
     fmt::{self, Debug},
     str::FromStr,
@@ -224,7 +224,7 @@ pub trait DataSource<C: Blockchain>:
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource;
 
     fn from_stored_dynamic_data_source(
-        templates: &BTreeMap<&str, &C::DataSourceTemplate>,
+        template: &C::DataSourceTemplate,
         stored: StoredDynamicDataSource,
     ) -> Result<Self, Error>;
 

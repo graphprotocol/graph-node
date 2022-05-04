@@ -106,7 +106,7 @@ impl<C: Blockchain> DataSource<C> for MockDataSource {
     }
 
     fn from_stored_dynamic_data_source(
-        _templates: &std::collections::BTreeMap<&str, &C::DataSourceTemplate>,
+        _template: &C::DataSourceTemplate,
         _stored: crate::components::store::StoredDynamicDataSource,
     ) -> Result<Self, anyhow::Error> {
         todo!()
