@@ -184,22 +184,18 @@ static A: Counter = Counter;
 // with cache size easier
 
 /// The template of an object we want to cache
-trait Template<T>: CacheWeight + Default {
-    type Item;
-
+trait Template: CacheWeight + Default {
     // Create a new test object
     fn create(size: usize, rng: Option<&mut SmallRng>) -> Self;
 
     // Return a sample of this test object of the given `size`. There's no
     // fixed definition of 'size', other than that smaller sizes will
     // take less memory than larger ones
-    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self::Item>;
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self>;
 }
 
 /// Template for testing caching of `String`
-impl Template<String> for String {
-    type Item = String;
-
+impl Template for String {
     fn create(size: usize, _rng: Option<&mut SmallRng>) -> Self {
         let mut s = String::with_capacity(size);
         for _ in 0..size {
@@ -207,15 +203,13 @@ impl Template<String> for String {
         }
         s
     }
-    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self::Item> {
+    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self> {
         Box::new(self[0..size].into())
     }
 }
 
 /// Template for testing caching of `String`
-impl Template<Word> for Word {
-    type Item = Word;
-
+impl Template for Word {
     fn create(size: usize, _rng: Option<&mut SmallRng>) -> Self {
         let mut s = String::with_capacity(size);
         for _ in 0..size {
@@ -224,27 +218,23 @@ impl Template<Word> for Word {
         Word::from(s)
     }
 
-    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self::Item> {
+    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self> {
         Box::new(self[0..size].into())
     }
 }
 
 /// Template for testing caching of `Vec<usize>`
-impl Template<Vec<usize>> for Vec<usize> {
-    type Item = Vec<usize>;
-
+impl Template for Vec<usize> {
     fn create(size: usize, _rng: Option<&mut SmallRng>) -> Self {
         Vec::from_iter(0..size)
     }
-    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self::Item> {
+    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self> {
         Box::new(self[0..size].into())
     }
 }
 
 /// Template for testing caching of `HashMap<String, String>`
-impl Template<HashMap<String, String>> for HashMap<String, String> {
-    type Item = Self;
-
+impl Template for HashMap<String, String> {
     fn create(size: usize, _rng: Option<&mut SmallRng>) -> Self {
         let mut map = HashMap::new();
         for i in 0..size {
@@ -253,7 +243,7 @@ impl Template<HashMap<String, String>> for HashMap<String, String> {
         map
     }
 
-    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self::Item> {
+    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self> {
         Box::new(HashMap::from_iter(
             self.iter()
                 .take(size)
@@ -300,14 +290,12 @@ fn make_object(size: usize, mut rng: Option<&mut SmallRng>) -> Object {
 }
 
 /// Template for testing caching of `Object`
-impl Template<Object> for Object {
-    type Item = Self;
-
+impl Template for Object {
     fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
         make_object(size, rng)
     }
 
-    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self::Item> {
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self> {
         // If the user specified '--fixed', don't build a new map every call
         // since that can be slow
         if rng.is_none() {
@@ -323,14 +311,12 @@ impl Template<Object> for Object {
 }
 
 /// Template for testing caching of `QueryResult`
-impl Template<QueryResult> for QueryResult {
-    type Item = Self;
-
+impl Template for QueryResult {
     fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
         QueryResult::new(make_object(size, rng))
     }
 
-    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self::Item> {
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self> {
         // If the user specified '--fixed', don't build a new map every call
         // since that can be slow
         if rng.is_none() {
@@ -390,14 +376,12 @@ impl ValueMap {
 }
 
 /// Template for testing roughly a GraphQL response, i.e., a `BTreeMap<String, Value>`
-impl Template<ValueMap> for ValueMap {
-    type Item = ValueMap;
-
+impl Template for ValueMap {
     fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
         Self::make_map(size, rng)
     }
 
-    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self::Item> {
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self> {
         // If the user specified '--fixed', don't build a new map every call
         // since that can be slow
         if rng.is_none() {
@@ -427,14 +411,12 @@ impl UsizeMap {
 }
 
 /// Template for testing roughly a GraphQL response, i.e., a `BTreeMap<String, Value>`
-impl Template<UsizeMap> for UsizeMap {
-    type Item = UsizeMap;
-
+impl Template for UsizeMap {
     fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
         Self::make_map(size, rng)
     }
 
-    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self::Item> {
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self> {
         // If the user specified '--fixed', don't build a new map every call
         // since that can be slow
         if rng.is_none() {
@@ -451,12 +433,12 @@ impl Template<UsizeMap> for UsizeMap {
 }
 
 /// Helper to deal with different template objects
-struct Cacheable<T> {
+struct Cacheable<T: Template> {
     cache: LfuCache<usize, T>,
     template: T,
 }
 
-impl<T: Template<T>> Cacheable<T> {
+impl<T: Template> Cacheable<T> {
     fn new(size: usize, rng: Option<&mut SmallRng>) -> Self {
         Cacheable {
             cache: LfuCache::new(),
@@ -464,7 +446,7 @@ impl<T: Template<T>> Cacheable<T> {
         }
     }
 
-    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<T::Item> {
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<T> {
         self.template.sample(size, rng)
     }
 
@@ -511,7 +493,7 @@ fn maybe_rng<'a>(opt: &'a Opt, rng: &'a mut SmallRng) -> Option<&'a mut SmallRng
     }
 }
 
-fn stress<T: Template<T, Item = T>>(opt: &Opt) {
+fn stress<T: Template>(opt: &Opt) {
     let mut rng = match opt.seed {
         None => SmallRng::from_entropy(),
         Some(seed) => SmallRng::seed_from_u64(seed),
