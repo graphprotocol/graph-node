@@ -386,11 +386,11 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
 
         if inserted {
             ctx.cache_status.store(CacheStatus::Insert);
-        } else {
+        } else if QUERY_LFU_CACHE.len() > 0 {
             // Results that are too old for the QUERY_BLOCK_CACHE go into the QUERY_LFU_CACHE
+            let shard = (key[0] as usize) % QUERY_LFU_CACHE.len();
             let mut cache = QUERY_LFU_CACHE[shard].lock(&ctx.logger);
-            let max_mem = ENV_VARS.graphql.query_cache_max_mem
-                / (ENV_VARS.graphql.query_block_cache_shards as usize);
+            let max_mem = ENV_VARS.graphql.query_cache_max_mem / QUERY_LFU_CACHE.len();
             cache.evict_with_period(max_mem, ENV_VARS.graphql.query_cache_stale_period);
             cache.insert(
                 key,

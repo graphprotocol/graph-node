@@ -44,6 +44,7 @@ diesel = "1.4.8"
 fail = "0.5"
 http = "0.2.5" # must be compatible with the version rust-web3 uses
 prometheus = { version ="0.13.0", features = ["push"] }
+json-structural-diff = {version = "0.1", features = ["colorize"] }
 
 [dev-dependencies]
 assert_cli = "0.6"

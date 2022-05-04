@@ -47,13 +47,20 @@ pub use data::Storage;
 
 /// Encapuslate access to the blocks table for a chain.
 mod data {
-    use diesel::connection::SimpleConnection;
-    use diesel::dsl::sql;
-    use diesel::pg::{Pg, PgConnection};
-    use diesel::serialize::Output;
-    use diesel::sql_types::{BigInt, Binary, Bytea, Integer, Jsonb, Text};
-    use diesel::types::{FromSql, ToSql};
-    use diesel::{delete, insert_into, prelude::*, sql_query, update};
+    use diesel::sql_types::{Array, Binary};
+    use diesel::{connection::SimpleConnection, insert_into};
+    use diesel::{delete, prelude::*, sql_query};
+    use diesel::{dsl::sql, pg::PgConnection};
+    use diesel::{
+        pg::Pg,
+        serialize::Output,
+        sql_types::Text,
+        types::{FromSql, ToSql},
+    };
+    use diesel::{
+        sql_types::{BigInt, Bytea, Integer, Jsonb},
+        update,
+    };
     use diesel_dynamic_schema as dds;
     use graph::blockchain::{Block, BlockHash};
     use graph::constraint_violation;
@@ -63,7 +70,6 @@ mod data {
     use graph::prelude::{
         serde_json as json, BlockNumber, BlockPtr, CachedEthereumCall, Error, StoreError,
     };
-
     use std::fmt;
     use std::iter::FromIterator;
     use std::{convert::TryFrom, io::Write};
@@ -886,6 +892,46 @@ mod data {
             }
         }
 
+        pub(super) fn delete_blocks_by_hash(
+            &self,
+            conn: &PgConnection,
+            chain: &str,
+            block_hashes: &[&H256],
+        ) -> Result<usize, Error> {
+            use diesel::dsl::any;
+            match self {
+                Storage::Shared => {
+                    use public::ethereum_blocks as b;
+
+                    let hashes: Vec<String> = block_hashes
+                        .iter()
+                        .map(|hash| format!("{hash:x}"))
+                        .collect();
+
+                    diesel::delete(b::table)
+                        .filter(b::network_name.eq(chain))
+                        .filter(b::hash.eq(any(hashes)))
+                        .filter(b::number.gt(0)) // keep genesis
+                        .execute(conn)
+                        .map_err(Error::from)
+                }
+                Storage::Private(Schema { blocks, .. }) => {
+                    let query = format!(
+                        "delete from {} where hash = any($1) and number > 0",
+                        blocks.qname
+                    );
+
+                    let hashes: Vec<&[u8]> =
+                        block_hashes.iter().map(|hash| hash.as_bytes()).collect();
+
+                    sql_query(query)
+                        .bind::<Array<Bytea>, _>(hashes)
+                        .execute(conn)
+                        .map_err(Error::from)
+                }
+            }
+        }
+
         pub(super) fn get_call_and_access(
             &self,
             conn: &PgConnection,
@@ -1330,6 +1376,12 @@ impl ChainStore {
 
         self.storage
             .set_chain(&conn, &self.chain, genesis_hash, chain);
+    }
+
+    pub fn delete_blocks(&self, block_hashes: &[&H256]) -> Result<usize, Error> {
+        let conn = self.get_conn()?;
+        self.storage
+            .delete_blocks_by_hash(&conn, &self.chain, block_hashes)
     }
 
     pub fn truncate_block_cache(&self) -> Result<(), StoreError> {
