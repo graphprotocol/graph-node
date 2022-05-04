@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 
-use graph::data::value::Word;
-use graph::prelude::{lazy_static, q};
+use graph::data::value::{Object, Word};
+use graph::prelude::{lazy_static, q, r, QueryResult};
 use rand::SeedableRng;
 use rand::{rngs::SmallRng, Rng};
 use structopt::StructOpt;
@@ -262,6 +262,91 @@ impl Template<HashMap<String, String>> for HashMap<String, String> {
     }
 }
 
+fn make_object(size: usize, mut rng: Option<&mut SmallRng>) -> Object {
+    let mut obj = Object::new();
+    let modulus = if *NESTED_MAP { 8 } else { 7 };
+
+    for i in 0..size {
+        let kind = rng
+            .as_deref_mut()
+            .map(|rng| rng.gen_range(0..modulus))
+            .unwrap_or(i % modulus);
+
+        let value = match kind {
+            0 => r::Value::Boolean(i % 11 > 5),
+            1 => r::Value::Int((i as i32).into()),
+            2 => r::Value::Null,
+            3 => r::Value::Float(i as f64 / 17.0),
+            4 => r::Value::Enum(format!("enum{}", i)),
+            5 => r::Value::String(format!("0x0000000000000000000000000000000000000000{}", i)),
+            6 => {
+                let vals = (0..(i % 51)).map(|i| r::Value::String(format!("list{}", i)));
+                r::Value::List(Vec::from_iter(vals))
+            }
+            7 => {
+                let mut obj = Object::new();
+                for j in 0..(i % 51) {
+                    obj.insert(format!("key{}", j), r::Value::String(format!("value{}", j)));
+                }
+                r::Value::Object(obj)
+            }
+            _ => unreachable!(),
+        };
+
+        let key = rng.as_deref_mut().map(|rng| rng.gen()).unwrap_or(i) % modulus;
+        obj.insert(format!("val{}", key), value);
+    }
+    obj
+}
+
+/// Template for testing caching of `Object`
+impl Template<Object> for Object {
+    type Item = Self;
+
+    fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
+        make_object(size, rng)
+    }
+
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self::Item> {
+        // If the user specified '--fixed', don't build a new map every call
+        // since that can be slow
+        if rng.is_none() {
+            Box::new(Object::from_iter(
+                self.iter()
+                    .take(size)
+                    .map(|(k, v)| (k.to_owned(), v.to_owned())),
+            ))
+        } else {
+            Box::new(make_object(size, rng))
+        }
+    }
+}
+
+/// Template for testing caching of `QueryResult`
+impl Template<QueryResult> for QueryResult {
+    type Item = Self;
+
+    fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
+        QueryResult::new(make_object(size, rng))
+    }
+
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self::Item> {
+        // If the user specified '--fixed', don't build a new map every call
+        // since that can be slow
+        if rng.is_none() {
+            Box::new(QueryResult::new(Object::from_iter(
+                self.data()
+                    .unwrap()
+                    .iter()
+                    .take(size)
+                    .map(|(k, v)| (k.to_owned(), v.to_owned())),
+            )))
+        } else {
+            Box::new(QueryResult::new(make_object(size, rng)))
+        }
+    }
+}
+
 type ValueMap = MapMeasure<String, q::Value>;
 
 impl ValueMap {
@@ -436,7 +521,7 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
 
     println!("type: {}", cacheable.name());
     println!(
-        "obj: {} iterations: {} cache_size: {}\n",
+        "obj weight: {} iterations: {} cache_size: {}\n",
         cacheable.template.weight(),
         opt.niter,
         opt.cache_size
@@ -455,17 +540,23 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
             let after_mem = ALLOCATED.load(SeqCst);
             if should_print {
                 if print_header {
-                    println!("heap_factor is heap_size / cache_size");
+                    println!("evict:        weight that was removed from cache");
+                    println!("drop:         allocated memory that was freed");
+                    println!("slip:         evicted - dropped");
+                    println!("room:         configured cache size - cache weight");
+                    println!("heap:         allocated heap_size / configured cache_size");
+                    println!("mem:          memory allocated for cache + all entries\n");
                     print_header = false;
                 }
 
-                let heap_factor = (after_mem - base_mem) as f64 / opt.cache_size as f64;
+                let dropped = before_mem - after_mem;
+                let slip = evicted as i64 - dropped as i64;
+                let room = opt.cache_size as i64 - new_weight as i64;
+                let heap = (after_mem - base_mem) as f64 / opt.cache_size as f64;
+                let mem = after_mem - base_mem;
                 println!(
-                    "evicted: {:6}  dropped: {:6} new_weight: {:8} heap_factor: {:0.2}  ",
-                    evicted,
-                    before_mem - after_mem,
-                    new_weight,
-                    heap_factor
+                    "evict: {evicted:6}  drop: {dropped:6} slip: {slip:4} \
+                    room: {room:6} heap: {heap:0.2}  mem: {mem:8}"
                 );
                 should_print = false;
             }
@@ -485,6 +576,11 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
             println!("sample: weight {:6} alloc {:6}", weight, alloc,);
         }
         cacheable.cache.insert(key, *sample);
+        // Do a few random reads from the cache
+        for _attempt in 0..5 {
+            let read = rng.gen_range(0..=key);
+            let _v = cacheable.cache.get(&read);
+        }
     }
     if sample_alloc == sample_weight {
         println!(
@@ -551,6 +647,10 @@ pub fn main() {
         stress::<Word>(&opt);
     } else if opt.template == "usizemap" {
         stress::<UsizeMap>(&opt)
+    } else if opt.template == "object" {
+        stress::<Object>(&opt)
+    } else if opt.template == "result" {
+        stress::<QueryResult>(&opt)
     } else {
         println!("unknown value for --template")
     }

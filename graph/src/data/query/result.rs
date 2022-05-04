@@ -184,7 +184,7 @@ impl QueryResults {
 }
 
 /// The result of running a query, if successful.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 pub struct QueryResult {
     #[serde(
         skip_serializing_if = "Option::is_none",
@@ -248,6 +248,10 @@ impl QueryResult {
 
     pub fn errors_mut(&mut self) -> &mut Vec<QueryError> {
         &mut self.errors
+    }
+
+    pub fn data(&self) -> Option<&Data> {
+        self.data.as_ref()
     }
 }
 
