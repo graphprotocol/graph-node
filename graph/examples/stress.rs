@@ -2,6 +2,7 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::{BTreeMap, HashMap};
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+use std::sync::Arc;
 
 use graph::data::value::{Object, Word};
 use graph::prelude::{lazy_static, q, r, BigDecimal, BigInt, QueryResult};
@@ -479,46 +480,31 @@ impl Template for UsizeMap {
     }
 }
 
-struct Defaultable<T>(T);
+/// Wrapper around our template objects; we always put them behind an `Arc`
+/// so that dropping the template object frees the entire object rather than
+/// leaving part of it in the cache. That's also how the production code
+/// uses this cache: objects always wrapped in an `Arc`
+struct Entry<T>(Arc<T>);
 
-impl<T: Template> Default for Defaultable<T> {
+impl<T: Template> Default for Entry<T> {
     fn default() -> Self {
-        Self(T::create(0, None))
+        Self(Arc::new(T::create(0, None)))
     }
 }
 
-impl<T: Template> CacheWeight for Defaultable<T> {
+impl<T: Template> CacheWeight for Entry<T> {
     fn indirect_weight(&self) -> usize {
-        self.0.indirect_weight()
+        // Account for the two pointers the Arc uses for keeping reference
+        // counts. Including that in the weight is only correct in this
+        // test, since we know we never have more than one reference throug
+        // the `Arc`
+        self.0.weight() + 2 * std::mem::size_of::<usize>()
     }
 }
 
-/// Helper to deal with different template objects
-struct Cacheable<T: Template> {
-    cache: LfuCache<usize, Defaultable<T>>,
-    template: T,
-}
-
-impl<T: Template> Cacheable<T> {
-    fn new(size: usize, rng: Option<&mut SmallRng>) -> Self {
-        Cacheable {
-            cache: LfuCache::new(),
-            template: T::create(size, rng),
-        }
-    }
-
-    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<T> {
-        self.template.sample(size, rng)
-    }
-
-    fn name(&self) -> &'static str {
-        std::any::type_name::<T>()
-    }
-}
-
-impl<T: Template> From<T> for Defaultable<T> {
+impl<T: Template> From<T> for Entry<T> {
     fn from(templ: T) -> Self {
-        Self(templ)
+        Self(Arc::new(templ))
     }
 }
 
@@ -566,12 +552,13 @@ fn stress<T: Template>(opt: &Opt) {
         Some(seed) => SmallRng::seed_from_u64(seed),
     };
 
-    let mut cacheable: Cacheable<T> = Cacheable::new(opt.obj_size, maybe_rng(opt, &mut rng));
+    let mut cache: LfuCache<usize, Entry<T>> = LfuCache::new();
+    let template = T::create(opt.obj_size, maybe_rng(opt, &mut rng));
 
-    println!("type: {}", cacheable.name());
+    println!("type: {}", std::any::type_name::<T>());
     println!(
         "obj weight: {} iterations: {} cache_size: {}\n",
-        cacheable.template.weight(),
+        template.weight(),
         opt.niter,
         opt.cache_size
     );
@@ -585,7 +572,7 @@ fn stress<T: Template>(opt: &Opt) {
     for key in 0..opt.niter {
         should_print = should_print || key % print_mod == 0;
         let before_mem = ALLOCATED.load(SeqCst);
-        if let Some((evicted, _, new_weight)) = cacheable.cache.evict(opt.cache_size) {
+        if let Some((evicted, _, new_weight)) = cache.evict(opt.cache_size) {
             let after_mem = ALLOCATED.load(SeqCst);
             if should_print {
                 if print_header {
@@ -616,7 +603,7 @@ fn stress<T: Template>(opt: &Opt) {
             rng.gen_range(0..opt.obj_size)
         };
         let before = ALLOCATED.load(SeqCst);
-        let sample = cacheable.sample(size, maybe_rng(opt, &mut rng));
+        let sample = template.sample(size, maybe_rng(opt, &mut rng));
         let weight = sample.weight();
         let alloc = ALLOCATED.load(SeqCst) - before;
         sample_weight += weight;
@@ -624,11 +611,11 @@ fn stress<T: Template>(opt: &Opt) {
         if opt.samples {
             println!("sample: weight {:6} alloc {:6}", weight, alloc,);
         }
-        cacheable.cache.insert(key, Defaultable::from(*sample));
+        cache.insert(key, Entry::from(*sample));
         // Do a few random reads from the cache
         for _attempt in 0..5 {
             let read = rng.gen_range(0..=key);
-            let _v = cacheable.cache.get(&read);
+            let _v = cache.get(&read);
         }
     }
     if sample_alloc == sample_weight {
