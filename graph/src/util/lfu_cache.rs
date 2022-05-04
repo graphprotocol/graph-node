@@ -181,6 +181,13 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
         max_weight: usize,
         stale_period: u64,
     ) -> Option<(usize, usize, usize)> {
+        use crate::prelude::lazy_static;
+        lazy_static! {
+            // Setting `DEAD_WEIGHT` is dangerous since it can lead to a
+            // situation where an empty cache is bigger than the max_weight
+            // which leads to a panic
+            static ref DEAD_WEIGHT: bool = std::env::var("DEAD_WEIGHT").ok().is_some();
+        }
         if self.total_weight <= max_weight {
             return None;
         }
@@ -201,7 +208,12 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
 
         let mut evicted = 0;
         let old_weight = self.total_weight;
-        while self.total_weight > max_weight {
+        let dead_weight = if *DEAD_WEIGHT {
+            self.len() * (std::mem::size_of::<CacheEntry<K, V>>() + 40)
+        } else {
+            0
+        };
+        while self.total_weight + dead_weight > max_weight {
             let entry = self
                 .queue
                 .pop()
