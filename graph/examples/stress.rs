@@ -593,47 +593,16 @@ pub fn main() {
     unsafe { PRINT_SAMPLES = opt.samples }
 
     // Use different Cacheables to see how the cache manages memory with
-    // different types of cache entries. Uncomment one of the 'let mut cacheable'
-    // lines
-    if opt.template == "vec" {
-        // The weight of Vec<usize> is precise. The additional memory that
-        // the cache uses must be solely due to the memory for the cache
-        // itself
-        //
-        // obj_size  |  heap factor
-        //   10      |     2.5
-        //   20      |     1.9
-        //   30      |     1.8
-        //   50      |     1.3
-        //  100      |     1.3
-        // 1000      |     1.1
-        stress::<Vec<usize>>(&opt);
-    } else if opt.template == "hashmap" {
-        // The heap factor ranges between 1.9 (size 3) and 1.06 (size 100)
-        stress::<HashMap<String, String>>(&opt);
-    } else if opt.template == "valuemap" {
-        // Cache BTreeMap<String, Value>
-        // obj_size  |  heap factor
-        //    3      |      1.3
-        //    5      |      1.5
-        //   10      |      1.5
-        //   50      |      1.2
-        //  100      |      0.9
-        //
-        // For small maps (say, up to about 20 entries), the weight is an
-        // accurate estimation of the map's allocation
-        stress::<ValueMap>(&opt);
-    } else if opt.template == "string" {
-        stress::<String>(&opt);
-    } else if opt.template == "word" {
-        stress::<Word>(&opt);
-    } else if opt.template == "usizemap" {
-        stress::<UsizeMap>(&opt)
-    } else if opt.template == "object" {
-        stress::<Object>(&opt)
-    } else if opt.template == "result" {
-        stress::<QueryResult>(&opt)
-    } else {
-        println!("unknown value for --template")
+    // different types of cache entries.
+    match opt.template.as_str() {
+        "hashmap" => stress::<HashMap<String, String>>(&opt),
+        "object" => stress::<Object>(&opt),
+        "result" => stress::<QueryResult>(&opt),
+        "string" => stress::<String>(&opt),
+        "usizemap" => stress::<UsizeMap>(&opt),
+        "valuemap" => stress::<ValueMap>(&opt),
+        "vec" => stress::<Vec<usize>>(&opt),
+        "word" => stress::<Word>(&opt),
+        _ => println!("unknown value `{}` for --template", opt.template),
     }
 }
