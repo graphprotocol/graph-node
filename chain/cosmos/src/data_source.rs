@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::{convert::TryFrom, sync::Arc};
 
 use anyhow::{Error, Result};
@@ -132,7 +132,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn from_stored_dynamic_data_source(
-        _templates: &BTreeMap<&str, &DataSourceTemplate>,
+        _template: &DataSourceTemplate,
         _stored: StoredDynamicDataSource,
     ) -> Result<Self> {
         Err(anyhow!(DYNAMIC_DATA_SOURCE_ERROR))
