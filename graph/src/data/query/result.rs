@@ -62,6 +62,10 @@ impl QueryResults {
         self.results.iter().any(|result| result.has_errors())
     }
 
+    pub fn not_found(&self) -> bool {
+        self.results.iter().any(|result| result.not_found())
+    }
+
     pub fn deployment_hash(&self) -> Option<&DeploymentHash> {
         self.results
             .iter()
@@ -220,6 +224,15 @@ impl QueryResult {
 
     pub fn has_errors(&self) -> bool {
         !self.errors.is_empty()
+    }
+
+    pub fn not_found(&self) -> bool {
+        self.errors.iter().any(|e| {
+            matches!(
+                e,
+                QueryError::ExecutionError(QueryExecutionError::DeploymentNotFound(_))
+            )
+        })
     }
 
     pub fn has_data(&self) -> bool {

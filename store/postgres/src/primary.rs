@@ -469,10 +469,7 @@ mod queries {
         match id {
             Some(id) => DeploymentHash::new(id)
                 .map_err(|id| constraint_violation!("illegal deployment id: {}", id)),
-            None => Err(StoreError::QueryExecutionError(format!(
-                "Subgraph `{}` not found",
-                name.as_str()
-            ))),
+            None => Err(StoreError::DeploymentNotFound(name.to_string())),
         }
     }
 
