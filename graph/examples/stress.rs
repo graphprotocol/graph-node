@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 use std::sync::Arc;
 
 use graph::data::value::{Object, Word};
+use graph::object;
 use graph::prelude::{lazy_static, q, r, BigDecimal, BigInt, QueryResult};
 use rand::SeedableRng;
 use rand::{rngs::SmallRng, Rng};
@@ -337,6 +338,18 @@ fn make_object(size: usize, mut rng: Option<&mut SmallRng>) -> Object {
     obj
 }
 
+fn make_domains(size: usize, _rng: Option<&mut SmallRng>) -> Object {
+    let owner = object! {
+        owner: object! {
+            id: "0xe8d391ef649a6652b9047735f6c0d48b6ae751df",
+            name: "36190.eth"
+        }
+    };
+
+    let domains: Vec<_> = (0..size).map(|_| owner.clone()).collect();
+    Object::from_iter([("domains".to_string(), r::Value::List(domains))])
+}
+
 /// Template for testing caching of `Object`
 impl Template for Object {
     fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
@@ -361,7 +374,7 @@ impl Template for Object {
 /// Template for testing caching of `QueryResult`
 impl Template for QueryResult {
     fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
-        QueryResult::new(make_object(size, rng))
+        QueryResult::new(make_domains(size, rng))
     }
 
     fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self> {
@@ -376,7 +389,7 @@ impl Template for QueryResult {
                     .map(|(k, v)| (k.to_owned(), v.to_owned())),
             )))
         } else {
-            Box::new(QueryResult::new(make_object(size, rng)))
+            Box::new(QueryResult::new(make_domains(size, rng)))
         }
     }
 }
