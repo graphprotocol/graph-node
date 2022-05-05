@@ -39,6 +39,7 @@ use graph::{data::subgraph::schema::generate_entity_id, prelude::StoreEvent};
 use itertools::Itertools;
 use maybe_owned::MaybeOwned;
 use std::{
+    borrow::Borrow,
     collections::HashMap,
     convert::TryFrom,
     convert::TryInto,
@@ -259,6 +260,12 @@ impl FromSql<Text, Pg> for Namespace {
 impl ToSql<Text, Pg> for Namespace {
     fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
         <String as ToSql<Text, Pg>>::to_sql(&self.0, out)
+    }
+}
+
+impl Borrow<str> for Namespace {
+    fn borrow(&self) -> &str {
+        &self.0
     }
 }
 
