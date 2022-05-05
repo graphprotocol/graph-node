@@ -4,13 +4,13 @@ version = "0.26.0"
 edition = "2021"
 
 [build-dependencies]
-tonic-build = "0.5.1"
+tonic-build = { version = "0.7.1", features = ["prost"] }
 
 [dependencies]
 base64 = "0.13"
 graph = { path = "../../graph" }
-prost = "0.8.0"
-prost-types = "0.8.0"
+prost = "0.10.1"
+prost-types = "0.10.1"
 serde = "1.0"
 
 graph-runtime-wasm = { path = "../../runtime/wasm" }

@@ -1,3 +1,4 @@
+#[rustfmt::skip]
 #[path = "protobuf/sf.near.codec.v1.rs"]
 pub mod pbcodec;
 
