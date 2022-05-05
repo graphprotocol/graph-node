@@ -74,7 +74,6 @@ mod data {
     use std::{convert::TryFrom, io::Write};
 
     use crate::transaction_receipt::RawTransactionReceipt;
-    use crate::{DynColumn, DynTable};
 
     pub(crate) const ETHEREUM_BLOCKS_TABLE_NAME: &'static str = "public.ethereum_blocks";
 
@@ -142,6 +141,9 @@ mod data {
             ))
         }
     }
+
+    type DynTable = diesel_dynamic_schema::Table<String>;
+    type DynColumn<ST> = diesel_dynamic_schema::Column<DynTable, &'static str, ST>;
 
     /// The table that holds blocks when we store a chain in its own
     /// dedicated database schema

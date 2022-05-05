@@ -194,9 +194,7 @@ impl DeploymentStore {
 
                 // Create data sources table
                 if site.schema_version.private_data_sources() {
-                    conn.batch_execute(
-                        &DataSourcesTable::new(site.namespace.to_string()).as_ddl(),
-                    )?;
+                    conn.batch_execute(&DataSourcesTable::new(site.namespace.clone()).as_ddl())?;
                 }
             }
             Ok(())
