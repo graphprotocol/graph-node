@@ -4,6 +4,6 @@ package fig.cosmos.transform.v1;
 
 option go_package = "github.com/figment-networks/cosmos-protobuf-def/pbtransform";
 
-message EventFilter {
+message EventTypeFilter {
   repeated string event_types = 1;
 }

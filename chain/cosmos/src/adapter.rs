@@ -6,20 +6,21 @@ use prost_types::Any;
 use crate::capabilities::NodeCapabilities;
 use crate::{data_source::DataSource, Chain};
 use graph::blockchain as bc;
-use graph::firehose::EventFilter;
+use graph::firehose::EventTypeFilter;
 use graph::prelude::*;
 
-const EVENT_FILTER_TYPE_URL: &str = "type.googleapis.com/fig.cosmos.transform.v1.EventFilter";
+const EVENT_TYPE_FILTER_TYPE_URL: &str =
+    "type.googleapis.com/fig.cosmos.transform.v1.EventTypeFilter";
 
 #[derive(Clone, Debug, Default)]
 pub struct TriggerFilter {
-    pub(crate) event_filter: CosmosEventFilter,
+    pub(crate) event_type_filter: CosmosEventTypeFilter,
     pub(crate) block_filter: CosmosBlockFilter,
 }
 
 impl bc::TriggerFilter<Chain> for TriggerFilter {
     fn extend<'a>(&mut self, data_sources: impl Iterator<Item = &'a DataSource> + Clone) {
-        self.event_filter
+        self.event_type_filter
             .extend_from_data_sources(data_sources.clone());
         self.block_filter.extend_from_data_sources(data_sources);
     }
@@ -39,16 +40,16 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
             return vec![];
         }
 
-        if self.event_filter.event_types.is_empty() {
+        if self.event_type_filter.event_types.is_empty() {
             return vec![];
         }
 
-        let filter = EventFilter {
-            event_types: Vec::from_iter(self.event_filter.event_types),
+        let filter = EventTypeFilter {
+            event_types: Vec::from_iter(self.event_type_filter.event_types),
         };
 
         vec![Any {
-            type_url: EVENT_FILTER_TYPE_URL.to_string(),
+            type_url: EVENT_TYPE_FILTER_TYPE_URL.to_string(),
             value: filter.encode_to_vec(),
         }]
     }
@@ -57,11 +58,11 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
 pub type EventType = String;
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct CosmosEventFilter {
+pub(crate) struct CosmosEventTypeFilter {
     pub event_types: HashSet<EventType>,
 }
 
-impl CosmosEventFilter {
+impl CosmosEventTypeFilter {
     pub(crate) fn matches(&self, event_type: &EventType) -> bool {
         self.event_types.contains(event_type)
     }
@@ -103,7 +104,7 @@ mod test {
             (TriggerFilter::test_new(true, &["event_1", "event_2"]), None),
             (
                 TriggerFilter::test_new(false, &["event_1", "event_2", "event_3"]),
-                Some(event_filter_with_types(&["event_1", "event_2", "event_3"])),
+                Some(event_type_filter_with(&["event_1", "event_2", "event_3"])),
             ),
         ];
 
@@ -128,7 +129,7 @@ mod test {
     impl TriggerFilter {
         pub(crate) fn test_new(trigger_every_block: bool, event_types: &[&str]) -> TriggerFilter {
             TriggerFilter {
-                event_filter: CosmosEventFilter {
+                event_type_filter: CosmosEventTypeFilter {
                     event_types: event_types.iter().map(ToString::to_string).collect(),
                 },
                 block_filter: CosmosBlockFilter {
@@ -138,21 +139,21 @@ mod test {
         }
     }
 
-    fn event_filter_with_types(event_types: &[&str]) -> EventFilter {
-        EventFilter {
+    fn event_type_filter_with(event_types: &[&str]) -> EventTypeFilter {
+        EventTypeFilter {
             event_types: event_types.iter().map(ToString::to_string).collect(),
         }
     }
 
-    fn decode_filter(proto_filters: Vec<Any>) -> Option<EventFilter> {
+    fn decode_filter(proto_filters: Vec<Any>) -> Option<EventTypeFilter> {
         assert!(proto_filters.len() <= 1);
 
         let proto_filter = proto_filters.get(0)?;
 
-        assert_eq!(proto_filter.type_url, EVENT_FILTER_TYPE_URL);
+        assert_eq!(proto_filter.type_url, EVENT_TYPE_FILTER_TYPE_URL);
 
-        let firehose_filter = EventFilter::decode(&*proto_filter.value)
-            .expect("Could not decode EventFilter from protobuf Any");
+        let firehose_filter = EventTypeFilter::decode(&*proto_filter.value)
+            .expect("Could not decode EventTypeFilter from protobuf Any");
 
         Some(firehose_filter)
     }

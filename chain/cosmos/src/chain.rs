@@ -258,7 +258,7 @@ fn filter_event_trigger(
     block: &codec::HeaderOnlyBlock,
     origin: EventOrigin,
 ) -> Option<CosmosTrigger> {
-    if filter.event_filter.matches(&event.event_type) {
+    if filter.event_type_filter.matches(&event.event_type) {
         Some(CosmosTrigger::with_event(
             event,
             block.clone(),
