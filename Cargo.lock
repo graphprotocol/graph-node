@@ -1637,11 +1637,11 @@ dependencies = [
  "lazy_static",
  "never",
  "parity-wasm",
- "pwasm-utils",
  "semver",
  "strum",
  "strum_macros",
  "uuid 1.0.0",
+ "wasm-instrument",
  "wasmtime",
 ]
 
@@ -3057,16 +3057,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14ce37fa8c0428a37307d163292add09b3aedc003472e6b3622486878404191d"
 dependencies = [
  "cc",
-]
-
-[[package]]
-name = "pwasm-utils"
-version = "0.19.0"
-source = "git+https://github.com/paritytech/wasm-utils?rev=b22696aaa516212284f2d94a28d8d292afe27859#b22696aaa516212284f2d94a28d8d292afe27859"
-dependencies = [
- "byteorder",
- "log",
- "parity-wasm",
 ]
 
 [[package]]
@@ -4593,6 +4583,15 @@ name = "wasm-bindgen-shared"
 version = "0.2.75"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e0c4a743a309662d45f4ede961d7afa4ba4131a59a639f29b0069c3798bbcc2"
+
+[[package]]
+name = "wasm-instrument"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "962e5b0401bbb6c887f54e69b8c496ea36f704df65db73e81fd5ff8dc3e63a9f"
+dependencies = [
+ "parity-wasm",
+]
 
 [[package]]
 name = "wasmparser"
