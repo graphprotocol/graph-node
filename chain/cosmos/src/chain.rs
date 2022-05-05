@@ -386,7 +386,7 @@ mod test {
             (
                 EventList::test_new(),
                 TriggerFilter::test_new(true, &[]),
-                vec![TendermintTrigger::Block(Arc::new(EventList::test_new()))],
+                vec![CosmosTrigger::Block(Arc::new(EventList::test_new()))],
             ),
             (
                 EventList::test_new(),
@@ -397,30 +397,30 @@ mod test {
                 block_with_events.clone(),
                 TriggerFilter::test_new(false, &["begin_event_3", "tx_event_3", "end_event_3"]),
                 vec![
-                    TendermintTrigger::with_event(
+                    CosmosTrigger::with_event(
                         Event::test_with_type("begin_event_3"),
                         block_with_events.block().clone(),
                         EventOrigin::BeginBlock,
                     ),
-                    TendermintTrigger::with_event(
+                    CosmosTrigger::with_event(
                         Event::test_with_type("tx_event_3"),
                         block_with_events.block().clone(),
                         EventOrigin::DeliverTx,
                     ),
-                    TendermintTrigger::with_event(
+                    CosmosTrigger::with_event(
                         Event::test_with_type("end_event_3"),
                         block_with_events.block().clone(),
                         EventOrigin::EndBlock,
                     ),
-                    TendermintTrigger::with_transaction(
+                    CosmosTrigger::with_transaction(
                         TxResult::test_with_event_type("tx_event_1"),
                         block_with_events.block().clone(),
                     ),
-                    TendermintTrigger::with_transaction(
+                    CosmosTrigger::with_transaction(
                         TxResult::test_with_event_type("tx_event_2"),
                         block_with_events.block().clone(),
                     ),
-                    TendermintTrigger::with_transaction(
+                    CosmosTrigger::with_transaction(
                         TxResult::test_with_event_type("tx_event_3"),
                         block_with_events.block().clone(),
                     ),
@@ -430,31 +430,31 @@ mod test {
                 block_with_events.clone(),
                 TriggerFilter::test_new(true, &["begin_event_3", "tx_event_2", "end_event_1"]),
                 vec![
-                    TendermintTrigger::Block(Arc::new(block_with_events.clone())),
-                    TendermintTrigger::with_event(
+                    CosmosTrigger::Block(Arc::new(block_with_events.clone())),
+                    CosmosTrigger::with_event(
                         Event::test_with_type("begin_event_3"),
                         block_with_events.block().clone(),
                         EventOrigin::BeginBlock,
                     ),
-                    TendermintTrigger::with_event(
+                    CosmosTrigger::with_event(
                         Event::test_with_type("tx_event_2"),
                         block_with_events.block().clone(),
                         EventOrigin::DeliverTx,
                     ),
-                    TendermintTrigger::with_event(
+                    CosmosTrigger::with_event(
                         Event::test_with_type("end_event_1"),
                         block_with_events.block().clone(),
                         EventOrigin::EndBlock,
                     ),
-                    TendermintTrigger::with_transaction(
+                    CosmosTrigger::with_transaction(
                         TxResult::test_with_event_type("tx_event_1"),
                         block_with_events.block().clone(),
                     ),
-                    TendermintTrigger::with_transaction(
+                    CosmosTrigger::with_transaction(
                         TxResult::test_with_event_type("tx_event_2"),
                         block_with_events.block().clone(),
                     ),
-                    TendermintTrigger::with_transaction(
+                    CosmosTrigger::with_transaction(
                         TxResult::test_with_event_type("tx_event_3"),
                         block_with_events.block().clone(),
                     ),

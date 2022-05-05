@@ -9,12 +9,12 @@ use graph::blockchain as bc;
 use graph::firehose::EventFilter;
 use graph::prelude::*;
 
-const EVENT_FILTER_TYPE_URL: &str = "type.googleapis.com/fig.tendermint.transform.v1.EventFilter";
+const EVENT_FILTER_TYPE_URL: &str = "type.googleapis.com/fig.cosmos.transform.v1.EventFilter";
 
 #[derive(Clone, Debug, Default)]
 pub struct TriggerFilter {
-    pub(crate) event_filter: TendermintEventFilter,
-    pub(crate) block_filter: TendermintBlockFilter,
+    pub(crate) event_filter: CosmosEventFilter,
+    pub(crate) block_filter: CosmosBlockFilter,
 }
 
 impl bc::TriggerFilter<Chain> for TriggerFilter {
@@ -57,11 +57,11 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
 pub type EventType = String;
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct TendermintEventFilter {
+pub(crate) struct CosmosEventFilter {
     pub event_types: HashSet<EventType>,
 }
 
-impl TendermintEventFilter {
+impl CosmosEventFilter {
     pub(crate) fn matches(&self, event_type: &EventType) -> bool {
         self.event_types.contains(event_type)
     }
@@ -74,11 +74,11 @@ impl TendermintEventFilter {
 }
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct TendermintBlockFilter {
+pub(crate) struct CosmosBlockFilter {
     pub trigger_every_block: bool,
 }
 
-impl TendermintBlockFilter {
+impl CosmosBlockFilter {
     fn extend_from_data_sources<'a>(
         &mut self,
         mut data_sources: impl Iterator<Item = &'a DataSource>,
@@ -128,10 +128,10 @@ mod test {
     impl TriggerFilter {
         pub(crate) fn test_new(trigger_every_block: bool, event_types: &[&str]) -> TriggerFilter {
             TriggerFilter {
-                event_filter: TendermintEventFilter {
+                event_filter: CosmosEventFilter {
                     event_types: event_types.iter().map(ToString::to_string).collect(),
                 },
-                block_filter: TendermintBlockFilter {
+                block_filter: CosmosBlockFilter {
                     trigger_every_block,
                 },
             }

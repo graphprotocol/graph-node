@@ -1,9 +1,0 @@
-syntax = "proto3";
-
-package fig.tendermint.transform.v1;
-
-option go_package = "github.com/figment-networks/tendermint-protobuf-def/pbtransform";
-
-message EventFilter {
-  repeated string event_types = 1;
-}
