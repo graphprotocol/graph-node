@@ -1,7 +1,7 @@
 extern crate clap;
 extern crate graph_store_postgres;
 
-use clap::App;
+use clap::{arg, Command};
 use std::process::exit;
 use std::{fs, sync::Arc};
 
@@ -121,14 +121,12 @@ fn print_diesel_tables(layout: &Layout) {
 }
 
 pub fn main() {
-    let args = App::new("layout")
+    let args = Command::new("layout")
     .version("1.0")
     .about("Information about the database schema for a GraphQL schema")
-    .args_from_usage(
-        "-g, --generate=[KIND] 'what kind of SQL to generate. Can be ddl (the default), migrate, delete, or drop'
-        <schema>
-        [db_schema]"
-    )
+    .arg(arg!(-g --generate <KIND> "what kind of SQL to generate. Can be ddl (the default), migrate, delete, or drop"))
+    .arg(arg!(<schema>))
+    .arg(arg!(<db_schema>))
     .get_matches();
 
     let schema = args.value_of("schema").unwrap();
