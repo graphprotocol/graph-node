@@ -4,6 +4,7 @@ mod traits;
 
 pub use cache::{CachedEthereumCall, EntityCache, ModificationsAndCache};
 pub use err::StoreError;
+use itertools::Itertools;
 use stable_hash::{FieldAddress, StableHash};
 use stable_hash_legacy::SequenceNumber;
 pub use traits::*;
@@ -191,6 +192,51 @@ pub enum EntityFilter {
     NotEndsWith(Attribute, Value),
     NotEndsWithNoCase(Attribute, Value),
     ChangeBlockGte(BlockNumber),
+}
+
+// A somewhat concise string representation of a filter
+impl fmt::Display for EntityFilter {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use EntityFilter::*;
+
+        match self {
+            And(fs) => {
+                write!(f, "{}", fs.iter().map(|f| f.to_string()).join(" and "))
+            }
+            Or(fs) => {
+                write!(f, "{}", fs.iter().map(|f| f.to_string()).join(" or "))
+            }
+            Equal(a, v) => write!(f, "{a} = {v}"),
+            Not(a, v) => write!(f, "{a} != {v}"),
+            GreaterThan(a, v) => write!(f, "{a} > {v}"),
+            LessThan(a, v) => write!(f, "{a} < {v}"),
+            GreaterOrEqual(a, v) => write!(f, "{a} >= {v}"),
+            LessOrEqual(a, v) => write!(f, "{a} <= {v}"),
+            In(a, vs) => write!(
+                f,
+                "{a} in ({})",
+                vs.into_iter().map(|v| v.to_string()).join(",")
+            ),
+            NotIn(a, vs) => write!(
+                f,
+                "{a} not in ({})",
+                vs.into_iter().map(|v| v.to_string()).join(",")
+            ),
+            Contains(a, v) => write!(f, "{a} ~ *{v}*"),
+            ContainsNoCase(a, v) => write!(f, "{a} ~ *{v}*i"),
+            NotContains(a, v) => write!(f, "{a} !~ *{v}*"),
+            NotContainsNoCase(a, v) => write!(f, "{a} !~ *{v}*i"),
+            StartsWith(a, v) => write!(f, "{a} ~ ^{v}*"),
+            StartsWithNoCase(a, v) => write!(f, "{a} ~ ^{v}*i"),
+            NotStartsWith(a, v) => write!(f, "{a} !~ ^{v}*"),
+            NotStartsWithNoCase(a, v) => write!(f, "{a} !~ ^{v}*i"),
+            EndsWith(a, v) => write!(f, "{a} ~ *{v}$"),
+            EndsWithNoCase(a, v) => write!(f, "{a} ~ *{v}$i"),
+            NotEndsWith(a, v) => write!(f, "{a} !~ *{v}$"),
+            NotEndsWithNoCase(a, v) => write!(f, "{a} !~ *{v}$i"),
+            ChangeBlockGte(b) => write!(f, "block >= {b}"),
+        }
+    }
 }
 
 // Define some convenience methods

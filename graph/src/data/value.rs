@@ -7,9 +7,47 @@ use std::iter::FromIterator;
 
 const TOMBSTONE_KEY: &str = "*dead*";
 
+/// An immutable string that is more memory-efficient since it only has an
+/// overhead of 16 bytes for storing a string vs the 24 bytes that `String`
+/// requires
+#[derive(Clone, Default, Debug, PartialOrd, Ord, PartialEq, Eq)]
+pub struct Word(Box<str>);
+
+impl Word {
+    pub fn as_str(&self) -> &str {
+        &*self.0
+    }
+}
+
+impl std::fmt::Display for Word {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::ops::Deref for Word {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.0
+    }
+}
+
+impl From<&str> for Word {
+    fn from(s: &str) -> Self {
+        Word(s.into())
+    }
+}
+
+impl From<String> for Word {
+    fn from(s: String) -> Self {
+        Word(s.into_boxed_str())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct Entry {
-    key: String,
+    key: Word,
     value: Value,
 }
 
@@ -24,21 +62,21 @@ impl Object {
     pub fn get(&self, key: &str) -> Option<&Value> {
         self.0
             .iter()
-            .find(|entry| entry.key == key)
+            .find(|entry| entry.key.as_str() == key)
             .map(|entry| &entry.value)
     }
 
     pub fn remove(&mut self, key: &str) -> Option<Value> {
         self.0
             .iter_mut()
-            .find(|entry| entry.key == key)
+            .find(|entry| entry.key.as_str() == key)
             .map(|entry| {
-                entry.key = TOMBSTONE_KEY.to_string();
+                entry.key = TOMBSTONE_KEY.into();
                 std::mem::replace(&mut entry.value, Value::Null)
             })
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &Value)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &Value)> {
         ObjectIter::new(self)
     }
 
@@ -51,10 +89,13 @@ impl Object {
     }
 
     pub fn insert(&mut self, key: String, value: Value) -> Option<Value> {
-        match self.0.iter_mut().find(|entry| entry.key == key) {
+        match self.0.iter_mut().find(|entry| entry.key.as_str() == key) {
             Some(entry) => Some(std::mem::replace(&mut entry.value, value)),
             None => {
-                self.0.push(Entry { key, value });
+                self.0.push(Entry {
+                    key: key.into(),
+                    value,
+                });
                 None
             }
         }
@@ -65,7 +106,10 @@ impl FromIterator<(String, Value)> for Object {
     fn from_iter<T: IntoIterator<Item = (String, Value)>>(iter: T) -> Self {
         let mut items: Vec<_> = Vec::new();
         for (key, value) in iter {
-            items.push(Entry { key, value })
+            items.push(Entry {
+                key: key.into(),
+                value,
+            })
         }
         Object(items)
     }
@@ -76,11 +120,11 @@ pub struct ObjectOwningIter {
 }
 
 impl Iterator for ObjectOwningIter {
-    type Item = (String, Value);
+    type Item = (Word, Value);
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(entry) = self.iter.next() {
-            if &entry.key != TOMBSTONE_KEY {
+            if entry.key.as_str() != TOMBSTONE_KEY {
                 return Some((entry.key, entry.value));
             }
         }
@@ -89,7 +133,7 @@ impl Iterator for ObjectOwningIter {
 }
 
 impl IntoIterator for Object {
-    type Item = (String, Value);
+    type Item = (Word, Value);
 
     type IntoIter = ObjectOwningIter;
 
@@ -112,12 +156,12 @@ impl<'a> ObjectIter<'a> {
     }
 }
 impl<'a> Iterator for ObjectIter<'a> {
-    type Item = (&'a String, &'a Value);
+    type Item = (&'a str, &'a Value);
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(entry) = self.iter.next() {
-            if entry.key != TOMBSTONE_KEY {
-                return Some((&entry.key, &entry.value));
+            if entry.key.as_str() != TOMBSTONE_KEY {
+                return Some((entry.key.as_str(), &entry.value));
             }
         }
         None
@@ -165,7 +209,7 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn object(map: BTreeMap<String, Value>) -> Self {
+    pub fn object(map: BTreeMap<Word, Value>) -> Self {
         let items = map
             .into_iter()
             .map(|(key, value)| Entry { key, value })
@@ -320,7 +364,7 @@ impl TryFrom<q::Value> for Value {
                 let mut rmap = BTreeMap::new();
                 for (key, value) in map.into_iter() {
                     let value = Value::try_from(value)?;
-                    rmap.insert(key, value);
+                    rmap.insert(key.into(), value);
                 }
                 Ok(Value::object(rmap))
             }
@@ -371,7 +415,7 @@ impl From<Value> for q::Value {
                 let mut rmap = BTreeMap::new();
                 for (key, value) in map.into_iter() {
                     let value = q::Value::from(value);
-                    rmap.insert(key, value);
+                    rmap.insert(key.to_string(), value);
                 }
                 q::Value::Object(rmap)
             }

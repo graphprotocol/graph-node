@@ -2,8 +2,12 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::{BTreeMap, HashMap};
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
-use graph::prelude::{lazy_static, q};
+use graph::data::value::{Object, Word};
+use graph::object;
+use graph::prelude::{lazy_static, q, r, BigDecimal, BigInt, QueryResult};
 use rand::SeedableRng;
 use rand::{rngs::SmallRng, Rng};
 use structopt::StructOpt;
@@ -183,22 +187,18 @@ static A: Counter = Counter;
 // with cache size easier
 
 /// The template of an object we want to cache
-trait Template<T>: CacheWeight + Default {
-    type Item;
-
+trait Template: CacheWeight {
     // Create a new test object
     fn create(size: usize, rng: Option<&mut SmallRng>) -> Self;
 
     // Return a sample of this test object of the given `size`. There's no
     // fixed definition of 'size', other than that smaller sizes will
     // take less memory than larger ones
-    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self::Item>;
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self>;
 }
 
 /// Template for testing caching of `String`
-impl Template<String> for String {
-    type Item = String;
-
+impl Template for String {
     fn create(size: usize, _rng: Option<&mut SmallRng>) -> Self {
         let mut s = String::with_capacity(size);
         for _ in 0..size {
@@ -206,27 +206,85 @@ impl Template<String> for String {
         }
         s
     }
-    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self::Item> {
+    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self> {
+        Box::new(self[0..size].into())
+    }
+}
+
+/// Template for testing caching of `String`
+impl Template for Word {
+    fn create(size: usize, _rng: Option<&mut SmallRng>) -> Self {
+        let mut s = String::with_capacity(size);
+        for _ in 0..size {
+            s.push('x');
+        }
+        Word::from(s)
+    }
+
+    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self> {
         Box::new(self[0..size].into())
     }
 }
 
 /// Template for testing caching of `Vec<usize>`
-impl Template<Vec<usize>> for Vec<usize> {
-    type Item = Vec<usize>;
-
+impl Template for Vec<usize> {
     fn create(size: usize, _rng: Option<&mut SmallRng>) -> Self {
         Vec::from_iter(0..size)
     }
-    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self::Item> {
+    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self> {
         Box::new(self[0..size].into())
     }
 }
 
-/// Template for testing caching of `HashMap<String, String>`
-impl Template<HashMap<String, String>> for HashMap<String, String> {
-    type Item = Self;
+impl Template for BigInt {
+    fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
+        let f = match rng {
+            Some(rng) => {
+                let mag = rng.gen_range(1..100);
+                if rng.gen_bool(0.5) {
+                    mag
+                } else {
+                    -mag
+                }
+            }
+            None => 1,
+        };
+        BigInt::from(3u64).pow(size as u8) * BigInt::from(f)
+    }
 
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self> {
+        Box::new(Self::create(size, rng))
+    }
+}
+
+impl Template for BigDecimal {
+    fn create(size: usize, mut rng: Option<&mut SmallRng>) -> Self {
+        let f = match rng.as_deref_mut() {
+            Some(rng) => {
+                let mag = rng.gen_range(1i32..100);
+                if rng.gen_bool(0.5) {
+                    mag
+                } else {
+                    -mag
+                }
+            }
+            None => 1,
+        };
+        let exp = match rng {
+            Some(rng) => rng.gen_range(-100..=100),
+            None => 1,
+        };
+        let bi = BigInt::from(3u64).pow(size as u8) * BigInt::from(f);
+        BigDecimal::new(bi, exp)
+    }
+
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self> {
+        Box::new(Self::create(size, rng))
+    }
+}
+
+/// Template for testing caching of `HashMap<String, String>`
+impl Template for HashMap<String, String> {
     fn create(size: usize, _rng: Option<&mut SmallRng>) -> Self {
         let mut map = HashMap::new();
         for i in 0..size {
@@ -235,12 +293,105 @@ impl Template<HashMap<String, String>> for HashMap<String, String> {
         map
     }
 
-    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self::Item> {
+    fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self> {
         Box::new(HashMap::from_iter(
             self.iter()
                 .take(size)
                 .map(|(k, v)| (k.to_owned(), v.to_owned())),
         ))
+    }
+}
+
+fn make_object(size: usize, mut rng: Option<&mut SmallRng>) -> Object {
+    let mut obj = Object::new();
+    let modulus = if *NESTED_MAP { 8 } else { 7 };
+
+    for i in 0..size {
+        let kind = rng
+            .as_deref_mut()
+            .map(|rng| rng.gen_range(0..modulus))
+            .unwrap_or(i % modulus);
+
+        let value = match kind {
+            0 => r::Value::Boolean(i % 11 > 5),
+            1 => r::Value::Int((i as i32).into()),
+            2 => r::Value::Null,
+            3 => r::Value::Float(i as f64 / 17.0),
+            4 => r::Value::Enum(format!("enum{}", i)),
+            5 => r::Value::String(format!("0x0000000000000000000000000000000000000000{}", i)),
+            6 => {
+                let vals = (0..(i % 51)).map(|i| r::Value::String(format!("list{}", i)));
+                r::Value::List(Vec::from_iter(vals))
+            }
+            7 => {
+                let mut obj = Object::new();
+                for j in 0..(i % 51) {
+                    obj.insert(format!("key{}", j), r::Value::String(format!("value{}", j)));
+                }
+                r::Value::Object(obj)
+            }
+            _ => unreachable!(),
+        };
+
+        let key = rng.as_deref_mut().map(|rng| rng.gen()).unwrap_or(i) % modulus;
+        obj.insert(format!("val{}", key), value);
+    }
+    obj
+}
+
+fn make_domains(size: usize, _rng: Option<&mut SmallRng>) -> Object {
+    let owner = object! {
+        owner: object! {
+            id: "0xe8d391ef649a6652b9047735f6c0d48b6ae751df",
+            name: "36190.eth"
+        }
+    };
+
+    let domains: Vec<_> = (0..size).map(|_| owner.clone()).collect();
+    Object::from_iter([("domains".to_string(), r::Value::List(domains))])
+}
+
+/// Template for testing caching of `Object`
+impl Template for Object {
+    fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
+        make_object(size, rng)
+    }
+
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self> {
+        // If the user specified '--fixed', don't build a new map every call
+        // since that can be slow
+        if rng.is_none() {
+            Box::new(Object::from_iter(
+                self.iter()
+                    .take(size)
+                    .map(|(k, v)| (k.to_owned(), v.to_owned())),
+            ))
+        } else {
+            Box::new(make_object(size, rng))
+        }
+    }
+}
+
+/// Template for testing caching of `QueryResult`
+impl Template for QueryResult {
+    fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
+        QueryResult::new(make_domains(size, rng))
+    }
+
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self> {
+        // If the user specified '--fixed', don't build a new map every call
+        // since that can be slow
+        if rng.is_none() {
+            Box::new(QueryResult::new(Object::from_iter(
+                self.data()
+                    .unwrap()
+                    .iter()
+                    .take(size)
+                    .map(|(k, v)| (k.to_owned(), v.to_owned())),
+            )))
+        } else {
+            Box::new(QueryResult::new(make_domains(size, rng)))
+        }
     }
 }
 
@@ -287,14 +438,12 @@ impl ValueMap {
 }
 
 /// Template for testing roughly a GraphQL response, i.e., a `BTreeMap<String, Value>`
-impl Template<ValueMap> for ValueMap {
-    type Item = ValueMap;
-
+impl Template for ValueMap {
     fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
         Self::make_map(size, rng)
     }
 
-    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self::Item> {
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self> {
         // If the user specified '--fixed', don't build a new map every call
         // since that can be slow
         if rng.is_none() {
@@ -324,14 +473,12 @@ impl UsizeMap {
 }
 
 /// Template for testing roughly a GraphQL response, i.e., a `BTreeMap<String, Value>`
-impl Template<UsizeMap> for UsizeMap {
-    type Item = UsizeMap;
-
+impl Template for UsizeMap {
     fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
         Self::make_map(size, rng)
     }
 
-    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self::Item> {
+    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self> {
         // If the user specified '--fixed', don't build a new map every call
         // since that can be slow
         if rng.is_none() {
@@ -347,26 +494,31 @@ impl Template<UsizeMap> for UsizeMap {
     }
 }
 
-/// Helper to deal with different template objects
-struct Cacheable<T> {
-    cache: LfuCache<usize, T>,
-    template: T,
+/// Wrapper around our template objects; we always put them behind an `Arc`
+/// so that dropping the template object frees the entire object rather than
+/// leaving part of it in the cache. That's also how the production code
+/// uses this cache: objects always wrapped in an `Arc`
+struct Entry<T>(Arc<T>);
+
+impl<T: Template> Default for Entry<T> {
+    fn default() -> Self {
+        Self(Arc::new(T::create(0, None)))
+    }
 }
 
-impl<T: Template<T>> Cacheable<T> {
-    fn new(size: usize, rng: Option<&mut SmallRng>) -> Self {
-        Cacheable {
-            cache: LfuCache::new(),
-            template: T::create(size, rng),
-        }
+impl<T: Template> CacheWeight for Entry<T> {
+    fn indirect_weight(&self) -> usize {
+        // Account for the two pointers the Arc uses for keeping reference
+        // counts. Including that in the weight is only correct in this
+        // test, since we know we never have more than one reference throug
+        // the `Arc`
+        self.0.weight() + 2 * std::mem::size_of::<usize>()
     }
+}
 
-    fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<T::Item> {
-        self.template.sample(size, rng)
-    }
-
-    fn name(&self) -> &'static str {
-        std::any::type_name::<T>()
+impl<T: Template> From<T> for Entry<T> {
+    fn from(templ: T) -> Self {
+        Self(Arc::new(templ))
     }
 }
 
@@ -408,18 +560,19 @@ fn maybe_rng<'a>(opt: &'a Opt, rng: &'a mut SmallRng) -> Option<&'a mut SmallRng
     }
 }
 
-fn stress<T: Template<T, Item = T>>(opt: &Opt) {
+fn stress<T: Template>(opt: &Opt) {
     let mut rng = match opt.seed {
         None => SmallRng::from_entropy(),
         Some(seed) => SmallRng::seed_from_u64(seed),
     };
 
-    let mut cacheable: Cacheable<T> = Cacheable::new(opt.obj_size, maybe_rng(opt, &mut rng));
+    let mut cache: LfuCache<usize, Entry<T>> = LfuCache::new();
+    let template = T::create(opt.obj_size, maybe_rng(opt, &mut rng));
 
-    println!("type: {}", cacheable.name());
+    println!("type: {}", std::any::type_name::<T>());
     println!(
-        "obj: {} iterations: {} cache_size: {}\n",
-        cacheable.template.weight(),
+        "obj weight: {} iterations: {} cache_size: {}\n",
+        template.weight(),
         opt.niter,
         opt.cache_size
     );
@@ -430,24 +583,39 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
     let mut print_header = true;
     let mut sample_weight: usize = 0;
     let mut sample_alloc: usize = 0;
+    let mut evict_count: usize = 0;
+    let mut evict_duration = Duration::from_secs(0);
+
+    let start = Instant::now();
     for key in 0..opt.niter {
         should_print = should_print || key % print_mod == 0;
         let before_mem = ALLOCATED.load(SeqCst);
-        if let Some((evicted, _, new_weight)) = cacheable.cache.evict(opt.cache_size) {
+        let start_evict = Instant::now();
+        if let Some(stats) = cache.evict(opt.cache_size) {
+            evict_duration += start_evict.elapsed();
             let after_mem = ALLOCATED.load(SeqCst);
+            evict_count += 1;
             if should_print {
                 if print_header {
-                    println!("heap_factor is heap_size / cache_size");
+                    println!("evict:        weight that was removed from cache");
+                    println!("drop:         allocated memory that was freed");
+                    println!("slip:         evicted - dropped");
+                    println!("room:         configured cache size - cache weight");
+                    println!("heap:         allocated heap_size / configured cache_size");
+                    println!("mem:          memory allocated for cache + all entries\n");
                     print_header = false;
                 }
 
-                let heap_factor = (after_mem - base_mem) as f64 / opt.cache_size as f64;
+                let dropped = before_mem - after_mem;
+                let evicted_count = stats.evicted_count;
+                let evicted = stats.evicted_weight;
+                let slip = evicted as i64 - dropped as i64;
+                let room = opt.cache_size as i64 - stats.new_weight as i64;
+                let heap = (after_mem - base_mem) as f64 / opt.cache_size as f64;
+                let mem = after_mem - base_mem;
                 println!(
-                    "evicted: {:6}  dropped: {:6} new_weight: {:8} heap_factor: {:0.2}  ",
-                    evicted,
-                    before_mem - after_mem,
-                    new_weight,
-                    heap_factor
+                    "evict: [{evicted_count:3}]{evicted:6}  drop: {dropped:6} slip: {slip:4} \
+                    room: {room:6} heap: {heap:0.2}  mem: {mem:8}"
                 );
                 should_print = false;
             }
@@ -458,7 +626,7 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
             rng.gen_range(0..opt.obj_size)
         };
         let before = ALLOCATED.load(SeqCst);
-        let sample = cacheable.sample(size, maybe_rng(opt, &mut rng));
+        let sample = template.sample(size, maybe_rng(opt, &mut rng));
         let weight = sample.weight();
         let alloc = ALLOCATED.load(SeqCst) - before;
         sample_weight += weight;
@@ -466,8 +634,21 @@ fn stress<T: Template<T, Item = T>>(opt: &Opt) {
         if opt.samples {
             println!("sample: weight {:6} alloc {:6}", weight, alloc,);
         }
-        cacheable.cache.insert(key, *sample);
+        cache.insert(key, Entry::from(*sample));
+        // Do a few random reads from the cache
+        for _attempt in 0..5 {
+            let read = rng.gen_range(0..=key);
+            let _v = cache.get(&read);
+        }
     }
+
+    println!(
+        "\ncache: entries: {} evictions: {} took {}ms out of {}ms",
+        cache.len(),
+        evict_count,
+        evict_duration.as_millis(),
+        start.elapsed().as_millis()
+    );
     if sample_alloc == sample_weight {
         println!(
             "samples: weight {} alloc {} weight/alloc precise",
@@ -497,41 +678,18 @@ pub fn main() {
     unsafe { PRINT_SAMPLES = opt.samples }
 
     // Use different Cacheables to see how the cache manages memory with
-    // different types of cache entries. Uncomment one of the 'let mut cacheable'
-    // lines
-    if opt.template == "vec" {
-        // The weight of Vec<usize> is precise. The additional memory that
-        // the cache uses must be solely due to the memory for the cache
-        // itself
-        //
-        // obj_size  |  heap factor
-        //   10      |     2.5
-        //   20      |     1.9
-        //   30      |     1.8
-        //   50      |     1.3
-        //  100      |     1.3
-        // 1000      |     1.1
-        stress::<Vec<usize>>(&opt);
-    } else if opt.template == "hashmap" {
-        // The heap factor ranges between 1.9 (size 3) and 1.06 (size 100)
-        stress::<HashMap<String, String>>(&opt);
-    } else if opt.template == "valuemap" {
-        // Cache BTreeMap<String, Value>
-        // obj_size  |  heap factor
-        //    3      |      1.3
-        //    5      |      1.5
-        //   10      |      1.5
-        //   50      |      1.2
-        //  100      |      0.9
-        //
-        // For small maps (say, up to about 20 entries), the weight is an
-        // accurate estimation of the map's allocation
-        stress::<ValueMap>(&opt);
-    } else if opt.template == "string" {
-        stress::<String>(&opt);
-    } else if opt.template == "usizemap" {
-        stress::<UsizeMap>(&opt)
-    } else {
-        println!("unknown value for --template")
+    // different types of cache entries.
+    match opt.template.as_str() {
+        "bigdecimal" => stress::<BigDecimal>(&opt),
+        "bigint" => stress::<BigInt>(&opt),
+        "hashmap" => stress::<HashMap<String, String>>(&opt),
+        "object" => stress::<Object>(&opt),
+        "result" => stress::<QueryResult>(&opt),
+        "string" => stress::<String>(&opt),
+        "usizemap" => stress::<UsizeMap>(&opt),
+        "valuemap" => stress::<ValueMap>(&opt),
+        "vec" => stress::<Vec<usize>>(&opt),
+        "word" => stress::<Word>(&opt),
+        _ => println!("unknown value `{}` for --template", opt.template),
     }
 }

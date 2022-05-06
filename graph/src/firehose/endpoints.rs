@@ -6,7 +6,6 @@ use crate::{
     firehose::{decode_firehose_block, ForkStep},
     prelude::{debug, info},
 };
-use anyhow::Context;
 use futures03::StreamExt;
 use http::uri::{Scheme, Uri};
 use rand::prelude::IteratorRandom;
@@ -58,13 +57,9 @@ impl FirehoseEndpoint {
         };
 
         let uri = endpoint.uri().to_string();
-        let channel = endpoint.connect_lazy().with_context(|| {
-            format!(
-                "unable to lazily connect to firehose provider {} (at {})",
-                provider.as_ref(),
-                url.as_ref()
-            )
-        })?;
+        //connect_lazy() used to return Result, but not anymore, that makes sence since Channel is not used immediatelly
+        //FirehoseEndpoint has all the info to report error - provider & uri
+        let channel = endpoint.connect_lazy();
 
         Ok(FirehoseEndpoint {
             provider: provider.as_ref().to_string(),

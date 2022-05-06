@@ -4,6 +4,7 @@ use super::*;
 use crate::components::server::index_node::VersionInfo;
 use crate::components::transaction_receipt;
 use crate::data::subgraph::status;
+use crate::data::value::Word;
 use crate::data::{query::QueryTarget, subgraph::schema::*};
 
 pub trait SubscriptionManager: Send + Sync + 'static {
@@ -390,7 +391,7 @@ pub trait QueryStore: Send + Sync {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<Vec<BTreeMap<String, r::Value>>, QueryExecutionError>;
+    ) -> Result<Vec<BTreeMap<Word, r::Value>>, QueryExecutionError>;
 
     async fn is_deployment_synced(&self) -> Result<bool, Error>;
 

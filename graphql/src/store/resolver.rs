@@ -202,17 +202,17 @@ impl StoreResolver {
                 number: number,
                 __typename: BLOCK_FIELD_TYPE
             };
-            map.insert("prefetch:block".to_string(), r::Value::List(vec![block]));
+            map.insert("prefetch:block".into(), r::Value::List(vec![block]));
             map.insert(
-                "deployment".to_string(),
+                "deployment".into(),
                 r::Value::String(self.deployment.to_string()),
             );
             map.insert(
-                "hasIndexingErrors".to_string(),
+                "hasIndexingErrors".into(),
                 r::Value::Boolean(self.has_non_fatal_errors),
             );
             map.insert(
-                "__typename".to_string(),
+                "__typename".into(),
                 r::Value::String(META_FIELD_TYPE.to_string()),
             );
             return Ok((None, Some(r::Value::object(map))));

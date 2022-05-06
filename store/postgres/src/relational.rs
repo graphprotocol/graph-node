@@ -665,21 +665,31 @@ impl Layout {
                 }
                 query.load::<EntityData>(conn)
             })
-            .map_err(|e| match e {
-                diesel::result::Error::DatabaseError(
-                    diesel::result::DatabaseErrorKind::__Unknown,
-                    ref info,
-                ) if info.message().starts_with("syntax error in tsquery") => {
-                    QueryExecutionError::FulltextQueryInvalidSyntax(info.message().to_string())
+            .map_err(|e| {
+                use diesel::result::DatabaseErrorKind;
+                use diesel::result::Error::*;
+                // Sometimes `debug_query(..)` can't be turned into a
+                // string, e.g., because `walk_ast` for one of its fragments
+                // returns an error. When that happens, avoid a panic from
+                // simply calling `to_string()` on it, and output a string
+                // representation of the `FilterQuery` instead of the SQL
+                let mut query_text = String::new();
+                match write!(query_text, "{}", debug_query(&query_clone)) {
+                    Ok(()) => (),
+                    Err(_) => {
+                        write!(query_text, "{query_clone}").ok();
+                    }
+                };
+                match e {
+                    DatabaseError(DatabaseErrorKind::__Unknown, ref info)
+                        if info.message().starts_with("syntax error in tsquery") =>
+                    {
+                        QueryExecutionError::FulltextQueryInvalidSyntax(info.message().to_string())
+                    }
+                    _ => QueryExecutionError::ResolveEntitiesError(format!(
+                        "{e}, query = {query_text}",
+                    )),
                 }
-                diesel::result::Error::QueryBuilderError(e) => {
-                    QueryExecutionError::ResolveEntitiesError(e.to_string())
-                }
-                _ => QueryExecutionError::ResolveEntitiesError(format!(
-                    "{}, query = {}",
-                    e,
-                    debug_query(&query_clone).to_string()
-                )),
             })?;
         log_query_timing(logger, &query_clone, start.elapsed(), values.len());
 
@@ -854,15 +864,7 @@ impl Layout {
         site: Arc<Site>,
     ) -> Result<Arc<Self>, StoreError> {
         let account_like = crate::catalog::account_like(conn, &self.site)?;
-        let is_account_like = {
-            |table: &Table| {
-                ENV_VARS
-                    .store
-                    .account_tables
-                    .contains(table.qualified_name.as_str())
-                    || account_like.contains(table.name.as_str())
-            }
-        };
+        let is_account_like = { |table: &Table| account_like.contains(table.name.as_str()) };
 
         let changed_tables: Vec<_> = self
             .tables
@@ -1205,18 +1207,16 @@ impl Table {
             .chain(fulltexts.iter().map(Column::new_fulltext))
             .collect::<Result<Vec<Column>, StoreError>>()?;
         let qualified_name = SqlName::qualified_name(&catalog.site.namespace, &table_name);
-        let is_account_like = ENV_VARS
-            .store
-            .account_tables
-            .contains(qualified_name.as_str());
-
         let immutable = defn.is_immutable();
 
         let table = Table {
             object: EntityType::from(defn),
             name: table_name,
             qualified_name,
-            is_account_like,
+            // Default `is_account_like` to `false`; the caller should call
+            // `refresh` after constructing the layout, but that requires a
+            // db connection, which we don't have at this point.
+            is_account_like: false,
             columns,
             position,
             immutable,

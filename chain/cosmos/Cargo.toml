@@ -4,13 +4,13 @@ version = "0.26.0"
 edition = "2018"
 
 [build-dependencies]
-tonic-build = "0.5.1"
+tonic-build = { version = "0.7.1", features = ["prost"] }
 
 [dependencies]
 graph = { path = "../../graph" }
 mockall = "0.9.1"
-prost = "0.8.0"
-prost-types = "0.8.0"
+prost = "0.10.1"
+prost-types = "0.10.1"
 serde = "1.0"
 anyhow = "1.0"
 semver = "1.0.3"

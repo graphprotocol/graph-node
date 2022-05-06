@@ -1,3 +1,4 @@
+#[rustfmt::skip]
 #[path = "../protobuf/sf.cosmos.r#type.v1.rs"]
 mod pbcosmos;
 

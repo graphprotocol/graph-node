@@ -83,6 +83,7 @@ pub enum QueryExecutionError {
     SubgraphManifestResolveError(Arc<SubgraphManifestResolveError>),
     InvalidSubgraphManifest,
     ResultTooBig(usize, usize),
+    DeploymentNotFound(String),
 }
 
 impl QueryExecutionError {
@@ -139,7 +140,8 @@ impl QueryExecutionError {
             | SubgraphManifestResolveError(_)
             | InvalidSubgraphManifest
             | ValidationError(_, _)
-            | ResultTooBig(_, _) => false,
+            | ResultTooBig(_, _)
+            | DeploymentNotFound(_) => false,
         }
     }
 }
@@ -287,6 +289,7 @@ impl fmt::Display for QueryExecutionError {
             SubgraphManifestResolveError(e) => write!(f, "failed to resolve subgraph manifest: {}", e),
             InvalidSubgraphManifest => write!(f, "invalid subgraph manifest file"),
             ResultTooBig(actual, limit) => write!(f, "the result size of {} is larger than the allowed limit of {}", actual, limit),
+            DeploymentNotFound(id_or_name) => write!(f, "deployment `{}` does not exist", id_or_name)
         }
     }
 }
@@ -317,7 +320,12 @@ impl From<bigdecimal::ParseBigDecimalError> for QueryExecutionError {
 
 impl From<StoreError> for QueryExecutionError {
     fn from(e: StoreError) -> Self {
-        QueryExecutionError::StoreError(CloneableAnyhowError(Arc::new(e.into())))
+        match e {
+            StoreError::DeploymentNotFound(id_or_name) => {
+                QueryExecutionError::DeploymentNotFound(id_or_name)
+            }
+            _ => QueryExecutionError::StoreError(CloneableAnyhowError(Arc::new(e.into()))),
+        }
     }
 }
 

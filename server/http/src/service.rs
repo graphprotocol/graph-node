@@ -48,7 +48,13 @@ impl GraphQLServiceMetrics {
         let id = results
             .deployment_hash()
             .map(|h| h.as_str())
-            .unwrap_or("unknown");
+            .unwrap_or_else(|| {
+                if results.not_found() {
+                    "notfound"
+                } else {
+                    "unknown"
+                }
+            });
         let status = if results.has_errors() {
             "failed"
         } else {

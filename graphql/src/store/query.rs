@@ -131,7 +131,7 @@ fn build_fulltext_filter_from_object(
         |(key, value)| {
             if let r::Value::String(s) = value {
                 Ok(Some(EntityFilter::Equal(
-                    key.clone(),
+                    key.to_string(),
                     Value::String(s.clone()),
                 )))
             } else {
@@ -276,7 +276,7 @@ fn build_fulltext_order_by_from_object(
         Err(QueryExecutionError::FulltextQueryRequiresFilter),
         |(key, value)| {
             if let r::Value::String(_) = value {
-                Ok(Some((key.clone(), ValueType::String)))
+                Ok(Some((key.to_string(), ValueType::String)))
             } else {
                 Err(QueryExecutionError::FulltextQueryRequiresFilter)
             }

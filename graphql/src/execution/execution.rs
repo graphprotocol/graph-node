@@ -3,9 +3,10 @@ use crossbeam::atomic::AtomicCell;
 use graph::{
     data::{schema::META_FIELD_NAME, value::Object},
     prelude::{s, CheapClone},
-    util::timed_rw_lock::TimedMutex,
+    util::{lfu_cache::EvictStats, timed_rw_lock::TimedMutex},
 };
 use lazy_static::lazy_static;
+use parking_lot::MutexGuard;
 use stable_hash::{FieldAddress, StableHash, StableHasher};
 use stable_hash_legacy::SequenceNumber;
 use std::time::Instant;
@@ -40,10 +41,6 @@ lazy_static! {
             caches
     };
     static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new("query_herd_cache");
-    static ref QUERY_LFU_CACHE: Vec<TimedMutex<LfuCache<QueryHash, WeightedResult>>> = {
-        std::iter::repeat_with(|| TimedMutex::new(LfuCache::new(), "query_lfu_cache"))
-                    .take(ENV_VARS.graphql.query_lfu_cache_shards as usize).collect()
-    };
 }
 
 struct WeightedResult {
@@ -146,6 +143,62 @@ fn cache_key(
     stable_hash_legacy::utils::stable_hash::<stable_hash_legacy::crypto::SetHasher, _>(&query)
 }
 
+fn lfu_cache(
+    logger: &Logger,
+    cache_key: &[u8; 32],
+) -> Option<MutexGuard<'static, LfuCache<[u8; 32], WeightedResult>>> {
+    lazy_static! {
+        static ref QUERY_LFU_CACHE: Vec<TimedMutex<LfuCache<QueryHash, WeightedResult>>> = {
+            std::iter::repeat_with(|| TimedMutex::new(LfuCache::new(), "query_lfu_cache"))
+                .take(ENV_VARS.graphql.query_lfu_cache_shards as usize)
+                .collect()
+        };
+    }
+
+    match QUERY_LFU_CACHE.len() {
+        0 => None,
+        n => {
+            let shard = (cache_key[0] as usize) % n;
+            Some(QUERY_LFU_CACHE[shard].lock(logger))
+        }
+    }
+}
+
+fn log_lfu_evict_stats(
+    logger: &Logger,
+    network: &str,
+    cache_key: &[u8; 32],
+    evict_stats: Option<EvictStats>,
+) {
+    let total_shards = ENV_VARS.graphql.query_lfu_cache_shards as usize;
+
+    if total_shards > 0 {
+        if let Some(EvictStats {
+            new_weight,
+            evicted_weight,
+            new_count,
+            evicted_count,
+        }) = evict_stats
+        {
+            {
+                let shard = (cache_key[0] as usize) % total_shards;
+                let network = network.to_string();
+                let logger = logger.clone();
+
+                graph::spawn(async move {
+                    debug!(logger, "Evicted LFU cache";
+                        "shard" => shard,
+                        "network" => network,
+                        "entries" => new_count,
+                        "entries_evicted" => evicted_count,
+                        "weight" => new_weight,
+                        "weight_evicted" => evicted_weight,
+                    )
+                });
+            }
+        }
+    }
+}
 /// Contextual information passed around during query execution.
 pub struct ExecutionContext<R>
 where
@@ -294,8 +347,7 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
                         return result;
                     }
                 }
-                {
-                    let mut cache = QUERY_LFU_CACHE[shard].lock(&ctx.logger);
+                if let Some(mut cache) = lfu_cache(&ctx.logger, &cache_key) {
                     if let Some(weighted) = cache.get(&cache_key) {
                         ctx.cache_status.store(CacheStatus::Hit);
                         return weighted.result.cheap_clone();
@@ -386,12 +438,16 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
 
         if inserted {
             ctx.cache_status.store(CacheStatus::Insert);
-        } else {
+        } else if let Some(mut cache) = lfu_cache(&ctx.logger, &key) {
             // Results that are too old for the QUERY_BLOCK_CACHE go into the QUERY_LFU_CACHE
-            let mut cache = QUERY_LFU_CACHE[shard].lock(&ctx.logger);
             let max_mem = ENV_VARS.graphql.query_cache_max_mem
-                / (ENV_VARS.graphql.query_block_cache_shards as usize);
-            cache.evict_with_period(max_mem, ENV_VARS.graphql.query_cache_stale_period);
+                / ENV_VARS.graphql.query_lfu_cache_shards as usize;
+
+            let evict_stats =
+                cache.evict_with_period(max_mem, ENV_VARS.graphql.query_cache_stale_period);
+
+            log_lfu_evict_stats(&ctx.logger, network, &key, evict_stats);
+
             cache.insert(
                 key,
                 WeightedResult {

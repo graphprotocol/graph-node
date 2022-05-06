@@ -10,7 +10,7 @@ pub struct EnvVarsMapping {
     /// kilobytes). The default value is 10 megabytes.
     pub entity_cache_size: usize,
     /// Set by the environment variable `GRAPH_MAX_API_VERSION`. The default
-    /// value is `0.0.6`.
+    /// value is `0.0.7`.
     pub max_api_version: Version,
     /// Set by the environment variable `GRAPH_MAPPING_HANDLER_TIMEOUT`
     /// (expressed in seconds). No default is provided.
