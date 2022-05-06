@@ -1,3 +1,4 @@
+#[rustfmt::skip]
 #[path = "protobuf/sf.arweave.r#type.v1.rs"]
 mod pbcodec;
 
