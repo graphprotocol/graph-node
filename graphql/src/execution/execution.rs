@@ -7,8 +7,6 @@ use graph::{
 };
 use lazy_static::lazy_static;
 use parking_lot::MutexGuard;
-use stable_hash::{FieldAddress, StableHash, StableHasher};
-use stable_hash_legacy::SequenceNumber;
 use std::time::Instant;
 use std::{borrow::ToOwned, collections::HashSet};
 
@@ -16,7 +14,7 @@ use graph::data::graphql::*;
 use graph::data::query::CacheStatus;
 use graph::env::CachedSubgraphIds;
 use graph::prelude::*;
-use graph::util::lfu_cache::LfuCache;
+use graph::util::{lfu_cache::LfuCache, stable_hash_glue::impl_stable_hash};
 
 use super::QueryHash;
 use crate::execution::ast as a;
@@ -69,62 +67,33 @@ struct HashableQuery<'a> {
     block_ptr: &'a BlockPtr,
 }
 
-/// Note that the use of StableHash here is a little bit loose. In particular,
-/// we are converting items to a string inside here as a quick-and-dirty
-/// implementation. This precludes the ability to add new fields (unlikely
-/// anyway). So, this hash isn't really Stable in the way that the StableHash
-/// crate defines it. Since hashes are only persisted for this process, we don't
-/// need that property. The reason we are using StableHash is to get collision
-/// resistance and use it's foolproof API to prevent easy mistakes instead.
-///
-/// This is also only as collision resistant insofar as the to_string impls are
-/// collision resistant. It is highly likely that this is ok, since these come
-/// from an ast.
-///
-/// It is possible that multiple asts that are effectively the same query with
-/// different representations. This is considered not an issue. The worst
-/// possible outcome is that the same query will have multiple cache entries.
-/// But, the wrong result should not be served.
-impl stable_hash_legacy::StableHash for HashableQuery<'_> {
-    fn stable_hash<H: stable_hash_legacy::StableHasher>(
-        &self,
-        mut sequence_number: H::Seq,
-        state: &mut H,
-    ) {
-        stable_hash_legacy::StableHash::stable_hash(
-            &self.query_schema_id,
-            sequence_number.next_child(),
-            state,
-        );
+// Note that the use of StableHash here is a little bit loose. In particular,
+// we are converting items to a string inside here as a quick-and-dirty
+// implementation. This precludes the ability to add new fields (unlikely
+// anyway). So, this hash isn't really Stable in the way that the StableHash
+// crate defines it. Since hashes are only persisted for this process, we don't
+// need that property. The reason we are using StableHash is to get collision
+// resistance and use it's foolproof API to prevent easy mistakes instead.
+//
+// This is also only as collision resistant insofar as the to_string impls are
+// collision resistant. It is highly likely that this is ok, since these come
+// from an ast.
+//
+// It is possible that multiple asts that are effectively the same query with
+// different representations. This is considered not an issue. The worst
+// possible outcome is that the same query will have multiple cache entries.
+// But, the wrong result should not be served.
+impl_stable_hash!(HashableQuery<'_> {
+    query_schema_id,
+    // Not stable! Uses to_string
+    // TODO: Performance: Save a cryptographic hash (Blake3) of the original query
+    // and pass it through, rather than formatting the selection set.
+    selection_set: format_selection_set,
+    block_ptr
+});
 
-        // Not stable! Uses to_string
-        stable_hash_legacy::StableHash::stable_hash(
-            &format!("{:?}", self.selection_set),
-            sequence_number.next_child(),
-            state,
-        );
-
-        stable_hash_legacy::StableHash::stable_hash(
-            &self.block_ptr,
-            sequence_number.next_child(),
-            state,
-        );
-    }
-}
-
-impl StableHash for HashableQuery<'_> {
-    fn stable_hash<H: StableHasher>(&self, field_address: H::Addr, state: &mut H) {
-        StableHash::stable_hash(&self.query_schema_id, field_address.child(0), state);
-
-        // Not stable! Uses to_string
-        StableHash::stable_hash(
-            &format!("{:?}", self.selection_set),
-            field_address.child(1),
-            state,
-        );
-
-        StableHash::stable_hash(&self.block_ptr, field_address.child(2), state);
-    }
+fn format_selection_set(s: &a::SelectionSet) -> String {
+    format!("{:?}", s)
 }
 
 // The key is: subgraph id + selection set + variables + fragment definitions
@@ -140,7 +109,13 @@ fn cache_key(
         selection_set,
         block_ptr,
     };
-    stable_hash_legacy::utils::stable_hash::<stable_hash_legacy::crypto::SetHasher, _>(&query)
+    // Security:
+    // This uses the crypo stable hash because a collision would
+    // cause us to fetch the incorrect query response and possibly
+    // attest to it. A collision should be impossibly rare with the
+    // non-crypto version, but a determined attacker should be able
+    // to find one and cause disputes which we must avoid.
+    stable_hash::crypto_stable_hash(&query)
 }
 
 fn lfu_cache(

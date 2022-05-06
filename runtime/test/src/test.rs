@@ -2,7 +2,7 @@ use graph::data::store::scalar;
 use graph::data::subgraph::*;
 use graph::prelude::web3::types::U256;
 use graph::prelude::*;
-use graph::runtime::{asc_get, asc_new, try_asc_get, AscIndexId, AscType};
+use graph::runtime::{asc_get, asc_new, AscIndexId, AscType};
 use graph::runtime::{AscPtr, ToAscObj};
 use graph::{components::store::*, ipfs_client::IpfsClient};
 use graph_chain_ethereum::{Chain, DataSource};
@@ -959,8 +959,7 @@ async fn test_entity_store(api_version: Version) {
             None
         } else {
             Some(Entity::from(
-                try_asc_get::<HashMap<String, Value>, _, _>(module, entity_ptr, &module.gas)
-                    .unwrap(),
+                asc_get::<HashMap<String, Value>, _, _>(module, entity_ptr, &module.gas).unwrap(),
             ))
         }
     };

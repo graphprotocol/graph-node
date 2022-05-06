@@ -2,13 +2,9 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::FromIterator;
 
-use graph::runtime::asc_get;
-use graph::runtime::asc_new;
-use graph::runtime::gas::GasCounter;
-use graph::runtime::try_asc_get;
 use graph::runtime::{
-    AscHeap, AscIndexId, AscPtr, AscType, AscValue, DeterministicHostError, FromAscObj, ToAscObj,
-    TryFromAscObj,
+    asc_get, asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, AscValue,
+    DeterministicHostError, FromAscObj, ToAscObj,
 };
 
 use crate::asc_abi::class::*;
@@ -37,52 +33,13 @@ impl<T: AscValue> FromAscObj<TypedArray<T>> for Vec<T> {
     }
 }
 
-impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 32] {
+impl<T: AscValue, const LEN: usize> FromAscObj<TypedArray<T>> for [T; LEN] {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         typed_array: TypedArray<T>,
         heap: &H,
         gas: &GasCounter,
     ) -> Result<Self, DeterministicHostError> {
-        let mut array: [T; 32] = [T::default(); 32];
-        let v = typed_array.to_vec(heap, gas)?;
-        array.copy_from_slice(&v);
-        Ok(array)
-    }
-}
-
-impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 20] {
-    fn from_asc_obj<H: AscHeap + ?Sized>(
-        typed_array: TypedArray<T>,
-        heap: &H,
-        gas: &GasCounter,
-    ) -> Result<Self, DeterministicHostError> {
-        let mut array: [T; 20] = [T::default(); 20];
-        let v = typed_array.to_vec(heap, gas)?;
-        array.copy_from_slice(&v);
-        Ok(array)
-    }
-}
-
-impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 16] {
-    fn from_asc_obj<H: AscHeap + ?Sized>(
-        typed_array: TypedArray<T>,
-        heap: &H,
-        gas: &GasCounter,
-    ) -> Result<Self, DeterministicHostError> {
-        let mut array: [T; 16] = [T::default(); 16];
-        let v = typed_array.to_vec(heap, gas)?;
-        array.copy_from_slice(&v);
-        Ok(array)
-    }
-}
-
-impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 4] {
-    fn from_asc_obj<H: AscHeap + ?Sized>(
-        typed_array: TypedArray<T>,
-        heap: &H,
-        gas: &GasCounter,
-    ) -> Result<Self, DeterministicHostError> {
-        let mut array: [T; 4] = [T::default(); 4];
+        let mut array: [T; LEN] = [T::default(); LEN];
         let v = typed_array.to_vec(heap, gas)?;
         array.copy_from_slice(&v);
         Ok(array)
@@ -126,16 +83,6 @@ impl FromAscObj<AscString> for String {
     }
 }
 
-impl TryFromAscObj<AscString> for String {
-    fn try_from_asc_obj<H: AscHeap + ?Sized>(
-        asc_string: AscString,
-        heap: &H,
-        gas: &GasCounter,
-    ) -> Result<Self, DeterministicHostError> {
-        Ok(Self::from_asc_obj(asc_string, heap, gas)?)
-    }
-}
-
 impl<C: AscType + AscIndexId, T: ToAscObj<C>> ToAscObj<Array<AscPtr<C>>> for [T] {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
@@ -162,35 +109,17 @@ impl<C: AscType + AscIndexId, T: FromAscObj<C>> FromAscObj<Array<AscPtr<C>>> for
     }
 }
 
-impl<C: AscType + AscIndexId, T: TryFromAscObj<C>> TryFromAscObj<Array<AscPtr<C>>> for Vec<T> {
-    fn try_from_asc_obj<H: AscHeap + ?Sized>(
-        array: Array<AscPtr<C>>,
-        heap: &H,
-        gas: &GasCounter,
-    ) -> Result<Self, DeterministicHostError> {
-        array
-            .to_vec(heap, gas)?
-            .into_iter()
-            .map(|x| try_asc_get(heap, x, gas))
-            .collect()
-    }
-}
-
-impl<
-        K: AscType + AscIndexId,
-        V: AscType + AscIndexId,
-        T: TryFromAscObj<K>,
-        U: TryFromAscObj<V>,
-    > TryFromAscObj<AscTypedMapEntry<K, V>> for (T, U)
+impl<K: AscType + AscIndexId, V: AscType + AscIndexId, T: FromAscObj<K>, U: FromAscObj<V>>
+    FromAscObj<AscTypedMapEntry<K, V>> for (T, U)
 {
-    fn try_from_asc_obj<H: AscHeap + ?Sized>(
+    fn from_asc_obj<H: AscHeap + ?Sized>(
         asc_entry: AscTypedMapEntry<K, V>,
         heap: &H,
         gas: &GasCounter,
     ) -> Result<Self, DeterministicHostError> {
         Ok((
-            try_asc_get(heap, asc_entry.key, gas)?,
-            try_asc_get(heap, asc_entry.value, gas)?,
+            asc_get(heap, asc_entry.key, gas)?,
+            asc_get(heap, asc_entry.value, gas)?,
         ))
     }
 }
@@ -213,19 +142,19 @@ impl<K: AscType + AscIndexId, V: AscType + AscIndexId, T: ToAscObj<K>, U: ToAscO
 impl<
         K: AscType + AscIndexId,
         V: AscType + AscIndexId,
-        T: TryFromAscObj<K> + Hash + Eq,
-        U: TryFromAscObj<V>,
-    > TryFromAscObj<AscTypedMap<K, V>> for HashMap<T, U>
+        T: FromAscObj<K> + Hash + Eq,
+        U: FromAscObj<V>,
+    > FromAscObj<AscTypedMap<K, V>> for HashMap<T, U>
 where
     Array<AscPtr<AscTypedMapEntry<K, V>>>: AscIndexId,
     AscTypedMapEntry<K, V>: AscIndexId,
 {
-    fn try_from_asc_obj<H: AscHeap + ?Sized>(
+    fn from_asc_obj<H: AscHeap + ?Sized>(
         asc_map: AscTypedMap<K, V>,
         heap: &H,
         gas: &GasCounter,
     ) -> Result<Self, DeterministicHostError> {
-        let entries: Vec<(T, U)> = try_asc_get(heap, asc_map.entries, gas)?;
+        let entries: Vec<(T, U)> = asc_get(heap, asc_map.entries, gas)?;
         Ok(HashMap::from_iter(entries.into_iter()))
     }
 }

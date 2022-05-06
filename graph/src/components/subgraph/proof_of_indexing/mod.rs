@@ -3,11 +3,17 @@ mod online;
 mod reference;
 
 pub use event::ProofOfIndexingEvent;
-pub use online::{BlockEventStream, ProofOfIndexing, ProofOfIndexingFinisher};
+pub use online::{ProofOfIndexing, ProofOfIndexingFinisher};
 pub use reference::CausalityRegion;
 
 use atomic_refcell::AtomicRefCell;
 use std::sync::Arc;
+
+#[derive(Copy, Clone, Debug)]
+pub enum ProofOfIndexingVersion {
+    Fast,
+    Legacy,
+}
 
 /// This concoction of types is to allow MappingContext to be static, yet still
 /// have shared mutable data for derive_with_empty_block_state. The static
@@ -34,61 +40,82 @@ mod tests {
     use online::ProofOfIndexingFinisher;
     use reference::*;
     use slog::{o, Discard, Logger};
+    use stable_hash::{fast_stable_hash, utils::check_for_child_errors};
     use stable_hash_legacy::crypto::SetHasher;
-    use stable_hash_legacy::utils::stable_hash;
+    use stable_hash_legacy::utils::stable_hash as stable_hash_legacy;
     use std::collections::HashMap;
     use std::convert::TryInto;
     use web3::types::{Address, H256};
 
     /// Verify that the stable hash of a reference and online implementation match
-    fn check_equal(reference: &PoI) -> String {
+    fn check(reference: &PoI, cache: &mut HashMap<String, &str>, name: &'static str) {
         let logger = Logger::root(Discard, o!());
 
-        // The code is meant to approximate what happens during indexing as
-        // close as possible. The API for the online PoI is meant to be
-        // pretty foolproof so that the actual usage will also match.
+        // Does a sanity check to ensure that the schema itself is correct,
+        // which is separate to verifying that the online/offline version
+        // return the same result.
+        check_for_child_errors(reference).expect("Found child errors");
 
-        // Create a database which stores intermediate PoIs
-        let mut db = HashMap::<String, Vec<u8>>::new();
+        let offline_fast = tiny_keccak::keccak256(&fast_stable_hash(&reference).to_le_bytes());
+        let offline_legacy = stable_hash_legacy::<SetHasher, _>(reference);
 
-        let mut block_count = 1;
-        for causality_region in reference.causality_regions.values() {
-            block_count = causality_region.blocks.len();
-            break;
-        }
+        for (version, offline) in [
+            (ProofOfIndexingVersion::Legacy, offline_legacy),
+            (ProofOfIndexingVersion::Fast, offline_fast),
+        ] {
+            // The code is meant to approximate what happens during indexing as
+            // close as possible. The API for the online PoI is meant to be
+            // pretty foolproof so that the actual usage will also match.
 
-        for block_i in 0..block_count {
-            let mut stream = ProofOfIndexing::new(block_i.try_into().unwrap());
+            // Create a database which stores intermediate PoIs
+            let mut db = HashMap::<String, Vec<u8>>::new();
 
-            for (name, region) in reference.causality_regions.iter() {
-                let block = &region.blocks[block_i];
+            let mut block_count = 1;
+            for causality_region in reference.causality_regions.values() {
+                block_count = causality_region.blocks.len();
+                break;
+            }
 
-                for evt in block.events.iter() {
-                    stream.write(&logger, name, evt);
+            for block_i in 0..block_count {
+                let mut stream = ProofOfIndexing::new(block_i.try_into().unwrap(), version);
+
+                for (name, region) in reference.causality_regions.iter() {
+                    let block = &region.blocks[block_i];
+
+                    for evt in block.events.iter() {
+                        stream.write(&logger, name, evt);
+                    }
+                }
+
+                for (name, region) in stream.take() {
+                    let prev = db.get(&name);
+                    let update = region.pause(prev.map(|v| &v[..]));
+                    db.insert(name, update);
                 }
             }
 
-            for (name, region) in stream.take() {
-                let prev = db.get(&name);
-                let update = region.pause(prev.map(|v| &v[..]));
-                db.insert(name, update);
+            let block_number = (block_count - 1) as u64;
+            let block_ptr = BlockPtr::from((reference.block_hash, block_number));
+
+            // This region emulates the request
+            let mut finisher = ProofOfIndexingFinisher::new(
+                &block_ptr,
+                &reference.subgraph_id,
+                &reference.indexer,
+                version,
+            );
+            for (name, region) in db.iter() {
+                finisher.add_causality_region(name, region);
+            }
+
+            let online = hex::encode(finisher.finish());
+            let offline = hex::encode(&offline);
+            assert_eq!(&online, &offline);
+
+            if let Some(prev) = cache.insert(offline, name) {
+                panic!("Found conflict for case: {} == {}", name, prev);
             }
         }
-
-        let block_number = (block_count - 1) as u64;
-        let block_ptr = BlockPtr::from((reference.block_hash, block_number));
-
-        // This region emulates the request
-        let mut finisher =
-            ProofOfIndexingFinisher::new(&block_ptr, &reference.subgraph_id, &reference.indexer);
-        for (name, region) in db.iter() {
-            finisher.add_causality_region(name, region);
-        }
-
-        let online = hex::encode(finisher.finish());
-        let offline = hex::encode(stable_hash::<SetHasher, _>(reference));
-        assert_eq!(&online, &offline);
-        offline
     }
 
     /// This test checks that each case resolves to a unique hash, and that
@@ -256,10 +283,7 @@ mod tests {
         // online version, then checking that there are no conflicts for the reference versions.
         let mut results = HashMap::new();
         for (name, data) in cases.drain() {
-            let result = check_equal(&data);
-            if let Some(prev) = results.insert(result, name) {
-                assert!(false, "Found conflict for case: {} == {}", name, prev);
-            }
+            check(&data, &mut results, name);
         }
     }
 }

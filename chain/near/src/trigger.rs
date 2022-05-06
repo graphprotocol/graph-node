@@ -146,7 +146,7 @@ pub struct ReceiptWithOutcome {
 
 #[cfg(test)]
 mod tests {
-    use std::convert::TryFrom;
+    use std::{convert::TryFrom, mem::MaybeUninit};
 
     use super::*;
 
@@ -438,7 +438,7 @@ mod tests {
         }
     }
 
-    impl AscHeap for BytesHeap {
+    unsafe impl AscHeap for BytesHeap {
         fn raw_new(
             &mut self,
             bytes: &[u8],
@@ -448,12 +448,12 @@ mod tests {
             Ok((self.memory.len() - bytes.len()) as u32)
         }
 
-        fn get(
-            &self,
+        fn init<'s, 'a>(
+            &'s self,
             offset: u32,
-            size: u32,
+            buffer: &'a mut [std::mem::MaybeUninit<u8>],
             _gas: &GasCounter,
-        ) -> Result<Vec<u8>, DeterministicHostError> {
+        ) -> Result<&'a mut [u8], DeterministicHostError> {
             let memory_byte_count = self.memory.len();
             if memory_byte_count == 0 {
                 return Err(DeterministicHostError::from(anyhow!(
@@ -462,7 +462,7 @@ mod tests {
             }
 
             let start_offset = offset as usize;
-            let end_offset_exclusive = start_offset + size as usize;
+            let end_offset_exclusive = start_offset + buffer.len();
 
             if start_offset >= memory_byte_count {
                 return Err(DeterministicHostError::from(anyhow!(
@@ -480,7 +480,17 @@ mod tests {
                 )));
             }
 
-            return Ok(Vec::from(&self.memory[start_offset..end_offset_exclusive]));
+            let src = &self.memory[start_offset..end_offset_exclusive];
+
+            // See also 6d2f040c-9361-4cf9-8b3c-426f87cc0b21
+            unsafe {
+                let uninit_src: &[MaybeUninit<u8>] = std::mem::transmute(src);
+                buffer.copy_from_slice(uninit_src);
+                // This is copied from slice_assume_init_mut, which is
+                // currently an unstable API
+                let buffer = &mut *(buffer as *mut [MaybeUninit<u8>] as *mut [u8]);
+                Ok(buffer)
+            }
         }
 
         fn api_version(&self) -> graph::semver::Version {

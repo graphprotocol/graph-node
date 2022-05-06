@@ -1,6 +1,7 @@
 use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::mem::MaybeUninit;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
@@ -20,7 +21,7 @@ use graph::runtime::{AscHeap, IndexForAscTypeId};
 use graph::{components::subgraph::MappingError, runtime::AscPtr};
 use graph::{
     data::subgraph::schema::SubgraphError,
-    runtime::{asc_get, asc_new, try_asc_get, DeterministicHostError},
+    runtime::{asc_get, asc_new, DeterministicHostError},
 };
 pub use into_wasm_ret::IntoWasmRet;
 pub use stopwatch::TimeoutStopwatch;
@@ -66,19 +67,19 @@ impl<C: Blockchain> Drop for WasmInstance<C> {
 }
 
 /// Proxies to the WasmInstanceContext.
-impl<C: Blockchain> AscHeap for WasmInstance<C> {
+unsafe impl<C: Blockchain> AscHeap for WasmInstance<C> {
     fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError> {
         let mut ctx = RefMut::map(self.instance_ctx.borrow_mut(), |i| i.as_mut().unwrap());
         ctx.raw_new(bytes, gas)
     }
 
-    fn get(
-        &self,
+    fn init<'s, 'a>(
+        &'s self,
         offset: u32,
-        size: u32,
+        buffer: &'a mut [MaybeUninit<u8>],
         gas: &GasCounter,
-    ) -> Result<Vec<u8>, DeterministicHostError> {
-        self.instance_ctx().get(offset, size, gas)
+    ) -> Result<&'a mut [u8], DeterministicHostError> {
+        self.instance_ctx().init(offset, buffer, gas)
     }
 
     fn api_version(&self) -> Version {
@@ -604,7 +605,7 @@ impl<C: Blockchain> WasmInstance<C> {
     }
 }
 
-impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
+unsafe impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
     fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError> {
         // The cost of writing to wasm memory from the host is the same as of writing from wasm
         // using load instructions.
@@ -652,30 +653,43 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
         Ok(ptr as u32)
     }
 
-    fn get(
-        &self,
+    fn init<'s, 'a>(
+        &'s self,
         offset: u32,
-        size: u32,
+        buffer: &'a mut [MaybeUninit<u8>],
         gas: &GasCounter,
-    ) -> Result<Vec<u8>, DeterministicHostError> {
+    ) -> Result<&'a mut [u8], DeterministicHostError> {
         // The cost of reading wasm memory from the host is the same as of reading from wasm using
         // load instructions.
-        gas.consume_host_fn(Gas::new(GAS_COST_LOAD as u64 * size as u64))?;
+        gas.consume_host_fn(Gas::new(GAS_COST_LOAD as u64 * (buffer.len() as u64)))?;
 
         let offset = offset as usize;
-        let size = size as usize;
 
-        let mut data = vec![0; size];
+        unsafe {
+            // Safety: This was copy-pasted from Memory::read, and we ensure
+            // nothing else is writing this memory because we don't call into
+            // WASM here.
+            let src = self
+                .memory
+                .data_unchecked()
+                .get(offset..)
+                .and_then(|s| s.get(..buffer.len()))
+                .ok_or(DeterministicHostError::from(anyhow!(
+                    "Heap access out of bounds. Offset: {} Size: {}",
+                    offset,
+                    buffer.len()
+                )))?;
 
-        self.memory.read(offset, &mut data).map_err(|_| {
-            DeterministicHostError::from(anyhow!(
-                "Heap access out of bounds. Offset: {} Size: {}",
-                offset,
-                size
-            ))
-        })?;
-
-        Ok(data)
+            // See also 6d2f040c-9361-4cf9-8b3c-426f87cc0b21
+            // When MaybeUninit::write_slice is stabilized, this won't
+            // require any unsafe code and will be a one-liner
+            let uninit_src: &[MaybeUninit<u8>] = std::mem::transmute(src);
+            buffer.copy_from_slice(uninit_src);
+            // This is copied from slice_assume_init_mut, which is
+            // currently an unstable API
+            let buffer = &mut *(buffer as *mut [MaybeUninit<u8>] as *mut [u8]);
+            Ok(buffer)
+        }
     }
 
     fn api_version(&self) -> Version {
@@ -855,7 +869,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
 
         let entity = asc_get(self, entity_ptr, gas)?;
         let id = asc_get(self, id_ptr, gas)?;
-        let data = try_asc_get(self, data_ptr, gas)?;
+        let data = asc_get(self, data_ptr, gas)?;
 
         self.ctx.host_exports.store_set(
             &self.ctx.logger,
@@ -1155,7 +1169,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
 
         let link: String = asc_get(self, link_ptr, gas)?;
         let callback: String = asc_get(self, callback, gas)?;
-        let user_data: store::Value = try_asc_get(self, user_data, gas)?;
+        let user_data: store::Value = asc_get(self, user_data, gas)?;
 
         let flags = asc_get(self, flags, gas)?;
 
@@ -1323,7 +1337,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let result =
             self.ctx
                 .host_exports
-                .big_decimal_divided_by(x, try_asc_get(self, y_ptr, gas)?, gas)?;
+                .big_decimal_divided_by(x, asc_get(self, y_ptr, gas)?, gas)?;
         asc_new(self, &result, gas)
     }
 
@@ -1439,7 +1453,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let result = self
             .ctx
             .host_exports
-            .big_decimal_to_string(try_asc_get(self, big_decimal_ptr, gas)?, gas)?;
+            .big_decimal_to_string(asc_get(self, big_decimal_ptr, gas)?, gas)?;
         asc_new(self, &result, gas)
     }
 
@@ -1464,8 +1478,8 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, DeterministicHostError> {
         let result = self.ctx.host_exports.big_decimal_plus(
-            try_asc_get(self, x_ptr, gas)?,
-            try_asc_get(self, y_ptr, gas)?,
+            asc_get(self, x_ptr, gas)?,
+            asc_get(self, y_ptr, gas)?,
             gas,
         )?;
         asc_new(self, &result, gas)
@@ -1479,8 +1493,8 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, DeterministicHostError> {
         let result = self.ctx.host_exports.big_decimal_minus(
-            try_asc_get(self, x_ptr, gas)?,
-            try_asc_get(self, y_ptr, gas)?,
+            asc_get(self, x_ptr, gas)?,
+            asc_get(self, y_ptr, gas)?,
             gas,
         )?;
         asc_new(self, &result, gas)
@@ -1494,8 +1508,8 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, DeterministicHostError> {
         let result = self.ctx.host_exports.big_decimal_times(
-            try_asc_get(self, x_ptr, gas)?,
-            try_asc_get(self, y_ptr, gas)?,
+            asc_get(self, x_ptr, gas)?,
+            asc_get(self, y_ptr, gas)?,
             gas,
         )?;
         asc_new(self, &result, gas)
@@ -1509,8 +1523,8 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, DeterministicHostError> {
         let result = self.ctx.host_exports.big_decimal_divided_by(
-            try_asc_get(self, x_ptr, gas)?,
-            try_asc_get(self, y_ptr, gas)?,
+            asc_get(self, x_ptr, gas)?,
+            asc_get(self, y_ptr, gas)?,
             gas,
         )?;
         asc_new(self, &result, gas)
@@ -1524,8 +1538,8 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<bool, DeterministicHostError> {
         self.ctx.host_exports.big_decimal_equals(
-            try_asc_get(self, x_ptr, gas)?,
-            try_asc_get(self, y_ptr, gas)?,
+            asc_get(self, x_ptr, gas)?,
+            asc_get(self, y_ptr, gas)?,
             gas,
         )
     }
@@ -1560,7 +1574,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     ) -> Result<(), HostExportError> {
         let name: String = asc_get(self, name_ptr, gas)?;
         let params: Vec<String> = asc_get(self, params_ptr, gas)?;
-        let context: HashMap<_, _> = try_asc_get(self, context_ptr, gas)?;
+        let context: HashMap<_, _> = asc_get(self, context_ptr, gas)?;
         self.ctx.host_exports.data_source_create(
             &self.ctx.logger,
             &mut self.ctx.state,

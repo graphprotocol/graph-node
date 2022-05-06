@@ -1480,6 +1480,7 @@ dependencies = [
  "prost-types",
  "rand",
  "reqwest",
+ "second-stack",
  "semver",
  "serde",
  "serde_derive",
@@ -3583,6 +3584,12 @@ dependencies = [
  "ring",
  "untrusted",
 ]
+
+[[package]]
+name = "second-stack"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f766a31680976a8b86ca6a81e37de0047d43a5a6a3354d5fe1240955d71b18e"
 
 [[package]]
 name = "secp256k1"

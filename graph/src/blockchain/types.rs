@@ -1,6 +1,4 @@
 use anyhow::anyhow;
-use stable_hash::{FieldAddress, StableHash};
-use stable_hash_legacy::SequenceNumber;
 use std::convert::TryFrom;
 use std::{fmt, str::FromStr};
 use web3::types::{Block, H256};
@@ -8,11 +6,14 @@ use web3::types::{Block, H256};
 use crate::data::graphql::IntoValue;
 use crate::object;
 use crate::prelude::{r, BigInt, TryFromValue, ValueMap};
+use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
 use crate::{cheap_clone::CheapClone, components::store::BlockNumber};
 
 /// A simple marker for byte arrays that are really block hashes
 #[derive(Clone, Default, PartialEq, Eq, Hash)]
 pub struct BlockHash(pub Box<[u8]>);
+
+impl_stable_hash!(BlockHash(transparent: AsBytes));
 
 impl BlockHash {
     pub fn as_slice(&self) -> &[u8] {
@@ -94,28 +95,7 @@ pub struct BlockPtr {
 
 impl CheapClone for BlockPtr {}
 
-impl stable_hash_legacy::StableHash for BlockPtr {
-    fn stable_hash<H: stable_hash_legacy::StableHasher>(
-        &self,
-        mut sequence_number: H::Seq,
-        state: &mut H,
-    ) {
-        let BlockPtr { hash, number } = self;
-
-        stable_hash_legacy::utils::AsBytes(hash.0.as_ref())
-            .stable_hash(sequence_number.next_child(), state);
-        stable_hash_legacy::StableHash::stable_hash(number, sequence_number.next_child(), state);
-    }
-}
-
-impl StableHash for BlockPtr {
-    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
-        let BlockPtr { hash, number } = self;
-
-        stable_hash::utils::AsBytes(hash.0.as_ref()).stable_hash(field_address.child(0), state);
-        stable_hash::StableHash::stable_hash(number, field_address.child(1), state);
-    }
-}
+impl_stable_hash!(BlockPtr { hash, number });
 
 impl BlockPtr {
     pub fn new(hash: BlockHash, number: BlockNumber) -> Self {

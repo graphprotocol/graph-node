@@ -22,3 +22,5 @@ pub mod jobs;
 pub mod backoff;
 
 pub mod bounded_queue;
+
+pub mod stable_hash_glue;

@@ -277,37 +277,37 @@ async fn test_abi_store_value(api_version: Version) {
     let func = module.get_func("value_null").typed().unwrap().clone();
     let ptr: u32 = func.call(()).unwrap();
     let null_value_ptr: AscPtr<AscEnum<StoreValueKind>> = ptr.into();
-    let null_value: Value = try_asc_get(&module, null_value_ptr, &module.gas).unwrap();
+    let null_value: Value = asc_get(&module, null_value_ptr, &module.gas).unwrap();
     assert_eq!(null_value, Value::Null);
 
     // Value::String
     let string = "some string";
     let new_value_ptr = module.invoke_export1("value_from_string", string);
-    let new_value: Value = try_asc_get(&module, new_value_ptr, &module.gas).unwrap();
+    let new_value: Value = asc_get(&module, new_value_ptr, &module.gas).unwrap();
     assert_eq!(new_value, Value::from(string));
 
     // Value::Int
     let int = i32::min_value();
     let new_value_ptr = module.takes_val_returns_ptr("value_from_int", int);
-    let new_value: Value = try_asc_get(&module, new_value_ptr, &module.gas).unwrap();
+    let new_value: Value = asc_get(&module, new_value_ptr, &module.gas).unwrap();
     assert_eq!(new_value, Value::Int(int));
 
     // Value::BigDecimal
     let big_decimal = BigDecimal::from_str("3.14159001").unwrap();
     let new_value_ptr = module.invoke_export1("value_from_big_decimal", &big_decimal);
-    let new_value: Value = try_asc_get(&module, new_value_ptr, &module.gas).unwrap();
+    let new_value: Value = asc_get(&module, new_value_ptr, &module.gas).unwrap();
     assert_eq!(new_value, Value::BigDecimal(big_decimal));
 
     let big_decimal = BigDecimal::new(10.into(), 5);
     let new_value_ptr = module.invoke_export1("value_from_big_decimal", &big_decimal);
-    let new_value: Value = try_asc_get(&module, new_value_ptr, &module.gas).unwrap();
+    let new_value: Value = asc_get(&module, new_value_ptr, &module.gas).unwrap();
     assert_eq!(new_value, Value::BigDecimal(1_000_000.into()));
 
     // Value::Bool
     let boolean = true;
     let new_value_ptr =
         module.takes_val_returns_ptr("value_from_bool", if boolean { 1 } else { 0 });
-    let new_value: Value = try_asc_get(&module, new_value_ptr, &module.gas).unwrap();
+    let new_value: Value = asc_get(&module, new_value_ptr, &module.gas).unwrap();
     assert_eq!(new_value, Value::Bool(boolean));
 
     // Value::List
@@ -321,7 +321,7 @@ async fn test_abi_store_value(api_version: Version) {
         .call((asc_new(&mut module, string, &gas).unwrap().wasm_ptr(), int))
         .unwrap();
     let new_value_ptr = AscPtr::from(new_value_ptr);
-    let new_value: Value = try_asc_get(&module, new_value_ptr, &gas).unwrap();
+    let new_value: Value = asc_get(&module, new_value_ptr, &gas).unwrap();
     assert_eq!(
         new_value,
         Value::List(vec![Value::from(string), Value::Int(int)])
@@ -332,7 +332,7 @@ async fn test_abi_store_value(api_version: Version) {
         Value::String("bar".to_owned()),
     ];
     let new_value_ptr = module.invoke_export1("value_from_array", array);
-    let new_value: Value = try_asc_get(&module, new_value_ptr, &module.gas).unwrap();
+    let new_value: Value = asc_get(&module, new_value_ptr, &module.gas).unwrap();
     assert_eq!(
         new_value,
         Value::List(vec![
@@ -344,13 +344,13 @@ async fn test_abi_store_value(api_version: Version) {
     // Value::Bytes
     let bytes: &[u8] = &[0, 2, 5];
     let new_value_ptr = module.invoke_export1("value_from_bytes", bytes);
-    let new_value: Value = try_asc_get(&module, new_value_ptr, &module.gas).unwrap();
+    let new_value: Value = asc_get(&module, new_value_ptr, &module.gas).unwrap();
     assert_eq!(new_value, Value::Bytes(bytes.into()));
 
     // Value::BigInt
     let bytes: &[u8] = &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
     let new_value_ptr = module.invoke_export1("value_from_bigint", bytes);
-    let new_value: Value = try_asc_get(&module, new_value_ptr, &module.gas).unwrap();
+    let new_value: Value = asc_get(&module, new_value_ptr, &module.gas).unwrap();
     assert_eq!(
         new_value,
         Value::BigInt(::graph::data::store::scalar::BigInt::from_unsigned_bytes_le(bytes))
@@ -511,7 +511,7 @@ async fn test_invalid_discriminant(api_version: Version) {
         .unwrap()
         .clone();
     let ptr: u32 = func.call(()).unwrap();
-    let _value: Value = try_asc_get(&module, ptr.into(), &module.gas).unwrap();
+    let _value: Value = asc_get(&module, ptr.into(), &module.gas).unwrap();
 }
 
 // This should panic rather than exhibiting UB. It's hard to test for UB, but

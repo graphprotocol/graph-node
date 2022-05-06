@@ -8,7 +8,7 @@ pub mod gas;
 mod asc_heap;
 mod asc_ptr;
 
-pub use asc_heap::{asc_get, asc_new, try_asc_get, AscHeap, FromAscObj, ToAscObj, TryFromAscObj};
+pub use asc_heap::{asc_get, asc_get_array, asc_new, AscHeap, FromAscObj, ToAscObj};
 pub use asc_ptr::AscPtr;
 
 use anyhow::Error;
