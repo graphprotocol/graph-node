@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use graph::data::value::{Object, Word};
 use graph::object;
@@ -582,11 +583,18 @@ fn stress<T: Template>(opt: &Opt) {
     let mut print_header = true;
     let mut sample_weight: usize = 0;
     let mut sample_alloc: usize = 0;
+    let mut evict_count: usize = 0;
+    let mut evict_duration = Duration::from_secs(0);
+
+    let start = Instant::now();
     for key in 0..opt.niter {
         should_print = should_print || key % print_mod == 0;
         let before_mem = ALLOCATED.load(SeqCst);
+        let start_evict = Instant::now();
         if let Some(stats) = cache.evict(opt.cache_size) {
+            evict_duration += start_evict.elapsed();
             let after_mem = ALLOCATED.load(SeqCst);
+            evict_count += 1;
             if should_print {
                 if print_header {
                     println!("evict:        weight that was removed from cache");
@@ -606,7 +614,7 @@ fn stress<T: Template>(opt: &Opt) {
                 let heap = (after_mem - base_mem) as f64 / opt.cache_size as f64;
                 let mem = after_mem - base_mem;
                 println!(
-                    "evict: [{evicted_count:6}]{evicted:6}  drop: {dropped:6} slip: {slip:4} \
+                    "evict: [{evicted_count:3}]{evicted:6}  drop: {dropped:6} slip: {slip:4} \
                     room: {room:6} heap: {heap:0.2}  mem: {mem:8}"
                 );
                 should_print = false;
@@ -633,6 +641,14 @@ fn stress<T: Template>(opt: &Opt) {
             let _v = cache.get(&read);
         }
     }
+
+    println!(
+        "\ncache: entries: {} evictions: {} took {}ms out of {}ms",
+        cache.len(),
+        evict_count,
+        evict_duration.as_millis(),
+        start.elapsed().as_millis()
+    );
     if sample_alloc == sample_weight {
         println!(
             "samples: weight {} alloc {} weight/alloc precise",
