@@ -260,7 +260,7 @@ pub enum SubgraphRegistrarError {
     NameExists(String),
     #[error("subgraph name not found: {0}")]
     NameNotFound(String),
-    #[error("Ethereum network not supported by registrar: {0}")]
+    #[error("network not supported by registrar: {0}")]
     NetworkNotSupported(Error),
     #[error("deployment not found: {0}")]
     DeploymentNotFound(String),
