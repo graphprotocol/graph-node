@@ -5,8 +5,6 @@ use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 
-const TOMBSTONE_KEY: &str = "*dead*";
-
 /// An immutable string that is more memory-efficient since it only has an
 /// overhead of 16 bytes for storing a string vs the 24 bytes that `String`
 /// requires
@@ -47,8 +45,24 @@ impl From<String> for Word {
 
 #[derive(Clone, Debug, PartialEq)]
 struct Entry {
-    key: Word,
+    key: Option<Word>,
     value: Value,
+}
+
+impl Entry {
+    fn new(key: Word, value: Value) -> Self {
+        Entry {
+            key: Some(key),
+            value,
+        }
+    }
+
+    fn has_key(&self, key: &str) -> bool {
+        match &self.key {
+            None => false,
+            Some(k) => k.as_str() == key,
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Default)]
@@ -62,16 +76,16 @@ impl Object {
     pub fn get(&self, key: &str) -> Option<&Value> {
         self.0
             .iter()
-            .find(|entry| entry.key.as_str() == key)
+            .find(|entry| entry.has_key(key))
             .map(|entry| &entry.value)
     }
 
     pub fn remove(&mut self, key: &str) -> Option<Value> {
         self.0
             .iter_mut()
-            .find(|entry| entry.key.as_str() == key)
+            .find(|entry| entry.has_key(key))
             .map(|entry| {
-                entry.key = TOMBSTONE_KEY.into();
+                entry.key = None;
                 std::mem::replace(&mut entry.value, Value::Null)
             })
     }
@@ -89,13 +103,10 @@ impl Object {
     }
 
     pub fn insert(&mut self, key: String, value: Value) -> Option<Value> {
-        match self.0.iter_mut().find(|entry| entry.key.as_str() == key) {
+        match self.0.iter_mut().find(|entry| entry.has_key(&key)) {
             Some(entry) => Some(std::mem::replace(&mut entry.value, value)),
             None => {
-                self.0.push(Entry {
-                    key: key.into(),
-                    value,
-                });
+                self.0.push(Entry::new(key.into(), value));
                 None
             }
         }
@@ -106,10 +117,7 @@ impl FromIterator<(String, Value)> for Object {
     fn from_iter<T: IntoIterator<Item = (String, Value)>>(iter: T) -> Self {
         let mut items: Vec<_> = Vec::new();
         for (key, value) in iter {
-            items.push(Entry {
-                key: key.into(),
-                value,
-            })
+            items.push(Entry::new(key.into(), value))
         }
         Object(items)
     }
@@ -124,8 +132,8 @@ impl Iterator for ObjectOwningIter {
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(entry) = self.iter.next() {
-            if entry.key.as_str() != TOMBSTONE_KEY {
-                return Some((entry.key, entry.value));
+            if let Some(key) = entry.key {
+                return Some((key, entry.value));
             }
         }
         None
@@ -160,8 +168,8 @@ impl<'a> Iterator for ObjectIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(entry) = self.iter.next() {
-            if entry.key.as_str() != TOMBSTONE_KEY {
-                return Some((entry.key.as_str(), &entry.value));
+            if let Some(key) = &entry.key {
+                return Some((key.as_str(), &entry.value));
             }
         }
         None
@@ -212,7 +220,7 @@ impl Value {
     pub fn object(map: BTreeMap<Word, Value>) -> Self {
         let items = map
             .into_iter()
-            .map(|(key, value)| Entry { key, value })
+            .map(|(key, value)| Entry::new(key, value))
             .collect();
         Value::Object(Object(items))
     }
