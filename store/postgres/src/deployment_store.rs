@@ -657,22 +657,16 @@ impl DeploymentStore {
     }
 
     /// Runs the SQL `ANALYZE` command in a table.
-    pub(crate) async fn analyze(
-        &self,
-        site: Arc<Site>,
-        entity_name: &str,
-    ) -> Result<(), StoreError> {
+    pub(crate) fn analyze(&self, site: Arc<Site>, entity_name: &str) -> Result<(), StoreError> {
         let store = self.clone();
         let entity_name = entity_name.to_owned();
-        self.with_conn(move |conn, _| {
-            let layout = store.layout(conn, site)?;
-            let table = resolve_table_name(&layout, &entity_name)?;
-            let table_name = &table.qualified_name;
-            let sql = format!("analyze {table_name}");
-            conn.execute(&sql)?;
-            Ok(())
-        })
-        .await
+        let conn = self.get_conn()?;
+        let layout = store.layout(&conn, site)?;
+        let table = resolve_table_name(&layout, &entity_name)?;
+        let table_name = &table.qualified_name;
+        let sql = format!("analyze {table_name}");
+        conn.execute(&sql)?;
+        Ok(())
     }
 
     /// Creates a new index in the specified Entity table if it doesn't already exist.
