@@ -12,9 +12,9 @@ hex = "0.4.3"
 graph = { path = "../../graph" }
 bs58 = "0.4.0"
 graph-runtime-derive = { path = "../derive" }
-semver = "1.0.7"
+semver = "1.0.9"
 lazy_static = "1.4"
-uuid = { version = "0.8.1", features = ["v4"] }
+uuid = { version = "1.0.0", features = ["v4"] }
 strum = "0.21.0"
 strum_macros = "0.21.1"
 bytes = "1.0"
@@ -23,7 +23,7 @@ wasmtime = "0.27.0"
 defer = "0.1"
 never = "0.1"
 
-pwasm-utils = { git = "https://github.com/paritytech/wasm-utils", rev = "b22696aaa516212284f2d94a28d8d292afe27859", features = ["sign_ext"] }
+wasm-instrument = { version = "0.1.1", features = ["std", "sign_ext"] }
 
 # AssemblyScript uses sign extensions
 parity-wasm = { version = "0.42", features = ["std", "sign_ext"] }

@@ -12,6 +12,7 @@ use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text};
 use diesel::Connection;
 
+use graph::data::value::Word;
 use graph::prelude::{
     anyhow, r, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
     EntityFilter, EntityKey, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink,
@@ -222,7 +223,7 @@ impl ForeignKeyClauses for Column {
     }
 }
 
-pub trait FromEntityData {
+pub trait FromEntityData: std::fmt::Debug {
     type Value: FromColumnValue;
 
     fn new_entity(typename: String) -> Self;
@@ -244,21 +245,21 @@ impl FromEntityData for Entity {
     }
 }
 
-impl FromEntityData for BTreeMap<String, r::Value> {
+impl FromEntityData for BTreeMap<Word, r::Value> {
     type Value = r::Value;
 
     fn new_entity(typename: String) -> Self {
         let mut map = BTreeMap::new();
-        map.insert("__typename".to_string(), Self::Value::from_string(typename));
+        map.insert("__typename".into(), Self::Value::from_string(typename));
         map
     }
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value) {
-        self.insert(key, v);
+        self.insert(Word::from(key), v);
     }
 }
 
-pub trait FromColumnValue: Sized {
+pub trait FromColumnValue: Sized + std::fmt::Debug {
     fn is_null(&self) -> bool;
 
     fn null() -> Self;
@@ -368,11 +369,39 @@ impl FromColumnValue for r::Value {
     }
 
     fn from_bytes(b: &str) -> Result<Self, StoreError> {
-        Ok(r::Value::String(format!("0x{}", b)))
+        // In some cases, we pass strings as parent_id's through the
+        // database; those are already prefixed with '0x' and we need to
+        // avoid double-prefixing
+        if b.starts_with("0x") {
+            Ok(r::Value::String(b.to_string()))
+        } else {
+            Ok(r::Value::String(format!("0x{}", b)))
+        }
     }
 
     fn from_vec(v: Vec<Self>) -> Self {
         r::Value::List(v)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use graph::prelude::{r, serde_json as json};
+
+    use crate::{relational::ColumnType, relational_queries::FromColumnValue};
+
+    #[test]
+    fn gql_value_from_bytes() {
+        const EXP: &str = "0xdeadbeef";
+
+        let exp = r::Value::String(EXP.to_string());
+        for s in ["deadbeef", "\\xdeadbeef", "0xdeadbeef"] {
+            let act =
+                r::Value::from_column_value(&ColumnType::Bytes, json::Value::String(s.to_string()))
+                    .unwrap();
+
+            assert_eq!(exp, act);
+        }
     }
 }
 
@@ -443,7 +472,7 @@ impl EntityDeletion {
 /// at compile time. Because of that, we retrieve the actual data for an
 /// entity as Jsonb by converting the row containing the entity using the
 /// `to_jsonb` function.
-#[derive(QueryableByName)]
+#[derive(QueryableByName, Debug)]
 pub struct EntityData {
     #[sql_type = "Text"]
     entity: String,
@@ -460,6 +489,7 @@ impl EntityData {
     pub fn deserialize_with_layout<T: FromEntityData>(
         self,
         layout: &Layout,
+        parent_type: Option<&ColumnType>,
     ) -> Result<T, StoreError> {
         let entity_type = EntityType::new(self.entity);
         let table = layout.table_for_entity(&entity_type)?;
@@ -473,8 +503,30 @@ impl EntityData {
                     // column; those will be things like the block_range that
                     // is used internally for versioning
                     if key == "g$parent_id" {
-                        let value = T::Value::from_column_value(&ColumnType::String, json)?;
-                        out.insert_entity_data("g$parent_id".to_owned(), value);
+                        match &parent_type {
+                            None => {
+                                if ENV_VARS.store.disable_error_for_toplevel_parents {
+                                    // Only temporarily in case reporting an
+                                    // error causes unexpected trouble. Can
+                                    // be removed once it's been working for
+                                    // a few days
+                                    let value =
+                                        T::Value::from_column_value(&ColumnType::String, json)?;
+                                    out.insert_entity_data("g$parent_id".to_owned(), value);
+                                } else {
+                                    // A query that does not have parents
+                                    // somehow returned parent ids. We have no
+                                    // idea how to deserialize that
+                                    return Err(graph::constraint_violation!(
+                                        "query unexpectedly produces parent ids"
+                                    ));
+                                }
+                            }
+                            Some(parent_type) => {
+                                let value = T::Value::from_column_value(parent_type, json)?;
+                                out.insert_entity_data("g$parent_id".to_owned(), value);
+                            }
+                        }
                     } else if let Some(column) = table.column(&SqlName::verbatim(key)) {
                         let value = T::Value::from_column_value(&column.column_type, json)?;
                         if !value.is_null() {
@@ -833,6 +885,13 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
 pub struct QueryFilter<'a> {
     filter: &'a EntityFilter,
     table: &'a Table,
+}
+
+/// String representation that is useful for debugging when `walk_ast` fails
+impl<'a> fmt::Display for QueryFilter<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.filter)
+    }
 }
 
 impl<'a> QueryFilter<'a> {
@@ -1606,7 +1665,7 @@ impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
             out.push_sql(" as entity from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" where id = ");
-            out.push_bind_param::<Text, _>(&self.entity_id)?;
+            table.primary_key().bind_id(&self.entity_id, &mut out)?;
         }
         Ok(())
     }
@@ -1801,6 +1860,13 @@ impl<'a> FilterWindow<'a> {
             link,
             column_names,
         })
+    }
+
+    fn parent_type(&self) -> IdType {
+        match &self.link {
+            TableLink::Direct(column, _) => column.column_type.id_type(),
+            TableLink::Parent(_) => self.table.primary_key().column_type.id_type(),
+        }
     }
 
     fn and_filter(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
@@ -2109,6 +2175,92 @@ pub enum FilterCollection<'a> {
     MultiWindow(Vec<FilterWindow<'a>>, Vec<String>),
 }
 
+/// String representation that is useful for debugging when `walk_ast` fails
+impl<'a> fmt::Display for FilterCollection<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), std::fmt::Error> {
+        fn fmt_table(
+            f: &mut fmt::Formatter,
+            table: &Table,
+            attrs: &AttributeNames,
+            filter: &Option<QueryFilter>,
+        ) -> Result<(), std::fmt::Error> {
+            write!(f, "{}[", table.qualified_name.as_str().replace("\\\"", ""))?;
+            match attrs {
+                AttributeNames::All => write!(f, "*")?,
+                AttributeNames::Select(cols) => write!(f, "{}", cols.iter().join(","))?,
+            };
+            write!(f, "]")?;
+            if let Some(filter) = filter {
+                write!(f, "{{{}}}", filter)?;
+            }
+            Ok(())
+        }
+
+        fn fmt_window(f: &mut fmt::Formatter, w: &FilterWindow) -> Result<(), std::fmt::Error> {
+            let FilterWindow {
+                table,
+                query_filter,
+                ids,
+                link,
+                column_names,
+            } = w;
+            fmt_table(f, table, column_names, query_filter)?;
+            if !ids.is_empty() {
+                use ChildMultiplicity::*;
+
+                write!(f, "<")?;
+
+                match link {
+                    TableLink::Direct(col, Single) => {
+                        write!(f, "uniq:{}={}", col.name(), ids.join(","))?
+                    }
+                    TableLink::Direct(col, Many) => {
+                        write!(f, "many:{}={}", col.name(), ids.join(","))?
+                    }
+                    TableLink::Parent(ParentIds::List(css)) => {
+                        let css = css
+                            .into_iter()
+                            .map(|cs| {
+                                cs.into_iter()
+                                    .filter_map(|c| c.as_ref().map(|s| &s.0))
+                                    .join(",")
+                            })
+                            .join("],[");
+                        write!(f, "uniq:id=[{}]", css)?
+                    }
+                    TableLink::Parent(ParentIds::Scalar(cs)) => {
+                        write!(f, "uniq:id={}", cs.join(","))?
+                    }
+                };
+                write!(f, " for {}>", ids.join(","))?;
+            }
+            Ok(())
+        }
+
+        match self {
+            FilterCollection::All(tables) => {
+                for (table, filter, attrs) in tables {
+                    fmt_table(f, table, attrs, filter)?;
+                }
+            }
+            FilterCollection::SingleWindow(w) => {
+                fmt_window(f, w)?;
+            }
+            FilterCollection::MultiWindow(ws, _ps) => {
+                let mut first = true;
+                for w in ws {
+                    if !first {
+                        write!(f, ", ")?
+                    }
+                    fmt_window(f, w)?;
+                    first = false;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 impl<'a> FilterCollection<'a> {
     pub fn new(
         layout: &'a Layout,
@@ -2171,6 +2323,25 @@ impl<'a> FilterCollection<'a> {
             FilterCollection::MultiWindow(windows, _) => windows.is_empty(),
         }
     }
+
+    /// Return the id type of the fields in the parents for which the query
+    /// produces children. This is `None` if there are no parents, i.e., for
+    /// a toplevel query.
+    pub(crate) fn parent_type(&self) -> Result<Option<IdType>, StoreError> {
+        match self {
+            FilterCollection::All(_) => Ok(None),
+            FilterCollection::SingleWindow(window) => Ok(Some(window.parent_type())),
+            FilterCollection::MultiWindow(windows, _) => {
+                if windows.iter().map(FilterWindow::parent_type).all_equal() {
+                    Ok(Some(windows[0].parent_type().to_owned()))
+                } else {
+                    Err(graph::constraint_violation!(
+                        "all implementors of an interface must use the same type for their `id`"
+                    ))
+                }
+            }
+        }
+    }
 }
 
 /// Convenience to pass the name of the column to order by around. If `name`
@@ -2188,6 +2359,33 @@ pub enum SortKey<'a> {
         value: Option<&'a str>,
         direction: &'static str,
     },
+}
+
+/// String representation that is useful for debugging when `walk_ast` fails
+impl<'a> fmt::Display for SortKey<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use SortKey::*;
+
+        match self {
+            None => write!(f, "none"),
+            IdAsc(Option::None) => write!(f, "{}", PRIMARY_KEY_COLUMN),
+            IdAsc(Some(br)) => write!(f, "{}, {}", PRIMARY_KEY_COLUMN, br.column_name()),
+            IdDesc(Option::None) => write!(f, "{} desc", PRIMARY_KEY_COLUMN),
+            IdDesc(Some(br)) => write!(f, "{} desc, {} desc", PRIMARY_KEY_COLUMN, br.column_name()),
+            Key {
+                column,
+                value: _,
+                direction,
+            } => write!(
+                f,
+                "{} {}, {} {}",
+                column.name.as_str(),
+                direction,
+                PRIMARY_KEY_COLUMN,
+                direction
+            ),
+        }
+    }
 }
 
 impl<'a> SortKey<'a> {
@@ -2395,6 +2593,22 @@ impl<'a> SortKey<'a> {
 #[derive(Debug, Clone)]
 pub struct FilterRange(EntityRange);
 
+/// String representation that is useful for debugging when `walk_ast` fails
+impl fmt::Display for FilterRange {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(first) = self.0.first {
+            write!(f, "first {}", first)?;
+            if self.0.skip > 0 {
+                write!(f, " ")?;
+            }
+        }
+        if self.0.skip > 0 {
+            write!(f, "skip {}", self.0.skip)?;
+        }
+        Ok(())
+    }
+}
+
 impl QueryFragment<Pg> for FilterRange {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         let range = &self.0;
@@ -2421,6 +2635,21 @@ pub struct FilterQuery<'a> {
     range: FilterRange,
     block: BlockNumber,
     query_id: Option<String>,
+}
+
+/// String representation that is useful for debugging when `walk_ast` fails
+impl<'a> fmt::Display for FilterQuery<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), std::fmt::Error> {
+        write!(
+            f,
+            "from {} order {} {} at {}",
+            &self.collection, &self.sort_key, &self.range, self.block
+        )?;
+        if let Some(query_id) = &self.query_id {
+            write!(f, " query_id {}", query_id)?;
+        }
+        Ok(())
+    }
 }
 
 impl<'a> FilterQuery<'a> {

@@ -4,6 +4,7 @@ use super::*;
 use crate::components::server::index_node::VersionInfo;
 use crate::components::transaction_receipt;
 use crate::data::subgraph::status;
+use crate::data::value::Word;
 use crate::data::{query::QueryTarget, subgraph::schema::*};
 
 pub trait SubscriptionManager: Send + Sync + 'static {
@@ -390,7 +391,7 @@ pub trait QueryStore: Send + Sync {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<Vec<BTreeMap<String, r::Value>>, QueryExecutionError>;
+    ) -> Result<Vec<BTreeMap<Word, r::Value>>, QueryExecutionError>;
 
     async fn is_deployment_synced(&self) -> Result<bool, Error>;
 
@@ -398,7 +399,7 @@ pub trait QueryStore: Send + Sync {
 
     fn block_number(&self, block_hash: H256) -> Result<Option<BlockNumber>, StoreError>;
 
-    fn wait_stats(&self) -> PoolWaitStats;
+    fn wait_stats(&self) -> Result<PoolWaitStats, StoreError>;
 
     /// If `block` is `None`, assumes the latest block.
     async fn has_non_fatal_errors(&self, block: Option<BlockNumber>) -> Result<bool, StoreError>;
@@ -412,7 +413,7 @@ pub trait QueryStore: Send + Sync {
     fn network_name(&self) -> &str;
 
     /// A permit should be acquired before starting query execution.
-    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit;
+    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError>;
 }
 
 /// A view of the store that can provide information about the indexing status
@@ -420,7 +421,7 @@ pub trait QueryStore: Send + Sync {
 #[async_trait]
 pub trait StatusStore: Send + Sync + 'static {
     /// A permit should be acquired before starting query execution.
-    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit;
+    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError>;
 
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
 

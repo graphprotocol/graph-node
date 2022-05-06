@@ -63,7 +63,7 @@ run_graph_node() {
     else
         unset GRAPH_NODE_CONFIG
         postgres_port=${postgres_port:-5432}
-        postgres_url="postgresql://$postgres_user:$postgres_pass@$postgres_host:$postgres_port/$postgres_db"
+        postgres_url="postgresql://$postgres_user:$postgres_pass@$postgres_host:$postgres_port/$postgres_db?sslmode=prefer"
 
         wait_for_ipfs "$ipfs"
         wait_for "$postgres_host:$postgres_port" -t 120

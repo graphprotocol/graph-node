@@ -50,11 +50,11 @@ impl Resolver for MockResolver {
         Ok(r::Value::Null)
     }
 
-    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
-        Arc::new(tokio::sync::Semaphore::new(1))
+    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, QueryExecutionError> {
+        Ok(Arc::new(tokio::sync::Semaphore::new(1))
             .acquire_owned()
             .await
-            .unwrap()
+            .unwrap())
     }
 }
 

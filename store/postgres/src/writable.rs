@@ -534,9 +534,16 @@ impl Queue {
                 // these methods would not be able to see that data until
                 // the write transaction commits, causing them to return
                 // incorrect results.
-                let req = queue.queue.peek().await;
-                let res = graph::spawn_blocking_allow_panic(move || req.execute()).await;
+                let req = {
+                    let _section = queue.stopwatch.start_section("queue_wait");
+                    queue.queue.peek().await
+                };
+                let res = {
+                    let _section = queue.stopwatch.start_section("queue_execute");
+                    graph::spawn_blocking_allow_panic(move || req.execute()).await
+                };
 
+                let _section = queue.stopwatch.start_section("queue_pop");
                 match res {
                     Ok(Ok(())) => {
                         // The request has been handled. It's now safe to remove it

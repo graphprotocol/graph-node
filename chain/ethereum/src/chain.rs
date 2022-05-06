@@ -613,7 +613,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             StepNew => {
                 // See comment(437a9f17-67cc-478f-80a3-804fe554b227) ethereum_block.calls is always Some even if calls
                 // is empty
-                let ethereum_block: EthereumBlockWithCalls = (&block).into();
+                let ethereum_block: EthereumBlockWithCalls = (&block).try_into()?;
 
                 // triggers in block never actually calls the ethereum traces api.
                 // TODO: Split the trigger parsing from call retrieving.

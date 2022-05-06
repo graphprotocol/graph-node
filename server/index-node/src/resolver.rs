@@ -672,7 +672,7 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
                         r::Value::object(
                             e.sorted()
                                 .into_iter()
-                                .map(|(name, value)| (name, value.into()))
+                                .map(|(name, value)| (name.into(), value.into()))
                                 .collect(),
                         )
                     })
@@ -711,8 +711,8 @@ impl<S: Store> Clone for IndexNodeResolver<S> {
 impl<S: Store> Resolver for IndexNodeResolver<S> {
     const CACHEABLE: bool = false;
 
-    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
-        self.store.query_permit().await
+    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, QueryExecutionError> {
+        self.store.query_permit().await.map_err(Into::into)
     }
 
     fn prefetch(

@@ -18,7 +18,8 @@ use serde::de;
 use serde::ser;
 use serde_yaml;
 use slog::{debug, info, Logger};
-use stable_hash_legacy::prelude::*;
+use stable_hash::{FieldAddress, StableHash};
+use stable_hash_legacy::SequenceNumber;
 use std::{collections::BTreeSet, marker::PhantomData};
 use thiserror::Error;
 use wasmparser;
@@ -68,10 +69,20 @@ where
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DeploymentHash(String);
 
-impl StableHash for DeploymentHash {
+impl stable_hash_legacy::StableHash for DeploymentHash {
     #[inline]
-    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
-        self.0.stable_hash(sequence_number.next_child(), state);
+    fn stable_hash<H: stable_hash_legacy::StableHasher>(
+        &self,
+        mut sequence_number: H::Seq,
+        state: &mut H,
+    ) {
+        stable_hash_legacy::StableHash::stable_hash(&self.0, sequence_number.next_child(), state);
+    }
+}
+
+impl StableHash for DeploymentHash {
+    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
+        stable_hash::StableHash::stable_hash(&self.0, field_address.child(0), state);
     }
 }
 

@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use graph::data::value::Word;
 use web3::types::H256;
 
 use crate::deployment_store::{DeploymentStore, ReplicaId};
@@ -36,7 +37,7 @@ impl QueryStoreTrait for QueryStore {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<Vec<BTreeMap<String, r::Value>>, QueryExecutionError> {
+    ) -> Result<Vec<BTreeMap<Word, r::Value>>, QueryExecutionError> {
         assert_eq!(&self.site.deployment, &query.subgraph_id);
         let conn = self
             .store
@@ -81,7 +82,7 @@ impl QueryStoreTrait for QueryStore {
             .transpose()
     }
 
-    fn wait_stats(&self) -> PoolWaitStats {
+    fn wait_stats(&self) -> Result<PoolWaitStats, StoreError> {
         self.store.wait_stats(self.replica_id)
     }
 
@@ -110,7 +111,7 @@ impl QueryStoreTrait for QueryStore {
         &self.site.network
     }
 
-    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError> {
         self.store.query_permit(self.replica_id).await
     }
 }

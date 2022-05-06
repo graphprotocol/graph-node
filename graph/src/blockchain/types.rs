@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context};
-use stable_hash_legacy::prelude::*;
-use stable_hash_legacy::utils::AsBytes;
+use stable_hash::{FieldAddress, StableHash};
+use stable_hash_legacy::SequenceNumber;
 use std::convert::TryFrom;
 use std::{fmt, str::FromStr};
 use web3::types::{Block, H256};
@@ -81,10 +81,26 @@ pub struct BlockPtr {
 
 impl CheapClone for BlockPtr {}
 
+impl stable_hash_legacy::StableHash for BlockPtr {
+    fn stable_hash<H: stable_hash_legacy::StableHasher>(
+        &self,
+        mut sequence_number: H::Seq,
+        state: &mut H,
+    ) {
+        let BlockPtr { hash, number } = self;
+
+        stable_hash_legacy::utils::AsBytes(hash.0.as_ref())
+            .stable_hash(sequence_number.next_child(), state);
+        stable_hash_legacy::StableHash::stable_hash(number, sequence_number.next_child(), state);
+    }
+}
+
 impl StableHash for BlockPtr {
-    fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
-        AsBytes(self.hash.0.as_ref()).stable_hash(sequence_number.next_child(), state);
-        self.number.stable_hash(sequence_number.next_child(), state);
+    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
+        let BlockPtr { hash, number } = self;
+
+        stable_hash::utils::AsBytes(hash.0.as_ref()).stable_hash(field_address.child(0), state);
+        stable_hash::StableHash::stable_hash(number, field_address.child(1), state);
     }
 }
 

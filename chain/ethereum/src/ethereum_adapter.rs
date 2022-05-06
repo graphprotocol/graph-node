@@ -456,7 +456,7 @@ impl EthereumAdapter {
                     let result = web3.eth().call(req, Some(block_id)).boxed().await;
 
                     // Try to check if the call was reverted. The JSON-RPC response for reverts is
-                    // not standardized, so we have ad-hoc checks for each Ethereum client                    // Ganache.
+                    // not standardized, so we have ad-hoc checks for each Ethereum client.
 
                     // 0xfe is the "designated bad instruction" of the EVM, and Solidity uses it for
                     // asserts.
@@ -479,12 +479,12 @@ impl EthereumAdapter {
                     // subgraphs come across other errors. See
                     // https://github.com/ethereum/go-ethereum/blob/cd57d5cd38ef692de8fbedaa56598b4e9fbfbabc/core/vm/errors.go
                     const GETH_EXECUTION_ERRORS: &[&str] = &[
-                        // Hardhat format.
-                        "error: transaction reverted",
-                        // Ganache and Moonbeam format.
-                        "vm exception while processing transaction: revert",
-                        // Geth errors
-                        "execution reverted",
+                        // The "revert" substring covers a few known error messages, including:
+                        // Hardhat: "error: transaction reverted",
+                        // Ganache and Moonbeam: "vm exception while processing transaction: revert",
+                        // Geth: "execution reverted"
+                        // And others.
+                        "revert",
                         "invalid jump destination",
                         "invalid opcode",
                         // Ethereum says 1024 is the stack sizes limit, so this is deterministic.
@@ -1986,4 +1986,130 @@ async fn get_transaction_receipts_for_transaction_hashes(
     );
 
     Ok(receipts_by_hash)
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger};
+
+    use super::{parse_block_triggers, EthereumBlock, EthereumBlockFilter, EthereumBlockWithCalls};
+    use graph::blockchain::BlockPtr;
+    use graph::prelude::ethabi::ethereum_types::U64;
+    use graph::prelude::web3::types::{Address, Block, Bytes, H256};
+    use graph::prelude::EthereumCall;
+    use std::collections::HashSet;
+    use std::iter::FromIterator;
+    use std::sync::Arc;
+
+    #[test]
+    fn parse_block_triggers_every_block() {
+        let block = EthereumBlockWithCalls {
+            ethereum_block: EthereumBlock {
+                block: Arc::new(Block {
+                    hash: Some(hash(2)),
+                    number: Some(U64::from(2)),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            calls: Some(vec![EthereumCall {
+                to: address(4),
+                input: bytes(vec![1; 36]),
+                ..Default::default()
+            }]),
+        };
+
+        assert_eq!(
+            vec![EthereumTrigger::Block(
+                BlockPtr::from((hash(2), 2)),
+                EthereumBlockTriggerType::Every
+            )],
+            parse_block_triggers(
+                &EthereumBlockFilter {
+                    contract_addresses: HashSet::from_iter(vec![(10, address(1))]),
+                    trigger_every_block: true,
+                },
+                &block
+            ),
+            "every block should generate a trigger even when address don't match"
+        );
+    }
+
+    #[test]
+    fn parse_block_triggers_specific_call_not_found() {
+        let block = EthereumBlockWithCalls {
+            ethereum_block: EthereumBlock {
+                block: Arc::new(Block {
+                    hash: Some(hash(2)),
+                    number: Some(U64::from(2)),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            calls: Some(vec![EthereumCall {
+                to: address(4),
+                input: bytes(vec![1; 36]),
+                ..Default::default()
+            }]),
+        };
+
+        assert_eq!(
+            Vec::<EthereumTrigger>::new(),
+            parse_block_triggers(
+                &EthereumBlockFilter {
+                    contract_addresses: HashSet::from_iter(vec![(1, address(1))]),
+                    trigger_every_block: false,
+                },
+                &block
+            ),
+            "block filter specifies address 1 but block does not contain any call to it"
+        );
+    }
+
+    #[test]
+    fn parse_block_triggers_specific_call_found() {
+        let block = EthereumBlockWithCalls {
+            ethereum_block: EthereumBlock {
+                block: Arc::new(Block {
+                    hash: Some(hash(2)),
+                    number: Some(U64::from(2)),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            calls: Some(vec![EthereumCall {
+                to: address(4),
+                input: bytes(vec![1; 36]),
+                ..Default::default()
+            }]),
+        };
+
+        assert_eq!(
+            vec![EthereumTrigger::Block(
+                BlockPtr::from((hash(2), 2)),
+                EthereumBlockTriggerType::WithCallTo(address(4))
+            )],
+            parse_block_triggers(
+                &EthereumBlockFilter {
+                    contract_addresses: HashSet::from_iter(vec![(1, address(4))]),
+                    trigger_every_block: false,
+                },
+                &block
+            ),
+            "block filter specifies address 4 and block has call to it"
+        );
+    }
+
+    fn address(id: u64) -> Address {
+        Address::from_low_u64_be(id)
+    }
+
+    fn hash(id: u8) -> H256 {
+        H256::from([id; 32])
+    }
+
+    fn bytes(value: Vec<u8>) -> Bytes {
+        Bytes::from(value)
+    }
 }
