@@ -585,7 +585,7 @@ fn stress<T: Template>(opt: &Opt) {
     for key in 0..opt.niter {
         should_print = should_print || key % print_mod == 0;
         let before_mem = ALLOCATED.load(SeqCst);
-        if let Some((evicted, _, new_weight)) = cache.evict(opt.cache_size) {
+        if let Some(stats) = cache.evict(opt.cache_size) {
             let after_mem = ALLOCATED.load(SeqCst);
             if should_print {
                 if print_header {
@@ -599,12 +599,14 @@ fn stress<T: Template>(opt: &Opt) {
                 }
 
                 let dropped = before_mem - after_mem;
+                let evicted_count = stats.evicted_count;
+                let evicted = stats.evicted_weight;
                 let slip = evicted as i64 - dropped as i64;
-                let room = opt.cache_size as i64 - new_weight as i64;
+                let room = opt.cache_size as i64 - stats.new_weight as i64;
                 let heap = (after_mem - base_mem) as f64 / opt.cache_size as f64;
                 let mem = after_mem - base_mem;
                 println!(
-                    "evict: {evicted:6}  drop: {dropped:6} slip: {slip:4} \
+                    "evict: [{evicted_count:6}]{evicted:6}  drop: {dropped:6} slip: {slip:4} \
                     room: {room:6} heap: {heap:0.2}  mem: {mem:8}"
                 );
                 should_print = false;

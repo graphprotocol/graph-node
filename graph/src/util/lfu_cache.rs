@@ -56,6 +56,18 @@ impl<K: CacheWeight, V: Default + CacheWeight> CacheEntry<K, V> {
 // then non-stale entries by least frequency.
 type Priority = (bool, Reverse<u64>);
 
+/// Statistics about what happened during cache eviction
+pub struct EvictStats {
+    /// The weight of the cache after eviction
+    pub new_weight: usize,
+    /// The weight of the items that were evicted
+    pub evicted_weight: usize,
+    /// The number of entries after eviction
+    pub new_count: usize,
+    /// The number if entries that were evicted
+    pub evicted_count: usize,
+}
+
 /// Each entry in the cache has a frequency, which is incremented by 1 on access. Entries also have
 /// a weight, upon eviction first stale entries will be removed and then non-stale entries by order
 /// of least frequency until the max weight is respected. This cache only removes entries on calls
@@ -167,7 +179,7 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
     }
 
     /// Same as `evict_with_period(max_weight, STALE_PERIOD)`
-    pub fn evict(&mut self, max_weight: usize) -> Option<(usize, usize, usize)> {
+    pub fn evict(&mut self, max_weight: usize) -> Option<EvictStats> {
         self.evict_with_period(max_weight, STALE_PERIOD)
     }
 
@@ -183,7 +195,7 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
         &mut self,
         max_weight: usize,
         stale_period: u64,
-    ) -> Option<(usize, usize, usize)> {
+    ) -> Option<EvictStats> {
         use crate::prelude::lazy_static;
         lazy_static! {
             // Setting `DEAD_WEIGHT` is dangerous since it can lead to a
@@ -210,7 +222,7 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
         }
 
         let mut evicted = 0;
-        let old_weight = self.total_weight;
+        let old_len = self.len();
         let dead_weight = if *DEAD_WEIGHT {
             self.len() * (std::mem::size_of::<CacheEntry<K, V>>() + 40)
         } else {
@@ -225,7 +237,12 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
             evicted += entry.weight;
             self.total_weight -= entry.weight;
         }
-        Some((evicted, old_weight, self.total_weight))
+        Some(EvictStats {
+            new_weight: self.total_weight,
+            evicted_weight: evicted,
+            new_count: self.len(),
+            evicted_count: old_len - self.len(),
+        })
     }
 }
 
