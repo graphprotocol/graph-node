@@ -82,6 +82,14 @@ impl HeaderOnlyBlock {
     }
 }
 
+impl From<&Block> for HeaderOnlyBlock {
+    fn from(b: &Block) -> HeaderOnlyBlock {
+        HeaderOnlyBlock {
+            header: b.header.clone(),
+        }
+    }
+}
+
 impl From<HeaderOnlyBlock> for BlockPtr {
     fn from(b: HeaderOnlyBlock) -> BlockPtr {
         (&b).into()

@@ -194,9 +194,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         let shared_block = Arc::new(block.clone());
 
-        let header_only_block = codec::HeaderOnlyBlock {
-            header: block.header.clone(),
-        };
+        let header_only_block = codec::HeaderOnlyBlock::from(&block);
 
         let mut triggers: Vec<_> = shared_block
             .begin_block_events()
