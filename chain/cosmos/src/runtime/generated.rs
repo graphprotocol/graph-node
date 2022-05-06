@@ -445,7 +445,7 @@ impl AscIndexId for AscDuplicateVoteEvidence {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEventVote {
-    pub event_vote_type: u32,
+    pub event_vote_type: i32,
     pub height: u64,
     pub round: i32,
     pub block_id: AscPtr<AscBlockID>,
@@ -529,7 +529,7 @@ impl AscIndexId for AscCommit {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscCommitSig {
-    pub block_id_flag: u32,
+    pub block_id_flag: i32,
     pub validator_address: AscPtr<Uint8Array>,
     pub timestamp: AscPtr<AscTimestamp>,
     pub signature: AscPtr<Uint8Array>,
@@ -808,7 +808,7 @@ impl AscIndexId for AscModeInfo {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscModeInfoSingle {
-    pub mode: u32,
+    pub mode: i32,
 }
 
 impl AscIndexId for AscModeInfoSingle {
