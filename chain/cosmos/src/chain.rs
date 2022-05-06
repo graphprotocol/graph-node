@@ -208,9 +208,19 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             .chain(shared_block.tx_events().cloned().filter_map(|event| {
                 filter_event_trigger(filter, event, &header_only_block, EventOrigin::DeliverTx)
             }))
-            .chain(shared_block.end_block_events().cloned().filter_map(|event| {
-                filter_event_trigger(filter, event, &header_only_block, EventOrigin::EndBlock)
-            }))
+            .chain(
+                shared_block
+                    .end_block_events()
+                    .cloned()
+                    .filter_map(|event| {
+                        filter_event_trigger(
+                            filter,
+                            event,
+                            &header_only_block,
+                            EventOrigin::EndBlock,
+                        )
+                    }),
+            )
             .collect();
 
         triggers.extend(
@@ -257,11 +267,7 @@ fn filter_event_trigger(
     origin: EventOrigin,
 ) -> Option<CosmosTrigger> {
     if filter.event_type_filter.matches(&event.event_type) {
-        Some(CosmosTrigger::with_event(
-            event,
-            block.clone(),
-            origin,
-        ))
+        Some(CosmosTrigger::with_event(event, block.clone(), origin))
     } else {
         None
     }
