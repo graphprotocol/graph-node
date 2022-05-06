@@ -36,7 +36,7 @@ It's here that you add the `protobuf` definitions with the specific types for th
 
 - [Ethereum](https://github.com/graphprotocol/graph-node/blob/1cd7936f9143f317feb51be1fc199122761fcbb1/chain/ethereum/proto/codec.proto)
 - [NEAR](https://github.com/graphprotocol/graph-node/blob/1cd7936f9143f317feb51be1fc199122761fcbb1/chain/near/proto/codec.proto)
-- [Cosmos](https://github.com/graphprotocol/graph-node/blob/1cd7936f9143f317feb51be1fc199122761fcbb1/chain/cosmos/proto/codec.proto)
+- [Cosmos](https://github.com/graphprotocol/graph-node/blob/1cd7936f9143f317feb51be1fc199122761fcbb1/chain/tendermint/proto/codec.proto)
 
 To compile those we use a crate called `tonic`, it will require a [`build.rs` file](https://doc.rust-lang.org/cargo/reference/build-scripts.html) like the one in the other folders/chains, eg:
 
@@ -51,7 +51,7 @@ fn main() {
 }
 ```
 
-You'll also need a `src/codec.rs` to extract the data from the generated Rust code, much like [this one](https://github.com/graphprotocol/graph-node/blob/1cd7936f9143f317feb51be1fc199122761fcbb1/chain/cosmos/src/codec.rs).
+You'll also need a `src/codec.rs` to extract the data from the generated Rust code, much like [this one](https://github.com/graphprotocol/graph-node/blob/1cd7936f9143f317feb51be1fc199122761fcbb1/chain/tendermint/src/codec.rs).
 
 Besides this source file, there should also be a `TriggerFilter`, `NodeCapabilities` and `RuntimeAdapter`, here are a few empty examples:
 
