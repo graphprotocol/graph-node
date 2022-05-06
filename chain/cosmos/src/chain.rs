@@ -366,7 +366,7 @@ mod test {
     use super::*;
 
     use codec::{
-        Event, EventBlock, EventList, EventTx, ResponseBeginBlock, ResponseDeliverTx,
+        Block, Event, Header, HeaderOnlyBlock, ResponseBeginBlock, ResponseDeliverTx,
         ResponseEndBlock, TxResult,
     };
 
@@ -375,25 +375,27 @@ mod test {
         let adapter = TriggersAdapter {};
         let logger = Logger::root(Discard, o!());
 
-        let block_with_events = EventList::test_with_event_types(
+        let block_with_events = Block::test_with_event_types(
             vec!["begin_event_1", "begin_event_2", "begin_event_3"],
             vec!["tx_event_1", "tx_event_2", "tx_event_3"],
             vec!["end_event_1", "end_event_2", "end_event_3"],
         );
 
+        let header_only_block = HeaderOnlyBlock::from(&block_with_events);
+
         let cases = [
             (
-                EventList::test_new(),
+                Block::test_new(),
                 TriggerFilter::test_new(false, &[]),
                 vec![],
             ),
             (
-                EventList::test_new(),
+                Block::test_new(),
                 TriggerFilter::test_new(true, &[]),
-                vec![CosmosTrigger::Block(Arc::new(EventList::test_new()))],
+                vec![CosmosTrigger::Block(Arc::new(Block::test_new()))],
             ),
             (
-                EventList::test_new(),
+                Block::test_new(),
                 TriggerFilter::test_new(false, &["event_1", "event_2", "event_3"]),
                 vec![],
             ),
@@ -403,30 +405,30 @@ mod test {
                 vec![
                     CosmosTrigger::with_event(
                         Event::test_with_type("begin_event_3"),
-                        block_with_events.block().clone(),
+                        header_only_block.clone(),
                         EventOrigin::BeginBlock,
                     ),
                     CosmosTrigger::with_event(
                         Event::test_with_type("tx_event_3"),
-                        block_with_events.block().clone(),
+                        header_only_block.clone(),
                         EventOrigin::DeliverTx,
                     ),
                     CosmosTrigger::with_event(
                         Event::test_with_type("end_event_3"),
-                        block_with_events.block().clone(),
+                        header_only_block.clone(),
                         EventOrigin::EndBlock,
                     ),
                     CosmosTrigger::with_transaction(
                         TxResult::test_with_event_type("tx_event_1"),
-                        block_with_events.block().clone(),
+                        header_only_block.clone(),
                     ),
                     CosmosTrigger::with_transaction(
                         TxResult::test_with_event_type("tx_event_2"),
-                        block_with_events.block().clone(),
+                        header_only_block.clone(),
                     ),
                     CosmosTrigger::with_transaction(
                         TxResult::test_with_event_type("tx_event_3"),
-                        block_with_events.block().clone(),
+                        header_only_block.clone(),
                     ),
                 ],
             ),
@@ -437,30 +439,30 @@ mod test {
                     CosmosTrigger::Block(Arc::new(block_with_events.clone())),
                     CosmosTrigger::with_event(
                         Event::test_with_type("begin_event_3"),
-                        block_with_events.block().clone(),
+                        header_only_block.clone(),
                         EventOrigin::BeginBlock,
                     ),
                     CosmosTrigger::with_event(
                         Event::test_with_type("tx_event_2"),
-                        block_with_events.block().clone(),
+                        header_only_block.clone(),
                         EventOrigin::DeliverTx,
                     ),
                     CosmosTrigger::with_event(
                         Event::test_with_type("end_event_1"),
-                        block_with_events.block().clone(),
+                        header_only_block.clone(),
                         EventOrigin::EndBlock,
                     ),
                     CosmosTrigger::with_transaction(
                         TxResult::test_with_event_type("tx_event_1"),
-                        block_with_events.block().clone(),
+                        header_only_block.clone(),
                     ),
                     CosmosTrigger::with_transaction(
                         TxResult::test_with_event_type("tx_event_2"),
-                        block_with_events.block().clone(),
+                        header_only_block.clone(),
                     ),
                     CosmosTrigger::with_transaction(
                         TxResult::test_with_event_type("tx_event_3"),
-                        block_with_events.block().clone(),
+                        header_only_block.clone(),
                     ),
                 ],
             ),
@@ -492,42 +494,55 @@ mod test {
         }
     }
 
-    impl EventList {
-        fn test_new() -> EventList {
-            EventList::test_with_event_types(vec![], vec![], vec![])
+    impl Block {
+        fn test_new() -> Block {
+            Block::test_with_event_types(vec![], vec![], vec![])
         }
 
         fn test_with_event_types(
             begin_event_types: Vec<&str>,
             tx_event_types: Vec<&str>,
             end_event_types: Vec<&str>,
-        ) -> EventList {
-            EventList {
-                new_block: Some(EventBlock {
-                    block: None,
-                    block_id: None,
-                    result_begin_block: Some(ResponseBeginBlock {
-                        events: begin_event_types
-                            .into_iter()
-                            .map(Event::test_with_type)
-                            .collect(),
-                    }),
-                    result_end_block: Some(ResponseEndBlock {
-                        validator_updates: vec![],
-                        consensus_param_updates: None,
-                        events: end_event_types
-                            .into_iter()
-                            .map(Event::test_with_type)
-                            .collect(),
-                    }),
+        ) -> Block {
+            Block {
+                header: Some(Header {
+                    version: None,
+                    chain_id: "test".to_string(),
+                    height: 1,
+                    time: None,
+                    last_block_id: None,
+                    last_commit_hash: vec![],
+                    data_hash: vec![],
+                    validators_hash: vec![],
+                    next_validators_hash: vec![],
+                    consensus_hash: vec![],
+                    app_hash: vec![],
+                    last_results_hash: vec![],
+                    evidence_hash: vec![],
+                    proposer_address: vec![],
+                    hash: vec![],
                 }),
-                transaction: tx_event_types
+                evidence: None,
+                last_commit: None,
+                result_begin_block: Some(ResponseBeginBlock {
+                    events: begin_event_types
+                        .into_iter()
+                        .map(Event::test_with_type)
+                        .collect(),
+                }),
+                result_end_block: Some(ResponseEndBlock {
+                    validator_updates: vec![],
+                    consensus_param_updates: None,
+                    events: end_event_types
+                        .into_iter()
+                        .map(Event::test_with_type)
+                        .collect(),
+                }),
+                transactions: tx_event_types
                     .into_iter()
-                    .map(|event_type| EventTx {
-                        tx_result: Some(TxResult::test_with_event_type(event_type)),
-                    })
+                    .map(TxResult::test_with_event_type)
                     .collect(),
-                validator_set_updates: None,
+                validator_updates: vec![],
             }
         }
     }
@@ -546,7 +561,7 @@ mod test {
             TxResult {
                 height: 1,
                 index: 1,
-                tx: vec![],
+                tx: None,
                 result: Some(ResponseDeliverTx {
                     code: 1,
                     data: vec![],
@@ -557,6 +572,7 @@ mod test {
                     codespace: "".to_string(),
                     events: vec![Event::test_with_type(event_type)],
                 }),
+                hash: vec![],
             }
         }
     }
