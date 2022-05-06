@@ -6,7 +6,6 @@ use graph_runtime_wasm::asc_abi::class::{Array, AscString, Uint8Array};
 #[repr(C)]
 #[derive(AscType, Default)]
 pub struct AscBlock {
-    // pub ver: u32,
     pub timestamp: u64,
     pub last_retarget: u64,
     pub height: u64,
