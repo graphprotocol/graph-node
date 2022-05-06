@@ -10,7 +10,7 @@ use graph::firehose::EventTypeFilter;
 use graph::prelude::*;
 
 const EVENT_TYPE_FILTER_TYPE_URL: &str =
-    "type.googleapis.com/fig.cosmos.transform.v1.EventTypeFilter";
+    "type.googleapis.com/sf.cosmos.transform.v1.EventTypeFilter";
 
 #[derive(Clone, Debug, Default)]
 pub struct TriggerFilter {
