@@ -1204,7 +1204,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         graft_src: Option<(Arc<Layout>, BlockPtr)>,
     ) -> Result<(), StoreError> {
-        let dst = self.find_layout(site)?;
+        let dst = self.find_layout(site.cheap_clone())?;
 
         // Do any cleanup to bring the subgraph into a known good state
         if let Some((src, block)) = graft_src {
@@ -1266,6 +1266,11 @@ impl DeploymentStore {
                 deployment::set_entity_count(&conn, &dst.site, &dst.count_query)?;
                 info!(logger, "Counted the entities";
                       "time_ms" => start.elapsed().as_millis());
+
+                // Analyze all tables for this deployment
+                for entity_name in dst.tables.keys() {
+                    self.analyze(site.cheap_clone(), entity_name.as_str())?;
+                }
 
                 // Set the block ptr to the graft point to signal that we successfully
                 // performed the graft
