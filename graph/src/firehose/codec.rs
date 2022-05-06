@@ -11,7 +11,7 @@ mod pbethereum;
 mod pbnear;
 
 #[rustfmt::skip]
-#[path = "fig.cosmos.transform.v1.rs"]
+#[path = "sf.cosmos.transform.v1.rs"]
 mod pbcosmos;
 
 pub use pbcosmos::*;
